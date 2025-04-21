@@ -217,71 +217,121 @@ export default class Birdeye {
   }
 
   async syncTrendingTokens(chain: 'solana' | 'base'): Promise<boolean> {
-    const options = {
-      method: 'GET',
-      headers: {
-        accept: 'application/json',
-        'x-chain': chain,
-        'X-API-KEY': this.apiKey,
-      },
-    };
+    try {
+      const options = {
+        method: 'GET',
+        headers: {
+          accept: 'application/json',
+          'x-chain': chain,
+          'X-API-KEY': this.apiKey,
+        },
+      };
 
-    // Get existing tokens
-    const cachedTokens = await this.runtime.getCache<IToken[]>(`tokens_${chain}`);
-    const tokens: IToken[] = cachedTokens ? cachedTokens : [];
+      // Get existing tokens
+      const cachedTokens = await this.runtime.getCache<IToken[]>(`tokens_${chain}`);
+      const tokens: IToken[] = cachedTokens ? cachedTokens : [];
 
-    /** Fetch top 100 in batches of 20 (which is the limit) */
-    for (let batch = 0; batch < 5; batch++) {
-      const currentOffset = batch * 20;
-      const res = await fetch(
-        `https://public-api.birdeye.so/defi/token_trending?sort_by=rank&sort_type=asc&offset=${currentOffset}&limit=20`,
-        options
-      );
-      const resp = await res.json();
-      const data = resp?.data;
-      const last_updated = new Date(data?.updateUnixTime * 1000);
-      const newTokens = data?.tokens;
-      if (!newTokens) {
-        logger.error('birdeye defi/token_trending failure');
-        return false;
-      }
-      for (const token of newTokens) {
-        const tokenData: IToken = {
-          address: token?.address,
-          chain: chain,
-          provider: 'birdeye',
-          decimals: token.decimals,
-          liquidity: token.liquidity,
-          logoURI: token.logoURI,
-          name: token.name,
-          symbol: token.symbol,
-          marketcap: 0,
-          volume24hUSD: token.volume24hUSD,
-          rank: token.rank,
-          price: token.price,
-          price24hChangePercent: token.price24hChangePercent,
-          last_updated,
-        };
-
-        const existingIndex = tokens.findIndex(
-          (t) => t.provider === 'birdeye' && t.rank === token.rank && t.chain === chain
+      /** Fetch top 100 in batches of 20 (which is the limit) */
+      for (let batch = 0; batch < 5; batch++) {
+        const currentOffset = batch * 20;
+        const res = await fetch(
+          `https://public-api.birdeye.so/defi/token_trending?sort_by=rank&sort_type=asc&offset=${currentOffset}&limit=20`,
+          options
         );
-        if (existingIndex >= 0) {
-          tokens[existingIndex] = tokenData;
-        } else {
-          tokens.push(tokenData);
+        const resp = await res.json();
+        const data = resp?.data;
+        const last_updated = new Date(data?.updateUnixTime * 1000);
+        const newTokens = data?.tokens;
+        if (!newTokens) {
+          logger.error('birdeye defi/token_trending failure');
+          return false;
+        }
+        for (const token of newTokens) {
+          const tokenData: IToken = {
+            address: token?.address,
+            chain: chain,
+            provider: 'birdeye',
+            decimals: token.decimals,
+            liquidity: token.liquidity,
+            logoURI: token.logoURI,
+            name: token.name,
+            symbol: token.symbol,
+            marketcap: 0,
+            volume24hUSD: token.volume24hUSD,
+            rank: token.rank,
+            price: token.price,
+            price24hChangePercent: token.price24hChangePercent,
+            last_updated,
+          };
+
+          const existingIndex = tokens.findIndex(
+            (t) => t.provider === 'birdeye' && t.rank === token.rank && t.chain === chain
+          );
+
+          if (!res.ok) {
+            throw new Error(`API request failed with status ${res.status}`);
+          }
+
+          const resp = await res.json();
+
+          // Log the response structure in debug mode
+          logger.debug('Birdeye API response:', JSON.stringify(resp));
+
+          // Handle both possible response structures
+          const tokenList = resp?.data?.tokens || resp?.data || [];
+          if (!Array.isArray(tokenList)) {
+            logger.warn(`Unexpected token list format for batch ${batch}:`, tokenList);
+            continue;
+          }
+
+          const last_updated = new Date(resp?.data?.updateUnixTime * 1000 || Date.now());
+
+          for (const token of tokenList) {
+            if (!token?.address || !token?.symbol) {
+              logger.warn('Invalid token data:', token);
+              continue;
+            }
+
+            const tokenData: IToken = {
+              address: token.address,
+              chain: chain,
+              provider: 'birdeye',
+              decimals: token.decimals || 0,
+              liquidity: token.liquidity || 0,
+              logoURI: token.logoURI || '',
+              name: token.name || token.symbol,
+              symbol: token.symbol,
+              marketcap: 0,
+              volume24hUSD: token.volume24hUSD || 0,
+              rank: token.rank || 0,
+              price: token.price || 0,
+              price24hChangePercent: token.price24hChangePercent || 0,
+              last_updated,
+            };
+
+            const existingIndex = tokens.findIndex(
+              (t) => t.provider === 'birdeye' && t.rank === token.rank && t.chain === chain
+            );
+            if (existingIndex >= 0) {
+              tokens[existingIndex] = tokenData;
+            } else {
+              tokens.push(tokenData);
+            }
+          }
+
+          /** Add extra delay */
+          await new Promise((resolve) => setTimeout(resolve, 250));
         }
       }
+      await this.runtime.setCache<IToken[]>(`tokens_${chain}`, tokens);
 
-      /** Add extra delay */
-      await new Promise((resolve) => setTimeout(resolve, 250));
+      logger.debug(`Updated ${chain} tokens cache with ${tokens.length} tokens`);
+
+      return true;
+    } catch (error) {
+      logger.error('Failed to sync trending tokens', error);
+      throw error;
     }
-
-    await this.runtime.setCache<IToken[]>(`tokens_${chain}`, tokens);
-
-    logger.debug(`Updated ${chain} tokens cache with ${tokens.length} tokens`);
-
-    return true;
   }
 
   async fillTimeframe() {
