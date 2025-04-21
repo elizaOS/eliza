@@ -246,8 +246,8 @@ const config: OnboardingConfig = {
 
 export const investmentManager: ProjectAgent = {
   plugins: [
-    degenIntelPlugin,
     degenTraderPlugin,
+    degenIntelPlugin,
     // communityInvestorPlugin,
   ],
   character,
