@@ -247,7 +247,7 @@ const config: OnboardingConfig = {
 export const investmentManager: ProjectAgent = {
   plugins: [
     degenTraderPlugin,
-    degenIntelPlugin,
+    degenIntelPlugin, // has to be after trader for buy/sell signals to be enabled
     // communityInvestorPlugin,
   ],
   character,
