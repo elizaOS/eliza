@@ -63,7 +63,6 @@
     "@opentelemetry/instrumentation-pg": "^0.52.0",
     "@opentelemetry/sdk-metrics": "^1.26.0",
     "@opentelemetry/sdk-node": "^0.53.0",
-    "@types/hapi__shot": "^6.0.0",
     "buffer": "^6.0.3",
     "crypto-browserify": "^3.12.1",
     "dotenv": "16.4.5",
