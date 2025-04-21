@@ -104,9 +104,17 @@ export const recentMessagesProvider: Provider = {
         : '';
 
     const metaData = message.metadata as CustomMetadata;
-    const recieveMessage = addHeader(
-      '# Received Message:',
-      `${metaData?.entityName || 'unknown'}: ${message.content.text}`
+    const senderName = metaData?.entityName || 'unknown';
+    const receivedMessageContent = message.content.text;
+
+    const receivedMessageHeader = addHeader(
+      '# Received Message',
+      `${senderName}: ${receivedMessageContent}`
+    );
+
+    const focusHeader = addHeader(
+      '# ⚡ Focus your response',
+      `You are replying to the above message from **${senderName}**. Keep your answer relevant to that message. Do not repeat earlier replies unless the sender asks again.`
     );
 
     const recentMessages =
@@ -224,7 +232,7 @@ export const recentMessagesProvider: Provider = {
     };
 
     // Combine all text sections
-    const text = [isPostFormat ? recentPosts : recentMessages + recieveMessage]
+    const text = [isPostFormat ? recentPosts : recentMessages + receivedMessageHeader + focusHeader]
       .filter(Boolean)
       .join('\n\n');
 
