@@ -102,7 +102,13 @@ export const findPluginPackageName = (
 
 // --- End Helper Functions ---
 
-export const plugins = new Command().name('plugins').description('Manage an ElizaOS plugin');
+export const plugins = new Command()
+  .name('plugins')
+  .description('Manage ElizaOS plugins')
+  .option('--help', 'Show help for plugins command')
+  .action(function () {
+    this.help();
+  });
 
 export const pluginsCommand = plugins
   .command('list')

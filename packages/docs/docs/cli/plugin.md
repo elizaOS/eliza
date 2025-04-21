@@ -8,7 +8,7 @@ image: /img/cli.jpg
 
 # Plugin Command
 
-The `plugin` command helps developers manage ElizaOS plugins, focusing on the publishing process.
+The `plugins` command helps developers manage ElizaOS plugins, focusing on the publishing process.
 
 ## Subcommands
 
@@ -22,7 +22,7 @@ The `plugin` command helps developers manage ElizaOS plugins, focusing on the pu
 
 ## GitHub Authentication
 
-The plugin command requires GitHub authentication to publish plugins. You can set your GitHub token in one of two ways:
+The plugins command requires GitHub authentication to publish plugins. You can set your GitHub token in one of two ways:
 
 1. Set the `GITHUB_TOKEN` environment variable
 2. When prompted, enter your GitHub Personal Access Token (PAT)
@@ -86,7 +86,7 @@ The CLI will check all of these requirements and help you fix issues where possi
 Run the test publish process to check for any issues:
 
 ```bash
-elizaos plugin publish --test
+elizaos plugins publish --test
 ```
 
 The CLI will check all registry requirements and help you fix any issues.
@@ -96,7 +96,7 @@ The CLI will check all registry requirements and help you fix any issues.
 When your plugin is ready:
 
 ```bash
-elizaos plugin publish
+elizaos plugins publish
 ```
 
 This will:
@@ -130,10 +130,10 @@ elizaos test
 # 3. Ensure package.json has correct repository URL and agentConfig
 
 # Test the publishing process
-elizaos plugin publish --test
+elizaos plugins publish --test
 
 # Publish to registry
-elizaos plugin publish
+elizaos plugins publish
 ```
 
 After submission, your plugin will be reviewed by the ElizaOS team before being added to the registry.
