@@ -22,11 +22,11 @@ const _rolePrompt = 'You are a buy signal analyzer.';
  * }
  */
 const _template = `
-
 I want you to give a crypto buy signal based on both the sentiment analysis as well as the trending tokens.
 Only choose a token that occurs in both the Trending Tokens list as well as the Sentiment analysis. This ensures we have the proper token address.
 The sentiment score has a range of -100 to 100, with -100 indicating extreme negativity and 100 indicating extreme positiveness.
-My current balance is {{solana_balance}} SOL, also let me know what a good amount would be to buy. Buy amount should at least be 0.05 SOL and maximum 0.25 SOL.
+My current balance is {{solana_balance}} SOL, If I have less than 0.3 SOL then I should not buy unless it's really good opportunity.
+Also let me know what a good amount would be to buy. Buy amount should at least be 0.05 SOL and maximum 0.25 SOL.
 
 Sentiment analysis:
 
@@ -90,17 +90,17 @@ export default class BuySignal {
     const prompt = _template.replace('{{sentiment}}', sentiments);
 
     // Get all trending tokens
+    let tokens = '';
     const trendingData = (await this.runtime.getCache<IToken[]>('tokens_solana')) || [];
     if (!trendingData.length) {
       logger.warn('No trending tokens found in cache');
-      return false;
-    }
-    let tokens = '';
-    let index = 1;
-    for (const token of trendingData) {
-      tokens += `ENTRY ${index}\n\nTOKEN SYMBOL: ${token.name}\nTOKEN ADDRESS: ${token.address}\nPRICE: ${token.price}\n24H CHANGE: ${token.price24hChangePercent}\nLIQUIDITY: ${token.liquidity}`;
-      tokens += '\n-------------------\n';
-      index++;
+    } else {
+      let index = 1;
+      for (const token of trendingData) {
+        tokens += `ENTRY ${index}\n\nTOKEN SYMBOL: ${token.name}\nTOKEN ADDRESS: ${token.address}\nPRICE: ${token.price}\n24H CHANGE: ${token.price24hChangePercent}\nLIQUIDITY: ${token.liquidity}`;
+        tokens += '\n-------------------\n';
+        index++;
+      }
     }
 
     const solanaBalance = await this.getBalance();
@@ -126,7 +126,7 @@ export default class BuySignal {
       // could use OBJECT_LARGE but this expects a string return type rn
       // not sure where OBJECT_LARGE does it's parsing...
       const response = await this.runtime.useModel(ModelType.TEXT_LARGE, {
-        context: finalPrompt,
+        prompt: finalPrompt,
         system: _rolePrompt,
         temperature: 0.2,
         maxTokens: 4096,
@@ -198,10 +198,11 @@ export default class BuySignal {
       }
 
       const resJson = await res.json();
-      const marketcap = resJson?.data?.realMc;
+      // was realMc but it's not there
+      const marketcap = resJson?.data?.marketCap;
 
       if (!marketcap) {
-        logger.warn('No marketcap data returned from Birdeye', {
+        logger.warn('buy-signal: No marketcap data returned from Birdeye', {
           response: resJson,
           address: responseContent.recommend_buy_address,
         });
