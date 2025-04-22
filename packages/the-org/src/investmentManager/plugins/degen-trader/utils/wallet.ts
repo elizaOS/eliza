@@ -1,4 +1,4 @@
-import { logger, type IAgentRuntime } from '@elizaos/core';
+import { logger, type IAgentRuntime, parseJSONObjectFromText } from '@elizaos/core';
 import { Connection, Keypair, VersionedTransaction, PublicKey } from '@solana/web3.js';
 import { decodeBase58 } from './utils';
 
@@ -123,13 +123,34 @@ export async function executeTrade(
         ? Number(params.amount) // For selling, amount is already in lamports
         : Math.floor(Number(params.amount) * 1e9); // For buying, convert to lamports
 
+    /*
+    console.log("utils::wallet - executeTrade get quote", {
+      inputTokenCA, outputTokenCA, slippage: params.slippage, calcSlip: Math.floor(params.slippage * 10000),
+    })
+    */
+
     // Get quote using Jupiter API
+
+    // 100 is 1%, we don't need to scale it by 10k
+    // 10k is if we gave it 0.01 to mean 1%
     const quoteResponse = await fetch(
-      `https://public.jupiterapi.com/quote?inputMint=${inputTokenCA}&outputMint=${outputTokenCA}&amount=${swapAmount}&slippageBps=${Math.floor(params.slippage * 10000)}`
+      `https://public.jupiterapi.com/quote?inputMint=${inputTokenCA}&outputMint=${outputTokenCA}&amount=${swapAmount}&slippageBps=${params.slippage}&platformFeeBps=200`
     );
 
     if (!quoteResponse.ok) {
       const error = await quoteResponse.text();
+      // {\"error\":\"The token GkpRhRXqVYUJS2gMPLyjefAcwLMCLwoxaBKRr1ghnu1k is not tradable\",\"errorCode\":\"TOKEN_NOT_TRADABLE\"}
+      const parsedResponse = parseJSONObjectFromText(error);
+      if (parsedResponse?.errorCode === 'TOKEN_NOT_TRADABLE') {
+        function extractTokenAddress(message) {
+          const regex = /The token (\w{44}) is not tradable/;
+          const match = message.match(regex);
+          return match ? match[1] : null;
+        }
+        logger.log('Need to flag', extractTokenAddress(parsedResponse.error), 'as not tradable');
+        //
+      }
+
       logger.warn('Quote request failed:', {
         status: quoteResponse.status,
         error,
