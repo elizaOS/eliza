@@ -107,6 +107,13 @@ export class BuyService extends BaseTradeService {
       }
 
       const marketData = await this.dataService.getTokenMarketData(signal.tokenAddress);
+      //console.log('buy marketData', marketData)
+      /*
+      priceUsd: 0.41007456030137535,
+      priceSol: 0.002948116901755705,
+      liquidity: 10744833.206507128,
+      priceChange24h: 2.7088458855647857,
+      */
 
       const walletBalance = await this.walletService.getBalance();
       const buyAmount = await this.calculationService.calculateOptimalBuyAmount({
@@ -138,7 +145,7 @@ export class BuyService extends BaseTradeService {
           chain: 'solana',
           type: 'BUY',
           amount: buyAmount.toString(),
-          price: marketData.price.toString(),
+          price: marketData.priceUsd.toString(),
           txHash: result.signature,
           metadata: {
             slippage: slippageBps,
