@@ -215,10 +215,11 @@ export default class SellSignal {
         }
 
         const resJson = await res.json();
-        const marketcap = resJson?.data?.realMc;
+        //console.log('birdeye resJson', resJson)
+        const marketcap = resJson?.data?.marketCap;
 
         if (!marketcap) {
-          logger.warn('No marketcap data returned from Birdeye', {
+          logger.warn('sell: No marketcap data returned from Birdeye', {
             response: resJson,
             address: responseContent.recommend_sell_address,
           });
