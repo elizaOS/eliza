@@ -19,14 +19,11 @@ import {
  *
  * @type {string}
  */
-const replyTemplate = `# Task: Generate dialog and actions for the character {{agentName}}.
+const replyTemplate = `# Task: Generate dialog for the character {{agentName}}.
 {{providers}}
 # Instructions: Write the next message for {{agentName}}.
-First, think about what you want to do next and plan your actions. Then, write the next message and include the actions you plan to take.
 "thought" should be a short description of what the agent is thinking about and planning.
 "message" should be the next message for {{agentName}} which they will send to the conversation.
-
-These are the available valid actions: {{actionNames}}
 
 Response format should be formatted in a valid JSON block like this:
 \`\`\`json
@@ -64,8 +61,28 @@ export const replyAction = {
     message: Memory,
     state: State,
     _options: any,
-    callback: HandlerCallback
+    callback: HandlerCallback,
+    responses?: Memory[]
   ) => {
+    // Find all responses with REPLY action and text
+    const existingResponses = responses?.filter(
+      (response) => response.content.actions?.includes('REPLY') && response.content.message
+    );
+
+    // If we found any existing responses, use them and skip LLM
+    if (existingResponses && existingResponses.length > 0) {
+      for (const response of existingResponses) {
+        const responseContent = {
+          thought: response.content.thought || 'Using provided text for reply',
+          text: response.content.message as string,
+          actions: ['REPLY'],
+        };
+        await callback(responseContent);
+      }
+      return;
+    }
+
+    // Only generate response using LLM if no suitable response was found
     state = await runtime.composeState(message, [
       ...(message.content.providers ?? []),
       'RECENT_MESSAGES',

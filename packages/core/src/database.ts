@@ -5,13 +5,13 @@ import type {
   IDatabaseAdapter,
   Log,
   Memory,
+  MemoryMetadata,
   Participant,
   Relationship,
   Room,
   Task,
   UUID,
   World,
-  MemoryMetadata,
 } from './types';
 
 /**
@@ -466,7 +466,7 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
    * @param agent The agent object to ensure exists.
    * @returns A Promise that resolves when the agent has been ensured to exist.
    */
-  abstract ensureAgentExists(agent: Partial<Agent>): Promise<void>;
+  abstract ensureAgentExists(agent: Partial<Agent>): Promise<Agent>;
 
   /**
    * Ensures an embedding dimension exists in the database.

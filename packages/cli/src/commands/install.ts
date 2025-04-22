@@ -14,14 +14,14 @@ import { handleError } from '@/src/utils/handle-error';
 async function cloneRepository(repo: string, branch: string, destination: string): Promise<void> {
   try {
     const repoUrl = `https://github.com/${repo}`;
-    logger.info(`Cloning ${repoUrl} (branch: ${branch}) to ${destination}...`);
+    console.info(`Cloning ${repoUrl} (branch: ${branch}) to ${destination}...`);
 
     // Clone specific branch using execa
     await execa('git', ['clone', '-b', branch, repoUrl, destination], {
       stdio: 'inherit',
     });
 
-    logger.success('Repository cloned successfully');
+    console.log('Repository cloned successfully');
   } catch (error) {
     throw new Error(`Failed to clone repository: ${error.message}`);
   }

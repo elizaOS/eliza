@@ -1,3 +1,11 @@
+---
+sidebar_position: 1
+title: Agent Runtime
+description: Understanding the ElizaOS Agent Runtime - the core environment that powers AI agents
+keywords: [agent runtime, orchestration, services, state, plugins, memory, models, processing]
+image: /img/agentruntime.jpg
+---
+
 # 🤖 Agent Runtime
 
 The `AgentRuntime` is the core runtime environment for Eliza agents. It handles message processing, state management, plugin integration, and interaction with external services. You can think of it as the brains that provide the high-level orchestration layer for Eliza agents.

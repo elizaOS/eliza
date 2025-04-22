@@ -1,5 +1,9 @@
 ---
 sidebar_position: 7
+title: World System
+description: Understanding ElizaOS worlds - virtual spaces for agent interactions and communication
+keywords: [worlds, environments, spaces, rooms, entities, roles, permissions, events]
+image: /img/elizaos-worlds-cosmic-clean.svg
 ---
 
 # Worlds

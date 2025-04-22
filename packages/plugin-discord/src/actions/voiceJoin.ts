@@ -40,7 +40,7 @@ export const joinVoice: Action = {
 
     const room = state.data.room ?? (await runtime.getRoom(message.roomId));
 
-    if (room?.type !== ChannelType.GROUP) {
+    if (room?.type !== ChannelType.GROUP && room?.type !== ChannelType.VOICE_GROUP) {
       return false;
     }
 
@@ -62,12 +62,12 @@ export const joinVoice: Action = {
     callback: HandlerCallback
   ): Promise<boolean> => {
     const room = state.data.room ?? (await runtime.getRoom(message.roomId));
+
     if (!room) {
       throw new Error('No room found');
     }
 
-    if (room.type !== ChannelType.GROUP) {
-      // only handle in a group scenario for now
+    if (room?.type !== ChannelType.GROUP && room?.type !== ChannelType.VOICE_GROUP) {
       return false;
     }
 

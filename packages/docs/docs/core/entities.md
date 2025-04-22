@@ -1,5 +1,9 @@
 ---
 sidebar_position: 9
+title: Entities System
+description: Understanding ElizaOS entities - users, agents, and participants in the entity-component architecture
+keywords: [entities, components, users, agents, participants, relationships, data modeling]
+image: /img/entities-component-architecture.svg
 ---
 
 # Entities

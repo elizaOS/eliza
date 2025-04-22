@@ -304,6 +304,22 @@ Response format should be formatted in a valid JSON block like this:
 \`\`\`
 Your response should include the valid JSON block and nothing else.`;
 
+export const providersTemplate = `# Task: Determine which providers would be most relevant for {{agentName}} to use in responding to this message.
+{{providers}}
+# Instructions: Based on the context and message, select the providers that would give {{agentName}} the most relevant information for crafting a response.
+Consider the following when selecting providers:
+- What information would help {{agentName}} understand the context better?
+- What data would help {{agentName}} provide a more informed response?
+- What providers might have relevant historical or contextual information?
+
+Response format should be formatted in a valid JSON block like this:
+\`\`\`json
+{
+    "providers": ["<string>", "<string>", ...]
+}
+\`\`\`
+Your response should include the valid JSON block and nothing else.`;
+
 export const messageHandlerTemplate = `# Task: Generate dialog and actions for the character {{agentName}}.
 {{providers}}
 # Instructions: Write a thought and plan for {{agentName}} and decide what actions to take. Also include the providers that {{agentName}} will use to have the right context for responding and acting, if any.
@@ -312,6 +328,7 @@ First, think about what you want to do next and plan your actions. Then, write t
 "actions" should be an array of the actions {{agentName}} plans to take based on the thought (if none, use IGNORE, if simply responding with text, use REPLY)
 "providers" should be an optional array of the providers that {{agentName}} will use to have the right context for responding and acting
 "evaluators" should be an optional array of the evaluators that {{agentName}} will use to evaluate the conversation after responding
+"message" should be the next message for {{agentName}} which they will send to the conversation.
 These are the available valid actions: {{actionNames}}
 
 Response format should be formatted in a valid JSON block like this:
@@ -319,7 +336,8 @@ Response format should be formatted in a valid JSON block like this:
 {
     "thought": "<string>",
     "actions": ["<string>", "<string>", ...],
-    "providers": ["<string>", "<string>", ...]
+    "providers": ["<string>", "<string>", ...],
+    "message": "<string>"
 }
 \`\`\`
 

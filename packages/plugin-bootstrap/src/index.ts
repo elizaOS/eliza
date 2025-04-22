@@ -22,43 +22,24 @@ import {
   parseJSONObjectFromText,
   type Plugin,
   postCreationTemplate,
+  providersTemplate,
   shouldRespondTemplate,
   truncateToCompleteSentence,
   type UUID,
   type WorldPayload,
 } from '@elizaos/core';
 import { v4 } from 'uuid';
-import { choiceAction } from './actions/choice';
-import { followRoomAction } from './actions/followRoom';
-import { ignoreAction } from './actions/ignore';
-import { muteRoomAction } from './actions/muteRoom';
-import { noneAction } from './actions/none';
-import { replyAction } from './actions/reply';
-import updateRoleAction from './actions/roles';
-import { sendMessageAction } from './actions/sendMessage';
-import updateSettingsAction from './actions/settings';
-import { unfollowRoomAction } from './actions/unfollowRoom';
-import { unmuteRoomAction } from './actions/unmuteRoom';
-import { updateEntityAction } from './actions/updateEntity';
-import { reflectionEvaluator } from './evaluators/reflection';
-import { actionsProvider } from './providers/actions';
-import { anxietyProvider } from './providers/anxiety';
-import { attachmentsProvider } from './providers/attachments';
-import { capabilitiesProvider } from './providers/capabilities';
-import { characterProvider } from './providers/character';
-import { choiceProvider } from './providers/choice';
-import { entitiesProvider } from './providers/entities';
-import { evaluatorsProvider } from './providers/evaluators';
-import { factsProvider } from './providers/facts';
-import { knowledgeProvider } from './providers/knowledge';
-import { providersProvider } from './providers/providers';
-import { recentMessagesProvider } from './providers/recentMessages';
-import { relationshipsProvider } from './providers/relationships';
-import { roleProvider } from './providers/roles';
-import { settingsProvider } from './providers/settings';
-import { timeProvider } from './providers/time';
+
+import * as actions from './actions';
+import * as evaluators from './evaluators';
+import * as providers from './providers';
+
 import { ScenarioService } from './services/scenario';
 import { TaskService } from './services/task';
+
+export * from './actions';
+export * from './evaluators';
+export * from './providers';
 
 /**
  * Represents media data containing a buffer of data and the media type.
@@ -203,40 +184,64 @@ const messageReceivedHandler = async ({
         'ENTITIES',
       ]);
 
-      const shouldRespondPrompt = composePromptFromState({
-        state,
-        template: runtime.character.templates?.shouldRespondTemplate || shouldRespondTemplate,
-      });
+      // Skip shouldRespond check for DM and VOICE_DM channels
+      const room = await runtime.getRoom(message.roomId);
+      const shouldSkipShouldRespond =
+        room?.type === ChannelType.DM ||
+        room?.type === ChannelType.VOICE_DM ||
+        room?.type === ChannelType.SELF;
 
-      logger.debug(
-        `*** Should Respond Prompt for ${runtime.character.name} ***\n`,
-        shouldRespondPrompt
-      );
+      let shouldRespond = true;
+      let providers: string[] = [];
 
-      const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-        prompt: shouldRespondPrompt,
-      });
+      if (!shouldSkipShouldRespond) {
+        const shouldRespondPrompt = composePromptFromState({
+          state,
+          template: runtime.character.templates?.shouldRespondTemplate || shouldRespondTemplate,
+        });
 
-      logger.debug(`*** Should Respond Response for ${runtime.character.name} ***\n`, response);
-      logger.debug(`*** Raw Response Type: ${typeof response} ***`);
+        logger.debug(
+          `*** Should Respond Prompt for ${runtime.character.name} ***\n`,
+          shouldRespondPrompt
+        );
 
-      // Try to preprocess response by removing code blocks markers if present
-      let processedResponse = response;
-      if (typeof response === 'string' && response.includes('```')) {
-        logger.debug('*** Response contains code block markers, attempting to clean up ***');
-        processedResponse = response.replace(/```json\n|\n```|```/g, '');
-        logger.debug('*** Processed Response ***\n', processedResponse);
+        const response = await runtime.useModel(ModelType.TEXT_SMALL, {
+          prompt: shouldRespondPrompt,
+        });
+
+        logger.debug(`*** Should Respond Response for ${runtime.character.name} ***\n`, response);
+        logger.debug(`*** Raw Response Type: ${typeof response} ***`);
+
+        // Try to preprocess response by removing code blocks markers if present
+        let processedResponse = response;
+        if (typeof response === 'string' && response.includes('```')) {
+          logger.debug('*** Response contains code block markers, attempting to clean up ***');
+          processedResponse = response.replace(/```json\n|\n```|```/g, '');
+          logger.debug('*** Processed Response ***\n', processedResponse);
+        }
+
+        const responseObject = parseJSONObjectFromText(processedResponse);
+        logger.debug('*** Parsed Response Object ***', responseObject);
+
+        shouldRespond = responseObject?.action && responseObject.action === 'RESPOND';
+        providers = (responseObject?.providers as string[]) || [];
+      } else {
+        // Use providersTemplate for DM and VOICE_DM channels
+        const providersPrompt = composePromptFromState({
+          state,
+          template: runtime.character.templates?.providersTemplate || providersTemplate,
+        });
+
+        const response = await runtime.useModel(ModelType.TEXT_SMALL, {
+          prompt: providersPrompt,
+        });
+
+        const responseObject = parseJSONObjectFromText(response);
+        providers = (responseObject?.providers as string[]) || [];
       }
 
-      const responseObject = parseJSONObjectFromText(processedResponse);
-      logger.debug('*** Parsed Response Object ***', responseObject);
-
-      // Safely handle the case where parsing returns null
-      const providers = responseObject?.providers as string[] | undefined;
-      logger.debug('*** Providers Value ***', providers);
-
-      const shouldRespond = responseObject?.action && responseObject.action === 'RESPOND';
       logger.debug('*** Should Respond ***', shouldRespond);
+      logger.debug('*** Providers Value ***', providers);
 
       state = await runtime.composeState(message, null, providers);
 
@@ -254,7 +259,7 @@ const messageReceivedHandler = async ({
         let retries = 0;
         const maxRetries = 3;
         while (retries < maxRetries && (!responseContent?.thought || !responseContent?.actions)) {
-          const response = await runtime.useModel(ModelType.TEXT_SMALL, {
+          const response = await runtime.useModel(ModelType.TEXT_LARGE, {
             prompt,
           });
 
@@ -289,6 +294,7 @@ const messageReceivedHandler = async ({
             },
           ];
 
+          // First callback without text - this is for the planning stage to show thought messages in GUI
           callback(responseContent);
         }
 
@@ -646,6 +652,70 @@ const handleServerSync = async ({
   }
 };
 
+/**
+ * Handles control messages for enabling or disabling UI elements in the frontend
+ * @param {Object} params - Parameters for the handler
+ * @param {IAgentRuntime} params.runtime - The runtime instance
+ * @param {Object} params.message - The control message
+ * @param {string} params.source - Source of the message
+ */
+const controlMessageHandler = async ({
+  runtime,
+  message,
+  source,
+}: {
+  runtime: IAgentRuntime;
+  message: {
+    type: 'control';
+    payload: {
+      action: 'enable_input' | 'disable_input';
+      target?: string;
+    };
+    roomId: UUID;
+  };
+  source: string;
+}) => {
+  try {
+    logger.debug(
+      `[controlMessageHandler] Processing control message: ${message.payload.action} for room ${message.roomId}`
+    );
+
+    // Here we would use a WebSocket service to send the control message to the frontend
+    // This would typically be handled by a registered service with sendMessage capability
+
+    // Get any registered WebSocket service
+    const serviceNames = Array.from(runtime.getAllServices().keys());
+    const websocketServiceName = serviceNames.find(
+      (name) => name.toLowerCase().includes('websocket') || name.toLowerCase().includes('socket')
+    );
+
+    if (websocketServiceName) {
+      const websocketService = runtime.getService(websocketServiceName);
+      if (websocketService && 'sendMessage' in websocketService) {
+        // Send the control message through the WebSocket service
+        await (websocketService as any).sendMessage({
+          type: 'controlMessage',
+          payload: {
+            action: message.payload.action,
+            target: message.payload.target,
+            roomId: message.roomId,
+          },
+        });
+
+        logger.debug(
+          `[controlMessageHandler] Control message ${message.payload.action} sent successfully`
+        );
+      } else {
+        logger.error('[controlMessageHandler] WebSocket service does not have sendMessage method');
+      }
+    } else {
+      logger.error('[controlMessageHandler] No WebSocket service found to send control message');
+    }
+  } catch (error) {
+    logger.error(`[controlMessageHandler] Error processing control message: ${error}`);
+  }
+};
+
 const events = {
   [EventType.MESSAGE_RECEIVED]: [
     async (payload: MessagePayload) => {
@@ -760,44 +830,47 @@ const events = {
       logger.debug(`Evaluator ${status}: ${payload.evaluatorName} (${payload.evaluatorId})`);
     },
   ],
+
+  CONTROL_MESSAGE: [controlMessageHandler],
 };
 
 export const bootstrapPlugin: Plugin = {
   name: 'bootstrap',
   description: 'Agent bootstrap with basic actions and evaluators',
   actions: [
-    replyAction,
-    followRoomAction,
-    unfollowRoomAction,
-    ignoreAction,
-    noneAction,
-    muteRoomAction,
-    unmuteRoomAction,
-    sendMessageAction,
-    updateEntityAction,
-    choiceAction,
-    updateRoleAction,
-    updateSettingsAction,
+    actions.replyAction,
+    actions.followRoomAction,
+    actions.unfollowRoomAction,
+    actions.ignoreAction,
+    actions.noneAction,
+    actions.muteRoomAction,
+    actions.unmuteRoomAction,
+    actions.sendMessageAction,
+    actions.updateEntityAction,
+    actions.choiceAction,
+    actions.updateRoleAction,
+    actions.updateSettingsAction,
   ],
   events,
-  evaluators: [reflectionEvaluator],
+  evaluators: [evaluators.reflectionEvaluator],
   providers: [
-    evaluatorsProvider,
-    anxietyProvider,
-    knowledgeProvider,
-    timeProvider,
-    entitiesProvider,
-    relationshipsProvider,
-    choiceProvider,
-    factsProvider,
-    roleProvider,
-    settingsProvider,
-    capabilitiesProvider,
-    attachmentsProvider,
-    providersProvider,
-    actionsProvider,
-    characterProvider,
-    recentMessagesProvider,
+    providers.evaluatorsProvider,
+    providers.anxietyProvider,
+    providers.knowledgeProvider,
+    providers.timeProvider,
+    providers.entitiesProvider,
+    providers.relationshipsProvider,
+    providers.choiceProvider,
+    providers.factsProvider,
+    providers.roleProvider,
+    providers.settingsProvider,
+    providers.capabilitiesProvider,
+    providers.attachmentsProvider,
+    providers.providersProvider,
+    providers.actionsProvider,
+    providers.characterProvider,
+    providers.recentMessagesProvider,
+    providers.worldProvider,
   ],
   services: [TaskService, ScenarioService],
 };

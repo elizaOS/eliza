@@ -1,5 +1,9 @@
 ---
 sidebar_position: 9
+title: Tasks System
+description: Understanding ElizaOS tasks - managing deferred, scheduled, and interactive operations
+keywords: [tasks, scheduling, automation, workers, recurring tasks, task management]
+image: /img/tasks.jpg
 ---
 
 # Tasks

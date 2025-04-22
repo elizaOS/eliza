@@ -24,7 +24,13 @@ import {
   HandlerCallback,
   EventType,
 } from '@elizaos/core';
-import { createMockRuntime, createMockMemory, createMockState, MockRuntime, setupActionTest } from './test-utils';
+import {
+  createMockRuntime,
+  createMockMemory,
+  createMockState,
+  MockRuntime,
+  setupActionTest,
+} from './test-utils';
 
 // Spy on commonly used methods for logging
 beforeEach(() => {

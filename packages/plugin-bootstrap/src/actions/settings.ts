@@ -694,7 +694,7 @@ async function generateErrorResponse(
  * Enhanced settings action with improved state management and logging
  * Updated to use world metadata instead of cache
  */
-const updateSettingsAction: Action = {
+export const updateSettingsAction: Action = {
   name: 'UPDATE_SETTINGS',
   similes: ['UPDATE_SETTING', 'SAVE_SETTING', 'SET_CONFIGURATION', 'CONFIGURE'],
   description:
@@ -976,5 +976,3 @@ const updateSettingsAction: Action = {
     ],
   ] as ActionExample[][],
 };
-
-export default updateSettingsAction;

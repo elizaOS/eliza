@@ -1,5 +1,6 @@
 import { logger } from '@elizaos/core';
-import { AGENT_RUNTIME_URL } from '../commands/agent';
+import { getAgentRuntimeUrl } from '../commands/agent';
+import { OptionValues } from 'commander';
 /**
  * Handles the error by logging it and exiting the process.
  * If the error is a string, it logs the error message and exits.
@@ -20,14 +21,16 @@ export function handleError(error: unknown) {
   process.exit(1);
 }
 
-export async function checkServer() {
+export async function checkServer(opts: OptionValues) {
   const red = '\x1b[38;5;196m';
   const r = '\x1b[0m';
   try {
-    await fetch(`${AGENT_RUNTIME_URL}/api/ping`);
+    await fetch(`${getAgentRuntimeUrl(opts)}/api/ping`);
     logger.success('ElizaOS server is running');
   } catch (error) {
-    logger.error(`${red}Unable to connect to ElizaOS server, likely not running!${r}`);
+    logger.error(
+      `${red}Unable to connect to ElizaOS server, likely not running or not accessible!${r}`
+    );
     process.exit(1);
   }
 }

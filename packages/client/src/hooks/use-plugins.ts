@@ -16,6 +16,7 @@ export function usePlugins() {
 
       // Temporarily return hardcoded plugins as an array
       return [
+        '@elizaos/plugin-bootstrap',
         '@elizaos/plugin-sql',
         '@elizaos/plugin-twitter',
         '@elizaos/plugin-telegram',
@@ -32,6 +33,7 @@ export function usePlugins() {
         '@elizaos/plugin-browser',
         '@elizaos/plugin-s3-storage',
         '@elizaos/plugin-video-understanding',
+        '@elizaos/plugin-venice',
       ];
     },
   });

@@ -45,7 +45,11 @@ export default function Home() {
         <div className="flex flex-col gap-4 h-full">
           <div className="flex items-center justify-between gap-2 p-2">
             <PageTitle title="Agents" />
-            <Button variant="outline" onClick={() => navigate('/create')}>
+            <Button
+              variant="outline"
+              onClick={() => navigate('/create')}
+              className="create-agent-button"
+            >
               <Plus className="w-4 h-4" />
             </Button>
           </div>
@@ -68,13 +72,14 @@ export default function Home() {
           )}
 
           {!isLoading && !isError && (
-            <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-6 gap-4 p-2 auto-rows-fr">
+            <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-6 gap-4 p-2 auto-rows-fr agents-section">
               {agents
                 ?.sort((a: Agent, b: Agent) => Number(b?.enabled) - Number(a?.enabled))
                 .map((agent: Agent) => {
                   return (
                     <ProfileCard
                       key={agent.id}
+                      className="agent-card"
                       title={
                         <div className="flex gap-2 items-center">
                           <div className="truncate max-w-24">{agent.name}</div>
@@ -141,7 +146,7 @@ export default function Home() {
                           ? {
                               label: 'Message',
                               action: () => navigate(`/chat/${agent.id}`),
-                              className: 'w-[80%]',
+                              className: 'w-[80%] message-button',
                               variant: 'default',
                             }
                           : {
@@ -151,13 +156,13 @@ export default function Home() {
                                   ? 'Stopping...'
                                   : 'Start',
                               action: () => startAgent(agent),
-                              className: 'w-[80%]',
+                              className: 'w-[80%] start-button',
                               variant: 'default',
                               disabled: isAgentStarting(agent.id) || isAgentStopping(agent.id),
                             },
                         {
                           icon: <InfoIcon style={{ height: 16, width: 16 }} />,
-                          className: 'w-10 h-10 rounded-full',
+                          className: 'w-10 h-10 rounded-full agent-info-button',
                           action: () => {
                             openOverlay(agent);
                           },
@@ -165,7 +170,7 @@ export default function Home() {
                         },
                         {
                           icon: <Cog style={{ height: 16, width: 16 }} />,
-                          className: 'w-10 h-10 rounded-full',
+                          className: 'w-10 h-10 rounded-full agent-settings-button',
                           action: () => navigate(`/settings/${agent.id}`),
                           variant: 'outline',
                         },
@@ -177,14 +182,18 @@ export default function Home() {
           )}
           <div className="flex items-center justify-between gap-2 p-2">
             <PageTitle title="Groups" />
-            <Button variant="outline" onClick={() => setIsGroupPanelOpen(true)}>
+            <Button
+              variant="outline"
+              onClick={() => setIsGroupPanelOpen(true)}
+              className="groups-create-button"
+            >
               <Plus className="w-2 h-2" />
             </Button>
           </div>
           <Separator />
 
           {!isLoading && !isError && (
-            <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-6 gap-4 p-2 auto-rows-fr">
+            <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-6 gap-4 p-2 auto-rows-fr groups-section">
               {roomsData &&
                 Array.from(roomsData.entries()).map(([roomId, roomArray]) => {
                   const roomName = roomArray.length > 0 ? roomArray[0]?.name : null;
