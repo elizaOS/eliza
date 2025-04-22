@@ -34,7 +34,8 @@ const character: Character = {
     '@elizaos/plugin-sql',
     '@elizaos/plugin-anthropic',
     '@elizaos/plugin-openai',
-    '@elizaos/plugin-discord',
+    //'@elizaos/plugin-discord',
+    //'@elizaos/plugin-telegram',
     '@elizaos/plugin-twitter',
     '@elizaos/plugin-pdf',
     '@elizaos/plugin-video-understanding',
@@ -44,6 +45,7 @@ const character: Character = {
     secrets: {
       DISCORD_APPLICATION_ID: process.env.INVESTMENT_MANAGER_DISCORD_APPLICATION_ID,
       DISCORD_API_TOKEN: process.env.INVESTMENT_MANAGER_DISCORD_API_TOKEN,
+      TELEGRAM_BOT_TOKEN: process.env.INVESTMENT_MANAGER_TELEGRAM_BOT_TOKEN,
       TWITTER_EMAIL: process.env.INVESTMENT_MANAGER_TWITTER_EMAIL,
       TWITTER_USERNAME: process.env.INVESTMENT_MANAGER_TWITTER_USERNAME,
       TWITTER_PASSWORD: process.env.INVESTMENT_MANAGER_TWITTER_PASSWORD,
