@@ -226,7 +226,7 @@ export class TaskService extends Service {
 
         if (task.metadata.updatedAt === task.metadata.createdAt) {
           if (task.tags?.includes('immediate')) {
-            console.log('immediately running task', task.name);
+            logger.log('immediately running task', task.name);
             await this.executeTask(task);
             continue;
           }
@@ -263,10 +263,7 @@ export class TaskService extends Service {
         return;
       }
 
-      logger.debug(`Executing task ${task.name} (${task.id})`);
-      await worker.execute(this.runtime, task.metadata || {}, task);
-      logger.debug('task.tags are', task.tags);
-      // Handle repeating vs non-repeating tasks
+      // lock task, so it's not fired again
       if (task.tags?.includes('repeat')) {
         // For repeating tasks, update the updatedAt timestamp
         await this.runtime.updateTask(task.id, {
@@ -276,7 +273,13 @@ export class TaskService extends Service {
           },
         });
         logger.debug(`Updated repeating task ${task.name} (${task.id}) with new timestamp`);
-      } else {
+      }
+
+      logger.debug(`Executing task ${task.name} (${task.id})`);
+      await worker.execute(this.runtime, task.metadata || {}, task);
+      //logger.debug('task.tags are', task.tags);
+      // Handle repeating vs non-repeating tasks
+      if (!task.tags?.includes('repeat')) {
         // For non-repeating tasks, delete the task after execution
         await this.runtime.deleteTask(task.id);
         logger.debug(`Deleted non-repeating task ${task.name} (${task.id}) after execution`);
