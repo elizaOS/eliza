@@ -118,6 +118,7 @@ export interface SellSignalMessage {
   isSimulation?: boolean;
   reason?: string;
   entityId?: string;
+  slippage?: number;
 }
 
 export interface QuoteParams {
