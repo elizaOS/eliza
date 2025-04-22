@@ -102,34 +102,48 @@ export function calculateVolatility(priceHistory: number[]): number {
 
 // buy is different than sell
 export function calculateDynamicSlippage(amount: string, quoteData: any): number {
-  const baseSlippage = 0.45;
-  const priceImpact = parseFloat(quoteData?.priceImpactPct || '0');
-  const amountNum = Number(amount);
-  const decimals = quoteData?.inputDecimals || 6;
+  try {
+    // Base slippage of 0.5%
+    const baseSlippage = 0.005;
 
-  const amountReadable = amountNum / Math.pow(10, decimals);
+    // Get price impact, default to 0 if not available
+    const priceImpact = Math.abs(parseFloat(quoteData?.priceImpactPct || '0')) / 100;
 
-  let dynamicSlippage = baseSlippage;
+    // Parse amount and get proper decimals
+    const amountNum = parseFloat(amount);
+    const decimals = quoteData?.inputDecimals || 9; // Default to SOL decimals
+    const amountInBase = amountNum / Math.pow(10, decimals);
 
-  if (priceImpact > 1) {
-    dynamicSlippage += priceImpact * 0.5;
+    // Start with base slippage
+    let dynamicSlippage = baseSlippage;
+
+    // Adjust for price impact
+    if (priceImpact > 0.01) {
+      // If price impact > 1%
+      dynamicSlippage += priceImpact * 0.5; // Add 50% of price impact
+    }
+
+    // Adjust for trade size
+    if (amountInBase > 1000) {
+      // Large trades
+      dynamicSlippage *= 1.2;
+    } else if (amountInBase > 100) {
+      // Medium trades
+      dynamicSlippage *= 1.1;
+    }
+
+    // Add market volatility factor if available
+    if (quoteData?.marketVolatility) {
+      dynamicSlippage *= 1 + quoteData.marketVolatility;
+    }
+
+    // Ensure slippage stays within reasonable bounds (0.1% to 5%)
+    const minSlippage = 0.001; // 0.1%
+    const maxSlippage = 0.05; // 5%
+
+    return Math.min(Math.max(dynamicSlippage, minSlippage), maxSlippage);
+  } catch (error) {
+    logger.warn('Error calculating dynamic slippage, using default:', error);
+    return 0.01; // Default to 1% slippage on error
   }
-
-  if (amountReadable > 10000) {
-    dynamicSlippage *= 1.5;
-  }
-
-  return Math.min(dynamicSlippage, 2.5);
 }
-
-// +sell assessMarketCondition
-// +sell calculateVolatility
-// sell getExpectedAmount => trade?
-// sell calculateDynamicSlippage
-// buy validateTokenForTrading
-// buy calculateOptimalBuyAmount
-// buy calculateDynamicSlippage
-// +buy calculateVolatility
-// +buy assessMarketCondition
-// buy fetchTokenMetadata
-// buy analyzeTradingAmount
