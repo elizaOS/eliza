@@ -141,12 +141,16 @@ export default class Birdeye {
       const resp = await res.json();
       const birdeyeData = resp?.data?.solana || [];
 
+      //console.log('intel/be/syncWalletHistory - birdeyeData', birdeyeData)
+
       // Convert Birdeye data to our transaction format
       let transactions: TransactionHistory[] = birdeyeData.map((tx: any) => ({
         txHash: tx.txHash,
         blockTime: new Date(tx.blockTime),
         data: tx,
       }));
+
+      //console.log('intel/be/syncWalletHistory - transactions', transactions)
 
       // Then try to get cached transactions
       try {
@@ -162,6 +166,14 @@ export default class Birdeye {
       } catch (error) {
         // If cache fails, continue with just Birdeye data
         logger.debug('Failed to get cached transactions, continuing with Birdeye data only');
+      }
+
+      //console.log('intel/be/syncWalletHistory - transactions', transactions)
+      for (const tx of transactions) {
+        //console.log('test', typeof(tx.blockTime), tx.blockTime, tx.blockTime?.getTime && tx.blockTime?.getTime())
+        if (typeof tx.blockTime === 'string') {
+          tx.blockTime = new Date(tx.blockTime);
+        }
       }
 
       // Sort transactions by blockTime descending (newest first)
@@ -242,86 +254,41 @@ export default class Birdeye {
         const data = resp?.data;
         const last_updated = new Date(data?.updateUnixTime * 1000);
         const newTokens = data?.tokens;
+
         if (!newTokens) {
-          logger.error('birdeye defi/token_trending failure');
-          return false;
+          continue;
         }
         for (const token of newTokens) {
-          const tokenData: IToken = {
-            address: token?.address,
-            chain: chain,
-            provider: 'birdeye',
-            decimals: token.decimals,
-            liquidity: token.liquidity,
-            logoURI: token.logoURI,
-            name: token.name,
-            symbol: token.symbol,
-            marketcap: 0,
-            volume24hUSD: token.volume24hUSD,
-            rank: token.rank,
-            price: token.price,
-            price24hChangePercent: token.price24hChangePercent,
-            last_updated,
-          };
-
           const existingIndex = tokens.findIndex(
             (t) => t.provider === 'birdeye' && t.rank === token.rank && t.chain === chain
           );
 
-          if (!res.ok) {
-            throw new Error(`API request failed with status ${res.status}`);
+          const tokenData: IToken = {
+            address: token.address,
+            chain: chain,
+            provider: 'birdeye',
+            decimals: token.decimals || 0,
+            liquidity: token.liquidity || 0,
+            logoURI: token.logoURI || '',
+            name: token.name || token.symbol,
+            symbol: token.symbol,
+            marketcap: 0,
+            volume24hUSD: token.volume24hUSD || 0,
+            rank: token.rank || 0,
+            price: token.price || 0,
+            price24hChangePercent: token.price24hChangePercent || 0,
+            last_updated,
+          };
+
+          if (existingIndex >= 0) {
+            tokens[existingIndex] = tokenData;
+          } else {
+            tokens.push(tokenData);
           }
-
-          const resp = await res.json();
-
-          // Log the response structure in debug mode
-          logger.debug('Birdeye API response:', JSON.stringify(resp));
-
-          // Handle both possible response structures
-          const tokenList = resp?.data?.tokens || resp?.data || [];
-          if (!Array.isArray(tokenList)) {
-            logger.warn(`Unexpected token list format for batch ${batch}:`, tokenList);
-            continue;
-          }
-
-          const last_updated = new Date(resp?.data?.updateUnixTime * 1000 || Date.now());
-
-          for (const token of tokenList) {
-            if (!token?.address || !token?.symbol) {
-              logger.warn('Invalid token data:', token);
-              continue;
-            }
-
-            const tokenData: IToken = {
-              address: token.address,
-              chain: chain,
-              provider: 'birdeye',
-              decimals: token.decimals || 0,
-              liquidity: token.liquidity || 0,
-              logoURI: token.logoURI || '',
-              name: token.name || token.symbol,
-              symbol: token.symbol,
-              marketcap: 0,
-              volume24hUSD: token.volume24hUSD || 0,
-              rank: token.rank || 0,
-              price: token.price || 0,
-              price24hChangePercent: token.price24hChangePercent || 0,
-              last_updated,
-            };
-
-            const existingIndex = tokens.findIndex(
-              (t) => t.provider === 'birdeye' && t.rank === token.rank && t.chain === chain
-            );
-            if (existingIndex >= 0) {
-              tokens[existingIndex] = tokenData;
-            } else {
-              tokens.push(tokenData);
-            }
-          }
-
-          /** Add extra delay */
-          await new Promise((resolve) => setTimeout(resolve, 250));
         }
+
+        // Add extra delay
+        await new Promise((resolve) => setTimeout(resolve, 250));
       }
       await this.runtime.setCache<IToken[]>(`tokens_${chain}`, tokens);
 
