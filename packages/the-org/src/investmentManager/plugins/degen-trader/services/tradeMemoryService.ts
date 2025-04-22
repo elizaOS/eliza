@@ -11,7 +11,7 @@ export interface TradeMemory {
   chain: string;
   type: 'BUY' | 'SELL';
   amount: string;
-  price: string;
+  price: string; // in USD
   timestamp: Date;
   txHash?: string;
   metadata?: {
