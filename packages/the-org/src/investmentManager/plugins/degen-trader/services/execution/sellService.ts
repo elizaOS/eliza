@@ -58,12 +58,12 @@ export class SellService extends BaseTradeService {
         logger.error('TRADER_SELL_KUMA err', e);
       });
     }
-
     const signal: SellSignalMessage = {
       positionId: uuidv4() as UUID,
       tokenAddress: params.recommend_sell_address,
       amount: params.sell_amount,
       entityId: 'default',
+      slippage: params.slippage || 100,
     };
 
     await this.updateExpectedOutAmount(signal);
@@ -83,7 +83,7 @@ export class SellService extends BaseTradeService {
           signal.tokenAddress
         }&outputMint=So11111111111111111111111111111111111111112&amount=${Math.round(
           Number(signal.amount) * 1e9
-        )}&slippageBps=0`
+        )}&slippageBps=${signal.slippage || 100}`
       );
 
       if (quoteResponse.ok) {
@@ -133,6 +133,28 @@ export class SellService extends BaseTradeService {
           true
         );
 
+        // Add validation for slippage with warning and enforce stricter limits
+        /*
+        const MAX_SLIPPAGE_BPS = 1000; // 10% max slippage
+        const MIN_SLIPPAGE_BPS = 10; // 0.1% min slippage
+        const validatedSlippage = Math.min(
+          Math.max(
+            Math.floor(slippageBps),
+            MIN_SLIPPAGE_BPS
+          ),
+          MAX_SLIPPAGE_BPS
+        );
+
+        if (validatedSlippage !== slippageBps) {
+          logger.warn('Slippage value adjusted', {
+            original: slippageBps,
+            adjusted: validatedSlippage,
+            tokenAddress: signal.tokenAddress,
+            reason: 'Value outside safe bounds'
+          });
+        }
+        */
+
         const result = await executeTrade(this.runtime, {
           tokenAddress: signal.tokenAddress,
           amount: sellAmount.toString(),
@@ -141,7 +163,10 @@ export class SellService extends BaseTradeService {
           action: 'SELL',
         });
 
+        // why are we getting this after the trade execution?
+        // for the price? shouldn't we already have it?
         const marketData = await this.dataService.getTokenMarketData(signal.tokenAddress);
+        //console.log('sell marketData', marketData)
 
         if (result.success) {
           await this.tradeMemoryService.createTrade({
@@ -149,7 +174,7 @@ export class SellService extends BaseTradeService {
             chain: 'solana',
             type: 'SELL',
             amount: sellAmount.toString(),
-            price: marketData.price.toString(),
+            price: marketData.priceUsd.toString(),
             txHash: result.signature,
             metadata: {
               slippage: slippageBps,
