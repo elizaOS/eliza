@@ -125,8 +125,7 @@ export class WalletService {
           // Get quote using Jupiter API
           /*
           console.log("sell quoteResponse", {
-            inputTokenCA, outputTokenCA,
-            slippage, calcSlip: Math.floor(slippage * 10000),
+            inputTokenCA, outputTokenCA, slippage, calcSlip: Math.floor(slippage * 10000),
           })
           */
           const quoteResponse = await fetch(
@@ -157,9 +156,18 @@ export class WalletService {
 
           // Calculate dynamic slippage based on market conditions
           const dynamicSlippage = calculateDynamicSlippage(amount.toString(), quoteData);
+
+          // Clamp the slippage to a reasonable range (0.1% to 50%)
+          const clampedSlippage = Math.min(Math.max(dynamicSlippage, 0.001), 0.5);
+
+          // Convert to basis points (ensuring it stays within safe integer range)
+          const slippageBps = Math.min(Math.floor(clampedSlippage * 10000), 5000);
+
           logger.info('Using dynamic slippage:', {
             baseSlippage: slippage,
             dynamicSlippage,
+            clampedSlippage,
+            slippageBps,
             priceImpact: quoteData?.priceImpactPct,
           });
 
@@ -170,7 +178,7 @@ export class WalletService {
             body: JSON.stringify({
               quoteResponse: {
                 ...quoteData,
-                slippageBps: Math.floor(dynamicSlippage * 10000),
+                slippageBps, // Use the clamped and converted value
               },
               feeAccount: '3nMBmufBUBVnk28sTp3NsrSJsdVGTyLZYmsqpMFaUT9J',
               userPublicKey: walletKeypair.publicKey.toString(),
