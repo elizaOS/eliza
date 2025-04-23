@@ -535,7 +535,9 @@ export class AgentRuntime implements IAgentRuntime {
 
         // First create the agent entity directly
         // Ensure agent exists first (this is critical for test mode)
-        const agentExists = await this.adapter.ensureAgentExists(this.character as Partial<Agent>);
+        const existingAgent = await this.adapter.ensureAgentExists(
+          this.character as Partial<Agent>
+        );
         span.addEvent('agent_exists_verified');
 
         // Verify agent exists before proceeding
@@ -547,13 +549,13 @@ export class AgentRuntime implements IAgentRuntime {
         }
 
         // No need to transform agent's own ID
-        const agentEntity = await this.adapter.getEntityById(this.agentId);
+        let agentEntity = await this.adapter.getEntityById(this.agentId);
 
         if (!agentEntity) {
           span.addEvent('creating_agent_entity');
           const created = await this.createEntity({
             id: this.agentId,
-            agentId: this.agentId,
+            agentId: existingAgent.id,
             names: Array.from(new Set([this.character.name].filter(Boolean))) as string[],
             metadata: {},
           });
@@ -563,6 +565,9 @@ export class AgentRuntime implements IAgentRuntime {
             span.setStatus({ code: SpanStatusCode.ERROR, message: errorMsg });
             throw new Error(errorMsg);
           }
+
+          agentEntity = await this.adapter.getEntityById(this.agentId);
+          if (!agentEntity) throw new Error(`Agent entity not found for ${this.agentId}`);
 
           this.runtimeLogger.debug(
             `Success: Agent entity created successfully for ${this.character.name}`
