@@ -1,6 +1,5 @@
 // Export function to display banner and version
 
-import { execa } from 'execa';
 import fs from 'node:fs';
 import path, { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -29,29 +28,13 @@ export function getVersion(): string {
   return version;
 }
 
-export async function isUtf8Locale() {
-  // 1. try `locale charmap`
-  try {
-    const { stdout: charmap } = await execa('locale', ['charmap']);
-    if (/UTF-?8/i.test(charmap)) return true;
-  } catch {
-    // ignore if `locale` isn’t available
-  }
-
-  // 2. fallback: check key env vars
-  for (const name of ['LC_ALL', 'LC_CTYPE', 'LANG']) {
-    try {
-      const { stdout } = await execa('printenv', [name]);
-      if (/UTF-?8/i.test(stdout)) return true;
-    } catch {
-      // env var unset → printenv throws; treat as “not set”
+export function isUtf8Locale() {
+  for (const key of ['LC_ALL', 'LC_CTYPE', 'LANG', 'LANGUAGE']) {
+    const v = process.env[key];
+    if (typeof v === 'string' && /UTF-?8/i.test(v)) {
+      return true;
     }
   }
-
-  // 3. Node 18+ stdout.encoding check
-  const enc = (process.stdout as NodeJS.WriteStream & { encoding?: string }).encoding || '';
-  if (/UTF-?8/i.test(enc)) return true;
-
   return false;
 }
 export function displayBanner() {
