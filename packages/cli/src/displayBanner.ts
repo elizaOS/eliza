@@ -1,5 +1,6 @@
 // Export function to display banner and version
 
+import { execa } from 'execa';
 import fs from 'node:fs';
 import path, { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,7 +29,36 @@ export function getVersion(): string {
   return version;
 }
 
+export async function isUtf8Locale() {
+  // 1. try `locale charmap`
+  try {
+    const { stdout: charmap } = await execa('locale', ['charmap']);
+    if (/UTF-?8/i.test(charmap)) return true;
+  } catch {
+    // ignore if `locale` isn’t available
+  }
+
+  // 2. fallback: check key env vars
+  for (const name of ['LC_ALL', 'LC_CTYPE', 'LANG']) {
+    try {
+      const { stdout } = await execa('printenv', [name]);
+      if (/UTF-?8/i.test(stdout)) return true;
+    } catch {
+      // env var unset → printenv throws; treat as “not set”
+    }
+  }
+
+  // 3. Node 18+ stdout.encoding check
+  const enc = (process.stdout as NodeJS.WriteStream & { encoding?: string }).encoding || '';
+  if (/UTF-?8/i.test(enc)) return true;
+
+  return false;
+}
 export function displayBanner() {
+  if (!isUtf8Locale()) {
+    // Terminal does not support UTF-8, skip banner
+    return;
+  }
   // Color ANSI escape codes
   const b = '\x1b[38;5;27m';
   const lightblue = '\x1b[38;5;51m';
