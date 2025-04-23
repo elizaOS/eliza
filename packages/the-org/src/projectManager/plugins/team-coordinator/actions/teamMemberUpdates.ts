@@ -133,22 +133,34 @@ async function postUpdateToDiscordChannel(
       return false;
     }
 
-    // Format the update message
+    // Format the update message with all answers from the stringified JSON
     const formattedDate = new Date(update.timestamp).toLocaleString();
     logger.info('Formatting update message with timestamp:', {
       timestamp: update.timestamp,
       formatted: formattedDate,
     });
 
-    const updateMessage = `## Team Member Update
+    let updateMessage = `## Team Member Update
 **Team Member**: ${update.teamMemberName || 'Unknown'} (${update.teamMemberId})
 **Server-name**: ${update.serverName}
 **Check-in Type**: ${update.checkInType}
-**Timestamp**: ${formattedDate}
+**Timestamp**: ${formattedDate}`;
 
-**Current Progress**: ${update.currentProgress}
-**Next Steps**: ${update.nextSteps}
-**Blockers**: ${update.blockers}`;
+    // Parse the stringified answers and add them to the message
+    try {
+      const answers = JSON.parse(update.answers || '{}');
+
+      if (Object.keys(answers).length > 0) {
+        updateMessage += '\n\n**Update Details**:';
+
+        for (const [question, answer] of Object.entries(answers)) {
+          updateMessage += `\n**${question}**: ${answer}`;
+        }
+      }
+    } catch (error) {
+      logger.error('Error parsing answers JSON:', error);
+      updateMessage += '\n\n**Update Details**: Error parsing update details';
+    }
 
     logger.info('Formatted update message:', { messageLength: updateMessage.length });
 
@@ -266,25 +278,22 @@ async function parseTeamMemberUpdate(
       return null;
     }
 
-    // Use AI to parse the update text
-    const prompt = `Extract the following fields from this team member update text. The text will be in a specific format with "sharing my updates" at the start and "sending my updates" at the end.
+    // Use AI to parse the update text with a more flexible approach
+    const prompt = `Extract information from this team member update. The update will likely end with "sending my updates".
 
-    Return ONLY a valid JSON object with these exact keys:
+    Parse the text and return a JSON object with these fields:
     {
-      "serverName": "value", // Extract server name after "Server-name:" ignoring the question text
-      "checkInType": "value", // Extract type after "Check-in Type:" ignoring the question text 
-      "currentProgress": "value", // Extract the line after "What did you get done this week?" ignoring the question text
-      "nextSteps": "value", // Extract the line after "Main Priority for next week:" ignoring the question text
-      "blockers": "value", // Extract the line after "Blockers:" ignoring the question text,
-      "AnticipatedLaunchDate" : "value" // Extract the line after "AnticipatedLaunchDate:" ignoring the question text, 
+      "serverName": "value", // Name of the server
+      "checkInType": "value", // Type of check-in (could be STANDUP, SPRINT, MENTAL_HEALTH, PROJECT_STATUS, RETRO, or something else)
+      "answers": { // Dynamic field with key-value pairs for all questions and answers found
+        "questionText1": "answerText1",
+        "questionText2": "answerText2"
+        // Any other key-value pairs detected in the format
+      }
     }
 
-    Note: 
-    - checkInType must be one of: STANDUP, SPRINT, MENTAL_HEALTH, PROJECT_STATUS, RETRO
-    - For each field, only extract the actual update text, not the question/description
-    - currentProgress is equal to answer provided in question What did you get done this week? 
-    - nextSteps is equal to answer provided in Main Priority for next week ? 
-
+    For the "answers" field, extract any key-value pairs that look like questions and answers in the text.
+    Include ALL information from the update in the answers object.
 
     Text to parse: "${text}"`;
 
@@ -298,74 +307,52 @@ async function parseTeamMemberUpdate(
 
     logger.info('Raw AI response:', parsedResponse);
 
-    let parsedFields: Record<string, string>;
+    let parsedData;
     try {
       // Remove any backticks or markdown formatting that might be in the response
       const cleanedResponse = parsedResponse.replace(/```json\n?|\n?```/g, '').trim();
-      parsedFields = JSON.parse(cleanedResponse);
-      logger.info('Successfully parsed fields from AI response:', parsedFields);
+      parsedData = JSON.parse(cleanedResponse);
+      logger.info('Successfully parsed fields from AI response:', parsedData);
     } catch (error) {
       logger.error('Failed to parse AI response as JSON:', error);
       logger.error('Raw response that failed parsing:', parsedResponse);
       throw new Error('PARSING_ERROR: AI response was not valid JSON');
     }
 
-    // Validate required fields
-    const missingFields = [];
-    const requiredFields = [
-      'serverName',
-      'checkInType',
-      'currentProgress',
-      'nextSteps',
-      'blockers',
-    ];
-
-    for (const field of requiredFields) {
-      if (!parsedFields[field]) {
-        missingFields.push(field);
-      }
+    // Validate minimal required fields
+    if (!parsedData.serverName || !parsedData.checkInType) {
+      logger.warn('Missing required basic fields:', {
+        hasServerName: !!parsedData.serverName,
+        hasCheckInType: !!parsedData.checkInType,
+      });
+      throw new Error(`MISSING_FIELDS:serverName,checkInType`);
     }
 
-    if (missingFields.length > 0) {
-      logger.warn('Missing required fields:', missingFields);
-      throw new Error(`MISSING_FIELDS:${missingFields.join(',')}`);
+    // Ensure we have at least some answers
+    if (!parsedData.answers || Object.keys(parsedData.answers).length === 0) {
+      logger.warn('No answers were parsed from the update');
+      throw new Error('MISSING_FIELDS:answers');
     }
 
-    // Get the user name from Discord
+    // Get the user name from Discord or Telegram
     const entityById = await runtime.getEntityById(message.entityId);
     const userName =
       entityById?.metadata?.discord?.userName || entityById?.metadata?.telegram?.name;
 
+    // Create the update object with the dynamic answers field only
     const update: TeamMemberUpdate = {
       type: 'team-member-update',
       updateId: createUniqueUuid(runtime, 'team-update'),
       teamMemberId: message.entityId || asUUID('unknown'),
       teamMemberName: userName,
-      serverName: parsedFields.serverName,
-      checkInType: parsedFields.checkInType,
-      currentProgress: parsedFields.currentProgress,
-      AnticipatedLaunchDate: parsedFields?.AnticipatedLaunchDate,
-      nextSteps: parsedFields.nextSteps,
-      blockers: parsedFields.blockers,
+      serverName: parsedData.serverName,
+      checkInType: parsedData.checkInType,
       timestamp: new Date().toISOString(),
       channelId: message.roomId,
+      answers: JSON.stringify(parsedData.answers),
     };
 
-    logger.info('Successfully parsed team member update:', {
-      type: 'team-member-update',
-      updateId: createUniqueUuid(runtime, 'team-update'),
-      teamMemberId: message.entityId || asUUID('unknown'),
-      teamMemberName: userName,
-      serverName: parsedFields.serverName,
-      checkInType: parsedFields.checkInType,
-      currentProgress: parsedFields.currentProgress,
-      AnticipatedLaunchDate: parsedFields?.AnticipatedLaunchDate,
-      nextSteps: parsedFields.nextSteps,
-      blockers: parsedFields.blockers,
-      timestamp: new Date().toISOString(),
-      channelId: message.roomId,
-    });
-
+    logger.info('Successfully parsed team member update:', update);
     logger.info('=== PARSE TEAM MEMBER UPDATE END ===');
     return update;
   } catch (error) {
@@ -541,20 +528,20 @@ Remember to end your message with "sending my updates"`,
       {
         name: '{{name1}}',
         content: {
-          text: `[INDIVIDUAL STATUS UPDATE]
-    Server-name: Development Server
-    Check-in Type: Daily
-    Current Progress: Completed the API integration
-    Next Steps: Deploy to staging environment
-    Blockers: None at the moment
+          text: `Server-name: Development Server
+Check-in Type: Daily
+What did you get done this week? Completed the API integration and fixed authentication bugs
+Main Priority for next week: Deploy to staging environment and start beta testing
+Blockers: None at the moment
+Team morale: High, everyone is collaborating well
 
-    sending my personal updates`,
+sending my updates`,
         },
       },
       {
         name: '{{botName}}',
         content: {
-          text: "✅ Thank you for your individual status update! I've recorded your progress details and will share them with the team.",
+          text: "✅ Thank you for your update! I've recorded your progress details and will share them with the team.",
           actions: ['TEAM_MEMBER_UPDATES'],
         },
       },
@@ -563,20 +550,20 @@ Remember to end your message with "sending my updates"`,
       {
         name: '{{name1}}',
         content: {
-          text: `[MEMBER PROGRESS REPORT]
-    Server-name: Project X Server
-    Check-in Type: SPRINT
-    Current Progress: Fixed 3 critical bugs in the frontend
-    Next Steps: Code review and documentation
-    Blockers: Waiting on design assets from the design team
+          text: `Server-name: Project X Server
+Check-in Type: SPRINT
+Progress: Fixed 3 critical bugs in the frontend
+Next task: Code review and documentation
+Roadblocks: Waiting on design assets from the design team
+Estimated completion: End of next week
 
-    sending my personal updates`,
+sending my updates`,
         },
       },
       {
         name: '{{botName}}',
         content: {
-          text: '✅ Your personal status has been logged successfully. I will make sure the team is aware of your progress and blockers.',
+          text: '✅ Your status has been logged successfully. I will make sure the team is aware of your progress and blockers.',
           actions: ['TEAM_MEMBER_UPDATES'],
         },
       },
@@ -585,14 +572,14 @@ Remember to end your message with "sending my updates"`,
       {
         name: '{{name1}}',
         content: {
-          text: `[STATUS SUBMISSION]
-    Server-name: Engineering Team
-    Check-in Type: STANDUP
-    Current Progress: Implemented user authentication API
-    Next Steps: Begin frontend integration
-    Blockers: Dependency issues with auth library
+          text: `Server-name: Engineering Team
+Check-in Type: STANDUP
+Weekly achievements: Implemented user authentication API and completed unit tests
+Focus areas: Begin frontend integration
+Technical challenges: Dependency issues with auth library
+Questions for team: Do we need to support SSO for the initial release?
 
-    sending my personal updates`,
+sending my updates`,
         },
       },
       {
@@ -607,14 +594,15 @@ Remember to end your message with "sending my updates"`,
       {
         name: '{{name1}}',
         content: {
-          text: `[WORK TRACKING]
-    Server-name: Product Development
-    Check-in Type: PROJECT_STATUS
-    Current Progress: Completed feature specification documents
-    Next Steps: Schedule technical planning session
-    Blockers: Resource allocation pending approval
+          text: `Server-name: Product Development
+Check-in Type: PROJECT_STATUS
+Current state: Completed feature specification documents
+Next milestone: Schedule technical planning session
+Anticipated Launch Date: Q3 2023
+Blockers: Resource allocation pending approval
+Budget status: Within projections
 
-    sending my personal updates`,
+sending my updates`,
         },
       },
       {
@@ -629,13 +617,20 @@ Remember to end your message with "sending my updates"`,
       {
         name: '{{name1}}',
         content: {
-          text: 'sending my personal updates',
+          text: `Server-name: Marketing Team
+Check-in Type: WEEKLY
+This week: Completed social media campaign designs
+Next week: Start A/B testing different ad copy
+Customer feedback: Very positive on new landing page
+Conversion rate: Up 15% from last week
+
+sending my updates`,
         },
       },
       {
         name: '{{botName}}',
         content: {
-          text: "✅ Your individual status has been logged. I've noted your blockers regarding resource allocation approval.",
+          text: "✅ Thanks for your detailed update! I've recorded all the information you provided.",
           actions: ['TEAM_MEMBER_UPDATES'],
         },
       },

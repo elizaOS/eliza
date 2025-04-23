@@ -76,15 +76,39 @@ export async function generateTeamReport(
       logger.info(`Generating report section for: ${teamMemberName} (${teamMemberId})`);
       report += `👤 **${teamMemberName}** (ID: ${teamMemberId})\n\n`;
 
+      // Prepare update data for analysis, converting answers JSON to objects
+      const processedUpdates = memberUpdates.map((update) => {
+        try {
+          // Parse the JSON string to get the actual answers
+          const answers = update.answers ? JSON.parse(update.answers) : {};
+
+          return {
+            teamMemberId: update.teamMemberId,
+            teamMemberName: update.teamMemberName,
+            serverName: update.serverName,
+            checkInType: update.checkInType,
+            timestamp: update.timestamp,
+            answers,
+          };
+        } catch (error) {
+          logger.error('Error parsing answers JSON:', error);
+          return update;
+        }
+      });
+
       // Create prompt for analysis
-      const prompt = `Analyze these team member updates and provide a detailed productivity report highlighting:
+      const prompt = `Analyze these team member updates and provide a detailed productivity report.
+      
+      The "answers" field contains all the update information in a question-answer format.
+      
+      Highlight the following in your analysis:
       1. Overall Progress: What major tasks/milestones were completed?
       2. Current Focus: What are they actively working on?
       3. Productivity Analysis: Are they meeting deadlines? Any patterns in their work?
       4. Blockers Impact: How are blockers affecting their progress?
       5. Recommendations: What could improve their productivity?
 
-      Updates data: ${JSON.stringify(memberUpdates, null, 2)}`;
+      Updates data: ${JSON.stringify(processedUpdates, null, 2)}`;
 
       logger.info('Generating productivity analysis for team member:', teamMemberName);
 
@@ -101,10 +125,18 @@ export async function generateTeamReport(
         const recentUpdates = memberUpdates.slice(0, 3);
         for (const update of recentUpdates) {
           report += `\n🕒 ${new Date(update.timestamp).toLocaleString()}\n`;
-          report += `▫️ Progress: ${update.currentProgress}\n`;
-          report += `▫️ Blockers: ${update.blockers}\n`;
-          report += `▫️ Next Steps: ${update.nextSteps}\n`;
-          report += `▫️ Anticipated Launch Date: ${update.AnticipatedLaunchDate || 'Not specified'}\n`;
+
+          try {
+            const answers = update.answers ? JSON.parse(update.answers) : {};
+
+            // Display all answers from the update
+            for (const [question, answer] of Object.entries(answers)) {
+              report += `▫️ **${question}**: ${answer}\n`;
+            }
+          } catch (error) {
+            logger.error('Error parsing answers JSON for display:', error);
+            report += `▫️ Error parsing update details\n`;
+          }
         }
       } catch (error) {
         logger.error('Error generating analysis:', error);
@@ -112,10 +144,18 @@ export async function generateTeamReport(
 
         for (const update of memberUpdates) {
           report += `Update from ${new Date(update.timestamp).toLocaleString()}:\n`;
-          report += `▫️ Current Progress: ${update.currentProgress}\n`;
-          report += `▫️ Blockers: ${update.blockers}\n`;
-          report += `▫️ Next Steps: ${update.nextSteps}\n`;
-          report += `▫️ Anticipated Launch Date: ${update.AnticipatedLaunchDate || 'Not specified'}\n`;
+
+          try {
+            const answers = update.answers ? JSON.parse(update.answers) : {};
+
+            // Display all answers from the update
+            for (const [question, answer] of Object.entries(answers)) {
+              report += `▫️ **${question}**: ${answer}\n`;
+            }
+          } catch (error) {
+            logger.error('Error parsing answers JSON for display:', error);
+            report += `▫️ Error parsing update details\n`;
+          }
         }
       }
       report += '\n-------------------\n\n';
@@ -169,8 +209,11 @@ export const generateReport: Action = {
 
       // Use AI to parse the input text and extract standup type
       try {
-        const prompt = `Extract the standup type from this text. try to understand the sentence , it's feel and after understand give output in these values: STANDUP, SPRINT, MENTAL_HEALTH, PROJECT_STATUS, RETRO. 
-        if you can't figure out any standup type make STANDUP as default. answer should be one word "${text}"`;
+        const prompt = `Extract the standup type from this text. Try to understand the sentence and its context.
+        Return one of these values: STANDUP, SPRINT, MENTAL_HEALTH, PROJECT_STATUS, RETRO.
+        If you can't determine a specific type, use STANDUP as default.
+        
+        Text: "${text}"`;
 
         const parsedType = await runtime.useModel(ModelType.TEXT_LARGE, {
           prompt,
@@ -262,7 +305,7 @@ export const generateReport: Action = {
     [
       {
         name: '{{name1}}',
-        content: { text: 'Generate report' },
+        content: { text: 'Generate a daily standup report' },
       },
       {
         name: '{{botName}}',
@@ -275,12 +318,25 @@ export const generateReport: Action = {
     [
       {
         name: '{{name1}}',
-        content: { text: 'generate a report' },
+        content: { text: 'Can I see the sprint progress report?' },
       },
       {
         name: '{{botName}}',
         content: {
-          text: "I'll create a sprint check-in report",
+          text: "I'll create a sprint check-in report for you",
+          actions: ['GENERATE_REPORT'],
+        },
+      },
+    ],
+    [
+      {
+        name: '{{name1}}',
+        content: { text: 'How is the team doing with the project?' },
+      },
+      {
+        name: '{{botName}}',
+        content: {
+          text: "I'll generate a project status report to show you how the team is progressing",
           actions: ['GENERATE_REPORT'],
         },
       },

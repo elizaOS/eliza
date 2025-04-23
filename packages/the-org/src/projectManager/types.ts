@@ -130,16 +130,10 @@ export interface TeamMemberUpdate {
   teamMemberName?: string;
   serverName: string;
   checkInType: string;
-  currentProgress: string;
-  workingOn: string;
-  nextSteps: string;
-  blockers: string;
-  eta: string;
   timestamp: string;
   channelId?: UUID;
   serverId?: string;
-
-  AnticipatedLaunchDate?: string;
+  answers: string; // JSON stringified object containing all dynamic Q&A pairs
 }
 
 export interface CheckInSchedule {
