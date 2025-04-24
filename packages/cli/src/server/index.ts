@@ -458,6 +458,22 @@ export class AgentServer {
     }
 
     try {
+      // Retrieve the agent before deleting it from the map
+      const agent = this.agents.get(agentId);
+      
+      if (agent) {
+        // Stop all services of the agent before unregistering it
+        try {
+          agent.stop().catch(stopError => {
+            logger.error(`[AGENT UNREGISTER] Error stopping agent services for ${agentId}:`, stopError);
+          });
+          logger.debug(`[AGENT UNREGISTER] Stopping services for agent ${agentId}`);
+        } catch (stopError) {
+          logger.error(`[AGENT UNREGISTER] Error initiating stop for agent ${agentId}:`, stopError);
+        }
+      }
+      
+      // Delete the agent from the map
       this.agents.delete(agentId);
       logger.debug(`Agent ${agentId} removed from agents map`);
     } catch (error) {
