@@ -38,10 +38,10 @@ async function updatePackageJson(packagePath, cliVersion, isPluginStarter = fals
     }
   }
 
-  // For plugin-starter, update repository URL to use placeholders
-  if (isPluginStarter && packageData.repository && packageData.repository.url) {
-    console.log('Setting repository URL placeholders for plugin-starter template');
-    packageData.repository.url = 'github:{{GITHUB_USERNAME}}/{{PLUGIN_NAME}}';
+  // Set repository URL for templates
+  if (packageData.repository) {
+    console.log('Setting repository URL for template');
+    packageData.repository.url = '';
   }
 
   await fs.writeFile(packagePath, JSON.stringify(packageData, null, 2));
