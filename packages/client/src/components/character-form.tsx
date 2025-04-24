@@ -18,12 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  getAllVoiceModels,
-  getVoiceModelByValue,
-  providerPluginMap,
-  getAllRequiredPlugins,
-} from '../config/voice-models';
+import { getAllVoiceModels, getVoiceModelByValue, providerPluginMap } from '../config/voice-models';
 import { useElevenLabsVoices } from '@/hooks/use-elevenlabs-voices';
 import { Trash, Loader2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -258,20 +253,12 @@ export default function CharacterForm({
               : [];
             const previousVoiceModel = getVoiceModelByValue(characterValue.settings?.voice?.model);
 
-            // Get all voice-related plugins
-            const voicePlugins = getAllRequiredPlugins();
-
             // Get the required plugin for the new voice model
             const requiredPlugin = providerPluginMap[voiceModel.provider];
 
-            // Filter out all voice-related plugins
-            const filteredPlugins = currentPlugins.filter(
-              (plugin) => !voicePlugins.includes(plugin)
-            );
-
             // Add the required plugin for the selected voice model
-            const newPlugins = [...filteredPlugins];
-            if (requiredPlugin && !filteredPlugins.includes(requiredPlugin)) {
+            const newPlugins = [...currentPlugins];
+            if (requiredPlugin && !currentPlugins.includes(requiredPlugin)) {
               newPlugins.push(requiredPlugin);
             }
 

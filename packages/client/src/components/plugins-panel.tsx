@@ -20,9 +20,10 @@ import { usePlugins } from '@/hooks/use-plugins';
 import { useToast } from '@/hooks/use-toast';
 import type { Agent } from '@elizaos/core';
 import clsx from 'clsx';
+import { CircleAlert } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import {
-  getAllRequiredPlugins,
+  // getAllRequiredPlugins,
   getVoiceModelByValue,
   providerPluginMap,
 } from '../config/voice-models';
@@ -110,10 +111,10 @@ export default function PluginsPanel({
   }, [characterValue?.settings?.voice?.model, safeCharacterPlugins]);
 
   // Get all voice-related plugins that are currently enabled
-  const enabledVoicePlugins = useMemo(() => {
-    const voicePlugins = getAllRequiredPlugins();
-    return safeCharacterPlugins.filter((plugin) => voicePlugins.includes(plugin));
-  }, [safeCharacterPlugins]);
+  // const enabledVoicePlugins = useMemo(() => {
+  //   const voicePlugins = getAllRequiredPlugins();
+  //   return safeCharacterPlugins.filter((plugin) => voicePlugins.includes(plugin));
+  // }, [safeCharacterPlugins]);
 
   const hasChanged = useMemo(() => {
     if (!initialPlugins) return false;
@@ -215,8 +216,9 @@ export default function PluginsPanel({
               </AlertDialog>
 
               {voiceModelPluginInfo && (
-                <div className="rounded-md bg-blue-50 p-4 mb-4">
-                  <p className="text-xs text-blue-700">
+                <div className="rounded-md border p-4 mb-4 flex items-center gap-2">
+                  <CircleAlert className="h-4 w-4 text-yellow-500" />
+                  <p className="text-xs text-white">
                     {(() => {
                       switch (voiceModelPluginInfo.provider) {
                         case 'elevenlabs':
@@ -232,12 +234,15 @@ export default function PluginsPanel({
                       }
                     })()}
                   </p>
-                  {enabledVoicePlugins.length > 1 && (
+                  {/* 
+                    Commented out for now — this warning doesn't make sense when using ElevenLabs voice model with OpenAI plugin.
+                  */}
+                  {/* {enabledVoicePlugins.length > 1 && (
                     <p className="text-xs text-amber-600 mt-2">
                       Multiple voice plugins detected. This may cause conflicts. Consider removing
                       unused voice plugins.
                     </p>
-                  )}
+                  )} */}
                 </div>
               )}
               {safeCharacterPlugins.length > 0 && (
@@ -264,11 +269,9 @@ export default function PluginsPanel({
                             size="sm"
                             key={plugin}
                             className={`inline-flex items-center rounded-full ${
-                              isRequiredByVoice
-                                ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                                : isEssential
-                                  ? 'bg-blue-800 text-blue-700 hover:bg-blue-600'
-                                  : 'bg-primary/10 text-primary hover:bg-primary/20'
+                              isEssential
+                                ? 'bg-blue-800 text-blue-700 hover:bg-blue-600'
+                                : 'bg-primary/10 text-primary hover:bg-primary/20'
                             } px-2.5 py-0.5 text-xs font-medium h-auto`}
                             onClick={() => {
                               // Don't allow removing if it's required by the voice model
