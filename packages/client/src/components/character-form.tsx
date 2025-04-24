@@ -22,7 +22,7 @@ import {
   getAllVoiceModels,
   getVoiceModelByValue,
   providerPluginMap,
-  getAllRequiredPlugins,
+  // getAllRequiredPlugins,
 } from '../config/voice-models';
 import { useElevenLabsVoices } from '@/hooks/use-elevenlabs-voices';
 import { Trash, Loader2 } from 'lucide-react';
