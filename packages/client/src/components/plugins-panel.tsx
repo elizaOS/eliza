@@ -22,7 +22,7 @@ import type { Agent } from '@elizaos/core';
 import clsx from 'clsx';
 import { useMemo, useState } from 'react';
 import {
-  getAllRequiredPlugins,
+  // getAllRequiredPlugins,
   getVoiceModelByValue,
   providerPluginMap,
 } from '../config/voice-models';
@@ -110,10 +110,10 @@ export default function PluginsPanel({
   }, [characterValue?.settings?.voice?.model, safeCharacterPlugins]);
 
   // Get all voice-related plugins that are currently enabled
-  const enabledVoicePlugins = useMemo(() => {
-    const voicePlugins = getAllRequiredPlugins();
-    return safeCharacterPlugins.filter((plugin) => voicePlugins.includes(plugin));
-  }, [safeCharacterPlugins]);
+  // const enabledVoicePlugins = useMemo(() => {
+  //   const voicePlugins = getAllRequiredPlugins();
+  //   return safeCharacterPlugins.filter((plugin) => voicePlugins.includes(plugin));
+  // }, [safeCharacterPlugins]);
 
   const hasChanged = useMemo(() => {
     if (!initialPlugins) return false;
@@ -232,12 +232,15 @@ export default function PluginsPanel({
                       }
                     })()}
                   </p>
-                  {enabledVoicePlugins.length > 1 && (
+                  {/* 
+                    Commented out for now — this warning doesn't make sense when using ElevenLabs voice model with OpenAI plugin.
+                  */}
+                  {/* {enabledVoicePlugins.length > 1 && (
                     <p className="text-xs text-amber-600 mt-2">
                       Multiple voice plugins detected. This may cause conflicts. Consider removing
                       unused voice plugins.
                     </p>
-                  )}
+                  )} */}
                 </div>
               )}
               {safeCharacterPlugins.length > 0 && (
