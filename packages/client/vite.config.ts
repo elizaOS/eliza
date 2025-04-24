@@ -51,6 +51,7 @@ export default defineConfig(({ mode }): UserConfig => {
       sourcemap: true,
       cssCodeSplit: true,
       rollupOptions: {
+        external: ['cloudflare:sockets'],
         onwarn(warning, warn) {
           // Suppress specific externalized warnings
           if (

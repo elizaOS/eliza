@@ -203,6 +203,14 @@ export class SolanaService extends Service {
   private async updateWalletData(force = false): Promise<WalletPortfolio> {
     const now = Date.now();
 
+    if (!this.publicKey) {
+      // can't be warn if we fire every start up
+      // maybe we just get the pubkey here proper
+      // or fall back to SOLANA_PUBLIC_KEY
+      logger.log('solana:::service::updateWalletData - no Public Key yet');
+      return {};
+    }
+
     // Don't update if less than interval has passed, unless forced
     if (!force && now - this.lastUpdate < this.UPDATE_INTERVAL) {
       const cached = await this.getCachedData();
