@@ -13,6 +13,7 @@ import {
 } from '@elizaos/core';
 import type { Chat, Message, ReactionType, Update } from '@telegraf/types';
 import type { Context, NarrowedContext, Telegraf } from 'telegraf';
+import { Markup } from 'telegraf';
 import {
   TelegramContent,
   TelegramEventTypes,
@@ -20,8 +21,7 @@ import {
   type TelegramMessageSentPayload,
   type TelegramReactionReceivedPayload,
 } from './types';
-import { convertToTelegramButtons, escapeMarkdown } from './utils';
-import { Markup } from 'telegraf';
+import { convertToTelegramButtons, convertMarkdownToTelegram } from './utils';
 
 import fs from 'node:fs';
 
@@ -152,7 +152,7 @@ export class MessageManager {
       await ctx.telegram.sendChatAction(ctx.chat.id, 'typing');
 
       for (let i = 0; i < chunks.length; i++) {
-        const chunk = escapeMarkdown(chunks[i]);
+        const chunk = convertMarkdownToTelegram(chunks[i]);
         const sentMessage = (await ctx.telegram.sendMessage(ctx.chat.id, chunk, {
           reply_parameters:
             i === 0 && replyToMessageId ? { message_id: replyToMessageId } : undefined,
