@@ -281,6 +281,8 @@ export async function startAgent(
     encryptedChar.plugins.push(bootstrapPluginName);
   }
 
+  const characterPlugins: Plugin[] = [];
+
   // Process and load plugins specified by name in the character definition
   // encryptedChar.plugins is guaranteed to be string[] according to Character type
   for (const pluginName of encryptedChar.plugins) {
@@ -295,6 +297,7 @@ export async function startAgent(
       logger.debug(`Attempting to load plugin by name from character definition: ${pluginName}`);
       const loadedPlugin = await loadAndPreparePlugin(pluginName, version);
       if (loadedPlugin) {
+        characterPlugins.push(loadedPlugin)
         // Double-check name consistency and avoid duplicates
         if (!loadedPluginsMap.has(loadedPlugin.name)) {
           loadedPluginsMap.set(loadedPlugin.name, loadedPlugin);
@@ -314,9 +317,8 @@ export async function startAgent(
   }
 
   // Get the final array of loaded plugins
-  const characterPlugins = Array.from(loadedPluginsMap.values());
   logger.debug(
-    `Final loaded plugins (${characterPlugins.length}): ${characterPlugins.map((p) => p.name).join(', ')}`
+    `Final loaded plugins (${loadedPluginsMap.size}): ${[...characterPlugins, ...plugins].map((p) => p.name).join(', ')}`
   );
 
   function loadEnvConfig(): RuntimeSettings {
@@ -405,7 +407,8 @@ export async function startAgent(
 
   const runtime = new AgentRuntime({
     character: encryptedChar,
-    plugins: characterPlugins, // Use the deduplicated and loaded list
+    // order matters here: make sure plugins are loaded after so they can interact with tasks (degen-intel)
+    plugins: [...characterPlugins, ...plugins], // Use the deduplicated list
     settings: loadEnvConfig(),
   });
   if (init) {
