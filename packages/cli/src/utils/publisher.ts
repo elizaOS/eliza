@@ -26,10 +26,12 @@ interface PackageJson {
   keywords?: string[];
   categories?: string[];
   platform?: 'node' | 'browser' | 'universal';
-  type?: 'plugin' | 'project';
+  packageType?: 'plugin' | 'project';
+  type?: string; // 'module' or 'commonjs' for Node.js module format
 }
 
-interface PluginMetadata {
+// Renamed from PluginMetadata to RegistryMetadata for clarity
+interface RegistryMetadata {
   name: string;
   description: string;
   repository: {
@@ -62,6 +64,7 @@ interface PluginMetadata {
   installable?: boolean;
 }
 
+// This interface isn't used but we'll keep it for future reference
 interface PublishTestResult {
   npmChecks: {
     loggedIn: boolean;
@@ -248,6 +251,22 @@ export async function publishToGitHub(
     return false;
   }
 
+  // Validate required package type
+  if (!packageJson.packageType) {
+    logger.error(
+      'Package type is required. Set "packageType" to either "plugin" or "project" in package.json'
+    );
+    return false;
+  }
+
+  // Validate that packageType is either plugin or project
+  if (packageJson.packageType !== 'plugin' && packageJson.packageType !== 'project') {
+    logger.error(
+      `Invalid package type: ${packageJson.packageType}. Must be either "plugin" or "project"`
+    );
+    return false;
+  }
+
   if (isTest) {
     logger.info('Running in test mode - no actual changes will be made');
   }
@@ -272,8 +291,8 @@ export async function publishToGitHub(
     logger.info(`Using existing fork: ${forkFullName}`);
   }
 
-  // Create version branch - use type in branch name
-  const entityType = 'plugin';
+  // Create version branch - use the package type without default
+  const entityType = packageJson.packageType;
   const branchName = `${entityType}-${packageJson.name.replace(/^@elizaos\//, '')}-${packageJson.version}`;
   const hasBranch = await branchExists(token, username, registryRepo, branchName);
 
@@ -291,7 +310,7 @@ export async function publishToGitHub(
   const packagePath = `packages/${packageName}.json`;
   const existingContent = await getFileContent(token, registryOwner, registryRepo, packagePath);
 
-  let metadata: PluginMetadata;
+  let metadata: RegistryMetadata;
   const currentDate = new Date().toISOString();
   const repositoryUrl = packageJson.repository?.url || `github:${username}/${packageName}`;
 
@@ -325,19 +344,25 @@ export async function publishToGitHub(
       }
 
       // Update type if specified
-      if (packageJson.type) {
-        metadata.type = packageJson.type;
+      if (packageJson.packageType) {
+        metadata.type = packageJson.packageType;
         // Projects are not installable in agents
-        metadata.installable = packageJson.type === 'plugin';
+        metadata.installable = packageJson.packageType === 'plugin';
       }
 
-      // Add plugin tag if it's a plugin and doesn't already have it
+      // Add appropriate tag based on type if it doesn't already exist
       if (
         metadata.type === 'plugin' &&
         Array.isArray(metadata.tags) &&
         !metadata.tags.includes('plugin')
       ) {
         metadata.tags.push('plugin');
+      } else if (
+        metadata.type === 'project' &&
+        Array.isArray(metadata.tags) &&
+        !metadata.tags.includes('project')
+      ) {
+        metadata.tags.push('project');
       }
 
       // Update platform if specified
@@ -348,6 +373,13 @@ export async function publishToGitHub(
       // Update tags and categories if changed
       if (packageJson.keywords?.length) {
         metadata.tags = packageJson.keywords;
+
+        // Re-add type tag if it was lost in the update
+        if (metadata.type === 'plugin' && !metadata.tags.includes('plugin')) {
+          metadata.tags.push('plugin');
+        } else if (metadata.type === 'project' && !metadata.tags.includes('project')) {
+          metadata.tags.push('project');
+        }
       }
 
       if (packageJson.categories?.length) {
@@ -389,13 +421,15 @@ export async function publishToGitHub(
       ],
       latestStable: semver.prerelease(packageJson.version) ? null : packageJson.version,
       latestVersion: packageJson.version,
-      type: entityType,
-      installable: entityType === 'plugin', // Only plugins are installable
+      type: packageJson.packageType,
+      installable: packageJson.packageType === 'plugin', // Only plugins are installable
     };
 
-    // Add "plugin" tag if it's a plugin and doesn't already have it
-    if (entityType === 'plugin' && !metadata.tags.includes('plugin')) {
+    // Add appropriate type tag if it doesn't already exist
+    if (metadata.type === 'plugin' && !metadata.tags.includes('plugin')) {
       metadata.tags.push('plugin');
+    } else if (metadata.type === 'project' && !metadata.tags.includes('project')) {
+      metadata.tags.push('project');
     }
 
     // Add platform if specified
@@ -452,12 +486,13 @@ export async function publishToGitHub(
         // Update package entry
         index.__v2.packages[packageJson.name] = packagePath;
 
-        // Add only the current plugin to the plugin types array
-        if (!index.__v2.types.plugin) {
-          index.__v2.types.plugin = [];
+        // Add to the correct type array based on actual package type
+        const type = packageJson.packageType;
+        if (!index.__v2.types[type]) {
+          index.__v2.types[type] = [];
         }
-        if (!index.__v2.types.plugin.includes(packageJson.name)) {
-          index.__v2.types.plugin.push(packageJson.name);
+        if (!index.__v2.types[type].includes(packageJson.name)) {
+          index.__v2.types[type].push(packageJson.name);
         }
 
         // Update categories
@@ -497,8 +532,8 @@ export async function publishToGitHub(
       `Add ${packageJson.name}@${packageJson.version} to registry`,
       `This PR adds ${packageJson.name} version ${packageJson.version} to the registry.
 
-- Type: ${packageJson.type || 'plugin'}
-- Installable: ${(packageJson.type || 'plugin') === 'plugin' ? 'Yes' : 'No - Project type'}
+- Type: ${packageJson.packageType || 'plugin'}
+- Installable: ${(packageJson.packageType || 'plugin') === 'plugin' ? 'Yes' : 'No - Project type'}
 - Package name: ${packageJson.name}
 - Version: ${packageJson.version}
 - Runtime version: ${cliVersion}
@@ -531,7 +566,7 @@ Submitted by: @${username}`,
     logger.info(`- Branch: ${branchName}`);
     logger.info(`- Package file: ${packagePath}`);
     logger.info(
-      `- Type: ${packageJson.type || 'plugin'} (${(packageJson.type || 'plugin') === 'plugin' ? 'installable' : 'not installable'})`
+      `- Type: ${packageJson.packageType || 'plugin'} (${(packageJson.packageType || 'plugin') === 'plugin' ? 'installable' : 'not installable'})`
     );
     logger.info(`- Pull request: Add ${packageJson.name}@${packageJson.version} to registry`);
   }
