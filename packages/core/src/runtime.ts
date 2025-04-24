@@ -540,10 +540,8 @@ export class AgentRuntime implements IAgentRuntime {
         );
         span.addEvent('agent_exists_verified');
 
-        // Verify agent exists before proceeding
-        const agent = await this.adapter.getAgent(this.agentId);
-        if (!agent) {
-          const errorMsg = `Agent ${this.agentId} does not exist in database after ensureAgentExists call`;
+        if (!existingAgent) {
+          const errorMsg = `Agent ${this.character.name} does not exist in database after ensureAgentExists call`;
           span.setStatus({ code: SpanStatusCode.ERROR, message: errorMsg });
           throw new Error(errorMsg);
         }
