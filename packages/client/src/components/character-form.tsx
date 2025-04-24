@@ -18,12 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  getAllVoiceModels,
-  getVoiceModelByValue,
-  providerPluginMap,
-  // getAllRequiredPlugins,
-} from '../config/voice-models';
+import { getAllVoiceModels, getVoiceModelByValue, providerPluginMap } from '../config/voice-models';
 import { useElevenLabsVoices } from '@/hooks/use-elevenlabs-voices';
 import { Trash, Loader2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
