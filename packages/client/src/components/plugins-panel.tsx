@@ -1,4 +1,14 @@
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -9,23 +19,14 @@ import { Input } from '@/components/ui/input';
 import { usePlugins } from '@/hooks/use-plugins';
 import { useToast } from '@/hooks/use-toast';
 import type { Agent } from '@elizaos/core';
-import { useMemo, useState, useEffect } from 'react';
-import { Button } from './ui/button';
+import clsx from 'clsx';
+import { useMemo, useState } from 'react';
 import {
+  getAllRequiredPlugins,
   getVoiceModelByValue,
   providerPluginMap,
-  getAllRequiredPlugins,
 } from '../config/voice-models';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+import { Button } from './ui/button';
 
 interface PluginsPanelProps {
   characterValue: Agent;
@@ -243,54 +244,72 @@ export default function PluginsPanel({
                 <div className="rounded-md bg-muted p-4">
                   <h4 className="text-sm font-medium mb-2">Currently Enabled</h4>
                   <div className="flex flex-wrap gap-2">
-                    {safeCharacterPlugins.map((plugin) => {
-                      // Check if this plugin is required by the current voice model
-                      const isRequiredByVoice = voiceModelPluginInfo?.requiredPlugin === plugin;
-                      // Check if this is an essential plugin (SQL or OpenAI)
-                      const isEssential = Object.keys(ESSENTIAL_PLUGINS).includes(plugin);
+                    {[...safeCharacterPlugins]
+                      .sort((a, b) => {
+                        const aIsEssential = Object.keys(ESSENTIAL_PLUGINS).includes(a);
+                        const bIsEssential = Object.keys(ESSENTIAL_PLUGINS).includes(b);
+                        if (aIsEssential === bIsEssential) return 0;
+                        return aIsEssential ? -1 : 1;
+                      })
+                      .map((plugin) => {
+                        // Check if this plugin is required by the current voice model
+                        const isRequiredByVoice = voiceModelPluginInfo?.requiredPlugin === plugin;
+                        // Check if this is an essential plugin (SQL or OpenAI)
+                        const isEssential = Object.keys(ESSENTIAL_PLUGINS).includes(plugin);
 
-                      return (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          key={plugin}
-                          className={`inline-flex items-center rounded-full ${
-                            isRequiredByVoice
-                              ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                              : isEssential
-                                ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                                : 'bg-primary/10 text-primary hover:bg-primary/20'
-                          } px-2.5 py-0.5 text-xs font-medium h-auto`}
-                          onClick={() => {
-                            // Don't allow removing if it's required by the voice model
-                            if (isRequiredByVoice) {
-                              toast({
-                                title: "Can't Remove Plugin",
-                                description: 'This plugin is required by the selected voice model.',
-                                variant: 'destructive',
-                              });
-                              return;
+                        return (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            key={plugin}
+                            className={`inline-flex items-center rounded-full ${
+                              isRequiredByVoice
+                                ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                                : isEssential
+                                  ? 'bg-blue-800 text-blue-700 hover:bg-blue-600'
+                                  : 'bg-primary/10 text-primary hover:bg-primary/20'
+                            } px-2.5 py-0.5 text-xs font-medium h-auto`}
+                            onClick={() => {
+                              // Don't allow removing if it's required by the voice model
+                              if (isRequiredByVoice) {
+                                toast({
+                                  title: "Can't Remove Plugin",
+                                  description:
+                                    'This plugin is required by the selected voice model.',
+                                  variant: 'destructive',
+                                });
+                                return;
+                              }
+                              handlePluginRemove(plugin);
+                            }}
+                            title={
+                              isRequiredByVoice
+                                ? 'Required by voice model'
+                                : isEssential
+                                  ? 'Essential plugin for agent functionality (click to remove)'
+                                  : 'Click to remove'
                             }
-                            handlePluginRemove(plugin);
-                          }}
-                          title={
-                            isRequiredByVoice
-                              ? 'Required by voice model'
-                              : isEssential
-                                ? 'Essential plugin for agent functionality (click to remove)'
-                                : 'Click to remove'
-                          }
-                        >
-                          {plugin} {isEssential && <span className="ml-1 text-blue-700">•</span>}
-                          <span className="ml-1 opacity-70 hover:opacity-100">×</span>
-                        </Button>
-                      );
-                    })}
+                          >
+                            {isEssential && (
+                              <span className="w-2 h-2 rounded-full bg-white inline-block"></span>
+                            )}
+                            <span className="text-white font-semibold">{plugin}</span>
+                            <span
+                              className={clsx(
+                                'ml-1 opacity-70 hover:opacity-100',
+                                isEssential && 'text-white'
+                              )}
+                            >
+                              ×
+                            </span>
+                          </Button>
+                        );
+                      })}
                   </div>
                   <div className="mt-3 text-xs text-muted-foreground">
                     <span className="inline-flex items-center">
-                      <span className="w-2 h-2 rounded-full bg-blue-500 mr-1"></span>
+                      <span className="w-2 h-2 rounded-full bg-blue-600 mr-1"></span>
                       Essential plugins provide core functionality
                     </span>
                   </div>
