@@ -1,4 +1,5 @@
 import { createOpenAI } from '@ai-sdk/openai';
+import { getProviderBaseURL } from '@elizaos/core';
 import type {
   ImageDescriptionParams,
   ModelTypeName,
@@ -23,8 +24,13 @@ function getSetting(runtime: any, key: string, defaultValue?: string): string | 
   return runtime.getSetting(key) ?? process.env[key] ?? defaultValue;
 }
 
-function getBaseURL(): string {
-  return 'https://api.venice.ai/api/v1'; // Venice requires this specific base URL
+function getBaseURL(runtime: any): string {
+  const defaultBaseURL = getSetting(
+    runtime,
+    'VENICE_BASE_URL',
+    process.env.VENICE_BASE_URL || 'https://api.venice.ai/api/v1'
+  );
+  return getProviderBaseURL(runtime, 'venice', defaultBaseURL);
 }
 
 function getVeniceApiKey(runtime: any): string | undefined {
@@ -61,12 +67,14 @@ function getOpenAIEmbeddingDimensions(runtime: any): number | undefined {
   return dimsString ? parseInt(dimsString, 10) : undefined;
 }
 
-const OPENAI_BASE_URL = 'https://api.openai.com/v1';
+function getOpenAIBaseURL(runtime: any): string {
+  return getProviderBaseURL(runtime, 'openai', 'https://api.openai.com/v1');
+}
 
 function createVeniceClient(runtime: any) {
   return createOpenAI({
     apiKey: getVeniceApiKey(runtime),
-    baseURL: getBaseURL(),
+    baseURL: getBaseURL(runtime),
   });
 }
 
@@ -285,10 +293,10 @@ export const venicePlugin: Plugin = {
           payload.dimensions = dimensions;
         }
         logger.debug(
-          `[plugin-venice/OpenAI Embed v${PLUGIN_VERSION}] Calling ${OPENAI_BASE_URL}/embeddings with model ${model}`
+          `[plugin-venice/OpenAI Embed v${PLUGIN_VERSION}] Calling ${getOpenAIBaseURL(runtime)}/embeddings with model ${model}`
         );
 
-        const response = await fetch(`${OPENAI_BASE_URL}/embeddings`, {
+        const response = await fetch(`${getOpenAIBaseURL(runtime)}/embeddings`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${openaiApiKey}`,

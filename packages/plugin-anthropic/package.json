@@ -22,9 +22,8 @@
     "dist"
   ],
   "dependencies": {
-    "@ai-sdk/anthropic": "^1.1.6",
+    "@ai-sdk/anthropic": "^1.2.10",
     "@elizaos/core": "^1.0.0-beta.37",
-    "fastembed": "^1.0.0",
     "jsonrepair": "^3.12.0",
     "tsup": "8.4.0"
   },

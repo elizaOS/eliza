@@ -25,7 +25,7 @@
     "@ai-sdk/openai": "^1.1.9",
     "@ai-sdk/ui-utils": "1.1.9",
     "@elizaos/core": "^1.0.0-beta.37",
-    "ai": "^4.1.25",
+    "ai": "^4.3.9",
     "js-tiktoken": "^1.0.18",
     "tsup": "8.4.0",
     "undici": "^7.8.0"

@@ -1,5 +1,16 @@
 import { anthropic } from '@ai-sdk/anthropic';
-import type { ObjectGenerationParams, GenerateTextParams, Plugin } from '@elizaos/core';
+import { getProviderBaseURL } from '@elizaos/core';
+
+function getBaseURL(runtime: IAgentRuntime): string {
+  return getProviderBaseURL(runtime, 'anthropic', 'https://api.anthropic.com/v1/');
+}
+
+import type {
+  ObjectGenerationParams,
+  GenerateTextParams,
+  Plugin,
+  IAgentRuntime,
+} from '@elizaos/core';
 import { ModelType, logger } from '@elizaos/core';
 import { generateText } from 'ai';
 import { extractAndParseJSON, ExtractedJSON, ensureReflectionProperties } from './utils';
