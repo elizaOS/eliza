@@ -111,6 +111,14 @@ export async function copyTemplate(
     // Set project name
     packageJson.name = name;
 
+    // Use a dedicated field for ElizaOS package type to avoid collision with Node.js module type
+    packageJson.packageType = templateType;
+
+    // Ensure the module type is set to 'module' for ES modules
+    if (!packageJson.type) {
+      packageJson.type = 'module';
+    }
+
     // Process dependencies - set all @elizaos/* packages to use cliPackageVersion
     if (packageJson.dependencies) {
       for (const depName of Object.keys(packageJson.dependencies)) {
@@ -238,10 +246,10 @@ Before publishing your plugin to the ElizaOS registry, ensure you meet these req
 3. **Publishing Process**
    \`\`\`bash
    # Check if your plugin meets all registry requirements
-   npx elizaos plugin publish --test
+   npx elizaos publish --test
    
    # Publish to the registry
-   npx elizaos plugin publish
+   npx elizaos publish
    \`\`\`
 
 After publishing, your plugin will be submitted as a pull request to the ElizaOS registry for review.
@@ -299,6 +307,17 @@ Provide clear documentation about:
         logger.success(`Updated plugin name in index.ts to ${pluginNameWithoutScope}`);
       } catch (error) {
         logger.error(`Error updating index.ts: ${error}`);
+      }
+    } else if (templateType === 'project') {
+      // Add agentConfig for projects if missing
+      if (!packageJson.agentConfig) {
+        packageJson.agentConfig = {
+          pluginType: 'elizaos:project:1.0.0',
+          projectConfig: {
+            name: name,
+            description: packageJson.description || 'An ElizaOS Project',
+          },
+        };
       }
     }
 

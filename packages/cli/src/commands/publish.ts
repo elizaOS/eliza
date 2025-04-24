@@ -454,6 +454,15 @@ export const publish = new Command()
           detectedType = 'project';
           console.info('Detected Eliza project in current directory (legacy format)');
         }
+      } else if (packageJson.packageType) {
+        // Check packageType field
+        if (packageJson.packageType === 'plugin') {
+          detectedType = 'plugin';
+          console.info('Detected Eliza plugin based on packageType field');
+        } else if (packageJson.packageType === 'project') {
+          detectedType = 'project';
+          console.info('Detected Eliza project based on packageType field');
+        }
       } else {
         // Use heuristics to detect the type
         // Check if name contains plugin
@@ -510,8 +519,8 @@ export const publish = new Command()
         process.exit(1);
       }
 
-      // Add type and platform to package.json for publishing
-      packageJson.type = detectedType;
+      // Add packageType and platform to package.json for publishing
+      packageJson.packageType = detectedType;
       packageJson.platform = opts.platform;
 
       // Preserve agentConfig if it exists or create it
