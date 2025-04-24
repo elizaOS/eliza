@@ -42,17 +42,20 @@ export function isUtf8Locale() {
 }
 // --- Utility: Check for latest CLI version and notify user ---
 async function checkForCliUpdate(currentVersion: string) {
+  const distTag = currentVersion.includes('beta') ? 'beta' : 'latest';
+
   try {
-    const { stdout: latestVersionRaw } = await execa('npm', ['view', '@elizaos/cli', 'version']);
-    const latestVersion = latestVersionRaw.trim();
-    if (latestVersion && latestVersion !== currentVersion) {
-      console.log(
-        `\x1b[33m\nA new version of elizaOS CLI is available: ${latestVersion} (current: ${currentVersion})\x1b[0m`
-      );
-      console.log(`\x1b[32mUpdate with: npm i -g @elizaos/cli@latest\x1b[0m\n`);
-    }
-  } catch (err) {
-    // Fail silently, do not block banner
+    const { stdout } = await execa('npm', ['view', `@elizaos/cli@${distTag}`, 'version']);
+
+    const latestVersion = stdout.trim();
+    if (!latestVersion || latestVersion === currentVersion) return; // already current
+
+    console.log(
+      `\x1b[33m\nA new version of elizaOS CLI is available: ${latestVersion} (current: ${currentVersion})\x1b[0m`
+    );
+    console.log(`\x1b[32mUpdate with: npm i -g @elizaos/cli@${distTag}\x1b[0m\n`);
+  } catch {
+    /* silent: update check failure must not block banner */
   }
 }
 
