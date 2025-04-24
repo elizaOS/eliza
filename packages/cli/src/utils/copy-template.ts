@@ -139,24 +139,20 @@ export async function copyTemplate(
       }
     }
 
-    // For plugins, add required registry configuration
+    // Create or update repository URL with the GitHub format
+    // Extract the name without scope for the repository URL
+    const nameWithoutScope = name.replace('@elizaos/', '');
+
+    // Get the GitHub username from environment if available, or use a default
+    const githubUsername = process.env.GITHUB_USERNAME || 'elizaos';
+
+    // Always create/update repository field with proper URL format
+    packageJson.repository = {
+      type: 'git',
+      url: `github:${githubUsername}/${nameWithoutScope}`,
+    };
+
     if (templateType === 'plugin') {
-      // Fix repository URL format and replace placeholder with actual plugin name
-      if (packageJson.repository && packageJson.repository.url) {
-        // Extract the plugin name without scope for the repository URL
-        const pluginNameWithoutScope = name.replace('@elizaos/', '');
-
-        // Get the GitHub username from environment if available, or use a default
-        const githubUsername = process.env.GITHUB_USERNAME || 'elizaos-plugins';
-
-        // Replace placeholders with actual values
-        packageJson.repository.url = packageJson.repository.url
-          .replace('{{PLUGIN_NAME}}', pluginNameWithoutScope)
-          .replace('{{GITHUB_USERNAME}}', githubUsername)
-          .replace('https://github.com/', 'github:')
-          .replace('.git', '');
-      }
-
       // Add platform if missing
       if (!packageJson.platform) {
         packageJson.platform = 'universal';
@@ -317,6 +313,21 @@ Provide clear documentation about:
             name: name,
             description: packageJson.description || 'An ElizaOS Project',
           },
+        };
+      }
+
+      // Add repository configuration for projects
+      if (!packageJson.repository) {
+        // Get the GitHub username from environment if available, or use a default
+        const githubUsername = process.env.GITHUB_USERNAME || 'elizaos';
+
+        // Extract the project name without scope for the repository URL
+        const projectNameWithoutScope = name.replace('@elizaos/', '');
+
+        // Set the repository URL
+        packageJson.repository = {
+          type: 'git',
+          url: `github:${githubUsername}/${projectNameWithoutScope}`,
         };
       }
     }

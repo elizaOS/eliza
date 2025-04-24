@@ -9,7 +9,7 @@
   "types": "dist/index.d.ts",
   "repository": {
     "type": "git",
-    "url": "https://github.com/elizaos-plugins/plugin-starter"
+    "url": ""
   },
   "exports": {
     "./package.json": "./package.json",
