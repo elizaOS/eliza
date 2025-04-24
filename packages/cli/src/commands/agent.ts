@@ -223,6 +223,18 @@ agent
         const baseUrl = getAgentsBaseUrl(options);
         console.debug(`Base URL determined: ${baseUrl}`);
 
+        let characterName = null;
+
+        async function createCharacter(payload) {
+          const response = await fetch(baseUrl, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(payload),
+          });
+          const data = await response.json();
+          return data.data.character.name;
+        }
+
         // Handle the path option first
         if (options.path) {
           console.debug('Using local path option:', options.path);
@@ -236,11 +248,7 @@ agent
             console.debug(`Read file content, size: ${fileContent.length} bytes`);
             payload.characterJson = JSON.parse(fileContent);
             console.debug('Parsed character JSON from file');
-            return await fetch(baseUrl, {
-              method: 'POST',
-              headers,
-              body: JSON.stringify(payload),
-            });
+            characterName = await createCharacter(payload);
           } catch (error) {
             console.error('Error reading or parsing local JSON file:', error);
             throw new Error(`Failed to read or parse local JSON file: ${error.message}`);
@@ -253,11 +261,7 @@ agent
           try {
             payload.characterJson = JSON.parse(options.json);
             console.debug('Parsed character JSON string');
-            return await fetch(baseUrl, {
-              method: 'POST',
-              headers,
-              body: JSON.stringify(payload),
-            });
+            characterName = await createCharacter(payload);
           } catch (error) {
             console.error('Error parsing JSON string:', error);
             throw new Error(`Failed to parse JSON string: ${error.message}`);
@@ -275,16 +279,16 @@ agent
           }
           payload.characterPath = options.remoteCharacter;
           console.debug('Using remote character URL:', payload.characterPath);
-          return await fetch(baseUrl, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(payload),
-          });
+          characterName = await createCharacter(payload);
         }
 
         if (options.name) {
+          characterName = options.name;
           console.debug('Using name option:', options.name);
-          const agentId = await resolveAgentId(options.name, options);
+        }
+
+        if (characterName) {
+          const agentId = await resolveAgentId(characterName, options);
           console.debug(`Resolved agent ID: ${agentId} for name: ${options.name}`);
           return await fetch(`${baseUrl}/${agentId}`, {
             method: 'POST',
