@@ -225,7 +225,6 @@ agent
 
         let characterName = null;
 
-        // Function to handle the common fetch logic
         async function createCharacter(payload) {
           const response = await fetch(baseUrl, {
             method: 'POST',
