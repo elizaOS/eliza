@@ -13,6 +13,7 @@ import {
 } from '@elizaos/core';
 import type { Chat, Message, ReactionType, Update } from '@telegraf/types';
 import type { Context, NarrowedContext, Telegraf } from 'telegraf';
+import { Markup } from 'telegraf';
 import {
   TelegramContent,
   TelegramEventTypes,
@@ -20,11 +21,9 @@ import {
   type TelegramMessageSentPayload,
   type TelegramReactionReceivedPayload,
 } from './types';
-import { convertToTelegramButtons, escapeMarkdown } from './utils';
-import { Markup } from 'telegraf';
+import { convertToTelegramButtons, convertMarkdownToTelegram } from './utils';
 
 import fs from 'node:fs';
-import { convertMarkdownToTelegram } from './markdown';
 
 /**
  * Enum representing different types of media.
