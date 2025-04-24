@@ -15,7 +15,9 @@ import {
 } from '@elizaos/core';
 
 /**
- * Returns the Groq API base URL, allowing override via settings or env variable.
+ * Retrieves the Groq API base URL, using runtime settings or environment variables if available.
+ *
+ * @returns The resolved Groq API base URL.
  */
 function getBaseURL(runtime: any): string {
   const defaultBaseURL = runtime.getSetting('GROQ_BASE_URL') || 'https://api.groq.com/openai/v1';
@@ -35,6 +37,16 @@ interface Runtime {
   fetch?: typeof fetch;
 }
 
+/**
+ * Returns the appropriate Groq model name string for the specified model type.
+ *
+ * If environment variables for model names are set, they are used; otherwise, defaults are returned.
+ *
+ * @param model - The model type for which to retrieve the model name.
+ * @returns The model name string corresponding to the given {@link model}.
+ *
+ * @remark If an error occurs, returns the default model name 'llama-3.1-8b-instant'.
+ */
 function findModelName(model: ModelTypeName): TiktokenModel {
   try {
     const name =

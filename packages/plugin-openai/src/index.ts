@@ -101,12 +101,11 @@ async function startLlmSpan<T>(
 }
 
 /**
- * Helper function to get settings with fallback to process.env
+ * Retrieves a configuration setting from the runtime, falling back to environment variables or a default value if not found.
  *
- * @param runtime The runtime context
- * @param key The setting key to retrieve
- * @param defaultValue Optional default value if not found
- * @returns The setting value with proper fallbacks
+ * @param key - The name of the setting to retrieve.
+ * @param defaultValue - The value to return if the setting is not found in the runtime or environment.
+ * @returns The resolved setting value, or {@link defaultValue} if not found.
  */
 function getSetting(
   runtime: IAgentRuntime,
@@ -116,6 +115,11 @@ function getSetting(
   return runtime.getSetting(key) ?? process.env[key] ?? defaultValue;
 }
 
+/**
+ * Retrieves the OpenAI API base URL from runtime settings, environment variables, or defaults, using provider-aware resolution.
+ *
+ * @returns The resolved base URL for OpenAI API requests.
+ */
 function getBaseURL(runtime: IAgentRuntime): string {
   const defaultBaseURL = getSetting(runtime, 'OPENAI_BASE_URL', 'https://api.openai.com/v1');
   return getProviderBaseURL(runtime, 'openai', defaultBaseURL);

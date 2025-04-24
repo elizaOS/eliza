@@ -15,6 +15,12 @@ import {
   logger,
 } from '@elizaos/core';
 
+/**
+ * Resolves the base URL for the RedPill API using runtime settings or a default value.
+ *
+ * @param runtime - The runtime environment providing configuration settings.
+ * @returns The resolved base URL for RedPill API requests.
+ */
 function getBaseURL(runtime: any): string {
   const defaultBaseURL = runtime.getSetting('REDPILL_BASE_URL') || 'https://api.red-pill.ai/v1';
   return getProviderBaseURL(runtime, 'redpill', defaultBaseURL);

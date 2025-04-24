@@ -1,6 +1,12 @@
 import { anthropic } from '@ai-sdk/anthropic';
 import { getProviderBaseURL } from '@elizaos/core';
 
+/**
+ * Returns the base URL for the Anthropic API, using the runtime configuration or a default if not specified.
+ *
+ * @param runtime - The agent runtime environment used to determine the provider's base URL.
+ * @returns The resolved base URL for Anthropic API requests.
+ */
 function getBaseURL(runtime: IAgentRuntime): string {
   return getProviderBaseURL(runtime, 'anthropic', 'https://api.anthropic.com/v1/');
 }

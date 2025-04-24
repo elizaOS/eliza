@@ -2,10 +2,12 @@ import { IAgentRuntime } from './types';
 import { elizaLogger } from './logger';
 
 /**
- * Gets the Cloudflare Gateway base URL for a specific provider if enabled
- * @param runtime The runtime environment
- * @param provider The model provider name
- * @returns The Cloudflare Gateway base URL if enabled, undefined otherwise
+ * Returns the Cloudflare Gateway base URL for a given model provider if the gateway is enabled and properly configured.
+ *
+ * If Cloudflare Gateway is not enabled or required configuration values are missing, returns `undefined`.
+ *
+ * @param provider - The name of the model provider.
+ * @returns The Cloudflare Gateway base URL for the provider, or `undefined` if the gateway is not enabled or not configured.
  */
 export function getCloudflareGatewayBaseURL(
   runtime: IAgentRuntime,
@@ -48,11 +50,13 @@ export function getCloudflareGatewayBaseURL(
 }
 
 /**
- * Gets the correct base URL for a provider, using Cloudflare Gateway if enabled, otherwise falling back to the default.
- * @param runtime The runtime environment
- * @param provider The model provider name
- * @param defaultBaseURL The default base URL for the provider
- * @returns The base URL to use
+ * Returns the base URL for a model provider, preferring the Cloudflare Gateway if enabled and properly configured.
+ *
+ * If the Cloudflare Gateway is not enabled or required configuration is missing, returns the provided default base URL.
+ *
+ * @param provider - The name of the model provider.
+ * @param defaultBaseURL - The fallback base URL if Cloudflare Gateway is unavailable.
+ * @returns The base URL to use for the provider.
  */
 export function getProviderBaseURL(
   runtime: IAgentRuntime,
