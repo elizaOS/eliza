@@ -30,7 +30,19 @@ export default class Twitter {
   }
 
   async syncRawTweets(): Promise<boolean> {
-    const username = this.runtime.getSetting('TWITTER_USERNAME');
+    const users = [
+      'shawmakesmagic',
+      'aixbt_agent',
+      '0x_nomAI',
+      'mobyagent',
+      'arok_vc',
+      'finding_yeti',
+      'ShardiB2',
+      'dankvr',
+      'elizaos',
+      'autodotfun',
+    ];
+    //const username = this.runtime.getSetting('TWITTER_USERNAME');
 
     // Ensure feed room exists
     await this.runtime.ensureRoomExists({
@@ -58,55 +70,59 @@ export default class Twitter {
       return false;
     }
 
-    try {
-      const list = twitterClient.getTweets(username as string, 200);
-      let syncCount = 0;
+    for (const u of users) {
+      try {
+        // fetches my tweets
+        const list = twitterClient.getTweets(u as string, 200);
+        // fetch my following feed
+        //const list = twitterClient.fetchFollowingTimeline(200, []);
+        let syncCount = 0;
 
-      for await (const item of list) {
-        if (item?.text && !item?.isRetweet) {
-          const tweetId = createUniqueUuid(this.runtime, item.id);
+        for await (const item of list) {
+          if (item?.text && !item?.isRetweet) {
+            const tweetId = createUniqueUuid(this.runtime, item.id);
 
-          // Check if we already have this tweet
-          const existingTweet = await this.runtime.getMemoryById(tweetId);
-          if (existingTweet) {
-            continue;
-          }
+            // Check if we already have this tweet
+            const existingTweet = await this.runtime.getMemoryById(tweetId);
+            if (existingTweet) {
+              console.log('old tweet');
+              continue;
+            }
+            console.log('new tweet', item);
 
-          // Create memory for the tweet
-          await this.runtime.createMemory(
-            {
-              id: tweetId,
-              agentId: this.runtime.agentId,
-              roomId: this.feedRoomId,
-              entityId: this.runtime.agentId,
-              content: {
-                text: item.text,
-                source: 'twitter',
-                metadata: {
-                  likes: item.likes ?? 0,
-                  retweets: item.retweets ?? 0,
-                  username: item.username,
-                  timestamp: new Date(item.timestamp * 1000).toISOString(),
+            // Create memory for the tweet
+            await this.runtime.createMemory(
+              {
+                id: tweetId,
+                agentId: this.runtime.agentId,
+                roomId: this.feedRoomId,
+                entityId: this.runtime.agentId,
+                content: {
+                  text: item.text,
+                  source: 'twitter',
+                  metadata: {
+                    likes: item.likes ?? 0,
+                    retweets: item.retweets ?? 0,
+                    username: item.username,
+                    timestamp: new Date(item.timestamp * 1000).toISOString(),
+                  },
                 },
+                createdAt: item.timestamp * 1000,
               },
-              createdAt: item.timestamp * 1000,
-            },
-            'messages'
-          );
+              'messages'
+            );
 
-          syncCount++;
+            syncCount++;
+          }
         }
+
+        logger.info(`Raw tweet sync [username: ${u}] synced ${syncCount} new tweets`);
+        await new Promise((resolve) => setTimeout(resolve, 10_000)); // 10s delay
+      } catch (error) {
+        logger.error('Error syncing tweets:', error);
+        await new Promise((resolve) => setTimeout(resolve, 10_000)); // 10s delay
       }
-
-      logger.info(`Raw tweet sync [username: ${username}] synced ${syncCount} new tweets`);
-
-      /** Sleep 10 seconds */
-      await new Promise((resolve) => setTimeout(resolve, 10_000));
-
-      return true;
-    } catch (error) {
-      logger.error('Error syncing tweets:', error);
-      return false;
     }
+    return true;
   }
 }
