@@ -14,6 +14,7 @@ import crypto from 'node:crypto';
 import { worldRouter } from './world';
 import { envRouter } from './env';
 import { SpanStatusCode } from '@opentelemetry/api';
+import { match } from 'path-to-regexp';
 
 // Custom levels from @elizaos/core logger
 const LOG_LEVELS = {
@@ -467,35 +468,34 @@ export function createApiRouter(
 
       // Check each plugin route
       for (const route of runtime.routes) {
-        // Skip if method doesn't match
-        if (req.method.toLowerCase() !== route.type.toLowerCase()) {
-          continue;
-        }
+        const methodMatches = req.method.toLowerCase() === route.type.toLowerCase();
+        if (!methodMatches) continue;
 
-        // Check if path matches
-        // Make sure we're comparing the path properly
-        const routePath = route.path.startsWith('/') ? route.path : `/${route.path}`;
-        const reqPath = req.path;
+        try {
+          const matcher = match(route.path, { decode: decodeURIComponent });
+          const matched = matcher(req.path);
 
-        // Handle exact matches
-        if (reqPath === routePath) {
-          try {
+          if (matched) {
+            req.params = matched.params;
             route.handler(req, res, runtime);
             handled = true;
             break;
-          } catch (error) {
-            logger.error('Error handling plugin route', {
-              error,
-              path: reqPath,
-              agent: runtime.agentId,
-            });
-            res.status(500).json({ error: 'Internal Server Error' });
-            handled = true;
-            break;
           }
+        } catch (error) {
+          logger.error('Error handling plugin dynamic route', {
+            error,
+            path: req.path,
+            agent: runtime.agentId,
+          });
+          res.status(500).json({ error: 'Internal Server Error' });
+          handled = true;
+          break;
         }
 
         // Handle wildcard paths (e.g., /portal/*)
+        const routePath = route.path.startsWith('/') ? route.path : `/${route.path}`;
+        const reqPath = req.path;
+        
         if (routePath.endsWith('*') && reqPath.startsWith(routePath.slice(0, -1))) {
           try {
             // Set the correct MIME type based on the file extension
