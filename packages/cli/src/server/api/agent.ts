@@ -18,6 +18,7 @@ import fs from 'node:fs';
 import { Readable } from 'node:stream';
 import type { AgentServer } from '..';
 import { upload } from '../loader';
+import { convertToAudioBuffer } from '@/src/utils/audioBuffer';
 
 /**
  * Interface representing a custom request object that extends the express.Request interface.
@@ -846,42 +847,7 @@ export function agentRouter(
       const speechResponse = await runtime.useModel(ModelType.TEXT_TO_SPEECH, text);
 
       // Convert to Buffer if not already a Buffer
-      let audioBuffer: Buffer;
-
-      if (Buffer.isBuffer(speechResponse)) {
-        audioBuffer = speechResponse;
-      } else if (typeof speechResponse?.getReader === 'function') {
-        // Web ReadableStream
-        const reader = (speechResponse as ReadableStream<Uint8Array>).getReader();
-        const chunks: Uint8Array[] = [];
-
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            if (value) chunks.push(value);
-          }
-          audioBuffer = Buffer.concat(chunks);
-        } finally {
-          reader.releaseLock();
-        }
-      } else if (
-        speechResponse instanceof Readable ||
-        (speechResponse &&
-          speechResponse.readable === true &&
-          typeof speechResponse.pipe === 'function' &&
-          typeof speechResponse.on === 'function')
-      ) {
-        // Node Readable Stream
-        audioBuffer = await new Promise<Buffer>((resolve, reject) => {
-          const chunks: Buffer[] = [];
-          speechResponse.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
-          speechResponse.on('end', () => resolve(Buffer.concat(chunks)));
-          speechResponse.on('error', (err) => reject(err));
-        });
-      } else {
-        throw new Error('Unexpected response type from TEXT_TO_SPEECH model');
-      }
+      const audioBuffer = await convertToAudioBuffer(speechResponse);
 
       logger.debug('[SPEECH GENERATE] Setting response headers');
       res.set({
