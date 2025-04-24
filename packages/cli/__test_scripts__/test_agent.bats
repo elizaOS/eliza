@@ -10,7 +10,7 @@ setup_file() {
   export ELIZAOS_CMD="${ELIZAOS_CMD:-bun run "$(cd ../dist && pwd)/index.js"}"
 
   # Start server in background with PGLite forced
-  PGLITE_DATA_DIR="$TEST_TMP_DIR/pglite" $ELIZAOS_CMD start --port $TEST_SERVER_PORT >"$TEST_TMP_DIR/server.log" 2>&1 &
+  LOG_LEVEL=debug PGLITE_DATA_DIR="$TEST_TMP_DIR/pglite" $ELIZAOS_CMD start --port $TEST_SERVER_PORT >"$TEST_TMP_DIR/server.log" 2>&1 &
   SERVER_PID=$! 
   # Wait for server to be up (poll with timeout)
   SERVER_UP=0

@@ -29,7 +29,7 @@ teardown() {
 @test "start and list shows test-character running" {
   # Start server with test-character on fixed port
   export TEST_SERVER_PORT=3000
-  PGLITE_DATA_DIR="$TEST_TMP_DIR/pglite"  PORT=$TEST_SERVER_PORT $ELIZAOS_CMD start --character "$BATS_TEST_DIRNAME/test-characters/ada.json" >"$TEST_TMP_DIR/server.log" 2>&1 &
+  LOG_LEVEL=debug PGLITE_DATA_DIR="$TEST_TMP_DIR/pglite"  PORT=$TEST_SERVER_PORT $ELIZAOS_CMD start --character "$BATS_TEST_DIRNAME/test-characters/ada.json" >"$TEST_TMP_DIR/server.log" 2>&1 &
   SERVER_PID=$!
   # Wait for server log to show readiness (up to 10s)
   READY=0
