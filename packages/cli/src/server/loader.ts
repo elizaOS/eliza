@@ -136,6 +136,7 @@ export async function loadCharacterTryPath(characterPath: string): Promise<Chara
 
   const pathsToTry = [
     characterPath,
+    path.resolve(process.cwd(), characterPath),
     path.resolve(process.cwd(), '..', '..', characterPath),
     path.resolve(process.cwd(), '..', '..', '..', characterPath),
     path.resolve(process.cwd(), 'agent', characterPath),

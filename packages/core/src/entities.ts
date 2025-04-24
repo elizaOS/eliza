@@ -390,7 +390,7 @@ export async function getEntityDetails({
  */
 export function formatEntities({ entities }: { entities: Entity[] }) {
   const entityStrings = entities.map((entity: Entity) => {
-    const header = `${entity.names.join(' aka ')}\nID: ${entity.id}${entity.metadata && Object.keys(entity.metadata).length > 0 ? `\nData: ${JSON.stringify(entity.metadata)}\n` : '\n'}`;
+    const header = `"${entity.names.join('" aka "')}"\nID: ${entity.id}${entity.metadata && Object.keys(entity.metadata).length > 0 ? `\nData: ${JSON.stringify(entity.metadata)}\n` : '\n'}`;
     return header;
   });
   return entityStrings.join('\n');

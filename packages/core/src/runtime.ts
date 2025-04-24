@@ -1715,7 +1715,8 @@ export class AgentRuntime implements IAgentRuntime {
   getService<T extends Service>(service: ServiceTypeName): T | null {
     const serviceInstance = this.services.get(service);
     if (!serviceInstance) {
-      this.runtimeLogger.warn(`Service ${service} not found`);
+      // it's not a warn, a plugin might just not be installed
+      this.runtimeLogger.debug(`Service ${service} not found`);
       return null;
     }
     return serviceInstance as T;
@@ -1835,8 +1836,8 @@ export class AgentRuntime implements IAgentRuntime {
 
       // Log input parameters (keep debug log if useful)
       this.runtimeLogger.debug(
-        `[useModel] ${model} input:`,
-        JSON.stringify(params, safeReplacer(), 2)
+        `[useModel] ${modelKey} input:`,
+        JSON.stringify(params, safeReplacer(), 2).replace(/\\n/g, '\n')
       );
 
       // Handle different parameter formats
@@ -1882,7 +1883,7 @@ export class AgentRuntime implements IAgentRuntime {
         span.addEvent('model_response', { response: JSON.stringify(response, safeReplacer()) }); // Log processed response
 
         // Log timing (keep debug log if useful)
-        this.runtimeLogger.debug(`[useModel] ${modelKey} completed in ${elapsedTime.toFixed(2)}ms`);
+        this.runtimeLogger.debug(`[useModel] ${modelKey} completed in ${Number(elapsedTime.toFixed(2)).toLocaleString()}ms`);
 
         // Log response (keep debug log if useful)
         this.runtimeLogger.debug(
