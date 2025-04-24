@@ -846,26 +846,42 @@ export function agentRouter(
       const speechResponse = await runtime.useModel(ModelType.TEXT_TO_SPEECH, text);
 
       // Convert to Buffer if not already a Buffer
-      const audioBuffer = Buffer.isBuffer(speechResponse)
-        ? speechResponse
-        : await new Promise<Buffer>((resolve, reject) => {
-            if (
-              !(speechResponse instanceof Readable) &&
-              !(
-                speechResponse &&
-                speechResponse.readable === true &&
-                typeof speechResponse.pipe === 'function' &&
-                typeof speechResponse.on === 'function'
-              )
-            ) {
-              return reject(new Error('Unexpected response type from TEXT_TO_SPEECH model'));
-            }
+      let audioBuffer: Buffer;
 
-            const chunks: Buffer[] = [];
-            speechResponse.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
-            speechResponse.on('end', () => resolve(Buffer.concat(chunks)));
-            speechResponse.on('error', (err) => reject(err));
-          });
+      if (Buffer.isBuffer(speechResponse)) {
+        audioBuffer = speechResponse;
+      } else if (typeof speechResponse?.getReader === 'function') {
+        // Web ReadableStream
+        const reader = (speechResponse as ReadableStream<Uint8Array>).getReader();
+        const chunks: Uint8Array[] = [];
+
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            if (value) chunks.push(value);
+          }
+          audioBuffer = Buffer.concat(chunks);
+        } finally {
+          reader.releaseLock();
+        }
+      } else if (
+        speechResponse instanceof Readable ||
+        (speechResponse &&
+          speechResponse.readable === true &&
+          typeof speechResponse.pipe === 'function' &&
+          typeof speechResponse.on === 'function')
+      ) {
+        // Node Readable Stream
+        audioBuffer = await new Promise<Buffer>((resolve, reject) => {
+          const chunks: Buffer[] = [];
+          speechResponse.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+          speechResponse.on('end', () => resolve(Buffer.concat(chunks)));
+          speechResponse.on('error', (err) => reject(err));
+        });
+      } else {
+        throw new Error('Unexpected response type from TEXT_TO_SPEECH model');
+      }
 
       logger.debug('[SPEECH GENERATE] Setting response headers');
       res.set({
