@@ -20,6 +20,7 @@ import { usePlugins } from '@/hooks/use-plugins';
 import { useToast } from '@/hooks/use-toast';
 import type { Agent } from '@elizaos/core';
 import clsx from 'clsx';
+import { CircleAlert } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import {
   // getAllRequiredPlugins,
@@ -215,7 +216,8 @@ export default function PluginsPanel({
               </AlertDialog>
 
               {voiceModelPluginInfo && (
-                <div className="rounded-md border p-4 mb-4">
+                <div className="rounded-md border p-4 mb-4 flex items-center gap-2">
+                  <CircleAlert className="h-4 w-4 text-yellow-500" />
                   <p className="text-xs text-white">
                     {(() => {
                       switch (voiceModelPluginInfo.provider) {
