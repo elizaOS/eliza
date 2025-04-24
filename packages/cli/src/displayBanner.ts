@@ -28,7 +28,20 @@ export function getVersion(): string {
   return version;
 }
 
+export function isUtf8Locale() {
+  for (const key of ['LC_ALL', 'LC_CTYPE', 'LANG', 'LANGUAGE']) {
+    const v = process.env[key];
+    if (typeof v === 'string' && /UTF-?8/i.test(v)) {
+      return true;
+    }
+  }
+  return false;
+}
 export function displayBanner() {
+  if (!isUtf8Locale()) {
+    // Terminal does not support UTF-8, skip banner
+    return;
+  }
   // Color ANSI escape codes
   const b = '\x1b[38;5;27m';
   const lightblue = '\x1b[38;5;51m';
