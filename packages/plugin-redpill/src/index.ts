@@ -1,4 +1,5 @@
 import { createOpenAI, openai } from '@ai-sdk/openai';
+import { getProviderBaseURL } from '@elizaos/core';
 import type {
   ImageDescriptionParams,
   ModelTypeName,
@@ -13,6 +14,11 @@ import {
   type TokenizeTextParams,
   logger,
 } from '@elizaos/core';
+
+function getBaseURL(runtime: any): string {
+  const defaultBaseURL = runtime.getSetting('REDPILL_BASE_URL') || 'https://api.red-pill.ai/v1';
+  return getProviderBaseURL(runtime, 'redpill', defaultBaseURL);
+}
 import { generateObject, generateText } from 'ai';
 import { type TiktokenModel, encodingForModel } from 'js-tiktoken';
 import { z } from 'zod';
@@ -85,7 +91,7 @@ export const redpillPlugin: Plugin = {
 
       // Verify API key only if we have one
       try {
-        const baseURL = process.env.REDPILL_BASE_URL ?? 'https://api.red-pill.ai/v1';
+        const baseURL = getBaseURL(runtime);
         const response = await fetch(`${baseURL}/models`, {
           headers: { Authorization: `Bearer ${process.env.REDPILL_API_KEY}` },
         });
@@ -148,7 +154,7 @@ export const redpillPlugin: Plugin = {
       }
 
       try {
-        const baseURL = process.env.REDPILL_BASE_URL ?? 'https://api.red-pill.ai/v1';
+        const baseURL = getBaseURL(runtime);
 
         // Call the RedPill API
         const response = await fetch(`${baseURL}/embeddings`, {
@@ -209,7 +215,7 @@ export const redpillPlugin: Plugin = {
       const presence_penalty = 0.7;
       const max_response_length = 8192;
 
-      const baseURL = runtime.getSetting('REDPILL_BASE_URL') ?? 'https://api.red-pill.ai/v1';
+      const baseURL = getBaseURL(runtime);
 
       const redpill = createOpenAI({
         apiKey: runtime.getSetting('REDPILL_API_KEY'),
@@ -248,7 +254,7 @@ export const redpillPlugin: Plugin = {
         presencePenalty = 0.7,
       }: GenerateTextParams
     ) => {
-      const baseURL = runtime.getSetting('REDPILL_BASE_URL') ?? 'https://api.red-pill.ai/v1';
+      const baseURL = getBaseURL(runtime);
 
       const redpill = createOpenAI({
         apiKey: runtime.getSetting('REDPILL_API_KEY'),
@@ -286,7 +292,7 @@ export const redpillPlugin: Plugin = {
       }
 
       try {
-        const baseURL = process.env.REDPILL_BASE_URL ?? 'https://api.red-pill.ai/v1';
+        const baseURL = getBaseURL(runtime);
         const apiKey = process.env.REDPILL_API_KEY;
 
         if (!apiKey) {
@@ -358,7 +364,7 @@ export const redpillPlugin: Plugin = {
       }
     },
     [ModelType.OBJECT_SMALL]: async (runtime, params: ObjectGenerationParams) => {
-      const baseURL = runtime.getSetting('REDPILL_BASE_URL') ?? 'https://api.red-pill.ai/v1';
+      const baseURL = getBaseURL(runtime);
       const redpill = createOpenAI({
         apiKey: runtime.getSetting('REDPILL_API_KEY'),
         baseURL,
@@ -394,7 +400,7 @@ export const redpillPlugin: Plugin = {
       }
     },
     [ModelType.OBJECT_LARGE]: async (runtime, params: ObjectGenerationParams) => {
-      const baseURL = runtime.getSetting('REDPILL_BASE_URL') ?? 'https://api.red-pill.ai/v1';
+      const baseURL = getBaseURL(runtime);
       const redpill = createOpenAI({
         apiKey: runtime.getSetting('REDPILL_API_KEY'),
         baseURL,
@@ -435,7 +441,7 @@ export const redpillPlugin: Plugin = {
         {
           name: 'redpill_test_url_and_api_key_validation',
           fn: async (runtime) => {
-            const baseURL = runtime.getSetting('REDPILL_BASE_URL') ?? 'https://api.red-pill.ai/v1';
+            const baseURL = getBaseURL(runtime);
             const response = await fetch(`${baseURL}/models`, {
               headers: {
                 Authorization: `Bearer ${runtime.getSetting('REDPILL_API_KEY')}`,
