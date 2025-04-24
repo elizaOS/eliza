@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 
 setup() {
-  export TEST_TMP_DIR="$(mktemp -d /var/tmp/eliza-test-XXXXXX)"
+  export TEST_TMP_DIR="$(mktemp -d /var/tmp/eliza-test-start-XXXXXX)"
   export ELIZAOS_CMD="${ELIZAOS_CMD:-bun run "$(cd ../dist && pwd)/index.js"}"
 }
 
@@ -12,7 +12,9 @@ teardown() {
     unset SERVER_PID
   fi
   cd /
-  rm -rf "$TEST_TMP_DIR"
+  if [ -n "$TEST_TMP_DIR" ] && [[ "$TEST_TMP_DIR" == /var/tmp/eliza-test-* ]]; then
+    rm -rf "$TEST_TMP_DIR"
+  fi
 }
 
 # Checks that the start help command displays usage information.
@@ -32,7 +34,7 @@ teardown() {
   # Wait for server log to show readiness (up to 10s)
   READY=0
   for i in {1..10}; do
-    if grep -q "AgentServer is listening on port $TEST_SERVER_PORT" server.log; then
+    if grep -q "AgentServer is listening on port $TEST_SERVER_PORT" "$TEST_TMP_DIR/server.log"; then
       READY=1; break
     fi
     sleep 1
