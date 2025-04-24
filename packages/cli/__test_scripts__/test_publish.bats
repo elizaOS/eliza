@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 
 setup() {
-  export TEST_TMP_DIR="$(mktemp -d)"
+  export TEST_TMP_DIR="$(mktemp -d /var/tmp/eliza-test-publish-XXXXXX)"
   # Guarantee CLI is built
   if [ ! -f "$(cd ../dist && pwd)/index.js" ]; then
     (cd .. && bun run build)
@@ -11,7 +11,9 @@ setup() {
 }
 
 teardown() {
-  rm -rf "$TEST_TMP_DIR"
+  if [ -n "$TEST_TMP_DIR" ] && [[ "$TEST_TMP_DIR" == /var/tmp/eliza-test-* ]]; then
+    rm -rf "$TEST_TMP_DIR"
+  fi
 }
 
 # Checks that the publish help command displays usage information (matching actual CLI output).
