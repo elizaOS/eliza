@@ -1,5 +1,14 @@
 import { anthropic } from '@ai-sdk/anthropic';
 import { getProviderBaseURL } from '@elizaos/core';
+import type {
+  GenerateTextParams,
+  IAgentRuntime,
+  ObjectGenerationParams,
+  Plugin,
+} from '@elizaos/core';
+import { ModelType, logger } from '@elizaos/core';
+import { generateText } from 'ai';
+import { ensureReflectionProperties, extractAndParseJSON } from './utils';
 
 /**
  * Returns the base URL for the Anthropic API, using the runtime configuration or a default if not specified.
@@ -10,16 +19,6 @@ import { getProviderBaseURL } from '@elizaos/core';
 function getBaseURL(runtime: IAgentRuntime): string {
   return getProviderBaseURL(runtime, 'anthropic', 'https://api.anthropic.com/v1/');
 }
-
-import type {
-  ObjectGenerationParams,
-  GenerateTextParams,
-  Plugin,
-  IAgentRuntime,
-} from '@elizaos/core';
-import { ModelType, logger } from '@elizaos/core';
-import { generateText } from 'ai';
-import { extractAndParseJSON, ExtractedJSON, ensureReflectionProperties } from './utils';
 
 /**
  * Plugin for Anthropic.
