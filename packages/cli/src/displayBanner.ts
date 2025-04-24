@@ -3,8 +3,10 @@
 import fs from 'node:fs';
 import path, { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execa } from 'execa';
 
 // Function to get the package version
+// --- Utility: Get local CLI version from package.json ---
 export function getVersion(): string {
   // For ESM modules we need to use import.meta.url instead of __dirname
   const __filename = fileURLToPath(import.meta.url);
@@ -28,7 +30,38 @@ export function getVersion(): string {
   return version;
 }
 
-export function displayBanner() {
+// --- Utility: Check if terminal supports UTF-8 ---
+export function isUtf8Locale() {
+  for (const key of ['LC_ALL', 'LC_CTYPE', 'LANG', 'LANGUAGE']) {
+    const v = process.env[key];
+    if (typeof v === 'string' && /UTF-?8/i.test(v)) {
+      return true;
+    }
+  }
+  return false;
+}
+// --- Utility: Check for latest CLI version and notify user ---
+async function checkForCliUpdate(currentVersion: string) {
+  try {
+    const { stdout: latestVersionRaw } = await execa('npm', ['view', '@elizaos/cli', 'version']);
+    const latestVersion = latestVersionRaw.trim();
+    if (latestVersion && latestVersion !== currentVersion) {
+      console.log(
+        `\x1b[33m\nA new version of elizaOS CLI is available: ${latestVersion} (current: ${currentVersion})\x1b[0m`
+      );
+      console.log(`\x1b[32mUpdate with: npm i -g @elizaos/cli@latest\x1b[0m\n`);
+    }
+  } catch (err) {
+    // Fail silently, do not block banner
+  }
+}
+
+// --- Main: Display banner and version, then check for updates ---
+export async function displayBanner() {
+  if (!isUtf8Locale()) {
+    // Terminal does not support UTF-8, skip banner
+    return;
+  }
   // Color ANSI escape codes
   const b = '\x1b[38;5;27m';
   const lightblue = '\x1b[38;5;51m';
@@ -101,4 +134,7 @@ ${b}⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⢾⡃⠀⠀${w}
     // log the version
     console.log(`${versionColor}Version: ${version}${r}`);
   }
+
+  // Notify user if a new CLI version is available
+  await checkForCliUpdate(version);
 }

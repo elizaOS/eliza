@@ -356,6 +356,11 @@ export async function startAgent(
 
     // Node.js environment: load from .env file
     const envPath = findNearestEnvFile();
+    if (envPath) {
+      console.log(`[elizaos] Resolved .env file from: ${envPath}`);
+    } else {
+      console.log('[elizaos] No .env file found in any parent directory.');
+    }
 
     // Load the .env file into process.env synchronously
     try {
