@@ -241,63 +241,8 @@ export default function CharacterForm({
     }
   };
 
-  const handleVoiceModelChange = (value: string, name: string) => {
-    if (name.startsWith('settings.')) {
-      const path = name.substring(9); // Remove 'settings.' prefix
-
-      if (setCharacterValue.updateSetting) {
-        // Use the specialized method if available
-        setCharacterValue.updateSetting(path, value);
-
-        // Handle voice model change and required plugins
-        if (path === 'voice.model' && value) {
-          const voiceModel = getVoiceModelByValue(value);
-          if (voiceModel) {
-            const currentPlugins = Array.isArray(characterValue.plugins)
-              ? [...characterValue.plugins]
-              : [];
-            const previousVoiceModel = getVoiceModelByValue(characterValue.settings?.voice?.model);
-
-            // Get all voice-related plugins
-            const voicePlugins = getAllRequiredPlugins();
-
-            // Get the required plugin for the new voice model
-            const requiredPlugin = providerPluginMap[voiceModel.provider];
-
-            // Filter out all voice-related plugins
-            const filteredPlugins = currentPlugins.filter(
-              (plugin) => !voicePlugins.includes(plugin)
-            );
-
-            // Add the required plugin for the selected voice model
-            const newPlugins = [...filteredPlugins];
-            if (requiredPlugin && !filteredPlugins.includes(requiredPlugin)) {
-              newPlugins.push(requiredPlugin);
-            }
-
-            // Update the plugins
-            if (setCharacterValue.setPlugins) {
-              setCharacterValue.setPlugins(newPlugins);
-            } else if (setCharacterValue.updateField) {
-              setCharacterValue.updateField('plugins', newPlugins);
-            }
-
-            // Show toast notification
-            if (previousVoiceModel?.provider !== voiceModel.provider) {
-              toast({
-                title: 'Plugin Updated',
-                description: `${requiredPlugin} plugin has been set for the selected voice model.`,
-              });
-            }
-          }
-        }
-      } else {
-        // Fall back to generic updateField
-        setCharacterValue.updateField(name, value);
-      }
-    } else {
-      setCharacterValue.updateField(name, value);
-    }
+  const handleSelectFieldChange = (value: string, name: string) => {
+    setCharacterValue.updateField(name, value);
   };
 
   const updateArray = (path: string, newData: string[]) => {
@@ -411,7 +356,7 @@ export default function CharacterForm({
         <Select
           name={field.name}
           value={field.getValue(characterValue)}
-          onValueChange={(value) => handleVoiceModelChange(value, field.name)}
+          onValueChange={(value) => handleSelectFieldChange(value, field.name)}
         >
           <SelectTrigger>
             <SelectValue
