@@ -3,11 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getGitHubCredentials } from '@/src/utils/github';
 import { handleError } from '@/src/utils/handle-error';
-import {
-  publishToGitHub,
-  testPublishToGitHub,
-  testPublishToNpm,
-} from '@/src/utils/plugin-publisher';
+import { publishToGitHub, testPublishToGitHub, testPublishToNpm } from '@/src/utils/publisher';
 import {
   getRegistrySettings,
   initializeDataDir,
