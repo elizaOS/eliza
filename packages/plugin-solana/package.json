@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-solana",
-  "version": "1.0.0-beta.35",
+  "version": "1.0.0-beta.36",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -22,7 +22,7 @@
     "dist"
   ],
   "dependencies": {
-    "@elizaos/core": "^1.0.0-beta.35",
+    "@elizaos/core": "^1.0.0-beta.36",
     "@solana/spl-token": "0.4.9",
     "@solana/web3.js": "^1.98.0",
     "bignumber.js": "9.1.2",
@@ -47,5 +47,5 @@
     "form-data": "4.0.2",
     "whatwg-url": "7.1.0"
   },
-  "gitHead": "917e8b28d02cc09316dd61d1fb29c683f29689ef"
+  "gitHead": "f7376b4c53928ae1f229affe7d298cb4aebe867c"
 }
