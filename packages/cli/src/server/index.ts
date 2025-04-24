@@ -500,6 +500,8 @@ export class AgentServer {
         console.log(
           `\x1b[32mStartup successful!\nGo to the dashboard at \x1b[1mhttp://localhost:${port}\x1b[22m\x1b[0m`
         );
+        // Add log for test readiness
+        console.log(`AgentServer is listening on port ${port}`);
 
         logger.success(
           `REST API bound to 0.0.0.0:${port}. If running locally, access it at http://localhost:${port}.`
