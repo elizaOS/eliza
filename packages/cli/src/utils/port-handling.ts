@@ -6,17 +6,17 @@ import net from 'node:net';
  * @returns Promise<boolean> indicating if the port is free.
  */
 export function isPortFree(port: number): Promise<boolean> {
-    return new Promise((resolve) => {
-        const server = net.createServer();
+  return new Promise((resolve) => {
+    const server = net.createServer();
 
-        server.once('error', () => resolve(false));
-        server.once('listening', () => {
-            server.close();
-            resolve(true);
-        });
-
-        server.listen(port);
+    server.once('error', () => resolve(false));
+    server.once('listening', () => {
+      server.close();
+      resolve(true);
     });
+
+    server.listen(port);
+  });
 }
 
 /**
@@ -25,9 +25,9 @@ export function isPortFree(port: number): Promise<boolean> {
  * @returns Promise<number> The next available port.
  */
 export async function findNextAvailablePort(startPort: number): Promise<number> {
-    let port = startPort;
-    while (!(await isPortFree(port))) {
-        port++;
-    }
-    return port;
+  let port = startPort;
+  while (!(await isPortFree(port))) {
+    port++;
+  }
+  return port;
 }

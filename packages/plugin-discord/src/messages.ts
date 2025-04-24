@@ -89,12 +89,17 @@ export class MessageManager {
     const channelId = message.channel.id;
     const roomId = createUniqueUuid(this.runtime, channelId);
 
+    // can't be null
     let type: ChannelType;
     let serverId: string | undefined;
 
     if (message.guild) {
       const guild = await message.guild.fetch();
       type = await this.getChannelType(message.channel as Channel);
+      if (type === null) {
+        // usually a forum type post
+        logger.warn('null channel type, discord message', message)
+      }
       serverId = guild.id;
     } else {
       type = ChannelType.DM;
@@ -154,6 +159,9 @@ export class MessageManager {
           inReplyTo: message.reference?.messageId
             ? createUniqueUuid(this.runtime, message.reference?.messageId)
             : undefined,
+        },
+        metadata: {
+          entityName: name,
         },
         createdAt: message.createdTimestamp,
       };

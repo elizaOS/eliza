@@ -1,7 +1,10 @@
 ---
 sidebar_position: 2
 title: Quickstart Guide
-description: Get started quickly with Eliza, from basic setup to advanced development
+description: Get started quickly with ElizaOS - from installation to running your first AI agent
+keywords:
+  [quickstart, installation, setup, configuration, CLI, agents, plugins, development, deployment]
+image: /img/eliza_banner.jpg
 ---
 
 # Quickstart Guide

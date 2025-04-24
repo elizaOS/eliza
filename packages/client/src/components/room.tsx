@@ -9,7 +9,7 @@ import { ChatMessageList } from '@/components/ui/chat/chat-message-list';
 import { GROUP_CHAT_SOURCE, USER_NAME } from '@/constants';
 import { useAgents, useGroupMessages, useRooms } from '@/hooks/use-query-hooks';
 import SocketIOManager from '@/lib/socketio-manager';
-import { getEntityId, moment } from '@/lib/utils';
+import { getEntityId, moment, randomUUID } from '@/lib/utils';
 import { WorldManager } from '@/lib/world-manager';
 import type { IAttachment } from '@/types';
 import type { Agent, Content, UUID } from '@elizaos/core';
@@ -357,6 +357,8 @@ export default function Page({ serverId }: { serverId: UUID }) {
     e.preventDefault();
     if (!input) return;
 
+    const messageId = randomUUID();
+
     // Always add the user's message immediately to the UI before sending it to the server
     const userMessage: ContentWithUser = {
       text: input,
@@ -366,7 +368,7 @@ export default function Page({ serverId }: { serverId: UUID }) {
       senderName: USER_NAME,
       roomId: serverId,
       source: GROUP_CHAT_SOURCE,
-      id: crypto.randomUUID(), // Add a unique ID for React keys and duplicate detection
+      id: messageId, // Add a unique ID for React keys and duplicate detection
     };
 
     console.log('[Chat] Adding user message to UI:', userMessage);

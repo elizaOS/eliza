@@ -418,14 +418,52 @@ const postGeneratedHandler = async ({
     agentId: runtime.agentId,
     roomId: roomId,
     content: {},
+    metadata: {
+      entityName: runtime.character.name,
+    },
   };
 
+  // generate thought of which providers to use using messageHandlerTemplate
+
   // Compose state with relevant context for tweet generation
-  const state = await runtime.composeState(message, null, [
+  let state = await runtime.composeState(message, null, [
+    'PROVIDERS',
     'CHARACTER',
-    'RECENT_MESSAGES',
+    //'RECENT_MESSAGES',
     'ENTITIES',
   ]);
+
+  // get twitterUserName
+  const entity = await runtime.getEntityById(runtime.agentId);
+  if (entity?.metadata?.twitter?.userName) {
+    state.values.twitterUserName = entity?.metadata?.twitter?.userName;
+  }
+
+  const prompt = composePromptFromState({
+    state,
+    template: runtime.character.templates?.messageHandlerTemplate || messageHandlerTemplate,
+  });
+
+  let responseContent: Content | null = null;
+
+  // Retry if missing required fields
+  let retries = 0;
+  const maxRetries = 3;
+  while (retries < maxRetries && (!responseContent?.thought || !responseContent?.actions)) {
+    const response = await runtime.useModel(ModelType.TEXT_SMALL, {
+      prompt,
+    });
+
+    responseContent = parseJSONObjectFromText(response) as Content;
+
+    retries++;
+    if (!responseContent?.thought && !responseContent?.actions) {
+      logger.warn('*** Missing required fields, retrying... ***');
+    }
+  }
+
+  // update stats with correct providers
+  state = await runtime.composeState(message, responseContent.providers);
 
   // Generate prompt for tweet content
   const postPrompt = composePromptFromState({
@@ -474,6 +512,54 @@ const postGeneratedHandler = async ({
   // 		logger.error("Error fetching media for tweet:", error);
   // 	}
   // }
+
+  // have we posted it before?
+  const RM = state.providerData?.find((pd) => pd.providerName === 'RECENT_MESSAGES');
+  if (RM) {
+    for (const m of RM.data.recentMessages) {
+      if (cleanedText === m.content.text) {
+        logger.log("we've already recently posted that, retrying", cleanedText);
+        postGeneratedHandler({
+          runtime,
+          callback,
+          worldId,
+          userId,
+          roomId,
+          source,
+        });
+        return; // don't call callbacks
+      }
+    }
+  }
+
+  // GPT 3.5/4: /(i\s+do\s+not|i'?m\s+not)\s+(feel\s+)?comfortable\s+generating\s+that\s+type\s+of\s+content|(inappropriate|explicit|offensive|communicate\s+respectfully|aim\s+to\s+(be\s+)?helpful)/i
+  const oaiRefusalRegex =
+    /((i\s+do\s+not|i'm\s+not)\s+(feel\s+)?comfortable\s+generating\s+that\s+type\s+of\s+content)|(inappropriate|explicit|respectful|offensive|guidelines|aim\s+to\s+(be\s+)?helpful|communicate\s+respectfully)/i;
+  const anthropicRefusalRegex =
+    /(i'?m\s+unable\s+to\s+help\s+with\s+that\s+request|due\s+to\s+safety\s+concerns|that\s+may\s+violate\s+(our\s+)?guidelines|provide\s+helpful\s+and\s+safe\s+responses|let'?s\s+try\s+a\s+different\s+direction|goes\s+against\s+(our\s+)?use\s+case\s+policies|ensure\s+safe\s+and\s+responsible\s+use)/i;
+  const googleRefusalRegex =
+    /(i\s+can'?t\s+help\s+with\s+that|that\s+goes\s+against\s+(our\s+)?(policy|policies)|i'?m\s+still\s+learning|response\s+must\s+follow\s+(usage|safety)\s+policies|i'?ve\s+been\s+designed\s+to\s+avoid\s+that)/i;
+  //const cohereRefusalRegex = /(request\s+cannot\s+be\s+processed|violates\s+(our\s+)?content\s+policy|not\s+permitted\s+by\s+usage\s+restrictions)/i
+  const generalRefusalRegex =
+    /(response\s+was\s+withheld|content\s+was\s+filtered|this\s+request\s+cannot\s+be\s+completed|violates\s+our\s+safety\s+policy|content\s+is\s+not\s+available)/i;
+
+  if (
+    oaiRefusalRegex.test(cleanedText) ||
+    anthropicRefusalRegex.test(cleanedText) ||
+    googleRefusalRegex.test(cleanedText) ||
+    generalRefusalRegex.test(cleanedText)
+  ) {
+    logger.log('got prompt moderation refusal, retrying', cleanedText);
+    postGeneratedHandler({
+      runtime,
+      callback,
+      worldId,
+      userId,
+      roomId,
+      source,
+    });
+    return; // don't call callbacks
+  }
 
   // Create the response memory
   const responseMessages = [
@@ -533,13 +619,13 @@ const syncSingleUser = async (
   type: ChannelType,
   source: string
 ) => {
-  const entity = await runtime.getEntityById(entityId);
-  logger.info(`Syncing user: ${entity.metadata[source].username || entity.id}`);
-
   try {
+    const entity = await runtime.getEntityById(entityId);
+    logger.info(`Syncing user: ${entity?.metadata[source]?.username || entityId}`);
+
     // Ensure we're not using WORLD type and that we have a valid channelId
     if (!channelId) {
-      logger.warn(`Cannot sync user ${entity.id} without a valid channelId`);
+      logger.warn(`Cannot sync user ${entity?.id} without a valid channelId`);
       return;
     }
 
@@ -549,8 +635,8 @@ const syncSingleUser = async (
     await runtime.ensureConnection({
       entityId,
       roomId,
-      userName: entity.metadata[source].username || entity.id,
-      name: entity.metadata[source].name || entity.metadata[source].username || `User${entity.id}`,
+      userName: entity?.metadata[source].username || entityId,
+      name: entity?.metadata[source].name || entity?.metadata[source].username || `User${entityId}`,
       source,
       channelId,
       serverId,
@@ -558,7 +644,7 @@ const syncSingleUser = async (
       worldId,
     });
 
-    logger.success(`Successfully synced user: ${entity.id}`);
+    logger.success(`Successfully synced user: ${entity?.id}`);
   } catch (error) {
     logger.error(`Error syncing user: ${error instanceof Error ? error.message : String(error)}`);
   }

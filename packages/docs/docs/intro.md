@@ -2,6 +2,19 @@
 sidebar_position: 1
 title: Introduction to Eliza
 description: A powerful multi-agent simulation framework for creating and managing autonomous AI agents
+keywords:
+  [
+    introduction,
+    AI agents,
+    multi-agent,
+    framework,
+    TypeScript,
+    autonomous agents,
+    simulation,
+    RAG,
+    plugins,
+  ]
+image: /img/eliza_banner.jpg
 ---
 
 # Introduction to Eliza

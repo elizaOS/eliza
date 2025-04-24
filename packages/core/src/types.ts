@@ -104,6 +104,7 @@ export const ServiceType = {
   EMAIL: 'email',
   TEE: 'tee',
   TASK: 'task',
+  INSTRUMENTATION: 'instrumentation',
 } as const;
 
 /**
@@ -644,7 +645,11 @@ export interface Character {
   adjectives?: string[];
 
   /** Optional knowledge base */
-  knowledge?: (string | { path: string; shared?: boolean } | { directory: string; shared?: boolean })[];
+  knowledge?: (
+    | string
+    | { path: string; shared?: boolean }
+    | { directory: string; shared?: boolean }
+  )[];
 
   /** Available plugins */
   plugins?: string[];
@@ -1538,6 +1543,9 @@ export enum EventType {
   // Evaluator events
   EVALUATOR_STARTED = 'EVALUATOR_STARTED',
   EVALUATOR_COMPLETED = 'EVALUATOR_COMPLETED',
+
+  // Model events
+  MODEL_USED = 'MODEL_USED',
 }
 
 /**
@@ -1640,6 +1648,20 @@ export interface EvaluatorEventPayload extends EventPayload {
 }
 
 /**
+ * Model event payload type
+ */
+export interface ModelEventPayload extends EventPayload {
+  provider: string;
+  type: ModelTypeName;
+  prompt: string;
+  tokens?: {
+    prompt: number;
+    completion: number;
+    total: number;
+  };
+}
+
+/**
  * Represents the parameters for a message received handler.
  * @typedef {Object} MessageReceivedHandlerParams
  * @property {IAgentRuntime} runtime - The agent runtime associated with the message.
@@ -1675,6 +1697,7 @@ export interface EventPayloadMap {
   [EventType.ACTION_COMPLETED]: ActionEventPayload;
   [EventType.EVALUATOR_STARTED]: EvaluatorEventPayload;
   [EventType.EVALUATOR_COMPLETED]: EvaluatorEventPayload;
+  [EventType.MODEL_USED]: ModelEventPayload;
 }
 
 /**

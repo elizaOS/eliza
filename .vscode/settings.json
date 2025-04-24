@@ -20,6 +20,6 @@
   "javascript.suggest.autoImports": true,
   "typescript.suggest.autoImports": true,
   "[typescriptreact]": {
-    "editor.defaultFormatter": "biomejs.biome"
+    "editor.defaultFormatter": "vscode.typescript-language-features"
   }
 }

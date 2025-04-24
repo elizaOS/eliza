@@ -74,7 +74,7 @@ export default function MultiSelectCombobox({
   return (
     <div className={`relative w-80 ${className}`} ref={comboboxRef}>
       <div
-        className={`flex items-center gap-2 border p-2 bg-transparent rounded cursor-pointer ${isOpen ? 'border-gray-300' : 'border-input'}`}
+        className={`flex items-center gap-2 border p-2 bg-transparent rounded cursor-pointer ${isOpen ? 'border ' : 'border-input'}`}
         onClick={() => setIsOpen(!isOpen)}
       >
         <div className="flex flex-wrap gap-1 w-full">
@@ -112,7 +112,7 @@ export default function MultiSelectCombobox({
         <ChevronDown size={16} />
       </div>
       {isOpen && (
-        <Card className="absolute left-0 mt-2 w-full shadow-md border border-gray-500 rounded z-40 max-h-60 overflow-y-auto">
+        <Card className="absolute left-0 mt-2 w-full shadow-md border border rounded z-40 max-h-60 overflow-y-auto">
           {options.map((option, index) => (
             <div
               key={index}

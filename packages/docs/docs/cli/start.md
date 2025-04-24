@@ -1,5 +1,9 @@
 ---
 sidebar_position: 3
+title: Start Command
+description: Launch and manage ElizaOS projects and agents in production mode
+keywords: [start, production, deployment, configuration, runtime, services, agents]
+image: /img/cli.jpg
 ---
 
 # Start Command
@@ -14,12 +18,13 @@ elizaos start [options]
 
 ## Options
 
-| Option               | Description                                                          |
-| -------------------- | -------------------------------------------------------------------- |
-| `-p, --port <port>`  | Port to listen on (default: 3000)                                    |
-| `-c, --configure`    | Reconfigure services and AI models (skips using saved configuration) |
-| `--character <path>` | Path or URL to character file to use instead of default              |
-| `--build`            | Build the project before starting                                    |
+| Option                           | Description                                              |
+| -------------------------------- | -------------------------------------------------------- |
+| `-c, --configure`                | Reconfigure services and AI models                       |
+| `-char, --character <character>` | Path or URL to character file to use instead of default  |
+| `-b, --build`                    | Build the project before starting                        |
+| `-chars, --characters <paths>`   | Multiple character configuration files (comma-separated) |
+| `-p, --port <port>`              | Port to listen on (default: 3000)                        |
 
 ## Production Features
 
@@ -107,4 +112,3 @@ This will compile your TypeScript files and prepare the project for execution.
 
 - [`dev`](./dev.md): Run in development mode with hot reloading
 - [`env`](./env.md): Configure environment variables
-- [`

@@ -1,5 +1,9 @@
 ---
-sidebar_position: 9
+sidebar_position: 6
+title: Test Command
+description: Run and manage tests for ElizaOS projects and plugins
+keywords: [testing, unit tests, integration tests, Jest, test runner, development]
+image: /img/cli.jpg
 ---
 
 # Test Command
@@ -14,19 +18,20 @@ npx @elizaos/cli test [options]
 
 ## Options
 
-| Option             | Description                                            |
-| ------------------ | ------------------------------------------------------ |
-| `--project`, `-p`  | Path to project directory (default: current directory) |
-| `--file`, `-f`     | Specific test file to run                              |
-| `--suite`          | Specific test suite to run                             |
-| `--test`, `-t`     | Specific test to run                                   |
-| `--watch`, `-w`    | Watch files and rerun tests on changes                 |
-| `--verbose`        | Show detailed test output                              |
-| `--json`           | Output results in JSON format                          |
-| `--timeout`        | Timeout in milliseconds for each test (default: 5000)  |
-| `--fail-fast`      | Stop after first test failure                          |
-| `--no-compilation` | Skip TypeScript compilation                            |
-| `--config`, `-c`   | Path to test configuration file                        |
+| Option                       | Description                                           |
+| ---------------------------- | ----------------------------------------------------- |
+| `-p, --port <port>`          | Port to listen on                                     |
+| `-pl, --plugin <name>`       | Name of plugin to test                                |
+| `-sp, --skip-plugins`        | Skip plugin tests                                     |
+| `-spt, --skip-project-tests` | Skip project tests                                    |
+| `-sb, --skip-build`          | Skip building before running tests                    |
+| `--verbose`                  | Show detailed test output                             |
+| `--json`                     | Output results in JSON format                         |
+| `--timeout`                  | Timeout in milliseconds for each test (default: 5000) |
+| `--fail-fast`                | Stop after first test failure                         |
+| `--no-compilation`           | Skip TypeScript compilation                           |
+| `--config`, `-c`             | Path to test configuration file                       |
+| `--config`, `-c`             | Path to test configuration file                       |
 
 ## Test Structure
 

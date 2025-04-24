@@ -20,123 +20,173 @@ This is useful for trying out commands without installing the CLI globally.
 
 ## Commands
 
-### Project Creation and Management
+Below is a comprehensive reference for all ElizaOS CLI commands, including their options, arguments, and subcommands. For the most up-to-date usage, run `elizaos [command] --help`.
+
+### Project Creation
 
 #### `elizaos create [name]`
 
-Initializes a new ElizaOS project or plugin.
+Initialize a new project or plugin.
 
-- **`[name]`**: (Optional) The name for the new project or plugin directory
+- **Arguments:**
+  - `[name]`: Name for the project or plugin (optional)
 - **Options:**
-  - `-d, --dir <dir>`: Specify the directory for creation (default: current directory)
-  - `-y, --yes`: Skip confirmation prompts
-  - `-t, --type <type>`: Specify 'project' or 'plugin' to create
+  - `-d, --dir <dir>`: Installation directory (default: `.`)
+  - `-y, --yes`: Skip confirmation (default: `false`)
+  - `-t, --type <type>`: Type of template to use (project or plugin)
 
-#### `elizaos project ...`
-
-Manages project-specific configurations and plugins.
-
-- **`list-plugins`**: Lists available plugins
-  - `-t, --type <type>`: Filter by plugin type (adapter, client, plugin)
-- **`add-plugin <plugin>`**: Adds a plugin to the current project
-  - `--no-env-prompt`: Skip prompting for environment variables
-- **`remove-plugin <plugin>`**: Removes a plugin from the current project
-
-#### `elizaos setup-monorepo`
-
-Clones the main `elizaOS/eliza` monorepo locally.
-
-- **Options:**
-  - `-b, --branch <branch>`: Specify branch (default: 'v2-develop')
-  - `-d, --dir <directory>`: Specify destination directory (default: './eliza')
-
-### Plugin Development
-
-#### `elizaos plugin ...`
-
-Manages plugin development workflows.
-
-- **`publish`**: Publishes the plugin to a registry
-  - `-r, --registry <registry>`: Target registry (default: 'elizaOS/registry')
-  - `-n, --npm`: Publish to npm instead of GitHub registry
-  - `-t, --test`: Run in test mode without making changes
-  - `-p, --platform <platform>`: Specify platform compatibility
-
-### Agent Management
-
-#### `elizaos agent ...`
-
-Interacts with the ElizaOS Agent Runtime API.
-
-- **`list`** (alias: `ls`): Lists all agents
-  - `-j, --json`: Output in JSON format
-- **`get`** (alias: `g`): Gets details about a specific agent
-  - `-n, --name <name>`: Agent ID, name, or index
-  - `-j, --json`: Output in JSON format
-  - `-o, --output <file>`: Save configuration to file
-- **`start`** (alias: `s`): Starts a new agent instance
-  - `-n, --name <name>`: Use pre-defined character name
-  - `-j, --json <json>`: Provide character definition as JSON
-  - `-p, --path <path>`: Load definition from local file
-  - `-r, --remote <url>`: Load definition from remote URL
-- **`stop`** (alias: `st`): Stops a specific agent
-  - `-n, --name <name>`: Agent to stop
-- **`restart`** (alias: `r`): Restarts a specific agent
-  - `-n, --name <name>`: Agent to restart
-
-### Server Management
-
-#### `elizaos start`
-
-Starts the main ElizaOS server process.
-
-- **Options:**
-  - `--configure`: Force reconfiguration
-  - `-p, --port <port>`: Specify server port (default: 3000)
-  - `-c, --character <path>`: Start a single agent using specified file
-  - `-d, --data-dir <path>`: Specify data directory for persistence
-
-#### `elizaos stop`
-
-Stops all running ElizaOS processes initiated by the CLI.
+### Development
 
 #### `elizaos dev`
 
-Starts the ElizaOS server in development mode with hot reloading.
+Start the project or plugin in development mode and rebuild on file changes.
 
 - **Options:**
-  - `-p, --port <port>`: Specify development server port
+  - `-c, --configure`: Reconfigure services and AI models
+  - `-char, --character <character>`: Path or URL to character file
+  - `-b, --build`: Build the project before starting
 
-### Updates and Maintenance
+### Environment Management
 
-#### `elizaos update`
+#### `elizaos env <subcommand>`
 
-Updates all `@elizaos/*` dependencies in the current project.
+Manage environment variables and secrets.
+
+- **Subcommands:**
+  - `list`: List all environment variables
+    - Options: `--global`, `--local`
+  - `edit-global`: Edit global environment variables
+    - Options: `-y, --yes`
+  - `edit-local`: Edit local environment variables
+    - Options: `-y, --yes`
+  - `reset`: Reset all environment variables
+    - Options: `-y, --yes`
+  - `set-path <path>`: Set a custom path for the global environment file
+    - Options: `-y, --yes`
+  - `interactive`: Interactive environment variable management
+    - Options: `-y, --yes`
+
+### Monorepo Setup
+
+#### `elizaos setup-monorepo`
+
+Clone ElizaOS monorepo from a specific branch (defaults to v2-develop).
 
 - **Options:**
-  - `--check`: Check for updates without installing
-  - `--skip-build`: Skip automatic build after updating
+  - `-b, --branch <branch>`: Branch to install (default: `v2-develop`)
+  - `-d, --dir <directory>`: Destination directory (default: `./eliza`)
 
-#### `elizaos update-cli`
+### Plugin Management
 
-Updates the globally installed CLI package to the latest version.
+#### `elizaos plugin <subcommand>`
+
+Manage an ElizaOS plugin.
+
+- **Subcommands:**
+  - `list` (aliases: `l`, `ls`): List all available plugins
+  - `add <plugin>` (alias: `install`): Add a plugin to the project
+    - Arguments: `<plugin>` (plugin name)
+    - Options: `-n, --no-env-prompt`, `-b, --branch <branchName>`
+  - `installed-plugins`: List plugins found in the project dependencies
+  - `remove <plugin>` (aliases: `delete`, `del`, `rm`): Remove a plugin from the project
+    - Arguments: `<plugin>` (plugin name)
+
+### Agent Management
+
+#### `elizaos agent <subcommand>`
+
+Manage ElizaOS agents.
+
+- **Subcommands:**
+  - `list` (alias: `ls`): List available agents
+    - Options: `-j, --json` (output as JSON)
+  - `get` (alias: `g`): Get agent details
+    - Options:
+      - `-n, --name <name>` (required): Agent id, name, or index number from list
+      - `-j, --json`: Output as JSON
+      - `-o, --output <file>`: Output to file (default: {name}.json)
+  - `start` (alias: `s`): Start an agent
+    - Options:
+      - `-n, --name <n>`: Character name to start the agent with
+      - `-j, --json <json>`: Character JSON string
+      - `--path <path>`: Local path to character JSON file
+      - `--remote-character <url>`: Remote URL to character JSON file
+  - `stop` (alias: `st`): Stop an agent
+    - Options:
+      - `-n, --name <name>` (required): Agent id, name, or index number from list
+  - `remove` (alias: `rm`): Remove an agent
+    - Options:
+      - `-n, --name <name>` (required): Agent id, name, or index number from list
+  - `set`: Update agent configuration
+    - Options:
+      - `-n, --name <name>` (required): Agent id, name, or index number from list
+      - `-c, --config <json>`: Agent configuration as JSON string
+      - `-f, --file <path>`: Path to agent configuration JSON file
+
+### Publishing
+
+#### `elizaos publish`
+
+Publish a plugin or project to the registry, GitHub, or npm.
+
+- **Options:**
+  - `-t, --test`: Run publish tests without actually publishing
+  - `-n, --npm`: Publish to npm
+  - `-s, --skip-registry`: Skip publishing to the registry
+
+### Agent/Server Management
+
+#### `elizaos start`
+
+Start the Eliza agent with configurable plugins and services.
+
+- **Options:**
+  - `-c, --configure`: Reconfigure services and AI models
+  - `-char, --character <character>`: Path or URL to character file
+  - `-b, --build`: Build the project before starting
+  - `-chars, --characters <paths>`: Multiple character configuration files
 
 ### Testing
 
 #### `elizaos test`
 
-Runs tests for the current project or plugin.
+Run tests for Eliza agent plugins.
 
 - **Options:**
-  - `-p, --port <port>`: Specify test server port
-  - `--plugin`: Force testing as a plugin
-  - `--skip-plugins`: Skip plugin-related tests
-  - `--skip-project-tests`: Skip project-specific tests
-  - `--skip-build`: Skip build step before testing
+  - `-p, --port <port>`: Port to listen on
+  - `-pl, --plugin <name>`: Name of plugin to test
+  - `-sp, --skip-plugins`: Skip plugin tests
+  - `-spt, --skip-project-tests`: Skip project tests
+  - `-sb, --skip-build`: Skip building before running tests
 
-### Environment Variables
+### Trusted Execution Environment (TEE) Management
 
-#### `elizaos env ...`
+#### `elizaos tee phala <subcommand>`
+
+Manage TEE deployments with Phala vendor.
+
+- **Subcommands:**
+  - `deploy`: Deploy to TEE cloud
+    - Options: `-t, --type <type>`, `-m, --mode <mode>`, `-n, --name <name>`, `-c, --compose <compose>`, `-e, --env <env...>`, `--env-file <envFile>`, `--debug`
+  - `teepods`: Query the teepods
+  - `images`: Query the images
+    - Options: `--teepod-id <teepodId>`
+  - `upgrade`: Upgrade the TEE CLI
+    - Options: `-m, --mode <mode>`, `--app-id <appId>`, `-e, --env <env...>`, `--env-file <envFile>`, `-c, --compose <compose>`
+  - `build-compose`: Build a docker-compose file for Eliza Agent
+    - Options: `-i, --image <name>`, `-u, --username <name>`, `-t, --tag <tag>`, `-c, --character <path>`, `-e, --env-file <path>`, `-v, --version <version>`
+  - `publish`: Publish Docker image to Docker Hub
+    - Options: `-i, --image <name>`, `-u, --username <name>`, `-t, --tag <tag>`
+
+### Updates
+
+#### `elizaos update`
+
+Update ElizaOS packages to the latest versions.
+
+- **Options:**
+  - `-c, --check`: Check for available updates without applying them
+  - `-sb, --skip-build`: Skip building after updating
 
 Manages environment variables in global and local scopes.
 
@@ -281,7 +331,7 @@ Projects contain agent configurations and code for building agent-based applicat
    my-agent-project/
    ├── src/               # Source code
    │   ├── index.ts       # Main entry point with character definition
-   │   └── plugin.ts      # Custom project plugin implementation
+   │   └── plugins.ts      # Custom project plugin implementation
    ├── data/              # Data storage directory
    │   └── uploads/       # For uploaded files
    ├── package.json       # Package configuration

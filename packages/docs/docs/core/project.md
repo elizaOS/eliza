@@ -1,3 +1,11 @@
+---
+sidebar_position: 2
+title: Project System
+description: Understanding ElizaOS projects - organizational structure for creating and deploying AI agents
+keywords: [projects, organization, configuration, character, agents, deployment]
+image: /img/project.jpg
+---
+
 # 📝 ElizaOS Projects
 
 Projects are the main organizational structure in ElizaOS, containing all the necessary components to create and deploy AI agents. A project can include one or more agents, each with their own character definition, plugins, and configurations.

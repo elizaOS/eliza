@@ -183,3 +183,34 @@ docker compose -f docker-compose-docs.yaml up --build
 ```
 
 The docusaurus server will get started and you can verify it locally at https://localhost:3000/eliza.
+
+### Automated Documentation Maintenance
+
+The documentation is automatically maintained through several automated processes:
+
+1. **Daily News Updates**
+
+   - A GitHub workflow runs daily at midnight UTC to fetch the latest news
+   - News files are fetched from `https://m3-org.github.io/ai-news/elizaos/md/`
+   - Last 14 days of news are maintained in `packages/docs/news/`
+   - Updates are automatically committed to the `autodocs` branch
+
+2. **LLMs Context Generation**
+
+   - The repomix tool generates consolidated documentation for LLM consumption
+   - Two main files are maintained:
+     - `llms-full.txt`: Complete technical documentation for development context
+     - `llms-community.txt`: Community-focused documentation and updates
+   - Configuration files:
+     - `scripts/repomix-full.config.json`: Technical documentation config
+     - `scripts/repomix.config.json`: Community documentation config
+
+3. **Scripts and Workflows**
+   - `scripts/update-news.sh`: Fetches news files and updates repomix config
+   - `.github/workflows/update-news.yml`: Runs the automated process daily
+   - Changes are committed directly to the `autodocs` branch
+
+To manually trigger the documentation update process, you can:
+
+1. Run the GitHub workflow manually through the Actions tab
+2. Run the update script locally: `./scripts/update-news.sh`

@@ -1,5 +1,11 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { createMockRuntime, createMockMemory, createMockState, MockRuntime, setupActionTest } from './test-utils';
+import {
+  createMockRuntime,
+  createMockMemory,
+  createMockState,
+  MockRuntime,
+  setupActionTest,
+} from './test-utils';
 import { IAgentRuntime, Memory, Provider, State, UUID, logger, ChannelType } from '@elizaos/core';
 
 // Import providers from source modules
@@ -48,7 +54,7 @@ describe('Choice Provider', () => {
         values: {
           choices: 'Option A|Option B|Option C',
         },
-      }
+      },
     });
     mockRuntime = setup.mockRuntime;
     mockMessage = setup.mockMessage;

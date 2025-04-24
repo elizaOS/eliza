@@ -1,6 +1,5 @@
 import { createGroq } from '@ai-sdk/groq';
 import type {
-  ImageDescriptionParams,
   ModelTypeName,
   ObjectGenerationParams,
   Plugin,
@@ -11,11 +10,21 @@ import {
   type GenerateTextParams,
   ModelType,
   type TokenizeTextParams,
+  getProviderBaseURL,
   logger,
 } from '@elizaos/core';
+
+/**
+ * Retrieves the Groq API base URL, using runtime settings or environment variables if available.
+ *
+ * @returns The resolved Groq API base URL.
+ */
+function getBaseURL(runtime: any): string {
+  const defaultBaseURL = runtime.getSetting('GROQ_BASE_URL') || 'https://api.groq.com/openai/v1';
+  return getProviderBaseURL(runtime, 'groq', defaultBaseURL);
+}
 import { generateObject, generateText } from 'ai';
 import { type TiktokenModel, encodingForModel } from 'js-tiktoken';
-import { z } from 'zod';
 
 /**
  * Runtime interface for the Groq plugin
@@ -29,55 +38,15 @@ interface Runtime {
 }
 
 /**
- * Gets the Cloudflare Gateway base URL for a specific provider if enabled
- * @param runtime The runtime environment
- * @param provider The model provider name
- * @returns The Cloudflare Gateway base URL if enabled, undefined otherwise
+ * Returns the appropriate Groq model name string for the specified model type.
+ *
+ * If environment variables for model names are set, they are used; otherwise, defaults are returned.
+ *
+ * @param model - The model type for which to retrieve the model name.
+ * @returns The model name string corresponding to the given {@link model}.
+ *
+ * @remark If an error occurs, returns the default model name 'llama-3.1-8b-instant'.
  */
-function getCloudflareGatewayBaseURL(runtime: Runtime, provider: string): string | undefined {
-  try {
-    const isCloudflareEnabled = runtime.getSetting('CLOUDFLARE_GW_ENABLED') === 'true';
-    const cloudflareAccountId = runtime.getSetting('CLOUDFLARE_AI_ACCOUNT_ID');
-    const cloudflareGatewayId = runtime.getSetting('CLOUDFLARE_AI_GATEWAY_ID');
-
-    const defaultUrl = 'https://api.groq.com/openai/v1';
-    logger.debug('Cloudflare Gateway Configuration:', {
-      isEnabled: isCloudflareEnabled,
-      hasAccountId: !!cloudflareAccountId,
-      hasGatewayId: !!cloudflareGatewayId,
-      provider: provider,
-    });
-
-    if (!isCloudflareEnabled) {
-      logger.debug('Cloudflare Gateway is not enabled');
-      return defaultUrl;
-    }
-
-    if (!cloudflareAccountId) {
-      logger.warn('Cloudflare Gateway is enabled but CLOUDFLARE_AI_ACCOUNT_ID is not set');
-      return defaultUrl;
-    }
-
-    if (!cloudflareGatewayId) {
-      logger.warn('Cloudflare Gateway is enabled but CLOUDFLARE_AI_GATEWAY_ID is not set');
-      return defaultUrl;
-    }
-
-    const baseURL = `https://gateway.ai.cloudflare.com/v1/${cloudflareAccountId}/${cloudflareGatewayId}/${provider.toLowerCase()}`;
-    logger.info('Using Cloudflare Gateway:', {
-      provider,
-      baseURL,
-      accountId: cloudflareAccountId,
-      gatewayId: cloudflareGatewayId,
-    });
-
-    return baseURL;
-  } catch (error) {
-    logger.error('Error in getCloudflareGatewayBaseURL:', error);
-    return 'https://api.groq.com/openai/v1';
-  }
-}
-
 function findModelName(model: ModelTypeName): TiktokenModel {
   try {
     const name =
@@ -289,7 +258,7 @@ export const groqPlugin: Plugin = {
         const frequency_penalty = 0.7;
         const presence_penalty = 0.7;
         const max_response_length = 8000;
-        const baseURL = getCloudflareGatewayBaseURL(runtime, 'groq');
+        const baseURL = getBaseURL(runtime);
         const groq = createGroq({
           apiKey: runtime.getSetting('GROQ_API_KEY'),
           fetch: runtime.fetch,
@@ -334,7 +303,7 @@ export const groqPlugin: Plugin = {
           runtime.getSetting('GROQ_LARGE_MODEL') ??
           runtime.getSetting('LARGE_MODEL') ??
           'llama-3.2-90b';
-        const baseURL = getCloudflareGatewayBaseURL(runtime, 'groq');
+        const baseURL = getBaseURL(runtime);
         const groq = createGroq({
           apiKey: runtime.getSetting('GROQ_API_KEY'),
           fetch: runtime.fetch,
@@ -364,7 +333,7 @@ export const groqPlugin: Plugin = {
       }
     ) => {
       try {
-        const baseURL = getCloudflareGatewayBaseURL(runtime, 'groq');
+        const baseURL = getBaseURL(runtime);
         const response = await fetch(`${baseURL}/images/generations`, {
           method: 'POST',
           headers: {
@@ -392,7 +361,7 @@ export const groqPlugin: Plugin = {
     [ModelType.TRANSCRIPTION]: async (runtime, audioBuffer: Buffer) => {
       try {
         logger.log('audioBuffer', audioBuffer);
-        const baseURL = getCloudflareGatewayBaseURL(runtime, 'groq');
+        const baseURL = getBaseURL(runtime);
 
         // Create a FormData instance
         const formData = new FormData();
@@ -429,7 +398,7 @@ export const groqPlugin: Plugin = {
     },
     [ModelType.OBJECT_SMALL]: async (runtime, params: ObjectGenerationParams) => {
       try {
-        const baseURL = getCloudflareGatewayBaseURL(runtime, 'groq');
+        const baseURL = getBaseURL(runtime);
         const groq = createGroq({
           apiKey: runtime.getSetting('GROQ_API_KEY'),
           baseURL,
@@ -452,7 +421,7 @@ export const groqPlugin: Plugin = {
     },
     [ModelType.OBJECT_LARGE]: async (runtime, params: ObjectGenerationParams) => {
       try {
-        const baseURL = getCloudflareGatewayBaseURL(runtime, 'groq');
+        const baseURL = getBaseURL(runtime);
         const groq = createGroq({
           apiKey: runtime.getSetting('GROQ_API_KEY'),
           baseURL,
@@ -482,8 +451,7 @@ export const groqPlugin: Plugin = {
           name: 'groq_test_url_and_api_key_validation',
           fn: async (runtime) => {
             try {
-              const baseURL =
-                getCloudflareGatewayBaseURL(runtime, 'groq') ?? 'https://api.groq.com/openai/v1';
+              const baseURL = getBaseURL(runtime) ?? 'https://api.groq.com/openai/v1';
               const response = await fetch(`${baseURL}/models`, {
                 headers: {
                   Authorization: `Bearer ${runtime.getSetting('GROQ_API_KEY')}`,

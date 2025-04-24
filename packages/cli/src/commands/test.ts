@@ -36,7 +36,7 @@ function checkIfLikelyPluginDir(dir: string): boolean {
   // Simple check based on common file patterns
   return (
     dir.includes('plugin') ||
-    existsSync(path.join(dir, 'src/plugin.ts')) ||
+    existsSync(path.join(dir, 'src/plugins.ts')) ||
     (existsSync(path.join(dir, 'src/index.ts')) && !existsSync(path.join(dir, 'src/agent.ts')))
   );
 }

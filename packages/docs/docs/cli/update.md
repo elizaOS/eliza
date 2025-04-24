@@ -1,5 +1,9 @@
 ---
 sidebar_position: 11
+title: Update Command
+description: Keep your ElizaOS installation current with the latest features and improvements
+keywords: [CLI, update, dependencies, versions, packages, maintenance]
+image: /img/cli.jpg
 ---
 
 # Update Command
@@ -17,7 +21,7 @@ elizaos update [options]
 | Option              | Description                                       |
 | ------------------- | ------------------------------------------------- |
 | `-c, --check`       | Check for available updates without applying them |
-| `-sb, --skip-build` | Skip building the project after updating          |
+| `-sb, --skip-build` | Skip building after updating                      |
 
 ## Update Process
 
@@ -146,6 +150,6 @@ bun install @elizaos/core@1.2.3
 
 ## Related Commands
 
-- [`build`](./build.md): Build your project manually
+- [Build](./start.md): Build your project manually
 - [`start`](./start.md): Start your project with updated dependencies
 - [`dev`](./dev.md): Run your project in development mode

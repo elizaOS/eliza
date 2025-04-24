@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 
 setup() {
-  export TEST_TMP_DIR="$(mktemp -d)"
+  export TEST_TMP_DIR="$(mktemp -d /var/tmp/eliza-test-env-XXXXXX)"
   export ELIZAOS_CMD="${ELIZAOS_CMD:-bun run "$(cd ../dist && pwd)/index.js"}"
   cd "$TEST_TMP_DIR"
 }
