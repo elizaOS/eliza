@@ -744,7 +744,46 @@ export async function createGitHubRepository(
   topics: string[] = ['elizaos-plugins']
 ): Promise<{ success: boolean; repoUrl?: string; message?: string }> {
   try {
-    // Create the repository
+    // Get the authenticated user to check repository existence
+    const userResponse = await fetch(`${GITHUB_API_URL}/user`, {
+      headers: {
+        Authorization: `token ${token}`,
+        Accept: 'application/vnd.github.v3+json',
+      },
+    });
+
+    if (userResponse.status !== 200) {
+      return { success: false, message: 'Failed to get authenticated user information' };
+    }
+
+    const userData = await userResponse.json();
+    const username = userData.login;
+
+    // First check if the repository already exists
+    const checkResponse = await fetch(`${GITHUB_API_URL}/repos/${username}/${repoName}`, {
+      headers: {
+        Authorization: `token ${token}`,
+        Accept: 'application/vnd.github.v3+json',
+      },
+    });
+
+    // If repo exists, return success
+    if (checkResponse.status === 200) {
+      const data = await checkResponse.json();
+      logger.info(`Repository already exists: ${data.html_url}`);
+      return { success: true, repoUrl: data.html_url };
+    }
+
+    // If status is not 404, there might be another issue
+    if (checkResponse.status !== 404) {
+      const errorData = await checkResponse.json();
+      return {
+        success: false,
+        message: `Error checking repository: ${checkResponse.status} ${checkResponse.statusText} - ${errorData.message || 'Unknown error'}`,
+      };
+    }
+
+    // If we get here, repo doesn't exist on GitHub (404), so create it
     const response = await fetch(`${GITHUB_API_URL}/user/repos`, {
       method: 'POST',
       headers: {
@@ -811,28 +850,49 @@ export async function pushToGitHub(
   try {
     // Check if git is initialized
     const gitDirExists = existsSync(path.join(cwd, '.git'));
-    if (!gitDirExists) {
+
+    // If we have a git directory, check if it has the correct remote
+    let hasCorrectRemote = false;
+    if (gitDirExists) {
+      try {
+        const { stdout: remoteUrl } = await execa('git', ['remote', 'get-url', 'origin'], { cwd });
+        // Check if the remote URL matches our target (ignoring the token part)
+        const sanitizedRepoUrl = repoUrl.replace(/https:\/\/.*?@/, 'https://');
+        const sanitizedRemoteUrl = remoteUrl.replace(/https:\/\/.*?@/, 'https://');
+        hasCorrectRemote = sanitizedRemoteUrl.includes(
+          sanitizedRepoUrl.replace(/^https:\/\/.*?@/, '')
+        );
+      } catch (error) {
+        // Remote doesn't exist or command failed, will set up remote later
+        hasCorrectRemote = false;
+      }
+    }
+
+    // If git is not initialized or remote doesn't match, start fresh
+    if (!gitDirExists || !hasCorrectRemote) {
+      if (gitDirExists) {
+        logger.info('Existing git repository has incorrect remote, reinitializing...');
+        await execa('rm', ['-rf', '.git'], { cwd });
+      }
+
       await execa('git', ['init'], { cwd });
       // Explicitly create and switch to main branch
       await execa('git', ['checkout', '-b', 'main'], { cwd });
       logger.info('Git repository initialized with main branch');
+
+      // Add remote
+      await execa('git', ['remote', 'add', 'origin', repoUrl], { cwd });
+      logger.info(`Added remote: ${repoUrl.replace(/\/\/.*?@/, '//***@')}`);
     } else {
       // Make sure we're on the main branch
       try {
         await execa('git', ['rev-parse', '--verify', branch], { cwd });
+        await execa('git', ['checkout', branch], { cwd });
       } catch (error) {
         // Branch doesn't exist, create it
         await execa('git', ['checkout', '-b', branch], { cwd });
         logger.info(`Created and switched to ${branch} branch`);
       }
-    }
-
-    // Add remote if it doesn't exist
-    try {
-      await execa('git', ['remote', 'get-url', 'origin'], { cwd });
-    } catch (error) {
-      await execa('git', ['remote', 'add', 'origin', repoUrl], { cwd });
-      logger.info(`Added remote: ${repoUrl}`);
     }
 
     // Add all files
