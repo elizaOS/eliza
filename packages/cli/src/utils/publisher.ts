@@ -141,6 +141,14 @@ export async function testPublishToGitHub(
     }
     logger.info('✓ GitHub token is valid');
 
+    // For projects, we only need to check GitHub token validity
+    if (packageJson.packageType === 'project') {
+      logger.info('✓ Project validation complete - GitHub token is valid');
+      return true;
+    }
+
+    // The following tests are only for plugins that need registry updates
+
     // Test registry access
     const settings = await getRegistrySettings();
     const [registryOwner, registryRepo] = settings.defaultRegistry.split('/');
@@ -319,6 +327,24 @@ export async function publishToGitHub(
       return false;
     }
     logger.success('Successfully pushed code to GitHub repository');
+
+    // For projects, we're done - skip registry update
+    if (packageJson.packageType === 'project') {
+      logger.info('Project published to GitHub successfully.');
+      return {
+        success: true,
+        prUrl: repoResult.repoUrl,
+      };
+    }
+  }
+
+  // The following code is for plugin registry updates only
+  // Skip if we're publishing a project
+  if (packageJson.packageType === 'project') {
+    if (isTest) {
+      logger.info('Test successful - project would be published to GitHub only');
+    }
+    return true;
   }
 
   const settings = await getRegistrySettings();
