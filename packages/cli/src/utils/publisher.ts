@@ -12,6 +12,8 @@ import {
   getFileContent,
   updateFile,
   ensureDirectory,
+  createGitHubRepository,
+  pushToGitHub,
 } from './github';
 import { getGitHubToken, getRegistrySettings } from './registry';
 
@@ -269,6 +271,54 @@ export async function publishToGitHub(
 
   if (isTest) {
     logger.info('Running in test mode - no actual changes will be made');
+  }
+
+  // First, create the repository and push code to GitHub
+  if (!isTest) {
+    const repoName = packageJson.name.replace(/^@elizaos\//, '');
+    const description = packageJson.description || `ElizaOS ${packageJson.packageType}`;
+
+    // Set appropriate topics based on package type
+    const topics = [];
+    if (packageJson.packageType === 'plugin') {
+      topics.push('elizaos-plugins');
+    }
+    if (packageJson.packageType === 'project') {
+      topics.push('elizaos-projects');
+    }
+
+    // Add any keywords from package.json as topics
+    if (packageJson.keywords && Array.isArray(packageJson.keywords)) {
+      packageJson.keywords.forEach((keyword) => {
+        if (!topics.includes(keyword)) {
+          topics.push(keyword);
+        }
+      });
+    }
+
+    // Create GitHub repository if needed
+    logger.info(`Checking/creating GitHub repository: ${username}/${repoName}`);
+    const repoResult = await createGitHubRepository(token, repoName, description, false, topics);
+
+    if (!repoResult.success) {
+      logger.error(`Failed to create GitHub repository: ${repoResult.message}`);
+      return false;
+    }
+
+    // Repository exists or was created successfully
+    logger.info(`Using repository: ${repoResult.repoUrl}`);
+
+    // Construct repository URL with token for git operations
+    const repoUrl = `https://${token}@github.com/${username}/${repoName}.git`;
+
+    // Push code to GitHub
+    logger.info('Pushing code to GitHub...');
+    const pushSuccess = await pushToGitHub(cwd, repoUrl);
+    if (!pushSuccess) {
+      logger.error('Failed to push code to GitHub repository.');
+      return false;
+    }
+    logger.success('Successfully pushed code to GitHub repository');
   }
 
   const settings = await getRegistrySettings();

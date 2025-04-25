@@ -568,6 +568,32 @@ export const publish = new Command()
         credentials = newCredentials;
       }
 
+      // Ensure repository URL is in the correct format for GitHub
+      if (!opts.npm) {
+        // Only if we're publishing to GitHub
+        // Extract the package name without scope
+        const packageName = packageJson.name.replace(/^@elizaos\//, '');
+
+        if (!packageJson.repository) {
+          // If repository field doesn't exist, create it
+          packageJson.repository = {
+            type: 'git',
+            url: `github:${credentials.username}/${packageName}`,
+          };
+          console.info(`Set repository URL to: ${packageJson.repository.url}`);
+        } else if (
+          !packageJson.repository.url ||
+          !packageJson.repository.url.includes(credentials.username)
+        ) {
+          // Update repository URL to include the correct username
+          packageJson.repository.url = `github:${credentials.username}/${packageName}`;
+          console.info(`Updated repository URL to: ${packageJson.repository.url}`);
+        }
+
+        // Save updated package.json
+        await fs.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2), 'utf-8');
+      }
+
       // Update registry settings
       const settings = await getRegistrySettings();
       settings.defaultRegistry = opts.registry;
@@ -696,8 +722,8 @@ export const publish = new Command()
         packageMetadata.githubRepo = `${credentials.username}/${packageJson.name}`;
       }
 
-      // Handle registry publication
-      if (!opts.skipRegistry) {
+      // Handle registry publication - only for plugins, not for projects
+      if (!opts.skipRegistry && detectedType === 'plugin') {
         console.info('Publishing to registry...');
 
         if (userIsMaintainer) {
@@ -723,11 +749,35 @@ export const publish = new Command()
           console.info('2. Add your package metadata');
           console.info('3. Submit a pull request to the main repository');
         }
+      } else if (detectedType === 'project') {
+        console.info('Skipping registry publication for projects');
       }
 
       console.log(
         `Successfully published ${detectedType} ${packageJson.name}@${packageJson.version}`
       );
+
+      // Add a tailored next steps message based on package type
+      if (detectedType === 'plugin') {
+        console.log('\nYour plugin is now available at:');
+        console.log(
+          `https://github.com/${credentials.username}/${packageJson.name.replace(/^@elizaos\//, '')}`
+        );
+
+        if (!opts.skipRegistry) {
+          console.log('\nAfter your registry PR is merged, users will be able to install it with:');
+          console.log(`elizaos plugins add ${packageJson.name}`);
+        }
+      } else {
+        console.log('\nYour project is now available at:');
+        console.log(
+          `https://github.com/${credentials.username}/${packageJson.name.replace(/^@elizaos\//, '')}`
+        );
+        console.log('\nUsers can clone and use your project with:');
+        console.log(
+          `git clone https://github.com/${credentials.username}/${packageJson.name.replace(/^@elizaos\//, '')}`
+        );
+      }
     } catch (error) {
       handleError(error);
     }
