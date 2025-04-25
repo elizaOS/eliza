@@ -579,7 +579,7 @@ export async function publishToGitHub(
       token,
       registryOwner,
       registryRepo,
-      `Add ${packageJson.name}@${packageJson.version} to registry`,
+      `Add ${packageJson.name} v${packageJson.version} to registry`,
       `This PR adds ${packageJson.name} version ${packageJson.version} to the registry.
 
 - Type: ${packageJson.packageType || 'plugin'}
