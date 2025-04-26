@@ -9,9 +9,10 @@ import AvatarPanel from './avatar-panel';
 import PluginsPanel from './plugins-panel';
 import { SecretPanel } from './secret-panel';
 import { useAgentUpdate } from '@/hooks/use-agent-update';
+import { getTemplateById } from '@/config/agent-templates';
 
-// Define a partial agent for initialization
-const defaultCharacter: Partial<Agent> = {
+// Define a partial agent for initialization from the "none" template
+const defaultCharacter: Partial<Agent> = getTemplateById('none')?.template || {
   name: '',
   username: '',
   system: '',

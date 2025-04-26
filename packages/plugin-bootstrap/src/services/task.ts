@@ -191,6 +191,13 @@ export class TaskService extends Service {
         // Finally default to 0 if neither exists
         let taskStartTime: number;
 
+        // if tags does not contain "repeat", execute immediately
+        if (!task.tags?.includes('repeat')) {
+          // does not contain repeat
+          await this.executeTask(task);
+          continue;
+        }
+
         if (typeof task.updatedAt === 'number') {
           taskStartTime = task.updatedAt;
         } else if (task.metadata?.updatedAt && typeof task.metadata.updatedAt === 'number') {
@@ -208,6 +215,14 @@ export class TaskService extends Service {
         if (!task.tags?.includes('repeat')) {
           await this.executeTask(task);
           continue;
+        }
+
+        if (task.metadata.updatedAt === task.metadata.createdAt) {
+          if (task.tags?.includes('immediate')) {
+            logger.debug('immediately running task', task.name);
+            await this.executeTask(task);
+            continue;
+          }
         }
 
         // Check if enough time has passed since last update
@@ -241,9 +256,6 @@ export class TaskService extends Service {
         return;
       }
 
-      logger.debug(`Executing task ${task.name} (${task.id})`);
-      await worker.execute(this.runtime, task.metadata || {}, task);
-      logger.debug('task.tags are', task.tags);
       // Handle repeating vs non-repeating tasks
       if (task.tags?.includes('repeat')) {
         // For repeating tasks, update the updatedAt timestamp
@@ -254,7 +266,13 @@ export class TaskService extends Service {
           },
         });
         logger.debug(`Updated repeating task ${task.name} (${task.id}) with new timestamp`);
-      } else {
+      }
+
+      logger.debug(`Executing task ${task.name} (${task.id})`);
+      await worker.execute(this.runtime, task.metadata || {}, task);
+
+      // Handle repeating vs non-repeating tasks
+      if (!task.tags?.includes('repeat')) {
         // For non-repeating tasks, delete the task after execution
         await this.runtime.deleteTask(task.id);
         logger.debug(`Deleted non-repeating task ${task.name} (${task.id}) after execution`);

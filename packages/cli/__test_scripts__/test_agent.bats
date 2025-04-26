@@ -4,13 +4,13 @@ setup_file() {
   # Start the test server (if needed)
   export TEST_SERVER_PORT=3000
   export TEST_SERVER_URL="http://localhost:$TEST_SERVER_PORT"
-  export TEST_TMP_DIR="$(mktemp -d /var/tmp/eliza-test-XXXXXX)"
+  export TEST_TMP_DIR="$(mktemp -d /var/tmp/eliza-test-agent-XXXXXX)"
   # Ensure pglite data dir is unique for this test run
   mkdir -p "$TEST_TMP_DIR/pglite"
   export ELIZAOS_CMD="${ELIZAOS_CMD:-bun run "$(cd ../dist && pwd)/index.js"}"
 
   # Start server in background with PGLite forced
-  PGLITE_DATA_DIR="$TEST_TMP_DIR/pglite" $ELIZAOS_CMD start --port $TEST_SERVER_PORT >"$TEST_TMP_DIR/server.log" 2>&1 &
+  LOG_LEVEL=debug PGLITE_DATA_DIR="$TEST_TMP_DIR/pglite" $ELIZAOS_CMD start --port $TEST_SERVER_PORT >"$TEST_TMP_DIR/server.log" 2>&1 &
   SERVER_PID=$! 
   # Wait for server to be up (poll with timeout)
   SERVER_UP=0
@@ -46,7 +46,7 @@ teardown_file() {
     kill "$SERVER_PID" 2>/dev/null || true
     wait "$SERVER_PID" 2>/dev/null || true
   fi
-  if [ -n "$TEST_TMP_DIR" ] && [[ "$TEST_TMP_DIR" == /var/tmp/eliza-test-* ]]; then
+  if [ -n "$TEST_TMP_DIR" ]; then
     rm -rf "$TEST_TMP_DIR"
   fi
 }

@@ -18,6 +18,7 @@ import fs from 'node:fs';
 import { Readable } from 'node:stream';
 import type { AgentServer } from '..';
 import { upload } from '../loader';
+import { convertToAudioBuffer } from '@/src/utils/audioBuffer';
 
 /**
  * Interface representing a custom request object that extends the express.Request interface.
@@ -846,26 +847,7 @@ export function agentRouter(
       const speechResponse = await runtime.useModel(ModelType.TEXT_TO_SPEECH, text);
 
       // Convert to Buffer if not already a Buffer
-      const audioBuffer = Buffer.isBuffer(speechResponse)
-        ? speechResponse
-        : await new Promise<Buffer>((resolve, reject) => {
-            if (
-              !(speechResponse instanceof Readable) &&
-              !(
-                speechResponse &&
-                speechResponse.readable === true &&
-                typeof speechResponse.pipe === 'function' &&
-                typeof speechResponse.on === 'function'
-              )
-            ) {
-              return reject(new Error('Unexpected response type from TEXT_TO_SPEECH model'));
-            }
-
-            const chunks: Buffer[] = [];
-            speechResponse.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
-            speechResponse.on('end', () => resolve(Buffer.concat(chunks)));
-            speechResponse.on('error', (err) => reject(err));
-          });
+      const audioBuffer = await convertToAudioBuffer(speechResponse);
 
       logger.debug('[SPEECH GENERATE] Setting response headers');
       res.set({

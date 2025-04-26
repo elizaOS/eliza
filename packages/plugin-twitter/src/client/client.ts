@@ -804,7 +804,7 @@ export class Client {
    * @returns A promise that resolves when the tweet is deleted.
    */
   public async deleteTweet(tweetId: string): Promise<Response> {
-    // Call the deleteTweet function from tweets.ts 
+    // Call the deleteTweet function from tweets.ts
     return await deleteTweet(tweetId, this.auth);
   }
 

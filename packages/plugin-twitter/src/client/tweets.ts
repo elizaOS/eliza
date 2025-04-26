@@ -778,10 +778,7 @@ export async function fetchListTweets(
   return parseListTimelineTweets(res.value);
 }
 
-export async function deleteTweet(
-  tweetId: string,
-  auth: TwitterAuth,
-) {
+export async function deleteTweet(tweetId: string, auth: TwitterAuth) {
   const onboardingTaskUrl = 'https://api.twitter.com/1.1/onboarding/task.json';
 
   // Retrieve necessary cookies and tokens
@@ -813,10 +810,10 @@ export async function deleteTweet(
       headers,
       body: JSON.stringify({
         variables,
-        queryId: "VaenaVgh5q5ih7kvyVjgtg"
+        queryId: 'VaenaVgh5q5ih7kvyVjgtg',
       }),
       method: 'POST',
-    },
+    }
   );
 
   // Update the cookie jar with any new cookies from the response

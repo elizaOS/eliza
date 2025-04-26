@@ -384,11 +384,9 @@ export class AgentServer {
         throw new Error('Runtime missing character configuration');
       }
 
-      logger.debug(`Registering agent: ${runtime.agentId} (${runtime.character.name})`);
-
       // Register the agent
       this.agents.set(runtime.agentId, runtime);
-      logger.debug(`Agent ${runtime.agentId} added to agents map`);
+      logger.debug(`Agent ${runtime.character.name} (${runtime.agentId}) added to agents map`);
 
       // Register TEE plugin if present
       const teePlugin = runtime.plugins.find((p) => p.name === 'phala-tee-plugin');
@@ -403,11 +401,10 @@ export class AgentServer {
           logger.debug(`Registered TEE action: ${action.name}`);
         }
       }
-      logger.debug(`Registered reply action for agent ${runtime.agentId}`);
 
       // Register routes
       logger.debug(
-        `Registering ${runtime.routes.length} custom routes for agent ${runtime.agentId}`
+        `Registering ${runtime.routes.length} custom routes for agent ${runtime.character.name} (${runtime.agentId})`
       );
       for (const route of runtime.routes) {
         const routePath = route.path;
@@ -440,7 +437,7 @@ export class AgentServer {
       }
 
       logger.success(
-        `Successfully registered agent ${runtime.agentId} (${runtime.character.name})`
+        `Successfully registered agent ${runtime.character.name} (${runtime.agentId})`
       );
     } catch (error) {
       logger.error('Failed to register agent:', error);
@@ -461,6 +458,22 @@ export class AgentServer {
     }
 
     try {
+      // Retrieve the agent before deleting it from the map
+      const agent = this.agents.get(agentId);
+      
+      if (agent) {
+        // Stop all services of the agent before unregistering it
+        try {
+          agent.stop().catch(stopError => {
+            logger.error(`[AGENT UNREGISTER] Error stopping agent services for ${agentId}:`, stopError);
+          });
+          logger.debug(`[AGENT UNREGISTER] Stopping services for agent ${agentId}`);
+        } catch (stopError) {
+          logger.error(`[AGENT UNREGISTER] Error initiating stop for agent ${agentId}:`, stopError);
+        }
+      }
+      
+      // Delete the agent from the map
       this.agents.delete(agentId);
       logger.debug(`Agent ${agentId} removed from agents map`);
     } catch (error) {
@@ -500,6 +513,8 @@ export class AgentServer {
         console.log(
           `\x1b[32mStartup successful!\nGo to the dashboard at \x1b[1mhttp://localhost:${port}\x1b[22m\x1b[0m`
         );
+        // Add log for test readiness
+        console.log(`AgentServer is listening on port ${port}`);
 
         logger.success(
           `REST API bound to 0.0.0.0:${port}. If running locally, access it at http://localhost:${port}.`

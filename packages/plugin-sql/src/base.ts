@@ -13,6 +13,7 @@ import {
   type World,
   type Log,
   logger,
+  stringToUuid,
 } from '@elizaos/core';
 import {
   Column,
@@ -160,7 +161,8 @@ export abstract class BaseDrizzleAdapter<
       return existingAgent;
     }
 
-    agent.id = agent.id || (v4() as UUID);
+    agent.id = stringToUuid(agent.name ?? (v4() as UUID));
+
     await this.createAgent(agent);
 
     return agent as Agent;

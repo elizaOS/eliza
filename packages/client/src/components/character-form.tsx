@@ -10,7 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { compressImage } from '@/lib/utils';
 import type { Agent } from '@elizaos/core';
 import type React from 'react';
-import { type FormEvent, type ReactNode, useState, useMemo } from 'react';
+import { type FormEvent, type ReactNode, useState, useMemo, useCallback } from 'react';
 import {
   Select,
   SelectContent,
@@ -18,15 +18,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  getAllVoiceModels,
-  getVoiceModelByValue,
-  providerPluginMap,
-  getAllRequiredPlugins,
-} from '../config/voice-models';
+import { getAllVoiceModels, getVoiceModelByValue, providerPluginMap } from '../config/voice-models';
 import { useElevenLabsVoices } from '@/hooks/use-elevenlabs-voices';
 import { Trash, Loader2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { agentTemplates, getTemplateById } from '@/config/agent-templates';
 
 export type InputField = {
   name: string;
@@ -92,6 +88,7 @@ export default function CharacterForm({
   const { toast } = useToast();
   const { data: elevenlabsVoices, isLoading: isLoadingVoices } = useElevenLabsVoices();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<string>('none');
 
   // Get all voice models, using the dynamic ElevenLabs voices when available
   const allVoiceModels = useMemo(() => {
@@ -256,20 +253,12 @@ export default function CharacterForm({
               : [];
             const previousVoiceModel = getVoiceModelByValue(characterValue.settings?.voice?.model);
 
-            // Get all voice-related plugins
-            const voicePlugins = getAllRequiredPlugins();
-
             // Get the required plugin for the new voice model
             const requiredPlugin = providerPluginMap[voiceModel.provider];
 
-            // Filter out all voice-related plugins
-            const filteredPlugins = currentPlugins.filter(
-              (plugin) => !voicePlugins.includes(plugin)
-            );
-
             // Add the required plugin for the selected voice model
-            const newPlugins = [...filteredPlugins];
-            if (requiredPlugin && !filteredPlugins.includes(requiredPlugin)) {
+            const newPlugins = [...currentPlugins];
+            if (requiredPlugin && !currentPlugins.includes(requiredPlugin)) {
               newPlugins.push(requiredPlugin);
             }
 
@@ -525,6 +514,29 @@ export default function CharacterForm({
     }
   };
 
+  /**
+   * Handle template selection
+   */
+  const handleTemplateChange = useCallback(
+    (templateId: string) => {
+      setSelectedTemplate(templateId);
+
+      // If "None" is selected, reset to blank form if reset function is available
+      if (templateId === 'none' && onReset) {
+        onReset();
+        return;
+      }
+
+      // Get the template data
+      const template = getTemplateById(templateId);
+      if (template && setCharacterValue.importAgent) {
+        // Use the importAgent function to set all template values at once
+        setCharacterValue.importAgent(template.template as Agent);
+      }
+    },
+    [onReset, setCharacterValue]
+  );
+
   return (
     <div className="container max-w-4xl mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
@@ -534,6 +546,34 @@ export default function CharacterForm({
             {description || 'Configure your agent settings'}
           </p>
         </div>
+      </div>
+
+      {/* Template Selector */}
+      <div className="mb-6">
+        <Label htmlFor="template-selector" className="text-base font-medium">
+          Start with Template:
+        </Label>
+        <Select value={selectedTemplate} onValueChange={handleTemplateChange}>
+          <SelectTrigger className="w-full mt-2">
+            <SelectValue placeholder="Select a template" />
+          </SelectTrigger>
+          <SelectContent>
+            {agentTemplates.map((template) => (
+              <SelectItem key={template.id} value={template.id}>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="w-full text-left">{template.label}</span>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">
+                      <p className="max-w-xs">{template.description}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <form onSubmit={handleFormSubmit}>

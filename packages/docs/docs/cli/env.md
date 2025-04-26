@@ -16,16 +16,16 @@ The `env` command helps you manage environment variables and API keys for your E
 elizaos env [command] [options]
 ```
 
-## Commands
+## Subcommands
 
-| Command           | Description                                               |
-| ----------------- | --------------------------------------------------------- |
-| `list`            | List all environment variables                            |
-| `edit-global`     | Edit global environment variables                         |
-| `edit-local`      | Edit local environment variables                          |
-| `reset`           | Reset all environment variables and wipe the cache folder |
-| `set-path <path>` | Set a custom path for the global environment file         |
-| `interactive`     | Start interactive environment variable manager            |
+| Subcommand        | Description                                               | Options               |
+| ----------------- | --------------------------------------------------------- | --------------------- |
+| `list`            | List all environment variables                            | `--global`, `--local` |
+| `edit-global`     | Edit global environment variables                         | `-y, --yes`           |
+| `edit-local`      | Edit local environment variables                          | `-y, --yes`           |
+| `reset`           | Reset all environment variables and wipe the cache folder | `-y, --yes`           |
+| `set-path <path>` | Set a custom path for the global environment file         | `-y, --yes`           |
+| `interactive`     | Start interactive environment variable manager            | `-y, --yes`           |
 
 ## Environment Levels
 

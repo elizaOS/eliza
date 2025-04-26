@@ -21,7 +21,7 @@ elizaos update [options]
 | Option              | Description                                       |
 | ------------------- | ------------------------------------------------- |
 | `-c, --check`       | Check for available updates without applying them |
-| `-sb, --skip-build` | Skip building the project after updating          |
+| `-sb, --skip-build` | Skip building after updating                      |
 
 ## Update Process
 

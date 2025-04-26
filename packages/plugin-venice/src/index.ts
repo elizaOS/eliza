@@ -1,4 +1,5 @@
 import { createOpenAI } from '@ai-sdk/openai';
+import { getProviderBaseURL } from '@elizaos/core';
 import type {
   ImageDescriptionParams,
   ModelTypeName,
@@ -18,15 +19,40 @@ import { generateObject, generateText } from 'ai';
 import { type TiktokenModel, encodingForModel } from 'js-tiktoken';
 import { FormData as NodeFormData, File as NodeFile } from 'formdata-node';
 
-// Venice-specific helper functions
+/**
+ * Retrieves a configuration setting from the runtime, environment variables, or a default value.
+ *
+ * Checks the runtime for the specified {@link key}, then environment variables, and finally returns {@link defaultValue} if neither is set.
+ *
+ * @param runtime - The runtime context providing configuration access.
+ * @param key - The name of the setting to retrieve.
+ * @param defaultValue - The value to return if the setting is not found.
+ * @returns The setting value, or {@link defaultValue} if not found.
+ */
 function getSetting(runtime: any, key: string, defaultValue?: string): string | undefined {
   return runtime.getSetting(key) ?? process.env[key] ?? defaultValue;
 }
 
-function getBaseURL(): string {
-  return 'https://api.venice.ai/api/v1'; // Venice requires this specific base URL
+/**
+ * Returns the Venice API base URL from runtime settings, environment variables, or a default value.
+ *
+ * @param runtime - The runtime context containing configuration settings.
+ * @returns The resolved Venice API base URL.
+ */
+function getBaseURL(runtime: any): string {
+  const defaultBaseURL = getSetting(
+    runtime,
+    'VENICE_BASE_URL',
+    process.env.VENICE_BASE_URL || 'https://api.venice.ai/api/v1'
+  );
+  return getProviderBaseURL(runtime, 'venice', defaultBaseURL);
 }
 
+/**
+ * Retrieves the Venice API key from runtime settings or environment variables.
+ *
+ * @returns The Venice API key if available; otherwise, undefined.
+ */
 function getVeniceApiKey(runtime: any): string | undefined {
   return getSetting(runtime, 'VENICE_API_KEY');
 }
@@ -56,17 +82,34 @@ function getOpenAIEmbeddingModel(runtime: any): string {
   return getSetting(runtime, 'OPENAI_EMBEDDING_MODEL') ?? 'text-embedding-3-small';
 }
 
+/**
+ * Retrieves the configured embedding dimensions for OpenAI embeddings from runtime settings.
+ *
+ * @returns The number of embedding dimensions if set, or `undefined` if not configured.
+ */
 function getOpenAIEmbeddingDimensions(runtime: any): number | undefined {
   const dimsString = getSetting(runtime, 'OPENAI_EMBEDDING_DIMENSIONS');
   return dimsString ? parseInt(dimsString, 10) : undefined;
 }
 
-const OPENAI_BASE_URL = 'https://api.openai.com/v1';
+/**
+ * Retrieves the OpenAI API base URL from runtime settings, environment variables, or defaults to 'https://api.openai.com/v1'.
+ *
+ * @returns The resolved OpenAI API base URL.
+ */
+function getOpenAIBaseURL(runtime: any): string {
+  return getProviderBaseURL(runtime, 'openai', 'https://api.openai.com/v1');
+}
 
+/**
+ * Creates an OpenAI-compatible client configured for the Venice API using the provided runtime context.
+ *
+ * @returns An OpenAI client instance set up with the Venice API key and base URL.
+ */
 function createVeniceClient(runtime: any) {
   return createOpenAI({
     apiKey: getVeniceApiKey(runtime),
-    baseURL: getBaseURL(),
+    baseURL: getBaseURL(runtime),
   });
 }
 
@@ -285,10 +328,10 @@ export const venicePlugin: Plugin = {
           payload.dimensions = dimensions;
         }
         logger.debug(
-          `[plugin-venice/OpenAI Embed v${PLUGIN_VERSION}] Calling ${OPENAI_BASE_URL}/embeddings with model ${model}`
+          `[plugin-venice/OpenAI Embed v${PLUGIN_VERSION}] Calling ${getOpenAIBaseURL(runtime)}/embeddings with model ${model}`
         );
 
-        const response = await fetch(`${OPENAI_BASE_URL}/embeddings`, {
+        const response = await fetch(`${getOpenAIBaseURL(runtime)}/embeddings`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${openaiApiKey}`,
