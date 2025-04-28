@@ -217,7 +217,7 @@ async function handleNoteTweet(
     if (noteTweetResult.errors && noteTweetResult.errors.length > 0) {
       // Note Tweet failed due to authorization. Falling back to standard Tweet.
       const truncateContent = truncateToCompleteSentence(content, TWEET_CHAR_LIMIT - 1);
-      return await this.sendStandardTweet(client, truncateContent, tweetId);
+      return await sendStandardTweet(client, truncateContent, tweetId);
     }
     return noteTweetResult.data.notetweet_create.tweet_results.result;
   } catch (error) {
