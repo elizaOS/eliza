@@ -11,13 +11,43 @@ import { generateText } from 'ai';
 import { ensureReflectionProperties, extractAndParseJSON } from './utils';
 
 /**
- * Returns the base URL for the Anthropic API, using the runtime configuration or a default if not specified.
+ * Retrieves a configuration setting from the runtime, falling back to environment variables or a default value if not found.
  *
- * @param runtime - The agent runtime environment used to determine the provider's base URL.
- * @returns The resolved base URL for Anthropic API requests.
+ * @param key - The name of the setting to retrieve.
+ * @param defaultValue - The value to return if the setting is not found in the runtime or environment.
+ * @returns The resolved setting value, or {@link defaultValue} if not found.
  */
-function getBaseURL(runtime: IAgentRuntime): string {
-  return getProviderBaseURL(runtime, 'anthropic', 'https://api.anthropic.com/v1/');
+function getSetting(
+  runtime: IAgentRuntime,
+  key: string,
+  defaultValue?: string
+): string | undefined {
+  return runtime.getSetting(key) ?? process.env[key] ?? defaultValue;
+}
+
+/**
+ * Helper function to get the API key for OpenAI
+ *
+ * @param runtime The runtime context
+ * @returns The configured API key
+ */
+function getApiKey(runtime: IAgentRuntime): string | undefined {
+  return getSetting(runtime, 'ANTHROPIC_API_KEY');
+}
+
+/**
+ * Ensures that the Anthropic API key is available in the runtime or environment.
+ * Throws an error if the API key is missing.
+ *
+ * @param runtime - The agent runtime environment to check for settings.
+ */
+function ensureAnthropicAPIKeyExists(runtime: IAgentRuntime) {
+  const apiKey = getApiKey(runtime);
+  if (!apiKey) {
+    throw new Error(
+      'ANTHROPIC_API_KEY is missing. Please set it in your environment or runtime settings.'
+    );
+  }
 }
 
 /**
@@ -39,10 +69,11 @@ export const anthropicPlugin: Plugin = {
     ANTHROPIC_SMALL_MODEL: process.env.ANTHROPIC_SMALL_MODEL,
     ANTHROPIC_LARGE_MODEL: process.env.ANTHROPIC_LARGE_MODEL,
   },
-  async init(config: Record<string, string>) {
+  async init(config: Record<string, string>, runtime: IAgentRuntime) {
     try {
+      const apiKey = getApiKey(runtime);
       // If API key is not set, we'll show a warning but continue
-      if (!process.env.ANTHROPIC_API_KEY) {
+      if (!apiKey) {
         logger.warn(
           'ANTHROPIC_API_KEY is not set in environment - Anthropic functionality will be limited'
         );
@@ -58,6 +89,8 @@ export const anthropicPlugin: Plugin = {
   },
   models: {
     [ModelType.TEXT_SMALL]: async (runtime, { prompt, stopSequences = [] }: GenerateTextParams) => {
+      ensureAnthropicAPIKeyExists(runtime);
+
       const temperature = 0.7;
       const smallModel = runtime.getSetting('ANTHROPIC_SMALL_MODEL') ?? 'claude-3-haiku-20240307';
       const maxTokens = smallModel.includes('-3-') ? 4096 : 8192;
@@ -86,6 +119,8 @@ export const anthropicPlugin: Plugin = {
         presencePenalty = 0.7,
       }: GenerateTextParams
     ) => {
+      ensureAnthropicAPIKeyExists(runtime);
+
       const largeModel = runtime.getSetting('ANTHROPIC_LARGE_MODEL') ?? 'claude-3-5-sonnet-latest';
 
       const { text } = await generateText({
@@ -102,6 +137,8 @@ export const anthropicPlugin: Plugin = {
     },
 
     [ModelType.OBJECT_SMALL]: async (runtime, params: ObjectGenerationParams) => {
+      ensureAnthropicAPIKeyExists(runtime);
+
       const smallModel = runtime.getSetting('ANTHROPIC_SMALL_MODEL') ?? 'claude-3-haiku-20240307';
       try {
         // Check if this is a reflection schema request (has specific format)
@@ -157,6 +194,8 @@ export const anthropicPlugin: Plugin = {
     },
 
     [ModelType.OBJECT_LARGE]: async (runtime, params: ObjectGenerationParams) => {
+      ensureAnthropicAPIKeyExists(runtime);
+
       const largeModel = runtime.getSetting('ANTHROPIC_LARGE_MODEL') ?? 'claude-3-5-sonnet-latest';
       try {
         // Check if this is a reflection schema request (has specific format)
