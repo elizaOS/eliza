@@ -102,10 +102,10 @@ Add plugins to your project:
 
 ```bash
 # List available plugins
-elizaos project list-plugins
+elizaos plugins list
 
 # Add a plugin
-elizaos project add-plugin @elizaos/plugin-discord
+elizaos plugins add @elizaos/plugin-discord
 
 # Create a plugin project
 elizaos create --type plugin
