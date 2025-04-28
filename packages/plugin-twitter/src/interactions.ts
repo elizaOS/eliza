@@ -27,8 +27,7 @@ import type {
   TwitterUserUnfollowedPayload,
 } from './types';
 import { TwitterEventTypes } from './types';
-import { buildConversationThread, sendTweet } from './utils';
-import { TWEET_CHAR_LIMIT } from './constants';
+import { sendTweet } from './utils';
 
 /**
  * Template for generating dialog and actions for a Twitter message handler.
