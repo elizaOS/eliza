@@ -1,21 +1,27 @@
 import type { IAgentRuntime, UUID } from '@elizaos/core';
-import { AgentRuntime, createUniqueUuid, logger as Logger, logger } from '@elizaos/core';
+import {
+  AgentRuntime,
+  ChannelType,
+  createUniqueUuid,
+  EventType,
+  logger as Logger,
+  logger,
+  SOCKET_MESSAGE_TYPE,
+} from '@elizaos/core';
+import type { Tracer } from '@opentelemetry/api';
+import { SpanStatusCode } from '@opentelemetry/api';
 import * as bodyParser from 'body-parser';
 import cors from 'cors';
 import express from 'express';
-import path from 'node:path';
+import crypto from 'node:crypto';
+import http from 'node:http';
+import { match, MatchFunction } from 'path-to-regexp';
+import { Server as SocketIOServer } from 'socket.io';
 import type { AgentServer } from '..';
 import { agentRouter } from './agent';
-import { teeRouter } from './tee';
-import { Server as SocketIOServer } from 'socket.io';
-import { SOCKET_MESSAGE_TYPE, EventType, ChannelType } from '@elizaos/core';
-import http from 'node:http';
-import crypto from 'node:crypto';
-import { worldRouter } from './world';
 import { envRouter } from './env';
-import { SpanStatusCode } from '@opentelemetry/api';
-import { match, MatchFunction } from 'path-to-regexp';
-import type { Tracer } from '@opentelemetry/api';
+import { teeRouter } from './tee';
+import { worldRouter } from './world';
 
 // Custom levels from @elizaos/core logger
 const LOG_LEVELS = {

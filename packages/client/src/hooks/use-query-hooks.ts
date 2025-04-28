@@ -461,6 +461,7 @@ export function useGroupMessages(
           return {
             text: memory.content.text,
             roomId: memory.roomId,
+            actions: memory.content.actions,
             name: isUser ? USER_NAME : 'agent',
             agentId: memory.agentId,
             entityId: memory.entityId,

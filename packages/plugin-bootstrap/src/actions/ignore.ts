@@ -1,4 +1,11 @@
-import type { Action, ActionExample, IAgentRuntime, Memory } from '@elizaos/core';
+import type {
+  Action,
+  ActionExample,
+  IAgentRuntime,
+  Memory,
+  HandlerCallback,
+  State,
+} from '@elizaos/core';
 
 /**
  * Action representing the IGNORE action. This action is used when ignoring the user in a conversation.
@@ -31,7 +38,20 @@ export const ignoreAction: Action = {
   },
   description:
     'Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodbye, use this action instead of saying bye again. Use IGNORE any time the conversation has naturally ended. Do not use IGNORE if the user has engaged directly, or if something went wrong an you need to tell them. Only ignore if the user should be ignored.',
-  handler: async (_runtime: IAgentRuntime, _message: Memory): Promise<boolean> => {
+  handler: async (
+    _runtime: IAgentRuntime,
+    _message: Memory,
+    _state: State,
+    _options: any,
+    callback: HandlerCallback,
+    responses?: Memory[]
+  ) => {
+    // If a callback and the agent's response content are available, call the callback
+    if (callback && responses?.[0]?.content) {
+      // Pass the agent's original response content (thought, IGNORE action, etc.)
+      await callback(responses[0].content);
+    }
+    // Still return true to indicate the action handler succeeded
     return true;
   },
   examples: [
