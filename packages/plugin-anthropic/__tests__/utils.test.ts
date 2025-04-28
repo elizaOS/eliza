@@ -33,7 +33,11 @@ describe('extractAndParseJSON', () => {
   it('returns structured object for thought/message pattern', () => {
     const input = '"thought": "Think!", "message": "Hello"';
     const result = extractAndParseJSON(input);
-    expect(result).toMatchObject({ type: 'reconstructed_response', thought: 'Think!', message: 'Hello' });
+    expect(result).toMatchObject({
+      type: 'reconstructed_response',
+      thought: 'Think!',
+      message: 'Hello',
+    });
   });
 
   it('returns unstructured_response for unparseable input', () => {

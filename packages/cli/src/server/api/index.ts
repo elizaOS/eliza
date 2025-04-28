@@ -495,7 +495,7 @@ export function createApiRouter(
         // Handle wildcard paths (e.g., /portal/*)
         const routePath = route.path.startsWith('/') ? route.path : `/${route.path}`;
         const reqPath = req.path;
-        
+
         if (routePath.endsWith('*') && reqPath.startsWith(routePath.slice(0, -1))) {
           try {
             // Set the correct MIME type based on the file extension

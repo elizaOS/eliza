@@ -297,7 +297,7 @@ export async function startAgent(
       logger.debug(`Attempting to load plugin by name from character definition: ${pluginName}`);
       const loadedPlugin = await loadAndPreparePlugin(pluginName, version);
       if (loadedPlugin) {
-        characterPlugins.push(loadedPlugin)
+        characterPlugins.push(loadedPlugin);
         // Double-check name consistency and avoid duplicates
         if (!loadedPluginsMap.has(loadedPlugin.name)) {
           loadedPluginsMap.set(loadedPlugin.name, loadedPlugin);

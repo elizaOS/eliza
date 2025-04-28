@@ -91,11 +91,11 @@ jobs:
 
           # Optional parameters (with defaults)
           cvm-name: ''
-          compose-file: './api-server/docker-compose.yml'  # Default: './docker-compose.yml'
-          vcpu: '4'                         # Default: '2'
-          memory: '4096'                    # Default: '2048'
-          disk-size: '10'                   # Default: '40'
-          envs: |                           # Environment variables in YAML format (will be converted to dotenv)
+          compose-file: './api-server/docker-compose.yml' # Default: './docker-compose.yml'
+          vcpu: '4' # Default: '2'
+          memory: '4096' # Default: '2048'
+          disk-size: '10' # Default: '40'
+          envs: | # Environment variables in YAML format (will be converted to dotenv)
             OPENAI_API_KEY: ${{ env.OPENAI_API_KEY }}
             ANTHROPIC_API_KEY: ${{ env.ANTHROPIC_API_KEY }}
             SERVER_PORT: ${{ env.SERVER_PORT }}
@@ -120,6 +120,6 @@ jobs:
             TEE_MODE: ${{ env.TEE_MODE || 'PRODUCTION' }}
             WALLET_SECRET_SALT: ${{ env.WALLET_SECRET_SALT }}
             TEE_VENDOR: ${{ env.TEE_VENDOR || 'phala' }}
-          app-id: ''                        # App ID of existing CVM to (if updating)
-          node-id: ''                       # Node ID (Teepod ID)
-          base-image: ''                    # Base image to use for the CVM
+          app-id: '' # App ID of existing CVM to (if updating)
+          node-id: '' # Node ID (Teepod ID)
+          base-image: '' # Base image to use for the CVM

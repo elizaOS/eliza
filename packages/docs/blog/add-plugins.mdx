@@ -5,7 +5,6 @@ date: 2025-04-13
 tags: [plugins, registry, elizaos, announcement, v2]
 ---
 
-
 V2 introduces significant upgrades to improve how developers build, share, and integrate functionality into their agents. This guide will walk through updates as they relate to plugins (hint: everything is a plugin).
 
 {/* truncate */}
@@ -39,6 +38,7 @@ type Plugin = {
 ```
 
 This means you can extend virtually any aspect of your agent's functionality:
+
 - Platform connections (Discord, Twitter, Telegram)
 - Storage options (PostgreSQL, MongoDB, Redis)
 - Action capabilities (what your agent can do)
@@ -81,9 +81,11 @@ The plugin will be automatically loaded when your agent starts.
 The ElizaOS CLI provides several commands to manage plugins. To install the CLI:
 
 :::tip
+
 ```bash
 npm install -g @elizaos/cli@beta
 ```
+
 :::
 
 ### Plugin Management Commands
@@ -159,6 +161,7 @@ Your `package.json` should include plugin metadata:
 ## 📬 Submit to the Registry
 
 To get your plugin listed:
+
 1. Host your plugin on GitHub
 2. Add branding, docs, and working examples
 3. Submit a [PR to the registry](https://github.com/elizaos-plugins/registry)
@@ -176,7 +179,6 @@ The ElizaOS V2 ecosystem already includes plugins for:
 > See the plugin showcase here: https://eliza.how/packages
 
 ![](/img/montage-plugins.jpg)
-
 
 ### More Links
 
