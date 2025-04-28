@@ -156,7 +156,6 @@ export default function Page({
 }) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [input, setInput] = useState('');
-  const [messageProcessing, setMessageProcessing] = useState<boolean>(false);
   const [inputDisabled, setInputDisabled] = useState<boolean>(false);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -245,9 +244,10 @@ export default function Page({
     };
 
     const handleMessageComplete = (data: any) => {
-      if (data.roomId === roomId) {
-        setMessageProcessing(false);
-      }
+      // if (data.roomId === roomId) {
+      //   setMessageProcessing(false); // REMOVE - No longer using this state
+      // }
+      // We will rely on controlMessage to re-enable input
     };
 
     // Add listener for message broadcasts
@@ -285,10 +285,10 @@ export default function Page({
 
         if (action === 'disable_input') {
           setInputDisabled(true);
-          setMessageProcessing(true);
+          // setMessageProcessing(true); // REMOVE
         } else if (action === 'enable_input') {
           setInputDisabled(false);
-          setMessageProcessing(false);
+          // setMessageProcessing(false); // REMOVE
         }
       }
     };
@@ -343,7 +343,7 @@ export default function Page({
 
   const handleSendMessage = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!input || messageProcessing) return;
+    if (!input || inputDisabled) return; // Use inputDisabled instead of messageProcessing
 
     const messageId = randomUUID();
 
@@ -385,7 +385,8 @@ export default function Page({
     // Send the message to the server/agent
     socketIOManager.sendMessage(input, roomId, CHAT_SOURCE);
 
-    setMessageProcessing(true);
+    // setMessageProcessing(true); // REMOVE
+    // Input will be disabled by a controlMessage if needed
     setSelectedFile(null);
     setInput('');
     formRef.current?.reset();
@@ -549,7 +550,7 @@ export default function Page({
                     : 'Type your message here...'
                 }
                 className="min-h-12 resize-none rounded-md bg-card border-0 p-3 shadow-none focus-visible:ring-0"
-                disabled={inputDisabled || messageProcessing}
+                disabled={inputDisabled} // Depend only on inputDisabled
               />
               <div className="flex items-center p-3 pt-0">
                 <Tooltip>
@@ -585,12 +586,12 @@ export default function Page({
                   onChange={(newInput: string) => setInput(newInput)}
                 />
                 <Button
-                  disabled={messageProcessing}
+                  disabled={inputDisabled} // Depend only on inputDisabled
                   type="submit"
                   size="sm"
                   className="ml-auto gap-1.5 h-[30px]"
                 >
-                  {messageProcessing ? (
+                  {inputDisabled ? ( // Show loading based on inputDisabled
                     <div className="flex gap-0.5 items-center justify-center">
                       <span className="w-[4px] h-[4px] bg-gray-500 rounded-full animate-bounce [animation-delay:0s]" />
                       <span className="w-[4px] h-[4px] bg-gray-500 rounded-full animate-bounce [animation-delay:0.2s]" />

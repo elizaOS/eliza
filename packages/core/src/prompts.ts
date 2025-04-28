@@ -326,10 +326,9 @@ If responding with the RESPOND action, include a list of optional providers that
 Response format should be formatted in a valid JSON block like this:
 \`\`\`json
 {
-    "name": "{{agentName}}",
+  "name": "{{agentName}}",
 	"reasoning": "<string>",
-    "action": "RESPOND" | "IGNORE" | "STOP",
-    "providers": ["<string>", "<string>", ...]
+  "action": "RESPOND" | "IGNORE" | "STOP"
 }
 \`\`\`
 Your response should include the valid JSON block and nothing else.`;
@@ -358,7 +357,8 @@ First, think about what you want to do next and plan your actions. Then, write t
 "actions" should be an array of the actions {{agentName}} plans to take based on the thought (if none, use IGNORE, if simply responding with text, use REPLY)
 "providers" should be an optional array of the providers that {{agentName}} will use to have the right context for responding and acting
 "evaluators" should be an optional array of the evaluators that {{agentName}} will use to evaluate the conversation after responding
-"message" should be the next message for {{agentName}} which they will send to the conversation.
+"text" should be the text of the next message for {{agentName}} which they will send to the conversation.
+"simple" should be true if the message is a simple response and false if it is a more complex response that requires planning and more context to handle or reply to.
 These are the available valid actions: {{actionNames}}
 
 Response format should be formatted in a valid JSON block like this:
@@ -367,7 +367,8 @@ Response format should be formatted in a valid JSON block like this:
     "thought": "<string>",
     "actions": ["<string>", "<string>", ...],
     "providers": ["<string>", "<string>", ...],
-    "message": "<string>"
+    "text": "<string>",
+    "simple": true|false
 }
 \`\`\`
 
