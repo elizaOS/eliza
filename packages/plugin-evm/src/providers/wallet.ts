@@ -7,7 +7,7 @@ import {
   type State,
   elizaLogger,
 } from '@elizaos/core';
-import { DeriveKeyProvider, TEEMode } from '@elizaos/plugin-tee';
+import { PhalaDeriveKeyProvider, TEEMode } from '@elizaos/plugin-tee';
 import type {
   Account,
   Address,
@@ -246,7 +246,7 @@ export const initWalletProvider = async (runtime: IAgentRuntime) => {
       throw new Error('WALLET_SECRET_SALT required when TEE_MODE is enabled');
     }
 
-    const deriveKeyProvider = new DeriveKeyProvider(teeMode);
+    const deriveKeyProvider = new PhalaDeriveKeyProvider(teeMode);
     const deriveKeyResult = await deriveKeyProvider.deriveEcdsaKeypair(
       walletSecretSalt,
       'evm',
