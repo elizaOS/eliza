@@ -318,7 +318,8 @@ export class MessageManager {
       if (this.runtime.getService<IVideoService>(ServiceType.VIDEO)?.isVideoUrl(url)) {
         const videoService = this.runtime.getService<IVideoService>(ServiceType.VIDEO);
         if (!videoService) {
-          throw new Error('Video service not found');
+          logger.warn('Video service not found');
+          continue;
         }
         const videoInfo = await videoService.processVideo(url, this.runtime);
 
@@ -333,7 +334,8 @@ export class MessageManager {
       } else {
         const browserService = this.runtime.getService<IBrowserService>(ServiceType.BROWSER);
         if (!browserService) {
-          throw new Error('Browser service not found');
+          logger.warn('Browser service not found');
+          continue;
         }
 
         const { title, description: summary } = await browserService.getPageContent(

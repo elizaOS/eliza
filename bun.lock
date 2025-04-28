@@ -307,6 +307,7 @@
       },
       "devDependencies": {
         "prettier": "3.5.3",
+        "vitest": "^3.1.2",
       },
     },
     "packages/plugin-bootstrap": {
