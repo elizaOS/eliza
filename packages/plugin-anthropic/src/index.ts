@@ -90,6 +90,7 @@ export const anthropicPlugin: Plugin = {
   models: {
     [ModelType.TEXT_SMALL]: async (runtime, { prompt, stopSequences = [] }: GenerateTextParams) => {
       ensureAnthropicAPIKeyExists(runtime);
+
       const temperature = 0.7;
       const smallModel = runtime.getSetting('ANTHROPIC_SMALL_MODEL') ?? 'claude-3-haiku-20240307';
       const maxTokens = smallModel.includes('-3-') ? 4096 : 8192;
