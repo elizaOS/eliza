@@ -33,7 +33,8 @@
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
-    "lint": "prettier --write ./src"
+    "lint": "prettier --write ./src",
+    "test": "vitest run"
   },
   "publishConfig": {
     "access": "public"
@@ -49,6 +50,7 @@
   },
   "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460",
   "devDependencies": {
-    "prettier": "3.5.3"
+    "prettier": "3.5.3",
+    "vitest": "^3.1.2"
   }
 }
