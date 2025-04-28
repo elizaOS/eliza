@@ -98,7 +98,7 @@ export class MessageManager {
       type = await this.getChannelType(message.channel as Channel);
       if (type === null) {
         // usually a forum type post
-        logger.warn('null channel type, discord message', message)
+        logger.warn('null channel type, discord message', message);
       }
       serverId = guild.id;
     } else {
@@ -146,7 +146,7 @@ export class MessageManager {
 
       // Start typing indicator immediately when processing the message
       const channel = message.channel as TextChannel;
-      
+
       // Start the typing indicator
       const startTyping = () => {
         try {
@@ -155,17 +155,17 @@ export class MessageManager {
           logger.warn('Error sending typing indicator:', err);
         }
       };
-      
+
       // Initial typing indicator
       startTyping();
-      
+
       // Create interval to keep the typing indicator active
       const typingInterval = setInterval(startTyping, 8000);
-      
+
       // Store the interval globally to be accessed by the callback
       const typingData = {
         interval: typingInterval,
-        cleared: false
+        cleared: false,
       };
 
       const newMessage: Memory = {
@@ -196,15 +196,10 @@ export class MessageManager {
           if (message.id && !content.inReplyTo) {
             content.inReplyTo = createUniqueUuid(this.runtime, message.id);
           }
-          
+
           try {
-            const messages = await sendMessageInChunks(
-              channel,
-              content.text,
-              message.id,
-              files
-            );
-            
+            const messages = await sendMessageInChunks(channel, content.text, message.id, files);
+
             const memories: Memory[] = [];
             for (const m of messages) {
               const actions = content.actions;
@@ -230,7 +225,7 @@ export class MessageManager {
               await this.runtime.createMemory(m, 'messages');
             }
 
-            // Clear typing indicator 
+            // Clear typing indicator
             if (typingData.interval && !typingData.cleared) {
               clearInterval(typingData.interval);
               typingData.cleared = true;
@@ -323,7 +318,8 @@ export class MessageManager {
       if (this.runtime.getService<IVideoService>(ServiceType.VIDEO)?.isVideoUrl(url)) {
         const videoService = this.runtime.getService<IVideoService>(ServiceType.VIDEO);
         if (!videoService) {
-          throw new Error('Video service not found');
+          logger.warn('Video service not found');
+          continue;
         }
         const videoInfo = await videoService.processVideo(url, this.runtime);
 
@@ -338,7 +334,8 @@ export class MessageManager {
       } else {
         const browserService = this.runtime.getService<IBrowserService>(ServiceType.BROWSER);
         if (!browserService) {
-          throw new Error('Browser service not found');
+          logger.warn('Browser service not found');
+          continue;
         }
 
         const { title, description: summary } = await browserService.getPageContent(

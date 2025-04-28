@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-solana",
-  "version": "1.0.0-beta.37",
+  "version": "1.0.0-beta.38",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -22,7 +22,7 @@
     "dist"
   ],
   "dependencies": {
-    "@elizaos/core": "^1.0.0-beta.37",
+    "@elizaos/core": "^1.0.0-beta.38",
     "@solana/spl-token": "0.4.9",
     "@solana/web3.js": "^1.98.0",
     "bignumber.js": "9.1.2",
