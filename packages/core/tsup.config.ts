@@ -6,7 +6,7 @@ export default defineConfig({
   clean: true,
   format: ['esm'],
   target: 'node18',
-  dts: false,
+  dts: true,
   external: [
     'dotenv',
     'fs',
@@ -33,4 +33,5 @@ export default defineConfig({
     '@opentelemetry/sdk-trace-node',
   ],
   sourcemap: false,
+  minify: true,
 });
