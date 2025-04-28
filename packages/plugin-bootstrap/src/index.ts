@@ -22,7 +22,6 @@ import {
   parseJSONObjectFromText,
   type Plugin,
   postCreationTemplate,
-  providersTemplate,
   shouldRespondTemplate,
   truncateToCompleteSentence,
   type UUID,
@@ -192,8 +191,8 @@ const messageReceivedHandler = async ({
         room?.type === ChannelType.SELF;
 
       let shouldRespond = true;
-      let providers: string[] = [];
 
+      // Handle shouldRespond
       if (!shouldSkipShouldRespond) {
         const shouldRespondPrompt = composePromptFromState({
           state,
@@ -224,26 +223,9 @@ const messageReceivedHandler = async ({
         logger.debug('*** Parsed Response Object ***', responseObject);
 
         shouldRespond = responseObject?.action && responseObject.action === 'RESPOND';
-        providers = (responseObject?.providers as string[]) || [];
       } else {
-        // Use providersTemplate for DM and VOICE_DM channels
-        const providersPrompt = composePromptFromState({
-          state,
-          template: runtime.character.templates?.providersTemplate || providersTemplate,
-        });
-
-        const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-          prompt: providersPrompt,
-        });
-
-        const responseObject = parseJSONObjectFromText(response);
-        providers = (responseObject?.providers as string[]) || [];
+        shouldRespond = true;
       }
-
-      logger.debug('*** Should Respond ***', shouldRespond);
-      logger.debug('*** Providers Value ***', providers);
-
-      state = await runtime.composeState(message, null, providers);
 
       let responseMessages: Memory[] = [];
 
@@ -265,6 +247,8 @@ const messageReceivedHandler = async ({
 
           responseContent = parseJSONObjectFromText(response) as Content;
 
+          console.log('responseContent', responseContent);
+
           retries++;
           if (!responseContent?.thought && !responseContent?.actions) {
             logger.warn('*** Missing required fields, retrying... ***');
@@ -283,19 +267,16 @@ const messageReceivedHandler = async ({
         if (responseContent) {
           responseContent.inReplyTo = createUniqueUuid(runtime, message.id);
 
-          responseMessages = [
-            {
-              id: asUUID(v4()),
-              entityId: runtime.agentId,
-              agentId: runtime.agentId,
-              content: responseContent,
-              roomId: message.roomId,
-              createdAt: Date.now(),
-            },
-          ];
+          const responseMesssage = {
+            id: asUUID(v4()),
+            entityId: runtime.agentId,
+            agentId: runtime.agentId,
+            content: responseContent,
+            roomId: message.roomId,
+            createdAt: Date.now(),
+          };
 
-          // First callback without text - this is for the planning stage to show thought messages in GUI
-          callback(responseContent);
+          responseMessages = [responseMesssage];
         }
 
         // Clean up the response ID
@@ -304,10 +285,65 @@ const messageReceivedHandler = async ({
           latestResponseIds.delete(runtime.agentId);
         }
 
-        await runtime.processActions(message, responseMessages, state, callback);
+        if (
+          responseContent.simple &&
+          responseContent.text &&
+          (responseContent.actions.length === 0 ||
+            (responseContent.actions.length === 1 &&
+              responseContent.actions[0].toUpperCase() === 'REPLY'))
+        ) {
+          await callback(responseContent);
+        } else {
+          await runtime.processActions(message, responseMessages, state, callback);
+        }
+        await runtime.evaluate(message, state, shouldRespond, callback, responseMessages);
+      } else {
+        // Handle the case where the agent decided not to respond
+        logger.debug('Agent decided not to respond (shouldRespond is false).');
+
+        // Check if we still have the latest response ID
+        const currentResponseId = agentResponses.get(message.roomId);
+        if (currentResponseId !== responseId) {
+          logger.info(
+            `Ignore response discarded - newer message being processed for agent: ${runtime.agentId}, room: ${message.roomId}`
+          );
+          return; // Stop processing if a newer message took over
+        }
+
+        // Construct a minimal content object indicating ignore, include a generic thought
+        const ignoreContent: Content = {
+          thought: 'Agent decided not to respond to this message.',
+          actions: ['IGNORE'],
+          simple: true, // Treat it as simple for callback purposes
+          inReplyTo: createUniqueUuid(runtime, message.id), // Reference original message
+        };
+
+        // Call the callback directly with the ignore content
+        await callback(ignoreContent);
+
+        // Also save this ignore action/thought to memory
+        const ignoreMemory = {
+          id: asUUID(v4()),
+          entityId: runtime.agentId,
+          agentId: runtime.agentId,
+          content: ignoreContent,
+          roomId: message.roomId,
+          createdAt: Date.now(),
+        };
+        await runtime.createMemory(ignoreMemory, 'messages');
+        logger.debug('Saved ignore response to memory', { memoryId: ignoreMemory.id });
+
+        // Clean up the response ID since we handled it
+        agentResponses.delete(message.roomId);
+        if (agentResponses.size === 0) {
+          latestResponseIds.delete(runtime.agentId);
+        }
+
+        // Optionally, evaluate the decision to ignore (if relevant evaluators exist)
+        // await runtime.evaluate(message, state, shouldRespond, callback, []);
       }
+
       onComplete?.();
-      await runtime.evaluate(message, state, shouldRespond, callback, responseMessages);
 
       // Emit run ended event on successful completion
       await runtime.emitEvent(EventType.RUN_ENDED, {
@@ -420,6 +456,7 @@ const postGeneratedHandler = async ({
     content: {},
     metadata: {
       entityName: runtime.character.name,
+      type: 'message',
     },
   };
 

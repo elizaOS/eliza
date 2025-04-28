@@ -714,8 +714,8 @@ const startAgents = async (options: {
         }
 
         const startedAgents = [];
-        for (const agent of agents) {
-          try {
+        const results = await Promise.allSettled(
+          agents.map(async (agent) => {
             logger.debug(`Starting agent: ${agent.character.name}`);
             const runtime = await startAgent(
               agent.character,
@@ -723,13 +723,11 @@ const startAgents = async (options: {
               agent.init,
               agent.plugins || []
             );
-            startedAgents.push(runtime);
-            // wait .5 seconds
-            await new Promise((resolve) => setTimeout(resolve, 500));
-          } catch (agentError) {
-            logger.error(`Error starting agent ${agent.character.name}: ${agentError}`);
-          }
-        }
+            return runtime;
+          })
+        );
+
+        startedAgents.push(...results.filter(Boolean));
 
         if (startedAgents.length === 0) {
           logger.info('No project agents started - falling back to default Eliza character');

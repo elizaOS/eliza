@@ -50,6 +50,7 @@
     "@elizaos/plugin-anthropic": "^1.0.0-beta.38",
     "@elizaos/plugin-openai": "^1.0.0-beta.38",
     "@elizaos/plugin-sql": "^1.0.0-beta.38",
+    "@elizaos/plugin-bootstrap": "^1.0.0-beta.38",
     "@types/babel__core": "^7.20.1",
     "@types/diff": "^5.0.3",
     "@types/fs-extra": "^11.0.1",

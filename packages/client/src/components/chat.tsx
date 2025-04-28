@@ -8,6 +8,7 @@ import { ChatInput } from '@/components/ui/chat/chat-input';
 import { ChatMessageList } from '@/components/ui/chat/chat-message-list';
 import { USER_NAME } from '@/constants';
 import { useMessages } from '@/hooks/use-query-hooks';
+import clientLogger from '@/lib/logger';
 import SocketIOManager from '@/lib/socketio-manager';
 import { cn, getEntityId, moment, randomUUID } from '@/lib/utils';
 import { WorldManager } from '@/lib/world-manager';
@@ -15,7 +16,6 @@ import type { IAttachment } from '@/types';
 import type { Agent, Content, UUID } from '@elizaos/core';
 import { AgentStatus } from '@elizaos/core';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
-import clientLogger from '@/lib/logger';
 
 import { useQueryClient } from '@tanstack/react-query';
 import { ChevronRight, PanelRight, Paperclip, Send, X } from 'lucide-react';
@@ -30,7 +30,6 @@ import { useAutoScroll } from './ui/chat/hooks/useAutoScroll';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 
 import { CHAT_SOURCE } from '@/constants';
-import { Evt } from 'evt';
 
 type ExtraContentFields = {
   name: string;
@@ -156,7 +155,6 @@ export default function Page({
 }) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [input, setInput] = useState('');
-  const [messageProcessing, setMessageProcessing] = useState<boolean>(false);
   const [inputDisabled, setInputDisabled] = useState<boolean>(false);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -218,12 +216,29 @@ export default function Page({
         ['messages', agentId, roomId, worldId],
         (old: ContentWithUser[] = []) => {
           console.log('[Chat] Current messages:', old?.length || 0);
-          // Check if this message is already in the list (avoid duplicates)
+
+          // --- Start modification for IGNORE case ---
+          let messageToAdd = { ...newMessage }; // Copy the received message data
+          const isIgnore = messageToAdd.actions?.includes('IGNORE');
+
+          if (isIgnore) {
+            // Customize text for ignored messages
+            messageToAdd.text = ``;
+            // Ensure thought is preserved, actions array might also be useful
+            messageToAdd.thought = data.thought; // Make sure thought from data is used
+            messageToAdd.actions = data.actions; // Keep the IGNORE action marker
+            clientLogger.debug('[Chat] Handling IGNORE action, modifying message', messageToAdd);
+          }
+          // --- End modification ---
+
+          // Check if this message (potentially modified) is already in the list (avoid duplicates)
           const isDuplicate = old.some(
             (msg) =>
-              msg.text === newMessage.text &&
-              msg.name === newMessage.name &&
-              Math.abs((msg.createdAt || 0) - (newMessage.createdAt || 0)) < 5000 // Within 5 seconds
+              // Use a combination of sender, text/thought, and time to detect duplicates
+              msg.senderId === messageToAdd.senderId &&
+              (msg.text === messageToAdd.text ||
+                (!msg.text && !messageToAdd.text && msg.thought === messageToAdd.thought)) &&
+              Math.abs((msg.createdAt || 0) - (messageToAdd.createdAt || 0)) < 5000 // Within 5 seconds
           );
 
           if (isDuplicate) {
@@ -231,12 +246,19 @@ export default function Page({
             return old;
           }
 
-          // Add a unique animation ID for immediate feedback
-          const newMessageId =
-            typeof newMessage.id === 'string' ? newMessage.id : String(newMessage.id);
-          animatedMessageIdRef.current = newMessageId;
+          // Set animation ID based on the potentially modified messageToAdd
+          if (messageToAdd.id) {
+            const newMessageId =
+              typeof messageToAdd.id === 'string' ? messageToAdd.id : String(messageToAdd.id);
+            // Only animate non-user messages
+            if (messageToAdd.senderId !== entityId) {
+              animatedMessageIdRef.current = newMessageId;
+            } else {
+              animatedMessageIdRef.current = null; // Don't animate user messages
+            }
+          }
 
-          return [...old, newMessage];
+          return [...old, messageToAdd]; // Add the potentially modified message
         }
       );
 
@@ -245,9 +267,10 @@ export default function Page({
     };
 
     const handleMessageComplete = (data: any) => {
-      if (data.roomId === roomId) {
-        setMessageProcessing(false);
-      }
+      // if (data.roomId === roomId) {
+      //   setMessageProcessing(false); // REMOVE - No longer using this state
+      // }
+      // We will rely on controlMessage to re-enable input
     };
 
     // Add listener for message broadcasts
@@ -285,10 +308,10 @@ export default function Page({
 
         if (action === 'disable_input') {
           setInputDisabled(true);
-          setMessageProcessing(true);
+          // setMessageProcessing(true); // REMOVE
         } else if (action === 'enable_input') {
           setInputDisabled(false);
-          setMessageProcessing(false);
+          // setMessageProcessing(false); // REMOVE
         }
       }
     };
@@ -343,7 +366,7 @@ export default function Page({
 
   const handleSendMessage = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!input || messageProcessing) return;
+    if (!input || inputDisabled) return; // Use inputDisabled instead of messageProcessing
 
     const messageId = randomUUID();
 
@@ -385,7 +408,8 @@ export default function Page({
     // Send the message to the server/agent
     socketIOManager.sendMessage(input, roomId, CHAT_SOURCE);
 
-    setMessageProcessing(true);
+    // setMessageProcessing(true); // REMOVE
+    // Input will be disabled by a controlMessage if needed
     setSelectedFile(null);
     setInput('');
     formRef.current?.reset();
@@ -485,7 +509,7 @@ export default function Page({
                     variant={isUser ? 'sent' : 'received'}
                     className={`flex flex-row items-end gap-2 ${isUser ? 'flex-row-reverse' : ''}`}
                   >
-                    {message.text && !isUser && (
+                    {!isUser && (
                       <Avatar className="size-8 border rounded-full select-none mb-2">
                         <AvatarImage
                           src={
@@ -549,7 +573,7 @@ export default function Page({
                     : 'Type your message here...'
                 }
                 className="min-h-12 resize-none rounded-md bg-card border-0 p-3 shadow-none focus-visible:ring-0"
-                disabled={inputDisabled || messageProcessing}
+                disabled={inputDisabled} // Depend only on inputDisabled
               />
               <div className="flex items-center p-3 pt-0">
                 <Tooltip>
@@ -585,12 +609,12 @@ export default function Page({
                   onChange={(newInput: string) => setInput(newInput)}
                 />
                 <Button
-                  disabled={messageProcessing}
+                  disabled={inputDisabled} // Depend only on inputDisabled
                   type="submit"
                   size="sm"
                   className="ml-auto gap-1.5 h-[30px]"
                 >
-                  {messageProcessing ? (
+                  {inputDisabled ? ( // Show loading based on inputDisabled
                     <div className="flex gap-0.5 items-center justify-center">
                       <span className="w-[4px] h-[4px] bg-gray-500 rounded-full animate-bounce [animation-delay:0s]" />
                       <span className="w-[4px] h-[4px] bg-gray-500 rounded-full animate-bounce [animation-delay:0.2s]" />

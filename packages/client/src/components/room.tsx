@@ -12,21 +12,21 @@ import SocketIOManager from '@/lib/socketio-manager';
 import { getEntityId, moment, randomUUID } from '@/lib/utils';
 import { WorldManager } from '@/lib/world-manager';
 import type { IAttachment } from '@/types';
-import type { Agent, Content, UUID } from '@elizaos/core';
+import type { Content, UUID } from '@elizaos/core';
 import { AgentStatus } from '@elizaos/core';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
 import { useQueryClient } from '@tanstack/react-query';
 import { ChevronRight, Edit, Paperclip, Send, X } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import AIWriter from 'react-aiwriter';
+import clientLogger from '../lib/logger';
+import AgentAvatarStack from './agent-avatar-stack';
+import GroupPanel from './group-panel';
 import { Avatar, AvatarImage } from './ui/avatar';
 import { Badge } from './ui/badge';
 import ChatTtsButton from './ui/chat/chat-tts-button';
 import { useAutoScroll } from './ui/chat/hooks/useAutoScroll';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
-import AgentAvatarStack from './agent-avatar-stack';
-import GroupPanel from './group-panel';
-import clientLogger from '../lib/logger';
 
 type ExtraContentFields = {
   name: string;
@@ -274,12 +274,29 @@ export default function Page({ serverId }: { serverId: UUID }) {
         (old: ContentWithUser[] = []) => {
           console.log(`[Chat] Current messages:`, old?.length || 0);
 
-          // Check if this message is already in the list (avoid duplicates)
+          // --- Start modification for IGNORE case ---
+          let messageToAdd = { ...newMessage }; // Copy the received message data
+          // const isIgnore = messageToAdd.actions?.includes('IGNORE');
+
+          // if (isIgnore) {
+          //   // Customize text for ignored messages
+          //   messageToAdd.text = `${messageToAdd.senderName || 'Agent'} chose not to reply.`;
+          //   // Ensure thought is preserved, actions array might also be useful
+          //   messageToAdd.thought = data.thought; // Make sure thought from data is used
+          //   messageToAdd.actions = data.actions; // Keep the IGNORE action marker
+          //   clientLogger.debug('[Chat] Handling IGNORE action, modifying message', messageToAdd);
+          // }
+          // --- End modification ---
+          // Removed the block above as IGNORE messages are filtered during render
+
+          // Check if this message (potentially modified) is already in the list (avoid duplicates)
           const isDuplicate = old.some(
             (msg) =>
-              msg.text === newMessage.text &&
-              msg.name === newMessage.name &&
-              Math.abs((msg.createdAt || 0) - (newMessage.createdAt || 0)) < 5000 // Within 5 seconds
+              // Use a combination of sender, text/thought, and time to detect duplicates
+              msg.senderId === messageToAdd.senderId &&
+              (msg.text === messageToAdd.text ||
+                (!msg.text && !messageToAdd.text && msg.thought === messageToAdd.thought)) &&
+              Math.abs((msg.createdAt || 0) - (messageToAdd.createdAt || 0)) < 5000 // Within 5 seconds
           );
 
           if (isDuplicate) {
@@ -287,12 +304,19 @@ export default function Page({ serverId }: { serverId: UUID }) {
             return old;
           }
 
-          if (newMessage && newMessage.id) {
-            animatedMessageIdRef.current =
-              typeof newMessage.id === 'string' ? newMessage.id : String(newMessage.id);
+          // Set animation ID based on the potentially modified messageToAdd
+          if (messageToAdd.id) {
+            const newMessageId =
+              typeof messageToAdd.id === 'string' ? messageToAdd.id : String(messageToAdd.id);
+            // Only animate non-user messages
+            if (messageToAdd.senderId !== entityId) {
+              animatedMessageIdRef.current = newMessageId;
+            } else {
+              animatedMessageIdRef.current = null; // Don't animate user messages
+            }
           }
 
-          return [...old, newMessage];
+          return [...old, messageToAdd]; // Add the potentially modified message
         }
       );
 
@@ -418,25 +442,6 @@ export default function Page({ serverId }: { serverId: UUID }) {
     }
   };
 
-  // Sort agents: enabled first, then disabled
-  const sortedAgents = [...agents]
-    .filter((agent) => roomsData?.get(serverId)?.some((room) => room.agentId === agent.id))
-    .sort((a, b) => {
-      // Sort by status (active agents first)
-      if (a.status === AgentStatus.ACTIVE && b.status !== AgentStatus.ACTIVE) return -1;
-      if (a.status !== AgentStatus.ACTIVE && b.status === AgentStatus.ACTIVE) return 1;
-      // If both have the same status, sort alphabetically by name
-      return a.name.localeCompare(b.name);
-    });
-
-  // Split into enabled and disabled groups
-  const activeAgents = sortedAgents.filter(
-    (agent: Partial<Agent & { status: string }>) => agent.status === AgentStatus.ACTIVE
-  );
-  const inactiveAgents = sortedAgents.filter(
-    (agent: Partial<Agent & { status: string }>) => agent.status === AgentStatus.INACTIVE
-  );
-
   // Create a map of agent avatars for easy lookup
   const agentAvatars: Record<string, string | null> = {};
   agents.forEach((agent) => {
@@ -532,46 +537,56 @@ export default function Page({ serverId }: { serverId: UUID }) {
               scrollToBottom={safeScrollToBottom}
               disableAutoScroll={disableAutoScroll}
             >
-              {messages.map((message: ContentWithUser, index: number) => {
-                const isUser = message.name === USER_NAME;
-                const shouldAnimate =
-                  index === messages.length - 1 &&
-                  message.name !== USER_NAME &&
-                  message.id === animatedMessageIdRef.current;
-                return (
-                  <div
-                    key={`${message.id as string}-${message.createdAt}`}
-                    className={`flex flex-col gap-1 p-1 ${isUser ? 'justify-end' : ''}`}
-                  >
-                    <ChatBubble
-                      variant={isUser ? 'sent' : 'received'}
-                      className={`flex flex-row items-end gap-2 ${isUser ? 'flex-row-reverse' : ''}`}
+              {messages
+                .filter((message) => {
+                  console.log('*** message ***');
+                  console.log(message);
+                  if (message.actions?.includes('IGNORE')) {
+                    console.log('Skipping ignore message');
+                    return false;
+                  }
+                  return true;
+                })
+                .map((message: ContentWithUser, index: number) => {
+                  const isUser = message.name === USER_NAME;
+                  const shouldAnimate =
+                    index === messages.length - 1 &&
+                    message.name !== USER_NAME &&
+                    message.id === animatedMessageIdRef.current;
+                  return (
+                    <div
+                      key={`${message.id as string}-${message.createdAt}`}
+                      className={`flex flex-col gap-1 p-1 ${isUser ? 'justify-end' : ''}`}
                     >
-                      {message.text && !isUser && (
-                        <Avatar className="size-8 border rounded-full select-none mb-2">
-                          <AvatarImage
-                            src={
-                              isUser
-                                ? '/user-icon.png'
-                                : (typeof message.agentId === 'string' &&
-                                    getAvatar(message.agentId)) ||
-                                  (typeof message.senderId === 'string' &&
-                                    getAvatar(message.senderId)) ||
-                                  '/elizaos-icon.png'
-                            }
-                          />
-                        </Avatar>
-                      )}
+                      <ChatBubble
+                        variant={isUser ? 'sent' : 'received'}
+                        className={`flex flex-row items-end gap-2 ${isUser ? 'flex-row-reverse' : ''}`}
+                      >
+                        {!isUser && (
+                          <Avatar className="size-8 border rounded-full select-none mb-2">
+                            <AvatarImage
+                              src={
+                                isUser
+                                  ? '/user-icon.png'
+                                  : (typeof message.agentId === 'string' &&
+                                      getAvatar(message.agentId)) ||
+                                    (typeof message.senderId === 'string' &&
+                                      getAvatar(message.senderId)) ||
+                                    '/elizaos-icon.png'
+                              }
+                            />
+                          </Avatar>
+                        )}
 
-                      <MemoizedMessageContent
-                        message={message}
-                        shouldAnimate={shouldAnimate}
-                        isUser={isUser}
-                      />
-                    </ChatBubble>
-                  </div>
-                );
-              })}
+                        <MemoizedMessageContent
+                          message={message}
+                          shouldAnimate={shouldAnimate}
+                          isUser={isUser}
+                        />
+                      </ChatBubble>
+                    </div>
+                  );
+                })}
             </ChatMessageList>
 
             {/* Chat Input */}
