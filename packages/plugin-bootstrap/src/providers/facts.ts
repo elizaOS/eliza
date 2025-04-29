@@ -54,15 +54,17 @@ const factsProvider: Provider = {
         tableName: 'facts',
         embedding,
         roomId: message.roomId,
+        worldId: message.worldId,
         count: 6,
         query: message.content.text,
       }),
-      runtime.getMemories({
+      runtime.searchMemories({
+        embedding,
+        query: message.content.text,
         tableName: 'facts',
         roomId: message.roomId,
+        entityId: message.entityId,
         count: 6,
-        start: 0,
-        end: Date.now(),
       }),
     ]);
 

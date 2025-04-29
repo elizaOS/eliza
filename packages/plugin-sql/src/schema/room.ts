@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm';
 import { jsonb, pgTable, text, uuid } from 'drizzle-orm/pg-core';
 import { agentTable } from './agent';
 import { numberTimestamp } from './types';
-import { worldTable } from './worldTable';
+import { worldTable } from './world';
 
 /**
  * Defines a table schema for 'rooms' in the database.

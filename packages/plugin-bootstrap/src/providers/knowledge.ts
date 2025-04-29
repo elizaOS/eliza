@@ -18,9 +18,12 @@ export const knowledgeProvider: Provider = {
     'Knowledge from the knowledge base that the agent knows, retrieved whenever the agent needs to answer a question about their expertise.',
   dynamic: true,
   get: async (runtime: IAgentRuntime, message: Memory) => {
+    console.log('*** getting knowledge');
     const knowledgeData = await runtime.getKnowledge(message);
+    console.log('*** got knowledge', knowledgeData);
 
     const firstFiveKnowledgeItems = knowledgeData?.slice(0, 5);
+    console.log('*** first five knowledge items', firstFiveKnowledgeItems);
 
     let knowledge =
       (firstFiveKnowledgeItems && firstFiveKnowledgeItems.length > 0
@@ -32,8 +35,8 @@ export const knowledgeProvider: Provider = {
 
     const tokenLength = 3.5;
 
-    if (knowledge.length > 2000 * tokenLength) {
-      knowledge = knowledge.slice(0, 2000 * tokenLength);
+    if (knowledge.length > 4000 * tokenLength) {
+      knowledge = knowledge.slice(0, 4000 * tokenLength);
     }
 
     return {
