@@ -201,46 +201,65 @@ export class SolanaService extends Service {
    * @returns {Promise<WalletPortfolio>} The updated wallet portfolio information
    */
   private async updateWalletData(force = false): Promise<WalletPortfolio> {
+    //console.log('updateWalletData - start')
     const now = Date.now();
 
+    if (!this.publicKey) {
+      // can't be warn if we fire every start up
+      // maybe we just get the pubkey here proper
+      // or fall back to SOLANA_PUBLIC_KEY
+      logger.log('solana::updateWalletData - no Public Key yet');
+      return {};
+    }
+
+    //console.log('updateWalletData - force', force, 'last', this.lastUpdate, 'UPDATE_INTERVAL', this.UPDATE_INTERVAL)
     // Don't update if less than interval has passed, unless forced
     if (!force && now - this.lastUpdate < this.UPDATE_INTERVAL) {
       const cached = await this.getCachedData();
       if (cached) return cached;
     }
+    //console.log('updateWalletData - fetch')
 
     try {
       // Try Birdeye API first
       const birdeyeApiKey = this.runtime.getSetting('BIRDEYE_API_KEY');
       if (birdeyeApiKey) {
-        const walletData = await this.fetchWithRetry(
-          `${PROVIDER_CONFIG.BIRDEYE_API}/v1/wallet/token_list?wallet=${this.publicKey.toBase58()}`
-        );
+        try {
+          const walletData = await this.fetchWithRetry(
+            `${PROVIDER_CONFIG.BIRDEYE_API}/v1/wallet/token_list?wallet=${this.publicKey.toBase58()}`
+          );
+          //console.log('walletData', walletData)
 
-        if (walletData?.success && walletData?.data) {
-          const data = walletData.data;
-          const totalUsd = new BigNumber(data.totalUsd.toString());
-          const prices = await this.fetchPrices();
-          const solPriceInUSD = new BigNumber(prices.solana.usd);
+          if (walletData?.success && walletData?.data) {
+            const data = walletData.data;
+            const totalUsd = new BigNumber(data.totalUsd.toString());
+            const prices = await this.fetchPrices();
+            const solPriceInUSD = new BigNumber(prices.solana.usd);
 
-          const portfolio: WalletPortfolio = {
-            totalUsd: totalUsd.toString(),
-            totalSol: totalUsd.div(solPriceInUSD).toFixed(6),
-            prices,
-            lastUpdated: now,
-            items: data.items.map((item: Item) => ({
-              ...item,
-              valueSol: new BigNumber(item.valueUsd || 0).div(solPriceInUSD).toFixed(6),
-              name: item.name || 'Unknown',
-              symbol: item.symbol || 'Unknown',
-              priceUsd: item.priceUsd || '0',
-              valueUsd: item.valueUsd || '0',
-            })),
-          };
+            const portfolio: WalletPortfolio = {
+              totalUsd: totalUsd.toString(),
+              totalSol: totalUsd.div(solPriceInUSD).toFixed(6),
+              prices,
+              lastUpdated: now,
+              items: data.items.map((item: Item) => ({
+                ...item,
+                valueSol: new BigNumber(item.valueUsd || 0).div(solPriceInUSD).toFixed(6),
+                name: item.name || 'Unknown',
+                symbol: item.symbol || 'Unknown',
+                priceUsd: item.priceUsd || '0',
+                valueUsd: item.valueUsd || '0',
+              })),
+            };
 
-          await this.runtime.setCache<WalletPortfolio>(SOLANA_WALLET_DATA_CACHE_KEY, portfolio);
-          this.lastUpdate = now;
-          return portfolio;
+            //console.log('saving portfolio', portfolio.items.length, 'tokens')
+
+            // maybe should be keyed by public key
+            await this.runtime.setCache<WalletPortfolio>(SOLANA_WALLET_DATA_CACHE_KEY, portfolio);
+            this.lastUpdate = now;
+            return portfolio;
+          }
+        } catch (e) {
+          console.log('solana wallet exception err', e);
         }
       }
 
