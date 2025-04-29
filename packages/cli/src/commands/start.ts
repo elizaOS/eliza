@@ -21,7 +21,7 @@ import { promptForEnvVars } from '../utils/env-prompt.js';
 import { configureDatabaseSettings, loadEnvironment } from '../utils/get-config';
 import { handleError } from '../utils/handle-error';
 import { installPlugin } from '../utils/install-plugin';
-import { displayBanner, getVersion } from '../displayBanner';
+import { displayBanner, getVersion } from '../utils/displayBanner';
 import { findNextAvailablePort } from '../utils/port-handling';
 import { loadPluginModule } from '../utils/load-plugin';
 

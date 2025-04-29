@@ -10,7 +10,7 @@ import path from 'node:path';
 import { loadProject } from '../project.js';
 import { AgentServer } from '../server/index.js';
 import { jsonToCharacter, loadCharacterTryPath } from '../server/loader';
-import { TestRunner } from '../testRunner.js';
+import { TestRunner } from '../utils/testRunner.js';
 import { promptForEnvVars } from '../utils/env-prompt.js';
 import { startAgent } from './start.js';
 

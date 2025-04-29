@@ -8,7 +8,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { logHeader } from '@/src/utils/helpers';
 import { isRunningViaNpx } from '@/src/utils/package-manager';
-import { getVersion } from '../displayBanner';
+import { getVersion } from '../utils/displayBanner';
 
 // --- Helper Functions ---
 

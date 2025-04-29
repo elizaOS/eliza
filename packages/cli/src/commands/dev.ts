@@ -8,6 +8,7 @@ import { logger } from '@elizaos/core';
 import { Command } from 'commander';
 import { execa } from 'execa';
 import { handleError } from '../utils/handle-error';
+import { isElizaMonorepoContext, getMonorepoRoot } from '../utils/monorepoUtils';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -81,6 +82,10 @@ async function startServer(args: string[] = []): Promise<void> {
 async function determineProjectType(): Promise<{ isProject: boolean; isPlugin: boolean }> {
   const cwd = process.cwd();
   const packageJsonPath = path.join(cwd, 'package.json');
+  const isMonorepo = isElizaMonorepoContext();
+
+  console.info(`Running in directory: ${cwd}`);
+  console.info(`Detected Eliza monorepo context: ${isMonorepo}`);
 
   let isProject = false;
   let isPlugin = false;
@@ -333,7 +338,46 @@ export const dev = new Command()
 
           console.info('Rebuilding project after file change...');
 
-          // Run the build process
+          const isMonorepo = isElizaMonorepoContext();
+
+          if (isMonorepo) {
+            const monorepoRoot = getMonorepoRoot();
+            if (monorepoRoot) {
+              const corePackages = [
+                {
+                  name: 'core',
+                  path: path.join(monorepoRoot, 'packages', 'core'),
+                  isPlugin: false,
+                },
+                {
+                  name: 'client',
+                  path: path.join(monorepoRoot, 'packages', 'client'),
+                  isPlugin: false,
+                },
+                {
+                  name: 'plugin-bootstrap',
+                  path: path.join(monorepoRoot, 'packages', 'plugin-bootstrap'),
+                  isPlugin: true,
+                },
+              ];
+
+              console.info('Building core monorepo packages...');
+              for (const pkg of corePackages) {
+                try {
+                  console.info(`Building ${pkg.name}...`);
+                  await buildProject(pkg.path, pkg.isPlugin);
+                } catch (buildError) {
+                  console.error(`Error building ${pkg.name}: ${buildError.message}`);
+                  // Decide if we should stop or continue
+                }
+              }
+            } else {
+              console.warn('Monorepo context detected, but failed to find monorepo root.');
+            }
+          }
+
+          // Build the current project/plugin
+          console.info(`Building current package: ${cwd}`);
           await buildProject(cwd, isPlugin);
 
           console.log('Rebuild successful, restarting server...');
