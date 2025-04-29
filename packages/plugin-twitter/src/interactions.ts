@@ -121,7 +121,7 @@ export class TwitterInteractionClient {
     try {
       // Check for mentions
       const cursorKey = `twitter/${twitterUsername}/mention_cursor`;
-      const cachedCursor = await this.runtime.getCache<string>(cursorKey);
+      const cachedCursor: String = await this.runtime.getCache<string>(cursorKey);
 
       const searchResult = await this.client.fetchSearchTweets(
         `@${twitterUsername}`,
@@ -137,7 +137,7 @@ export class TwitterInteractionClient {
         await this.runtime.setCache(cursorKey, searchResult.previous);
       } else if (!searchResult.previous && !searchResult.next) {
         // If both previous and next are missing, clear the outdated cursor
-        await this.runtime.setCache(cursorKey, null);
+        await this.runtime.setCache(cursorKey, ''); // used to be null, but DB doesn't allow it
       }
 
       await this.processMentionTweets(mentionCandidates);
