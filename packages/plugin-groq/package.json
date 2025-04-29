@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-groq",
-  "version": "1.0.0-beta.38",
+  "version": "1.0.0-beta.39",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -24,7 +24,7 @@
   "dependencies": {
     "@ai-sdk/groq": "^1.1.9",
     "@ai-sdk/ui-utils": "^1.2.8",
-    "@elizaos/core": "^1.0.0-beta.38",
+    "@elizaos/core": "^1.0.0-beta.39",
     "ai": "^4.3.9",
     "js-tiktoken": "^1.0.18",
     "tsup": "8.4.0"
