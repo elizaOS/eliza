@@ -437,7 +437,7 @@ export default function Page({
       className={`flex flex-col w-full h-screen items-center ${showDetails ? 'col-span-3' : 'col-span-4'}`}
     >
       {/* Wrapper to constrain width and manage vertical layout */}
-      <div className="flex flex-col w-full md:max-w-3xl h-full p-4">
+      <div className="flex flex-col w-full md:max-w-4xl h-full p-4">
         {/* Agent Header */}
         <div className="flex items-center justify-between mb-4 p-3 bg-card rounded-lg border">
           <div className="flex items-center gap-3">
@@ -491,7 +491,7 @@ export default function Page({
 
         {/* Main Chat Area - takes remaining height */}
         <div
-          className={cn('flex flex-col transition-all duration-300 w-full grow overflow-hidden')}
+          className={cn('flex flex-col transition-all duration-300 w-full grow overflow-hidden ')}
         >
           {/* Chat Messages */}
           <ChatMessageList
@@ -499,7 +499,7 @@ export default function Page({
             isAtBottom={isAtBottom}
             scrollToBottom={safeScrollToBottom}
             disableAutoScroll={disableAutoScroll}
-            className="flex-grow overflow-y-auto" // Ensure scrolling within this list
+            className="flex-grow scrollbar-hide overflow-y-auto" // Ensure scrolling within this list
           >
             {messages.map((message: ContentWithUser, index: number) => {
               const isUser = message.name === USER_NAME;

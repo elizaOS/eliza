@@ -354,7 +354,7 @@ export default function CharacterForm({
   const renderInputField = (field: InputField) => (
     <div
       key={field.name}
-      className={`space-y-2 ${field.name === 'name' ? 'agent-form-name' : ''} ${field.name === 'system' ? 'agent-form-system-prompt' : ''}`}
+      className={`space-y-2 w-full ${field.name === 'name' ? 'agent-form-name' : ''} ${field.name === 'system' ? 'agent-form-system-prompt' : ''}`}
     >
       <div className="flex items-center gap-2">
         <TooltipProvider>
@@ -538,7 +538,7 @@ export default function CharacterForm({
   );
 
   return (
-    <div className="container max-w-4xl mx-auto p-6">
+    <div className="container w-full mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-3xl font-bold">{title || 'Agent Settings'}</h1>

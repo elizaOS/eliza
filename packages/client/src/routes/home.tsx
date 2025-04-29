@@ -42,7 +42,7 @@ export default function Home() {
   return (
     <>
       <div className="flex-1 p-3 w-full h-full">
-        <div className="flex flex-col gap-4 h-full w-full md:max-w-3xl mx-auto">
+        <div className="flex flex-col gap-4 h-full w-full md:max-w-4xl mx-auto">
           <div className="flex items-center justify-between gap-2 p-2">
             <PageTitle title="Agents" />
             <Button
@@ -58,7 +58,7 @@ export default function Home() {
           {isLoading && <div className="text-center py-8">Loading agents...</div>}
 
           {isError && (
-            <div className="text-center py-8 text-destructive">
+            <div className="text-center py-8">
               Error loading agents: {error instanceof Error ? error.message : 'Unknown error'}
             </div>
           )}
