@@ -1,6 +1,5 @@
-CREATE EXTENSION IF NOT EXISTS vector;
---> statement-breakpoint				
-CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;
+CREATE EXTENSION IF NOT EXISTS vector;--> statement-breakpoint				
+CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;--> statement-breakpoint		
 
 CREATE TABLE "agents" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
