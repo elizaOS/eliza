@@ -26,15 +26,29 @@ interface ProviderResult {
  */
 export const walletProvider: Provider = {
   name: 'solana-wallet',
+  description: 'your solana wallet information',
+  // it's not slow we always have this data
+  // but we don't always need this data, let's free up the context
+  dynamic: true,
   get: async (runtime: IAgentRuntime, _message: Memory, state?: State): Promise<ProviderResult> => {
     try {
       const portfolioCache = await runtime.getCache<WalletPortfolio>(SOLANA_WALLET_DATA_CACHE_KEY);
+      //console.log('portfolioCache', portfolioCache)
       if (!portfolioCache) {
+        logger.info('solana::wallet provider - portfolioCache is not ready');
         return { data: null, values: {}, text: '' };
       }
 
+      // hard coding service name, ugh
+      const solanaService = runtime.getService('solana');
+      let pubkeyStr = '';
+      // why wouldn't this exist? it's in the same plugin...
+      if (solanaService) {
+        pubkeyStr = ' (' + solanaService.publicKey.toBase58() + ')';
+      }
+
       const portfolio = portfolioCache;
-      const agentName = state?.agentName || 'The agent';
+      const agentName = state?.agentName || runtime.character.name || 'The agent';
 
       // Values that can be injected into templates
       const values: Record<string, string> = {
@@ -61,7 +75,7 @@ export const walletProvider: Provider = {
       }
 
       // Format the text output
-      let text = `${agentName}'s Solana Wallet\n`;
+      let text = `\n\n${agentName}'s Main Solana Wallet${pubkeyStr}\n`;
       text += `Total Value: $${values.total_usd} (${values.total_sol} SOL)\n\n`;
 
       // Token Balances
