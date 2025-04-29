@@ -18,7 +18,7 @@ import { teeCommand as tee } from './commands/tee';
 import { test } from './commands/test';
 import { update } from './commands/update';
 import { loadEnvironment } from './utils/get-config';
-import { displayBanner, getVersion } from './displayBanner';
+import { displayBanner, getVersion } from './utils/displayBanner';
 import { setupMonorepo } from './commands/install';
 import { updateCLI } from './commands/update-cli';
 import { plugins } from './commands/plugins';

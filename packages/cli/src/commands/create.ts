@@ -12,7 +12,7 @@ import path from 'node:path';
 import prompts from 'prompts';
 import colors from 'yoctocolors';
 import { z } from 'zod';
-import { displayBanner } from '../displayBanner';
+import { displayBanner } from '../utils/displayBanner';
 import { setupPgLite, promptAndStorePostgresUrl, getElizaDirectories } from '../utils/get-config';
 
 /**

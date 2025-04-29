@@ -1,6 +1,6 @@
 import { logger } from '@elizaos/core';
 import { Command } from 'commander';
-import { getVersion, displayBanner } from '../displayBanner';
+import { getVersion, displayBanner } from '../utils/displayBanner';
 import { execa } from 'execa';
 import {
   isGlobalInstallation,
