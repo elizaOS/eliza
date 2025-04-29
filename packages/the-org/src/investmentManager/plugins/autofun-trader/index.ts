@@ -20,71 +20,78 @@ export const autofunTraderPlugin: Plugin = {
       await runtime.deleteTask(task.id);
     }
 
-    runtime.registerTaskWorker({
-      name: 'AFTRADER_GENERATE_BUY_SIGNAL',
-      validate: async (runtime, _message, _state) => {
-        // Check if we have some sentiment data before proceeding
-        //const sentimentsData = (await runtime.getCache<Sentiment[]>('sentiments')) || [];
-        //if (sentimentsData.length === 0) {
-        //return false;
-        //}
-        return true;
-      },
-      execute: async (runtime, _options, task) => {
-        const tradeService = runtime.getService(ServiceTypes.AUTOFUN_TRADING);
-        try {
-          tradeService.buyService.generateSignal();
-        } catch (error) {
-          logger.error('Failed to generate buy signal', error);
-          // Log the error but don't delete the task
-        }
-      },
-    });
+    const allowBuy = true;
+    const allowSell = true;
 
-    runtime.createTask({
-      name: 'AFTRADER_GENERATE_BUY_SIGNAL',
-      description: 'Generate a buy signal',
-      worldId,
-      metadata: {
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        updateInterval: 1000 * 60 * 5, // 5 minutes
-      },
-      tags: ['queue', 'repeat', 'autofun_trader', 'immediate'],
-    });
+    if (allowBuy) {
+      runtime.registerTaskWorker({
+        name: 'AFTRADER_GOTO_MARKET',
+        validate: async (runtime, _message, _state) => {
+          // Check if we have some sentiment data before proceeding
+          //const sentimentsData = (await runtime.getCache<Sentiment[]>('sentiments')) || [];
+          //if (sentimentsData.length === 0) {
+          //return false;
+          //}
+          return true;
+        },
+        execute: async (runtime, _options, task) => {
+          const tradeService = runtime.getService(ServiceTypes.AUTOFUN_TRADING);
+          try {
+            tradeService.buyService.generateSignal();
+          } catch (error) {
+            logger.error('Failed to generate buy signal', error);
+            // Log the error but don't delete the task
+          }
+        },
+      });
 
-    runtime.registerTaskWorker({
-      name: 'AFTRADER_GENERATE_SELL_SIGNAL',
-      validate: async (runtime, _message, _state) => {
-        // Check if we have some sentiment data before proceeding
-        //const sentimentsData = (await runtime.getCache<Sentiment[]>('sentiments')) || [];
-        //if (sentimentsData.length === 0) {
-        //return false;
-        //}
-        return true;
-      },
-      execute: async (runtime, _options, task) => {
-        const tradeService = runtime.getService(ServiceTypes.AUTOFUN_TRADING) as unknown; //  as ITradeService
-        try {
-          tradeService.sellService.generateSignal();
-        } catch (error) {
-          logger.error('Failed to generate buy signal', error);
-          // Log the error but don't delete the task
-        }
-      },
-    });
+      runtime.createTask({
+        name: 'AFTRADER_GOTO_MARKET',
+        description: 'Generate a buy signal',
+        worldId,
+        metadata: {
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          updateInterval: 1000 * 60 * 5, // 5 minutes
+        },
+        tags: ['queue', 'repeat', 'autofun_trader', 'immediate'],
+      });
+    }
 
-    runtime.createTask({
-      name: 'AFTRADER_GENERATE_SELL_SIGNAL',
-      description: 'Generate a sell signal',
-      worldId,
-      metadata: {
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        updateInterval: 1000 * 60 * 5, // 5 minutes
-      },
-      tags: ['queue', 'repeat', 'autofun_trader', 'immediate'],
-    });
+    if (allowSell) {
+      runtime.registerTaskWorker({
+        name: 'AFTRADER_CHECK_POSITIONS',
+        validate: async (runtime, _message, _state) => {
+          // Check if we have some sentiment data before proceeding
+          //const sentimentsData = (await runtime.getCache<Sentiment[]>('sentiments')) || [];
+          //if (sentimentsData.length === 0) {
+          //return false;
+          //}
+          return true;
+        },
+        execute: async (runtime, _options, task) => {
+          const tradeService = runtime.getService(ServiceTypes.AUTOFUN_TRADING) as unknown; //  as ITradeService
+          try {
+            tradeService.sellService.generateSignal();
+          } catch (error) {
+            logger.error('Failed to generate buy signal', error);
+            // Log the error but don't delete the task
+          }
+        },
+      });
+
+      runtime.createTask({
+        name: 'AFTRADER_CHECK_POSITIONS',
+        description: 'Generate a sell signal',
+        worldId,
+        metadata: {
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          updateInterval: 1000 * 60 * 5, // 5 minutes
+        },
+        tags: ['queue', 'repeat', 'autofun_trader', 'immediate'],
+      });
+    }
   },
 };
 
