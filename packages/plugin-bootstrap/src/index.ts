@@ -271,15 +271,7 @@ const messageReceivedHandler = async ({
       let responseMessages: Memory[] = [];
 
       if (shouldRespond) {
-        state = await runtime.composeState(message, null, [
-          'ANXIETY',
-          'WORLD',
-          'FACTS',
-          'ENTITIES',
-          'PROVIDERS',
-          'ACTIONS',
-          'RECENT_MESSAGES',
-        ]);
+        state = await runtime.composeState(message);
 
         const prompt = composePromptFromState({
           state,
@@ -350,6 +342,10 @@ const messageReceivedHandler = async ({
         agentResponses.delete(message.roomId);
         if (agentResponses.size === 0) {
           latestResponseIds.delete(runtime.agentId);
+        }
+
+        if (responseContent?.providers.length > 0) {
+          state = await runtime.composeState(message, null, [...responseContent?.providers]);
         }
 
         if (

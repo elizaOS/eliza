@@ -240,7 +240,7 @@ export function LogViewer({ agentName, level, hideTitle }: LogViewerProps = {}) 
           {error instanceof Error ? error.message : 'Failed to fetch logs'}
         </div>
       ) : (
-        <ScrollArea className="h-[600px] rounded-md border bg-black">
+        <ScrollArea className="h-full rounded-md border bg-black">
           <div
             ref={scrollAreaRef}
             onScroll={handleScroll}
