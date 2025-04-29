@@ -18,7 +18,13 @@ import {
   HandlerCallback,
 } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
-import { createMockMemory, createMockRuntime, createMockState, MockRuntime, setupActionTest } from './test-utils';
+import {
+  createMockMemory,
+  createMockRuntime,
+  createMockState,
+  MockRuntime,
+  setupActionTest,
+} from './test-utils';
 
 // Helper to create unique mock IDs
 const createMockId = () => uuidv4() as UUID;
@@ -259,9 +265,9 @@ describe('Reaction Events', () => {
           reaction: true,
           referencedMessageId: 'original-message-id',
         } as Content,
-      }
+      },
     });
-    
+
     mockRuntime = setup.mockRuntime;
     mockReaction = setup.mockMessage;
   });
@@ -335,9 +341,9 @@ describe('World and Entity Events', () => {
           });
         }),
         updateEntity: vi.fn().mockResolvedValue(undefined),
-      }
+      },
     });
-    
+
     mockRuntime = setup.mockRuntime;
   });
 

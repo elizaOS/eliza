@@ -321,3 +321,47 @@ html[data-theme='dark'] .header-github-link {
 .header-rss-link.navbar__link:after {
   display: none;
 }
+
+/* Mermaid diagram customization */
+.mermaid {
+  --mermaid-font-family: var(--ifm-font-family-base);
+}
+
+/* Orange lines for arrowheads and edge labels */
+.mermaid .marker {
+  fill: var(--ifm-color-primary) !important;
+  stroke: var(--ifm-color-primary) !important;
+}
+
+.mermaid .edgeLabel {
+  background-color: transparent !important;
+  color: var(--ifm-color-primary) !important;
+}
+
+.mermaid .edgePath .path {
+  stroke: var(--ifm-color-primary) !important;
+}
+
+.mermaid .arrowheadPath {
+  fill: var(--ifm-color-primary) !important;
+  stroke: var(--ifm-color-primary) !important;
+}
+
+/* Dark mode adjustments for Mermaid */
+[data-theme='dark'] .mermaid .marker {
+  fill: var(--ifm-color-primary) !important;
+  stroke: var(--ifm-color-primary) !important;
+}
+
+[data-theme='dark'] .mermaid .edgeLabel {
+  color: var(--ifm-color-primary) !important;
+}
+
+[data-theme='dark'] .mermaid .edgePath .path {
+  stroke: var(--ifm-color-primary) !important;
+}
+
+[data-theme='dark'] .mermaid .arrowheadPath {
+  fill: var(--ifm-color-primary) !important;
+  stroke: var(--ifm-color-primary) !important;
+}

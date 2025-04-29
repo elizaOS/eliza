@@ -140,14 +140,12 @@ export function createMockRuntime(overrides: Partial<MockRuntime> = {}): MockRun
     composePrompt: vi.fn().mockReturnValue('Composed prompt'),
     composeState: vi.fn().mockResolvedValue({ values: {}, data: {} }),
     createMemory: vi.fn().mockResolvedValue({ id: 'memory-id' }),
-    getRoom: vi
-      .fn()
-      .mockResolvedValue({
-        id: 'room-id',
-        name: 'Test Room',
-        worldId: 'test-world-id',
-        serverId: 'test-server-id',
-      }),
+    getRoom: vi.fn().mockResolvedValue({
+      id: 'room-id',
+      name: 'Test Room',
+      worldId: 'test-world-id',
+      serverId: 'test-server-id',
+    }),
     getRooms: vi
       .fn()
       .mockResolvedValue([
@@ -357,12 +355,14 @@ export function createMockService(overrides: Partial<Record<string, any>> = {}):
  * @param overrides - Optional overrides for default mock implementations
  * @returns An object containing mockRuntime, mockMessage, mockState, and callbackFn
  */
-export function setupActionTest(overrides: {
-  runtimeOverrides?: Partial<MockRuntime>;
-  messageOverrides?: Partial<Memory>;
-  stateOverrides?: Partial<State>;
-  callbackFn?: ReturnType<typeof vi.fn>;
-} = {}) {
+export function setupActionTest(
+  overrides: {
+    runtimeOverrides?: Partial<MockRuntime>;
+    messageOverrides?: Partial<Memory>;
+    stateOverrides?: Partial<State>;
+    callbackFn?: ReturnType<typeof vi.fn>;
+  } = {}
+) {
   // Create mock callback function
   const callbackFn = overrides.callbackFn || vi.fn();
 

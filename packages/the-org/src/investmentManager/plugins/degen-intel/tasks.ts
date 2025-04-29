@@ -29,63 +29,76 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
     await runtime.deleteTask(task.id);
   }
 
-  runtime.registerTaskWorker({
-    name: 'INTEL_BIRDEYE_SYNC_TRENDING',
-    validate: async (_runtime, _message, _state) => {
-      return true; // TODO: validate after certain time
-    },
-    execute: async (runtime, _options, task) => {
-      const birdeye = new Birdeye(runtime);
-      try {
-        await birdeye.syncTrendingTokens('solana');
-      } catch (error) {
-        logger.error('Failed to sync trending tokens', error);
-        // kill this task
-        runtime.deleteTask(task.id);
-      }
-    },
-  });
+  if (runtime.getSetting('BIRDEYE_API_KEY')) {
+    runtime.registerTaskWorker({
+      name: 'INTEL_BIRDEYE_SYNC_TRENDING',
+      validate: async (_runtime, _message, _state) => {
+        return true; // TODO: validate after certain time
+      },
+      execute: async (runtime, _options, task) => {
+        const birdeye = new Birdeye(runtime);
+        try {
+          await birdeye.syncTrendingTokens('solana');
+          //await birdeye.syncTrendingTokens('base');
+        } catch (error) {
+          logger.error('Failed to sync trending tokens', error);
+          // kill this task
+          runtime.deleteTask(task.id);
+        }
+      },
+    });
 
-  runtime.createTask({
-    name: 'INTEL_BIRDEYE_SYNC_TRENDING',
-    description: 'Sync trending tokens from Birdeye',
-    worldId,
-    metadata: {
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      updateInterval: 1000 * 60 * 60, // 1 hour
-    },
-    tags: ['queue', 'repeat', 'degen_intel', 'immediate'],
-  });
+    runtime.createTask({
+      name: 'INTEL_BIRDEYE_SYNC_TRENDING',
+      description: 'Sync trending tokens from Birdeye',
+      worldId,
+      metadata: {
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        updateInterval: 1000 * 60 * 60, // 1 hour
+      },
+      tags: ['queue', 'repeat', 'degen_intel', 'immediate'],
+    });
+  } else {
+    logger.debug(
+      'WARNING: BIRDEYE_API_KEY not found, skipping creation of INTEL_BIRDEYE_SYNC_TRENDING task'
+    );
+  }
 
-  runtime.registerTaskWorker({
-    name: 'INTEL_COINMARKETCAP_SYNC',
-    validate: async (_runtime, _message, _state) => {
-      return true; // TODO: validate after certain time
-    },
-    execute: async (runtime, _options, task) => {
-      const cmc = new CoinmarketCap(runtime);
-      try {
-        await cmc.syncTokens();
-      } catch (error) {
-        logger.debug('Failed to sync tokens', error);
-        // kill this task
-        await runtime.deleteTask(task.id);
-      }
-    },
-  });
+  if (runtime.getSetting('COINMARKETCAP_API_KEY')) {
+    runtime.registerTaskWorker({
+      name: 'INTEL_COINMARKETCAP_SYNC',
+      validate: async (_runtime, _message, _state) => {
+        return true; // TODO: validate after certain time
+      },
+      execute: async (runtime, _options, task) => {
+        const cmc = new CoinmarketCap(runtime);
+        try {
+          await cmc.syncTokens();
+        } catch (error) {
+          logger.debug('Failed to sync tokens', error);
+          // kill this task
+          await runtime.deleteTask(task.id);
+        }
+      },
+    });
 
-  runtime.createTask({
-    name: 'INTEL_COINMARKETCAP_SYNC',
-    description: 'Sync tokens from Coinmarketcap',
-    worldId,
-    metadata: {
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      updateInterval: 1000 * 60 * 5, // 5 minutes
-    },
-    tags: ['queue', 'repeat', 'degen_intel', 'immediate'],
-  });
+    runtime.createTask({
+      name: 'INTEL_COINMARKETCAP_SYNC',
+      description: 'Sync tokens from Coinmarketcap',
+      worldId,
+      metadata: {
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        updateInterval: 1000 * 60 * 5, // 5 minutes
+      },
+      tags: ['queue', 'repeat', 'degen_intel', 'immediate'],
+    });
+  } else {
+    logger.debug(
+      'WARNING: COINMARKETCAP_API_KEY not found, skipping creation of INTEL_COINMARKETCAP_SYNC task'
+    );
+  }
 
   // shouldn't plugin-solana and plugin-evm handle this?
   runtime.registerTaskWorker({
@@ -118,8 +131,9 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
   });
 
   // Only create the Twitter sync task if the Twitter service exists
-  const twitterService = runtime.getService('twitter');
-  if (twitterService) {
+  const plugins = runtime.plugins.map((p) => p.name);
+  //const twitterService = runtime.getService('twitter');
+  if (plugins.indexOf('twitter') !== -1) {
     runtime.registerTaskWorker({
       name: 'INTEL_SYNC_RAW_TWEETS',
       validate: async (runtime, _message, _state) => {
@@ -196,8 +210,12 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
       tags: ['queue', 'repeat', 'degen_intel', 'immediate'],
     });
   } else {
+    console.log(
+      'intel:tasks - plugins',
+      runtime.plugins.map((p) => p.name)
+    );
     logger.debug(
-      'WARNING: Twitter service not found, skipping creation of INTEL_SYNC_RAW_TWEETS task'
+      'WARNING: Twitter plugin not found, skipping creation of INTEL_SYNC_RAW_TWEETS task'
     );
   }
 
@@ -205,6 +223,7 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
   //const tradeService = runtime.getService(ServiceTypes.DEGEN_TRADING) as unknown; //  as ITradeService
   // has to be included after degen-trader
   const tradeService = runtime.getService('degen_trader') as unknown; //  as ITradeService
+  //if (plugins.indexOf('degen-trader') !== -1) {
   if (tradeService) {
     runtime.registerTaskWorker({
       name: 'INTEL_GENERATE_BUY_SIGNAL',

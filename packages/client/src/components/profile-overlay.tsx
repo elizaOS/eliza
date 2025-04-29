@@ -1,8 +1,9 @@
 import { useAgentManagement } from '@/hooks/use-agent-management';
 import { formatAgentName } from '@/lib/utils';
 import type { Agent } from '@elizaos/core';
-import { Cog, Loader2, Play, Square, X } from 'lucide-react';
+import { Cog, Loader2, Play, X } from 'lucide-react';
 import { useNavigate } from 'react-router';
+import StopAgentButton from './stop-agent-button';
 import { Button } from './ui/button';
 import { Card, CardContent, CardFooter, CardHeader } from './ui/card';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
@@ -17,7 +18,7 @@ interface ProfileOverlayProps {
 export default function ProfileOverlay({ isOpen, onClose, agent }: ProfileOverlayProps) {
   if (!isOpen) return null;
 
-  const { startAgent, stopAgent, isAgentStarting, isAgentStopping } = useAgentManagement();
+  const { startAgent, isAgentStarting, isAgentStopping } = useAgentManagement();
 
   const navigate = useNavigate();
 
@@ -26,30 +27,21 @@ export default function ProfileOverlay({ isOpen, onClose, agent }: ProfileOverla
   const isStopping = isAgentStopping(agent.id);
   const isProcessing = isStarting || isStopping;
 
-  // Button state configuration
-  const buttonConfig = {
-    label: isActive ? 'Stop' : 'Start',
-    icon: isActive ? <Square className="w-4 h-4" /> : <Play className="w-4 h-4" />,
-    variant: isActive ? 'destructive' : 'default',
+  // Start button configuration
+  const startButtonConfig = {
+    label: 'Start',
+    icon: <Play className="w-4 h-4" />,
   };
 
   if (isStarting) {
-    buttonConfig.label = 'Starting...';
-    buttonConfig.icon = <Loader2 className="animate-spin" />;
-  } else if (isStopping) {
-    buttonConfig.label = 'Stopping...';
-    buttonConfig.icon = <Loader2 className="animate-spin" />;
+    startButtonConfig.label = 'Starting...';
+    startButtonConfig.icon = <Loader2 className="animate-spin w-4 h-4" />;
   }
 
-  // Handle agent start/stop
-  const handleAgentToggle = () => {
+  // Handle agent start
+  const handleAgentStart = () => {
     if (isProcessing) return;
-
-    if (!isActive) {
-      startAgent(agent);
-    } else {
-      stopAgent(agent);
-    }
+    startAgent(agent);
   };
 
   // Navigate to settings
@@ -164,7 +156,7 @@ export default function ProfileOverlay({ isOpen, onClose, agent }: ProfileOverla
             <div>
               <p className="font-medium text-sm mb-2">Plugins</p>
               <div className="flex flex-wrap gap-2">
-                {agent?.plugins?.length > 0 ? (
+                {agent?.plugins && agent.plugins.length > 0 ? (
                   agent.plugins.map((plugin, index) => {
                     // Extract plugin name by removing the prefix
                     const pluginName = plugin
@@ -198,14 +190,19 @@ export default function ProfileOverlay({ isOpen, onClose, agent }: ProfileOverla
               <Cog className="w-4 h-4" />
             </Button>
 
-            <Button
-              variant={buttonConfig.variant}
-              onClick={handleAgentToggle}
-              disabled={isProcessing}
-            >
-              {buttonConfig.icon}
-              <span className="ml-2">{buttonConfig.label}</span>
-            </Button>
+            {isActive ? (
+              <StopAgentButton agent={agent} showIcon={true} size="default" className="h-9" />
+            ) : (
+              <Button
+                variant="default"
+                onClick={handleAgentStart}
+                disabled={isProcessing}
+                className="h-9"
+              >
+                {startButtonConfig.icon}
+                <span className="ml-2">{startButtonConfig.label}</span>
+              </Button>
+            )}
           </div>
 
           {isActive && (

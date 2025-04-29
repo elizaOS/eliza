@@ -7,7 +7,6 @@ import {
 } from '@elizaos/core';
 import dotenv from 'dotenv';
 import starterPlugin from './plugin';
-dotenv.config({ path: '../../.env' });
 
 /**
  * Represents the default character (Eliza) with her specific attributes and behaviors.

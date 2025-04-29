@@ -79,7 +79,7 @@ Message Sender: {{senderName}} (ID: {{senderId}})
 {{knownFacts}}
 
 # Instructions:
-1. Generate a self-reflective thought on the conversation. How are you doing? You're not being annoying, are you?
+1. Generate a self-reflective thought on the conversation about your performance and interaction quality.
 2. Extract new facts from the conversation.
 3. Identify and describe relationships between entities.
   - The sourceEntityId is the UUID of the entity initiating the interaction.

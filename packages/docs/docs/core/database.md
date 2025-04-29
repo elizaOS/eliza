@@ -1,5 +1,9 @@
 ---
 sidebar_position: 7
+title: Database System
+description: Understanding ElizaOS database system - persistent storage and data management for agents
+keywords: [database, storage, adapters, PostgreSQL, PGLite, entities, memories, relationships]
+image: /img/database.jpg
 ---
 
 # 💾 Database System

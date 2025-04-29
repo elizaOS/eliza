@@ -1,5 +1,9 @@
 ---
 sidebar_position: 7
+title: Evaluators System
+description: Understanding ElizaOS evaluators - cognitive components that enable agents to learn and evolve
+keywords: [evaluators, cognition, learning, memory, facts, reflection, analysis]
+image: /img/evaluators.jpg
 ---
 
 # 🧠 Evaluators

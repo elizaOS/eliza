@@ -2,7 +2,7 @@ import type { Action, IAgentRuntime, Memory, Provider, State } from '@elizaos/co
 import { addHeader, composeActionExamples, formatActionNames, formatActions } from '@elizaos/core';
 
 /**
- * Provider for Sentiment
+ * Provider for Twitter Sentiment
  *
  * @typedef {import('./Provider').Provider} Provider
  * @typedef {import('./Runtime').IAgentRuntime} IAgentRuntime
@@ -22,10 +22,9 @@ import { addHeader, composeActionExamples, formatActionNames, formatActions } fr
  * @returns {Object} Object containing data, values, and text related to actions
  */
 export const sentimentProvider: Provider = {
-  name: 'CRYPTOCURRENCY_MARKET_SENTIMENT',
-  description: 'Information about the current cryptocurrency markets',
+  name: 'CRYPTOTWITTER_MARKET_SENTIMENT',
+  description: 'Information about the current cryptocurrency twitter sentiment',
   dynamic: true,
-  //position: -1,
   get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
     // Get all sentiments
     const sentimentData = (await runtime.getCache<Sentiment[]>('sentiments')) || [];
@@ -34,7 +33,7 @@ export const sentimentProvider: Provider = {
       return false;
     }
 
-    let sentiments = 'Current cryptocurrency market data:';
+    let sentiments = '\nCurrent cryptocurrency market data:';
     let idx = 1;
     for (const sentiment of sentimentData) {
       if (!sentiment?.occuringTokens?.length) continue;
@@ -46,6 +45,8 @@ export const sentimentProvider: Provider = {
       idx++;
     }
 
+    //console.log('intel:provider - sentimentData', sentiments)
+
     const data = {
       sentimentData,
     };
@@ -53,7 +54,7 @@ export const sentimentProvider: Provider = {
     const values = {};
 
     // Combine all text sections
-    const text = sentiments;
+    const text = sentiments + '\n';
 
     return {
       data,

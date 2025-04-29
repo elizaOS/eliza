@@ -153,7 +153,16 @@ export const transcribeMedia: Action = {
       return;
     }
 
-    const attachment = state.data.recentMessages
+    const conversationLength = runtime.getConversationLength();
+
+    const recentMessages = await runtime.getMemories({
+      tableName: 'messages',
+      roomId: message.roomId,
+      count: conversationLength,
+      unique: false,
+    });
+
+    const attachment = recentMessages
       .filter((msg) => msg.content.attachments && msg.content.attachments.length > 0)
       .flatMap((msg) => msg.content.attachments)
       .find((attachment) => attachment.id.toLowerCase() === attachmentId.toLowerCase());

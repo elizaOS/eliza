@@ -25,7 +25,7 @@ async function tryImporting(
     return module;
   } catch (error) {
     // Log import failures only at debug level unless it's the final fallback
-    logger.debug(`Import failed from ${description} ('${importPath}'): ${error.message}`);
+    logger.debug(`Import failed from ${description} ('${importPath}'):`, error);
     return null;
   }
 }

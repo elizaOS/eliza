@@ -9,7 +9,7 @@ import { ChatMessageList } from '@/components/ui/chat/chat-message-list';
 import { GROUP_CHAT_SOURCE, USER_NAME } from '@/constants';
 import { useAgents, useGroupMessages, useRooms } from '@/hooks/use-query-hooks';
 import SocketIOManager from '@/lib/socketio-manager';
-import { getEntityId, moment } from '@/lib/utils';
+import { getEntityId, moment, randomUUID } from '@/lib/utils';
 import { WorldManager } from '@/lib/world-manager';
 import type { IAttachment } from '@/types';
 import type { Agent, Content, UUID } from '@elizaos/core';
@@ -155,6 +155,8 @@ export default function Page({ serverId }: { serverId: UUID }) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [input, setInput] = useState('');
   const [showGroupPanel, setShowGroupPanel] = useState(false);
+  const [inputDisabled, setInputDisabled] = useState<boolean>(false);
+
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -179,9 +181,13 @@ export default function Page({ serverId }: { serverId: UUID }) {
   const getAvatar = (agentId: string): string | null => {
     const rooms = roomsData?.get(serverId);
     const room = rooms?.find((room) => room.agentId === agentId);
-    const agent = room?.character;
-    const avatar = agent?.settings?.avatar;
-    return typeof avatar === 'string' ? avatar : null;
+    if (!room) return null;
+
+    // Find the agent in the agents array instead of accessing character property
+    const agent = agents.find((agent) => agent.id === agentId);
+    if (!agent) return null;
+
+    return agent.settings?.avatar || null;
   };
 
   const getRoomName = () => {
@@ -281,7 +287,10 @@ export default function Page({ serverId }: { serverId: UUID }) {
             return old;
           }
 
-          animatedMessageIdRef.current = newMessage.id;
+          if (newMessage && newMessage.id) {
+            animatedMessageIdRef.current =
+              typeof newMessage.id === 'string' ? newMessage.id : String(newMessage.id);
+          }
 
           return [...old, newMessage];
         }
@@ -348,6 +357,8 @@ export default function Page({ serverId }: { serverId: UUID }) {
     e.preventDefault();
     if (!input) return;
 
+    const messageId = randomUUID();
+
     // Always add the user's message immediately to the UI before sending it to the server
     const userMessage: ContentWithUser = {
       text: input,
@@ -357,7 +368,7 @@ export default function Page({ serverId }: { serverId: UUID }) {
       senderName: USER_NAME,
       roomId: serverId,
       source: GROUP_CHAT_SOURCE,
-      id: crypto.randomUUID(), // Add a unique ID for React keys and duplicate detection
+      id: messageId, // Add a unique ID for React keys and duplicate detection
     };
 
     console.log('[Chat] Adding user message to UI:', userMessage);
@@ -444,7 +455,44 @@ export default function Page({ serverId }: { serverId: UUID }) {
   };
 
   const roomArray = roomsData?.get(serverId);
-  const roomAgentNames = roomArray?.map((room) => room.character.name).filter(Boolean) as string[];
+  const roomAgentNames = roomArray
+    ?.map((room) => {
+      const agent = agents.find((agent) => agent.id === room.agentId);
+      return agent?.name || 'Unknown Agent';
+    })
+    .filter(Boolean) as string[];
+
+  // Handle control messages
+  useEffect(() => {
+    // Function to handle control messages (enable/disable input)
+    const handleControlMessage = (data: any) => {
+      // Type guard to ensure we have the expected structure
+      if (
+        data &&
+        typeof data === 'object' &&
+        'action' in data &&
+        'roomId' in data &&
+        (data.action === 'enable_input' || data.action === 'disable_input') &&
+        data.roomId === serverId
+      ) {
+        console.log(`[Room] Received control message: ${data.action} for room ${data.roomId}`);
+
+        if (data.action === 'disable_input') {
+          setInputDisabled(true);
+        } else if (data.action === 'enable_input') {
+          setInputDisabled(false);
+        }
+      }
+    };
+
+    // Subscribe to control messages
+    socketIOManager.on('controlMessage', handleControlMessage);
+
+    // Cleanup subscription on unmount
+    return () => {
+      socketIOManager.off('controlMessage', handleControlMessage);
+    };
+  }, [serverId]);
 
   return (
     <div className="flex-1">
@@ -559,8 +607,13 @@ export default function Page({ serverId }: { serverId: UUID }) {
                   onKeyDown={handleKeyDown}
                   value={input}
                   onChange={({ target }) => setInput(target.value)}
-                  placeholder="Type your message here..."
+                  placeholder={
+                    inputDisabled
+                      ? 'Input disabled while agent is processing...'
+                      : 'Type your message here...'
+                  }
                   className="min-h-12 resize-none rounded-md bg-card border-0 p-3 shadow-none focus-visible:ring-0"
+                  disabled={inputDisabled}
                 />
                 <div className="flex items-center p-3 pt-0">
                   <Tooltip>

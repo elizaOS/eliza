@@ -27,7 +27,8 @@ import type {
   TwitterUserUnfollowedPayload,
 } from './types';
 import { TwitterEventTypes } from './types';
-import { buildConversationThread } from './utils';
+import { buildConversationThread, sendTweet } from './utils';
+import { TWEET_CHAR_LIMIT } from './constants';
 
 /**
  * Template for generating dialog and actions for a Twitter message handler.
@@ -120,7 +121,7 @@ export class TwitterInteractionClient {
     try {
       // Check for mentions
       const cursorKey = `twitter/${twitterUsername}/mention_cursor`;
-      const cachedCursor = await this.runtime.getCache<string>(cursorKey);
+      const cachedCursor: String = await this.runtime.getCache<string>(cursorKey);
 
       const searchResult = await this.client.fetchSearchTweets(
         `@${twitterUsername}`,
@@ -136,7 +137,7 @@ export class TwitterInteractionClient {
         await this.runtime.setCache(cursorKey, searchResult.previous);
       } else if (!searchResult.previous && !searchResult.next) {
         // If both previous and next are missing, clear the outdated cursor
-        await this.runtime.setCache(cursorKey, null);
+        await this.runtime.setCache(cursorKey, ''); // used to be null, but DB doesn't allow it
       }
 
       await this.processMentionTweets(mentionCandidates);
@@ -540,18 +541,14 @@ export class TwitterInteractionClient {
       logger.error('Error Occured during describing image: ', error);
     }
 
-    const state = await this.runtime.composeState(message);
-
-    state.values = {
-      ...state.values,
-      twitterUserName: this.state?.TWITTER_USERNAME || this.runtime.getSetting('TWITTER_USERNAME'),
-      currentPost,
-      formattedConversation,
-    };
-
     // Create a callback for handling the response
     const callback: HandlerCallback = async (response: Content, tweetId?: string) => {
       try {
+        if (!response.text) {
+          logger.warn('No text content in response, skipping tweet reply');
+          return [];
+        }
+
         const tweetToReplyTo = tweetId || tweet.id;
 
         if (this.isDryRun) {
@@ -562,27 +559,14 @@ export class TwitterInteractionClient {
         logger.info(`Replying to tweet ${tweetToReplyTo}`);
 
         // Create the actual tweet using the Twitter API through the client
-        // Type assertion is needed because the Twitter API client doesn't have proper typings
-        const replyTweetResult = await this.client.requestQueue.add(() =>
-          (this.client.twitterClient as any).post('statuses/update', {
-            status: response.text.substring(0, 280),
-            in_reply_to_status_id: tweetToReplyTo,
-            auto_populate_reply_metadata: true,
-          })
-        );
+        const tweetResult = await sendTweet(this.client, response.text, [], tweetToReplyTo);
 
-        if (!replyTweetResult) {
-          throw new Error('Failed to create tweet response');
+        if (!tweetResult) {
+          throw new Error('Failed to get tweet result from response');
         }
 
         // Create memory for our response
-        const responseId = createUniqueUuid(
-          this.runtime,
-          (replyTweetResult as any).id_str ||
-            (replyTweetResult as any).rest_id ||
-            (replyTweetResult as any).legacy.id_str ||
-            (replyTweetResult as any).id
-        );
+        const responseId = createUniqueUuid(this.runtime, tweetResult.rest_id);
         const responseMemory: Memory = {
           id: responseId,
           entityId: this.runtime.agentId,

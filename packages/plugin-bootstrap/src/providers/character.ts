@@ -43,7 +43,11 @@ export const characterProvider: Provider = {
         ? character.topics[Math.floor(Math.random() * character.topics.length)]
         : null;
 
-    const topic = topicString ? `${character.name} is currently interested in ${topicString}` : '';
+    // postCreationTemplate in core prompts.ts
+    // Write a post that is {{adjective}} about {{topic}} (without mentioning {{topic}} directly), from the perspective of {{agentName}}. Do not add commentary or acknowledge this request, just write the post.
+    // Write a post that is {{Spartan is dirty}} about {{Spartan is currently}}
+    //const topic = topicString ? `${character.name} is currently interested in ${topicString}` : '';
+    const topic = topicString || '';
 
     // Format topics list
     const topics =
@@ -70,7 +74,8 @@ export const characterProvider: Provider = {
         ? character.adjectives[Math.floor(Math.random() * character.adjectives.length)]
         : '';
 
-    const adjective = adjectiveString ? `${character.name} is ${adjectiveString}` : '';
+    //const adjective = adjectiveString ? `${character.name} is ${adjectiveString}` : '';
+    const adjective = adjectiveString || '';
 
     // Format post examples
     const formattedCharacterPostExamples = !character.postExamples
@@ -185,8 +190,10 @@ export const characterProvider: Provider = {
       system,
     };
 
+    const topic2 = topicString ? `${character.name} is currently interested in ${topicString}` : '';
+    const adjective2 = adjectiveString ? `${character.name} is ${adjectiveString}` : '';
     // Combine all text sections
-    const text = [bio, adjective, topic, topics, adjective, directions, examples, system]
+    const text = [bio, adjective2, topic2, topics, directions, examples, system]
       .filter(Boolean)
       .join('\n\n');
 

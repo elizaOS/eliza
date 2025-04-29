@@ -13,10 +13,13 @@
     "lint": "prettier --write ./src",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo"
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@radix-ui/react-alert-dialog": "^1.0.5",
     "@radix-ui/react-avatar": "^1.1.3",
     "@radix-ui/react-collapsible": "^1.1.3",
     "@radix-ui/react-dialog": "^1.1.6",
@@ -42,6 +45,7 @@
     "react": "^19.0.0",
     "react-aiwriter": "^1.0.0",
     "react-dom": "^19.0.0",
+    "react-joyride": "^2.9.3",
     "react-resizable-panels": "^2.1.7",
     "react-router": "^7.3.0",
     "react-router-dom": "^7.3.0",
@@ -76,6 +80,8 @@
     "typescript": "5.8.2",
     "typescript-eslint": "^8.26.0",
     "vite": "^6.2.1",
-    "vite-tsconfig-paths": "^5.1.4"
+    "vite-tsconfig-paths": "^5.1.4",
+    "@testing-library/react": "^14.0.0",
+    "@testing-library/react-hooks": "^8.0.1"
   }
 }

@@ -1,5 +1,9 @@
 ---
 sidebar_position: 11
+title: Update Command
+description: Keep your ElizaOS installation current with the latest features and improvements
+keywords: [CLI, update, dependencies, versions, packages, maintenance]
+image: /img/cli.jpg
 ---
 
 # Update Command
@@ -9,15 +13,15 @@ The `update` command checks for and updates ElizaOS dependencies in your project
 ## Usage
 
 ```bash
-npx @elizaos/cli update [options]
+elizaos update [options]
 ```
 
 ## Options
 
-| Option         | Description                                       |
-| -------------- | ------------------------------------------------- |
-| `--check`      | Check for available updates without applying them |
-| `--skip-build` | Skip building the project after updating          |
+| Option              | Description                                       |
+| ------------------- | ------------------------------------------------- |
+| `-c, --check`       | Check for available updates without applying them |
+| `-sb, --skip-build` | Skip building after updating                      |
 
 ## Update Process
 
@@ -55,7 +59,7 @@ The command properly handles workspace references in monorepo setups:
 Check what updates are available without applying them:
 
 ```bash
-npx @elizaos/cli update --check
+elizaos update --check
 ```
 
 Example output:
@@ -71,7 +75,7 @@ To apply updates, run this command without the --check flag
 Update all ElizaOS dependencies to match the CLI version:
 
 ```bash
-npx @elizaos/cli update
+elizaos update
 ```
 
 Example output:
@@ -95,7 +99,7 @@ Project successfully updated to the latest ElizaOS packages
 Update dependencies but skip the build step:
 
 ```bash
-npx @elizaos/cli update --skip-build
+elizaos update --skip-build
 ```
 
 ## Version Management
@@ -122,7 +126,7 @@ If you encounter issues with dependency resolution:
 
 ```bash
 # Run the command with full Node.js error stack traces
-NODE_OPTIONS=--stack-trace-limit=100 npx @elizaos/cli update
+NODE_OPTIONS=--stack-trace-limit=100 elizaos update
 ```
 
 ### Build Failures
@@ -131,8 +135,8 @@ If the build fails after updating:
 
 ```bash
 # Skip the automatic build and build manually with more verbose output
-npx @elizaos/cli update --skip-build
-npx @elizaos/cli build --verbose
+elizaos update --skip-build
+elizaos build --verbose
 ```
 
 ### Version Mismatches
@@ -141,11 +145,11 @@ If you need a specific version rather than the latest:
 
 ```bash
 # Manually install the specific version needed
-npm install @elizaos/core@1.2.3
+bun install @elizaos/core@1.2.3
 ```
 
 ## Related Commands
 
-- [`build`](./projects.md): Build your project manually
+- [Build](./start.md): Build your project manually
 - [`start`](./start.md): Start your project with updated dependencies
 - [`dev`](./dev.md): Run your project in development mode

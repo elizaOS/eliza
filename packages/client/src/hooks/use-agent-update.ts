@@ -23,6 +23,41 @@ export function useAgentUpdate(initialAgent: Agent) {
     updateSettings,
   } = usePartialUpdate(initialAgent);
 
+  // ==================== Template Import Function ====================
+  /**
+   * Imports a full agent template - overwrites all fields
+   *
+   * @param templateAgent The agent template to import
+   */
+  const importAgent = useCallback(
+    (templateAgent: Agent) => {
+      // For each top-level property in the template, update it in the current agent
+      Object.entries(templateAgent).forEach(([key, value]) => {
+        if (key === 'settings' && value) {
+          // Handle settings object specially to preserve existing settings not in template
+          updateSettings({
+            ...agent.settings,
+            ...value,
+          });
+        } else if (key === 'style' && value) {
+          // Handle style object specially - it's nested but needs direct update
+          updateField('style', {
+            all: value.all || [],
+            chat: value.chat || [],
+            post: value.post || [],
+          });
+        } else if (Array.isArray(value)) {
+          // Handle arrays directly to ensure they fully replace existing arrays
+          updateField(key, [...value]);
+        } else {
+          // For other fields, directly update
+          updateField(key, value);
+        }
+      });
+    },
+    [agent.settings, updateField, updateSettings]
+  );
+
   // ==================== Basic Info Tab ====================
   /**
    * Updates a field in the Agent's settings object
@@ -398,5 +433,7 @@ export function useAgentUpdate(initialAgent: Agent) {
 
     // Avatar Tab
     updateAvatar,
+
+    importAgent,
   };
 }

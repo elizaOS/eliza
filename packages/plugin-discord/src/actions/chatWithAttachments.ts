@@ -188,8 +188,17 @@ export const chatWithAttachments: Action = {
 
     const { objective, attachmentIds } = attachmentData;
 
+    const conversationLength = runtime.getConversationLength();
+
+    const recentMessages = await runtime.getMemories({
+      tableName: 'messages',
+      roomId: message.roomId,
+      count: conversationLength,
+      unique: false,
+    });
+
     // This is pretty gross but it can catch cases where the returned generated UUID is stupidly wrong for some reason
-    const attachments = state.data.recentMessages
+    const attachments = recentMessages
       .filter((msg) => msg.content.attachments && msg.content.attachments.length > 0)
       .flatMap((msg) => msg.content.attachments)
       // check by first 5 characters of uuid
