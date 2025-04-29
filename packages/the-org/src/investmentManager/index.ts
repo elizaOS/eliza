@@ -7,6 +7,9 @@ import { communityInvestorPlugin } from './plugins/community-investor';
 import { degenIntelPlugin } from './plugins/degen-intel';
 import { degenTraderPlugin } from './plugins/degen-trader';
 
+import { autofunPlugin } from './plugins/plugin-autofun';
+import { autofunTraderPlugin } from './plugins/autofun-trader';
+
 const imagePath = path.resolve('./src/investmentManager/assets/portrait.jpg');
 
 // Read and convert to Base64
@@ -248,8 +251,10 @@ const config: OnboardingConfig = {
 
 export const investmentManager: ProjectAgent = {
   plugins: [
-    degenTraderPlugin,
-    degenIntelPlugin, // has to be after trader for buy/sell signals to be enabled
+    //degenTraderPlugin,
+    //degenIntelPlugin, // has to be after trader for buy/sell signals to be enabled
+    //autofunPlugin,
+    autofunTraderPlugin,
     // communityInvestorPlugin,
   ],
   character,
