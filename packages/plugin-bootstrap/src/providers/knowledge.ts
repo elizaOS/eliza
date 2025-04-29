@@ -32,8 +32,8 @@ export const knowledgeProvider: Provider = {
 
     const tokenLength = 3.5;
 
-    if (knowledge.length > 2000 * tokenLength) {
-      knowledge = knowledge.slice(0, 2000 * tokenLength);
+    if (knowledge.length > 4000 * tokenLength) {
+      knowledge = knowledge.slice(0, 4000 * tokenLength);
     }
 
     return {

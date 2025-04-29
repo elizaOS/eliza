@@ -123,12 +123,13 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
   abstract getMemories(params: {
     entityId?: UUID;
     agentId?: UUID;
-    roomId?: UUID;
     count?: number;
     unique?: boolean;
     tableName: string;
     start?: number;
     end?: number;
+    roomId?: UUID;
+    worldId?: UUID;
   }): Promise<Memory[]>;
 
   abstract getMemoriesByRoomIds(params: {
@@ -212,11 +213,14 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
    */
   abstract searchMemories(params: {
     tableName: string;
-    roomId: UUID;
     embedding: number[];
-    match_threshold: number;
-    count: number;
-    unique: boolean;
+    match_threshold?: number;
+    count?: number;
+    unique?: boolean;
+    query?: string;
+    roomId?: UUID;
+    worldId?: UUID;
+    entityId?: UUID;
   }): Promise<Memory[]>;
 
   /**

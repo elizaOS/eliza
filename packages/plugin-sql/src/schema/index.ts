@@ -8,5 +8,5 @@ export { memoryTable } from './memory';
 export { participantTable } from './participant';
 export { relationshipTable } from './relationship';
 export { roomTable } from './room';
-export { worldTable } from './worldTable';
+export { worldTable } from './world';
 export { taskTable } from './tasks';

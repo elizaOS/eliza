@@ -4,7 +4,7 @@ import { agentTable } from './agent';
 import { entityTable } from './entity';
 import { roomTable } from './room';
 import { numberTimestamp } from './types';
-import { worldTable } from './worldTable';
+import { worldTable } from './world';
 
 /**
  * Definition of a table representing components in the database.

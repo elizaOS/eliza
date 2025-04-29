@@ -15,6 +15,7 @@ import { agentTable } from './agent';
 import { embeddingTable } from './embedding';
 import { entityTable } from './entity';
 import { roomTable } from './room';
+import { worldTable } from './world';
 import { numberTimestamp } from './types';
 
 /**
@@ -43,11 +44,15 @@ export const memoryTable = pgTable(
     roomId: uuid('roomId').references(() => roomTable.id, {
       onDelete: 'cascade',
     }),
+    worldId: uuid('worldId').references(() => worldTable.id, {
+      onDelete: 'set null',
+    }),
     unique: boolean('unique').default(true).notNull(),
     metadata: jsonb('metadata').default({}).notNull(),
   },
   (table) => [
     index('idx_memories_type_room').on(table.type, table.roomId),
+    index('idx_memories_world_id').on(table.worldId),
     foreignKey({
       name: 'fk_room',
       columns: [table.roomId],
@@ -63,6 +68,11 @@ export const memoryTable = pgTable(
       columns: [table.agentId],
       foreignColumns: [agentTable.id],
     }).onDelete('cascade'),
+    foreignKey({
+      name: 'fk_world',
+      columns: [table.worldId],
+      foreignColumns: [worldTable.id],
+    }).onDelete('set null'),
     index('idx_memories_metadata_type').on(sql`((metadata->>'type'))`),
     index('idx_memories_document_id').on(sql`((metadata->>'documentId'))`),
     index('idx_fragments_order').on(

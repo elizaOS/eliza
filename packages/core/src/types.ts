@@ -202,6 +202,9 @@ export interface Memory {
   /** Associated room ID */
   roomId: UUID;
 
+  /** Associated world ID (optional) */
+  worldId?: UUID;
+
   /** Whether memory is unique (used to prevent duplicates) */
   unique?: boolean;
 
@@ -748,12 +751,13 @@ export interface IDatabaseAdapter {
   getMemories(params: {
     entityId?: UUID;
     agentId?: UUID;
-    roomId?: UUID;
     count?: number;
     unique?: boolean;
     tableName: string;
     start?: number;
     end?: number;
+    roomId?: UUID;
+    worldId?: UUID;
   }): Promise<Memory[]>;
 
   getMemoryById(id: UUID): Promise<Memory | null>;
@@ -796,10 +800,12 @@ export interface IDatabaseAdapter {
     embedding: number[];
     match_threshold?: number;
     count?: number;
-    roomId?: UUID;
     unique?: boolean;
     tableName: string;
     query?: string;
+    roomId?: UUID;
+    worldId?: UUID;
+    entityId?: UUID;
   }): Promise<Memory[]>;
 
   createMemory(memory: Memory, tableName: string, unique?: boolean): Promise<UUID>;
@@ -982,14 +988,18 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 
   initialize(): Promise<void>;
 
-  getKnowledge(message: Memory): Promise<KnowledgeItem[]>;
+  getKnowledge(
+    message: Memory,
+    scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID }
+  ): Promise<KnowledgeItem[]>;
   addKnowledge(
     item: KnowledgeItem,
     options: {
       targetTokens: number;
       overlap: number;
       modelContextSize: number;
-    }
+    },
+    scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID }
   ): Promise<void>;
 
   getService<T extends Service>(service: ServiceTypeName | string): T | null;
@@ -1001,7 +1011,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   // Keep these methods for backward compatibility
   registerDatabaseAdapter(adapter: IDatabaseAdapter): void;
 
-  setSetting(key: string, value: string | boolean | null | any, secret: boolean): void;
+  setSetting(key: string, value: string | boolean | null | any, secret?: boolean): void;
 
   getSetting(key: string): string | boolean | null | any;
 
