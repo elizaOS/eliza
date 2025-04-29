@@ -149,6 +149,7 @@ export const venicePlugin: Plugin = {
     ) => {
       const venice = createVeniceClient(runtime);
       const model = getLargeModel(runtime);
+      logger.log(`[Venice] Using TEXT_LARGE model: ${model}`);
 
       const { text: veniceResponse } = await generateText({
         model: venice.languageModel(model),
@@ -181,6 +182,7 @@ export const venicePlugin: Plugin = {
     ) => {
       const venice = createVeniceClient(runtime);
       const model = getSmallModel(runtime);
+      logger.log(`[Venice] Using TEXT_SMALL model: ${model}`);
 
       const { text: veniceResponse } = await generateText({
         model: venice.languageModel(model),
@@ -203,6 +205,7 @@ export const venicePlugin: Plugin = {
       logger.debug(`[plugin-venice v${PLUGIN_VERSION}] OBJECT_LARGE handler using generateText`);
       const venice = createVeniceClient(runtime);
       const model = getLargeModel(runtime);
+      logger.log(`[Venice] Using OBJECT_LARGE model: ${model}`);
       const jsonPrompt = `${params.prompt}\n\nPlease provide your response strictly in JSON format. Do not include any explanatory text before or after the JSON object.`;
 
       try {
@@ -249,6 +252,7 @@ export const venicePlugin: Plugin = {
       logger.debug(`[plugin-venice v${PLUGIN_VERSION}] OBJECT_SMALL handler using generateText`);
       const venice = createVeniceClient(runtime);
       const model = getSmallModel(runtime);
+      logger.log(`[Venice] Using OBJECT_SMALL model: ${model}`);
       const jsonPrompt = `${params.prompt}\n\nPlease provide your response strictly in JSON format. Do not include any explanatory text before or after the JSON object.`;
 
       try {
@@ -295,6 +299,7 @@ export const venicePlugin: Plugin = {
       logger.debug(`[plugin-venice/OpenAI Embed v${PLUGIN_VERSION}] Handler entered.`);
       const openaiApiKey = getOpenAIApiKey(runtime);
       const model = getOpenAIEmbeddingModel(runtime);
+      logger.log(`[Venice/OpenAI Embed] Using TEXT_EMBEDDING model: ${model}`);
       const dimensions = getOpenAIEmbeddingDimensions(runtime);
       const hardcodedDimensionFallback = 1536;
 
