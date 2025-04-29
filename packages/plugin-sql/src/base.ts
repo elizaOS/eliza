@@ -359,7 +359,8 @@ export abstract class BaseDrizzleAdapter<
    *
    * @param {UUID} agentId - The UUID of the agent to be deleted.
    * @returns {Promise<boolean>} - A boolean indicating if the deletion was successful.
-   */ async deleteAgent(agentId: UUID): Promise<boolean> {
+   */
+  async deleteAgent(agentId: UUID): Promise<boolean> {
     logger.debug(`[DB] Starting deletion of agent with ID: ${agentId}`);
 
     return this.withDatabase(async () => {
@@ -567,12 +568,27 @@ export abstract class BaseDrizzleAdapter<
                   .where(eq(worldTable.agentId, agentId));
 
                 if (worlds.length > 0) {
-                  const worldIds = worlds.map((w) => w.id);
-                  logger.debug(`[DB] Found ${worldIds.length} worlds to delete`);
+                  // Try to find another agent to reassign worlds
+                  const newAgent = await tx
+                    .select({ newAgentId: agentTable.id })
+                    .from(agentTable)
+                    .where(not(eq(agentTable.id, agentId)))
+                    .limit(1);
 
-                  // Step 17: Delete worlds
-                  await tx.delete(worldTable).where(inArray(worldTable.id, worldIds));
-                  logger.debug(`[DB] Worlds deleted successfully`);
+                  if (newAgent.length > 0) {
+                    // If no other agent exists, delete the worlds
+                    await tx
+                      .update(worldTable)
+                      .set({ agentId: newAgent[0].newAgentId })
+                      .where(eq(worldTable.agentId, agentId));
+                  } else {
+                    const worldIds = worlds.map((w) => w.id);
+                    logger.debug(`[DB] Found ${worldIds.length} worlds to delete`);
+
+                    // Step 17: Delete worlds
+                    await tx.delete(worldTable).where(inArray(worldTable.id, worldIds));
+                    logger.debug(`[DB] Worlds deleted successfully`);
+                  }
                 } else {
                   logger.debug(`[DB] No worlds found for this agent`);
                 }
