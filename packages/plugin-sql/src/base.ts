@@ -359,7 +359,8 @@ export abstract class BaseDrizzleAdapter<
    *
    * @param {UUID} agentId - The UUID of the agent to be deleted.
    * @returns {Promise<boolean>} - A boolean indicating if the deletion was successful.
-   */ async deleteAgent(agentId: UUID): Promise<boolean> {
+   */
+  async deleteAgent(agentId: UUID): Promise<boolean> {
     logger.debug(`[DB] Starting deletion of agent with ID: ${agentId}`);
 
     return this.withDatabase(async () => {
@@ -567,12 +568,27 @@ export abstract class BaseDrizzleAdapter<
                   .where(eq(worldTable.agentId, agentId));
 
                 if (worlds.length > 0) {
-                  const worldIds = worlds.map((w) => w.id);
-                  logger.debug(`[DB] Found ${worldIds.length} worlds to delete`);
+                  // Try to find another agent to reassign worlds
+                  const newAgent = await tx
+                    .select({ newAgentId: agentTable.id })
+                    .from(agentTable)
+                    .where(not(eq(agentTable.id, agentId)))
+                    .limit(1);
 
-                  // Step 17: Delete worlds
-                  await tx.delete(worldTable).where(inArray(worldTable.id, worldIds));
-                  logger.debug(`[DB] Worlds deleted successfully`);
+                  if (newAgent.length > 0) {
+                    // If no other agent exists, delete the worlds
+                    await tx
+                      .update(worldTable)
+                      .set({ agentId: newAgent[0].newAgentId })
+                      .where(eq(worldTable.agentId, agentId));
+                  } else {
+                    const worldIds = worlds.map((w) => w.id);
+                    logger.debug(`[DB] Found ${worldIds.length} worlds to delete`);
+
+                    // Step 17: Delete worlds
+                    await tx.delete(worldTable).where(inArray(worldTable.id, worldIds));
+                    logger.debug(`[DB] Worlds deleted successfully`);
+                  }
                 } else {
                   logger.debug(`[DB] No worlds found for this agent`);
                 }
@@ -914,18 +930,20 @@ export abstract class BaseDrizzleAdapter<
   async getMemories(params: {
     entityId?: UUID;
     agentId?: UUID;
-    roomId?: UUID;
     count?: number;
     unique?: boolean;
     tableName: string;
     start?: number;
     end?: number;
+    roomId?: UUID;
+    worldId?: UUID;
   }): Promise<Memory[]> {
-    const { entityId, agentId, roomId, tableName, count, unique, start, end } = params;
+    const { entityId, agentId, roomId, worldId, tableName, count, unique, start, end } = params;
 
     if (!tableName) throw new Error('tableName is required');
-    if (!roomId && !entityId && !agentId)
-      throw new Error('roomId, entityId, or agentId is required');
+    // Allow filtering by any combination now
+    // if (!roomId && !entityId && !agentId && !worldId)
+    //   throw new Error('roomId, entityId, agentId, or worldId is required');
 
     return this.withDatabase(async () => {
       const conditions = [eq(memoryTable.type, tableName)];
@@ -940,6 +958,11 @@ export abstract class BaseDrizzleAdapter<
 
       if (roomId) {
         conditions.push(eq(memoryTable.roomId, roomId));
+      }
+
+      // Add worldId condition
+      if (worldId) {
+        conditions.push(eq(memoryTable.worldId, worldId));
       }
 
       if (end) {
@@ -1303,25 +1326,34 @@ export abstract class BaseDrizzleAdapter<
    * Asynchronously searches for memories in the database based on the provided parameters.
    * @param {Object} params - The parameters for searching for memories.
    * @param {string} params.tableName - The name of the table to search for memories in.
-   * @param {UUID} params.roomId - The ID of the room to search for memories in.
    * @param {number[]} params.embedding - The embedding to search for.
    * @param {number} [params.match_threshold] - The threshold for the cosine distance.
    * @param {number} [params.count] - The maximum number of memories to retrieve.
    * @param {boolean} [params.unique] - Whether to retrieve unique memories only.
+   * @param {string} [params.query] - Optional query string for potential reranking.
+   * @param {UUID} [params.roomId] - Optional room ID to filter by.
+   * @param {UUID} [params.worldId] - Optional world ID to filter by.
+   * @param {UUID} [params.entityId] - Optional entity ID to filter by.
    * @returns {Promise<Memory[]>} A Promise that resolves to an array of memories.
    */
   async searchMemories(params: {
     tableName: string;
-    roomId: UUID;
     embedding: number[];
-    match_threshold: number;
-    count: number;
-    unique: boolean;
+    match_threshold?: number;
+    count?: number;
+    unique?: boolean;
+    query?: string;
+    roomId?: UUID;
+    worldId?: UUID;
+    entityId?: UUID;
   }): Promise<Memory[]> {
     return await this.searchMemoriesByEmbedding(params.embedding, {
       match_threshold: params.match_threshold,
       count: params.count,
+      // Pass direct scope fields down
       roomId: params.roomId,
+      worldId: params.worldId,
+      entityId: params.entityId,
       unique: params.unique,
       tableName: params.tableName,
     });
@@ -1333,7 +1365,9 @@ export abstract class BaseDrizzleAdapter<
    * @param {Object} params - The parameters for searching for memories.
    * @param {number} [params.match_threshold] - The threshold for the cosine distance.
    * @param {number} [params.count] - The maximum number of memories to retrieve.
-   * @param {UUID} [params.roomId] - The ID of the room to search for memories in.
+   * @param {UUID} [params.roomId] - Optional room ID to filter by.
+   * @param {UUID} [params.worldId] - Optional world ID to filter by.
+   * @param {UUID} [params.entityId] - Optional entity ID to filter by.
    * @param {boolean} [params.unique] - Whether to retrieve unique memories only.
    * @param {string} [params.tableName] - The name of the table to search for memories in.
    * @returns {Promise<Memory[]>} A Promise that resolves to an array of memories.
@@ -1344,6 +1378,8 @@ export abstract class BaseDrizzleAdapter<
       match_threshold?: number;
       count?: number;
       roomId?: UUID;
+      worldId?: UUID;
+      entityId?: UUID;
       unique?: boolean;
       tableName: string;
     }
@@ -1364,8 +1400,15 @@ export abstract class BaseDrizzleAdapter<
 
       conditions.push(eq(memoryTable.agentId, this.agentId));
 
+      // Add filters based on direct params
       if (params.roomId) {
         conditions.push(eq(memoryTable.roomId, params.roomId));
+      }
+      if (params.worldId) {
+        conditions.push(eq(memoryTable.worldId, params.worldId));
+      }
+      if (params.entityId) {
+        conditions.push(eq(memoryTable.entityId, params.entityId));
       }
 
       if (params.match_threshold) {
@@ -1395,6 +1438,7 @@ export abstract class BaseDrizzleAdapter<
         entityId: row.memory.entityId as UUID,
         agentId: row.memory.agentId as UUID,
         roomId: row.memory.roomId as UUID,
+        worldId: row.memory.worldId as UUID | undefined, // Include worldId
         unique: row.memory.unique,
         metadata: row.memory.metadata,
         embedding: row.embedding ?? undefined,
@@ -1433,7 +1477,10 @@ export abstract class BaseDrizzleAdapter<
     if (memory.embedding && Array.isArray(memory.embedding)) {
       const similarMemories = await this.searchMemoriesByEmbedding(memory.embedding, {
         tableName,
+        // Use the scope fields from the memory object for similarity check
         roomId: memory.roomId,
+        worldId: memory.worldId,
+        entityId: memory.entityId,
         match_threshold: 0.95,
         count: 1,
       });
@@ -1452,6 +1499,7 @@ export abstract class BaseDrizzleAdapter<
           metadata: sql`${memory.metadata || {}}::jsonb`,
           entityId: memory.entityId,
           roomId: memory.roomId,
+          worldId: memory.worldId, // Include worldId
           agentId: memory.agentId,
           unique: memory.unique ?? isUnique,
           createdAt: memory.createdAt,

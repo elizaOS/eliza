@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-video-understanding",
-  "version": "1.0.0-beta.37",
+  "version": "1.0.0-beta.40",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -24,7 +24,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.705.0",
     "@aws-sdk/s3-request-presigner": "^3.705.0",
-    "@elizaos/core": "^1.0.0-beta.37",
+    "@elizaos/core": "^1.0.0-beta.40",
     "@types/uuid": "10.0.0",
     "capsolver-npm": "2.0.2",
     "fluent-ffmpeg": "2.1.3",

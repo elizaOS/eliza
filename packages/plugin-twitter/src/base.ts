@@ -402,12 +402,16 @@ export class ClientBase {
       logger.log('Twitter user ID:', this.profile.id);
       logger.log('Twitter loaded:', JSON.stringify(this.profile, null, 10));
 
-
       const agentId = this.runtime.agentId;
 
       const entity = await this.runtime.getEntityById(agentId);
       if (entity?.metadata?.twitter?.userName !== this.profile.username) {
-        logger.log('Updating Agents known X/twitter handle', this.profile.username, 'was', entity?.metadata?.twitter);
+        logger.log(
+          'Updating Agents known X/twitter handle',
+          this.profile.username,
+          'was',
+          entity?.metadata?.twitter
+        );
         const names = [this.profile.screenName, this.profile.username];
         await this.runtime.updateEntity({
           id: agentId,

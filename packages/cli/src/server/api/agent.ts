@@ -1651,7 +1651,7 @@ export function agentRouter(
         errors.push({
           agentId,
           code: 'CREATE_ERROR',
-          message: 'Failed to create room',
+          message: 'Failed to Create group',
           details: error.message,
         });
       }

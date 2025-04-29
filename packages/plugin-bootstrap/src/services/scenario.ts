@@ -50,17 +50,17 @@ interface EvaluatorTracker {
 
 /**
  * Represents a service that allows the agent to interact in a scenario testing environment.
- * The agent can create rooms, send messages, and communicate with other agents in a live interactive testing environment.
+ * The agent can Create groups, send messages, and communicate with other agents in a live interactive testing environment.
  * @extends Service
  */
 /**
  * Represents a Scenario Service that allows the agent to interact in a scenario testing environment.
- * This service can create rooms, send messages, and communicate with other agents in a live interactive testing environment.
+ * This service can Create groups, send messages, and communicate with other agents in a live interactive testing environment.
  */
 export class ScenarioService extends Service {
   static serviceType = 'scenario';
   capabilityDescription =
-    'The agent is currently in a scenario testing environment. It can create rooms, send messages, and talk to other agents in a live interactive testing environment.';
+    'The agent is currently in a scenario testing environment. It can Create groups, send messages, and talk to other agents in a live interactive testing environment.';
   private messageHandlers: Map<UUID, HandlerCallback[]> = new Map();
   private worlds: Map<UUID, World> = new Map();
   private activeActions: Map<UUID, ActionTracker> = new Map();
@@ -342,7 +342,7 @@ const scenarios = [
     // Create a test world
     const worldId = await service.createWorld('Test Server', 'Test Owner');
 
-    // Create rooms for each member
+    // Create groups for each member
     const roomIds = [];
     for (const member of members) {
       const roomId = await service.createRoom(worldId, `Test Room for ${member.character.name}`);

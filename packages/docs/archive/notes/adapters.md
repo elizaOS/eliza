@@ -330,7 +330,7 @@ const goals = await db.getGoals({
 ### Room & Participant Management
 
 ```typescript
-// Create room
+// Create group
 const roomId = await db.createRoom();
 
 // Add participant

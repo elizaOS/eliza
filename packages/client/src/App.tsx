@@ -84,18 +84,36 @@ function App() {
             <SidebarProvider>
               <AppSidebar />
               <SidebarInset>
-                <div className="px-4 pt-4">
+                {/* <div className="px-4 pt-4">
                   <ConnectionErrorBanner />
-                </div>
+                </div> */}
                 <Routes>
                   <Route path="/" element={<Home />} />
                   <Route path="chat/:agentId" element={<Chat />} />
                   <Route path="settings/:agentId" element={<Settings />} />
                   <Route path="agents/new" element={<AgentCreatorRoute />} />
                   <Route path="/create" element={<AgentCreator />} />
-                  <Route path="/logs" element={<LogViewer />} />
+                  <Route
+                    path="/logs"
+                    element={
+                      <div className="flex w-full justify-center">
+                        <div className="w-full md:max-w-4xl">
+                          <LogViewer />
+                        </div>
+                      </div>
+                    }
+                  />
                   <Route path="room/:serverId" element={<Room />} />
-                  <Route path="settings/" element={<EnvSettings />} />
+                  <Route
+                    path="settings/"
+                    element={
+                      <div className="flex w-full justify-center">
+                        <div className="w-full md:max-w-4xl">
+                          <EnvSettings />
+                        </div>
+                      </div>
+                    }
+                  />
                   {/* Catch-all route for 404 errors */}
                   <Route path="*" element={<NotFound />} />
                 </Routes>

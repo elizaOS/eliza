@@ -1,19 +1,13 @@
+import { type Context, type Span, SpanStatusCode, context, trace } from '@opentelemetry/api';
 import { v4 as uuidv4 } from 'uuid';
 import { createUniqueUuid } from './entities';
 import { decryptSecret, getSalt, safeReplacer } from './index';
+import { InstrumentationService } from './instrumentation/service';
 import logger from './logger';
 import { splitChunks } from './prompts';
 import { ChannelType, MemoryType, ModelType } from './types';
-import { InstrumentationService } from './instrumentation/service';
-import {
-  type Context,
-  SpanStatusCode,
-  trace,
-  SpanStatus,
-  type Span,
-  context,
-} from '@opentelemetry/api';
 
+import { BM25 } from './bm25';
 import type {
   Action,
   Agent,
@@ -46,8 +40,8 @@ import type {
   UUID,
   World,
 } from './types';
-import { stringToUuid } from './uuid';
 import { EventType, type MessagePayload } from './types';
+import { stringToUuid } from './uuid';
 
 /**
  * Represents a collection of settings grouped by namespace.
@@ -582,9 +576,9 @@ export class AgentRuntime implements IAgentRuntime {
         throw error;
       }
 
-      // Create room for the agent and register all plugins in parallel
+      // Create group for the agent and register all plugins in parallel
       try {
-        span.addEvent('creating_room_and_registering_plugins');
+        span.addEvent('creating_group_and_registering_plugins');
         await Promise.all([
           this.ensureRoomExists({
             id: this.agentId,
@@ -682,7 +676,11 @@ export class AgentRuntime implements IAgentRuntime {
     return !!existingDocument;
   }
 
-  async getKnowledge(message: Memory): Promise<KnowledgeItem[]> {
+  async getKnowledge(
+    message: Memory,
+    scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID }
+  ): Promise<KnowledgeItem[]> {
+    console.log('*** getKnowledge', message);
     return this.startSpan('AgentRuntime.getKnowledge', async (span) => {
       // Add validation for message
       if (!message?.content?.text) {
@@ -726,13 +724,31 @@ export class AgentRuntime implements IAgentRuntime {
         'embedding.length': embedding.length,
       });
 
+      console.log('*** searching memories');
+
+      // Determine the filter scope
+      // Build filter scope with only defined values
+      const filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID } = {};
+      if (scope?.roomId) filterScope.roomId = scope.roomId;
+      if (scope?.worldId) filterScope.worldId = scope.worldId;
+      if (scope?.entityId) filterScope.entityId = scope.entityId;
+
+      span.addEvent('determined_filter_scope', {
+        ...(filterScope.roomId && { 'filter.roomId': filterScope.roomId }),
+        ...(filterScope.worldId && { 'filter.worldId': filterScope.worldId }),
+        ...(filterScope.entityId && { 'filter.entityId': filterScope.entityId }),
+      });
+
       const fragments = await this.searchMemories({
         tableName: 'knowledge',
         embedding,
-        roomId: message.agentId,
-        count: 5,
+        query: message?.content?.text,
+        ...filterScope,
+        count: 20,
         match_threshold: 0.1,
       });
+
+      console.log('*** fragments', fragments);
 
       span.addEvent('knowledge_retrieved');
       span.setAttributes({
@@ -746,6 +762,7 @@ export class AgentRuntime implements IAgentRuntime {
         content: fragment.content,
         similarity: fragment.similarity,
         metadata: fragment.metadata,
+        worldId: fragment.worldId, // Include worldId if available on fragment
       }));
     });
   }
@@ -756,7 +773,8 @@ export class AgentRuntime implements IAgentRuntime {
       targetTokens: 1500,
       overlap: 200,
       modelContextSize: 4096,
-    }
+    },
+    scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID }
   ) {
     return this.startSpan('AgentRuntime.addKnowledge', async (span) => {
       span.setAttributes({
@@ -764,14 +782,26 @@ export class AgentRuntime implements IAgentRuntime {
         'agent.id': this.agentId,
         'options.targetTokens': options.targetTokens,
         'options.overlap': options.overlap,
+        // Log scope
+        'scope.roomId': scope?.roomId,
+        'scope.worldId': scope?.worldId,
+        'scope.entityId': scope?.entityId,
       });
+
+      // Define default scope if not provided
+      const finalScope = {
+        roomId: scope?.roomId ?? this.agentId, // Default roomId to agentId
+        worldId: scope?.worldId, // Default worldId to undefined/null
+        entityId: scope?.entityId ?? this.agentId, // Default entityId to agentId
+      };
 
       // First store the document
       const documentMemory: Memory = {
         id: item.id,
         agentId: this.agentId,
-        roomId: this.agentId,
-        entityId: this.agentId,
+        roomId: finalScope.roomId,
+        worldId: finalScope.worldId,
+        entityId: finalScope.entityId,
         content: item.content,
         metadata: item.metadata || {
           type: MemoryType.DOCUMENT,
@@ -804,8 +834,9 @@ export class AgentRuntime implements IAgentRuntime {
           const fragmentMemory: Memory = {
             id: createUniqueUuid(this, `${item.id}-fragment-${i}`),
             agentId: this.agentId,
-            roomId: this.agentId,
-            entityId: this.agentId,
+            roomId: finalScope.roomId,
+            worldId: finalScope.worldId,
+            entityId: finalScope.entityId,
             embedding,
             content: { text: fragments[i] },
             metadata: {
@@ -878,13 +909,23 @@ export class AgentRuntime implements IAgentRuntime {
           };
         }
 
-        await this.addKnowledge({
-          id: knowledgeId,
-          content: {
-            text: item,
+        // Add knowledge with agent-specific scope
+        await this.addKnowledge(
+          {
+            id: knowledgeId,
+            content: {
+              text: item,
+            },
+            metadata,
           },
-          metadata,
-        });
+          undefined, // Default options
+          {
+            // Scope to the agent itself
+            roomId: this.agentId,
+            entityId: this.agentId,
+            worldId: null, // Character knowledge is agent-global, not world-specific
+          }
+        );
       } catch (error) {
         await this.handleProcessingError(error, 'processing character knowledge');
       } finally {
@@ -1883,7 +1924,9 @@ export class AgentRuntime implements IAgentRuntime {
         span.addEvent('model_response', { response: JSON.stringify(response, safeReplacer()) }); // Log processed response
 
         // Log timing (keep debug log if useful)
-        this.runtimeLogger.debug(`[useModel] ${modelKey} completed in ${Number(elapsedTime.toFixed(2)).toLocaleString()}ms`);
+        this.runtimeLogger.debug(
+          `[useModel] ${modelKey} completed in ${Number(elapsedTime.toFixed(2)).toLocaleString()}ms`
+        );
 
         // Log response (keep debug log if useful)
         this.runtimeLogger.debug(
@@ -2243,13 +2286,36 @@ export class AgentRuntime implements IAgentRuntime {
 
   async searchMemories(params: {
     embedding: number[];
+    query?: string;
     match_threshold?: number;
     count?: number;
     roomId?: UUID;
     unique?: boolean;
+    worldId?: UUID;
+    entityId?: UUID;
     tableName: string;
   }): Promise<Memory[]> {
-    return await this.adapter.searchMemories(params);
+    const memories = await this.adapter.searchMemories(params);
+    if (params.query) {
+      const rerankedMemories = await this.rerankMemories(params.query, memories);
+      return rerankedMemories;
+    }
+    return memories;
+  }
+
+  async rerankMemories(query: string, memories: Memory[]): Promise<Memory[]> {
+    const docs = memories.map((memory) => ({
+      title: memory.id,
+      content: memory.content.text,
+    }));
+
+    // Create a new BM25 instance
+    const bm25 = new BM25(docs);
+
+    // Get search results
+    const results = bm25.search(query, memories.length);
+
+    return results.map((result) => memories[result.index]);
   }
 
   async createMemory(memory: Memory, tableName: string, unique?: boolean): Promise<UUID> {

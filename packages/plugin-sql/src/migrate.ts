@@ -5,7 +5,6 @@ import { PostgresConnectionManager } from './pg/manager.js';
 import os from 'node:os';
 import path from 'node:path';
 
-
 config({ path: '../../.env' });
 
 /**

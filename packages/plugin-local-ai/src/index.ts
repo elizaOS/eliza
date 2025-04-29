@@ -681,7 +681,8 @@ class LocalAIManager {
         temperature: 0.7,
         topP: 0.9,
         repeatPenalty: {
-          punishTokensFilter: () => this.smallModel!.tokenize(wordsToPunish.join(' ')),
+          punishTokensFilter: () =>
+            this.smallModel ? this.smallModel.tokenize(wordsToPunish.join(' ')) : [],
           penalty: 1.2,
           frequencyPenalty: 0.7,
           presencePenalty: 0.7,

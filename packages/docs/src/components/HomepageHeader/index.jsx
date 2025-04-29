@@ -14,7 +14,7 @@ function HomepageHeader() {
         <div className={styles.heroSection}>
           <div className={styles.heroLeft}>
             <h1 className={styles.heroTitle}>
-              <span className={styles.heroTitlePrefix}>eliza</span> is a{' '}
+              <span className={styles.heroTitlePrefix}>eliza</span> is a
               <span className={styles.heroTitleHighlight}>powerful AI agent framework</span> for
               autonomy & personality
             </h1>
@@ -34,10 +34,10 @@ function HomepageHeader() {
                 ></iframe>
               </div>
               <p>
-                NEW! Copy{' '}
+                NEW! Copy
                 <Link href="/llms-full.txt" target="_blank">
                   <b>llms-full.txt</b>
-                </Link>{' '}
+                </Link>
                 to chat with the docs using LLMs
               </p>
             </div>

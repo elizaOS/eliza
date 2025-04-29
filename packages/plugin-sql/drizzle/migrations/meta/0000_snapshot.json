@@ -1,5 +1,5 @@
 {
-  "id": "e868cf2d-10a2-406f-a31e-9342a0f29c35",
+  "id": "8d7ae0aa-76b7-4e80-9133-db45fb9b6d1e",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -20,7 +20,7 @@
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
-          "default": "true"
+          "default": true
         },
         "createdAt": {
           "name": "createdAt",
@@ -620,6 +620,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "worldId": {
+          "name": "worldId",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "unique": {
           "name": "unique",
           "type": "boolean",
@@ -647,6 +653,21 @@
             },
             {
               "expression": "roomId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_memories_world_id": {
+          "name": "idx_memories_world_id",
+          "columns": [
+            {
+              "expression": "worldId",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -737,6 +758,15 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
+        "memories_worldId_worlds_id_fk": {
+          "name": "memories_worldId_worlds_id_fk",
+          "tableFrom": "memories",
+          "tableTo": "worlds",
+          "columnsFrom": ["worldId"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
         "fk_room": {
           "name": "fk_room",
           "tableFrom": "memories",
@@ -758,10 +788,19 @@
         "fk_agent": {
           "name": "fk_agent",
           "tableFrom": "memories",
-          "tableTo": "entities",
+          "tableTo": "agents",
           "columnsFrom": ["agentId"],
           "columnsTo": ["id"],
           "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "fk_world": {
+          "name": "fk_world",
+          "tableFrom": "memories",
+          "tableTo": "worlds",
+          "columnsFrom": ["worldId"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },

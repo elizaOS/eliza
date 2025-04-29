@@ -1,18 +1,10 @@
 name: Eliza CLI Tests
 
 on:
-  push:
-    paths:
-      - 'packages/cli/**'
-      - 'packages/core/**'
-      - 'packages/plugin-bootstrap/**'
-      - '.github/workflows/cli-tests.yml'
+  push: 
   pull_request:
-    paths:
-      - 'packages/cli/**'
-      - 'packages/core/**'
-      - 'packages/plugin-bootstrap/**'
-      - '.github/workflows/cli-tests.yml'
+    branches:
+      - 'v2-develop'
 
 jobs:
   test:
@@ -43,7 +35,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-turbo-
 
-
       - name: Build all packages
         run: bun turbo run build --filter=!@elizaos/docs
 
@@ -52,8 +43,6 @@ jobs:
 
       - name: Make test scripts executable
         run: chmod +x packages/cli/__test_scripts__/*.bats packages/cli/__test_scripts__/*.sh
-
-      
 
       - name: Run CLI shell tests
         run: ./run_all_bats.sh

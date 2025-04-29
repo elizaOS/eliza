@@ -193,7 +193,7 @@ export default function GroupPanel({ onClose, agents, groupId }: GroupPanel) {
                   );
                 }
               } catch (error) {
-                console.error('Failed to create room', error);
+                console.error('Failed to create group', error);
               } finally {
                 setCreating(false);
                 navigate(`/room/${serverId}`);

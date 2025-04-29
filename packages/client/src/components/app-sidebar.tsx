@@ -24,7 +24,7 @@ import AgentAvatarStack from '@/components/agent-avatar-stack';
 import { useAgents, useRooms } from '@/hooks/use-query-hooks';
 import info from '@/lib/info.json';
 import { formatAgentName, cn } from '@/lib/utils';
-import { AgentStatus, type UUID, type Agent } from '@elizaos/core';
+import { AgentStatus, type UUID, type Agent, type Room } from '@elizaos/core';
 
 import { Book, ChevronDown, Cog, Plus, TerminalIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -233,7 +233,7 @@ const CreateButton = ({ onCreateRoom }: { onCreateRoom: () => void }) => {
           </NavLink>
         </DropdownMenuItem>
         <DropdownMenuItem className="flex items-center gap-2 px-4 py-3" onClick={onCreateRoom}>
-          <Plus className="h-4 w-4" /> Create Room
+          <Plus className="h-4 w-4" /> Create Group
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -282,6 +282,23 @@ export function AppSidebar() {
     ? 'Error loading agents: NetworkError: Unable to connect to the server. Please check if the server is running.'
     : undefined;
 
+  // Filter roomsData to ensure agentId is defined
+  const filteredRoomsData = useMemo(() => {
+    if (!roomsData) return new Map<string, { agentId: UUID; name: string }[]>();
+
+    const filteredMap = new Map<string, { agentId: UUID; name: string }[]>();
+    roomsData.forEach((roomArray, key) => {
+      const validRooms = roomArray
+        .filter((room): room is Room & { agentId: UUID } => room.agentId !== undefined)
+        .map((room) => ({ agentId: room.agentId, name: room.name ?? 'Unnamed Room' }));
+
+      if (validRooms.length > 0) {
+        filteredMap.set(key, validRooms);
+      }
+    });
+    return filteredMap;
+  }, [roomsData]);
+
   return (
     <Sidebar className="bg-background">
       {/* ---------- header ---------- */}
@@ -311,12 +328,13 @@ export function AppSidebar() {
           <GroupPanel agents={agents} onClose={() => setGroupPanelOpen(false)} />
         )}
 
-        {agentLoadError && <div className="px-4 py-2 text-xs text-red-500">{agentLoadError}</div>}
+        {agentLoadError && <div className="px-4 py-2 text-xs">{agentLoadError}</div>}
 
-        {/* agent sections */}
-        <AgentListSection title="Online" agents={onlineAgents} isOnline activePath={pathname} />
+        {!agentLoadError && (
+          <AgentListSection title="Online" agents={onlineAgents} isOnline activePath={pathname} />
+        )}
 
-        {offlineAgents.length > 0 && (
+        {!agentLoadError && offlineAgents.length > 0 && (
           <AgentListSection
             title="Offline"
             agents={offlineAgents}
@@ -327,9 +345,9 @@ export function AppSidebar() {
         )}
 
         {/* room section */}
-        {roomsData && (
+        {roomsData && !agentLoadError && (
           <RoomListSection
-            rooms={roomsData}
+            rooms={filteredRoomsData}
             roomsLoading={roomsLoading}
             agents={agents}
             agentAvatarMap={agentAvatarMap}

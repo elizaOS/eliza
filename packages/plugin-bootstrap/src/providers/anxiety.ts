@@ -16,7 +16,6 @@ import { addHeader, ChannelType } from '@elizaos/core';
 export const anxietyProvider: Provider = {
   name: 'ANXIETY',
   description: 'Social directions for the AI to follow based on the channel type',
-  dynamic: true,
   get: async (_runtime: IAgentRuntime, message: Memory) => {
     const channelType = message.content.channelType;
 

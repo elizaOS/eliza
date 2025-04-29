@@ -19,12 +19,13 @@ import {
   type MessagePayload,
   type MessageReceivedHandlerParams,
   ModelType,
+  normalizeJsonString,
   parseJSONObjectFromText,
   type Plugin,
   postCreationTemplate,
-  providersTemplate,
   shouldRespondTemplate,
   truncateToCompleteSentence,
+  parseKeyValueXml,
   type UUID,
   type WorldPayload,
 } from '@elizaos/core';
@@ -53,6 +54,50 @@ type MediaData = {
 };
 
 const latestResponseIds = new Map<string, Map<string, string>>();
+
+/**
+ * Escapes special characters in a string to make it JSON-safe.
+ */
+/* // Removing JSON specific helpers
+function escapeForJson(input: string): string {
+  return input
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n')
+    .replace(/```/g, '\\`\\`\\`');
+}
+
+function sanitizeJson(rawJson: string): string {
+  try {
+    // Try parsing directly
+    JSON.parse(rawJson);
+    return rawJson; // Already valid
+  } catch {
+    // Continue to sanitization
+  }
+
+  // first, replace all newlines with \n
+  const sanitized = rawJson
+    .replace(/\n/g, '\\n')
+
+    // then, replace all backticks with \\\`
+    .replace(/`/g, '\\\`');
+
+  // Regex to find and escape the "text" field
+  const fixed = sanitized.replace(/"text"\s*:\s*"([\s\S]*?)"\s*,\s*"simple"/, (_match, group) => {
+    const escapedText = escapeForJson(group);
+    return `"text": "${escapedText}", "simple"`;
+  });
+
+  // Validate that the result is actually parseable
+  try {
+    JSON.parse(fixed);
+    return fixed;
+  } catch (e) {
+    throw new Error(`Failed to sanitize JSON: ${e.message}`);
+  }
+}
+*/
 
 /**
  * Fetches media data from a list of attachments, supporting both HTTP URLs and local file paths.
@@ -177,11 +222,11 @@ const messageReceivedHandler = async ({
       }
 
       let state = await runtime.composeState(message, [
-        'PROVIDERS',
+        'ANXIETY',
         'SHOULD_RESPOND',
+        'ENTITIES',
         'CHARACTER',
         'RECENT_MESSAGES',
-        'ENTITIES',
       ]);
 
       // Skip shouldRespond check for DM and VOICE_DM channels
@@ -192,8 +237,8 @@ const messageReceivedHandler = async ({
         room?.type === ChannelType.SELF;
 
       let shouldRespond = true;
-      let providers: string[] = [];
 
+      // Handle shouldRespond
       if (!shouldSkipShouldRespond) {
         const shouldRespondPrompt = composePromptFromState({
           state,
@@ -213,41 +258,21 @@ const messageReceivedHandler = async ({
         logger.debug(`*** Raw Response Type: ${typeof response} ***`);
 
         // Try to preprocess response by removing code blocks markers if present
-        let processedResponse = response;
-        if (typeof response === 'string' && response.includes('```')) {
-          logger.debug('*** Response contains code block markers, attempting to clean up ***');
-          processedResponse = response.replace(/```json\n|\n```|```/g, '');
-          logger.debug('*** Processed Response ***\n', processedResponse);
-        }
+        // let processedResponse = response.replace('```json', '').replaceAll('```', '').trim(); // No longer needed for XML
 
-        const responseObject = parseJSONObjectFromText(processedResponse);
-        logger.debug('*** Parsed Response Object ***', responseObject);
+        const responseObject = parseKeyValueXml(response);
+        logger.debug('*** Parsed XML Response Object ***', responseObject);
 
         shouldRespond = responseObject?.action && responseObject.action === 'RESPOND';
-        providers = (responseObject?.providers as string[]) || [];
       } else {
-        // Use providersTemplate for DM and VOICE_DM channels
-        const providersPrompt = composePromptFromState({
-          state,
-          template: runtime.character.templates?.providersTemplate || providersTemplate,
-        });
-
-        const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-          prompt: providersPrompt,
-        });
-
-        const responseObject = parseJSONObjectFromText(response);
-        providers = (responseObject?.providers as string[]) || [];
+        shouldRespond = true;
       }
-
-      logger.debug('*** Should Respond ***', shouldRespond);
-      logger.debug('*** Providers Value ***', providers);
-
-      state = await runtime.composeState(message, null, providers);
 
       let responseMessages: Memory[] = [];
 
       if (shouldRespond) {
+        state = await runtime.composeState(message);
+
         const prompt = composePromptFromState({
           state,
           template: runtime.character.templates?.messageHandlerTemplate || messageHandlerTemplate,
@@ -258,16 +283,34 @@ const messageReceivedHandler = async ({
         // Retry if missing required fields
         let retries = 0;
         const maxRetries = 3;
+
         while (retries < maxRetries && (!responseContent?.thought || !responseContent?.actions)) {
-          const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+          let response = await runtime.useModel(ModelType.TEXT_LARGE, {
             prompt,
           });
 
-          responseContent = parseJSONObjectFromText(response) as Content;
+          logger.debug('*** Raw LLM Response ***\n', response);
+
+          // Attempt to parse the XML response
+          const parsedXml = parseKeyValueXml(response);
+          logger.debug('*** Parsed XML Content ***\n', parsedXml);
+
+          // Map parsed XML to Content type, handling potential missing fields
+          if (parsedXml) {
+            responseContent = {
+              thought: parsedXml.thought || '',
+              actions: parsedXml.actions || ['IGNORE'],
+              providers: parsedXml.providers || [],
+              text: parsedXml.text || '',
+              simple: parsedXml.simple || false,
+            };
+          } else {
+            responseContent = null;
+          }
 
           retries++;
-          if (!responseContent?.thought && !responseContent?.actions) {
-            logger.warn('*** Missing required fields, retrying... ***');
+          if (!responseContent?.thought || !responseContent?.actions) {
+            logger.warn('*** Missing required fields (thought or actions), retrying... ***');
           }
         }
 
@@ -283,19 +326,16 @@ const messageReceivedHandler = async ({
         if (responseContent) {
           responseContent.inReplyTo = createUniqueUuid(runtime, message.id);
 
-          responseMessages = [
-            {
-              id: asUUID(v4()),
-              entityId: runtime.agentId,
-              agentId: runtime.agentId,
-              content: responseContent,
-              roomId: message.roomId,
-              createdAt: Date.now(),
-            },
-          ];
+          const responseMesssage = {
+            id: asUUID(v4()),
+            entityId: runtime.agentId,
+            agentId: runtime.agentId,
+            content: responseContent,
+            roomId: message.roomId,
+            createdAt: Date.now(),
+          };
 
-          // First callback without text - this is for the planning stage to show thought messages in GUI
-          callback(responseContent);
+          responseMessages = [responseMesssage];
         }
 
         // Clean up the response ID
@@ -304,10 +344,70 @@ const messageReceivedHandler = async ({
           latestResponseIds.delete(runtime.agentId);
         }
 
-        await runtime.processActions(message, responseMessages, state, callback);
+        if (responseContent?.providers.length > 0) {
+          state = await runtime.composeState(message, null, [...responseContent?.providers]);
+        }
+
+        if (
+          responseContent &&
+          responseContent.simple &&
+          responseContent.text &&
+          (responseContent.actions.length === 0 ||
+            (responseContent.actions.length === 1 &&
+              responseContent.actions[0].toUpperCase() === 'REPLY'))
+        ) {
+          await callback(responseContent);
+        } else {
+          await runtime.processActions(message, responseMessages, state, callback);
+        }
+        await runtime.evaluate(message, state, shouldRespond, callback, responseMessages);
+      } else {
+        // Handle the case where the agent decided not to respond
+        logger.debug('Agent decided not to respond (shouldRespond is false).');
+
+        // Check if we still have the latest response ID
+        const currentResponseId = agentResponses.get(message.roomId);
+        if (currentResponseId !== responseId) {
+          logger.info(
+            `Ignore response discarded - newer message being processed for agent: ${runtime.agentId}, room: ${message.roomId}`
+          );
+          return; // Stop processing if a newer message took over
+        }
+
+        // Construct a minimal content object indicating ignore, include a generic thought
+        const ignoreContent: Content = {
+          thought: 'Agent decided not to respond to this message.',
+          actions: ['IGNORE'],
+          simple: true, // Treat it as simple for callback purposes
+          inReplyTo: createUniqueUuid(runtime, message.id), // Reference original message
+        };
+
+        // Call the callback directly with the ignore content
+        await callback(ignoreContent);
+
+        // Also save this ignore action/thought to memory
+        const ignoreMemory = {
+          id: asUUID(v4()),
+          entityId: runtime.agentId,
+          agentId: runtime.agentId,
+          content: ignoreContent,
+          roomId: message.roomId,
+          createdAt: Date.now(),
+        };
+        await runtime.createMemory(ignoreMemory, 'messages');
+        logger.debug('Saved ignore response to memory', { memoryId: ignoreMemory.id });
+
+        // Clean up the response ID since we handled it
+        agentResponses.delete(message.roomId);
+        if (agentResponses.size === 0) {
+          latestResponseIds.delete(runtime.agentId);
+        }
+
+        // Optionally, evaluate the decision to ignore (if relevant evaluators exist)
+        // await runtime.evaluate(message, state, shouldRespond, callback, []);
       }
+
       onComplete?.();
-      await runtime.evaluate(message, state, shouldRespond, callback, responseMessages);
 
       // Emit run ended event on successful completion
       await runtime.emitEvent(EventType.RUN_ENDED, {
@@ -420,6 +520,7 @@ const postGeneratedHandler = async ({
     content: {},
     metadata: {
       entityName: runtime.character.name,
+      type: 'message',
     },
   };
 
@@ -454,10 +555,22 @@ const postGeneratedHandler = async ({
       prompt,
     });
 
-    responseContent = parseJSONObjectFromText(response) as Content;
+    // Parse XML
+    const parsedXml = parseKeyValueXml(response);
+    if (parsedXml) {
+      responseContent = {
+        thought: parsedXml.thought || '',
+        actions: parsedXml.actions || ['IGNORE'],
+        providers: parsedXml.providers || [],
+        text: parsedXml.text || '',
+        simple: parsedXml.simple || false,
+      };
+    } else {
+      responseContent = null;
+    }
 
     retries++;
-    if (!responseContent?.thought && !responseContent?.actions) {
+    if (!responseContent?.thought || !responseContent?.actions) {
       logger.warn('*** Missing required fields, retrying... ***');
     }
   }
@@ -471,10 +584,19 @@ const postGeneratedHandler = async ({
     template: runtime.character.templates?.postCreationTemplate || postCreationTemplate,
   });
 
-  const jsonResponse = await runtime.useModel(ModelType.OBJECT_LARGE, {
+  // Use TEXT_LARGE model as we expect structured XML text, not a JSON object
+  const xmlResponseText = await runtime.useModel(ModelType.TEXT_LARGE, {
     prompt: postPrompt,
-    output: 'no-schema',
   });
+
+  // Parse the XML response
+  const parsedXmlResponse = parseKeyValueXml(xmlResponseText);
+
+  if (!parsedXmlResponse) {
+    logger.error('Failed to parse XML response for post creation. Raw response:', xmlResponseText);
+    // Handle the error appropriately, maybe retry or return an error state
+    return;
+  }
 
   /**
    * Cleans up a tweet text by removing quotes and fixing newlines
@@ -492,7 +614,7 @@ const postGeneratedHandler = async ({
   }
 
   // Cleanup the tweet text
-  const cleanedText = cleanupPostText(jsonResponse.post);
+  const cleanedText = cleanupPostText(parsedXmlResponse.post || '');
 
   // Prepare media if included
   // const mediaData: MediaData[] = [];
@@ -571,7 +693,7 @@ const postGeneratedHandler = async ({
         text: cleanedText,
         source,
         channelType: ChannelType.FEED,
-        thought: jsonResponse.thought || '',
+        thought: parsedXmlResponse.thought || '',
         type: 'post',
       },
       roomId: message.roomId,

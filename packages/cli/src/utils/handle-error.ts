@@ -1,6 +1,7 @@
 import { logger } from '@elizaos/core';
 import { getAgentRuntimeUrl } from '../commands/agent';
 import { OptionValues } from 'commander';
+import colors from 'yoctocolors';
 /**
  * Handles the error by logging it and exiting the process.
  * If the error is a string, it logs the error message and exits.
@@ -10,13 +11,32 @@ import { OptionValues } from 'commander';
  * @param {unknown} error - The error to be handled.
  */
 export function handleError(error: unknown) {
-  logger.error('An error occurred:', error);
-  if (error instanceof Error) {
-    logger.error('Error details:', error.message);
-    logger.error('Stack trace:', error.stack);
+  // Check for ENOSPC / "no space left on device" and print in red
+  const isNoSpace =
+    (error instanceof Error &&
+      (error.message.includes('no space left on device') || error.message.includes('ENOSPC'))) ||
+    (typeof error === 'string' &&
+      (error.includes('no space left on device') || error.includes('ENOSPC')));
+
+  if (isNoSpace) {
+    logger.error(
+      colors.red('ERROR: No space left on device! Please free up disk space and try again.')
+    );
+    if (error instanceof Error) {
+      logger.error(colors.red(error.message));
+      logger.error(colors.red(error.stack || ''));
+    } else {
+      logger.error(colors.red(String(error)));
+    }
   } else {
-    logger.error('Unknown error type:', typeof error);
-    logger.error('Error value:', error);
+    logger.error('An error occurred:', error);
+    if (error instanceof Error) {
+      logger.error('Error details:', error.message);
+      logger.error('Stack trace:', error.stack);
+    } else {
+      logger.error('Unknown error type:', typeof error);
+      logger.error('Error value:', error);
+    }
   }
   process.exit(1);
 }

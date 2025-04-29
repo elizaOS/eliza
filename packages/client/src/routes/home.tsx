@@ -41,8 +41,8 @@ export default function Home() {
 
   return (
     <>
-      <div className="flex-1 p-3">
-        <div className="flex flex-col gap-4 h-full">
+      <div className="flex-1 p-3 w-full h-full">
+        <div className="flex flex-col gap-4 h-full w-full md:max-w-4xl mx-auto">
           <div className="flex items-center justify-between gap-2 p-2">
             <PageTitle title="Agents" />
             <Button
@@ -58,7 +58,7 @@ export default function Home() {
           {isLoading && <div className="text-center py-8">Loading agents...</div>}
 
           {isError && (
-            <div className="text-center py-8 text-destructive">
+            <div className="text-center py-8">
               Error loading agents: {error instanceof Error ? error.message : 'Unknown error'}
             </div>
           )}
@@ -72,7 +72,7 @@ export default function Home() {
           )}
 
           {!isLoading && !isError && (
-            <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-6 gap-4 p-2 auto-rows-fr agents-section">
+            <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-2 auto-rows-fr agents-section">
               {agents
                 ?.sort((a: Agent, b: Agent) => Number(b?.enabled) - Number(a?.enabled))
                 .map((agent: Agent) => {
@@ -193,7 +193,7 @@ export default function Home() {
           <Separator />
 
           {!isLoading && !isError && (
-            <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-6 gap-4 p-2 auto-rows-fr groups-section">
+            <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-2 auto-rows-fr groups-section">
               {roomsData &&
                 Array.from(roomsData.entries()).map(([roomId, roomArray]) => {
                   const roomName = roomArray.length > 0 ? roomArray[0]?.name : null;

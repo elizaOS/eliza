@@ -12,7 +12,7 @@ import path from 'node:path';
 import prompts from 'prompts';
 import colors from 'yoctocolors';
 import { z } from 'zod';
-import { displayBanner } from '../displayBanner';
+import { displayBanner } from '../utils/displayBanner';
 import { setupPgLite, promptAndStorePostgresUrl, getElizaDirectories } from '../utils/get-config';
 
 /**
@@ -305,7 +305,7 @@ export const create = new Command()
         console.log('Plugin initialized successfully!');
         const cdPath = options.dir === '.' ? projectName : path.relative(process.cwd(), targetDir);
         console.info(
-          `\nYour plugin is ready! Here's your development workflow:\n\n[1] Development\n   cd ${cdPath}\n   ${colors.cyan('npx elizaos dev')}              # Start development with hot-reloading\n\n[2] Testing\n   ${colors.cyan('npx elizaos test')}             # Run automated tests\n   ${colors.cyan('npx elizaos start')}            # Test in a live agent environment\n\n[3] Publishing\n   ${colors.cyan('npx elizaos plugin publish --test')}    # Check registry requirements\n   ${colors.cyan('npx elizaos plugin publish')}           # Submit to registry\n\n[?] Learn more: https://eliza.how/docs/cli/plugins`
+          `\nYour plugin is ready! Here's your development workflow:\n\n[1] Development\n   cd ${cdPath}\n   ${colors.cyan('elizaos dev')}                   # Start development with hot-reloading\n\n[2] Testing\n   ${colors.cyan('elizaos test')}                  # Run automated tests\n   ${colors.cyan('elizaos start')}                 # Test in a live agent environment\n\n[3] Publishing\n   ${colors.cyan('elizaos plugin publish --test')} # Check registry requirements\n   ${colors.cyan('elizaos plugin publish')}        # Submit to registry\n\n[?] Learn more: https://eliza.how/docs/cli/plugins`
         );
         process.stdout.write(`\u001B]1337;CurrentDir=${targetDir}\u0007`);
         return;
@@ -369,7 +369,7 @@ export const create = new Command()
         console.log('Project initialized successfully!');
         const cdPath = options.dir === '.' ? projectName : path.relative(process.cwd(), targetDir);
         console.info(
-          `\nYour project is ready! Here\'s what you can do next:\n1. \`cd ${cdPath}\` to change into your project directory\n2. Run \`npx elizaos start\` to start your project\n3. Visit \`http://localhost:3000\` (or your custom port) to view your project in the browser`
+          `\nYour project is ready! Here\'s what you can do next:\n1. \`cd ${cdPath}\` to change into your project directory\n2. Run \`elizaos start\` to start your project\n3. Visit \`http://localhost:3000\` (or your custom port) to view your project in the browser`
         );
         process.stdout.write(`\u001B]1337;CurrentDir=${targetDir}\u0007`);
         process.exit(0);
