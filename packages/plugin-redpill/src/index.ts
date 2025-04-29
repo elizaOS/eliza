@@ -97,8 +97,7 @@ export const redpillPlugin: Plugin = {
 
       // Verify API key only if we have one
       try {
-        const baseURL = getBaseURL(runtime);
-        const response = await fetch(`${baseURL}/models`, {
+        const response = await fetch(`${getBaseURL({})}/models`, {
           headers: { Authorization: `Bearer ${process.env.REDPILL_API_KEY}` },
         });
 
@@ -129,6 +128,8 @@ export const redpillPlugin: Plugin = {
       params: TextEmbeddingParams | string | null
     ): Promise<number[]> => {
       // Handle null input (initialization case)
+      const model = 'text-embedding-3-small';
+      logger.log(`[Redpill] Using TEXT_EMBEDDING model: ${model}`);
       if (params === null) {
         logger.debug('Creating test embedding for initialization');
         // Return a consistent vector for null input
@@ -160,7 +161,7 @@ export const redpillPlugin: Plugin = {
       }
 
       try {
-        const baseURL = getBaseURL(runtime);
+        const baseURL = getBaseURL(_runtime);
 
         // Call the RedPill API
         const response = await fetch(`${baseURL}/embeddings`, {
@@ -207,12 +208,22 @@ export const redpillPlugin: Plugin = {
       _runtime,
       { prompt, modelType = ModelType.TEXT_LARGE }: TokenizeTextParams
     ) => {
+      const modelName =
+        modelType === ModelType.TEXT_SMALL
+          ? (process.env.REDPILL_SMALL_MODEL ?? process.env.SMALL_MODEL ?? 'gpt-4o-mini')
+          : (process.env.REDPILL_LARGE_MODEL ?? process.env.LARGE_MODEL ?? 'gpt-4o');
+      logger.log(`[Redpill] Using TEXT_TOKENIZER_ENCODE model: ${modelName}`);
       return await tokenizeText(modelType ?? ModelType.TEXT_LARGE, prompt);
     },
     [ModelType.TEXT_TOKENIZER_DECODE]: async (
       _runtime,
       { tokens, modelType = ModelType.TEXT_LARGE }: DetokenizeTextParams
     ) => {
+      const modelName =
+        modelType === ModelType.TEXT_SMALL
+          ? (process.env.REDPILL_SMALL_MODEL ?? process.env.SMALL_MODEL ?? 'gpt-4o-mini')
+          : (process.env.REDPILL_LARGE_MODEL ?? process.env.LARGE_MODEL ?? 'gpt-4o');
+      logger.log(`[Redpill] Using TEXT_TOKENIZER_DECODE model: ${modelName}`);
       return await detokenizeText(modelType ?? ModelType.TEXT_LARGE, tokens);
     },
     [ModelType.TEXT_SMALL]: async (runtime, { prompt, stopSequences = [] }: GenerateTextParams) => {
@@ -233,6 +244,7 @@ export const redpillPlugin: Plugin = {
         runtime.getSetting('SMALL_MODEL') ??
         'gpt-4o-mini';
 
+      logger.log(`[Redpill] Using TEXT_SMALL model: ${model}`);
       logger.log('generating text');
       logger.log(prompt);
 
@@ -270,6 +282,7 @@ export const redpillPlugin: Plugin = {
       const model =
         runtime.getSetting('REDPILL_LARGE_MODEL') ?? runtime.getSetting('LARGE_MODEL') ?? 'gpt-4o';
 
+      logger.log(`[Redpill] Using TEXT_LARGE model: ${model}`);
       const { text: redpillResponse } = await generateText({
         model: redpill.languageModel(model),
         prompt: prompt,
@@ -297,6 +310,8 @@ export const redpillPlugin: Plugin = {
         prompt = params.prompt;
       }
 
+      const model = 'gpt-4-vision-preview';
+      logger.log(`[Redpill] Using IMAGE_DESCRIPTION model: ${model}`);
       try {
         const baseURL = getBaseURL(runtime);
         const apiKey = process.env.REDPILL_API_KEY;
@@ -380,6 +395,7 @@ export const redpillPlugin: Plugin = {
         runtime.getSetting('SMALL_MODEL') ??
         'gpt-4o-mini';
 
+      logger.log(`[Redpill] Using OBJECT_SMALL model: ${model}`);
       try {
         if (params.schema) {
           // Skip zod validation and just use the generateObject without schema
@@ -414,6 +430,7 @@ export const redpillPlugin: Plugin = {
       const model =
         runtime.getSetting('REDPILL_LARGE_MODEL') ?? runtime.getSetting('LARGE_MODEL') ?? 'gpt-4o';
 
+      logger.log(`[Redpill] Using OBJECT_LARGE model: ${model}`);
       try {
         if (params.schema) {
           // Skip zod validation and just use the generateObject without schema

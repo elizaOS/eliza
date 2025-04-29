@@ -84,6 +84,7 @@ export const ollamaPlugin: Plugin = {
         });
 
         const modelName = runtime.getSetting('OLLAMA_EMBEDDING_MODEL') || 'nomic-embed-text';
+        logger.log(`[Ollama] Using TEXT_EMBEDDING model: ${modelName}`);
         const text =
           typeof params === 'string' ? params : (params as TextEmbeddingParams)?.text || '';
 
@@ -136,8 +137,11 @@ export const ollamaPlugin: Plugin = {
         });
 
         const model =
-          runtime.getSetting('OLLAMA_SMALL_MODEL') ?? runtime.getSetting('SMALL_MODEL') ?? 'llama3';
+          runtime.getSetting('OLLAMA_SMALL_MODEL') ??
+          runtime.getSetting('SMALL_MODEL') ??
+          'gemma3:latest';
 
+        logger.log(`[Ollama] Using TEXT_SMALL model: ${model}`);
         logger.log('generating text');
         logger.log(prompt);
 
@@ -176,6 +180,7 @@ export const ollamaPlugin: Plugin = {
           baseURL: runtime.getSetting('OLLAMA_API_ENDPOINT') || OLLAMA_API_URL,
         });
 
+        logger.log(`[Ollama] Using TEXT_LARGE model: ${model}`);
         return await generateOllamaText(ollama, model, {
           prompt,
           system: runtime.character.system ?? undefined,
@@ -201,6 +206,7 @@ export const ollamaPlugin: Plugin = {
           runtime.getSetting('SMALL_MODEL') ??
           'gemma3:latest';
 
+        logger.log(`[Ollama] Using OBJECT_SMALL model: ${model}`);
         if (params.schema) {
           logger.info('Using OBJECT_SMALL without schema validation');
         }
@@ -223,6 +229,7 @@ export const ollamaPlugin: Plugin = {
           runtime.getSetting('LARGE_MODEL') ??
           'gemma3:latest';
 
+        logger.log(`[Ollama] Using OBJECT_LARGE model: ${model}`);
         if (params.schema) {
           logger.info('Using OBJECT_LARGE without schema validation');
         }

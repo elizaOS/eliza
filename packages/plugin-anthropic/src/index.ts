@@ -95,6 +95,8 @@ export const anthropicPlugin: Plugin = {
       const smallModel = runtime.getSetting('ANTHROPIC_SMALL_MODEL') ?? 'claude-3-haiku-20240307';
       const maxTokens = smallModel.includes('-3-') ? 4096 : 8192;
 
+      logger.log(`[Anthropic] Using TEXT_SMALL model: ${smallModel}`);
+
       const { text } = await generateText({
         model: anthropic(smallModel),
         prompt,
@@ -123,6 +125,8 @@ export const anthropicPlugin: Plugin = {
 
       const largeModel = runtime.getSetting('ANTHROPIC_LARGE_MODEL') ?? 'claude-3-5-sonnet-latest';
 
+      logger.log(`[Anthropic] Using TEXT_LARGE model: ${largeModel}`);
+
       const { text } = await generateText({
         model: anthropic(largeModel),
         prompt,
@@ -140,6 +144,9 @@ export const anthropicPlugin: Plugin = {
       ensureAnthropicAPIKeyExists(runtime);
 
       const smallModel = runtime.getSetting('ANTHROPIC_SMALL_MODEL') ?? 'claude-3-haiku-20240307';
+
+      logger.log(`[Anthropic] Using OBJECT_SMALL model: ${smallModel}`);
+
       try {
         // Check if this is a reflection schema request (has specific format)
         const isReflection = params.schema?.facts && params.schema.relationships;
@@ -197,6 +204,9 @@ export const anthropicPlugin: Plugin = {
       ensureAnthropicAPIKeyExists(runtime);
 
       const largeModel = runtime.getSetting('ANTHROPIC_LARGE_MODEL') ?? 'claude-3-5-sonnet-latest';
+
+      logger.log(`[Anthropic] Using OBJECT_LARGE model: ${largeModel}`);
+
       try {
         // Check if this is a reflection schema request (has specific format)
         const isReflection = params.schema?.facts && params.schema.relationships;
