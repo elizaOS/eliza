@@ -6,8 +6,9 @@ import {
   type ProviderResult,
   type State,
   elizaLogger,
+  TEEMode,
 } from '@elizaos/core';
-import { PhalaDeriveKeyProvider, TEEMode } from '@elizaos/plugin-tee';
+import { PhalaDeriveKeyProvider } from '@elizaos/plugin-tee';
 import type {
   Account,
   Address,
