@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-browser",
-  "version": "1.0.0-beta.39",
+  "version": "1.0.0-beta.40",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -26,7 +26,7 @@
     "tsup.config.ts"
   ],
   "dependencies": {
-    "@elizaos/core": "^1.0.0-beta.39",
+    "@elizaos/core": "^1.0.0-beta.40",
     "@types/uuid": "10.0.0",
     "capsolver-npm": "2.0.2",
     "fluent-ffmpeg": "2.1.3",

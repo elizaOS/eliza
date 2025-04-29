@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-venice",
-  "version": "1.0.0-beta.39",
+  "version": "1.0.0-beta.40",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -15,7 +15,7 @@
   "dependencies": {
     "@ai-sdk/openai": "^1.1.9",
     "@ai-sdk/ui-utils": "^1.2.8",
-    "@elizaos/core": "^1.0.0-beta.39",
+    "@elizaos/core": "^1.0.0-beta.40",
     "ai": "^4.3.9",
     "formdata-node": "^5.0.1",
     "js-tiktoken": "^1.0.18",
