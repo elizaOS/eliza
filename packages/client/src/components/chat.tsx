@@ -546,7 +546,6 @@ export default function Page({
 
           {/* Chat Input */}
           <div className="px-4 pb-4 mt-auto flex-shrink-0">
-            {' '}
             {/* Keep input at bottom */}
             <form
               ref={formRef}
@@ -640,7 +639,7 @@ export default function Page({
             </form>
           </div>
         </div>
-      </div>{' '}
+      </div>
       {/* End of width constraining wrapper */}
     </div>
   );

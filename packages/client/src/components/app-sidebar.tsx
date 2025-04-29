@@ -233,7 +233,7 @@ const CreateButton = ({ onCreateRoom }: { onCreateRoom: () => void }) => {
           </NavLink>
         </DropdownMenuItem>
         <DropdownMenuItem className="flex items-center gap-2 px-4 py-3" onClick={onCreateRoom}>
-          <Plus className="h-4 w-4" /> Create group
+          <Plus className="h-4 w-4" /> Create Group
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
