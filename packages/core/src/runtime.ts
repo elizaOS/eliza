@@ -1,19 +1,13 @@
+import { type Context, type Span, SpanStatusCode, context, trace } from '@opentelemetry/api';
 import { v4 as uuidv4 } from 'uuid';
 import { createUniqueUuid } from './entities';
 import { decryptSecret, getSalt, safeReplacer } from './index';
+import { InstrumentationService } from './instrumentation/service';
 import logger from './logger';
 import { splitChunks } from './prompts';
 import { ChannelType, MemoryType, ModelType } from './types';
-import { InstrumentationService } from './instrumentation/service';
-import {
-  type Context,
-  SpanStatusCode,
-  trace,
-  SpanStatus,
-  type Span,
-  context,
-} from '@opentelemetry/api';
 
+import { BM25 } from './bm25';
 import type {
   Action,
   Agent,
@@ -46,8 +40,8 @@ import type {
   UUID,
   World,
 } from './types';
-import { stringToUuid } from './uuid';
 import { EventType, type MessagePayload } from './types';
+import { stringToUuid } from './uuid';
 
 /**
  * Represents a collection of settings grouped by namespace.
@@ -683,6 +677,7 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async getKnowledge(message: Memory): Promise<KnowledgeItem[]> {
+    console.log('*** getKnowledge', message);
     return this.startSpan('AgentRuntime.getKnowledge', async (span) => {
       // Add validation for message
       if (!message?.content?.text) {
@@ -726,13 +721,18 @@ export class AgentRuntime implements IAgentRuntime {
         'embedding.length': embedding.length,
       });
 
+      console.log('*** searching memories');
+
       const fragments = await this.searchMemories({
         tableName: 'knowledge',
         embedding,
+        query: message?.content?.text,
         roomId: message.agentId,
-        count: 5,
+        count: 20,
         match_threshold: 0.1,
       });
+
+      console.log('*** fragments', fragments);
 
       span.addEvent('knowledge_retrieved');
       span.setAttributes({
@@ -2245,13 +2245,36 @@ export class AgentRuntime implements IAgentRuntime {
 
   async searchMemories(params: {
     embedding: number[];
+    query?: string;
     match_threshold?: number;
     count?: number;
     roomId?: UUID;
     unique?: boolean;
     tableName: string;
   }): Promise<Memory[]> {
-    return await this.adapter.searchMemories(params);
+    const memories = await this.adapter.searchMemories(params);
+    if (params.query) {
+      const rerankedMemories = await this.rerankMemories(params.query, memories);
+      return rerankedMemories;
+    }
+    return memories;
+  }
+
+  async rerankMemories(query: string, memories: Memory[]): Promise<Memory[]> {
+    const docs = memories.map((memory) => ({
+      title: memory.id,
+      content: memory.content.text,
+    }));
+
+    // Create a new BM25 instance
+    const bm25 = new BM25(docs);
+
+    // Get search results
+    const results = bm25.search(query, memories.length);
+
+    console.log('*** results', results);
+
+    return results.map((result) => memories[result.index]);
   }
 
   async createMemory(memory: Memory, tableName: string, unique?: boolean): Promise<UUID> {

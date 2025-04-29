@@ -799,6 +799,7 @@ export interface IDatabaseAdapter {
     roomId?: UUID;
     unique?: boolean;
     tableName: string;
+    query?: string;
   }): Promise<Memory[]>;
 
   createMemory(memory: Memory, tableName: string, unique?: boolean): Promise<UUID>;

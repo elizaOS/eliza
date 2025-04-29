@@ -18,7 +18,7 @@ import { ModelType } from './types';
  */
 export function upgradeDoubleToTriple(tpl) {
   return tpl.replace(
-    // ────────╮ negative-LB: not already “{{{”
+    // ────────╮ negative-LB: not already "{{{"
     //          │   {{     ─ opening braces
     //          │    ╰──── negative-LA: not {, #, /, !, >
     //          ▼
@@ -323,74 +323,66 @@ If the message is directed at or relevant to {{agentName}}, respond with RESPOND
 If a user asks {{agentName}} to be quiet, respond with STOP action.
 If {{agentName}} should ignore the message, respond with IGNORE action.
 If responding with the RESPOND action, include a list of optional providers that could be relevant to the response.
-Response format should be formatted in a valid JSON block like this:
-\`\`\`json
-{
-  "name": "{{agentName}}",
-	"reasoning": "<string>",
-  "action": "RESPOND" | "IGNORE" | "STOP"
-}
-\`\`\`
-Your response should include the valid JSON block and nothing else.`;
 
-export const providersTemplate = `# Task: Determine which providers would be most relevant for {{agentName}} to use in responding to this message.
-{{providers}}
-# Instructions: Based on the context and message, select the providers that would give {{agentName}} the most relevant information for crafting a response.
-Consider the following when selecting providers:
-- What information would help {{agentName}} understand the context better?
-- What data would help {{agentName}} provide a more informed response?
-- What providers might have relevant historical or contextual information?
+Respond using XML format like this:
+<response>
+  <name>{{agentName}}</name>
+  <reasoning>Your reasoning here</reasoning>
+  <action>RESPOND | IGNORE | STOP</action>
+</response>
 
-Response format should be formatted in a valid JSON block like this:
-\`\`\`json
-{
-    "providers": ["<string>", "<string>", ...]
-}
-\`\`\`
-Your response should include the valid JSON block and nothing else.`;
+Your response should ONLY include the XML block.`;
 
 export const messageHandlerTemplate = `# Task: Generate dialog and actions for the character {{agentName}}.
+
 {{providers}}
-# Instructions: Write a thought and plan for {{agentName}} and decide what actions to take. Also include the providers that {{agentName}} will use to have the right context for responding and acting, if any.
-First, think about what you want to do next and plan your actions. Then, write the next message and include the actions you plan to take.
-"thought" should be a short description of what the agent is thinking about and planning.
-"actions" should be an array of the actions {{agentName}} plans to take based on the thought (if none, use IGNORE, if simply responding with text, use REPLY)
-"providers" should be an optional array of the providers that {{agentName}} will use to have the right context for responding and acting
-"evaluators" should be an optional array of the evaluators that {{agentName}} will use to evaluate the conversation after responding
-"text" should be the text of the next message for {{agentName}} which they will send to the conversation.
-"simple" should be true if the message is a simple response and false if it is a more complex response that requires planning and more context to handle or reply to.
+
 These are the available valid actions: {{actionNames}}
 
-Response format should be formatted in a valid JSON block like this:
-\`\`\`json
-{
-    "thought": "<string>",
-    "actions": ["<string>", "<string>", ...],
-    "providers": ["<string>", "<string>", ...],
-    "text": "<string>",
-    "simple": true|false
-}
-\`\`\`
+# Instructions: Write a thought and plan for {{agentName}} and decide what actions to take. Also include the providers that {{agentName}} will use to have the right context for responding and acting, if any.
+First, think about what you want to do next and plan your actions. Then, write the next message and include the actions you plan to take.
 
-Your response should include the valid JSON block and nothing else.`;
+"thought" should be a short description of what the agent is thinking about and planning.
+"actions" should be a comma-separated list of the actions {{agentName}} plans to take based on the thought (if none, use IGNORE, if simply responding with text, use REPLY)
+"providers" should be an optional comma-separated list of the providers that {{agentName}} will use to have the right context for responding and acting
+"evaluators" should be an optional comma-separated list of the evaluators that {{agentName}} will use to evaluate the conversation after responding
+"text" should be the text of the next message for {{agentName}} which they will send to the conversation.
+"simple" should be true if the message is a simple response and false if it is a more complex response that requires planning, knowledge or more context to handle or reply to.
+
+Respond using XML format like this:
+<response>
+    <thought>Your thought here</thought>
+    <actions>ACTION1,ACTION2</actions>
+    <providers>PROVIDER1,PROVIDER2</providers>
+    <text>Your response text here</text>
+    <simple>true|false</simple>
+</response>
+
+Your response must ONLY include the XML block.`;
 
 export const postCreationTemplate = `# Task: Create a post in the voice and style and perspective of {{agentName}} @{{twitterUserName}}.
 
 Example task outputs:
 1. A post about the importance of AI in our lives
-\`\`\`json
-{ "thought": "I am thinking about writing a post about the importance of AI in our lives", "post": "AI is changing the world and it is important to understand how it works", "imagePrompt": "A futuristic cityscape with flying cars and people using AI to do things" }
-\`\`\`
+<response>
+  <thought>I am thinking about writing a post about the importance of AI in our lives</thought>
+  <post>AI is changing the world and it is important to understand how it works</post>
+  <imagePrompt>A futuristic cityscape with flying cars and people using AI to do things</imagePrompt>
+</response>
 
 2. A post about dogs
-\`\`\`json
-{ "thought": "I am thinking about writing a post about dogs", "post": "Dogs are man's best friend and they are loyal and loving", "imagePrompt": "A dog playing with a ball in a park" }
-\`\`\`
+<response>
+  <thought>I am thinking about writing a post about dogs</thought>
+  <post>Dogs are man's best friend and they are loyal and loving</post>
+  <imagePrompt>A dog playing with a ball in a park</imagePrompt>
+</response>
 
 3. A post about finding a new job
-\`\`\`json
-{ "thought": "Getting a job is hard, I bet there's a good tweet in that", "post": "Just keep going!", "imagePrompt": "A person looking at a computer screen with a job search website" }
-\`\`\`
+<response>
+  <thought>Getting a job is hard, I bet there's a good tweet in that</thought>
+  <post>Just keep going!</post>
+  <imagePrompt>A person looking at a computer screen with a job search website</imagePrompt>
+</response>
 
 {{providers}}
 
@@ -398,101 +390,82 @@ Write a post that is {{adjective}} about {{topic}} (without mentioning {{topic}}
 Your response should be 1, 2, or 3 sentences (choose the length at random).
 Your response should not contain any questions. Brief, concise statements only. The total character count MUST be less than 280. No emojis. Use \\n\\n (double spaces) between statements if there are multiple statements in your response.
 
-Your output should be formatted in a valid JSON block like this:
-\`\`\`json
-{ "thought": "<string>", "post": "<string>", "imagePrompt": "<string>" }
-\`\`\`
+Your output should be formatted in XML like this:
+<response>
+  <thought>Your thought here</thought>
+  <post>Your post text here</post>
+  <imagePrompt>Optional image prompt here</imagePrompt>
+</response>
+
 The "post" field should be the post you want to send. Do not including any thinking or internal reflection in the "post" field.
 The "imagePrompt" field is optional and should be a prompt for an image that is relevant to the post. It should be a single sentence that captures the essence of the post. ONLY USE THIS FIELD if it makes sense that the post would benefit from an image.
 The "thought" field should be a short description of what the agent is thinking about before responding, inlcuding a brief justification for the response. Includate an explanation how the post is relevant to the topic but unique and different than other posts.
-Your reponse should ONLY contain a valid JSON block and nothing else.`;
+Your reponse should ONLY contain the XML block.`;
 
 export const booleanFooter = 'Respond with only a YES or a NO.';
 
 /**
- * Parses a string to determine its boolean equivalent.
+ * Parses key-value pairs from a simple XML structure within a given text.
+ * It looks for an XML block (e.g., <response>...</response>) and extracts
+ * text content from direct child elements (e.g., <key>value</key>).
  *
- * Recognized affirmative values: "YES", "Y", "TRUE", "T", "1", "ON", "ENABLE"
- * Recognized negative values: "NO", "N", "FALSE", "F", "0", "OFF", "DISABLE"
+ * Note: This uses regex and is suitable for simple, predictable XML structures.
+ * For complex XML, a proper parsing library is recommended.
  *
- * @param {string | undefined | null} value - The input text to parse
- * @returns {boolean} - Returns `true` for affirmative inputs, `false` for negative or unrecognized inputs
+ * @param text - The input text containing the XML structure.
+ * @returns An object with key-value pairs extracted from the XML, or null if parsing fails.
  */
-export function parseBooleanFromText(value: string | undefined | null): boolean {
-  if (!value) return false;
+export function parseKeyValueXml(text: string): Record<string, any> | null {
+  if (!text) return null;
 
-  const affirmative = ['YES', 'Y', 'TRUE', 'T', '1', 'ON', 'ENABLE'];
-  const negative = ['NO', 'N', 'FALSE', 'F', '0', 'OFF', 'DISABLE'];
-
-  const normalizedText = value.trim().toUpperCase();
-
-  if (affirmative.includes(normalizedText)) {
-    return true;
-  }
-  if (negative.includes(normalizedText)) {
-    return false;
+  // Find the main XML block (e.g., <response>...</response>)
+  const xmlBlockMatch = text.match(/<(\w+)>([\s\S]*?)<\/\1>/);
+  if (!xmlBlockMatch) {
+    logger.warn('Could not find XML block in text');
+    return null;
   }
 
-  // For environment variables, we'll treat unrecognized values as false
-  return false;
-}
+  const xmlContent = xmlBlockMatch[2];
+  const result: Record<string, any> = {};
 
-export const stringArrayFooter = `Respond with a JSON array containing the values in a valid JSON block formatted for markdown with this structure:
-\`\`\`json
-[
-  'value',
-  'value'
-]
-\`\`\`
+  // Regex to find <key>value</key> patterns
+  const tagPattern = /<([\w-]+)>([\s\S]*?)<\/([\w-]+)>/g;
+  let match;
 
-Your response must include the valid JSON block.`;
+  while ((match = tagPattern.exec(xmlContent)) !== null) {
+    // Ensure opening and closing tags match
+    if (match[1] === match[3]) {
+      const key = match[1];
+      // Basic unescaping for common XML entities (add more as needed)
+      const value = match[2]
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&amp;/g, '&')
+        .replace(/&quot;/g, '"')
+        .replace(/&apos;/g, "'")
+        .trim();
 
-/**
- * Parses a JSON array from a given text. The function looks for a JSON block wrapped in triple backticks
- * with `json` language identifier, and if not found, it searches for an array pattern within the text.
- * It then attempts to parse the JSON string into a JavaScript object. If parsing is successful and the result
- * is an array, it returns the array; otherwise, it returns null.
- *
- * @param text - The input text from which to extract and parse the JSON array.
- * @returns An array parsed from the JSON string if successful; otherwise, null.
- */
-export function parseJsonArrayFromText(text: string) {
-  let jsonData = null;
-
-  // First try to parse with the original JSON format
-  const jsonBlockMatch = text?.match(jsonBlockPattern);
-
-  if (jsonBlockMatch) {
-    try {
-      // Only replace quotes that are actually being used for string delimitation
-      const normalizedJson = jsonBlockMatch[1].replace(/(?<!\\)'([^']*)'(?=\s*[,}\]])/g, '"$1"');
-      jsonData = JSON.parse(normalizeJsonString(normalizedJson));
-    } catch (_e) {
-      logger.warn('Could not parse text as JSON, will try pattern matching');
-    }
-  }
-
-  // If that fails, try to find an array pattern
-  if (!jsonData) {
-    const arrayPattern = /\[\s*(['"])(.*?)\1\s*\]/;
-    const arrayMatch = text.match(arrayPattern);
-
-    if (arrayMatch) {
-      try {
-        // Only replace quotes that are actually being used for string delimitation
-        const normalizedJson = arrayMatch[0].replace(/(?<!\\)'([^']*)'(?=\s*[,}\]])/g, '"$1"');
-        jsonData = JSON.parse(normalizeJsonString(normalizedJson));
-      } catch (_e) {
-        logger.warn('Could not parse text as JSON, returning null');
+      // Handle potential comma-separated lists for specific keys
+      if (key === 'actions' || key === 'providers' || key === 'evaluators') {
+        result[key] = value ? value.split(',').map((s) => s.trim()) : [];
+      } else if (key === 'simple') {
+        result[key] = value.toLowerCase() === 'true';
+      } else {
+        result[key] = value;
       }
+    } else {
+      logger.warn(`Mismatched XML tags found: <${match[1]}> and </${match[3]}>`);
+      // Potentially skip this mismatched pair or return null depending on strictness needed
     }
   }
 
-  if (Array.isArray(jsonData)) {
-    return jsonData;
+  // Return null if no key-value pairs were found
+  if (Object.keys(result).length === 0) {
+    logger.warn('No key-value pairs extracted from XML content');
+    return null;
   }
 
-  return null;
+  return result;
 }
 
 /**
@@ -518,8 +491,8 @@ export function parseJSONObjectFromText(text: string): Record<string, any> | nul
       jsonData = JSON.parse(normalizeJsonString(text.trim()));
     }
   } catch (_e) {
-    logger.warn('Could not parse text as JSON, returning null');
-    return null;
+    // logger.warn("Could not parse text as JSON, returning null");
+    return null; // Keep null return on error
   }
 
   // Ensure we have a non-null object that's not an array
@@ -527,40 +500,8 @@ export function parseJSONObjectFromText(text: string): Record<string, any> | nul
     return jsonData;
   }
 
-  logger.warn('Could not parse text as JSON, returning null');
-
-  return null;
-}
-
-/**
- * Extracts specific attributes (e.g., user, text, action) from a JSON-like string using regex.
- * @param response - The cleaned string response to extract attributes from.
- * @param attributesToExtract - An array of attribute names to extract.
- * @returns An object containing the extracted attributes.
- */
-export function extractAttributes(
-  response: string,
-  attributesToExtract?: string[]
-): { [key: string]: string | undefined } {
-  const attributes: { [key: string]: string | undefined } = {};
-
-  if (!attributesToExtract || attributesToExtract.length === 0) {
-    // Extract all attributes if no specific attributes are provided
-    const matches = response.matchAll(/"([^"]+)"\s*:\s*"([^"]*)"/g);
-    for (const match of matches) {
-      attributes[match[1]] = match[2];
-    }
-  } else {
-    // Extract only specified attributes
-    for (const attribute of attributesToExtract) {
-      const match = response.match(new RegExp(`"${attribute}"\\s*:\\s*"([^"]*)"`, 'i'));
-      if (match) {
-        attributes[attribute] = match[1];
-      }
-    }
-  }
-
-  return attributes;
+  // logger.warn("Could not parse text as JSON object, returning null");
+  return null; // Return null if not a valid object
 }
 
 /**
@@ -591,26 +532,8 @@ export const normalizeJsonString = (str: string) => {
   // "key": someWord → "key": "someWord"
   str = str.replace(/("[\w\d_-]+")\s*:\s*([A-Za-z_]+)(?!["\w])/g, '$1: "$2"');
 
-  // Replace adjacent quote pairs with a single double quote
-  str = str.replace(/(?:"')|(?:'")/g, '"');
   return str;
 };
-
-/**
- * Cleans a JSON-like response string by removing unnecessary markers, line breaks, and extra whitespace.
- * This is useful for handling improperly formatted JSON responses from external sources.
- *
- * @param response - The raw JSON-like string response to clean.
- * @returns The cleaned string, ready for parsing or further processing.
- */
-
-export function cleanJsonResponse(response: string): string {
-  return response
-    .replace(/```json\s*/g, '') // Remove ```json
-    .replace(/```\s*/g, '') // Remove any remaining ```
-    .replace(/(\r\n|\n|\r)/g, '') // Remove line breaks
-    .trim();
-}
 
 export const postActionResponseFooter =
   'Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appropriate. Each action must be on its own line. Your response must only include the chosen actions.';
@@ -685,11 +608,6 @@ export function truncateToCompleteSentence(text: string, maxLength: number): str
   const hardTruncated = text.slice(0, maxLength - 3).trim();
   return `${hardTruncated}...`;
 }
-
-// Assuming ~4 tokens per character on average
-const TOKENS_PER_CHAR = 4;
-const TARGET_TOKENS = 3000;
-const _TARGET_CHARS = Math.floor(TARGET_TOKENS / TOKENS_PER_CHAR); // ~750 chars
 
 export async function splitChunks(content: string, chunkSize = 512, bleed = 20): Promise<string[]> {
   logger.debug('[splitChunks] Starting text split');

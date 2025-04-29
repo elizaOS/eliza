@@ -126,7 +126,7 @@ export class TwitterInteractionClient {
         `@${twitterUsername}`,
         20,
         SearchMode.Latest,
-        cachedCursor
+        String(cachedCursor)
       );
 
       const mentionCandidates = searchResult.tweets;

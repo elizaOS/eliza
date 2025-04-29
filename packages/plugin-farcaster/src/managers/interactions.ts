@@ -16,7 +16,8 @@ import type { FarcasterClient } from '../client';
 import { AsyncQueue } from '../common/asyncqueue';
 import { standardCastHandlerCallback } from '../common/callbacks';
 import { FARCASTER_SOURCE } from '../common/constants';
-import { formatCast, formatTimeline, shouldRespondTemplate } from '../common/prompts';
+import { formatCast, formatTimeline } from '../common/prompts';
+import { shouldRespondTemplate } from '@elizaos/core';
 import {
   type Cast,
   type FarcasterConfig,

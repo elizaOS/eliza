@@ -25,15 +25,32 @@ export const knowledgeProvider: Provider = {
   description: 'Knowledge from the knowledge base that the agent knows',
   dynamic: true,
   get: async (runtime: IAgentRuntime, message: Memory) => {
+    console.log('*** getting knowledge');
     const knowledgeData = await runtime.getKnowledge(message);
+    console.log('*** knowledgeData', knowledgeData);
 
-    const knowledge =
-      knowledgeData && knowledgeData.length > 0
+    // grab the to 5 most similar knowledge items from knowledgeData
+    console.log('*** knowledgeData items', knowledgeData.length);
+
+    const firstFiveKnowledgeItems = knowledgeData?.slice(0, 5);
+
+    console.log('*** firstFiveKnowledgeItems', firstFiveKnowledgeItems);
+
+    let knowledge =
+      (firstFiveKnowledgeItems && firstFiveKnowledgeItems.length > 0
         ? addHeader(
             '# Knowledge',
-            knowledgeData.map((knowledge) => `- ${knowledge.content.text}`).join('\n')
+            firstFiveKnowledgeItems.map((knowledge) => `- ${knowledge.content.text}`).join('\n')
           )
-        : '';
+        : '') + '\n';
+
+    const tokenLength = 3.5;
+
+    if (knowledge.length > 2000 * tokenLength) {
+      knowledge = knowledge.slice(0, 2000 * tokenLength);
+    }
+
+    console.log('*** knowledge', knowledge);
 
     return {
       data: {

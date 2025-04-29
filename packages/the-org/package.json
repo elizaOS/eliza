@@ -37,6 +37,7 @@
     "@elizaos/cli": "^1.0.0-beta.38",
     "@elizaos/core": "^1.0.0-beta.38",
     "@elizaos/plugin-anthropic": "^1.0.0-beta.38",
+    "@elizaos/plugin-bootstrap": "^1.0.0-beta.38",
     "@elizaos/plugin-discord": "^1.0.0-beta.38",
     "@elizaos/plugin-local-ai": "^1.0.0-beta.38",
     "@elizaos/plugin-openai": "^1.0.0-beta.38",
