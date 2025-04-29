@@ -498,7 +498,7 @@ export class MessageManager {
 
       if (!sentMessages?.length) return [];
 
-      // Create room ID
+      // Create group ID
       const roomId = createUniqueUuid(this.runtime, chatId.toString());
 
       // Create memories for the sent messages

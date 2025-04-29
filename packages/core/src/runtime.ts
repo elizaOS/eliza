@@ -576,7 +576,7 @@ export class AgentRuntime implements IAgentRuntime {
         throw error;
       }
 
-      // Create room for the agent and register all plugins in parallel
+      // Create group for the agent and register all plugins in parallel
       try {
         span.addEvent('creating_room_and_registering_plugins');
         await Promise.all([
