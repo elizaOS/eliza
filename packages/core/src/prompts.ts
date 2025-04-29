@@ -316,14 +316,18 @@ export const formatTimestamp = (messageDate: number) => {
 
 const jsonBlockPattern = /```json\n([\s\S]*?)\n```/;
 
-export const shouldRespondTemplate = `# Task: Decide on behalf of {{agentName}} whether they should respond to the message, ignore it or stop the conversation.
+export const shouldRespondTemplate = `<task>Decide on behalf of {{agentName}} whether they should respond to the message, ignore it or stop the conversation.</task>
+
+<providers>
 {{providers}}
-# Instructions: Decide if {{agentName}} should respond to or interact with the conversation.
+</providers>
+
+<instructions>Decide if {{agentName}} should respond to or interact with the conversation.
 If the message is directed at or relevant to {{agentName}}, respond with RESPOND action.
 If a user asks {{agentName}} to be quiet, respond with STOP action.
-If {{agentName}} should ignore the message, respond with IGNORE action.
-If responding with the RESPOND action, include a list of optional providers that could be relevant to the response.
+If {{agentName}} should ignore the message, respond with IGNORE action.</instructions>
 
+<output>
 Respond using XML format like this:
 <response>
   <name>{{agentName}}</name>
@@ -331,24 +335,35 @@ Respond using XML format like this:
   <action>RESPOND | IGNORE | STOP</action>
 </response>
 
-Your response should ONLY include the XML block.`;
+Your response should ONLY include the <response></response> XML block.
+</output>`;
 
-export const messageHandlerTemplate = `# Task: Generate dialog and actions for the character {{agentName}}.
+export const messageHandlerTemplate = `<task>Generate dialog and actions for the character {{agentName}}.</task>  
 
+<providers>
 {{providers}}
+</providers>
 
-These are the available valid actions: {{actionNames}}
+These are the available valid actions:
+<actionNames>
+{{actionNames}}
+</actionNames>
 
-# Instructions: Write a thought and plan for {{agentName}} and decide what actions to take. Also include the providers that {{agentName}} will use to have the right context for responding and acting, if any.
+<instructions>
+Write a thought and plan for {{agentName}} and decide what actions to take. Also include the providers that {{agentName}} will use to have the right context for responding and acting, if any.
 First, think about what you want to do next and plan your actions. Then, write the next message and include the actions you plan to take.
+</instructions>
 
+<keys>
 "thought" should be a short description of what the agent is thinking about and planning.
 "actions" should be a comma-separated list of the actions {{agentName}} plans to take based on the thought (if none, use IGNORE, if simply responding with text, use REPLY)
 "providers" should be an optional comma-separated list of the providers that {{agentName}} will use to have the right context for responding and acting
 "evaluators" should be an optional comma-separated list of the evaluators that {{agentName}} will use to evaluate the conversation after responding
 "text" should be the text of the next message for {{agentName}} which they will send to the conversation.
 "simple" should be true if the message is a simple response and false if it is a more complex response that requires planning, knowledge or more context to handle or reply to.
+</keys>
 
+<output>
 Respond using XML format like this:
 <response>
     <thought>Your thought here</thought>
@@ -358,7 +373,8 @@ Respond using XML format like this:
     <simple>true|false</simple>
 </response>
 
-Your response must ONLY include the XML block.`;
+Your response must ONLY include the <response></response> XML block.
+</output>`;
 
 export const postCreationTemplate = `# Task: Create a post in the voice and style and perspective of {{agentName}} @{{twitterUserName}}.
 
@@ -534,9 +550,6 @@ export const normalizeJsonString = (str: string) => {
 
   return str;
 };
-
-export const postActionResponseFooter =
-  'Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appropriate. Each action must be on its own line. Your response must only include the chosen actions.';
 
 type ActionResponse = {
   like: boolean;

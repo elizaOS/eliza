@@ -222,11 +222,11 @@ const messageReceivedHandler = async ({
       }
 
       let state = await runtime.composeState(message, [
-        'SHOULD_RESPOND',
         'ANXIETY',
+        'SHOULD_RESPOND',
+        'ENTITIES',
         'CHARACTER',
         'RECENT_MESSAGES',
-        'ENTITIES',
       ]);
 
       // Skip shouldRespond check for DM and VOICE_DM channels
