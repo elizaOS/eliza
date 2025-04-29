@@ -534,7 +534,7 @@ const syncSingleUser = async (
   source: string
 ) => {
   const entity = await runtime.getEntityById(entityId);
-  logger.info(`Syncing user: ${entity.metadata[source].username || entity.id}`);
+  //logger.info(`Syncing user: ${entity.metadata[source].username || entity.id}`);
 
   try {
     // Ensure we're not using WORLD type and that we have a valid channelId
