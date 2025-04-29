@@ -206,7 +206,11 @@ export default function Page({
         // Set the correct name based on who sent the message
         name: isCurrentUser ? USER_NAME : (data.senderName as string),
         createdAt: data.createdAt || Date.now(),
-        isLoading: false,
+        senderId: entityId,
+        senderName: USER_NAME,
+        roomId: roomId,
+        source: CHAT_SOURCE,
+        id: data.id, // Add a unique ID for React keys and duplicate detection
       };
 
       console.log(`[Chat] Adding new message to UI from ${newMessage.name}:`, newMessage);
@@ -430,66 +434,72 @@ export default function Page({
 
   return (
     <div
-      className={`flex flex-col w-full h-screen p-4 ${showDetails ? 'col-span-3' : 'col-span-4'}`}
+      className={`flex flex-col w-full h-screen items-center ${showDetails ? 'col-span-3' : 'col-span-4'}`}
     >
-      {/* Agent Header */}
-      <div className="flex items-center justify-between mb-4 p-3 bg-card rounded-lg border">
-        <div className="flex items-center gap-3">
-          <Avatar className="size-10 border rounded-full">
-            <AvatarImage
-              src={agentData?.settings?.avatar ? agentData?.settings?.avatar : '/elizaos-icon.png'}
-            />
-          </Avatar>
-          <div className="flex flex-col">
-            <div className="flex items-center gap-2">
-              <h2 className="font-semibold text-lg">{agentData?.name || 'Agent'}</h2>
-              {agentData?.status === AgentStatus.ACTIVE ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="size-2.5 rounded-full bg-green-500 ring-2 ring-green-500/20 animate-pulse" />
-                  </TooltipTrigger>
-                  <TooltipContent side="right">
-                    <p>Agent is active</p>
-                  </TooltipContent>
-                </Tooltip>
-              ) : (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="size-2.5 rounded-full bg-gray-300 ring-2 ring-gray-300/20" />
-                  </TooltipTrigger>
-                  <TooltipContent side="right">
-                    <p>Agent is inactive</p>
-                  </TooltipContent>
-                </Tooltip>
+      {/* Wrapper to constrain width and manage vertical layout */}
+      <div className="flex flex-col w-full md:max-w-4xl h-full p-4">
+        {/* Agent Header */}
+        <div className="flex items-center justify-between mb-4 p-3 bg-card rounded-lg border">
+          <div className="flex items-center gap-3">
+            <Avatar className="size-10 border rounded-full">
+              <AvatarImage
+                src={
+                  agentData?.settings?.avatar ? agentData?.settings?.avatar : '/elizaos-icon.png'
+                }
+              />
+            </Avatar>
+            <div className="flex flex-col">
+              <div className="flex items-center gap-2">
+                <h2 className="font-semibold text-lg">{agentData?.name || 'Agent'}</h2>
+                {agentData?.status === AgentStatus.ACTIVE ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="size-2.5 rounded-full bg-green-500 ring-2 ring-green-500/20 animate-pulse" />
+                    </TooltipTrigger>
+                    <TooltipContent side="right">
+                      <p>Agent is active</p>
+                    </TooltipContent>
+                  </Tooltip>
+                ) : (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="size-2.5 rounded-full bg-gray-300 ring-2 ring-gray-300/20" />
+                    </TooltipTrigger>
+                    <TooltipContent side="right">
+                      <p>Agent is inactive</p>
+                    </TooltipContent>
+                  </Tooltip>
+                )}
+              </div>
+              {agentData?.bio && (
+                <p className="text-sm text-muted-foreground line-clamp-1">
+                  {Array.isArray(agentData.bio) ? agentData.bio[0] : agentData.bio}
+                </p>
               )}
             </div>
-            {agentData?.bio && (
-              <p className="text-sm text-muted-foreground line-clamp-1">
-                {Array.isArray(agentData.bio) ? agentData.bio[0] : agentData.bio}
-              </p>
-            )}
           </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={toggleDetails}
+            className={cn('gap-1.5', showDetails && 'bg-secondary')}
+          >
+            <PanelRight className="size-4" />
+          </Button>
         </div>
 
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={toggleDetails}
-          className={cn('gap-1.5', showDetails && 'bg-secondary')}
+        {/* Main Chat Area - takes remaining height */}
+        <div
+          className={cn('flex flex-col transition-all duration-300 w-full grow overflow-hidden ')}
         >
-          <PanelRight className="size-4" />
-        </Button>
-      </div>
-
-      <div className="flex flex-row w-full overflow-y-auto grow gap-4">
-        {/* Main Chat Area */}
-        <div className={cn('flex flex-col transition-all duration-300 w-full')}>
           {/* Chat Messages */}
           <ChatMessageList
             scrollRef={scrollRef}
             isAtBottom={isAtBottom}
             scrollToBottom={safeScrollToBottom}
             disableAutoScroll={disableAutoScroll}
+            className="flex-grow scrollbar-hide overflow-y-auto" // Ensure scrolling within this list
           >
             {messages.map((message: ContentWithUser, index: number) => {
               const isUser = message.name === USER_NAME;
@@ -535,7 +545,8 @@ export default function Page({
           </ChatMessageList>
 
           {/* Chat Input */}
-          <div className="px-4 pb-4 mt-auto">
+          <div className="px-4 pb-4 mt-auto flex-shrink-0">
+            {/* Keep input at bottom */}
             <form
               ref={formRef}
               onSubmit={handleSendMessage}
@@ -629,6 +640,7 @@ export default function Page({
           </div>
         </div>
       </div>
+      {/* End of width constraining wrapper */}
     </div>
   );
 }

@@ -73,7 +73,7 @@ export default function Wallet() {
                   </div>
                   <div className="pt-2 border-t border-muted">
                     <p className="text-sm text-muted-foreground">
-                      Price:{' '}
+                      Price:
                       <span className="font-medium text-foreground">
                         {formatCurrency(asset.priceUsd, 6, 6)}
                       </span>

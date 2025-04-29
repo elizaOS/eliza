@@ -536,6 +536,7 @@ export default function Page({ serverId }: { serverId: UUID }) {
               isAtBottom={isAtBottom}
               scrollToBottom={safeScrollToBottom}
               disableAutoScroll={disableAutoScroll}
+              className="scrollbar-hide"
             >
               {messages
                 .filter((message) => {

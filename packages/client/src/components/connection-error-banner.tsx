@@ -137,29 +137,29 @@ export function ConnectionErrorBanner({ className, testEndpoint }: ConnectionErr
   return (
     <div
       className={cn(
-        'bg-red-900/20 border border-red-700 text-red-100 rounded-md p-3 mb-4',
-        'flex items-center justify-between',
+        'bg-red-900/20 border border-yellow-700 text-yellow-100 rounded-md p-3 mb-4 w-full md:max-w-4xl',
+        'flex items-center justify-between w-full',
         className
       )}
     >
       <div className="flex items-center space-x-3">
-        <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0" />
+        <AlertCircle className="h-5 w-5 text-yellow-400 flex-shrink-0" />
         <div>
-          <h4 className="font-medium text-sm text-red-200">{errorTitle}</h4>
-          <p className="text-xs text-red-300 mt-1">{errorDescription}</p>
+          <h4 className="font-medium text-sm text-yellow-200">{errorTitle}</h4>
+          <p className="text-xs text-yellow-300 mt-1">{errorDescription}</p>
           <div className="mt-2 flex space-x-4">
             <a
-              href="https://elizaos.github.io/eliza/docs/troubleshooting"
+              href="https://eliza.how"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-xs flex items-center hover:text-red-200 text-red-300"
+              className="text-xs flex items-center hover:text-yellow-200 text-yellow-300"
             >
               <ExternalLink className="h-3 w-3 mr-1" />
               Troubleshooting Guide
             </a>
             <button
               onClick={handleRefresh}
-              className="text-xs flex items-center hover:text-red-200 text-red-300"
+              className="text-xs flex items-center hover:text-yellow-200 text-yellow-300"
             >
               <RefreshCw className="h-3 w-3 mr-1" />
               Retry Connection
@@ -171,7 +171,7 @@ export function ConnectionErrorBanner({ className, testEndpoint }: ConnectionErr
         variant="ghost"
         size="sm"
         onClick={handleDismiss}
-        className="text-red-300 hover:text-red-100 hover:bg-red-800/50"
+        className="text-yellow-300 hover:text-yellow-100 hover:bg-red-800/50"
       >
         Dismiss
       </Button>
