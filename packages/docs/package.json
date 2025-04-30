@@ -10,7 +10,7 @@
     "update-registry": "node scripts/update-registry.js",
     "build": "docusaurus build",
     "swizzle": "docusaurus swizzle",
-    "deploy": "docusaurus deploy",
+    "deploy": "echo docs.eliza.how > build/CNAME && docusaurus deploy",
     "clear": "docusaurus clear",
     "serve": "docusaurus serve",
     "write-translations": "docusaurus write-translations",
