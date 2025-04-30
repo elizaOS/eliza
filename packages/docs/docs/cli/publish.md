@@ -191,8 +191,3 @@ If your package fails validation:
 1. Ensure your `package.json` contains name, version, and description
 2. For plugins, ensure the name includes `plugin-`
 3. Make sure your package has a proper entry point
-
-## Related Commands
-
-- [`plugin`](./plugins.md): Manage plugin publishing
-- [`project`](./projects.md): Manage projects

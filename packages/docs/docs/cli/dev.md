@@ -143,4 +143,3 @@ If file changes aren't being detected:
 
 - [`start`](./start.md): Run your project in production mode
 - [`test`](./test.md): Run tests for your project
-- [`project`](./projects.md): Manage project settings

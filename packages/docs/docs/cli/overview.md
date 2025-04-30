@@ -32,8 +32,6 @@ npx @elizaos/cli@beta [command]
 | [`start`](./start.md)       | Start an ElizaOS project or agent                      |
 | [`dev`](./dev.md)           | Run a project in development mode with hot reloading   |
 | [`agent`](./agent.md)       | Manage agent configurations and state                  |
-| [`plugin`](./plugins.md)    | Develop and publish plugins                            |
-| [`project`](./projects.md)  | Manage project configuration and settings              |
 | [`env`](./env.md)           | Configure environment variables and API keys           |
 | [`publish`](./publish.md)   | Publish packages to npm registry                       |
 | [`update`](./update.md)     | Update ElizaOS components                              |
@@ -133,8 +131,6 @@ ElizaOS organizes work into projects, which can contain one or more agents along
 ## Working with Plugins
 
 Plugins extend the functionality of your agents. Use the `plugin` command for development tasks like publishing your own plugins.
-
-To add or remove plugins from your _project_, use the `project` command (see [`project` command documentation](./projects.md)).
 
 ```bash
 # Example: Publish the plugin in the current directory (requires setup)

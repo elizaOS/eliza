@@ -304,4 +304,3 @@ npx @elizaos/cli test --no-compilation
 
 - [`dev`](./dev.md): Run your project in development mode
 - [`start`](./start.md): Start your project in production mode
-- [`project`](./projects.md): Manage project configuration
