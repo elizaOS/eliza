@@ -1,0 +1,32 @@
+# Polygon Overview
+
+## Core Technology
+
+- Layer 2 scaling solution for Ethereum using modular frameworks and zero-knowledge technology
+- Key products:
+  - Polygon PoS: Proof-of-stake sidechain (~7,000 TPS, <2s finality)
+  - Polygon zkEVM: ZK-rollup with Ethereum security and 90% lower costs
+  - Chain Development Kit (CDK): Open-source toolkit for ZK-powered L2 chains
+- First scaling solution exceeding 1B transactions, supporting 50,000+ dApps, securing $5B+ assets
+- Founded 2017 by Jaynti Kanani, Sandeep Nailwal, and Anurag Arjun
+
+## ElizaOS Integration
+
+- Technical components:
+  1. On-Chain AI Agents: Plugin enables contract interaction, chain monitoring, cross-chain operations
+  2. Co-developed zkOracle, gasless relayer service, MEV-resistant bundler
+  3. $1M POL grant fund for AI-agent development with shared validator nodes
+- Use cases: Cross-chain DeFi optimizers, NFT portfolio management agents
+
+## Recent Developments
+
+- Toposware acquisition (2024) for ZK research
+- Elderberry Upgrade (2025): 40% faster zkEVM proofs
+- Testnet expansion for account abstraction and decentralized sequencers
+- ElizaOS Grant Program (2025)
+- 2025 Roadmap: Unified liquidity layer across Polygon chains
+
+## Market Position
+
+- Leading Ethereum scaling solution: 4.6M daily transactions, $1.2B TVL, 64% EVM L2 market share
+- Key partnerships: Aave ($900M liquidity), OpenSea, Stripe, Dolce & Gabbana

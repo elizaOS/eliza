@@ -1,0 +1,28 @@
+# BNB Chain Overview
+
+## Core Infrastructure
+
+- **Multi-chain ecosystem** evolved from Binance Chain/BSC
+- **Performance**: 2,000+ TPS, sub-second finality, <$0.01 gas fees
+- **Components**: BSC (EVM-compatible), opBNB (L2 rollup), BNB Greenfield (data storage), zkBNB (ZK scaling)
+- **Ecosystem**: 1,400+ active dApps across 10+ verticals, $4.8B+ TVL
+
+## ElizaOS Integration
+
+- Official plugin available on GitHub (elizaos-plugins/bnb-chain)
+- Smart contract interface for AI agent execution
+- Technical capabilities: BEP-20 operations, AI-DeFi via Venus Protocol, NFT minting, gas prediction
+- Use cases: AI liquidity pools, generative NFTs, yield optimizers, cross-chain arbitrage
+
+## Recent Developments (2024-2025)
+
+- opBNB Connect launch (March 2025) - 23M+ daily transactions
+- ElizaOS Plugin v2 (February 2025) supporting multi-model agents
+- BNB Chain AI Agent SDK (January 2025)
+- 5,000 TPS testnet achievement (December 2024)
+
+## Roadmap & Market Position
+
+- Q3 2025: zkBNB mainnet; Q4 2025: BNB Beacon Chain deprecation
+- Metrics vs competitors: 2,100 TPS, $0.02 fees, 1.4M daily users
+- Key partnerships: PancakeSwap ($1.2B TVL), Venus Protocol ($800M deposits), COMBO Network
