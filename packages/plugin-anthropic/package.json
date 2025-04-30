@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-anthropic",
-  "version": "1.0.0-beta.40",
+  "version": "1.0.0-beta.41",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -23,7 +23,7 @@
   ],
   "dependencies": {
     "@ai-sdk/anthropic": "^1.2.10",
-    "@elizaos/core": "^1.0.0-beta.40",
+    "@elizaos/core": "^1.0.0-beta.41",
     "jsonrepair": "^3.12.0",
     "tsup": "8.4.0"
   },
