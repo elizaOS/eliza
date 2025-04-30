@@ -345,7 +345,6 @@ export async function initializeOnboarding(
 /**
  * Encrypts sensitive data in a Character object
  * @param {Character} character - The character object to encrypt secrets for
- * @param {IAgentRuntime} runtime - The runtime information needed for salt generation
  * @returns {Character} - A copy of the character with encrypted secrets
  */
 export function encryptedCharacter(character: Character): Character {

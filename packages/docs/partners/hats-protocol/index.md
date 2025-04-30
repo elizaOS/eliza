@@ -1,7 +1,6 @@
 ---
 id: hats-protocol
 title: Hats Protocol
-sidebar_position: 1
 description: Decentralized access control.
 image: /img/partners/hats-protocol.jpg
 website: https://hatsprotocol.xyz/
@@ -20,19 +19,104 @@ Decentralized access control.
 
 ## About Hats Protocol
 
-Hats Protocol is a key partner in our ecosystem, providing decentralized access control..
+Hats Protocol provides decentralized role-based access control (RBAC) using non-transferable ERC-1155 tokens ("hats") to represent organizational roles. These programmable NFTs bundle permissions, responsibilities, and accountability mechanisms into modular, composable objects that DAOs and Web3 organizations can deploy across their operations. The protocol enables:
+
+- **Onchain organizational graphs** with hierarchical admin relationships
+- **Automated permission management** through smart contract integrations
+- **Revocable authorities** for treasury control, code deployment, and governance
+
+Trusted by over 50 major DAOs, Hats Protocol serves as critical infrastructure for decentralizing operations while maintaining accountability in permissioned systems.
+
+## Technology
+
+Built on three core technical innovations:
+
+1. **Hat Trees**  
+   Hierarchical structures where each hat contains metadata defining:
+
+   - Admin relationships
+   - Eligibility criteria
+   - Accountability mechanisms
+   - Linked authorities (multi-sigs, smart contracts)
+
+2. **Programmable Permissions Engine**  
+   Extensible system for attaching arbitary authorities to hats, including:
+
+   - Treasury controls (Gnosis Safe integration)
+   - Governance voting power delegation
+   - Smart contract function access
+   - Protocol-specific permissions (Uniswap, Aave, etc.)
+
+3. **Composable ERC-1155 Implementation**  
+   Non-transferable tokens with built-in revocation logic and:
+   - Multi-chain compatibility (EVM chains)
+   - Subgraph-powered role tracking
+   - SDKs for frontend integration
+
+This architecture solves critical DAO operational challenges including permission sprawl, centralized admin keys, and inefficient role handoff processes.
 
 ## Key Features
 
-- Integration with Hats Protocol's platform
-- Seamless user experience
-- Enhanced functionality through partnership
+- **Plug-and-play RBAC** for dApps and smart contracts
+- **15+ prebuilt automations** for permission granting/revocation
+- **Multi-sig replacement system** with hierarchical controls
+- **Dynamic role adaptation** through programmable eligibility criteria
+- **Cross-protocol authority unification** in single hat objects
+- **Non-upgradable core contracts** for trust minimization
+- **Gas-optimized ERC-1155 implementation** for mass role management
 
 ## Integration with Eliza
 
-Our partnership with Hats Protocol enables users to access their services directly through Eliza, providing a seamless experience for all users.
+OS  
+While no official plugin exists yet, technical synergies emerge through:
+
+1. **AI Agent Permissions Management**  
+   ElizaOS agents could wear hats to gain predefined authorities (funds management, contract interactions) while remaining subject to human oversight through Hats' revocation mechanisms.
+
+2. **Automated Role Configuration**  
+   Hats' API endpoints and SDKs enable ElizaOS to programmatically create/modify role structures based on organizational needs detected through AI analysis.
+
+3. **Cross-Protocol Query Interface**  
+   Thirdweb's Nebula plugin for ElizaOS could leverage Hats subgraphs to analyze organizational permission structures and suggest optimizations.
+
+Potential use cases include AI-managed treasury hats with spending limits, automated contributor onboarding flows, and dynamic permission adjustments based on reputation scores.
+
+## Recent Developments
+
+- **ProtoDAO Launch (2024)**  
+  Implemented decentralized governance using Hats-based role structures
+- **v1 Mainnet Release**  
+  Non-upgradeable core contracts deployed with 2 security audits
+- **Merlin Chain Partnership**  
+  Exploring Bitcoin L2 integrations for cross-chain permission management
+- **15 New Automations**  
+  Added Discord role syncing, Snapshot delegation, and Safe transaction limits
+
+## Market Position
+
+**Key Differentiators**
+
+- More flexible than OpenZeppelin AccessControl
+- More decentralized than multisig-only solutions
+- Richer feature set compared to Sismo's ZK badges
+
+**Notable Partners**
+
+- Safe (Gnosis)
+- Arbitrum DAO
+- Optimism Collective
+- thirdweb
+
+**Adoption Metrics**
+
+- 50+ DAOs using production deployments
+- $460M+ in managed treasuries
+- 120,000+ active hat wearers
 
 ## Links
 
-- [Website](https://hatsprotocol.xyz/)
-- [Source](https://hatsprotocol.xyz/)
+[Website](https://hatsprotocol.xyz/)  
+[Documentation](https://docs.hatsprotocol.xyz)  
+[GitHub](https://github.com/Hats-Protocol)  
+[Blog](https://blog.hatsprotocol.xyz)  
+[X (Twitter)](https://x.com/hatsprotocol)

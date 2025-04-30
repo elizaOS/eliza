@@ -23,7 +23,7 @@ import type {
  *
  * @template DB - The type of the database instance.
  * @abstract
- * @implements {IDatabaseAdapter}
+ * implements IDatabaseAdapter
  */
 export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter {
   /**

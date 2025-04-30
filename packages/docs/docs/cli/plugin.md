@@ -185,5 +185,4 @@ These images will be displayed in the ElizaOS plugin registry and UI.
 ## Related Commands
 
 - [`create`](./create.md): Create a new plugin
-- [`project`](./projects.md): Add plugins to projects
 - [Quickstart Guide](../quickstart.md): Project and plugin structure

@@ -3,7 +3,6 @@ id: partners
 title: ElizaOS Partners & Integrations
 description: Explore the ecosystem of ElizaOS partners, integrations, and collaborations.
 keywords: [partners, integrations, ecosystem, collaboration, AI agents, developers, platforms]
-sidebar_position: 1
 hide_table_of_contents: true
 ---
 
