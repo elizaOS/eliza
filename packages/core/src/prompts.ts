@@ -6,15 +6,15 @@ import type { Content, Entity, IAgentRuntime, Memory, State, TemplateType } from
 import { ModelType } from './types';
 
 /**
- * Convert all double-brace bindings ({{var}}) in a Handlebars template
- * to triple-brace bindings ({{{var}}}), so the output is NOT HTML-escaped.
+ * Convert all double-brace bindings in a Handlebars template
+ * to triple-brace bindings, so the output is NOT HTML-escaped.
  *
  * - Ignores block/partial/comment tags that start with # / ! >.
- * - Ignores the {{else}} keyword.
+ * - Ignores the else keyword.
  * - Ignores bindings that are already triple-braced.
  *
- * @param  {string} tpl  Handlebars template source
- * @return {string}      Transformed template
+ * @param  tpl  Handlebars template source
+ * @return      Transformed template
  */
 export function upgradeDoubleToTriple(tpl) {
   return tpl.replace(

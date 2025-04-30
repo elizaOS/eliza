@@ -86,21 +86,11 @@ export class Semaphore {
 }
 
 /**
- * Represents the runtime environment for an agent, handling message processing,
- * action registration, and interaction with external services like OpenAI and Supabase.
- */
-/**
- * Represents the runtime environment for an agent.
- * @class
- * @implements { IAgentRuntime }
- * @property { number } #conversationLength - The maximum length of a conversation.
- * @property { UUID } agentId - The unique identifier for the agent.
- * @property { Character } character - The character associated with the agent.
- * @property { IDatabaseAdapter } adapter - The adapter for interacting with the database.
- * @property {Action[]} actions - The list of actions available to the agent.
- * @property {Evaluator[]} evaluators - The list of evaluators for decision making.
- * @property {Provider[]} providers - The list of providers for external services.
- * @property {Plugin[]} plugins - The list of plugins to extend functionality.
+ * AgentRuntime provides the core runtime environment and lifecycle management for agents.
+ *
+ * Implements the IAgentRuntime interface, managing agent state, actions, plugins, providers, and database interaction.
+ *
+ * implements IAgentRuntime
  */
 export class AgentRuntime implements IAgentRuntime {
   readonly #conversationLength = 32 as number;
