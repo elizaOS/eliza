@@ -8,7 +8,7 @@ const config = {
   title: 'eliza',
   tagline: 'Flexible, scalable AI agents for everyone',
   favicon: 'img/favicon.ico',
-  url: 'https://eliza.how',
+  url: 'https://docs.eliza.how',
   baseUrl: '/',
   organizationName: 'elizaos',
   projectName: 'eliza',
@@ -35,7 +35,7 @@ const config = {
       '@docusaurus/plugin-content-docs',
       {
         id: 'partners',
-        path: 'partners',
+        path: './partners',
         routeBasePath: 'partners',
         sidebarItemsGenerator: async ({ defaultSidebarItemsGenerator, ...args }) => {
           const sidebarItems = await defaultSidebarItemsGenerator(args);
@@ -442,11 +442,11 @@ const config = {
             },
             {
               label: 'llms.txt',
-              href: 'https://eliza.how/llms.txt',
+              href: 'https://docs.eliza.how/llms.txt',
             },
             {
               label: 'llms-full.txt',
-              href: 'https://eliza.how/llms-full.txt',
+              href: 'https://docs.eliza.how/llms-full.txt',
             },
           ],
         },
