@@ -269,18 +269,6 @@ export async function startAgent(
   // Initialize encryptedChar.plugins if it's undefined
   encryptedChar.plugins = encryptedChar.plugins ?? [];
 
-  // Ensure bootstrap plugin string is present in the character's list if not already loaded
-  const bootstrapPluginName = '@elizaos/plugin-bootstrap';
-  const characterHasBootstrapString = encryptedChar.plugins.includes(bootstrapPluginName);
-  const alreadyLoadedBootstrap = loadedPluginsMap.has(bootstrapPluginName);
-
-  if (!characterHasBootstrapString && !alreadyLoadedBootstrap) {
-    logger.debug(
-      `Adding ${bootstrapPluginName} string to character's plugin list as it was missing and not pre-loaded.`
-    );
-    encryptedChar.plugins.push(bootstrapPluginName);
-  }
-
   const characterPlugins: Plugin[] = [];
 
   // Process and load plugins specified by name in the character definition
