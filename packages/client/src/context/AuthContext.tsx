@@ -29,7 +29,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       <ApiKeyDialog
         open={isApiKeyDialogOpen}
         onOpenChange={setIsApiKeyDialogOpen}
-        onSave={handleApiKeySaved}
         onApiKeySaved={handleApiKeySaved}
       />
     </AuthContext.Provider>
