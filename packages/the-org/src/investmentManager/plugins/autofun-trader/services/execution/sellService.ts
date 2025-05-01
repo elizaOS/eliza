@@ -17,6 +17,17 @@ import { WalletService } from '../walletService';
 import { DataService } from '../dataService';
 import { AnalyticsService } from '../analyticsService';
 
+import { BN, AnchorProvider, Program } from '@coral-xyz/anchor';
+import IDL from '../../idl/autofun.json';
+import { Autofun } from '../../types/autofun';
+import {
+  ComputeBudgetProgram,
+  Connection,
+  PublicKey,
+  Transaction,
+  VersionedTransaction,
+} from '@solana/web3.js';
+
 import { executeTrade } from '../../utils/wallet';
 
 function convertToBasisPoints(feePercent: number): number {
@@ -205,6 +216,7 @@ const sellTemplate = `
 
 I want you to give a crypto sell signal based on both the sentiment analysis as well as the wallet token data.
 You trade on auto.fun, a token launchpad, a lot of these coins are brand new, won't have a lot of history.
+Don't sell tokens where status is locked
 The sentiment score has a range of -100 to 100, with -100 indicating extreme negativity and 100 indicating extreme positiveness.
 My current balance is {{solana_balance}} SOL, If I have less than 0.3 SOL, I should up the priority on selling something but we don't need to realize a heavy loss over it.
 
@@ -264,6 +276,8 @@ export class SellService extends BaseTradeService {
     this.pendingSells = {};
   }
 
+  // https://github.com/elizaOS/auto.fun/blob/7b9c4e6a38ff93c882a87198388e5381a3d40a7a/packages/client/src/utils/swapUtils.ts#L37
+  // https://github.com/elizaOS/auto.fun/blob/7b9c4e6a38ff93c882a87198388e5381a3d40a7a/packages/client/src/hooks/use-swap.ts#L3
   async generateSignal() {
     console.log('sell-signal - start');
     // Replace the cache lookup with direct wallet balance check
@@ -290,7 +304,10 @@ export class SellService extends BaseTradeService {
 
     // inject into prompt
     let prompt = sellTemplate;
-    prompt = prompt.replace('{{sentiment}}', 'The highly technical analysis is: buy whatever dude');
+    prompt = prompt.replace(
+      '{{sentiment}}',
+      'The highly technical analysis is: buy whatever dude 100'
+    );
 
     let latestTxt =
       '\nCurrent Auto.fun list of all active cryptocurrencies with latest market data:\n';
@@ -313,16 +330,24 @@ export class SellService extends BaseTradeService {
       'price24hAgo',
       'priceChange24h',
       'curveProgress',
+      'imported',
+      'status',
     ];
     const remaps = {
       ticker: 'symbol',
     };
     latestTxt +=
-      'id, name, symbol, url, twitter, telegram, discord, farcaster, description, liquidity, currentPrice, tokenSupplyUiAmount, holderCount, volume24h, price24hAgo, priceChange24h, curveProgress';
+      'your balance, id, name, symbol, url, twitter, telegram, discord, farcaster, description, liquidity, currentPrice, tokenSupplyUiAmount, holderCount, volume24h, price24hAgo, priceChange24h, curveProgress, imported, status';
+    latestTxt += '\n';
     for (const t of goodAfTokens) {
-      const out = [];
+      const tokenBalance = walletData.find((a) => a.mint === t.id).balance;
+      const out = [tokenBalance];
       for (const f of fields) {
-        out.push(t[f]);
+        let val = t[f];
+        if (val?.replaceAll) {
+          val = val.replaceAll('\n', ' ');
+        }
+        out.push(val);
       }
       latestTxt += out.join(', ') + '\n';
     }
@@ -394,8 +419,12 @@ export class SellService extends BaseTradeService {
     //console.log('token', token)
     console.log('is AF token');
 
-    await this.updateExpectedOutAmount(signal);
+    if (token.status === 'migrated' || token.status === 'locked') {
+      await this.updateExpectedOutAmount(signal);
+    }
 
+    const tokenBalance = walletData.find((a) => a.mint === params.recommend_sell_address).balance;
+    /*
     console.log('getting balance');
 
     const tokenBalance = await getTokenBalance(this.runtime, signal.tokenAddress);
@@ -403,11 +432,12 @@ export class SellService extends BaseTradeService {
       logger.log('No token balance found');
       return { success: false, error: 'No token balance found' };
     }
+    */
 
     console.log('got balance', tokenBalance);
 
     //.times(10 ** tokenBalance.decimals)
-    const sellAmount = toBN(signal.amount);
+    const sellAmount = toBN(signal.amount).times(10 ** 3);
     if (sellAmount.gt(toBN(tokenBalance.balance))) {
       logger.log(
         `Insufficient token balance. Requested: ${sellAmount.toString()}, Available: ${tokenBalance.balance}`
@@ -427,6 +457,7 @@ export class SellService extends BaseTradeService {
       Number(sellAmount),
       true
     );
+    signal.amount = sellAmount;
 
     console.log('sellAmount', sellAmount, 'slippageBps', slippageBps);
 
@@ -509,7 +540,6 @@ export class SellService extends BaseTradeService {
   }
 
   async autofunSell(signal, slippageBps) {
-    console.log('WRITE ME!');
     const wallet = await this.walletService.getWallet();
     // for anchor
     const walletAdapter = {
@@ -517,7 +547,7 @@ export class SellService extends BaseTradeService {
       signTransaction: async <T extends Transaction | VersionedTransaction>(tx: T): Promise<T> => {
         await wallet.executeTrade({
           tokenAddress: signal.tokenAddress,
-          amount: buyAmount,
+          amount: signal.amount,
           slippage: slippageBps,
           action: 'SELL',
         });
@@ -553,7 +583,7 @@ export class SellService extends BaseTradeService {
     const config = await program.account.config.fetch(configPda);
 
     // is this right?
-    const amount = parseFloat(signal.tradeAmount) * 1e3;
+    const amount = parseFloat(signal.amount) * 1e3;
 
     const internalIx = await swapIx(
       wallet.publicKey,
@@ -579,11 +609,11 @@ export class SellService extends BaseTradeService {
     tx.feePayer = wallet.publicKey;
     tx.recentBlockhash = blockhash;
 
-    console.log('Executing simulation transaction...');
+    console.log('Executing sell simulation transaction...');
     const simulation = await connection.simulateTransaction(tx);
     if (simulation.value.err) {
-      logger.error('Transaction simulation failed:', simulation.value.err);
-      logger.error('Simulation Logs:', simulation.value.logs);
+      logger.error('Sell transaction simulation failed:', simulation.value.err);
+      logger.error('Sell simulation Logs:', simulation.value.logs);
       return {
         success: false,
         signature: '',
@@ -591,7 +621,7 @@ export class SellService extends BaseTradeService {
         swapUsdValue: 0,
       };
     } else {
-      logger.log('Transaction simulation successful.');
+      logger.log('Sell transaction simulation successful.');
     }
     const versionedTx = new VersionedTransaction(tx.compileMessage());
 
