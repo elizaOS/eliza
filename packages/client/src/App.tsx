@@ -11,7 +11,7 @@ import OnboardingTour from './components/onboarding-tour';
 import { Toaster } from './components/ui/toaster';
 import { TooltipProvider } from './components/ui/tooltip';
 import { AuthProvider } from './context/AuthContext';
-import { ConnectionProvider } from './context/ConnectionContext';
+import { ConnectionProvider, useConnection } from './context/ConnectionContext';
 import { STALE_TIMES } from './hooks/use-query-hooks';
 import useVersion from './hooks/use-version';
 import './index.css';
@@ -67,6 +67,7 @@ prefetchInitialData();
 
 function App() {
   useVersion();
+  const { status } = useConnection();
 
   // Also prefetch when the component mounts (helps with HMR and refreshes)
   useEffect(() => {
@@ -126,7 +127,7 @@ function App() {
                   </SidebarInset>
                 </SidebarProvider>
                 <Toaster />
-                <OnboardingTour />
+                {status !== 'unauthorized' && <OnboardingTour />}
               </TooltipProvider>
             </ConnectionProvider>
           </AuthProvider>
