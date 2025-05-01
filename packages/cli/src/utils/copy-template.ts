@@ -111,6 +111,9 @@ export async function copyTemplate(
     // Set project name
     packageJson.name = name;
 
+    // Set a standard initial version
+    packageJson.version = '0.1.0';
+
     // Use a dedicated field for ElizaOS package type to avoid collision with Node.js module type
     packageJson.packageType = templateType;
 

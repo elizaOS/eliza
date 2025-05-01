@@ -24,8 +24,8 @@ async function updatePackageJson(packagePath, cliVersion, isPluginStarter = fals
   const packageJsonContent = await fs.readFile(packagePath, 'utf-8');
   const packageData = JSON.parse(packageJsonContent);
 
-  // Update version
-  packageData.version = cliVersion;
+  // Use a standard initial version for new packages
+  packageData.version = '0.1.0';
 
   // Replace workspace references in dependencies
   for (const section of ['dependencies', 'devDependencies']) {
