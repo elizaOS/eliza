@@ -32,9 +32,11 @@ export function ApiKeyDialog({ open, onOpenChange, onApiKeySaved }: ApiKeyDialog
 
   useEffect(() => {
     if (open) {
-      const storedKey = localStorage.getItem(storageKey);
-      if (storedKey) {
-        setApiKey(storedKey);
+      try {
+        const storedKey = localStorage.getItem(storageKey);
+        if (storedKey) setApiKey(storedKey);
+      } catch (err) {
+        console.error('Unable to access localStorage', err);
       }
     }
   }, [open, storageKey]);
