@@ -29,7 +29,7 @@
     "@elizaos/core": "^1.0.0-beta.41"
   },
   "devDependencies": {
-    "@types/node": "22.8.4",
+    "@types/node": "^22.15.3",
     "prettier": "3.5.3",
     "tsup": "8.4.0",
     "vitest": "^1.6.1",

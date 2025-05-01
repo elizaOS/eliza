@@ -34,7 +34,7 @@
     "pg": "^8.13.3"
   },
   "devDependencies": {
-    "@types/node": "22.8.4",
+    "@types/node": "^22.15.3",
     "dockerode": "^4.0.4",
     "prettier": "3.5.3",
     "tsup": "8.4.0",

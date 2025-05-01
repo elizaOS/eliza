@@ -54,7 +54,7 @@
     "@types/diff": "^5.0.3",
     "@types/fs-extra": "^11.0.1",
     "@types/lodash": "^4.17.7",
-    "@types/node": "^20.11.27",
+    "@types/node": "^22.15.3",
     "@types/prompts": "^2.4.2",
     "axios": "^1.7.9",
     "commander": "^10.0.0",
