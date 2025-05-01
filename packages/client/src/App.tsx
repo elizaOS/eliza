@@ -65,7 +65,8 @@ const prefetchInitialData = async () => {
 // Execute prefetch immediately
 prefetchInitialData();
 
-function App() {
+// Component containing the core application logic and routing
+function AppContent() {
   useVersion();
   const { status } = useConnection();
 
@@ -74,6 +75,56 @@ function App() {
     prefetchInitialData();
   }, []);
 
+  return (
+    <TooltipProvider delayDuration={0}>
+      <SidebarProvider>
+        <AppSidebar />
+        <SidebarInset>
+          <div className="flex w-full justify-center">
+            <div className="w-full mt-4 md:max-w-4xl">
+              <ConnectionErrorBanner />
+            </div>
+          </div>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="chat/:agentId" element={<Chat />} />
+            <Route path="settings/:agentId" element={<Settings />} />
+            <Route path="agents/new" element={<AgentCreatorRoute />} />
+            <Route path="/create" element={<AgentCreator />} />
+            <Route
+              path="/logs"
+              element={
+                <div className="flex w-full justify-center">
+                  <div className="w-full md:max-w-4xl">
+                    <LogViewer />
+                  </div>
+                </div>
+              }
+            />
+            <Route path="room/:serverId" element={<Room />} />
+            <Route
+              path="settings/"
+              element={
+                <div className="flex w-full justify-center">
+                  <div className="w-full md:max-w-4xl">
+                    <EnvSettings />
+                  </div>
+                </div>
+              }
+            />
+            {/* Catch-all route for 404 errors */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </SidebarInset>
+      </SidebarProvider>
+      <Toaster />
+      {status !== 'unauthorized' && <OnboardingTour />}
+    </TooltipProvider>
+  );
+}
+
+// Main App component setting up providers
+function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <div
@@ -85,50 +136,7 @@ function App() {
         <BrowserRouter>
           <AuthProvider>
             <ConnectionProvider>
-              <TooltipProvider delayDuration={0}>
-                <SidebarProvider>
-                  <AppSidebar />
-                  <SidebarInset>
-                    <div className="flex w-full justify-center">
-                      <div className="w-full mt-4 md:max-w-4xl">
-                        <ConnectionErrorBanner />
-                      </div>
-                    </div>
-                    <Routes>
-                      <Route path="/" element={<Home />} />
-                      <Route path="chat/:agentId" element={<Chat />} />
-                      <Route path="settings/:agentId" element={<Settings />} />
-                      <Route path="agents/new" element={<AgentCreatorRoute />} />
-                      <Route path="/create" element={<AgentCreator />} />
-                      <Route
-                        path="/logs"
-                        element={
-                          <div className="flex w-full justify-center">
-                            <div className="w-full md:max-w-4xl">
-                              <LogViewer />
-                            </div>
-                          </div>
-                        }
-                      />
-                      <Route path="room/:serverId" element={<Room />} />
-                      <Route
-                        path="settings/"
-                        element={
-                          <div className="flex w-full justify-center">
-                            <div className="w-full md:max-w-4xl">
-                              <EnvSettings />
-                            </div>
-                          </div>
-                        }
-                      />
-                      {/* Catch-all route for 404 errors */}
-                      <Route path="*" element={<NotFound />} />
-                    </Routes>
-                  </SidebarInset>
-                </SidebarProvider>
-                <Toaster />
-                {status !== 'unauthorized' && <OnboardingTour />}
-              </TooltipProvider>
+              <AppContent />
             </ConnectionProvider>
           </AuthProvider>
         </BrowserRouter>
