@@ -342,8 +342,10 @@ export const create = new Command()
 
         const { elizaDbDir, envFilePath } = getElizaDirectories();
         if (database === 'pglite') {
-          await setupPgLite(elizaDbDir, envFilePath);
-          console.debug(`Using PGLite database directory: ${elizaDbDir}`);
+          await setupPgLite(process.env.PGLITE_DATA_DIR || elizaDbDir, envFilePath);
+          console.debug(
+            `Using PGLite database directory: ${process.env.PGLITE_DATA_DIR || elizaDbDir}`
+          );
         } else if (database === 'postgres' && !postgresUrl) {
           postgresUrl = await promptAndStorePostgresUrl(envFilePath);
         }

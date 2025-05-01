@@ -4,7 +4,7 @@ import path from 'node:path';
 import dotenv from 'dotenv';
 import { z } from 'zod';
 import prompts from 'prompts';
-import { logger } from '@elizaos/core';
+import { logger, stringToUuid } from '@elizaos/core';
 
 // Database config schemas
 const postgresConfigSchema = z.object({
@@ -48,7 +48,7 @@ export function isValidPostgresUrl(url: string): boolean {
 export function getElizaDirectories() {
   const homeDir = os.homedir();
   const elizaDir = path.join(homeDir, '.eliza');
-  const elizaDbDir = path.join(elizaDir, 'db');
+  const elizaDbDir = path.join(elizaDir, 'projects', stringToUuid(process.cwd()), 'db');
   const envFilePath = path.join(elizaDir, '.env');
 
   return {
@@ -75,6 +75,21 @@ export async function ensureElizaDir() {
 }
 
 /**
+ * Ensures the project's pglite directory exists
+ * @returns The eliza directories object
+ */
+export async function ensureProjectPGLiteDir() {
+  const dirs = getElizaDirectories();
+
+  if (!existsSync(dirs.elizaDbDir)) {
+    await fs.mkdir(dirs.elizaDbDir, { recursive: true });
+    logger.info(`Created project PGLite directory: ${dirs.elizaDbDir}`);
+  }
+
+  return dirs;
+}
+
+/**
  * Ensures the .env file exists
  * @param envFilePath Path to the .env file
  */
@@ -93,10 +108,7 @@ export async function ensureEnvFile(envFilePath: string) {
 export async function setupPgLite(elizaDbDir: string, envFilePath: string): Promise<void> {
   try {
     // Ensure the PGLite database directory exists
-    if (!existsSync(elizaDbDir)) {
-      await fs.mkdir(elizaDbDir, { recursive: true });
-      logger.info(`Created PGLite database directory: ${elizaDbDir}`);
-    }
+    await ensureProjectPGLiteDir();
 
     // Ensure .env file exists
     await ensureEnvFile(envFilePath);
