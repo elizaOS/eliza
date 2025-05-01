@@ -72,7 +72,6 @@ export class AgentServer {
   constructor(options?: ServerOptions) {
     try {
       logger.debug('Initializing AgentServer...');
-      this.app = express();
       this.agents = new Map();
 
       let dataDir = options?.dataDir ?? process.env.PGLITE_DATA_DIR ?? './elizadb';
