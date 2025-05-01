@@ -7,6 +7,10 @@
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
+  "keywords": [
+    "plugin",
+    "elizaos"
+  ],
   "repository": {
     "type": "git",
     "url": ""
@@ -40,7 +44,7 @@
     "build": "tsup",
     "lint": "prettier --write ./src",
     "test": "elizaos test",
-    "publish": "elizaos plugin publish",
+    "publish": "elizaos publish",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src"
   },
