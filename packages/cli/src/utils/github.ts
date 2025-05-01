@@ -741,7 +741,7 @@ export async function createGitHubRepository(
   repoName: string,
   description: string,
   isPrivate = false,
-  topics: string[] = ['elizaos-plugins']
+  topics: string[] = []
 ): Promise<{ success: boolean; repoUrl?: string; message?: string }> {
   try {
     // Get the authenticated user to check repository existence
