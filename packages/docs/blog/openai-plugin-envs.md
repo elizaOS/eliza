@@ -14,7 +14,7 @@ The `plugin-openai` package in this project can connect to any OpenAI-compatible
 An OpenAI-compatible provider is any service that implements the OpenAI API spec. Popular examples include:
 
 - [OpenRouter](https://openrouter.ai/)
-- [Ollama](https://ollama.com/) (with its OpenAI-compatible API)
+- [Ollama](https://ollama.com/) (with its OpenAI-compatible API, supports embedding also)
 - [Local LLMs with an OpenAI API wrapper](https://github.com/abetlen/llama-cpp-python)
 - Other cloud or self-hosted endpoints
 
@@ -31,6 +31,7 @@ The following environment variables are supported by the OpenAI plugin:
 | `OPENAI_SMALL_MODEL`          | Default small model name                                   |
 | `OPENAI_LARGE_MODEL`          | Default large model name                                   |
 | `OPENAI_EMBEDDING_MODEL`      | Embedding model name                                       |
+| `OPENAI_EMBEDDING_URL`        | Base URL specifically for the embedding API endpoint       |
 | `OPENAI_EMBEDDING_DIMENSIONS` | Embedding vector dimensions                                |
 | `SMALL_MODEL`                 | (Fallback) Small model name                                |
 | `LARGE_MODEL`                 | (Fallback) Large model name                                |
@@ -43,6 +44,8 @@ OPENAI_BASE_URL=https://openrouter.ai/api/v1
 OPENAI_SMALL_MODEL=openrouter/gpt-3.5-turbo
 OPENAI_LARGE_MODEL=openrouter/gpt-4
 ```
+
+> **Warning:** OpenRouter does **not** currently support the `/v1/embeddings` endpoint. If you need embeddings, you must use a different provider for them. See the section below on [Handling Providers Without Embedding Support](#handling-providers-without-embedding-support).
 
 ## Example: Connecting to Ollama
 
@@ -81,37 +84,23 @@ OPENAI_LARGE_MODEL=your-model-name-here
 
 For more details, see the [LM Studio OpenAI Compatibility API docs](https://lmstudio.ai/docs/app/api/endpoints/openai).
 
-> **Reminder:**
-> An embedding model is still required for full plugin functionality. We recommend pairing your setup with the Local AI plugin, an OpenAI API key, or a provider that also supports embeddings (such as OpenAI, OpenRouter, or LocalAI).
+## Handling Providers Without Embedding Support
 
-:::tip
-**Best Practice:**
-Keep your `.env` file out of version control! Use environment variable management tools or deployment secrets for production.
-:::
+Some OpenAI-compatible providers (like OpenRouter) might not offer an embedding endpoint (`/v1/embeddings`). If you need embedding functionality (e.g., for memory or context retrieval), you can configure the OpenAI plugin to use a _different_ provider specifically for embeddings using the `OPENAI_EMBEDDING_URL` environment variable.
 
-> **Reminder:**
->
-> - If `OPENAI_BASE_URL` is not set, the plugin defaults to the official OpenAI endpoint.
-> - Model names must match those supported by your provider.
-> - Some providers may require extra headers or parameters—check their docs!
+**Example: OpenRouter for Chat, Ollama for Embeddings**
 
-## 🐞 Troubleshooting
+Let's say you want to use OpenRouter for its wide model selection for chat completion but prefer Ollama's embedding capabilities (see [Ollama OpenAI docs](https://github.com/ollama/ollama/blob/main/docs/openai.md)).
 
-- If you see errors about missing `OPENAI_API_KEY`, make sure it’s set in your environment.
-- For provider-specific errors, double-check your `OPENAI_BASE_URL` and model names.
+```env
+# General API settings (points to OpenRouter)
+OPENAI_API_KEY=your-openrouter-key
+OPENAI_BASE_URL=https://openrouter.ai/api/v1
+OPENAI_SMALL_MODEL=openrouter/gpt-3.5-turbo
+OPENAI_LARGE_MODEL=openrouter/gpt-4
 
-## 🎯 Conclusion
-
-By customizing your environment variables, you can use the OpenAI plugin with any provider that supports the OpenAI API. Swap providers, use local models, or experiment with new services—all with a few config changes. Happy hacking!
-
----
-
-## 🔗 More Links
-
-- [Plugin Guide](https://eliza.how/docs/plugins)
-- [OpenAI API Reference](https://platform.openai.com/docs/api-reference)
-- [OpenRouter Docs](https://openrouter.ai/docs)
-- [Ollama Docs](https://github.com/ollama/ollama/blob/main/docs/openai.md)
-- [LM Studio Docs](https://lmstudio.ai/docs/app/api/endpoints/openai)
-
-_If you have questions or want to contribute more provider examples, feel free to open a PR!_
+# Embedding-specific settings (points to Ollama)
+OPENAI_EMBEDDING_URL=http://localhost:11434/v1 # Your Ollama embedding endpoint
+OPENAI_EMBEDDING_MODEL=all-minilm # Ollama embedding model (e.g., all-minilm)
+# OPENAI_EMBEDDING_DIMENSIONS=1536 # Optional: Specify if needed for your model
+```

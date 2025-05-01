@@ -127,6 +127,21 @@ function getBaseURL(runtime: IAgentRuntime): string {
 }
 
 /**
+ * Retrieves the OpenAI API base URL for embeddings, falling back to the general base URL.
+ *
+ * @returns The resolved base URL for OpenAI embedding requests.
+ */
+function getEmbeddingBaseURL(runtime: IAgentRuntime): string {
+  const embeddingURL = getSetting(runtime, 'OPENAI_EMBEDDING_URL');
+  if (embeddingURL) {
+    logger.debug(`[OpenAI] Using specific embedding base URL: ${embeddingURL}`);
+    return embeddingURL;
+  }
+  logger.debug('[OpenAI] Falling back to general base URL for embeddings.');
+  return getBaseURL(runtime);
+}
+
+/**
  * Helper function to get the API key for OpenAI
  *
  * @param runtime The runtime context
@@ -432,6 +447,7 @@ export const openaiPlugin: Plugin = {
     SMALL_MODEL: process.env.SMALL_MODEL,
     LARGE_MODEL: process.env.LARGE_MODEL,
     OPENAI_EMBEDDING_MODEL: process.env.OPENAI_EMBEDDING_MODEL,
+    OPENAI_EMBEDDING_URL: process.env.OPENAI_EMBEDDING_URL,
     OPENAI_EMBEDDING_DIMENSIONS: process.env.OPENAI_EMBEDDING_DIMENSIONS,
   },
   async init(_config, runtime) {
@@ -528,7 +544,7 @@ export const openaiPlugin: Plugin = {
       return startLlmSpan(runtime, 'LLM.embedding', attributes, async (span) => {
         span.addEvent('llm.prompt', { 'prompt.content': text });
 
-        const baseURL = getBaseURL(runtime);
+        const embeddingBaseURL = getEmbeddingBaseURL(runtime);
         const apiKey = getApiKey(runtime);
 
         if (!apiKey) {
@@ -540,7 +556,7 @@ export const openaiPlugin: Plugin = {
         }
 
         try {
-          const response = await fetch(`${baseURL}/embeddings`, {
+          const response = await fetch(`${embeddingBaseURL}/embeddings`, {
             method: 'POST',
             headers: {
               Authorization: `Bearer ${apiKey}`,
