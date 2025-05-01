@@ -235,6 +235,7 @@ export const swapIx = async (
 const buyTemplate = `
 I want you to give a crypto buy signal based on both the sentiment analysis as well as the trending tokens.
 You trade on auto.fun, a token launchpad, a lot of these coins are brand new, won't have a lot of history.
+Be hesitant about imported coins, you're more interested in the prebonded tokens.
 My current balance is {{solana_balance}} SOL, If I have less than 0.3 SOL then I should not buy unless it's really good opportunity.
 Also let me know what a good amount would be to buy. Buy amount should at least be 0.05 SOL and maximum 0.25 SOL.
 
@@ -301,7 +302,7 @@ export class BuyService extends BaseTradeService {
     //const tradeService = runtime.getService(ServiceTypes.AUTOFUN_TRADING)
     // or make call ourself
     const url =
-      'https://api.auto.fun/api/tokens?limit=200&page=1&sortBy=createdAt&sortOrder=desc&hideImported=1';
+      'https://api.auto.fun/api/tokens?limit=1000&page=1&sortBy=createdAt&sortOrder=desc&hideImported=1';
     const res = await fetch(url);
     const data = await res.json();
 
@@ -329,7 +330,7 @@ export class BuyService extends BaseTradeService {
       'id',
       'name',
       'ticker',
-      'url',
+      'url', // seems to be metadata url
       'twitter',
       'telegram',
       'discord',
@@ -343,16 +344,22 @@ export class BuyService extends BaseTradeService {
       'price24hAgo',
       'priceChange24h',
       'curveProgress',
+      'status',
     ];
     const remaps = {
       ticker: 'symbol',
     };
     latestTxt +=
-      'id, name, symbol, url, twitter, telegram, discord, farcaster, description, liquidity, currentPrice, tokenSupplyUiAmount, holderCount, volume24h, price24hAgo, priceChange24h, curveProgress';
+      'id, name, symbol, url, twitter, telegram, discord, farcaster, description, liquidity, currentPrice, tokenSupplyUiAmount, holderCount, volume24h, price24hAgo, priceChange24h, curveProgress, status';
+    latestTxt += '\n';
     for (const t of data.tokens) {
       const out = [];
       for (const f of fields) {
-        out.push(t[f]);
+        let val = t[f];
+        if (val?.replaceAll) {
+          val = val.replaceAll('\n', ' ');
+        }
+        out.push(val);
       }
       latestTxt += out.join(', ') + '\n';
     }
@@ -564,11 +571,11 @@ export class BuyService extends BaseTradeService {
     tx.feePayer = wallet.publicKey;
     tx.recentBlockhash = blockhash;
 
-    console.log('Executing simulation transaction...');
+    console.log('Executing buy simulation transaction...');
     const simulation = await connection.simulateTransaction(tx);
     if (simulation.value.err) {
-      logger.error('Transaction simulation failed:', simulation.value.err);
-      logger.error('Simulation Logs:', simulation.value.logs);
+      logger.error('Buy transaction simulation failed:', simulation.value.err);
+      logger.error('Buy simulation Logs:', simulation.value.logs);
       return {
         success: false,
         signature: '',
@@ -576,7 +583,7 @@ export class BuyService extends BaseTradeService {
         swapUsdValue: 0,
       };
     }
-    logger.log('Transaction simulation successful.');
+    logger.log('Buy transaction simulation successful.');
 
     const versionedTx = new VersionedTransaction(tx.compileMessage());
 
