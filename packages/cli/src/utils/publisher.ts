@@ -286,27 +286,19 @@ export async function publishToGitHub(
     const repoName = packageJson.name.replace(/^@elizaos\//, '');
     const description = packageJson.description || `ElizaOS ${packageJson.packageType}`;
 
-    // Set appropriate topics based on package type
-    const topics = [];
+    // Set the appropriate topic based on package type - only one topic, no mixing
+    let topic;
     if (packageJson.packageType === 'plugin') {
-      topics.push('elizaos-plugins');
-    }
-    if (packageJson.packageType === 'project') {
-      topics.push('elizaos-projects');
-    }
-
-    // Add any keywords from package.json as topics
-    if (packageJson.keywords && Array.isArray(packageJson.keywords)) {
-      packageJson.keywords.forEach((keyword) => {
-        if (!topics.includes(keyword)) {
-          topics.push(keyword);
-        }
-      });
+      topic = 'elizaos-plugins';
+    } else if (packageJson.packageType === 'project') {
+      topic = 'elizaos-projects';
+    } else {
+      topic = 'elizaos-plugins'; // Default to plugins if type is unknown
     }
 
-    // Create GitHub repository if needed
+    // Create GitHub repository with only the single appropriate topic
     logger.info(`Checking/creating GitHub repository: ${username}/${repoName}`);
-    const repoResult = await createGitHubRepository(token, repoName, description, false, topics);
+    const repoResult = await createGitHubRepository(token, repoName, description, false, [topic]);
 
     if (!repoResult.success) {
       logger.error(`Failed to create GitHub repository: ${repoResult.message}`);
@@ -362,6 +354,9 @@ export async function publishToGitHub(
       return false;
     }
     forkFullName = fork;
+
+    // Small delay just in case
+    await new Promise((resolve) => setTimeout(resolve, 2000));
   } else {
     forkFullName = `${username}/${registryRepo}`;
     logger.info(`Using existing fork: ${forkFullName}`);
@@ -369,7 +364,20 @@ export async function publishToGitHub(
 
   // Create version branch - use the package type without default
   const entityType = packageJson.packageType;
-  const branchName = `${entityType}-${packageJson.name.replace(/^@elizaos\//, '')}-${packageJson.version}`;
+  const packageNameWithoutScope = packageJson.name.replace(/^@elizaos\//, '');
+
+  // Fix branch naming to avoid double "plugin-" prefix
+  let branchName: string;
+  if (entityType === 'plugin' && packageNameWithoutScope.startsWith('plugin-')) {
+    // For plugin names starting with 'plugin-', use only one 'plugin-' prefix
+    // Example: plugin-apple -> plugin-apple-0.1.0 (not plugin-plugin-apple-0.1.0)
+    branchName = `${packageNameWithoutScope}-${packageJson.version}`;
+    logger.info(`Using package name directly to avoid duplicate plugin prefix: ${branchName}`);
+  } else {
+    // For other package types or non-plugin-prefixed names, use entityType prefix
+    branchName = `${entityType}-${packageNameWithoutScope}-${packageJson.version}`;
+  }
+
   const hasBranch = await branchExists(token, username, registryRepo, branchName);
 
   if (!hasBranch && !isTest) {

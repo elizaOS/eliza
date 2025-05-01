@@ -121,6 +121,13 @@ async function generatePackageMetadata(
     metadata.githubRepo = packageJson.githubRepo;
   }
 
+  // Ensure appropriate tag is included based on type
+  if (metadata.type === 'plugin' && !metadata.tags.includes('plugin')) {
+    metadata.tags.push('plugin');
+  } else if (metadata.type === 'project' && !metadata.tags.includes('project')) {
+    metadata.tags.push('project');
+  }
+
   return metadata;
 }
 
@@ -249,122 +256,6 @@ async function savePackageToRegistry(packageMetadata, dryRun = false) {
   } catch (error) {
     console.error(`Failed to save package metadata: ${error.message}`);
     return false;
-  }
-}
-
-/**
- * Fork the registry repository if needed and create pull request
- */
-async function createRegistryPullRequest(packageJson, packageMetadata, username, token) {
-  try {
-    const octokit = new Octokit({ auth: token });
-    const [registryOwner, registryRepo] = REGISTRY_REPO.split('/');
-
-    // Check if user already has a fork
-    console.info('Checking for existing fork of registry...');
-    let fork;
-    try {
-      const { data: repos } = await octokit.repos.listForUser({
-        username,
-        sort: 'updated',
-        per_page: 100,
-      });
-
-      fork = repos.find((repo) => repo.name === registryRepo);
-    } catch (error) {
-      console.debug(`Error checking for existing fork: ${error.message}`);
-    }
-
-    // Create fork if it doesn't exist
-    if (!fork) {
-      console.info(`Creating fork of ${REGISTRY_REPO}...`);
-      const { data: newFork } = await octokit.repos.createFork({
-        owner: registryOwner,
-        repo: registryRepo,
-      });
-      fork = newFork;
-
-      // Wait for fork creation to complete
-      console.info('Waiting for fork to be ready...');
-      await new Promise((resolve) => setTimeout(resolve, 5000));
-    }
-
-    // Clone the forked repo
-    const tempDir = path.join(process.cwd(), 'temp-registry');
-    if (existsSync(tempDir)) {
-      await fs.rm(tempDir, { recursive: true, force: true });
-    }
-
-    console.info(`Cloning registry fork...`);
-    await execa(
-      'git',
-      [
-        'clone',
-        `https://${username}:${token}@github.com/${username}/${registryRepo}.git`,
-        'temp-registry',
-      ],
-      { cwd: process.cwd() }
-    );
-
-    // Create a new branch
-    const branchName = `plugin-${packageJson.name}-${packageJson.version}`.replace(
-      /[^a-zA-Z0-9-_]/g,
-      '-'
-    );
-    console.info(`Creating branch ${branchName}...`);
-    await execa('git', ['checkout', '-b', branchName], { cwd: tempDir });
-
-    // Save package metadata and update index
-    await savePackageToRegistry(packageMetadata, false);
-
-    // Commit changes
-    console.info('Committing changes...');
-    await execa('git', ['add', '.'], { cwd: tempDir });
-    await execa('git', ['commit', '-m', `Add ${packageJson.name}@${packageJson.version}`], {
-      cwd: tempDir,
-    });
-
-    // Push branch
-    console.info('Pushing changes...');
-    await execa('git', ['push', 'origin', branchName], { cwd: tempDir });
-
-    // Create pull request
-    console.info('Creating pull request...');
-    const { data: pullRequest } = await octokit.pulls.create({
-      owner: registryOwner,
-      repo: registryRepo,
-      title: `Add ${packageJson.name}@${packageJson.version}`,
-      head: `${username}:${branchName}`,
-      base: 'main',
-      body: `
-## New Plugin/Project Submission
-
-- Name: ${packageJson.name}
-- Version: ${packageJson.version}
-- Type: ${packageJson.type || 'plugin'}
-- Platform: ${packageJson.platform || 'universal'}
-- Description: ${packageJson.description || ''}
-- Runtime Version: ${packageMetadata.runtimeVersion}
-
-Submitted by: @${username}
-			`,
-    });
-
-    console.log(`Pull request created: ${pullRequest.html_url}`);
-    return pullRequest.html_url;
-  } catch (error) {
-    console.error(`Failed to create pull request: ${error.message}`);
-    return null;
-  } finally {
-    // Clean up temp directory
-    try {
-      const tempDir = path.join(process.cwd(), 'temp-registry');
-      if (existsSync(tempDir)) {
-        await fs.rm(tempDir, { recursive: true, force: true });
-      }
-    } catch (error) {
-      console.debug(`Error cleaning up temp directory: ${error.message}`);
-    }
   }
 }
 
@@ -676,6 +567,10 @@ export const publish = new Command()
 
       // Handle actual publishing
 
+      // Variable to store PR URL if one is created during GitHub publishing
+      let publishResult: boolean | { success: boolean; prUrl?: string } = false;
+      let registryPrUrl: string = null;
+
       // Handle npm publishing
       if (opts.npm) {
         console.info(`Publishing ${detectedType} to npm...`);
@@ -702,7 +597,7 @@ export const publish = new Command()
         packageMetadata.npmPackage = packageJson.name;
       } else {
         // Handle GitHub publishing
-        const success = await publishToGitHub(
+        publishResult = await publishToGitHub(
           cwd,
           packageJson,
           cliVersion,
@@ -710,7 +605,7 @@ export const publish = new Command()
           false
         );
 
-        if (!success) {
+        if (!publishResult) {
           process.exit(1);
         }
 
@@ -720,6 +615,12 @@ export const publish = new Command()
 
         // Add GitHub repo info to metadata
         packageMetadata.githubRepo = `${credentials.username}/${packageJson.name}`;
+
+        // Store PR URL if returned from publishToGitHub
+        if (typeof publishResult === 'object' && publishResult.prUrl) {
+          registryPrUrl = publishResult.prUrl;
+          console.log(`Registry pull request created: ${registryPrUrl}`);
+        }
       }
 
       // Handle registry publication - only for plugins, not for projects
@@ -727,19 +628,18 @@ export const publish = new Command()
         console.info('Publishing to registry...');
 
         if (userIsMaintainer) {
-          // For maintainers, create a PR to the registry
-          console.info('Creating pull request to registry as maintainer...');
-          const prUrl = await createRegistryPullRequest(
-            packageJson,
-            packageMetadata,
-            credentials.username,
-            credentials.token
-          );
-
-          if (prUrl) {
-            console.log(`Registry pull request created: ${prUrl}`);
+          if (!opts.npm) {
+            // For GitHub publishing, PR is already created by publishToGitHub
+            console.info('Registry PR was created during GitHub publishing process.');
           } else {
-            console.error('Failed to create registry pull request');
+            // For npm publishing, we need to use the npm-specific publishing flow
+            // In a future version, this should be refactored to use publishToGitHub
+            // with npm-specific options instead of duplicating PR creation logic
+            console.warn('NPM publishing currently does not update the registry.');
+            console.info('To include this package in the registry:');
+            console.info('1. Fork the registry repository at https://github.com/elizaos/registry');
+            console.info('2. Add your package metadata');
+            console.info('3. Submit a pull request to the main repository');
           }
         } else {
           // For non-maintainers, just show a message about how to request inclusion
