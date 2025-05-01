@@ -39,7 +39,7 @@ export default function AgentRoute() {
           defaultSize={35}
           className="border rounded-lg m-4 overflow-y-scroll bg-background flex flex-col h-[96vh]"
         >
-          <AgentSidebar agentId={agentId} agentName={agent.name} />
+          <AgentSidebar agentId={agentId} agentName={agent?.name} />
         </ResizablePanel>
       )}
     </ResizablePanelGroup>
