@@ -551,7 +551,7 @@ export const normalizeJsonString = (str: string) => {
   return str;
 };
 
-type ActionResponse = {
+export type ActionResponse = {
   like: boolean;
   retweet: boolean;
   quote?: boolean;
