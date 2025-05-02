@@ -202,10 +202,7 @@ export async function configureDatabaseSettings(reconfigure = false): Promise<st
     logger.debug(`Using existing PGLite configuration: ${pgliteDataDir}`);
 
     // Ensure the directory exists
-    if (!existsSync(pgliteDataDir)) {
-      await fs.mkdir(pgliteDataDir, { recursive: true });
-      logger.info(`Created PGLite database directory: ${pgliteDataDir}`);
-    }
+    await ensureDir(pgliteDataDir);
 
     return null;
   }
