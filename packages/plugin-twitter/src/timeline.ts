@@ -14,12 +14,13 @@ import {
   HandlerCallback,
   Content,
   Memory,
+  parseKeyValueXml,
 } from '@elizaos/core';
 import type { Client, Tweet } from './client/index';
 import { logger } from '@elizaos/core';
 import type { Tweet as ClientTweet } from './client/tweets';
 
-import { twitterActionTemplate } from './templates';
+import { twitterActionTemplate, quoteTweetTemplate } from './templates';
 
 enum TIMELINE_TYPE {
   ForYou = 'foryou',
@@ -202,6 +203,10 @@ Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appro
     // then slice the results according to the environment variable to limit the number of actions per cycle.
     const prioritizedTweets = rankByActionRelevance(tweetDecisions).slice(0, maxActionsPerCycle);
 
+    prioritizedTweets.forEach((t) => {
+      t.actionResponse.quote = true;
+    });
+
     this.processTimelineActions(prioritizedTweets);
   }
 
@@ -222,6 +227,7 @@ Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appro
     const results = [];
     for (const decision of tweetDecisions) {
       const { actionResponse, tweetState, roomId, tweet } = decision;
+      const tweetId = createUniqueUuid(this.runtime, tweet.id);
       const entityId = createUniqueUuid(this.runtime, tweet.userId);
       // Create standardized world and room IDs
       const worldId = createUniqueUuid(this.runtime, tweet.userId);
@@ -284,6 +290,85 @@ Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appro
             logger.log(`Retweeted tweet ${tweet.id}`);
           } catch (error) {
             logger.error(`Error retweeting tweet ${tweet.id}:`, error);
+          }
+        }
+
+        if (actionResponse.quote) {
+          try {
+            const message = {
+              id: tweetId,
+              agentId: this.runtime.agentId,
+              content: {
+                text: tweet.text,
+                url: tweet.permanentUrl,
+                imageUrls: tweet.photos?.map((photo) => photo.url) || [],
+                inReplyTo: tweet.inReplyToStatusId
+                  ? createUniqueUuid(this.runtime, tweet.inReplyToStatusId)
+                  : undefined,
+                source: 'twitter',
+                channelType: ChannelType.GROUP,
+                tweet,
+              },
+              entityId,
+              roomId,
+              createdAt: tweet.timestamp * 1000,
+            };
+
+            await Promise.all([
+              this.runtime.addEmbeddingToMemory(message),
+              this.runtime.createMemory(message, 'messages'),
+            ]);
+
+            let state = await this.runtime.composeState(message);
+
+            const quotePrompt =
+              composePromptFromState({
+                state,
+                template:
+                  this.runtime.character.templates?.quoteTweetTemplate || quoteTweetTemplate,
+              }) +
+              `
+You are responding to this tweet:
+${tweet.text}`;
+
+            const quoteResponse = await this.runtime.useModel(ModelType.TEXT_SMALL, {
+              prompt: quotePrompt,
+            });
+            const responseObject = parseKeyValueXml(quoteResponse);
+
+            if (responseObject.post) {
+              const result = await this.client.requestQueue.add(
+                async () => await this.twitterClient.sendQuoteTweet(responseObject.post, tweet.id)
+              );
+
+              const body = await result.json();
+
+              if (body?.data?.create_tweet?.tweet_results?.result) {
+                logger.log('Successfully posted quote tweet');
+                executedActions.push('quote');
+              } else {
+                logger.error('Quote tweet creation failed:', body);
+              }
+
+              // Create memory for our response
+              const responseId = createUniqueUuid(this.runtime, body.rest_id);
+              const responseMemory: Memory = {
+                id: responseId,
+                entityId: this.runtime.agentId,
+                agentId: this.runtime.agentId,
+                roomId: message.roomId,
+                content: {
+                  ...responseObject,
+                  inReplyTo: message.id,
+                },
+                createdAt: Date.now(),
+              };
+
+              // Save the response to memory
+              await this.runtime.createMemory(responseMemory, 'messages');
+            }
+          } catch (error) {
+            logger.error('Error in quote tweet generation:', error);
           }
         }
       } catch (error) {
