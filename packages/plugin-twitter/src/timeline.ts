@@ -7,7 +7,6 @@ import {
   type IAgentRuntime,
   UUID,
   State,
-  parseActionResponseFromText,
   type ActionResponse,
   Memory,
   parseKeyValueXml,
@@ -16,7 +15,7 @@ import type { Client, Tweet } from './client/index';
 import { logger } from '@elizaos/core';
 
 import { twitterActionTemplate, quoteTweetTemplate, replyTweetTemplate } from './templates';
-import { sendTweet } from './utils';
+import { sendTweet, parseActionResponseFromText } from './utils';
 
 enum TIMELINE_TYPE {
   ForYou = 'foryou',
