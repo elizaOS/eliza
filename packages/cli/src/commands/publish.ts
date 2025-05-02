@@ -19,6 +19,8 @@ import { Octokit } from '@octokit/rest';
 import { Command } from 'commander';
 import { execa } from 'execa';
 import prompts from 'prompts';
+// Import performCliUpdate directly for updating CLI
+import { performCliUpdate } from './update-cli';
 
 // Registry integration constants
 const REGISTRY_REPO = 'elizaos/registry';
@@ -60,16 +62,32 @@ async function checkCliVersion() {
     const cliPackageJson = JSON.parse(cliPackageJsonContent);
     const currentVersion = cliPackageJson.version || '0.0.0';
 
-    // Check NPM for latest version
-    const { stdout } = await execa('npm', ['view', '@elizaos/cli', 'version']);
-    const latestVersion = stdout.trim();
+    // Get the time data for all published versions to find the most recent
+    const { stdout } = await execa('npm', ['view', '@elizaos/cli', 'time', '--json']);
+    const timeData = JSON.parse(stdout);
+
+    // Remove metadata entries like 'created' and 'modified'
+    delete timeData.created;
+    delete timeData.modified;
+
+    // Find the most recently published version
+    let latestVersion = '';
+    let latestDate = new Date(0); // Start with epoch time
+
+    for (const [version, dateString] of Object.entries(timeData)) {
+      const publishDate = new Date(dateString as string);
+      if (publishDate > latestDate) {
+        latestDate = publishDate;
+        latestVersion = version;
+      }
+    }
 
     // Compare versions
-    if (latestVersion !== currentVersion) {
+    if (latestVersion && latestVersion !== currentVersion) {
       console.warn(
-        `You are using CLI version ${currentVersion}, but the latest is ${latestVersion}`
+        `You are using CLI version ${currentVersion}, but the latest version is ${latestVersion} (published ${new Date(timeData[latestVersion]).toLocaleDateString()})`
       );
-      console.info("Run 'npx @elizaos/cli update' to update to the latest version");
+      console.info(`Run 'npx @elizaos/cli update' to update to the latest version`);
 
       const { update } = await prompts({
         type: 'confirm',
@@ -80,8 +98,15 @@ async function checkCliVersion() {
 
       if (update) {
         console.info('Updating CLI...');
-        await execa('npx', ['@elizaos/cli', 'update'], { stdio: 'inherit' });
-        process.exit(0);
+        // Instead of using npx (which gets blocked), directly call the update function
+        try {
+          await performCliUpdate();
+          // If update is successful, exit
+          process.exit(0);
+        } catch (updateError) {
+          console.error('Failed to update CLI:', updateError);
+          // Continue with current version if update fails
+        }
       }
     }
 
