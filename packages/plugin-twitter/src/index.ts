@@ -51,11 +51,16 @@ export class TwitterClientInstance implements ITwitterClient {
     this.client = new ClientBase(runtime, state);
 
     // Posting logic
-    this.post = new TwitterPostClient(this.client, runtime, state);
+    if (runtime.getSetting('TWITTER_ENABLE_POST_GENERATION') === true) {
+      this.post = new TwitterPostClient(this.client, runtime, state);
+    }
 
     // Mentions and interactions
-    this.interaction = new TwitterInteractionClient(this.client, runtime, state);
+    if (runtime.getSetting('TWITTER_INTERACTION_ENABLE') === true) {
+      this.interaction = new TwitterInteractionClient(this.client, runtime, state);
+    }
 
+    // handle timeline
     if (runtime.getSetting('TWITTER_TIMELINE_ENABLE') === true) {
       this.timeline = new TwitterTimelineClient(this.client, runtime, state);
     }
