@@ -22,6 +22,9 @@ Actions (respond only with tags):
 
 export const quoteTweetTemplate = `# Task: Write a quote tweet in the voice, style, and perspective of {{agentName}} @{{twitterUserName}}.
 
+{{bio}}
+{{postDirections}}
+
 <response>
   <thought>Your thought here, explaining why the quote tweet is meaningful or how it connects to what {{agentName}} cares about</thought>
   <post>The quote tweet content here, under 280 characters, without emojis, no questions</post>
@@ -38,6 +41,9 @@ Your quote tweet should be:
 Your output must ONLY contain the XML block.`;
 
 export const replyTweetTemplate = `# Task: Write a reply tweet in the voice, style, and perspective of {{agentName}} @{{twitterUserName}}.
+
+{{bio}}
+{{postDirections}}
 
 <response>
   <thought>Your thought here, explaining why this reply is meaningful or how it connects to what {{agentName}} cares about</thought>

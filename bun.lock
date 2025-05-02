@@ -296,20 +296,6 @@
         "typedoc-plugin-markdown": "4.2.10",
       },
     },
-    "packages/plugin-anthropic": {
-      "name": "@elizaos/plugin-anthropic",
-      "version": "1.0.0-beta.41",
-      "dependencies": {
-        "@ai-sdk/anthropic": "^1.2.10",
-        "@elizaos/core": "^1.0.0-beta.41",
-        "jsonrepair": "^3.12.0",
-        "tsup": "8.4.0",
-      },
-      "devDependencies": {
-        "prettier": "3.5.3",
-        "vitest": "^3.1.2",
-      },
-    },
     "packages/plugin-bootstrap": {
       "name": "@elizaos/plugin-bootstrap",
       "version": "1.0.0-beta.41",
@@ -599,7 +585,7 @@
       "dependencies": {
         "@elizaos/cli": "workspace:*",
         "@elizaos/core": "workspace:*",
-        "@elizaos/plugin-anthropic": "workspace:*",
+        "@elizaos/plugin-anthropic": "1.0.0-beta.41",
         "@elizaos/plugin-openai": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
         "zod": "3.24.2",
@@ -1261,7 +1247,7 @@
 
     "@elizaos/docs": ["@elizaos/docs@workspace:packages/docs"],
 
-    "@elizaos/plugin-anthropic": ["@elizaos/plugin-anthropic@workspace:packages/plugin-anthropic"],
+    "@elizaos/plugin-anthropic": ["@elizaos/plugin-anthropic@1.0.0-beta.41", "", { "dependencies": { "@ai-sdk/anthropic": "^1.2.10", "@elizaos/core": "^1.0.0-beta.41", "jsonrepair": "^3.12.0", "tsup": "8.4.0" } }, "sha512-4Z0R/I+Yphatw4EHxaGyp1sLkCa/epO4F3wzZO5nO6kCcMtzJ0wL5+fLUm77RefZXiqJB3ZwU7G6Jr2SM8RfAQ=="],
 
     "@elizaos/plugin-bootstrap": ["@elizaos/plugin-bootstrap@workspace:packages/plugin-bootstrap"],
 
