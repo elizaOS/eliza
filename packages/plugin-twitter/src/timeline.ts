@@ -37,15 +37,15 @@ export class TwitterTimelineClient {
     this.state = state;
 
     this.timelineType =
-      this.state?.TWITTER_TIMELINE_TYPE || this.runtime.getSetting('TWITTER_TIMELINE_TYPE');
+      this.state?.TWITTER_TIMELINE_MODE || this.runtime.getSetting('TWITTER_TIMELINE_MODE');
   }
 
   async start() {
     const handleTwitterTimelineLoop = () => {
       // Defaults to 2 minutes
       const interactionInterval =
-        (this.state?.TWITTER_TIMELINE_INTERVAL ||
-          (this.runtime.getSetting('TWITTER_TIMELINE_INTERVAL') as unknown as number) ||
+        (this.state?.TWITTER_TIMELINE_POLL_INTERVAL ||
+          (this.runtime.getSetting('TWITTER_TIMELINE_POLL_INTERVAL') as unknown as number) ||
           120) * 1000;
 
       this.handleTimeline();
