@@ -610,6 +610,14 @@ export const openaiPlugin: Plugin = {
               'llm.usage.prompt_tokens': data.usage.prompt_tokens,
               'llm.usage.total_tokens': data.usage.total_tokens,
             });
+            
+            const usage = {
+              promptTokens: data.usage.prompt_tokens,
+              completionTokens: 0,
+              totalTokens: data.usage.total_tokens
+            };
+            
+            emitModelUsageEvent(runtime, ModelType.TEXT_EMBEDDING, text, usage);
           }
 
           logger.log(`Got valid embedding with length ${embedding.length}`);
@@ -947,6 +955,15 @@ export const openaiPlugin: Plugin = {
               'llm.usage.completion_tokens': typedResult.usage.completion_tokens,
               'llm.usage.total_tokens': typedResult.usage.total_tokens,
             });
+            
+            emitModelUsageEvent(runtime, ModelType.IMAGE_DESCRIPTION, 
+              typeof params === 'string' ? params : params.prompt || '',
+              {
+                promptTokens: typedResult.usage.prompt_tokens,
+                completionTokens: typedResult.usage.completion_tokens,
+                totalTokens: typedResult.usage.total_tokens
+              }
+            );
           }
           if (typedResult.choices?.[0]?.finish_reason) {
             span.setAttribute('llm.response.finish_reason', typedResult.choices[0].finish_reason);
