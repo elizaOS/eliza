@@ -1,0 +1,60 @@
+{
+  "name": "@elizaos/plugin-mysql",
+  "version": "1.0.0-beta.41",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos-plugins/plugin-mysql"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "drizzle"
+  ],
+  "dependencies": {
+    "@elizaos/core": "^1.0.0-beta.41",
+    "drizzle-kit": "^0.30.4",
+    "drizzle-orm": "^0.39.1",
+    "mysql2": "^3.14.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.8.4",
+    "dockerode": "^4.0.4",
+    "prettier": "3.5.3",
+    "tsup": "8.4.0",
+    "vitest": "^1.6.1",
+    "zod": "^3.22.4"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "migrate:generate": "drizzle-kit generate",
+    "lint": "prettier --write ./src",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src",
+    "test": "vitest run",
+    "test:integration": "vitest run __tests__/integration",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "peerDependencies": {
+    "typescript": "5.8.2",
+    "whatwg-url": "7.1.0"
+  },
+  "gitHead": ""
+}

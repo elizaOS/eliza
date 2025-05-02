@@ -1,0 +1,25 @@
+services:
+  mysql:
+    image: mysql:9.1.0
+    container_name: mysql-vector
+    restart: unless-stopped
+
+    environment:
+      MYSQL_ROOT_PASSWORD: rootsecret
+      MYSQL_DATABASE: mydb
+      MYSQL_USER: myuser
+      MYSQL_PASSWORD: mysecret
+      TZ: UTC
+
+    volumes:
+      - mysql_vector_data:/var/lib/mysql
+
+    ports:
+      - '3306:3306'
+
+    command: >
+      --innodb-buffer-pool-size=1G
+      --log-bin=vector-binlog
+
+volumes:
+  mysql_vector_data:
