@@ -9,18 +9,14 @@ import {
   State,
   parseActionResponseFromText,
   type ActionResponse,
-  EventType,
-  MessagePayload,
-  HandlerCallback,
-  Content,
   Memory,
   parseKeyValueXml,
 } from '@elizaos/core';
 import type { Client, Tweet } from './client/index';
 import { logger } from '@elizaos/core';
-import type { Tweet as ClientTweet } from './client/tweets';
 
-import { twitterActionTemplate, quoteTweetTemplate } from './templates';
+import { twitterActionTemplate, quoteTweetTemplate, replyTweetTemplate } from './templates';
+import { sendTweet } from './utils';
 
 enum TIMELINE_TYPE {
   ForYou = 'foryou',
@@ -91,11 +87,7 @@ export class TwitterTimelineClient {
         urls: tweet.legacy?.entities?.urls || [],
         videos: tweet.legacy?.entities?.media?.filter((media) => media.type === 'video') || [],
       }))
-      .filter((tweet) => tweet.username !== twitterUsername) // do not perform action on self-tweets
-      .slice(0, count);
-    // TODO: Once the 'count' parameter is fixed in the 'fetchTimeline' method of the 'agent-twitter-client',
-    // this workaround can be removed.
-    // Related issue: https://github.com/elizaos/agent-twitter-client/issues/43
+      .filter((tweet) => tweet.username !== twitterUsername); // do not perform action on self-tweets
   }
 
   createTweetId(runtime: IAgentRuntime, tweet: Tweet) {
@@ -152,7 +144,6 @@ export class TwitterTimelineClient {
               this.runtime.character.templates?.twitterActionTemplate || twitterActionTemplate,
           }) +
           `
-
 Tweet:
 ${tweet.text}
 
@@ -206,12 +197,7 @@ Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appro
       });
     };
     // Sort the timeline based on the action decision score,
-    // then slice the results according to the environment variable to limit the number of actions per cycle.
-    const prioritizedTweets = rankByActionRelevance(tweetDecisions).slice(0, maxActionsPerCycle);
-
-    prioritizedTweets.forEach((t) => {
-      t.actionResponse.quote = true;
-    });
+    const prioritizedTweets = rankByActionRelevance(tweetDecisions);
 
     this.processTimelineActions(prioritizedTweets);
   }
@@ -233,14 +219,19 @@ Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appro
     const results = [];
     for (const decision of tweetDecisions) {
       const { actionResponse, tweetState, roomId, tweet } = decision;
-      const tweetId = createUniqueUuid(this.runtime, tweet.id);
       const entityId = createUniqueUuid(this.runtime, tweet.userId);
-      // Create standardized world and room IDs
       const worldId = createUniqueUuid(this.runtime, tweet.userId);
 
       await this.ensureTweetWorldContext(tweet, roomId, worldId, entityId);
 
       try {
+        const message = this.formMessage(this.runtime, tweet);
+
+        await Promise.all([
+          this.runtime.addEmbeddingToMemory(message),
+          this.runtime.createMemory(message, 'messages'),
+        ]);
+
         // Execute actions
         if (actionResponse.like) {
           this.handleLikeAction(tweet);
@@ -252,6 +243,10 @@ Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appro
 
         if (actionResponse.quote) {
           this.handleQuoteAction(tweet);
+        }
+
+        if (actionResponse.reply) {
+          this.handleReplyAction(tweet);
         }
       } catch (error) {
         logger.error(`Error processing tweet ${tweet.id}:`, error);
@@ -323,11 +318,6 @@ Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appro
     try {
       const message = this.formMessage(this.runtime, tweet);
 
-      await Promise.all([
-        this.runtime.addEmbeddingToMemory(message),
-        this.runtime.createMemory(message, 'messages'),
-      ]);
-
       let state = await this.runtime.composeState(message);
 
       const quotePrompt =
@@ -359,6 +349,55 @@ ${tweet.text}`;
 
         // Create memory for our response
         const responseId = createUniqueUuid(this.runtime, body.rest_id);
+        const responseMemory: Memory = {
+          id: responseId,
+          entityId: this.runtime.agentId,
+          agentId: this.runtime.agentId,
+          roomId: message.roomId,
+          content: {
+            ...responseObject,
+            inReplyTo: message.id,
+          },
+          createdAt: Date.now(),
+        };
+
+        // Save the response to memory
+        await this.runtime.createMemory(responseMemory, 'messages');
+      }
+    } catch (error) {
+      logger.error('Error in quote tweet generation:', error);
+    }
+  }
+
+  async handleReplyAction(tweet: Tweet) {
+    try {
+      const message = this.formMessage(this.runtime, tweet);
+
+      let state = await this.runtime.composeState(message);
+
+      const replyPrompt =
+        composePromptFromState({
+          state,
+          template: this.runtime.character.templates?.replyTweetTemplate || replyTweetTemplate,
+        }) +
+        `
+You are responding to this tweet:
+${tweet.text}`;
+
+      const replyResponse = await this.runtime.useModel(ModelType.TEXT_SMALL, {
+        prompt: replyPrompt,
+      });
+      const responseObject = parseKeyValueXml(replyResponse);
+
+      if (responseObject.post) {
+        const tweetResult = await sendTweet(this.client, responseObject.post, [], tweet.id);
+
+        if (!tweetResult) {
+          throw new Error('Failed to get tweet result from response');
+        }
+
+        // Create memory for our response
+        const responseId = createUniqueUuid(this.runtime, tweetResult.rest_id);
         const responseMemory: Memory = {
           id: responseId,
           entityId: this.runtime.agentId,
