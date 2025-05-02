@@ -98,6 +98,31 @@ export class TwitterTimelineClient {
     // Related issue: https://github.com/elizaos/agent-twitter-client/issues/43
   }
 
+  createTweetId(runtime: IAgentRuntime, tweet: Tweet) {
+    return createUniqueUuid(runtime, tweet.id);
+  }
+
+  formMessage(runtime: IAgentRuntime, tweet: Tweet) {
+    return {
+      id: this.createTweetId(runtime, tweet),
+      agentId: runtime.agentId,
+      content: {
+        text: tweet.text,
+        url: tweet.permanentUrl,
+        imageUrls: tweet.photos?.map((photo) => photo.url) || [],
+        inReplyTo: tweet.inReplyToStatusId
+          ? createUniqueUuid(runtime, tweet.inReplyToStatusId)
+          : undefined,
+        source: 'twitter',
+        channelType: ChannelType.GROUP,
+        tweet,
+      },
+      entityId: createUniqueUuid(runtime, tweet.userId),
+      roomId: createUniqueUuid(runtime, tweet.conversationId),
+      createdAt: tweet.timestamp * 1000,
+    };
+  }
+
   async handleTimeline() {
     console.log('Start Hanldeling Twitter Timeline');
 
@@ -106,7 +131,7 @@ export class TwitterTimelineClient {
     const tweetDecisions = [];
     for (const tweet of tweets) {
       try {
-        const tweetId = createUniqueUuid(this.runtime, tweet.id);
+        const tweetId = this.createTweetId(this.runtime, tweet);
         // Skip if we've already processed this tweet
         const memory = await this.runtime.getMemoryById(tweetId);
         if (memory) {
@@ -116,26 +141,7 @@ export class TwitterTimelineClient {
 
         const roomId = createUniqueUuid(this.runtime, tweet.conversationId);
 
-        const entityId = createUniqueUuid(this.runtime, tweet.userId);
-
-        const message = {
-          id: tweetId,
-          agentId: this.runtime.agentId,
-          content: {
-            text: tweet.text,
-            url: tweet.permanentUrl,
-            imageUrls: tweet.photos?.map((photo) => photo.url) || [],
-            inReplyTo: tweet.inReplyToStatusId
-              ? createUniqueUuid(this.runtime, tweet.inReplyToStatusId)
-              : undefined,
-            source: 'twitter',
-            channelType: ChannelType.GROUP,
-            tweet,
-          },
-          entityId,
-          roomId,
-          createdAt: tweet.timestamp * 1000,
-        };
+        const message = this.formMessage(this.runtime, tweet);
 
         let state = await this.runtime.composeState(message);
 
@@ -232,144 +238,20 @@ Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appro
       // Create standardized world and room IDs
       const worldId = createUniqueUuid(this.runtime, tweet.userId);
 
-      // Ensure world exists first
-      await this.runtime.ensureWorldExists({
-        id: worldId,
-        name: `${tweet.name}'s Twitter`,
-        agentId: this.runtime.agentId,
-        serverId: tweet.userId,
-        metadata: {
-          ownership: { ownerId: tweet.userId },
-          twitter: {
-            username: tweet.username,
-            id: tweet.userId,
-            name: tweet.name,
-          },
-        },
-      });
+      await this.ensureTweetWorldContext(tweet, roomId, worldId, entityId);
 
-      await this.runtime.ensureConnection({
-        entityId,
-        roomId,
-        userName: tweet.username,
-        name: tweet.name,
-        source: 'twitter',
-        type: ChannelType.GROUP,
-        channelId: tweet.conversationId,
-        serverId: tweet.userId,
-        worldId: worldId,
-      });
-
-      // Ensure conversation room exists
-      await this.runtime.ensureRoomExists({
-        id: roomId,
-        name: `Conversation with ${tweet.name}`,
-        source: 'twitter',
-        type: ChannelType.GROUP,
-        channelId: tweet.conversationId,
-        serverId: tweet.userId,
-        worldId: worldId,
-      });
       try {
-        const executedActions: string[] = [];
         // Execute actions
         if (actionResponse.like) {
-          try {
-            await this.twitterClient.likeTweet(tweet.id);
-            executedActions.push('like');
-            logger.log(`Liked tweet ${tweet.id}`);
-          } catch (error) {
-            logger.error(`Error liking tweet ${tweet.id}:`, error);
-          }
+          this.handleLikeAction(tweet);
         }
 
         if (actionResponse.retweet) {
-          try {
-            await this.twitterClient.retweet(tweet.id);
-            executedActions.push('retweet');
-            logger.log(`Retweeted tweet ${tweet.id}`);
-          } catch (error) {
-            logger.error(`Error retweeting tweet ${tweet.id}:`, error);
-          }
+          this.handleRetweetAction(tweet);
         }
 
         if (actionResponse.quote) {
-          try {
-            const message = {
-              id: tweetId,
-              agentId: this.runtime.agentId,
-              content: {
-                text: tweet.text,
-                url: tweet.permanentUrl,
-                imageUrls: tweet.photos?.map((photo) => photo.url) || [],
-                inReplyTo: tweet.inReplyToStatusId
-                  ? createUniqueUuid(this.runtime, tweet.inReplyToStatusId)
-                  : undefined,
-                source: 'twitter',
-                channelType: ChannelType.GROUP,
-                tweet,
-              },
-              entityId,
-              roomId,
-              createdAt: tweet.timestamp * 1000,
-            };
-
-            await Promise.all([
-              this.runtime.addEmbeddingToMemory(message),
-              this.runtime.createMemory(message, 'messages'),
-            ]);
-
-            let state = await this.runtime.composeState(message);
-
-            const quotePrompt =
-              composePromptFromState({
-                state,
-                template:
-                  this.runtime.character.templates?.quoteTweetTemplate || quoteTweetTemplate,
-              }) +
-              `
-You are responding to this tweet:
-${tweet.text}`;
-
-            const quoteResponse = await this.runtime.useModel(ModelType.TEXT_SMALL, {
-              prompt: quotePrompt,
-            });
-            const responseObject = parseKeyValueXml(quoteResponse);
-
-            if (responseObject.post) {
-              const result = await this.client.requestQueue.add(
-                async () => await this.twitterClient.sendQuoteTweet(responseObject.post, tweet.id)
-              );
-
-              const body = await result.json();
-
-              if (body?.data?.create_tweet?.tweet_results?.result) {
-                logger.log('Successfully posted quote tweet');
-                executedActions.push('quote');
-              } else {
-                logger.error('Quote tweet creation failed:', body);
-              }
-
-              // Create memory for our response
-              const responseId = createUniqueUuid(this.runtime, body.rest_id);
-              const responseMemory: Memory = {
-                id: responseId,
-                entityId: this.runtime.agentId,
-                agentId: this.runtime.agentId,
-                roomId: message.roomId,
-                content: {
-                  ...responseObject,
-                  inReplyTo: message.id,
-                },
-                createdAt: Date.now(),
-              };
-
-              // Save the response to memory
-              await this.runtime.createMemory(responseMemory, 'messages');
-            }
-          } catch (error) {
-            logger.error('Error in quote tweet generation:', error);
-          }
+          this.handleQuoteAction(tweet);
         }
       } catch (error) {
         logger.error(`Error processing tweet ${tweet.id}:`, error);
@@ -378,5 +260,122 @@ ${tweet.text}`;
     }
 
     return results;
+  }
+
+  private async ensureTweetWorldContext(tweet: Tweet, roomId: UUID, worldId: UUID, entityId: UUID) {
+    await this.runtime.ensureWorldExists({
+      id: worldId,
+      name: `${tweet.name}'s Twitter`,
+      agentId: this.runtime.agentId,
+      serverId: tweet.userId,
+      metadata: {
+        ownership: { ownerId: tweet.userId },
+        twitter: {
+          username: tweet.username,
+          id: tweet.userId,
+          name: tweet.name,
+        },
+      },
+    });
+
+    await this.runtime.ensureConnection({
+      entityId,
+      roomId,
+      userName: tweet.username,
+      name: tweet.name,
+      source: 'twitter',
+      type: ChannelType.GROUP,
+      channelId: tweet.conversationId,
+      serverId: tweet.userId,
+      worldId,
+    });
+
+    await this.runtime.ensureRoomExists({
+      id: roomId,
+      name: `Conversation with ${tweet.name}`,
+      source: 'twitter',
+      type: ChannelType.GROUP,
+      channelId: tweet.conversationId,
+      serverId: tweet.userId,
+      worldId,
+    });
+  }
+
+  async handleLikeAction(tweet: Tweet) {
+    try {
+      await this.twitterClient.likeTweet(tweet.id);
+      logger.log(`Liked tweet ${tweet.id}`);
+    } catch (error) {
+      logger.error(`Error liking tweet ${tweet.id}:`, error);
+    }
+  }
+
+  async handleRetweetAction(tweet: Tweet) {
+    try {
+      await this.twitterClient.retweet(tweet.id);
+      logger.log(`Retweeted tweet ${tweet.id}`);
+    } catch (error) {
+      logger.error(`Error retweeting tweet ${tweet.id}:`, error);
+    }
+  }
+
+  async handleQuoteAction(tweet: Tweet) {
+    try {
+      const message = this.formMessage(this.runtime, tweet);
+
+      await Promise.all([
+        this.runtime.addEmbeddingToMemory(message),
+        this.runtime.createMemory(message, 'messages'),
+      ]);
+
+      let state = await this.runtime.composeState(message);
+
+      const quotePrompt =
+        composePromptFromState({
+          state,
+          template: this.runtime.character.templates?.quoteTweetTemplate || quoteTweetTemplate,
+        }) +
+        `
+You are responding to this tweet:
+${tweet.text}`;
+
+      const quoteResponse = await this.runtime.useModel(ModelType.TEXT_SMALL, {
+        prompt: quotePrompt,
+      });
+      const responseObject = parseKeyValueXml(quoteResponse);
+
+      if (responseObject.post) {
+        const result = await this.client.requestQueue.add(
+          async () => await this.twitterClient.sendQuoteTweet(responseObject.post, tweet.id)
+        );
+
+        const body = await result.json();
+
+        if (body?.data?.create_tweet?.tweet_results?.result) {
+          logger.log('Successfully posted quote tweet');
+        } else {
+          logger.error('Quote tweet creation failed:', body);
+        }
+
+        // Create memory for our response
+        const responseId = createUniqueUuid(this.runtime, body.rest_id);
+        const responseMemory: Memory = {
+          id: responseId,
+          entityId: this.runtime.agentId,
+          agentId: this.runtime.agentId,
+          roomId: message.roomId,
+          content: {
+            ...responseObject,
+            inReplyTo: message.id,
+          },
+          createdAt: Date.now(),
+        };
+
+        // Save the response to memory
+        await this.runtime.createMemory(responseMemory, 'messages');
+      }
+    } catch (error) {
+      logger.error('Error in quote tweet generation:', error);
+    }
   }
 }
