@@ -95,16 +95,6 @@ export async function ensureElizaDir() {
 }
 
 /**
- * Ensures the project's pglite directory exists
- * @returns The eliza directories object
- */
-export async function ensureProjectPGLiteDir() {
-  const dirs = getElizaDirectories();
-  await ensureDir(dirs.elizaDbDir, `Created project PGLite directory: ${dirs.elizaDbDir}`);
-  return dirs;
-}
-
-/**
  * Ensures the .env file exists
  * @param envFilePath Path to the .env file
  */
@@ -120,7 +110,7 @@ export async function ensureEnvFile(envFilePath: string) {
 export async function setupPgLite(elizaDbDir: string, envFilePath: string): Promise<void> {
   try {
     // Ensure the PGLite database directory exists
-    await ensureProjectPGLiteDir();
+    await ensureDir(elizaDbDir, `Created project PGLite directory: ${elizaDbDir}`);
 
     // Ensure .env file exists
     await ensureEnvFile(envFilePath);
