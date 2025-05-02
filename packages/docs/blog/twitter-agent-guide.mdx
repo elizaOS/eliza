@@ -1,0 +1,209 @@
+---
+slug: twitter-agent-guide
+title: 'Setting Up Your Own Twitter Agent with ElizaOS'
+authors: [team]
+tags: [twitter, agent, elizaos, tutorial]
+image: /img/plugins.jpg
+---
+
+# Setting Up Your Own Twitter Agent with ElizaOS
+
+## Run your own AI agent on Twitter in minutes
+
+Ever wanted your own AI assistant that can post and interact on Twitter (X)? With ElizaOS, you can set up a Twitter agent that posts content and interacts with other users automatically - no coding needed!
+
+{/* truncate */}
+
+## Getting Started with ElizaOS
+
+Setting up your Twitter agent is super easy! Let's walk through each step together.
+
+### Step 1: Install the ElizaOS CLI
+
+First, you'll need to install the ElizaOS Command Line Interface (CLI). This is like a special tool that helps you talk to ElizaOS.
+
+Open your terminal (that black or white box where you type commands) and type:
+
+```bash
+npm install -g @elizaos/cli@beta
+```
+
+Press Enter and wait for it to finish. This puts the ElizaOS tools on your computer so you can use them anytime!
+
+### Step 2: Create a New Project
+
+Now that you have the tools, let's make a new project:
+
+```bash
+elizaos create
+```
+
+A friendly wizard will appear and ask you some questions:
+
+- Type a cool name for your project (like "my-twitter-bot")
+- When it asks about database, select "pglite" (it's the easiest to set up)
+- Follow the rest of the prompts
+
+If you don't want to answer questions, you can also do:
+
+```bash
+elizaos create my-twitter-agent
+```
+
+### Step 3: Set Up Your Environment Variables
+
+Now we need to tell your agent how to connect to Twitter. We do this by setting up some secret information.
+
+Open the special settings file in a text editor:
+
+```bash
+# We recommend using Cursor - the AI-powered code editor:
+# 1. Download Cursor from https://cursor.sh
+# 2. Open Cursor
+# 3. Go to File > Open and navigate to:
+#    - Windows: C:\Users\YOUR_USERNAME\.eliza\.env
+#    - Mac/Linux: ~/.eliza/.env
+
+# Alternatively, you can use:
+# Windows: notepad C:\Users\YOUR_USERNAME\.eliza\.env
+# Mac: open -a TextEdit ~/.eliza/.env
+# Linux: gedit ~/.eliza/.env
+```
+
+Add these lines to the file (but replace the example values with your own real information):
+
+```
+# Global environment variables for Eliza
+PGLITE_DATA_DIR=~/.eliza/db
+
+# OpenAI API Key
+OPENAI_API_KEY=your_openai_api_key_here
+
+# Twitter Configuration
+TWITTER_USERNAME=your_twitter_username
+TWITTER_PASSWORD=your_twitter_password
+TWITTER_EMAIL=your_twitter_email
+TWITTER_TARGET_USERS=user1,user2,user3
+TWITTER_ENABLE_POST_GENERATION=true
+TWITTER_POST_INTERVAL_MIN=1
+TWITTER_POST_INTERVAL_MAX=2
+```
+
+### Step 4: Start Your Project
+
+Now for the exciting part! Navigate to your project folder and start it up:
+
+```bash
+# On Windows:
+# 1. Open Command Prompt or PowerShell
+# 2. Type: cd path\to\my-twitter-agent
+# 3. Then type: elizaos start
+
+# On Mac/Linux:
+cd my-twitter-agent
+elizaos start
+```
+
+Hooray! Your Twitter agent is now running! It will start posting and interacting based on the settings you chose.
+
+## Customizing Your Twitter Agent's Personality
+
+The most fun part is making your agent unique! You can change how it talks, what it posts about, and how it responds to others.
+
+Open your project in a code editor:
+
+```bash
+# We recommend using Cursor - the AI-powered code editor:
+# 1. Download Cursor from https://cursor.sh if you haven't already
+# 2. Open Cursor
+# 3. Go to File > Open Folder and select your project folder
+# 4. In the file explorer panel, navigate to src/index.ts
+
+# Cursor makes editing code much easier with AI assistance!
+```
+
+Look for the character definition section. It looks something like this:
+
+```typescript
+export const character: Character = {
+  name: 'Eliza', // You can change this to any name you want!
+  plugins: [
+    // These are the special abilities your agent has
+    '@elizaos/plugin-sql',
+    ...(process.env.OPENAI_API_KEY ? ['@elizaos/plugin-openai'] : []),
+    ...(process.env.TWITTER_USERNAME ? ['@elizaos/plugin-twitter'] : []),
+    // ... more plugins
+  ],
+  settings: {
+    secrets: {},
+  },
+  system:
+    'This is where you tell your agent how to behave on Twitter! For example: Be friendly and helpful, share interesting facts about technology, and respond to questions about AI.',
+  bio: [
+    'Make a list of personality traits here',
+    'Each line is a different trait or behavior',
+    'For example: Loves to share AI news',
+    'Always responds with a friendly tone',
+    'Includes a fun fact in every third tweet',
+    'Never argues with other users',
+  ],
+  // There are more settings below you can customize too!
+};
+```
+
+You can change anything in this file to make your agent behave differently:
+
+1. **Name**: Change 'Eliza' to whatever you want to call your agent
+2. **System**: This is the main instruction that guides how your agent acts
+3. **Bio**: This list of traits helps shape your agent's personality
+
+After making changes, save the file and restart your agent:
+
+```bash
+elizaos dev
+```
+
+## Advanced Usage
+
+Once you're comfortable with the basics, you can try these cool advanced features:
+
+- **Custom Post Schedules**: Change when your agent posts by adjusting the `TWITTER_POST_INTERVAL_MIN` and `TWITTER_POST_INTERVAL_MAX` values
+- **Topic Focus**: Edit the system prompt to focus on specific topics you care about
+- **Interaction Styles**: Modify the bio to change how your agent interacts with others
+- **Target Users**: Update `TWITTER_TARGET_USERS` to change who your agent interacts with
+
+### Advanced: Server Deployment with Twitter Cookies
+
+If you're deploying your Twitter agent to a server, you'll likely need to use Twitter cookies for authentication instead of just username/password. Here's how to set it up:
+
+#### Finding Your Twitter Cookies for Server Deployment
+
+Twitter's security measures can be stricter when logging in from a server location that differs from your usual location. Follow these steps:
+
+1. **Important**: Try to access Twitter from the same location (IP address) as your server. If that's not possible, consider using a VPN that connects from a location near your server.
+
+2. **Quick Cookie Extraction Steps**:
+
+   - Log into Twitter in Chrome, Firefox, or Edge
+   - Press F12 to open Developer Tools
+   - Click the "Network" tab
+   - Refresh the page (F5)
+   - Click any twitter.com request in the list
+   - Select the "Cookies" tab
+   - Find and copy these three cookie values:
+     - `auth_token`
+     - `ct0`
+     - `guest_id`
+
+3. **Add to your .env file**:
+
+```
+# Twitter Cookies for Server Deployment
+TWITTER_COOKIES_AUTH_TOKEN=your_auth_token_here
+TWITTER_COOKIES_CT0=your_ct0_token_here
+TWITTER_COOKIES_GUEST_ID=your_guest_id_here
+```
+
+That's it! Your server can now authenticate with Twitter using these cookies.
+
+Happy tweeting!
