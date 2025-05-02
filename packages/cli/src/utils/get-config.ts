@@ -60,17 +60,37 @@ export function getElizaDirectories() {
 }
 
 /**
+ * Generic function to ensure a directory exists
+ * @param dirPath Path to the directory
+ * @param logMessage Optional custom log message
+ */
+async function ensureDir(dirPath: string, logMessage?: string) {
+  if (!existsSync(dirPath)) {
+    await fs.mkdir(dirPath, { recursive: true });
+    logger.info(logMessage ?? `Created directory: ${dirPath}`);
+  }
+}
+
+/**
+ * Generic function to ensure a file exists
+ * @param filePath Path to the file
+ * @param initialContent Initial content for the file if it needs to be created
+ * @param logMessage Optional custom log message
+ */
+async function ensureFile(filePath: string, initialContent: string = '', logMessage?: string) {
+  if (!existsSync(filePath)) {
+    await fs.writeFile(filePath, initialContent, { encoding: 'utf8' });
+    logger.debug(logMessage ?? `Created file: ${filePath}`);
+  }
+}
+
+/**
  * Ensures the .eliza directory exists
  * @returns The eliza directories object
  */
 export async function ensureElizaDir() {
   const dirs = getElizaDirectories();
-
-  if (!existsSync(dirs.elizaDir)) {
-    await fs.mkdir(dirs.elizaDir, { recursive: true });
-    logger.info(`Created directory: ${dirs.elizaDir}`);
-  }
-
+  await ensureDir(dirs.elizaDir);
   return dirs;
 }
 
@@ -80,12 +100,7 @@ export async function ensureElizaDir() {
  */
 export async function ensureProjectPGLiteDir() {
   const dirs = getElizaDirectories();
-
-  if (!existsSync(dirs.elizaDbDir)) {
-    await fs.mkdir(dirs.elizaDbDir, { recursive: true });
-    logger.info(`Created project PGLite directory: ${dirs.elizaDbDir}`);
-  }
-
+  await ensureDir(dirs.elizaDbDir, `Created project PGLite directory: ${dirs.elizaDbDir}`);
   return dirs;
 }
 
@@ -94,10 +109,7 @@ export async function ensureProjectPGLiteDir() {
  * @param envFilePath Path to the .env file
  */
 export async function ensureEnvFile(envFilePath: string) {
-  if (!existsSync(envFilePath)) {
-    await fs.writeFile(envFilePath, '', { encoding: 'utf8' });
-    logger.debug(`Created empty .env file at ${envFilePath}`);
-  }
+  await ensureFile(envFilePath, '', `Created empty .env file at ${envFilePath}`);
 }
 
 /**
@@ -346,13 +358,7 @@ export async function loadEnvironment(projectDir: string = process.cwd()): Promi
     return;
   }
 
-  // If neither exists, create the global .env
-  if (!existsSync(globalEnvDir)) {
-    await fs.mkdir(globalEnvDir, { recursive: true });
-  }
-
-  // Create an empty .env file
-  if (!existsSync(globalEnvPath)) {
-    await fs.writeFile(globalEnvPath, '# Global environment variables for Eliza\n');
-  }
+  // Ensure global env directory and file exist
+  await ensureDir(globalEnvDir);
+  await ensureFile(globalEnvPath, '# Global environment variables for Eliza\n')
 }
