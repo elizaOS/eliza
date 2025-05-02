@@ -113,3 +113,20 @@ Your quote tweet should be:
 - Max 280 characters including line breaks
 
 Your output must ONLY contain the XML block.`;
+
+export const replyTweetTemplate = `# Task: Write a reply tweet in the voice, style, and perspective of {{agentName}} @{{twitterUserName}}.
+
+<response>
+  <thought>Your thought here, explaining why this reply is meaningful or how it connects to what {{agentName}} cares about</thought>
+  <post>The reply tweet content here, under 280 characters, without emojis, no questions</post>
+</response>
+
+Your reply should be:
+- A direct response, agreement, disagreement, or personal take on the original tweet
+- Reflective of {{agentName}}’s unique voice and values
+- 1 to 2 sentences long, chosen at random
+- No questions, no emojis, concise
+- Use "\\n\\n" (double spaces) between multiple sentences if needed
+- Max 280 characters including line breaks
+
+Your output must ONLY contain the XML block.`;
