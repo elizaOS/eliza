@@ -147,11 +147,16 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
     try {
       const db = drizzle(this.client);
 
-      const __filename = fileURLToPath(import.meta.url);
-      const __dirname = pathDirname(__filename);
+      const packageJsonUrl = await import.meta.resolve('@elizaos/plugin-sql/package.json');
+      const packageJsonPath = fileURLToPath(packageJsonUrl);
+      const packageRoot = pathDirname(packageJsonPath);
+      const migrationsPath = pathResolve(packageRoot, 'drizzle/migrations');
+      logger.debug(
+        `Resolved migrations path (pglite) using import.meta.resolve: ${migrationsPath}`
+      );
 
       await migrate(db, {
-        migrationsFolder: pathResolve(__dirname, '../drizzle/migrations'),
+        migrationsFolder: migrationsPath,
         migrationsSchema: 'public',
       });
     } catch (error) {
