@@ -21,6 +21,7 @@ The plugin requires these environment variables (can be set in .env file or char
   "OPENAI_SMALL_MODEL": "gpt-4o-mini",
   "OPENAI_LARGE_MODEL": "gpt-4o",
   "OPENAI_EMBEDDING_MODEL": "text-embedding-3-small",
+  "OPENAI_EMBEDDING_URL": "optional_custom_endpoint",
   "OPENAI_EMBEDDING_DIMENSIONS": "1536"
 }
 ```
@@ -34,6 +35,7 @@ OPENAI_BASE_URL=optional_custom_endpoint
 OPENAI_SMALL_MODEL=gpt-4o-mini
 OPENAI_LARGE_MODEL=gpt-4o
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+OPENAI_EMBEDDING_URL=optional_custom_endpoint
 OPENAI_EMBEDDING_DIMENSIONS=1536
 ```
 
@@ -44,6 +46,7 @@ OPENAI_EMBEDDING_DIMENSIONS=1536
 - `OPENAI_SMALL_MODEL`: Defaults to GPT-4o Mini ("gpt-4o-mini")
 - `OPENAI_LARGE_MODEL`: Defaults to GPT-4o ("gpt-4o")
 - `OPENAI_EMBEDDING_MODEL`: Defaults to text-embedding-3-small ("text-embedding-3-small")
+- `OPENAI_EMBEDDING_URL`: Custom embedding endpoint (defaults to `OPENAI_BASE_URL`)
 - `OPENAI_EMBEDDING_DIMENSIONS`: Defaults to 1536 (1536)
 
 The plugin provides these model classes:

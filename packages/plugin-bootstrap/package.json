@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-bootstrap",
-  "version": "1.0.0-beta.40",
+  "version": "1.0.0-beta.41",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -26,7 +26,7 @@
     "tsup.config.ts"
   ],
   "dependencies": {
-    "@elizaos/core": "^1.0.0-beta.40"
+    "@elizaos/core": "^1.0.0-beta.41"
   },
   "devDependencies": {
     "@types/node": "22.8.4",
