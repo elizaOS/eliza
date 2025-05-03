@@ -6,7 +6,7 @@ export default defineConfig({
   sourcemap: true,
   clean: true,
   format: ['esm'], // Ensure you're targeting CommonJS
-  dts: false, // Skip DTS generation to avoid external import issues
+  dts: true,
   tsconfig: './tsconfig.build.json', // Use build-specific tsconfig
   external: [
     'dotenv', // Externalize dotenv to prevent bundling
@@ -27,4 +27,5 @@ export default defineConfig({
     options.outbase = './src'; // Makes output paths match input structure
   },
   keepNames: true, // Preserve names for better debugging
+  minify: true,
 });
