@@ -343,6 +343,105 @@ export function setupSocketIO(
   return io;
 }
 
+// Extracted function to handle plugin routes
+export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): express.RequestHandler {
+  return (req, res, next) => {
+    // Debug output for JavaScript requests
+    if (
+      req.path.endsWith('.js') ||
+      req.path.includes('.js?') ||
+      req.path.match(/index-[A-Za-z0-9]{8}\.js/)
+    ) {
+      logger.debug(`JavaScript request in plugin handler: ${req.method} ${req.path}`);
+      res.setHeader('Content-Type', 'application/javascript');
+    }
+
+    if (agents.size === 0) {
+      return next();
+    }
+
+    let handled = false;
+    for (const [agentId, runtime] of agents) {
+      if (handled) break;
+
+      for (const route of runtime.routes) {
+        const methodMatches = req.method.toLowerCase() === route.type.toLowerCase();
+        if (!methodMatches) continue;
+
+        const routePath = route.path.startsWith('/') ? route.path : `/${route.path}`;
+        const reqPath = req.path;
+
+        // 1. Handle simple wildcard routes
+        if (routePath.endsWith('/*')) {
+          const baseRoute = routePath.slice(0, -1); // Remove the '*')
+          if (reqPath.startsWith(baseRoute)) {
+            logger.debug(
+              `Plugin wildcard route: [${route.type.toUpperCase()}] ${routePath} for request: ${reqPath}`
+            );
+            try {
+              route.handler(req, res, runtime);
+              handled = true;
+              break; // Exit inner loop
+            } catch (error) {
+              logger.error(`Error handling plugin wildcard route: ${routePath}`, {
+                error,
+                path: reqPath,
+                agent: agentId,
+              });
+              if (!res.headersSent) {
+                const status =
+                  error.code === 'ENOENT' || error.message?.includes('not found') ? 404 : 500;
+                res
+                  .status(status)
+                  .json({ error: error.message || 'Error processing wildcard route' });
+              }
+              handled = true; // Mark as handled to prevent further processing
+              break; // Exit inner loop
+            }
+          }
+        }
+        // 2. Handle routes with parameters using path-to-regexp
+        else {
+          logger.debug(
+            `Attempting plugin route match: [${route.type.toUpperCase()}] ${routePath} vs request: ${reqPath}`
+          );
+          let matcher: MatchFunction<object>;
+          try {
+            matcher = match(routePath, { decode: decodeURIComponent });
+          } catch (err) {
+            logger.error(
+              `Invalid plugin route path syntax for agent ${agentId}: "${routePath}"`,
+              err
+            );
+            continue; // Skip this invalid route
+          }
+
+          const matched = matcher(reqPath);
+
+          if (matched) {
+            logger.debug(
+              `Plugin route matched: [${route.type.toUpperCase()}] ${routePath} vs request: ${reqPath}`
+            );
+            req.params = { ...(matched.params || {}) }; // Clearer assignment
+            route.handler(req, res, runtime);
+            handled = true;
+            break; // Exit inner loop
+          }
+        }
+      } // End inner loop (routes)
+    } // End outer loop (agents)
+
+    // If a plugin route handled the request, stop here
+    if (handled) {
+      return;
+    }
+
+    // Otherwise, continue to the next middleware
+    logger.debug(`No plugin route handled ${req.method} ${req.path}, passing to next middleware.`);
+    next();
+  };
+}
+
 /**
  * Creates an API router with various endpoints and middleware.
  * @param {Map<UUID, IAgentRuntime>} agents - Map of agents with UUID as key and IAgentRuntime as value.
@@ -396,151 +495,14 @@ export function createApiRouter(
     );
   });
 
-  // Define plugin routes middleware function
-  const handlePluginRoutes = (
-    req: express.Request,
-    res: express.Response,
-    next: express.NextFunction
-  ) => {
-    // Debug output for all JavaScript requests to help diagnose MIME type issues
-    if (
-      req.path.endsWith('.js') ||
-      req.path.includes('.js?') ||
-      req.path.match(/index-[A-Za-z0-9]{8}\.js/)
-    ) {
-      logger.debug(`JavaScript request: ${req.method} ${req.path}`);
-
-      // Pre-emptively set the correct MIME type for all JavaScript files
-      // This ensures even files served by the static middleware get the right type
-      res.setHeader('Content-Type', 'application/javascript');
-    }
-
-    // Skip if we don't have an agent server or no agents
-    if (!server || agents.size === 0) {
-      return next();
-    }
-
-    let handled = false;
-    for (const [agentId, runtime] of agents) {
-      if (handled) break;
-
-      for (const route of runtime.routes) {
-        const methodMatches = req.method.toLowerCase() === route.type.toLowerCase();
-        if (!methodMatches) continue;
-
-        const routePath = route.path.startsWith('/') ? route.path : `/${route.path}`;
-        const reqPath = req.path;
-
-        // 1. Handle simple wildcard routes first (avoids path-to-regexp error)
-        if (routePath.endsWith('/*')) {
-          const baseRoute = routePath.slice(0, -1); // Remove the '*'
-          if (reqPath.startsWith(baseRoute)) {
-            logger.debug(
-              `Handling wildcard route: [${route.type.toUpperCase()}] ${routePath} for request path: ${reqPath}`
-            );
-            try {
-              // Removed complex MIME type guessing based on extension.
-              // The route.handler is responsible for setting the correct Content-Type.
-              // If the handler serves a file, it should set the header appropriately.
-              // Example: res.setHeader('Content-Type', 'application/javascript');
-
-              // Call the handler
-              route.handler(req, res, runtime);
-              handled = true;
-              break; // Exit inner loop once handled
-            } catch (error) {
-              logger.error(`Error handling plugin wildcard route: ${routePath}`, {
-                error,
-                path: reqPath,
-                agent: agentId,
-              });
-              // Simplified error handling - let handler manage specific responses
-              if (!res.headersSent) {
-                // Basic error response if headers not already sent by handler
-                if (error.code === 'ENOENT' || error.message?.includes('not found')) {
-                  res.status(404).json({ error: 'Not Found', path: reqPath });
-                } else {
-                  res.status(500).json({
-                    error: 'Internal Server Error',
-                    message: error.message || 'Unknown error',
-                  });
-                }
-              }
-              handled = true; // Mark as handled to prevent further processing
-              break; // Exit inner loop once handled
-            }
-          }
-        }
-        // 2. Handle routes with parameters using path-to-regexp
-        else {
-          logger.debug(
-            `Attempting to match route: [${route.type.toUpperCase()}] ${routePath} against request path: ${reqPath}`
-          );
-          let matcher: MatchFunction<object>;
-          try {
-            matcher = match(routePath, { decode: decodeURIComponent }); // Use routePath here
-          } catch (err) {
-            logger.error(
-              `Invalid route path syntax for agent ${agentId}: "${routePath}" when matching ${reqPath}`,
-              err
-            );
-            continue; // Skip this invalid route
-          }
-
-          const matched = matcher(reqPath); // Use reqPath here
-
-          if (matched) {
-            logger.debug(
-              `Successfully matched route: [${route.type.toUpperCase()}] ${routePath} against request path: ${reqPath}. Params: ${JSON.stringify(matched.params)}`
-            );
-            req.params = {}; // Initialize before assigning
-            for (const key in matched.params) {
-              const value = (matched.params as Record<string, any>)[key];
-              if (Array.isArray(value)) {
-                req.params[key] = value[0];
-              } else if (value !== undefined) {
-                req.params[key] = value;
-              }
-            }
-            route.handler(req, res, runtime);
-            handled = true;
-            break; // Exit inner loop once handled
-          }
-        }
-      } // End inner loop (routes)
-    } // End outer loop (agents)
-
-    // If a plugin route handled the request, stop here
-    if (handled) {
-      return;
-    }
-
-    // Otherwise, continue to the next middleware
-    logger.debug(`No plugin route handled ${req.method} ${req.path}, passing to next middleware.`);
-    next();
-  };
-
-  // Add the plugin routes middleware using router.all
-  router.all('*', (req, res, next) => {
-    // Skip for sub-routes handled by specific routers BEFORE plugin routes
-    if (
-      req.path.startsWith('/agents/') ||
-      req.path.startsWith('/world/') ||
-      req.path.startsWith('/envs/') ||
-      req.path.startsWith('/tee/')
-    ) {
-      logger.debug(`Skipping plugin handler for specific route: ${req.path}`);
-      return next();
-    }
-    logger.debug(`Running plugin handler for route: ${req.path}`);
-    handlePluginRoutes(req, res, next);
-  });
-
-  // Mount sub-routers AFTER the wildcard plugin handler
+  // Mount specific sub-routers FIRST
   router.use('/agents', agentRouter(agents, server));
   router.use('/world', worldRouter(server));
   router.use('/envs', envRouter());
   router.use('/tee', teeRouter(agents));
+
+  // Add the plugin routes middleware AFTER specific routers
+  router.all('*', createPluginRouteHandler(agents));
 
   router.get('/stop', (_req, res) => {
     server?.stop(); // Use optional chaining in case server is undefined
