@@ -1,55 +1,59 @@
 import { logger } from '@elizaos/core';
 import { Command } from 'commander';
-import { getVersion, displayBanner } from '../utils/displayBanner';
+import { getVersion, displayBanner } from '@/src/utils';
 import { execa } from 'execa';
 import {
   isGlobalInstallation,
   isRunningViaNpx,
   isRunningViaBunx,
   executeInstallation,
-} from '../utils/package-manager';
+} from '@/src/utils';
 
 /**
- * Updates the CLI to the latest version based on the current stream (beta/alpha/latest)
+ * Updates the CLI to the latest version based on the most recently published version
  * @returns {Promise<boolean>} Whether the update was successful
  */
-async function performCliUpdate(): Promise<boolean> {
+export async function performCliUpdate(): Promise<boolean> {
   try {
     // get the current version
     const currentVersion = getVersion();
 
-    // determine which version stream we're on
-    const versionStream = currentVersion.includes('beta')
-      ? '@beta'
-      : currentVersion.includes('alpha')
-        ? '@alpha'
-        : '@latest';
+    // Get the time data for all published versions to find the most recent
+    const { stdout } = await execa('npm', ['view', '@elizaos/cli', 'time', '--json']);
+    const timeData = JSON.parse(stdout);
 
-    // get the latest version from npm (always use npm for version checking)
-    const { stdout: latestVersion } = await execa('npm', [
-      'view',
-      `@elizaos/cli${versionStream}`,
-      'version',
-    ]);
+    // Remove metadata entries like 'created' and 'modified'
+    delete timeData.created;
+    delete timeData.modified;
 
-    // compare versions (strip any @beta/@alpha suffix for comparison)
-    const cleanCurrentVersion = currentVersion.split('@')[0];
+    // Find the most recently published version
+    let latestVersion = '';
+    let latestDate = new Date(0); // Start with epoch time
 
-    if (cleanCurrentVersion === latestVersion) {
-      displayBanner();
+    for (const [version, dateString] of Object.entries(timeData)) {
+      const publishDate = new Date(dateString as string);
+      if (publishDate > latestDate) {
+        latestDate = publishDate;
+        latestVersion = version;
+      }
+    }
+
+    // If we couldn't determine the latest version or already at latest, exit
+    if (!latestVersion || currentVersion === latestVersion) {
+      await displayBanner();
       console.info('ElizaOS CLI is already up to date!');
       return true;
     }
 
-    console.info(`Updating ElizaOS CLI from ${cleanCurrentVersion} to ${latestVersion}...`);
+    console.info(`Updating ElizaOS CLI from ${currentVersion} to ${latestVersion}...`);
 
-    // Install the specified version globally
-    logger.info(`Updating Eliza CLI to version: ${versionStream}`);
+    // Install the specified version globally - use specific version instead of tag
+    logger.info(`Updating Eliza CLI to version: ${latestVersion}`);
     try {
-      // Use executeInstallation to install the CLI package
+      // Use executeInstallation to install the CLI package with exact version
       const installResult = await executeInstallation(
         '@elizaos/cli',
-        versionStream, // The specific version or tag to install
+        latestVersion, // The specific version number
         process.cwd(), // Specify CWD, actual install location depends on PM/global flag
         { tryNpm: true, tryGithub: false, tryMonorepo: false } // Prioritize npm
       );
@@ -58,11 +62,11 @@ async function performCliUpdate(): Promise<boolean> {
       if (!installResult.success) {
         // Throw an error if the installation wasn't successful
         throw new Error(
-          `Installation of @elizaos/cli version ${versionStream} failed. Check logs.`
+          `Installation of @elizaos/cli version ${latestVersion} failed. Check logs.`
         );
       }
 
-      logger.info(`Successfully updated Eliza CLI to ${versionStream}`);
+      logger.info(`Successfully updated Eliza CLI to ${latestVersion}`);
       logger.info('Please restart your terminal for the changes to take effect.');
     } catch (error) {
       logger.error('Failed to update Eliza CLI:', error.message);
@@ -70,7 +74,7 @@ async function performCliUpdate(): Promise<boolean> {
       process.exit(1);
     }
 
-    displayBanner();
+    await displayBanner();
     console.info('ElizaOS CLI has been successfully updated!');
     return true;
   } catch (error) {

@@ -1,29 +1,34 @@
-import { buildProject } from '@/src/utils/build-project';
+import { character as defaultCharacter } from '@/src/characters/eliza';
+import { AgentServer } from '@/src/server/index';
+import { jsonToCharacter, loadCharacterTryPath } from '@/src/server/loader';
+import {
+  buildProject,
+  configureDatabaseSettings,
+  displayBanner,
+  findNextAvailablePort,
+  getVersion,
+  handleError,
+  installPlugin,
+  loadConfig,
+  loadEnvironment,
+  loadPluginModule,
+  promptForEnvVars,
+  saveConfig,
+} from '@/src/utils';
 import {
   AgentRuntime,
+  encryptedCharacter,
+  logger,
+  RuntimeSettings,
+  stringToUuid,
   type Character,
   type IAgentRuntime,
   type Plugin,
-  logger,
-  stringToUuid,
-  encryptedCharacter,
-  RuntimeSettings,
 } from '@elizaos/core';
 import { Command } from 'commander';
 import fs from 'node:fs';
-import path, { dirname } from 'node:path';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { character, character as defaultCharacter } from '../characters/eliza';
-import { AgentServer } from '../server/index';
-import { jsonToCharacter, loadCharacterTryPath } from '../server/loader';
-import { loadConfig, saveConfig } from '../utils/config-manager.js';
-import { promptForEnvVars } from '../utils/env-prompt.js';
-import { configureDatabaseSettings, loadEnvironment } from '../utils/get-config';
-import { handleError } from '../utils/handle-error';
-import { installPlugin } from '../utils/install-plugin';
-import { displayBanner, getVersion } from '../utils/displayBanner';
-import { findNextAvailablePort } from '../utils/port-handling';
-import { loadPluginModule } from '../utils/load-plugin';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
