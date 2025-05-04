@@ -72,7 +72,8 @@ Add the following lines to the `.env` file, replacing placeholder values with yo
 
 ```
 # Global environment variables for Eliza
-PGLITE_DATA_DIR=~/.eliza/db
+# Use an absolute path, as '~' might not be expanded by all tools
+PGLITE_DATA_DIR=/path/to/your/home/.eliza/db
 
 # OpenAI API Key (Optional, if using OpenAI features)
 OPENAI_API_KEY=your_openai_api_key_here
@@ -86,6 +87,8 @@ TWITTER_ENABLE_POST_GENERATION=true    # Set to false to disable automated posti
 TWITTER_POST_INTERVAL_MIN=1            # Minimum minutes between posts
 TWITTER_POST_INTERVAL_MAX=2            # Maximum minutes between posts
 ```
+
+**Important:** Ensure you use the correct absolute path for `PGLITE_DATA_DIR`. Never commit your `.env` file containing real credentials to version control. Add `.env` to your `.gitignore` file to prevent accidental exposure.
 
 ### Step 4: Start Your Project
 
@@ -187,3 +190,5 @@ TWITTER_COOKIES_GUEST_ID=your_guest_id_here
 ```
 
 With these variables set, the agent running on your server should be able to authenticate using cookies.
+
+**Security Note:** Remember to store your `.env` file securely and never commit it to version control, especially when containing sensitive cookie data. Ensure `.env` is listed in your `.gitignore` file.
