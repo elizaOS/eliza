@@ -53,7 +53,7 @@ vi.spyOn(process, 'exit').mockImplementation(() => {
 });
 
 // Import the module to test first, then mock its dependencies
-import * as pluginPublisher from '../src/utils/plugin-publisher';
+import * as pluginPublisher from '../src/utils/publisher';
 
 // Setup GitHub utils mock
 vi.mock('../src/utils/github', () => ({

@@ -18,7 +18,7 @@ This directory contains tests for the plugin registry and publishing system.
 npm run test:registry
 
 # Run specific test suites
-npm run test:plugin-publisher
+npm run test:publisher
 npm run test:plugin-command
 npm run test:publish-plugins
 
