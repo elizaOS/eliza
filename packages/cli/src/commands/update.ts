@@ -9,6 +9,7 @@ import { logger } from '@elizaos/core';
 import { Command } from 'commander';
 import prompts from 'prompts';
 import semver from 'semver';
+import { execa } from 'execa';
 
 // Function to get the package version
 function getVersion(): string {
@@ -56,10 +57,41 @@ function isWorkspaceVersion(versionString: string): boolean {
 async function updateDependencies(cwd: string, isPlugin: boolean): Promise<void> {
   console.info(`Updating ${isPlugin ? 'plugin' : 'project'} dependencies...`);
 
-  const cliVersion = getVersion();
-  console.info(`Current CLI version: ${cliVersion}`);
+  // Get the current CLI version (for informational purposes)
+  const currentCliVersion = getVersion();
+  console.info(`Current CLI version: ${currentCliVersion}`);
 
   try {
+    // Find the latest published version by timestamp
+    const { stdout } = await execa('npm', ['view', '@elizaos/cli', 'time', '--json']);
+    const timeData = JSON.parse(stdout);
+
+    // Remove metadata entries like 'created' and 'modified'
+    delete timeData.created;
+    delete timeData.modified;
+
+    // Find the most recently published version
+    let latestCliVersion = '';
+    let latestDate = new Date(0); // Start with epoch time
+
+    for (const [version, dateString] of Object.entries(timeData)) {
+      const publishDate = new Date(dateString as string);
+      if (publishDate > latestDate) {
+        latestDate = publishDate;
+        latestCliVersion = version;
+      }
+    }
+
+    // If we can't find the latest version, use the current version
+    if (!latestCliVersion) {
+      latestCliVersion = currentCliVersion;
+      console.info(
+        `Could not determine latest version, using current CLI version: ${latestCliVersion}`
+      );
+    } else {
+      console.info(`Latest available CLI version: ${latestCliVersion}`);
+    }
+
     // Get list of installed dependencies
     const packageJsonPath = path.join(cwd, 'package.json');
     if (!existsSync(packageJsonPath)) {
@@ -119,7 +151,9 @@ async function updateDependencies(cwd: string, isPlugin: boolean): Promise<void>
     // Determine update type - minor by default, major requires confirmation
     const hasMajorUpdates = elizaPackages.some((pkg) => {
       const pkgVersion = String(pkg.version).replace(/^\^|~/, '');
-      return pkgVersion && cliVersion && semver.major(cliVersion) > semver.major(pkgVersion);
+      return (
+        pkgVersion && latestCliVersion && semver.major(latestCliVersion) > semver.major(pkgVersion)
+      );
     });
 
     if (hasMajorUpdates) {
@@ -136,11 +170,11 @@ async function updateDependencies(cwd: string, isPlugin: boolean): Promise<void>
       }
     }
 
-    // Update each package to the specific CLI version instead of latest
+    // Update each package to the latest CLI version
     for (const pkg of elizaPackages) {
       try {
-        console.info(`Updating ${pkg.name} to version ${cliVersion}...`);
-        await runBunCommand(['add', `${pkg.name}@${cliVersion}`], cwd);
+        console.info(`Updating ${pkg.name} to version ${latestCliVersion}...`);
+        await runBunCommand(['add', `${pkg.name}@${latestCliVersion}`], cwd);
       } catch (error) {
         console.error(`Failed to update ${pkg.name}: ${error.message}`);
         console.info('Trying to use exact version match...');

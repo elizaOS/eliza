@@ -1,4 +1,5 @@
 import { handleError } from '@/src/utils/handle-error';
+import { stringToUuid } from '@elizaos/core';
 import { Command } from 'commander';
 import dotenv from 'dotenv';
 import { existsSync } from 'node:fs';
@@ -434,7 +435,7 @@ async function resetEnv(yes = false): Promise<void> {
   const elizaDir = path.join(homeDir, '.eliza');
   const globalEnvPath = await getGlobalEnvPath();
   const cacheDir = path.join(elizaDir, 'cache');
-  const dbDir = path.join(elizaDir, 'db');
+  const dbDir = path.join(elizaDir, 'projects', stringToUuid(process.cwd()), 'db');
 
   // Remove global .env file
   if (existsSync(globalEnvPath)) {

@@ -103,6 +103,7 @@ export async function executeInstallation(
 
   // Extract and normalize the plugin name
   let baseName = packageName;
+  let pluginName = '';
 
   // Handle organization/repo format
   if (packageName.includes('/') && !packageName.startsWith('@')) {
@@ -116,17 +117,39 @@ export async function executeInstallation(
     }
   }
 
-  // Remove plugin- prefix if present and ensure proper format
-  baseName = baseName.replace(/^plugin-/, '');
-  const pluginName = baseName.startsWith('plugin-') ? baseName : `plugin-${baseName}`;
-  const npmStylePackageName = `@elizaos/${pluginName}`;
+  // Special case: if the package is the CLI itself or core, don't add plugin- prefix
+  const isElizaCorePackage = baseName === 'cli' || baseName === 'core';
+
+  // For regular plugins, ensure they have the plugin- prefix
+  let npmStylePackageName;
+  if (isElizaCorePackage) {
+    // Core packages like @elizaos/cli and @elizaos/core should be used as-is
+    npmStylePackageName = `@elizaos/${baseName}`;
+    pluginName = baseName; // Set pluginName for later use in the function
+  } else {
+    // Remove plugin- prefix if present and ensure proper format for plugins
+    baseName = baseName.replace(/^plugin-/, '');
+    pluginName = baseName.startsWith('plugin-') ? baseName : `plugin-${baseName}`;
+    npmStylePackageName = `@elizaos/${pluginName}`;
+  }
 
   // 1. Try npm registry (if enabled)
   if (options.tryNpm !== false) {
     // Format the package name with version if provided
-    const packageWithVersion = versionOrTag
-      ? `${npmStylePackageName}${versionOrTag.startsWith('@') || versionOrTag.startsWith('#') ? versionOrTag : `@${versionOrTag}`}`
-      : npmStylePackageName;
+    let packageWithVersion;
+
+    // Special formatting for version string - make sure we use exact version format
+    if (versionOrTag) {
+      // Check if it already starts with @ or # (tag or git ref)
+      if (versionOrTag.startsWith('@') || versionOrTag.startsWith('#')) {
+        packageWithVersion = `${npmStylePackageName}${versionOrTag}`;
+      } else {
+        // When it's a specific version like "1.0.0-beta.41", use @1.0.0-beta.41 format
+        packageWithVersion = `${npmStylePackageName}@${versionOrTag}`;
+      }
+    } else {
+      packageWithVersion = npmStylePackageName;
+    }
 
     logger.debug(
       `Installing ${packageWithVersion} from npm registry using ${packageManager} in ${directory}`
