@@ -1,4 +1,5 @@
 import {
+  displayBanner,
   getGitHubCredentials,
   handleError,
   publishToGitHub,
@@ -299,6 +300,9 @@ export const publish = new Command()
   )
   .option('-d, --dry-run', 'generate registry files locally without publishing', false)
   .option('-sr, --skip-registry', 'skip publishing to the registry', false)
+  .hook('preAction', async () => {
+    await displayBanner();
+  })
   .action(async (opts) => {
     try {
       const cwd = process.cwd();

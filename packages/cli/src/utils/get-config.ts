@@ -1,9 +1,9 @@
-import { promises as fs, existsSync } from 'node:fs';
-import path from 'node:path';
-import dotenv from 'dotenv';
-import { z } from 'zod';
-import prompts from 'prompts';
 import { logger, stringToUuid } from '@elizaos/core';
+import dotenv from 'dotenv';
+import { existsSync, promises as fs } from 'node:fs';
+import path from 'node:path';
+import prompts from 'prompts';
+import { z } from 'zod';
 import { UserEnvironment } from './user-environment';
 
 // Database config schemas
@@ -104,24 +104,28 @@ export async function ensureElizaDir() {
  * @param elizaDbDir The directory for PGLite database
  * @param envFilePath Path to the .env file
  */
-export async function setupPgLite(): Promise<void> {
+export async function setupPgLite(dbDir: any, envPath: any): Promise<void> {
   const dirs = await ensureElizaDir();
   const { elizaDir, elizaDbDir, envFilePath } = dirs;
 
+  // Use provided parameters or defaults from dirs
+  const targetDbDir = dbDir || elizaDbDir;
+  const targetEnvPath = envPath || envFilePath;
+
   try {
     // Ensure the PGLite database directory exists
-    await ensureDir(elizaDbDir);
-    logger.debug('[PGLite] Created database directory:', elizaDbDir);
+    await ensureDir(targetDbDir);
+    logger.debug('[PGLite] Created database directory:', targetDbDir);
 
     // Ensure .env file exists
-    await ensureFile(envFilePath);
-    logger.debug('[PGLite] Ensured .env file exists:', envFilePath);
+    await ensureFile(targetEnvPath);
+    logger.debug('[PGLite] Ensured .env file exists:', targetEnvPath);
 
     // Store PGLITE_DATA_DIR in the environment file
-    await fs.writeFile(envFilePath, `PGLITE_DATA_DIR=${elizaDbDir}\n`, { flag: 'a' });
+    await fs.writeFile(targetEnvPath, `PGLITE_DATA_DIR=${targetDbDir}\n`, { flag: 'a' });
 
     // Also set in process.env for the current session
-    process.env.PGLITE_DATA_DIR = elizaDbDir;
+    process.env.PGLITE_DATA_DIR = targetDbDir;
 
     logger.success('PGLite configuration saved');
   } catch (error) {
@@ -242,7 +246,7 @@ export async function configureDatabaseSettings(reconfigure = false): Promise<st
       const dbChoice = !database ? 'Selection canceled, defaulting to' : 'Selected';
       logger.info(`${dbChoice} pglite database`);
 
-      await setupPgLite();
+      await setupPgLite(elizaDbDir, envFilePath);
       return null;
     }
 
@@ -251,7 +255,7 @@ export async function configureDatabaseSettings(reconfigure = false): Promise<st
     if (!result) {
       // If no valid Postgres URL provided, default to PGLite
       logger.warn('No valid Postgres URL provided, defaulting to pglite database');
-      await setupPgLite();
+      await setupPgLite(elizaDbDir, envFilePath);
       return null;
     }
 
@@ -261,7 +265,7 @@ export async function configureDatabaseSettings(reconfigure = false): Promise<st
     logger.info('Defaulting to pglite database');
 
     try {
-      await setupPgLite();
+      await setupPgLite(elizaDbDir, envFilePath);
     } catch (setupError) {
       logger.error('Critical error setting up database:', setupError);
       throw new Error('Failed to configure database');

@@ -1,4 +1,5 @@
 import { buildProject, handleError, runBunCommand } from '@/src/utils';
+import { displayBanner as showBanner } from '@/src/utils';
 import { Command } from 'commander';
 import { execa } from 'execa';
 import { existsSync, readFileSync } from 'node:fs';
@@ -225,6 +226,14 @@ export const update = new Command()
   .name('update')
   .description('Update ElizaOS packages to the latest versions')
   .option('-c, --check', 'Check for available updates without applying them')
+  .hook('preAction', async () => {
+    try {
+      await showBanner();
+    } catch (error) {
+      // Silently continue if banner display fails
+      console.debug('Banner display failed, continuing with update');
+    }
+  })
   .option('-sb, --skip-build', 'Skip building after updating')
   .action(async (options) => {
     try {

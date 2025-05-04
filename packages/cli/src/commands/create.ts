@@ -1,6 +1,7 @@
 import {
   buildProject,
   copyTemplate as copyTemplateUtil,
+  displayBanner,
   getElizaDirectories,
   handleError,
   promptAndStorePostgresUrl,
@@ -107,7 +108,8 @@ export const create = new Command()
     // Convert to a proper boolean (if not already)
     opts.yes = opts.yes === true || opts.yes === 'true';
 
-    displayBanner();
+    // Display banner and continue with initialization
+    await displayBanner();
 
     try {
       // Parse options but use "" as the default for type to force prompting

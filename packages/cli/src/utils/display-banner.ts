@@ -155,5 +155,9 @@ ${b}⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⢾⡃⠀⠀${w}
   }
 
   // Notify user if a new CLI version is available
-  await checkForCliUpdate(version);
+  try {
+    await checkForCliUpdate(version);
+  } catch (error) {
+    // Silently continue if update check fails
+  }
 }

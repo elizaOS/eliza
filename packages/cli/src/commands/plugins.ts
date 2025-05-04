@@ -1,4 +1,4 @@
-import { getVersion, handleError, installPlugin, logHeader } from '@/src/utils';
+import { displayBanner, getVersion, handleError, installPlugin, logHeader } from '@/src/utils';
 import { getPluginRepository } from '@/src/utils/registry/index';
 import { logger } from '@elizaos/core';
 import { Command } from 'commander';
@@ -103,7 +103,15 @@ export const plugins = new Command()
   .description('Manage ElizaOS plugins')
   .option('--help', 'Show help for plugins command')
   .action(function () {
-    this.help();
+    // Display banner before showing help
+    displayBanner()
+      .then(() => {
+        this.help();
+      })
+      .catch((err) => {
+        // Silently continue if banner display fails
+        this.help();
+      });
   });
 
 export const pluginsCommand = plugins
