@@ -20,8 +20,7 @@
   },
   "files": [
     "dist",
-    "templates",
-    "drizzle"
+    "templates"
   ],
   "keywords": [],
   "type": "module",
@@ -34,7 +33,7 @@
   },
   "scripts": {
     "cli": "bun run build && node dist/index.js",
-    "build": "npx tsup && bun run src/scripts/copy-client-dist.ts && bun run src/scripts/copy-templates.ts && bun run src/scripts/copy-drizzle.ts",
+    "build": "npx tsup && bun run src/scripts/copy-client-dist.ts && bun run src/scripts/copy-templates.ts",
     "lint": "prettier --write ./src",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",

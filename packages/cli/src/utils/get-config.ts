@@ -4,7 +4,7 @@ import path from 'node:path';
 import dotenv from 'dotenv';
 import { z } from 'zod';
 import prompts from 'prompts';
-import { logger } from '@elizaos/core';
+import { logger, stringToUuid } from '@elizaos/core';
 
 // Database config schemas
 const postgresConfigSchema = z.object({
@@ -48,7 +48,7 @@ export function isValidPostgresUrl(url: string): boolean {
 export function getElizaDirectories() {
   const homeDir = os.homedir();
   const elizaDir = path.join(homeDir, '.eliza');
-  const elizaDbDir = path.join(elizaDir, 'db');
+  const elizaDbDir = path.join(elizaDir, 'projects', stringToUuid(process.cwd()), 'db');
   const envFilePath = path.join(elizaDir, '.env');
 
   return {
@@ -60,29 +60,35 @@ export function getElizaDirectories() {
 }
 
 /**
+ * Generic function to ensure a directory exists
+ * @param dirPath Path to the directory
+ */
+async function ensureDir(dirPath: string) {
+  if (!existsSync(dirPath)) {
+    await fs.mkdir(dirPath, { recursive: true });
+    logger.info(`Created directory: ${dirPath}`);
+  }
+}
+
+/**
+ * Generic function to ensure a file exists
+ * @param filePath Path to the file
+ */
+async function ensureFile(filePath: string) {
+  if (!existsSync(filePath)) {
+    await fs.writeFile(filePath, '', { encoding: 'utf8' });
+    logger.info(`Created file: ${filePath}`);
+  }
+}
+
+/**
  * Ensures the .eliza directory exists
  * @returns The eliza directories object
  */
 export async function ensureElizaDir() {
   const dirs = getElizaDirectories();
-
-  if (!existsSync(dirs.elizaDir)) {
-    await fs.mkdir(dirs.elizaDir, { recursive: true });
-    logger.info(`Created directory: ${dirs.elizaDir}`);
-  }
-
+  await ensureDir(dirs.elizaDir);
   return dirs;
-}
-
-/**
- * Ensures the .env file exists
- * @param envFilePath Path to the .env file
- */
-export async function ensureEnvFile(envFilePath: string) {
-  if (!existsSync(envFilePath)) {
-    await fs.writeFile(envFilePath, '', { encoding: 'utf8' });
-    logger.debug(`Created empty .env file at ${envFilePath}`);
-  }
 }
 
 /**
@@ -93,13 +99,10 @@ export async function ensureEnvFile(envFilePath: string) {
 export async function setupPgLite(elizaDbDir: string, envFilePath: string): Promise<void> {
   try {
     // Ensure the PGLite database directory exists
-    if (!existsSync(elizaDbDir)) {
-      await fs.mkdir(elizaDbDir, { recursive: true });
-      logger.info(`Created PGLite database directory: ${elizaDbDir}`);
-    }
+    await ensureDir(elizaDbDir);
 
     // Ensure .env file exists
-    await ensureEnvFile(envFilePath);
+    await ensureFile(envFilePath);
 
     // Store PGLITE_DATA_DIR in the environment file
     await fs.writeFile(envFilePath, `PGLITE_DATA_DIR=${elizaDbDir}\n`, { flag: 'a' });
@@ -124,7 +127,7 @@ export async function storePostgresUrl(url: string, envFilePath: string): Promis
 
   try {
     // Ensure .env file exists
-    await ensureEnvFile(envFilePath);
+    await ensureFile(envFilePath);
 
     // Store the URL in the .env file
     await fs.writeFile(envFilePath, `POSTGRES_URL=${url}\n`, { flag: 'a' });
@@ -181,7 +184,7 @@ export async function promptAndStorePostgresUrl(envFilePath: string): Promise<st
 export async function configureDatabaseSettings(reconfigure = false): Promise<string | null> {
   // Set up directories and env file
   const { elizaDbDir, envFilePath } = await ensureElizaDir();
-  await ensureEnvFile(envFilePath);
+  await ensureFile(envFilePath);
   await loadEnvironment(elizaDbDir);
 
   // Check if we already have database configuration in env
@@ -199,10 +202,7 @@ export async function configureDatabaseSettings(reconfigure = false): Promise<st
     logger.debug(`Using existing PGLite configuration: ${pgliteDataDir}`);
 
     // Ensure the directory exists
-    if (!existsSync(pgliteDataDir)) {
-      await fs.mkdir(pgliteDataDir, { recursive: true });
-      logger.info(`Created PGLite database directory: ${pgliteDataDir}`);
-    }
+    await ensureDir(pgliteDataDir);
 
     return null;
   }
@@ -334,13 +334,8 @@ export async function loadEnvironment(projectDir: string = process.cwd()): Promi
     return;
   }
 
-  // If neither exists, create the global .env
-  if (!existsSync(globalEnvDir)) {
-    await fs.mkdir(globalEnvDir, { recursive: true });
-  }
-
-  // Create an empty .env file
-  if (!existsSync(globalEnvPath)) {
-    await fs.writeFile(globalEnvPath, '# Global environment variables for Eliza\n');
-  }
+  // Ensure global env directory and file exist
+  await ensureDir(globalEnvDir);
+  await ensureFile(globalEnvPath);
+  await fs.writeFile(globalEnvPath, '# Global environment variables for Eliza\n', { encoding: 'utf8' })
 }
