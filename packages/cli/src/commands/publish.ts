@@ -1,19 +1,22 @@
-import { promises as fs, existsSync } from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { getGitHubCredentials } from '@/src/utils/github';
-import { handleError } from '@/src/utils/handle-error';
-import { publishToGitHub, testPublishToGitHub, testPublishToNpm } from '@/src/utils/publisher';
+import {
+  displayBanner,
+  getGitHubCredentials,
+  handleError,
+  publishToGitHub,
+  testPublishToGitHub,
+  testPublishToNpm,
+} from '@/src/utils';
 import {
   getRegistrySettings,
   initializeDataDir,
   saveRegistrySettings,
   validateDataDir,
 } from '@/src/utils/registry/index';
-import { logger } from '@elizaos/core';
-import { Octokit } from '@octokit/rest';
 import { Command } from 'commander';
 import { execa } from 'execa';
+import { existsSync, promises as fs } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import prompts from 'prompts';
 // Import performCliUpdate directly for updating CLI
 import { performCliUpdate } from './update-cli';
@@ -297,6 +300,9 @@ export const publish = new Command()
   )
   .option('-d, --dry-run', 'generate registry files locally without publishing', false)
   .option('-sr, --skip-registry', 'skip publishing to the registry', false)
+  .hook('preAction', async () => {
+    await displayBanner();
+  })
   .action(async (opts) => {
     try {
       const cwd = process.cwd();

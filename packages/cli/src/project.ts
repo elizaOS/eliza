@@ -1,18 +1,16 @@
-import * as fs from 'node:fs';
-import { resolve } from 'node:path';
-import path from 'node:path';
-import { logger } from '@elizaos/core';
 import type {
   AgentRuntime,
   Character,
   IAgentRuntime,
   Plugin,
   ProjectAgent,
-  Project as ProjectType,
   UUID,
 } from '@elizaos/core';
+import { logger } from '@elizaos/core';
+import * as fs from 'node:fs';
+import path from 'node:path';
 import { v4 as uuidv4 } from 'uuid';
-import { character as elizaCharacter } from './characters/eliza';
+import { character as elizaCharacter } from '@/src/characters/eliza';
 
 /**
  * Interface for a project module that can be loaded.
