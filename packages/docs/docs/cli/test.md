@@ -13,25 +13,18 @@ The `test` command allows you to run tests for your ElizaOS projects, plugins, a
 ## Usage
 
 ```bash
-npx @elizaos/cli test [options]
+npx @elizaos/cli@beta test [options]
 ```
 
 ## Options
 
 | Option                       | Description                                           |
 | ---------------------------- | ----------------------------------------------------- |
-| `-p, --port <port>`          | Port to listen on                                     |
-| `-pl, --plugin <name>`       | Name of plugin to test                                |
-| `-sp, --skip-plugins`        | Skip plugin tests                                     |
-| `-spt, --skip-project-tests` | Skip project tests                                    |
-| `-sb, --skip-build`          | Skip building before running tests                    |
-| `--verbose`                  | Show detailed test output                             |
-| `--json`                     | Output results in JSON format                         |
-| `--timeout`                  | Timeout in milliseconds for each test (default: 5000) |
-| `--fail-fast`                | Stop after first test failure                         |
-| `--no-compilation`           | Skip TypeScript compilation                           |
-| `--config`, `-c`             | Path to test configuration file                       |
-| `--config`, `-c`             | Path to test configuration file                       |
+| `-p, --port <port>`          | Port to listen on for the test server                 |
+| `-pl, --plugin <name>`       | Filter tests to run only for a specific plugin        |
+| `-sp, --skip-plugins`        | Skip running tests defined within plugins             |
+| `-spt, --skip-project-tests` | Skip running project-level tests                      |
+| `-sb, --skip-build`          | Skip building the project/plugin before running tests |
 
 ## Test Structure
 
@@ -84,30 +77,22 @@ Run all tests in the current project:
 cd my-agent-project
 
 # Run all tests
-npx @elizaos/cli test
+npx @elizaos/cli@beta test
 ```
 
 ### Running Specific Tests
 
-Target specific test suites or individual tests:
+Filter tests by plugin or skip certain test types:
 
 ```bash
-# Run a specific test suite
-npx @elizaos/cli test --suite plugin_test_suite
+# Run only tests for 'my-custom-plugin'
+npx @elizaos/cli@beta test -pl my-custom-plugin
 
-# Run a specific test
-npx @elizaos/cli test --suite plugin_test_suite --test example_test
+# Run project tests but skip all plugin tests
+npx @elizaos/cli@beta test -sp
 
-# Run tests from a specific file
-npx @elizaos/cli test --file src/tests/agent.test.ts
-```
-
-### Watch Mode
-
-Automatically rerun tests when files change:
-
-```bash
-npx @elizaos/cli test --watch
+# Run plugin tests but skip all project tests
+npx @elizaos/cli@beta test -spt
 ```
 
 ## Test Output
@@ -242,27 +227,14 @@ test('check_knowledge_retrieval', async (runtime) => {
 
 ```bash
 # Run all tests
-npx @elizaos/cli test
-
-# Run with detailed output
-npx @elizaos/cli test --verbose
-```
-
-### Testing During Development
-
-```bash
-# Watch for changes and automatically rerun tests
-npx @elizaos/cli test --watch
-
-# Focus on a specific test while debugging
-npx @elizaos/cli test --suite agent_suite --test message_handling --watch
+npx @elizaos/cli@beta test
 ```
 
 ### CI/CD Integration
 
 ```bash
 # Run tests in CI environment
-npx @elizaos/cli test --json > test-results.json
+npx @elizaos/cli@beta test
 ```
 
 ## Troubleshooting
@@ -273,10 +245,10 @@ If tests aren't being discovered:
 
 ```bash
 # Check test discovery with verbose logging
-npx @elizaos/cli test --verbose
+npx @elizaos/cli@beta test --dry-run --verbose
 
 # Try specifying the test file directly
-npx @elizaos/cli test --file src/tests/main.test.ts
+npx @elizaos/cli@beta test --file src/tests/main.test.ts
 ```
 
 ### Tests timing out
@@ -284,8 +256,7 @@ npx @elizaos/cli test --file src/tests/main.test.ts
 For long-running tests:
 
 ```bash
-# Increase test timeout
-npx @elizaos/cli test --timeout 10000
+# Increase test timeout (not applicable)
 ```
 
 ### TypeScript errors
@@ -294,10 +265,9 @@ If TypeScript compilation is failing:
 
 ```bash
 # Build the project first
-npx @elizaos/cli project build
+npx @elizaos/cli@beta project build
 
-# Then run tests without recompilation
-npx @elizaos/cli test --no-compilation
+# Then run tests without recompilation (not applicable)
 ```
 
 ## Related Commands
