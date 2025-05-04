@@ -51,8 +51,9 @@ teardown() {
 
   run $ELIZAOS_CMD agent --remote-url "http://localhost:3000" list
 
-  # Explicitly call teardown for immediate cleanup
-  teardown
   [ "$status" -eq 0 ]
   [[ "$output" == *"Ada"* ]]
+
+  # Explicitly call teardown for immediate cleanup
+  teardown
 }
