@@ -1,0 +1,194 @@
+---
+slug: twitter-agent-guide
+title: 'Setting Up Your Own Twitter Agent with ElizaOS'
+authors: [team]
+tags: [twitter, agent, elizaos, tutorial]
+image: /img/plugins.jpg
+---
+
+# Setting Up Your Own Twitter Agent with ElizaOS
+
+## Deploy a customized AI agent on Twitter
+
+ElizaOS enables the deployment of AI agents capable of automated posting and interaction on Twitter (X). This guide provides the steps to configure and run your own Twitter agent.
+
+{/* truncate */}
+
+## Getting Started with ElizaOS
+
+Follow these steps to set up your Twitter agent.
+
+### Step 1: Install the ElizaOS CLI
+
+First, install the ElizaOS Command Line Interface (CLI), which provides the necessary tools for interacting with the ElizaOS platform.
+
+Open your terminal and execute the following command:
+
+```bash
+npm install -g @elizaos/cli@beta
+```
+
+This command installs the ElizaOS CLI globally on your system.
+
+### Step 2: Create a New Project
+
+With the CLI installed, create a new project directory:
+
+```bash
+elizaos create
+```
+
+This command initiates an interactive setup wizard:
+
+- Enter a name for your project (e.g., "my-twitter-agent").
+- When prompted for a database, select "pglite" for simplified setup.
+- Follow the remaining prompts to configure the project.
+
+Alternatively, create the project non-interactively:
+
+```bash
+elizaos create my-twitter-agent
+```
+
+### Step 3: Configure Environment Variables
+
+Next, configure the agent's Twitter credentials and settings using environment variables.
+
+Open the ElizaOS environment configuration file in a text editor:
+
+```bash
+# Recommended: Use Cursor (https://cursor.sh)
+# Open Cursor, navigate to File > Open, and select the .env file:
+# - Windows: C:\Users\YOUR_USERNAME\.eliza\.env
+# - Mac/Linux: ~/.eliza/.env
+
+# Alternative editors:
+# Windows: notepad C:\Users\YOUR_USERNAME\.eliza\.env
+# Mac: open -a TextEdit ~/.eliza/.env
+# Linux: gedit ~/.eliza/.env
+```
+
+Add the following lines to the `.env` file, replacing placeholder values with your actual credentials and desired settings:
+
+```
+# Global environment variables for Eliza
+# Use an absolute path, as '~' might not be expanded by all tools
+PGLITE_DATA_DIR=/path/to/your/home/.eliza/db
+
+# OpenAI API Key (Optional, if using OpenAI features)
+OPENAI_API_KEY=your_openai_api_key_here
+
+# Twitter Configuration
+TWITTER_USERNAME=your_twitter_username
+TWITTER_PASSWORD=your_twitter_password
+TWITTER_EMAIL=your_twitter_email
+TWITTER_TARGET_USERS=user1,user2,user3  # Comma-separated list of users to interact with
+TWITTER_ENABLE_POST_GENERATION=true    # Set to false to disable automated posting
+TWITTER_POST_INTERVAL_MIN=1            # Minimum minutes between posts
+TWITTER_POST_INTERVAL_MAX=2            # Maximum minutes between posts
+```
+
+**Important:** Ensure you use the correct absolute path for `PGLITE_DATA_DIR`. Never commit your `.env` file containing real credentials to version control. Add `.env` to your `.gitignore` file to prevent accidental exposure.
+
+### Step 4: Start Your Project
+
+Navigate to your project directory in the terminal and start the agent:
+
+```bash
+# On Windows:
+# cd path\to\my-twitter-agent
+# elizaos start
+
+# On Mac/Linux:
+cd my-twitter-agent
+elizaos start
+```
+
+Your Twitter agent is now running and will operate based on the configured environment variables and character definition.
+
+## Customizing Your Twitter Agent's Personality
+
+You can customize the agent's behavior, including its communication style, content focus, and interaction rules.
+
+Open your project's `src/index.ts` file in a code editor. Locate the `character` definition:
+
+```typescript
+export const character: Character = {
+  name: 'Eliza', // Define the agent's name
+  plugins: [
+    // List of enabled plugins
+    '@elizaos/plugin-sql',
+    ...(process.env.OPENAI_API_KEY ? ['@elizaos/plugin-openai'] : []),
+    ...(process.env.TWITTER_USERNAME ? ['@elizaos/plugin-twitter'] : []),
+    // Add other plugins as needed
+  ],
+  settings: {
+    secrets: {}, // Placeholder for plugin-specific secrets
+  },
+  system:
+    'Define the core instructions for the agent's behavior on Twitter. Example: Be informative, share tech news, and answer AI-related questions.',
+  bio: [
+    'List personality traits or behavioral guidelines.',
+    'Each string represents a distinct characteristic.',
+    'Example: Focuses on AI developments.',
+    'Example: Maintains a neutral and professional tone.',
+    'Example: Includes links to sources in relevant posts.',
+    'Example: Avoids engaging in controversial topics.',
+  ],
+  // Additional configuration options may exist below
+};
+```
+
+Modify the following fields to tailor the agent's persona:
+
+1.  **`name`**: The agent's display name.
+2.  **`system`**: The primary prompt defining the agent's core function and behavior.
+3.  **`bio`**: A list of strings detailing specific personality traits, knowledge domains, or interaction rules.
+
+After modifying the `character` definition, save the file and restart the agent using the development mode for faster iteration:
+
+```bash
+elizaos dev
+```
+
+## Advanced Usage
+
+For more fine-grained control, consider adjusting the following:
+
+- **Post Scheduling**: Modify `TWITTER_POST_INTERVAL_MIN` and `TWITTER_POST_INTERVAL_MAX` in the `.env` file to control posting frequency.
+- **Topical Focus**: Refine the `system` prompt in `src/index.ts` to guide the agent towards specific subjects.
+- **Interaction Logic**: Update the `bio` list in `src/index.ts` to define how the agent responds and interacts.
+- **Targeted Interaction**: Change the `TWITTER_TARGET_USERS` list in the `.env` file to specify which accounts the agent should primarily interact with.
+
+### Advanced: Server Deployment with Twitter Cookies
+
+When deploying the agent to a server environment, standard username/password authentication might be insufficient due to Twitter's security measures. Using authentication cookies is often necessary.
+
+#### Obtaining Twitter Cookies for Server Deployment
+
+Follow these steps to extract the required cookies. Note that Twitter may flag logins from unfamiliar IP addresses, so performing these steps from an IP similar to your server's (e.g., via VPN) is recommended if possible.
+
+1.  **Log in** to Twitter via a web browser (Chrome, Firefox, Edge).
+2.  **Open Developer Tools** (usually F12).
+3.  Navigate to the **Network** tab.
+4.  **Refresh** the Twitter page (F5).
+5.  In the list of network requests, click on any request made to `twitter.com`.
+6.  Go to the **Cookies** tab within the request details.
+7.  Locate and copy the values for the following cookies:
+
+    - `auth_token`
+    - `ct0`
+    - `guest_id` (This might be under a different domain like `x.com` or `twitter.com` depending on browser/timing).
+
+8.  **Add the copied values** to your `.env` file:
+
+```
+# Twitter Cookies for Server Deployment
+TWITTER_COOKIES_AUTH_TOKEN=your_auth_token_here
+TWITTER_COOKIES_CT0=your_ct0_token_here
+TWITTER_COOKIES_GUEST_ID=your_guest_id_here
+```
+
+With these variables set, the agent running on your server should be able to authenticate using cookies.
+
+**Security Note:** Remember to store your `.env` file securely and never commit it to version control, especially when containing sensitive cookie data. Ensure `.env` is listed in your `.gitignore` file.
