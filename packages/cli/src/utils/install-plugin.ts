@@ -3,7 +3,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { loadPluginModule } from './load-plugin';
 import { executeInstallation } from './package-manager';
-import { getPluginVersion } from './registry';
 
 /**
  * Get the CLI's installation directory when running globally
@@ -121,47 +120,18 @@ export async function installPlugin(
   // Get installation context info
   const cliDir = getCliDirectory();
 
-  // Get the version string for installation
-  let versionString = '';
-
-  // If we have a version (tag or specific version)
-  if (versionSpecifier) {
-    // Basic check if it looks like a git commit hash (e.g., 7+ hex characters)
-    const looksLikeGitHash = /^[a-f0-9]{7,}$/i.test(versionSpecifier);
-
-    if (looksLikeGitHash) {
-      // If the input itself looks like a hash, use #
-      versionString = `#${versionSpecifier}`;
-    } else {
-      // Otherwise, assume it's an npm tag/version range and use @
-      // No need to call getPluginVersion here, just use the tag directly.
-      // The package manager will resolve the tag (@beta, @latest, @1.2.3)
-      versionString = `@${versionSpecifier}`;
-    }
-    logger.debug(`Using version string: ${versionString} for package manager.`);
-  }
-
-  // Determine installation options based on input
-  let installOptions = {
+  // Simplified installation options
+  const installOptions = {
     tryNpm: true,
-    tryGithub: true,
-    tryMonorepo: true,
+    // Only try GitHub for non-scoped packages without version
+    tryGithub: !packageName.startsWith('@') && !versionSpecifier,
+    // Only try monorepo for non-versioned packages
+    tryMonorepo: !versionSpecifier,
     monorepoBranch,
   };
 
-  // If installing a specific scoped package version/tag, prioritize npm ONLY
-  if (packageName.startsWith('@') && versionSpecifier) {
-    installOptions = {
-      ...installOptions, // Keep monorepoBranch if passed
-      tryNpm: true,
-      tryGithub: false,
-      tryMonorepo: false,
-    };
-    logger.info(`Prioritizing npm install for ${packageName}@${versionSpecifier}`);
-  }
-
   // Try installation in the current directory with determined approaches
-  if (await attemptInstallation(packageName, versionString, cwd, ':', installOptions)) {
+  if (await attemptInstallation(packageName, versionSpecifier || '', cwd, ':', installOptions)) {
     return true;
   }
 
@@ -170,7 +140,7 @@ export async function installPlugin(
     if (
       await attemptInstallation(
         packageName,
-        versionString,
+        versionSpecifier || '',
         cliDir,
         'in CLI directory',
         installOptions

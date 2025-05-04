@@ -8,7 +8,7 @@ import { logger } from '@elizaos/core';
 import { Command } from 'commander';
 import { execa } from 'execa';
 import { handleError } from '../utils/handle-error';
-import { isElizaMonorepoContext, getMonorepoRoot } from '../utils/monorepoUtils';
+import { isElizaMonorepoContext, getMonorepoRoot } from '../utils/monorepo-utils';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

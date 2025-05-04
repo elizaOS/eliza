@@ -92,7 +92,6 @@ export function agentRouter(
   });
 
   router.all('/:agentId/plugins/:pluginName/*', async (req, res, next) => {
-
     const agentId = req.params.agentId;
     if (!agentId) {
       logger.debug('[AGENT PLUGINS MIDDLEWARE] Params required');
@@ -107,13 +106,13 @@ export function agentRouter(
     }
 
     try {
-      let runtime = false
+      let runtime = false;
       if (validateUuid(agentId)) {
-        runtime = agents.get(agentId)
+        runtime = agents.get(agentId);
       }
       // if runtime is null, look for runtime with the same name
       if (!runtime) {
-        runtime = Array.from(agents.values()).find(r => r.character.name === agentId);
+        runtime = Array.from(agents.values()).find((r) => r.character.name === agentId);
       }
       if (!runtime) {
         logger.debug('[AGENT PLUGINS MIDDLEWARE] Agent not found');
@@ -129,32 +128,32 @@ export function agentRouter(
       // short circuit
       if (!runtime.plugins?.length) next();
 
-      let path = req.path.substr(1 + agentId.length + 9 + req.params.pluginName.length)
+      let path = req.path.substr(1 + agentId.length + 9 + req.params.pluginName.length);
 
       // Check each plugin
       for (const plugin of runtime.plugins) {
         if (!plugin.name) continue;
         if (plugin.routes && plugin.name === req.params.pluginName) {
-          for(const r of plugin.routes) {
+          for (const r of plugin.routes) {
             if (r.type === req.method) {
               // r.path can contain /*
               if (r.path.match(/\*/)) {
                 // hacky af
                 if (path.match(r.path.replace('*', ''))) {
-                  r.handler(req, res, runtime)
-                  return
+                  r.handler(req, res, runtime);
+                  return;
                 }
               } else {
                 if (path === r.path) {
-                  r.handler(req, res, runtime)
-                  return
+                  r.handler(req, res, runtime);
+                  return;
                 }
               }
             }
           }
         }
       }
-      next()
+      next();
     } catch (error) {
       logger.error('[AGENT PLUGINS MIDDLEWARE] Error agent middleware:', error);
       res.status(500).json({
@@ -166,8 +165,8 @@ export function agentRouter(
         },
       });
     }
-  })
-  
+  });
+
   // Get specific agent details
   router.get('/:agentId', async (req, res) => {
     const agentId = validateUuid(req.params.agentId);

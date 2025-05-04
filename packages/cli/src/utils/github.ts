@@ -1,9 +1,9 @@
 import { promises as fs } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { logger } from '@elizaos/core';
 import { existsSync } from 'node:fs';
 import { execa } from 'execa';
+import { UserEnvironment } from './user-environment';
 
 const GITHUB_API_URL = 'https://api.github.com';
 
@@ -533,145 +533,166 @@ export async function getAuthenticatedUser(token: string): Promise<GitHubUserRes
 }
 
 /**
- * Get GitHub credentials from env or prompt the user
+ * Retrieves GitHub credentials from the environment, registry, or user prompt.
+ *
+ * Attempts to obtain a valid GitHub username and personal access token by first checking environment variables, then a stored registry, and finally prompting the user if necessary. Validates the token before returning credentials.
+ *
+ * @returns An object containing the GitHub username and token if valid credentials are found or provided, otherwise `null`.
  */
 export async function getGitHubCredentials(): Promise<{
   username: string;
   token: string;
 } | null> {
-  try {
-    // Check for existing credentials in env
-    let token = process.env.GITHUB_TOKEN;
-    let username = process.env.GITHUB_USERNAME;
+  const envInfo = await UserEnvironment.getInstanceInfo();
 
-    // If not in process.env, try to load from .env file
-    if (!token) {
-      const { getGitHubToken } = await import('./registry');
-      token = (await getGitHubToken()) || undefined;
+  logger.debug('[GitHub] Checking for credentials');
+
+  // First check environment variables
+  const envUsername = envInfo.env.GITHUB_USERNAME;
+  const envToken = envInfo.env.GITHUB_TOKEN;
+
+  if (envUsername && envToken) {
+    // Validate the token
+    if (await validateGitHubToken(envToken)) {
+      return {
+        username: envUsername,
+        token: envToken,
+      };
     }
+    logger.warn('Invalid GitHub token found in environment variables');
+  }
 
-    // If we have a token, validate it and try to get username if missing
-    if (token) {
-      const isValid = await validateGitHubToken(token);
-      if (isValid) {
-        // If we don't have a username, try to get it from GitHub
-        if (!username) {
-          const userInfo = await getAuthenticatedUser(token);
-          if (userInfo) {
-            username = userInfo.login;
-            // Save the username to env
-            await saveGitHubCredentials(username, token);
-          }
-        }
+  // If not in process.env, try to load from .env file
+  const { getGitHubToken } = await import('./registry');
+  const token = (await getGitHubToken()) || undefined;
 
-        if (username) {
-          logger.info(`✓ Using GitHub credentials for ${username}`);
-          return { username, token };
-        }
-      } else {
-        logger.warn('Stored GitHub token is invalid, will prompt for new credentials');
+  // If we have a token, validate it and try to get username if missing
+  if (token) {
+    const isValid = await validateGitHubToken(token);
+    if (isValid) {
+      // If we don't have a username, try to get it from GitHub
+      const userInfo = await getAuthenticatedUser(token);
+      if (userInfo) {
+        const username = userInfo.login;
+        // Save the username to env
+        await saveGitHubCredentials(username, token);
+        return { username, token };
       }
+    } else {
+      logger.warn('Stored GitHub token is invalid, will prompt for new credentials');
     }
+  }
 
-    // No valid credentials found, prompt the user
-    const prompt = await import('prompts');
+  // No valid credentials found, prompt the user
+  const prompt = await import('prompts');
 
-    // First display the instructions separately
-    console.log('\n====== GitHub Authentication Required ======');
-    console.log('To create a GitHub Personal Access Token (Classic):');
-    console.log('1. Go to https://github.com/settings/tokens/new');
-    console.log('2. Give your token a descriptive name (e.g., "ElizaOS CLI")');
-    console.log('3. Select "No expiration" or any expiration date');
-    console.log('4. Select the following scopes (all are required):');
-    console.log('   - repo (Full control of private repositories)');
-    console.log('   - read:org (Read org and team membership, read org projects)');
-    console.log('   - workflow (Update GitHub Action workflows)');
-    console.log('5. Click "Generate token" at the bottom of the page');
-    console.log("6. Copy the displayed token (you won't be able to see it again!)");
-    console.log('');
-    console.log('\u001b[33mNOTE: You must use a Classic token, not a Fine-grained token\u001b[0m');
-    console.log('======================================\n');
+  // First display the instructions separately
+  console.log('\n====== GitHub Authentication Required ======');
+  console.log('To create a GitHub Personal Access Token (Classic):');
+  console.log('1. Go to https://github.com/settings/tokens/new');
+  console.log('2. Give your token a descriptive name (e.g., "ElizaOS CLI")');
+  console.log('3. Select "No expiration" or any expiration date');
+  console.log('4. Select the following scopes (all are required):');
+  console.log('   - repo (Full control of private repositories)');
+  console.log('   - read:org (Read org and team membership, read org projects)');
+  console.log('   - workflow (Update GitHub Action workflows)');
+  console.log('5. Click "Generate token" at the bottom of the page');
+  console.log("6. Copy the displayed token (you won't be able to see it again!)");
+  console.log('');
+  console.log('\u001b[33mNOTE: You must use a Classic token, not a Fine-grained token\u001b[0m');
+  console.log('======================================\n');
 
-    // Wait a moment to ensure output is flushed
-    await new Promise((resolve) => setTimeout(resolve, 100));
+  // Wait a moment to ensure output is flushed
+  await new Promise((resolve) => setTimeout(resolve, 100));
 
-    // Then prompt for the username with a simple message
-    const { promptedUsername } = await prompt.default({
-      type: 'text',
-      name: 'promptedUsername',
-      message: 'Enter your GitHub username:',
-      validate: (value) => (value ? true : 'Username is required'),
-    });
+  // Then prompt for the username with a simple message
+  const { promptedUsername } = await prompt.default({
+    type: 'text',
+    name: 'promptedUsername',
+    message: 'Enter your GitHub username:',
+    validate: (value) => (value ? true : 'Username is required'),
+  });
 
-    if (!promptedUsername) {
-      return null;
-    }
-
-    const { promptedToken } = await prompt.default({
-      type: 'password',
-      name: 'promptedToken',
-      message:
-        'Enter your GitHub Personal Access Token (with repo, read:org, and workflow scopes):',
-      validate: (value) => (value ? true : 'Token is required'),
-    });
-
-    if (!promptedToken) {
-      return null;
-    }
-
-    // Validate token
-    const isValid = await validateGitHubToken(promptedToken);
-    if (!isValid) {
-      logger.error('Invalid GitHub token');
-      return null;
-    }
-
-    // Save credentials
-    await saveGitHubCredentials(promptedUsername, promptedToken);
-    logger.success('GitHub credentials saved successfully');
-
-    return { username: promptedUsername, token: promptedToken };
-  } catch (error) {
-    logger.error(`Error handling GitHub credentials: ${error.message}`);
+  if (!promptedUsername) {
     return null;
   }
+
+  const { promptedToken } = await prompt.default({
+    type: 'password',
+    name: 'promptedToken',
+    message: 'Enter your GitHub Personal Access Token (with repo, read:org, and workflow scopes):',
+    validate: (value) => (value ? true : 'Token is required'),
+  });
+
+  if (!promptedToken) {
+    return null;
+  }
+
+  // Validate token
+  const isValid = await validateGitHubToken(promptedToken);
+  if (!isValid) {
+    logger.error('Invalid GitHub token');
+    return null;
+  }
+
+  // Save credentials
+  await saveGitHubCredentials(promptedUsername, promptedToken);
+  logger.success('GitHub credentials saved successfully');
+
+  return { username: promptedUsername, token: promptedToken };
 }
 
 /**
- * Save GitHub credentials to the .env file
+ * Saves the provided GitHub username and token to the `.env` file in the user's `.eliza` directory.
+ *
+ * Updates or adds the `GITHUB_USERNAME` and `GITHUB_TOKEN` entries in the file and sets them in the current process environment.
  */
-async function saveGitHubCredentials(username: string, token: string): Promise<void> {
-  try {
-    // Save username to process.env for immediate use
-    process.env.GITHUB_USERNAME = username;
-    process.env.GITHUB_TOKEN = token;
+export async function saveGitHubCredentials(username: string, token: string): Promise<void> {
+  const envInfo = await UserEnvironment.getInstanceInfo();
+  const { elizaDir, envFilePath } = envInfo.paths;
 
-    // Save to .env file using registry utility
-    const { setGitHubToken } = await import('./registry');
-    await setGitHubToken(token);
+  logger.debug('[GitHub] Saving credentials');
 
-    // Also save username to .env
-    const envFile = path.join(os.homedir(), '.eliza', '.env');
-
-    try {
-      let envContent = await fs.readFile(envFile, 'utf-8');
-
-      // Replace or add GITHUB_USERNAME
-      const usernameRegex = /^GITHUB_USERNAME=.*$/m;
-      if (usernameRegex.test(envContent)) {
-        envContent = envContent.replace(usernameRegex, `GITHUB_USERNAME=${username}`);
-      } else {
-        if (!envContent.endsWith('\n')) envContent += '\n';
-        envContent += `GITHUB_USERNAME=${username}\n`;
-      }
-
-      await fs.writeFile(envFile, envContent);
-    } catch (error) {
-      logger.debug(`Error updating username in .env: ${error.message}`);
-    }
-  } catch (error) {
-    logger.error(`Failed to save GitHub credentials: ${error.message}`);
+  // Ensure .eliza directory exists
+  if (!existsSync(elizaDir)) {
+    await fs.mkdir(elizaDir, { recursive: true });
   }
+
+  // Ensure .env file exists
+  if (!existsSync(envFilePath)) {
+    await fs.writeFile(envFilePath, '', { encoding: 'utf8' });
+  }
+
+  // Read current content
+  const currentContent = await fs.readFile(envFilePath, 'utf8');
+  const lines = currentContent.split('\n');
+
+  // Update or add GITHUB_USERNAME
+  const usernameLineIndex = lines.findIndex((line) => line.startsWith('GITHUB_USERNAME='));
+  const usernameLine = `GITHUB_USERNAME=${username}`;
+  if (usernameLineIndex >= 0) {
+    lines[usernameLineIndex] = usernameLine;
+  } else {
+    lines.push(usernameLine);
+  }
+
+  // Update or add GITHUB_TOKEN
+  const tokenLineIndex = lines.findIndex((line) => line.startsWith('GITHUB_TOKEN='));
+  const tokenLine = `GITHUB_TOKEN=${token}`;
+  if (tokenLineIndex >= 0) {
+    lines[tokenLineIndex] = tokenLine;
+  } else {
+    lines.push(tokenLine);
+  }
+
+  // Write back to file
+  await fs.writeFile(envFilePath, lines.join('\n'));
+
+  // Set in current process
+  process.env.GITHUB_USERNAME = username;
+  process.env.GITHUB_TOKEN = token;
+
+  logger.success('GitHub credentials saved');
 }
 
 /**
