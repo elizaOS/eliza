@@ -1,13 +1,10 @@
-import { handleError } from '@/src/utils/handle-error';
-import { logHeader } from '@/src/utils/helpers';
-import { installPlugin } from '@/src/utils/install-plugin';
+import { getVersion, handleError, installPlugin, logHeader } from '@/src/utils';
 import { getPluginRepository } from '@/src/utils/registry/index';
 import { logger } from '@elizaos/core';
 import { Command } from 'commander';
 import { execa } from 'execa';
 import fs from 'node:fs';
 import path from 'node:path';
-import { getVersion } from '../utils/displayBanner';
 
 // --- Helper Functions ---
 

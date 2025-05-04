@@ -1,5 +1,5 @@
-import { handleError } from '@/src/utils/handle-error';
-import { stringToUuid, logger } from '@elizaos/core';
+import { handleError, UserEnvironment } from '@/src/utils';
+import { stringToUuid } from '@elizaos/core';
 import { Command } from 'commander';
 import dotenv from 'dotenv';
 import { existsSync } from 'node:fs';
@@ -9,7 +9,6 @@ import path from 'node:path';
 import prompts from 'prompts';
 import { rimraf } from 'rimraf';
 import colors from 'yoctocolors';
-import { UserEnvironment } from '../utils/user-environment';
 
 // Path to store the custom env path setting in the config.json file
 const CONFIG_FILE = path.join(os.homedir(), '.eliza', 'config.json');

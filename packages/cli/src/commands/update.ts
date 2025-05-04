@@ -1,15 +1,12 @@
+import { buildProject, handleError, runBunCommand } from '@/src/utils';
+import { Command } from 'commander';
+import { execa } from 'execa';
 import { existsSync, readFileSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path, { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildProject } from '@/src/utils/build-project';
-import { handleError } from '@/src/utils/handle-error';
-import { runBunCommand } from '@/src/utils/run-bun';
-import { logger } from '@elizaos/core';
-import { Command } from 'commander';
 import prompts from 'prompts';
 import semver from 'semver';
-import { execa } from 'execa';
 
 // Function to get the package version
 function getVersion(): string {

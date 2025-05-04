@@ -1,24 +1,24 @@
+import type { AgentServer } from '@/src/server';
+import { upload } from '@/src/server/loader';
+import { convertToAudioBuffer } from '@/src/utils';
 import type { Agent, Character, Content, IAgentRuntime, Memory, UUID } from '@elizaos/core';
 import {
   ChannelType,
+  MemoryType,
   ModelType,
   composePrompt,
   composePromptFromState,
   createUniqueUuid,
+  encryptObjectValues,
+  encryptStringValue,
+  getSalt,
   logger,
   messageHandlerTemplate,
   validateUuid,
-  MemoryType,
-  encryptStringValue,
-  getSalt,
-  encryptObjectValues,
 } from '@elizaos/core';
 import express from 'express';
 import fs from 'node:fs';
 import { Readable } from 'node:stream';
-import type { AgentServer } from '..';
-import { upload } from '../loader';
-import { convertToAudioBuffer } from '@/src/utils/audioBuffer';
 
 /**
  * Interface representing a custom request object that extends the express.Request interface.

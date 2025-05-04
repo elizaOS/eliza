@@ -1,9 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { logger } from '@elizaos/core';
 import { Command } from 'commander';
 import { execa } from 'execa';
-import { handleError } from '@/src/utils/handle-error';
+import { handleError } from '@/src/utils';
 
 /**
  * Clone a repository from GitHub

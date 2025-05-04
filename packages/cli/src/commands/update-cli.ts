@@ -1,13 +1,13 @@
 import { logger } from '@elizaos/core';
 import { Command } from 'commander';
-import { getVersion, displayBanner } from '../utils/displayBanner';
+import { getVersion, displayBanner } from '@/src/utils';
 import { execa } from 'execa';
 import {
   isGlobalInstallation,
   isRunningViaNpx,
   isRunningViaBunx,
   executeInstallation,
-} from '../utils/package-manager';
+} from '@/src/utils';
 
 /**
  * Updates the CLI to the latest version based on the most recently published version
