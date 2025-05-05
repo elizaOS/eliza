@@ -54,6 +54,7 @@ export class DiscordService extends Service implements IDiscordService {
   character: Character;
   messageManager: MessageManager;
   voiceManager: VoiceManager;
+  private timeouts: NodeJS.Timeout[] = [];
 
   /**
    * Constructor for Discord client.
@@ -314,6 +315,13 @@ export class DiscordService extends Service implements IDiscordService {
    * @returns {Promise<void>}
    */
   async stop() {
+    // Cancel all pending timeouts to prevent calls after client destruction
+    for (const timeout of this.timeouts) {
+      clearTimeout(timeout);
+    }
+    this.timeouts = [];
+    
+    // Then destroy the client
     await this.client?.destroy();
   }
 
@@ -888,45 +896,53 @@ export class DiscordService extends Service implements IDiscordService {
       await this.voiceManager.scanGuild(fullGuild);
 
       // Send after a brief delay
-      setTimeout(async () => {
+      const timeoutId = setTimeout(async () => {
         // For each server the client is in, fire a connected event
-        const fullGuild = await guild.fetch();
-        logger.log('DISCORD SERVER CONNECTED', fullGuild.name);
+        try {
+          const fullGuild = await guild.fetch();
+          logger.log('DISCORD SERVER CONNECTED', fullGuild.name);
 
-        // Emit Discord-specific event with full guild object
-        this.runtime.emitEvent([DiscordEventTypes.WORLD_CONNECTED], {
-          runtime: this.runtime,
-          server: fullGuild,
-          source: 'discord',
-        });
+          // Emit Discord-specific event with full guild object
+          this.runtime.emitEvent([DiscordEventTypes.WORLD_CONNECTED], {
+            runtime: this.runtime,
+            server: fullGuild,
+            source: 'discord',
+          });
 
-        // Create platform-agnostic world data structure with simplified structure
-        const worldId = createUniqueUuid(this.runtime, fullGuild.id);
-        const ownerId = createUniqueUuid(this.runtime, fullGuild.ownerId);
+          // Create platform-agnostic world data structure with simplified structure
+          const worldId = createUniqueUuid(this.runtime, fullGuild.id);
+          const ownerId = createUniqueUuid(this.runtime, fullGuild.ownerId);
 
-        const standardizedData = {
-          name: fullGuild.name,
-          runtime: this.runtime,
-          rooms: await this.buildStandardizedRooms(fullGuild, worldId),
-          entities: await this.buildStandardizedUsers(fullGuild),
-          world: {
-            id: worldId,
+          const standardizedData = {
             name: fullGuild.name,
-            agentId: this.runtime.agentId,
-            serverId: fullGuild.id,
-            metadata: {
-              ownership: fullGuild.ownerId ? { ownerId } : undefined,
-              roles: {
-                [ownerId]: Role.OWNER,
+            runtime: this.runtime,
+            rooms: await this.buildStandardizedRooms(fullGuild, worldId),
+            entities: await this.buildStandardizedUsers(fullGuild),
+            world: {
+              id: worldId,
+              name: fullGuild.name,
+              agentId: this.runtime.agentId,
+              serverId: fullGuild.id,
+              metadata: {
+                ownership: fullGuild.ownerId ? { ownerId } : undefined,
+                roles: {
+                  [ownerId]: Role.OWNER,
+                },
               },
-            },
-          } as World,
-          source: 'discord',
-        };
+            } as World,
+            source: 'discord',
+          };
 
-        // Emit standardized event
-        this.runtime.emitEvent([EventType.WORLD_CONNECTED], standardizedData);
+          // Emit standardized event
+          this.runtime.emitEvent([EventType.WORLD_CONNECTED], standardizedData);
+        } catch (error) {
+          // Add error handling to prevent crashes if the client is already destroyed
+          logger.error('Error during Discord world connection:', error.message);
+        }
       }, 1000);
+      
+      // Store the timeout reference to be able to cancel it when stopping
+      this.timeouts.push(timeoutId);
     }
 
     this.client?.emit('voiceManagerReady');
