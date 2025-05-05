@@ -30,6 +30,17 @@ export function getVersion(): string {
   return version;
 }
 
+// --- Utility: Get install tag based on CLI version ---
+export function getCliInstallTag(): string {
+  const version = getVersion();
+  if (version.includes('-alpha')) {
+    return 'alpha';
+  } else if (version.includes('-beta')) {
+    return 'beta';
+  }
+  return ''; // Return empty string for stable or non-tagged versions (implies latest)
+}
+
 // --- Utility: Check if terminal supports UTF-8 ---
 export function isUtf8Locale() {
   for (const key of ['LC_ALL', 'LC_CTYPE', 'LANG', 'LANGUAGE']) {

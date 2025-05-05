@@ -342,7 +342,7 @@ export const create = new Command()
 
         await copyTemplateUtil('project', targetDir, projectName);
 
-        const { elizaDbDir, envFilePath } = getElizaDirectories();
+        const { elizaDbDir, envFilePath } = await getElizaDirectories();
         if (database === 'pglite') {
           await setupPgLite(process.env.PGLITE_DATA_DIR || elizaDbDir, envFilePath);
           console.debug(
