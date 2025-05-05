@@ -6,7 +6,7 @@ import {
   configureDatabaseSettings,
   displayBanner,
   findNextAvailablePort,
-  getVersion,
+  getCliInstallTag,
   handleError,
   installPlugin,
   loadConfig,
@@ -246,11 +246,8 @@ export async function startAgent(
 
   const encryptedChar = encryptedCharacter(character);
 
-  // Find package.json relative to the current file (__dirname is defined at top level)
-  const packageJsonPath = path.resolve(__dirname, '../../package.json');
-
-  // Add a simple check in case the path is incorrect
-  let version = getVersion();
+  // Determine the appropriate installation tag based on the CLI version
+  const installTag = getCliInstallTag();
 
   const loadedPluginsMap = new Map<string, Plugin>();
 
@@ -288,7 +285,7 @@ export async function startAgent(
 
     if (!loadedPluginsMap.has(pluginName)) {
       logger.debug(`Attempting to load plugin by name from character definition: ${pluginName}`);
-      const loadedPlugin = await loadAndPreparePlugin(pluginName, version);
+      const loadedPlugin = await loadAndPreparePlugin(pluginName, installTag);
       if (loadedPlugin) {
         characterPlugins.push(loadedPlugin);
         // Double-check name consistency and avoid duplicates
@@ -459,7 +456,7 @@ const startAgents = async (options: {
   const pgliteDataDir = process.env.PGLITE_DATA_DIR;
 
   // Load existing configuration
-  const existingConfig = loadConfig();
+  const existingConfig = await loadConfig();
 
   // Check if we should reconfigure based on command-line option or if using default config
   const shouldConfigure = options.configure || existingConfig.isDefault;

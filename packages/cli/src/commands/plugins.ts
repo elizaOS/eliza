@@ -1,4 +1,10 @@
-import { displayBanner, getVersion, handleError, installPlugin, logHeader } from '@/src/utils';
+import {
+  displayBanner,
+  getCliInstallTag,
+  handleError,
+  installPlugin,
+  logHeader,
+} from '@/src/utils';
 import { getPluginRepository } from '@/src/utils/registry/index';
 import { logger } from '@elizaos/core';
 import { Command } from 'commander';
@@ -187,13 +193,8 @@ plugins
         process.exit(0);
       }
 
-      const cliVersion = getVersion();
-      let versionTag = '@latest';
-      if (cliVersion.includes('alpha')) {
-        versionTag = '@alpha';
-      } else if (cliVersion.includes('beta')) {
-        versionTag = '@beta';
-      }
+      const tag = getCliInstallTag();
+      const versionTag = tag ? `@${tag}` : '@latest';
 
       const normalizedPluginName = normalizePluginNameForDisplay(plugin);
       const npmPackageName = `@elizaos/${normalizedPluginName}`;
@@ -201,7 +202,7 @@ plugins
 
       console.info(`Attempting to install ${npmPackageNameWithTag} from npm registry...`);
 
-      let success = await installPlugin(npmPackageName, cwd, versionTag.substring(1), opts.branch);
+      let success = await installPlugin(npmPackageName, cwd, tag, opts.branch);
 
       if (success) {
         console.log(`Successfully installed ${npmPackageNameWithTag}`);
