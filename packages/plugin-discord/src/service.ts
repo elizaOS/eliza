@@ -937,7 +937,7 @@ export class DiscordService extends Service implements IDiscordService {
           this.runtime.emitEvent([EventType.WORLD_CONNECTED], standardizedData);
         } catch (error) {
           // Add error handling to prevent crashes if the client is already destroyed
-          logger.error('Error during Discord world connection:', error.message);
+          logger.error('Error during Discord world connection:', error);
         }
       }, 1000);
       
