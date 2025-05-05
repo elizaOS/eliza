@@ -30,6 +30,17 @@ export function getVersion(): string {
   return version;
 }
 
+// --- Utility: Get install tag based on CLI version ---
+export function getCliInstallTag(): string {
+  const version = getVersion();
+  if (version.includes('-alpha')) {
+    return 'alpha';
+  } else if (version.includes('-beta')) {
+    return 'beta';
+  }
+  return ''; // Return empty string for stable or non-tagged versions (implies latest)
+}
+
 // --- Utility: Check if terminal supports UTF-8 ---
 export function isUtf8Locale() {
   for (const key of ['LC_ALL', 'LC_CTYPE', 'LANG', 'LANGUAGE']) {
@@ -42,18 +53,34 @@ export function isUtf8Locale() {
 }
 // --- Utility: Check for latest CLI version and notify user ---
 async function checkForCliUpdate(currentVersion: string) {
-  const distTag = currentVersion.includes('beta') ? 'beta' : 'latest';
-
   try {
-    const { stdout } = await execa('npm', ['view', `@elizaos/cli@${distTag}`, 'version']);
+    // Get the time data for all published versions to find the most recent
+    const { stdout } = await execa('npm', ['view', '@elizaos/cli', 'time', '--json']);
+    const timeData = JSON.parse(stdout);
 
-    const latestVersion = stdout.trim();
-    if (!latestVersion || latestVersion === currentVersion) return; // already current
+    // Remove metadata entries like 'created' and 'modified'
+    delete timeData.created;
+    delete timeData.modified;
+
+    // Find the most recently published version
+    let latestVersion = '';
+    let latestDate = new Date(0); // Start with epoch time
+
+    for (const [version, dateString] of Object.entries(timeData)) {
+      const publishDate = new Date(dateString as string);
+      if (publishDate > latestDate) {
+        latestDate = publishDate;
+        latestVersion = version;
+      }
+    }
+
+    // If already at the latest version or couldn't determine latest, exit
+    if (!latestVersion || latestVersion === currentVersion) return;
 
     console.log(
       `\x1b[33m\nA new version of elizaOS CLI is available: ${latestVersion} (current: ${currentVersion})\x1b[0m`
     );
-    console.log(`\x1b[32mUpdate with: npm i -g @elizaos/cli@${distTag}\x1b[0m\n`);
+    console.log(`\x1b[32mUpdate with: npx @elizaos/cli@beta update\x1b[0m\n`);
   } catch {
     /* silent: update check failure must not block banner */
   }
@@ -139,5 +166,9 @@ ${b}⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⢾⡃⠀⠀${w}
   }
 
   // Notify user if a new CLI version is available
-  await checkForCliUpdate(version);
+  try {
+    await checkForCliUpdate(version);
+  } catch (error) {
+    // Silently continue if update check fails
+  }
 }

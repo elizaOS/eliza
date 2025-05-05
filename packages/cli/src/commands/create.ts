@@ -1,19 +1,20 @@
-import { buildProject } from '@/src/utils/build-project';
-import { copyTemplate as copyTemplateUtil } from '@/src/utils/copy-template';
-import { checkServer, handleError } from '@/src/utils/handle-error';
-import { runBunCommand } from '@/src/utils/run-bun';
-import { logger } from '@elizaos/core';
+import {
+  buildProject,
+  copyTemplate as copyTemplateUtil,
+  displayBanner,
+  getElizaDirectories,
+  handleError,
+  promptAndStorePostgresUrl,
+  runBunCommand,
+  setupPgLite,
+} from '@/src/utils';
 import { Command } from 'commander';
-import { execa } from 'execa';
 import { existsSync, readFileSync } from 'node:fs';
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import prompts from 'prompts';
 import colors from 'yoctocolors';
 import { z } from 'zod';
-import { displayBanner } from '../utils/displayBanner';
-import { setupPgLite, promptAndStorePostgresUrl, getElizaDirectories } from '../utils/get-config';
 
 /**
  * This module handles creating both projects and plugins.
@@ -107,7 +108,8 @@ export const create = new Command()
     // Convert to a proper boolean (if not already)
     opts.yes = opts.yes === true || opts.yes === 'true';
 
-    displayBanner();
+    // Display banner and continue with initialization
+    await displayBanner();
 
     try {
       // Parse options but use "" as the default for type to force prompting
@@ -340,7 +342,7 @@ export const create = new Command()
 
         await copyTemplateUtil('project', targetDir, projectName);
 
-        const { elizaDbDir, envFilePath } = getElizaDirectories();
+        const { elizaDbDir, envFilePath } = await getElizaDirectories();
         if (database === 'pglite') {
           await setupPgLite(process.env.PGLITE_DATA_DIR || elizaDbDir, envFilePath);
           console.debug(

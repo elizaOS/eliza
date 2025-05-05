@@ -92,13 +92,13 @@ There are several ways to add plugins to your ElizaOS project:
   <TabItem value="cli" label="Via CLI Commands">
     ```bash
     # Add a plugin
-    npx @elizaos/cli plugins add @elizaos/plugin-twitter
+    npx @elizaos/cli@beta plugins add @elizaos/plugin-twitter
 
     # Remove a plugin
-    npx @elizaos/cli plugins remove @elizaos/plugin-twitter
+    npx @elizaos/cli@beta plugins remove @elizaos/plugin-twitter
 
     # List available plugins
-    npx @elizaos/cli plugins list
+    npx @elizaos/cli@beta plugins list
     ```
 
   </TabItem>
@@ -164,7 +164,7 @@ npm run build
 
     ```bash
     # Publish to GitHub
-    npx @elizaos/cli publish
+    npx @elizaos/cli@beta publish
     ```
 
     This will:
@@ -183,7 +183,7 @@ npm run build
 
     ```bash
     # Publish to npm
-    npx @elizaos/cli publish --npm
+    npx @elizaos/cli@beta publish --npm
     ```
 
     This allows users to install your plugin using standard npm commands:
@@ -206,7 +206,7 @@ npm run build
 
     ```bash
     # Test the publish process
-    npx @elizaos/cli publish --test
+    npx @elizaos/cli@beta publish --test
     ```
 
     This runs through all the packaging and validation steps without actually publishing anything.
@@ -226,19 +226,19 @@ npm run build
 
     ```bash
     # Specify platform compatibility
-    npx @elizaos/cli publish --platform node
+    npx @elizaos/cli@beta publish --platform node
 
     # Set custom version number
-    npx @elizaos/cli publish --version 1.2.3
+    npx @elizaos/cli@beta publish --version 1.2.3
 
     # Provide a custom registry URL
-    npx @elizaos/cli publish --registry https://custom-registry.com
+    npx @elizaos/cli@beta publish --registry https://custom-registry.com
 
     # Publish with public access
-    npx @elizaos/cli publish --access public
+    npx @elizaos/cli@beta publish --access public
     ```
 
-    These options give you fine-grained control over how and where your plugin is published. Refer to `npx @elizaos/cli publish --help` for a complete list of options.
+    These options give you fine-grained control over how and where your plugin is published. Refer to `npx @elizaos/cli@beta publish --help` for a complete list of options.
 
   </TabItem>
 </Tabs>
@@ -586,10 +586,10 @@ During development, you can test your plugin locally:
 
 ```bash
 # Start with your plugin
-npx @elizaos/cli start --plugins=./path/to/plugin
+npx @elizaos/cli@beta start --plugins=./path/to/plugin
 
 # Or with a specific character
-npx @elizaos/cli start --character=./characters/test.character.json --plugins=./path/to/plugin
+npx @elizaos/cli@beta start --character=./characters/test.character.json --plugins=./path/to/plugin
 ```
 
 ### Distribution & PR Requirements
@@ -628,7 +628,7 @@ Plugin dependencies are managed through your project's `package.json`. You can a
 Yes, you can use the `--plugins` flag with the `start` command to include local plugins during development:
 
 ```bash
-npx @elizaos/cli start --plugins=./path/to/plugin
+npx @elizaos/cli@beta start --plugins=./path/to/plugin
 ```
 
 ### What's the difference between Actions and Services?

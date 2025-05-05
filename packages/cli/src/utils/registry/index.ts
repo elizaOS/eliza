@@ -1,12 +1,11 @@
-import { promises as fs, existsSync } from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import { getLocalPackages, isMonorepoContext } from '@/src/utils/get-package-info';
+import { getGitHubCredentials, getLocalPackages, isMonorepoContext } from '@/src/utils';
 import { logger } from '@elizaos/core';
 import dotenv from 'dotenv';
 import { execa } from 'execa';
 import { HttpsProxyAgent } from 'https-proxy-agent';
-import { getGitHubCredentials } from '../github';
+import { existsSync, promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { REGISTRY_URL } from './constants';
 
 const ELIZA_DIR = path.join(os.homedir(), '.eliza');

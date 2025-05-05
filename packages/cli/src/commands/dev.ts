@@ -1,14 +1,11 @@
-import { spawn } from 'node:child_process';
+import { buildProject, getMonorepoRoot, handleError, isElizaMonorepoContext } from '@/src/utils';
+import { Command } from 'commander';
+import { execa } from 'execa';
 import type { ChildProcess } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildProject } from '@/src/utils/build-project';
-import { logger } from '@elizaos/core';
-import { Command } from 'commander';
-import { execa } from 'execa';
-import { handleError } from '../utils/handle-error';
-import { isElizaMonorepoContext, getMonorepoRoot } from '../utils/monorepoUtils';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -351,12 +348,12 @@ export const dev = new Command()
                 },
                 {
                   name: 'client',
-                  path: path.join(monorepoRoot, 'packages', 'client'),
+                  path: path.join(await monorepoRoot, 'packages', 'client'),
                   isPlugin: false,
                 },
                 {
                   name: 'plugin-bootstrap',
-                  path: path.join(monorepoRoot, 'packages', 'plugin-bootstrap'),
+                  path: path.join(await monorepoRoot, 'packages', 'plugin-bootstrap'),
                   isPlugin: true,
                 },
               ];
