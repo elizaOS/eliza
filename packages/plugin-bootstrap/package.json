@@ -26,7 +26,7 @@
     "tsup.config.ts"
   ],
   "dependencies": {
-    "@elizaos/core": "^1.0.0-beta.41"
+    "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "22.8.4",

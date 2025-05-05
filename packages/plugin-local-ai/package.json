@@ -22,7 +22,7 @@
     "dist"
   ],
   "dependencies": {
-    "@elizaos/core": "^1.0.0-beta.41",
+    "@elizaos/core": "workspace:*",
     "@huggingface/hub": "^1.0.1",
     "@huggingface/inference": "^3.3.4",
     "@huggingface/transformers": "^3.3.3",

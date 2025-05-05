@@ -18,7 +18,7 @@
     "url": "https://twitter.com/eliza_OS"
   },
   "dependencies": {
-    "@elizaos/cli": "^1.0.0-beta.41"
+    "@elizaos/cli": "workspace:*"
   },
   "repository": {
     "type": "git",

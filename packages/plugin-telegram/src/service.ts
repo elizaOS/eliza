@@ -1,11 +1,15 @@
 import {
   ChannelType,
+  type Content,
   type Entity,
   EventType,
+  type HandlerCallback,
   type IAgentRuntime,
+  type Memory,
   Role,
   type Room,
   Service,
+  type TargetInfo,
   type UUID,
   type World,
   WorldPayload,
@@ -875,6 +879,68 @@ export class TelegramService extends Service {
         `Error building forum topic room: ${error instanceof Error ? error.message : String(error)}`
       );
       return null;
+    }
+  }
+
+  static registerSendHandlers(runtime: IAgentRuntime, serviceInstance: TelegramService) {
+    if (serviceInstance) {
+      runtime.registerSendHandler(
+        'telegram',
+        serviceInstance.handleSendMessage.bind(serviceInstance)
+      );
+      logger.info('[Telegram] Registered send handler.');
+    }
+  }
+
+  async handleSendMessage(
+    runtime: IAgentRuntime,
+    target: TargetInfo,
+    content: Content
+  ): Promise<void> {
+    let chatId: number | string | undefined;
+
+    // Determine the target chat ID
+    if (target.channelId) {
+      // Use channelId directly if provided (might be string like chat_id-thread_id or just chat_id)
+      // We might need to parse this depending on how room IDs are stored vs Telegram IDs
+      chatId = target.channelId;
+    } else if (target.roomId) {
+      // Fallback: Try to use roomId if channelId isn't available
+      // This assumes roomId maps directly to Telegram chat ID or requires lookup
+      // Placeholder - requires logic to map roomId -> telegram chat ID if different
+      const room = await runtime.getRoom(target.roomId);
+      chatId = room?.channelId; // Assuming channelId on Room IS the telegram ID
+      if (!chatId)
+        throw new Error(`Could not resolve Telegram chat ID from roomId ${target.roomId}`);
+    } else if (target.entityId) {
+      // TODO: Need robust way to map entityId (runtime UUID) to Telegram User ID (number)
+      // This might involve checking entity metadata.
+      // For now, this part is non-functional without that mapping.
+      logger.error('[Telegram SendHandler] Sending DMs via entityId not implemented yet.');
+      throw new Error('Sending DMs via entityId is not yet supported for Telegram.');
+      // Example placeholder: const telegramUserId = await getTelegramIdFromEntity(runtime, target.entityId);
+      // chatId = telegramUserId;
+    } else {
+      throw new Error('Telegram SendHandler requires channelId, roomId, or entityId.');
+    }
+
+    if (!chatId) {
+      throw new Error(
+        `Could not determine target Telegram chat ID for target: ${JSON.stringify(target)}`
+      );
+    }
+
+    try {
+      // Use existing MessageManager method, pass chatId and content
+      // Assuming sendMessage handles splitting, markdown, etc.
+      await this.messageManager.sendMessage(chatId, content);
+      logger.info(`[Telegram SendHandler] Message sent to chat ID: ${chatId}`);
+    } catch (error) {
+      logger.error(`[Telegram SendHandler] Error sending message: ${error.message}`, {
+        target,
+        content,
+      });
+      throw error;
     }
   }
 }

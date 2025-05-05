@@ -5,7 +5,12 @@ import { decryptSecret, getSalt, safeReplacer } from './index';
 import { InstrumentationService } from './instrumentation/service';
 import logger from './logger';
 import { splitChunks } from './prompts';
-import { ChannelType, MemoryType, ModelType } from './types';
+import {
+  ChannelType,
+  MemoryType,
+  ModelType,
+  type Content, // Add Content import
+} from './types';
 
 import { BM25 } from './bm25';
 import type {
@@ -39,6 +44,8 @@ import type {
   TaskWorker,
   UUID,
   World,
+  TargetInfo, // Import new type
+  SendHandlerFunction, // Import new type
 } from './types';
 import { EventType, type MessagePayload } from './types';
 import { stringToUuid } from './uuid';
@@ -118,6 +125,7 @@ export class AgentRuntime implements IAgentRuntime {
   routes: Route[] = [];
 
   private taskWorkers = new Map<string, TaskWorker>();
+  private sendHandlers = new Map<string, SendHandlerFunction>(); // Add map for send handlers
 
   // Event emitter methods
   private eventHandlers: Map<string, ((data: any) => void)[]> = new Map();
@@ -569,21 +577,15 @@ export class AgentRuntime implements IAgentRuntime {
       // Create group for the agent and register all plugins in parallel
       try {
         span.addEvent('creating_group_and_registering_plugins');
-        await Promise.all([
-          this.ensureRoomExists({
-            id: this.agentId,
-            name: this.character.name,
-            source: 'self',
-            type: ChannelType.SELF,
-          }),
-          ...pluginRegistrationPromises,
-        ]);
+        await Promise.all([...pluginRegistrationPromises]);
         span.addEvent('room_created_and_plugins_registered');
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
         span.recordException(error as Error);
         span.setStatus({ code: SpanStatusCode.ERROR, message: errorMsg });
         this.runtimeLogger.error(`Failed to initialize: ${errorMsg}`);
+        console.trace(error);
+
         throw error;
       }
 
@@ -1522,6 +1524,7 @@ export class AgentRuntime implements IAgentRuntime {
    */
   async ensureRoomExists({ id, name, source, type, channelId, serverId, worldId, metadata }: Room) {
     const room = await this.adapter.getRoom(id);
+    if (!worldId) throw new Error('worldId is required');
     if (!room) {
       await this.adapter.createRoom({
         id,
@@ -1784,6 +1787,13 @@ export class AgentRuntime implements IAgentRuntime {
 
         // Add the service to the services map
         this.services.set(serviceType, serviceInstance);
+
+        // --- NEW: Check for and call static send handler registration ---
+        if (typeof (service as any).registerSendHandlers === 'function') {
+          (service as any).registerSendHandlers(this, serviceInstance);
+        }
+        // --- END NEW ---
+
         span.addEvent('service_registered');
         this.runtimeLogger.debug(
           `${this.character.name}(${this.agentId}) - Service ${serviceType} registered successfully`
@@ -2365,6 +2375,7 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async createRoom({ id, name, source, type, channelId, serverId, worldId }: Room): Promise<UUID> {
+    if (!worldId) throw new Error('worldId is required');
     return await this.adapter.createRoom({
       id,
       name,
@@ -2451,7 +2462,7 @@ export class AgentRuntime implements IAgentRuntime {
     return await this.adapter.createTask(task);
   }
 
-  async getTasks(params: { roomId?: UUID; tags?: string[] }): Promise<Task[]> {
+  async getTasks(params: { roomId?: UUID; tags?: string[]; entityId?: UUID }): Promise<Task[]> {
     return await this.adapter.getTasks(params);
   }
 
@@ -2536,5 +2547,64 @@ export class AgentRuntime implements IAgentRuntime {
     } catch (error) {
       this.runtimeLogger.error(`Error sending control message: ${error}`);
     }
+  }
+
+  /**
+   * Registers a handler function for sending messages to a specific source.
+   * @param source - The unique identifier for the source.
+   * @param handler - The SendHandlerFunction to register.
+   */
+  registerSendHandler(source: string, handler: SendHandlerFunction): void {
+    if (this.sendHandlers.has(source)) {
+      this.runtimeLogger.warn(
+        `Send handler for source '${source}' already registered. Overwriting.`
+      );
+    }
+    this.sendHandlers.set(source, handler);
+    this.runtimeLogger.info(`Registered send handler for source: ${source}`);
+  }
+
+  /**
+   * Sends a message to a target using the registered handler for the target's source.
+   * @param target - Information about the message target.
+   * @param content - The message content.
+   */
+  async sendMessageToTarget(target: TargetInfo, content: Content): Promise<void> {
+    return this.startSpan('AgentRuntime.sendMessageToTarget', async (span) => {
+      span.setAttributes({
+        'message.target.source': target.source,
+        'message.target.roomId': target.roomId,
+        'message.target.channelId': target.channelId,
+        'message.target.serverId': target.serverId,
+        'message.target.entityId': target.entityId,
+        'message.target.threadId': target.threadId,
+        'agent.id': this.agentId,
+      });
+
+      const handler = this.sendHandlers.get(target.source);
+      if (!handler) {
+        const errorMsg = `No send handler registered for source: ${target.source}`;
+        span.setStatus({ code: SpanStatusCode.ERROR, message: errorMsg });
+        this.runtimeLogger.error(errorMsg);
+        // Optionally throw or just log the error
+        throw new Error(errorMsg);
+      }
+
+      try {
+        span.addEvent('executing_send_handler');
+        await handler(this, target, content);
+        span.addEvent('send_handler_executed');
+        span.setStatus({ code: SpanStatusCode.OK });
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        span.recordException(error as Error);
+        span.setStatus({ code: SpanStatusCode.ERROR, message: errorMsg });
+        this.runtimeLogger.error(
+          `Error executing send handler for source ${target.source}:`,
+          error
+        );
+        throw error; // Re-throw error after logging and tracing
+      }
+    });
   }
 }

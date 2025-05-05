@@ -1,6 +1,7 @@
 import {
   ChannelType,
   type Character,
+  type Content,
   type Entity,
   EventType,
   type HandlerCallback,
@@ -8,6 +9,7 @@ import {
   type Memory,
   Role,
   Service,
+  type TargetInfo,
   type UUID,
   type World,
   createUniqueUuid,
@@ -101,10 +103,113 @@ export class DiscordService extends Service implements IDiscordService {
       });
 
       this.setupEventListeners();
+      this.registerSendHandler(); // Register handler during construction
     } catch (error) {
       logger.error(`Error initializing Discord client: ${error.message}`);
       this.client = null;
     }
+  }
+
+  /**
+   * Registers the send handler with the runtime.
+   */
+  private registerSendHandler(): void {
+    if (this.runtime) {
+      this.runtime.registerSendHandler('discord', this.handleSendMessage.bind(this));
+    }
+  }
+
+  /**
+   * The SendHandlerFunction implementation for Discord.
+   */
+  async handleSendMessage(
+    runtime: IAgentRuntime,
+    target: TargetInfo,
+    content: Content
+  ): Promise<void> {
+    if (!this.client?.isReady()) {
+      logger.error('[Discord SendHandler] Client not ready.');
+      throw new Error('Discord client is not ready.');
+    }
+
+    let targetChannel: Channel | undefined | null = null;
+
+    try {
+      // Determine target based on provided info
+      if (target.channelId) {
+        targetChannel = await this.client.channels.fetch(target.channelId);
+      } else if (target.entityId) {
+        // Attempt to convert runtime UUID to Discord snowflake ID
+        // NOTE: This assumes a mapping exists or the UUID *is* the snowflake ID
+        const discordUserId = target.entityId as string; // May need more robust conversion
+        const user = await this.client.users.fetch(discordUserId);
+        if (user) {
+          targetChannel = (await user.dmChannel) ?? (await user.createDM());
+        }
+      } else {
+        throw new Error('Discord SendHandler requires channelId or entityId.');
+      }
+
+      if (!targetChannel) {
+        throw new Error(
+          `Could not find target Discord channel/DM for target: ${JSON.stringify(target)}`
+        );
+      }
+
+      // Type guard to ensure the channel is text-based
+      if (targetChannel.isTextBased() && !targetChannel.isVoiceBased()) {
+        // Further check if it's a channel where bots can send messages
+        if ('send' in targetChannel && typeof targetChannel.send === 'function') {
+          if (content.text) {
+            // Split message if longer than Discord limit (2000 chars)
+            const chunks = this.splitMessage(content.text, 2000);
+            for (const chunk of chunks) {
+              await targetChannel.send(chunk);
+            }
+          } else {
+            logger.warn('[Discord SendHandler] No text content provided to send.');
+          }
+          // TODO: Add attachment handling here if necessary
+        } else {
+          throw new Error(`Target channel ${targetChannel.id} does not have a send method.`);
+        }
+      } else {
+        throw new Error(
+          `Target channel ${targetChannel.id} is not a valid text-based channel for sending messages.`
+        );
+      }
+    } catch (error) {
+      logger.error(`[Discord SendHandler] Error sending message: ${error.message}`, {
+        target,
+        content,
+      });
+      throw error;
+    }
+  }
+
+  // Helper to split messages
+  private splitMessage(text: string, maxLength: number): string[] {
+    const chunks: string[] = [];
+    let currentChunk = '';
+    const lines = text.split('\n');
+    for (const line of lines) {
+      if (currentChunk.length + line.length + 1 <= maxLength) {
+        currentChunk += (currentChunk ? '\n' : '') + line;
+      } else {
+        if (currentChunk) chunks.push(currentChunk);
+        // Handle lines longer than the max length (split them)
+        if (line.length > maxLength) {
+          for (let i = 0; i < line.length; i += maxLength) {
+            chunks.push(line.substring(i, i + maxLength));
+          }
+          currentChunk = ''; // Reset chunk after splitting long line
+        } else {
+          currentChunk = line;
+        }
+      }
+    }
+    if (currentChunk) chunks.push(currentChunk);
+    return chunks;
   }
 
   /**
@@ -930,6 +1035,17 @@ export class DiscordService extends Service implements IDiscordService {
     }
 
     this.client?.emit('voiceManagerReady');
+  }
+
+  // Add this static method to be called after service start
+  static registerSendHandlers(runtime: IAgentRuntime, serviceInstance: DiscordService) {
+    if (serviceInstance) {
+      runtime.registerSendHandler(
+        'discord',
+        serviceInstance.handleSendMessage.bind(serviceInstance)
+      );
+      logger.info('[Discord] Registered send handler.');
+    }
   }
 }
 

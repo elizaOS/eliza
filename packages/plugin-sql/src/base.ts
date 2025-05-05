@@ -1812,6 +1812,8 @@ export abstract class BaseDrizzleAdapter<
     worldId,
     metadata,
   }: Room): Promise<UUID> {
+    if (!worldId) throw new Error('worldId is required');
+
     return this.withDatabase(async () => {
       const newRoomId = id || v4();
       await this.db
@@ -2380,6 +2382,9 @@ export abstract class BaseDrizzleAdapter<
    * @returns {Promise<UUID>} A Promise that resolves to the ID of the created task.
    */
   async createTask(task: Task): Promise<UUID> {
+    if (!task.worldId) {
+      throw new Error('worldId is required');
+    }
     return this.withRetry(async () => {
       return this.withDatabase(async () => {
         const now = new Date();
@@ -2409,25 +2414,40 @@ export abstract class BaseDrizzleAdapter<
 
   /**
    * Asynchronously retrieves tasks based on specified parameters.
-   * @param params Object containing optional roomId and tags to filter tasks
+   * @param params Object containing optional roomId, tags, and entityId to filter tasks
    * @returns Promise resolving to an array of Task objects
    */
-  async getTasks(params: { roomId?: UUID; tags?: string[] }): Promise<Task[]> {
+  async getTasks(params: {
+    roomId?: UUID;
+    tags?: string[];
+    entityId?: UUID; // Added entityId parameter
+  }): Promise<Task[]> {
     return this.withRetry(async () => {
       return this.withDatabase(async () => {
-        let query = this.db.select().from(taskTable).where(eq(taskTable.agentId, this.agentId));
+        // Start with the mandatory agentId filter
+        const conditions = [eq(taskTable.agentId, this.agentId)];
 
-        // Apply filters if provided
+        // Apply roomId filter if provided
         if (params.roomId) {
-          query = query.where(eq(taskTable.roomId, params.roomId));
+          conditions.push(eq(taskTable.roomId, params.roomId));
         }
 
-        if (params.tags && params.tags.length > 0) {
-          // Filter by tags - find tasks that have ALL of the specified tags
-          // Using @> operator which checks if left array contains all elements from right array
-          const tagParams = params.tags.map((tag) => `'${tag.replace(/'/g, "''")}'`).join(', ');
-          query = query.where(sql`${taskTable.tags} @> ARRAY[${sql.raw(tagParams)}]::text[]`);
+        // Apply entityId filter if provided
+        if (params.entityId) {
+          conditions.push(eq(taskTable.entityId, params.entityId));
         }
+
+        // Apply tags filter if provided
+        if (params.tags && params.tags.length > 0) {
+          const tagParams = params.tags.map((tag) => `'${tag.replace(/'/g, "''")}'`).join(', ');
+          conditions.push(sql`${taskTable.tags} @> ARRAY[${sql.raw(tagParams)}]::text[]`);
+        }
+
+        // Construct the final query with all conditions combined using 'and'
+        const query = this.db
+          .select()
+          .from(taskTable)
+          .where(and(...conditions)); // Combine all conditions
 
         const result = await query;
 
