@@ -1,23 +1,20 @@
 import { logger } from '@elizaos/core';
 import { z } from 'zod';
 
-// Configuration schema with text model source flags
+// Default model filenames
+const DEFAULT_SMALL_MODEL = 'DeepHermes-3-Llama-3-3B-Preview-q4.gguf';
+const DEFAULT_MEDIUM_MODEL = 'DeepHermes-3-Llama-3-8B-q4.gguf';
+const DEFAULT_EMBEDDING_MODEL = 'bge-small-en-v1.5.Q4_K_M.gguf';
+
+// Configuration schema focused only on local AI settings
 /**
- * Configuration schema for different AI models and their settings.
- * This schema includes:
- * - Flags for enabling/disabling various AI models
- * - Ollama configurations including server URL, models, and embedding models
- * - StudioLM configurations including server URL, models, and embedding models
+ * Configuration schema for local AI settings.
+ * Allows overriding default model filenames via environment variables.
  */
 export const configSchema = z.object({
-  USE_LOCAL_AI: z.boolean().default(true),
-  USE_STUDIOLM_TEXT_MODELS: z.boolean().default(false),
-
-  // StudioLM Configuration
-  STUDIOLM_SERVER_URL: z.string().default('http://localhost:1234'),
-  STUDIOLM_SMALL_MODEL: z.string().default('lmstudio-community/deepseek-r1-distill-qwen-1.5b'),
-  STUDIOLM_MEDIUM_MODEL: z.string().default('deepseek-r1-distill-qwen-7b'),
-  STUDIOLM_EMBEDDING_MODEL: z.string().default('BAAI/bge-small-en-v1.5'),
+  LOCAL_SMALL_MODEL: z.string().optional().default(DEFAULT_SMALL_MODEL),
+  LOCAL_LARGE_MODEL: z.string().optional().default(DEFAULT_MEDIUM_MODEL),
+  LOCAL_EMBEDDING_MODEL: z.string().optional().default(DEFAULT_EMBEDDING_MODEL),
 });
 
 /**
@@ -26,68 +23,30 @@ export const configSchema = z.object({
 export type Config = z.infer<typeof configSchema>;
 
 /**
- * Validates the model configuration object.
- *
- * @param {Record<string, boolean>} config - The model configuration object containing boolean values.
- * @returns {void}
+ * Validates and parses the configuration, reading from environment variables.
+ * Since only local AI is supported, this primarily ensures the structure
+ * and applies defaults or environment variable overrides for model filenames.
+ * @returns {Promise<Config>} The validated configuration object.
  */
-function validateModelConfig(config: Record<string, boolean>): void {
-  // Log raw values before validation
-  logger.info('Validating model configuration with values:', {
-    USE_LOCAL_AI: config.USE_LOCAL_AI,
-    USE_STUDIOLM_TEXT_MODELS: config.USE_STUDIOLM_TEXT_MODELS,
-  });
-
-  // Ensure USE_LOCAL_AI is always true
-  if (!config.USE_LOCAL_AI) {
-    config.USE_LOCAL_AI = true;
-    logger.info("Setting USE_LOCAL_AI to true as it's required");
-  }
-
-  logger.info('Configuration is valid');
-}
-
-/**
- * Validates and parses the configuration provided as a record of string key-value pairs.
- * This function performs boolean conversion on specific configuration values and sets default values for missing keys.
- * @param {Record<string, string>} config - The configuration to validate and parse.
- * @returns {Promise<Config>} The validated and parsed configuration object.
- */
-export async function validateConfig(config: Record<string, string>): Promise<Config> {
+export async function validateConfig(): Promise<Config> {
   try {
-    // Log raw environment variables
-    // logger.info("Raw environment variables:", {
-    //     USE_LOCAL_AI: process.env.USE_LOCAL_AI,
-    //     USE_STUDIOLM_TEXT_MODELS: process.env.USE_STUDIOLM_TEXT_MODELS,
-    //     USE_OLLAMA_TEXT_MODELS: process.env.USE_OLLAMA_TEXT_MODELS,
-    //     OLLAMA_SERVER_URL: process.env.OLLAMA_SERVER_URL,
-    //     STUDIOLM_SERVER_URL: process.env.STUDIOLM_SERVER_URL
-    // });
-
-    // Parse environment variables with proper boolean conversion
-    const booleanConfig = {
-      USE_LOCAL_AI: true, // Always true
-      USE_STUDIOLM_TEXT_MODELS: config.USE_STUDIOLM_TEXT_MODELS === 'true',
+    // Prepare the config for parsing, reading from process.env
+    const configToParse = {
+      // Read model filenames from environment variables or use undefined (so zod defaults apply)
+      LOCAL_SMALL_MODEL: process.env.LOCAL_SMALL_MODEL,
+      LOCAL_LARGE_MODEL: process.env.LOCAL_LARGE_MODEL,
+      LOCAL_EMBEDDING_MODEL: process.env.LOCAL_EMBEDDING_MODEL,
     };
 
-    // logger.info("Parsed boolean configuration:", booleanConfig);
+    logger.debug('Validating configuration for local AI plugin from env:', {
+      LOCAL_SMALL_MODEL: configToParse.LOCAL_SMALL_MODEL,
+      LOCAL_LARGE_MODEL: configToParse.LOCAL_LARGE_MODEL,
+      LOCAL_EMBEDDING_MODEL: configToParse.LOCAL_EMBEDDING_MODEL,
+    });
 
-    // Validate text model source configuration
-    validateModelConfig(booleanConfig);
+    const validatedConfig = configSchema.parse(configToParse);
 
-    // Create full config with all values
-    const fullConfig = {
-      ...booleanConfig,
-      STUDIOLM_SERVER_URL: config.STUDIOLM_SERVER_URL || 'http://localhost:1234',
-      STUDIOLM_SMALL_MODEL:
-        config.STUDIOLM_SMALL_MODEL || 'lmstudio-community/deepseek-r1-distill-qwen-1.5b',
-      STUDIOLM_MEDIUM_MODEL: config.STUDIOLM_MEDIUM_MODEL || 'deepseek-r1-distill-qwen-7b',
-      STUDIOLM_EMBEDDING_MODEL: config.STUDIOLM_EMBEDDING_MODEL || 'BAAI/bge-small-en-v1.5',
-    };
-
-    const validatedConfig = configSchema.parse(fullConfig);
-
-    // logger.info("Final validated configuration:", validatedConfig);
+    logger.info('Using local AI configuration:', validatedConfig);
 
     return validatedConfig;
   } catch (error) {

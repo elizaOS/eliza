@@ -12,46 +12,34 @@ Add the plugin to your character configuration:
 
 ## Configuration
 
-The plugin requires these environment variables (can be set in .env file or character settings):
-
-```json
-"settings": {
-  "USE_LOCAL_AI": true,
-  "USE_STUDIOLM_TEXT_MODELS": false,
-
-  "STUDIOLM_SERVER_URL": "http://localhost:1234",
-  "STUDIOLM_SMALL_MODEL": "lmstudio-community/deepseek-r1-distill-qwen-1.5b",
-  "STUDIOLM_MEDIUM_MODEL": "deepseek-r1-distill-qwen-7b",
-  "STUDIOLM_EMBEDDING_MODEL": false
-}
-```
+The plugin is configured using environment variables (typically set in a `.env` file or via your deployment settings):
 
 Or in `.env` file:
 
 ```env
-# Local AI Configuration
-USE_LOCAL_AI=true
-USE_STUDIOLM_TEXT_MODELS=false
+# Optional: Specify a custom directory for models (GGUF files)
+# LLAMALOCAL_PATH=/path/to/your/models
 
-# StudioLM Configuration
-STUDIOLM_SERVER_URL=http://localhost:1234
-STUDIOLM_SMALL_MODEL=lmstudio-community/deepseek-r1-distill-qwen-1.5b
-STUDIOLM_MEDIUM_MODEL=deepseek-r1-distill-qwen-7b
-STUDIOLM_EMBEDDING_MODEL=false
+# Optional: Specify a custom directory for caching other components (tokenizers, etc.)
+# CACHE_DIR=/path/to/your/cache
+
+# Optional: Specify filenames for the text generation and embedding models within the models directory
+# LOCAL_SMALL_MODEL=my-custom-small-model.gguf
+# LOCAL_LARGE_MODEL=my-custom-large-model.gguf
+# LOCAL_EMBEDDING_MODEL=my-custom-embedding-model.gguf
+
+# Optional: Fallback dimension size for embeddings if generation fails
+# LOCAL_EMBEDDING_DIMENSIONS=384
 ```
 
 ### Configuration Options
 
-#### Text Model Source (Choose One)
-
-- `USE_STUDIOLM_TEXT_MODELS`: Enable StudioLM text models
-
-#### StudioLM Settings
-
-- `STUDIOLM_SERVER_URL`: StudioLM API endpoint (default: http://localhost:1234)
-- `STUDIOLM_SMALL_MODEL`: Model for lighter tasks
-- `STUDIOLM_MEDIUM_MODEL`: Model for standard tasks
-- `STUDIOLM_EMBEDDING_MODEL`: Model for embeddings (or false to disable)
+- `LLAMALOCAL_PATH` (Optional): Specifies a custom directory path where the local AI models (GGUF files) should be stored. If not provided, models will be downloaded to and loaded from `~/.eliza/models`.
+- `CACHE_DIR` (Optional): Specifies a custom directory path for caching downloaded components like tokenizers and auxiliary models (e.g., vision, TTS). If not provided, the cache will be located at `~/.eliza/cache`.
+- `LOCAL_SMALL_MODEL` (Optional): Specifies the filename for the small text generation model (e.g., `DeepHermes-3-Llama-3-3B-Preview-q4.gguf`) located in the models directory.
+- `LOCAL_LARGE_MODEL` (Optional): Specifies the filename for the large text generation model (e.g., `DeepHermes-3-Llama-3-8B-q4.gguf`) located in the models directory.
+- `LOCAL_EMBEDDING_MODEL` (Optional): Specifies the filename for the text embedding model (e.g., `bge-small-en-v1.5.Q4_K_M.gguf`) located in the models directory.
+- `LOCAL_EMBEDDING_DIMENSIONS` (Optional): Defines the expected dimension size for text embeddings. This is primarily used as a fallback dimension if the embedding model fails to generate an embedding. The default dimension is specified internally based on the embedding model configuration.
 
 ## Features
 
@@ -59,9 +47,34 @@ The plugin provides these model classes:
 
 - `TEXT_SMALL`: Fast, efficient text generation using smaller models
 - `TEXT_LARGE`: More capable text generation using larger models
+- `TEXT_EMBEDDING`: Generates text embeddings locally.
 - `IMAGE_DESCRIPTION`: Local image analysis using Florence-2 vision model
 - `TEXT_TO_SPEECH`: Local text-to-speech synthesis
 - `TRANSCRIPTION`: Local audio transcription using Whisper
+
+### Text Generation
+
+```typescript
+// Using small model
+const smallResponse = await runtime.useModel(ModelType.TEXT_SMALL, {
+  prompt: 'Generate a short response',
+  stopSequences: [],
+});
+
+// Using large model
+const largeResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
+  prompt: 'Generate a detailed response',
+  stopSequences: [],
+});
+```
+
+### Text Embedding
+
+```typescript
+const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+  text: 'Text to get embedding for',
+});
+```
 
 ### Image Analysis
 
@@ -83,31 +96,3 @@ const audioStream = await runtime.useModel(ModelType.TEXT_TO_SPEECH, 'Text to co
 ```typescript
 const transcription = await runtime.useModel(ModelType.TRANSCRIPTION, audioBuffer);
 ```
-
-### Text Generation
-
-```typescript
-// Using small model
-const smallResponse = await runtime.useModel(ModelType.TEXT_SMALL, {
-  context: 'Generate a short response',
-  stopSequences: [],
-});
-
-// Using large model
-const largeResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
-  context: 'Generate a detailed response',
-  stopSequences: [],
-});
-```
-
-## Model Sources
-
-### 1. StudioLM (LM Studio)
-
-- Local inference server for running various open models
-- Supports chat completion API similar to OpenAI
-- Configure with `USE_STUDIOLM_TEXT_MODELS=true`
-- Supports both small and medium-sized models
-- Optional embedding model support
-
-Note: The plugin validates that only one text model source is enabled at a time to prevent conflicts.
