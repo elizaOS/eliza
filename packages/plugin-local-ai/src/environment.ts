@@ -33,9 +33,9 @@ export type Config = z.infer<typeof configSchema>;
  * Validates and parses the configuration, reading from environment variables.
  * Since only local AI is supported, this primarily ensures the structure
  * and applies defaults or environment variable overrides for model filenames.
- * @returns {Promise<Config>} The validated configuration object.
+ * @returns {Config} The validated configuration object.
  */
-export async function validateConfig(): Promise<Config> {
+export function validateConfig(): Config {
   try {
     // Prepare the config for parsing, reading from process.env
     const configToParse = {

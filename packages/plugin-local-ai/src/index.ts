@@ -144,6 +144,8 @@ class LocalAIManager {
    * Model paths are set after environment initialization.
    */
   private constructor() {
+    this.config = validateConfig();
+
     this._setupModelsDir();
     this._setupCacheDir();
 
@@ -247,8 +249,13 @@ class LocalAIManager {
       try {
         logger.info('Initializing environment configuration...');
 
-        // Validate configuration (reads from process.env)
-        this.config = await validateConfig();
+        // Configuration is already validated and set in the constructor.
+        // We just need to ensure this.config is not null before proceeding.
+        if (!this.config) {
+          // This case should ideally not happen if constructor logic is sound.
+          logger.error('Config not available during environment initialization.');
+          throw new Error('Configuration not initialized');
+        }
 
         // Set model paths based on validated config
         this.modelPath = path.join(this.modelsDir, this.config.LOCAL_SMALL_MODEL);
