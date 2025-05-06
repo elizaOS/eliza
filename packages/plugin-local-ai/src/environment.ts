@@ -17,6 +17,11 @@ export const configSchema = z.object({
   LOCAL_EMBEDDING_MODEL: z.string().optional().default(DEFAULT_EMBEDDING_MODEL),
   MODELS_DIR: z.string().optional(), // Path for the models directory
   CACHE_DIR: z.string().optional(), // Path for the cache directory
+  LOCAL_EMBEDDING_DIMENSIONS: z
+    .string()
+    .optional()
+    .default('384') // Default to 384 if not provided
+    .transform((val) => parseInt(val, 10)), // Transform to number
 });
 
 /**
@@ -40,6 +45,7 @@ export async function validateConfig(): Promise<Config> {
       LOCAL_EMBEDDING_MODEL: process.env.LOCAL_EMBEDDING_MODEL,
       MODELS_DIR: process.env.MODELS_DIR, // Read models directory path from env
       CACHE_DIR: process.env.CACHE_DIR, // Read cache directory path from env
+      LOCAL_EMBEDDING_DIMENSIONS: process.env.LOCAL_EMBEDDING_DIMENSIONS, // Read embedding dimensions
     };
 
     logger.debug('Validating configuration for local AI plugin from env:', {
@@ -48,6 +54,7 @@ export async function validateConfig(): Promise<Config> {
       LOCAL_EMBEDDING_MODEL: configToParse.LOCAL_EMBEDDING_MODEL,
       MODELS_DIR: configToParse.MODELS_DIR,
       CACHE_DIR: configToParse.CACHE_DIR,
+      LOCAL_EMBEDDING_DIMENSIONS: configToParse.LOCAL_EMBEDDING_DIMENSIONS,
     });
 
     const validatedConfig = configSchema.parse(configToParse);

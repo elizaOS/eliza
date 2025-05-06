@@ -450,8 +450,8 @@ class LocalAIManager {
       });
 
       // Return zero vector with correct dimensions as fallback
-      const zeroDimensions = process.env.LOCAL_EMBEDDING_DIMENSIONS
-        ? parseInt(process.env.LOCAL_EMBEDDING_DIMENSIONS, 10)
+      const zeroDimensions = this.config?.LOCAL_EMBEDDING_DIMENSIONS // Use validated config
+        ? this.config.LOCAL_EMBEDDING_DIMENSIONS
         : this.embeddingModelConfig.dimensions;
 
       return new Array(zeroDimensions).fill(0);

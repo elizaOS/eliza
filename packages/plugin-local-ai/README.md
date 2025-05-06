@@ -28,7 +28,7 @@ Or in `.env` file:
 # LOCAL_LARGE_MODEL=my-custom-large-model.gguf
 # LOCAL_EMBEDDING_MODEL=my-custom-embedding-model.gguf
 
-# Optional: Fallback dimension size for embeddings if generation fails
+# Optional: Fallback dimension size for embeddings if generation fails. Defaults to the model's default (e.g., 384).
 # LOCAL_EMBEDDING_DIMENSIONS=384
 ```
 
@@ -39,7 +39,7 @@ Or in `.env` file:
 - `LOCAL_SMALL_MODEL` (Optional): Specifies the filename for the small text generation model (e.g., `DeepHermes-3-Llama-3-3B-Preview-q4.gguf`) located in the models directory.
 - `LOCAL_LARGE_MODEL` (Optional): Specifies the filename for the large text generation model (e.g., `DeepHermes-3-Llama-3-8B-q4.gguf`) located in the models directory.
 - `LOCAL_EMBEDDING_MODEL` (Optional): Specifies the filename for the text embedding model (e.g., `bge-small-en-v1.5.Q4_K_M.gguf`) located in the models directory.
-- `LOCAL_EMBEDDING_DIMENSIONS` (Optional): Defines the expected dimension size for text embeddings. This is primarily used as a fallback dimension if the embedding model fails to generate an embedding. The default dimension is specified internally based on the embedding model configuration.
+- `LOCAL_EMBEDDING_DIMENSIONS` (Optional): Defines the expected dimension size for text embeddings. This is primarily used as a fallback dimension if the embedding model fails to generate an embedding. If not set, it defaults to the embedding model's native dimension size (e.g., 384 for `bge-small-en-v1.5.Q4_K_M.gguf`).
 
 ## Features
 
