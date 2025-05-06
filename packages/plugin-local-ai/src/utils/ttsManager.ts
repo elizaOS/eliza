@@ -37,15 +37,14 @@ export class TTSManager {
   private modelsDir: string;
 
   /**
-   * Creates a new instance of TTSManager with the provided cache directory.
+   * Creates a new instance of TTSManager with the provided cache directory and models directory.
    *
    * @param {string} cacheDir - The directory where cached data will be stored.
+   * @param {string} modelsDir - The directory where model files are stored.
    */
-  private constructor(cacheDir: string) {
+  private constructor(cacheDir: string, modelsDir: string) {
     this.cacheDir = path.join(cacheDir, 'tts');
-    this.modelsDir = process.env.LLAMALOCAL_PATH?.trim()
-      ? path.resolve(process.env.LLAMALOCAL_PATH.trim())
-      : path.join(process.cwd(), 'models');
+    this.modelsDir = modelsDir;
     this.downloadManager = DownloadManager.getInstance(this.cacheDir, this.modelsDir);
     this.ensureCacheDirectory();
     logger.debug('TTSManager initialized');
@@ -55,11 +54,12 @@ export class TTSManager {
    * Returns an instance of TTSManager, creating a new one if none exist.
    *
    * @param {string} cacheDir - The directory path to store cached audio files.
+   * @param {string} modelsDir - The directory path where model files are stored.
    * @returns {TTSManager} An instance of TTSManager.
    */
-  public static getInstance(cacheDir: string): TTSManager {
+  public static getInstance(cacheDir: string, modelsDir: string): TTSManager {
     if (!TTSManager.instance) {
-      TTSManager.instance = new TTSManager(cacheDir);
+      TTSManager.instance = new TTSManager(cacheDir, modelsDir);
     }
     return TTSManager.instance;
   }

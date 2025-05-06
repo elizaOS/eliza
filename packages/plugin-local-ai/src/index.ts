@@ -152,7 +152,6 @@ class LocalAIManager {
     this.tokenizerManager = TokenizerManager.getInstance(this.cacheDir, this.modelsDir);
     this.visionManager = VisionManager.getInstance(this.cacheDir);
     this.transcribeManager = TranscribeManager.getInstance(this.cacheDir);
-    this.ttsManager = TTSManager.getInstance(this.cacheDir);
 
     // Initialize active model config (default)
     this.activeModelConfig = MODEL_SPECS.small;
