@@ -128,15 +128,9 @@ export class UserEnvironment {
     const targetDir = directory || process.cwd();
     logger.debug(`[UserEnvironment] Checking for lock files in: ${targetDir}`);
 
-    const isNpx =
-      process.env.npm_execpath?.includes('npx') ||
-      process.argv[1]?.includes('npx') ||
-      process.env.NPX_COMMAND !== undefined;
+    const isNpx = process.env.npm_execpath?.includes('npx');
 
-    const isBunx =
-      process.argv[1]?.includes('bunx') ||
-      process.env.BUN_INSTALL === '1' ||
-      process.argv[0]?.includes('bun');
+    const isBunx = process.argv[0]?.includes('bun');
 
     // Check for lock files in current directory
     const lockFiles = {
