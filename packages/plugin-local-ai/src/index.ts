@@ -144,29 +144,8 @@ class LocalAIManager {
    * Model paths are set after environment initialization.
    */
   private constructor() {
-    // Set up models directory consistently, similar to cacheDir
-    const modelsDir = path.join(os.homedir(), '.eliza', 'models');
-
-    // Ensure models directory exists
-    if (!fs.existsSync(modelsDir)) {
-      fs.mkdirSync(modelsDir, { recursive: true });
-      logger.debug('Created models directory');
-    }
-    this.modelsDir = modelsDir;
-
-    // Set up cache directory
-    const cacheDirEnv = process.env.CACHE_DIR?.trim();
-    if (cacheDirEnv) {
-      this.cacheDir = path.resolve(cacheDirEnv);
-    } else {
-      const cacheDir = path.join(os.homedir(), '.eliza', 'cache');
-      // Ensure cache directory exists
-      if (!fs.existsSync(cacheDir)) {
-        fs.mkdirSync(cacheDir, { recursive: true });
-        logger.debug('Ensuring cache directory exists:', cacheDir);
-      }
-      this.cacheDir = cacheDir;
-    }
+    this._setupModelsDir();
+    this._setupCacheDir();
 
     // Initialize managers
     this.downloadManager = DownloadManager.getInstance(this.cacheDir, this.modelsDir);
@@ -179,6 +158,65 @@ class LocalAIManager {
     this.activeModelConfig = MODEL_SPECS.small;
     // Initialize embedding model config (spec details)
     this.embeddingModelConfig = MODEL_SPECS.embedding;
+  }
+
+  /**
+   * Sets up the models directory, reading from config or environment variables,
+   * and ensures the directory exists.
+   */
+  private _setupModelsDir(): void {
+    // Set up models directory consistently, similar to cacheDir
+    const modelsDirEnv = this.config?.MODELS_DIR?.trim() || process.env.MODELS_DIR?.trim();
+    if (modelsDirEnv) {
+      this.modelsDir = path.resolve(modelsDirEnv);
+      logger.info('Using models directory from MODELS_DIR environment variable:', this.modelsDir);
+    } else {
+      this.modelsDir = path.join(os.homedir(), '.eliza', 'models');
+      logger.info(
+        'MODELS_DIR environment variable not set, using default models directory:',
+        this.modelsDir
+      );
+    }
+
+    // Ensure models directory exists
+    if (!fs.existsSync(this.modelsDir)) {
+      fs.mkdirSync(this.modelsDir, { recursive: true });
+      logger.debug('Ensured models directory exists (created):', this.modelsDir);
+    } else {
+      logger.debug('Models directory already exists:', this.modelsDir);
+    }
+  }
+
+  /**
+   * Sets up the cache directory, reading from config or environment variables,
+   * and ensures the directory exists.
+   */
+  private _setupCacheDir(): void {
+    // Set up cache directory
+    const cacheDirEnv = this.config?.CACHE_DIR?.trim() || process.env.CACHE_DIR?.trim();
+    if (cacheDirEnv) {
+      this.cacheDir = path.resolve(cacheDirEnv);
+      logger.info('Using cache directory from CACHE_DIR environment variable:', this.cacheDir);
+    } else {
+      const cacheDir = path.join(os.homedir(), '.eliza', 'cache');
+      // Ensure cache directory exists
+      if (!fs.existsSync(cacheDir)) {
+        fs.mkdirSync(cacheDir, { recursive: true });
+        logger.debug('Ensuring cache directory exists (created):', cacheDir);
+      }
+      this.cacheDir = cacheDir;
+      logger.info(
+        'CACHE_DIR environment variable not set, using default cache directory:',
+        this.cacheDir
+      );
+    }
+    // Ensure cache directory exists if specified via env var but not yet created
+    if (!fs.existsSync(this.cacheDir)) {
+      fs.mkdirSync(this.cacheDir, { recursive: true });
+      logger.debug('Ensured cache directory exists (created):', this.cacheDir);
+    } else {
+      logger.debug('Cache directory already exists:', this.cacheDir);
+    }
   }
 
   /**

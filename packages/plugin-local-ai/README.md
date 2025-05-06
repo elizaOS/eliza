@@ -18,7 +18,7 @@ Or in `.env` file:
 
 ```env
 # Optional: Specify a custom directory for models (GGUF files)
-# LLAMALOCAL_PATH=/path/to/your/models
+# MODELS_DIR=/path/to/your/models
 
 # Optional: Specify a custom directory for caching other components (tokenizers, etc.)
 # CACHE_DIR=/path/to/your/cache
@@ -34,6 +34,8 @@ Or in `.env` file:
 
 ### Configuration Options
 
+- `MODELS_DIR` (Optional): Specifies a custom directory for storing model files (GGUF format). If not set, defaults to `~/.eliza/models`.
+- `CACHE_DIR` (Optional): Specifies a custom directory for caching other components like tokenizers. If not set, defaults to `~/.eliza/cache`.
 - `LOCAL_SMALL_MODEL` (Optional): Specifies the filename for the small text generation model (e.g., `DeepHermes-3-Llama-3-3B-Preview-q4.gguf`) located in the models directory.
 - `LOCAL_LARGE_MODEL` (Optional): Specifies the filename for the large text generation model (e.g., `DeepHermes-3-Llama-3-8B-q4.gguf`) located in the models directory.
 - `LOCAL_EMBEDDING_MODEL` (Optional): Specifies the filename for the text embedding model (e.g., `bge-small-en-v1.5.Q4_K_M.gguf`) located in the models directory.

@@ -15,6 +15,8 @@ export const configSchema = z.object({
   LOCAL_SMALL_MODEL: z.string().optional().default(DEFAULT_SMALL_MODEL),
   LOCAL_LARGE_MODEL: z.string().optional().default(DEFAULT_LARGE_MODEL),
   LOCAL_EMBEDDING_MODEL: z.string().optional().default(DEFAULT_EMBEDDING_MODEL),
+  MODELS_DIR: z.string().optional(), // Path for the models directory
+  CACHE_DIR: z.string().optional(), // Path for the cache directory
 });
 
 /**
@@ -36,12 +38,16 @@ export async function validateConfig(): Promise<Config> {
       LOCAL_SMALL_MODEL: process.env.LOCAL_SMALL_MODEL,
       LOCAL_LARGE_MODEL: process.env.LOCAL_LARGE_MODEL,
       LOCAL_EMBEDDING_MODEL: process.env.LOCAL_EMBEDDING_MODEL,
+      MODELS_DIR: process.env.MODELS_DIR, // Read models directory path from env
+      CACHE_DIR: process.env.CACHE_DIR, // Read cache directory path from env
     };
 
     logger.debug('Validating configuration for local AI plugin from env:', {
       LOCAL_SMALL_MODEL: configToParse.LOCAL_SMALL_MODEL,
       LOCAL_LARGE_MODEL: configToParse.LOCAL_LARGE_MODEL,
       LOCAL_EMBEDDING_MODEL: configToParse.LOCAL_EMBEDDING_MODEL,
+      MODELS_DIR: configToParse.MODELS_DIR,
+      CACHE_DIR: configToParse.CACHE_DIR,
     });
 
     const validatedConfig = configSchema.parse(configToParse);
