@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 // Default model filenames
 const DEFAULT_SMALL_MODEL = 'DeepHermes-3-Llama-3-3B-Preview-q4.gguf';
-const DEFAULT_MEDIUM_MODEL = 'DeepHermes-3-Llama-3-8B-q4.gguf';
+const DEFAULT_LARGE_MODEL = 'DeepHermes-3-Llama-3-8B-q4.gguf';
 const DEFAULT_EMBEDDING_MODEL = 'bge-small-en-v1.5.Q4_K_M.gguf';
 
 // Configuration schema focused only on local AI settings
@@ -13,7 +13,7 @@ const DEFAULT_EMBEDDING_MODEL = 'bge-small-en-v1.5.Q4_K_M.gguf';
  */
 export const configSchema = z.object({
   LOCAL_SMALL_MODEL: z.string().optional().default(DEFAULT_SMALL_MODEL),
-  LOCAL_LARGE_MODEL: z.string().optional().default(DEFAULT_MEDIUM_MODEL),
+  LOCAL_LARGE_MODEL: z.string().optional().default(DEFAULT_LARGE_MODEL),
   LOCAL_EMBEDDING_MODEL: z.string().optional().default(DEFAULT_EMBEDDING_MODEL),
 });
 

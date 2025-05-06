@@ -26,6 +26,7 @@ import { TokenizerManager } from './utils/tokenizerManager';
 import { TranscribeManager } from './utils/transcribeManager';
 import { TTSManager } from './utils/ttsManager';
 import { VisionManager } from './utils/visionManager';
+import { basename } from 'path';
 
 // Words to punish in LLM responses
 /**
@@ -217,9 +218,9 @@ class LocalAIManager {
         this.mediumModelPath = path.join(this.modelsDir, this.config.LOCAL_LARGE_MODEL);
         this.embeddingModelPath = path.join(this.modelsDir, this.config.LOCAL_EMBEDDING_MODEL); // Set embedding path
 
-        logger.info('Using small model path:', this.modelPath);
-        logger.info('Using medium model path:', this.mediumModelPath);
-        logger.info('Using embedding model path:', this.embeddingModelPath);
+        logger.info('Using small model path:', basename(this.modelPath));
+        logger.info('Using medium model path:', basename(this.mediumModelPath));
+        logger.info('Using embedding model path:', basename(this.embeddingModelPath));
 
         logger.info('Environment configuration validated and model paths set');
 
