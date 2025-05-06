@@ -44,7 +44,7 @@ export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
         </TabsList>
       </div>
 
-      <TabsContent value="actions" className="overflow-y-scroll">
+      <TabsContent value="actions" className="overflow-y-auto">
         {detailsTab === 'actions' && <AgentActionViewer agentId={agentId} />}
       </TabsContent>
       <TabsContent value="logs">
