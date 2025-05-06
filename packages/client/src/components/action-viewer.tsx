@@ -320,7 +320,7 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-100px)] min-h-[400px] w-full">
+    <div className="flex flex-col min-h-[400px] w-full">
       <div className="flex justify-between items-center mb-4 px-4 pt-4 flex-none border-b pb-3">
         <div className="flex items-center gap-2">
           <h3 className="text-lg font-medium">Agent Actions</h3>
