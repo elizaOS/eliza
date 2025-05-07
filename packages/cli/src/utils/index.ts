@@ -12,7 +12,6 @@ export * from './handle-error';
 export * from './helpers';
 export * from './install-plugin';
 export * from './load-plugin';
-export * from './monorepo-utils';
 export * from './package-manager';
 export * from './port-handling';
 export * from './publisher';

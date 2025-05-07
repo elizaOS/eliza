@@ -81,7 +81,7 @@ function AppContent() {
         <AppSidebar />
         <SidebarInset>
           <div className="flex w-full justify-center">
-            <div className="w-full mt-4 md:max-w-4xl">
+            <div className="w-full md:max-w-4xl">
               <ConnectionErrorBanner />
             </div>
           </div>

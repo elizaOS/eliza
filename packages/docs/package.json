@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/docs",
-  "version": "1.0.0-beta.0",
+  "version": "1.0.0-beta.41",
   "private": true,
   "packageManager": "bun@9.4.0",
   "scripts": {
@@ -35,7 +35,7 @@
     "dotenv": "^16.4.7",
     "lunr": "2.3.9",
     "prism-react-renderer": "2.3.1",
-    "react": "^19.0.0",
+    "react": "^19.1.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {

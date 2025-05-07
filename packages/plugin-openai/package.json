@@ -1,13 +1,22 @@
 {
   "name": "@elizaos/plugin-openai",
-  "version": "1.0.0-beta.43",
+  "version": "1.0.0-beta.48",
   "type": "module",
-  "main": "./dist/index.js",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
   "repository": {
     "type": "git",
     "url": "https://github.com/elizaos-plugins/plugin-openai"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
   },
   "files": [
     "dist"
@@ -15,7 +24,7 @@
   "dependencies": {
     "@ai-sdk/openai": "^1.3.20",
     "@ai-sdk/ui-utils": "^1.2.8",
-    "@elizaos/core": "^1.0.0-beta.43",
+    "@elizaos/core": "^1.0.0-beta.48",
     "ai": "^4.3.9",
     "js-tiktoken": "^1.0.18",
     "tsup": "8.4.0",

@@ -1,13 +1,22 @@
 {
   "name": "@elizaos/plugin-bootstrap",
-  "version": "1.0.0-beta.43",
+  "version": "1.0.0-beta.48",
   "type": "module",
-  "main": "./dist/index.js",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
   "repository": {
     "type": "git",
     "url": "https://github.com/elizaos-plugins/plugin-bootstrap"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
   },
   "files": [
     "dist",
@@ -17,10 +26,10 @@
     "tsup.config.ts"
   ],
   "dependencies": {
-    "@elizaos/core": "^1.0.0-beta.43"
+    "@elizaos/core": "^1.0.0-beta.48"
   },
   "devDependencies": {
-    "@types/node": "22.8.4",
+    "@types/node": "^22.15.3",
     "prettier": "3.5.3",
     "tsup": "8.4.0",
     "vitest": "^1.6.1",
