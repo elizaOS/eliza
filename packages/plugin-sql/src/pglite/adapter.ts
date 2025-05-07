@@ -44,12 +44,12 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter<PgliteDatabase> {
    * @param {Function} operation - The database operation to be performed.
    * @returns {Promise<T>} A promise that resolves with the result of the database operation.
    */
-  protected async withDatabase<T>(operation: () => Promise<T>): Promise<T> {
+  protected async withDatabase<T>(operation: () => Promise<T>, operationName: string): Promise<T> {
     if (this.manager.isShuttingDown()) {
-      logger.warn('Database is shutting down');
+      logger.warn(`Database operation '${operationName}' aborted - database is shutting down`);
       return null as unknown as T;
     }
-    return operation();
+    return this.withRetry(operation, operationName);
   }
 
   /**
