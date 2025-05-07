@@ -650,13 +650,9 @@ export function agentRouter(
         return;
       }
 
-      console.log('Deleting all memories for agent:', agentId, 'in room:', roomId);
-
       await runtime.deleteAllMemories(roomId, 'messages');
       await runtime.deleteAllMemories(roomId, 'knowledge');
       await runtime.deleteAllMemories(roomId, 'documents');
-
-      console.log('Deleted all memories for agent:', agentId, 'in room:', roomId);
 
       res.status(204).send();
     } catch (e) {
