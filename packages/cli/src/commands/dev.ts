@@ -1,4 +1,4 @@
-import { buildProject, getMonorepoRoot, handleError, isElizaMonorepoContext } from '@/src/utils';
+import { buildProject, handleError, isMonorepoContext, UserEnvironment } from '@/src/utils';
 import { Command } from 'commander';
 import { execa } from 'execa';
 import type { ChildProcess } from 'node:child_process';
@@ -74,12 +74,16 @@ async function startServer(args: string[] = []): Promise<void> {
 }
 
 /**
- * Determines if the current directory is a project or plugin
+ * Determines whether the current working directory represents a project or a plugin.
+ *
+ * Examines `package.json` fields, naming conventions, keywords, and source exports to heuristically identify if the directory is an Eliza project or plugin.
+ *
+ * @returns An object indicating whether the directory is a project (`isProject`) or a plugin (`isPlugin`).
  */
 async function determineProjectType(): Promise<{ isProject: boolean; isPlugin: boolean }> {
   const cwd = process.cwd();
   const packageJsonPath = path.join(cwd, 'package.json');
-  const isMonorepo = isElizaMonorepoContext();
+  const isMonorepo = await isMonorepoContext();
 
   console.info(`Running in directory: ${cwd}`);
   console.info(`Detected Eliza monorepo context: ${isMonorepo}`);
@@ -335,10 +339,10 @@ export const dev = new Command()
 
           console.info('Rebuilding project after file change...');
 
-          const isMonorepo = isElizaMonorepoContext();
+          const isMonorepo = await isMonorepoContext();
 
           if (isMonorepo) {
-            const monorepoRoot = getMonorepoRoot();
+            const { monorepoRoot } = await UserEnvironment.getInstance().getPathInfo();
             if (monorepoRoot) {
               const corePackages = [
                 {
@@ -348,12 +352,12 @@ export const dev = new Command()
                 },
                 {
                   name: 'client',
-                  path: path.join(await monorepoRoot, 'packages', 'client'),
+                  path: path.join(monorepoRoot, 'packages', 'client'),
                   isPlugin: false,
                 },
                 {
                   name: 'plugin-bootstrap',
-                  path: path.join(await monorepoRoot, 'packages', 'plugin-bootstrap'),
+                  path: path.join(monorepoRoot, 'packages', 'plugin-bootstrap'),
                   isPlugin: true,
                 },
               ];
