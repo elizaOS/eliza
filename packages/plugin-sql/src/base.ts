@@ -1707,10 +1707,12 @@ export abstract class BaseDrizzleAdapter<
         }
 
         // 2) delete any fragments for “document” memories & their embeddings
-        for (const memoryId of ids) {
-          await this.deleteMemoryFragments(tx, memoryId);
-          await tx.delete(embeddingTable).where(eq(embeddingTable.memoryId, memoryId));
-        }
+        await Promise.all(
+          ids.map(async (memoryId) => {
+            await this.deleteMemoryFragments(tx, memoryId);
+            await tx.delete(embeddingTable).where(eq(embeddingTable.memoryId, memoryId));
+          })
+        );
 
         // 3) delete the memories themselves
         await tx
