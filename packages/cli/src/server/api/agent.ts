@@ -616,8 +616,6 @@ export function agentRouter(
       const agentId = validateUuid(req.params.agentId);
       const roomId = validateUuid(req.params.roomId);
 
-      console.log('hehe');
-
       if (!agentId) {
         res.status(400).json({
           success: false,
