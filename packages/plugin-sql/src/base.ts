@@ -1693,29 +1693,32 @@ export abstract class BaseDrizzleAdapter<
   async deleteAllMemories(roomId: UUID, tableName: string): Promise<void> {
     return this.withDatabase(async () => {
       await this.db.transaction(async (tx) => {
-        const memoryIds = await tx
+        // 1) fetch all memory IDs for this room + table
+        const rows = await tx
           .select({ id: memoryTable.id })
           .from(memoryTable)
           .where(and(eq(memoryTable.roomId, roomId), eq(memoryTable.type, tableName)));
 
-        if (memoryIds.length > 0) {
-          await tx.delete(embeddingTable).where(
-            inArray(
-              embeddingTable.memoryId,
-              memoryIds.map((m) => m.id)
-            )
-          );
+        const ids = rows.map((r) => r.id);
+        logger.debug('[deleteAllMemories] memory IDs to delete:', { roomId, tableName, ids });
 
-          await tx
-            .delete(memoryTable)
-            .where(and(eq(memoryTable.roomId, roomId), eq(memoryTable.type, tableName)));
+        if (ids.length === 0) {
+          return;
         }
+
+        // 2) delete any fragments for “document” memories & their embeddings
+        for (const memoryId of ids) {
+          await this.deleteMemoryFragments(tx, memoryId);
+          await tx.delete(embeddingTable).where(eq(embeddingTable.memoryId, memoryId));
+        }
+
+        // 3) delete the memories themselves
+        await tx
+          .delete(memoryTable)
+          .where(and(eq(memoryTable.roomId, roomId), eq(memoryTable.type, tableName)));
       });
 
-      logger.debug('All memories removed successfully:', {
-        roomId,
-        tableName,
-      });
+      logger.debug('All memories removed successfully:', { roomId, tableName });
     });
   }
 

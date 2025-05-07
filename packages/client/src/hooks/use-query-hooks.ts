@@ -624,6 +624,23 @@ export function useDeleteMemory() {
   });
 }
 
+export function useDeleteAllMemories() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ agentId, roomId }: { agentId: UUID; roomId: UUID }) => {
+      await apiClient.deleteAllAgentMemories(agentId, roomId);
+      return { agentId };
+    },
+    onSuccess: (data) => {
+      // Invalidate relevant queries to trigger refetch
+      queryClient.invalidateQueries({
+        queryKey: ['agents', data.agentId, 'memories'],
+      });
+    },
+  });
+}
+
 /**
  * Hook to update a specific memory entry for an agent
  * @returns {UseMutationResult} - Object containing the mutation function and its handlers.
