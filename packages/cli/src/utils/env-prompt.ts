@@ -1,10 +1,10 @@
-import fs from 'node:fs';
-import os from 'node:os';
+import { promises as fs } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { logger } from '@elizaos/core';
-import inquirer from 'inquirer';
 import prompts from 'prompts';
 import colors from 'yoctocolors';
+import { UserEnvironment } from './user-environment';
 
 /**
  * Interface for environment variable configuration
@@ -127,23 +127,35 @@ const ENV_VAR_CONFIGS: Record<string, EnvVarConfig[]> = {
 };
 
 /**
- * Gets the path to the .eliza/.env file
+ * Retrieves the absolute path to the `.eliza/.env` environment file.
+ *
+ * @returns A promise that resolves to the full path of the environment file.
  */
-export function getEnvFilePath(): string {
-  const homeDir = os.homedir();
-  return path.join(homeDir, '.eliza', '.env');
+export async function getEnvFilePath(): Promise<string> {
+  const envInfo = await UserEnvironment.getInstanceInfo();
+  return envInfo.paths.envFilePath;
 }
 
 /**
- * Reads environment variables from the .eliza/.env file
+ * Asynchronously reads environment variables from the `.eliza/.env` file and returns them as key-value pairs.
+ *
+ * Ignores comments and empty lines. If the file does not exist or cannot be read, returns an empty object.
+ *
+ * @returns A record containing environment variable names and their corresponding values.
  */
-export function readEnvFile(): Record<string, string> {
-  const envPath = getEnvFilePath();
+export async function readEnvFile(): Promise<Record<string, string>> {
+  const envPath = await getEnvFilePath();
   const result: Record<string, string> = {};
 
   try {
-    if (fs.existsSync(envPath)) {
-      const content = fs.readFileSync(envPath, 'utf8');
+    // Read existing env file
+    if (
+      await fs
+        .access(envPath)
+        .then(() => true)
+        .catch(() => false)
+    ) {
+      const content = await fs.readFile(envPath, 'utf8');
       const lines = content.split('\n');
 
       for (const line of lines) {
@@ -166,16 +178,23 @@ export function readEnvFile(): Record<string, string> {
 }
 
 /**
- * Writes environment variables to the .eliza/.env file
+ * Asynchronously writes the provided environment variables to the `.eliza/.env` file, creating the directory if it does not exist.
+ *
+ * @param envVars - A record of environment variable key-value pairs to write.
  */
-export function writeEnvFile(envVars: Record<string, string>): void {
+export async function writeEnvFile(envVars: Record<string, string>): Promise<void> {
   try {
-    const envPath = getEnvFilePath();
+    const envPath = await getEnvFilePath();
     const elizaDir = path.dirname(envPath);
 
     // Ensure .eliza directory exists
-    if (!fs.existsSync(elizaDir)) {
-      fs.mkdirSync(elizaDir, { recursive: true });
+    if (
+      !(await fs
+        .access(elizaDir)
+        .then(() => true)
+        .catch(() => false))
+    ) {
+      await fs.mkdir(elizaDir, { recursive: true });
     }
 
     // Format environment variables for writing
@@ -185,7 +204,7 @@ export function writeEnvFile(envVars: Record<string, string>): void {
     }
 
     // Write to file
-    fs.writeFileSync(envPath, content, 'utf8');
+    await fs.writeFile(envPath, content, 'utf8');
     logger.info(`Environment variables saved to ${envPath}`);
   } catch (error) {
     logger.error(`Error writing environment file: ${error}`);
@@ -193,7 +212,14 @@ export function writeEnvFile(envVars: Record<string, string>): void {
 }
 
 /**
- * Prompts the user for a specific environment variable
+ * Prompts the user to enter a value for a specific environment variable based on the provided configuration.
+ *
+ * If the variable is already set in {@link process.env} and non-empty, returns its value without prompting.
+ * Displays the variable's description and an optional URL for guidance. Uses masked input for secrets.
+ * For optional variables, allows skipping by pressing Enter. For the `PGLITE_DATA_DIR` variable, expands a leading tilde to the user's home directory.
+ *
+ * @param config - The configuration describing the environment variable to prompt for.
+ * @returns The entered or existing value, or an empty string if an optional variable is skipped.
  */
 async function promptForEnvVar(config: EnvVarConfig): Promise<string | null> {
   // If the key already exists in the environment and is valid, use that
@@ -212,19 +238,19 @@ async function promptForEnvVar(config: EnvVarConfig): Promise<string | null> {
     console.log(colors.blue(`Get it here: ${config.url}`));
   }
 
-  const { value } = await inquirer.prompt([
-    {
-      type: config.secret ? 'password' : 'input',
-      name: 'value',
-      message: `Enter your ${config.name}:`,
-      validate: (input: string) => {
-        if (config.required && (!input || input.trim() === '')) {
-          return 'This field is required';
-        }
-        return true;
-      },
+  const response = await prompts({
+    type: config.secret ? 'password' : 'text',
+    name: 'value',
+    message: `Enter your ${config.name}:`,
+    validate: (input: string) => {
+      if (config.required && (!input || input.trim() === '')) {
+        return 'This field is required';
+      }
+      return true;
     },
-  ]);
+  });
+
+  const value = response.value;
 
   // For optional fields, an empty string means skip
   if (!config.required && (!value || value.trim() === '')) {
@@ -233,17 +259,20 @@ async function promptForEnvVar(config: EnvVarConfig): Promise<string | null> {
 
   // Expand tilde in paths for database directory
   if (config.key === 'PGLITE_DATA_DIR' && value && value.startsWith('~')) {
-    return value.replace(/^~/, os.homedir());
+    const envInfo = await UserEnvironment.getInstanceInfo();
+    return value.replace(/^~/, envInfo.os.homedir);
   }
 
   return value;
 }
 
 /**
- * Prompts for required environment variables for a given plugin
+ * Prompts the user to enter missing or invalid environment variables required for a specified plugin.
  *
- * @param pluginName The name of the plugin (e.g., 'openai', 'discord')
- * @returns A record of the environment variables that were set
+ * Displays integration messages for certain plugins, reads existing environment variables, and interactively requests input for any variables that are missing or set to placeholder values. Updates both the environment file and `process.env` with new values.
+ *
+ * @param pluginName - The name of the plugin to configure (e.g., 'openai', 'discord').
+ * @returns A record containing the environment variables that were set during the prompt.
  */
 export async function promptForEnvVars(pluginName: string): Promise<Record<string, string>> {
   const envVarConfigs = ENV_VAR_CONFIGS[pluginName.toLowerCase()];
@@ -285,7 +314,7 @@ export async function promptForEnvVars(pluginName: string): Promise<Record<strin
   }
 
   // Read existing environment variables
-  const envVars = readEnvFile();
+  const envVars = await readEnvFile();
   const result: Record<string, string> = {};
   let changes = false;
 
@@ -325,15 +354,18 @@ export async function promptForEnvVars(pluginName: string): Promise<Record<strin
 }
 
 /**
- * Checks if a plugin has required environment variables set
+ * Determines whether all required environment variables for a given plugin are set and valid.
+ *
+ * @param pluginName - The name of the plugin to validate environment variables for.
+ * @returns `true` if all required environment variables are present and not set to placeholder values; otherwise, `false`.
  */
-export function checkEnvVarsForPlugin(pluginName: string): boolean {
+export async function validateEnvVars(pluginName: string): Promise<boolean> {
   const envVarConfigs = ENV_VAR_CONFIGS[pluginName.toLowerCase()];
   if (!envVarConfigs) {
     return true; // No requirements means everything is fine
   }
 
-  const envVars = readEnvFile();
+  const envVars = await readEnvFile();
 
   // Check if all required variables are set
   for (const config of envVarConfigs) {
@@ -346,15 +378,18 @@ export function checkEnvVarsForPlugin(pluginName: string): boolean {
 }
 
 /**
- * Lists missing environment variables for a plugin
+ * Returns the keys of required environment variables that are missing or set to placeholder values for the specified plugin.
+ *
+ * @param pluginName - The name of the plugin to check for missing environment variables.
+ * @returns An array of keys for required environment variables that are not set or have placeholder values.
  */
-export function listMissingEnvVars(pluginName: string): string[] {
+export async function getMissingEnvVars(pluginName: string): Promise<string[]> {
   const envVarConfigs = ENV_VAR_CONFIGS[pluginName.toLowerCase()];
   if (!envVarConfigs) {
     return [];
   }
 
-  const envVars = readEnvFile();
+  const envVars = await readEnvFile();
   const missing: string[] = [];
 
   for (const config of envVarConfigs) {
@@ -367,16 +402,18 @@ export function listMissingEnvVars(pluginName: string): string[] {
 }
 
 /**
- * Validates and provides feedback about specific plugin configurations
+ * Validates environment variable configuration for a specific plugin and provides a status message.
  *
- * @param pluginName Name of the plugin to validate
- * @returns An object with status and message
+ * Checks whether all required environment variables for the given {@link pluginName} are set and valid, applying plugin-specific rules for Discord, Twitter, Telegram, OpenAI, Anthropic, and PostgreSQL. Returns an object indicating whether the configuration is valid and a descriptive message.
+ *
+ * @param pluginName - The name of the plugin to validate.
+ * @returns An object containing a boolean `valid` flag and a `message` describing the validation result.
  */
-export function validatePluginConfig(pluginName: string): {
+export async function validatePluginEnvVars(pluginName: string): Promise<{
   valid: boolean;
   message: string;
-} {
-  const envVars = readEnvFile();
+}> {
+  const envVars = await readEnvFile();
 
   switch (pluginName.toLowerCase()) {
     case 'discord':
@@ -388,8 +425,7 @@ export function validatePluginConfig(pluginName: string): {
       ) {
         return {
           valid: false,
-          message:
-            'Discord API Token is provided but Application ID is missing. Both are needed for Discord integration.',
+          message: 'Discord Application ID is required when using a Discord API Token',
         };
       }
 
@@ -448,7 +484,7 @@ export function validatePluginConfig(pluginName: string): {
       if (providedKeys.length === twitterKeys.length) {
         return {
           valid: true,
-          message: 'Twitter integration is properly configured.',
+          message: 'Twitter configuration is valid',
         };
       }
 
@@ -463,58 +499,54 @@ export function validatePluginConfig(pluginName: string): {
       if (envVars.TELEGRAM_BOT_TOKEN && envVars.TELEGRAM_BOT_TOKEN.trim() !== '') {
         return {
           valid: true,
-          message: 'Telegram integration is properly configured.',
+          message: 'Telegram configuration is valid',
         };
       }
-
-      // Telegram is optional
       return {
-        valid: true,
-        message: 'Telegram integration is not configured (optional).',
+        valid: false,
+        message: 'Telegram Bot Token is required for Telegram integration',
       };
 
-    // Add cases for other plugins as needed
     case 'openai':
-      if (!envVars.OPENAI_API_KEY || envVars.OPENAI_API_KEY.trim() === '') {
+      if (envVars.OPENAI_API_KEY && envVars.OPENAI_API_KEY.trim() !== '') {
         return {
-          valid: false,
-          message: 'OpenAI API Key is not configured. This is required for using OpenAI models.',
+          valid: true,
+          message: 'OpenAI configuration is valid',
         };
       }
       return {
-        valid: true,
-        message: 'OpenAI API is properly configured.',
+        valid: false,
+        message: 'OpenAI API Key is required for OpenAI integration',
       };
 
     case 'anthropic':
-      if (!envVars.ANTHROPIC_API_KEY || envVars.ANTHROPIC_API_KEY.trim() === '') {
+      if (envVars.ANTHROPIC_API_KEY && envVars.ANTHROPIC_API_KEY.trim() !== '') {
         return {
-          valid: false,
-          message: 'Anthropic API Key is not configured. This is required for using Claude models.',
+          valid: true,
+          message: 'Anthropic configuration is valid',
         };
       }
       return {
-        valid: true,
-        message: 'Anthropic API is properly configured.',
+        valid: false,
+        message: 'Anthropic API Key is required for Anthropic integration',
       };
 
-    case 'postgresql':
-      if (!envVars.POSTGRES_URL || envVars.POSTGRES_URL.trim() === '') {
+    case 'postgres':
+      if (envVars.POSTGRES_URL && envVars.POSTGRES_URL.trim() !== '') {
         return {
-          valid: true, // Not required by default
-          message: 'PostgreSQL URL is not configured. Using default PGLite database.',
+          valid: true,
+          message: 'PostgreSQL configuration is valid',
         };
       }
-
       return {
-        valid: true,
-        message: 'PostgreSQL connection is configured.',
+        valid: false,
+        message: 'PostgreSQL URL is required for PostgreSQL integration',
       };
 
     default:
       return {
         valid: true,
-        message: `${pluginName} configuration is valid.`,
+        message: `No specific validation rules for ${pluginName}`,
       };
   }
 }

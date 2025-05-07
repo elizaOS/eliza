@@ -239,12 +239,16 @@ export function usePartialUpdate<T extends object>(initialValue: T) {
     (settings: any) => {
       setValue((prevValue) => {
         // Extract settings but remove 'secrets' key to avoid duplication
-        const { secrets, ...otherSettings } = settings;
+        const { secrets, avatar, ...otherSettings } = settings;
+
+        // Only include avatar if it's a valid string; otherwise, omit it from the update
+        const safeAvatar = typeof avatar === 'string' ? avatar : '';
 
         // Create the updated settings object
         const updatedSettings = {
           ...(prevValue as any).settings, // Start with existing settings
           ...otherSettings, // Add other settings (not secrets)
+          avatar: safeAvatar,
         };
 
         // Only add secrets if it was included in the update

@@ -401,11 +401,40 @@ export class ClientBase {
     if (this.profile) {
       logger.log('Twitter user ID:', this.profile.id);
       logger.log('Twitter loaded:', JSON.stringify(this.profile, null, 10));
+
+      const agentId = this.runtime.agentId;
+
+      const entity = await this.runtime.getEntityById(agentId);
+      if (entity?.metadata?.twitter?.userName !== this.profile.username) {
+        logger.log(
+          'Updating Agents known X/twitter handle',
+          this.profile.username,
+          'was',
+          entity?.metadata?.twitter
+        );
+        const names = [this.profile.screenName, this.profile.username];
+        await this.runtime.updateEntity({
+          id: agentId,
+          names: [...new Set([...(entity.names || []), ...names])].filter(Boolean),
+          metadata: {
+            ...entity.metadata,
+            twitter: {
+              // we should stomp this, we don't want to carry dev data over to public
+              // but you should just clear the db when you do that
+              ...entity.metadata?.twitter,
+              name: this.profile.screenName,
+              userName: this.profile.username,
+            },
+          },
+          agentId,
+        });
+      }
+
       // Store profile info for use in responses
       this.profile = {
         id: this.profile.id,
-        username: this.profile.username,
-        screenName: this.profile.screenName,
+        username: this.profile.username, // this is the at
+        screenName: this.profile.screenName, // this is the human readable name of the at
         bio: this.profile.bio,
         nicknames: this.profile.nicknames,
       };

@@ -1,5 +1,8 @@
-import { buildProject } from '@/src/utils/build-project';
-import { type IAgentRuntime, type ProjectAgent, logger } from '@elizaos/core';
+import { loadProject } from '@/src/project';
+import { AgentServer } from '@/src/server/index';
+import { jsonToCharacter, loadCharacterTryPath } from '@/src/server/loader';
+import { TestRunner, buildProject, promptForEnvVars } from '@/src/utils';
+import { type IAgentRuntime, type ProjectAgent } from '@elizaos/core';
 import { Command } from 'commander';
 import * as dotenv from 'dotenv';
 import * as fs from 'node:fs';
@@ -7,12 +10,7 @@ import { existsSync } from 'node:fs';
 import * as net from 'node:net';
 import * as os from 'node:os';
 import path from 'node:path';
-import { loadProject } from '../project.js';
-import { AgentServer } from '../server/index.js';
-import { jsonToCharacter, loadCharacterTryPath } from '../server/loader';
-import { TestRunner } from '../testRunner.js';
-import { promptForEnvVars } from '../utils/env-prompt.js';
-import { startAgent } from './start.js';
+import { startAgent } from './start';
 
 // Helper function to check port availability
 async function checkPortAvailable(port: number): Promise<boolean> {
@@ -36,7 +34,7 @@ function checkIfLikelyPluginDir(dir: string): boolean {
   // Simple check based on common file patterns
   return (
     dir.includes('plugin') ||
-    existsSync(path.join(dir, 'src/plugin.ts')) ||
+    existsSync(path.join(dir, 'src/plugins.ts')) ||
     (existsSync(path.join(dir, 'src/index.ts')) && !existsSync(path.join(dir, 'src/agent.ts')))
   );
 }
@@ -56,12 +54,12 @@ const runAgentTests = async (options: {
     try {
       const cwd = process.cwd();
       const isPlugin = options.plugin ? true : checkIfLikelyPluginDir(cwd);
-      logger.info(`Building ${isPlugin ? 'plugin' : 'project'}...`);
+      console.info(`Building ${isPlugin ? 'plugin' : 'project'}...`);
       await buildProject(cwd, isPlugin);
-      logger.info(`Build completed successfully`);
+      console.info(`Build completed successfully`);
     } catch (buildError) {
-      logger.error(`Build error: ${buildError}`);
-      logger.warn(`Attempting to continue with tests despite build error`);
+      console.error(`Build error: ${buildError}`);
+      console.warn(`Attempting to continue with tests despite build error`);
       // Continue with tests despite build error - the project might already be built
     }
   }
@@ -76,75 +74,75 @@ const runAgentTests = async (options: {
     const elizaDbDir = path.join(elizaDir, 'db');
     const envFilePath = path.join(elizaDir, '.env');
 
-    logger.info('Setting up environment...');
-    logger.info(`Home directory: ${homeDir}`);
-    logger.info(`Eliza directory: ${elizaDir}`);
-    logger.info(`Database directory: ${elizaDbDir}`);
-    logger.info(`Environment file: ${envFilePath}`);
+    console.info('Setting up environment...');
+    console.info(`Home directory: ${homeDir}`);
+    console.info(`Eliza directory: ${elizaDir}`);
+    console.info(`Database directory: ${elizaDbDir}`);
+    console.info(`Environment file: ${envFilePath}`);
 
     // Create .eliza directory if it doesn't exist
     if (!fs.existsSync(elizaDir)) {
-      logger.info(`Creating directory: ${elizaDir}`);
+      console.info(`Creating directory: ${elizaDir}`);
       fs.mkdirSync(elizaDir, { recursive: true });
-      logger.info(`Created directory: ${elizaDir}`);
+      console.info(`Created directory: ${elizaDir}`);
     }
 
     // Create db directory if it doesn't exist
     if (!fs.existsSync(elizaDbDir)) {
-      logger.info(`Creating database directory: ${elizaDbDir}`);
+      console.info(`Creating database directory: ${elizaDbDir}`);
       fs.mkdirSync(elizaDbDir, { recursive: true });
-      logger.info(`Created database directory: ${elizaDbDir}`);
+      console.info(`Created database directory: ${elizaDbDir}`);
     }
 
     // Set the database directory in environment variables
     process.env.PGLITE_DATA_DIR = elizaDbDir;
-    logger.info(`Using database directory: ${elizaDbDir}`);
+    console.info(`Using database directory: ${elizaDbDir}`);
 
     // Load environment variables from .eliza/.env if it exists
     if (fs.existsSync(envFilePath)) {
-      logger.info(`Loading environment variables from: ${envFilePath}`);
+      console.info(`Loading environment variables from: ${envFilePath}`);
       dotenv.config({ path: envFilePath });
-      logger.info('Environment variables loaded');
+      console.info('Environment variables loaded');
     } else {
-      logger.warn(`Environment file not found: ${envFilePath}`);
+      console.warn(`Environment file not found: ${envFilePath}`);
     }
 
     // Always ensure database configuration is set
     try {
-      logger.info('Configuring database...');
+      console.info('Configuring database...');
       await promptForEnvVars('pglite');
-      logger.info('Database configuration completed');
+      console.info('Database configuration completed');
     } catch (error) {
-      logger.error('Error configuring database:', error);
+      console.error('Error configuring database:', error);
       if (error instanceof Error) {
-        logger.error('Error details:', error.message);
-        logger.error('Stack trace:', error.stack);
+        console.error('Error details:', error.message);
+        console.error('Stack trace:', error.stack);
       }
       throw error;
     }
 
     // Look for PostgreSQL URL in environment variables
     const postgresUrl = process.env.POSTGRES_URL;
-    logger.info(`PostgreSQL URL: ${postgresUrl ? 'found' : 'not found'}`);
+    console.info(`PostgreSQL URL: ${postgresUrl ? 'found' : 'not found'}`);
 
     // Create server instance
-    logger.info('Creating server instance...');
+    console.info('Creating server instance...');
     const server = new AgentServer({
       dataDir: elizaDbDir,
       postgresUrl,
     });
-    logger.info('Server instance created');
+    console.info('Server instance created');
 
     // Wait for database initialization
-    logger.info('Waiting for database initialization...');
+    console.info('Waiting for database initialization...');
 
     // Initialize the server explicitly before starting
-    logger.info('Initializing server...');
+    console.info('Initializing server...');
     try {
       await server.initialize(); // <-- Add this line
-      logger.info('Server initialized successfully');
+      console.info('Server initialized successfully');
     } catch (initError) {
-      logger.error('Server initialization failed:', initError);
+      console.error('Server initialization failed:', initError);
       throw initError;
     }
 
@@ -169,7 +167,7 @@ const runAgentTests = async (options: {
               clearInterval(checkInterval);
               resolve();
             } catch (initError) {
-              logger.warn(
+              console.warn(
                 `Database initialization attempt ${initializationAttempts}/${maxAttempts} failed:`,
                 initError
               );
@@ -178,7 +176,7 @@ const runAgentTests = async (options: {
               if (initializationAttempts >= maxAttempts) {
                 if (server.database?.connection) {
                   // If we have a connection, consider it good enough even with migration errors
-                  logger.warn(
+                  console.warn(
                     'Max initialization attempts reached, but database connection exists. Proceeding anyway.'
                   );
                   clearInterval(checkInterval);
@@ -191,10 +189,10 @@ const runAgentTests = async (options: {
               // Otherwise, continue to next attempt
             }
           } catch (error) {
-            logger.error('Error during database initialization check:', error);
+            console.error('Error during database initialization check:', error);
             if (error instanceof Error) {
-              logger.error('Error details:', error.message);
-              logger.error('Stack trace:', error.stack);
+              console.error('Error details:', error.message);
+              console.error('Stack trace:', error.stack);
             }
             clearInterval(checkInterval);
             reject(error);
@@ -206,7 +204,7 @@ const runAgentTests = async (options: {
           clearInterval(checkInterval);
           if (server.database?.connection) {
             // If we have a connection, consider it good enough even with initialization issues
-            logger.warn(
+            console.warn(
               'Database initialization timeout, but connection exists. Proceeding anyway.'
             );
             resolve();
@@ -215,76 +213,76 @@ const runAgentTests = async (options: {
           }
         }, 30000);
       });
-      logger.info('Database initialized successfully');
+      console.info('Database initialized successfully');
     } catch (error) {
-      logger.error('Failed to initialize database:', error);
+      console.error('Failed to initialize database:', error);
       if (error instanceof Error) {
-        logger.error('Error details:', error.message);
-        logger.error('Stack trace:', error.stack);
+        console.error('Error details:', error.message);
+        console.error('Stack trace:', error.stack);
       }
       throw error;
     }
 
     // Set up server properties
-    logger.info('Setting up server properties...');
+    console.info('Setting up server properties...');
     server.startAgent = async (character) => {
-      logger.info(`Starting agent for character ${character.name}`);
+      console.info(`Starting agent for character ${character.name}`);
       return startAgent(character, server);
     };
     server.loadCharacterTryPath = loadCharacterTryPath;
     server.jsonToCharacter = jsonToCharacter;
-    logger.info('Server properties set up');
+    console.info('Server properties set up');
 
     const serverPort = options.port || Number.parseInt(process.env.SERVER_PORT || '3000');
 
     let project;
     try {
-      logger.info('Attempting to load project or plugin...');
+      console.info('Attempting to load project or plugin...');
       project = await loadProject(process.cwd());
 
       if (project.isPlugin) {
-        logger.info(`Plugin loaded successfully: ${project.pluginModule?.name}`);
+        console.info(`Plugin loaded successfully: ${project.pluginModule?.name}`);
       } else {
-        logger.info('Project loaded successfully');
+        console.info('Project loaded successfully');
       }
 
       if (!project || !project.agents || project.agents.length === 0) {
         throw new Error('No agents found in project configuration');
       }
 
-      logger.info(
+      console.info(
         `Found ${project.agents.length} agents in ${project.isPlugin ? 'plugin' : 'project'} configuration`
       );
     } catch (error) {
-      logger.error('Error loading project/plugin:', error);
-      logger.error('Tests cannot run without a valid project or plugin. Exiting.');
+      console.error('Error loading project/plugin:', error);
+      console.error('Tests cannot run without a valid project or plugin. Exiting.');
       if (error instanceof Error) {
         // If the error is specifically about not finding a project
         if (error.message.includes('Could not find project entry point')) {
-          logger.error('No Eliza project or plugin found in current directory.');
-          logger.error('Tests can only run in a valid Eliza project or plugin directory.');
+          console.error('No Eliza project or plugin found in current directory.');
+          console.error('Tests can only run in a valid Eliza project or plugin directory.');
         }
-        logger.error('Error details:', error.message);
+        console.error('Error details:', error.message);
       }
       process.exit(1);
     }
 
-    logger.info('Starting server...');
+    console.info('Starting server...');
     try {
       await server.start(serverPort);
-      logger.info('Server started successfully');
+      console.info('Server started successfully');
     } catch (error) {
-      logger.error('Error starting server:', error);
+      console.error('Error starting server:', error);
       if (error instanceof Error) {
-        logger.error('Error details:', error.message);
-        logger.error('Stack trace:', error.stack);
+        console.error('Error details:', error.message);
+        console.error('Stack trace:', error.stack);
       }
       throw error;
     }
 
     try {
       // Start each agent in sequence
-      logger.info(
+      console.info(
         `Found ${project.agents.length} agents in ${project.isPlugin ? 'plugin' : 'project'}`
       );
 
@@ -296,7 +294,7 @@ const runAgentTests = async (options: {
         // The TestRunner uses this to identify direct plugin tests
         process.env.ELIZA_TESTING_PLUGIN = 'true';
 
-        logger.info('Using default Eliza character as test agent');
+        console.info('Using default Eliza character as test agent');
         try {
           // Import the default character (same approach as start.ts)
           const { character: defaultElizaCharacter } = await import('../characters/eliza');
@@ -304,11 +302,11 @@ const runAgentTests = async (options: {
           // Create the list of plugins for testing - exact same approach as start.ts
           const pluginsToTest = [project.pluginModule];
 
-          logger.info(`Starting test agent with plugin: ${project.pluginModule?.name}`);
-          logger.debug(
+          console.info(`Starting test agent with plugin: ${project.pluginModule?.name}`);
+          console.debug(
             `Using default character with plugins: ${defaultElizaCharacter.plugins ? defaultElizaCharacter.plugins.join(', ') : 'none'}`
           );
-          logger.info(
+          console.info(
             "Plugin test mode: Using default character's plugins plus the plugin being tested"
           );
 
@@ -330,9 +328,9 @@ const runAgentTests = async (options: {
             plugins: pluginsToTest,
           });
 
-          logger.info('Default test agent started successfully');
+          console.info('Default test agent started successfully');
         } catch (pluginError) {
-          logger.error(`Error starting plugin test agent: ${pluginError}`);
+          console.error(`Error starting plugin test agent: ${pluginError}`);
           throw pluginError;
         }
       } else {
@@ -342,7 +340,7 @@ const runAgentTests = async (options: {
             // Make a copy of the original character to avoid modifying the project configuration
             const originalCharacter = { ...agent.character };
 
-            logger.debug(`Starting agent: ${originalCharacter.name}`);
+            console.debug(`Starting agent: ${originalCharacter.name}`);
 
             const runtime = await startAgent(
               originalCharacter,
@@ -357,13 +355,13 @@ const runAgentTests = async (options: {
             // wait 1 second between agent starts
             await new Promise((resolve) => setTimeout(resolve, 1000));
           } catch (agentError) {
-            logger.error(`Error starting agent ${agent.character.name}:`, agentError);
+            console.error(`Error starting agent ${agent.character.name}:`, agentError);
             if (agentError instanceof Error) {
-              logger.error('Error details:', agentError.message);
-              logger.error('Stack trace:', agentError.stack);
+              console.error('Error details:', agentError.message);
+              console.error('Stack trace:', agentError.stack);
             }
             // Log the error but don't fail the entire test run
-            logger.warn(`Skipping agent ${agent.character.name} due to startup error`);
+            console.warn(`Skipping agent ${agent.character.name} due to startup error`);
           }
         }
       }
@@ -372,7 +370,7 @@ const runAgentTests = async (options: {
         throw new Error('Failed to start any agents from project');
       }
 
-      logger.debug(`Successfully started ${runtimes.length} agents for testing`);
+      console.debug(`Successfully started ${runtimes.length} agents for testing`);
 
       // Run tests for each agent
       let totalFailed = 0;
@@ -381,9 +379,9 @@ const runAgentTests = async (options: {
         const projectAgent = projectAgents[i];
 
         if (project.isPlugin) {
-          logger.debug(`Running tests for plugin: ${project.pluginModule?.name}`);
+          console.debug(`Running tests for plugin: ${project.pluginModule?.name}`);
         } else {
-          logger.debug(`Running tests for agent: ${runtime.character.name}`);
+          console.debug(`Running tests for agent: ${runtime.character.name}`);
         }
 
         const testRunner = new TestRunner(runtime, projectAgent);
@@ -405,26 +403,26 @@ const runAgentTests = async (options: {
       await server.stop();
       process.exit(totalFailed > 0 ? 1 : 0);
     } catch (error) {
-      logger.error('Error running tests:', error);
+      console.error('Error running tests:', error);
       if (error instanceof Error) {
-        logger.error('Error details:', error.message);
-        logger.error('Stack trace:', error.stack);
+        console.error('Error details:', error.message);
+        console.error('Stack trace:', error.stack);
       }
       await server.stop();
       throw error;
     }
   } catch (error) {
-    logger.error('Error in runAgentTests:', error);
+    console.error('Error in runAgentTests:', error);
     if (error instanceof Error) {
-      logger.error('Error details:', error.message);
-      logger.error('Stack trace:', error.stack);
+      console.error('Error details:', error.message);
+      console.error('Stack trace:', error.stack);
     } else {
-      logger.error('Unknown error type:', typeof error);
-      logger.error('Error value:', error);
+      console.error('Unknown error type:', typeof error);
+      console.error('Error value:', error);
       try {
-        logger.error('Stringified error:', JSON.stringify(error, null, 2));
+        console.error('Stringified error:', JSON.stringify(error, null, 2));
       } catch (e) {
-        logger.error('Could not stringify error:', e);
+        console.error('Could not stringify error:', e);
       }
     }
     throw error;
@@ -436,28 +434,28 @@ export const test = new Command()
   .name('test')
   .description('Run tests for Eliza agent plugins')
   .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
-  .option('-P, --plugin <name>', 'Name of plugin to test')
-  .option('--skip-plugins', 'Skip plugin tests')
-  .option('--skip-project-tests', 'Skip project tests')
-  .option('--skip-build', 'Skip building before running tests')
+  .option('-pl, --plugin <name>', 'Name of plugin to test')
+  .option('-sp, --skip-plugins', 'Skip plugin tests')
+  .option('-spt, --skip-project-tests', 'Skip project tests')
+  .option('-sb, --skip-build', 'Skip building before running tests')
   .action(async (options) => {
-    logger.info('Starting test command...');
-    logger.info('Command options:', options);
+    console.info('Starting test command...');
+    console.info('Command options:', options);
     try {
-      logger.info('Running agent tests...');
+      console.info('Running agent tests...');
       await runAgentTests(options);
     } catch (error) {
-      logger.error('Error running tests:', error);
+      console.error('Error running tests:', error);
       if (error instanceof Error) {
-        logger.error('Error details:', error.message);
-        logger.error('Stack trace:', error.stack);
+        console.error('Error details:', error.message);
+        console.error('Stack trace:', error.stack);
       } else {
-        logger.error('Unknown error type:', typeof error);
-        logger.error('Error value:', error);
+        console.error('Unknown error type:', typeof error);
+        console.error('Error value:', error);
         try {
-          logger.error('Stringified error:', JSON.stringify(error, null, 2));
+          console.error('Stringified error:', JSON.stringify(error, null, 2));
         } catch (e) {
-          logger.error('Could not stringify error:', e);
+          console.error('Could not stringify error:', e);
         }
       }
       process.exit(1);

@@ -87,13 +87,15 @@ export const elevenLabsPlugin: Plugin = {
   description: 'ElevenLabs plugin',
   models: {
     [ModelType.TEXT_TO_SPEECH]: async (runtime, text) => {
+      const settings = getVoiceSettings(runtime);
+      logger.log(`[ElevenLabs] Using TEXT_TO_SPEECH model: ${settings.model}`);
       try {
         const stream = await fetchSpeech(runtime, text);
-        return getVoiceSettings(runtime).outputFormat.startsWith('pcm_')
+        return settings.outputFormat.startsWith('pcm_')
           ? prependWavHeader(
               stream,
               1024 * 1024 * 100,
-              Number.parseInt(getVoiceSettings(runtime).outputFormat.slice(4)),
+              Number.parseInt(settings.outputFormat.slice(4)),
               1,
               16
             )

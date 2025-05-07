@@ -77,6 +77,11 @@ export function encryptStringValue(value: string, salt: string): string {
       return value;
     }
 
+    if (typeof value !== 'string') {
+      logger.debug(`Value is not a string (type: ${typeof value}), returning as is`);
+      return value;
+    }
+
     // Check if value is already encrypted (has the format "iv:encrypted")
     const parts = value.split(':');
     if (parts.length === 2) {
@@ -127,6 +132,11 @@ export function decryptStringValue(value: string, salt: string): string {
 
     if (typeof value === 'boolean' || typeof value === 'number') {
       logger.debug('Value is a boolean or number, returning as is');
+      return value;
+    }
+
+    if (typeof value !== 'string') {
+      logger.debug(`Value is not a string (type: ${typeof value}), returning as is`);
       return value;
     }
 
@@ -335,7 +345,6 @@ export async function initializeOnboarding(
 /**
  * Encrypts sensitive data in a Character object
  * @param {Character} character - The character object to encrypt secrets for
- * @param {IAgentRuntime} runtime - The runtime information needed for salt generation
  * @returns {Character} - A copy of the character with encrypted secrets
  */
 export function encryptedCharacter(character: Character): Character {

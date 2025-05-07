@@ -8,7 +8,7 @@ const config = {
   title: 'eliza',
   tagline: 'Flexible, scalable AI agents for everyone',
   favicon: 'img/favicon.ico',
-  url: 'https://eliza.how',
+  url: 'https://docs.eliza.how',
   baseUrl: '/',
   organizationName: 'elizaos',
   projectName: 'eliza',
@@ -31,6 +31,31 @@ const config = {
   },
   themes: ['@docusaurus/theme-mermaid', 'docusaurus-theme-openapi-docs'],
   plugins: [
+    [
+      '@docusaurus/plugin-content-docs',
+      {
+        id: 'partners',
+        path: './partners',
+        routeBasePath: 'partners',
+        sidebarItemsGenerator: async ({ defaultSidebarItemsGenerator, ...args }) => {
+          const sidebarItems = await defaultSidebarItemsGenerator(args);
+          return sidebarItems
+            .map((item) => {
+              if (item.type === 'category') {
+                item.label = '🤝 ' + item.label;
+              }
+              return item;
+            })
+            .sort((a, b) => {
+              const labelA = a.label || '';
+              const labelB = b.label || '';
+              return labelA.localeCompare(labelB, undefined, {
+                numeric: true,
+              });
+            });
+        },
+      },
+    ],
     [
       '@docusaurus/plugin-content-docs',
       {
@@ -59,8 +84,8 @@ const config = {
               return item;
             })
             .sort((a, b) => {
-              const labelA = a.label || ''; // Ensure `label` exists
-              const labelB = b.label || ''; // Ensure `label` exists
+              const labelA = a.label || '';
+              const labelB = b.label || '';
               return labelA.localeCompare(labelB, undefined, {
                 numeric: true,
               });
@@ -220,7 +245,6 @@ const config = {
             description: 'Stay up to date with the latest from ElizaOS',
           },
           path: 'news',
-          routeBasePath: 'news',
         },
         docs: {
           docItemComponent: '@theme/ApiItem',
@@ -341,18 +365,45 @@ const config = {
           docId: 'index',
         },
         {
-          type: 'doc',
-          docsPluginId: 'packages',
-          position: 'left',
+          type: 'dropdown',
           label: 'Packages',
-          docId: 'index',
+          position: 'left',
+          to: '/packages',
+          items: [
+            {
+              label: 'Adapters',
+              to: '/packages?tags=adapter',
+            },
+            {
+              label: 'Clients',
+              to: '/packages?tags=client',
+            },
+            {
+              label: 'Plugins',
+              to: '/packages?tags=plugin',
+            },
+          ],
         },
         {
-          type: 'doc',
-          docsPluginId: 'community',
-          position: 'left',
+          type: 'dropdown',
           label: 'Community',
-          docId: 'index',
+          position: 'left',
+          to: '/community',
+          items: [
+            {
+              label: 'Partners',
+              to: '/partners',
+            },
+            {
+              label: 'Calendar',
+              to: 'https://calendar.google.com/calendar/embed?src=c_ed31cea342d3e2236f549161e6446c3e407e5625ee7a355c0153befc7a602e7f%40group.calendar.google.com&ctz=America%2FToronto',
+              target: '_blank',
+            },
+            {
+              label: 'Video Gallery',
+              to: '/community/videos',
+            },
+          ],
         },
         {
           to: 'blog',
@@ -391,11 +442,11 @@ const config = {
             },
             {
               label: 'llms.txt',
-              href: 'https://eliza.how/llms.txt',
+              href: 'https://docs.eliza.how/llms.txt',
             },
             {
               label: 'llms-full.txt',
-              href: 'https://eliza.how/llms-full.txt',
+              href: 'https://docs.eliza.how/llms-full.txt',
             },
           ],
         },

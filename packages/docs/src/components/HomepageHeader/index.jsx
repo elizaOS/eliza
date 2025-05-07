@@ -34,10 +34,10 @@ function HomepageHeader() {
                 ></iframe>
               </div>
               <p>
-                NEW! Copy{' '}
+                NEW! Copy
                 <Link href="/llms-full.txt" target="_blank">
                   <b>llms-full.txt</b>
-                </Link>{' '}
+                </Link>
                 to chat with the docs using LLMs
               </p>
             </div>

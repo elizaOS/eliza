@@ -136,6 +136,13 @@ export default function GroupPanel({ onClose, agents, groupId }: GroupPanel) {
             <Button
               variant="destructive"
               onClick={async () => {
+                // Add confirmation dialog
+                const confirmDelete = window.confirm(
+                  `Are you sure you want to permanently delete the group chat "${chatName}"? This action cannot be undone.`
+                );
+                if (!confirmDelete) {
+                  return;
+                }
                 setDeleting(true);
                 try {
                   await apiClient.deleteGroupChat(groupId);
@@ -186,7 +193,7 @@ export default function GroupPanel({ onClose, agents, groupId }: GroupPanel) {
                   );
                 }
               } catch (error) {
-                console.error('Failed to create room', error);
+                console.error('Failed to create group', error);
               } finally {
                 setCreating(false);
                 navigate(`/room/${serverId}`);

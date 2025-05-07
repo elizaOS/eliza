@@ -19,47 +19,28 @@ import {
   type MessagePayload,
   type MessageReceivedHandlerParams,
   ModelType,
+  normalizeJsonString,
   parseJSONObjectFromText,
   type Plugin,
   postCreationTemplate,
-  providersTemplate,
   shouldRespondTemplate,
   truncateToCompleteSentence,
+  parseKeyValueXml,
   type UUID,
   type WorldPayload,
 } from '@elizaos/core';
 import { v4 } from 'uuid';
-import { choiceAction } from './actions/choice';
-import { followRoomAction } from './actions/followRoom';
-import { ignoreAction } from './actions/ignore';
-import { muteRoomAction } from './actions/muteRoom';
-import { noneAction } from './actions/none';
-import { replyAction } from './actions/reply';
-import updateRoleAction from './actions/roles';
-import { sendMessageAction } from './actions/sendMessage';
-import updateSettingsAction from './actions/settings';
-import { unfollowRoomAction } from './actions/unfollowRoom';
-import { unmuteRoomAction } from './actions/unmuteRoom';
-import { updateEntityAction } from './actions/updateEntity';
-import { reflectionEvaluator } from './evaluators/reflection';
-import { actionsProvider } from './providers/actions';
-import { anxietyProvider } from './providers/anxiety';
-import { attachmentsProvider } from './providers/attachments';
-import { capabilitiesProvider } from './providers/capabilities';
-import { characterProvider } from './providers/character';
-import { choiceProvider } from './providers/choice';
-import { entitiesProvider } from './providers/entities';
-import { evaluatorsProvider } from './providers/evaluators';
-import { factsProvider } from './providers/facts';
-import { knowledgeProvider } from './providers/knowledge';
-import { providersProvider } from './providers/providers';
-import { recentMessagesProvider } from './providers/recentMessages';
-import { relationshipsProvider } from './providers/relationships';
-import { roleProvider } from './providers/roles';
-import { settingsProvider } from './providers/settings';
-import { timeProvider } from './providers/time';
+
+import * as actions from './actions';
+import * as evaluators from './evaluators';
+import * as providers from './providers';
+
 import { ScenarioService } from './services/scenario';
 import { TaskService } from './services/task';
+
+export * from './actions';
+export * from './evaluators';
+export * from './providers';
 
 /**
  * Represents media data containing a buffer of data and the media type.
@@ -73,6 +54,50 @@ type MediaData = {
 };
 
 const latestResponseIds = new Map<string, Map<string, string>>();
+
+/**
+ * Escapes special characters in a string to make it JSON-safe.
+ */
+/* // Removing JSON specific helpers
+function escapeForJson(input: string): string {
+  return input
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n')
+    .replace(/```/g, '\\`\\`\\`');
+}
+
+function sanitizeJson(rawJson: string): string {
+  try {
+    // Try parsing directly
+    JSON.parse(rawJson);
+    return rawJson; // Already valid
+  } catch {
+    // Continue to sanitization
+  }
+
+  // first, replace all newlines with \n
+  const sanitized = rawJson
+    .replace(/\n/g, '\\n')
+
+    // then, replace all backticks with \\\`
+    .replace(/`/g, '\\\`');
+
+  // Regex to find and escape the "text" field
+  const fixed = sanitized.replace(/"text"\s*:\s*"([\s\S]*?)"\s*,\s*"simple"/, (_match, group) => {
+    const escapedText = escapeForJson(group);
+    return `"text": "${escapedText}", "simple"`;
+  });
+
+  // Validate that the result is actually parseable
+  try {
+    JSON.parse(fixed);
+    return fixed;
+  } catch (e) {
+    throw new Error(`Failed to sanitize JSON: ${e.message}`);
+  }
+}
+*/
 
 /**
  * Fetches media data from a list of attachments, supporting both HTTP URLs and local file paths.
@@ -197,11 +222,11 @@ const messageReceivedHandler = async ({
       }
 
       let state = await runtime.composeState(message, [
-        'PROVIDERS',
+        'ANXIETY',
         'SHOULD_RESPOND',
+        'ENTITIES',
         'CHARACTER',
         'RECENT_MESSAGES',
-        'ENTITIES',
       ]);
 
       // Skip shouldRespond check for DM and VOICE_DM channels
@@ -212,8 +237,8 @@ const messageReceivedHandler = async ({
         room?.type === ChannelType.SELF;
 
       let shouldRespond = true;
-      let providers: string[] = [];
 
+      // Handle shouldRespond
       if (!shouldSkipShouldRespond) {
         const shouldRespondPrompt = composePromptFromState({
           state,
@@ -233,41 +258,21 @@ const messageReceivedHandler = async ({
         logger.debug(`*** Raw Response Type: ${typeof response} ***`);
 
         // Try to preprocess response by removing code blocks markers if present
-        let processedResponse = response;
-        if (typeof response === 'string' && response.includes('```')) {
-          logger.debug('*** Response contains code block markers, attempting to clean up ***');
-          processedResponse = response.replace(/```json\n|\n```|```/g, '');
-          logger.debug('*** Processed Response ***\n', processedResponse);
-        }
+        // let processedResponse = response.replace('```json', '').replaceAll('```', '').trim(); // No longer needed for XML
 
-        const responseObject = parseJSONObjectFromText(processedResponse);
-        logger.debug('*** Parsed Response Object ***', responseObject);
+        const responseObject = parseKeyValueXml(response);
+        logger.debug('*** Parsed XML Response Object ***', responseObject);
 
         shouldRespond = responseObject?.action && responseObject.action === 'RESPOND';
-        providers = (responseObject?.providers as string[]) || [];
       } else {
-        // Use providersTemplate for DM and VOICE_DM channels
-        const providersPrompt = composePromptFromState({
-          state,
-          template: runtime.character.templates?.providersTemplate || providersTemplate,
-        });
-
-        const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-          prompt: providersPrompt,
-        });
-
-        const responseObject = parseJSONObjectFromText(response);
-        providers = (responseObject?.providers as string[]) || [];
+        shouldRespond = true;
       }
-
-      logger.debug('*** Should Respond ***', shouldRespond);
-      logger.debug('*** Providers Value ***', providers);
-
-      state = await runtime.composeState(message, null, providers);
 
       let responseMessages: Memory[] = [];
 
       if (shouldRespond) {
+        state = await runtime.composeState(message);
+
         const prompt = composePromptFromState({
           state,
           template: runtime.character.templates?.messageHandlerTemplate || messageHandlerTemplate,
@@ -278,16 +283,34 @@ const messageReceivedHandler = async ({
         // Retry if missing required fields
         let retries = 0;
         const maxRetries = 3;
+
         while (retries < maxRetries && (!responseContent?.thought || !responseContent?.actions)) {
-          const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+          let response = await runtime.useModel(ModelType.TEXT_LARGE, {
             prompt,
           });
 
-          responseContent = parseJSONObjectFromText(response) as Content;
+          logger.debug('*** Raw LLM Response ***\n', response);
+
+          // Attempt to parse the XML response
+          const parsedXml = parseKeyValueXml(response);
+          logger.debug('*** Parsed XML Content ***\n', parsedXml);
+
+          // Map parsed XML to Content type, handling potential missing fields
+          if (parsedXml) {
+            responseContent = {
+              thought: parsedXml.thought || '',
+              actions: parsedXml.actions || ['IGNORE'],
+              providers: parsedXml.providers || [],
+              text: parsedXml.text || '',
+              simple: parsedXml.simple || false,
+            };
+          } else {
+            responseContent = null;
+          }
 
           retries++;
-          if (!responseContent?.thought && !responseContent?.actions) {
-            logger.warn('*** Missing required fields, retrying... ***');
+          if (!responseContent?.thought || !responseContent?.actions) {
+            logger.warn('*** Missing required fields (thought or actions), retrying... ***');
           }
         }
 
@@ -303,19 +326,16 @@ const messageReceivedHandler = async ({
         if (responseContent) {
           responseContent.inReplyTo = createUniqueUuid(runtime, message.id);
 
-          responseMessages = [
-            {
-              id: asUUID(v4()),
-              entityId: runtime.agentId,
-              agentId: runtime.agentId,
-              content: responseContent,
-              roomId: message.roomId,
-              createdAt: Date.now(),
-            },
-          ];
+          const responseMesssage = {
+            id: asUUID(v4()),
+            entityId: runtime.agentId,
+            agentId: runtime.agentId,
+            content: responseContent,
+            roomId: message.roomId,
+            createdAt: Date.now(),
+          };
 
-          // First callback without text - this is for the planning stage to show thought messages in GUI
-          callback(responseContent);
+          responseMessages = [responseMesssage];
         }
 
         // Clean up the response ID
@@ -324,10 +344,70 @@ const messageReceivedHandler = async ({
           latestResponseIds.delete(runtime.agentId);
         }
 
-        await runtime.processActions(message, responseMessages, state, callback);
+        if (responseContent?.providers.length > 0) {
+          state = await runtime.composeState(message, null, [...responseContent?.providers]);
+        }
+
+        if (
+          responseContent &&
+          responseContent.simple &&
+          responseContent.text &&
+          (responseContent.actions.length === 0 ||
+            (responseContent.actions.length === 1 &&
+              responseContent.actions[0].toUpperCase() === 'REPLY'))
+        ) {
+          await callback(responseContent);
+        } else {
+          await runtime.processActions(message, responseMessages, state, callback);
+        }
+        await runtime.evaluate(message, state, shouldRespond, callback, responseMessages);
+      } else {
+        // Handle the case where the agent decided not to respond
+        logger.debug('Agent decided not to respond (shouldRespond is false).');
+
+        // Check if we still have the latest response ID
+        const currentResponseId = agentResponses.get(message.roomId);
+        if (currentResponseId !== responseId) {
+          logger.info(
+            `Ignore response discarded - newer message being processed for agent: ${runtime.agentId}, room: ${message.roomId}`
+          );
+          return; // Stop processing if a newer message took over
+        }
+
+        // Construct a minimal content object indicating ignore, include a generic thought
+        const ignoreContent: Content = {
+          thought: 'Agent decided not to respond to this message.',
+          actions: ['IGNORE'],
+          simple: true, // Treat it as simple for callback purposes
+          inReplyTo: createUniqueUuid(runtime, message.id), // Reference original message
+        };
+
+        // Call the callback directly with the ignore content
+        await callback(ignoreContent);
+
+        // Also save this ignore action/thought to memory
+        const ignoreMemory = {
+          id: asUUID(v4()),
+          entityId: runtime.agentId,
+          agentId: runtime.agentId,
+          content: ignoreContent,
+          roomId: message.roomId,
+          createdAt: Date.now(),
+        };
+        await runtime.createMemory(ignoreMemory, 'messages');
+        logger.debug('Saved ignore response to memory', { memoryId: ignoreMemory.id });
+
+        // Clean up the response ID since we handled it
+        agentResponses.delete(message.roomId);
+        if (agentResponses.size === 0) {
+          latestResponseIds.delete(runtime.agentId);
+        }
+
+        // Optionally, evaluate the decision to ignore (if relevant evaluators exist)
+        // await runtime.evaluate(message, state, shouldRespond, callback, []);
       }
+
       onComplete?.();
-      await runtime.evaluate(message, state, shouldRespond, callback, responseMessages);
 
       // Emit run ended event on successful completion
       await runtime.emitEvent(EventType.RUN_ENDED, {
@@ -438,14 +518,65 @@ const postGeneratedHandler = async ({
     agentId: runtime.agentId,
     roomId: roomId,
     content: {},
+    metadata: {
+      entityName: runtime.character.name,
+      type: 'message',
+    },
   };
 
+  // generate thought of which providers to use using messageHandlerTemplate
+
   // Compose state with relevant context for tweet generation
-  const state = await runtime.composeState(message, null, [
+  let state = await runtime.composeState(message, null, [
+    'PROVIDERS',
     'CHARACTER',
-    'RECENT_MESSAGES',
+    //'RECENT_MESSAGES',
     'ENTITIES',
   ]);
+
+  // get twitterUserName
+  const entity = await runtime.getEntityById(runtime.agentId);
+  if (entity?.metadata?.twitter?.userName) {
+    state.values.twitterUserName = entity?.metadata?.twitter?.userName;
+  }
+
+  const prompt = composePromptFromState({
+    state,
+    template: runtime.character.templates?.messageHandlerTemplate || messageHandlerTemplate,
+  });
+
+  let responseContent: Content | null = null;
+
+  // Retry if missing required fields
+  let retries = 0;
+  const maxRetries = 3;
+  while (retries < maxRetries && (!responseContent?.thought || !responseContent?.actions)) {
+    const response = await runtime.useModel(ModelType.TEXT_SMALL, {
+      prompt,
+    });
+
+    // Parse XML
+    const parsedXml = parseKeyValueXml(response);
+    if (parsedXml) {
+      responseContent = {
+        thought: parsedXml.thought || '',
+        actions: parsedXml.actions || ['IGNORE'],
+        providers: parsedXml.providers || [],
+        text: parsedXml.text || '',
+        simple: parsedXml.simple || false,
+      };
+    } else {
+      responseContent = null;
+    }
+
+    retries++;
+    if (!responseContent?.thought || !responseContent?.actions) {
+      logger.warn('*** Missing required fields, retrying... ***');
+    }
+  }
+
+  // update stats with correct providers
+  state = await runtime.composeState(message, responseContent.providers);
 
   // Generate prompt for tweet content
   const postPrompt = composePromptFromState({
@@ -453,10 +584,19 @@ const postGeneratedHandler = async ({
     template: runtime.character.templates?.postCreationTemplate || postCreationTemplate,
   });
 
-  const jsonResponse = await runtime.useModel(ModelType.OBJECT_LARGE, {
+  // Use TEXT_LARGE model as we expect structured XML text, not a JSON object
+  const xmlResponseText = await runtime.useModel(ModelType.TEXT_LARGE, {
     prompt: postPrompt,
-    output: 'no-schema',
   });
+
+  // Parse the XML response
+  const parsedXmlResponse = parseKeyValueXml(xmlResponseText);
+
+  if (!parsedXmlResponse) {
+    logger.error('Failed to parse XML response for post creation. Raw response:', xmlResponseText);
+    // Handle the error appropriately, maybe retry or return an error state
+    return;
+  }
 
   /**
    * Cleans up a tweet text by removing quotes and fixing newlines
@@ -474,7 +614,7 @@ const postGeneratedHandler = async ({
   }
 
   // Cleanup the tweet text
-  const cleanedText = cleanupPostText(jsonResponse.post);
+  const cleanedText = cleanupPostText(parsedXmlResponse.post || '');
 
   // Prepare media if included
   // const mediaData: MediaData[] = [];
@@ -495,6 +635,54 @@ const postGeneratedHandler = async ({
   // 	}
   // }
 
+  // have we posted it before?
+  const RM = state.providerData?.find((pd) => pd.providerName === 'RECENT_MESSAGES');
+  if (RM) {
+    for (const m of RM.data.recentMessages) {
+      if (cleanedText === m.content.text) {
+        logger.log("we've already recently posted that, retrying", cleanedText);
+        postGeneratedHandler({
+          runtime,
+          callback,
+          worldId,
+          userId,
+          roomId,
+          source,
+        });
+        return; // don't call callbacks
+      }
+    }
+  }
+
+  // GPT 3.5/4: /(i\s+do\s+not|i'?m\s+not)\s+(feel\s+)?comfortable\s+generating\s+that\s+type\s+of\s+content|(inappropriate|explicit|offensive|communicate\s+respectfully|aim\s+to\s+(be\s+)?helpful)/i
+  const oaiRefusalRegex =
+    /((i\s+do\s+not|i'm\s+not)\s+(feel\s+)?comfortable\s+generating\s+that\s+type\s+of\s+content)|(inappropriate|explicit|respectful|offensive|guidelines|aim\s+to\s+(be\s+)?helpful|communicate\s+respectfully)/i;
+  const anthropicRefusalRegex =
+    /(i'?m\s+unable\s+to\s+help\s+with\s+that\s+request|due\s+to\s+safety\s+concerns|that\s+may\s+violate\s+(our\s+)?guidelines|provide\s+helpful\s+and\s+safe\s+responses|let'?s\s+try\s+a\s+different\s+direction|goes\s+against\s+(our\s+)?use\s+case\s+policies|ensure\s+safe\s+and\s+responsible\s+use)/i;
+  const googleRefusalRegex =
+    /(i\s+can'?t\s+help\s+with\s+that|that\s+goes\s+against\s+(our\s+)?(policy|policies)|i'?m\s+still\s+learning|response\s+must\s+follow\s+(usage|safety)\s+policies|i'?ve\s+been\s+designed\s+to\s+avoid\s+that)/i;
+  //const cohereRefusalRegex = /(request\s+cannot\s+be\s+processed|violates\s+(our\s+)?content\s+policy|not\s+permitted\s+by\s+usage\s+restrictions)/i
+  const generalRefusalRegex =
+    /(response\s+was\s+withheld|content\s+was\s+filtered|this\s+request\s+cannot\s+be\s+completed|violates\s+our\s+safety\s+policy|content\s+is\s+not\s+available)/i;
+
+  if (
+    oaiRefusalRegex.test(cleanedText) ||
+    anthropicRefusalRegex.test(cleanedText) ||
+    googleRefusalRegex.test(cleanedText) ||
+    generalRefusalRegex.test(cleanedText)
+  ) {
+    logger.log('got prompt moderation refusal, retrying', cleanedText);
+    postGeneratedHandler({
+      runtime,
+      callback,
+      worldId,
+      userId,
+      roomId,
+      source,
+    });
+    return; // don't call callbacks
+  }
+
   // Create the response memory
   const responseMessages = [
     {
@@ -505,7 +693,7 @@ const postGeneratedHandler = async ({
         text: cleanedText,
         source,
         channelType: ChannelType.FEED,
-        thought: jsonResponse.thought || '',
+        thought: parsedXmlResponse.thought || '',
         type: 'post',
       },
       roomId: message.roomId,
@@ -553,13 +741,13 @@ const syncSingleUser = async (
   type: ChannelType,
   source: string
 ) => {
-  const entity = await runtime.getEntityById(entityId);
-  logger.info(`Syncing user: ${entity.metadata[source].username || entity.id}`);
-
   try {
+    const entity = await runtime.getEntityById(entityId);
+    logger.info(`Syncing user: ${entity?.metadata[source]?.username || entityId}`);
+
     // Ensure we're not using WORLD type and that we have a valid channelId
     if (!channelId) {
-      logger.warn(`Cannot sync user ${entity.id} without a valid channelId`);
+      logger.warn(`Cannot sync user ${entity?.id} without a valid channelId`);
       return;
     }
 
@@ -569,8 +757,8 @@ const syncSingleUser = async (
     await runtime.ensureConnection({
       entityId,
       roomId,
-      userName: entity.metadata[source].username || entity.id,
-      name: entity.metadata[source].name || entity.metadata[source].username || `User${entity.id}`,
+      userName: entity?.metadata[source].username || entityId,
+      name: entity?.metadata[source].name || entity?.metadata[source].username || `User${entityId}`,
       source,
       channelId,
       serverId,
@@ -578,7 +766,7 @@ const syncSingleUser = async (
       worldId,
     });
 
-    logger.success(`Successfully synced user: ${entity.id}`);
+    logger.success(`Successfully synced user: ${entity?.id}`);
   } catch (error) {
     logger.error(`Error syncing user: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -669,6 +857,70 @@ const handleServerSync = async ({
         error instanceof Error ? error.message : String(error)
       }`
     );
+  }
+};
+
+/**
+ * Handles control messages for enabling or disabling UI elements in the frontend
+ * @param {Object} params - Parameters for the handler
+ * @param {IAgentRuntime} params.runtime - The runtime instance
+ * @param {Object} params.message - The control message
+ * @param {string} params.source - Source of the message
+ */
+const controlMessageHandler = async ({
+  runtime,
+  message,
+  source,
+}: {
+  runtime: IAgentRuntime;
+  message: {
+    type: 'control';
+    payload: {
+      action: 'enable_input' | 'disable_input';
+      target?: string;
+    };
+    roomId: UUID;
+  };
+  source: string;
+}) => {
+  try {
+    logger.debug(
+      `[controlMessageHandler] Processing control message: ${message.payload.action} for room ${message.roomId}`
+    );
+
+    // Here we would use a WebSocket service to send the control message to the frontend
+    // This would typically be handled by a registered service with sendMessage capability
+
+    // Get any registered WebSocket service
+    const serviceNames = Array.from(runtime.getAllServices().keys());
+    const websocketServiceName = serviceNames.find(
+      (name) => name.toLowerCase().includes('websocket') || name.toLowerCase().includes('socket')
+    );
+
+    if (websocketServiceName) {
+      const websocketService = runtime.getService(websocketServiceName);
+      if (websocketService && 'sendMessage' in websocketService) {
+        // Send the control message through the WebSocket service
+        await (websocketService as any).sendMessage({
+          type: 'controlMessage',
+          payload: {
+            action: message.payload.action,
+            target: message.payload.target,
+            roomId: message.roomId,
+          },
+        });
+
+        logger.debug(
+          `[controlMessageHandler] Control message ${message.payload.action} sent successfully`
+        );
+      } else {
+        logger.error('[controlMessageHandler] WebSocket service does not have sendMessage method');
+      }
+    } else {
+      logger.error('[controlMessageHandler] No WebSocket service found to send control message');
+    }
+  } catch (error) {
+    logger.error(`[controlMessageHandler] Error processing control message: ${error}`);
   }
 };
 
@@ -786,44 +1038,47 @@ const events = {
       logger.debug(`Evaluator ${status}: ${payload.evaluatorName} (${payload.evaluatorId})`);
     },
   ],
+
+  CONTROL_MESSAGE: [controlMessageHandler],
 };
 
 export const bootstrapPlugin: Plugin = {
   name: 'bootstrap',
   description: 'Agent bootstrap with basic actions and evaluators',
   actions: [
-    replyAction,
-    followRoomAction,
-    unfollowRoomAction,
-    ignoreAction,
-    noneAction,
-    muteRoomAction,
-    unmuteRoomAction,
-    sendMessageAction,
-    updateEntityAction,
-    choiceAction,
-    updateRoleAction,
-    updateSettingsAction,
+    actions.replyAction,
+    actions.followRoomAction,
+    actions.unfollowRoomAction,
+    actions.ignoreAction,
+    actions.noneAction,
+    actions.muteRoomAction,
+    actions.unmuteRoomAction,
+    actions.sendMessageAction,
+    actions.updateEntityAction,
+    actions.choiceAction,
+    actions.updateRoleAction,
+    actions.updateSettingsAction,
   ],
   events,
-  evaluators: [reflectionEvaluator],
+  evaluators: [evaluators.reflectionEvaluator],
   providers: [
-    evaluatorsProvider,
-    anxietyProvider,
-    knowledgeProvider,
-    timeProvider,
-    entitiesProvider,
-    relationshipsProvider,
-    choiceProvider,
-    factsProvider,
-    roleProvider,
-    settingsProvider,
-    capabilitiesProvider,
-    attachmentsProvider,
-    providersProvider,
-    actionsProvider,
-    characterProvider,
-    recentMessagesProvider,
+    providers.evaluatorsProvider,
+    providers.anxietyProvider,
+    providers.knowledgeProvider,
+    providers.timeProvider,
+    providers.entitiesProvider,
+    providers.relationshipsProvider,
+    providers.choiceProvider,
+    providers.factsProvider,
+    providers.roleProvider,
+    providers.settingsProvider,
+    providers.capabilitiesProvider,
+    providers.attachmentsProvider,
+    providers.providersProvider,
+    providers.actionsProvider,
+    providers.characterProvider,
+    providers.recentMessagesProvider,
+    providers.worldProvider,
   ],
   services: [TaskService, ScenarioService],
 };

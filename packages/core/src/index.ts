@@ -12,3 +12,11 @@ export * from './runtime';
 export * from './settings';
 export * from './uuid';
 export * from './audioUtils';
+export * from './utils';
+
+// cloudflare
+export * from './cloudflare';
+
+// Export instrumentation types and service
+export * from './instrumentation/types';
+export * from './instrumentation/service';

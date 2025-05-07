@@ -1,6 +1,26 @@
-import type { EntityPayload, MessagePayload, WorldPayload } from '@elizaos/core';
+import type { Content, EntityPayload, MessagePayload, WorldPayload } from '@elizaos/core';
 import type { Chat, Message, ReactionType } from '@telegraf/types';
 import type { Context } from 'telegraf';
+
+/**
+ * Extention of the core Content type just for Telegram
+ */
+export interface TelegramContent extends Content {
+  /** Array of buttons */
+  buttons?: Button[];
+}
+
+/**
+ * Represents a flexible button configuration
+ */
+export type Button = {
+  /** The type of button */
+  kind: 'login' | 'url';
+  /** The text to display on the button */
+  text: string;
+  /** The URL or endpoint the button should link to */
+  url: string;
+};
 
 /**
  * Telegram-specific event types

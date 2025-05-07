@@ -1,22 +1,27 @@
-import './index.css';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import AgentCreator from './components/agent-creator';
 import { AppSidebar } from './components/app-sidebar';
+import { ConnectionErrorBanner } from './components/connection-error-banner';
+import EnvSettings from './components/env-settings';
 import { LogViewer } from './components/log-viewer';
+import OnboardingTour from './components/onboarding-tour';
 import { Toaster } from './components/ui/toaster';
 import { TooltipProvider } from './components/ui/tooltip';
+import { AuthProvider } from './context/AuthContext';
+import { ConnectionProvider, useConnection } from './context/ConnectionContext';
 import { STALE_TIMES } from './hooks/use-query-hooks';
 import useVersion from './hooks/use-version';
+import './index.css';
 import { apiClient } from './lib/api';
 import Chat from './routes/chat';
-import Room from './routes/room';
 import AgentCreatorRoute from './routes/createAgent';
 import Home from './routes/home';
+import NotFound from './routes/not-found';
+import Room from './routes/room';
 import Settings from './routes/settings';
-import EnvSettings from './components/env-settings';
 
 // Create a query client with optimized settings
 const queryClient = new QueryClient({
@@ -60,14 +65,66 @@ const prefetchInitialData = async () => {
 // Execute prefetch immediately
 prefetchInitialData();
 
-function App() {
+// Component containing the core application logic and routing
+function AppContent() {
   useVersion();
+  const { status } = useConnection();
 
   // Also prefetch when the component mounts (helps with HMR and refreshes)
   useEffect(() => {
     prefetchInitialData();
   }, []);
 
+  return (
+    <TooltipProvider delayDuration={0}>
+      <SidebarProvider>
+        <AppSidebar />
+        <SidebarInset>
+          <div className="flex w-full justify-center">
+            <div className="w-full md:max-w-4xl">
+              <ConnectionErrorBanner />
+            </div>
+          </div>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="chat/:agentId" element={<Chat />} />
+            <Route path="settings/:agentId" element={<Settings />} />
+            <Route path="agents/new" element={<AgentCreatorRoute />} />
+            <Route path="/create" element={<AgentCreator />} />
+            <Route
+              path="/logs"
+              element={
+                <div className="flex w-full justify-center">
+                  <div className="w-full md:max-w-4xl">
+                    <LogViewer />
+                  </div>
+                </div>
+              }
+            />
+            <Route path="room/:serverId" element={<Room />} />
+            <Route
+              path="settings/"
+              element={
+                <div className="flex w-full justify-center">
+                  <div className="w-full md:max-w-4xl">
+                    <EnvSettings />
+                  </div>
+                </div>
+              }
+            />
+            {/* Catch-all route for 404 errors */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </SidebarInset>
+      </SidebarProvider>
+      <Toaster />
+      {status !== 'unauthorized' && <OnboardingTour />}
+    </TooltipProvider>
+  );
+}
+
+// Main App component setting up providers
+function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <div
@@ -77,24 +134,11 @@ function App() {
         }}
       >
         <BrowserRouter>
-          <TooltipProvider delayDuration={0}>
-            <SidebarProvider>
-              <AppSidebar />
-              <SidebarInset>
-                <Routes>
-                  <Route path="/" element={<Home />} />
-                  <Route path="chat/:agentId" element={<Chat />} />
-                  <Route path="settings/:agentId" element={<Settings />} />
-                  <Route path="agents/new" element={<AgentCreatorRoute />} />
-                  <Route path="/create" element={<AgentCreator />} />
-                  <Route path="/logs" element={<LogViewer />} />
-                  <Route path="room/:serverId" element={<Room />} />
-                  <Route path="settings/" element={<EnvSettings />} />
-                </Routes>
-              </SidebarInset>
-            </SidebarProvider>
-            <Toaster />
-          </TooltipProvider>
+          <AuthProvider>
+            <ConnectionProvider>
+              <AppContent />
+            </ConnectionProvider>
+          </AuthProvider>
         </BrowserRouter>
       </div>
     </QueryClientProvider>

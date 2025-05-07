@@ -1,13 +1,13 @@
 version: '3'
 services:
   postgres:
-    image: postgres:15
+    image: ankane/pgvector:latest
     environment:
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_USER=postgres
       - POSTGRES_DB=eliza
     volumes:
-      - postgres-data:/root/.eliza/db
+      - postgres-data:/var/lib/postgresql/data:rw
     ports:
       - '127.0.0.1:5432:5432'
     healthcheck:
@@ -22,8 +22,6 @@ services:
     image: ${DOCKER_IMAGE_FULL_NAME}
     container_name: elizav2
     command: bun run start
-    stdin_open: true
-    tty: true
     volumes:
       - /var/run/tappd.sock:/var/run/tappd.sock
     environment:
@@ -44,7 +42,7 @@ services:
       - DEV_REL_DISCORD_API_TOKEN=${DEV_REL_DISCORD_API_TOKEN}
       - INVESTMENT_MANAGER_DISCORD_APPLICATION_ID=${INVESTMENT_MANAGER_DISCORD_APPLICATION_ID}
       - INVESTMENT_MANAGER_DISCORD_API_TOKEN=${INVESTMENT_MANAGER_DISCORD_API_TOKEN}
-      - PGLITE_DATA_DIR=/root/.eliza/db
+      - POSTGRES_URL=${POSTGRES_URL}
       - TEE_MODE=${TEE_MODE}
       - WALLET_SECRET_SALT=${WALLET_SECRET_SALT}
       - TEE_VENDOR=${TEE_VENDOR}

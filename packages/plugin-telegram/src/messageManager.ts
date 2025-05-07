@@ -13,13 +13,15 @@ import {
 } from '@elizaos/core';
 import type { Chat, Message, ReactionType, Update } from '@telegraf/types';
 import type { Context, NarrowedContext, Telegraf } from 'telegraf';
+import { Markup } from 'telegraf';
 import {
+  TelegramContent,
   TelegramEventTypes,
   type TelegramMessageReceivedPayload,
   type TelegramMessageSentPayload,
   type TelegramReactionReceivedPayload,
 } from './types';
-import { escapeMarkdown } from './utils';
+import { convertToTelegramButtons, convertMarkdownToTelegram } from './utils';
 
 import fs from 'node:fs';
 
@@ -105,13 +107,13 @@ export class MessageManager {
    * Sends a message in chunks, handling attachments and splitting the message if necessary
    *
    * @param {Context} ctx - The context object representing the current state of the bot
-   * @param {Content} content - The content of the message to be sent
+   * @param {TelegramContent} content - The content of the message to be sent
    * @param {number} [replyToMessageId] - The ID of the message to reply to, if any
    * @returns {Promise<Message.TextMessage[]>} - An array of TextMessage objects representing the messages sent
    */
   async sendMessageInChunks(
     ctx: Context,
-    content: Content,
+    content: TelegramContent,
     replyToMessageId?: number
   ): Promise<Message.TextMessage[]> {
     if (content.attachments && content.attachments.length > 0) {
@@ -145,12 +147,17 @@ export class MessageManager {
       const chunks = this.splitMessage(content.text);
       const sentMessages: Message.TextMessage[] = [];
 
+      const telegramButtons = convertToTelegramButtons(content.buttons ?? []);
+
+      await ctx.telegram.sendChatAction(ctx.chat.id, 'typing');
+
       for (let i = 0; i < chunks.length; i++) {
-        const chunk = escapeMarkdown(chunks[i]);
+        const chunk = convertMarkdownToTelegram(chunks[i]);
         const sentMessage = (await ctx.telegram.sendMessage(ctx.chat.id, chunk, {
           reply_parameters:
             i === 0 && replyToMessageId ? { message_id: replyToMessageId } : undefined,
           parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard(telegramButtons),
         })) as Message.TextMessage;
 
         sentMessages.push(sentMessage);
@@ -491,7 +498,7 @@ export class MessageManager {
 
       if (!sentMessages?.length) return [];
 
-      // Create room ID
+      // Create group ID
       const roomId = createUniqueUuid(this.runtime, chatId.toString());
 
       // Create memories for the sent messages

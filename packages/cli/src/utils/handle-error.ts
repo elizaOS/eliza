@@ -1,5 +1,7 @@
 import { logger } from '@elizaos/core';
-import { AGENT_RUNTIME_URL } from '../commands/agent';
+import { getAgentRuntimeUrl } from '../commands/agent';
+import { OptionValues } from 'commander';
+import colors from 'yoctocolors';
 /**
  * Handles the error by logging it and exiting the process.
  * If the error is a string, it logs the error message and exits.
@@ -9,25 +11,46 @@ import { AGENT_RUNTIME_URL } from '../commands/agent';
  * @param {unknown} error - The error to be handled.
  */
 export function handleError(error: unknown) {
-  logger.error('An error occurred:', error);
-  if (error instanceof Error) {
-    logger.error('Error details:', error.message);
-    logger.error('Stack trace:', error.stack);
+  // Check for ENOSPC / "no space left on device" and print in red
+  const isNoSpace =
+    (error instanceof Error &&
+      (error.message.includes('no space left on device') || error.message.includes('ENOSPC'))) ||
+    (typeof error === 'string' &&
+      (error.includes('no space left on device') || error.includes('ENOSPC')));
+
+  if (isNoSpace) {
+    logger.error(
+      colors.red('ERROR: No space left on device! Please free up disk space and try again.')
+    );
+    if (error instanceof Error) {
+      logger.error(colors.red(error.message));
+      logger.error(colors.red(error.stack || ''));
+    } else {
+      logger.error(colors.red(String(error)));
+    }
   } else {
-    logger.error('Unknown error type:', typeof error);
-    logger.error('Error value:', error);
+    logger.error('An error occurred:', error);
+    if (error instanceof Error) {
+      logger.error('Error details:', error.message);
+      logger.error('Stack trace:', error.stack);
+    } else {
+      logger.error('Unknown error type:', typeof error);
+      logger.error('Error value:', error);
+    }
   }
   process.exit(1);
 }
 
-export async function checkServer() {
+export async function checkServer(opts: OptionValues) {
   const red = '\x1b[38;5;196m';
   const r = '\x1b[0m';
   try {
-    await fetch(`${AGENT_RUNTIME_URL}/api/ping`);
+    await fetch(`${getAgentRuntimeUrl(opts)}/api/ping`);
     logger.success('ElizaOS server is running');
   } catch (error) {
-    logger.error(`${red}Unable to connect to ElizaOS server, likely not running!${r}`);
+    logger.error(
+      `${red}Unable to connect to ElizaOS server, likely not running or not accessible!${r}`
+    );
     process.exit(1);
   }
 }

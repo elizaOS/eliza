@@ -84,6 +84,13 @@ export async function copyTemplate(
   // Copy template files
   await copyDir(templateDir, targetDir);
 
+  // Explicitly check and copy .gitignore file (hidden files can be missed)
+  const srcGitignore = path.join(templateDir, '.gitignore');
+  const destGitignore = path.join(targetDir, '.gitignore');
+  if (existsSync(srcGitignore) && !existsSync(destGitignore)) {
+    await fs.copyFile(srcGitignore, destGitignore);
+  }
+
   // Update package.json with new name and dependency versions
   const packageJsonPath = path.join(targetDir, 'package.json');
 
@@ -104,12 +111,25 @@ export async function copyTemplate(
     // Set project name
     packageJson.name = name;
 
+    // Set a standard initial version
+    packageJson.version = '0.1.0';
+
+    // Use a dedicated field for ElizaOS package type to avoid collision with Node.js module type
+    packageJson.packageType = templateType;
+
+    // Ensure the module type is set to 'module' for ES modules
+    if (!packageJson.type) {
+      packageJson.type = 'module';
+    }
+
     // Process dependencies - set all @elizaos/* packages to use cliPackageVersion
     if (packageJson.dependencies) {
       for (const depName of Object.keys(packageJson.dependencies)) {
         if (depName.startsWith('@elizaos/')) {
           logger.info(`Setting ${depName} to use latest version dynamically`);
-          packageJson.dependencies[depName] = cliPackageVersion;
+          packageJson.dependencies[depName] = cliPackageVersion.includes('beta')
+            ? 'beta'
+            : 'latest';
         }
       }
     }
@@ -119,29 +139,27 @@ export async function copyTemplate(
       for (const depName of Object.keys(packageJson.devDependencies)) {
         if (depName.startsWith('@elizaos/')) {
           logger.info(`Setting dev dependency ${depName} to use version ${cliPackageVersion}`);
-          packageJson.devDependencies[depName] = cliPackageVersion;
+          packageJson.devDependencies[depName] = cliPackageVersion.includes('beta')
+            ? 'beta'
+            : 'latest';
         }
       }
     }
 
-    // For plugins, add required registry configuration
+    // Create or update repository URL with the GitHub format
+    // Extract the name without scope for the repository URL
+    const nameWithoutScope = name.replace('@elizaos/', '');
+
+    // Get the GitHub username from environment if available, or use a default
+    const githubUsername = process.env.GITHUB_USERNAME || 'elizaos';
+
+    // Always create/update repository field with proper URL format
+    packageJson.repository = {
+      type: 'git',
+      url: `github:${githubUsername}/${nameWithoutScope}`,
+    };
+
     if (templateType === 'plugin') {
-      // Fix repository URL format and replace placeholder with actual plugin name
-      if (packageJson.repository && packageJson.repository.url) {
-        // Extract the plugin name without scope for the repository URL
-        const pluginNameWithoutScope = name.replace('@elizaos/', '');
-
-        // Get the GitHub username from environment if available, or use a default
-        const githubUsername = process.env.GITHUB_USERNAME || 'elizaos-plugins';
-
-        // Replace placeholders with actual values
-        packageJson.repository.url = packageJson.repository.url
-          .replace('{{PLUGIN_NAME}}', pluginNameWithoutScope)
-          .replace('{{GITHUB_USERNAME}}', githubUsername)
-          .replace('https://github.com/', 'github:')
-          .replace('.git', '');
-      }
-
       // Add platform if missing
       if (!packageJson.platform) {
         packageJson.platform = 'universal';
@@ -231,10 +249,10 @@ Before publishing your plugin to the ElizaOS registry, ensure you meet these req
 3. **Publishing Process**
    \`\`\`bash
    # Check if your plugin meets all registry requirements
-   npx elizaos plugin publish --test
+   npx elizaos publish --test
    
    # Publish to the registry
-   npx elizaos plugin publish
+   npx elizaos publish
    \`\`\`
 
 After publishing, your plugin will be submitted as a pull request to the ElizaOS registry for review.
@@ -292,6 +310,32 @@ Provide clear documentation about:
         logger.success(`Updated plugin name in index.ts to ${pluginNameWithoutScope}`);
       } catch (error) {
         logger.error(`Error updating index.ts: ${error}`);
+      }
+    } else if (templateType === 'project') {
+      // Add agentConfig for projects if missing
+      if (!packageJson.agentConfig) {
+        packageJson.agentConfig = {
+          pluginType: 'elizaos:project:1.0.0',
+          projectConfig: {
+            name: name,
+            description: packageJson.description || 'An ElizaOS Project',
+          },
+        };
+      }
+
+      // Add repository configuration for projects
+      if (!packageJson.repository) {
+        // Get the GitHub username from environment if available, or use a default
+        const githubUsername = process.env.GITHUB_USERNAME || 'elizaos';
+
+        // Extract the project name without scope for the repository URL
+        const projectNameWithoutScope = name.replace('@elizaos/', '');
+
+        // Set the repository URL
+        packageJson.repository = {
+          type: 'git',
+          url: `github:${githubUsername}/${projectNameWithoutScope}`,
+        };
       }
     }
 

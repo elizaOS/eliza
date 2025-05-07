@@ -18,6 +18,15 @@ export default {
           'Noto Color Emoji',
         ],
       },
+      keyframes: {
+        'bounce-sm': {
+          '0%, 100%': { transform: 'translateY(0)' },
+          '50%': { transform: 'translateY(-4px)' },
+        },
+      },
+      animation: {
+        'bounce-sm': 'bounce-sm 0.6s ease-in-out 2',
+      },
       borderRadius: {
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',

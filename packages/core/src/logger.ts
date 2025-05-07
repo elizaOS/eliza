@@ -179,6 +179,18 @@ const createPrettyConfig = () => ({
   colorize: true,
   translateTime: 'yyyy-mm-dd HH:MM:ss',
   ignore: 'pid,hostname',
+  levelColors: {
+    60: 'red', // fatal
+    50: 'red', // error
+    40: 'yellow', // warn
+    30: 'blue', // info
+    29: 'green', // log
+    28: 'cyan', // progress
+    27: 'greenBright', // success
+    20: 'magenta', // debug
+    10: 'grey', // trace
+    '*': 'white', // default for any unspecified level
+  },
   customPrettifiers: {
     level: (inputData: any) => {
       let level;

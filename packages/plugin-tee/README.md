@@ -1,143 +1,91 @@
-# TEE Log Plugin for Eliza
+# TEE Core Plugin for Eliza
 
-The TEE Log Plugin for Eliza is designed to enhance the logging capabilities of the Eliza by providing a structured way to generate, store and verify TEE (Trusted Execution Environment) logs for agents. This plugin ensures that all sensitive interactions are securely logged, providing a transparent and tamper-resistant record of all sensitive activities.
+The TEE Core Plugin for Eliza provides foundational capabilities for agents operating within a Trusted Execution Environment (TEE). It enables agents to perform remote attestation to prove their execution within a secure enclave and manage cryptographic keys securely.
 
 ## Background
 
-As Eliza is a fully autonomous AI agent capable of running within a TEE, we need to demonstrate to the outside world that we are indeed operating within a TEE. This allows external parties to verify that our actions are protected by the TEE and that they are autonomously executed by Eliza, without any third-party interference. Therefore, it is necessary to leverage TEE's remote attestation and establish a TEE logging mechanism to prove that these operations are entirely and autonomously performed by Eliza within the TEE.
+For Eliza agents running in a TEE, it's crucial to demonstrate this secure execution environment to external parties. Remote attestation allows an agent to generate a verifiable report, proving it's running genuine code within a specific TEE (like Intel TDX). This plugin provides the mechanisms for agents to leverage these TEE features, enhancing trust and security. Secure key derivation within the TEE is also essential for managing sensitive cryptographic operations.
 
 ## Requirements
 
-Since the TEE Logging is based on the TEE, it is necessary to have a TEE enabled environment. Currently, we support Intel SGX (Gramine) and Intel TDX (dstack).
+- A TEE-enabled environment is required (e.g., Intel TDX).
+- Configuration within Eliza to enable and utilize this plugin's features.
 
-- using Intel SGX (Gramine), you need to enable the plugin-sgx in the Eliza runtime, which is enabled in SGX env automatically.
-- using Intel TDX (dstack), you need to enable the plugin-tee in the Eliza runtime.
+## Features
 
-## TEE Logging Mechanism
+This plugin offers the following core TEE functionalities:
 
-## TEE Logging Mechanism
+1.  **Remote Attestation**:
 
-1. **Key Pair Generation and Attestation**:
+    - Provides actions and providers (`remoteAttestationAction`, `remoteAttestationProvider`) allowing agents to request and receive remote attestation reports.
+    - These reports can be presented to third parties to verify the agent's TEE residency.
+    - Includes support for specific TEE vendors/attestation services (e.g., Phala Network).
 
-   - During startup, each agent generates a key pair and creates a remote attestation for the public key. The private key is securely stored in the TEE's encrypted memory. The agent's relevant information, along with the public key and attestation, is recorded in a local database. A new key pair is generated each time the agent is updated or restarted to ensure key security.
+2.  **Key Derivation**:
+    - Offers a `deriveKeyProvider` for securely deriving cryptographic keys within the TEE.
+    - Ensures that key material is generated and managed within the protected enclave memory.
 
-2. **Log Recording**:
+## Components
 
-   - For each log entry, basic information is recorded, including `agentId`, `roomId`, `userId`, `type`, `content`, and `timestamp`. This information is concatenated and signed using the agent's corresponding private key to ensure verifiability. The verification process follows this trust chain:
-     - Verify the attestation.
-     - Trust the public key contained in the attestation.
-     - Use the public key to verify the signature.
-     - Trust the complete log record.
+Based on the source code (`src/`):
 
-3. **Data Storage**:
+- **Actions**:
+  - `remoteAttestationAction.ts`: Likely handles agent requests to initiate the remote attestation process.
+- **Providers**:
+  - `remoteAttestationProvider.ts`: Implements the logic for interacting with the underlying TEE platform or attestation service (like Phala) to generate the attestation report.
+  - `deriveKeyProvider.ts`: Implements the logic for TEE-specific key derivation.
+- **Vendors**:
+  - `vendors/phala.ts`: Contains specific implementation details for interacting with the Phala Network's attestation services.
+  - `vendors/index.ts`, `vendors/types.ts`: Support vendor integration.
+- **Utilities & Types**:
+  - `utils.ts`, `types.ts`: Contain helper functions and type definitions for the plugin.
+- **Tests**:
+  - `__tests__/`: Includes unit tests for key derivation, remote attestation, etc.
 
-   - All log data must be stored in the TEE's encrypted file system in production environments. Storing data in plaintext is prohibited to prevent tampering.
+## Usage
 
-4. **Log Extraction for Verification**:
+_(This section may need further refinement based on how the plugin is integrated into the core Eliza system)_
 
-   - Third parties can extract TEE logs for verification purposes. Two types of information can be extracted:
-     - **Agent Information**: This includes the agent's metadata, public key, and attestation, which can be used to verify the agent's public key.
-     - **Log Information**: Required logs can be extracted, with the agent's attestation and public key used to verify the signature, ensuring that each record remains untampered.
+To utilize the features of this plugin:
 
-5. **Integrity Protection**:
-   - When users extract TEE logs via the REST API, the results are hashed, and an attestation is generated. After extraction, users can verify the attestation by comparing the hash value contained within it to the extracted results, thereby ensuring the integrity of the data.
+1.  **Ensure the plugin is enabled** in your Eliza agent's configuration.
+2.  **Configure the TEE vendor** (e.g., specify 'phala' if using Phala Network attestation) if required by the environment setup.
+3.  **Call the relevant actions or services** provided by this plugin from other agent logic or plugins when remote attestation or secure key derivation is needed.
 
-## Services
-
-- **[TeeLogService]**: This service is responsible for generating and storing TEE logs for agents.
-
-### Class: TeeLogService
-
-The `TeeLogService` class implements the `ITeeLogService` interface and extends the `Service` class. It manages the logging of sensitive interactions within a Trusted Execution Environment (TEE).
-
-#### Methods
-
-- **getInstance()**: `TeeLogService`
-
-  - Returns the singleton instance of the `TeeLogService`.
-
-- **static get serviceType()**: `ServiceType`
-
-  - Returns the service type for TEE logging.
-
-- **async initialize(runtime: IAgentRuntime): Promise<void>**
-
-  - Initializes the TEE log service. It checks the runtime settings to configure the TEE type and enables logging if configured.
-
-- **async log(agentId: string, roomId: string, userId: string, type: string, content: string): Promise<boolean>**
-
-  - Logs an interaction with the specified parameters. Returns `false` if TEE logging is not enabled.
-
-- **async getAllAgents(): Promise<TeeAgent[]>**
-
-  - Retrieves all agents that have been logged. Returns an empty array if TEE logging is not enabled.
-
-- **async getAgent(agentId: string): Promise<TeeAgent | undefined>**
-
-  - Retrieves the details of a specific agent by their ID. Returns `undefined` if TEE logging is not enabled.
-
-- **async getLogs(query: TeeLogQuery, page: number, pageSize: number): Promise<PageQuery<TeeLog[]>>**
-
-  - Retrieves logs based on the provided query parameters. Returns an empty result if TEE logging is not enabled.
-
-- **async generateAttestation(userReport: string): Promise<string>**
-  - Generates an attestation based on the provided user report.
-
-### Storage
-
-The TEE logs are stored in a SQLite database, which is located at `./data/tee_log.sqlite`. The database is automatically created when the service is initialized.
-
-Important: You need to use the encrypted file system to store the database file in production, otherwise the database will be compromised. Since TEE only protects memory-in-use, the disk is not protected by the TEE. However, Many TEE development tools support the encrypted file system, for example, you can refer to the [Gramine Encrypted files](https://gramine.readthedocs.io/en/latest/manifest-syntax.html#encrypted-files) documentation for more information.
-
-### Usage
-
-To use the `TeeLogService`, ensure that the TEE environment is properly configured and initialized.
-
-Enable the TEE logging in the Eliza .env file:
-
-```env
-TEE_LOG_ENABLED=true
-```
-
-The logging isn't integrated for actions by default, you need to integrate the logging for the actions you want to log. For example, if you want to log the `Continue` action of plugin-bootstrap, you can do the following:
-
-First, add plugin-tee-log to the dependencies of plugin-bootstrap:
-
-```json
-"@elizaos/plugin-tee-log": "workspace:*",
-```
-
-Then, add the following code to the `Continue` action:
+Example (Conceptual):
 
 ```typescript
-import { ServiceType, ITeeLogService } from '@elizaos/core';
+// Assuming access to the runtime and its services/actions
 
-// In the handler of the action
-handler: async (
+// Requesting remote attestation
+async function getAttestation(
   runtime: IAgentRuntime,
-  message: Memory,
-  state: State,
-  options: any,
-  callback: HandlerCallback
-) => {
-  // Continue the action
-
-  // Log the action
-  const teeLogService = runtime.getService<ITeeLogService>(ServiceType.TEE_LOG).getInstance();
-  if (
-    teeLogService.log(
-      runtime.agentId,
-      message.roomId,
-      message.userId,
-      'The type of the log, for example, Action:CONTINUE',
-      'The content that you want to log'
-    )
-  ) {
-    console.log('Logged TEE log successfully');
+  userData: string
+): Promise<AttestationReport | null> {
+  try {
+    // Potentially using an action defined by this plugin
+    const report = await runtime.invokeAction('tee/getRemoteAttestation', { userData });
+    console.log('Received attestation report:', report);
+    return report;
+  } catch (error) {
+    console.error('Failed to get remote attestation:', error);
+    return null;
   }
+}
 
-  // Continue the action
-};
+// Deriving a key
+async function deriveAgentKey(runtime: IAgentRuntime, salt: string): Promise<CryptoKey | null> {
+  try {
+    // Potentially using a service/provider interface
+    const keyProvider = runtime.getService<IDeriveKeyProvider>(/* ServiceType or ID */);
+    const key = await keyProvider.deriveKey(salt);
+    console.log('Derived key successfully.');
+    return key;
+  } catch (error) {
+    console.error('Failed to derive key:', error);
+    return null;
+  }
+}
 ```
 
-After configuring the logging for the action, you can run the Eliza and see the logs through the client-direct REST API. See more details in the [Client-Direct REST API](../client-direct/src/README.md) documentation.
+**Note:** The exact method calls (`invokeAction`, `getService`, service types/IDs) are illustrative and depend on the final integration pattern within Eliza.

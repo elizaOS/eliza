@@ -89,12 +89,17 @@ export class MessageManager {
     const channelId = message.channel.id;
     const roomId = createUniqueUuid(this.runtime, channelId);
 
+    // can't be null
     let type: ChannelType;
     let serverId: string | undefined;
 
     if (message.guild) {
       const guild = await message.guild.fetch();
       type = await this.getChannelType(message.channel as Channel);
+      if (type === null) {
+        // usually a forum type post
+        logger.warn('null channel type, discord message', message);
+      }
       serverId = guild.id;
     } else {
       type = ChannelType.DM;
@@ -139,6 +144,30 @@ export class MessageManager {
 
       const messageId = createUniqueUuid(this.runtime, message.id);
 
+      // Start typing indicator immediately when processing the message
+      const channel = message.channel as TextChannel;
+
+      // Start the typing indicator
+      const startTyping = () => {
+        try {
+          channel.sendTyping();
+        } catch (err) {
+          logger.warn('Error sending typing indicator:', err);
+        }
+      };
+
+      // Initial typing indicator
+      startTyping();
+
+      // Create interval to keep the typing indicator active
+      const typingInterval = setInterval(startTyping, 8000);
+
+      // Store the interval globally to be accessed by the callback
+      const typingData = {
+        interval: typingInterval,
+        cleared: false,
+      };
+
       const newMessage: Memory = {
         id: messageId,
         entityId: entityId,
@@ -155,6 +184,10 @@ export class MessageManager {
             ? createUniqueUuid(this.runtime, message.reference?.messageId)
             : undefined,
         },
+        metadata: {
+          entityName: name,
+          type: 'message',
+        },
         createdAt: message.createdTimestamp,
       };
 
@@ -167,69 +200,55 @@ export class MessageManager {
             content.inReplyTo = createUniqueUuid(this.runtime, message.id);
           }
 
-          // Validate components before sending
-          let validatedComponents: DiscordActionRow[] | undefined;
-          if (Array.isArray(content.components)) {
-            validatedComponents = content.components.filter(
-              (component): component is DiscordActionRow => {
-                if (!component || typeof component !== 'object') return false;
+          try {
+            const messages = await sendMessageInChunks(channel, content.text, message.id, files);
 
-                const isActionRow = component.type === 1 && Array.isArray(component.components);
-                if (!isActionRow) return false;
+            const memories: Memory[] = [];
+            for (const m of messages) {
+              const actions = content.actions;
 
-                // Validate nested components
-                return component.components.every((comp): comp is DiscordComponentOptions => {
-                  if (!comp || typeof comp !== 'object') return false;
-                  if (comp.type !== 2 && comp.type !== 3) return false;
-                  if (!comp.custom_id) return false;
-                  return true;
-                });
-              }
-            );
-
-            if (validatedComponents.length === 0) {
-              logger.warn('No valid components found in content');
-              validatedComponents = undefined;
+              const memory: Memory = {
+                id: createUniqueUuid(this.runtime, m.id),
+                entityId: this.runtime.agentId,
+                agentId: this.runtime.agentId,
+                content: {
+                  ...content,
+                  actions,
+                  inReplyTo: messageId,
+                  url: m.url,
+                  channelType: type,
+                },
+                roomId,
+                createdAt: m.createdTimestamp,
+              };
+              memories.push(memory);
             }
+
+            for (const m of memories) {
+              await this.runtime.createMemory(m, 'messages');
+            }
+
+            // Clear typing indicator
+            if (typingData.interval && !typingData.cleared) {
+              clearInterval(typingData.interval);
+              typingData.cleared = true;
+            }
+
+            return memories;
+          } catch (error) {
+            console.error('Error sending message:', error);
+            if (typingData.interval && !typingData.cleared) {
+              clearInterval(typingData.interval);
+              typingData.cleared = true;
+            }
+            return [];
           }
-
-          const messages = await sendMessageInChunks(
-            message.channel as TextChannel,
-            content.text || '',
-            message.id,
-            files,
-            validatedComponents
-          );
-
-          const memories: Memory[] = [];
-          for (const m of messages) {
-            const actions = content.actions;
-
-            const memory: Memory = {
-              id: createUniqueUuid(this.runtime, m.id),
-              entityId: this.runtime.agentId,
-              agentId: this.runtime.agentId,
-              content: {
-                ...content,
-                actions,
-                components: validatedComponents,
-                inReplyTo: messageId,
-                url: m.url,
-                channelType: type,
-              },
-              roomId,
-              createdAt: m.createdTimestamp,
-            };
-            memories.push(memory);
-          }
-
-          for (const m of memories) {
-            await this.runtime.createMemory(m, 'messages');
-          }
-          return memories;
         } catch (error) {
-          logger.error('Error sending message:', error);
-          return [];
+          console.error('Error handling message:', error);
+          if (typingData.interval && !typingData.cleared) {
+            clearInterval(typingData.interval);
+            typingData.cleared = true;
+          }
         }
       };
 
@@ -238,6 +257,13 @@ export class MessageManager {
         message: newMessage,
         callback,
       });
+
+      setTimeout(() => {
+        if (typingData.interval && !typingData.cleared) {
+          clearInterval(typingData.interval);
+          typingData.cleared = true;
+        }
+      }, 500);
     } catch (error) {
       console.error('Error handling message:', error);
     }
@@ -295,7 +321,8 @@ export class MessageManager {
       if (this.runtime.getService<IVideoService>(ServiceType.VIDEO)?.isVideoUrl(url)) {
         const videoService = this.runtime.getService<IVideoService>(ServiceType.VIDEO);
         if (!videoService) {
-          throw new Error('Video service not found');
+          logger.warn('Video service not found');
+          continue;
         }
         const videoInfo = await videoService.processVideo(url, this.runtime);
 
@@ -310,7 +337,8 @@ export class MessageManager {
       } else {
         const browserService = this.runtime.getService<IBrowserService>(ServiceType.BROWSER);
         if (!browserService) {
-          throw new Error('Browser service not found');
+          logger.warn('Browser service not found');
+          continue;
         }
 
         const { title, description: summary } = await browserService.getPageContent(

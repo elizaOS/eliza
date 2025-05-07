@@ -1,12 +1,13 @@
+import { type Context, type Span, SpanStatusCode, context, trace } from '@opentelemetry/api';
 import { v4 as uuidv4 } from 'uuid';
 import { createUniqueUuid } from './entities';
-import { decryptSecret, getSalt } from './index';
+import { decryptSecret, getSalt, safeReplacer } from './index';
+import { InstrumentationService } from './instrumentation/service';
 import logger from './logger';
 import { splitChunks } from './prompts';
-// Import enums and values that are used as values
 import { ChannelType, MemoryType, ModelType } from './types';
 
-// Import types with the 'type' keyword
+import { BM25 } from './bm25';
 import type {
   Action,
   Agent,
@@ -39,6 +40,7 @@ import type {
   UUID,
   World,
 } from './types';
+import { EventType, type MessagePayload } from './types';
 import { stringToUuid } from './uuid';
 
 /**
@@ -51,7 +53,7 @@ import { stringToUuid } from './uuid';
 /**
  * Initialize an empty object for storing environment settings.
  */
-let environmentSettings: RuntimeSettings = {};
+const environmentSettings: RuntimeSettings = {};
 
 // Semaphore implementation for controlling concurrent operations
 export class Semaphore {
@@ -84,21 +86,11 @@ export class Semaphore {
 }
 
 /**
- * Represents the runtime environment for an agent, handling message processing,
- * action registration, and interaction with external services like OpenAI and Supabase.
- */
-/**
- * Represents the runtime environment for an agent.
- * @class
- * @implements { IAgentRuntime }
- * @property { number } #conversationLength - The maximum length of a conversation.
- * @property { UUID } agentId - The unique identifier for the agent.
- * @property { Character } character - The character associated with the agent.
- * @property { IDatabaseAdapter } adapter - The adapter for interacting with the database.
- * @property {Action[]} actions - The list of actions available to the agent.
- * @property {Evaluator[]} evaluators - The list of evaluators for decision making.
- * @property {Provider[]} providers - The list of providers for external services.
- * @property {Plugin[]} plugins - The list of plugins to extend functionality.
+ * AgentRuntime provides the core runtime environment and lifecycle management for agents.
+ *
+ * Implements the IAgentRuntime interface, managing agent state, actions, plugins, providers, and database interaction.
+ *
+ * implements IAgentRuntime
  */
 export class AgentRuntime implements IAgentRuntime {
   readonly #conversationLength = 32 as number;
@@ -135,6 +127,10 @@ export class AgentRuntime implements IAgentRuntime {
   private settings: RuntimeSettings;
 
   private servicesInitQueue = new Set<typeof Service>();
+
+  // Add instrumentation properties
+  instrumentationService: InstrumentationService;
+  tracer: any;
 
   constructor(opts: {
     conversationLength?: number;
@@ -179,7 +175,137 @@ export class AgentRuntime implements IAgentRuntime {
     // Store plugins in the array but don't initialize them yet
     this.plugins = plugins;
 
+    // Initialize instrumentation service with appropriate configuration
+    try {
+      // Create instrumentation service with agent info
+      this.instrumentationService = new InstrumentationService({
+        serviceName: `agent-${this.character?.name || 'unknown'}-${this.agentId}`,
+        enabled: process.env.INSTRUMENTATION_ENABLED === 'true',
+      });
+
+      // Get a tracer for the runtime
+      this.tracer = this.instrumentationService.getTracer('agent-runtime');
+
+      this.runtimeLogger.debug(`Instrumentation service initialized for agent ${this.agentId}`);
+    } catch (error) {
+      // If instrumentation fails, provide a fallback implementation
+      this.runtimeLogger.warn(`Failed to initialize instrumentation: ${error.message}`);
+      // Create a no-op implementation
+      this.instrumentationService = {
+        getTracer: () => null,
+        start: async () => {},
+        stop: async () => {},
+        isStarted: () => false,
+        isEnabled: () => false,
+        name: 'INSTRUMENTATION',
+        capabilityDescription: 'Disabled instrumentation service (fallback)',
+        instrumentationConfig: { enabled: false },
+        getMeter: () => null,
+        flush: async () => {},
+      } as any;
+      this.tracer = null;
+    }
+
     this.runtimeLogger.debug(`Success: Agent ID: ${this.agentId}`);
+  }
+
+  /**
+   * Starts a span for the given operation and executes the provided function with the span.
+   * @param name The name of the span to create
+   * @param fn The function to execute with the span
+   * @param parentContext Optional parent context for the span
+   * @returns The result of the provided function
+   */
+  async startSpan<T>(
+    name: string,
+    fn: (span: Span) => Promise<T>,
+    parentContext?: Context
+  ): Promise<T> {
+    // If instrumentation is disabled, create a mock span with no-op methods
+    if (!this.instrumentationService?.isEnabled?.() || !this.tracer) {
+      const mockSpan = {
+        setStatus: () => {},
+        setAttribute: () => {},
+        setAttributes: () => {},
+        recordException: () => {},
+        addEvent: () => {},
+        end: () => {},
+        isRecording: () => false,
+        spanContext: () => ({ traceId: '', spanId: '', traceFlags: 0 }),
+        updateName: () => {},
+        addLink: () => {},
+        addLinks: () => {},
+      } as unknown as Span;
+      return fn(mockSpan);
+    }
+
+    // Otherwise, use the real tracer to create a span
+    return this.tracer.startActiveSpan(name, parentContext, undefined, async (span: Span) => {
+      try {
+        // Set default attributes for all spans
+        span.setAttributes({
+          'agent.id': this.agentId,
+          'agent.name': this.character?.name || 'unknown',
+        });
+
+        // Call the function with the span
+        const result = await fn(span);
+
+        // End the span with successful status
+        span.setStatus({ code: SpanStatusCode.OK });
+        span.end();
+
+        return result;
+      } catch (error) {
+        // If an error occurs, record it and set error status
+        span.recordException(error as Error);
+        span.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: (error as Error).message,
+        });
+        span.end();
+
+        // Rethrow the error
+        throw error;
+      }
+    });
+  }
+
+  /**
+   * Ends a span with the provided name in the given context
+   * @param ctx Context containing the span to end
+   * @param name Name to record in the end event
+   */
+  endSpan(ctx: Context | undefined, name: string): void {
+    // This is a no-op method for compatibility
+    // Actual span ending is handled in startSpan
+  }
+
+  /**
+   * Start an active span that can be used as a parent for other spans
+   * @param name Name of the span
+   * @param options Span options
+   */
+  startActiveSpan(name: string, options: any = {}): Span {
+    if (!this.instrumentationService?.isEnabled?.() || !this.tracer) {
+      // Return mock span if instrumentation is disabled
+      return {
+        setStatus: () => {},
+        setAttribute: () => {},
+        setAttributes: () => {},
+        recordException: () => {},
+        addEvent: () => {},
+        end: () => {},
+        isRecording: () => false,
+        spanContext: () => ({ traceId: '', spanId: '', traceFlags: 0 }),
+        updateName: () => {},
+        addLink: () => {},
+        addLinks: () => {},
+      } as unknown as Span;
+    }
+
+    // Create real span if instrumentation is enabled
+    return this.tracer.startSpan(name, options);
   }
 
   /**
@@ -187,108 +313,134 @@ export class AgentRuntime implements IAgentRuntime {
    * @param plugin The plugin to register
    */
   async registerPlugin(plugin: Plugin): Promise<void> {
-    if (!plugin) {
-      this.runtimeLogger.error('*** registerPlugin plugin is undefined');
-      throw new Error('*** registerPlugin plugin is undefined');
-    }
+    return this.startSpan('AgentRuntime.registerPlugin', async (span) => {
+      span.setAttributes({
+        'plugin.name': plugin?.name || 'unknown',
+        'agent.id': this.agentId,
+      });
 
-    // Add to plugins array if not already present - but only if it was not passed there initially
-    // (otherwise we can't add to readonly array)
-    if (!this.plugins.some((p) => p.name === plugin.name)) {
-      // Push to plugins array - this works because we're modifying the array, not reassigning it
-      this.plugins.push(plugin);
-      this.runtimeLogger.debug(`Success: Plugin ${plugin.name} registered successfully`);
-    }
+      if (!plugin) {
+        span.setStatus({ code: SpanStatusCode.ERROR, message: 'Plugin is undefined' });
+        this.runtimeLogger.error('*** registerPlugin plugin is undefined');
+        throw new Error('*** registerPlugin plugin is undefined');
+      }
 
-    // Initialize the plugin if it has an init function
-    if (plugin.init) {
-      try {
-        await plugin.init(plugin.config || {}, this);
-        this.runtimeLogger.debug(`Success: Plugin ${plugin.name} initialized successfully`);
-      } catch (error) {
-        // Check if the error is related to missing API keys
-        const errorMessage = error instanceof Error ? error.message : String(error);
+      // Add to plugins array if not already present - but only if it was not passed there initially
+      // (otherwise we can't add to readonly array)
+      if (!this.plugins.some((p) => p.name === plugin.name)) {
+        // Push to plugins array - this works because we're modifying the array, not reassigning it
+        this.plugins.push(plugin);
+        span.addEvent('plugin_added_to_array');
+        this.runtimeLogger.debug(`Success: Plugin ${plugin.name} registered successfully`);
+      }
 
-        if (
-          errorMessage.includes('API key') ||
-          errorMessage.includes('environment variables') ||
-          errorMessage.includes('Invalid plugin configuration')
-        ) {
-          // Instead of throwing an error, log a friendly message
-          console.warn(`Plugin ${plugin.name} requires configuration. ${errorMessage}`);
-          console.warn(
-            'Please check your environment variables and ensure all required API keys are set.'
-          );
-          console.warn('You can set these in your .eliza/.env file.');
+      // Initialize the plugin if it has an init function
+      if (plugin.init) {
+        try {
+          span.addEvent('initializing_plugin');
+          await plugin.init(plugin.config || {}, this);
+          span.addEvent('plugin_initialized');
+          this.runtimeLogger.debug(`Success: Plugin ${plugin.name} initialized successfully`);
+        } catch (error) {
+          // Check if the error is related to missing API keys
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          span.setAttributes({
+            'error.message': errorMessage,
+            'error.type': error instanceof Error ? error.constructor.name : 'Unknown',
+          });
 
-          // We don't throw here, allowing the application to continue
-          // with reduced functionality
-        } else {
-          // For other types of errors, rethrow
-          throw error;
+          if (
+            errorMessage.includes('API key') ||
+            errorMessage.includes('environment variables') ||
+            errorMessage.includes('Invalid plugin configuration')
+          ) {
+            // Instead of throwing an error, log a friendly message
+            console.warn(`Plugin ${plugin.name} requires configuration. ${errorMessage}`);
+            console.warn(
+              'Please check your environment variables and ensure all required API keys are set.'
+            );
+            console.warn('You can set these in your .eliza/.env file.');
+            span.addEvent('plugin_configuration_warning');
+            // We don't throw here, allowing the application to continue
+            // with reduced functionality
+          } else {
+            // For other types of errors, rethrow
+            span.setStatus({ code: SpanStatusCode.ERROR, message: errorMessage });
+            throw error;
+          }
         }
       }
-    }
 
-    // Register plugin adapter
-    if (plugin.adapter) {
-      this.runtimeLogger.debug(`Registering database adapter for plugin ${plugin.name}`);
-      this.registerDatabaseAdapter(plugin.adapter);
-    }
-
-    // Register plugin actions
-    if (plugin.actions) {
-      for (const action of plugin.actions) {
-        this.registerAction(action);
+      // Register plugin adapter
+      if (plugin.adapter) {
+        span.addEvent('registering_adapter');
+        this.runtimeLogger.debug(`Registering database adapter for plugin ${plugin.name}`);
+        this.registerDatabaseAdapter(plugin.adapter);
       }
-    }
 
-    // Register plugin evaluators
-    if (plugin.evaluators) {
-      for (const evaluator of plugin.evaluators) {
-        this.registerEvaluator(evaluator);
-      }
-    }
-
-    // Register plugin providers
-    if (plugin.providers) {
-      for (const provider of plugin.providers) {
-        this.registerContextProvider(provider);
-      }
-    }
-
-    // Register plugin models
-    if (plugin.models) {
-      for (const [modelType, handler] of Object.entries(plugin.models)) {
-        this.registerModel(modelType as ModelTypeName, handler as (params: any) => Promise<any>);
-      }
-    }
-
-    // Register plugin routes
-    if (plugin.routes) {
-      for (const route of plugin.routes) {
-        this.routes.push(route);
-      }
-    }
-
-    // Register plugin events
-    if (plugin.events) {
-      for (const [eventName, eventHandlers] of Object.entries(plugin.events)) {
-        for (const eventHandler of eventHandlers) {
-          this.registerEvent(eventName, eventHandler);
+      // Register plugin actions
+      if (plugin.actions) {
+        span.addEvent('registering_actions');
+        for (const action of plugin.actions) {
+          this.registerAction(action);
         }
       }
-    }
 
-    if (plugin.services) {
-      for (const service of plugin.services) {
-        if (this.isInitialized) {
-          await this.registerService(service);
-        } else {
-          this.servicesInitQueue.add(service);
+      // Register plugin evaluators
+      if (plugin.evaluators) {
+        span.addEvent('registering_evaluators');
+        for (const evaluator of plugin.evaluators) {
+          this.registerEvaluator(evaluator);
         }
       }
-    }
+
+      // Register plugin providers
+      if (plugin.providers) {
+        span.addEvent('registering_providers');
+        for (const provider of plugin.providers) {
+          this.registerContextProvider(provider);
+        }
+      }
+
+      // Register plugin models
+      if (plugin.models) {
+        span.addEvent('registering_models');
+        for (const [modelType, handler] of Object.entries(plugin.models)) {
+          this.registerModel(modelType as ModelTypeName, handler as (params: any) => Promise<any>);
+        }
+      }
+
+      // Register plugin routes
+      if (plugin.routes) {
+        span.addEvent('registering_routes');
+        for (const route of plugin.routes) {
+          this.routes.push(route);
+        }
+      }
+
+      // Register plugin events
+      if (plugin.events) {
+        span.addEvent('registering_events');
+        for (const [eventName, eventHandlers] of Object.entries(plugin.events)) {
+          for (const eventHandler of eventHandlers) {
+            this.registerEvent(eventName, eventHandler);
+          }
+        }
+      }
+
+      if (plugin.services) {
+        span.addEvent('registering_services');
+        for (const service of plugin.services) {
+          if (this.isInitialized) {
+            await this.registerService(service);
+          } else {
+            this.servicesInitQueue.add(service);
+          }
+        }
+      }
+
+      span.addEvent('plugin_registration_complete');
+    });
   }
 
   getAllServices(): Map<ServiceTypeName, Service> {
@@ -296,140 +448,212 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async stop() {
-    this.runtimeLogger.debug(`runtime::stop - character ${this.character.name}`);
+    return this.startSpan('AgentRuntime.stop', async (span) => {
+      span.setAttributes({
+        'agent.id': this.agentId,
+        'agent.name': this.character?.name || 'unknown',
+      });
 
-    // Stop all registered clients
-    for (const [serviceName, service] of this.services) {
-      this.runtimeLogger.debug(`runtime::stop - requesting service stop for ${serviceName}`);
-      await service.stop();
-    }
+      this.runtimeLogger.debug(`runtime::stop - character ${this.character.name}`);
+      span.addEvent('stopping_services');
+
+      // Stop all registered clients
+      for (const [serviceName, service] of this.services) {
+        this.runtimeLogger.debug(`runtime::stop - requesting service stop for ${serviceName}`);
+        span.addEvent(`stopping_service_${serviceName}`);
+        await service.stop();
+      }
+
+      span.addEvent('all_services_stopped');
+    });
   }
 
-  async initialize() {
-    if (this.isInitialized) {
-      this.runtimeLogger.warn('Agent already initialized');
-      return;
-    }
-    this.isInitialized = true;
+  async initialize(): Promise<void> {
+    return this.startSpan('AgentRuntime.initialize', async (span) => {
+      span.setAttributes({
+        'agent.id': this.agentId,
+        'agent.name': this.character?.name || 'unknown',
+        'plugins.count': this.plugins.length,
+      });
 
-    // Track registered plugins to avoid duplicates
-    const registeredPluginNames = new Set<string>();
-
-    // Load and register plugins from character configuration
-    const pluginRegistrationPromises = [];
-
-    // Register plugins that were provided in the constructor
-    for (const plugin of [...this.plugins]) {
-      if (plugin && !registeredPluginNames.has(plugin.name)) {
-        registeredPluginNames.add(plugin.name);
-        pluginRegistrationPromises.push(await this.registerPlugin(plugin));
+      if (this.isInitialized) {
+        span.addEvent('agent_already_initialized');
+        this.runtimeLogger.warn('Agent already initialized');
+        return;
       }
-    }
 
-    await this.adapter.init();
+      span.addEvent('initialization_started');
 
-    // First create the agent entity directly
-    try {
-      // Ensure agent exists first (this is critical for test mode)
-      const agentExists = await this.adapter.ensureAgentExists(this.character as Partial<Agent>);
+      // Track registered plugins to avoid duplicates
+      const registeredPluginNames = new Set<string>();
 
-      // Verify agent exists before proceeding
-      const agent = await this.adapter.getAgent(this.agentId);
-      if (!agent) {
+      // Load and register plugins from character configuration
+      const pluginRegistrationPromises = [];
+
+      // Register plugins that were provided in the constructor
+      for (const plugin of [...this.plugins]) {
+        if (plugin && !registeredPluginNames.has(plugin.name)) {
+          registeredPluginNames.add(plugin.name);
+          pluginRegistrationPromises.push(await this.registerPlugin(plugin));
+        }
+      }
+
+      span.addEvent('plugins_setup');
+      span.setAttributes({
+        registered_plugins: Array.from(registeredPluginNames).join(','),
+      });
+
+      // Ensure adapter is initialized
+      if (!this.adapter) {
+        this.runtimeLogger.error(
+          'Database adapter not initialized. Make sure @elizaos/plugin-sql is included in your plugins.'
+        );
         throw new Error(
-          `Agent ${this.agentId} does not exist in database after ensureAgentExists call`
+          'Database adapter not initialized. The SQL plugin (@elizaos/plugin-sql) is required for agent initialization. Please ensure it is included in your character configuration.'
         );
       }
 
-      // No need to transform agent's own ID
-      const agentEntity = await this.adapter.getEntityById(this.agentId);
+      try {
+        await this.adapter.init();
+        span.addEvent('adapter_initialized');
 
-      if (!agentEntity) {
-        const created = await this.createEntity({
-          id: this.agentId,
-          agentId: this.agentId,
-          names: Array.from(new Set([this.character.name].filter(Boolean))) as string[],
-          metadata: {},
+        // First create the agent entity directly
+        // Ensure agent exists first (this is critical for test mode)
+        const existingAgent = await this.adapter.ensureAgentExists(
+          this.character as Partial<Agent>
+        );
+        span.addEvent('agent_exists_verified');
+
+        if (!existingAgent) {
+          const errorMsg = `Agent ${this.character.name} does not exist in database after ensureAgentExists call`;
+          span.setStatus({ code: SpanStatusCode.ERROR, message: errorMsg });
+          throw new Error(errorMsg);
+        }
+
+        // No need to transform agent's own ID
+        let agentEntity = await this.adapter.getEntityById(this.agentId);
+
+        if (!agentEntity) {
+          span.addEvent('creating_agent_entity');
+          const created = await this.createEntity({
+            id: this.agentId,
+            agentId: existingAgent.id,
+            names: Array.from(new Set([this.character.name].filter(Boolean))) as string[],
+            metadata: {},
+          });
+
+          if (!created) {
+            const errorMsg = `Failed to create entity for agent ${this.agentId}`;
+            span.setStatus({ code: SpanStatusCode.ERROR, message: errorMsg });
+            throw new Error(errorMsg);
+          }
+
+          agentEntity = await this.adapter.getEntityById(this.agentId);
+          if (!agentEntity) throw new Error(`Agent entity not found for ${this.agentId}`);
+
+          this.runtimeLogger.debug(
+            `Success: Agent entity created successfully for ${this.character.name}`
+          );
+          span.addEvent('agent_entity_created');
+        } else {
+          span.addEvent('agent_entity_exists');
+        }
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        span.recordException(error as Error);
+        span.setStatus({ code: SpanStatusCode.ERROR, message: errorMsg });
+        this.runtimeLogger.error(`Failed to create agent entity: ${errorMsg}`);
+        throw error;
+      }
+
+      // Create group for the agent and register all plugins in parallel
+      try {
+        span.addEvent('creating_group_and_registering_plugins');
+        await Promise.all([
+          this.ensureRoomExists({
+            id: this.agentId,
+            name: this.character.name,
+            source: 'self',
+            type: ChannelType.SELF,
+          }),
+          ...pluginRegistrationPromises,
+        ]);
+        span.addEvent('room_created_and_plugins_registered');
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        span.recordException(error as Error);
+        span.setStatus({ code: SpanStatusCode.ERROR, message: errorMsg });
+        this.runtimeLogger.error(`Failed to initialize: ${errorMsg}`);
+        throw error;
+      }
+
+      // Add agent as participant in its own room
+      try {
+        span.addEvent('adding_agent_as_participant');
+        // No need to transform agent ID
+        const participants = await this.adapter.getParticipantsForRoom(this.agentId);
+        if (!participants.includes(this.agentId)) {
+          const added = await this.adapter.addParticipant(this.agentId, this.agentId);
+          if (!added) {
+            const errorMsg = `Failed to add agent ${this.agentId} as participant to its own room`;
+            span.setStatus({ code: SpanStatusCode.ERROR, message: errorMsg });
+            throw new Error(errorMsg);
+          }
+          this.runtimeLogger.debug(
+            `Agent ${this.character.name} linked to its own room successfully`
+          );
+          span.addEvent('agent_added_as_participant');
+        } else {
+          span.addEvent('agent_already_participant');
+        }
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        span.recordException(error as Error);
+        span.setStatus({ code: SpanStatusCode.ERROR, message: errorMsg });
+        this.runtimeLogger.error(`Failed to add agent as participant: ${errorMsg}`);
+        throw error;
+      }
+
+      // Check if TEXT_EMBEDDING model is registered
+      const embeddingModel = this.getModel(ModelType.TEXT_EMBEDDING);
+      if (!embeddingModel) {
+        span.addEvent('embedding_model_missing');
+        this.runtimeLogger.warn(
+          `[AgentRuntime][${this.character.name}] No TEXT_EMBEDDING model registered. Skipping embedding dimension setup.`
+        );
+      } else {
+        // Only run ensureEmbeddingDimension if we have an embedding model
+        span.addEvent('setting_up_embedding_dimension');
+        await this.ensureEmbeddingDimension();
+        span.addEvent('embedding_dimension_setup_complete');
+      }
+
+      // Process character knowledge
+      if (this.character?.knowledge && this.character.knowledge.length > 0) {
+        span.addEvent('processing_character_knowledge');
+        span.setAttributes({
+          'knowledge.count': this.character.knowledge.length,
         });
 
-        if (!created) {
-          throw new Error(`Failed to create entity for agent ${this.agentId}`);
-        }
-
-        this.runtimeLogger.debug(
-          `Success: Agent entity created successfully for ${this.character.name}`
+        const stringKnowledge = this.character.knowledge.filter(
+          (item): item is string => typeof item === 'string'
         );
+        await this.processCharacterKnowledge(stringKnowledge);
+        span.addEvent('character_knowledge_processed');
       }
-    } catch (error) {
-      this.runtimeLogger.error(
-        `Failed to create agent entity: ${error instanceof Error ? error.message : String(error)}`
-      );
-      throw error;
-    }
 
-    // Create room for the agent and register all plugins in parallel
-    try {
-      await Promise.all([
-        this.ensureRoomExists({
-          id: this.agentId,
-          name: this.character.name,
-          source: 'self',
-          type: ChannelType.SELF,
-        }),
-        ...pluginRegistrationPromises,
-      ]);
-    } catch (error) {
-      this.runtimeLogger.error(
-        `Failed to initialize: ${error instanceof Error ? error.message : String(error)}`
-      );
-      throw error;
-    }
+      // Start all deferred services now that runtime is ready
+      span.addEvent('starting_deferred_services');
+      span.setAttributes({
+        'deferred_services.count': this.servicesInitQueue.size,
+      });
 
-    // Add agent as participant in its own room
-    try {
-      // No need to transform agent ID
-      const participants = await this.adapter.getParticipantsForRoom(this.agentId);
-      if (!participants.includes(this.agentId)) {
-        const added = await this.adapter.addParticipant(this.agentId, this.agentId);
-        if (!added) {
-          throw new Error(`Failed to add agent ${this.agentId} as participant to its own room`);
-        }
-        this.runtimeLogger.debug(
-          `Agent ${this.character.name} linked to its own room successfully`
-        );
+      for (const service of this.servicesInitQueue) {
+        await this.registerService(service);
       }
-    } catch (error) {
-      this.runtimeLogger.error(
-        `Failed to add agent as participant: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
-      throw error;
-    }
 
-    // Check if TEXT_EMBEDDING model is registered
-    const embeddingModel = this.getModel(ModelType.TEXT_EMBEDDING);
-    if (!embeddingModel) {
-      this.runtimeLogger.warn(
-        `[AgentRuntime][${this.character.name}] No TEXT_EMBEDDING model registered. Skipping embedding dimension setup.`
-      );
-    } else {
-      // Only run ensureEmbeddingDimension if we have an embedding model
-      await this.ensureEmbeddingDimension();
-    }
-
-    // Process character knowledge
-    if (this.character?.knowledge && this.character.knowledge.length > 0) {
-      const stringKnowledge = this.character.knowledge.filter(
-        (item): item is string => typeof item === 'string'
-      );
-      await this.processCharacterKnowledge(stringKnowledge);
-    }
-
-    // Start all deferred services now that runtime is ready
-    for (const service of this.servicesInitQueue) {
-      await this.registerService(service);
-    }
+      span.addEvent('initialization_completed');
+    });
   }
 
   private async handleProcessingError(error: any, context: string) {
@@ -442,42 +666,95 @@ export class AgentRuntime implements IAgentRuntime {
     return !!existingDocument;
   }
 
-  async getKnowledge(message: Memory): Promise<KnowledgeItem[]> {
-    // Add validation for message
-    if (!message?.content?.text) {
-      this.runtimeLogger.warn('Invalid message for knowledge query:', {
-        message,
-        content: message?.content,
+  async getKnowledge(
+    message: Memory,
+    scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID }
+  ): Promise<KnowledgeItem[]> {
+    console.log('*** getKnowledge', message);
+    return this.startSpan('AgentRuntime.getKnowledge', async (span) => {
+      // Add validation for message
+      if (!message?.content?.text) {
+        span.addEvent('invalid_message');
+        span.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: 'Invalid message for knowledge query',
+        });
+        this.runtimeLogger.warn('Invalid message for knowledge query:', {
+          message,
+          content: message?.content,
+          text: message?.content?.text,
+        });
+        return [];
+      }
+
+      // Validate processed text
+      if (!message?.content?.text || message?.content?.text.trim().length === 0) {
+        span.addEvent('empty_text');
+        span.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: 'Empty text for knowledge query',
+        });
+        this.runtimeLogger.warn('Empty text for knowledge query');
+        return [];
+      }
+
+      span.setAttributes({
+        'message.id': message.id,
+        'query.length': message.content.text.length,
+        'agent.id': this.agentId,
+      });
+
+      span.addEvent('generating_embedding');
+      const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, {
         text: message?.content?.text,
       });
-      return [];
-    }
 
-    // Validate processed text
-    if (!message?.content?.text || message?.content?.text.trim().length === 0) {
-      this.runtimeLogger.warn('Empty text for knowledge query');
-      return [];
-    }
+      span.addEvent('searching_memories');
+      span.setAttributes({
+        'embedding.length': embedding.length,
+      });
 
-    const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, {
-      text: message?.content?.text,
+      console.log('*** searching memories');
+
+      // Determine the filter scope
+      // Build filter scope with only defined values
+      const filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID } = {};
+      if (scope?.roomId) filterScope.roomId = scope.roomId;
+      if (scope?.worldId) filterScope.worldId = scope.worldId;
+      if (scope?.entityId) filterScope.entityId = scope.entityId;
+
+      span.addEvent('determined_filter_scope', {
+        ...(filterScope.roomId && { 'filter.roomId': filterScope.roomId }),
+        ...(filterScope.worldId && { 'filter.worldId': filterScope.worldId }),
+        ...(filterScope.entityId && { 'filter.entityId': filterScope.entityId }),
+      });
+
+      const fragments = await this.searchMemories({
+        tableName: 'knowledge',
+        embedding,
+        query: message?.content?.text,
+        ...filterScope,
+        count: 20,
+        match_threshold: 0.1,
+      });
+
+      console.log('*** fragments', fragments);
+
+      span.addEvent('knowledge_retrieved');
+      span.setAttributes({
+        'fragments.count': fragments.length,
+      });
+
+      // Return the fragments directly as this is used from prompts.
+      // Example usage in prompts: # provider KNOWLEDGE
+      return fragments.map((fragment) => ({
+        id: fragment.id,
+        content: fragment.content,
+        similarity: fragment.similarity,
+        metadata: fragment.metadata,
+        worldId: fragment.worldId, // Include worldId if available on fragment
+      }));
     });
-    const fragments = await this.searchMemories({
-      tableName: 'knowledge',
-      embedding,
-      roomId: message.agentId,
-      count: 5,
-      match_threshold: 0.1,
-    });
-
-    // Return the fragments directly as this is used from prompts.
-    // Example usage in prompts: # provider KNOWLEDGE
-    return fragments.map((fragment) => ({
-      id: fragment.id,
-      content: fragment.content,
-      similarity: fragment.similarity,
-      metadata: fragment.metadata,
-    }));
   }
 
   async addKnowledge(
@@ -486,46 +763,99 @@ export class AgentRuntime implements IAgentRuntime {
       targetTokens: 1500,
       overlap: 200,
       modelContextSize: 4096,
-    }
+    },
+    scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID }
   ) {
-    // First store the document
-    const documentMemory: Memory = {
-      id: item.id,
-      agentId: this.agentId,
-      roomId: this.agentId,
-      entityId: this.agentId,
-      content: item.content,
-      metadata: item.metadata || {
-        type: MemoryType.DOCUMENT,
-        timestamp: Date.now(),
-      },
-    };
+    return this.startSpan('AgentRuntime.addKnowledge', async (span) => {
+      span.setAttributes({
+        'item.id': item.id,
+        'agent.id': this.agentId,
+        'options.targetTokens': options.targetTokens,
+        'options.overlap': options.overlap,
+        // Log scope
+        'scope.roomId': scope?.roomId,
+        'scope.worldId': scope?.worldId,
+        'scope.entityId': scope?.entityId,
+      });
 
-    await this.createMemory(documentMemory, 'documents');
+      // Define default scope if not provided
+      const finalScope = {
+        roomId: scope?.roomId ?? this.agentId, // Default roomId to agentId
+        worldId: scope?.worldId, // Default worldId to undefined/null
+        entityId: scope?.entityId ?? this.agentId, // Default entityId to agentId
+      };
 
-    // Create fragments using splitChunks
-    const fragments = await splitChunks(item.content.text, options.targetTokens, options.overlap);
-
-    // Store each fragment with link to source document
-    for (let i = 0; i < fragments.length; i++) {
-      const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, fragments[i]);
-      const fragmentMemory: Memory = {
-        id: createUniqueUuid(this, `${item.id}-fragment-${i}`),
+      // First store the document
+      const documentMemory: Memory = {
+        id: item.id,
         agentId: this.agentId,
-        roomId: this.agentId,
-        entityId: this.agentId,
-        embedding,
-        content: { text: fragments[i] },
-        metadata: {
-          type: MemoryType.FRAGMENT,
-          documentId: item.id, // Link to source document
-          position: i, // Keep track of order
+        roomId: finalScope.roomId,
+        worldId: finalScope.worldId,
+        entityId: finalScope.entityId,
+        content: item.content,
+        metadata: item.metadata || {
+          type: MemoryType.DOCUMENT,
           timestamp: Date.now(),
         },
       };
 
-      await this.createMemory(fragmentMemory, 'knowledge');
-    }
+      span.addEvent('storing_document');
+      await this.createMemory(documentMemory, 'documents');
+      span.addEvent('document_stored');
+
+      // Create fragments using splitChunks
+      span.addEvent('splitting_chunks');
+      const fragments = await splitChunks(item.content.text, options.targetTokens, options.overlap);
+      span.setAttributes({
+        'fragments.count': fragments.length,
+      });
+      span.addEvent('chunks_split');
+
+      // Track progress
+      let fragmentsProcessed = 0;
+
+      // Store each fragment with link to source document
+      span.addEvent('storing_fragments');
+      for (let i = 0; i < fragments.length; i++) {
+        try {
+          span.addEvent(`generating_embedding_${i}`);
+          const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, fragments[i]);
+
+          const fragmentMemory: Memory = {
+            id: createUniqueUuid(this, `${item.id}-fragment-${i}`),
+            agentId: this.agentId,
+            roomId: finalScope.roomId,
+            worldId: finalScope.worldId,
+            entityId: finalScope.entityId,
+            embedding,
+            content: { text: fragments[i] },
+            metadata: {
+              type: MemoryType.FRAGMENT,
+              documentId: item.id, // Link to source document
+              position: i, // Keep track of order
+              timestamp: Date.now(),
+            },
+          };
+
+          await this.createMemory(fragmentMemory, 'knowledge');
+          fragmentsProcessed++;
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          span.recordException(error as Error);
+          span.setAttributes({
+            'error.fragment': i,
+            'error.message': errorMsg,
+          });
+          this.runtimeLogger.error(`Error processing fragment ${i}: ${errorMsg}`);
+        }
+      }
+
+      span.setAttributes({
+        'fragments.processed': fragmentsProcessed,
+        'fragments.success_rate': fragmentsProcessed / fragments.length,
+      });
+      span.addEvent('knowledge_processing_complete');
+    });
   }
 
   async processCharacterKnowledge(items: string[]) {
@@ -569,13 +899,23 @@ export class AgentRuntime implements IAgentRuntime {
           };
         }
 
-        await this.addKnowledge({
-          id: knowledgeId,
-          content: {
-            text: item,
+        // Add knowledge with agent-specific scope
+        await this.addKnowledge(
+          {
+            id: knowledgeId,
+            content: {
+              text: item,
+            },
+            metadata,
           },
-          metadata,
-        });
+          undefined, // Default options
+          {
+            // Scope to the agent itself
+            roomId: this.agentId,
+            entityId: this.agentId,
+            worldId: null, // Character knowledge is agent-global, not world-specific
+          }
+        );
       } catch (error) {
         await this.handleProcessingError(error, 'processing character knowledge');
       } finally {
@@ -692,86 +1032,166 @@ export class AgentRuntime implements IAgentRuntime {
     state?: State,
     callback?: HandlerCallback
   ): Promise<void> {
-    for (const response of responses) {
-      if (!response.content?.actions || response.content.actions.length === 0) {
-        this.runtimeLogger.warn('No action found in the response content.');
-        continue;
-      }
+    return this.startSpan('AgentRuntime.processActions', async (span) => {
+      span.setAttributes({
+        'message.id': message.id,
+        'responses.count': responses.length,
+        'agent.id': this.agentId,
+      });
 
-      const actions = response.content.actions;
+      for (const response of responses) {
+        if (!response.content?.actions || response.content.actions.length === 0) {
+          span.addEvent('no_actions_in_response');
+          this.runtimeLogger.warn('No action found in the response content.');
+          continue;
+        }
 
-      function normalizeAction(action: string) {
-        return action.toLowerCase().replace('_', '');
-      }
-      this.runtimeLogger.debug(
-        `Found actions: ${this.actions.map((a) => normalizeAction(a.name))}`
-      );
+        const actions = response.content.actions;
+        span.setAttributes({
+          'actions.count': actions.length,
+          'actions.names': JSON.stringify(actions),
+        });
 
-      for (const responseAction of actions) {
-        state = await this.composeState(message, ['RECENT_MESSAGES']);
-
-        this.runtimeLogger.debug(`Success: Calling action: ${responseAction}`);
-        const normalizedResponseAction = normalizeAction(responseAction);
-        let action = this.actions.find(
-          (a: { name: string }) =>
-            normalizeAction(a.name).includes(normalizedResponseAction) || // the || is kind of a fuzzy match
-            normalizedResponseAction.includes(normalizeAction(a.name)) //
+        function normalizeAction(action: string) {
+          return action.toLowerCase().replace('_', '');
+        }
+        this.runtimeLogger.debug(
+          `Found actions: ${this.actions.map((a) => normalizeAction(a.name))}`
         );
 
-        if (action) {
-          this.runtimeLogger.debug(`Success: Found action: ${action?.name}`);
-        } else {
-          this.runtimeLogger.debug('Attempting to find action in similes.');
-          for (const _action of this.actions) {
-            const simileAction = _action.similes?.find(
-              (simile) =>
-                simile.toLowerCase().replace('_', '').includes(normalizedResponseAction) ||
-                normalizedResponseAction.includes(simile.toLowerCase().replace('_', ''))
-            );
-            if (simileAction) {
-              action = _action;
-              this.runtimeLogger.debug(`Success: Action found in similes: ${action.name}`);
-              break;
+        for (const responseAction of actions) {
+          span.addEvent(`processing_action_${responseAction}`);
+          state = await this.composeState(message, ['RECENT_MESSAGES']);
+
+          this.runtimeLogger.debug(`Success: Calling action: ${responseAction}`);
+          const normalizedResponseAction = normalizeAction(responseAction);
+          let action = this.actions.find(
+            (a: { name: string }) =>
+              normalizeAction(a.name).includes(normalizedResponseAction) || // the || is kind of a fuzzy match
+              normalizedResponseAction.includes(normalizeAction(a.name)) //
+          );
+
+          if (action) {
+            span.addEvent(`found_exact_action_${action.name}`);
+            this.runtimeLogger.debug(`Success: Found action: ${action?.name}`);
+          } else {
+            span.addEvent('looking_for_similar_action');
+            this.runtimeLogger.debug('Attempting to find action in similes.');
+            for (const _action of this.actions) {
+              const simileAction = _action.similes?.find(
+                (simile) =>
+                  simile.toLowerCase().replace('_', '').includes(normalizedResponseAction) ||
+                  normalizedResponseAction.includes(simile.toLowerCase().replace('_', ''))
+              );
+              if (simileAction) {
+                action = _action;
+                span.addEvent(`found_similar_action_${action.name}`);
+                this.runtimeLogger.debug(`Success: Action found in similes: ${action.name}`);
+                break;
+              }
             }
           }
-        }
 
-        if (!action) {
-          this.runtimeLogger.error(`No action found for: ${responseAction}`);
-          continue;
-        }
+          if (!action) {
+            const errorMsg = `No action found for: ${responseAction}`;
+            span.addEvent('action_not_found');
+            span.setAttributes({
+              'error.action': responseAction,
+            });
+            this.runtimeLogger.error(errorMsg);
+            continue;
+          }
 
-        if (!action.handler) {
-          this.runtimeLogger.error(`Action ${action.name} has no handler.`);
-          continue;
-        }
+          if (!action.handler) {
+            span.addEvent('action_has_no_handler');
+            span.setAttributes({
+              'error.action': action.name,
+            });
+            this.runtimeLogger.error(`Action ${action.name} has no handler.`);
+            continue;
+          }
 
-        try {
-          this.runtimeLogger.debug(`Executing handler for action: ${action.name}`);
+          try {
+            span.addEvent(`executing_action_${action.name}`);
+            this.runtimeLogger.debug(`Executing handler for action: ${action.name}`);
 
-          await action.handler(this, message, state, {}, callback, responses);
+            // Wrap individual action handler invocation in its own span
+            await this.startSpan(`Action.${action.name}`, async (actionSpan) => {
+              actionSpan.setAttributes({
+                'action.name': action.name,
+                'parent_span.id': span.spanContext().spanId, // Link to parent processActions span
+              });
 
-          this.runtimeLogger.debug(`Success: Action ${action.name} executed successfully.`);
+              // Log input parameters (avoid logging potentially large state)
+              actionSpan.addEvent('action.input', {
+                'message.id': message.id,
+                'state.keys': state ? JSON.stringify(Object.keys(state.values)) : 'none',
 
-          // log to database
-          this.adapter.log({
-            entityId: message.entityId,
-            roomId: message.roomId,
-            type: 'action',
-            body: {
-              action: action.name,
-              message: message.content.text,
-              messageId: message.id,
-              state,
-              responses,
-            },
-          });
-        } catch (error) {
-          this.runtimeLogger.error(error);
-          throw error;
+                options: JSON.stringify({}), // Hardcoded empty options for now
+                'responses.count': responses?.length ?? 0,
+                'responses.ids': JSON.stringify(responses?.map((r) => r.id) ?? []),
+              });
+
+              try {
+                // Execute the action handler and capture the result
+                const result = await action.handler(this, message, state, {}, callback, responses);
+
+                // Log the result in the output event
+                actionSpan.addEvent('action.output', {
+                  status: 'success',
+                  result: JSON.stringify(result, safeReplacer()), // Log stringified result
+                });
+                actionSpan.setStatus({ code: SpanStatusCode.OK });
+              } catch (handlerError) {
+                const handlerErrorMessage =
+                  handlerError instanceof Error ? handlerError.message : String(handlerError);
+                actionSpan.recordException(handlerError as Error);
+                actionSpan.setStatus({ code: SpanStatusCode.ERROR, message: handlerErrorMessage });
+                actionSpan.setAttributes({
+                  'error.message': handlerErrorMessage,
+                });
+                actionSpan.addEvent('action.output', {
+                  status: 'error',
+                  error: handlerErrorMessage,
+                });
+                // Re-throw the error to be caught by the outer try/catch
+                throw handlerError;
+              }
+            }); // End of Action.${action.name} span
+
+            span.addEvent(`action_executed_successfully_${action.name}`);
+            this.runtimeLogger.debug(`Success: Action ${action.name} executed successfully.`);
+
+            // log to database
+            this.adapter.log({
+              entityId: message.entityId,
+              roomId: message.roomId,
+              type: 'action',
+              body: {
+                action: action.name,
+                message: message.content.text,
+                messageId: message.id,
+                state,
+                responses,
+              },
+            });
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            span.recordException(error as Error);
+            span.setStatus({
+              code: SpanStatusCode.ERROR,
+              message: errorMessage,
+            });
+            span.setAttributes({
+              'error.action': action.name,
+              'error.message': errorMessage,
+            });
+            this.runtimeLogger.error(error);
+            throw error;
+          }
         }
       }
-    }
+    });
   }
 
   /**
@@ -789,52 +1209,76 @@ export class AgentRuntime implements IAgentRuntime {
     callback?: HandlerCallback,
     responses?: Memory[]
   ) {
-    const evaluatorPromises = this.evaluators.map(async (evaluator: Evaluator) => {
-      if (!evaluator.handler) {
-        return null;
-      }
-      if (!didRespond && !evaluator.alwaysRun) {
-        return null;
-      }
-      const result = await evaluator.validate(this, message, state);
+    // Start root span for evaluation
+    return this.startSpan('AgentRuntime.evaluate', async (span) => {
+      span.setAttributes({
+        'agent.id': this.agentId,
+        'character.name': this.character?.name,
+        'message.id': message?.id,
+        'room.id': message?.roomId,
+        'entity.id': message?.entityId,
+        did_respond: didRespond,
+        responses_count: responses?.length || 0,
+      });
+      span.addEvent('evaluation_started');
 
-      if (result) {
-        return evaluator;
-      }
-      return null;
-    });
-
-    const evaluators = (await Promise.all(evaluatorPromises)).filter(Boolean) as Evaluator[];
-
-    // get the evaluators that were chosen by the response handler
-
-    if (evaluators.length === 0) {
-      return [];
-    }
-
-    state = await this.composeState(message, ['RECENT_MESSAGES', 'EVALUATORS']);
-
-    await Promise.all(
-      evaluators.map(async (evaluator) => {
-        if (evaluator.handler) {
-          await evaluator.handler(this, message, state, {}, callback, responses);
-          // log to database
-          this.adapter.log({
-            entityId: message.entityId,
-            roomId: message.roomId,
-            type: 'evaluator',
-            body: {
-              evaluator: evaluator.name,
-              messageId: message.id,
-              message: message.content.text,
-              state,
-            },
-          });
+      const evaluatorPromises = this.evaluators.map(async (evaluator: Evaluator) => {
+        if (!evaluator.handler) {
+          return null;
         }
-      })
-    );
+        if (!didRespond && !evaluator.alwaysRun) {
+          return null;
+        }
+        const result = await evaluator.validate(this, message, state);
 
-    return evaluators;
+        if (result) {
+          return evaluator;
+        }
+        return null;
+      });
+
+      const evaluators = (await Promise.all(evaluatorPromises)).filter(Boolean) as Evaluator[];
+      span.setAttribute('selected_evaluators_count', evaluators.length);
+      span.addEvent('evaluator_selection_complete', {
+        'evaluator.names': JSON.stringify(evaluators.map((e) => e.name)),
+      });
+
+      // get the evaluators that were chosen by the response handler
+
+      if (evaluators.length === 0) {
+        span.addEvent('no_evaluators_selected');
+        return [];
+      }
+
+      // Note: composeState is already instrumented, will be nested automatically
+      state = await this.composeState(message, ['RECENT_MESSAGES', 'EVALUATORS']);
+
+      span.addEvent('evaluator_execution_start');
+      await Promise.all(
+        evaluators.map(async (evaluator) => {
+          if (evaluator.handler) {
+            // TODO: Instrument individual evaluator handlers if needed (potentially in plugins)
+            await evaluator.handler(this, message, state, {}, callback, responses);
+            // log to database
+            this.adapter.log({
+              entityId: message.entityId,
+              roomId: message.roomId,
+              type: 'evaluator',
+              body: {
+                evaluator: evaluator.name,
+                messageId: message.id,
+                message: message.content.text,
+                state, // Consider if state should be logged here, can be large
+              },
+            });
+          }
+        })
+      );
+      span.addEvent('evaluator_execution_complete');
+      span.addEvent('evaluation_complete');
+
+      return evaluators;
+    });
   }
 
   async ensureConnection({
@@ -880,7 +1324,7 @@ export class AgentRuntime implements IAgentRuntime {
     // Step 1: Handle entity creation/update with proper error handling
     try {
       // First check if the entity exists
-      let entity = await this.adapter.getEntityById(entityId);
+      const entity = await this.adapter.getEntityById(entityId);
 
       if (!entity) {
         // Try to create the entity
@@ -1106,147 +1550,257 @@ export class AgentRuntime implements IAgentRuntime {
     filterList: string[] | null = null, // only get providers that are in the filterList
     includeList: string[] | null = null // include providers that are private, dynamic or otherwise not included by default
   ): Promise<State> {
-    // Get cached state for this message ID first
-    const cachedState = (await this.stateCache.get(message.id)) || {
-      values: {},
-      data: {},
-      text: '',
-    };
+    return this.startSpan('AgentRuntime.composeState', async (span) => {
+      span.setAttributes({
+        'message.id': message.id,
+        'agent.id': this.agentId,
+        filter_list: filterList ? JSON.stringify(filterList) : 'none', // Use 'none' for clarity
+        include_list: includeList ? JSON.stringify(includeList) : 'none', // Use 'none' for clarity
+      });
+      span.addEvent('state_composition_started');
 
-    // Get existing provider names from cache (if any)
-    const existingProviderNames = cachedState.data.providers
-      ? Object.keys(cachedState.data.providers)
-      : [];
+      // Get cached state for this message ID first
+      const cachedState = (await this.stateCache.get(message.id)) || {
+        values: {},
+        data: {},
+        text: '',
+      };
 
-    // Step 1: Determine base set of providers to fetch
-    const providerNames = new Set<string>();
+      // Get existing provider names from cache (if any)
+      const existingProviderNames = cachedState.data.providers
+        ? Object.keys(cachedState.data.providers)
+        : [];
 
-    if (filterList && filterList.length > 0) {
-      // If filter list provided, start with just those providers
-      filterList.forEach((name) => providerNames.add(name));
-    } else {
-      // Otherwise, start with all non-private, non-dynamic providers that aren't cached
-      this.providers
-        .filter((p) => !p.private && !p.dynamic && !existingProviderNames.includes(p.name))
-        .forEach((p) => providerNames.add(p.name));
-    }
+      span.setAttributes({
+        cached_state_exists: !!cachedState.data.providers, // More specific check
+        existing_providers_count: existingProviderNames.length,
+        existing_providers: JSON.stringify(existingProviderNames), // Add list of existing providers
+      });
 
-    // Step 2: Always add providers from include list
-    if (includeList && includeList.length > 0) {
-      includeList.forEach((name) => providerNames.add(name));
-    }
+      // Step 1: Determine base set of providers to fetch
+      const providerNames = new Set<string>();
 
-    // Get the actual provider objects and sort by position
-    const providersToGet = Array.from(
-      new Set(this.providers.filter((p) => providerNames.has(p.name)))
-    ).sort((a, b) => (a.position || 0) - (b.position || 0));
-
-    // Fetch data from selected providers
-    const providerData = await Promise.all(
-      providersToGet.map(async (provider) => {
-        const start = Date.now();
-        const result = await provider.get(this, message, cachedState);
-        const duration = Date.now() - start;
-        this.runtimeLogger.debug(`${provider.name} Provider took ${duration}ms to respond`);
-        return {
-          ...result,
-          providerName: provider.name,
-        };
-      })
-    );
-
-    // Extract existing provider data from cache
-    const existingProviderData = cachedState.data.providers || {};
-
-    // Create a combined provider values structure that preserves all cached data
-    // but updates with any newly fetched provider data
-    const combinedValues = { ...existingProviderData };
-
-    // Update with newly fetched provider data
-    for (const result of providerData) {
-      combinedValues[result.providerName] = result.values || {};
-    }
-
-    // Collect provider text from newly fetched providers
-    const newProvidersText = providerData
-      .map((result) => result.text)
-      .filter((text) => text !== '')
-      .join('\n');
-
-    // Combine with existing text if available
-    let providersText = '';
-    if (cachedState.text && newProvidersText) {
-      providersText = `${cachedState.text}\n${newProvidersText}`;
-    } else if (newProvidersText) {
-      providersText = newProvidersText;
-    } else if (cachedState.text) {
-      providersText = cachedState.text;
-    }
-
-    // Prepare final values
-    const values = {
-      ...(cachedState.values || {}),
-    };
-
-    // Safely merge all provider values
-    for (const providerName in combinedValues) {
-      const providerValues = combinedValues[providerName];
-      if (providerValues && typeof providerValues === 'object') {
-        Object.assign(values, providerValues);
+      if (filterList && filterList.length > 0) {
+        // If filter list provided, start with just those providers
+        filterList.forEach((name) => providerNames.add(name));
+      } else {
+        // Otherwise, start with all non-private, non-dynamic providers that aren't cached
+        this.providers
+          .filter((p) => !p.private && !p.dynamic && !existingProviderNames.includes(p.name))
+          .forEach((p) => providerNames.add(p.name));
       }
-    }
 
-    // Assemble and cache the new state
-    const newState = {
-      values: {
-        ...values,
-        providers: providersText,
-      },
-      data: {
-        ...(cachedState.data || {}),
-        providers: combinedValues,
-      },
-      text: providersText,
-    } as State;
+      // Step 2: Always add providers from include list
+      if (includeList && includeList.length > 0) {
+        includeList.forEach((name) => providerNames.add(name));
+      }
 
-    // Cache the result for future use
-    this.stateCache.set(message.id, newState);
-    return newState;
+      // Get the actual provider objects and sort by position
+      const providersToGet = Array.from(
+        new Set(this.providers.filter((p) => providerNames.has(p.name)))
+      ).sort((a, b) => (a.position || 0) - (b.position || 0));
+
+      const providerNamesToGet = providersToGet.map((p) => p.name);
+      span.setAttributes({
+        providers_to_get_count: providersToGet.length,
+        providers_to_get: JSON.stringify(providerNamesToGet), // Log names as JSON array
+      });
+      span.addEvent('starting_provider_fetch');
+
+      // Fetch data from selected providers
+      const providerData = await Promise.all(
+        providersToGet.map(async (provider) => {
+          // This creates nested spans for each provider call automatically
+          return this.startSpan(`provider.${provider.name}`, async (providerSpan) => {
+            const start = Date.now();
+            try {
+              const result = await provider.get(this, message, cachedState);
+              const duration = Date.now() - start;
+
+              providerSpan.setAttributes({
+                'provider.name': provider.name,
+                'provider.duration_ms': duration,
+                'result.has_text': !!result.text,
+                'result.values_keys': result.values
+                  ? JSON.stringify(Object.keys(result.values))
+                  : '[]',
+              });
+              providerSpan.addEvent('provider_fetch_complete');
+
+              this.runtimeLogger.debug(`${provider.name} Provider took ${duration}ms to respond`);
+              return {
+                ...result,
+                providerName: provider.name,
+              };
+            } catch (error) {
+              const duration = Date.now() - start;
+              const errorMessage = error instanceof Error ? error.message : String(error);
+              providerSpan.recordException(error as Error);
+              providerSpan.setStatus({ code: SpanStatusCode.ERROR, message: errorMessage });
+              providerSpan.setAttributes({
+                'provider.name': provider.name,
+                'provider.duration_ms': duration,
+                'error.message': errorMessage,
+              });
+              providerSpan.addEvent('provider_fetch_error');
+
+              // Return empty result on error
+              return { values: {}, text: '', providerName: provider.name };
+            }
+          });
+        })
+      );
+
+      // Extract existing provider data from cache
+      const existingProviderData = cachedState.data.providers || {};
+
+      // Create a combined provider values structure that preserves all cached data
+      // but updates with any newly fetched provider data
+      const combinedValues = { ...existingProviderData };
+
+      // Update with newly fetched provider data
+      for (const result of providerData) {
+        combinedValues[result.providerName] = result.values || {};
+      }
+
+      // Collect provider text from newly fetched providers
+      const newProvidersText = providerData
+        .map((result) => result.text)
+        .filter((text) => text !== '')
+        .join('\\n');
+
+      // Combine with existing text if available
+      let providersText = '';
+      if (cachedState.text && newProvidersText) {
+        providersText = `${cachedState.text}\\n${newProvidersText}`;
+      } else if (newProvidersText) {
+        providersText = newProvidersText;
+      } else if (cachedState.text) {
+        providersText = cachedState.text;
+      }
+
+      // Prepare final values
+      const values = {
+        ...(cachedState.values || {}),
+      };
+
+      // Safely merge all provider values
+      for (const providerName in combinedValues) {
+        const providerValues = combinedValues[providerName];
+        if (providerValues && typeof providerValues === 'object') {
+          Object.assign(values, providerValues);
+        }
+      }
+
+      // Assemble and cache the new state
+      const newState = {
+        values: {
+          ...values,
+          providers: providersText,
+        },
+        data: {
+          ...(cachedState.data || {}),
+          providers: combinedValues,
+        },
+        text: providersText,
+      } as State;
+
+      // Cache the result for future use
+      this.stateCache.set(message.id, newState);
+
+      const finalProviderCount = Object.keys(combinedValues).length;
+      const finalProviderNames = Object.keys(combinedValues);
+      const finalValueKeys = Object.keys(newState.values); // Get keys from the merged state values
+
+      span.setAttributes({
+        // Remove original/redundant attributes
+        // 'final_state_text_length': providersText.length,
+        // 'provider_count_final': finalProviderCount,
+        // 'provider_names_final': JSON.stringify(finalProviderNames),
+
+        // Context-specific attributes
+        'context.sources.provider_count': finalProviderCount,
+        'context.sources.provider_names': JSON.stringify(finalProviderNames),
+        'context.state.value_keys': JSON.stringify(finalValueKeys),
+        'context.state.text_length': providersText.length,
+        // Flags for common providers
+        'context.sources.used_memory': finalProviderNames.includes('RECENT_MESSAGES'),
+        'context.sources.used_knowledge': finalProviderNames.includes('KNOWLEDGE'),
+        'context.sources.used_character': finalProviderNames.includes('CHARACTER'),
+        'context.sources.used_actions': finalProviderNames.includes('ACTIONS'),
+        'context.sources.used_facts': finalProviderNames.includes('FACTS'), // Example, adjust if needed
+      });
+
+      // Log final text as event, using updated event name
+      span.addEvent('context.composed', {
+        'context.final_string':
+          providersText.length > 1000 ? providersText.substring(0, 997) + '...' : providersText, // Truncate if needed
+        'context.final_length': providersText.length,
+      });
+      span.addEvent('state_composition_complete');
+
+      return newState;
+    });
   }
 
   getService<T extends Service>(service: ServiceTypeName): T | null {
     const serviceInstance = this.services.get(service);
     if (!serviceInstance) {
-      this.runtimeLogger.warn(`Service ${service} not found`);
+      // it's not a warn, a plugin might just not be installed
+      this.runtimeLogger.debug(`Service ${service} not found`);
       return null;
     }
     return serviceInstance as T;
   }
 
   async registerService(service: typeof Service): Promise<void> {
-    const serviceType = service.serviceType as ServiceTypeName;
-    if (!serviceType) {
-      return;
-    }
-    this.runtimeLogger.debug(
-      `${this.character.name}(${this.agentId}) - Registering service:`,
-      serviceType
-    );
+    return this.startSpan('AgentRuntime.registerService', async (span) => {
+      const serviceType = service.serviceType as ServiceTypeName;
+      span.setAttributes({
+        'service.type': serviceType || 'unknown',
+        'agent.id': this.agentId,
+      });
 
-    if (this.services.has(serviceType)) {
-      this.runtimeLogger.warn(
-        `${this.character.name}(${this.agentId}) - Service ${serviceType} is already registered. Skipping registration.`
+      if (!serviceType) {
+        span.addEvent('service_missing_type');
+        return;
+      }
+      this.runtimeLogger.debug(
+        `${this.character.name}(${this.agentId}) - Registering service:`,
+        serviceType
       );
-      return;
-    }
 
-    const serviceInstance = await service.start(this);
+      if (this.services.has(serviceType)) {
+        span.addEvent('service_already_registered');
+        this.runtimeLogger.warn(
+          `${this.character.name}(${this.agentId}) - Service ${serviceType} is already registered. Skipping registration.`
+        );
+        return;
+      }
 
-    // Add the service to the services map
-    this.services.set(serviceType, serviceInstance);
-    this.runtimeLogger.debug(
-      `${this.character.name}(${this.agentId}) - Service ${serviceType} registered successfully`
-    );
+      try {
+        span.addEvent('starting_service');
+        const serviceInstance = await service.start(this);
+
+        // Add the service to the services map
+        this.services.set(serviceType, serviceInstance);
+        span.addEvent('service_registered');
+        this.runtimeLogger.debug(
+          `${this.character.name}(${this.agentId}) - Service ${serviceType} registered successfully`
+        );
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        span.recordException(error as Error);
+        span.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: errorMessage,
+        });
+        this.runtimeLogger.error(
+          `${this.character.name}(${this.agentId}) - Failed to register service ${serviceType}: ${errorMessage}`
+        );
+        throw error;
+      }
+    });
   }
 
   registerModel(modelType: ModelTypeName, handler: (params: any) => Promise<any>) {
@@ -1280,78 +1834,148 @@ export class AgentRuntime implements IAgentRuntime {
     modelType: T,
     params: Omit<ModelParamsMap[T], 'runtime'> | any
   ): Promise<R> {
-    const modelKey = typeof modelType === 'string' ? modelType : ModelType[modelType];
-    const model = this.getModel(modelKey);
-    if (!model) {
-      throw new Error(`No handler found for delegate type: ${modelKey}`);
-    }
+    // Use modelType directly in span name for better granularity
+    return this.startSpan(`AgentRuntime.useModel.${modelType}`, async (span) => {
+      const modelKey = typeof modelType === 'string' ? modelType : ModelType[modelType];
 
-    // Log input parameters
-    this.runtimeLogger.debug(`[useModel] ${modelKey} input:`, JSON.stringify(params, null, 2));
+      // Try to extract prompt content from params (common patterns)
+      const promptContent =
+        params?.prompt ||
+        params?.input ||
+        (Array.isArray(params?.messages) ? JSON.stringify(params.messages) : null);
 
-    // Handle different parameter formats
-    let paramsWithRuntime: any;
+      // Add essential attributes and params/prompt as events
+      span.setAttributes({
+        'llm.request.model': modelKey, // Semantic convention
+        'agent.id': this.agentId,
+        'llm.request.temperature': params?.temperature,
+        'llm.request.top_p': params?.top_p,
+        'llm.request.max_tokens': params?.max_tokens || params?.max_tokens_to_sample, // Handle variations
+      });
+      span.addEvent('model_parameters', { params: JSON.stringify(params, safeReplacer()) }); // Log full params
+      if (promptContent) {
+        span.addEvent('llm.prompt', { 'prompt.content': promptContent }); // Log extracted prompt
+      }
+      // Note: Logging raw API response is not feasible here as the call happens within the model handler.
 
-    // If params is a simple value (string, number, etc.), pass it directly
-    if (
-      params === null ||
-      params === undefined ||
-      typeof params !== 'object' ||
-      Array.isArray(params) ||
-      (typeof Buffer !== 'undefined' && Buffer.isBuffer(params))
-    ) {
-      paramsWithRuntime = params;
-    } else {
-      // Otherwise inject the runtime
-      paramsWithRuntime = {
-        ...params,
-        runtime: this,
-      };
-    }
+      const model = this.getModel(modelKey);
+      if (!model) {
+        const errorMsg = `No handler found for delegate type: ${modelKey}`;
+        span.setStatus({ code: SpanStatusCode.ERROR, message: errorMsg });
+        throw new Error(errorMsg);
+      }
 
-    // Start timer
-    const startTime = performance.now();
+      // Log input parameters (keep debug log if useful)
+      this.runtimeLogger.debug(
+        `[useModel] ${modelKey} input:`,
+        JSON.stringify(params, safeReplacer(), 2).replace(/\\n/g, '\n')
+      );
 
-    // Call the model
-    const response = await model(this, paramsWithRuntime);
+      // Handle different parameter formats
+      let paramsWithRuntime: any;
 
-    // Calculate elapsed time
-    const elapsedTime = performance.now() - startTime;
+      // If params is a simple value (string, number, etc.), pass it directly
+      if (
+        params === null ||
+        params === undefined ||
+        typeof params !== 'object' ||
+        Array.isArray(params) ||
+        (typeof Buffer !== 'undefined' && Buffer.isBuffer(params))
+      ) {
+        paramsWithRuntime = params;
+      } else {
+        // Otherwise inject the runtime
+        paramsWithRuntime = {
+          ...params,
+          runtime: this,
+        };
+      }
 
-    // Log timing
-    this.runtimeLogger.debug(`[useModel] ${modelKey} completed in ${elapsedTime.toFixed(2)}ms`);
+      // Start timer
+      const startTime = performance.now();
+      span.addEvent('model_execution_start');
 
-    // Log response
-    this.runtimeLogger.debug(
-      `[useModel] ${modelKey} output:`,
-      // if response is an array, should the first and last 5 items with a "..." in the middle, and a (x items) at the end
-      Array.isArray(response)
-        ? `${JSON.stringify(response.slice(0, 5))}...${JSON.stringify(
-            response.slice(-5)
-          )} (${response.length} items)`
-        : JSON.stringify(response)
-    );
+      try {
+        // Call the model
+        const response = await model(this, paramsWithRuntime);
 
-    // Log the model usage
-    this.adapter.log({
-      entityId: this.agentId,
-      roomId: this.agentId,
-      body: {
-        modelType,
-        modelKey,
-        params: params ? (typeof params === 'object' ? Object.keys(params) : typeof params) : null,
-        response:
-          Array.isArray(response) && response.every((x) => typeof x === 'number')
-            ? '[array]'
-            : response,
-      },
-      type: `useModel:${modelKey}`,
+        // Calculate elapsed time
+        const elapsedTime = performance.now() - startTime;
+        span.setAttributes({
+          'llm.duration_ms': elapsedTime, // Consider llm.duration semantic convention
+          // Attempt to extract token counts if response structure is known/standardized
+          // Example (adjust based on actual response structure):
+          'llm.usage.prompt_tokens': (response as any)?.usage?.prompt_tokens,
+          'llm.usage.completion_tokens': (response as any)?.usage?.completion_tokens,
+          'llm.usage.total_tokens': (response as any)?.usage?.total_tokens,
+        });
+
+        // Log response as event
+        span.addEvent('model_response', { response: JSON.stringify(response, safeReplacer()) }); // Log processed response
+
+        // Log timing (keep debug log if useful)
+        this.runtimeLogger.debug(
+          `[useModel] ${modelKey} completed in ${Number(elapsedTime.toFixed(2)).toLocaleString()}ms`
+        );
+
+        // Log response (keep debug log if useful)
+        this.runtimeLogger.debug(
+          `[useModel] ${modelKey} output:`,
+          Array.isArray(response)
+            ? `${JSON.stringify(response.slice(0, 5))}...${JSON.stringify(
+                response.slice(-5)
+              )} (${response.length} items)`
+            : JSON.stringify(response)
+        );
+
+        // Log the model usage (keep adapter log if useful)
+        this.adapter.log({
+          entityId: this.agentId,
+          roomId: this.agentId,
+          body: {
+            modelType,
+            modelKey,
+            params: params
+              ? typeof params === 'object'
+                ? Object.keys(params)
+                : typeof params
+              : null,
+            response:
+              Array.isArray(response) && response.every((x) => typeof x === 'number')
+                ? '[array]'
+                : response,
+          },
+          type: `useModel:${modelKey}`,
+        });
+
+        span.addEvent('model_execution_complete');
+        span.setStatus({ code: SpanStatusCode.OK }); // Explicitly set OK status
+        return response as R;
+      } catch (error) {
+        // Calculate time to error
+        const errorTime = performance.now() - startTime;
+
+        // Record error details
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        span.recordException(error as Error);
+        span.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: errorMessage,
+        });
+        span.setAttributes({
+          'error.time_ms': errorTime,
+          'error.message': errorMessage,
+        });
+        span.addEvent('model_execution_error'); // Add specific error event
+
+        // Rethrow the error
+        throw error;
+      }
     });
-
-    return response as R;
   }
 
   registerEvent(event: string, handler: (params: any) => Promise<void>) {
+    // --- Reverted: Original simple registration logic ---
     if (!this.events.has(event)) {
       this.events.set(event, []);
     }
@@ -1363,15 +1987,71 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async emitEvent(event: string | string[], params: any) {
-    // Handle both single event string and array of event strings
     const events = Array.isArray(event) ? event : [event];
 
-    // Call handlers for each event
     for (const eventName of events) {
+      const isMessageReceivedEvent = eventName === EventType.MESSAGE_RECEIVED;
+      const instrumentationEnabled = this.instrumentationService?.isEnabled?.() && this.tracer;
       const eventHandlers = this.events.get(eventName);
 
-      if (eventHandlers) {
-        await Promise.all(eventHandlers.map((handler) => handler(params)));
+      if (!eventHandlers) {
+        continue; // No handlers for this event
+      }
+
+      if (isMessageReceivedEvent && instrumentationEnabled) {
+        // --- Instrument with startSpan + context.with ---
+        const message = (params as MessagePayload)?.message;
+        const rootSpan = this.tracer.startSpan('AgentRuntime.handleMessageEvent', {
+          attributes: {
+            'agent.id': this.agentId,
+            'character.name': this.character?.name,
+            'room.id': message?.roomId || 'unknown',
+            'user.id': message?.entityId || 'unknown',
+            'message.id': message?.id || 'unknown',
+            'event.name': eventName,
+          },
+        });
+
+        // Create a new context with the rootSpan as active
+        const spanContext = trace.setSpan(context.active(), rootSpan);
+
+        try {
+          rootSpan.addEvent('processing_started');
+          // Execute handlers within the new context
+          await context.with(spanContext, async () => {
+            await Promise.all(
+              eventHandlers.map((handler) => {
+                // Explicitly capture the active context for each handler
+                const ctx = context.active();
+                return context.with(ctx, () => handler(params));
+              })
+            );
+          });
+          rootSpan.setStatus({ code: SpanStatusCode.OK });
+        } catch (error) {
+          this.runtimeLogger.error(
+            `Error during instrumented handler execution for event ${eventName}:`,
+            error
+          );
+          rootSpan.recordException(error as Error);
+          rootSpan.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
+          // throw error; // Re-throw if needed
+        } finally {
+          rootSpan.addEvent('processing_ended');
+          rootSpan.end();
+        }
+        // --- End Instrumentation ---
+      } else {
+        // --- No Instrumentation: Execute directly ---
+        try {
+          await Promise.all(eventHandlers.map((handler) => handler(params)));
+        } catch (error) {
+          this.runtimeLogger.error(
+            `Error during emitEvent for ${eventName} (handler execution):`,
+            error
+          );
+          // throw error; // Re-throw if necessary
+        }
       }
     }
   }
@@ -1470,8 +2150,8 @@ export class AgentRuntime implements IAgentRuntime {
     return await this.adapter.deleteAgent(agentId);
   }
 
-  async ensureAgentExists(agent: Partial<Agent>): Promise<void> {
-    await this.adapter.ensureAgentExists(agent);
+  async ensureAgentExists(agent: Partial<Agent>): Promise<Agent> {
+    return await this.adapter.ensureAgentExists(agent);
   }
 
   async getEntityById(entityId: UUID): Promise<Entity | null> {
@@ -1596,13 +2276,36 @@ export class AgentRuntime implements IAgentRuntime {
 
   async searchMemories(params: {
     embedding: number[];
+    query?: string;
     match_threshold?: number;
     count?: number;
     roomId?: UUID;
     unique?: boolean;
+    worldId?: UUID;
+    entityId?: UUID;
     tableName: string;
   }): Promise<Memory[]> {
-    return await this.adapter.searchMemories(params);
+    const memories = await this.adapter.searchMemories(params);
+    if (params.query) {
+      const rerankedMemories = await this.rerankMemories(params.query, memories);
+      return rerankedMemories;
+    }
+    return memories;
+  }
+
+  async rerankMemories(query: string, memories: Memory[]): Promise<Memory[]> {
+    const docs = memories.map((memory) => ({
+      title: memory.id,
+      content: memory.content.text,
+    }));
+
+    // Create a new BM25 instance
+    const bm25 = new BM25(docs);
+
+    // Get search results
+    const results = bm25.search(query, memories.length);
+
+    return results.map((result) => memories[result.index]);
   }
 
   async createMemory(memory: Memory, tableName: string, unique?: boolean): Promise<UUID> {
@@ -1793,6 +2496,45 @@ export class AgentRuntime implements IAgentRuntime {
     }
     for (const handler of this.eventHandlers.get(event)!) {
       handler(data);
+    }
+  }
+
+  /**
+   * Sends a control message to the frontend to enable or disable input
+   * @param {Object} params - Parameters for the control message
+   * @param {UUID} params.roomId - The ID of the room to send the control message to
+   * @param {'enable_input' | 'disable_input'} params.action - The action to perform
+   * @param {string} [params.target] - Optional target element identifier
+   * @returns {Promise<void>}
+   */
+  async sendControlMessage(params: {
+    roomId: UUID;
+    action: 'enable_input' | 'disable_input';
+    target?: string;
+  }): Promise<void> {
+    try {
+      const { roomId, action, target } = params;
+
+      // Create the control message
+      const controlMessage = {
+        type: 'control',
+        payload: {
+          action,
+          target,
+        },
+        roomId,
+      };
+
+      // Emit an event that can be handled by the websocket service or other handlers
+      await this.emitEvent('CONTROL_MESSAGE', {
+        runtime: this,
+        message: controlMessage,
+        source: 'agent',
+      });
+
+      this.runtimeLogger.debug(`Sent control message: ${action} to room ${roomId}`);
+    } catch (error) {
+      this.runtimeLogger.error(`Error sending control message: ${error}`);
     }
   }
 }

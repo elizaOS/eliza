@@ -11,6 +11,7 @@ import {
   composePrompt,
   createUniqueUuid,
   logger,
+  truncateToCompleteSentence,
 } from '@elizaos/core';
 import type { ClientBase } from './base';
 import type { Tweet } from './client';
@@ -18,6 +19,7 @@ import type { Tweet as ClientTweet } from './client/tweets';
 import type { SttTtsPlugin } from './sttTtsSpaces';
 import type { ActionResponse, MediaData } from './types';
 import type { Tweet as CoreTweet } from './types';
+import { TWEET_CHAR_LIMIT } from './constants';
 
 export const wait = (minTime = 1000, maxTime = 3000) => {
   const waitTime = Math.floor(Math.random() * (maxTime - minTime + 1)) + minTime;
@@ -33,133 +35,6 @@ export const isValidTweet = (tweet: Tweet): boolean => {
 
   return hashtagCount <= 1 && atCount <= 2 && dollarSignCount <= 1 && totalCount <= 3;
 };
-
-/**
- * Builds a conversation thread starting from a given tweet.
- * @param {Tweet} tweet - The tweet to start building the thread from.
- * @param {ClientBase} client - The client base object.
- * @param {number} [maxReplies=10] - The maximum number of replies to include in the thread.
- * @returns {Promise<Tweet[]>} The conversation thread as an array of tweets.
- */
-export async function buildConversationThread(
-  tweet: Tweet,
-  client: ClientBase,
-  maxReplies = 10
-): Promise<Tweet[]> {
-  const thread: Tweet[] = [];
-  const visited: Set<string> = new Set();
-
-  async function processThread(currentTweet: Tweet, depth = 0) {
-    logger.debug('Processing tweet:', {
-      id: currentTweet.id,
-      inReplyToStatusId: currentTweet.inReplyToStatusId,
-      depth: depth,
-    });
-
-    if (!currentTweet) {
-      logger.debug('No current tweet found for thread building');
-      return;
-    }
-
-    // Stop if we've reached our reply limit
-    if (depth >= maxReplies) {
-      logger.debug('Reached maximum reply depth', depth);
-      return;
-    }
-
-    // Handle memory storage
-    const memory = await client.runtime.getMemoryById(
-      createUniqueUuid(this.runtime, currentTweet.id)
-    );
-    if (!memory) {
-      const roomId = createUniqueUuid(this.runtime, currentTweet.conversationId);
-      const entityId = createUniqueUuid(this.runtime, currentTweet.userId);
-
-      await client.runtime.ensureConnection({
-        entityId,
-        roomId,
-        userName: currentTweet.username,
-        name: currentTweet.name,
-        source: 'twitter',
-        type: ChannelType.GROUP,
-      });
-
-      await client.runtime.createMemory(
-        {
-          id: createUniqueUuid(this.runtime, currentTweet.id),
-          agentId: client.runtime.agentId,
-          content: {
-            text: currentTweet.text,
-            source: 'twitter',
-            url: currentTweet.permanentUrl,
-            imageUrls: currentTweet.photos.map((p) => p.url) || [],
-            inReplyTo: currentTweet.inReplyToStatusId
-              ? createUniqueUuid(this.runtime, currentTweet.inReplyToStatusId)
-              : undefined,
-          },
-          createdAt: currentTweet.timestamp * 1000,
-          roomId,
-          entityId:
-            currentTweet.userId === client.profile.id
-              ? client.runtime.agentId
-              : createUniqueUuid(this.runtime, currentTweet.userId),
-        },
-        'messages'
-      );
-    }
-
-    if (visited.has(currentTweet.id)) {
-      logger.debug('Already visited tweet:', currentTweet.id);
-      return;
-    }
-
-    visited.add(currentTweet.id);
-    thread.unshift(currentTweet);
-
-    logger.debug('Current thread state:', {
-      length: thread.length,
-      currentDepth: depth,
-      tweetId: currentTweet.id,
-    });
-
-    // If there's a parent tweet, fetch and process it
-    if (currentTweet.inReplyToStatusId) {
-      logger.debug('Fetching parent tweet:', currentTweet.inReplyToStatusId);
-      try {
-        const parentTweet = await client.twitterClient.getTweet(currentTweet.inReplyToStatusId);
-
-        if (parentTweet) {
-          logger.debug('Found parent tweet:', {
-            id: parentTweet.id,
-            text: parentTweet.text?.slice(0, 50),
-          });
-          await processThread(parentTweet, depth + 1);
-        } else {
-          logger.debug('No parent tweet found for:', currentTweet.inReplyToStatusId);
-        }
-      } catch (error) {
-        logger.error('Error fetching parent tweet:', {
-          tweetId: currentTweet.inReplyToStatusId,
-          error,
-        });
-      }
-    } else {
-      logger.debug('Reached end of reply chain at:', currentTweet.id);
-    }
-  }
-
-  await processThread(tweet, 0);
-
-  logger.debug('Final thread built:', {
-    totalTweets: thread.length,
-    tweetIds: thread.map((t) => ({
-      id: t.id,
-      text: t.text?.slice(0, 50),
-    })),
-  });
-
-  return thread;
-}
 
 /**
  * Fetches media data from a list of attachments, supporting both HTTP URLs and local file paths.
@@ -192,6 +67,82 @@ export async function fetchMediaData(attachments: Media[]): Promise<MediaData[]>
 }
 
 /**
+ * Handles sending a note tweet with optional media data.
+ *
+ * @param {ClientBase} client - The client object used for sending the note tweet.
+ * @param {string} content - The content of the note tweet.
+ * @param {string} [tweetId] - Optional Tweet ID to reply to.
+ * @param {MediaData[]} [mediaData] - Optional media data to attach to the note tweet.
+ * @returns {Promise<Object>} - The result of the note tweet operation.
+ * @throws {Error} - If the note tweet operation fails.
+ */
+async function handleNoteTweet(
+  client: ClientBase,
+  content: string,
+  tweetId?: string,
+  mediaData?: MediaData[]
+) {
+  try {
+    const noteTweetResult = await client.requestQueue.add(
+      async () => await client.twitterClient.sendNoteTweet(content, tweetId, mediaData)
+    );
+
+    if (noteTweetResult.errors && noteTweetResult.errors.length > 0) {
+      // Note Tweet failed due to authorization. Falling back to standard Tweet.
+      const truncateContent = truncateToCompleteSentence(content, TWEET_CHAR_LIMIT - 1);
+      return await sendStandardTweet(client, truncateContent, tweetId);
+    }
+    return noteTweetResult.data.notetweet_create.tweet_results.result;
+  } catch (error) {
+    throw new Error(`Note Tweet failed: ${error}`);
+  }
+}
+
+/**
+ * Asynchronously sends a standard tweet using the provided Twitter client.
+ *
+ * @param {ClientBase} client - The client used to make the request.
+ * @param {string} content - The content of the tweet.
+ * @param {string} [tweetId] - Optional tweet ID to reply to.
+ * @param {MediaData[]} [mediaData] - Optional array of media data to attach to the tweet.
+ * @returns {Promise<string>} The result of sending the tweet.
+ */
+async function sendStandardTweet(
+  client: ClientBase,
+  content: string,
+  tweetId?: string,
+  mediaData?: MediaData[]
+) {
+  try {
+    const standardTweetResult = await client.requestQueue.add(
+      async () => await client.twitterClient.sendTweet(content, tweetId, mediaData)
+    );
+    const body = await standardTweetResult.json();
+    if (!body?.data?.create_tweet?.tweet_results?.result) {
+      logger.error('Error sending tweet; Bad response:', body);
+      return;
+    }
+    return body.data.create_tweet.tweet_results.result;
+  } catch (error) {
+    logger.error('Error sending standard Tweet:', error);
+    throw error;
+  }
+}
+
+export async function sendTweet(
+  client: ClientBase,
+  text: string,
+  mediaData: MediaData[] = [],
+  tweetToReplyTo?: string
+): Promise<any> {
+  if (text.length > TWEET_CHAR_LIMIT - 1) {
+    return await handleNoteTweet(client, text, tweetToReplyTo, mediaData);
+  } else {
+    return await sendStandardTweet(client, text, tweetToReplyTo, mediaData);
+  }
+}
+
+/**
  * Sends a tweet on Twitter using the given client.
  *
  * @param {ClientBase} client The client used to send the tweet.
@@ -201,16 +152,16 @@ export async function fetchMediaData(attachments: Media[]): Promise<MediaData[]>
  * @param {string} inReplyTo The ID of the tweet to which the new tweet will reply.
  * @returns {Promise<Memory[]>} An array of memories representing the sent tweets.
  */
-export async function sendTweet(
+export async function sendChunkedTweet(
   client: ClientBase,
   content: Content,
   roomId: UUID,
   twitterUsername: string,
   inReplyTo: string
 ): Promise<Memory[]> {
-  const isLongTweet = content.text.length > 280 - 1;
+  const isLongTweet = content.text.length > TWEET_CHAR_LIMIT - 1;
 
-  const tweetChunks = splitTweetContent(content.text, 280 - 1);
+  const tweetChunks = splitTweetContent(content.text, TWEET_CHAR_LIMIT - 1);
   const sentTweets: Tweet[] = [];
   let previousTweetId = inReplyTo;
 
@@ -524,49 +475,6 @@ export const parseActionResponseFromText = (text: string): { actions: ActionResp
 
   return { actions };
 };
-
-/**
- * Generates tweet actions based on the given prompt and model type using the provided runtime.
- * @param {{
- *     runtime: IAgentRuntime;
- *     prompt: string;
- *     modelType: ModelTypeName;
- * }} params - Parameters including the runtime, prompt, and model type.
- * @returns {Promise<ActionResponse | null>} The generated actions or null if no valid response.
- */
-export async function generateTweetActions({
-  runtime,
-  prompt,
-  modelType,
-}: {
-  runtime: IAgentRuntime;
-  prompt: string;
-  modelType: ModelTypeName;
-}): Promise<ActionResponse | null> {
-  let retryDelay = 1000;
-  while (true) {
-    try {
-      const response = await runtime.useModel(modelType, {
-        prompt,
-      });
-      logger.debug('Received response from generateText for tweet actions:', response);
-      const { actions } = parseActionResponseFromText(response.trim());
-      if (actions) {
-        logger.debug('Parsed tweet actions:', actions);
-        return actions;
-      }
-      logger.debug('generateTweetActions no valid response');
-    } catch (error) {
-      logger.error('Error in generateTweetActions:', error);
-      if (error instanceof TypeError && error.message.includes('queueTextCompletion')) {
-        logger.error("TypeError: Cannot read properties of null (reading 'queueTextCompletion')");
-      }
-    }
-    logger.log(`Retrying in ${retryDelay}ms...`);
-    await new Promise((resolve) => setTimeout(resolve, retryDelay));
-    retryDelay *= 2;
-  }
-}
 
 /**
  * Generate short filler text via GPT

@@ -1,5 +1,9 @@
 ---
 sidebar_position: 3
+title: Start Command
+description: Launch and manage ElizaOS projects and agents in production mode
+keywords: [start, production, deployment, configuration, runtime, services, agents]
+image: /img/cli.jpg
 ---
 
 # Start Command
@@ -9,17 +13,18 @@ The `start` command launches an ElizaOS project or agent in production mode. It 
 ## Usage
 
 ```bash
-npx @elizaos/cli start [options]
+elizaos start [options]
 ```
 
 ## Options
 
-| Option               | Description                                                          |
-| -------------------- | -------------------------------------------------------------------- |
-| `-p, --port <port>`  | Port to listen on (default: 3000)                                    |
-| `-c, --configure`    | Reconfigure services and AI models (skips using saved configuration) |
-| `--character <path>` | Path or URL to character file to use instead of default              |
-| `--build`            | Build the project before starting                                    |
+| Option                           | Description                                              |
+| -------------------------------- | -------------------------------------------------------- |
+| `-c, --configure`                | Reconfigure services and AI models                       |
+| `-char, --character <character>` | Path or URL to character file to use instead of default  |
+| `-b, --build`                    | Build the project before starting                        |
+| `-chars, --characters <paths>`   | Multiple character configuration files (comma-separated) |
+| `-p, --port <port>`              | Port to listen on (default: 3000)                        |
 
 ## Production Features
 
@@ -61,7 +66,7 @@ The `start` command will look for an `.env` file in the project directory and lo
 
 ```bash
 # Set environment variables directly
-OPENAI_API_KEY=your-api-key npx @elizaos/cli start
+OPENAI_API_KEY=your-api-key elizaos start
 ```
 
 For detailed information about environment configuration, see the [Environment Command](./env.md).
@@ -72,25 +77,25 @@ For detailed information about environment configuration, see the [Environment C
 
 ```bash
 cd my-agent-project
-npx @elizaos/cli start
+elizaos start
 ```
 
 ### Starting with configuration
 
 ```bash
-npx @elizaos/cli start --configure
+elizaos start --configure
 ```
 
 ### Starting with a custom port
 
 ```bash
-npx @elizaos/cli start --port 8080
+elizaos start --port 8080
 ```
 
 ### Starting with a custom character
 
 ```bash
-npx @elizaos/cli start --character path/to/character.json
+elizaos start --character path/to/character.json
 ```
 
 ## Building Before Starting
@@ -98,7 +103,7 @@ npx @elizaos/cli start --character path/to/character.json
 To build your project before starting it:
 
 ```bash
-npx @elizaos/cli start --build
+elizaos start --build
 ```
 
 This will compile your TypeScript files and prepare the project for execution.
@@ -107,5 +112,3 @@ This will compile your TypeScript files and prepare the project for execution.
 
 - [`dev`](./dev.md): Run in development mode with hot reloading
 - [`env`](./env.md): Configure environment variables
-- [`plugin`](./plugins.md): Manage plugins
-- [`project`](./projects.md): Manage projects

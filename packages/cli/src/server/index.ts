@@ -11,6 +11,7 @@ import express from 'express';
 import { Server as SocketIOServer } from 'socket.io';
 import { createApiRouter, setupSocketIO } from './api';
 import http from 'node:http';
+import { apiKeyAuthMiddleware } from './authMiddleware';
 
 // Load environment variables
 dotenv.config();
@@ -72,7 +73,6 @@ export class AgentServer {
   constructor(options?: ServerOptions) {
     try {
       logger.debug('Initializing AgentServer...');
-      this.app = express();
       this.agents = new Map();
 
       let dataDir = options?.dataDir ?? process.env.PGLITE_DATA_DIR ?? './elizadb';
@@ -142,14 +142,22 @@ export class AgentServer {
 
       // Setup middleware for all requests
       logger.debug('Setting up standard middlewares...');
-      this.app.use(cors());
-      this.app.use(bodyParser.json());
-      this.app.use(bodyParser.urlencoded({ extended: true }));
-      this.app.use(
-        express.json({
-          limit: process.env.EXPRESS_MAX_PAYLOAD || '100kb',
-        })
-      );
+      this.app.use(cors()); // Enable CORS first
+      this.app.use(bodyParser.json()); // Parse JSON bodies
+
+      // Optional Authentication Middleware
+      const serverAuthToken = process.env.ELIZA_SERVER_AUTH_TOKEN;
+      if (serverAuthToken) {
+        logger.info('Server authentication enabled. Requires X-API-KEY header for /api routes.');
+        // Apply middleware only to /api paths
+        this.app.use('/api', (req, res, next) => {
+          apiKeyAuthMiddleware(req, res, next);
+        });
+      } else {
+        logger.warn(
+          'Server authentication is disabled. Set ELIZA_SERVER_AUTH_TOKEN environment variable to enable.'
+        );
+      }
 
       const uploadsPath = path.join(process.cwd(), '/data/uploads');
       const generatedPath = path.join(process.cwd(), '/generatedImages');
@@ -384,11 +392,9 @@ export class AgentServer {
         throw new Error('Runtime missing character configuration');
       }
 
-      logger.debug(`Registering agent: ${runtime.agentId} (${runtime.character.name})`);
-
       // Register the agent
       this.agents.set(runtime.agentId, runtime);
-      logger.debug(`Agent ${runtime.agentId} added to agents map`);
+      logger.debug(`Agent ${runtime.character.name} (${runtime.agentId}) added to agents map`);
 
       // Register TEE plugin if present
       const teePlugin = runtime.plugins.find((p) => p.name === 'phala-tee-plugin');
@@ -403,11 +409,10 @@ export class AgentServer {
           logger.debug(`Registered TEE action: ${action.name}`);
         }
       }
-      logger.debug(`Registered reply action for agent ${runtime.agentId}`);
 
       // Register routes
       logger.debug(
-        `Registering ${runtime.routes.length} custom routes for agent ${runtime.agentId}`
+        `Registering ${runtime.routes.length} custom routes for agent ${runtime.character.name} (${runtime.agentId})`
       );
       for (const route of runtime.routes) {
         const routePath = route.path;
@@ -440,7 +445,7 @@ export class AgentServer {
       }
 
       logger.success(
-        `Successfully registered agent ${runtime.agentId} (${runtime.character.name})`
+        `Successfully registered agent ${runtime.character.name} (${runtime.agentId})`
       );
     } catch (error) {
       logger.error('Failed to register agent:', error);
@@ -461,6 +466,25 @@ export class AgentServer {
     }
 
     try {
+      // Retrieve the agent before deleting it from the map
+      const agent = this.agents.get(agentId);
+
+      if (agent) {
+        // Stop all services of the agent before unregistering it
+        try {
+          agent.stop().catch((stopError) => {
+            logger.error(
+              `[AGENT UNREGISTER] Error stopping agent services for ${agentId}:`,
+              stopError
+            );
+          });
+          logger.debug(`[AGENT UNREGISTER] Stopping services for agent ${agentId}`);
+        } catch (stopError) {
+          logger.error(`[AGENT UNREGISTER] Error initiating stop for agent ${agentId}:`, stopError);
+        }
+      }
+
+      // Delete the agent from the map
       this.agents.delete(agentId);
       logger.debug(`Agent ${agentId} removed from agents map`);
     } catch (error) {
@@ -500,6 +524,8 @@ export class AgentServer {
         console.log(
           `\x1b[32mStartup successful!\nGo to the dashboard at \x1b[1mhttp://localhost:${port}\x1b[22m\x1b[0m`
         );
+        // Add log for test readiness
+        console.log(`AgentServer is listening on port ${port}`);
 
         logger.success(
           `REST API bound to 0.0.0.0:${port}. If running locally, access it at http://localhost:${port}.`

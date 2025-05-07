@@ -18,17 +18,7 @@ interface SecretPanelProps {
 }
 
 export function SecretPanel({ characterValue, onChange }: SecretPanelProps) {
-  const initialSecrets = Object.entries(characterValue?.settings?.secrets || {}).map(
-    ([name, value]) => ({
-      name,
-      value: String(value),
-      isNew: false,
-      isModified: false,
-      isDeleted: false,
-    })
-  );
-
-  const [envs, setEnvs] = useState<EnvVariable[]>(initialSecrets);
+  const [envs, setEnvs] = useState<EnvVariable[]>([]);
   const [name, setName] = useState('');
   const [value, setValue] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -41,6 +31,19 @@ export function SecretPanel({ characterValue, onChange }: SecretPanelProps) {
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const updatedSecrets = Object.entries(characterValue?.settings?.secrets || {}).map(
+      ([name, value]) => ({
+        name,
+        value: String(value),
+        isNew: false,
+        isModified: false,
+        isDeleted: false,
+      })
+    );
+    setEnvs(updatedSecrets);
+  }, [characterValue]);
 
   const handleFile = (file: File) => {
     const reader = new FileReader();

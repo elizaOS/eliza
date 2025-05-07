@@ -5,122 +5,47 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import { AVATAR_IMAGE_MAX_SIZE } from '@/constants';
+import { AVATAR_IMAGE_MAX_SIZE, FIELD_REQUIREMENT_TYPE, FIELD_REQUIREMENTS } from '@/constants';
 import { useToast } from '@/hooks/use-toast';
 import { compressImage } from '@/lib/utils';
 import type { Agent } from '@elizaos/core';
 import type React from 'react';
-import { type FormEvent, type ReactNode, useState } from 'react';
+import { type FormEvent, type ReactNode, useState, useMemo, useCallback } from 'react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { getAllVoiceModels, getVoiceModelByValue, providerPluginMap } from '../config/voice-models';
+import { useElevenLabsVoices } from '@/hooks/use-elevenlabs-voices';
+import { Trash, Loader2 } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { agentTemplates, getTemplateById } from '@/config/agent-templates';
 
-type FieldType = 'text' | 'textarea' | 'number' | 'checkbox' | 'select';
-
-type InputField = {
-  title: string;
+export type InputField = {
   name: string;
+  title: string;
   description?: string;
-  getValue: (char: Agent) => string;
-  fieldType: FieldType;
+  fieldType: 'text' | 'textarea' | 'email' | 'url' | 'checkbox' | 'select';
+  getValue: (agent: Agent) => string;
+  options?: { value: string; label: string }[];
+  tooltip?: string;
 };
 
-type ArrayField = {
+export type ArrayField = {
+  path: string;
   title: string;
   description?: string;
-  path: string;
-  getData: (char: Agent) => string[];
+  getData: (agent: Agent) => string[];
+  tooltip?: string;
 };
 
 enum SECTION_TYPE {
   INPUT = 'input',
   ARRAY = 'array',
 }
-
-const CHARACTER_FORM_SCHEMA = [
-  {
-    sectionTitle: 'Basic Info',
-    sectionValue: 'basic',
-    sectionType: SECTION_TYPE.INPUT,
-    fields: [
-      {
-        title: 'Name',
-        name: 'name',
-        description: 'The display name of your character',
-        fieldType: 'text',
-        getValue: (char) => char.name || '',
-      },
-      {
-        title: 'Username',
-        name: 'username',
-        description: 'Unique identifier for your character',
-        fieldType: 'text',
-        getValue: (char) => char.username || '',
-      },
-      {
-        title: 'System',
-        name: 'system',
-        description: 'System prompt for character behavior',
-        fieldType: 'textarea',
-        getValue: (char) => char.system || '',
-      },
-      {
-        title: 'Voice Model',
-        name: 'settings.voice.model',
-        description: 'Voice model used for speech synthesis',
-        fieldType: 'text',
-        getValue: (char) => char.settings?.voice?.model || '',
-      },
-    ] as InputField[],
-  },
-  {
-    sectionTitle: 'Content',
-    sectionValue: 'content',
-    sectionType: SECTION_TYPE.ARRAY,
-    fields: [
-      {
-        title: 'Bio',
-        description: 'Key information about your character',
-        path: 'bio',
-        getData: (char) => (Array.isArray(char.bio) ? char.bio : []),
-      },
-      {
-        title: 'Topics',
-        description: 'Topics your character is knowledgeable about',
-        path: 'topics',
-        getData: (char) => char.topics || [],
-      },
-      {
-        title: 'Adjectives',
-        description: "Words that describe your character's personality",
-        path: 'adjectives',
-        getData: (char) => char.adjectives || [],
-      },
-    ] as ArrayField[],
-  },
-  {
-    sectionTitle: 'Style',
-    sectionValue: 'style',
-    sectionType: SECTION_TYPE.ARRAY,
-    fields: [
-      {
-        title: 'All',
-        description: 'Style rules applied to all interactions',
-        path: 'style.all',
-        getData: (char) => char.style?.all || [],
-      },
-      {
-        title: 'Chat',
-        description: 'Style rules for chat interactions',
-        path: 'style.chat',
-        getData: (char) => char.style?.chat || [],
-      },
-      {
-        title: 'Post',
-        description: 'Style rules for social media posts',
-        path: 'style.post',
-        getData: (char) => char.style?.post || [],
-      },
-    ] as ArrayField[],
-  },
-];
 
 type customComponent = {
   name: string;
@@ -133,7 +58,9 @@ export type CharacterFormProps = {
   onSubmit: (character: Agent) => Promise<void>;
   onDelete?: () => void;
   onReset?: () => void;
+  stopAgentButton?: React.ReactNode;
   isAgent?: boolean;
+  isDeleting?: boolean;
   customComponents?: customComponent[];
   characterValue: Agent;
   setCharacterValue: {
@@ -141,6 +68,7 @@ export type CharacterFormProps = {
     addArrayItem?: <T>(path: string, item: T) => void;
     removeArrayItem?: (path: string, index: number) => void;
     updateSetting?: (path: string, value: any) => void;
+    importAgent?: (value: Agent) => void;
     [key: string]: any;
   };
 };
@@ -153,11 +81,138 @@ export default function CharacterForm({
   onSubmit,
   onDelete,
   onReset,
+  stopAgentButton,
+  isDeleting = false,
   customComponents = [],
 }: CharacterFormProps) {
   const { toast } = useToast();
-
+  const { data: elevenlabsVoices, isLoading: isLoadingVoices } = useElevenLabsVoices();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<string>('none');
+
+  // Get all voice models, using the dynamic ElevenLabs voices when available
+  const allVoiceModels = useMemo(() => {
+    const staticModels = getAllVoiceModels();
+
+    // If we have dynamically loaded ElevenLabs voices, replace the static ones
+    if (elevenlabsVoices && !isLoadingVoices) {
+      // Filter out the static ElevenLabs voices
+      const nonElevenLabsModels = staticModels.filter((model) => model.provider !== 'elevenlabs');
+      // Return combined models with dynamic ElevenLabs voices
+      return [...nonElevenLabsModels, ...elevenlabsVoices];
+    }
+
+    // Otherwise return the static models
+    return staticModels;
+  }, [elevenlabsVoices, isLoadingVoices]);
+
+  // Define form schema with dynamic voice model options
+  const AGENT_FORM_SCHEMA = useMemo(
+    () => [
+      {
+        sectionTitle: 'Basic Info',
+        sectionValue: 'basic',
+        sectionType: SECTION_TYPE.INPUT,
+        fields: [
+          {
+            title: 'Name',
+            name: 'name',
+            description: 'The primary identifier for this agent',
+            fieldType: 'text',
+            getValue: (char) => char.name || '',
+            tooltip:
+              'Display name that will be visible to users. Required for identification purposes.',
+          },
+          {
+            title: 'Username',
+            name: 'username',
+            description: 'Used in URLs and API endpoints',
+            fieldType: 'text',
+            getValue: (char) => char.username || '',
+            tooltip: 'Unique identifier for your agent. Used in APIs/URLs and Rooms.',
+          },
+          {
+            title: 'System',
+            name: 'system',
+            description: 'System prompt defining agent behavior',
+            fieldType: 'textarea',
+            getValue: (char) => char.system || '',
+            tooltip:
+              'Instructions for the AI model that establish core behavior patterns and personality traits.',
+          },
+          {
+            title: 'Voice Model',
+            name: 'settings.voice.model',
+            description: 'Voice model for audio synthesis',
+            fieldType: 'select',
+            getValue: (char) => char.settings?.voice?.model || '',
+            options: allVoiceModels.map((model) => ({
+              value: model.value,
+              label: model.label,
+            })),
+            tooltip: "Select a voice that aligns with the agent's intended persona.",
+          },
+        ] as InputField[],
+      },
+      {
+        sectionTitle: 'Content',
+        sectionValue: 'content',
+        sectionType: SECTION_TYPE.ARRAY,
+        fields: [
+          {
+            title: 'Bio',
+            description: 'Bio data for this agent',
+            path: 'bio',
+            getData: (char) => (Array.isArray(char.bio) ? char.bio : []),
+            tooltip: "Biographical details that establish the agent's background and context.",
+          },
+          {
+            title: 'Topics',
+            description: 'Topics this agent can talk about',
+            path: 'topics',
+            getData: (char) => char.topics || [],
+            tooltip: 'Subject domains the agent can discuss with confidence.',
+          },
+          {
+            title: 'Adjectives',
+            description: 'Descriptive personality traits',
+            path: 'adjectives',
+            getData: (char) => char.adjectives || [],
+            tooltip: "Key personality attributes that define the agent's character.",
+          },
+        ] as ArrayField[],
+      },
+      {
+        sectionTitle: 'Style',
+        sectionValue: 'style',
+        sectionType: SECTION_TYPE.ARRAY,
+        fields: [
+          {
+            title: 'All Styles',
+            description: 'Writing style for all content types',
+            path: 'style.all',
+            getData: (char) => char.style?.all || [],
+            tooltip: 'Core writing style guidelines applied across all content formats.',
+          },
+          {
+            title: 'Chat Style',
+            description: 'Style specific to chat interactions',
+            path: 'style.chat',
+            getData: (char) => char.style?.chat || [],
+            tooltip: 'Writing style specific to conversational exchanges.',
+          },
+          {
+            title: 'Post Style',
+            description: 'Style for long-form content',
+            path: 'style.post',
+            getData: (char) => char.style?.post || [],
+            tooltip: 'Writing style for structured content such as articles or posts.',
+          },
+        ] as ArrayField[],
+      },
+    ],
+    [allVoiceModels]
+  );
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -172,6 +227,57 @@ export default function CharacterForm({
       if (setCharacterValue.updateSetting) {
         // Use the specialized method if available
         setCharacterValue.updateSetting(path, value);
+      } else {
+        // Fall back to generic updateField
+        setCharacterValue.updateField(name, value);
+      }
+    } else {
+      setCharacterValue.updateField(name, value);
+    }
+  };
+
+  const handleVoiceModelChange = (value: string, name: string) => {
+    if (name.startsWith('settings.')) {
+      const path = name.substring(9); // Remove 'settings.' prefix
+
+      if (setCharacterValue.updateSetting) {
+        // Use the specialized method if available
+        setCharacterValue.updateSetting(path, value);
+
+        // Handle voice model change and required plugins
+        if (path === 'voice.model' && value) {
+          const voiceModel = getVoiceModelByValue(value);
+          if (voiceModel) {
+            const currentPlugins = Array.isArray(characterValue.plugins)
+              ? [...characterValue.plugins]
+              : [];
+            const previousVoiceModel = getVoiceModelByValue(characterValue.settings?.voice?.model);
+
+            // Get the required plugin for the new voice model
+            const requiredPlugin = providerPluginMap[voiceModel.provider];
+
+            // Add the required plugin for the selected voice model
+            const newPlugins = [...currentPlugins];
+            if (requiredPlugin && !currentPlugins.includes(requiredPlugin)) {
+              newPlugins.push(requiredPlugin);
+            }
+
+            // Update the plugins
+            if (setCharacterValue.setPlugins) {
+              setCharacterValue.setPlugins(newPlugins);
+            } else if (setCharacterValue.updateField) {
+              setCharacterValue.updateField('plugins', newPlugins);
+            }
+
+            // Show toast notification
+            if (previousVoiceModel?.provider !== voiceModel.provider) {
+              toast({
+                title: 'Plugin Updated',
+                description: `${requiredPlugin} plugin has been set for the selected voice model.`,
+              });
+            }
+          }
+        }
       } else {
         // Fall back to generic updateField
         setCharacterValue.updateField(name, value);
@@ -237,7 +343,7 @@ export default function CharacterForm({
     } catch (error) {
       toast({
         title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to update',
+        description: error instanceof Error ? error.message : 'Failed to update agent',
         variant: 'destructive',
       });
     } finally {
@@ -246,8 +352,30 @@ export default function CharacterForm({
   };
 
   const renderInputField = (field: InputField) => (
-    <div key={field.name} className="space-y-2">
-      <Label htmlFor={field.name}>{field.title}</Label>
+    <div
+      key={field.name}
+      className={`space-y-2 w-full ${field.name === 'name' ? 'agent-form-name' : ''} ${field.name === 'system' ? 'agent-form-system-prompt' : ''}`}
+    >
+      <div className="flex items-center gap-2">
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Label htmlFor={field.name} className="flex items-center gap-1">
+                {field.title}
+                {field.name in FIELD_REQUIREMENTS &&
+                  (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.name] ===
+                    FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
+              </Label>
+            </TooltipTrigger>
+            {field.tooltip && (
+              <TooltipContent>
+                <p>{field.tooltip}</p>
+              </TooltipContent>
+            )}
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+
       {field.description && <p className="text-sm text-muted-foreground">{field.description}</p>}
 
       {field.fieldType === 'textarea' ? (
@@ -266,6 +394,29 @@ export default function CharacterForm({
           checked={(characterValue as Record<string, any>)[field.name] === 'true'}
           onChange={handleChange}
         />
+      ) : field.fieldType === 'select' ? (
+        <Select
+          name={field.name}
+          value={field.getValue(characterValue)}
+          onValueChange={(value) => handleVoiceModelChange(value, field.name)}
+        >
+          <SelectTrigger>
+            <SelectValue
+              placeholder={
+                field.name.includes('voice.model') && isLoadingVoices
+                  ? 'Loading voice models...'
+                  : 'Select a voice model'
+              }
+            />
+          </SelectTrigger>
+          <SelectContent>
+            {field.options?.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       ) : (
         <Input
           id={field.name}
@@ -280,7 +431,25 @@ export default function CharacterForm({
 
   const renderArrayField = (field: ArrayField) => (
     <div key={field.path} className="space-y-2">
-      <Label htmlFor={field.path}>{field.title}</Label>
+      <div className="flex items-center gap-2">
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Label htmlFor={field.path} className="flex items-center gap-1">
+                {field.title}
+                {field.path in FIELD_REQUIREMENTS &&
+                  (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.path] ===
+                    FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
+              </Label>
+            </TooltipTrigger>
+            {field.tooltip && (
+              <TooltipContent>
+                <p>{field.tooltip}</p>
+              </TooltipContent>
+            )}
+          </Tooltip>
+        </TooltipProvider>
+      </div>
       {field.description && <p className="text-sm text-muted-foreground">{field.description}</p>}
       <ArrayInput
         data={field.getData(characterValue)}
@@ -289,24 +458,133 @@ export default function CharacterForm({
     </div>
   );
 
+  const handleImportJSON = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const json: Agent = JSON.parse(text);
+
+      // Check for required fields using FIELD_REQUIREMENTS
+      const missingFields = (
+        Object.keys(FIELD_REQUIREMENTS) as Array<keyof typeof FIELD_REQUIREMENTS>
+      ).filter((field) => {
+        if (FIELD_REQUIREMENTS[field] !== FIELD_REQUIREMENT_TYPE.REQUIRED) return false;
+
+        // Handle nested fields like style.all
+        const parts = field.split('.');
+        let current: any = json;
+
+        for (const part of parts) {
+          current = current?.[part];
+          if (current === undefined) return true; // field missing
+        }
+
+        return false;
+      });
+
+      if (missingFields.length > 0) {
+        toast({
+          title: 'Import Failed',
+          description: `Missing required fields: ${missingFields.join(', ')}`,
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      if (setCharacterValue.importAgent) {
+        setCharacterValue.importAgent(json);
+      } else {
+        console.warn('Missing importAgent method');
+      }
+
+      toast({
+        title: 'Agent Imported',
+        description: 'Agent data has been successfully loaded.',
+      });
+    } catch (error) {
+      toast({
+        title: 'Import Failed',
+        description: error instanceof Error ? error.message : 'Invalid JSON file',
+        variant: 'destructive',
+      });
+    } finally {
+      event.target.value = '';
+    }
+  };
+
+  /**
+   * Handle template selection
+   */
+  const handleTemplateChange = useCallback(
+    (templateId: string) => {
+      setSelectedTemplate(templateId);
+
+      // If "None" is selected, reset to blank form if reset function is available
+      if (templateId === 'none' && onReset) {
+        onReset();
+        return;
+      }
+
+      // Get the template data
+      const template = getTemplateById(templateId);
+      if (template && setCharacterValue.importAgent) {
+        // Use the importAgent function to set all template values at once
+        setCharacterValue.importAgent(template.template as Agent);
+      }
+    },
+    [onReset, setCharacterValue]
+  );
+
   return (
-    <div className="container max-w-4xl mx-auto p-6">
+    <div className="container w-full mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-3xl font-bold">{title}</h1>
-          <p className="text-muted-foreground mt-1">{description}</p>
+          <h1 className="text-3xl font-bold">{title || 'Agent Settings'}</h1>
+          <p className="text-muted-foreground mt-1">
+            {description || 'Configure your agent settings'}
+          </p>
         </div>
+      </div>
+
+      {/* Template Selector */}
+      <div className="mb-6">
+        <Label htmlFor="template-selector" className="text-base font-medium">
+          Start with Template:
+        </Label>
+        <Select value={selectedTemplate} onValueChange={handleTemplateChange}>
+          <SelectTrigger className="w-full mt-2">
+            <SelectValue placeholder="Select a template" />
+          </SelectTrigger>
+          <SelectContent>
+            {agentTemplates.map((template) => (
+              <SelectItem key={template.id} value={template.id}>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="w-full text-left">{template.label}</span>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">
+                      <p className="max-w-xs">{template.description}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <form onSubmit={handleFormSubmit}>
         <Tabs defaultValue="basic" className="w-full">
           <TabsList
-            className={'grid w-full mb-6'}
+            className={'grid w-full mb-6 tabs-list'}
             style={{
               gridTemplateColumns: `repeat(${customComponents.length + 3}, minmax(0, 1fr))`,
             }}
           >
-            {CHARACTER_FORM_SCHEMA.map((section) => (
+            {AGENT_FORM_SCHEMA.map((section) => (
               <TabsTrigger key={section.sectionValue} value={section.sectionValue}>
                 {section.sectionTitle}
               </TabsTrigger>
@@ -320,7 +598,7 @@ export default function CharacterForm({
 
           <Card>
             <CardContent className="p-6">
-              {CHARACTER_FORM_SCHEMA.map((section) => (
+              {AGENT_FORM_SCHEMA.map((section) => (
                 <TabsContent
                   key={section.sectionValue}
                   value={section.sectionValue}
@@ -341,16 +619,30 @@ export default function CharacterForm({
         </Tabs>
 
         <div className="flex justify-between gap-4 mt-6">
-          <div className="flex gap-4 text-red-500">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                onDelete?.();
-              }}
-            >
-              Delete Character
-            </Button>
+          <div className="flex gap-4">
+            {onDelete && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  onDelete?.();
+                }}
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash className="mr-2 h-4 w-4" />
+                    Delete Agent
+                  </>
+                )}
+              </Button>
+            )}
+            {stopAgentButton}
           </div>
 
           <div className="flex gap-4">
@@ -363,7 +655,18 @@ export default function CharacterForm({
             >
               Reset Changes
             </Button>
-            <Button type="submit" disabled={isSubmitting}>
+            <div className="relative">
+              <input
+                type="file"
+                accept=".json"
+                onChange={handleImportJSON}
+                className="absolute inset-0 opacity-0 cursor-pointer"
+              />
+              <Button type="button" variant="outline">
+                Import JSON
+              </Button>
+            </div>
+            <Button type="submit" disabled={isSubmitting} className="agent-form-submit">
               {isSubmitting ? 'Saving...' : 'Save Changes'}
             </Button>
           </div>

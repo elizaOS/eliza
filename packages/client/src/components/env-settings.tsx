@@ -2,9 +2,10 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useEffect, useRef, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from './ui/input';
-import { Check, Eye, EyeOff, MoreVertical, X } from 'lucide-react';
+import { Check, Eye, EyeOff, MoreVertical, Settings, X } from 'lucide-react';
 import { Button } from './ui/button';
 import { apiClient } from '@/lib/api';
+import { ApiKeyDialog } from './api-key-dialog';
 
 enum EnvType {
   GLOBAL = 'global',
@@ -23,6 +24,7 @@ export default function EnvSettings() {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState(EnvType.GLOBAL);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isApiKeyDialogOpen, setIsApiKeyDialogOpen] = useState(false);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -55,9 +57,10 @@ export default function EnvSettings() {
   const handleReset = async () => {
     if (activeTab === EnvType.GLOBAL) {
       await fetchGlobalEnvs();
-    } else {
+    } else if (activeTab === EnvType.LOCAL) {
       await fetchLocalEnvs();
     }
+    // No other EnvType values exist as per the enum definition
 
     setEditingIndex(null);
     setOpenIndex(null);
@@ -124,13 +127,29 @@ export default function EnvSettings() {
     setEditingIndex(null);
   };
 
+  // Dummy function for onApiKeySaved
+  const handleApiKeySaved = () => {
+    console.log('API Key was saved');
+    // Potentially refetch envs or perform other actions here
+  };
+
   return (
     <div className="container max-w-4xl mx-auto p-6">
+      <ApiKeyDialog
+        open={isApiKeyDialogOpen}
+        onOpenChange={setIsApiKeyDialogOpen}
+        onApiKeySaved={handleApiKeySaved}
+      />
+
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-3xl font-bold">Envs settings</h1>
           <p className="text-muted-foreground mt-1">Envs settings</p>
         </div>
+        <Button onClick={() => setIsApiKeyDialogOpen(true)} aria-label="Manage API Key">
+          <Settings className="h-5 w-5" />
+          Manage API Key
+        </Button>
       </div>
 
       <Tabs
@@ -248,25 +267,26 @@ export default function EnvSettings() {
                               className="p-2 text-gray-500"
                               onClick={() => setOpenIndex(openIndex === index ? null : index)}
                             >
-                              <MoreVertical className="w-5 h-5" />
+                              <MoreVertical className="h-5 w-5" />
                             </Button>
                             {openIndex === index && (
                               <div
-                                className="absolute right-0 -top-2 mt-2 w-24 bg-muted border rounded shadow-md z-10"
                                 ref={dropdownRef}
+                                className="absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-card ring-1 ring-black ring-opacity-5 z-10"
                               >
-                                <button
-                                  className="w-full px-4 py-2 text-left hover:opacity-50"
-                                  onClick={() => handleEdit(key)}
-                                  type="button"
-                                >
-                                  Edit
-                                </button>
-                                <div
-                                  className="w-full px-4 py-2 text-left text-red-500 hover:opacity-50 cursor-pointer"
-                                  onClick={() => handleRemove(key)}
-                                >
-                                  Remove
+                                <div className="py-1">
+                                  <button
+                                    onClick={() => handleEdit(key)}
+                                    className="w-full text-left px-4 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    onClick={() => handleRemove(key)}
+                                    className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-accent"
+                                  >
+                                    Remove
+                                  </button>
                                 </div>
                               </div>
                             )}
@@ -275,43 +295,20 @@ export default function EnvSettings() {
                       ))}
                   </div>
                 </div>
+
+                <div className="flex gap-2 mt-3 justify-end">
+                  <Button variant="outline" onClick={handleReset}>
+                    Reset
+                  </Button>
+                  <Button variant="outline" disabled={isUpdating}>
+                    Save Changes
+                  </Button>
+                </div>
               </TabsContent>
             ))}
           </CardContent>
         </Card>
       </Tabs>
-      <div className="flex justify-end gap-4 mt-6">
-        <div className="flex gap-4">
-          <Button
-            disabled={isUpdating}
-            type="button"
-            variant="outline"
-            onClick={() => {
-              handleReset();
-            }}
-          >
-            Reset Changes
-          </Button>
-          <Button
-            type="submit"
-            disabled={isUpdating}
-            onClick={async () => {
-              setIsUpdating(true);
-              try {
-                if (activeTab === EnvType.GLOBAL) {
-                  await apiClient.updateGlobalEnvs(globalEnvs);
-                } else {
-                  await apiClient.updateLocalEnvs(localEnvs);
-                }
-              } finally {
-                setIsUpdating(false);
-              }
-            }}
-          >
-            {activeTab === EnvType.GLOBAL ? 'Update Global Envs' : 'Update Local Envs'}
-          </Button>
-        </div>
-      </div>
     </div>
   );
 }

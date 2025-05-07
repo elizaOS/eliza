@@ -44,20 +44,22 @@ For help, run: npx elizaos create --help
 // Function to check if a string looks like a path or should be treated as one
 const isLikelyPath = (str) => {
   // Obvious path indicators
-  if (str.startsWith('./') || 
-      str.startsWith('/') || 
-      str.startsWith('../') || 
-      str.includes('\\') || 
-      str.includes('/') ||
-      path.extname(str) !== '') {
+  if (
+    str.startsWith('./') ||
+    str.startsWith('/') ||
+    str.startsWith('../') ||
+    str.includes('\\') ||
+    str.includes('/') ||
+    path.extname(str) !== ''
+  ) {
     return true;
   }
-  
+
   // Treat as a path if it's not a reserved keyword
   if (!RESERVED_KEYWORDS.includes(str.toLowerCase())) {
     return true;
   }
-  
+
   return false;
 };
 
@@ -65,7 +67,7 @@ const isLikelyPath = (str) => {
 // it's likely meant to be a directory
 if (rawArgs.length === 1 && isLikelyPath(rawArgs[0])) {
   args.push('-d', rawArgs[0]);
-} 
+}
 // Handle case where npm passes positional args without flags
 else if (rawArgs.length > 0 && !rawArgs[0].startsWith('-')) {
   // Check if the first arg might be a project type
@@ -73,16 +75,16 @@ else if (rawArgs.length > 0 && !rawArgs[0].startsWith('-')) {
   if (possibleType === 'plugin' || possibleType === 'project') {
     // Restructure as: create -t plugin my-plugin
     args.push('-t', possibleType);
-    
+
     // If there's a second arg and it looks like a path, treat it as -d
     if (rawArgs.length > 1 && isLikelyPath(rawArgs[1])) {
       args.push('-d', rawArgs[1]);
-      
+
       // Add any remaining arguments after the second
       if (rawArgs.length > 2) {
         args.push(...rawArgs.slice(2));
       }
-    } 
+    }
     // Otherwise, just add the remaining args normally
     else if (rawArgs.length > 1) {
       args.push(...rawArgs.slice(1));
@@ -90,7 +92,7 @@ else if (rawArgs.length > 0 && !rawArgs[0].startsWith('-')) {
   } else {
     // Not a known type, so assume it's a path and use -d
     args.push('-d', rawArgs[0]);
-    
+
     // Add any remaining arguments
     if (rawArgs.length > 1) {
       args.push(...rawArgs.slice(1));
@@ -100,7 +102,7 @@ else if (rawArgs.length > 0 && !rawArgs[0].startsWith('-')) {
   // Process flagged arguments
   for (let i = 0; i < rawArgs.length; i++) {
     const arg = rawArgs[i];
-    
+
     // Handle directory flag
     if (arg === '-d' || arg === '--dir') {
       args.push(arg);

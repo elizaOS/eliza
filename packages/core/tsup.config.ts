@@ -6,7 +6,7 @@ export default defineConfig({
   clean: true,
   format: ['esm'],
   target: 'node18',
-  dts: false,
+  dts: true,
   external: [
     'dotenv',
     'fs',
@@ -28,6 +28,10 @@ export default defineConfig({
     '@solana/web3.js',
     'zod',
     '@hapi/shot',
+    '@opentelemetry/api',
+    '@opentelemetry/context-async-hooks',
+    '@opentelemetry/sdk-trace-node',
   ],
   sourcemap: false,
+  minify: true,
 });

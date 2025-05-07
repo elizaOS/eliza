@@ -45,7 +45,7 @@ env:
   DEV_REL_DISCORD_API_TOKEN: ${{ vars.DEV_REL_DISCORD_API_TOKEN || secrets.DEV_REL_DISCORD_API_TOKEN }}
   INVESTMENT_MANAGER_DISCORD_APPLICATION_ID: ${{ vars.INVESTMENT_MANAGER_DISCORD_APPLICATION_ID || secrets.INVESTMENT_MANAGER_DISCORD_APPLICATION_ID }}
   INVESTMENT_MANAGER_DISCORD_API_TOKEN: ${{ vars.INVESTMENT_MANAGER_DISCORD_API_TOKEN || secrets.INVESTMENT_MANAGER_DISCORD_API_TOKEN }}
-  PGLITE_DATA_DIR: ${{ vars.PGLITE_DATA_DIR || secrets.PGLITE_DATA_DIR || '/root/.eliza/db' }}
+  POSTGRES_URL: ${{ vars.POSTGRES_URL || secrets.POSTGRES_URL }}
   TEE_MODE: ${{ vars.TEE_MODE || secrets.TEE_MODE || 'PRODUCTION' }}
   WALLET_SECRET_SALT: ${{ vars.WALLET_SECRET_SALT || secrets.WALLET_SECRET_SALT }}
   TEE_VENDOR: ${{ vars.TEE_VENDOR || secrets.TEE_VENDOR || 'phala' }}
@@ -79,58 +79,47 @@ jobs:
       - name: Set Docker Image Full Name
         run: |
           export DOCKER_IMAGE_FULL_NAME=${{ env.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE }}:${{ github.sha }}
-      - name: Install Phala Cloud CLI
-        run: sudo apt-get update && sudo apt-get install -y nodejs && sudo npm install -g bun
-      # Configure Phala Cloud API key
-      - name: Configure Phala Cloud
-        run: |
-          npx phala auth login ${{ env.PHALA_CLOUD_API_KEY }}
-          echo "Verifying Phala Cloud access..."
-          npx phala cvms ls
       - name: Update Docker Compose
         run: |
           sed -i "s|\${DOCKER_IMAGE_FULL_NAME}|${{ env.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE }}:${{ github.sha }}|g" ./tee-docker-compose.yaml
-      - name: Make envfile
-        uses: SpicyPizza/create-envfile@v2.0
-        with:
-          envkey_DEBUG: false
-          envkey_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          envkey_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          envkey_SERVER_PORT: ${{ secrets.SERVER_PORT }}
-          envkey_POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-          envkey_POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
-          envkey_POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
-          envkey_EVM_CHAINS: ${{ secrets.EVM_CHAINS }}
-          envkey_BIRDEYE_API_KEY: ${{ secrets.BIRDEYE_API_KEY }}
-          envkey_COMMUNITY_MANAGER_DISCORD_APPLICATION_ID: ${{ secrets.COMMUNITY_MANAGER_DISCORD_APPLICATION_ID }}
-          envkey_COMMUNITY_MANAGER_DISCORD_API_TOKEN: ${{ secrets.COMMUNITY_MANAGER_DISCORD_API_TOKEN }}
-          envkey_SOCIAL_MEDIA_MANAGER_DISCORD_APPLICATION_ID: ${{ secrets.SOCIAL_MEDIA_MANAGER_DISCORD_APPLICATION_ID }}
-          envkey_SOCIAL_MEDIA_MANAGER_DISCORD_API_TOKEN: ${{ secrets.SOCIAL_MEDIA_MANAGER_DISCORD_API_TOKEN }}
-          envkey_LIAISON_DISCORD_APPLICATION_ID: ${{ secrets.LIAISON_DISCORD_APPLICATION_ID }}
-          envkey_LIAISON_DISCORD_API_TOKEN: ${{ secrets.LIAISON_DISCORD_API_TOKEN }}
-          envkey_PROJECT_MANAGER_DISCORD_APPLICATION_ID: ${{ secrets.PROJECT_MANAGER_DISCORD_APPLICATION_ID }}
-          envkey_PROJECT_MANAGER_DISCORD_API_TOKEN: ${{ secrets.PROJECT_MANAGER_DISCORD_API_TOKEN }}
-          envkey_DEV_REL_DISCORD_APPLICATION_ID: ${{ secrets.DEV_REL_DISCORD_APPLICATION_ID }}
-          envkey_DEV_REL_DISCORD_API_TOKEN: ${{ secrets.DEV_REL_DISCORD_API_TOKEN }}
-          envkey_INVESTMENT_MANAGER_DISCORD_APPLICATION_ID: ${{ secrets.INVESTMENT_MANAGER_DISCORD_APPLICATION_ID }}
-          envkey_INVESTMENT_MANAGER_DISCORD_API_TOKEN: ${{ secrets.INVESTMENT_MANAGER_DISCORD_API_TOKEN }}
-          envkey_PGLITE_DATA_DIR: ${{ secrets.PGLITE_DATA_DIR }}
-          envkey_TEE_MODE: ${{ secrets.TEE_MODE }}
-          envkey_WALLET_SECRET_SALT: ${{ secrets.WALLET_SECRET_SALT }}
-          envkey_TEE_VENDOR: ${{ secrets.TEE_VENDOR }}
-          file_name: .env
-          fail_on_empty: false
-          sort_keys: false
 
       - name: Deploy to Phala Cloud
-        run: |
-          cat ./tee-docker-compose.yaml
-          npx phala cvms create \
-            -n ${{ env.APP_NAME }} \
-            -c tee-docker-compose.yaml \
-            -e .env \
-            --vcpu 4 \
-            --memory 8192 \
-            --disk-size 50 \
-            --teepod-id 3 \
-            --image dstack-0.3.5
+        uses: Leechael/phala-deploy-action@v2
+        with:
+          # Required parameters
+          phala-api-key: ${{ secrets.PHALA_CLOUD_API_KEY }}
+
+          # Optional parameters (with defaults)
+          cvm-name: ''
+          compose-file: './api-server/docker-compose.yml' # Default: './docker-compose.yml'
+          vcpu: '4' # Default: '2'
+          memory: '4096' # Default: '2048'
+          disk-size: '10' # Default: '40'
+          envs: | # Environment variables in YAML format (will be converted to dotenv)
+            OPENAI_API_KEY: ${{ env.OPENAI_API_KEY }}
+            ANTHROPIC_API_KEY: ${{ env.ANTHROPIC_API_KEY }}
+            SERVER_PORT: ${{ env.SERVER_PORT }}
+            POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
+            POSTGRES_USER: ${{ env.POSTGRES_USER }}
+            POSTGRES_DB: ${{ env.POSTGRES_DB }}
+            EVM_CHAINS: ${{ env.EVM_CHAINS }}
+            BIRDEYE_API_KEY: ${{ env.BIRDEYE_API_KEY }}
+            COMMUNITY_MANAGER_DISCORD_APPLICATION_ID: ${{ env.COMMUNITY_MANAGER_DISCORD_APPLICATION_ID }}
+            COMMUNITY_MANAGER_DISCORD_API_TOKEN: ${{ vars.COMMUNITY_MANAGER_DISCORD_API_TOKEN || secrets.COMMUNITY_MANAGER_DISCORD_API_TOKEN }}
+            SOCIAL_MEDIA_MANAGER_DISCORD_APPLICATION_ID: ${{ env.SOCIAL_MEDIA_MANAGER_DISCORD_APPLICATION_ID }}
+            SOCIAL_MEDIA_MANAGER_DISCORD_API_TOKEN: ${{ env.SOCIAL_MEDIA_MANAGER_DISCORD_API_TOKEN }}
+            LIAISON_DISCORD_APPLICATION_ID: ${{ env.LIAISON_DISCORD_APPLICATION_ID }}
+            LIAISON_DISCORD_API_TOKEN: ${{ env.LIAISON_DISCORD_API_TOKEN }}
+            PROJECT_MANAGER_DISCORD_APPLICATION_ID: ${{ env.PROJECT_MANAGER_DISCORD_APPLICATION_ID }}
+            PROJECT_MANAGER_DISCORD_API_TOKEN: ${{ env.PROJECT_MANAGER_DISCORD_API_TOKEN }}
+            DEV_REL_DISCORD_APPLICATION_ID: ${{ env.DEV_REL_DISCORD_APPLICATION_ID }}
+            DEV_REL_DISCORD_API_TOKEN: ${{ env.DEV_REL_DISCORD_API_TOKEN }}
+            INVESTMENT_MANAGER_DISCORD_APPLICATION_ID: ${{ env.INVESTMENT_MANAGER_DISCORD_APPLICATION_ID }}
+            INVESTMENT_MANAGER_DISCORD_API_TOKEN: ${{ env.INVESTMENT_MANAGER_DISCORD_API_TOKEN }}
+            POSTGRES_URL: ${{ env.POSTGRES_URL }}
+            TEE_MODE: ${{ env.TEE_MODE || 'PRODUCTION' }}
+            WALLET_SECRET_SALT: ${{ env.WALLET_SECRET_SALT }}
+            TEE_VENDOR: ${{ env.TEE_VENDOR || 'phala' }}
+          app-id: '' # App ID of existing CVM to (if updating)
+          node-id: '' # Node ID (Teepod ID)
+          base-image: '' # Base image to use for the CVM

@@ -83,10 +83,17 @@ export function LogViewer({ agentName, level, hideTitle }: LogViewerProps = {}) 
   const agentNames = agents?.data?.agents?.map((agent) => agent.name) ?? [];
 
   const handleClearLogs = async () => {
+    const confirmClear = window.confirm(
+      'Are you sure you want to permanently delete all system logs? This action cannot be undone.'
+    );
+
+    if (!confirmClear) {
+      return;
+    }
+
     try {
       setIsClearing(true);
       await apiClient.deleteLogs();
-      // Invalidate the logs query to trigger a refetch
       queryClient.invalidateQueries({ queryKey: ['logs'] });
     } catch (error) {
       console.error('Failed to clear logs:', error);
@@ -167,9 +174,9 @@ export function LogViewer({ agentName, level, hideTitle }: LogViewerProps = {}) 
 
     return (
       <div key={`${log.time}-${log.msg}`} className="whitespace-pre-wrap font-mono">
-        <span className="text-gray-500">[{timestamp}]</span>{' '}
-        {log.agentName && <span className="text-gray-500">[{log.agentName}]</span>}{' '}
-        <span className={getLevelColor(log.level)}>{level}:</span>{' '}
+        <span className="text-gray-500">[{timestamp}]</span>
+        {log.agentName && <span className="text-gray-500">[{log.agentName}]</span>}
+        <span className={getLevelColor(log.level)}>{level}:</span>
         <span className="text-white">{log.msg}</span>
         <span className="text-gray-300">{extraFields}</span>
       </div>
@@ -177,8 +184,8 @@ export function LogViewer({ agentName, level, hideTitle }: LogViewerProps = {}) 
   };
 
   return (
-    <div className="p-4">
-      <div className="mb-4 flex items-center justify-between">
+    <div className="p-4 h-full flex flex-col">
+      <div className="mb-4 flex items-center justify-between flex-shrink-0">
         {!hideTitle && <PageTitle title={'System Logs'} />}
         <div className="flex items-center gap-4">
           <Button variant="destructive" size="sm" onClick={handleClearLogs} disabled={isClearing}>
@@ -233,7 +240,7 @@ export function LogViewer({ agentName, level, hideTitle }: LogViewerProps = {}) 
           {error instanceof Error ? error.message : 'Failed to fetch logs'}
         </div>
       ) : (
-        <ScrollArea className="h-[600px] rounded-md border bg-black">
+        <ScrollArea className="h-[400px] rounded-md border bg-black overflow-auto">
           <div
             ref={scrollAreaRef}
             onScroll={handleScroll}

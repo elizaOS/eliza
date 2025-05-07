@@ -4,6 +4,9 @@ import clientLogger from './logger';
 
 const API_PREFIX = '/api';
 
+// Key for storing the API key in localStorage, now a function
+const getLocalStorageApiKey = () => `eliza-api-key-${window.location.origin}`;
+
 /**
  * A function that handles fetching data from a specified URL with various options.
  *
@@ -29,14 +32,26 @@ const fetcher = async ({
 
   clientLogger.info('API Request:', method || 'GET', normalizedUrl);
 
+  // --- BEGIN Add API Key Header ---
+  const storageKey = getLocalStorageApiKey();
+  const apiKey = localStorage.getItem(storageKey);
+  const baseHeaders = headers
+    ? { ...headers } // Clone if headers are provided
+    : {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      };
+
+  if (apiKey) {
+    (baseHeaders as Record<string, string>)['X-API-KEY'] = apiKey;
+  }
+  // --- END Add API Key Header ---
+
   const options: RequestInit = {
     method: method ?? 'GET',
-    headers: headers
-      ? headers
-      : {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-        },
+    headers: baseHeaders, // Use the modified headers
+    // Add timeout signal for DELETE operations to prevent hanging
+    signal: method === 'DELETE' ? AbortSignal.timeout(30000) : undefined,
   };
 
   if (method === 'POST' || method === 'PUT' || method === 'PATCH') {
@@ -65,45 +80,86 @@ const fetcher = async ({
 
     if (!response.ok) {
       const errorText = await response.text();
+
       clientLogger.error('API Error:', response.status, response.statusText);
       clientLogger.error('Response:', errorText);
 
-      let errorMessage = `Error ${response.status}: ${response.statusText}`;
+      let errorMessage = `${response.status}: ${response.statusText}`;
       try {
         const errorObj = JSON.parse(errorText);
-        errorMessage = errorObj.message || errorMessage;
+        errorMessage = errorObj.error?.message || errorObj.message || errorMessage;
+
+        // Include the status code explicitly in the error message
+        if (!errorMessage.includes(response.status.toString())) {
+          errorMessage = `${response.status}: ${errorMessage}`;
+        }
       } catch {
         // If we can't parse as JSON, use the raw text
         if (errorText.includes('<!DOCTYPE html>')) {
-          errorMessage = 'Received HTML instead of JSON. API endpoint may be incorrect.';
+          errorMessage = `${response.status}: Received HTML instead of JSON. API endpoint may be incorrect.`;
         } else {
-          errorMessage = errorText || errorMessage;
+          errorMessage = errorText ? `${response.status}: ${errorText}` : errorMessage;
         }
       }
 
-      throw new Error(errorMessage);
+      // Add more context to specific HTTP status codes
+      if (response.status === 404) {
+        errorMessage = `${errorMessage} - API endpoint not found`;
+      } else if (response.status === 403) {
+        errorMessage = `${errorMessage} - Access denied`;
+      } else if (response.status === 401) {
+        errorMessage = `${errorMessage} - Authentication required`;
+      } else if (response.status === 429) {
+        errorMessage = `${errorMessage} - Too many requests, please try again later`;
+      } else if (response.status >= 500) {
+        errorMessage = `${errorMessage} - Server error, please check server logs`;
+      }
+
+      const error = new Error(errorMessage);
+      // Add status code to the error object for easier checking
+      (error as any).statusCode = response.status;
+      throw error;
     }
 
     // For successful responses, try to parse as JSON
     if (contentType?.includes('application/json')) {
       try {
-        return await response.json();
+        const jsonData = await response.json();
+        return jsonData;
       } catch (error) {
-        clientLogger.error('JSON Parse Error:', error);
         const text = await response.text();
+        clientLogger.error('JSON Parse Error:', error);
         clientLogger.error(
           'Response text:',
           text.substring(0, 500) + (text.length > 500 ? '...' : '')
         );
+
         throw new Error('Failed to parse JSON response');
       }
     } else {
       // For non-JSON responses, return text
-      return await response.text();
+      const textResponse = await response.text();
+      return textResponse;
     }
   } catch (error) {
-    clientLogger.error('Fetch error:', error);
-    throw error;
+    // Enhanced error handling with more specific messages
+    if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+      clientLogger.error('Network Error:', error);
+      throw new Error(
+        'NetworkError: Unable to connect to the server. Please check if the server is running.'
+      );
+    } else if (error instanceof Error && error.name === 'AbortError') {
+      clientLogger.error('Request Timeout:', error);
+      throw new Error('RequestTimeout: The request took too long to complete.');
+    } else if (error instanceof DOMException && error.name === 'NetworkError') {
+      clientLogger.error('Cross-Origin Error:', error);
+      throw new Error(
+        'NetworkError: Cross-origin request failed. Please check server CORS settings.'
+      );
+    } else {
+      clientLogger.error('Fetch error:', error);
+      throw error;
+    }
   }
 };
 
@@ -184,6 +240,7 @@ export const apiClient = {
   getAgents: () => fetcher({ url: '/agents' }),
   getAgent: (agentId: string): Promise<{ data: Agent }> => fetcher({ url: `/agents/${agentId}` }),
   ping: (): Promise<{ pong: boolean; timestamp: number }> => fetcher({ url: '/ping' }),
+  testEndpoint: (endpoint: string): Promise<any> => fetcher({ url: endpoint }),
   tts: (agentId: string, text: string) =>
     fetcher({
       url: `/agents/${agentId}/speech/generate`,

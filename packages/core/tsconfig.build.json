@@ -11,8 +11,7 @@
     "rootDir": "./src",
     "outDir": "./dist",
     "declaration": true,
-    "emitDeclarationOnly": true,
-    "noEmit": false,
+    "noEmit": true,
     "sourceMap": true,
     "typeRoots": ["./node_modules/@types"]
   },

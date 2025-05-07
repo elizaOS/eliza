@@ -1,12 +1,11 @@
-import { promises as fs, existsSync } from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import { getLocalPackages, isMonorepoContext } from '@/src/utils/get-package-info';
+import { getGitHubCredentials, getLocalPackages, isMonorepoContext } from '@/src/utils';
 import { logger } from '@elizaos/core';
 import dotenv from 'dotenv';
 import { execa } from 'execa';
 import { HttpsProxyAgent } from 'https-proxy-agent';
-import { getGitHubCredentials } from '../github';
+import { existsSync, promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { REGISTRY_URL } from './constants';
 
 const ELIZA_DIR = path.join(os.homedir(), '.eliza');
@@ -368,7 +367,7 @@ export async function getPluginRepository(pluginName: string): Promise<string | 
     // Get all possible plugin name formats to try
     const possibleNames = normalizePluginName(pluginName);
 
-    // First try getting from the local/public registry
+    // ONLY try getting from the local/public registry - never use authenticated methods
     const registry = await getLocalRegistryIndex();
 
     // Try each possible name format in the registry
@@ -379,24 +378,15 @@ export async function getPluginRepository(pluginName: string): Promise<string | 
       }
     }
 
-    // Fall back to authenticated method if needed
-    for (const name of possibleNames) {
-      try {
-        const metadata = await getPluginMetadata(name);
-        if (metadata?.repository) {
-          logger.debug(`Found plugin metadata for: ${name}`);
-          return metadata.repository;
-        }
-      } catch (error) {
-        // Continue to the next name format
-        logger.debug(`No metadata found for ${name}`);
-      }
+    // For scoped packages, try npm directly - NO AUTH REQUIRED
+    if (pluginName.startsWith('@')) {
+      return pluginName; // Return as-is for npm to handle
     }
 
-    // Direct GitHub shorthand (github:org/repo)
+    // Direct GitHub shorthand (github:org/repo) - NO AUTH REQUIRED
     if (!pluginName.includes(':') && !pluginName.startsWith('@')) {
       const baseName = pluginName.replace(/^plugin-/, '');
-      return `github:elizaos-plugins/plugin-${baseName}`;
+      return `@elizaos/plugin-${baseName}`;
     }
 
     return null;
@@ -503,21 +493,24 @@ export async function getPluginVersion(
   pluginName: string,
   version?: string
 ): Promise<string | null> {
-  const metadata = await getPluginMetadata(pluginName);
-
-  if (!metadata) {
-    return null;
+  // Skip metadata lookup to avoid auth requirements
+  // Just return the requested version or use latest as fallback
+  if (version) {
+    return version;
   }
 
-  if (!version) {
-    return metadata.latestVersion;
+  // Try to get package details from non-auth methods
+  try {
+    const packageDetails = await getPackageDetails(pluginName);
+    if (packageDetails?.latestVersion) {
+      return packageDetails.latestVersion;
+    }
+  } catch (error) {
+    logger.debug(`Error getting package details: ${error.message}`);
   }
 
-  if (!metadata.versions.includes(version)) {
-    return null;
-  }
-
-  return version;
+  // Fallback to a reasonable default version
+  return 'latest';
 }
 
 export async function getPluginTags(pluginName: string): Promise<string[]> {

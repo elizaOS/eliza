@@ -5,13 +5,13 @@ import type {
   IDatabaseAdapter,
   Log,
   Memory,
+  MemoryMetadata,
   Participant,
   Relationship,
   Room,
   Task,
   UUID,
   World,
-  MemoryMetadata,
 } from './types';
 
 /**
@@ -23,7 +23,7 @@ import type {
  *
  * @template DB - The type of the database instance.
  * @abstract
- * @implements {IDatabaseAdapter}
+ * implements IDatabaseAdapter
  */
 export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter {
   /**
@@ -123,12 +123,13 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
   abstract getMemories(params: {
     entityId?: UUID;
     agentId?: UUID;
-    roomId?: UUID;
     count?: number;
     unique?: boolean;
     tableName: string;
     start?: number;
     end?: number;
+    roomId?: UUID;
+    worldId?: UUID;
   }): Promise<Memory[]>;
 
   abstract getMemoriesByRoomIds(params: {
@@ -212,11 +213,14 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
    */
   abstract searchMemories(params: {
     tableName: string;
-    roomId: UUID;
     embedding: number[];
-    match_threshold: number;
-    count: number;
-    unique: boolean;
+    match_threshold?: number;
+    count?: number;
+    unique?: boolean;
+    query?: string;
+    roomId?: UUID;
+    worldId?: UUID;
+    entityId?: UUID;
   }): Promise<Memory[]>;
 
   /**
@@ -466,7 +470,7 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
    * @param agent The agent object to ensure exists.
    * @returns A Promise that resolves when the agent has been ensured to exist.
    */
-  abstract ensureAgentExists(agent: Partial<Agent>): Promise<void>;
+  abstract ensureAgentExists(agent: Partial<Agent>): Promise<Agent>;
 
   /**
    * Ensures an embedding dimension exists in the database.

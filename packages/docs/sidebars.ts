@@ -1,5 +1,7 @@
+import type { SidebarsConfig } from '@docusaurus/plugin-content-docs';
+
 /** @type {import('@docusaurus/plugin-content-docs').SidebarsConfig} */
-const sidebars = {
+const sidebars: SidebarsConfig = {
   tutorialSidebar: [
     {
       type: 'doc',
@@ -139,16 +141,16 @@ const sidebars = {
           id: 'cli/env',
           label: 'Environment',
         },
-        {
-          type: 'doc',
-          id: 'cli/plugins',
-          label: 'Plugins',
-        },
-        {
-          type: 'doc',
-          id: 'cli/projects',
-          label: 'Projects',
-        },
+        // {
+        //   type: 'doc',
+        //   id: 'cli/plugins',
+        //   label: 'Plugins',
+        // },
+        // {
+        //   type: 'doc',
+        //   id: 'cli/projects',
+        //   label: 'Projects',
+        // },
         {
           type: 'doc',
           id: 'cli/publish',

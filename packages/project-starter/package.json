@@ -1,12 +1,20 @@
 {
   "name": "@elizaos/project-starter",
   "description": "Project starter for elizaOS",
-  "version": "1.0.0-beta.0",
+  "version": "0.1.0",
   "type": "module",
   "private": true,
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
+  "keywords": [
+    "project",
+    "elizaos"
+  ],
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
   "exports": {
     "./package.json": "./package.json",
     ".": {
@@ -22,7 +30,6 @@
   "dependencies": {
     "@elizaos/cli": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-anthropic": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "zod": "3.24.2"
@@ -34,14 +41,13 @@
     "@vitest/coverage-v8": "2.1.5"
   },
   "scripts": {
-    "start": "npx @elizaos/cli start",
-    "dev": "npx @elizaos/cli dev",
+    "start": "elizaos start",
+    "dev": "elizaos dev",
     "build": "tsup",
     "lint": "prettier --write ./src",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
-    "deploy": "npx @elizaos/cli deploy",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src"
   },
