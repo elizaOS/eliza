@@ -1,24 +1,24 @@
+import type { AgentServer } from '@/src/server';
+import { upload } from '@/src/server/loader';
+import { convertToAudioBuffer } from '@/src/utils';
 import type { Agent, Character, Content, IAgentRuntime, Memory, UUID } from '@elizaos/core';
 import {
   ChannelType,
+  MemoryType,
   ModelType,
   composePrompt,
   composePromptFromState,
   createUniqueUuid,
+  encryptObjectValues,
+  encryptStringValue,
+  getSalt,
   logger,
   messageHandlerTemplate,
   validateUuid,
-  MemoryType,
-  encryptStringValue,
-  getSalt,
-  encryptObjectValues,
 } from '@elizaos/core';
 import express from 'express';
 import fs from 'node:fs';
 import { Readable } from 'node:stream';
-import type { AgentServer } from '..';
-import { upload } from '../loader';
-import { convertToAudioBuffer } from '@/src/utils/audioBuffer';
 
 /**
  * Interface representing a custom request object that extends the express.Request interface.
@@ -85,6 +85,82 @@ export function agentRouter(
         error: {
           code: 500,
           message: 'Error retrieving agents',
+          details: error.message,
+        },
+      });
+    }
+  });
+
+  router.all('/:agentId/plugins/:pluginName/*', async (req, res, next) => {
+    const agentId = req.params.agentId;
+    if (!agentId) {
+      logger.debug('[AGENT PLUGINS MIDDLEWARE] Params required');
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_ID',
+          message: 'Invalid agent ID format',
+        },
+      });
+      return;
+    }
+
+    try {
+      let runtime = false;
+      if (validateUuid(agentId)) {
+        runtime = agents.get(agentId);
+      }
+      // if runtime is null, look for runtime with the same name
+      if (!runtime) {
+        runtime = Array.from(agents.values()).find((r) => r.character.name === agentId);
+      }
+      if (!runtime) {
+        logger.debug('[AGENT PLUGINS MIDDLEWARE] Agent not found');
+        res.status(404).json({
+          success: false,
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Agent not found',
+          },
+        });
+        return;
+      }
+      // short circuit
+      if (!runtime.plugins?.length) next();
+
+      let path = req.path.substr(1 + agentId.length + 9 + req.params.pluginName.length);
+
+      // Check each plugin
+      for (const plugin of runtime.plugins) {
+        if (!plugin.name) continue;
+        if (plugin.routes && plugin.name === req.params.pluginName) {
+          for (const r of plugin.routes) {
+            if (r.type === req.method) {
+              // r.path can contain /*
+              if (r.path.match(/\*/)) {
+                // hacky af
+                if (path.match(r.path.replace('*', ''))) {
+                  r.handler(req, res, runtime);
+                  return;
+                }
+              } else {
+                if (path === r.path) {
+                  r.handler(req, res, runtime);
+                  return;
+                }
+              }
+            }
+          }
+        }
+      }
+      next();
+    } catch (error) {
+      logger.error('[AGENT PLUGINS MIDDLEWARE] Error agent middleware:', error);
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 500,
+          message: 'Error getting agent',
           details: error.message,
         },
       });

@@ -50,6 +50,6 @@ jobs:
           GH_USERNAME: ${{ github.actor }}
         run: |
           cd ${{ github.event.inputs.plugin_path }}
-          npx @elizaos/cli plugin publish \
+          npx @elizaos/cli@beta plugin publish \
             --registry ${{ github.event.inputs.registry }} \
             --platform ${{ github.event.inputs.platform }}

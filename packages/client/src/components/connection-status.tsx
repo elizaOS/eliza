@@ -1,43 +1,38 @@
-import { apiClient } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { useQuery } from '@tanstack/react-query';
 import { AlertCircle, ExternalLink, RefreshCw, CheckCircle } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { SidebarMenuButton, SidebarMenuItem } from './ui/sidebar';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '../context/AuthContext';
+import { useConnection } from '../context/ConnectionContext';
 
 export interface ConnectionStatusProps {
-  testEndpoint?: string; // Optional endpoint to test instead of ping
-  className?: string; // Optional className for styling
+  // Allow standard HTML attributes like className
+  [key: string]: any;
 }
 
-export default function ConnectionStatus({ testEndpoint, className }: ConnectionStatusProps) {
+export default function ConnectionStatus({ className }: ConnectionStatusProps) {
   const [isHovered, setIsHovered] = useState(false);
   const { toast } = useToast();
-  const [wasConnected, setWasConnected] = useState(false);
-  const [wasDisconnected, setWasDisconnected] = useState(false);
+  const [prevStatus, setPrevStatus] = useState<string | null>(null);
+  const { openApiKeyDialog } = useAuth();
+  const { status, error, refetch } = useConnection();
 
-  const query = useQuery({
-    queryKey: ['ping'],
-    queryFn: async () => {
-      if (testEndpoint) {
-        return await apiClient.testEndpoint(testEndpoint);
-      }
-      return await apiClient.ping();
-    },
-    refetchInterval: 5000,
-    retry: 2,
-    staleTime: 5000,
-  });
-
-  const connected = query.isSuccess && !query.isError;
-  const isLoading = query.isRefetching || query.isPending;
-  const showingError = query.isError && !isLoading;
+  // Derive states from context
+  const isLoading = status === 'loading';
+  const isConnected = status === 'connected';
+  const isError = status === 'error';
+  const isUnauthorized = status === 'unauthorized'; // Context handles this now
+  const showingError = isError || isUnauthorized;
 
   // Track connection state changes and show appropriate toast notifications
   useEffect(() => {
-    if (wasDisconnected && connected && !isLoading) {
+    // Transition from disconnected/error/unauthorized to connected
+    if (
+      (prevStatus === 'error' || prevStatus === 'unauthorized' || prevStatus === 'disconnected') &&
+      isConnected
+    ) {
       toast({
         title: 'Connection Restored',
         description: (
@@ -47,56 +42,71 @@ export default function ConnectionStatus({ testEndpoint, className }: Connection
           </div>
         ),
       });
+    } else if (prevStatus === 'connected' && (isError || isUnauthorized)) {
+      // Transition from connected to error/unauthorized
+      toast({
+        title: 'Connection Lost',
+        description: 'Attempting to reconnect to the Eliza server...',
+        variant: 'destructive',
+      });
     }
 
     // Update the connection state tracking for the next render
-    setWasDisconnected(showingError);
-    setWasConnected(connected);
-  }, [connected, showingError, query.error, toast, isLoading, testEndpoint]);
+    setPrevStatus(status);
+  }, [status, prevStatus, isConnected, isError, isUnauthorized, toast]);
+
+  useEffect(() => {
+    // If the status becomes unauthorized, trigger the API key dialog
+    if (isUnauthorized && prevStatus !== 'unauthorized') {
+      openApiKeyDialog(); // Trigger the global dialog
+    }
+  }, [isUnauthorized, prevStatus, openApiKeyDialog]);
 
   const getStatusColor = () => {
+    if (isUnauthorized) return 'bg-yellow-500';
     if (isLoading) return 'bg-muted-foreground';
-    return connected ? 'bg-green-600' : 'bg-red-600';
+    return isConnected ? 'bg-green-600' : 'bg-red-600'; // Treat error/disconnected as red
   };
 
   const getStatusText = () => {
+    if (isUnauthorized) return 'Unauthorized';
     if (isLoading) return 'Connecting...';
-    return connected ? 'Connected' : 'Disconnected';
+    return isConnected ? 'Connected' : 'Disconnected';
   };
 
   const getTextColor = () => {
+    if (isUnauthorized) return 'text-yellow-500';
     if (isLoading) return 'text-muted-foreground';
-    return connected ? 'text-green-600' : 'text-red-600';
+    return isConnected ? 'text-green-600' : 'text-red-600';
   };
 
-  const refreshStatus = () => {
-    query.refetch();
-  };
+  // Use the refetch function from the context
+  const refreshStatus = refetch;
 
   // Get a specific error message based on the error
   const getErrorMessage = () => {
-    if (!query.error) return 'Connection failed';
+    if (!error) return 'Connection failed'; // Use error from context
 
-    const error = query.error;
-    if (error instanceof Error) {
-      if (error.message.includes('NetworkError') || error.message.includes('Failed to fetch')) {
-        return 'Cannot reach server';
-      } else if (error.message.includes('ECONNREFUSED')) {
-        return 'Connection refused';
-      } else if (error.message.includes('timeout')) {
-        return 'Connection timeout';
-      } else if (
-        error.message.includes('404') ||
-        error.message.includes('not found') ||
-        error.message.includes('API endpoint not found')
-      ) {
-        if (testEndpoint) {
-          return `Endpoint not found: ${testEndpoint}`;
-        }
-        return 'Endpoint not found';
-      }
-      return error.message;
+    // Specific check for Unauthorized first
+    if (isUnauthorized) {
+      return 'Unauthorized: Invalid or missing API Key. Check client configuration or server logs.';
     }
+
+    // The context already provides the error message string
+    if (error.includes('NetworkError') || error.includes('Failed to fetch')) {
+      return 'Cannot reach server';
+    } else if (error.includes('ECONNREFUSED')) {
+      return 'Connection refused';
+    } else if (error.includes('timeout')) {
+      return 'Connection timeout';
+    } else if (
+      error.includes('404') ||
+      error.includes('not found') ||
+      error.includes('API endpoint not found')
+    ) {
+      return 'Endpoint not found';
+    }
+    return error; // Return the error message directly
 
     return 'Connection failed';
   };
@@ -114,13 +124,19 @@ export default function ConnectionStatus({ testEndpoint, className }: Connection
               <div className="flex items-center gap-1">
                 {isHovered ? (
                   <RefreshCw className="h-3.5 w-3.5 text-muted-foreground animate-pulse" />
-                ) : showingError ? (
-                  <AlertCircle className="h-3.5 w-3.5 text-red-600" />
+                ) : showingError || isUnauthorized ? (
+                  // Use AlertCircle for both general errors and unauthorized, but color differently
+                  <AlertCircle
+                    className={cn(
+                      'h-3.5 w-3.5',
+                      isUnauthorized ? 'text-yellow-500' : 'text-red-600'
+                    )}
+                  />
                 ) : (
                   <div className={cn(['h-2.5 w-2.5 rounded-full', getStatusColor()])} />
                 )}
                 <span
-                  className={cn(['text-xs', isHovered ? 'text-muted-foreground' : getTextColor()])}
+                  className={cn('text-xs', isHovered ? 'text-muted-foreground' : getTextColor())}
                 >
                   {isHovered ? 'Refresh' : getStatusText()}
                 </span>
@@ -131,9 +147,21 @@ export default function ConnectionStatus({ testEndpoint, className }: Connection
         {showingError && (
           <TooltipContent side="top" align="center" className="max-w-xs">
             <div className="flex flex-col gap-2">
-              <div className="font-semibold text-red-500">{getErrorMessage()}</div>
+              <div
+                className={cn('font-semibold', isUnauthorized ? 'text-yellow-500' : 'text-red-500')}
+              >
+                {getErrorMessage()}
+              </div>
               <p className="text-xs">Please ensure the Eliza server is running and accessible.</p>
-              <p className="text-xs">Try refreshing the connection or check server logs.</p>
+              {!isUnauthorized && (
+                <p className="text-xs">Try refreshing the connection or check server logs.</p>
+              )}
+              {isUnauthorized && (
+                <p className="text-xs">
+                  Check the X-API-KEY configured in your client or the ELIZA_SERVER_AUTH_TOKEN on
+                  the server.
+                </p>
+              )}
             </div>
           </TooltipContent>
         )}

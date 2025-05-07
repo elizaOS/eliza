@@ -4,6 +4,9 @@ import clientLogger from './logger';
 
 const API_PREFIX = '/api';
 
+// Key for storing the API key in localStorage, now a function
+const getLocalStorageApiKey = () => `eliza-api-key-${window.location.origin}`;
+
 /**
  * A function that handles fetching data from a specified URL with various options.
  *
@@ -29,14 +32,24 @@ const fetcher = async ({
 
   clientLogger.info('API Request:', method || 'GET', normalizedUrl);
 
+  // --- BEGIN Add API Key Header ---
+  const storageKey = getLocalStorageApiKey();
+  const apiKey = localStorage.getItem(storageKey);
+  const baseHeaders = headers
+    ? { ...headers } // Clone if headers are provided
+    : {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      };
+
+  if (apiKey) {
+    (baseHeaders as Record<string, string>)['X-API-KEY'] = apiKey;
+  }
+  // --- END Add API Key Header ---
+
   const options: RequestInit = {
     method: method ?? 'GET',
-    headers: headers
-      ? headers
-      : {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-        },
+    headers: baseHeaders, // Use the modified headers
     // Add timeout signal for DELETE operations to prevent hanging
     signal: method === 'DELETE' ? AbortSignal.timeout(30000) : undefined,
   };

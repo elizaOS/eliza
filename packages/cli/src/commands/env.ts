@@ -1,4 +1,5 @@
-import { handleError } from '@/src/utils/handle-error';
+import { handleError, UserEnvironment } from '@/src/utils';
+import { stringToUuid } from '@elizaos/core';
 import { Command } from 'commander';
 import dotenv from 'dotenv';
 import { existsSync } from 'node:fs';
@@ -176,40 +177,48 @@ async function writeEnvFile(filePath: string, envVars: Record<string, string>): 
 }
 
 /**
- * List all environment variables from both global and local .env files
+ * Displays system information and lists environment variables from global and local `.env` files.
+ *
+ * Prints platform, architecture, CLI version, and package manager details, followed by environment variables from the global and local scopes with sensitive values masked. Indicates if no variables are set and provides a link to the web UI for editing.
  */
 async function listEnvVars(): Promise<void> {
+  const envInfo = await UserEnvironment.getInstanceInfo();
   const globalEnvPath = await getGlobalEnvPath();
   const localEnvPath = getLocalEnvPath();
 
-  const globalEnvVars = await parseEnvFile(globalEnvPath);
-  const localEnvVars = localEnvPath ? await parseEnvFile(localEnvPath) : {};
+  // Display system information
+  console.info(colors.bold('\nSystem Information:'));
+  console.info(`  Platform: ${colors.cyan(envInfo.os.platform)} (${envInfo.os.release})`);
+  console.info(`  Architecture: ${colors.cyan(envInfo.os.arch)}`);
+  console.info(`  CLI Version: ${colors.cyan(envInfo.cli.version)}`);
+  console.info(
+    `  Package Manager: ${colors.cyan(envInfo.packageManager.name)}${envInfo.packageManager.version ? ` v${envInfo.packageManager.version}` : ''}`
+  );
 
-  const customPath = await getCustomEnvPath();
-  const globalEnvLabel = customPath
-    ? `Global environment variables (custom path: ${customPath})`
-    : 'Global environment variables (.eliza/.env)';
+  console.info(colors.bold('\nGlobal Environment Variables:'));
+  console.info(`Path: ${globalEnvPath}`);
 
-  console.info(colors.bold(`\n${globalEnvLabel}:`));
-  if (Object.keys(globalEnvVars).length === 0) {
+  if (!existsSync(globalEnvPath)) {
     console.info('  No global environment variables set');
   } else {
+    const globalEnvVars = await parseEnvFile(globalEnvPath);
     for (const [key, value] of Object.entries(globalEnvVars)) {
       console.info(`  ${colors.green(key)}: ${maskedValue(value)}`);
     }
   }
 
   if (localEnvPath) {
-    console.info(colors.bold('\nLocal environment variables (.env):'));
-    if (Object.keys(localEnvVars).length === 0) {
+    console.info(colors.bold('\nLocal Environment Variables:'));
+    console.info(`Path: ${localEnvPath}`);
+
+    if (!existsSync(localEnvPath)) {
       console.info('  No local environment variables set');
     } else {
+      const localEnvVars = await parseEnvFile(localEnvPath);
       for (const [key, value] of Object.entries(localEnvVars)) {
         console.info(`  ${colors.green(key)}: ${maskedValue(value)}`);
       }
     }
-  } else {
-    console.info(colors.bold('\nNo local .env file found in the current directory'));
   }
 
   console.info('\n');
@@ -434,7 +443,7 @@ async function resetEnv(yes = false): Promise<void> {
   const elizaDir = path.join(homeDir, '.eliza');
   const globalEnvPath = await getGlobalEnvPath();
   const cacheDir = path.join(elizaDir, 'cache');
-  const dbDir = path.join(elizaDir, 'db');
+  const dbDir = path.join(elizaDir, 'projects', stringToUuid(process.cwd()), 'db');
 
   // Remove global .env file
   if (existsSync(globalEnvPath)) {

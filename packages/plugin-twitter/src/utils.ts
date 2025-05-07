@@ -477,49 +477,6 @@ export const parseActionResponseFromText = (text: string): { actions: ActionResp
 };
 
 /**
- * Generates tweet actions based on the given prompt and model type using the provided runtime.
- * @param {{
- *     runtime: IAgentRuntime;
- *     prompt: string;
- *     modelType: ModelTypeName;
- * }} params - Parameters including the runtime, prompt, and model type.
- * @returns {Promise<ActionResponse | null>} The generated actions or null if no valid response.
- */
-export async function generateTweetActions({
-  runtime,
-  prompt,
-  modelType,
-}: {
-  runtime: IAgentRuntime;
-  prompt: string;
-  modelType: ModelTypeName;
-}): Promise<ActionResponse | null> {
-  let retryDelay = 1000;
-  while (true) {
-    try {
-      const response = await runtime.useModel(modelType, {
-        prompt,
-      });
-      logger.debug('Received response from generateText for tweet actions:', response);
-      const { actions } = parseActionResponseFromText(response.trim());
-      if (actions) {
-        logger.debug('Parsed tweet actions:', actions);
-        return actions;
-      }
-      logger.debug('generateTweetActions no valid response');
-    } catch (error) {
-      logger.error('Error in generateTweetActions:', error);
-      if (error instanceof TypeError && error.message.includes('queueTextCompletion')) {
-        logger.error("TypeError: Cannot read properties of null (reading 'queueTextCompletion')");
-      }
-    }
-    logger.log(`Retrying in ${retryDelay}ms...`);
-    await new Promise((resolve) => setTimeout(resolve, retryDelay));
-    retryDelay *= 2;
-  }
-}
-
-/**
  * Generate short filler text via GPT
  */
 /**

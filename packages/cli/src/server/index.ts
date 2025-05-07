@@ -11,6 +11,7 @@ import express from 'express';
 import { Server as SocketIOServer } from 'socket.io';
 import { createApiRouter, setupSocketIO } from './api';
 import http from 'node:http';
+import { apiKeyAuthMiddleware } from './authMiddleware';
 
 // Load environment variables
 dotenv.config();
@@ -72,7 +73,6 @@ export class AgentServer {
   constructor(options?: ServerOptions) {
     try {
       logger.debug('Initializing AgentServer...');
-      this.app = express();
       this.agents = new Map();
 
       let dataDir = options?.dataDir ?? process.env.PGLITE_DATA_DIR ?? './elizadb';
@@ -142,14 +142,22 @@ export class AgentServer {
 
       // Setup middleware for all requests
       logger.debug('Setting up standard middlewares...');
-      this.app.use(cors());
-      this.app.use(bodyParser.json());
-      this.app.use(bodyParser.urlencoded({ extended: true }));
-      this.app.use(
-        express.json({
-          limit: process.env.EXPRESS_MAX_PAYLOAD || '100kb',
-        })
-      );
+      this.app.use(cors()); // Enable CORS first
+      this.app.use(bodyParser.json()); // Parse JSON bodies
+
+      // Optional Authentication Middleware
+      const serverAuthToken = process.env.ELIZA_SERVER_AUTH_TOKEN;
+      if (serverAuthToken) {
+        logger.info('Server authentication enabled. Requires X-API-KEY header for /api routes.');
+        // Apply middleware only to /api paths
+        this.app.use('/api', (req, res, next) => {
+          apiKeyAuthMiddleware(req, res, next);
+        });
+      } else {
+        logger.warn(
+          'Server authentication is disabled. Set ELIZA_SERVER_AUTH_TOKEN environment variable to enable.'
+        );
+      }
 
       const uploadsPath = path.join(process.cwd(), '/data/uploads');
       const generatedPath = path.join(process.cwd(), '/generatedImages');

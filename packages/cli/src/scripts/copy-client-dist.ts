@@ -1,4 +1,4 @@
-import { copyClientDist } from '../utils/copy-template.js';
+import { copyClientDist } from '@/src/utils';
 
 /**
  * Asynchronous function that runs the copy-client-dist script.

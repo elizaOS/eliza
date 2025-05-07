@@ -1,29 +1,34 @@
-import { buildProject } from '@/src/utils/build-project';
+import { character as defaultCharacter } from '@/src/characters/eliza';
+import { AgentServer } from '@/src/server/index';
+import { jsonToCharacter, loadCharacterTryPath } from '@/src/server/loader';
+import {
+  buildProject,
+  configureDatabaseSettings,
+  displayBanner,
+  findNextAvailablePort,
+  getCliInstallTag,
+  handleError,
+  installPlugin,
+  loadConfig,
+  loadEnvironment,
+  loadPluginModule,
+  promptForEnvVars,
+  saveConfig,
+} from '@/src/utils';
 import {
   AgentRuntime,
+  encryptedCharacter,
+  logger,
+  RuntimeSettings,
+  stringToUuid,
   type Character,
   type IAgentRuntime,
   type Plugin,
-  logger,
-  stringToUuid,
-  encryptedCharacter,
-  RuntimeSettings,
 } from '@elizaos/core';
 import { Command } from 'commander';
 import fs from 'node:fs';
-import path, { dirname } from 'node:path';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { character, character as defaultCharacter } from '../characters/eliza';
-import { AgentServer } from '../server/index';
-import { jsonToCharacter, loadCharacterTryPath } from '../server/loader';
-import { loadConfig, saveConfig } from '../utils/config-manager.js';
-import { promptForEnvVars } from '../utils/env-prompt.js';
-import { configureDatabaseSettings, loadEnvironment } from '../utils/get-config';
-import { handleError } from '../utils/handle-error';
-import { installPlugin } from '../utils/install-plugin';
-import { displayBanner, getVersion } from '../utils/displayBanner';
-import { findNextAvailablePort } from '../utils/port-handling';
-import { loadPluginModule } from '../utils/load-plugin';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -241,11 +246,8 @@ export async function startAgent(
 
   const encryptedChar = encryptedCharacter(character);
 
-  // Find package.json relative to the current file (__dirname is defined at top level)
-  const packageJsonPath = path.resolve(__dirname, '../../package.json');
-
-  // Add a simple check in case the path is incorrect
-  let version = getVersion();
+  // Determine the appropriate installation tag based on the CLI version
+  const installTag = getCliInstallTag();
 
   const loadedPluginsMap = new Map<string, Plugin>();
 
@@ -269,18 +271,6 @@ export async function startAgent(
   // Initialize encryptedChar.plugins if it's undefined
   encryptedChar.plugins = encryptedChar.plugins ?? [];
 
-  // Ensure bootstrap plugin string is present in the character's list if not already loaded
-  const bootstrapPluginName = '@elizaos/plugin-bootstrap';
-  const characterHasBootstrapString = encryptedChar.plugins.includes(bootstrapPluginName);
-  const alreadyLoadedBootstrap = loadedPluginsMap.has(bootstrapPluginName);
-
-  if (!characterHasBootstrapString && !alreadyLoadedBootstrap) {
-    logger.debug(
-      `Adding ${bootstrapPluginName} string to character's plugin list as it was missing and not pre-loaded.`
-    );
-    encryptedChar.plugins.push(bootstrapPluginName);
-  }
-
   const characterPlugins: Plugin[] = [];
 
   // Process and load plugins specified by name in the character definition
@@ -295,7 +285,7 @@ export async function startAgent(
 
     if (!loadedPluginsMap.has(pluginName)) {
       logger.debug(`Attempting to load plugin by name from character definition: ${pluginName}`);
-      const loadedPlugin = await loadAndPreparePlugin(pluginName, version);
+      const loadedPlugin = await loadAndPreparePlugin(pluginName, installTag);
       if (loadedPlugin) {
         characterPlugins.push(loadedPlugin);
         // Double-check name consistency and avoid duplicates
@@ -466,7 +456,7 @@ const startAgents = async (options: {
   const pgliteDataDir = process.env.PGLITE_DATA_DIR;
 
   // Load existing configuration
-  const existingConfig = loadConfig();
+  const existingConfig = await loadConfig();
 
   // Check if we should reconfigure based on command-line option or if using default config
   const shouldConfigure = options.configure || existingConfig.isDefault;

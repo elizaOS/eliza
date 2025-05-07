@@ -1,14 +1,11 @@
-import { spawn } from 'node:child_process';
+import { buildProject, handleError, isMonorepoContext, UserEnvironment } from '@/src/utils';
+import { Command } from 'commander';
+import { execa } from 'execa';
 import type { ChildProcess } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildProject } from '@/src/utils/build-project';
-import { logger } from '@elizaos/core';
-import { Command } from 'commander';
-import { execa } from 'execa';
-import { handleError } from '../utils/handle-error';
-import { isElizaMonorepoContext, getMonorepoRoot } from '../utils/monorepoUtils';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -77,12 +74,16 @@ async function startServer(args: string[] = []): Promise<void> {
 }
 
 /**
- * Determines if the current directory is a project or plugin
+ * Determines whether the current working directory represents a project or a plugin.
+ *
+ * Examines `package.json` fields, naming conventions, keywords, and source exports to heuristically identify if the directory is an Eliza project or plugin.
+ *
+ * @returns An object indicating whether the directory is a project (`isProject`) or a plugin (`isPlugin`).
  */
 async function determineProjectType(): Promise<{ isProject: boolean; isPlugin: boolean }> {
   const cwd = process.cwd();
   const packageJsonPath = path.join(cwd, 'package.json');
-  const isMonorepo = isElizaMonorepoContext();
+  const isMonorepo = await isMonorepoContext();
 
   console.info(`Running in directory: ${cwd}`);
   console.info(`Detected Eliza monorepo context: ${isMonorepo}`);
@@ -338,10 +339,10 @@ export const dev = new Command()
 
           console.info('Rebuilding project after file change...');
 
-          const isMonorepo = isElizaMonorepoContext();
+          const isMonorepo = await isMonorepoContext();
 
           if (isMonorepo) {
-            const monorepoRoot = getMonorepoRoot();
+            const { monorepoRoot } = await UserEnvironment.getInstance().getPathInfo();
             if (monorepoRoot) {
               const corePackages = [
                 {

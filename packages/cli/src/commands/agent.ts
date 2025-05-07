@@ -1,10 +1,9 @@
+import { checkServer, displayAgent, handleError } from '@/src/utils';
+import type { Agent } from '@elizaos/core';
+import { logger } from '@elizaos/core';
+import { Command, OptionValues } from 'commander';
 import fs from 'node:fs';
 import path from 'node:path';
-import { checkServer, handleError } from '@/src/utils/handle-error';
-import { displayAgent } from '@/src/utils/helpers';
-import { logger } from '@elizaos/core';
-import type { Agent } from '@elizaos/core';
-import { Command, OptionValues } from 'commander';
 
 // Helper function to determine the agent runtime URL
 export function getAgentRuntimeUrl(opts: OptionValues): string {

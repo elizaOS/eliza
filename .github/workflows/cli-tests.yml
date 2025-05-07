@@ -1,7 +1,7 @@
 name: Eliza CLI Tests
 
 on:
-  push: 
+  push:
   pull_request:
     branches:
       - 'v2-develop'

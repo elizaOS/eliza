@@ -242,38 +242,43 @@ const CreateButton = ({ onCreateRoom }: { onCreateRoom: () => void }) => {
 
 /* ---------- main component ---------- */
 export function AppSidebar() {
-  const { pathname } = useLocation();
+  const location = useLocation();
 
+  const { data: agentsData, error: agentsError } = useAgents();
   const { data: roomsData, isLoading: roomsLoading } = useRooms();
-  const { data: { data: agentsResp } = {}, isError: agentsError } = useAgents();
 
-  const agents = agentsResp?.agents ?? [];
-  const isRoomPage = pathname.startsWith('/room/');
-  const currentRoomId = useMemo(
-    () => (isRoomPage ? pathname.split('/')[2] : null),
-    [isRoomPage, pathname]
-  );
+  const agents = useMemo(() => agentsData?.data.agents || [], [agentsData]);
 
   const agentAvatarMap = useMemo(
     () =>
-      agents.reduce<Record<string, string | null>>((acc, a) => {
-        if (a.id) acc[a.id] = a.settings?.avatar ?? null;
-        return acc;
-      }, {}),
+      agents.reduce(
+        (acc: Record<string, string | null>, a: Agent): Record<string, string | null> => {
+          if (a.id) {
+            acc[a.id] = a.settings?.avatar ?? null;
+          }
+          return acc;
+        },
+        {}
+      ),
     [agents]
   );
 
   const roomAgentIds = useMemo(
-    () => getRoomAgentIds(roomsData, currentRoomId),
-    [roomsData, currentRoomId]
+    () =>
+      getRoomAgentIds(
+        roomsData,
+        location.pathname.startsWith('/chat/') ? location.pathname.split('/')[2] : null
+      ),
+    [roomsData, location.pathname]
   );
 
   const [onlineAgents, offlineAgents] = useMemo(() => {
     const [on, off] = partition(agents, (a) => a.status === AgentStatus.ACTIVE);
     if (!roomAgentIds.length) return [on, off];
     return [
-      on.filter((a) => roomAgentIds.includes(a.id)),
-      off.filter((a) => roomAgentIds.includes(a.id)),
+      // Ensure a.id exists before checking includes
+      on.filter((a) => a.id && roomAgentIds.includes(a.id)),
+      off.filter((a) => a.id && roomAgentIds.includes(a.id)),
     ];
   }, [agents, roomAgentIds]);
 
@@ -331,7 +336,12 @@ export function AppSidebar() {
         {agentLoadError && <div className="px-4 py-2 text-xs">{agentLoadError}</div>}
 
         {!agentLoadError && (
-          <AgentListSection title="Online" agents={onlineAgents} isOnline activePath={pathname} />
+          <AgentListSection
+            title="Online"
+            agents={onlineAgents}
+            isOnline
+            activePath={location.pathname}
+          />
         )}
 
         {!agentLoadError && offlineAgents.length > 0 && (
@@ -339,7 +349,7 @@ export function AppSidebar() {
             title="Offline"
             agents={offlineAgents}
             isOnline={false}
-            activePath={pathname}
+            activePath={location.pathname}
             className="mt-2"
           />
         )}

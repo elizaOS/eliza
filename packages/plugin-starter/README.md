@@ -35,10 +35,10 @@ Before publishing your plugin to the ElizaOS registry, ensure you meet these req
 
    ```bash
    # Check if your plugin meets all registry requirements
-   npx elizaos plugin publish --test
+   npx elizaos publish --test
 
    # Publish to the registry
-   npx elizaos plugin publish
+   npx elizaos publish
    ```
 
 After publishing, your plugin will be submitted as a pull request to the ElizaOS registry for review.
