@@ -2,33 +2,23 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { logger } from '@elizaos/core';
 import { execa } from 'execa';
+import { isMonorepoContext } from '@/src/utils';
 
 /**
- * Checks if the project is a monorepo by looking for package.json and workspaces
- */
-function isMonorepo(projectPath: string): boolean {
-  try {
-    const packageJsonPath = path.join(projectPath, 'package.json');
-    if (fs.existsSync(packageJsonPath)) {
-      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-      return !!packageJson.workspaces;
-    }
-  } catch (err) {
-    logger.debug(`Error checking for monorepo: ${err}`);
-  }
-  return false;
-}
-
-/**
- * Builds a project or plugin using the appropriate build command
- * @param cwd The current working directory
- * @param isPlugin Whether this is a plugin (vs a project)
+ * Builds a project or plugin in the specified directory using the most appropriate available build method.
+ *
+ * Attempts to run the build script from `package.json` using `bun` or `npm`, or falls back to building with the TypeScript compiler if a `tsconfig.json` is present. Throws an error if no suitable build method is found or if all build attempts fail.
+ *
+ * @param cwd - The directory containing the project or plugin to build.
+ * @param isPlugin - Set to `true` if building a plugin; otherwise, builds a project.
+ *
+ * @throws {Error} If no build method can be determined or if all build attempts fail.
  */
 export async function buildProject(cwd: string, isPlugin = false) {
   logger.info(`Building ${isPlugin ? 'plugin' : 'project'}...`);
 
   // Check if we're in a monorepo
-  const inMonorepo = isMonorepo(path.resolve(cwd, '../..'));
+  const inMonorepo = await isMonorepoContext();
   if (inMonorepo) {
     logger.info('Detected monorepo structure, skipping install');
   }
