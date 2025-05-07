@@ -41,7 +41,7 @@
     "@rollup/plugin-terser": "0.1.0",
     "@rollup/plugin-typescript": "11.1.6",
     "@types/mocha": "10.0.10",
-    "@types/node": "^22.13.9",
+    "@types/node": "^22.15.3",
     "@types/uuid": "10.0.0",
     "@typescript-eslint/eslint-plugin": "8.26.0",
     "@typescript-eslint/parser": "8.26.0",

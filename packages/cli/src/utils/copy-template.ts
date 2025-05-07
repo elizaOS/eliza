@@ -127,7 +127,9 @@ export async function copyTemplate(
       for (const depName of Object.keys(packageJson.dependencies)) {
         if (depName.startsWith('@elizaos/')) {
           logger.info(`Setting ${depName} to use latest version dynamically`);
-          packageJson.dependencies[depName] = cliPackageVersion.includes('beta') ? 'beta' : 'latest';
+          packageJson.dependencies[depName] = cliPackageVersion.includes('beta')
+            ? 'beta'
+            : 'latest';
         }
       }
     }
@@ -137,7 +139,9 @@ export async function copyTemplate(
       for (const depName of Object.keys(packageJson.devDependencies)) {
         if (depName.startsWith('@elizaos/')) {
           logger.info(`Setting dev dependency ${depName} to use version ${cliPackageVersion}`);
-          packageJson.devDependencies[depName] = cliPackageVersion.includes('beta') ? 'beta' : 'latest';
+          packageJson.devDependencies[depName] = cliPackageVersion.includes('beta')
+            ? 'beta'
+            : 'latest';
         }
       }
     }
