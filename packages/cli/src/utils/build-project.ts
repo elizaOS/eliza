@@ -2,22 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { logger } from '@elizaos/core';
 import { execa } from 'execa';
-
-/**
- * Checks if the project is a monorepo by looking for package.json and workspaces
- */
-function isMonorepo(projectPath: string): boolean {
-  try {
-    const packageJsonPath = path.join(projectPath, 'package.json');
-    if (fs.existsSync(packageJsonPath)) {
-      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-      return !!packageJson.workspaces;
-    }
-  } catch (err) {
-    logger.debug(`Error checking for monorepo: ${err}`);
-  }
-  return false;
-}
+import { isMonorepoContext } from '@/src/utils';
 
 /**
  * Builds a project or plugin using the appropriate build command
@@ -28,7 +13,7 @@ export async function buildProject(cwd: string, isPlugin = false) {
   logger.info(`Building ${isPlugin ? 'plugin' : 'project'}...`);
 
   // Check if we're in a monorepo
-  const inMonorepo = isMonorepo(path.resolve(cwd, '../..'));
+  const inMonorepo = await isMonorepoContext();
   if (inMonorepo) {
     logger.info('Detected monorepo structure, skipping install');
   }
