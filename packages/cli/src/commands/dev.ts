@@ -74,7 +74,11 @@ async function startServer(args: string[] = []): Promise<void> {
 }
 
 /**
- * Determines if the current directory is a project or plugin
+ * Determines whether the current working directory represents a project or a plugin.
+ *
+ * Examines `package.json` fields, naming conventions, keywords, and source exports to heuristically identify if the directory is an Eliza project or plugin.
+ *
+ * @returns An object indicating whether the directory is a project (`isProject`) or a plugin (`isPlugin`).
  */
 async function determineProjectType(): Promise<{ isProject: boolean; isPlugin: boolean }> {
   const cwd = process.cwd();

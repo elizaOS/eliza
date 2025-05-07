@@ -5,9 +5,14 @@ import { execa } from 'execa';
 import { isMonorepoContext } from '@/src/utils';
 
 /**
- * Builds a project or plugin using the appropriate build command
- * @param cwd The current working directory
- * @param isPlugin Whether this is a plugin (vs a project)
+ * Builds a project or plugin in the specified directory using the most appropriate available build method.
+ *
+ * Attempts to run the build script from `package.json` using `bun` or `npm`, or falls back to building with the TypeScript compiler if a `tsconfig.json` is present. Throws an error if no suitable build method is found or if all build attempts fail.
+ *
+ * @param cwd - The directory containing the project or plugin to build.
+ * @param isPlugin - Set to `true` if building a plugin; otherwise, builds a project.
+ *
+ * @throws {Error} If no build method can be determined or if all build attempts fail.
  */
 export async function buildProject(cwd: string, isPlugin = false) {
   logger.info(`Building ${isPlugin ? 'plugin' : 'project'}...`);
