@@ -20,7 +20,7 @@ This is useful for trying out commands without installing the CLI globally.
 
 ## Commands
 
-Below is a comprehensive reference for all ElizaOS CLI commands, including their options, arguments, and subcommands. For the most up-to-date usage, run `npx @elizaos/cli@beta [command] --help`.
+Below is a comprehensive reference for all ElizaOS CLI commands, including their options, arguments, and subcommands. For the most up-to-date usage, run `elizaos [command] --help`.
 
 ### Project Creation
 
