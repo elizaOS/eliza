@@ -4,7 +4,7 @@ import { MODEL_SPECS, type ModelSpec } from '../src/types';
 import { TEST_PATHS, createMockRuntime, downloadModelMock } from './test-utils';
 
 // Set environment variables before importing the plugin
-process.env.LLAMALOCAL_PATH = TEST_PATHS.MODELS_DIR;
+process.env.MODELS_DIR = TEST_PATHS.MODELS_DIR;
 process.env.CACHE_DIR = TEST_PATHS.CACHE_DIR;
 
 // Mock the model download and initialization
@@ -22,10 +22,10 @@ vi.mock('../src/utils/downloadManager', () => ({
 }));
 
 // Import plugin after setting environment variables and mocks
-import { localAIPlugin } from '../src/index';
+import { localAiPlugin } from '../src/index';
 
 // Type assertion for localAIPlugin
-const plugin = localAIPlugin as Required<Plugin>;
+const plugin = localAiPlugin as Required<Plugin>;
 
 describe('LocalAI Text Generation', () => {
   const mockRuntime = createMockRuntime();
@@ -46,7 +46,7 @@ describe('LocalAI Text Generation', () => {
     // Initialize plugin with the same paths
     await plugin.init(
       {
-        LLAMALOCAL_PATH: TEST_PATHS.MODELS_DIR,
+        MODELS_DIR: TEST_PATHS.MODELS_DIR,
         CACHE_DIR: TEST_PATHS.CACHE_DIR,
       },
       mockRuntime as IAgentRuntime
@@ -54,7 +54,7 @@ describe('LocalAI Text Generation', () => {
 
     // Log environment variables after initialization
     logger.info('Environment variables after init:', {
-      LLAMALOCAL_PATH: process.env.LLAMALOCAL_PATH,
+      MODELS_DIR: process.env.MODELS_DIR,
       CACHE_DIR: process.env.CACHE_DIR,
     });
   }, 300000);
