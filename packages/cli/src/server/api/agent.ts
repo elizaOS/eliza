@@ -92,7 +92,7 @@ export function agentRouter(
   });
 
   router.all('/:agentId/plugins/:pluginName/*', async (req, res, next) => {
-    const agentId = req.params.agentId;
+    const agentId = req.params.agentId as UUID;
     if (!agentId) {
       logger.debug('[AGENT PLUGINS MIDDLEWARE] Params required');
       res.status(400).json({
@@ -106,7 +106,7 @@ export function agentRouter(
     }
 
     try {
-      let runtime = false;
+      let runtime: IAgentRuntime | undefined;
       if (validateUuid(agentId)) {
         runtime = agents.get(agentId);
       }
@@ -606,6 +606,63 @@ export function agentRouter(
           code: 'DELETE_ERROR',
           message: errorMessage,
           details: lastError instanceof Error ? lastError.message : String(lastError),
+        },
+      });
+    }
+  });
+
+  router.delete('/:agentId/memories/all/:roomId/', async (req, res) => {
+    try {
+      const agentId = validateUuid(req.params.agentId);
+      const roomId = validateUuid(req.params.roomId);
+
+      if (!agentId) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'INVALID_ID',
+            message: 'Invalid agent ID',
+          },
+        });
+        return;
+      }
+
+      if (!roomId) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'INVALID_ID',
+            message: 'Invalid room ID',
+          },
+        });
+        return;
+      }
+
+      const runtime = agents.get(agentId);
+      if (!runtime) {
+        res.status(404).json({
+          success: false,
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Agent not found',
+          },
+        });
+        return;
+      }
+
+      await runtime.deleteAllMemories(roomId, 'messages');
+      await runtime.deleteAllMemories(roomId, 'knowledge');
+      await runtime.deleteAllMemories(roomId, 'documents');
+
+      res.status(204).send();
+    } catch (e) {
+      logger.error('[DELETE ALL MEMORIES] Error deleting all memories:', e);
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'DELETE_ERROR',
+          message: 'Error deleting all memories',
+          details: e instanceof Error ? e.message : String(e),
         },
       });
     }

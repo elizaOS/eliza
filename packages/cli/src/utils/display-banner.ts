@@ -80,7 +80,7 @@ async function checkForCliUpdate(currentVersion: string) {
     console.log(
       `\x1b[33m\nA new version of elizaOS CLI is available: ${latestVersion} (current: ${currentVersion})\x1b[0m`
     );
-    console.log(`\x1b[32mUpdate with: npx @elizaos/cli@beta update\x1b[0m\n`);
+    console.log(`\x1b[32mUpdate with: elizaos update\x1b[0m\n`);
   } catch {
     /* silent: update check failure must not block banner */
   }
