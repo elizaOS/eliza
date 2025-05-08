@@ -91,13 +91,13 @@ Then visit https://localhost:3000 to interact with your agent through a web inte
 
 ```bash
 # Create a new project through interactive setup
-npx @elizaos/cli@beta create # will be simpler after beta
+elizaos create # will be simpler after beta
 
 # Navigate to your project directory
 cd my-project-name
 
 # Start your project
-npx @elizaos/cli@beta start
+elizaos start
 ```
 
   </TabItem>

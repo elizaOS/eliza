@@ -13,7 +13,7 @@ bun install -g @elizaos/cli
 You can also run the CLI directly without installation using npx:
 
 ```bash
-npx @elizaos/cli@beta [command]
+elizaos [command]
 ```
 
 This is useful for trying out commands without installing the CLI globally.
