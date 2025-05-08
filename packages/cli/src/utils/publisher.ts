@@ -248,6 +248,25 @@ export async function publishToNpm(cwd: string): Promise<boolean> {
   }
 }
 
+/**
+ * Publishes a package to GitHub and optionally updates the ElizaOS registry for plugins.
+ *
+ * For both plugins and projects, this function creates or verifies a GitHub repository, pushes the local code, and returns success. For plugins (unless {@link skipRegistry} is true), it also updates the ElizaOS registry by forking the registry repository, creating a branch, updating or creating the package metadata, updating the registry index, and opening a pull request.
+ *
+ * @param cwd - The working directory containing the package to publish.
+ * @param packageJson - The parsed package.json object for the package.
+ * @param cliVersion - The CLI version to record in the registry metadata.
+ * @param username - The GitHub username of the publisher.
+ * @param skipRegistry - If true, skips registry updates and only publishes to GitHub.
+ * @param isTest - If true, runs in test mode without making actual changes.
+ * @returns True on success, or an object with success status and pull request URL if a registry PR is created; false on failure.
+ *
+ * @throws {Error} If required fields are missing or if publishing steps fail.
+ *
+ * @remark
+ * - For projects or when {@link skipRegistry} is true, registry updates are skipped and only the GitHub repository is updated.
+ * - For plugins, registry updates include metadata and index updates, and a pull request to the registry repository.
+ */
 export async function publishToGitHub(
   cwd: string,
   packageJson: PackageJson,
