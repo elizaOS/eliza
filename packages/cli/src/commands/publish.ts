@@ -576,6 +576,10 @@ export const publish = new Command()
             console.error('Registry publishing test failed');
             process.exit(1);
           }
+        } else {
+          console.info(
+            '\nSkipping registry publishing test as requested with --skip-registry flag'
+          );
         }
 
         console.log('All tests passed successfully!');
@@ -619,6 +623,7 @@ export const publish = new Command()
           packageJson,
           cliVersion,
           credentials.username,
+          opts.skipRegistry,
           false
         );
 
@@ -668,6 +673,8 @@ export const publish = new Command()
         }
       } else if (detectedType === 'project') {
         console.info('Skipping registry publication for projects');
+      } else if (opts.skipRegistry) {
+        console.info('Skipping registry publication as requested with --skip-registry flag');
       }
 
       console.log(

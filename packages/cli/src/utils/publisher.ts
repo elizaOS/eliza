@@ -253,6 +253,7 @@ export async function publishToGitHub(
   packageJson: PackageJson,
   cliVersion: string,
   username: string,
+  skipRegistry = false,
   isTest = false
 ): Promise<boolean | { success: boolean; prUrl?: string }> {
   const token = await getGitHubToken();
@@ -279,6 +280,10 @@ export async function publishToGitHub(
 
   if (isTest) {
     logger.info('Running in test mode - no actual changes will be made');
+  }
+
+  if (skipRegistry) {
+    logger.info('Registry updates will be skipped as requested with --skip-registry flag');
   }
 
   // First, create the repository and push code to GitHub
@@ -320,9 +325,13 @@ export async function publishToGitHub(
     }
     logger.success('Successfully pushed code to GitHub repository');
 
-    // For projects, we're done - skip registry update
-    if (packageJson.packageType === 'project') {
-      logger.info('Project published to GitHub successfully.');
+    // For projects or when skipRegistry is true, we're done - skip registry update
+    if (packageJson.packageType === 'project' || skipRegistry) {
+      const reason =
+        packageJson.packageType === 'project'
+          ? 'Projects do not need registry updates'
+          : 'Registry updates skipped as requested with --skip-registry flag';
+      logger.info(`${packageJson.name} published to GitHub successfully. ${reason}`);
       return {
         success: true,
         prUrl: repoResult.repoUrl,
@@ -331,8 +340,8 @@ export async function publishToGitHub(
   }
 
   // The following code is for plugin registry updates only
-  // Skip if we're publishing a project
-  if (packageJson.packageType === 'project') {
+  // Skip if we're publishing a project or skipRegistry is true
+  if (packageJson.packageType === 'project' || skipRegistry) {
     if (isTest) {
       logger.info('Test successful - project would be published to GitHub only');
     }
