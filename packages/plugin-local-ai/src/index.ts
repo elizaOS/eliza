@@ -166,6 +166,7 @@ class LocalAIManager {
     this.tokenizerManager = TokenizerManager.getInstance(this.cacheDir, this.modelsDir);
     this.visionManager = VisionManager.getInstance(this.cacheDir);
     this.transcribeManager = TranscribeManager.getInstance(this.cacheDir);
+    this.ttsManager = TTSManager.getInstance(this.cacheDir, this.modelsDir);
   }
 
   /**
@@ -844,10 +845,33 @@ class LocalAIManager {
     if (!this.transcriptionInitializingPromise) {
       this.transcriptionInitializingPromise = (async () => {
         try {
-          // Initialize transcription model directly
-          // Use existing initialization code from the file
-          // ...
+          // Ensure environment is initialized first
+          await this.initializeEnvironment();
+
+          // Initialize TranscribeManager if not already done
+          if (!this.transcribeManager) {
+            this.transcribeManager = TranscribeManager.getInstance(this.cacheDir);
+          }
+
+          // Ensure FFmpeg is available
+          const ffmpegReady = await this.transcribeManager.ensureFFmpeg();
+          if (!ffmpegReady) {
+            // FFmpeg is not available, log instructions and throw
+            // The TranscribeManager's ensureFFmpeg or initializeFFmpeg would have already logged instructions.
+            logger.error(
+              'FFmpeg is not available or not configured correctly. Cannot proceed with transcription.'
+            );
+            // No need to call logFFmpegInstallInstructions here as ensureFFmpeg/initializeFFmpeg already does.
+            throw new Error(
+              'FFmpeg is required for transcription but is not available. Please see server logs for installation instructions.'
+            );
+          }
+
+          // Proceed with transcription model initialization if FFmpeg is ready
+          // (Assuming TranscribeManager handles its own specific model init if any,
+          // or that nodewhisper handles it internally)
           this.transcriptionInitialized = true;
+          logger.info('Transcription prerequisites (FFmpeg) checked and ready.');
           logger.info('Transcription model initialized successfully');
         } catch (error) {
           logger.error('Failed to initialize transcription model:', error);
@@ -869,14 +893,25 @@ class LocalAIManager {
     if (!this.ttsInitializingPromise) {
       this.ttsInitializingPromise = (async () => {
         try {
-          // Initialize TTS model directly
-          // Use existing initialization code from the file
-          // ...
-          this.ttsInitialized = true;
-          logger.info('TTS model initialized successfully');
+          // Ensure environment is initialized, which creates all managers including ttsManager
+          await this.initializeEnvironment();
+
+          // At this point, this.ttsManager should have been instantiated by _postValidateInit.
+          // No further specific initialization of the TTSManager's *model* is needed here,
+          // as TTSManager.generateSpeech() calls its own internal this.initialize().
+          if (!this.ttsManager) {
+            // This would indicate a bug in _postValidateInit or initialization order.
+            logger.error(
+              'TTSManager instance is missing after environment initialization in lazyInitTTS.'
+            );
+            throw new Error('TTSManager instance not created.');
+          }
+
+          this.ttsInitialized = true; // Mark that lazy setup for TTS is done.
+          logger.info('TTS lazy initialization complete.');
         } catch (error) {
-          logger.error('Failed to initialize TTS model:', error);
-          this.ttsInitializingPromise = null;
+          logger.error('Failed to lazy initialize TTS components:', error);
+          this.ttsInitializingPromise = null; // Allow retry
           throw error;
         }
       })();
