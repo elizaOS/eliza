@@ -1,4 +1,4 @@
-import { logger } from '@elizaos/core';
+import { logger, stringToUuid } from '@elizaos/core';
 import { config } from 'dotenv';
 import { PGliteClientManager } from './pglite/manager.js';
 import { PostgresConnectionManager } from './pg/manager.js';
@@ -27,11 +27,18 @@ async function runMigrations() {
       process.exit(1);
     }
   } else {
-    const homeDir = os.homedir();
-    const elizaDir = path.join(homeDir, '.eliza');
-    const elizaDbDir = path.join(elizaDir, 'db');
+    let elizaDbDir = process.env.PGLITE_DATA_DIR;
+    if (!elizaDbDir) {
+      const homeDir = os.homedir();
+      const elizaDir = path.join(homeDir, '.eliza');
+      // Construct project-specific path
+      elizaDbDir = path.join(elizaDir, 'projects', stringToUuid(process.cwd()), 'pglite');
+      logger.info(`PGLITE_DATA_DIR not set, defaulting to project-specific path: ${elizaDbDir}`);
+    } else {
+      logger.info(`Using PGLITE_DATA_DIR: ${elizaDbDir}`);
+    }
 
-    logger.info('Using PGlite database');
+    logger.info('Using PGlite database at:', elizaDbDir);
     const clientManager = new PGliteClientManager({
       dataDir: elizaDbDir,
     });
