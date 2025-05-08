@@ -76,6 +76,45 @@ async function installDependencies(targetDir: string) {
 }
 
 /**
+ * Creates .gitignore and .npmignore files in the target directory if they don't exist
+ */
+async function createIgnoreFiles(targetDir: string): Promise<void> {
+  const gitignorePath = path.join(targetDir, '.gitignore');
+  const npmignorePath = path.join(targetDir, '.npmignore');
+
+  // Check if .gitignore exists and create it if not
+  if (!existsSync(gitignorePath)) {
+    // Use the exact content from the original plugin-starter/.gitignore
+    const gitignoreContent = `dist/
+node_modules/
+`;
+
+    try {
+      await fs.writeFile(gitignorePath, gitignoreContent);
+    } catch (error) {
+      console.error(`Failed to create .gitignore: ${error.message}`);
+    }
+  }
+
+  // Check if .npmignore exists and create it if not
+  if (!existsSync(npmignorePath)) {
+    // Use the exact content from the original plugin-starter/.npmignore
+    const npmignoreContent = `.turbo
+dist
+node_modules
+.env
+*.env
+.env.local`;
+
+    try {
+      await fs.writeFile(npmignorePath, npmignoreContent);
+    } catch (error) {
+      console.error(`Failed to create .npmignore: ${error.message}`);
+    }
+  }
+}
+
+/**
  * Initialize a new project or plugin.
  *
  * @param {Object} opts - Options for initialization.
@@ -284,6 +323,8 @@ export const create = new Command()
 
         await copyTemplateUtil('plugin', targetDir, pluginName);
 
+        await createIgnoreFiles(targetDir);
+
         console.info('Installing dependencies...');
         try {
           await runBunCommand(['install', '--no-optional'], targetDir);
@@ -341,6 +382,8 @@ export const create = new Command()
         }
 
         await copyTemplateUtil('project', targetDir, projectName);
+
+        await createIgnoreFiles(targetDir);
 
         const { elizaDbDir, envFilePath } = await getElizaDirectories();
         if (database === 'pglite') {
