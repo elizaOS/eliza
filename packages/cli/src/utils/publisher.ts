@@ -248,11 +248,31 @@ export async function publishToNpm(cwd: string): Promise<boolean> {
   }
 }
 
+/**
+ * Publishes a package to GitHub and optionally updates the ElizaOS registry for plugins.
+ *
+ * For both plugins and projects, this function creates or verifies a GitHub repository, pushes the local code, and returns success. For plugins (unless {@link skipRegistry} is true), it also updates the ElizaOS registry by forking the registry repository, creating a branch, updating or creating the package metadata, updating the registry index, and opening a pull request.
+ *
+ * @param cwd - The working directory containing the package to publish.
+ * @param packageJson - The parsed package.json object for the package.
+ * @param cliVersion - The CLI version to record in the registry metadata.
+ * @param username - The GitHub username of the publisher.
+ * @param skipRegistry - If true, skips registry updates and only publishes to GitHub.
+ * @param isTest - If true, runs in test mode without making actual changes.
+ * @returns True on success, or an object with success status and pull request URL if a registry PR is created; false on failure.
+ *
+ * @throws {Error} If required fields are missing or if publishing steps fail.
+ *
+ * @remark
+ * - For projects or when {@link skipRegistry} is true, registry updates are skipped and only the GitHub repository is updated.
+ * - For plugins, registry updates include metadata and index updates, and a pull request to the registry repository.
+ */
 export async function publishToGitHub(
   cwd: string,
   packageJson: PackageJson,
   cliVersion: string,
   username: string,
+  skipRegistry = false,
   isTest = false
 ): Promise<boolean | { success: boolean; prUrl?: string }> {
   const token = await getGitHubToken();
@@ -279,6 +299,10 @@ export async function publishToGitHub(
 
   if (isTest) {
     logger.info('Running in test mode - no actual changes will be made');
+  }
+
+  if (skipRegistry) {
+    logger.info('Registry updates will be skipped as requested with --skip-registry flag');
   }
 
   // First, create the repository and push code to GitHub
@@ -320,9 +344,13 @@ export async function publishToGitHub(
     }
     logger.success('Successfully pushed code to GitHub repository');
 
-    // For projects, we're done - skip registry update
-    if (packageJson.packageType === 'project') {
-      logger.info('Project published to GitHub successfully.');
+    // For projects or when skipRegistry is true, we're done - skip registry update
+    if (packageJson.packageType === 'project' || skipRegistry) {
+      const reason =
+        packageJson.packageType === 'project'
+          ? 'Projects do not need registry updates'
+          : 'Registry updates skipped as requested with --skip-registry flag';
+      logger.info(`${packageJson.name} published to GitHub successfully. ${reason}`);
       return {
         success: true,
         prUrl: repoResult.repoUrl,
@@ -331,8 +359,8 @@ export async function publishToGitHub(
   }
 
   // The following code is for plugin registry updates only
-  // Skip if we're publishing a project
-  if (packageJson.packageType === 'project') {
+  // Skip if we're publishing a project or skipRegistry is true
+  if (packageJson.packageType === 'project' || skipRegistry) {
     if (isTest) {
       logger.info('Test successful - project would be published to GitHub only');
     }
