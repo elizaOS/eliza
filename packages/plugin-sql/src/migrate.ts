@@ -8,10 +8,11 @@ import path from 'node:path';
 config({ path: '../../.env' });
 
 /**
- * Runs the database migrations based on the environment variable POSTGRES_URL.
- * If the POSTGRES_URL is provided, it indicates the use of a PostgreSQL database and the corresponding migration logic needs to be implemented.
- * If POSTGRES_URL is not provided, it uses a PGlite database and runs the migrations on it.
- * @returns {Promise<void>} A promise that resolves once the migrations are completed successfully or rejects if an error occurs.
+ * Executes database migrations using either PostgreSQL or PGlite, depending on environment configuration.
+ *
+ * If the `POSTGRES_URL` environment variable is set, migrations are run against the specified PostgreSQL database. Otherwise, migrations are run using a PGlite database, with the data directory determined by the `PGLITE_DATA_DIR` environment variable or a project-specific default path.
+ *
+ * @remark This function terminates the Node.js process upon completion or failure.
  */
 async function runMigrations() {
   if (process.env.POSTGRES_URL) {
