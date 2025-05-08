@@ -146,19 +146,26 @@ class LocalAIManager {
   private constructor() {
     this.config = validateConfig();
 
-    this._setupModelsDir();
     this._setupCacheDir();
-
-    // Initialize managers
-    this.downloadManager = DownloadManager.getInstance(this.cacheDir, this.modelsDir);
-    this.tokenizerManager = TokenizerManager.getInstance(this.cacheDir, this.modelsDir);
-    this.visionManager = VisionManager.getInstance(this.cacheDir);
-    this.transcribeManager = TranscribeManager.getInstance(this.cacheDir);
 
     // Initialize active model config (default)
     this.activeModelConfig = MODEL_SPECS.small;
     // Initialize embedding model config (spec details)
     this.embeddingModelConfig = MODEL_SPECS.embedding;
+  }
+
+  /**
+   * Post-validation initialization steps that require config to be set.
+   * Called after config validation in initializeEnvironment.
+   */
+  private _postValidateInit(): void {
+    this._setupModelsDir();
+
+    // Initialize managers that depend on modelsDir
+    this.downloadManager = DownloadManager.getInstance(this.cacheDir, this.modelsDir);
+    this.tokenizerManager = TokenizerManager.getInstance(this.cacheDir, this.modelsDir);
+    this.visionManager = VisionManager.getInstance(this.cacheDir);
+    this.transcribeManager = TranscribeManager.getInstance(this.cacheDir);
   }
 
   /**
@@ -249,13 +256,11 @@ class LocalAIManager {
       try {
         logger.info('Initializing environment configuration...');
 
-        // Configuration is already validated and set in the constructor.
-        // We just need to ensure this.config is not null before proceeding.
-        if (!this.config) {
-          // This case should ideally not happen if constructor logic is sound.
-          logger.error('Config not available during environment initialization.');
-          throw new Error('Configuration not initialized');
-        }
+        // Re-validate config to ensure it's up to date
+        this.config = await validateConfig();
+
+        // Initialize components that depend on validated config
+        this._postValidateInit();
 
         // Set model paths based on validated config
         this.modelPath = path.join(this.modelsDir, this.config.LOCAL_SMALL_MODEL);
