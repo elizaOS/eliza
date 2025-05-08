@@ -82,14 +82,14 @@ vi.mock('@huggingface/transformers', () => {
 });
 
 // Set environment variables before importing the plugin
-process.env.LLAMALOCAL_PATH = TEST_PATHS.MODELS_DIR;
+process.env.MODELS_DIR = TEST_PATHS.MODELS_DIR;
 process.env.CACHE_DIR = TEST_PATHS.CACHE_DIR;
 
 // Import plugin after setting environment variables and mocks
-import { localAIPlugin } from '../src/index';
+import { localAiPlugin } from '../src/index';
 
 // Type assertion for localAIPlugin
-const plugin = localAIPlugin as Required<Plugin>;
+const plugin = localAiPlugin as Required<Plugin>;
 
 describe('LocalAI Image Description', () => {
   const mockRuntime = createMockRuntime();
@@ -110,7 +110,7 @@ describe('LocalAI Image Description', () => {
 
     await plugin.init(
       {
-        LLAMALOCAL_PATH: TEST_PATHS.MODELS_DIR,
+        MODELS_DIR: TEST_PATHS.MODELS_DIR,
         CACHE_DIR: TEST_PATHS.CACHE_DIR,
       },
       mockRuntime
