@@ -96,6 +96,21 @@ const largeResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
 });
 ```
 
+### Text-to-Speech
+
+This plugin uses the [`transformers.js`](https://huggingface.co/docs/transformers.js) library for Text-to-Speech synthesis, running directly in the Node.js environment without external Python dependencies for this feature.
+
+```typescript
+const audioStream = await runtime.useModel(ModelType.TEXT_TO_SPEECH, 'Text to convert to speech');
+```
+
+**Current Implementation Details:**
+
+- **Model:** By default, it uses the [`Xenova/speecht5_tts`](https://huggingface.co/Xenova/speecht5_tts) model (ONNX format), which is optimized for `transformers.js`.
+- **Engine:** `@huggingface/transformers` library.
+- **Speaker:** It uses a default speaker embedding for `SpeechT5`. The specific voice cannot be configured through environment variables currently.
+- **Caching:** The ONNX model files and the default speaker embedding will be automatically downloaded and cached by `transformers.js` (typically in `~/.cache/huggingface/hub` or as configured by `transformers.js` environment variables) on first use.
+
 ### Text Embedding
 
 ```typescript
@@ -111,12 +126,6 @@ const { title, description } = await runtime.useModel(
   ModelType.IMAGE_DESCRIPTION,
   'https://example.com/image.jpg'
 );
-```
-
-### Text-to-Speech
-
-```typescript
-const audioStream = await runtime.useModel(ModelType.TEXT_TO_SPEECH, 'Text to convert to speech');
 ```
 
 ### Audio Transcription

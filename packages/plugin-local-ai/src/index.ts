@@ -166,7 +166,7 @@ class LocalAIManager {
     this.tokenizerManager = TokenizerManager.getInstance(this.cacheDir, this.modelsDir);
     this.visionManager = VisionManager.getInstance(this.cacheDir);
     this.transcribeManager = TranscribeManager.getInstance(this.cacheDir);
-    this.ttsManager = TTSManager.getInstance(this.cacheDir, this.modelsDir);
+    this.ttsManager = TTSManager.getInstance(this.cacheDir);
   }
 
   /**
@@ -893,22 +893,15 @@ class LocalAIManager {
     if (!this.ttsInitializingPromise) {
       this.ttsInitializingPromise = (async () => {
         try {
-          // Ensure environment is initialized, which creates all managers including ttsManager
+          // Initialize TTS model directly
+          // Use existing initialization code from the file
+          // Get the TTSManager instance (ensure environment is initialized for cacheDir)
           await this.initializeEnvironment();
-
-          // At this point, this.ttsManager should have been instantiated by _postValidateInit.
-          // No further specific initialization of the TTSManager's *model* is needed here,
-          // as TTSManager.generateSpeech() calls its own internal this.initialize().
-          if (!this.ttsManager) {
-            // This would indicate a bug in _postValidateInit or initialization order.
-            logger.error(
-              'TTSManager instance is missing after environment initialization in lazyInitTTS.'
-            );
-            throw new Error('TTSManager instance not created.');
-          }
-
-          this.ttsInitialized = true; // Mark that lazy setup for TTS is done.
-          logger.info('TTS lazy initialization complete.');
+          this.ttsManager = TTSManager.getInstance(this.cacheDir);
+          // Note: The internal pipeline initialization within TTSManager happens
+          // when generateSpeech calls its own initialize method.
+          this.ttsInitialized = true;
+          logger.info('TTS model initialized successfully');
         } catch (error) {
           logger.error('Failed to lazy initialize TTS components:', error);
           this.ttsInitializingPromise = null; // Allow retry

@@ -93,6 +93,19 @@ export interface TTSModelSpec {
   tokenizer: TokenizerConfig;
 }
 
+/**
+ * Interface representing a specification for a TTS model runnable with Transformers.js.
+ * @typedef { object } TransformersJsTTSModelSpec
+ * @property { string } modelId - The Hugging Face model identifier (e.g., 'Xenova/speecht5_tts').
+ * @property { number } defaultSampleRate - The typical sample rate for this model (e.g., 16000 for SpeechT5).
+ * @property { string } [defaultSpeakerEmbeddingUrl] - Optional URL to a default speaker embedding .bin file.
+ */
+export interface TransformersJsTTSModelSpec {
+  modelId: string;
+  defaultSampleRate: number;
+  defaultSpeakerEmbeddingUrl?: string;
+}
+
 // Model specifications mapping
 /**
  * Interface for specifying different models for a project.
@@ -102,10 +115,8 @@ export interface TTSModelSpec {
  * @property {EmbeddingModelSpec} embedding - Specifications for an embedding model
  * @property {VisionModelSpec} vision - Specifications for a vision model
  * @property {VisionModelSpec} visionvl - Specifications for a vision model with vision loss
- * @property {Object} tts - Specifications for text-to-speech models
- * @property {TTSModelSpec} tts.base - Specifications for the base text-to-speech model
- * @property {TTSModelSpec} tts.medium - Specifications for a medium text-to-speech model
- * @property {TTSModelSpec} tts.large - Specifications for a large text-to-speech model
+ * @property {Object} tts - Specifications for text-to-speech models (using Transformers.js)
+ * @property {TransformersJsTTSModelSpec} tts.default - Specifications for the default text-to-speech model
  */
 export interface ModelSpecs {
   small: ModelSpec;
@@ -114,9 +125,7 @@ export interface ModelSpecs {
   vision: VisionModelSpec;
   visionvl: VisionModelSpec;
   tts: {
-    base: TTSModelSpec;
-    medium: TTSModelSpec;
-    large: TTSModelSpec;
+    default: TransformersJsTTSModelSpec;
   };
 }
 
@@ -196,78 +205,12 @@ export const MODEL_SPECS: ModelSpecs = {
     ],
   },
   tts: {
-    base: {
-      name: 'OuteTTS-0.2-500M-Q8_0.gguf',
-      repo: 'OuteAI/OuteTTS-0.2-500M-GGUF',
-      size: '500M',
-      quantization: 'Q8_0',
-      speakers: ['male_1', 'male_2', 'female_1', 'female_2'],
-      languages: ['en'],
-      features: ['MULTI_SPEAKER', 'VOICE_CLONING', 'EMOTION_CONTROL', 'SPEED_CONTROL'],
-      maxInputLength: 4096,
-      sampleRate: 24000,
-      contextSize: 2048,
-      tokenizer: {
-        name: 'OuteAI/OuteTTS-0.2-500M',
-        type: 'llama',
-      },
-    },
-    medium: {
-      name: 'Llama-OuteTTS-1.0-1B-Q8_0.gguf',
-      repo: 'OuteAI/Llama-OuteTTS-1.0-1B-GGUF',
-      size: '1B',
-      quantization: 'Q8_0',
-      speakers: ['male_1', 'male_2', 'male_3', 'female_1', 'female_2', 'female_3'],
-      languages: ['en', 'es', 'fr', 'de', 'it'],
-      features: [
-        'MULTI_SPEAKER',
-        'VOICE_CLONING',
-        'EMOTION_CONTROL',
-        'SPEED_CONTROL',
-        'MULTILINGUAL',
-        'ACCENT_CONTROL',
-      ],
-      maxInputLength: 8192,
-      sampleRate: 24000,
-      contextSize: 8192,
-      tokenizer: {
-        name: 'OuteAI/Llama-OuteTTS-1.0-1B',
-        type: 'llama',
-      },
-    },
-    large: {
-      name: 'OuteTTS-0.3-3B.gguf',
-      repo: 'OuteAI/OuteTTS-0.3-3B-GGUF',
-      size: '3B',
-      quantization: 'Q8_0',
-      speakers: [
-        'male_1',
-        'male_2',
-        'male_3',
-        'male_4',
-        'female_1',
-        'female_2',
-        'female_3',
-        'female_4',
-      ],
-      languages: ['en', 'es', 'fr', 'de', 'it', 'pt', 'nl', 'pl', 'ru', 'ja', 'ko', 'zh'],
-      features: [
-        'MULTI_SPEAKER',
-        'VOICE_CLONING',
-        'EMOTION_CONTROL',
-        'SPEED_CONTROL',
-        'MULTILINGUAL',
-        'ACCENT_CONTROL',
-        'STYLE_TRANSFER',
-        'PROSODY_CONTROL',
-      ],
-      maxInputLength: 16384,
-      sampleRate: 48000,
-      contextSize: 8192,
-      tokenizer: {
-        name: 'OuteAI/OuteTTS-0.3-3B',
-        type: 'llama',
-      },
+    default: {
+      modelId: 'Xenova/speecht5_tts',
+      defaultSampleRate: 16000, // SpeechT5 default
+      // Use the standard embedding URL
+      defaultSpeakerEmbeddingUrl:
+        'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/speaker_embeddings.bin',
     },
   },
 };
