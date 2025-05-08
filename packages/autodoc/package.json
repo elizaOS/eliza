@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "@elizaos/autodoc",
-  "version": "1.0.0-beta.0",
+  "version": "1.0.0-beta.41",
   "private": true,
   "description": "",
   "main": "dist/index.js",
@@ -22,7 +22,7 @@
   "dependencies": {
     "@langchain/openai": "^0.3.16",
     "@octokit/rest": "^21.0.2",
-    "@types/node": "^20.11.0",
+    "@types/node": "^22.15.3",
     "@typescript-eslint/parser": "8.26.0",
     "@typescript-eslint/types": "8.26.0",
     "@typescript-eslint/typescript-estree": "8.26.0",

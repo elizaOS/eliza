@@ -1,10 +1,10 @@
 {
   "name": "@elizaos/plugin-sql",
-  "version": "1.0.0-beta.45",
+  "version": "1.0.0-beta.48",
   "type": "module",
-  "main": "./dist/index.js",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
   "repository": {
     "type": "git",
     "url": "https://github.com/elizaos-plugins/plugin-sql"
@@ -12,20 +12,29 @@
   "publishConfig": {
     "access": "public"
   },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
   "files": [
     "dist",
     "drizzle"
   ],
   "dependencies": {
     "@electric-sql/pglite": "^0.2.17",
-    "@elizaos/core": "^1.0.0-beta.45",
+    "@elizaos/core": "^1.0.0-beta.48",
     "@types/pg": "8.11.10",
     "drizzle-kit": "^0.30.4",
     "drizzle-orm": "^0.39.1",
     "pg": "^8.13.3"
   },
   "devDependencies": {
-    "@types/node": "22.8.4",
+    "@types/node": "^22.15.3",
     "dockerode": "^4.0.4",
     "prettier": "3.5.3",
     "tsup": "8.4.0",

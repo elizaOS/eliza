@@ -611,6 +611,63 @@ export function agentRouter(
     }
   });
 
+  router.delete('/:agentId/memories/all/:roomId/', async (req, res) => {
+    try {
+      const agentId = validateUuid(req.params.agentId);
+      const roomId = validateUuid(req.params.roomId);
+
+      if (!agentId) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'INVALID_ID',
+            message: 'Invalid agent ID',
+          },
+        });
+        return;
+      }
+
+      if (!roomId) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'INVALID_ID',
+            message: 'Invalid room ID',
+          },
+        });
+        return;
+      }
+
+      const runtime = agents.get(agentId);
+      if (!runtime) {
+        res.status(404).json({
+          success: false,
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Agent not found',
+          },
+        });
+        return;
+      }
+
+      await runtime.deleteAllMemories(roomId, 'messages');
+      await runtime.deleteAllMemories(roomId, 'knowledge');
+      await runtime.deleteAllMemories(roomId, 'documents');
+
+      res.status(204).send();
+    } catch (e) {
+      logger.error('[DELETE ALL MEMORIES] Error deleting all memories:', e);
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'DELETE_ERROR',
+          message: 'Error deleting all memories',
+          details: e instanceof Error ? e.message : String(e),
+        },
+      });
+    }
+  });
+
   // Delete Memory
   router.delete('/:agentId/memories/:memoryId', async (req, res) => {
     const agentId = validateUuid(req.params.agentId);

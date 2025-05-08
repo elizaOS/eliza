@@ -475,20 +475,6 @@ export function useGroupMessages(
         })
         .filter(Boolean); // Remove null values from the array
 
-      const uniqueMessages = new Map<string, string>();
-
-      memories = memories.filter((msg: Memory) => {
-        if (msg.name === USER_NAME) {
-          const key = msg.text;
-          if (uniqueMessages.has(key) && uniqueMessages.get(key) !== msg.agentId) {
-            // If there's already a message with the same text but different agentId, filter it out
-            return false;
-          }
-          uniqueMessages.set(key, msg.agentId);
-        }
-        return true;
-      });
-
       // Sort messages by createdAt timestamp
       memories.sort((a: Memory, b: Memory) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
 
@@ -619,6 +605,23 @@ export function useDeleteMemory() {
       queryClient.invalidateQueries({
         queryKey: ['agents', data.agentId, 'rooms'],
         predicate: (query) => query.queryKey.length > 3 && query.queryKey[4] === 'memories',
+      });
+    },
+  });
+}
+
+export function useDeleteAllMemories() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ agentId, roomId }: { agentId: UUID; roomId: UUID }) => {
+      await apiClient.deleteAllAgentMemories(agentId, roomId);
+      return { agentId };
+    },
+    onSuccess: (data) => {
+      // Invalidate relevant queries to trigger refetch
+      queryClient.invalidateQueries({
+        queryKey: ['agents', data.agentId, 'memories'],
       });
     },
   });
