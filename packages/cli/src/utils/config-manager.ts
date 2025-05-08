@@ -1,8 +1,6 @@
-import { promises as fs } from 'node:fs';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { promises as fs } from 'node:fs';
 import { logger } from '@elizaos/core';
-import colors from 'yoctocolors';
 import { UserEnvironment } from './user-environment';
 import { validatePluginEnvVars } from './env-prompt';
 
@@ -24,6 +22,15 @@ export async function getConfigFilePath(): Promise<string> {
   return envInfo.paths.configPath;
 }
 
+async function fileExists(p: string): Promise<boolean> {
+  try {
+    await fs.access(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Loads the agent configuration from disk, returning a default configuration if the file does not exist or cannot be read.
  *
@@ -32,7 +39,7 @@ export async function getConfigFilePath(): Promise<string> {
 export async function loadConfig(): Promise<AgentConfig> {
   try {
     const configPath = await getConfigFilePath();
-    if (!(await fs.exists(configPath))) {
+    if (!(await fileExists(configPath))) {
       return {
         lastUpdated: new Date().toISOString(),
         isDefault: true, // Mark as default config
@@ -65,7 +72,7 @@ export async function saveConfig(config: AgentConfig): Promise<void> {
     const elizaDir = path.dirname(configPath);
 
     // Create .eliza directory if it doesn't exist
-    if (!(await fs.exists(elizaDir))) {
+    if (!(await fileExists(elizaDir))) {
       await fs.mkdir(elizaDir, { recursive: true });
     }
 
@@ -100,7 +107,7 @@ export async function checkPluginRequirements(pluginName: string): Promise<{
  */
 export async function getPluginStatus(): Promise<Record<string, boolean>> {
   const configPath = await getConfigFilePath();
-  if (!(await fs.exists(configPath))) {
+  if (!(await fileExists(configPath))) {
     return {};
   }
 

@@ -70,8 +70,13 @@ import TabItem from '@theme/TabItem';
   <TabItem value="cli" label="Install CLI Tool (Recommended)" default>
 
 ```bash
+# make sure you have bun installed
+npm install -g bun
+
 # Install the CLI globally
 npm install -g @elizaos/cli@beta # will be simpler after beta
+# or install via bun
+bun install -g @elizaos/cli@beta
 
 # From a folder to install a project
 elizaos create
