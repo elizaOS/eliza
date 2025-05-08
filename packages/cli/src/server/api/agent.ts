@@ -92,7 +92,7 @@ export function agentRouter(
   });
 
   router.all('/:agentId/plugins/:pluginName/*', async (req, res, next) => {
-    const agentId = req.params.agentId;
+    const agentId = req.params.agentId as UUID;
     if (!agentId) {
       logger.debug('[AGENT PLUGINS MIDDLEWARE] Params required');
       res.status(400).json({
@@ -106,7 +106,7 @@ export function agentRouter(
     }
 
     try {
-      let runtime = false;
+      let runtime: IAgentRuntime | undefined;
       if (validateUuid(agentId)) {
         runtime = agents.get(agentId);
       }

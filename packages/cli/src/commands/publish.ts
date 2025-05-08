@@ -86,7 +86,7 @@ async function checkCliVersion() {
       console.warn(
         `You are using CLI version ${currentVersion}, but the latest version is ${latestVersion} (published ${new Date(timeData[latestVersion]).toLocaleDateString()})`
       );
-      console.info(`Run 'npx @elizaos/cli@beta update' to update to the latest version`);
+      console.info(`Run 'elizaos update' to update to the latest version`);
 
       const { update } = await prompts({
         type: 'confirm',
