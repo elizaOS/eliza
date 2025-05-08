@@ -966,7 +966,6 @@ export function agentRouter(
     try {
       logger.debug('[SPEECH GENERATE] Using text-to-speech model');
       const speechResponse = await runtime.useModel(ModelType.TEXT_TO_SPEECH, text);
-      logger.debug('[SPEECH GENERATE] Speech response:', speechResponse);
 
       // Convert to Buffer if not already a Buffer and detect MIME type
       const audioResult = await convertToAudioBuffer(speechResponse, true);
