@@ -232,6 +232,7 @@ interface AgentLog {
  * 		deleteLog: (agentId: string, logId: string) => Promise<void>;
  * 		getAgentMemories: (agentId: UUID, roomId?: UUID, tableName?: string) => Promise<any>;
  * 		deleteAgentMemory: (agentId: UUID, memoryId: string) => Promise<any>;
+ *    deleteAllAgentMemories: (agentId: UUID, roomId: UUID) => Promise<any>;
  * 		updateAgentMemory: (agentId: UUID, memoryId: string, memoryData: Partial<Memory>) => Promise<any>;
  * 	}
  * }}
@@ -444,6 +445,13 @@ export const apiClient = {
   deleteAgentMemory: (agentId: UUID, memoryId: string) => {
     return fetcher({
       url: `/agents/${agentId}/memories/${memoryId}`,
+      method: 'DELETE',
+    });
+  },
+
+  deleteAllAgentMemories: (agentId: UUID, roomId: UUID) => {
+    return fetcher({
+      url: `/agents/${agentId}/memories/all/${roomId}`,
       method: 'DELETE',
     });
   },
