@@ -373,7 +373,7 @@ export abstract class BaseDrizzleAdapter<
           }, 30000);
 
           this.db
-            .transaction(async (tx) => {
+            .transaction(async (tx: DrizzleDatabase) => {
               try {
                 // Step 1: Find all entities belonging to this agent
                 logger.debug(`[DB] Fetching entities for agent: ${agentId}`);
@@ -441,7 +441,7 @@ export abstract class BaseDrizzleAdapter<
                     .from(memoryTable)
                     .where(inArray(memoryTable.entityId, entityIds));
 
-                  memoryIds = memories.map((m) => m.id);
+                  memoryIds = memories.map((m) => m.id as UUID);
                   logger.debug(`[DB] Found ${memoryIds.length} memories belonging to entities`);
                 }
 
@@ -452,7 +452,7 @@ export abstract class BaseDrizzleAdapter<
                   .from(memoryTable)
                   .where(eq(memoryTable.agentId, agentId));
 
-                memoryIds = [...memoryIds, ...agentMemories.map((m) => m.id)];
+                memoryIds = [...memoryIds, ...agentMemories.map((m) => m.id as UUID)];
                 logger.debug(`[DB] Found total of ${memoryIds.length} memories to delete`);
 
                 // Step 5: Find memories that belong to the rooms
@@ -463,7 +463,7 @@ export abstract class BaseDrizzleAdapter<
                     .from(memoryTable)
                     .where(inArray(memoryTable.roomId, roomIds));
 
-                  memoryIds = [...memoryIds, ...roomMemories.map((m) => m.id)];
+                  memoryIds = [...memoryIds, ...roomMemories.map((m) => m.id as UUID)];
                   logger.debug(`[DB] Updated total to ${memoryIds.length} memories to delete`);
                 }
 
