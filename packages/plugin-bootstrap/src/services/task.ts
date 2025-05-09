@@ -217,7 +217,7 @@ export class TaskService extends Service {
           continue;
         }
 
-        if (task.metadata.updatedAt === task.metadata.createdAt) {
+        if (task.metadata?.updatedAt === task.metadata?.createdAt) {
           if (task.tags?.includes('immediate')) {
             logger.debug('immediately running task', task.name);
             await this.executeTask(task);
@@ -245,8 +245,8 @@ export class TaskService extends Service {
    */
   private async executeTask(task: Task) {
     try {
-      if (!task) {
-        logger.debug(`Task ${task.id} not found`);
+      if (!task || !task.id) {
+        logger.debug(`Task not found`);
         return;
       }
 

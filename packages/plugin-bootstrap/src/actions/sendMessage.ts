@@ -163,7 +163,7 @@ export const sendMessageAction: Action = {
   similes: ['DM', 'MESSAGE', 'SEND_DM', 'POST_MESSAGE'],
   description: 'Send a message to a user or room (other than the current one)',
 
-  validate: async (runtime: IAgentRuntime, message: Memory, _state: State): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     // Check if we have permission to send messages
     const worldId = message.roomId;
     const agentId = runtime.agentId;
@@ -184,12 +184,25 @@ export const sendMessageAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State,
-    _options: any,
-    callback: HandlerCallback,
-    responses: Memory[]
+    state?: State,
+    _options?: any,
+    callback?: HandlerCallback,
+    responses?: Memory[]
   ): Promise<void> => {
     try {
+      if (!state) {
+        logger.error('State is required for sendMessage action');
+        throw new Error('State is required for sendMessage action');
+      }
+      if (!callback) {
+        logger.error('Callback is required for sendMessage action');
+        throw new Error('Callback is required for sendMessage action');
+      }
+      if (!responses) {
+        logger.error('Responses are required for sendMessage action');
+        throw new Error('Responses are required for sendMessage action');
+      }
+
       // Handle initial responses
       for (const response of responses) {
         await callback(response.content);
@@ -271,7 +284,7 @@ export const sendMessageAction: Action = {
             actions: ['SEND_MESSAGE'],
             source: message.content.source,
           });
-        } catch (error) {
+        } catch (error: any) {
           logger.error(`Failed to send direct message: ${error.message}`);
           await callback({
             text: 'I encountered an error trying to send the message. Please try again.',
@@ -284,7 +297,7 @@ export const sendMessageAction: Action = {
         const rooms = await runtime.getRooms(worldId);
         const targetRoom = rooms.find((r) => {
           // Match room name from identifiers
-          return r.name.toLowerCase() === targetData.identifiers.roomName?.toLowerCase();
+          return r.name?.toLowerCase() === targetData.identifiers.roomName?.toLowerCase();
         });
 
         if (!targetRoom) {
@@ -316,7 +329,7 @@ export const sendMessageAction: Action = {
             actions: ['SEND_MESSAGE'],
             source: message.content.source,
           });
-        } catch (error) {
+        } catch (error: any) {
           logger.error(`Failed to send room message: ${error.message}`);
           await callback({
             text: 'I encountered an error trying to send the message to the room. Please try again.',
@@ -327,7 +340,7 @@ export const sendMessageAction: Action = {
       }
     } catch (error) {
       logger.error(`Error in sendMessage handler: ${error}`);
-      await callback({
+      await callback?.({
         text: 'There was an error processing your message request.',
         actions: ['SEND_MESSAGE_ERROR'],
         source: message.content.source,
