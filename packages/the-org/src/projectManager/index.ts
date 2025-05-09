@@ -7,7 +7,6 @@ import {
   type IAgentRuntime,
   type OnboardingConfig,
   type ProjectAgent,
-  createUniqueUuid,
 } from '@elizaos/core';
 import dotenv from 'dotenv';
 import { initCharacter } from '../init';
@@ -378,7 +377,7 @@ const config: OnboardingConfig = {
 
 // Import our plugins for Jimmy
 import { plugins } from './plugins';
-import { fetchDiscordChannels } from './plugins/team-coordinator/services/TeamUpdateTrackerService';
+
 export const projectManager: ProjectAgent = {
   character,
   plugins,

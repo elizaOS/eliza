@@ -1,12 +1,5 @@
-import {
-  IAgentRuntime,
-  logger,
-  EventType,
-  Service,
-  createUniqueUuid,
-  ModelType,
-} from '@elizaos/core';
-import type { Channel, Client, GuildChannel, TextChannel, VoiceChannel } from 'discord.js';
+import { IAgentRuntime, logger, Service, createUniqueUuid } from '@elizaos/core';
+import type { Client } from 'discord.js';
 import { fetchCheckInSchedules } from '../actions/listCheckInSchedules';
 import type { CheckInSchedule } from '../../../types';
 

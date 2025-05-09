@@ -16,40 +16,37 @@ export function isAvailableNow(
 ): boolean {
   try {
     const now = new Date();
-    
+
     // Get the day name in the team member's timezone
-    const options: Intl.DateTimeFormatOptions = { 
-      timeZone, 
-      weekday: 'long' 
+    const options: Intl.DateTimeFormatOptions = {
+      timeZone,
+      weekday: 'long',
     };
-    const dayName = new Intl.DateTimeFormat('en-US', options)
-      .format(now)
-      .split(',')[0];
-    
+    const dayName = new Intl.DateTimeFormat('en-US', options).format(now).split(',')[0];
+
     // Check if today is a work day
     if (!workDays.includes(dayName)) {
       return false;
     }
-    
+
     // Get current time in team member's timezone
-    const timeOptions: Intl.DateTimeFormatOptions = { 
-      timeZone, 
-      hour: 'numeric', 
+    const timeOptions: Intl.DateTimeFormatOptions = {
+      timeZone,
+      hour: 'numeric',
       minute: 'numeric',
-      hour12: false
+      hour12: false,
     };
-    const currentTime = new Intl.DateTimeFormat('en-US', timeOptions)
-      .format(now);
-    
+    const currentTime = new Intl.DateTimeFormat('en-US', timeOptions).format(now);
+
     // Compare with work hours
     const [currentHour, currentMinute] = currentTime.split(':').map(Number);
     const [startHour, startMinute] = workHours.start.split(':').map(Number);
     const [endHour, endMinute] = workHours.end.split(':').map(Number);
-    
+
     const currentTimeMinutes = currentHour * 60 + currentMinute;
     const startTimeMinutes = startHour * 60 + startMinute;
     const endTimeMinutes = endHour * 60 + endMinute;
-    
+
     return currentTimeMinutes >= startTimeMinutes && currentTimeMinutes <= endTimeMinutes;
   } catch (error) {
     console.error('Error checking availability:', error);
@@ -72,7 +69,7 @@ export function calculateNextCheckIn(
   frequencyHours: number = 24
 ): Date {
   const now = new Date();
-  
+
   // Function to get date with specific time in member's timezone
   const getDateWithTime = (date: Date, timeStr: string): Date => {
     const [hours, minutes] = timeStr.split(':').map(Number);
@@ -80,52 +77,52 @@ export function calculateNextCheckIn(
     result.setHours(hours, minutes, 0, 0);
     return result;
   };
-  
+
   // Try to find the next check-in time
   let nextDate = new Date(now);
   let daysChecked = 0;
-  
-  while (daysChecked < 14) { // Prevent infinite loop, check up to 2 weeks
+
+  while (daysChecked < 14) {
+    // Prevent infinite loop, check up to 2 weeks
     // Format the day name in the team member's timezone
-    const options: Intl.DateTimeFormatOptions = { 
-      timeZone, 
-      weekday: 'long' 
+    const options: Intl.DateTimeFormatOptions = {
+      timeZone,
+      weekday: 'long',
     };
-    const dayName = new Intl.DateTimeFormat('en-US', options)
-      .format(nextDate);
-    
+    const dayName = new Intl.DateTimeFormat('en-US', options).format(nextDate);
+
     // Check if this is a workday
     if (workDays.includes(dayName)) {
       // Get start time for this date
       const startTime = getDateWithTime(nextDate, workHours.start);
-      
+
       // If we're before start time on a workday, schedule at start time
       if (nextDate < startTime) {
         return startTime;
       }
-      
+
       // Get end time for this date
       const endTime = getDateWithTime(nextDate, workHours.end);
-      
+
       // If we're within work hours, schedule after frequency hours (but within work hours)
       if (nextDate <= endTime) {
         const nextCheckIn = new Date(nextDate.getTime() + frequencyHours * 60 * 60 * 1000);
-        
+
         // If next check-in falls within work hours, use it
         if (nextCheckIn <= endTime) {
           return nextCheckIn;
         }
-        
+
         // Otherwise, go to next work day
       }
     }
-    
+
     // Move to the next day, at the start of work hours
     nextDate.setDate(nextDate.getDate() + 1);
     nextDate = getDateWithTime(nextDate, workHours.start);
     daysChecked++;
   }
-  
+
   // Fallback if something goes wrong - return tomorrow
   const tomorrow = new Date(now);
   tomorrow.setDate(tomorrow.getDate() + 1);
@@ -147,9 +144,9 @@ export function formatDate(date: Date, timeZone?: string): string {
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
-    timeZone
+    timeZone,
   };
-  
+
   return new Intl.DateTimeFormat('en-US', options).format(date);
 }
 
@@ -162,14 +159,14 @@ export function formatDate(date: Date, timeZone?: string): string {
 export function getProjectStatus(
   completionPercentage: number,
   elapsedTimePercentage: number
-): "ON_TRACK" | "AT_RISK" | "DELAYED" {
+): 'ON_TRACK' | 'AT_RISK' | 'DELAYED' {
   const difference = completionPercentage - elapsedTimePercentage;
-  
+
   if (difference >= -10) {
-    return "ON_TRACK";  // Within 10% of expected progress
+    return 'ON_TRACK'; // Within 10% of expected progress
   } else if (difference >= -20) {
-    return "AT_RISK";   // 10-20% behind schedule
+    return 'AT_RISK'; // 10-20% behind schedule
   } else {
-    return "DELAYED";   // More than 20% behind schedule
+    return 'DELAYED'; // More than 20% behind schedule
   }
 }
