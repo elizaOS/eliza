@@ -48,7 +48,9 @@ async function main() {
     version = packageJson.version;
   }
 
-  const program = new Command().name('elizaos').version(version).alias('-v');
+  const program = new Command()
+    .name('elizaos')
+    .version(version, '-v, --version', 'output the version number');
 
   // Add global options but hide them from global help
   // They will still be passed to all commands for backward compatibility
