@@ -3,7 +3,7 @@ import { AgentServer } from '@/src/server/index';
 import { jsonToCharacter, loadCharacterTryPath } from '@/src/server/loader';
 import { TestRunner, buildProject, promptForEnvVars } from '@/src/utils';
 import { type IAgentRuntime, type ProjectAgent } from '@elizaos/core';
-import { Command } from 'commander';
+import { Command, Option } from 'commander';
 import * as dotenv from 'dotenv';
 import * as fs from 'node:fs';
 import { existsSync } from 'node:fs';
@@ -433,7 +433,9 @@ const runAgentTests = async (options: {
 export const test = new Command()
   .name('test')
   .description('Run tests for Eliza agent plugins')
-  .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
+  .addOption(
+    new Option('-p, --port <port>', 'Port to listen on').argParser((val) => Number.parseInt(val))
+  )
   .option('-pl, --plugin <name>', 'Name of plugin to test')
   .option('-sp, --skip-plugins', 'Skip plugin tests')
   .option('-spt, --skip-project-tests', 'Skip project tests')
