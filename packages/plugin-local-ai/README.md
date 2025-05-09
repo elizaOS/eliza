@@ -41,6 +41,34 @@ Or in `.env` file:
 - `LOCAL_EMBEDDING_MODEL` (Optional): Specifies the filename for the text embedding model (e.g., `bge-small-en-v1.5.Q4_K_M.gguf`) located in the models directory.
 - `LOCAL_EMBEDDING_DIMENSIONS` (Optional): Defines the expected dimension size for text embeddings. This is primarily used as a fallback dimension if the embedding model fails to generate an embedding. If not set, it defaults to the embedding model's native dimension size (e.g., 384 for `bge-small-en-v1.5.Q4_K_M.gguf`).
 
+## Prerequisites
+
+### FFmpeg for Audio Transcription
+
+The audio transcription feature (`ModelType.TRANSCRIPTION`) relies on **FFmpeg** to process audio files. If FFmpeg is not installed or not found in your system's PATH, transcription will fail.
+
+**Installation:**
+
+- **macOS (using Homebrew):**
+  ```bash
+  brew install ffmpeg
+  ```
+- **Linux (Debian/Ubuntu):**
+  ```bash
+  sudo apt-get update && sudo apt-get install ffmpeg
+  ```
+- **Linux (Fedora):**
+  ```bash
+  sudo dnf install ffmpeg
+  ```
+- **Windows (using Chocolatey):**
+  ```bash
+  choco install ffmpeg
+  ```
+  Alternatively, download FFmpeg from the [official FFmpeg website](https://ffmpeg.org/download.html) and add the `bin` directory (containing `ffmpeg.exe`) to your system's PATH environment variable.
+
+After installation, ensure that the `ffmpeg` command is accessible from your terminal. You may need to restart your terminal or your application for the changes to take effect.
+
 ## Features
 
 The plugin provides these model classes:
@@ -68,6 +96,21 @@ const largeResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
 });
 ```
 
+### Text-to-Speech
+
+This plugin uses the [`transformers.js`](https://huggingface.co/docs/transformers.js) library for Text-to-Speech synthesis, running directly in the Node.js environment without external Python dependencies for this feature.
+
+```typescript
+const audioStream = await runtime.useModel(ModelType.TEXT_TO_SPEECH, 'Text to convert to speech');
+```
+
+**Current Implementation Details:**
+
+- **Model:** By default, it uses the [`Xenova/speecht5_tts`](https://huggingface.co/Xenova/speecht5_tts) model (ONNX format), which is optimized for `transformers.js`.
+- **Engine:** `@huggingface/transformers` library.
+- **Speaker:** It uses a default speaker embedding for `SpeechT5`. The specific voice cannot be configured through environment variables currently.
+- **Caching:** The ONNX model files and the default speaker embedding will be automatically downloaded and cached by `transformers.js` (typically in `~/.cache/huggingface/hub` or as configured by `transformers.js` environment variables) on first use.
+
 ### Text Embedding
 
 ```typescript
@@ -83,12 +126,6 @@ const { title, description } = await runtime.useModel(
   ModelType.IMAGE_DESCRIPTION,
   'https://example.com/image.jpg'
 );
-```
-
-### Text-to-Speech
-
-```typescript
-const audioStream = await runtime.useModel(ModelType.TEXT_TO_SPEECH, 'Text to convert to speech');
 ```
 
 ### Audio Transcription

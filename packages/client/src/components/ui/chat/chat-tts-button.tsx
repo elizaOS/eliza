@@ -75,7 +75,7 @@ export default function ChatTtsButton({ agentId, text }: { agentId: string; text
           }}
           autoPlay
         >
-          <source src={URL.createObjectURL(audioBlob)} type="audio/mpeg" />
+          <source src={URL.createObjectURL(audioBlob)} type={audioBlob.type} />
           <track kind="captions" src="" label="English captions" />
           Your browser does not support the audio element.
         </audio>
