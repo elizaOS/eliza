@@ -236,6 +236,7 @@ export class MessageManager {
    */
   private splitMessage(text: string): string[] {
     const chunks: string[] = [];
+    if (!text) return chunks;
     let currentChunk = '';
 
     const lines = text.split('\n');
@@ -341,6 +342,7 @@ export class MessageManager {
               roomId,
               content: {
                 ...content,
+                source: 'telegram',
                 text: sentMessage.text,
                 inReplyTo: messageId,
                 channelType: channelType,
