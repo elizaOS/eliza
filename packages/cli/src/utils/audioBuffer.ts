@@ -80,7 +80,9 @@ export async function convertToAudioBuffer(
     // Handle Node Readable Stream
     resultBuffer = await new Promise<Buffer>((resolve, reject) => {
       const chunks: Buffer[] = [];
-      speechResponse.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+      speechResponse.on('data', (chunk) =>
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+      );
       speechResponse.on('end', () => resolve(Buffer.concat(chunks)));
       speechResponse.on('error', (err) => reject(err));
     });
