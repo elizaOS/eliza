@@ -22,6 +22,16 @@ async function cloneRepository(repo: string, branch: string, destination: string
 
     console.log('Repository cloned successfully');
   } catch (error) {
+    // Check for branch not found error
+    if (
+      error.message &&
+      error.message.includes('Remote branch') &&
+      error.message.includes('not found')
+    ) {
+      throw new Error(
+        `Branch '${branch}' doesn't exist in the ElizaOS repository. \nCheck https://github.com/elizaOS/eliza/branches for a list of branches.`
+      );
+    }
     throw new Error(`Failed to clone repository: ${error.message}`);
   }
 }
@@ -58,11 +68,9 @@ export const setupMonorepo = new Command()
   .option('-d, --dir <directory>', 'Destination directory', './eliza')
   .action(async (options) => {
     try {
-      const { repo, branch, dir } = {
-        repo: 'elizaOS/eliza',
-        branch: 'v2-develop',
-        dir: './eliza',
-      };
+      const repo = 'elizaOS/eliza';
+      const branch = options.branch || 'v2-develop';
+      const dir = options.dir || './eliza';
 
       // Create destination directory if it doesn't exist
       const destinationDir = path.resolve(process.cwd(), dir);
