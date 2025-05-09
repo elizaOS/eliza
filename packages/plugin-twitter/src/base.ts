@@ -277,8 +277,8 @@ export class ClientBase {
       timeParsed: raw.timeParsed
         ? new Date(raw.timeParsed)
         : raw.legacy?.created_at
-          ? new Date(raw.legacy?.created_at)
-          : undefined,
+        ? new Date(raw.legacy?.created_at)
+        : undefined,
       timestamp:
         raw.timestamp ??
         (raw.legacy?.created_at ? new Date(raw.legacy.created_at).getTime() / 1000 : undefined),
@@ -330,7 +330,7 @@ export class ClientBase {
       throw new Error(`Missing required Twitter credentials: ${missing.join(', ')}`);
     }
 
-    const maxRetries = 3;
+    const maxRetries = process.env.MAX_RETRIES ? parseInt(process.env.MAX_RETRIES) : 3;
     let retryCount = 0;
     let lastError: Error | null = null;
 
@@ -747,11 +747,9 @@ export class ClientBase {
   async setCookiesFromArray(cookiesArray: any[]) {
     const cookieStrings = cookiesArray.map(
       (cookie) =>
-        `${cookie.key}=${cookie.value}; Domain=${cookie.domain}; Path=${
-          cookie.path
-        }; ${cookie.secure ? 'Secure' : ''}; ${
-          cookie.httpOnly ? 'HttpOnly' : ''
-        }; SameSite=${cookie.sameSite || 'Lax'}`
+        `${cookie.key}=${cookie.value}; Domain=${cookie.domain}; Path=${cookie.path}; ${
+          cookie.secure ? 'Secure' : ''
+        }; ${cookie.httpOnly ? 'HttpOnly' : ''}; SameSite=${cookie.sameSite || 'Lax'}`
     );
     await this.twitterClient.setCookies(cookieStrings);
   }
@@ -843,8 +841,8 @@ export class ClientBase {
             profile.biography || typeof this.runtime.character.bio === 'string'
               ? (this.runtime.character.bio as string)
               : this.runtime.character.bio.length > 0
-                ? this.runtime.character.bio[0]
-                : '',
+              ? this.runtime.character.bio[0]
+              : '',
           nicknames: this.profile?.nicknames || [],
         } satisfies TwitterProfile;
       });
