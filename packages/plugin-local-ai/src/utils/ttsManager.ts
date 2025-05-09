@@ -15,6 +15,7 @@ export class TTSManager {
   private synthesizer: TextToAudioPipeline | null = null;
   private defaultSpeakerEmbedding: Float32Array | null = null;
   private initialized = false;
+  private initializingPromise: Promise<void> | null = null;
 
   private constructor(cacheDir: string) {
     this.cacheDir = path.join(cacheDir, 'tts');
@@ -37,75 +38,92 @@ export class TTSManager {
   }
 
   private async initialize(): Promise<void> {
-    try {
-      if (this.initialized && this.synthesizer && this.defaultSpeakerEmbedding) {
-        return;
-      }
-      logger.info('Initializing TTS with Transformers.js backend...');
-
-      const ttsModelSpec = MODEL_SPECS.tts.default;
-      if (!ttsModelSpec) {
-        throw new Error('Default TTS model specification not found in MODEL_SPECS.');
-      }
-      const modelName = ttsModelSpec.modelId;
-      const speakerEmbeddingUrl = ttsModelSpec.defaultSpeakerEmbeddingUrl;
-
-      // 1. Load the TTS Pipeline
-      logger.info(`Loading TTS pipeline for model: ${modelName}`);
-      // Note: Quantization options might depend on the specific model availability
-      // Using default options for now.
-      this.synthesizer = await pipeline('text-to-audio', modelName);
-      logger.success(`TTS pipeline loaded successfully for model: ${modelName}`);
-
-      // 2. Load Default Speaker Embedding (if specified)
-      if (speakerEmbeddingUrl) {
-        const embeddingFilename = path.basename(new URL(speakerEmbeddingUrl).pathname);
-        const embeddingPath = path.join(this.cacheDir, embeddingFilename);
-
-        if (fs.existsSync(embeddingPath)) {
-          logger.info('Loading default speaker embedding from cache...');
-          const buffer = fs.readFileSync(embeddingPath);
-          this.defaultSpeakerEmbedding = new Float32Array(
-            buffer.buffer,
-            buffer.byteOffset,
-            buffer.length / Float32Array.BYTES_PER_ELEMENT
-          );
-          logger.success('Default speaker embedding loaded from cache.');
-        } else {
-          logger.info(`Downloading default speaker embedding from: ${speakerEmbeddingUrl}`);
-          const response = await fetch(speakerEmbeddingUrl);
-          if (!response.ok) {
-            throw new Error(`Failed to download speaker embedding: ${response.statusText}`);
-          }
-          const buffer = await response.arrayBuffer();
-          this.defaultSpeakerEmbedding = new Float32Array(buffer);
-          fs.writeFileSync(embeddingPath, Buffer.from(buffer));
-          logger.success('Default speaker embedding downloaded and cached.');
-        }
-      } else {
-        logger.warn(
-          `No default speaker embedding URL specified for model ${modelName}. Speaker control may be limited.`
-        );
-        this.defaultSpeakerEmbedding = null; // Or handle as needed if embeddings are mandatory
-      }
-
-      // Check only synthesizer as embedding might be optional for some models
-      if (!this.synthesizer) {
-        throw new Error('TTS initialization failed: Pipeline not loaded.');
-      }
-
-      logger.success('TTS initialization complete (Transformers.js)');
-      this.initialized = true;
-    } catch (error) {
-      logger.error('TTS (Transformers.js) initialization failed:', {
-        error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
-      });
-      this.initialized = false;
-      this.synthesizer = null;
-      this.defaultSpeakerEmbedding = null;
-      throw error;
+    // Guard against concurrent calls: if an initialization is already in progress, return its promise.
+    if (this.initializingPromise) {
+      logger.debug('TTS initialization already in progress, awaiting existing promise.');
+      return this.initializingPromise;
     }
+
+    // If already initialized, no need to do anything further.
+    if (this.initialized) {
+      logger.debug('TTS already initialized.');
+      return;
+    }
+
+    // Start the initialization process.
+    // The promise is stored in this.initializingPromise and cleared in the finally block.
+    this.initializingPromise = (async () => {
+      try {
+        logger.info('Initializing TTS with Transformers.js backend...');
+
+        const ttsModelSpec = MODEL_SPECS.tts.default;
+        if (!ttsModelSpec) {
+          throw new Error('Default TTS model specification not found in MODEL_SPECS.');
+        }
+        const modelName = ttsModelSpec.modelId;
+        const speakerEmbeddingUrl = ttsModelSpec.defaultSpeakerEmbeddingUrl;
+
+        // 1. Load the TTS Pipeline
+        logger.info(`Loading TTS pipeline for model: ${modelName}`);
+        this.synthesizer = await pipeline('text-to-audio', modelName);
+        logger.success(`TTS pipeline loaded successfully for model: ${modelName}`);
+
+        // 2. Load Default Speaker Embedding (if specified)
+        if (speakerEmbeddingUrl) {
+          const embeddingFilename = path.basename(new URL(speakerEmbeddingUrl).pathname);
+          const embeddingPath = path.join(this.cacheDir, embeddingFilename);
+
+          if (fs.existsSync(embeddingPath)) {
+            logger.info('Loading default speaker embedding from cache...');
+            const buffer = fs.readFileSync(embeddingPath);
+            this.defaultSpeakerEmbedding = new Float32Array(
+              buffer.buffer,
+              buffer.byteOffset,
+              buffer.length / Float32Array.BYTES_PER_ELEMENT
+            );
+            logger.success('Default speaker embedding loaded from cache.');
+          } else {
+            logger.info(`Downloading default speaker embedding from: ${speakerEmbeddingUrl}`);
+            const response = await fetch(speakerEmbeddingUrl);
+            if (!response.ok) {
+              throw new Error(`Failed to download speaker embedding: ${response.statusText}`);
+            }
+            const buffer = await response.arrayBuffer();
+            this.defaultSpeakerEmbedding = new Float32Array(buffer);
+            fs.writeFileSync(embeddingPath, Buffer.from(buffer));
+            logger.success('Default speaker embedding downloaded and cached.');
+          }
+        } else {
+          logger.warn(
+            `No default speaker embedding URL specified for model ${modelName}. Speaker control may be limited.`
+          );
+          this.defaultSpeakerEmbedding = null;
+        }
+
+        // Check synthesizer as embedding might be optional for some models
+        if (!this.synthesizer) {
+          throw new Error('TTS initialization failed: Pipeline not loaded.');
+        }
+
+        logger.success('TTS initialization complete (Transformers.js)');
+        this.initialized = true;
+      } catch (error) {
+        logger.error('TTS (Transformers.js) initialization failed:', {
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        });
+        this.initialized = false;
+        this.synthesizer = null;
+        this.defaultSpeakerEmbedding = null;
+        throw error; // Propagate error to reject the initializingPromise
+      } finally {
+        // Clear the promise once initialization is complete (successfully or not)
+        this.initializingPromise = null;
+        logger.debug('TTS initializingPromise cleared after completion/failure.');
+      }
+    })();
+
+    return this.initializingPromise;
   }
 
   /**
