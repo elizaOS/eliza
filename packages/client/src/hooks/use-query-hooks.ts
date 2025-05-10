@@ -6,7 +6,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useToast } from './use-toast';
 
-// Define the ContentWithUser type
 /**
  * Represents content with additional user information.
  * @typedef {Object} ContentWithUser
@@ -242,8 +241,8 @@ export function useStopAgent() {
 // Hook for fetching messages directly for a specific agent without requiring a room
 /**
  * Custom hook to fetch and return messages for a specific agent.
- * * @param { UUID } agentId - The unique identifier of the agent to get messages for.
- * @returns { Object } An object containing the messages for the agent.
+ * @param {UUID} agentId - The unique identifier of the agent to get messages for.
+ * @returns {Object} An object containing the messages for the agent.
  */
 export function useAgentMessages(agentId: UUID) {
   const queryClient = useQueryClient();
@@ -610,7 +609,15 @@ export function useDeleteMemory() {
   });
 }
 
-export function useDeleteAllMemories() {
+export function /**
+ * Custom hook to delete all memories for an agent in a specific room.
+ * @returns {UseMutationResult} Object containing the mutation function and its handlers.
+ */
+/**
+ * Custom hook to delete all memories for an agent in a specific room.
+ * @returns {UseMutationResult} Object containing the mutation function and its handlers.
+ */
+useDeleteAllMemories() {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -691,7 +698,17 @@ export function useUpdateMemory() {
   });
 }
 
-export function useRooms(options = {}) {
+export function /**
+ * Custom hook to fetch rooms grouped by server ID.
+ * @param {object} [options] - Optional configuration options for the query.
+ * @returns {QueryResult<Map<string, Room[]>>} Query result containing map of server IDs to room arrays.
+ */
+/**
+ * Custom hook to fetch rooms grouped by server ID.
+ * @param {object} [options] - Optional configuration options for the query.
+ * @returns {QueryResult<Map<string, Room[]>>} Query result containing map of server IDs to room arrays.
+ */
+useRooms(options = {}) {
   const network = useNetworkStatus();
 
   return useQuery<Map<string, Room[]>>({
@@ -718,4 +735,53 @@ export function useRooms(options = {}) {
     refetchIntervalInBackground: false,
     ...options,
   });
+}
+
+/**
+ * Custom hook that combines useAgents with individual useAgent calls for detailed data
+ * @returns {AgentsWithDetailsResult} Combined query results with both list and detailed data
+ */
+interface AgentsWithDetailsResult {
+  data: {
+    agents: Agent[];
+  };
+  isLoading: boolean;
+  isError: boolean;
+  error: unknown;
+}
+
+export function useAgentsWithDetails(): AgentsWithDetailsResult {
+  const { data: agentsData, isLoading: isAgentsLoading } = useAgents();
+  const agentIds = agentsData?.data?.agents?.map((agent) => agent.id as UUID) || [];
+
+  // Create individual queries for each agent
+  const agentQueries = [];
+  for (const id of agentIds) {
+    if (id) {
+      const query = useAgent(id);
+      agentQueries.push(query);
+    }
+  }
+
+  // Safely check loading and error states
+  const isLoading = isAgentsLoading || agentQueries.some((query) => query?.isLoading === true);
+  const isError = agentQueries.some((query) => query?.isError === true);
+  const error = agentQueries.find((query) => query?.error)?.error;
+
+  // Safely collect agent details
+  const detailedAgents: Agent[] = [];
+  for (const query of agentQueries) {
+    if (query?.data?.data) {
+      detailedAgents.push(query.data.data);
+    }
+  }
+
+  return {
+    data: {
+      agents: detailedAgents,
+    },
+    isLoading,
+    isError,
+    error,
+  };
 }
