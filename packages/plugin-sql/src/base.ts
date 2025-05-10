@@ -733,8 +733,8 @@ export abstract class BaseDrizzleAdapter<
         if (!entitiesByIdMap.has(entityId)) {
           const entity: Entity = {
             ...row.entity,
-            id: stringToUuid(entityId),
-            agentId: stringToUuid(row.entity.agentId),
+            id: entityId,
+            agentId: row.entity.agentId as UUID,
             metadata: row.entity.metadata as { [key: string]: any },
             components: includeComponents ? [] : undefined,
           };
