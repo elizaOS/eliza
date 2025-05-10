@@ -5,9 +5,15 @@ import { useParams } from 'react-router';
 
 import Chat from '@/components/chat';
 import { AgentSidebar } from '../components/agent-sidebar';
-import type { UUID, Agent } from '@elizaos/core';
+import type { UUID } from '@elizaos/core';
+import type { AgentWithStatus } from '@/lib/api';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '../components/ui/resizable';
 
+/**
+ * Displays the agent chat interface with an optional details sidebar in a resizable layout.
+ *
+ * Renders the chat panel for a specific agent, and conditionally shows a sidebar with agent details based on user interaction. If no agent ID is present in the URL, displays a "No data." message.
+ */
 export default function AgentRoute() {
   const [showDetails, setShowDetails] = useState(false);
   const worldId = WorldManager.getWorldId();
@@ -16,7 +22,7 @@ export default function AgentRoute() {
 
   const { data: agentData } = useAgent(agentId);
 
-  const agent = agentData?.data as Agent;
+  const agent = agentData?.data as AgentWithStatus | undefined;
 
   const toggleDetails = () => setShowDetails(!showDetails);
 
@@ -25,13 +31,15 @@ export default function AgentRoute() {
   return (
     <ResizablePanelGroup direction="horizontal" className="w-full h-full">
       <ResizablePanel defaultSize={65}>
-        <Chat
-          agentId={agentId}
-          worldId={worldId}
-          agentData={agent}
-          showDetails={showDetails}
-          toggleDetails={toggleDetails}
-        />
+        {agent && (
+          <Chat
+            agentId={agentId}
+            worldId={worldId}
+            agentData={agent}
+            showDetails={showDetails}
+            toggleDetails={toggleDetails}
+          />
+        )}
       </ResizablePanel>
       <ResizableHandle />
       {showDetails && (
@@ -39,7 +47,7 @@ export default function AgentRoute() {
           defaultSize={35}
           className="border rounded-lg m-4 overflow-y-scroll bg-background flex flex-col h-[96vh]"
         >
-          <AgentSidebar agentId={agentId} agentName={agent?.name} />
+          <AgentSidebar agentId={agentId} agentName={agent?.name || ''} />
         </ResizablePanel>
       )}
     </ResizablePanelGroup>

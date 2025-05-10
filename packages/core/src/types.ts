@@ -709,7 +709,7 @@ export interface IDatabaseAdapter {
   getAgent(agentId: UUID): Promise<Agent | null>;
 
   /** Get all agents */
-  getAgents(): Promise<Agent[]>;
+  getAgents(): Promise<Partial<Agent>[]>;
 
   createAgent(agent: Partial<Agent>): Promise<boolean>;
 

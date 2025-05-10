@@ -2134,7 +2134,7 @@ export class AgentRuntime implements IAgentRuntime {
     return await this.adapter.getAgent(agentId);
   }
 
-  async getAgents(): Promise<Agent[]> {
+  async getAgents(): Promise<Partial<Agent>[]> {
     return await this.adapter.getAgents();
   }
 
