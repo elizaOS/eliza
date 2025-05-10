@@ -2,7 +2,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
-import { fileURLToPath } from 'node:url';
 import type {
   GenerateTextParams,
   ModelTypeName,
@@ -19,19 +18,15 @@ import {
   type LlamaModel,
   getLlama,
 } from 'node-llama-cpp';
-import { validateConfig } from './environment';
+import { validateConfig, type Config } from './environment';
 import { MODEL_SPECS, type ModelSpec, type EmbeddingModelSpec } from './types';
 import { DownloadManager } from './utils/downloadManager';
 import { getPlatformManager } from './utils/platform';
-import { StudioLMManager } from './utils/studiolmManager';
 import { TokenizerManager } from './utils/tokenizerManager';
 import { TranscribeManager } from './utils/transcribeManager';
 import { TTSManager } from './utils/ttsManager';
 import { VisionManager } from './utils/visionManager';
-
-// const execAsync = promisify(exec);
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { basename } from 'path';
 
 // Words to punish in LLM responses
 /**
@@ -90,23 +85,6 @@ const wordsToPunish = [
   ' Therefore',
 ];
 
-// Add type definitions for model source selection
-/**
- * Represents the available sources for a text model: "local", "studiolm".
- */
-type TextModelSource = 'local' | 'studiolm';
-
-/**
- * Interface representing the configuration for a text model.
- *
- * @property {TextModelSource} source - The source of the text model.
- * @property {ModelTypeName} modelType - The type of the model.
- */
-interface TextModelConfig {
-  source: TextModelSource;
-  modelType: ModelTypeName;
-}
-
 /**
  * Class representing a LocalAIManager.
  * @property {LocalAIManager | null} instance - The static instance of LocalAIManager.
@@ -128,9 +106,9 @@ class LocalAIManager {
   private ctx: LlamaContext | undefined;
   private sequence: LlamaContextSequence | undefined;
   private chatSession: LlamaChatSession | undefined;
-  private modelPath: string;
-  private mediumModelPath: string;
-  private embeddingModelPath: string;
+  private modelPath!: string;
+  private mediumModelPath!: string;
+  private embeddingModelPath!: string;
   private cacheDir: string;
   private tokenizerManager: TokenizerManager;
   private downloadManager: DownloadManager;
@@ -139,16 +117,16 @@ class LocalAIManager {
   private embeddingModelConfig: EmbeddingModelSpec;
   private transcribeManager: TranscribeManager;
   private ttsManager: TTSManager;
-  private studioLMManager: StudioLMManager;
+  private config: Config | null = null; // Store validated config
 
   // Initialization state flag
-  private studioLMInitialized = false;
   private smallModelInitialized = false;
   private mediumModelInitialized = false;
   private embeddingInitialized = false;
   private visionInitialized = false;
   private transcriptionInitialized = false;
   private ttsInitialized = false;
+  private environmentInitialized = false; // Add flag for environment initialization
 
   // Initialization promises to prevent duplicate initialization
   private smallModelInitializingPromise: Promise<void> | null = null;
@@ -157,77 +135,97 @@ class LocalAIManager {
   private visionInitializingPromise: Promise<void> | null = null;
   private transcriptionInitializingPromise: Promise<void> | null = null;
   private ttsInitializingPromise: Promise<void> | null = null;
-  private studioLMInitializingPromise: Promise<void> | null = null;
+  private environmentInitializingPromise: Promise<void> | null = null; // Add promise for environment
 
   private modelsDir: string;
 
   /**
    * Private constructor function to initialize base managers and paths.
-   * This now only sets up the basic infrastructure without loading any models.
+   * Model paths are set after environment initialization.
    */
   private constructor() {
-    // Set up models directory consistently, similar to cacheDir
-    const modelsDir = path.join(os.homedir(), '.eliza', 'models');
+    this.config = validateConfig();
 
-    // Check if LLAMALOCAL_PATH is set
-    if (process.env.LLAMALOCAL_PATH?.trim()) {
-      this.modelsDir = path.resolve(process.env.LLAMALOCAL_PATH.trim());
+    this._setupCacheDir();
+
+    // Initialize active model config (default)
+    this.activeModelConfig = MODEL_SPECS.small;
+    // Initialize embedding model config (spec details)
+    this.embeddingModelConfig = MODEL_SPECS.embedding;
+  }
+
+  /**
+   * Post-validation initialization steps that require config to be set.
+   * Called after config validation in initializeEnvironment.
+   */
+  private _postValidateInit(): void {
+    this._setupModelsDir();
+
+    // Initialize managers that depend on modelsDir
+    this.downloadManager = DownloadManager.getInstance(this.cacheDir, this.modelsDir);
+    this.tokenizerManager = TokenizerManager.getInstance(this.cacheDir, this.modelsDir);
+    this.visionManager = VisionManager.getInstance(this.cacheDir);
+    this.transcribeManager = TranscribeManager.getInstance(this.cacheDir);
+    this.ttsManager = TTSManager.getInstance(this.cacheDir);
+  }
+
+  /**
+   * Sets up the models directory, reading from config or environment variables,
+   * and ensures the directory exists.
+   */
+  private _setupModelsDir(): void {
+    // Set up models directory consistently, similar to cacheDir
+    const modelsDirEnv = this.config?.MODELS_DIR?.trim() || process.env.MODELS_DIR?.trim();
+    if (modelsDirEnv) {
+      this.modelsDir = path.resolve(modelsDirEnv);
+      logger.info('Using models directory from MODELS_DIR environment variable:', this.modelsDir);
     } else {
-      // Ensure models directory exists
-      if (!fs.existsSync(modelsDir)) {
-        fs.mkdirSync(modelsDir, { recursive: true });
-        logger.debug('Created models directory');
-      }
-      this.modelsDir = modelsDir;
+      this.modelsDir = path.join(os.homedir(), '.eliza', 'models');
+      logger.info(
+        'MODELS_DIR environment variable not set, using default models directory:',
+        this.modelsDir
+      );
     }
 
-    // Set paths for models
-    this.modelPath = path.join(this.modelsDir, 'DeepHermes-3-Llama-3-3B-Preview-q4.gguf');
+    // Ensure models directory exists
+    if (!fs.existsSync(this.modelsDir)) {
+      fs.mkdirSync(this.modelsDir, { recursive: true });
+      logger.debug('Ensured models directory exists (created):', this.modelsDir);
+    } else {
+      logger.debug('Models directory already exists:', this.modelsDir);
+    }
+  }
 
-    this.mediumModelPath = path.join(this.modelsDir, 'DeepHermes-3-Llama-3-8B-q4.gguf');
-
-    // Set embedding model path
-    this.embeddingModelPath = path.join(this.modelsDir, 'bge-small-en-v1.5.Q4_K_M.gguf');
-
+  /**
+   * Sets up the cache directory, reading from config or environment variables,
+   * and ensures the directory exists.
+   */
+  private _setupCacheDir(): void {
     // Set up cache directory
-    const cacheDirEnv = process.env.CACHE_DIR?.trim();
+    const cacheDirEnv = this.config?.CACHE_DIR?.trim() || process.env.CACHE_DIR?.trim();
     if (cacheDirEnv) {
       this.cacheDir = path.resolve(cacheDirEnv);
+      logger.info('Using cache directory from CACHE_DIR environment variable:', this.cacheDir);
     } else {
       const cacheDir = path.join(os.homedir(), '.eliza', 'cache');
       // Ensure cache directory exists
       if (!fs.existsSync(cacheDir)) {
         fs.mkdirSync(cacheDir, { recursive: true });
-        logger.debug('Ensuring cache directory exists:', cacheDir);
+        logger.debug('Ensuring cache directory exists (created):', cacheDir);
       }
       this.cacheDir = cacheDir;
+      logger.info(
+        'CACHE_DIR environment variable not set, using default cache directory:',
+        this.cacheDir
+      );
     }
-
-    // Initialize the download manager
-    this.downloadManager = DownloadManager.getInstance(this.cacheDir, this.modelsDir);
-
-    // Initialize tokenizer manager
-    this.tokenizerManager = TokenizerManager.getInstance(this.cacheDir, this.modelsDir);
-
-    // Initialize vision manager
-    this.visionManager = VisionManager.getInstance(this.cacheDir);
-
-    // Initialize transcribe manager
-    this.transcribeManager = TranscribeManager.getInstance(this.cacheDir);
-
-    // Initialize TTS manager
-    this.ttsManager = TTSManager.getInstance(this.cacheDir);
-
-    // Initialize StudioLM manager if enabled
-    if (process.env.USE_STUDIOLM_TEXT_MODELS === 'true') {
-      this.studioLMManager = StudioLMManager.getInstance();
+    // Ensure cache directory exists if specified via env var but not yet created
+    if (!fs.existsSync(this.cacheDir)) {
+      fs.mkdirSync(this.cacheDir, { recursive: true });
+      logger.debug('Ensured cache directory exists (created):', this.cacheDir);
+    } else {
+      logger.debug('Cache directory already exists:', this.cacheDir);
     }
-
-    // Initialize active model config
-    this.activeModelConfig = MODEL_SPECS.small;
-
-    // Initialize embedding model config
-    this.embeddingModelConfig = MODEL_SPECS.embedding;
   }
 
   /**
@@ -242,72 +240,53 @@ class LocalAIManager {
   }
 
   /**
-   * Initializes the environment by validating the configuration and setting the environment variables with the validated values.
+   * Initializes the environment by validating the configuration and setting model paths.
+   * Now public to be callable from plugin init and model handlers.
    *
    * @returns {Promise<void>} A Promise that resolves once the environment has been successfully initialized.
    */
-  private async initializeEnvironment(): Promise<void> {
-    try {
-      logger.info('Validating environment configuration...');
-
-      // Create initial config from current env vars
-      const config = {
-        USE_LOCAL_AI: process.env.USE_LOCAL_AI,
-        USE_STUDIOLM_TEXT_MODELS: process.env.USE_STUDIOLM_TEXT_MODELS,
-      };
-
-      // Validate configuration
-      const validatedConfig = await validateConfig(config);
-
-      // Log the validated configuration
-      // logger.info("Environment configuration validated:", validatedConfig);
-      logger.info('Environment configuration validated');
-
-      // Ensure environment variables are set with validated values
-      process.env.USE_LOCAL_AI = String(validatedConfig.USE_LOCAL_AI);
-      process.env.USE_STUDIOLM_TEXT_MODELS = String(validatedConfig.USE_STUDIOLM_TEXT_MODELS);
-
-      logger.success('Environment initialization complete');
-    } catch (error) {
-      logger.error('Environment validation failed:', {
-        error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
-      });
-      throw error;
+  public async initializeEnvironment(): Promise<void> {
+    // Prevent duplicate initialization
+    if (this.environmentInitialized) return;
+    if (this.environmentInitializingPromise) {
+      await this.environmentInitializingPromise;
+      return;
     }
-  }
 
-  /**
-   * Initializes StudioLM model with error handling.
-   * @returns A Promise that resolves when the initialization is complete.
-   * @throws {Error} If StudioLM manager is not created, initialization fails, or models are not properly loaded.
-   */
-  private async initializeStudioLM(): Promise<void> {
-    try {
-      logger.info('Initializing StudioLM models...');
+    this.environmentInitializingPromise = (async () => {
+      try {
+        logger.info('Initializing environment configuration...');
 
-      // Check if StudioLM manager exists
-      if (!this.studioLMManager) {
-        throw new Error('StudioLM manager not created - cannot initialize');
+        // Re-validate config to ensure it's up to date
+        this.config = await validateConfig();
+
+        // Initialize components that depend on validated config
+        this._postValidateInit();
+
+        // Set model paths based on validated config
+        this.modelPath = path.join(this.modelsDir, this.config.LOCAL_SMALL_MODEL);
+        this.mediumModelPath = path.join(this.modelsDir, this.config.LOCAL_LARGE_MODEL);
+        this.embeddingModelPath = path.join(this.modelsDir, this.config.LOCAL_EMBEDDING_MODEL); // Set embedding path
+
+        logger.info('Using small model path:', basename(this.modelPath));
+        logger.info('Using medium model path:', basename(this.mediumModelPath));
+        logger.info('Using embedding model path:', basename(this.embeddingModelPath));
+
+        logger.info('Environment configuration validated and model paths set');
+
+        this.environmentInitialized = true;
+        logger.success('Environment initialization complete');
+      } catch (error) {
+        logger.error('Environment validation failed:', {
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        });
+        this.environmentInitializingPromise = null; // Allow retry on failure
+        throw error;
       }
+    })();
 
-      // Initialize and test models
-      await this.studioLMManager.initialize();
-
-      if (!this.studioLMManager.isInitialized()) {
-        throw new Error('StudioLM initialization failed - models not properly loaded');
-      }
-
-      this.studioLMInitialized = true;
-      logger.success('StudioLM initialization complete');
-    } catch (error) {
-      logger.error('StudioLM initialization failed:', {
-        error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
-        timestamp: new Date().toISOString(),
-      });
-      throw error;
-    }
+    await this.environmentInitializingPromise;
   }
 
   /**
@@ -323,12 +302,15 @@ class LocalAIManager {
     customModelSpec?: ModelSpec
   ): Promise<boolean> {
     let modelSpec: ModelSpec;
-    let modelPath: string;
+    let modelPathToDownload: string;
+
+    // Ensure environment is initialized to have correct paths
+    await this.initializeEnvironment();
 
     if (customModelSpec) {
       modelSpec = customModelSpec;
-      // Use embedding model path for embedding model spec, otherwise use appropriate text model path
-      modelPath =
+      // Use appropriate path based on model type, now read from instance properties
+      modelPathToDownload =
         modelType === ModelType.TEXT_EMBEDDING
           ? this.embeddingModelPath
           : modelType === ModelType.TEXT_LARGE
@@ -336,19 +318,21 @@ class LocalAIManager {
             : this.modelPath;
     } else if (modelType === ModelType.TEXT_EMBEDDING) {
       modelSpec = MODEL_SPECS.embedding;
-      modelPath = this.embeddingModelPath;
+      modelPathToDownload = this.embeddingModelPath; // Use configured path
     } else {
       modelSpec = modelType === ModelType.TEXT_LARGE ? MODEL_SPECS.medium : MODEL_SPECS.small;
-      modelPath = modelType === ModelType.TEXT_LARGE ? this.mediumModelPath : this.modelPath;
+      modelPathToDownload =
+        modelType === ModelType.TEXT_LARGE ? this.mediumModelPath : this.modelPath; // Use configured path
     }
 
     try {
-      return await this.downloadManager.downloadModel(modelSpec, modelPath);
+      // Pass the determined path to the download manager
+      return await this.downloadManager.downloadModel(modelSpec, modelPathToDownload);
     } catch (error) {
       logger.error('Model download failed:', {
         error: error instanceof Error ? error.message : String(error),
         modelType,
-        modelPath,
+        modelPath: modelPathToDownload,
       });
       throw error;
     }
@@ -383,6 +367,7 @@ class LocalAIManager {
    * @returns {Promise<void>} A promise that resolves when initialization is complete or rejects if an error occurs
    */
   async initialize(modelType: ModelTypeName = ModelType.TEXT_SMALL): Promise<void> {
+    await this.initializeEnvironment(); // Ensure environment is initialized first
     if (modelType === ModelType.TEXT_LARGE) {
       await this.lazyInitMediumModel();
     } else {
@@ -397,6 +382,7 @@ class LocalAIManager {
    */
   public async initializeEmbedding(): Promise<void> {
     try {
+      await this.initializeEnvironment(); // Ensure environment/paths are ready
       logger.info('Initializing embedding model...');
       logger.info('Models directory:', this.modelsDir);
 
@@ -407,6 +393,7 @@ class LocalAIManager {
       }
 
       // Download the embedding model using the common downloadModel function
+      // This will now use the correct embeddingModelPath
       await this.downloadModel(ModelType.TEXT_EMBEDDING);
 
       // Initialize the llama instance if not already done
@@ -416,10 +403,10 @@ class LocalAIManager {
 
       // Load the embedding model
       if (!this.embeddingModel) {
-        logger.info('Loading embedding model:', this.embeddingModelPath);
+        logger.info('Loading embedding model:', this.embeddingModelPath); // Use the correct path
 
         this.embeddingModel = await this.llama.loadModel({
-          modelPath: this.embeddingModelPath,
+          modelPath: this.embeddingModelPath, // Use the correct path
           gpuLayers: 0, // Embedding models are typically small enough to run on CPU
           vocabOnly: false,
         });
@@ -437,7 +424,7 @@ class LocalAIManager {
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
         modelsDir: this.modelsDir,
-        embeddingModelPath: this.embeddingModelPath,
+        embeddingModelPath: this.embeddingModelPath, // Log the path being used
       });
       throw error;
     }
@@ -476,8 +463,8 @@ class LocalAIManager {
       });
 
       // Return zero vector with correct dimensions as fallback
-      const zeroDimensions = process.env.LOCAL_EMBEDDING_DIMENSIONS
-        ? parseInt(process.env.LOCAL_EMBEDDING_DIMENSIONS, 10)
+      const zeroDimensions = this.config?.LOCAL_EMBEDDING_DIMENSIONS // Use validated config
+        ? this.config.LOCAL_EMBEDDING_DIMENSIONS
         : this.embeddingModelConfig.dimensions;
 
       return new Array(zeroDimensions).fill(0);
@@ -513,10 +500,10 @@ class LocalAIManager {
     if (!this.embeddingInitializingPromise) {
       this.embeddingInitializingPromise = (async () => {
         try {
-          // Follow the same pattern as lazyInitSmallModel
+          // Ensure environment is initialized first to get correct paths
           await this.initializeEnvironment();
 
-          // Download model if needed
+          // Download model if needed (uses the correct path now)
           await this.downloadModel(ModelType.TEXT_EMBEDDING);
 
           // Initialize the llama instance if not already done
@@ -524,7 +511,7 @@ class LocalAIManager {
             this.llama = await getLlama();
           }
 
-          // Load the embedding model
+          // Load the embedding model (uses the correct path)
           this.embeddingModel = await this.llama.loadModel({
             modelPath: this.embeddingModelPath,
             gpuLayers: 0, // Embedding models are typically small enough to run on CPU
@@ -551,65 +538,13 @@ class LocalAIManager {
   }
 
   /**
-   * Asynchronously generates text using StudioLM models based on the specified parameters.
-   *
-   * @param {GenerateTextParams} params - The parameters for generating the text.
-   * @returns {Promise<string>} - A promise that resolves to the generated text.
-   */
-  async generateTextLMStudio(params: GenerateTextParams): Promise<string> {
-    try {
-      const modelConfig = this.getTextModelSource();
-      logger.info('generateTextLMStudio called with:', {
-        modelSource: modelConfig.source,
-        modelType: params.modelType,
-        studioLMInitialized: this.studioLMInitialized,
-        studioLMEnabled: process.env.USE_STUDIOLM_TEXT_MODELS === 'true',
-      });
-
-      if (modelConfig.source === 'studiolm') {
-        // Check if StudioLM is enabled in environment
-        if (process.env.USE_STUDIOLM_TEXT_MODELS !== 'true') {
-          logger.warn(
-            'StudioLM requested but disabled in environment, falling back to local models'
-          );
-          return this.generateText(params);
-        }
-
-        // Check if StudioLM manager exists
-        if (!this.studioLMManager) {
-          logger.warn('StudioLM manager not initialized, falling back to local models');
-          return this.generateText(params);
-        }
-
-        // Only initialize if not already initialized
-        if (!this.studioLMInitialized) {
-          logger.info('StudioLM not initialized, initializing now...');
-          await this.initializeStudioLM();
-        }
-
-        // Pass initialization flag to generateText
-        return await this.studioLMManager.generateText(params, this.studioLMInitialized);
-      }
-
-      // Fallback to local models if something goes wrong
-      return this.generateText(params);
-    } catch (error) {
-      logger.error('Text generation with StudioLM failed:', {
-        error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
-        modelSource: this.getTextModelSource().source,
-      });
-      // Fallback to local models
-      return this.generateText(params);
-    }
-  }
-
-  /**
    * Asynchronously generates text based on the provided parameters.
    * Now uses lazy initialization for models
    */
   async generateText(params: GenerateTextParams): Promise<string> {
     try {
+      await this.initializeEnvironment(); // Ensure environment is initialized
+      logger.info('Generating text with model:', params.modelType);
       // Lazy initialize the appropriate model
       if (params.modelType === ModelType.TEXT_LARGE) {
         await this.lazyInitMediumModel();
@@ -769,7 +704,6 @@ class LocalAIManager {
     }
   }
 
-  // Add public accessor methods
   /**
    * Returns the TokenizerManager associated with this object.
    *
@@ -788,58 +722,6 @@ class LocalAIManager {
   }
 
   /**
-   * Retrieves the source configuration for the text model based on environment variables and manager existence.
-   * @returns {TextModelConfig} The configuration object containing the text model source and type.
-   */
-  public getTextModelSource(): TextModelConfig {
-    try {
-      // Default configuration
-      const config: TextModelConfig = {
-        source: 'local',
-        modelType: ModelType.TEXT_SMALL,
-      };
-
-      // Check environment configuration and manager existence
-      if (process.env.USE_STUDIOLM_TEXT_MODELS === 'true' && this.studioLMManager) {
-        config.source = 'studiolm';
-      }
-
-      logger.info('Selected text model source:', config);
-      return config;
-    } catch (error) {
-      logger.error('Error determining text model source:', error);
-      // Fallback to local models
-      return { source: 'local', modelType: ModelType.TEXT_SMALL };
-    }
-  }
-
-  /**
-   * Generic lazy initialization handler for any model type
-   */
-  private async lazyInitialize<T>(
-    modelType: string,
-    isInitialized: boolean,
-    initPromise: Promise<T> | null,
-    initFunction: () => Promise<T>
-  ): Promise<T> {
-    // If already initialized, return immediately
-    if (isInitialized) {
-      return Promise.resolve(null) as Promise<T>;
-    }
-
-    // If currently initializing, wait for it to complete
-    if (initPromise) {
-      logger.info(`Waiting for ${modelType} initialization to complete...`);
-      await initPromise;
-      return Promise.resolve(null) as Promise<T>;
-    }
-
-    // Otherwise start initialization
-    logger.info(`Lazy initializing ${modelType}...`);
-    return initFunction();
-  }
-
-  /**
    * Lazy initialize the small text model
    */
   private async lazyInitSmallModel(): Promise<void> {
@@ -847,10 +729,11 @@ class LocalAIManager {
 
     if (!this.smallModelInitializingPromise) {
       this.smallModelInitializingPromise = (async () => {
-        await this.initializeEnvironment();
+        await this.initializeEnvironment(); // Ensure environment is initialized first
         await this.checkPlatformCapabilities();
 
         // Download model if needed
+        // Pass the correct model path determined during environment init
         await this.downloadModel(ModelType.TEXT_SMALL);
 
         // Initialize Llama and small model
@@ -860,7 +743,7 @@ class LocalAIManager {
 
           const smallModel = await this.llama.loadModel({
             gpuLayers: 43,
-            modelPath: this.modelPath,
+            modelPath: this.modelPath, // Use the potentially overridden path
             vocabOnly: false,
           });
 
@@ -893,18 +776,24 @@ class LocalAIManager {
 
     if (!this.mediumModelInitializingPromise) {
       this.mediumModelInitializingPromise = (async () => {
-        // Make sure llama is initialized first
+        await this.initializeEnvironment(); // Ensure environment is initialized first
+        // Make sure llama is initialized first (implicitly done by small model init if needed)
         if (!this.llama) {
+          // Attempt to initialize small model first to get llama instance
+          // This might download the small model even if only medium is requested,
+          // but ensures llama is ready.
           await this.lazyInitSmallModel();
         }
 
+        // Download model if needed
+        // Pass the correct model path determined during environment init
         await this.downloadModel(ModelType.TEXT_LARGE);
 
         // Initialize medium model
         try {
           const mediumModel = await this.llama!.loadModel({
             gpuLayers: 43,
-            modelPath: this.mediumModelPath,
+            modelPath: this.mediumModelPath, // Use the potentially overridden path
             vocabOnly: false,
           });
 
@@ -956,10 +845,33 @@ class LocalAIManager {
     if (!this.transcriptionInitializingPromise) {
       this.transcriptionInitializingPromise = (async () => {
         try {
-          // Initialize transcription model directly
-          // Use existing initialization code from the file
-          // ...
+          // Ensure environment is initialized first
+          await this.initializeEnvironment();
+
+          // Initialize TranscribeManager if not already done
+          if (!this.transcribeManager) {
+            this.transcribeManager = TranscribeManager.getInstance(this.cacheDir);
+          }
+
+          // Ensure FFmpeg is available
+          const ffmpegReady = await this.transcribeManager.ensureFFmpeg();
+          if (!ffmpegReady) {
+            // FFmpeg is not available, log instructions and throw
+            // The TranscribeManager's ensureFFmpeg or initializeFFmpeg would have already logged instructions.
+            logger.error(
+              'FFmpeg is not available or not configured correctly. Cannot proceed with transcription.'
+            );
+            // No need to call logFFmpegInstallInstructions here as ensureFFmpeg/initializeFFmpeg already does.
+            throw new Error(
+              'FFmpeg is required for transcription but is not available. Please see server logs for installation instructions.'
+            );
+          }
+
+          // Proceed with transcription model initialization if FFmpeg is ready
+          // (Assuming TranscribeManager handles its own specific model init if any,
+          // or that nodewhisper handles it internally)
           this.transcriptionInitialized = true;
+          logger.info('Transcription prerequisites (FFmpeg) checked and ready.');
           logger.info('Transcription model initialized successfully');
         } catch (error) {
           logger.error('Failed to initialize transcription model:', error);
@@ -983,41 +895,22 @@ class LocalAIManager {
         try {
           // Initialize TTS model directly
           // Use existing initialization code from the file
-          // ...
+          // Get the TTSManager instance (ensure environment is initialized for cacheDir)
+          await this.initializeEnvironment();
+          this.ttsManager = TTSManager.getInstance(this.cacheDir);
+          // Note: The internal pipeline initialization within TTSManager happens
+          // when generateSpeech calls its own initialize method.
           this.ttsInitialized = true;
           logger.info('TTS model initialized successfully');
         } catch (error) {
-          logger.error('Failed to initialize TTS model:', error);
-          this.ttsInitializingPromise = null;
+          logger.error('Failed to lazy initialize TTS components:', error);
+          this.ttsInitializingPromise = null; // Allow retry
           throw error;
         }
       })();
     }
 
     await this.ttsInitializingPromise;
-  }
-
-  /**
-   * Lazy initialize the StudioLM integration
-   */
-  private async lazyInitStudioLM(): Promise<void> {
-    if (this.studioLMInitialized) return;
-
-    if (!this.studioLMInitializingPromise) {
-      this.studioLMInitializingPromise = (async () => {
-        try {
-          await this.initializeStudioLM();
-          this.studioLMInitialized = true;
-          logger.info('StudioLM initialized successfully');
-        } catch (error) {
-          logger.error('Failed to initialize StudioLM:', error);
-          this.studioLMInitializingPromise = null;
-          throw error;
-        }
-      })();
-    }
-
-    await this.studioLMInitializingPromise;
   }
 }
 
@@ -1034,8 +927,9 @@ export const localAiPlugin: Plugin = {
 
   async init() {
     try {
-      logger.debug('Initializing local-ai plugin...');
-      // Only validate config - actual models will be lazy-loaded when needed
+      logger.debug('Initializing local-ai plugin environment...');
+      // Call initializeEnvironment (now public)
+      await localAIManager.initializeEnvironment();
       logger.success('Local AI plugin configuration validated and initialized');
     } catch (error) {
       logger.error('Plugin initialization failed:', {
@@ -1051,17 +945,8 @@ export const localAiPlugin: Plugin = {
       { prompt, stopSequences = [] }: GenerateTextParams
     ) => {
       try {
-        const modelConfig = localAIManager.getTextModelSource();
-
-        if (modelConfig.source !== 'local') {
-          return await localAIManager.generateTextLMStudio({
-            prompt,
-            stopSequences,
-            runtime,
-            modelType: ModelType.TEXT_SMALL,
-          });
-        }
-
+        // Ensure environment is initialized before generating text (now public)
+        await localAIManager.initializeEnvironment();
         return await localAIManager.generateText({
           prompt,
           stopSequences,
@@ -1079,17 +964,8 @@ export const localAiPlugin: Plugin = {
       { prompt, stopSequences = [] }: GenerateTextParams
     ) => {
       try {
-        const modelConfig = localAIManager.getTextModelSource();
-
-        if (modelConfig.source !== 'local') {
-          return await localAIManager.generateTextLMStudio({
-            prompt,
-            stopSequences,
-            runtime,
-            modelType: ModelType.TEXT_LARGE,
-          });
-        }
-
+        // Ensure environment is initialized before generating text (now public)
+        await localAIManager.initializeEnvironment();
         return await localAIManager.generateText({
           prompt,
           stopSequences,
@@ -1126,6 +1002,8 @@ export const localAiPlugin: Plugin = {
 
     [ModelType.OBJECT_SMALL]: async (runtime: IAgentRuntime, params: ObjectGenerationParams) => {
       try {
+        // Ensure environment is initialized (now public)
+        await localAIManager.initializeEnvironment();
         logger.info('OBJECT_SMALL handler - Processing request:', {
           prompt: params.prompt,
           hasSchema: !!params.schema,
@@ -1139,25 +1017,13 @@ export const localAiPlugin: Plugin = {
             '\nPlease respond with valid JSON only, without any explanations, markdown formatting, or additional text.';
         }
 
-        const modelConfig = localAIManager.getTextModelSource();
-
-        // Generate text based on the configured model source
-        let textResponse: string;
-        if (modelConfig.source !== 'local') {
-          textResponse = await localAIManager.generateTextLMStudio({
-            prompt: jsonPrompt,
-            stopSequences: params.stopSequences,
-            runtime,
-            modelType: ModelType.TEXT_SMALL,
-          });
-        } else {
-          textResponse = await localAIManager.generateText({
-            prompt: jsonPrompt,
-            stopSequences: params.stopSequences,
-            runtime,
-            modelType: ModelType.TEXT_SMALL,
-          });
-        }
+        // Directly generate text using the local small model
+        const textResponse = await localAIManager.generateText({
+          prompt: jsonPrompt,
+          stopSequences: params.stopSequences,
+          runtime,
+          modelType: ModelType.TEXT_SMALL,
+        });
 
         // Extract and parse JSON from the text response
         try {
@@ -1240,6 +1106,8 @@ export const localAiPlugin: Plugin = {
 
     [ModelType.OBJECT_LARGE]: async (runtime: IAgentRuntime, params: ObjectGenerationParams) => {
       try {
+        // Ensure environment is initialized (now public)
+        await localAIManager.initializeEnvironment();
         logger.info('OBJECT_LARGE handler - Processing request:', {
           prompt: params.prompt,
           hasSchema: !!params.schema,
@@ -1253,25 +1121,13 @@ export const localAiPlugin: Plugin = {
             '\nPlease respond with valid JSON only, without any explanations, markdown formatting, or additional text.';
         }
 
-        const modelConfig = localAIManager.getTextModelSource();
-
-        // Generate text based on the configured model source
-        let textResponse: string;
-        if (modelConfig.source !== 'local') {
-          textResponse = await localAIManager.generateTextLMStudio({
-            prompt: jsonPrompt,
-            stopSequences: params.stopSequences,
-            runtime,
-            modelType: ModelType.TEXT_LARGE,
-          });
-        } else {
-          textResponse = await localAIManager.generateText({
-            prompt: jsonPrompt,
-            stopSequences: params.stopSequences,
-            runtime,
-            modelType: ModelType.TEXT_LARGE,
-          });
-        }
+        // Directly generate text using the local large model
+        const textResponse = await localAIManager.generateText({
+          prompt: jsonPrompt,
+          stopSequences: params.stopSequences,
+          runtime,
+          modelType: ModelType.TEXT_LARGE,
+        });
 
         // Extract and parse JSON from the text response
         try {

@@ -21,7 +21,7 @@ npm install -g @elizaos/cli@beta
 Or use it directly with npx:
 
 ```bash
-npx @elizaos/cli@beta [command]
+elizaos [command]
 ```
 
 ## Available Commands

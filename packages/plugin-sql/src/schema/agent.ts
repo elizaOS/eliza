@@ -22,41 +22,49 @@ export const agentTable = pgTable(
       .notNull(),
 
     // Character
-    name: text('name'),
+    name: text('name').notNull(),
     username: text('username'),
-    system: text('system'),
+    system: text('system').notNull(),
     bio: jsonb('bio').$type<string | string[]>().notNull(),
     messageExamples: jsonb('message_examples')
       .$type<MessageExample[][]>()
-      .default(sql`'[]'::jsonb`),
+      .default(sql`'[]'::jsonb`)
+      .notNull(),
     postExamples: jsonb('post_examples')
       .$type<string[]>()
-      .default(sql`'[]'::jsonb`),
+      .default(sql`'[]'::jsonb`)
+      .notNull(),
     topics: jsonb('topics')
       .$type<string[]>()
-      .default(sql`'[]'::jsonb`),
+      .default(sql`'[]'::jsonb`)
+      .notNull(),
     adjectives: jsonb('adjectives')
       .$type<string[]>()
-      .default(sql`'[]'::jsonb`),
+      .default(sql`'[]'::jsonb`)
+      .notNull(),
     knowledge: jsonb('knowledge')
       .$type<(string | { path: string; shared?: boolean })[]>()
-      .default(sql`'[]'::jsonb`),
+      .default(sql`'[]'::jsonb`)
+      .notNull(),
     plugins: jsonb('plugins')
       .$type<string[]>()
-      .default(sql`'[]'::jsonb`),
+      .default(sql`'[]'::jsonb`)
+      .notNull(),
     settings: jsonb('settings')
       .$type<{
         secrets?: { [key: string]: string | boolean | number };
         [key: string]: unknown;
       }>()
-      .default(sql`'{}'::jsonb`),
+      .default(sql`'{}'::jsonb`)
+      .notNull(),
     style: jsonb('style')
       .$type<{
         all?: string[];
         chat?: string[];
         post?: string[];
       }>()
-      .default(sql`'{}'::jsonb`),
+      .default(sql`'{}'::jsonb`)
+      .notNull(),
   },
   (table) => {
     return {

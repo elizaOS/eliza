@@ -86,7 +86,7 @@ async function checkCliVersion() {
       console.warn(
         `You are using CLI version ${currentVersion}, but the latest version is ${latestVersion} (published ${new Date(timeData[latestVersion]).toLocaleDateString()})`
       );
-      console.info(`Run 'npx @elizaos/cli@beta update' to update to the latest version`);
+      console.info(`Run 'elizaos update' to update to the latest version`);
 
       const { update } = await prompts({
         type: 'confirm',
@@ -293,11 +293,6 @@ export const publish = new Command()
   .option('-r, --registry <registry>', 'target registry', 'elizaOS/registry')
   .option('-n, --npm', 'publish to npm instead of GitHub', false)
   .option('-t, --test', 'test publish process without making changes', false)
-  .option(
-    '-px, --platform <platform>',
-    'specify platform compatibility (node, browser, universal)',
-    'universal'
-  )
   .option('-d, --dry-run', 'generate registry files locally without publishing', false)
   .option('-sr, --skip-registry', 'skip publishing to the registry', false)
   .hook('preAction', async () => {
@@ -432,18 +427,9 @@ export const publish = new Command()
         }
       }
 
-      // Validate platform option
-      const validPlatforms = ['node', 'browser', 'universal'];
-      if (opts.platform && !validPlatforms.includes(opts.platform)) {
-        console.error(
-          `Invalid platform: ${opts.platform}. Valid options are: ${validPlatforms.join(', ')}`
-        );
-        process.exit(1);
-      }
-
       // Add packageType and platform to package.json for publishing
       packageJson.packageType = detectedType;
-      packageJson.platform = opts.platform;
+      packageJson.platform ??= 'node'; // Default to 'node' platform if not specified
 
       // Preserve agentConfig if it exists or create it
       if (!packageJson.agentConfig) {
@@ -523,7 +509,7 @@ export const publish = new Command()
         registry: opts.registry,
         username: credentials.username,
         useNpm: opts.npm,
-        platform: opts.platform,
+        platform: packageJson.platform,
       };
       await saveRegistrySettings(settings);
 
@@ -590,6 +576,10 @@ export const publish = new Command()
             console.error('Registry publishing test failed');
             process.exit(1);
           }
+        } else {
+          console.info(
+            '\nSkipping registry publishing test as requested with --skip-registry flag'
+          );
         }
 
         console.log('All tests passed successfully!');
@@ -633,6 +623,7 @@ export const publish = new Command()
           packageJson,
           cliVersion,
           credentials.username,
+          opts.skipRegistry,
           false
         );
 
@@ -682,6 +673,8 @@ export const publish = new Command()
         }
       } else if (detectedType === 'project') {
         console.info('Skipping registry publication for projects');
+      } else if (opts.skipRegistry) {
+        console.info('Skipping registry publication as requested with --skip-registry flag');
       }
 
       console.log(

@@ -411,6 +411,7 @@ export interface Component {
   worldId: UUID;
   sourceEntityId: UUID;
   type: string;
+  createdAt: number;
   data: {
     [key: string]: any;
   };
@@ -452,6 +453,8 @@ export type World = {
   };
 };
 
+export type RoomMetadata = Record<string, unknown>;
+
 export type Room = {
   id: UUID;
   name?: string;
@@ -461,7 +464,7 @@ export type Room = {
   channelId?: string;
   serverId?: string;
   worldId?: UUID;
-  metadata?: Record<string, unknown>;
+  metadata?: RoomMetadata;
 };
 
 /**
@@ -560,6 +563,13 @@ export type Route = {
 /**
  * Plugin for extending agent functionality
  */
+
+export type PluginEvents = {
+  [K in keyof EventPayloadMap]?: EventHandler<K>[];
+} & {
+  [key: string]: ((params: EventPayload) => Promise<any>)[];
+};
+
 export interface Plugin {
   name: string;
   description: string;
@@ -587,11 +597,7 @@ export interface Plugin {
   models?: {
     [key: string]: (...args: any[]) => Promise<any>;
   };
-  events?: {
-    [K in keyof EventPayloadMap]?: EventHandler<K>[];
-  } & {
-    [key: string]: ((params: EventPayload) => Promise<any>)[];
-  };
+  events?: PluginEvents;
   routes?: Route[];
   tests?: TestSuite[];
 }
@@ -1267,18 +1273,20 @@ export interface TaskWorker {
   validate?: (runtime: IAgentRuntime, message: Memory, state: State) => Promise<boolean>;
 }
 
+export type TaskMetadata = {
+  updateInterval?: number;
+  options?: {
+    name: string;
+    description: string;
+  }[];
+  [key: string]: unknown;
+};
+
 export interface Task {
   id?: UUID;
   name: string;
   updatedAt?: number;
-  metadata?: {
-    updateInterval?: number;
-    options?: {
-      name: string;
-      description: string;
-    }[];
-    [key: string]: unknown;
-  };
+  metadata?: TaskMetadata;
   description: string;
   roomId?: UUID;
   worldId?: UUID;

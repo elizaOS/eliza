@@ -24,7 +24,7 @@ export const logTable = pgTable(
     type: text('type').notNull(),
     roomId: uuid('roomId')
       .notNull()
-      .references(() => roomTable.id),
+      .references(() => roomTable.id, { onDelete: 'cascade' }),
   },
   (table) => [
     foreignKey({

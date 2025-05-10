@@ -84,13 +84,6 @@ export async function copyTemplate(
   // Copy template files
   await copyDir(templateDir, targetDir);
 
-  // Explicitly check and copy .gitignore file (hidden files can be missed)
-  const srcGitignore = path.join(templateDir, '.gitignore');
-  const destGitignore = path.join(targetDir, '.gitignore');
-  if (existsSync(srcGitignore) && !existsSync(destGitignore)) {
-    await fs.copyFile(srcGitignore, destGitignore);
-  }
-
   // Update package.json with new name and dependency versions
   const packageJsonPath = path.join(targetDir, 'package.json');
 
@@ -127,7 +120,9 @@ export async function copyTemplate(
       for (const depName of Object.keys(packageJson.dependencies)) {
         if (depName.startsWith('@elizaos/')) {
           logger.info(`Setting ${depName} to use latest version dynamically`);
-          packageJson.dependencies[depName] = cliPackageVersion.includes('beta') ? 'beta' : 'latest';
+          packageJson.dependencies[depName] = cliPackageVersion.includes('beta')
+            ? 'beta'
+            : 'latest';
         }
       }
     }
@@ -137,7 +132,9 @@ export async function copyTemplate(
       for (const depName of Object.keys(packageJson.devDependencies)) {
         if (depName.startsWith('@elizaos/')) {
           logger.info(`Setting dev dependency ${depName} to use version ${cliPackageVersion}`);
-          packageJson.devDependencies[depName] = cliPackageVersion.includes('beta') ? 'beta' : 'latest';
+          packageJson.devDependencies[depName] = cliPackageVersion.includes('beta')
+            ? 'beta'
+            : 'latest';
         }
       }
     }

@@ -326,7 +326,7 @@ Each agent operates independently but can share the same database and resources.
 After configuring your project, you can run it using:
 
 ```bash
-npx @elizaos/cli@beta start
+elizaos start
 ```
 
 This will start your agents according to your project configuration.

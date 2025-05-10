@@ -20,5 +20,4 @@ export default defineConfig({
     '@elizaos/core',
     // Add other modules you want to externalize
   ],
-  minify: true,
 });

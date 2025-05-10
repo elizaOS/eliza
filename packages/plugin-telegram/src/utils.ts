@@ -10,6 +10,7 @@ const TELEGRAM_RESERVED_REGEX = /([_*[\]()~`>#+\-=|{}.!\\])/g;
  * (Any character in 1–126 that is reserved is prefixed with a backslash.)
  */
 function escapePlainText(text: string): string {
+  if (!text) return '';
   return text.replace(TELEGRAM_RESERVED_REGEX, '\\$1');
 }
 
@@ -17,6 +18,7 @@ function escapePlainText(text: string): string {
  * Escapes plain text line‐by–line while preserving any leading blockquote markers.
  */
 function escapePlainTextPreservingBlockquote(text: string): string {
+  if (!text) return '';
   return text
     .split('\n')
     .map((line) => {
@@ -36,6 +38,7 @@ function escapePlainTextPreservingBlockquote(text: string): string {
  * Telegram requires that inside code blocks all ` and \ characters are escaped.
  */
 function escapeCode(text: string): string {
+  if (!text) return '';
   return text.replace(/([`\\])/g, '\\$1');
 }
 
@@ -44,6 +47,7 @@ function escapeCode(text: string): string {
  * inside the URL, only ")" and "\" need to be escaped.
  */
 function escapeUrl(url: string): string {
+  if (!url) return '';
   return url.replace(/([)\\])/g, '\\$1');
 }
 
@@ -176,6 +180,7 @@ export function convertMarkdownToTelegram(markdown: string): string {
  */
 export function splitMessage(text: string, maxLength = 4096): string[] {
   const chunks: string[] = [];
+  if (!text) return chunks;
   let currentChunk = '';
 
   const lines = text.split('\n');

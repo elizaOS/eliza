@@ -18,7 +18,6 @@ import {
 } from '@elizaos/core';
 import express from 'express';
 import fs from 'node:fs';
-import { Readable } from 'node:stream';
 
 /**
  * Interface representing a custom request object that extends the express.Request interface.
@@ -92,7 +91,7 @@ export function agentRouter(
   });
 
   router.all('/:agentId/plugins/:pluginName/*', async (req, res, next) => {
-    const agentId = req.params.agentId;
+    const agentId = req.params.agentId as UUID;
     if (!agentId) {
       logger.debug('[AGENT PLUGINS MIDDLEWARE] Params required');
       res.status(400).json({
@@ -106,7 +105,7 @@ export function agentRouter(
     }
 
     try {
-      let runtime = false;
+      let runtime: IAgentRuntime | undefined;
       if (validateUuid(agentId)) {
         runtime = agents.get(agentId);
       }
@@ -611,6 +610,63 @@ export function agentRouter(
     }
   });
 
+  router.delete('/:agentId/memories/all/:roomId/', async (req, res) => {
+    try {
+      const agentId = validateUuid(req.params.agentId);
+      const roomId = validateUuid(req.params.roomId);
+
+      if (!agentId) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'INVALID_ID',
+            message: 'Invalid agent ID',
+          },
+        });
+        return;
+      }
+
+      if (!roomId) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'INVALID_ID',
+            message: 'Invalid room ID',
+          },
+        });
+        return;
+      }
+
+      const runtime = agents.get(agentId);
+      if (!runtime) {
+        res.status(404).json({
+          success: false,
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Agent not found',
+          },
+        });
+        return;
+      }
+
+      await runtime.deleteAllMemories(roomId, 'messages');
+      await runtime.deleteAllMemories(roomId, 'knowledge');
+      await runtime.deleteAllMemories(roomId, 'documents');
+
+      res.status(204).send();
+    } catch (e) {
+      logger.error('[DELETE ALL MEMORIES] Error deleting all memories:', e);
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'DELETE_ERROR',
+          message: 'Error deleting all memories',
+          details: e instanceof Error ? e.message : String(e),
+        },
+      });
+    }
+  });
+
   // Delete Memory
   router.delete('/:agentId/memories/:memoryId', async (req, res) => {
     const agentId = validateUuid(req.params.agentId);
@@ -844,27 +900,16 @@ export function agentRouter(
     try {
       const speechResponse = await runtime.useModel(ModelType.TEXT_TO_SPEECH, text);
 
-      // Convert to Buffer if not already a Buffer
-      const audioBuffer = Buffer.isBuffer(speechResponse)
-        ? speechResponse
-        : await new Promise<Buffer>((resolve, reject) => {
-            if (!(speechResponse instanceof Readable)) {
-              return reject(new Error('Unexpected response type from TEXT_TO_SPEECH model'));
-            }
-
-            const chunks: Buffer[] = [];
-            speechResponse.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
-            speechResponse.on('end', () => resolve(Buffer.concat(chunks)));
-            speechResponse.on('error', (err) => reject(err));
-          });
+      // Convert to Buffer if not already a Buffer and detect MIME type
+      const audioResult = await convertToAudioBuffer(speechResponse, true);
 
       logger.debug('[TTS] Setting response headers');
       res.set({
-        'Content-Type': 'audio/mpeg',
-        'Transfer-Encoding': 'chunked',
+        'Content-Type': audioResult.mimeType,
+        'Content-Length': audioResult.buffer.length.toString(),
       });
 
-      res.send(Buffer.from(audioBuffer));
+      res.send(audioResult.buffer);
     } catch (error) {
       logger.error('[TTS] Error generating speech:', error);
       res.status(500).json({
@@ -922,16 +967,17 @@ export function agentRouter(
       logger.debug('[SPEECH GENERATE] Using text-to-speech model');
       const speechResponse = await runtime.useModel(ModelType.TEXT_TO_SPEECH, text);
 
-      // Convert to Buffer if not already a Buffer
-      const audioBuffer = await convertToAudioBuffer(speechResponse);
+      // Convert to Buffer if not already a Buffer and detect MIME type
+      const audioResult = await convertToAudioBuffer(speechResponse, true);
+      logger.debug('[SPEECH GENERATE] Detected audio MIME type:', audioResult.mimeType);
 
       logger.debug('[SPEECH GENERATE] Setting response headers');
       res.set({
-        'Content-Type': 'audio/mpeg',
-        'Transfer-Encoding': 'chunked',
+        'Content-Type': audioResult.mimeType,
+        'Content-Length': audioResult.buffer.length.toString(),
       });
 
-      res.send(Buffer.from(audioBuffer));
+      res.send(audioResult.buffer);
       logger.success(
         `[SPEECH GENERATE] Successfully generated speech for: ${runtime.character.name}`
       );
@@ -1082,28 +1128,17 @@ export function agentRouter(
 
       const speechResponse = await runtime.useModel(ModelType.TEXT_TO_SPEECH, text);
 
-      // Convert to Buffer if not already a Buffer
-      const audioBuffer = Buffer.isBuffer(speechResponse)
-        ? speechResponse
-        : await new Promise<Buffer>((resolve, reject) => {
-            if (!(speechResponse instanceof Readable)) {
-              return reject(new Error('Unexpected response type from TEXT_TO_SPEECH model'));
-            }
-
-            const chunks: Buffer[] = [];
-            speechResponse.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
-            speechResponse.on('end', () => resolve(Buffer.concat(chunks)));
-            speechResponse.on('error', (err) => reject(err));
-          });
+      // Convert to Buffer if not already a Buffer and detect MIME type
+      const audioResult = await convertToAudioBuffer(speechResponse, true);
 
       logger.debug('[SPEECH CONVERSATION] Setting response headers');
 
       res.set({
-        'Content-Type': 'audio/mpeg',
-        'Transfer-Encoding': 'chunked',
+        'Content-Type': audioResult.mimeType,
+        'Content-Length': audioResult.buffer.length.toString(),
       });
 
-      res.send(Buffer.from(audioBuffer));
+      res.send(audioResult.buffer);
 
       logger.success(
         `[SPEECH CONVERSATION] Successfully processed conversation for: ${runtime.character.name}`

@@ -335,6 +335,13 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
   abstract deleteRoom(roomId: UUID): Promise<void>;
 
   /**
+   * Deletes all rooms associated with a specific server ID.
+   * @param serverId The ID of the server whose rooms should be deleted.
+   * @returns A Promise that resolves when all rooms have been deleted.
+   */
+  abstract deleteRoomsByServerId(serverId: UUID): Promise<void>;
+
+  /**
    * Retrieves room IDs for which a specific user is a participant.
    * @param entityId The UUID of the user.
    * @returns A Promise that resolves to an array of room IDs.

@@ -320,7 +320,7 @@ export class DiscordService extends Service implements IDiscordService {
       clearTimeout(timeout);
     }
     this.timeouts = [];
-    
+
     // Then destroy the client
     await this.client?.destroy();
   }
@@ -940,7 +940,7 @@ export class DiscordService extends Service implements IDiscordService {
           logger.error('Error during Discord world connection:', error);
         }
       }, 1000);
-      
+
       // Store the timeout reference to be able to cancel it when stopping
       this.timeouts.push(timeoutId);
     }

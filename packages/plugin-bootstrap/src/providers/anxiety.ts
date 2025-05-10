@@ -72,7 +72,7 @@ export const anxietyProvider: Provider = {
       'Keep voice channel interactions brief and purposeful.',
     ];
 
-    let anxietyExamples = [];
+    let anxietyExamples: string[] = [];
 
     if (channelType === ChannelType.GROUP) {
       anxietyExamples = groupAnxietyExamples;

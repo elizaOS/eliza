@@ -343,7 +343,7 @@ const scenarios = [
     const worldId = await service.createWorld('Test Server', 'Test Owner');
 
     // Create groups for each member
-    const roomIds = [];
+    const roomIds: UUID[] = [];
     for (const member of members) {
       const roomId = await service.createRoom(worldId, `Test Room for ${member.character.name}`);
       roomIds.push(roomId);
