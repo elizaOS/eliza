@@ -21,7 +21,7 @@ interface Option {
 }
 
 interface GroupPanel {
-  agents: Partial<Agent[]> | undefined;
+  agents: Partial<Agent>[] | undefined;
   onClose: () => void;
   groupId?: UUID;
 }
