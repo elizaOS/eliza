@@ -25,11 +25,11 @@ export default function Home() {
 
   const [isOverlayOpen, setOverlayOpen] = useState(false);
   const [isGroupPanelOpen, setIsGroupPanelOpen] = useState(false);
-  const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
+  const [selectedAgent, setSelectedAgent] = useState<Partial<Agent> | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState<UUID | null>(null);
   const { startAgent, isAgentStarting, isAgentStopping } = useAgentManagement();
 
-  const openOverlay = (agent: Agent) => {
+  const openOverlay = (agent: Partial<Agent>) => {
     setSelectedAgent(agent);
     setOverlayOpen(true);
   };
@@ -74,15 +74,15 @@ export default function Home() {
           {!isLoading && !isError && (
             <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-2 auto-rows-fr agents-section">
               {agents
-                ?.sort((a: Agent, b: Agent) => Number(b?.enabled) - Number(a?.enabled))
-                .map((agent: Agent) => {
+                ?.sort((a, b) => Number(b?.enabled) - Number(a?.enabled))
+                .map((agent) => {
                   return (
                     <ProfileCard
                       key={agent.id}
                       className="agent-card"
                       title={
                         <div className="flex gap-2 items-center">
-                          <div className="truncate max-w-24">{agent.name}</div>
+                          <div className="truncate max-w-24">{agent.name ?? 'Unnamed Agent'}</div>
                           {agent?.status === AgentStatus.ACTIVE ? (
                             <Tooltip>
                               <TooltipTrigger asChild>
@@ -131,7 +131,7 @@ export default function Home() {
                                 className="w-full h-full object-cover"
                               />
                             ) : (
-                              formatAgentName(agent.name)
+                              formatAgentName(agent?.name ?? '')
                             )}
                           </div>
                           {agent.status !== AgentStatus.ACTIVE && (
@@ -216,7 +216,7 @@ export default function Home() {
                           }}
                         >
                           <div className="w-full h-full flex items-center justify-center brightness-[100%] hover:brightness-[107%]">
-                            {formatAgentName(roomName ?? '')}
+                            {roomName ? formatAgentName(roomName) : 'Unnamed Group'}
                           </div>
                         </div>
                       }
@@ -247,11 +247,13 @@ export default function Home() {
         </div>
       </div>
 
-      <ProfileOverlay isOpen={isOverlayOpen} onClose={closeOverlay} agentId={selectedAgent?.id!} />
+      {selectedAgent?.id && (
+        <ProfileOverlay isOpen={isOverlayOpen} onClose={closeOverlay} agentId={selectedAgent.id} />
+      )}
 
       {isGroupPanelOpen && (
         <GroupPanel
-          agents={agents}
+          agents={agents as Agent[]}
           onClose={() => {
             setSelectedGroupId(null);
             setIsGroupPanelOpen(false);
