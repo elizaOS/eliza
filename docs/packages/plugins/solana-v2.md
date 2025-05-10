@@ -85,7 +85,7 @@ Copy `packages/plugin-solana-v2/src/character/orca/lpmanager.character.json` to 
 Follow the general installation and build steps from the README in the root of the repo
 
 #### 5. Run the agent
-Start the the agent with the following command:
+Start the agent with the following command:
 ```sh
 pnpm start --characters="characters/lpmanager.character.json"
 ```
