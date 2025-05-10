@@ -1,0 +1,1 @@
+ALTER TABLE "agents" ALTER COLUMN "enabled" SET DEFAULT true;

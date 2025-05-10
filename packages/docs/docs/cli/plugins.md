@@ -8,7 +8,7 @@ image: /img/cli.jpg
 
 # Plugin Command
 
-The `plugins` command helps you manage ElizaOS plugins within your project. You can list available plugins, add them to your project, see which ones are installed, and remove them.
+The `plugin` command helps developers manage ElizaOS plugins, focusing on the publishing process.
 
 ## Subcommands
 
@@ -24,14 +24,37 @@ The `plugins` command helps you manage ElizaOS plugins within your project. You 
 ### Listing Available Plugins
 
 ```bash
-# List all available plugins
-elizaos plugins list
-
-# List only adapter plugins
-elizaos plugins list --type adapter
+elizaos plugin publish [options]
 ```
 
-### Adding a Plugin
+Options:
+
+- `-r, --registry <registry>` - Target registry (default: 'elizaOS/registry')
+- `-n, --npm` - Publish to npm instead of GitHub (default: false)
+- `-t, --test` - Test publish process without making changes (default: false)
+- `-p, --platform <platform>` - Specify platform compatibility: node, browser, or universal (default: 'universal')
+
+## Plugin Development Workflow
+
+### 1. Create a Plugin
+
+Start by creating a new plugin:
+
+```bash
+elizaos create -t plugin my-plugin
+```
+
+This creates a starter plugin with the required directory structure.
+
+### 2. Develop Your Plugin
+
+The plugin structure includes:
+
+- `src/index.ts` - Main plugin code
+- `src/plugin.ts` - Plugin configuration and initialization
+- `src/metadata.ts` - Plugin metadata (name, description, etc.)
+
+Run development mode to test your plugin:
 
 ```bash
 # Add the 'openai' plugin (will look up '@elizaos/plugin-openai')

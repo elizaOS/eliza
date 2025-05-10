@@ -212,10 +212,15 @@ export async function configureDatabaseSettings(reconfigure = false): Promise<st
   let postgresUrl = process.env.POSTGRES_URL;
   const pgliteDataDir = process.env.PGLITE_DATA_DIR || path.join(elizaDbDir, 'pglite');
 
-  // If we already have a postgres URL configured and not reconfiguring, use that
-  if (postgresUrl && !reconfigure) {
-    logger.debug('Using existing PostgreSQL configuration');
-    return postgresUrl;
+  // Add debug logging
+  logger.debug(`Configuration check - POSTGRES_URL: ${postgresUrl ? 'SET' : 'NOT SET'}`);
+  logger.debug(`Configuration check - PGLITE_DATA_DIR: ${pgliteDataDir ? 'SET' : 'NOT SET'}`);
+  logger.debug(`Configuration check - reconfigure: ${reconfigure}`);
+
+  // BYPASS ADDED: Skip prompts and always use postgres if URL is provided
+  if (process.env.POSTGRES_URL) {
+    console.log('BYPASS: Using postgres URL from environment variable');
+    return process.env.POSTGRES_URL;
   }
 
   // If we already have PGLITE_DATA_DIR set in env and not reconfiguring, use PGLite
@@ -228,51 +233,10 @@ export async function configureDatabaseSettings(reconfigure = false): Promise<st
     return null;
   }
 
-  try {
-    // Prompt for database selection
-    const { database } = await prompts({
-      type: 'select',
-      name: 'database',
-      message: 'Select your database:',
-      choices: [
-        { title: 'pglite (embedded database)', value: 'pglite' },
-        { title: 'postgres (external database)', value: 'postgres' },
-      ],
-      initial: 0,
-    });
-
-    if (!database || database === 'pglite') {
-      // If selection canceled or pglite selected
-      const dbChoice = !database ? 'Selection canceled, defaulting to' : 'Selected';
-      logger.info(`${dbChoice} pglite database`);
-
-      await setupPgLite(elizaDbDir, envFilePath);
-      return null;
-    }
-
-    // User selected postgres
-    const result = await promptAndStorePostgresUrl(envFilePath);
-    if (!result) {
-      // If no valid Postgres URL provided, default to PGLite
-      logger.warn('No valid Postgres URL provided, defaulting to pglite database');
-      await setupPgLite(elizaDbDir, envFilePath);
-      return null;
-    }
-
-    return result;
-  } catch (error) {
-    logger.error('Error during database configuration:', error);
-    logger.info('Defaulting to pglite database');
-
-    try {
-      await setupPgLite(elizaDbDir, envFilePath);
-    } catch (setupError) {
-      logger.error('Critical error setting up database:', setupError);
-      throw new Error('Failed to configure database');
-    }
-  }
-
-  return null; // Default to pglite
+  // BYPASS ADDED: Default to pglite if no configuration is provided
+  console.log('BYPASS: No database configuration found, defaulting to pglite');
+  await setupPgLite(elizaDbDir, envFilePath);
+  return null;
 }
 
 // Main config schema
