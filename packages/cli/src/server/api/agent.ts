@@ -90,43 +90,6 @@ export function agentRouter(
     }
   });
 
-  // Serve agent avatar
-  router.get('/:agentId.png', async (req, res) => {
-    const agentId = req.params.agentId as UUID;
-
-    try {
-      const agent = await db.getAgent(agentId);
-      if (!agent || !agent.avatar) {
-        res.status(404).json({
-          success: false,
-          error: {
-            code: 'NOT_FOUND',
-            message: 'Avatar not found',
-          },
-        });
-        return;
-      }
-
-      // Set content type for PNG image
-      res.setHeader('Content-Type', 'image/png');
-      // Set cache control headers
-      res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
-
-      // Send the avatar data from database
-      res.send(Buffer.from(agent.avatar, 'base64'));
-    } catch (error) {
-      logger.error('[AGENT AVATAR] Error retrieving avatar:', error);
-      res.status(500).json({
-        success: false,
-        error: {
-          code: 500,
-          message: 'Error retrieving avatar',
-          details: error.message,
-        },
-      });
-    }
-  });
-
   // Get full agent details
   router.get('/:agentId', async (req, res) => {
     const agentId = req.params.agentId as UUID;
