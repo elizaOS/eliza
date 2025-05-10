@@ -58,8 +58,6 @@ export function agentRouter(
       const allAgents = await db.getAgents();
       const runtimes = Array.from(agents.keys());
 
-      console.log(allAgents);
-
       // Return only minimal agent data
       const response = allAgents
         .map((agent: Agent) => ({
@@ -86,6 +84,43 @@ export function agentRouter(
         error: {
           code: 500,
           message: 'Error retrieving agents',
+          details: error.message,
+        },
+      });
+    }
+  });
+
+  // Serve agent avatar
+  router.get('/:agentId.png', async (req, res) => {
+    const agentId = req.params.agentId as UUID;
+
+    try {
+      const agent = await db.getAgent(agentId);
+      if (!agent || !agent.avatar) {
+        res.status(404).json({
+          success: false,
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Avatar not found',
+          },
+        });
+        return;
+      }
+
+      // Set content type for PNG image
+      res.setHeader('Content-Type', 'image/png');
+      // Set cache control headers
+      res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
+
+      // Send the avatar data from database
+      res.send(Buffer.from(agent.avatar, 'base64'));
+    } catch (error) {
+      logger.error('[AGENT AVATAR] Error retrieving avatar:', error);
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 500,
+          message: 'Error retrieving avatar',
           details: error.message,
         },
       });

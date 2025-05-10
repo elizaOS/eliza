@@ -247,17 +247,7 @@ export default function Home() {
         </div>
       </div>
 
-      <ProfileOverlay
-        isOpen={isOverlayOpen}
-        onClose={closeOverlay}
-        agent={
-          agents.find((a) => a.id === selectedAgent?.id) ||
-          (selectedAgent as Agent) ||
-          agents[0] ||
-          ({} as Agent)
-        }
-        agents={agents}
-      />
+      <ProfileOverlay isOpen={isOverlayOpen} onClose={closeOverlay} agentId={selectedAgent?.id!} />
 
       {isGroupPanelOpen && (
         <GroupPanel

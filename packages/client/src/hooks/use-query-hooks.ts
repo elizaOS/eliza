@@ -81,7 +81,7 @@ const useNetworkStatus = () => {
 export function useAgents(options = {}) {
   const network = useNetworkStatus();
 
-  return useQuery<{ data: { agents: Partial<Agent[]> } }>({
+  return useQuery<{ data: { agents: Partial<Agent>[] } }>({
     queryKey: ['agents'],
     queryFn: () => apiClient.getAgents(),
     staleTime: STALE_TIMES.FREQUENT, // Use shorter stale time for real-time data
