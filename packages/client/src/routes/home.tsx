@@ -14,6 +14,11 @@ import { useAgentManagement } from '../hooks/use-agent-management';
 import GroupPanel from '@/components/group-panel';
 import { Button } from '../components/ui/button';
 import { Separator } from '../components/ui/separator';
+/**
+ * Renders the main dashboard for managing agents and groups, providing interactive controls for viewing, starting, messaging, and configuring agents, as well as creating and editing groups.
+ *
+ * Displays lists of agents and groups with status indicators, action buttons, and overlays for detailed views and settings. Handles loading and error states, and supports navigation to chat and settings pages.
+ */
 export default function Home() {
   const { data: agentsData, isLoading, isError, error } = useAgentsWithDetails();
   const navigate = useNavigate();

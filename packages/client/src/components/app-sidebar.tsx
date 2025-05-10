@@ -240,7 +240,11 @@ const CreateButton = ({ onCreateRoom }: { onCreateRoom: () => void }) => {
   );
 };
 
-/* ---------- main component ---------- */
+/**
+ * Renders the main application sidebar, displaying navigation, agent lists, group rooms, and utility links.
+ *
+ * The sidebar includes sections for online and offline agents, group rooms, a create button for agents and groups, and footer links to documentation, logs, and settings. It handles loading and error states for agent and room data, and conditionally displays a group creation panel.
+ */
 export function AppSidebar() {
   const location = useLocation();
 
