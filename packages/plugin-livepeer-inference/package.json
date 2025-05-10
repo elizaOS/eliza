@@ -1,0 +1,68 @@
+{
+  "name": "@elizaos/plugin-livepeer",
+  "description": "Livepeer inference plugin for elizaOS",
+  "version": "1.0.0-beta.33",
+  "private": false,
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "github:UD1sto/plugin-livepeer-inference"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@elizaos/cli": "1.0.0-beta.34",
+    "@elizaos/core": "1.0.0-beta.34",
+    "@elizaos/plugin-anthropic": "workspace:*",
+    "@elizaos/plugin-bootstrap": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "zod": "3.24.2"
+  },
+  "devDependencies": {
+    "tsup": "8.4.0",
+    "typescript": "5.8.2",
+    "prettier": "3.5.3"
+  },
+  "scripts": {
+    "start": "elizaos start",
+    "test-with-cli": "cd ../cli && bun run build && cd ../plugin-starter && elizaos test",
+    "dev": "elizaos dev",
+    "build": "tsup",
+    "lint": "prettier --write ./src",
+    "test": "elizaos test",
+    "publish": "elizaos plugin publish",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "resolutions": {
+    "zod": "3.24.2"
+  },
+  "gitHead": "b165ad83e5f7a21bc1edbd83374ca087e3cd6b33",
+  "platform": "universal",
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "API_KEY": {
+        "type": "string",
+        "description": "API key for the service"
+      }
+    }
+  }
+}
