@@ -128,7 +128,7 @@ const AgentListSection = ({
   className,
 }: {
   title: string;
-  agents: Partial<Agent[]>;
+  agents: Partial<Agent>[];
   isOnline: boolean;
   activePath: string;
   className?: string;
