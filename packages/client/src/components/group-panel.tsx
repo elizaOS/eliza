@@ -21,14 +21,14 @@ interface Option {
 }
 
 interface GroupPanel {
-  agents: Agent[] | undefined;
+  agents: Partial<Agent[]> | undefined;
   onClose: () => void;
   groupId?: UUID;
 }
 
 export default function GroupPanel({ onClose, agents, groupId }: GroupPanel) {
   const [chatName, setChatName] = useState('');
-  const [selectedAgents, setSelectedAgents] = useState<Agent[]>([]);
+  const [selectedAgents, setSelectedAgents] = useState<Partial<Agent[]>>([]);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [initialOptions, setInitialOptions] = useState<Option[]>([]);

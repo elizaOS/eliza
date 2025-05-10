@@ -52,18 +52,20 @@ export function agentRouter(
   const router = express.Router();
   const db = server?.database;
 
-  // List all agents
+  // List all agents with minimal details
   router.get('/', async (_, res) => {
     try {
       const allAgents = await db.getAgents();
-
-      // find running agents
       const runtimes = Array.from(agents.keys());
 
-      // returns minimal agent data
+      console.log(allAgents);
+
+      // Return only minimal agent data
       const response = allAgents
         .map((agent: Agent) => ({
-          ...agent,
+          id: agent.id,
+          name: agent.name,
+          bio: agent.bio[0] ?? '',
           status: runtimes.includes(agent.id) ? 'active' : 'inactive',
         }))
         .sort((a: any, b: any) => {
@@ -84,6 +86,46 @@ export function agentRouter(
         error: {
           code: 500,
           message: 'Error retrieving agents',
+          details: error.message,
+        },
+      });
+    }
+  });
+
+  // Get full agent details
+  router.get('/:agentId', async (req, res) => {
+    const agentId = req.params.agentId as UUID;
+
+    try {
+      const agent = await db.getAgent(agentId);
+      if (!agent) {
+        res.status(404).json({
+          success: false,
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Agent not found',
+          },
+        });
+        return;
+      }
+
+      const runtime = agents.get(agentId);
+      const response = {
+        ...agent,
+        status: runtime ? 'active' : 'inactive',
+      };
+
+      res.json({
+        success: true,
+        data: response,
+      });
+    } catch (error) {
+      logger.error('[AGENT GET] Error retrieving agent:', error);
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 500,
+          message: 'Error retrieving agent',
           details: error.message,
         },
       });

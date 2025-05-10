@@ -128,7 +128,7 @@ const AgentListSection = ({
   className,
 }: {
   title: string;
-  agents: Agent[];
+  agents: Partial<Agent[]>;
   isOnline: boolean;
   activePath: string;
   className?: string;
@@ -153,7 +153,7 @@ const RoomListSection = ({
 }: {
   rooms: Map<string, { agentId: UUID; name: string }[]>;
   roomsLoading: boolean;
-  agents: Agent[];
+  agents: Partial<Agent[]>;
   agentAvatarMap: Record<string, string | null>;
 }) => (
   <SidebarSection title="Groups" className="mt-2">

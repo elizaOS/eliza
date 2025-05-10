@@ -344,7 +344,7 @@ export interface IDatabaseAdapter {
   init(): Promise<void>;
   close(): Promise<void>;
   getAgent(agentId: UUID): Promise<Agent | null>;
-  getAgents(): Promise<Agent[]>;
+  getAgents(): Promise<Partial<Agent>[]>;
   createAgent(agent: Partial<Agent>): Promise<boolean>;
   updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean>;
   deleteAgent(agentId: UUID): Promise<boolean>;
@@ -493,7 +493,7 @@ export interface IDatabaseAdapter {
 init(): Promise<void>;
 close(): Promise<void>;
 getAgent(agentId: UUID): Promise<Agent | null>;
-getAgents(): Promise<Agent[]>;
+getAgents(): Promise<Partial<Agent>[]>;
 createAgent(agent: Partial<Agent>): Promise<boolean>;
 updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean>;
 deleteAgent(agentId: UUID): Promise<boolean>;

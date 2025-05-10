@@ -143,19 +143,20 @@ export abstract class BaseDrizzleAdapter<
     }
 
     const agents = await this.getAgents();
-    const existingAgent = agents.find(
-      (a: Partial<Agent & { status: string }>) => a.name === agent.name
-    );
+    const existingAgent = agents.find((a) => a.name === agent.name) as Agent | undefined;
 
     if (existingAgent) {
       return existingAgent;
     }
 
-    agent.id = stringToUuid(agent.name ?? (v4() as UUID));
+    const newAgent: Agent = {
+      ...agent,
+      id: stringToUuid(agent.name),
+    } as Agent;
 
-    await this.createAgent(agent);
+    await this.createAgent(newAgent);
 
-    return agent as Agent;
+    return newAgent;
   }
 
   /**
@@ -210,15 +211,24 @@ export abstract class BaseDrizzleAdapter<
   /**
    * Asynchronously retrieves a list of agents from the database.
    *
-   * @returns {Promise<Agent[]>} A Promise that resolves to an array of Agent objects.
+   * @returns {Promise<Partial<Agent>[]>} A Promise that resolves to an array of Agent objects.
    */
-  async getAgents(): Promise<Agent[]> {
+  async getAgents(): Promise<Partial<Agent>[]> {
     return this.withDatabase(async () => {
-      const rows = await this.db.select().from(agentTable);
-      return rows.map(({ id, ...rest }) => ({
-        ...rest,
-        id: id as UUID,
-        username: rest.username ?? undefined,
+      const rows = await this.db
+        .select({
+          id: agentTable.id,
+          username: agentTable.username,
+          name: agentTable.name,
+          bio: agentTable.bio,
+          createdAt: agentTable.createdAt,
+          updatedAt: agentTable.updatedAt,
+        })
+        .from(agentTable);
+      return rows.map((row) => ({
+        ...row,
+        id: row.id as UUID,
+        username: row.username ?? undefined,
       }));
     });
   }
@@ -228,7 +238,7 @@ export abstract class BaseDrizzleAdapter<
    * @param {Partial<Agent>} agent The agent object to be created.
    * @returns {Promise<boolean>} A promise that resolves to a boolean indicating the success of the operation.
    */
-  async createAgent(agent: Partial<Agent>): Promise<boolean> {
+  async createAgent(agent: Agent): Promise<boolean> {
     return this.withDatabase(async () => {
       try {
         await this.db.transaction(async (tx) => {
@@ -258,7 +268,7 @@ export abstract class BaseDrizzleAdapter<
    * @param {Partial<Agent>} agent - The partial agent object containing the fields to update.
    * @returns {Promise<boolean>} - A boolean indicating if the agent was successfully updated.
    */
-  async updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean> {
+  async updateAgent(agentId: UUID, agent: Agent): Promise<boolean> {
     return this.withDatabase(async () => {
       try {
         if (!agentId) {

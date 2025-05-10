@@ -448,7 +448,7 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
    * Retrieves all agents from the database.
    * @returns A Promise that resolves to an array of Agent objects.
    */
-  abstract getAgents(): Promise<Agent[]>;
+  abstract getAgents(): Promise<Partial<Agent>[]>;
 
   /**
    * Creates a new agent in the database.
