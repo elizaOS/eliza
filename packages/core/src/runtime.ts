@@ -39,6 +39,7 @@ import type {
   TaskWorker,
   UUID,
   World,
+  ModelHandler,
 } from './types';
 import { EventType, type MessagePayload } from './types';
 import { stringToUuid } from './uuid';
@@ -114,7 +115,7 @@ export class AgentRuntime implements IAgentRuntime {
 
   readonly fetch = fetch;
   services = new Map<ServiceTypeName, Service>();
-  models = new Map<string, Array<(runtime: IAgentRuntime, params: any) => Promise<any>>>();
+  models = new Map<string, ModelHandler[]>();
   routes: Route[] = [];
 
   private taskWorkers = new Map<string, TaskWorker>();
@@ -144,7 +145,9 @@ export class AgentRuntime implements IAgentRuntime {
   }) {
     // use the character id if it exists, otherwise use the agentId if it is passed in, otherwise use the character name
     this.agentId =
-      opts.character?.id ?? opts?.agentId ?? stringToUuid(opts.character?.name ?? uuidv4());
+      opts.character?.id ??
+      opts?.agentId ??
+      stringToUuid(opts.character?.name ?? uuidv4() + opts.character?.username);
     this.character = opts.character;
 
     // Get log level from environment or default to info
@@ -406,7 +409,12 @@ export class AgentRuntime implements IAgentRuntime {
       if (plugin.models) {
         span.addEvent('registering_models');
         for (const [modelType, handler] of Object.entries(plugin.models)) {
-          this.registerModel(modelType as ModelTypeName, handler as (params: any) => Promise<any>);
+          this.registerModel(
+            modelType as ModelTypeName,
+            handler as (params: any) => Promise<any>,
+            plugin.name,
+            plugin?.priority
+          );
         }
       }
 
@@ -1803,23 +1811,53 @@ export class AgentRuntime implements IAgentRuntime {
     });
   }
 
-  registerModel(modelType: ModelTypeName, handler: (params: any) => Promise<any>) {
+  registerModel(
+    modelType: ModelTypeName,
+    handler: (params: any) => Promise<any>,
+    provider: string,
+    priority?: number
+  ) {
     const modelKey = typeof modelType === 'string' ? modelType : ModelType[modelType];
     if (!this.models.has(modelKey)) {
       this.models.set(modelKey, []);
     }
-    this.models.get(modelKey)?.push(handler);
+
+    this.models.get(modelKey)?.push({
+      handler,
+      provider,
+      priority: priority || 0,
+    });
+
+    // Sort by priority (highest first)
+    this.models.get(modelKey)?.sort((a, b) => (b.priority || 0) - (a.priority || 0));
   }
 
   getModel(
-    modelType: ModelTypeName
+    modelType: ModelTypeName,
+    provider?: string
   ): ((runtime: IAgentRuntime, params: any) => Promise<any>) | undefined {
     const modelKey = typeof modelType === 'string' ? modelType : ModelType[modelType];
     const models = this.models.get(modelKey);
     if (!models?.length) {
       return undefined;
     }
-    return models[0];
+
+    // Find model by provider if specified
+    if (provider) {
+      const modelWithProvider = models.find((m) => m.provider === provider);
+      if (modelWithProvider) {
+        this.runtimeLogger.debug(
+          `[AgentRuntime][${this.character.name}] Using model ${modelKey} from provider ${provider}`
+        );
+        return modelWithProvider.handler;
+      }
+    }
+
+    // Return highest priority handler (first in array after sorting)
+    this.runtimeLogger.debug(
+      `[AgentRuntime][${this.character.name}] Using model ${modelKey} from provider ${models[0].provider}`
+    );
+    return models[0].handler;
   }
 
   /**
@@ -1832,7 +1870,8 @@ export class AgentRuntime implements IAgentRuntime {
    */
   async useModel<T extends ModelTypeName, R = ModelResultMap[T]>(
     modelType: T,
-    params: Omit<ModelParamsMap[T], 'runtime'> | any
+    params: Omit<ModelParamsMap[T], 'runtime'> | any,
+    provider?: string
   ): Promise<R> {
     // Use modelType directly in span name for better granularity
     return this.startSpan(`AgentRuntime.useModel.${modelType}`, async (span) => {
@@ -1858,7 +1897,7 @@ export class AgentRuntime implements IAgentRuntime {
       }
       // Note: Logging raw API response is not feasible here as the call happens within the model handler.
 
-      const model = this.getModel(modelKey);
+      const model = this.getModel(modelKey, provider);
       if (!model) {
         const errorMsg = `No handler found for delegate type: ${modelKey}`;
         span.setStatus({ code: SpanStatusCode.ERROR, message: errorMsg });
@@ -1922,9 +1961,9 @@ export class AgentRuntime implements IAgentRuntime {
         this.runtimeLogger.debug(
           `[useModel] ${modelKey} output:`,
           Array.isArray(response)
-            ? `${JSON.stringify(response.slice(0, 5))}...${JSON.stringify(
-                response.slice(-5)
-              )} (${response.length} items)`
+            ? `${JSON.stringify(response.slice(0, 5))}...${JSON.stringify(response.slice(-5))} (${
+                response.length
+              } items)`
             : JSON.stringify(response)
         );
 

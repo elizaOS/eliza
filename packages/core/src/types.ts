@@ -1970,10 +1970,11 @@ export type DbConnection = unknown;
 export type MetadataObject = Record<string, unknown>;
 
 // Replace 'any' in model handlers
-export type ModelHandler = (
-  runtime: IAgentRuntime,
-  params: Record<string, unknown>
-) => Promise<unknown>;
+export interface ModelHandler {
+  handler: (runtime: IAgentRuntime, params: Record<string, unknown>) => Promise<unknown>;
+  provider: string;
+  priority?: number; // Optional priority for selection order
+}
 
 // Replace 'any' for service configurationa
 export type ServiceConfig = Record<string, unknown>;
