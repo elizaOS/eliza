@@ -10,9 +10,9 @@ export const taskTable = pgTable('tasks', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
   description: text('description'),
-  roomId: uuid('room_id'),
-  worldId: uuid('world_id'),
-  entityId: uuid('entity_id'),
+  roomId: uuid('roomId'),
+  worldId: uuid('worldId'),
+  entityId: uuid('entityId'),
   agentId: uuid('agent_id').notNull(),
   tags: text('tags')
     .array()

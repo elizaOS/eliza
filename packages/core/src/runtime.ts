@@ -777,7 +777,11 @@ export class AgentRuntime implements IAgentRuntime {
       overlap: 200,
       modelContextSize: 4096,
     },
-    scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID }
+    scope = {
+      roomId: this.agentId,
+      entityId: this.agentId,
+      worldId: this.agentId,
+    }
   ) {
     return this.startSpan('AgentRuntime.addKnowledge', async (span) => {
       span.setAttributes({
@@ -926,7 +930,7 @@ export class AgentRuntime implements IAgentRuntime {
             // Scope to the agent itself
             roomId: this.agentId,
             entityId: this.agentId,
-            worldId: null, // Character knowledge is agent-global, not world-specific
+            worldId: this.agentId,
           }
         );
       } catch (error) {
