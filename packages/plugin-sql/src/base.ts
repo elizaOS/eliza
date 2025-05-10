@@ -265,7 +265,7 @@ export abstract class BaseDrizzleAdapter<
    * @param {Partial<Agent>} agent - The partial agent object containing the fields to update.
    * @returns {Promise<boolean>} - A boolean indicating if the agent was successfully updated.
    */
-  async updateAgent(agentId: UUID, agent: Agent): Promise<boolean> {
+  async updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean> {
     return this.withDatabase(async () => {
       try {
         if (!agentId) {
