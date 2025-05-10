@@ -1,6 +1,6 @@
 {
-  "id": "cf3a9f85-ca72-43e9-bd73-99e07f9ed428",
-  "prevId": "8d7ae0aa-76b7-4e80-9133-db45fb9b6d1e",
+  "id": "50cd4f55-c58e-4cee-aa32-cb09a0365a3c",
+  "prevId": "cf3a9f85-ca72-43e9-bd73-99e07f9ed428",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -40,7 +40,7 @@
           "name": "name",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "username": {
           "name": "username",
@@ -52,7 +52,7 @@
           "name": "system",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "bio": {
           "name": "bio",
@@ -64,56 +64,56 @@
           "name": "message_examples",
           "type": "jsonb",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "default": "'[]'::jsonb"
         },
         "post_examples": {
           "name": "post_examples",
           "type": "jsonb",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "default": "'[]'::jsonb"
         },
         "topics": {
           "name": "topics",
           "type": "jsonb",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "default": "'[]'::jsonb"
         },
         "adjectives": {
           "name": "adjectives",
           "type": "jsonb",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "default": "'[]'::jsonb"
         },
         "knowledge": {
           "name": "knowledge",
           "type": "jsonb",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "default": "'[]'::jsonb"
         },
         "plugins": {
           "name": "plugins",
           "type": "jsonb",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "default": "'[]'::jsonb"
         },
         "settings": {
           "name": "settings",
           "type": "jsonb",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "default": "'{}'::jsonb"
         },
         "style": {
           "name": "style",
           "type": "jsonb",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "default": "'{}'::jsonb"
         }
       },
@@ -450,14 +450,14 @@
           "name": "names",
           "type": "text[]",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "default": "'{}'::text[]"
         },
         "metadata": {
           "name": "metadata",
           "type": "jsonb",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "default": "'{}'::jsonb"
         }
       },
@@ -545,7 +545,7 @@
           "tableTo": "rooms",
           "columnsFrom": ["roomId"],
           "columnsTo": ["id"],
-          "onDelete": "no action",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         },
         "fk_room": {
@@ -612,7 +612,7 @@
           "name": "agentId",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "roomId": {
           "name": "roomId",
@@ -1152,15 +1152,6 @@
           "tableFrom": "rooms",
           "tableTo": "agents",
           "columnsFrom": ["agentId"],
-          "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "rooms_worldId_worlds_id_fk": {
-          "name": "rooms_worldId_worlds_id_fk",
-          "tableFrom": "rooms",
-          "tableTo": "worlds",
-          "columnsFrom": ["worldId"],
           "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
