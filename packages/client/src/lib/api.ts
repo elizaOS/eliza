@@ -74,7 +74,7 @@ const fetcher = async ({
     const response = await fetch(normalizedUrl, options);
     const contentType = response.headers.get('Content-Type');
 
-    if (contentType === 'audio/mpeg') {
+    if (contentType?.startsWith('audio/')) {
       return await response.blob();
     }
 
@@ -251,7 +251,7 @@ export const apiClient = {
       },
       headers: {
         'Content-Type': 'application/json',
-        Accept: 'audio/mpeg',
+        Accept: 'audio/*',
         'Transfer-Encoding': 'chunked',
       },
     }),
