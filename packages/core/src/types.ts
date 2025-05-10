@@ -557,6 +557,8 @@ export type Route = {
   type: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'STATIC';
   path: string;
   filePath?: string;
+  public?: boolean;
+  name: string extends { public: true } ? string : string | undefined;
   handler?: (req: any, res: any, runtime: IAgentRuntime) => Promise<void>;
 };
 

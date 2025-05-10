@@ -719,3 +719,38 @@ export function useRooms(options = {}) {
     ...options,
   });
 }
+
+// Hook for fetching agent panels (public GET routes)
+/**
+ * Custom hook to fetch public GET routes (panels) for a specific agent.
+ * @param {UUID | undefined | null} agentId - The ID of the agent.
+ * @param {object} options - Optional TanStack Query options.
+ * @returns {QueryResult} The result of the query containing agent panels.
+ */
+export type AgentPanel = {
+  name: string;
+  path: string;
+};
+
+export function useAgentPanels(agentId: UUID | undefined | null, options = {}) {
+  console.log('useAgentPanels', agentId);
+  const network = useNetworkStatus();
+
+  return useQuery<{
+    success: boolean;
+    data: AgentPanel[];
+    error?: { code: string; message: string; details?: string };
+  }>({
+    queryKey: ['agentPanels', agentId],
+    queryFn: () => apiClient.getAgentPanels(agentId || ''),
+    enabled: Boolean(agentId),
+    staleTime: STALE_TIMES.STANDARD, // Panels are unlikely to change very frequently
+    refetchInterval: !network.isOffline && Boolean(agentId) ? STALE_TIMES.RARE : false,
+    refetchIntervalInBackground: false,
+    ...(!network.isOffline &&
+      network.effectiveType === 'slow-2g' && {
+        refetchInterval: STALE_TIMES.NEVER, // Or even disable for slow connections
+      }),
+    ...options,
+  });
+}
