@@ -345,7 +345,7 @@ const messageReceivedHandler = async ({
         }
 
         if (responseContent?.providers.length > 0) {
-          state = await runtime.composeState(message, null, [...responseContent?.providers]);
+          state = await runtime.composeState(message, responseContent?.providers || []);
         }
 
         if (
@@ -527,10 +527,10 @@ const postGeneratedHandler = async ({
   // generate thought of which providers to use using messageHandlerTemplate
 
   // Compose state with relevant context for tweet generation
-  let state = await runtime.composeState(message, null, [
+  let state = await runtime.composeState(message, [
     'PROVIDERS',
     'CHARACTER',
-    //'RECENT_MESSAGES',
+    'RECENT_MESSAGES',
     'ENTITIES',
   ]);
 
