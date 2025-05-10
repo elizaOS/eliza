@@ -535,8 +535,8 @@ export const investmentManager: ProjectAgent = {
   plugins: [
     //degenTraderPlugin,
     //degenIntelPlugin, // has to be after trader for buy/sell signals to be enabled
-    //autofunPlugin,
     autofunTraderPlugin,
+    //autofunPlugin, // has to be after trader for buy/sell signals to be enabled
     // communityInvestorPlugin,
   ],
   character,

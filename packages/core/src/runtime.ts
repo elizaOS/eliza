@@ -1832,7 +1832,7 @@ export class AgentRuntime implements IAgentRuntime {
 
       // Log input parameters (keep debug log if useful)
       this.runtimeLogger.debug(
-        `[useModel] ${model} input:`,
+        `[useModel] ${modelKey} input:`,
         JSON.stringify(params, safeReplacer(), 2)
       );
 

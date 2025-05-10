@@ -4,6 +4,7 @@ import Birdeye from './tasks/birdeye';
 import BuySignal from './tasks/buy-signal';
 import SellSignal from './tasks/sell-signal';
 import CoinmarketCap from './tasks/coinmarketcap';
+import Chat from './tasks/chat';
 import Twitter from './tasks/twitter';
 import TwitterParser from './tasks/twitter-parser';
 import type { Sentiment } from './types';
@@ -41,7 +42,7 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
       } catch (error) {
         logger.error('Failed to sync trending tokens', error);
         // kill this task
-        runtime.deleteTask(task.id);
+        //runtime.deleteTask(task.id);
       }
     },
   });
@@ -70,7 +71,7 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
       } catch (error) {
         logger.debug('Failed to sync tokens', error);
         // kill this task
-        await runtime.deleteTask(task.id);
+        //await runtime.deleteTask(task.id);
       }
     },
   });
@@ -100,7 +101,54 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
       } catch (error) {
         logger.error('Failed to sync wallet', error);
         // kill this task
-        await runtime.deleteTask(task.id);
+        //await runtime.deleteTask(task.id);
+      }
+    },
+  });
+
+  runtime.registerTaskWorker({
+    name: 'INTEL_SYNC_RAW_AUTOFUN_CHAT',
+    validate: async (_runtime, _message, _state) => {
+      return true; // TODO: validate after certain time
+    },
+    execute: async (runtime, _options, task) => {
+      const chat = new Chat(runtime);
+      try {
+        await chat.syncChats();
+      } catch (error) {
+        logger.debug('Failed to sync tokens', error);
+        // kill this task
+        //await runtime.deleteTask(task.id);
+      }
+    },
+  });
+
+  runtime.createTask({
+    name: 'INTEL_SYNC_RAW_AUTOFUN_CHAT',
+    description: 'Check autofun chat rooms',
+    worldId,
+    metadata: {
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      updateInterval: 1000 * 60 * 5, // 5 minutes
+    },
+    tags: ['queue', 'repeat', 'autofun', 'immediate'],
+  });
+
+  // shouldn't plugin-solana and plugin-evm handle this?
+  runtime.registerTaskWorker({
+    name: 'INTEL_SYNC_WALLET',
+    validate: async (_runtime, _message, _state) => {
+      return true; // TODO: validate after certain time
+    },
+    execute: async (runtime, _options, task) => {
+      const birdeye = new Birdeye(runtime);
+      try {
+        await birdeye.syncWallet();
+      } catch (error) {
+        logger.error('Failed to sync wallet', error);
+        // kill this task
+        //await runtime.deleteTask(task.id);
       }
     },
   });
@@ -200,82 +248,4 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
       'WARNING: Twitter service not found, skipping creation of INTEL_SYNC_RAW_TWEETS task'
     );
   }
-
-  // enable trading stuff only if we need to
-  //const tradeService = runtime.getService(ServiceTypes.DEGEN_TRADING) as unknown; //  as ITradeService
-  // has to be included after degen-trader
-  /*
-  const tradeService = runtime.getService('degen_trader') as unknown; //  as ITradeService
-  if (tradeService) {
-    runtime.registerTaskWorker({
-      name: 'INTEL_GENERATE_BUY_SIGNAL',
-      validate: async (runtime, _message, _state) => {
-        // Check if we have some sentiment data before proceeding
-        const sentimentsData = (await runtime.getCache<Sentiment[]>('sentiments')) || [];
-        if (sentimentsData.length === 0) {
-          return false;
-        }
-        return true;
-      },
-      execute: async (runtime, _options, task) => {
-        const signal = new BuySignal(runtime);
-        try {
-          await signal.generateSignal();
-        } catch (error) {
-          logger.error('Failed to generate buy signal', error);
-          // Log the error but don't delete the task
-        }
-      },
-    });
-
-    runtime.createTask({
-      name: 'INTEL_GENERATE_BUY_SIGNAL',
-      description: 'Generate a buy signal',
-      worldId,
-      metadata: {
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        updateInterval: 1000 * 60 * 5, // 5 minutes
-      },
-      tags: ['queue', 'repeat', 'degen_intel', 'immediate'],
-    });
-
-    runtime.registerTaskWorker({
-      name: 'INTEL_GENERATE_SELL_SIGNAL',
-      validate: async (runtime, _message, _state) => {
-        // Check if we have some sentiment data before proceeding
-        const sentimentsData = (await runtime.getCache<Sentiment[]>('sentiments')) || [];
-        if (sentimentsData.length === 0) {
-          return false;
-        }
-        return true;
-      },
-      execute: async (runtime, _options, task) => {
-        const signal = new SellSignal(runtime);
-        try {
-          await signal.generateSignal();
-        } catch (error) {
-          logger.error('Failed to generate buy signal', error);
-          // Log the error but don't delete the task
-        }
-      },
-    });
-
-    runtime.createTask({
-      name: 'INTEL_GENERATE_SELL_SIGNAL',
-      description: 'Generate a sell signal',
-      worldId,
-      metadata: {
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        updateInterval: 1000 * 60 * 5, // 5 minutes
-      },
-      tags: ['queue', 'repeat', 'degen_intel', 'immediate'],
-    });
-  } else {
-    logger.debug(
-      'WARNING: Trader service not found, skipping creation of INTEL_GENERATE_*_SIGNAL task'
-    );
-  }
-  */
 };
