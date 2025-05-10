@@ -8255,7 +8255,7 @@ Join the [Discord community](https://discord.gg/elizaOS) for support and to shar
     "@types/node": "^22.15.3",
     "@types/uuid": "^9.0.8",
     "@vitest/eslint-plugin": "1.0.1",
-    "bun": "1.2.5",
+    "bun": "1.2.13",
     "concurrently": "9.1.0",
     "cross-env": "7.0.3",
     "husky": "^9.1.7",
@@ -8297,7 +8297,7 @@ Join the [Discord community](https://discord.gg/elizaOS) for support and to shar
     "vittest": "^1.0.2",
     "zod": "3.24.1"
   },
-  "packageManager": "bun@1.2.5",
+  "packageManager": "bun@1.2.13",
   "workspaces": [
     "packages/*"
   ],
