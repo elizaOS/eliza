@@ -52,7 +52,8 @@
     "format:check": "prettier --check ./src",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:integration": "vitest run __tests__/integration"
   },
   "peerDependencies": {
     "typescript": "5.8.2",
