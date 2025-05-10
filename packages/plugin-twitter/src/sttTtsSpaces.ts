@@ -334,15 +334,16 @@ export class SttTtsPlugin implements Plugin {
     }
 
     // Ensure room exists and user is in it
-    await this.runtime.ensureRoomExists({
-      id: roomId,
+    await this.runtime.ensureConnection({
+      entityId: userUuid,
+      roomId: roomId,
       name: 'Twitter Space',
       source: 'twitter',
       type: ChannelType.VOICE_GROUP,
       channelId: null,
       serverId: this.spaceId,
+      worldId: createUniqueUuid(this.runtime, this.spaceId),
     });
-    await this.runtime.ensureParticipantInRoom(userUuid, roomId);
 
     const memory = {
       id: createUniqueUuid(this.runtime, `${roomId}-voice-message-${Date.now()}`),
@@ -373,7 +374,7 @@ export class SttTtsPlugin implements Plugin {
         };
 
         if (responseMemory.content.text?.trim()) {
-          await this.runtime.createMemory(responseMemory);
+          await this.runtime.createMemory(responseMemory, 'messages');
           this.isProcessingAudio = false;
           this.volumeBuffers.clear();
           await this.speakText(content.text);

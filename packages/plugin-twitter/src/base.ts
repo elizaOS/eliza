@@ -562,18 +562,6 @@ export class ClientBase {
           });
 
           const roomId = createUniqueUuid(this.runtime, tweet.conversationId);
-
-          // Ensure the room exists with proper world association
-          await this.runtime.ensureRoomExists({
-            id: roomId,
-            name: `${tweet.username}'s Thread`,
-            source: 'twitter',
-            type: ChannelType.FEED,
-            channelId: tweet.conversationId,
-            serverId: tweet.userId,
-            worldId: worldId,
-          });
-
           const entityId =
             tweet.userId === this.profile.id
               ? this.runtime.agentId
@@ -687,17 +675,6 @@ export class ClientBase {
       });
 
       const roomId = createUniqueUuid(this.runtime, tweet.conversationId);
-
-      // Ensure the room exists with proper world association
-      await this.runtime.ensureRoomExists({
-        id: roomId,
-        name: `${tweet.username}'s Thread`,
-        source: 'twitter',
-        type: ChannelType.FEED,
-        channelId: tweet.conversationId,
-        serverId: tweet.userId,
-        worldId: worldId,
-      });
 
       const entityId =
         tweet.userId === this.profile.id

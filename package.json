@@ -1,7 +1,6 @@
 {
   "name": "eliza",
   "scripts": {
-    "preinstall": "only-allow bun",
     "start": "cd ./packages/the-org && bun run start",
     "start-cli": "cd ./packages/cli && bun run cli start",
     "start:debug": "cross-env NODE_NO_WARNINGS=1 LOG_LEVEL=debug elizaos start",
@@ -40,7 +39,6 @@
     "husky": "^9.1.7",
     "lerna": "8.1.4",
     "lint-staged": "^15.5.0",
-    "only-allow": "^1.2.1",
     "sharp": "0.33.5",
     "tsup": "8.4.0",
     "turbo": "^2.4.4",

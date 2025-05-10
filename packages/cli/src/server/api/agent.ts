@@ -1044,6 +1044,8 @@ export function agentRouter(
         name: req.body.name,
         source: 'direct',
         type: ChannelType.API,
+        worldId: createUniqueUuid(runtime, 'direct'),
+        worldName: 'Direct',
       });
 
       const messageId = createUniqueUuid(runtime, Date.now().toString());

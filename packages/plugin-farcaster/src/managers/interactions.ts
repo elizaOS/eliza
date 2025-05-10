@@ -88,36 +88,11 @@ export class FarcasterInteractionManager {
       const serverId = cast.authorFid.toString();
       const roomId = createUniqueUuid(this.runtime, conversationId);
 
-      await this.runtime.ensureWorldExists({
-        id: worldId,
-        name: `${cast.profile.username}'s Farcaster`,
-        agentId: this.runtime.agentId,
-        serverId,
-        metadata: {
-          ownership: { ownerId: cast.authorFid.toString() },
-          farcaster: {
-            username: cast.profile.username,
-            id: cast.authorFid.toString(),
-            name: cast.profile.name,
-          },
-        },
-      });
-
-      // Ensure thread room exists
-      await this.runtime.ensureRoomExists({
-        id: roomId,
-        name: `Thread with ${cast.profile.name ?? cast.profile.username}`,
-        source: FARCASTER_SOURCE,
-        type: ChannelType.THREAD,
-        channelId: conversationId,
-        serverId,
-        worldId,
-      });
-
       if (entityId !== this.runtime.agentId) {
         await this.runtime.ensureConnection({
           entityId,
           roomId,
+          worldName: `${cast.profile.username}'s Farcaster`,
           userName: cast.profile.username,
           name: cast.profile.name,
           source: FARCASTER_SOURCE,
@@ -125,6 +100,14 @@ export class FarcasterInteractionManager {
           channelId: conversationId,
           serverId,
           worldId,
+          metadata: {
+            ownership: { ownerId: cast.authorFid.toString() },
+            farcaster: {
+              username: cast.profile.username,
+              id: cast.authorFid.toString(),
+              name: cast.profile.name,
+            },
+          },
         });
       }
 

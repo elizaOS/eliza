@@ -704,6 +704,8 @@ export class VoiceManager extends EventEmitter {
         channelId,
         serverId: channel.guild.id,
         type,
+        worldId: createUniqueUuid(this.runtime, channel.guild.id) as UUID,
+        worldName: channel.guild.name,
       });
 
       const memory: Memory = {
