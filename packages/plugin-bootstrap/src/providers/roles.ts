@@ -103,9 +103,9 @@ export const roleProvider: Provider = {
         // get the user from the database
         const user = await runtime.getEntityById(entityId);
 
-        const name = user.metadata[room.source]?.name;
-        const username = user.metadata[room.source]?.username;
-        const names = user.names;
+        const name = user?.metadata?.[room.source]?.name;
+        const username = user?.metadata?.[room.source]?.username;
+        const names = user?.names;
 
         // Skip duplicates (we store both UUID and original ID)
         if (
@@ -113,6 +113,11 @@ export const roleProvider: Provider = {
           admins.some((admin) => admin.username === username) ||
           members.some((member) => member.username === username)
         ) {
+          continue;
+        }
+
+        if (!name || !username || !names) {
+          logger.warn(`User ${entityId} has no name or username, skipping`);
           continue;
         }
 
