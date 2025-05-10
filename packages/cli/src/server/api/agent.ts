@@ -19,6 +19,55 @@ import {
 import express from 'express';
 import fs from 'node:fs';
 
+// Utility functions for response handling
+const sendError = (
+  res: express.Response,
+  status: number,
+  code: string,
+  message: string,
+  details?: string
+) => {
+  res.status(status).json({
+    success: false,
+    error: {
+      code,
+      message,
+      ...(details && { details }),
+    },
+  });
+};
+
+const sendSuccess = (res: express.Response, data: any, status = 200) => {
+  res.status(status).json({
+    success: true,
+    data,
+  });
+};
+
+const cleanupFile = (filePath: string) => {
+  if (filePath && fs.existsSync(filePath)) {
+    try {
+      fs.unlinkSync(filePath);
+    } catch (error) {
+      logger.error(`Error cleaning up file ${filePath}:`, error);
+    }
+  }
+};
+
+const cleanupFiles = (files: Express.Multer.File[]) => {
+  if (files) {
+    files.forEach((file) => cleanupFile(file.path));
+  }
+};
+
+const getRuntime = (agents: Map<UUID, IAgentRuntime>, agentId: UUID) => {
+  const runtime = agents.get(agentId);
+  if (!runtime) {
+    throw new Error('Agent not found');
+  }
+  return runtime;
+};
+
 /**
  * Interface representing a custom request object that extends the express.Request interface.
  * @interface CustomRequest
@@ -84,46 +133,6 @@ export function agentRouter(
         error: {
           code: 500,
           message: 'Error retrieving agents',
-          details: error.message,
-        },
-      });
-    }
-  });
-
-  // Get full agent details
-  router.get('/:agentId', async (req, res) => {
-    const agentId = req.params.agentId as UUID;
-
-    try {
-      const agent = await db.getAgent(agentId);
-      if (!agent) {
-        res.status(404).json({
-          success: false,
-          error: {
-            code: 'NOT_FOUND',
-            message: 'Agent not found',
-          },
-        });
-        return;
-      }
-
-      const runtime = agents.get(agentId);
-      const response = {
-        ...agent,
-        status: runtime ? 'active' : 'inactive',
-      };
-
-      res.json({
-        success: true,
-        data: response,
-      });
-    } catch (error) {
-      logger.error('[AGENT GET] Error retrieving agent:', error);
-      res.status(500).json({
-        success: false,
-        error: {
-          code: 500,
-          message: 'Error retrieving agent',
           details: error.message,
         },
       });
