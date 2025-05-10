@@ -70,8 +70,13 @@ import TabItem from '@theme/TabItem';
   <TabItem value="cli" label="Install CLI Tool (Recommended)" default>
 
 ```bash
+# make sure you have bun installed
+npm install -g bun
+
 # Install the CLI globally
 npm install -g @elizaos/cli@beta # will be simpler after beta
+# or install via bun
+bun install -g @elizaos/cli@beta
 
 # From a folder to install a project
 elizaos create
@@ -86,13 +91,13 @@ Then visit https://localhost:3000 to interact with your agent through a web inte
 
 ```bash
 # Create a new project through interactive setup
-npx @elizaos/cli@beta create # will be simpler after beta
+elizaos create # will be simpler after beta
 
 # Navigate to your project directory
 cd my-project-name
 
 # Start your project
-npx @elizaos/cli@beta start
+elizaos start
 ```
 
   </TabItem>

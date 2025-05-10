@@ -30,6 +30,17 @@ export function getVersion(): string {
   return version;
 }
 
+// --- Utility: Get install tag based on CLI version ---
+export function getCliInstallTag(): string {
+  const version = getVersion();
+  if (version.includes('-alpha')) {
+    return 'alpha';
+  } else if (version.includes('-beta')) {
+    return 'beta';
+  }
+  return ''; // Return empty string for stable or non-tagged versions (implies latest)
+}
+
 // --- Utility: Check if terminal supports UTF-8 ---
 export function isUtf8Locale() {
   for (const key of ['LC_ALL', 'LC_CTYPE', 'LANG', 'LANGUAGE']) {
@@ -69,7 +80,7 @@ async function checkForCliUpdate(currentVersion: string) {
     console.log(
       `\x1b[33m\nA new version of elizaOS CLI is available: ${latestVersion} (current: ${currentVersion})\x1b[0m`
     );
-    console.log(`\x1b[32mUpdate with: npx @elizaos/cli update\x1b[0m\n`);
+    console.log(`\x1b[32mUpdate with: elizaos update\x1b[0m\n`);
   } catch {
     /* silent: update check failure must not block banner */
   }
@@ -155,5 +166,9 @@ ${b}⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⢾⡃⠀⠀${w}
   }
 
   // Notify user if a new CLI version is available
-  await checkForCliUpdate(version);
+  try {
+    await checkForCliUpdate(version);
+  } catch (error) {
+    // Silently continue if update check fails
+  }
 }

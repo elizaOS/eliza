@@ -89,7 +89,7 @@ async function processSocketMessage(
       channelId: uniqueRoomId,
       serverId: 'client-chat',
       type: ChannelType.DM,
-      worldId: worldId,
+      worldId: worldId || createUniqueUuid(runtime, 'client-chat'),
     });
 
     // Create unique message ID

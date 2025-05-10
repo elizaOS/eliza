@@ -1,19 +1,20 @@
-import { buildProject } from '@/src/utils/build-project';
-import { copyTemplate as copyTemplateUtil } from '@/src/utils/copy-template';
-import { checkServer, handleError } from '@/src/utils/handle-error';
-import { runBunCommand } from '@/src/utils/run-bun';
-import { logger } from '@elizaos/core';
+import {
+  buildProject,
+  copyTemplate as copyTemplateUtil,
+  displayBanner,
+  getElizaDirectories,
+  handleError,
+  promptAndStorePostgresUrl,
+  runBunCommand,
+  setupPgLite,
+} from '@/src/utils';
 import { Command } from 'commander';
-import { execa } from 'execa';
 import { existsSync, readFileSync } from 'node:fs';
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import prompts from 'prompts';
 import colors from 'yoctocolors';
 import { z } from 'zod';
-import { displayBanner } from '../utils/displayBanner';
-import { setupPgLite, promptAndStorePostgresUrl, getElizaDirectories } from '../utils/get-config';
 
 /**
  * This module handles creating both projects and plugins.
@@ -75,6 +76,45 @@ async function installDependencies(targetDir: string) {
 }
 
 /**
+ * Creates .gitignore and .npmignore files in the target directory if they don't exist
+ */
+async function createIgnoreFiles(targetDir: string): Promise<void> {
+  const gitignorePath = path.join(targetDir, '.gitignore');
+  const npmignorePath = path.join(targetDir, '.npmignore');
+
+  // Check if .gitignore exists and create it if not
+  if (!existsSync(gitignorePath)) {
+    // Use the exact content from the original plugin-starter/.gitignore
+    const gitignoreContent = `dist/
+node_modules/
+`;
+
+    try {
+      await fs.writeFile(gitignorePath, gitignoreContent);
+    } catch (error) {
+      console.error(`Failed to create .gitignore: ${error.message}`);
+    }
+  }
+
+  // Check if .npmignore exists and create it if not
+  if (!existsSync(npmignorePath)) {
+    // Use the exact content from the original plugin-starter/.npmignore
+    const npmignoreContent = `.turbo
+dist
+node_modules
+.env
+*.env
+.env.local`;
+
+    try {
+      await fs.writeFile(npmignorePath, npmignoreContent);
+    } catch (error) {
+      console.error(`Failed to create .npmignore: ${error.message}`);
+    }
+  }
+}
+
+/**
  * Initialize a new project or plugin.
  *
  * @param {Object} opts - Options for initialization.
@@ -107,7 +147,8 @@ export const create = new Command()
     // Convert to a proper boolean (if not already)
     opts.yes = opts.yes === true || opts.yes === 'true';
 
-    displayBanner();
+    // Display banner and continue with initialization
+    await displayBanner();
 
     try {
       // Parse options but use "" as the default for type to force prompting
@@ -282,6 +323,8 @@ export const create = new Command()
 
         await copyTemplateUtil('plugin', targetDir, pluginName);
 
+        await createIgnoreFiles(targetDir);
+
         console.info('Installing dependencies...');
         try {
           await runBunCommand(['install', '--no-optional'], targetDir);
@@ -340,7 +383,9 @@ export const create = new Command()
 
         await copyTemplateUtil('project', targetDir, projectName);
 
-        const { elizaDbDir, envFilePath } = getElizaDirectories();
+        await createIgnoreFiles(targetDir);
+
+        const { elizaDbDir, envFilePath } = await getElizaDirectories();
         if (database === 'pglite') {
           await setupPgLite(process.env.PGLITE_DATA_DIR || elizaDbDir, envFilePath);
           console.debug(

@@ -2,7 +2,13 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { type Character, type IAgentRuntime, type UUID, logger } from '@elizaos/core';
+import {
+  type Character,
+  DatabaseAdapter,
+  type IAgentRuntime,
+  type UUID,
+  logger,
+} from '@elizaos/core';
 import { createDatabaseAdapter } from '@elizaos/plugin-sql';
 import * as bodyParser from 'body-parser';
 import cors from 'cors';
@@ -58,7 +64,7 @@ export class AgentServer {
   public socketIO: SocketIOServer;
   private serverPort: number = 3000; // Add property to store current port
 
-  public database: any;
+  public database: DatabaseAdapter;
   public startAgent!: (character: Character) => Promise<IAgentRuntime>;
   public stopAgent!: (runtime: IAgentRuntime) => void;
   public loadCharacterTryPath!: (characterPath: string) => Promise<Character>;
@@ -504,7 +510,7 @@ export class AgentServer {
   public async stop() {
     if (this.server) {
       this.server.close(() => {
-        this.database.stop();
+        this.database.close();
         logger.success('Server stopped');
       });
     }

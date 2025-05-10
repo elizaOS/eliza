@@ -14,9 +14,7 @@ import { Eye, EyeOff } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const getLocalStorageApiKey = () =>
-  typeof window === 'undefined'
-    ? 'eliza-api-key'
-    : `eliza-api-key-${window.location.origin}`;
+  typeof window === 'undefined' ? 'eliza-api-key' : `eliza-api-key-${window.location.origin}`;
 interface ApiKeyDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;

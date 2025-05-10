@@ -52,7 +52,7 @@ export function ConnectionErrorBanner({ className }: ConnectionErrorBannerProps)
     <div
       className={cn(
         'bg-opacity-10 border rounded-md p-3 mb-4 w-full md:max-w-4xl',
-        'flex items-center justify-between w-full',
+        'flex items-center justify-between w-full mt-4',
         isUnauthorized
           ? 'bg-yellow-900/20 border-yellow-700 text-yellow-100'
           : 'bg-red-900/20 border-red-700 text-red-100',

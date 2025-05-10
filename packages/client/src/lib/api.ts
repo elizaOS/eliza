@@ -74,7 +74,7 @@ const fetcher = async ({
     const response = await fetch(normalizedUrl, options);
     const contentType = response.headers.get('Content-Type');
 
-    if (contentType === 'audio/mpeg') {
+    if (contentType?.startsWith('audio/')) {
       return await response.blob();
     }
 
@@ -232,6 +232,7 @@ interface AgentLog {
  * 		deleteLog: (agentId: string, logId: string) => Promise<void>;
  * 		getAgentMemories: (agentId: UUID, roomId?: UUID, tableName?: string) => Promise<any>;
  * 		deleteAgentMemory: (agentId: UUID, memoryId: string) => Promise<any>;
+ *    deleteAllAgentMemories: (agentId: UUID, roomId: UUID) => Promise<any>;
  * 		updateAgentMemory: (agentId: UUID, memoryId: string, memoryData: Partial<Memory>) => Promise<any>;
  * 	}
  * }}
@@ -250,7 +251,7 @@ export const apiClient = {
       },
       headers: {
         'Content-Type': 'application/json',
-        Accept: 'audio/mpeg',
+        Accept: 'audio/*',
         'Transfer-Encoding': 'chunked',
       },
     }),
@@ -444,6 +445,13 @@ export const apiClient = {
   deleteAgentMemory: (agentId: UUID, memoryId: string) => {
     return fetcher({
       url: `/agents/${agentId}/memories/${memoryId}`,
+      method: 'DELETE',
+    });
+  },
+
+  deleteAllAgentMemories: (agentId: UUID, roomId: UUID) => {
+    return fetcher({
+      url: `/agents/${agentId}/memories/all/${roomId}`,
       method: 'DELETE',
     });
   },

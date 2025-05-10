@@ -1,13 +1,13 @@
 import { logger } from '@elizaos/core';
 import { Command } from 'commander';
-import { getVersion, displayBanner } from '../utils/displayBanner';
+import { getVersion, displayBanner } from '@/src/utils';
 import { execa } from 'execa';
 import {
   isGlobalInstallation,
   isRunningViaNpx,
   isRunningViaBunx,
   executeInstallation,
-} from '../utils/package-manager';
+} from '@/src/utils';
 
 /**
  * Updates the CLI to the latest version based on the most recently published version
@@ -40,7 +40,7 @@ export async function performCliUpdate(): Promise<boolean> {
 
     // If we couldn't determine the latest version or already at latest, exit
     if (!latestVersion || currentVersion === latestVersion) {
-      displayBanner();
+      await displayBanner();
       console.info('ElizaOS CLI is already up to date!');
       return true;
     }
@@ -74,7 +74,7 @@ export async function performCliUpdate(): Promise<boolean> {
       process.exit(1);
     }
 
-    displayBanner();
+    await displayBanner();
     console.info('ElizaOS CLI has been successfully updated!');
     return true;
   } catch (error) {

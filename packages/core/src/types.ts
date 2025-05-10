@@ -411,6 +411,7 @@ export interface Component {
   worldId: UUID;
   sourceEntityId: UUID;
   type: string;
+  createdAt: number;
   data: {
     [key: string]: any;
   };
@@ -452,6 +453,8 @@ export type World = {
   };
 };
 
+export type RoomMetadata = Record<string, unknown>;
+
 export type Room = {
   id: UUID;
   name?: string;
@@ -461,7 +464,7 @@ export type Room = {
   channelId?: string;
   serverId?: string;
   worldId?: UUID;
-  metadata?: Record<string, unknown>;
+  metadata?: RoomMetadata;
 };
 
 /**
@@ -1068,7 +1071,9 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   ensureConnection({
     entityId,
     roomId,
+    metadata,
     userName,
+    worldName,
     name,
     source,
     channelId,
@@ -1081,12 +1086,14 @@ export interface IAgentRuntime extends IDatabaseAdapter {
     roomId: UUID;
     userName?: string;
     name?: string;
+    worldName?: string;
     source?: string;
     channelId?: string;
     serverId?: string;
     type: ChannelType;
-    worldId?: UUID;
+    worldId: UUID;
     userId?: UUID;
+    metadata?: Record<string, any>;
   }): Promise<void>;
 
   ensureParticipantInRoom(entityId: UUID, roomId: UUID): Promise<void>;
@@ -1309,18 +1316,20 @@ export interface TaskWorker {
   validate?: (runtime: IAgentRuntime, message: Memory, state: State) => Promise<boolean>;
 }
 
+export type TaskMetadata = {
+  updateInterval?: number;
+  options?: {
+    name: string;
+    description: string;
+  }[];
+  [key: string]: unknown;
+};
+
 export interface Task {
   id?: UUID;
   name: string;
   updatedAt?: number;
-  metadata?: {
-    updateInterval?: number;
-    options?: {
-      name: string;
-      description: string;
-    }[];
-    [key: string]: unknown;
-  };
+  metadata?: TaskMetadata;
   description: string;
   roomId?: UUID;
   worldId?: UUID;

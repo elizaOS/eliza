@@ -591,6 +591,19 @@ export class AgentRuntime implements IAgentRuntime {
 
       // Add agent as participant in its own room
       try {
+        const room = await this.adapter.getRoom(this.agentId);
+        if (!room) {
+          const room = await this.adapter.createRoom({
+            id: this.agentId,
+            name: this.character.name,
+            source: 'elizaos',
+            type: ChannelType.SELF,
+            channelId: this.agentId,
+            serverId: this.agentId,
+            worldId: this.agentId,
+          });
+        }
+
         span.addEvent('adding_agent_as_participant');
         // No need to transform agent ID
         const participants = await this.adapter.getParticipantsForRoom(this.agentId);
@@ -1286,25 +1299,29 @@ export class AgentRuntime implements IAgentRuntime {
   async ensureConnection({
     entityId,
     roomId,
+    worldId,
+    worldName,
     userName,
     name,
     source,
     type,
     channelId,
     serverId,
-    worldId,
     userId,
+    metadata,
   }: {
     entityId: UUID;
     roomId: UUID;
+    worldId: UUID;
+    worldName?: string;
     userName?: string;
     name?: string;
     source?: string;
     type?: ChannelType;
     channelId?: string;
     serverId?: string;
-    worldId?: UUID;
     userId?: UUID;
+    metadata?: Record<string, any>;
   }) {
     if (entityId === this.agentId) {
       throw new Error('Agent should not connect to itself');
@@ -1315,7 +1332,7 @@ export class AgentRuntime implements IAgentRuntime {
     }
 
     const names = [name, userName].filter(Boolean);
-    const metadata = {
+    const entityMetadata = {
       [source]: {
         id: userId,
         name: name,
@@ -1334,7 +1351,7 @@ export class AgentRuntime implements IAgentRuntime {
           const success = await this.adapter.createEntity({
             id: entityId,
             names,
-            metadata,
+            metadata: entityMetadata,
             agentId: this.agentId,
           });
 
@@ -1375,15 +1392,13 @@ export class AgentRuntime implements IAgentRuntime {
       }
 
       // Step 2: Ensure world exists
-      if (worldId) {
-        await this.ensureWorldExists({
-          id: worldId,
-          name: serverId ? `World for server ${serverId}` : `World for room ${roomId}`,
-          agentId: this.agentId,
-          serverId: serverId || 'default',
-          metadata,
-        });
-      }
+      await this.ensureWorldExists({
+        id: worldId,
+        name: worldName || serverId ? `World for server ${serverId}` : `World for room ${roomId}`,
+        agentId: this.agentId,
+        serverId: serverId || 'default',
+        metadata,
+      });
 
       // Step 3: Ensure room exists
       await this.ensureRoomExists({
@@ -1654,12 +1669,9 @@ export class AgentRuntime implements IAgentRuntime {
         })
       );
 
-      // Extract existing provider data from cache
-      const existingProviderData = cachedState.data.providers || {};
-
       // Create a combined provider values structure that preserves all cached data
       // but updates with any newly fetched provider data
-      const combinedValues = { ...existingProviderData };
+      const combinedValues = { ...(cachedState.data.providers || {}) };
 
       // Update with newly fetched provider data
       for (const result of providerData) {
@@ -1674,9 +1686,7 @@ export class AgentRuntime implements IAgentRuntime {
 
       // Combine with existing text if available
       let providersText = '';
-      if (cachedState.text && newProvidersText) {
-        providersText = `${cachedState.text}\\n${newProvidersText}`;
-      } else if (newProvidersText) {
+      if (newProvidersText) {
         providersText = newProvidersText;
       } else if (cachedState.text) {
         providersText = cachedState.text;

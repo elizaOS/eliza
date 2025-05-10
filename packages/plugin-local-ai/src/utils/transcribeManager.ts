@@ -138,11 +138,11 @@ export class TranscribeManager {
         // Verify FFmpeg capabilities
         await this.verifyFFmpegCapabilities();
 
-        // logger.success("FFmpeg initialized successfully", {
-        //   version: this.ffmpegVersion,
-        //   path: this.ffmpegPath,
-        //   timestamp: new Date().toISOString()
-        // });
+        logger.success('FFmpeg initialized successfully', {
+          version: this.ffmpegVersion,
+          path: this.ffmpegPath,
+          timestamp: new Date().toISOString(),
+        });
       } else {
         this.logFFmpegInstallInstructions();
       }

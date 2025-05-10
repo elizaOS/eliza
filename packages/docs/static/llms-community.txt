@@ -3943,7 +3943,7 @@ Each agent operates independently but can share the same database and resources.
 After configuring your project, you can run it using:
 
 ```bash
-npx @elizaos/cli start
+elizaos start
 ```
 
 This will start your agents according to your project configuration.
@@ -5653,13 +5653,13 @@ Then visit https://localhost:3000 to interact with your agent through a web inte
 
 ```bash
 # Create a new project through interactive setup
-npx @elizaos/cli@beta create # will be simpler after beta
+elizaos create # will be simpler after beta
 
 # Navigate to your project directory
 cd my-project-name
 
 # Start your project
-npx @elizaos/cli@beta start
+elizaos start
 ```
 
   </TabItem>
@@ -5768,7 +5768,7 @@ elizaos start
 
 ```bash
 # Use directly with npx
-npx @elizaos/cli@beta start
+elizaos start
 ```
 
   </TabItem>
@@ -11924,13 +11924,13 @@ There are several ways to add plugins to your ElizaOS project:
   <TabItem value="cli" label="Via CLI Commands">
     ```bash
     # Add a plugin
-    npx @elizaos/cli plugins add @elizaos/plugin-twitter
+    elizaos plugins add @elizaos/plugin-twitter
 
     # Remove a plugin
-    npx @elizaos/cli plugins remove @elizaos/plugin-twitter
+    elizaos plugins remove @elizaos/plugin-twitter
 
     # List available plugins
-    npx @elizaos/cli plugins list
+    elizaos plugins list
     ```
 
   </TabItem>
@@ -11996,7 +11996,7 @@ npm run build
 
     ```bash
     # Publish to GitHub
-    npx @elizaos/cli publish
+    elizaos publish
     ```
 
     This will:
@@ -12015,7 +12015,7 @@ npm run build
 
     ```bash
     # Publish to npm
-    npx @elizaos/cli publish --npm
+    elizaos publish --npm
     ```
 
     This allows users to install your plugin using standard npm commands:
@@ -12038,7 +12038,7 @@ npm run build
 
     ```bash
     # Test the publish process
-    npx @elizaos/cli publish --test
+    elizaos publish --test
     ```
 
     This runs through all the packaging and validation steps without actually publishing anything.
@@ -12058,19 +12058,19 @@ npm run build
 
     ```bash
     # Specify platform compatibility
-    npx @elizaos/cli publish --platform node
+    elizaos publish --platform node
 
     # Set custom version number
-    npx @elizaos/cli publish --version 1.2.3
+    elizaos publish --version 1.2.3
 
     # Provide a custom registry URL
-    npx @elizaos/cli publish --registry https://custom-registry.com
+    elizaos publish --registry https://custom-registry.com
 
     # Publish with public access
-    npx @elizaos/cli publish --access public
+    elizaos publish --access public
     ```
 
-    These options give you fine-grained control over how and where your plugin is published. Refer to `npx @elizaos/cli publish --help` for a complete list of options.
+    These options give you fine-grained control over how and where your plugin is published. Refer to `elizaos publish --help` for a complete list of options.
 
   </TabItem>
 </Tabs>
@@ -12418,10 +12418,10 @@ During development, you can test your plugin locally:
 
 ```bash
 # Start with your plugin
-npx @elizaos/cli start --plugin=./path/to/plugin
+elizaos start --plugin=./path/to/plugin
 
 # Or with a specific character
-npx @elizaos/cli start --character=./characters/test.character.json --plugin=./path/to/plugin
+elizaos start --character=./characters/test.character.json --plugin=./path/to/plugin
 ```
 
 ### Distribution & PR Requirements
@@ -12460,7 +12460,7 @@ Plugin dependencies are managed through your project's `package.json`. You can a
 Yes, you can use the `--plugin` flag with the `start` command to include local plugins during development:
 
 ```bash
-npx @elizaos/cli start --plugin=./path/to/plugin
+elizaos start --plugin=./path/to/plugin
 ```
 
 ### What's the difference between Actions and Services?

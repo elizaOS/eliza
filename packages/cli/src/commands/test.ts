@@ -1,5 +1,8 @@
-import { buildProject } from '@/src/utils/build-project';
-import { type IAgentRuntime, type ProjectAgent, logger } from '@elizaos/core';
+import { loadProject } from '@/src/project';
+import { AgentServer } from '@/src/server/index';
+import { jsonToCharacter, loadCharacterTryPath } from '@/src/server/loader';
+import { TestRunner, buildProject, promptForEnvVars } from '@/src/utils';
+import { type IAgentRuntime, type ProjectAgent } from '@elizaos/core';
 import { Command } from 'commander';
 import * as dotenv from 'dotenv';
 import * as fs from 'node:fs';
@@ -7,12 +10,7 @@ import { existsSync } from 'node:fs';
 import * as net from 'node:net';
 import * as os from 'node:os';
 import path from 'node:path';
-import { loadProject } from '../project.js';
-import { AgentServer } from '../server/index.js';
-import { jsonToCharacter, loadCharacterTryPath } from '../server/loader';
-import { TestRunner } from '../utils/testRunner.js';
-import { promptForEnvVars } from '../utils/env-prompt.js';
-import { startAgent } from './start.js';
+import { startAgent } from './start';
 
 // Helper function to check port availability
 async function checkPortAvailable(port: number): Promise<boolean> {

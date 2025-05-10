@@ -1,9 +1,8 @@
-import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
+import { promises as fs } from 'node:fs';
 import { logger } from '@elizaos/core';
-import colors from 'yoctocolors';
-import { checkEnvVarsForPlugin } from './env-prompt.js';
+import { UserEnvironment } from './user-environment';
+import { validatePluginEnvVars } from './env-prompt';
 
 /**
  * Interface for the agent's configuration
@@ -14,29 +13,40 @@ interface AgentConfig {
 }
 
 /**
- * Path to the config file
+ * Retrieves the file path to the agent's configuration file.
+ *
+ * @returns A promise that resolves to the absolute path of the configuration file.
  */
-export function getConfigFilePath(): string {
-  const homeDir = os.homedir();
-  const elizaDir = path.join(homeDir, '.eliza');
-  return path.join(elizaDir, 'config.json');
+export async function getConfigFilePath(): Promise<string> {
+  const envInfo = await UserEnvironment.getInstanceInfo();
+  return envInfo.paths.configPath;
+}
+
+async function fileExists(p: string): Promise<boolean> {
+  try {
+    await fs.access(p);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
- * Load the agent configuration if it exists
- * If no configuration exists, return a default empty configuration
+ * Loads the agent configuration from disk, returning a default configuration if the file does not exist or cannot be read.
+ *
+ * @returns The loaded {@link AgentConfig} object, or a default configuration if loading fails.
  */
-export function loadConfig(): AgentConfig {
+export async function loadConfig(): Promise<AgentConfig> {
   try {
-    const configPath = getConfigFilePath();
-    if (!fs.existsSync(configPath)) {
+    const configPath = await getConfigFilePath();
+    if (!(await fileExists(configPath))) {
       return {
         lastUpdated: new Date().toISOString(),
         isDefault: true, // Mark as default config
       };
     }
 
-    const content = fs.readFileSync(configPath, 'utf8');
+    const content = await fs.readFile(configPath, 'utf8');
     return JSON.parse(content) as AgentConfig;
   } catch (error) {
     logger.warn(`Error loading configuration: ${error}`);
@@ -49,23 +59,28 @@ export function loadConfig(): AgentConfig {
 }
 
 /**
- * Save the agent configuration to disk
+ * Saves the agent configuration object to disk, updating its last updated timestamp.
+ *
+ * @param config - The agent configuration to save.
+ *
+ * @remark
+ * If the target directory does not exist, it is created. Errors during saving are logged but not thrown.
  */
-export function saveConfig(config: AgentConfig): void {
+export async function saveConfig(config: AgentConfig): Promise<void> {
   try {
-    const configPath = getConfigFilePath();
+    const configPath = await getConfigFilePath();
     const elizaDir = path.dirname(configPath);
 
     // Create .eliza directory if it doesn't exist
-    if (!fs.existsSync(elizaDir)) {
-      fs.mkdirSync(elizaDir, { recursive: true });
+    if (!(await fileExists(elizaDir))) {
+      await fs.mkdir(elizaDir, { recursive: true });
     }
 
     // Update lastUpdated timestamp
     config.lastUpdated = new Date().toISOString();
 
     // Write config to file
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
+    await fs.writeFile(configPath, JSON.stringify(config, null, 2), 'utf8');
     logger.info(`Configuration saved to ${configPath}`);
   } catch (error) {
     logger.error(`Error saving configuration: ${error}`);
@@ -73,17 +88,43 @@ export function saveConfig(config: AgentConfig): void {
 }
 
 /**
- * Get the status of each plugin's environment variables
+ * Checks whether the required environment variables for a plugin are valid.
+ *
+ * @param pluginName - The name of the plugin to validate.
+ * @returns An object indicating if the environment is valid and a message describing the result.
  */
-export function getPluginStatus(): Record<string, boolean> {
-  // List of all available plugins
-  const allPlugins = ['openai', 'anthropic', 'discord', 'twitter', 'telegram', 'pglite'];
+export async function checkPluginRequirements(pluginName: string): Promise<{
+  valid: boolean;
+  message: string;
+}> {
+  return validatePluginEnvVars(pluginName);
+}
 
-  // Check environment variables for each plugin
-  const status: Record<string, boolean> = {};
-  for (const plugin of allPlugins) {
-    status[plugin] = checkEnvVarsForPlugin(plugin);
+/**
+ * Retrieves the environment variable validation status for each plugin listed in the agent configuration.
+ *
+ * @returns A record mapping plugin names to a boolean indicating whether their required environment variables are valid.
+ */
+export async function getPluginStatus(): Promise<Record<string, boolean>> {
+  const configPath = await getConfigFilePath();
+  if (!(await fileExists(configPath))) {
+    return {};
   }
 
-  return status;
+  try {
+    const configContent = await fs.readFile(configPath, 'utf-8');
+    const config = JSON.parse(configContent);
+    const status: Record<string, boolean> = {};
+
+    // Check each plugin's environment variables
+    for (const plugin of Object.keys(config.plugins ?? {})) {
+      const check = await validatePluginEnvVars(plugin);
+      status[plugin] = check.valid;
+    }
+
+    return status;
+  } catch (error) {
+    logger.error(`Error reading config file: ${error}`);
+    return {};
+  }
 }

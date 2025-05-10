@@ -30,7 +30,7 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/node": "^22.13.10",
+    "@types/node": "^22.15.3",
     "@types/uuid": "^9.0.8",
     "@vitest/eslint-plugin": "1.0.1",
     "bun": "1.2.5",

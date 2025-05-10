@@ -3,18 +3,14 @@ import { describe, test, expect, vi, beforeEach } from 'vitest';
 
 // Explicitly list imported functions to mock
 import { getGitHubCredentials } from '@/src/utils/github';
-import {
-  publishToGitHub,
-  testPublishToGitHub,
-  testPublishToNpm,
-} from '@/src/utils/plugin-publisher';
+import { publishToGitHub, testPublishToGitHub, testPublishToNpm } from '@/src/utils/publisher';
 
 // Mock these imports - keep it simple with explicit mocks
 vi.mock('@/src/utils/github', () => ({
   getGitHubCredentials: vi.fn(),
 }));
 
-vi.mock('@/src/utils/plugin-publisher', () => ({
+vi.mock('@/src/utils/publisher', () => ({
   publishToGitHub: vi.fn(),
   testPublishToGitHub: vi.fn(),
   testPublishToNpm: vi.fn(),
