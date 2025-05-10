@@ -1,7 +1,7 @@
 import PageTitle from '@/components/page-title';
 import ProfileCard from '@/components/profile-card';
 import ProfileOverlay from '@/components/profile-overlay';
-import { useAgents, useRooms } from '@/hooks/use-query-hooks';
+import { useAgentsWithDetails, useRooms } from '@/hooks/use-query-hooks';
 import { formatAgentName } from '@/lib/utils';
 import type { Agent, UUID } from '@elizaos/core';
 import { AgentStatus } from '@elizaos/core';
@@ -15,7 +15,7 @@ import GroupPanel from '@/components/group-panel';
 import { Button } from '../components/ui/button';
 import { Separator } from '../components/ui/separator';
 export default function Home() {
-  const { data: { data: agentsData } = {}, isLoading, isError, error } = useAgents();
+  const { data: agentsData, isLoading, isError, error } = useAgentsWithDetails();
   const navigate = useNavigate();
 
   // Extract agents properly from the response

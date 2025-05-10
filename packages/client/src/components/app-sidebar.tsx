@@ -1,3 +1,13 @@
+import AgentAvatarStack from '@/components/agent-avatar-stack';
+import ConnectionStatus from '@/components/connection-status';
+import GroupPanel from '@/components/group-panel';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   Sidebar,
   SidebarContent,
@@ -10,21 +20,11 @@ import {
   SidebarMenuItem,
   SidebarMenuSkeleton,
 } from '@/components/ui/sidebar';
-import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import GroupPanel from '@/components/group-panel';
-import ConnectionStatus from '@/components/connection-status';
-import AgentAvatarStack from '@/components/agent-avatar-stack';
 
-import { useAgents, useRooms } from '@/hooks/use-query-hooks';
+import { useAgentsWithDetails, useRooms } from '@/hooks/use-query-hooks';
 import info from '@/lib/info.json';
-import { formatAgentName, cn } from '@/lib/utils';
-import { AgentStatus, type UUID, type Agent, type Room } from '@elizaos/core';
+import { cn, formatAgentName } from '@/lib/utils';
+import { AgentStatus, type Agent, type Room, type UUID } from '@elizaos/core';
 
 import { Book, ChevronDown, Cog, Plus, TerminalIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -136,10 +136,10 @@ const AgentListSection = ({
   <SidebarSection title={title} className={className}>
     {agents.map((a) => (
       <AgentRow
-        key={a.id}
-        agent={a}
+        key={a?.id}
+        agent={a as Agent}
         isOnline={isOnline}
-        active={activePath.includes(String(a.id))}
+        active={activePath.includes(String(a?.id))}
       />
     ))}
   </SidebarSection>
@@ -244,10 +244,10 @@ const CreateButton = ({ onCreateRoom }: { onCreateRoom: () => void }) => {
 export function AppSidebar() {
   const location = useLocation();
 
-  const { data: agentsData, error: agentsError } = useAgents();
+  const { data: agentsData, error: agentsError } = useAgentsWithDetails();
   const { data: roomsData, isLoading: roomsLoading } = useRooms();
 
-  const agents = useMemo(() => agentsData?.data.agents || [], [agentsData]);
+  const agents = useMemo(() => agentsData?.agents || [], [agentsData]);
 
   const agentAvatarMap = useMemo(
     () =>

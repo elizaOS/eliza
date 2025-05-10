@@ -2,7 +2,13 @@ import { GROUP_CHAT_SOURCE, USER_NAME } from '@/constants';
 import { apiClient } from '@/lib/api';
 import { WorldManager } from '@/lib/world-manager';
 import type { Agent, Content, Memory, UUID, Room } from '@elizaos/core';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  useQueries,
+  UseQueryResult,
+} from '@tanstack/react-query';
 import { useState } from 'react';
 import { useToast } from './use-toast';
 
@@ -751,30 +757,37 @@ interface AgentsWithDetailsResult {
 }
 
 export function useAgentsWithDetails(): AgentsWithDetailsResult {
+  const network = useNetworkStatus();
   const { data: agentsData, isLoading: isAgentsLoading } = useAgents();
   const agentIds = agentsData?.data?.agents?.map((agent) => agent.id as UUID) || [];
 
-  // Create individual queries for each agent
-  const agentQueries = [];
-  for (const id of agentIds) {
-    if (id) {
-      const query = useAgent(id);
-      agentQueries.push(query);
-    }
-  }
+  // Use useQueries for parallel fetching
+  const agentQueries = useQueries<UseQueryResult<{ data: Agent }, Error>[]>({
+    queries: agentIds.map((id) => ({
+      queryKey: ['agent', id] as const,
+      queryFn: () => apiClient.getAgent(id),
+      staleTime: STALE_TIMES.FREQUENT,
+      enabled: Boolean(id),
+      refetchInterval: !network.isOffline && Boolean(id) ? STALE_TIMES.FREQUENT : false,
+      refetchIntervalInBackground: false,
+      ...(!network.isOffline &&
+        network.effectiveType === 'slow-2g' && {
+          refetchInterval: STALE_TIMES.STANDARD,
+        }),
+    })),
+  });
 
   // Safely check loading and error states
-  const isLoading = isAgentsLoading || agentQueries.some((query) => query?.isLoading === true);
-  const isError = agentQueries.some((query) => query?.isError === true);
-  const error = agentQueries.find((query) => query?.error)?.error;
+  const isLoading = isAgentsLoading || agentQueries.some((query) => query.isLoading);
+  const isError = agentQueries.some((query) => query.isError);
+  const error = agentQueries.find((query) => query.error)?.error;
 
   // Safely collect agent details
-  const detailedAgents: Agent[] = [];
-  for (const query of agentQueries) {
-    if (query?.data?.data) {
-      detailedAgents.push(query.data.data);
-    }
-  }
+  const detailedAgents = agentQueries
+    .filter((query): query is UseQueryResult<{ data: Agent }, Error> & { data: { data: Agent } } =>
+      Boolean(query.data?.data)
+    )
+    .map((query) => query.data.data);
 
   return {
     data: {
