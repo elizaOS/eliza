@@ -68,7 +68,6 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@babel/generator": "^7.26.10",
-    "@elizaos/plugin-openai": "workspace:*",
     "@hapi/shot": "^6.0.1",
     "@types/hapi": "^18.0.14",
     "node-opus": "^0.3.3",
