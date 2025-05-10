@@ -28,7 +28,7 @@ interface GroupPanel {
 
 export default function GroupPanel({ onClose, agents, groupId }: GroupPanel) {
   const [chatName, setChatName] = useState('');
-  const [selectedAgents, setSelectedAgents] = useState<Partial<Agent[]>>([]);
+const [selectedAgents, setSelectedAgents] = useState<Partial<Agent>[]>([]);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [initialOptions, setInitialOptions] = useState<Option[]>([]);
