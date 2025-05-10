@@ -584,8 +584,6 @@ export class AgentRuntime implements IAgentRuntime {
         span.recordException(error as Error);
         span.setStatus({ code: SpanStatusCode.ERROR, message: errorMsg });
         this.runtimeLogger.error(`Failed to initialize: ${errorMsg}`);
-        console.trace(error);
-
         throw error;
       }
 

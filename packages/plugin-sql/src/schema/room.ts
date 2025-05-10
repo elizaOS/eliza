@@ -30,7 +30,7 @@ export const roomTable = pgTable('rooms', {
   source: text('source').notNull(),
   type: text('type').notNull(),
   serverId: text('serverId'),
-  worldId: uuid('worldId'),
+  worldId: uuid('worldId'), // no guarantee that world exists, it is optional for now
   // .references(() => worldTable.id, {
   //   onDelete: 'cascade',
   // }),

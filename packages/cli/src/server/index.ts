@@ -123,7 +123,6 @@ export class AgentServer {
       // Success message moved to start method
     } catch (error) {
       logger.error('Failed to initialize:', error);
-      // trace the error
       console.trace(error);
       throw error;
     }

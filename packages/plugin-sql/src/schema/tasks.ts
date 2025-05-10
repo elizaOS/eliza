@@ -8,12 +8,15 @@ import { jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 export const taskTable = pgTable('tasks', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
-  description: text('description').notNull(),
+  description: text('description'),
   roomId: uuid('room_id'),
   worldId: uuid('world_id'),
+  entityId: uuid('entity_id'),
   agentId: uuid('agent_id').notNull(),
-  tags: text('tags').array(),
-  metadata: jsonb('metadata'),
-  createdAt: timestamp('created_at').defaultNow(),
-  updatedAt: timestamp('updated_at').defaultNow(),
+  tags: text('tags')
+    .array()
+    .default(sql`'{}'::text[]`),
+  metadata: jsonb('metadata').default(sql`'{}'::jsonb`),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });

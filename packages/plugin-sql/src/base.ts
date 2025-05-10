@@ -115,9 +115,6 @@ export abstract class BaseDrizzleAdapter<
             nextRetryIn: `${(delay / 1000).toFixed(1)}s`,
           });
 
-          // log the trace
-          logger.error(error);
-
           await new Promise((resolve) => setTimeout(resolve, delay));
         } else {
           logger.error('Max retry attempts reached:', {
@@ -2685,7 +2682,7 @@ export abstract class BaseDrizzleAdapter<
             ? JSON.parse(row.memory.content)
             : row.memory.content,
         entityId: row.memory.entityId as UUID,
-        agentId: this.agentId,
+        agentId: row.memory.agentId as UUID,
         roomId: row.memory.roomId as UUID,
         unique: row.memory.unique,
         embedding: row.embedding ?? undefined,
