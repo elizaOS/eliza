@@ -79,9 +79,12 @@ const useNetworkStatus = () => {
 
 // Hook for fetching agents with smart polling
 /**
- * Custom hook to fetch a list of agents from the server.
- * @param {object} options - Optional configuration options.
- * @returns {object} - A query object with data containing an array of agents.
+ * Fetches a list of agents from the server with polling and network-aware intervals.
+ *
+ * @param options - Optional configuration to override default query behavior.
+ * @returns A React Query object containing the agents data and query state.
+ *
+ * @remark Polling frequency adapts to network conditions, using less frequent polling when offline or on slow connections.
  */
 export function useAgents(options = {}) {
   const network = useNetworkStatus();
@@ -246,9 +249,10 @@ export function useStopAgent() {
 
 // Hook for fetching messages directly for a specific agent without requiring a room
 /**
- * Custom hook to fetch and return messages for a specific agent.
- * @param {UUID} agentId - The unique identifier of the agent to get messages for.
- * @returns {Object} An object containing the messages for the agent.
+ * Returns cached messages for a specific agent in the current world.
+ *
+ * @param agentId - The unique identifier of the agent.
+ * @returns An object containing the cached messages for the agent, or an empty array if none are available.
  */
 export function useAgentMessages(agentId: UUID) {
   const queryClient = useQueryClient();
@@ -590,7 +594,9 @@ export function useAgentMemories(agentId: UUID, tableName?: string, roomId?: UUI
 }
 
 /**
- * Deletes a specific memory entry for an agent
+ * Provides a mutation hook to delete a specific memory entry for an agent.
+ *
+ * On success, invalidates related agent and room memory queries to ensure data consistency.
  */
 export function useDeleteMemory() {
   const queryClient = useQueryClient();
@@ -615,6 +621,11 @@ export function useDeleteMemory() {
   });
 }
 
+/**
+ * Hook for deleting all memories associated with a specific agent in a given room.
+ *
+ * @returns A mutation object for triggering the deletion and tracking its state.
+ */
 export function /**
  * Custom hook to delete all memories for an agent in a specific room.
  * @returns {UseMutationResult} Object containing the mutation function and its handlers.
@@ -641,8 +652,11 @@ useDeleteAllMemories() {
 }
 
 /**
- * Hook to update a specific memory entry for an agent
- * @returns {UseMutationResult} - Object containing the mutation function and its handlers.
+ * Updates a specific memory entry for an agent.
+ *
+ * Triggers cache invalidation for related agent and room memories, as well as messages, to ensure data consistency. Displays a toast notification on success or error.
+ *
+ * @returns A mutation object for updating an agent's memory entry.
  */
 export function useUpdateMemory() {
   const queryClient = useQueryClient();
@@ -704,6 +718,12 @@ export function useUpdateMemory() {
   });
 }
 
+/**
+ * Fetches rooms for the current world, grouped by server ID.
+ *
+ * @param options - Optional query configuration.
+ * @returns A query result containing a map of server IDs to arrays of rooms.
+ */
 export function /**
  * Custom hook to fetch rooms grouped by server ID.
  * @param {object} [options] - Optional configuration options for the query.
@@ -756,6 +776,13 @@ interface AgentsWithDetailsResult {
   error: unknown;
 }
 
+/**
+ * Fetches a list of agents with detailed information for each agent in parallel.
+ *
+ * Combines the agent list from {@link useAgents} with individual agent detail queries using `useQueries`, aggregating loading and error states. Polling intervals adapt to network conditions.
+ *
+ * @returns An object containing detailed agent data, loading and error states, and any encountered error.
+ */
 export function useAgentsWithDetails(): AgentsWithDetailsResult {
   const network = useNetworkStatus();
   const { data: agentsData, isLoading: isAgentsLoading } = useAgents();

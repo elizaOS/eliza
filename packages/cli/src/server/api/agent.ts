@@ -88,11 +88,13 @@ interface CustomRequest extends express.Request {
 }
 
 /**
- * Creates an express Router for handling agent-related routes.
+ * Creates and configures an Express router for managing agents and their related resources.
  *
- * @param agents - Map of UUID to agent runtime instances.
- * @param server - Optional AgentServer instance.
- * @returns An express Router for agent routes.
+ * The returned router provides RESTful endpoints for agent lifecycle management (creation, update, start, stop, deletion), memory and log operations, audio processing (transcription and speech synthesis), message handling, knowledge uploads, and group chat management. It integrates with agent runtimes and optionally an {@link AgentServer} instance for database operations.
+ *
+ * @param agents - Map of agent UUIDs to their runtime instances.
+ * @param server - Optional server instance providing database and agent management utilities.
+ * @returns An Express router with agent-related routes.
  */
 export function agentRouter(
   agents: Map<UUID, IAgentRuntime>,
