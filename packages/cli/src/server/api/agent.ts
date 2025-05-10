@@ -122,20 +122,10 @@ export function agentRouter(
           return a.status === 'active' ? -1 : 1;
         });
 
-      res.json({
-        success: true,
-        data: { agents: response },
-      });
+      sendSuccess(res, { agents: response });
     } catch (error) {
       logger.error('[AGENTS LIST] Error retrieving agents:', error);
-      res.status(500).json({
-        success: false,
-        error: {
-          code: 500,
-          message: 'Error retrieving agents',
-          details: error.message,
-        },
-      });
+      sendError(res, 500, '500', 'Error retrieving agents', error.message);
     }
   });
 
@@ -218,50 +208,24 @@ export function agentRouter(
   // Get specific agent details
   router.get('/:agentId', async (req, res) => {
     const agentId = validateUuid(req.params.agentId);
-    if (!agentId) {
-      res.status(400).json({
-        success: false,
-        error: {
-          code: 'INVALID_ID',
-          message: 'Invalid agent ID format',
-        },
-      });
-      return;
-    }
 
     try {
       const agent = await db.getAgent(agentId);
       if (!agent) {
-        logger.debug('[AGENT GET] Agent not found');
-        res.status(404).json({
-          success: false,
-          error: {
-            code: 'NOT_FOUND',
-            message: 'Agent not found',
-          },
-        });
+        sendError(res, 404, 'NOT_FOUND', 'Agent not found');
         return;
       }
 
       const runtime = agents.get(agentId);
+      const response = {
+        ...agent,
+        status: runtime ? 'active' : 'inactive',
+      };
 
-      // check if agent is running
-      const status = runtime ? 'active' : 'inactive';
-
-      res.json({
-        success: true,
-        data: { ...agent, status },
-      });
+      sendSuccess(res, response);
     } catch (error) {
-      logger.error('[AGENT GET] Error getting agent:', error);
-      res.status(500).json({
-        success: false,
-        error: {
-          code: 500,
-          message: 'Error getting agent',
-          details: error.message,
-        },
-      });
+      logger.error('[AGENT GET] Error retrieving agent:', error);
+      sendError(res, 500, '500', 'Error retrieving agent', error.message);
     }
   });
 
@@ -1279,7 +1243,7 @@ export function agentRouter(
         logger.error('[TRANSCRIPTION] Error transcribing audio:', error);
         // Clean up the temporary file in case of error
         if (audioFile.path && fs.existsSync(audioFile.path)) {
-          fs.unlinkSync(audioFile.path);
+          cleanupFile(audioFile.path);
         }
 
         res.status(500).json({
@@ -1703,10 +1667,7 @@ export function agentRouter(
           });
         } catch (fileError) {
           logger.error(`[KNOWLEDGE POST] Error processing file ${file.originalname}: ${fileError}`);
-          // Clean up this file if it exists
-          if (file.path && fs.existsSync(file.path)) {
-            fs.unlinkSync(file.path);
-          }
+          cleanupFile(file.path);
           // Continue with other files even if one fails
         }
       }
@@ -1719,19 +1680,7 @@ export function agentRouter(
       logger.error(`[KNOWLEDGE POST] Error uploading knowledge: ${error}`);
 
       // Clean up any remaining files
-      if (files) {
-        for (const file of files) {
-          if (file.path && fs.existsSync(file.path)) {
-            try {
-              fs.unlinkSync(file.path);
-            } catch (cleanupError) {
-              logger.error(
-                `[KNOWLEDGE POST] Error cleaning up file ${file.originalname}: ${cleanupError}`
-              );
-            }
-          }
-        }
-      }
+      cleanupFiles(files);
 
       res.status(500).json({
         success: false,
@@ -1746,35 +1695,19 @@ export function agentRouter(
 
   router.post('/groups/:serverId', async (req, res) => {
     const serverId = validateUuid(req.params.serverId);
-
     const { name, worldId, source, metadata, agentIds = [] } = req.body;
 
     if (!Array.isArray(agentIds) || agentIds.length === 0) {
-      res.status(400).json({
-        success: false,
-        error: {
-          code: 'BAD_REQUEST',
-          message: 'agentIds must be a non-empty array',
-        },
-      });
+      sendError(res, 400, 'BAD_REQUEST', 'agentIds must be a non-empty array');
+      return;
     }
 
     let results = [];
     let errors = [];
 
     for (const agentId of agentIds) {
-      const runtime = agents.get(agentId);
-
-      if (!runtime) {
-        errors.push({
-          agentId,
-          code: 'NOT_FOUND',
-          message: 'Agent not found',
-        });
-        continue;
-      }
-
       try {
+        const runtime = getRuntime(agents, agentId);
         const roomId = createUniqueUuid(runtime, serverId);
         const roomName = name || `Chat ${new Date().toLocaleString()}`;
 
@@ -1810,8 +1743,8 @@ export function agentRouter(
         logger.error(`[ROOM CREATE] Error creating room for agent ${agentId}:`, error);
         errors.push({
           agentId,
-          code: 'CREATE_ERROR',
-          message: 'Failed to Create group',
+          code: error.message === 'Agent not found' ? 'NOT_FOUND' : 'CREATE_ERROR',
+          message: error.message === 'Agent not found' ? error.message : 'Failed to Create group',
           details: error.message,
         });
       }
@@ -1837,18 +1770,10 @@ export function agentRouter(
     const serverId = validateUuid(req.params.serverId);
     try {
       await db.deleteRoomsByServerId(serverId);
-
       res.status(204).send();
     } catch (error) {
       logger.error('[GROUP DELETE] Error deleting group:', error);
-      res.status(500).json({
-        success: false,
-        error: {
-          code: 'DELETE_ERROR',
-          message: 'Error deleting group',
-          details: error.message,
-        },
-      });
+      sendError(res, 500, 'DELETE_ERROR', 'Error deleting group', error.message);
     }
   });
 
