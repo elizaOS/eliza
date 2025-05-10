@@ -1112,6 +1112,20 @@ export class AgentRuntime implements IAgentRuntime {
               'error.action': responseAction,
             });
             this.runtimeLogger.error(errorMsg);
+
+            const actionMemory: Memory = {
+              id: uuidv4() as UUID,
+              entityId: message.entityId,
+              roomId: message.roomId,
+              worldId: message.worldId,
+              content: {
+                thought: errorMsg,
+                source: 'auto',
+              },
+            };
+
+            await this.createMemory(actionMemory, 'messages');
+
             continue;
           }
 
@@ -1167,6 +1181,20 @@ export class AgentRuntime implements IAgentRuntime {
                   status: 'error',
                   error: handlerErrorMessage,
                 });
+
+                const actionMemory: Memory = {
+                  id: uuidv4() as UUID,
+                  entityId: message.entityId,
+                  roomId: message.roomId,
+                  worldId: message.worldId,
+                  content: {
+                    thought: handlerErrorMessage,
+                    source: 'auto',
+                  },
+                };
+
+                await this.createMemory(actionMemory, 'messages');
+
                 // Re-throw the error to be caught by the outer try/catch
                 throw handlerError;
               }
@@ -1200,6 +1228,20 @@ export class AgentRuntime implements IAgentRuntime {
               'error.message': errorMessage,
             });
             this.runtimeLogger.error(error);
+
+            const actionMemory: Memory = {
+              id: uuidv4() as UUID,
+              content: {
+                thought: errorMessage,
+                source: 'auto',
+              },
+              entityId: message.entityId,
+              roomId: message.roomId,
+              worldId: message.worldId,
+            };
+
+            await this.createMemory(actionMemory, 'messages');
+
             throw error;
           }
         }
@@ -1321,9 +1363,9 @@ export class AgentRuntime implements IAgentRuntime {
     userId?: UUID;
     metadata?: Record<string, any>;
   }) {
-    if (entityId === this.agentId) {
-      throw new Error('Agent should not connect to itself');
-    }
+    // if (entityId === this.agentId) {
+    //   throw new Error('Agent should not connect to itself');
+    // }
 
     if (!worldId && serverId) {
       worldId = createUniqueUuid(this, serverId);
@@ -1558,14 +1600,17 @@ export class AgentRuntime implements IAgentRuntime {
    * Composes the agent's state by gathering data from enabled providers.
    * @param message - The message to use as context for state composition
    * @param filterList - Optional list of provider names to include, filtering out all others
-   * @param includeList - Optional list of private provider names to include that would otherwise be filtered out
+   * @param onlyInclude - If true, only include providers that are in the includeList, don't get other registered providers
+   * @param skipCache - If true, skip the cache and get the latest data from the providers
    * @returns A State object containing provider data, values, and text
    */
   async composeState(
     message: Memory,
-    filterList: string[] | null = null, // only get providers that are in the filterList
-    includeList: string[] | null = null // include providers that are private, dynamic or otherwise not included by default
+    includeList: string[] | null = null, // include providers that are private, dynamic or otherwise not included by default
+    onlyInclude = false,
+    skipCache = false
   ): Promise<State> {
+    const filterList = onlyInclude ? includeList : null;
     return this.startSpan('AgentRuntime.composeState', async (span) => {
       span.setAttributes({
         'message.id': message.id,
@@ -1575,12 +1620,16 @@ export class AgentRuntime implements IAgentRuntime {
       });
       span.addEvent('state_composition_started');
 
-      // Get cached state for this message ID first
-      const cachedState = (await this.stateCache.get(message.id)) || {
+      const emptyObj = {
         values: {},
         data: {},
         text: '',
-      };
+      } as State;
+
+      // Get cached state for this message ID first
+      const cachedState = skipCache
+        ? emptyObj
+        : (await this.stateCache.get(message.id)) || emptyObj;
 
       // Get existing provider names from cache (if any)
       const existingProviderNames = cachedState.data.providers
@@ -1600,14 +1649,15 @@ export class AgentRuntime implements IAgentRuntime {
         // If filter list provided, start with just those providers
         filterList.forEach((name) => providerNames.add(name));
       } else {
-        // Otherwise, start with all non-private, non-dynamic providers that aren't cached
+        // Otherwise, when onlyInclude is false, fetch all non-private, non-dynamic providers.
+        // This ensures their state is refreshed alongside any includeList providers.
         this.providers
-          .filter((p) => !p.private && !p.dynamic && !existingProviderNames.includes(p.name))
+          .filter((p) => !p.private && !p.dynamic)
           .forEach((p) => providerNames.add(p.name));
       }
 
       // Step 2: Always add providers from include list
-      if (includeList && includeList.length > 0) {
+      if (!filterList && includeList && includeList.length > 0) {
         includeList.forEach((name) => providerNames.add(name));
       }
 
@@ -1661,66 +1711,77 @@ export class AgentRuntime implements IAgentRuntime {
               providerSpan.addEvent('provider_fetch_error');
 
               // Return empty result on error
-              return { values: {}, text: '', providerName: provider.name };
+              return { values: {}, text: '', data: {}, providerName: provider.name }; // ensure data is also present
             }
           });
         })
       );
 
-      // Create a combined provider values structure that preserves all cached data
-      // but updates with any newly fetched provider data
-      const combinedValues = { ...(cachedState.data.providers || {}) };
+      // This map will store the full result object for each provider,
+      // combining cached data with freshly fetched data.
+      // Assumes cachedState.data.providers stores { providerName: { text, values, data, providerName }, ... }
+      const currentProviderResults = { ...(cachedState.data?.providers || {}) };
 
-      // Update with newly fetched provider data
-      for (const result of providerData) {
-        combinedValues[result.providerName] = result.values || {};
+      // Update the map with the full results from newly fetched providerData
+      for (const freshResult of providerData) {
+        // freshResult is { text, values, data, providerName }
+        currentProviderResults[freshResult.providerName] = freshResult;
       }
 
-      // Collect provider text from newly fetched providers
-      const newProvidersText = providerData
-        .map((result) => result.text)
-        .filter((text) => text !== '')
-        .join('\\n');
-
-      // Combine with existing text if available
-      let providersText = '';
-      if (newProvidersText) {
-        providersText = newProvidersText;
-      } else if (cachedState.text) {
-        providersText = cachedState.text;
+      // Aggregate text from all providers in their intended order.
+      // providersToGet is already sorted by position and contains all providers for the current state composition.
+      const orderedTexts: string[] = [];
+      for (const provider of providersToGet) {
+        const result = currentProviderResults[provider.name];
+        if (result && result.text && result.text.trim() !== '') {
+          orderedTexts.push(result.text);
+        }
       }
+      const providersText = orderedTexts.join('\n');
 
-      // Prepare final values
-      const values = {
-        ...(cachedState.values || {}),
-      };
-
-      // Safely merge all provider values
-      for (const providerName in combinedValues) {
-        const providerValues = combinedValues[providerName];
-        if (providerValues && typeof providerValues === 'object') {
-          Object.assign(values, providerValues);
+      // Aggregate values from all providers for newState.values.
+      // Start with any general non-provider values from the cache.
+      const aggregatedStateValues = { ...(cachedState.values || {}) };
+      // Merge .values from each provider result in currentProviderResults
+      // Iterate based on providersToGet to maintain a semblance of order if keys in aggregatedStateValues overlap, though Object.assign behavior for overlap is last-in wins.
+      for (const provider of providersToGet) {
+        const providerResult = currentProviderResults[provider.name];
+        if (providerResult && providerResult.values && typeof providerResult.values === 'object') {
+          Object.assign(aggregatedStateValues, providerResult.values);
+        }
+      }
+      // Ensure any providers in currentProviderResults not in providersToGet (e.g. from cache, if logic allowed) also contribute their values
+      for (const providerName in currentProviderResults) {
+        if (!providersToGet.some((p) => p.name === providerName)) {
+          const providerResult = currentProviderResults[providerName];
+          if (
+            providerResult &&
+            providerResult.values &&
+            typeof providerResult.values === 'object'
+          ) {
+            Object.assign(aggregatedStateValues, providerResult.values);
+          }
         }
       }
 
       // Assemble and cache the new state
       const newState = {
         values: {
-          ...values,
-          providers: providersText,
+          ...aggregatedStateValues,
+          providers: providersText, // The aggregated text string
         },
         data: {
-          ...(cachedState.data || {}),
-          providers: combinedValues,
+          ...(cachedState.data || {}), // Preserve other top-level data from cache
+          providers: currentProviderResults, // Store the map of full provider results
         },
-        text: providersText,
+        text: providersText, // The main textual representation of the state
       } as State;
 
       // Cache the result for future use
       this.stateCache.set(message.id, newState);
 
-      const finalProviderCount = Object.keys(combinedValues).length;
-      const finalProviderNames = Object.keys(combinedValues);
+      const finalProviderCount = Object.keys(currentProviderResults).length;
+      const finalProviderNames = Object.keys(currentProviderResults);
       const finalValueKeys = Object.keys(newState.values); // Get keys from the merged state values
 
       span.setAttributes({
