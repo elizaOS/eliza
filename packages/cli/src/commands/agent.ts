@@ -1,7 +1,7 @@
 import { checkServer, displayAgent, handleError } from '@/src/utils';
 import type { Agent } from '@elizaos/core';
 import { logger } from '@elizaos/core';
-import { Command, OptionValues } from 'commander';
+import { Command, OptionValues, Option } from 'commander';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -87,7 +87,13 @@ async function resolveAgentId(idOrNameOrIndex: string, opts: OptionValues): Prom
   console.error(`Agent not found: ${idOrNameOrIndex}`);
 }
 
-export const agent = new Command().name('agent').description('Manage ElizaOS agents');
+export const agent = new Command()
+  .name('agent')
+  .description('Manage ElizaOS agents')
+  .addOption(new Option('-r, --remote-url <url>', 'URL of the remote agent runtime'))
+  .addOption(
+    new Option('-p, --port <port>', 'Port to listen on').argParser((val) => Number.parseInt(val))
+  );
 
 /**
  * Interface representing the payload sent when starting an agent.

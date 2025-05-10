@@ -1,5 +1,5 @@
 import { buildProject, handleError, isMonorepoContext, UserEnvironment } from '@/src/utils';
-import { Command } from 'commander';
+import { Command, Option } from 'commander';
 import { execa } from 'execa';
 import type { ChildProcess } from 'node:child_process';
 import { spawn } from 'node:child_process';
@@ -319,6 +319,9 @@ export const dev = new Command()
     'Path or URL to character file to use instead of default'
   )
   .option('-b, --build', 'Build the project before starting')
+  .addOption(
+    new Option('-p, --port <port>', 'Port to listen on').argParser((val) => Number.parseInt(val))
+  )
   .action(async (options) => {
     try {
       const cwd = process.cwd();
