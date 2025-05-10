@@ -142,8 +142,12 @@ export abstract class BaseDrizzleAdapter<
       throw new Error('Agent name is required');
     }
 
-    const agents = await this.getAgents();
-    const existingAgent = agents.find((a) => a.name === agent.name) as Agent | undefined;
+    const existingAgent = await this.db
+      .select()
+      .from(agentTable)
+      .where(eq(agentTable.name, agent.name))
+      .limit(1)
+      .then((rows) => rows[0] as Agent | undefined);
 
     if (existingAgent) {
       return existingAgent;
