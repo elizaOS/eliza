@@ -2,7 +2,7 @@
   "name": "@elizaos/docs",
   "version": "1.0.0-beta.41",
   "private": true,
-  "packageManager": "bun@9.4.0",
+  "packageManager": "bun@1.2.13",
   "scripts": {
     "docusaurus": "docusaurus",
     "start": "docusaurus start --no-open --port 3002",
