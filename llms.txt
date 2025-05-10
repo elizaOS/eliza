@@ -2435,7 +2435,7 @@ COINGECKO_API_KEY=
     "@types/bun": "latest",
     "@types/node": "^22.13.10",
     "@vitest/eslint-plugin": "1.0.1",
-    "bun": "1.2.2",
+    "bun": "^1.2.13",
     "concurrently": "9.1.0",
     "cross-env": "7.0.3",
     "husky": "9.1.7",
