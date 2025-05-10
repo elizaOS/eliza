@@ -142,14 +142,12 @@ export abstract class BaseDrizzleAdapter<
       throw new Error('Agent name is required');
     }
 
-    const existingAgent = await this.db
-      .select()
-      .from(agentTable)
-      .where(eq(agentTable.name, agent.name))
-      .limit(1)
-      .then((rows) => rows[0] as Agent | undefined);
+    const agents = await this.getAgents();
 
-    if (existingAgent) {
+    const existingAgentId = agents.find((a) => a.name === agent.name)?.id;
+
+    if (existingAgentId) {
+      const existingAgent = (await this.getAgent(existingAgentId)) as Agent;
       return existingAgent;
     }
 
@@ -207,7 +205,6 @@ export abstract class BaseDrizzleAdapter<
       return {
         ...row,
         id: row.id as UUID,
-        username: row.username ?? undefined,
       };
     });
   }
@@ -222,17 +219,13 @@ export abstract class BaseDrizzleAdapter<
       const rows = await this.db
         .select({
           id: agentTable.id,
-          username: agentTable.username,
           name: agentTable.name,
           bio: agentTable.bio,
-          createdAt: agentTable.createdAt,
-          updatedAt: agentTable.updatedAt,
         })
         .from(agentTable);
       return rows.map((row) => ({
         ...row,
         id: row.id as UUID,
-        username: row.username ?? undefined,
       }));
     });
   }
@@ -1241,7 +1234,7 @@ export abstract class BaseDrizzleAdapter<
                             AND m.content->>${opts.query_field_sub_name} IS NOT NULL
                     ),
                     embedded_text AS (
-                        SELECT 
+                        SELECT
                             ct.content_text,
                             COALESCE(
                                 e.dim_384,
