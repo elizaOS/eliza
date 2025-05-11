@@ -10,7 +10,6 @@ import {
   type Memory,
   type Provider,
   type UUID,
-  formatMessageHistory,
   logger,
 } from '@elizaos/core';
 
