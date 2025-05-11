@@ -1,8 +1,7 @@
 import dotenv from 'dotenv';
 dotenv.config({ path: '../../.env' });
 
-// Use a more generic type definition since 'Project' or 'ProjectType' might not be exported
-import { logger } from '@elizaos/core';
+import { logger, ProjectAgent } from '@elizaos/core';
 import communityManager from './communityManager';
 import devRel from './devRel';
 import investmentManager from './investmentManager';
@@ -15,143 +14,68 @@ import socialMediaManager from './socialMediaManager';
  * @param agent The agent to check
  * @returns boolean indicating if all required environment variables are set
  */
-function hasRequiredEnvVars(agent: any): boolean {
-  if (!agent?.character?.settings?.secrets) {
-    logger.warn('Agent missing required settings.secrets configuration');
-    return false;
-  }
+function hasRequiredEnvVars(agent: ProjectAgent): boolean {
+  // Get which platform plugins the agent uses
+  const usesDiscord = agent.character.plugins?.includes('@elizaos/plugin-discord');
+  const usesTelegram = agent.character.plugins?.includes('@elizaos/plugin-telegram');
 
-  const secrets = agent.character.settings.secrets;
-  const missingVars: string[] = [];
-  let hasRequiredPlatform = false;
-  let checkingPlatforms = false;
+  // If no communication platforms are needed, we're good
+  if (!usesDiscord && !usesTelegram) return true;
 
-  // Check Discord plugin requirements
-  if (agent.character.plugins?.includes('@elizaos/plugin-discord')) {
-    checkingPlatforms = true;
-    let discordConfigured = true;
+  // Check if at least one platform is properly configured
+  let hasValidPlatform = false;
 
-    // Check for Discord Application ID
-    if (secrets.DISCORD_APPLICATION_ID) {
-      // Check if it's an environment variable reference or direct value
-      if (secrets.DISCORD_APPLICATION_ID.startsWith('process.env.')) {
-        const envVarName = secrets.DISCORD_APPLICATION_ID.replace('process.env.', '');
-        if (!process.env[envVarName]) {
-          missingVars.push(envVarName);
-          discordConfigured = false;
-        }
-      } else {
-        // If it's a direct value, it's already available
-        logger.debug(`Agent "${agent.character.name}" has direct Discord Application ID value`);
-      }
-    } else {
-      logger.warn(`Agent "${agent.character.name}" missing DISCORD_APPLICATION_ID configuration`);
-      discordConfigured = false;
-    }
+  if (usesDiscord) {
+    // Get the actual values from agent settings
+    const discordId = agent.character.settings.secrets.DISCORD_APPLICATION_ID;
+    const discordToken = agent.character.settings.secrets.DISCORD_API_TOKEN;
 
-    // Check for Discord API Token
-    if (secrets.DISCORD_API_TOKEN) {
-      // Check if it's an environment variable reference or direct value
-      if (secrets.DISCORD_API_TOKEN.startsWith('process.env.')) {
-        const envVarName = secrets.DISCORD_API_TOKEN.replace('process.env.', '');
-        if (!process.env[envVarName]) {
-          missingVars.push(envVarName);
-          discordConfigured = false;
-        }
-      } else {
-        // If it's a direct value, it's already available
-        logger.debug(`Agent "${agent.character.name}" has direct Discord API Token value`);
-      }
-    } else {
-      logger.warn(`Agent "${agent.character.name}" missing DISCORD_API_TOKEN configuration`);
-      discordConfigured = false;
-    }
-
-    // If Discord is fully configured, mark that we have at least one required platform
-    if (discordConfigured) {
-      hasRequiredPlatform = true;
+    if (discordId && discordToken) {
+      hasValidPlatform = true;
+      logger.debug(`Agent "${agent.character.name}" has Discord configuration`);
     }
   }
 
-  // Check Telegram plugin requirements
-  if (agent.character.plugins?.includes('@elizaos/plugin-telegram')) {
-    checkingPlatforms = true;
-    let telegramConfigured = true;
+  if (usesTelegram) {
+    const telegramToken = agent.character.settings.secrets.TELEGRAM_BOT_TOKEN;
 
-    // Check for Telegram Bot Token
-    if (secrets.TELEGRAM_BOT_TOKEN) {
-      // Check if it's an environment variable reference or direct value
-      if (secrets.TELEGRAM_BOT_TOKEN.startsWith('process.env.')) {
-        const envVarName = secrets.TELEGRAM_BOT_TOKEN.replace('process.env.', '');
-        if (!process.env[envVarName]) {
-          missingVars.push(envVarName);
-          telegramConfigured = false;
-        }
-      } else {
-        // If it's a direct value, it's already available
-        logger.debug(`Agent "${agent.character.name}" has direct Telegram Bot Token value`);
-      }
-    } else {
-      logger.warn(`Agent "${agent.character.name}" missing TELEGRAM_BOT_TOKEN configuration`);
-      telegramConfigured = false;
-    }
-
-    // If Telegram is fully configured, mark that we have at least one required platform
-    if (telegramConfigured) {
-      hasRequiredPlatform = true;
+    if (telegramToken) {
+      hasValidPlatform = true;
+      logger.debug(`Agent "${agent.character.name}" has Telegram configuration`);
     }
   }
 
-  // If we weren't checking any communication platforms, let the agent pass
-  // This handles agents that don't use Discord or Telegram
-  if (!checkingPlatforms) {
-    logger.info(
-      `Agent "${agent.character.name}" doesn't require Discord or Telegram configuration`
-    );
-    return true;
+  if (!hasValidPlatform) {
+    logger.warn(`Agent "${agent.character.name}" disabled - missing platform configuration`);
   }
 
-  // If we checked platforms but none were properly configured, log the missing variables
-  if (checkingPlatforms && !hasRequiredPlatform) {
-    if (missingVars.length > 0) {
-      logger.warn(
-        `Agent "${agent.character.name}" disabled due to missing environment variables: ${missingVars.join(', ')}`
-      );
-    } else {
-      logger.warn(`Agent "${agent.character.name}" disabled due to incomplete configuration`);
-    }
-    return false;
-  }
-
-  // If at least one platform is configured, the agent can run
-  logger.debug(`Agent "${agent.character.name}" enabled with all required environment variables`);
-  return true;
+  return hasValidPlatform;
 }
 
-// Filter agents based on available environment variables
-const availableAgents = [
+// Define which agents you want to enable
+const enabledAgents = [
   devRel,
   communityManager,
   investmentManager,
   liaison,
   projectManager,
   socialMediaManager,
-].filter(hasRequiredEnvVars);
+];
 
-// Log the filtering results for clarity
-const totalAgents = 6; // Total number of agents defined
-const filteredOutCount = totalAgents - availableAgents.length;
-if (filteredOutCount > 0) {
-  if (filteredOutCount === totalAgents) {
-    console.log('NO AGENTS AVAILABLE - INITIALIZING DEFAULT ELIZA CHARACTER');
-    logger.info(
-      `To enable agents, configure the required platform integrations in your .env file.`
-    );
-  } else {
-    logger.warn(
-      `${filteredOutCount} out of ${totalAgents} agents were filtered out due to missing platform requirements.`
-    );
-  }
+const availableAgents = enabledAgents.filter(hasRequiredEnvVars);
+
+// Log the filtering results with accurate counts
+if (enabledAgents.length === 0) {
+  logger.warn('No agents are enabled in the configuration');
+} else if (availableAgents.length === 0) {
+  logger.error('NO AGENTS AVAILABLE - INITIALIZING DEFAULT ELIZA CHARACTER');
+  logger.info('Configure the required platform integrations in your .env file');
+} else if (availableAgents.length < enabledAgents.length) {
+  logger.warn(
+    `${enabledAgents.length - availableAgents.length} out of ${enabledAgents.length} enabled agents were filtered out due to missing platform requirements.`
+  );
+} else {
+  logger.info(`${availableAgents.length} agents successfully initialized`);
 }
 
 export const project = {
