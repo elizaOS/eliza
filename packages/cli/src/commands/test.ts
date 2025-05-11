@@ -153,7 +153,7 @@ const runAgentTests = async (options: {
         const checkInterval = setInterval(async () => {
           try {
             // Check if the database is already initialized
-            if (server.database?.isInitialized) {
+            if (await server.database?.getConnection()) {
               clearInterval(checkInterval);
               resolve();
               return;
@@ -174,7 +174,7 @@ const runAgentTests = async (options: {
 
               // Check if we've reached the maximum attempts
               if (initializationAttempts >= maxAttempts) {
-                if (server.database?.connection) {
+                if (await server.database?.getConnection()) {
                   // If we have a connection, consider it good enough even with migration errors
                   console.warn(
                     'Max initialization attempts reached, but database connection exists. Proceeding anyway.'
@@ -200,9 +200,9 @@ const runAgentTests = async (options: {
         }, 1000);
 
         // Timeout after 30 seconds
-        setTimeout(() => {
+        setTimeout(async () => {
           clearInterval(checkInterval);
-          if (server.database?.connection) {
+          if (await server.database?.getConnection()) {
             // If we have a connection, consider it good enough even with initialization issues
             console.warn(
               'Database initialization timeout, but connection exists. Proceeding anyway.'

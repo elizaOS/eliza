@@ -43,6 +43,8 @@ import type {
 } from './types';
 import { EventType, type MessagePayload } from './types';
 import { stringToUuid } from './uuid';
+import { PGlite } from '@electric-sql/pglite';
+import { Pool } from 'pg';
 
 /**
  * Represents a collection of settings grouped by namespace.
@@ -662,6 +664,13 @@ export class AgentRuntime implements IAgentRuntime {
 
       span.addEvent('initialization_completed');
     });
+  }
+
+  async getConnection(): Promise<PGlite | Pool> {
+    if (!this.adapter) {
+      throw new Error('Database adapter not registered');
+    }
+    return this.adapter.getConnection();
   }
 
   private async handleProcessingError(error: any, context: string) {
@@ -2401,6 +2410,10 @@ export class AgentRuntime implements IAgentRuntime {
     return await this.adapter.getWorld(id);
   }
 
+  async removeWorld(worldId: UUID): Promise<void> {
+    await this.adapter.removeWorld(worldId);
+  }
+
   async getAllWorlds(): Promise<World[]> {
     return await this.adapter.getAllWorlds();
   }
@@ -2427,6 +2440,10 @@ export class AgentRuntime implements IAgentRuntime {
 
   async deleteRoom(roomId: UUID): Promise<void> {
     await this.adapter.deleteRoom(roomId);
+  }
+
+  async deleteRoomsByServerId(serverId: UUID): Promise<void> {
+    await this.adapter.deleteRoomsByServerId(serverId);
   }
 
   async updateRoom(room: Room): Promise<void> {
