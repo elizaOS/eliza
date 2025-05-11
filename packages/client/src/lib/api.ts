@@ -1,4 +1,7 @@
 import type { Agent, Character, UUID, Memory } from '@elizaos/core';
+
+export type AgentWithStatus = Omit<Agent, 'status'> & { status: 'active' | 'inactive' };
+
 import { WorldManager } from './world-manager';
 import clientLogger from './logger';
 
@@ -238,7 +241,9 @@ interface AgentLog {
  * }}
  */
 export const apiClient = {
-  getAgents: () => fetcher({ url: '/agents' }),
+  // Get list of agents with minimal details
+  getAgents: (): Promise<{ data: { agents: Partial<Agent>[] } }> => fetcher({ url: '/agents' }),
+  // Get full agent details
   getAgent: (agentId: string): Promise<{ data: Agent }> => fetcher({ url: `/agents/${agentId}` }),
   ping: (): Promise<{ pong: boolean; timestamp: number }> => fetcher({ url: '/ping' }),
   testEndpoint: (endpoint: string): Promise<any> => fetcher({ url: endpoint }),

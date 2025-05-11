@@ -128,17 +128,17 @@ function resolveEntity(entityId: UUID, entities: Entity[]): UUID {
     return entityId as UUID;
   }
 
-  let entity;
+  let entity: Entity | undefined;
 
   // Try to match the entityId exactly
   entity = entities.find((a) => a.id === entityId);
-  if (entity) {
+  if (entity?.id) {
     return entity.id;
   }
 
   // Try partial UUID match with entityId
-  entity = entities.find((a) => a.id.includes(entityId));
-  if (entity) {
+  entity = entities.find((a) => a.id?.includes(entityId));
+  if (entity?.id) {
     return entity.id;
   }
 
@@ -146,7 +146,7 @@ function resolveEntity(entityId: UUID, entities: Entity[]): UUID {
   entity = entities.find((a) =>
     a.names.some((n) => n.toLowerCase().includes(entityId.toLowerCase()))
   );
-  if (entity) {
+  if (entity?.id) {
     return entity.id;
   }
 
@@ -154,6 +154,11 @@ function resolveEntity(entityId: UUID, entities: Entity[]): UUID {
 }
 async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
   const { agentId, roomId } = message;
+
+  if (!agentId || !roomId) {
+    logger.warn('Missing agentId or roomId in message', message);
+    return;
+  }
 
   // Run all queries in parallel
   const [existingRelationships, entities, knownFacts] = await Promise.all([
@@ -171,7 +176,7 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 
   const prompt = composePrompt({
     state: {
-      ...state.values,
+      ...(state?.values || {}),
       knownFacts: formatFacts(knownFacts),
       roomType: message.content.channelType as string,
       entitiesInRoom: JSON.stringify(entities),
@@ -276,7 +281,10 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
       }
     }
 
-    await runtime.setCache<string>(`${message.roomId}-reflection-last-processed`, message.id);
+    await runtime.setCache<string>(
+      `${message.roomId}-reflection-last-processed`,
+      message?.id || ''
+    );
 
     return reflection;
   } catch (error) {

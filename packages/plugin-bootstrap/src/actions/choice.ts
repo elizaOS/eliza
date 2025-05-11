@@ -124,7 +124,12 @@ export const choiceAction: Action = {
   similes: ['SELECT_OPTION', 'SELECT', 'PICK', 'CHOOSE'],
   description: 'Selects an option for a pending task that has multiple options',
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state: State): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
+    if (!state) {
+      logger.error('State is required for validating the action');
+      throw new Error('State is required for validating the action');
+    }
+
     // Get all tasks with options metadata
     const pendingTasks = await runtime.getTasks({
       roomId: message.roomId,
@@ -148,10 +153,10 @@ export const choiceAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State,
-    _options: any,
-    callback: HandlerCallback,
-    responses: Memory[]
+    state?: State,
+    _options?: any,
+    callback?: HandlerCallback,
+    responses?: Memory[]
   ): Promise<void> => {
     const pendingTasks = await runtime.getTasks({
       roomId: message.roomId,
@@ -171,13 +176,13 @@ export const choiceAction: Action = {
     // Format tasks with their options for the LLM, using shortened UUIDs
     const formattedTasks = tasksWithOptions.map((task) => {
       // Generate a short ID from the task UUID (first 8 characters should be unique enough)
-      const shortId = task.id.substring(0, 8);
+      const shortId = task.id?.substring(0, 8);
 
       return {
         taskId: shortId,
         fullId: task.id,
         name: task.name,
-        options: task.metadata.options.map((opt) => ({
+        options: task.metadata?.options?.map((opt) => ({
           name: typeof opt === 'string' ? opt : opt.name,
           description: typeof opt === 'string' ? opt : opt.description || opt.name,
         })),
@@ -187,14 +192,14 @@ export const choiceAction: Action = {
     // format tasks as a string
     const tasksString = formattedTasks
       .map((task) => {
-        return `Task ID: ${task.taskId} - ${task.name}\nAvailable options:\n${task.options.map((opt) => `- ${opt.name}: ${opt.description}`).join('\n')}`;
+        return `Task ID: ${task.taskId} - ${task.name}\nAvailable options:\n${task.options?.map((opt) => `- ${opt.name}: ${opt.description}`).join('\n')}`;
       })
       .join('\n');
 
     const prompt = composePrompt({
       state: {
         tasks: tasksString,
-        recentMessages: message.content.text,
+        recentMessages: message.content.text || '',
       },
       template: optionExtractionTemplate,
     });
@@ -205,7 +210,7 @@ export const choiceAction: Action = {
     });
 
     const parsed = parseJSONObjectFromText(result);
-    const { taskId, selectedOption } = parsed;
+    const { taskId, selectedOption } = parsed as any;
 
     if (taskId && selectedOption) {
       // Find the task by matching the shortened UUID
@@ -213,7 +218,7 @@ export const choiceAction: Action = {
       const taskInfo = taskMap.get(taskId);
 
       if (!taskInfo) {
-        await callback({
+        await callback?.({
           text: `Could not find a task matching ID: ${taskId}. Please try again.`,
           actions: ['SELECT_OPTION_ERROR'],
           source: message.content.source,
@@ -225,7 +230,7 @@ export const choiceAction: Action = {
       const selectedTask = tasksWithOptions.find((task) => task.id === taskInfo.fullId);
 
       if (!selectedTask) {
-        await callback({
+        await callback?.({
           text: 'Error locating the selected task. Please try again.',
           actions: ['SELECT_OPTION_ERROR'],
           source: message.content.source,
@@ -234,8 +239,17 @@ export const choiceAction: Action = {
       }
 
       if (selectedOption === 'ABORT') {
+        if (!selectedTask?.id) {
+          await callback?.({
+            text: 'Error locating the selected task. Please try again.',
+            actions: ['SELECT_OPTION_ERROR'],
+            source: message.content.source,
+          });
+          return;
+        }
+
         await runtime.deleteTask(selectedTask.id);
-        await callback({
+        await callback?.({
           text: `Task "${selectedTask.name}" has been cancelled.`,
           actions: ['CHOOSE_OPTION_CANCELLED'],
           source: message.content.source,
@@ -243,14 +257,24 @@ export const choiceAction: Action = {
         return;
       }
 
-      const taskWorker = runtime.getTaskWorker(selectedTask.name);
-      await taskWorker.execute(runtime, { option: selectedOption }, selectedTask);
-      await callback({
-        text: `Selected option: ${selectedOption} for task: ${selectedTask.name}`,
-        actions: ['CHOOSE_OPTION'],
-        source: message.content.source,
-      });
-      return;
+      try {
+        const taskWorker = runtime.getTaskWorker(selectedTask.name);
+        await taskWorker?.execute(runtime, { option: selectedOption }, selectedTask);
+        await callback?.({
+          text: `Selected option: ${selectedOption} for task: ${selectedTask.name}`,
+          actions: ['CHOOSE_OPTION'],
+          source: message.content.source,
+        });
+        return;
+      } catch (error) {
+        logger.error('Error executing task with option:', error);
+        await callback?.({
+          text: 'There was an error processing your selection.',
+          actions: ['SELECT_OPTION_ERROR'],
+          source: message.content.source,
+        });
+        return;
+      }
     }
 
     // If no task/option was selected, list available options
@@ -258,18 +282,18 @@ export const choiceAction: Action = {
 
     tasksWithOptions.forEach((task) => {
       // Create a shortened UUID for display
-      const shortId = task.id.substring(0, 8);
+      const shortId = task.id?.substring(0, 8);
 
       optionsText += `**${task.name}** (ID: ${shortId}):\n`;
-      const options = task.metadata.options.map((opt) =>
+      const options = task.metadata?.options?.map((opt) =>
         typeof opt === 'string' ? opt : opt.name
       );
-      options.push('ABORT');
-      optionsText += options.map((opt) => `- ${opt}`).join('\n');
+      options?.push('ABORT');
+      optionsText += options?.map((opt) => `- ${opt}`).join('\n');
       optionsText += '\n\n';
     });
 
-    await callback({
+    await callback?.({
       text: optionsText,
       actions: ['SELECT_OPTION_INVALID'],
       source: message.content.source,

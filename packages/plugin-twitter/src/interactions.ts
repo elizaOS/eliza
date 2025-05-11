@@ -555,6 +555,7 @@ export class TwitterInteractionClient {
           roomId: message.roomId,
           content: {
             ...response,
+            source: 'twitter',
             inReplyTo: message.id,
           },
           createdAt: Date.now(),

@@ -6,6 +6,7 @@ import {
   findWorldsForOwner,
   getWorldSettings,
   logger,
+  World,
   type IAgentRuntime,
   type Memory,
   type Provider,
@@ -61,15 +62,15 @@ function generateStatusMessage(
 
     // Count required settings that are not configured
     const requiredUnconfigured = formattedSettings.filter(
-      (s) => s.required && !s.configured
+      (s) => s?.required && !s.configured
     ).length;
 
     // Generate appropriate message
     if (isOnboarding) {
       const settingsList = formattedSettings
         .map((s) => {
-          const label = s.required ? '(Required)' : '(Optional)';
-          return `${s.key}: ${s.value} ${label}\n(${s.name}) ${s.usageDescription}`;
+          const label = s?.required ? '(Required)' : '(Optional)';
+          return `${s?.key}: ${s?.value} ${label}\n(${s?.name}) ${s?.usageDescription}`;
         })
         .join('\n\n');
 
@@ -83,7 +84,7 @@ function generateStatusMessage(
       - Answer setting-related questions using only the name, description, and value from the list.`;
 
       if (requiredUnconfigured > 0) {
-        return `# PRIORITY TASK: Onboarding with ${state.senderName}
+        return `# PRIORITY TASK: Onboarding with ${state?.senderName}
 
         ${runtime.character.name} needs to help the user configure ${requiredUnconfigured} required settings:
         
@@ -111,7 +112,7 @@ function generateStatusMessage(
         ? `IMPORTANT!: ${requiredUnconfigured} required settings still need configuration. ${runtime.character.name} should get onboarded with the OWNER as soon as possible.\n\n`
         : 'All required settings are configured.\n\n'
     }${formattedSettings
-      .map((s) => `### ${s.name}\n**Value:** ${s.value}\n**Description:** ${s.description}`)
+      .map((s) => `### ${s?.name}\n**Value:** ${s?.value}\n**Description:** ${s?.description}`)
       .join('\n\n')}`;
   } catch (error) {
     logger.error(`Error generating status message: ${error}`);
@@ -167,13 +168,13 @@ export const settingsProvider: Provider = {
       const type = room.type;
       const isOnboarding = type === ChannelType.DM;
 
-      let world;
-      let serverId;
-      let worldSettings;
+      let world: World | null | undefined = null;
+      let serverId: string | undefined = undefined;
+      let worldSettings: WorldSettings | null = null;
 
       if (isOnboarding) {
         // In onboarding mode, use the user's world directly
-        world = userWorlds.find((world) => world.metadata.settings);
+        world = userWorlds?.find((world) => world.metadata?.settings);
 
         if (!world) {
           logger.error('No world found for user during onboarding');

@@ -9,7 +9,6 @@ import {
   type EntityPayload,
   type EvaluatorEventPayload,
   EventType,
-  type HandlerCallback,
   type IAgentRuntime,
   type InvokePayload,
   logger,
@@ -19,8 +18,6 @@ import {
   type MessagePayload,
   type MessageReceivedHandlerParams,
   ModelType,
-  normalizeJsonString,
-  parseJSONObjectFromText,
   type Plugin,
   postCreationTemplate,
   shouldRespondTemplate,
@@ -28,6 +25,7 @@ import {
   parseKeyValueXml,
   type UUID,
   type WorldPayload,
+  PluginEvents,
 } from '@elizaos/core';
 import { v4 } from 'uuid';
 
@@ -178,7 +176,7 @@ const messageReceivedHandler = async ({
 
   // Set up timeout monitoring
   const timeoutDuration = 60 * 60 * 1000; // 1 hour
-  let timeoutId: NodeJS.Timeout;
+  let timeoutId: NodeJS.Timeout | undefined = undefined;
 
   const timeoutPromise = new Promise<never>((_, reject) => {
     timeoutId = setTimeout(async () => {
@@ -323,7 +321,7 @@ const messageReceivedHandler = async ({
           return;
         }
 
-        if (responseContent) {
+        if (responseContent && message.id) {
           responseContent.inReplyTo = createUniqueUuid(runtime, message.id);
 
           const responseMesssage = {
@@ -344,7 +342,7 @@ const messageReceivedHandler = async ({
           latestResponseIds.delete(runtime.agentId);
         }
 
-        if (responseContent?.providers.length > 0) {
+        if (responseContent?.providers?.length && responseContent?.providers?.length > 0) {
           state = await runtime.composeState(message, responseContent?.providers || []);
         }
 
@@ -352,8 +350,8 @@ const messageReceivedHandler = async ({
           responseContent &&
           responseContent.simple &&
           responseContent.text &&
-          (responseContent.actions.length === 0 ||
-            (responseContent.actions.length === 1 &&
+          (responseContent.actions?.length === 0 ||
+            (responseContent.actions?.length === 1 &&
               responseContent.actions[0].toUpperCase() === 'REPLY'))
         ) {
           await callback(responseContent);
@@ -372,6 +370,11 @@ const messageReceivedHandler = async ({
             `Ignore response discarded - newer message being processed for agent: ${runtime.agentId}, room: ${message.roomId}`
           );
           return; // Stop processing if a newer message took over
+        }
+
+        if (!message.id) {
+          logger.error('Message ID is missing, cannot create ignore response.');
+          return;
         }
 
         // Construct a minimal content object indicating ignore, include a generic thought
@@ -422,7 +425,7 @@ const messageReceivedHandler = async ({
         duration: Date.now() - startTime,
         source: 'messageHandler',
       });
-    } catch (error) {
+    } catch (error: any) {
       onComplete?.();
       // Emit run ended event with error
       await runtime.emitEvent(EventType.RUN_ENDED, {
@@ -466,7 +469,7 @@ const reactionReceivedHandler = async ({
 }) => {
   try {
     await runtime.createMemory(message, 'messages');
-  } catch (error) {
+  } catch (error: any) {
     if (error.code === '23505') {
       logger.warn('Duplicate reaction memory, skipping');
       return;
@@ -576,7 +579,7 @@ const postGeneratedHandler = async ({
   }
 
   // update stats with correct providers
-  state = await runtime.composeState(message, responseContent.providers);
+  state = await runtime.composeState(message, responseContent?.providers);
 
   // Generate prompt for tweet content
   const postPrompt = composePromptFromState({
@@ -702,7 +705,7 @@ const postGeneratedHandler = async ({
   ];
 
   for (const message of responseMessages) {
-    await callback(message.content);
+    await callback?.(message.content);
   }
 
   // Process the actions and execute the callback
@@ -743,7 +746,7 @@ const syncSingleUser = async (
 ) => {
   try {
     const entity = await runtime.getEntityById(entityId);
-    logger.info(`Syncing user: ${entity?.metadata[source]?.username || entityId}`);
+    logger.info(`Syncing user: ${entity?.metadata?.[source]?.username || entityId}`);
 
     // Ensure we're not using WORLD type and that we have a valid channelId
     if (!channelId) {
@@ -757,8 +760,9 @@ const syncSingleUser = async (
     await runtime.ensureConnection({
       entityId,
       roomId,
-      userName: entity?.metadata[source].username || entityId,
-      name: entity?.metadata[source].name || entity?.metadata[source].username || `User${entityId}`,
+      userName: entity?.metadata?.[source].username || entityId,
+      name:
+        entity?.metadata?.[source].name || entity?.metadata?.[source].username || `User${entityId}`,
       source,
       channelId,
       serverId,
@@ -821,15 +825,25 @@ const handleServerSync = async ({
         // check if user is in any of these rooms in rooms
         const firstRoomUserIsIn = rooms.length > 0 ? rooms[0] : null;
 
+        if (!firstRoomUserIsIn) {
+          logger.warn(`No rooms found for syncing users`);
+          continue;
+        }
+
         // Process each user in the batch
         await Promise.all(
           entityBatch.map(async (entity: Entity) => {
             try {
+              if (!entity?.id) {
+                logger.warn(`No entity ID found for syncing users`);
+                return;
+              }
+
               await runtime.ensureConnection({
                 entityId: entity.id,
                 roomId: firstRoomUserIsIn.id,
-                userName: entity.metadata[source].username,
-                name: entity.metadata[source].name,
+                userName: entity.metadata?.[source].username,
+                name: entity.metadata?.[source].name,
                 source: source,
                 channelId: firstRoomUserIsIn.channelId,
                 serverId: world.serverId,
@@ -837,7 +851,7 @@ const handleServerSync = async ({
                 worldId: world.id,
               });
             } catch (err) {
-              logger.warn(`Failed to sync user ${entity.metadata.username}: ${err}`);
+              logger.warn(`Failed to sync user ${entity.metadata?.username}: ${err}`);
             }
           })
         );
@@ -927,6 +941,10 @@ const controlMessageHandler = async ({
 const events = {
   [EventType.MESSAGE_RECEIVED]: [
     async (payload: MessagePayload) => {
+      if (!payload.callback) {
+        logger.error('No callback provided for message');
+        return;
+      }
       await messageReceivedHandler({
         runtime: payload.runtime,
         message: payload.message,
@@ -938,6 +956,10 @@ const events = {
 
   [EventType.VOICE_MESSAGE_RECEIVED]: [
     async (payload: MessagePayload) => {
+      if (!payload.callback) {
+        logger.error('No callback provided for voice message');
+        return;
+      }
       await messageReceivedHandler({
         runtime: payload.runtime,
         message: payload.message,
@@ -982,6 +1004,19 @@ const events = {
 
   [EventType.ENTITY_JOINED]: [
     async (payload: EntityPayload) => {
+      if (!payload.worldId) {
+        logger.error('No callback provided for entity joined');
+        return;
+      }
+      if (!payload.roomId) {
+        logger.error('No roomId provided for entity joined');
+        return;
+      }
+      if (!payload.metadata?.type) {
+        logger.error('No type provided for entity joined');
+        return;
+      }
+
       await syncSingleUser(
         payload.entityId,
         payload.runtime,
@@ -1007,7 +1042,7 @@ const events = {
           await payload.runtime.updateEntity(entity);
         }
         logger.info(`User ${payload.entityId} left world ${payload.worldId}`);
-      } catch (error) {
+      } catch (error: any) {
         logger.error(`Error handling user left: ${error.message}`);
       }
     },
@@ -1059,7 +1094,8 @@ export const bootstrapPlugin: Plugin = {
     actions.updateRoleAction,
     actions.updateSettingsAction,
   ],
-  events,
+  // this is jank, these events are not valid
+  events: events as any as PluginEvents,
   evaluators: [evaluators.reflectionEvaluator],
   providers: [
     providers.evaluatorsProvider,

@@ -1,3 +1,6 @@
+import { type Pool as PgPool } from 'pg';
+import { PGlite } from '@electric-sql/pglite';
+
 /**
  * Type definition for a Universally Unique Identifier (UUID) using a specific format.
  * @typedef {`${string}-${string}-${string}-${string}-${string}`} UUID
@@ -68,7 +71,14 @@ export interface ActionExample {
 export type ModelTypeName = (typeof ModelType)[keyof typeof ModelType] | string;
 
 /**
- * Model size/type classification
+ * Defines the recognized types of models that the agent runtime can use.
+ * These include models for text generation (small, large, reasoning, completion),
+ * text embedding, tokenization (encode/decode), image generation and description,
+ * audio transcription, text-to-speech, and generic object generation.
+ * This constant is used throughout the system, particularly in `AgentRuntime.useModel`,
+ * `AgentRuntime.registerModel`, and in `ModelParamsMap` / `ModelResultMap` to ensure
+ * type safety and clarity when working with different AI models.
+ * String values are used for extensibility with custom model types.
  */
 export const ModelType = {
   SMALL: 'TEXT_SMALL', // kept for backwards compatibility
@@ -94,6 +104,14 @@ export const ModelType = {
 
 export type ServiceTypeName = (typeof ServiceType)[keyof typeof ServiceType];
 
+/**
+ * Enumerates the recognized types of services that can be registered and used by the agent runtime.
+ * Services provide specialized functionalities like audio transcription, video processing,
+ * web browsing, PDF handling, file storage (e.g., AWS S3), web search, email integration,
+ * secure execution via TEE (Trusted Execution Environment), task management, and instrumentation.
+ * This constant is used in `AgentRuntime` for service registration and retrieval (e.g., `getService`).
+ * Each service typically implements the `Service` abstract class or a more specific interface like `IVideoService`.
+ */
 export const ServiceType = {
   TRANSCRIPTION: 'transcription',
   VIDEO: 'video',
@@ -108,7 +126,14 @@ export const ServiceType = {
 } as const;
 
 /**
- * Represents the current state/context of a conversation
+ * Represents the current state or context of a conversation or agent interaction.
+ * This interface is a flexible container for various pieces of information that define the agent's
+ * understanding at a point in time. It includes:
+ * - `values`: A key-value store for general state variables, often populated by providers.
+ * - `data`: Another key-value store, potentially for more structured or internal data.
+ * - `text`: A string representation of the current context, often a summary or concatenated history.
+ * The `[key: string]: any;` allows for dynamic properties, though `EnhancedState` offers better typing.
+ * This state object is passed to handlers for actions, evaluators, and providers.
  */
 export interface State {
   /** Additional dynamic properties */
@@ -127,6 +152,15 @@ export interface State {
  */
 export type MemoryTypeAlias = string;
 
+/**
+ * Enumerates the built-in types of memories that can be stored and retrieved.
+ * - `DOCUMENT`: Represents a whole document or a large piece of text.
+ * - `FRAGMENT`: A chunk or segment of a `DOCUMENT`, often created for embedding and search.
+ * - `MESSAGE`: A conversational message, typically from a user or the agent.
+ * - `DESCRIPTION`: A descriptive piece of information, perhaps about an entity or concept.
+ * - `CUSTOM`: For any other type of memory not covered by the built-in types.
+ * This enum is used in `MemoryMetadata` to categorize memories and influences how they are processed or queried.
+ */
 export enum MemoryType {
   DOCUMENT = 'document',
   FRAGMENT = 'fragment',
@@ -134,10 +168,25 @@ export enum MemoryType {
   DESCRIPTION = 'description',
   CUSTOM = 'custom',
 }
+/**
+ * Defines the scope of a memory, indicating its visibility and accessibility.
+ * - `shared`: The memory is accessible to multiple entities or across different contexts (e.g., a public fact).
+ * - `private`: The memory is specific to a single entity or a private context (e.g., a user's personal preference).
+ * - `room`: The memory is scoped to a specific room or channel.
+ * This is used in `MemoryMetadata` to control how memories are stored and retrieved based on context.
+ */
 export type MemoryScope = 'shared' | 'private' | 'room';
 
 /**
- * Base interface for all memory metadata types
+ * Base interface for all memory metadata types.
+ * It includes common properties for all memories, such as:
+ * - `type`: The kind of memory (e.g., `MemoryType.MESSAGE`, `MemoryType.DOCUMENT`).
+ * - `source`: An optional string indicating the origin of the memory (e.g., 'discord', 'user_input').
+ * - `sourceId`: An optional UUID linking to a source entity or object.
+ * - `scope`: The visibility scope of the memory (`shared`, `private`, or `room`).
+ * - `timestamp`: An optional numerical timestamp (e.g., milliseconds since epoch) of when the memory was created or relevant.
+ * - `tags`: Optional array of strings for categorizing or filtering memories.
+ * Specific metadata types like `DocumentMetadata` or `MessageMetadata` extend this base.
  */
 export interface BaseMetadata {
   type: MemoryTypeAlias;
@@ -565,6 +614,13 @@ export type Route = {
 /**
  * Plugin for extending agent functionality
  */
+
+export type PluginEvents = {
+  [K in keyof EventPayloadMap]?: EventHandler<K>[];
+} & {
+  [key: string]: ((params: EventPayload) => Promise<any>)[];
+};
+
 export interface Plugin {
   name: string;
   description: string;
@@ -592,13 +648,11 @@ export interface Plugin {
   models?: {
     [key: string]: (...args: any[]) => Promise<any>;
   };
-  events?: {
-    [K in keyof EventPayloadMap]?: EventHandler<K>[];
-  } & {
-    [key: string]: ((params: EventPayload) => Promise<any>)[];
-  };
+  events?: PluginEvents;
   routes?: Route[];
   tests?: TestSuite[];
+
+  priority?: number;
 }
 
 export interface ProjectAgent {
@@ -617,7 +671,20 @@ export type TemplateType =
   | ((options: { state: State | { [key: string]: string } }) => string);
 
 /**
- * Configuration for an agent character
+ * Configuration for an agent's character, defining its personality, knowledge, and capabilities.
+ * This is a central piece of an agent's definition, used by the `AgentRuntime` to initialize and operate the agent.
+ * It includes:
+ * - `id`: Optional unique identifier for the character.
+ * - `name`, `username`: Identifying names for the character.
+ * - `system`: A system prompt that guides the agent's overall behavior.
+ * - `templates`: A map of prompt templates for various situations (e.g., message generation, summarization).
+ * - `bio`: A textual biography or description of the character.
+ * - `messageExamples`, `postExamples`: Examples of how the character communicates.
+ * - `topics`, `adjectives`: Keywords describing the character's knowledge areas and traits.
+ * - `knowledge`: Paths to knowledge files or directories to be loaded into the agent's memory.
+ * - `plugins`: A list of plugin names to be loaded for this character.
+ * - `settings`, `secrets`: Configuration key-value pairs, with secrets being handled more securely.
+ * - `style`: Guidelines for the character's writing style in different contexts (chat, post).
  */
 export interface Character {
   /** Optional unique identifier */
@@ -685,6 +752,15 @@ export enum AgentStatus {
   INACTIVE = 'inactive',
 }
 
+/**
+ * Represents an operational agent, extending the `Character` definition with runtime status and timestamps.
+ * While `Character` defines the blueprint, `Agent` represents an instantiated and potentially running version.
+ * It includes:
+ * - `enabled`: A boolean indicating if the agent is currently active or disabled.
+ * - `status`: The current operational status, typically `AgentStatus.ACTIVE` or `AgentStatus.INACTIVE`.
+ * - `createdAt`, `updatedAt`: Timestamps for when the agent record was created and last updated in the database.
+ * This interface is primarily used by the `IDatabaseAdapter` for agent management.
+ */
 export interface Agent extends Character {
   enabled?: boolean;
   status?: AgentStatus;
@@ -705,10 +781,12 @@ export interface IDatabaseAdapter {
   /** Close database connection */
   close(): Promise<void>;
 
+  getConnection(): Promise<PGlite | PgPool>;
+
   getAgent(agentId: UUID): Promise<Agent | null>;
 
   /** Get all agents */
-  getAgents(): Promise<Agent[]>;
+  getAgents(): Promise<Partial<Agent>[]>;
 
   createAgent(agent: Partial<Agent>): Promise<boolean>;
 
@@ -827,6 +905,8 @@ export interface IDatabaseAdapter {
 
   getWorld(id: UUID): Promise<World | null>;
 
+  removeWorld(id: UUID): Promise<void>;
+
   getAllWorlds(): Promise<World[]>;
 
   updateWorld(world: World): Promise<void>;
@@ -836,6 +916,8 @@ export interface IDatabaseAdapter {
   createRoom({ id, name, source, type, channelId, serverId, worldId }: Room): Promise<UUID>;
 
   deleteRoom(roomId: UUID): Promise<void>;
+
+  deleteRoomsByServerId(serverId: UUID): Promise<void>;
 
   updateRoom(room: Room): Promise<void>;
 
@@ -1020,6 +1102,8 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 
   initialize(): Promise<void>;
 
+  getConnection(): Promise<PGlite | PgPool>;
+
   getKnowledge(
     message: Memory,
     scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID }
@@ -1119,7 +1203,12 @@ export interface IAgentRuntime extends IDatabaseAdapter {
     params: Omit<ModelParamsMap[T], 'runtime'> | any
   ): Promise<R>;
 
-  registerModel(modelType: ModelTypeName | string, handler: (params: any) => Promise<any>): void;
+  registerModel(
+    modelType: ModelTypeName | string,
+    handler: (params: any) => Promise<any>,
+    provider: string,
+    priority?: number
+  ): void;
 
   getModel(
     modelType: ModelTypeName | string
@@ -1165,128 +1254,226 @@ export interface RuntimeSettings {
   [key: string]: string | undefined;
 }
 
+/**
+ * Represents a single item of knowledge that can be processed and stored by the agent.
+ * Knowledge items consist of content (text and optional structured data) and metadata.
+ * These items are typically added to the agent's knowledge base via `AgentRuntime.addKnowledge`
+ * and retrieved using `AgentRuntime.getKnowledge`.
+ * The `id` is a unique identifier for the knowledge item, often derived from its source or content.
+ */
 export type KnowledgeItem = {
+  /** A Universally Unique Identifier for this specific knowledge item. */
   id: UUID;
+  /** The actual content of the knowledge item, which must include text and can have other fields. */
   content: Content;
+  /** Optional metadata associated with this knowledge item, conforming to `MemoryMetadata`. */
   metadata?: MemoryMetadata;
 };
 
+/**
+ * Defines the scope or visibility of knowledge items within the agent's system.
+ * - `SHARED`: Indicates knowledge that is broadly accessible, potentially across different agents or users if the system architecture permits.
+ * - `PRIVATE`: Indicates knowledge that is restricted, typically to the specific agent or user context it belongs to.
+ * This enum is used to manage access and retrieval of knowledge items, often in conjunction with `AgentRuntime.addKnowledge` or `AgentRuntime.getKnowledge` scopes.
+ */
 export enum KnowledgeScope {
   SHARED = 'shared',
   PRIVATE = 'private',
 }
 
+/**
+ * Specifies prefixes for keys used in caching mechanisms, helping to namespace cached data.
+ * For example, `KNOWLEDGE` might be used to prefix keys for cached knowledge embeddings or processed documents.
+ * This helps in organizing the cache and avoiding key collisions.
+ * Used internally by caching strategies, potentially within `IDatabaseAdapter` cache methods or runtime caching layers.
+ */
 export enum CacheKeyPrefix {
   KNOWLEDGE = 'knowledge',
 }
 
+/**
+ * Represents an item within a directory listing, specifically for knowledge loading.
+ * When an agent's `Character.knowledge` configuration includes a directory, this type
+ * is used to specify the path to that directory and whether its contents should be treated as shared.
+ * - `directory`: The path to the directory containing knowledge files.
+ * - `shared`: An optional boolean (defaults to false) indicating if the knowledge from this directory is considered shared or private.
+ */
 export interface DirectoryItem {
+  /** The path to the directory containing knowledge files. */
   directory: string;
+  /** If true, knowledge from this directory is considered shared; otherwise, it's private. Defaults to false. */
   shared?: boolean;
 }
 
+/**
+ * Represents a row structure, typically from a database query related to text chunking or processing.
+ * This interface is quite minimal and seems to be a placeholder or a base for more specific chunk-related types.
+ * The `id` would be the unique identifier for the chunk.
+ * It might be used when splitting large documents into smaller, manageable pieces for embedding or analysis.
+ */
 export interface ChunkRow {
+  /** The unique identifier for this chunk of text. */
   id: string;
   // Add other properties if needed
 }
 
+/**
+ * Parameters for generating text using a language model.
+ * This structure is typically passed to `AgentRuntime.useModel` when the `modelType` is one of
+ * `ModelType.TEXT_SMALL`, `ModelType.TEXT_LARGE`, `ModelType.TEXT_REASONING_SMALL`,
+ * `ModelType.TEXT_REASONING_LARGE`, or `ModelType.TEXT_COMPLETION`.
+ * It includes essential information like the prompt, model type, and various generation controls.
+ */
 export type GenerateTextParams = {
+  /** The `AgentRuntime` instance, providing access to models and other services. */
   runtime: IAgentRuntime;
+  /** The input string or prompt that the language model will use to generate text. */
   prompt: string;
+  /** Specifies the type of text generation model to use (e.g., TEXT_LARGE, REASONING_SMALL). */
   modelType: ModelTypeName;
+  /** Optional. The maximum number of tokens to generate in the response. */
   maxTokens?: number;
+  /** Optional. Controls randomness (0.0-1.0). Lower values are more deterministic, higher are more creative. */
   temperature?: number;
+  /** Optional. Penalizes new tokens based on their existing frequency in the text so far. */
   frequencyPenalty?: number;
+  /** Optional. Penalizes new tokens based on whether they appear in the text so far. */
   presencePenalty?: number;
+  /** Optional. A list of sequences at which the model will stop generating further tokens. */
   stopSequences?: string[];
 };
 
+/**
+ * Parameters for tokenizing text, i.e., converting a string into a sequence of numerical tokens.
+ * This is a common preprocessing step for many language models.
+ * This structure is used with `AgentRuntime.useModel` when the `modelType` is `ModelType.TEXT_TOKENIZER_ENCODE`.
+ */
 export interface TokenizeTextParams {
+  /** The input string to be tokenized. */
   prompt: string;
+  /** The model type to use for tokenization, which determines the tokenizer algorithm and vocabulary. */
   modelType: ModelTypeName;
 }
 
+/**
+ * Parameters for detokenizing text, i.e., converting a sequence of numerical tokens back into a string.
+ * This is the reverse operation of tokenization.
+ * This structure is used with `AgentRuntime.useModel` when the `modelType` is `ModelType.TEXT_TOKENIZER_DECODE`.
+ */
 export interface DetokenizeTextParams {
+  /** An array of numerical tokens to be converted back into text. */
   tokens: number[];
+  /** The model type used for detokenization, ensuring consistency with the original tokenization. */
   modelType: ModelTypeName;
 }
 
-export interface IVideoService extends Service {
-  isVideoUrl(url: string): boolean;
-  fetchVideoInfo(url: string): Promise<Media>;
-  downloadVideo(videoInfo: Media): Promise<string>;
-  processVideo(url: string, runtime: IAgentRuntime): Promise<Media>;
-}
-
-export interface IBrowserService extends Service {
-  getPageContent(
-    url: string,
-    runtime: IAgentRuntime
-  ): Promise<{ title: string; description: string; bodyContent: string }>;
-}
-
-export interface IPdfService extends Service {
-  convertPdfToText(pdfBuffer: Buffer): Promise<string>;
-}
-
-export interface IFileService extends Service {
-  uploadFile(
-    imagePath: string,
-    subDirectory: string,
-    useSignedUrl: boolean,
-    expiresIn: number
-  ): Promise<{
-    success: boolean;
-    url?: string;
-    error?: string;
-  }>;
-  generateSignedUrl(fileName: string, expiresIn: number): Promise<string>;
-}
-
+/**
+ * Represents a test case for evaluating agent or plugin functionality.
+ * Each test case has a name and a function that contains the test logic.
+ * The test function receives the `IAgentRuntime` instance, allowing it to interact with the agent's capabilities.
+ * Test cases are typically grouped into `TestSuite`s.
+ */
 export interface TestCase {
+  /** A descriptive name for the test case, e.g., "should respond to greetings". */
   name: string;
+  /**
+   * The function that executes the test logic. It can be synchronous or asynchronous.
+   * It receives the `IAgentRuntime` to interact with the agent and its services.
+   * The function should typically contain assertions to verify expected outcomes.
+   */
   fn: (runtime: IAgentRuntime) => Promise<void> | void;
 }
 
+/**
+ * Represents a suite of related test cases for an agent or plugin.
+ * This helps in organizing tests and running them collectively.
+ * A `ProjectAgent` can define one or more `TestSuite`s.
+ */
 export interface TestSuite {
+  /** A descriptive name for the test suite, e.g., "Core Functionality Tests". */
   name: string;
+  /** An array of `TestCase` objects that belong to this suite. */
   tests: TestCase[];
 }
 
 // Represents an agent in the TeeAgent table, containing details about the agent.
+/**
+ * Represents an agent's registration details within a Trusted Execution Environment (TEE) context.
+ * This is typically stored in a database table (e.g., `TeeAgent`) to manage agents operating in a TEE.
+ * It allows for multiple registrations of the same `agentId` to support scenarios where an agent might restart,
+ * generating a new keypair and attestation each time.
+ */
 export interface TeeAgent {
+  /** Primary key for the TEE agent registration record (e.g., a UUID or auto-incrementing ID). */
   id: string; // Primary key
   // Allow duplicate agentId.
   // This is to support the case where the same agentId is registered multiple times.
   // Each time the agent restarts, we will generate a new keypair and attestation.
+  /** The core identifier of the agent, which can be duplicated across multiple TEE registrations. */
   agentId: string;
+  /** The human-readable name of the agent. */
   agentName: string;
+  /** Timestamp (e.g., Unix epoch in milliseconds) when this TEE registration was created. */
   createdAt: number;
+  /** The public key associated with this specific TEE agent instance/session. */
   publicKey: string;
+  /** The attestation document proving the authenticity and integrity of the TEE instance. */
   attestation: string;
 }
 
+/**
+ * Defines the operational modes for a Trusted Execution Environment (TEE).
+ * This enum is used to configure how TEE functionalities are engaged, allowing for
+ * different setups for local development, Docker-based development, and production.
+ */
 export enum TEEMode {
+  /** TEE functionality is completely disabled. */
   OFF = 'OFF',
+  /** For local development, potentially using a TEE simulator. */
   LOCAL = 'LOCAL', // For local development with simulator
+  /** For Docker-based development environments, possibly with a TEE simulator. */
   DOCKER = 'DOCKER', // For docker development with simulator
+  /** For production deployments, using actual TEE hardware without a simulator. */
   PRODUCTION = 'PRODUCTION', // For production without simulator
 }
 
+/**
+ * Represents a quote obtained during remote attestation for a Trusted Execution Environment (TEE).
+ * This quote is a piece of evidence provided by the TEE, cryptographically signed, which can be
+ * verified by a relying party to ensure the TEE's integrity and authenticity.
+ */
 export interface RemoteAttestationQuote {
+  /** The attestation quote data, typically a base64 encoded string or similar format. */
   quote: string;
+  /** Timestamp (e.g., Unix epoch in milliseconds) when the quote was generated or received. */
   timestamp: number;
 }
 
+/**
+ * Data structure used in the attestation process for deriving a key within a Trusted Execution Environment (TEE).
+ * This information helps establish a secure channel or verify the identity of the agent instance
+ * requesting key derivation.
+ */
 export interface DeriveKeyAttestationData {
+  /** The unique identifier of the agent for which the key derivation is being attested. */
   agentId: string;
+  /** The public key of the agent instance involved in the key derivation process. */
   publicKey: string;
+  /** Optional subject or context information related to the key derivation. */
   subject?: string;
 }
 
+/**
+ * Represents a message that has been attested by a Trusted Execution Environment (TEE).
+ * This structure binds a message to an agent's identity and a timestamp, all within the
+ * context of a remote attestation process, ensuring the message originated from a trusted TEE instance.
+ */
 export interface RemoteAttestationMessage {
+  /** The unique identifier of the agent sending the attested message. */
   agentId: string;
+  /** Timestamp (e.g., Unix epoch in milliseconds) when the message was attested or sent. */
   timestamp: number;
+  /** The actual message content, including details about the entity, room, and the content itself. */
   message: {
     entityId: string;
     roomId: string;
@@ -1294,51 +1481,112 @@ export interface RemoteAttestationMessage {
   };
 }
 
+/**
+ * Enumerates different types or vendors of Trusted Execution Environments (TEEs).
+ * This allows the system to adapt to specific TEE technologies, like Intel TDX on DSTACK.
+ */
 export enum TeeType {
+  /** Represents Intel Trusted Domain Extensions (TDX) running on DSTACK infrastructure. */
   TDX_DSTACK = 'tdx_dstack',
 }
 
+/**
+ * Configuration options specific to a particular Trusted Execution Environment (TEE) vendor.
+ * This allows for vendor-specific settings to be passed to the TEE plugin or service.
+ * The structure is a generic key-value map, as configurations can vary widely between vendors.
+ */
 export interface TeeVendorConfig {
   // Add vendor-specific configuration options here
   [key: string]: unknown;
 }
 
+/**
+ * Configuration for a TEE (Trusted Execution Environment) plugin.
+ * This allows specifying the TEE vendor and any vendor-specific configurations.
+ * It's used to initialize and configure TEE-related functionalities within the agent system.
+ */
 export interface TeePluginConfig {
+  /** Optional. The name or identifier of the TEE vendor (e.g., 'tdx_dstack' from `TeeType`). */
   vendor?: string;
+  /** Optional. Vendor-specific configuration options, conforming to `TeeVendorConfig`. */
   vendorConfig?: TeeVendorConfig;
 }
 
+/**
+ * Defines the contract for a Task Worker, which is responsible for executing a specific type of task.
+ * Task workers are registered with the `AgentRuntime` and are invoked when a `Task` of their designated `name` needs processing.
+ * This pattern allows for modular and extensible background task processing.
+ */
 export interface TaskWorker {
+  /** The unique name of the task type this worker handles. This name links `Task` instances to this worker. */
   name: string;
+  /**
+   * The core execution logic for the task. This function is called by the runtime when a task needs to be processed.
+   * It receives the `AgentRuntime`, task-specific `options`, and the `Task` object itself.
+   */
   execute: (
     runtime: IAgentRuntime,
     options: { [key: string]: unknown },
     task: Task
   ) => Promise<void>;
+  /**
+   * Optional validation function that can be used to determine if a task is valid or should be executed,
+   * often based on the current message and state. This might be used by an action or evaluator
+   * before creating or queueing a task.
+   */
   validate?: (runtime: IAgentRuntime, message: Memory, state: State) => Promise<boolean>;
 }
 
+/**
+ * Defines metadata associated with a `Task`.
+ * This can include scheduling information like `updateInterval` or UI-related details
+ * for presenting task options to a user.
+ * The `[key: string]: unknown;` allows for additional, unspecified metadata fields.
+ */
 export type TaskMetadata = {
+  /** Optional. If the task is recurring, this specifies the interval in milliseconds between updates or executions. */
   updateInterval?: number;
+  /** Optional. Describes options or parameters that can be configured for this task, often for UI presentation. */
   options?: {
     name: string;
     description: string;
   }[];
+  /** Allows for other dynamic metadata properties related to the task. */
   [key: string]: unknown;
 };
 
+/**
+ * Represents a task to be performed, often in the background or at a later time.
+ * Tasks are managed by the `AgentRuntime` and processed by registered `TaskWorker`s.
+ * They can be associated with a room, world, and tagged for categorization and retrieval.
+ * The `IDatabaseAdapter` handles persistence of task data.
+ */
 export interface Task {
+  /** Optional. A Universally Unique Identifier for the task. Generated if not provided. */
   id?: UUID;
+  /** The name of the task, which should correspond to a registered `TaskWorker.name`. */
   name: string;
+  /** Optional. Timestamp of the last update to this task. */
   updatedAt?: number;
+  /** Optional. Metadata associated with the task, conforming to `TaskMetadata`. */
   metadata?: TaskMetadata;
+  /** A human-readable description of what the task does or its purpose. */
   description: string;
+  /** Optional. The UUID of the room this task is associated with. */
   roomId?: UUID;
+  /** Optional. The UUID of the world this task is associated with. */
   worldId?: UUID;
   entityId?: UUID;
   tags: string[];
 }
 
+/**
+ * Defines roles within a system, typically for access control or permissions, often within a `World`.
+ * - `OWNER`: Represents the highest level of control, typically the creator or primary administrator.
+ * - `ADMIN`: Represents administrative privileges, usually a subset of owner capabilities.
+ * - `NONE`: Indicates no specific role or default, minimal permissions.
+ * These roles are often used in `World.metadata.roles` to assign roles to entities.
+ */
 export enum Role {
   OWNER = 'OWNER',
   ADMIN = 'ADMIN',
@@ -1910,34 +2158,6 @@ export interface ServiceError {
 }
 
 /**
- * Type-safe helper for accessing the video service
- */
-export function getVideoService(runtime: IAgentRuntime): IVideoService | null {
-  return runtime.getService<IVideoService>(ServiceType.VIDEO);
-}
-
-/**
- * Type-safe helper for accessing the browser service
- */
-export function getBrowserService(runtime: IAgentRuntime): IBrowserService | null {
-  return runtime.getService<IBrowserService>(ServiceType.BROWSER);
-}
-
-/**
- * Type-safe helper for accessing the PDF service
- */
-export function getPdfService(runtime: IAgentRuntime): IPdfService | null {
-  return runtime.getService<IPdfService>(ServiceType.PDF);
-}
-
-/**
- * Type-safe helper for accessing the file service
- */
-export function getFileService(runtime: IAgentRuntime): IFileService | null {
-  return runtime.getService<IFileService>(ServiceType.REMOTE_FILES);
-}
-
-/**
  * Memory type guard for document memories
  */
 export function isDocumentMemory(
@@ -1988,40 +2208,119 @@ export function createServiceError(error: unknown, code = 'UNKNOWN_ERROR'): Serv
  */
 
 // Replace 'any' in State interface components
+/**
+ * Defines the possible primitive types or structured types for a value within the agent's state.
+ * This type is used to provide more specific typing for properties within `StateObject` and `StateArray`,
+ * moving away from a generic 'any' type for better type safety and clarity in state management.
+ */
 export type StateValue = string | number | boolean | null | StateObject | StateArray;
+/**
+ * Represents a generic object structure within the agent's state, where keys are strings
+ * and values can be any `StateValue`. This allows for nested objects within the state.
+ * It's a fundamental part of the `EnhancedState` interface.
+ */
 export interface StateObject {
   [key: string]: StateValue;
 }
+/**
+ * Represents an array of `StateValue` types within the agent's state.
+ * This allows for lists of mixed or uniform types to be stored in the state,
+ * contributing to the structured definition of `EnhancedState`.
+ */
 export type StateArray = StateValue[];
 
 /**
- * Enhanced State interface with more specific types
+ * Enhanced State interface with more specific types for its core properties.
+ * This interface provides a more structured representation of an agent's conversational state,
+ * building upon the base `State` by typing `values` and `data` as `StateObject`.
+ * The `text` property typically holds a textual summary or context derived from the state.
+ * Additional dynamic properties are still allowed via the index signature `[key: string]: StateValue;`.
  */
 export interface EnhancedState {
+  /** Holds directly accessible state values, often used for template rendering or quick lookups. */
   values: StateObject;
+  /** Stores more complex or structured data, potentially namespaced by providers or internal systems. */
   data: StateObject;
+  /** A textual representation or summary of the current state, often used as context for models. */
   text: string;
+  /** Allows for additional dynamic properties to be added to the state object. */
   [key: string]: StateValue;
 }
 
 // Replace 'any' in component data
+/**
+ * A generic type for the `data` field within a `Component`.
+ * While `Record<string, unknown>` allows for flexibility, developers are encouraged
+ * to define more specific types for component data where possible to improve type safety
+ * and code maintainability. This type serves as a base for various component implementations.
+ */
 export type ComponentData = Record<string, unknown>;
 
 // Replace 'any' in event handlers
+/**
+ * Represents a generic data object that can be passed as a payload in an event.
+ * This type is often used in `TypedEventHandler` to provide a flexible yet somewhat
+ * structured way to handle event data. Specific event handlers might cast this to a
+ * more concrete type based on the event being processed.
+ */
 export type EventDataObject = Record<string, unknown>;
+
+/**
+ * Defines a more specific type for event handlers, expecting an `EventDataObject`.
+ * This aims to improve upon generic 'any' type handlers, providing a clearer contract
+ * for functions that respond to events emitted within the agent runtime (see `emitEvent` in `AgentRuntime`).
+ * Handlers can be synchronous or asynchronous.
+ */
 export type TypedEventHandler = (data: EventDataObject) => Promise<void> | void;
 
 // Replace 'any' in database adapter
+/**
+ * Represents a generic database connection object.
+ * The actual type of this connection will depend on the specific database adapter implementation
+ * (e.g., a connection pool object for PostgreSQL, a client instance for a NoSQL database).
+ * This `unknown` type serves as a placeholder in the abstract `IDatabaseAdapter`.
+ */
 export type DbConnection = unknown;
+
+/**
+ * A generic type for metadata objects, often used in various parts of the system like
+ * `Relationship` metadata or other extensible data structures.
+ * It allows for arbitrary key-value pairs where values are of `unknown` type,
+ * encouraging consumers to perform type checking or casting.
+ */
 export type MetadataObject = Record<string, unknown>;
 
 // Replace 'any' in model handlers
-export type ModelHandler = (
-  runtime: IAgentRuntime,
-  params: Record<string, unknown>
-) => Promise<unknown>;
+/**
+ * Defines the structure for a model handler registration within the `AgentRuntime`.
+ * Each model (e.g., for text generation, embedding) is associated with a handler function,
+ * the name of the provider (plugin or system) that registered it, and an optional priority.
+ * The `priority` (higher is more preferred) helps in selecting which handler to use if multiple
+ * handlers are registered for the same model type. The `registrationOrder` (not in type, but used in runtime)
+ * serves as a tie-breaker. See `AgentRuntime.registerModel` and `AgentRuntime.getModel`.
+ */
+export interface ModelHandler {
+  /** The function that executes the model, taking runtime and parameters, and returning a Promise. */
+  handler: (runtime: IAgentRuntime, params: Record<string, unknown>) => Promise<unknown>;
+  /** The name of the provider (e.g., plugin name) that registered this model handler. */
+  provider: string;
+  /**
+   * Optional priority for this model handler. Higher numbers indicate higher priority.
+   * This is used by `AgentRuntime.getModel` to select the most appropriate handler
+   * when multiple are available for a given model type. Defaults to 0 if not specified.
+   */
+  priority?: number; // Optional priority for selection order
+
+  registrationOrder?: number;
+}
 
 // Replace 'any' for service configurationa
+/**
+ * A generic type for service configurations.
+ * Services (like `IVideoService`, `IBrowserService`) can have their own specific configuration
+ * structures. This type allows for a flexible way to pass configuration objects,
+ * typically used during service initialization within a plugin or the `AgentRuntime`.
+ */
 export type ServiceConfig = Record<string, unknown>;
 
 // Allowable vector dimensions

@@ -9,6 +9,7 @@
 import {
   type Action,
   type ActionExample,
+  Component,
   composePromptFromState,
   findEntityByName,
   type HandlerCallback,
@@ -132,7 +133,7 @@ export const updateEntityAction: Action = {
   description:
     'Add or edit contact details for a person you are talking to or observing in the conversation. Use this when you learn this information from the conversation about a contact. This is for the agent to relate entities across platforms, not for world settings or configuration.',
 
-  validate: async (_runtime: IAgentRuntime, _message: Memory, _state: State): Promise<boolean> => {
+  validate: async (_runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<boolean> => {
     // Check if we have any registered sources or existing components that could be updated
     // const worldId = message.roomId;
     // const agentId = runtime.agentId;
@@ -148,12 +149,32 @@ export const updateEntityAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State,
-    _options: any,
-    callback: HandlerCallback,
-    responses: Memory[]
+    state?: State,
+    _options?: any,
+    callback?: HandlerCallback,
+    responses?: Memory[]
   ): Promise<void> => {
     try {
+      if (!state) {
+        logger.error('State is required for the updateEntity action');
+        throw new Error('State is required for the updateEntity action');
+      }
+
+      if (!callback) {
+        logger.error('State is required for the updateEntity action');
+        throw new Error('Callback is required for the updateEntity action');
+      }
+
+      if (!responses) {
+        logger.error('Responses are required for the updateEntity action');
+        throw new Error('Responses are required for the updateEntity action');
+      }
+
+      if (!message) {
+        logger.error('Message is required for the updateEntity action');
+        throw new Error('Message is required for the updateEntity action');
+      }
+
       // Handle initial responses
       for (const response of responses) {
         await callback(response.content);
@@ -178,7 +199,7 @@ export const updateEntityAction: Action = {
       }
 
       // Get existing component if it exists - we'll get this after the LLM identifies the source
-      let existingComponent = null;
+      let existingComponent: Component | null = null;
 
       // Generate component data using the combined template
       const prompt = composePromptFromState({
@@ -204,7 +225,7 @@ export const updateEntityAction: Action = {
         if (!parsedResult.source || !parsedResult.data) {
           throw new Error('Invalid response format - missing source or data');
         }
-      } catch (error) {
+      } catch (error: any) {
         logger.error(`Failed to parse component data: ${error.message}`);
         await callback({
           text: "I couldn't properly understand the component information. Please try again with more specific information.",
@@ -236,6 +257,7 @@ export const updateEntityAction: Action = {
           agentId,
           roomId: message.roomId,
           sourceEntityId,
+          createdAt: existingComponent.createdAt,
         });
 
         await callback({
@@ -253,6 +275,7 @@ export const updateEntityAction: Action = {
           agentId,
           roomId: message.roomId,
           sourceEntityId,
+          createdAt: Date.now(),
         });
 
         await callback({
@@ -263,7 +286,7 @@ export const updateEntityAction: Action = {
       }
     } catch (error) {
       logger.error(`Error in updateEntity handler: ${error}`);
-      await callback({
+      await callback?.({
         text: 'There was an error processing the entity information.',
         actions: ['UPDATE_ENTITY_ERROR'],
         source: message.content.source,

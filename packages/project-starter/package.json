@@ -30,7 +30,6 @@
   "dependencies": {
     "@elizaos/cli": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "zod": "3.24.2"
   },

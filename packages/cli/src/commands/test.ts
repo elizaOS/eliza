@@ -3,7 +3,7 @@ import { AgentServer } from '@/src/server/index';
 import { jsonToCharacter, loadCharacterTryPath } from '@/src/server/loader';
 import { TestRunner, buildProject, promptForEnvVars } from '@/src/utils';
 import { type IAgentRuntime, type ProjectAgent } from '@elizaos/core';
-import { Command } from 'commander';
+import { Command, Option } from 'commander';
 import * as dotenv from 'dotenv';
 import * as fs from 'node:fs';
 import { existsSync } from 'node:fs';
@@ -153,7 +153,7 @@ const runAgentTests = async (options: {
         const checkInterval = setInterval(async () => {
           try {
             // Check if the database is already initialized
-            if (server.database?.isInitialized) {
+            if (await server.database?.getConnection()) {
               clearInterval(checkInterval);
               resolve();
               return;
@@ -174,7 +174,7 @@ const runAgentTests = async (options: {
 
               // Check if we've reached the maximum attempts
               if (initializationAttempts >= maxAttempts) {
-                if (server.database?.connection) {
+                if (await server.database?.getConnection()) {
                   // If we have a connection, consider it good enough even with migration errors
                   console.warn(
                     'Max initialization attempts reached, but database connection exists. Proceeding anyway.'
@@ -200,9 +200,9 @@ const runAgentTests = async (options: {
         }, 1000);
 
         // Timeout after 30 seconds
-        setTimeout(() => {
+        setTimeout(async () => {
           clearInterval(checkInterval);
-          if (server.database?.connection) {
+          if (await server.database?.getConnection()) {
             // If we have a connection, consider it good enough even with initialization issues
             console.warn(
               'Database initialization timeout, but connection exists. Proceeding anyway.'
@@ -433,7 +433,9 @@ const runAgentTests = async (options: {
 export const test = new Command()
   .name('test')
   .description('Run tests for Eliza agent plugins')
-  .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
+  .addOption(
+    new Option('-p, --port <port>', 'Port to listen on').argParser((val) => Number.parseInt(val))
+  )
   .option('-pl, --plugin <name>', 'Name of plugin to test')
   .option('-sp, --skip-plugins', 'Skip plugin tests')
   .option('-spt, --skip-project-tests', 'Skip project tests')

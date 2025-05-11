@@ -2,7 +2,6 @@ import {
   type IAgentRuntime,
   type Memory,
   type Provider,
-  type Room,
   logger,
   addHeader,
   ChannelType,
@@ -40,6 +39,19 @@ export const worldProvider: Provider = {
 
       // Get the world for the current room
       const worldId = currentRoom.worldId;
+
+      if (!worldId) {
+        logger.warn(`World provider: World ID not found for roomId ${message.roomId}`);
+        return {
+          data: {
+            world: {
+              info: 'Unable to retrieve world information - world ID not found',
+            },
+          },
+          text: 'Unable to retrieve world information - world ID not found',
+        };
+      }
+
       const world = await runtime.getWorld(worldId);
 
       if (!world) {
@@ -85,6 +97,10 @@ export const worldProvider: Provider = {
 
       // Categorize rooms by type
       for (const room of worldRooms) {
+        if (!room?.id || !room.name) {
+          logger.warn(`World provider: Room ID or name is missing for room ${room.id}`);
+          continue; // Skip if room is null or undefined
+        }
         const roomInfo: RoomInfo = {
           id: room.id,
           name: room.name,

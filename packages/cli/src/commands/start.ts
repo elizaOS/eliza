@@ -25,7 +25,7 @@ import {
   type IAgentRuntime,
   type Plugin,
 } from '@elizaos/core';
-import { Command } from 'commander';
+import { Command, Option } from 'commander';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -797,9 +797,13 @@ export const start = new Command()
     '-chars, --characters <paths>',
     'multiple character configuration files separated by commas'
   )
+  .addOption(
+    new Option('-p, --port <port>', 'Port to listen on').argParser((val) => Number.parseInt(val))
+  )
+  .hook('preAction', async () => {
+    await displayBanner();
+  })
   .action(async (options) => {
-    displayBanner();
-
     try {
       // Build the project first unless skip-build is specified
       if (options.build) {

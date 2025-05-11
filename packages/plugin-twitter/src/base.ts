@@ -330,7 +330,7 @@ export class ClientBase {
       throw new Error(`Missing required Twitter credentials: ${missing.join(', ')}`);
     }
 
-    const maxRetries = 3;
+    const maxRetries = process.env.MAX_RETRIES ? parseInt(process.env.MAX_RETRIES) : 3;
     let retryCount = 0;
     let lastError: Error | null = null;
 
@@ -724,11 +724,9 @@ export class ClientBase {
   async setCookiesFromArray(cookiesArray: any[]) {
     const cookieStrings = cookiesArray.map(
       (cookie) =>
-        `${cookie.key}=${cookie.value}; Domain=${cookie.domain}; Path=${
-          cookie.path
-        }; ${cookie.secure ? 'Secure' : ''}; ${
-          cookie.httpOnly ? 'HttpOnly' : ''
-        }; SameSite=${cookie.sameSite || 'Lax'}`
+        `${cookie.key}=${cookie.value}; Domain=${cookie.domain}; Path=${cookie.path}; ${
+          cookie.secure ? 'Secure' : ''
+        }; ${cookie.httpOnly ? 'HttpOnly' : ''}; SameSite=${cookie.sameSite || 'Lax'}`
     );
     await this.twitterClient.setCookies(cookieStrings);
   }
