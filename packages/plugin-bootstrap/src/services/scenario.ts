@@ -210,6 +210,7 @@ export class ScenarioService extends Service {
       type: ChannelType.GROUP,
       channelId: roomId,
       serverId: worldId,
+      worldId,
     });
 
     return roomId;

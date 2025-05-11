@@ -115,6 +115,8 @@ export class MessageManager {
       channelId: message.channel.id,
       serverId,
       type,
+      worldId: createUniqueUuid(this.runtime, serverId) as UUID,
+      worldName: message.guild?.name,
     });
 
     try {

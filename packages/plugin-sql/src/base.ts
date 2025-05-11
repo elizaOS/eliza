@@ -741,8 +741,8 @@ export abstract class BaseDrizzleAdapter<
         if (!entitiesByIdMap.has(entityId)) {
           const entity: Entity = {
             ...row.entity,
-            id: stringToUuid(entityId),
-            agentId: stringToUuid(row.entity.agentId),
+            id: entityId,
+            agentId: row.entity.agentId as UUID,
             metadata: row.entity.metadata as { [key: string]: any },
             components: includeComponents ? [] : undefined,
           };
@@ -1609,7 +1609,7 @@ export abstract class BaseDrizzleAdapter<
           entityId: memory.entityId,
           roomId: memory.roomId,
           worldId: memory.worldId, // Include worldId
-          agentId: memory.agentId,
+          agentId: this.agentId,
           unique: memory.unique ?? isUnique,
           createdAt: memory.createdAt,
         },
@@ -1948,6 +1948,8 @@ export abstract class BaseDrizzleAdapter<
     worldId,
     metadata,
   }: Room): Promise<UUID> {
+    if (!worldId) throw new Error('worldId is required');
+
     return this.withDatabase(async () => {
       const newRoomId = id || v4();
       await this.db
@@ -2504,6 +2506,9 @@ export abstract class BaseDrizzleAdapter<
    * @returns {Promise<UUID>} A Promise that resolves to the ID of the created task.
    */
   async createTask(task: Task): Promise<UUID> {
+    if (!task.worldId) {
+      throw new Error('worldId is required');
+    }
     return this.withRetry(async () => {
       return this.withDatabase(async () => {
         const now = new Date();
@@ -2530,10 +2535,14 @@ export abstract class BaseDrizzleAdapter<
 
   /**
    * Asynchronously retrieves tasks based on specified parameters.
-   * @param params Object containing optional roomId and tags to filter tasks
+   * @param params Object containing optional roomId, tags, and entityId to filter tasks
    * @returns Promise resolving to an array of Task objects
    */
-  async getTasks(params: { roomId?: UUID; tags?: string[] }): Promise<Task[]> {
+  async getTasks(params: {
+    roomId?: UUID;
+    tags?: string[];
+    entityId?: UUID; // Added entityId parameter
+  }): Promise<Task[]> {
     return this.withRetry(async () => {
       return this.withDatabase(async () => {
         const result = await this.db

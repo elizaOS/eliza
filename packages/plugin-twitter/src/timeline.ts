@@ -257,11 +257,17 @@ Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appro
   }
 
   private async ensureTweetWorldContext(tweet: Tweet, roomId: UUID, worldId: UUID, entityId: UUID) {
-    await this.runtime.ensureWorldExists({
-      id: worldId,
-      name: `${tweet.name}'s Twitter`,
-      agentId: this.runtime.agentId,
+    await this.runtime.ensureConnection({
+      entityId,
+      roomId,
+      userName: tweet.username,
+      name: tweet.name,
+      worldName: `${tweet.name}'s Twitter`,
+      source: 'twitter',
+      type: ChannelType.GROUP,
+      channelId: tweet.conversationId,
       serverId: tweet.userId,
+      worldId,
       metadata: {
         ownership: { ownerId: tweet.userId },
         twitter: {
@@ -270,28 +276,6 @@ Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appro
           name: tweet.name,
         },
       },
-    });
-
-    await this.runtime.ensureConnection({
-      entityId,
-      roomId,
-      userName: tweet.username,
-      name: tweet.name,
-      source: 'twitter',
-      type: ChannelType.GROUP,
-      channelId: tweet.conversationId,
-      serverId: tweet.userId,
-      worldId,
-    });
-
-    await this.runtime.ensureRoomExists({
-      id: roomId,
-      name: `Conversation with ${tweet.name}`,
-      source: 'twitter',
-      type: ChannelType.GROUP,
-      channelId: tweet.conversationId,
-      serverId: tweet.userId,
-      worldId,
     });
   }
 

@@ -38,15 +38,18 @@ export const memoryTable = pgTable(
     entityId: uuid('entityId').references(() => entityTable.id, {
       onDelete: 'cascade',
     }),
-    agentId: uuid('agentId').references(() => agentTable.id, {
-      onDelete: 'cascade',
-    }),
+    agentId: uuid('agentId')
+      .references(() => agentTable.id, {
+        onDelete: 'cascade',
+      })
+      .notNull(),
     roomId: uuid('roomId').references(() => roomTable.id, {
       onDelete: 'cascade',
     }),
-    worldId: uuid('worldId').references(() => worldTable.id, {
-      onDelete: 'set null',
-    }),
+    worldId: uuid('worldId'),
+    // .references(() => worldTable.id, {
+    //   onDelete: 'set null',
+    // }),
     unique: boolean('unique').default(true).notNull(),
     metadata: jsonb('metadata').default({}).notNull(),
   },
@@ -68,11 +71,11 @@ export const memoryTable = pgTable(
       columns: [table.agentId],
       foreignColumns: [agentTable.id],
     }).onDelete('cascade'),
-    foreignKey({
-      name: 'fk_world',
-      columns: [table.worldId],
-      foreignColumns: [worldTable.id],
-    }).onDelete('set null'),
+    // foreignKey({
+    //   name: 'fk_world',
+    //   columns: [table.worldId],
+    //   foreignColumns: [worldTable.id],
+    // }).onDelete('set null'),
     index('idx_memories_metadata_type').on(sql`((metadata->>'type'))`),
     index('idx_memories_document_id').on(sql`((metadata->>'documentId'))`),
     index('idx_fragments_order').on(

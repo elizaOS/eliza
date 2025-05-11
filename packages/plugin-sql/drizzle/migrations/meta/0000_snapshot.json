@@ -1,5 +1,5 @@
 {
-  "id": "8d7ae0aa-76b7-4e80-9133-db45fb9b6d1e",
+  "id": "327f7a6a-2e61-4e4c-9604-242dc5fd42d4",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -40,7 +40,7 @@
           "name": "name",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "username": {
           "name": "username",
@@ -52,7 +52,7 @@
           "name": "system",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "bio": {
           "name": "bio",
@@ -64,56 +64,56 @@
           "name": "message_examples",
           "type": "jsonb",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "default": "'[]'::jsonb"
         },
         "post_examples": {
           "name": "post_examples",
           "type": "jsonb",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "default": "'[]'::jsonb"
         },
         "topics": {
           "name": "topics",
           "type": "jsonb",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "default": "'[]'::jsonb"
         },
         "adjectives": {
           "name": "adjectives",
           "type": "jsonb",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "default": "'[]'::jsonb"
         },
         "knowledge": {
           "name": "knowledge",
           "type": "jsonb",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "default": "'[]'::jsonb"
         },
         "plugins": {
           "name": "plugins",
           "type": "jsonb",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "default": "'[]'::jsonb"
         },
         "settings": {
           "name": "settings",
           "type": "jsonb",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "default": "'{}'::jsonb"
         },
         "style": {
           "name": "style",
           "type": "jsonb",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "default": "'{}'::jsonb"
         }
       },
@@ -450,14 +450,14 @@
           "name": "names",
           "type": "text[]",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "default": "'{}'::text[]"
         },
         "metadata": {
           "name": "metadata",
           "type": "jsonb",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "default": "'{}'::jsonb"
         }
       },
@@ -545,7 +545,7 @@
           "tableTo": "rooms",
           "columnsFrom": ["roomId"],
           "columnsTo": ["id"],
-          "onDelete": "no action",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         },
         "fk_room": {
@@ -612,7 +612,7 @@
           "name": "agentId",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "roomId": {
           "name": "roomId",
@@ -758,15 +758,6 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "memories_worldId_worlds_id_fk": {
-          "name": "memories_worldId_worlds_id_fk",
-          "tableFrom": "memories",
-          "tableTo": "worlds",
-          "columnsFrom": ["worldId"],
-          "columnsTo": ["id"],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
         "fk_room": {
           "name": "fk_room",
           "tableFrom": "memories",
@@ -792,15 +783,6 @@
           "columnsFrom": ["agentId"],
           "columnsTo": ["id"],
           "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "fk_world": {
-          "name": "fk_world",
-          "tableFrom": "memories",
-          "tableTo": "worlds",
-          "columnsFrom": ["worldId"],
-          "columnsTo": ["id"],
-          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },
@@ -1155,15 +1137,6 @@
           "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
-        },
-        "rooms_worldId_worlds_id_fk": {
-          "name": "rooms_worldId_worlds_id_fk",
-          "tableFrom": "rooms",
-          "tableTo": "worlds",
-          "columnsFrom": ["worldId"],
-          "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1193,16 +1166,22 @@
           "name": "description",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
-        "room_id": {
-          "name": "room_id",
+        "roomId": {
+          "name": "roomId",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
         },
-        "world_id": {
-          "name": "world_id",
+        "worldId": {
+          "name": "worldId",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "entityId": {
+          "name": "entityId",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
@@ -1217,24 +1196,26 @@
           "name": "tags",
           "type": "text[]",
           "primaryKey": false,
-          "notNull": false
+          "notNull": false,
+          "default": "'{}'::text[]"
         },
         "metadata": {
           "name": "metadata",
           "type": "jsonb",
           "primaryKey": false,
-          "notNull": false
+          "notNull": false,
+          "default": "'{}'::jsonb"
         },
         "created_at": {
           "name": "created_at",
-          "type": "timestamp",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false,
           "default": "now()"
         },
         "updated_at": {
           "name": "updated_at",
-          "type": "timestamp",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false,
           "default": "now()"

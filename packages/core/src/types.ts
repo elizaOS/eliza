@@ -606,6 +606,8 @@ export type Route = {
   type: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'STATIC';
   path: string;
   filePath?: string;
+  public?: boolean;
+  name: string extends { public: true } ? string : string | undefined;
   handler?: (req: any, res: any, runtime: IAgentRuntime) => Promise<void>;
 };
 
@@ -985,7 +987,7 @@ export interface IDatabaseAdapter {
 
   // Only task instance methods - definitions are in-memory
   createTask(task: Task): Promise<UUID>;
-  getTasks(params: { roomId?: UUID; tags?: string[] }): Promise<Task[]>;
+  getTasks(params: { roomId?: UUID; tags?: string[]; entityId?: UUID }): Promise<Task[]>;
   getTask(id: UUID): Promise<Task | null>;
   getTasksByName(name: string): Promise<Task[]>;
   updateTask(id: UUID, task: Partial<Task>): Promise<void>;
@@ -1055,6 +1057,33 @@ export interface UnifiedSearchOptions extends UnifiedMemoryOptions {
   similarity?: number; // Clearer name than 'match_threshold'
 }
 
+/**
+ * Information describing the target of a message.
+ */
+export interface TargetInfo {
+  source: string; // Platform identifier (e.g., 'discord', 'telegram', 'websocket-api')
+  roomId?: UUID; // Target room ID (platform-specific or runtime-specific)
+  channelId?: string; // Platform-specific channel/chat ID
+  serverId?: string; // Platform-specific server/guild ID
+  entityId?: UUID; // Target user ID (for DMs)
+  threadId?: string; // Platform-specific thread ID (e.g., Telegram topics)
+  // Add other relevant platform-specific identifiers as needed
+}
+
+/**
+ * Function signature for handlers responsible for sending messages to specific platforms.
+ */
+export type SendHandlerFunction = (
+  runtime: IAgentRuntime,
+  target: TargetInfo,
+  content: Content
+) => Promise<void>;
+
+/**
+ * Represents the core runtime environment for an agent.
+ * Defines methods for database interaction, plugin management, event handling,
+ * state composition, model usage, and task management.
+ */
 export interface IAgentRuntime extends IDatabaseAdapter {
   // Properties
   agentId: UUID;
@@ -1128,7 +1157,9 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   ensureConnection({
     entityId,
     roomId,
+    metadata,
     userName,
+    worldName,
     name,
     source,
     channelId,
@@ -1141,12 +1172,14 @@ export interface IAgentRuntime extends IDatabaseAdapter {
     roomId: UUID;
     userName?: string;
     name?: string;
+    worldName?: string;
     source?: string;
     channelId?: string;
     serverId?: string;
     type: ChannelType;
-    worldId?: UUID;
+    worldId: UUID;
     userId?: UUID;
+    metadata?: Record<string, any>;
   }): Promise<void>;
 
   ensureParticipantInRoom(entityId: UUID, roomId: UUID): Promise<void>;
@@ -1155,7 +1188,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 
   ensureRoomExists(room: Room): Promise<void>;
 
-  composeState(message: Memory, filterList?: string[], includeList?: string[]): Promise<State>;
+  composeState(message: Memory, includeList?: string[], skipCache?: boolean): Promise<State>;
 
   /**
    * Use a model with strongly typed parameters and return values based on model type
@@ -1194,6 +1227,21 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   stop(): Promise<void>;
 
   addEmbeddingToMemory(memory: Memory): Promise<Memory>;
+
+  /**
+   * Registers a handler function responsible for sending messages to a specific source/platform.
+   * @param source - The unique identifier string for the source (e.g., 'discord', 'telegram').
+   * @param handler - The SendHandlerFunction to be called for this source.
+   */
+  registerSendHandler(source: string, handler: SendHandlerFunction): void;
+
+  /**
+   * Sends a message to a specified target using the appropriate registered handler.
+   * @param target - Information describing the target recipient and platform.
+   * @param content - The message content to send.
+   * @returns Promise resolving when the message sending process is initiated or completed.
+   */
+  sendMessageToTarget(target: TargetInfo, content: Content): Promise<void>;
 }
 
 /**
@@ -1528,7 +1576,7 @@ export interface Task {
   roomId?: UUID;
   /** Optional. The UUID of the world this task is associated with. */
   worldId?: UUID;
-  /** An array of string tags for categorizing or filtering tasks. */
+  entityId?: UUID;
   tags: string[];
 }
 

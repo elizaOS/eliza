@@ -715,6 +715,57 @@ export function agentRouter(
     res.status(204).send();
   });
 
+  // Get Agent Panels (public GET routes)
+  router.get('/:agentId/panels', async (req, res) => {
+    const agentId = validateUuid(req.params.agentId);
+    if (!agentId) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_ID',
+          message: 'Invalid agent ID format',
+        },
+      });
+      return;
+    }
+
+    const runtime = agents.get(agentId);
+    if (!runtime) {
+      res.status(404).json({
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Agent not found',
+        },
+      });
+      return;
+    }
+
+    try {
+      const publicPanels = runtime.routes
+        .filter((route) => route.public === true && route.type === 'GET' && route.name)
+        .map((route) => ({
+          name: route.name,
+          path: route.path.startsWith('/') ? route.path : `/${route.path}`,
+        }));
+
+      res.json({
+        success: true,
+        data: publicPanels,
+      });
+    } catch (error) {
+      logger.error(`[AGENT PANELS] Error retrieving panels for agent ${agentId}:`, error);
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'PANEL_ERROR',
+          message: 'Error retrieving agent panels',
+          details: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
+  });
+
   // Get Agent Logs
   router.get('/:agentId/logs', async (req, res) => {
     const agentId = validateUuid(req.params.agentId);
@@ -1059,6 +1110,8 @@ export function agentRouter(
         name: req.body.name,
         source: 'direct',
         type: ChannelType.API,
+        worldId: createUniqueUuid(runtime, 'direct'),
+        worldName: 'Direct',
       });
 
       const messageId = createUniqueUuid(runtime, Date.now().toString());
@@ -1645,11 +1698,15 @@ export function agentRouter(
           };
 
           // Add knowledge to agent
-          await runtime.addKnowledge(knowledgeItem, {
-            targetTokens: 1500,
-            overlap: 200,
-            modelContextSize: 4096,
-          });
+          await runtime.addKnowledge(
+            knowledgeItem,
+            undefined, // Default processing options
+            {
+              roomId: undefined,
+              worldId: effectiveWorldId, // Use the ensured effectiveWorldId
+              entityId: entityId,
+            }
+          );
 
           // Clean up temp file immediately after successful processing
           if (file.path && fs.existsSync(file.path)) {

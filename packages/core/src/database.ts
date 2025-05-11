@@ -529,7 +529,7 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
    * @param params Object containing optional roomId and tags to filter tasks
    * @returns Promise resolving to an array of Task objects
    */
-  abstract getTasks(params: { roomId?: UUID; tags?: string[] }): Promise<Task[]>;
+  abstract getTasks(params: { roomId?: UUID; tags?: string[]; entityId?: UUID }): Promise<Task[]>;
 
   /**
    * Retrieves a specific task by its ID.

@@ -224,12 +224,17 @@ export class TwitterInteractionClient {
         const worldId = createUniqueUuid(this.runtime, tweet.userId);
         const roomId = createUniqueUuid(this.runtime, tweet.conversationId);
 
-        // Ensure world exists first
-        await this.runtime.ensureWorldExists({
-          id: worldId,
-          name: `${tweet.name}'s Twitter`,
-          agentId: this.runtime.agentId,
+        await this.runtime.ensureConnection({
+          entityId,
+          roomId,
+          userName: tweet.username,
+          worldName: `${tweet.name}'s Twitter`,
+          name: tweet.name,
+          source: 'twitter',
+          type: ChannelType.GROUP,
+          channelId: tweet.conversationId,
           serverId: tweet.userId,
+          worldId: worldId,
           metadata: {
             ownership: { ownerId: tweet.userId },
             twitter: {
@@ -238,29 +243,6 @@ export class TwitterInteractionClient {
               name: tweet.name,
             },
           },
-        });
-
-        await this.runtime.ensureConnection({
-          entityId,
-          roomId,
-          userName: tweet.username,
-          name: tweet.name,
-          source: 'twitter',
-          type: ChannelType.GROUP,
-          channelId: tweet.conversationId,
-          serverId: tweet.userId,
-          worldId: worldId,
-        });
-
-        // Ensure conversation room exists
-        await this.runtime.ensureRoomExists({
-          id: roomId,
-          name: `Conversation with ${tweet.name}`,
-          source: 'twitter',
-          type: ChannelType.GROUP,
-          channelId: tweet.conversationId,
-          serverId: tweet.userId,
-          worldId: worldId,
         });
 
         // Create standardized message memory
@@ -643,6 +625,8 @@ export class TwitterInteractionClient {
           name: currentTweet.name,
           source: 'twitter',
           type: ChannelType.GROUP,
+          worldId: createUniqueUuid(this.runtime, currentTweet.userId),
+          worldName: `${currentTweet.name}'s Twitter`,
         });
 
         this.runtime.createMemory(

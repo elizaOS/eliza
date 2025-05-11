@@ -592,9 +592,11 @@ export function truncateToCompleteSentence(text: string, maxLength: number): str
 export async function splitChunks(content: string, chunkSize = 512, bleed = 20): Promise<string[]> {
   logger.debug('[splitChunks] Starting text split');
 
+  const characterstoTokens = 3.5;
+
   const textSplitter = new RecursiveCharacterTextSplitter({
-    chunkSize: Number(chunkSize),
-    chunkOverlap: Number(bleed),
+    chunkSize: Number(Math.floor(chunkSize * characterstoTokens)),
+    chunkOverlap: Number(Math.floor(bleed * characterstoTokens)),
   });
 
   const chunks = await textSplitter.splitText(content);
