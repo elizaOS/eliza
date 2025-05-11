@@ -1303,11 +1303,11 @@ export abstract class BaseDrizzleAdapter<
       try {
         // Sanitize JSON body to prevent Unicode escape sequence errors
         const sanitizedBody = this.sanitizeJsonObject(params.body);
-        
+
         // Serialize to JSON string first for an additional layer of protection
         // This ensures any problematic characters are properly escaped during JSON serialization
         const jsonString = JSON.stringify(sanitizedBody);
-        
+
         await this.db.transaction(async (tx) => {
           await tx.insert(logTable).values({
             body: sql`${jsonString}::jsonb`,
@@ -1331,7 +1331,7 @@ export abstract class BaseDrizzleAdapter<
   /**
    * Sanitizes a JSON object by replacing problematic Unicode escape sequences
    * that could cause errors during JSON serialization/storage
-   * 
+   *
    * @param value - The value to sanitize
    * @returns The sanitized value
    */
@@ -1353,14 +1353,15 @@ export abstract class BaseDrizzleAdapter<
 
     if (typeof value === 'object') {
       if (Array.isArray(value)) {
-        return value.map(item => this.sanitizeJsonObject(item));
+        return value.map((item) => this.sanitizeJsonObject(item));
       } else {
         const result: Record<string, unknown> = {};
         for (const [key, val] of Object.entries(value)) {
           // Also sanitize object keys
-          const sanitizedKey = typeof key === 'string' ? 
-            key.replace(/\u0000/g, '').replace(/\\u(?![0-9a-fA-F]{4})/g, '\\\\u') : 
-            key;
+          const sanitizedKey =
+            typeof key === 'string'
+              ? key.replace(/\u0000/g, '').replace(/\\u(?![0-9a-fA-F]{4})/g, '\\\\u')
+              : key;
           result[sanitizedKey] = this.sanitizeJsonObject(val);
         }
         return result;
