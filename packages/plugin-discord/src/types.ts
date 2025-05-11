@@ -122,3 +122,23 @@ export const DISCORD_SERVICE_NAME = 'discord';
 export const ServiceType = {
   DISCORD: 'discord',
 } as const;
+
+export interface DiscordComponentOptions {
+  type: number;
+  custom_id: string;
+  label?: string;
+  style?: number;
+  placeholder?: string;
+  min_values?: number;
+  max_values?: number;
+  options?: Array<{
+    label: string;
+    value: string;
+    description?: string;
+  }>;
+}
+
+export interface DiscordActionRow {
+  type: 1;
+  components: DiscordComponentOptions[];
+}

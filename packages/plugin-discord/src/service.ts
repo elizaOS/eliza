@@ -29,6 +29,10 @@ import {
   PermissionsBitField,
   type TextChannel,
   type User,
+  type Interaction,
+  type ButtonInteraction,
+  type StringSelectMenuInteraction,
+  type MessageComponentInteraction,
 } from 'discord.js';
 import { DISCORD_SERVICE_NAME } from './constants';
 import { MessageManager } from './messages';
@@ -54,6 +58,7 @@ export class DiscordService extends Service implements IDiscordService {
   character: Character;
   messageManager: MessageManager;
   voiceManager: VoiceManager;
+  private userSelections: Map<string, { [key: string]: any }> = new Map();
   private timeouts: NodeJS.Timeout[] = [];
 
   /**
@@ -662,19 +667,105 @@ export class DiscordService extends Service implements IDiscordService {
 
   /**
    * Handles interactions created by the user, specifically commands.
-   * @param {any} interaction - The interaction object received
+   * @param {Interaction} interaction - The interaction object received
    * @returns {void}
    */
-  private async handleInteractionCreate(interaction: any) {
-    if (!interaction.isCommand()) return;
+  private async handleInteractionCreate(interaction: Interaction) {
+    if (interaction.isCommand()) {
+      switch (interaction.commandName) {
+        case 'joinchannel':
+          await this.voiceManager.handleJoinChannelCommand(interaction);
+          break;
+        case 'leavechannel':
+          await this.voiceManager.handleLeaveChannelCommand(interaction);
+          break;
+      }
+    }
 
-    switch (interaction.commandName) {
-      case 'joinchannel':
-        await this.voiceManager.handleJoinChannelCommand(interaction);
-        break;
-      case 'leavechannel':
-        await this.voiceManager.handleLeaveChannelCommand(interaction);
-        break;
+    // Handle message component interactions (buttons, dropdowns, etc.)
+    if (interaction.isMessageComponent()) {
+      logger.info(`Received component interaction: ${interaction.customId}`);
+      const userId = interaction.user?.id;
+      const messageId = interaction.message?.id;
+
+      // Initialize user's selections if not exists
+      if (!this.userSelections.has(userId)) {
+        this.userSelections.set(userId, {});
+      }
+      const userSelections = this.userSelections.get(userId);
+
+      try {
+        // For select menus (type 3), store the values
+        if (interaction.isStringSelectMenu()) {
+          logger.info(`Values selected: ${JSON.stringify(interaction.values)}`);
+          logger.info(
+            `User ${userId} selected values for ${interaction.customId}: ${JSON.stringify(interaction.values)}`
+          );
+
+          // Store values with messageId to scope them to this specific form
+          userSelections[messageId] = {
+            ...userSelections[messageId],
+            [interaction.customId]: interaction.values,
+          };
+          this.userSelections.set(userId, userSelections);
+
+          // Log the current state of all selections for this message
+          logger.info(
+            `Current selections for message ${messageId}: ${JSON.stringify(userSelections[messageId])}`
+          );
+
+          // Acknowledge the selection
+          await interaction.deferUpdate();
+          // await interaction.followUp({
+          //   content: 'Selection saved!',
+          //   ephemeral: true,
+          // });
+        }
+
+        // For button interactions (type 2), use stored values
+        if (interaction.isButton()) {
+          logger.info('Button interaction detected');
+          logger.info(`Button pressed by user ${userId}: ${interaction.customId}`);
+          const formSelections = userSelections[messageId] || {};
+
+          logger.info(`Form data being submitted: ${JSON.stringify(formSelections)}`);
+
+          // Emit an event with the interaction data and stored selections
+          this.runtime.emitEvent(['DISCORD_INTERACTION'], {
+            interaction: {
+              customId: interaction.customId,
+              componentType: interaction.componentType,
+              type: interaction.type,
+              user: userId,
+              messageId: messageId,
+              selections: formSelections,
+            },
+            source: 'discord',
+          });
+
+          // Clear selections for this form only
+          delete userSelections[messageId];
+          this.userSelections.set(userId, userSelections);
+          logger.info(`Cleared selections for message ${messageId}`);
+
+          // Acknowledge the button press
+          await interaction.deferUpdate();
+          await interaction.followUp({
+            content: 'Form submitted successfully!',
+            ephemeral: true,
+          });
+        }
+      } catch (error) {
+        logger.error(`Error handling component interaction: ${error}`);
+        try {
+          await interaction.followUp({
+            content: 'There was an error processing your interaction.',
+            ephemeral: true,
+          });
+        } catch (followUpError) {
+          logger.error(`Error sending follow-up message: ${followUpError}`);
+        }
+      }
     }
   }
 
@@ -946,6 +1037,96 @@ export class DiscordService extends Service implements IDiscordService {
     }
 
     this.client?.emit('voiceManagerReady');
+  }
+
+  /**
+   * Fetches all members who have access to a specific text channel
+   *
+   * @param {string} channelId - The Discord ID of the text channel
+   * @param {boolean} useCache - Whether to prioritize cached data (defaults to true)
+   * @returns {Promise<Array<{id: string, username: string, displayName: string}>>} Array of channel members
+   */
+  public async getTextChannelMembers(
+    channelId: string,
+    useCache: boolean = true
+  ): Promise<Array<{ id: string; username: string; displayName: string }>> {
+    logger.info(`Fetching members for text channel ${channelId}, useCache=${useCache}`);
+
+    try {
+      // Fetch the channel
+      const channel = (await this.client.channels.fetch(channelId)) as TextChannel;
+
+      // Validate channel
+      if (!channel) {
+        logger.error(`Channel not found: ${channelId}`);
+        return [];
+      }
+
+      if (channel.type !== DiscordChannelType.GuildText) {
+        logger.error(`Channel ${channelId} is not a text channel`);
+        return [];
+      }
+
+      const guild = channel.guild;
+      if (!guild) {
+        logger.error(`Channel ${channelId} is not in a guild`);
+        return [];
+      }
+
+      // Determine strategy based on guild size and cache preference
+      const useCacheOnly = useCache && guild.memberCount > 1000;
+      let members;
+
+      if (useCacheOnly) {
+        logger.info(
+          `Using cached members for large guild ${guild.name} (${guild.memberCount} members)`
+        );
+        members = guild.members.cache;
+      } else {
+        // For smaller guilds or when cache is not preferred, fetch members
+        try {
+          if (useCache && guild.members.cache.size > 0) {
+            logger.info(`Using cached members (${guild.members.cache.size} members)`);
+            members = guild.members.cache;
+          } else {
+            logger.info(`Fetching members for guild ${guild.name}`);
+            members = await guild.members.fetch();
+            logger.info(`Fetched ${members.size} members`);
+          }
+        } catch (error) {
+          logger.error(`Error fetching members: ${error}`);
+          // Fallback to cache if fetch fails
+          members = guild.members.cache;
+          logger.info(`Fallback to cache with ${members.size} members`);
+        }
+      }
+
+      // Filter members by permission to view the channel
+      logger.info(`Filtering members for access to channel ${channel.name}`);
+      const channelMembers = Array.from(members.values())
+        .filter((member) => {
+          // Skip bots except our own bot
+          if (member.user.bot && member.id !== this.client.user?.id) {
+            return false;
+          }
+
+          // Check if the member can view the channel
+          return (
+            channel.permissionsFor(member)?.has(PermissionsBitField.Flags.ViewChannel) ?? false
+          );
+        })
+        .map((member) => ({
+          id: member.id,
+          username: member.user.username,
+          displayName: member.displayName || member.user.username,
+        }));
+
+      logger.info(`Found ${channelMembers.length} members with access to channel ${channel.name}`);
+      return channelMembers;
+    } catch (error) {
+      logger.error(`Error fetching channel members: ${error}`);
+      return [];
+    }
   }
 }
 
