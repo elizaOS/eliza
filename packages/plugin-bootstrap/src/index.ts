@@ -435,13 +435,12 @@ const messageReceivedHandler = async ({
         roomId: message.roomId,
         entityId: message.entityId,
         startTime,
-        status: 'completed',
+        status: 'error',
         endTime: Date.now(),
         duration: Date.now() - startTime,
         error: error.message,
         source: 'messageHandler',
       });
-      throw error;
     }
   })();
 

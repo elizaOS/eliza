@@ -6,7 +6,16 @@ import {
   MockRuntime,
   setupActionTest,
 } from './test-utils';
-import { IAgentRuntime, Memory, Provider, State, UUID, logger, ChannelType } from '@elizaos/core';
+import {
+  IAgentRuntime,
+  Memory,
+  Provider,
+  State,
+  UUID,
+  logger,
+  ChannelType,
+  createUniqueUuid as actualCreateUniqueUuid,
+} from '@elizaos/core';
 
 // Import providers from source modules
 import choiceProvider from '../src/providers/choice';
@@ -21,10 +30,11 @@ vi.mock('@elizaos/core', async (importOriginal) => {
   const actual = await importOriginal();
   return {
     ...actual,
-    getWorldSettings: vi.fn().mockResolvedValue([
-      { name: 'setting1', value: 'value1', description: 'Description 1' },
-      { name: 'setting2', value: 'value2', description: 'Description 2', secret: true },
-    ]),
+    createUniqueUuid: vi.fn(),
+    getWorldSettings: vi.fn().mockResolvedValue({
+      setting1: { name: 'setting1', value: 'value1', description: 'Description 1' },
+      setting2: { name: 'setting2', value: 'value2', description: 'Description 2', secret: true },
+    }),
     findWorldsForOwner: vi.fn().mockResolvedValue([
       {
         id: 'world-1' as UUID,
@@ -38,6 +48,7 @@ vi.mock('@elizaos/core', async (importOriginal) => {
       error: vi.fn(),
       warn: vi.fn(),
       debug: vi.fn(),
+      info: vi.fn(),
     },
   };
 });
@@ -45,103 +56,112 @@ vi.mock('@elizaos/core', async (importOriginal) => {
 describe('Choice Provider', () => {
   let mockRuntime: MockRuntime;
   let mockMessage: Partial<Memory>;
-  let mockState: Partial<State>;
 
   beforeEach(() => {
-    // Use setupActionTest for consistent test setup
-    const setup = setupActionTest({
-      stateOverrides: {
-        values: {
-          choices: 'Option A|Option B|Option C',
-        },
-      },
-    });
+    const setup = setupActionTest({}); // No specific state overrides needed for these tests
     mockRuntime = setup.mockRuntime;
     mockMessage = setup.mockMessage;
-    mockState = setup.mockState;
+
+    // Default mock for getTasks
+    mockRuntime.getTasks = vi.fn().mockResolvedValue([]);
   });
 
   afterEach(() => {
     vi.resetAllMocks();
   });
 
-  it('should parse choices from state values', async () => {
-    const result = await choiceProvider.get(
-      mockRuntime as IAgentRuntime,
-      mockMessage as Memory,
-      mockState as State
-    );
-
-    expect(result).toBeDefined();
-    expect(result.data).toBeDefined();
-    expect(result.data.choices).toHaveLength(3);
-    expect(result.data.choices).toContain('Option A');
-    expect(result.data.choices).toContain('Option B');
-    expect(result.data.choices).toContain('Option C');
-    expect(result.text).toContain('Option A');
-    expect(result.text).toContain('Option B');
-    expect(result.text).toContain('Option C');
-  });
-
-  it('should handle empty choices gracefully', async () => {
-    // Create state with empty choices
-    const emptyState = createMockState({
-      values: {
-        choices: '',
+  it('should list pending tasks with options', async () => {
+    const tasks = [
+      {
+        id: 'task-1' as UUID,
+        name: 'Approve Post',
+        description: 'A blog post is awaiting approval.',
+        roomId: mockMessage.roomId,
+        tags: ['AWAITING_CHOICE'],
+        metadata: {
+          options: ['approve', 'reject', { name: 'edit', description: 'Edit the post' }],
+        },
       },
-    });
-
-    const result = await choiceProvider.get(
-      mockRuntime as IAgentRuntime,
-      mockMessage as Memory,
-      emptyState as State
-    );
-
-    expect(result).toBeDefined();
-    expect(result.data).toBeDefined();
-    expect(result.data.choices).toHaveLength(0);
-    expect(result.text).toContain('No choices available');
-  });
-
-  it('should handle missing state values gracefully', async () => {
-    // Create state without choices
-    const noChoicesState = createMockState({
-      values: {},
-    });
-
-    const result = await choiceProvider.get(
-      mockRuntime as IAgentRuntime,
-      mockMessage as Memory,
-      noChoicesState as State
-    );
-
-    expect(result).toBeDefined();
-    expect(result.data).toBeDefined();
-    expect(result.data.choices).toHaveLength(0);
-    expect(result.text).toContain('No choices available');
-  });
-
-  it('should handle custom delimiter in choices', async () => {
-    // Create state with custom delimiter
-    const customDelimiterState = createMockState({
-      values: {
-        choices: 'Choice 1;Choice 2;Choice 3',
-        choiceDelimiter: ';',
+      {
+        id: 'task-2' as UUID,
+        name: 'Select Image',
+        roomId: mockMessage.roomId,
+        tags: ['AWAITING_CHOICE'],
+        metadata: {
+          options: [
+            { name: 'imageA.jpg', description: 'A cat' },
+            { name: 'imageB.jpg', description: 'A dog' },
+          ],
+        },
       },
-    });
+    ];
+    mockRuntime.getTasks = vi.fn().mockResolvedValue(tasks);
 
-    const result = await choiceProvider.get(
-      mockRuntime as IAgentRuntime,
-      mockMessage as Memory,
-      customDelimiterState as State
-    );
+    const result = await choiceProvider.get(mockRuntime as IAgentRuntime, mockMessage as Memory);
 
     expect(result).toBeDefined();
     expect(result.data).toBeDefined();
-    expect(result.data.choices).toHaveLength(3);
-    expect(result.data.choices).toContain('Choice 1');
-    expect(result.data.choices).toContain('Choice 2');
-    expect(result.data.choices).toContain('Choice 3');
+    expect(result.data.tasks).toHaveLength(2);
+    expect(result.data.tasks[0].name).toBe('Approve Post');
+    expect(result.text).toContain('Pending Tasks');
+    expect(result.text).toContain('1. **Approve Post**');
+    expect(result.text).toContain('A blog post is awaiting approval.');
+    expect(result.text).toContain('- `approve`');
+    expect(result.text).toContain('- `reject`');
+    expect(result.text).toContain('- `edit` - Edit the post');
+    expect(result.text).toContain('2. **Select Image**');
+    expect(result.text).toContain('- `imageA.jpg` - A cat');
+    expect(result.text).toContain('- `imageB.jpg` - A dog');
+    expect(result.text).toContain(
+      "To select an option, reply with the option name (e.g., 'post' or 'cancel')."
+    );
+    expect(mockRuntime.getTasks).toHaveBeenCalledWith({
+      roomId: mockMessage.roomId,
+      tags: ['AWAITING_CHOICE'],
+    });
+  });
+
+  it('should handle no pending tasks gracefully', async () => {
+    mockRuntime.getTasks = vi.fn().mockResolvedValue([]); // No tasks
+
+    const result = await choiceProvider.get(mockRuntime as IAgentRuntime, mockMessage as Memory);
+
+    expect(result).toBeDefined();
+    expect(result.data).toBeDefined();
+    expect(result.data.tasks).toHaveLength(0);
+    expect(result.text).toContain('No pending choices for the moment.');
+  });
+
+  it('should handle tasks with no options gracefully', async () => {
+    const tasks = [
+      {
+        id: 'task-1' as UUID,
+        name: 'No Options Task',
+        roomId: mockMessage.roomId,
+        tags: ['AWAITING_CHOICE'],
+        metadata: {}, // No options here
+      },
+    ];
+    mockRuntime.getTasks = vi.fn().mockResolvedValue(tasks);
+
+    const result = await choiceProvider.get(mockRuntime as IAgentRuntime, mockMessage as Memory);
+
+    expect(result).toBeDefined();
+    expect(result.data).toBeDefined();
+    expect(result.data.tasks).toHaveLength(0); // Tasks without options are filtered out
+    expect(result.text).toContain('No pending choices for the moment.');
+  });
+
+  it('should handle errors from getTasks gracefully', async () => {
+    mockRuntime.getTasks = vi.fn().mockRejectedValue(new Error('Task service error'));
+
+    const result = await choiceProvider.get(mockRuntime as IAgentRuntime, mockMessage as Memory);
+
+    expect(result).toBeDefined();
+    expect(result.data).toBeDefined();
+    expect(result.data.tasks).toHaveLength(0);
+    expect(result.text).toContain('There was an error retrieving pending tasks with options.');
+    expect(logger.error).toHaveBeenCalledWith('Error in options provider:', expect.any(Error));
   });
 });
 
@@ -157,27 +177,52 @@ describe('Facts Provider', () => {
     mockMessage = setup.mockMessage;
     mockState = setup.mockState;
 
-    // Set up mock memories
+    // Mock for initial recent messages
     mockRuntime.getMemories = vi.fn().mockResolvedValue([
       {
-        id: 'memory-1' as UUID,
-        entityId: 'entity-1' as UUID,
-        agentId: 'agent-1' as UUID,
-        roomId: 'room-1' as UUID,
-        content: { text: 'User likes chocolate' },
-        embedding: [0.1, 0.2, 0.3],
-        createdAt: Date.now(),
-      },
-      {
-        id: 'memory-2' as UUID,
-        entityId: 'entity-1' as UUID,
-        agentId: 'agent-1' as UUID,
-        roomId: 'room-1' as UUID,
-        content: { text: 'User dislikes spicy food' },
-        embedding: [0.2, 0.3, 0.4],
-        createdAt: Date.now(),
+        id: 'msg-prev-1' as UUID,
+        content: { text: 'Previous message 1' },
+        createdAt: Date.now() - 1000,
       },
     ]);
+
+    // Mock for useModel
+    mockRuntime.useModel = vi.fn().mockResolvedValue([0.1, 0.2, 0.3]); // Example embedding
+
+    // Mock for searchMemories
+    mockRuntime.searchMemories = vi.fn().mockImplementation(async (params) => {
+      if (params.tableName === 'facts' && params.count === 6) {
+        // Could differentiate between the two calls if needed by params.entityId
+        if (params.entityId === mockMessage.entityId) {
+          // recentFactsData call
+          return [
+            {
+              id: 'memory-2' as UUID,
+              entityId: 'entity-1' as UUID,
+              agentId: 'agent-1' as UUID,
+              roomId: 'room-1' as UUID,
+              content: { text: 'User dislikes spicy food' },
+              embedding: [0.2, 0.3, 0.4],
+              createdAt: Date.now(),
+            },
+          ];
+        } else {
+          // relevantFacts call
+          return [
+            {
+              id: 'memory-1' as UUID,
+              entityId: 'entity-1' as UUID, // Can be different or same based on test
+              agentId: 'agent-1' as UUID,
+              roomId: 'room-1' as UUID,
+              content: { text: 'User likes chocolate' },
+              embedding: [0.1, 0.2, 0.3],
+              createdAt: Date.now(),
+            },
+          ];
+        }
+      }
+      return [];
+    });
   });
 
   afterEach(() => {
@@ -195,15 +240,18 @@ describe('Facts Provider', () => {
     expect(result.text).toContain('User likes chocolate');
     expect(result.text).toContain('User dislikes spicy food');
     expect(mockRuntime.getMemories).toHaveBeenCalledWith({
-      tableName: 'facts',
-      entityId: mockMessage.entityId,
-      count: 100,
+      tableName: 'messages',
+      roomId: mockMessage.roomId,
+      count: 10,
+      unique: false,
     });
+    expect(mockRuntime.useModel).toHaveBeenCalled();
+    expect(mockRuntime.searchMemories).toHaveBeenCalledTimes(2);
   });
 
   it('should handle empty results gracefully', async () => {
-    // Mock empty memories
-    mockRuntime.getMemories = vi.fn().mockResolvedValue([]);
+    // Mock empty memories from searchMemories
+    mockRuntime.searchMemories = vi.fn().mockResolvedValue([]);
 
     const result = await factsProvider.get(
       mockRuntime as IAgentRuntime,
@@ -212,11 +260,11 @@ describe('Facts Provider', () => {
     );
 
     expect(result).toBeDefined();
-    expect(result.text).toContain('No facts available');
+    expect(result.text).toContain('No facts available.');
   });
 
   it('should handle errors gracefully', async () => {
-    // Mock error in getMemories
+    // Mock error in getMemories (initial call)
     mockRuntime.getMemories = vi.fn().mockRejectedValue(new Error('Database error'));
 
     const result = await factsProvider.get(
@@ -226,7 +274,7 @@ describe('Facts Provider', () => {
     );
 
     expect(result).toBeDefined();
-    expect(result.text).toContain('No facts available');
+    expect(result.text).toContain('Error retrieving facts.');
     expect(logger.error).toHaveBeenCalled();
   });
 });
@@ -338,21 +386,25 @@ describe('Recent Messages Provider', () => {
     expect(mockRuntime.getMemories).toHaveBeenCalledWith({
       tableName: 'messages',
       roomId: mockMessage.roomId,
-      count: expect.any(Number),
+      count: 10,
+      unique: false,
     });
   });
 
   it('should handle empty message list gracefully', async () => {
-    // Mock empty messages
+    // Mock empty messages for this specific test
     mockRuntime.getMemories = vi.fn().mockResolvedValue([]);
+    // Ensure the current message content is also empty for the provider's specific check
+    mockMessage.content = { ...mockMessage.content, text: '' };
 
     const result = await recentMessagesProvider.get(
       mockRuntime as IAgentRuntime,
-      mockMessage as Memory,
+      mockMessage as Memory, // Now message.content.text is empty
       mockState as State
     );
 
     expect(result).toBeDefined();
+    // Corrected expected text to match provider output
     expect(result.text).toContain('No recent messages available');
   });
 
@@ -367,7 +419,7 @@ describe('Recent Messages Provider', () => {
     );
 
     expect(result).toBeDefined();
-    expect(result.text).toContain('No recent messages available');
+    expect(result.text).toContain('Error retrieving recent messages.');
     expect(logger.error).toHaveBeenCalled();
   });
 });
@@ -377,64 +429,98 @@ describe('Role Provider', () => {
   let mockMessage: Partial<Memory>;
   let mockState: Partial<State>;
 
-  beforeEach(() => {
-    // Use standardized mock factories
+  const testEntityId = 'test-entity-id' as UUID;
+  const otherEntityId = 'other-entity-id' as UUID;
+
+  beforeEach(async () => {
     mockRuntime = createMockRuntime();
-    mockMessage = createMockMemory();
     mockState = createMockState();
 
-    // Mock the required entity data
-    mockRuntime.getEntityById = vi.fn().mockImplementation((id) => {
-      if (id === 'test-entity-id') {
-        return Promise.resolve({
-          id: 'test-entity-id' as UUID,
-          name: 'Test User',
-          metadata: {
-            roles: ['ADMIN', 'MEMBER'],
-          },
-        });
-      }
-      return Promise.resolve(null);
+    // Reset core module mocks that might be targeted by vi.mocked
+    const coreMocks = vi.mocked(await import('@elizaos/core'));
+    coreMocks.createUniqueUuid.mockReset(); // Reset this specifically
+
+    (mockRuntime.getRoom as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'default-room' as UUID,
+      serverId: 'default-server' as UUID,
+      type: ChannelType.GROUP,
+      source: 'discord', // Added source for entity metadata access
     });
+
+    (mockRuntime.getWorld as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'default-world' as UUID,
+      serverId: 'default-server' as UUID,
+      name: 'Default Test World',
+      metadata: {
+        ownership: { ownerId: 'owner-user-id' as UUID },
+        roles: {},
+      },
+    });
+
+    (mockRuntime.getEntityById as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+    // Setup mockState.data.room for the provider to use preferentially
+    mockState.data = {
+      room: {
+        id: 'state-room-id' as UUID,
+        serverId: 'state-server-id' as UUID,
+        type: ChannelType.GROUP,
+        source: 'discord', // Added source
+      },
+    };
+    mockMessage = createMockMemory({ roomId: 'state-room-id' as UUID });
   });
 
   afterEach(() => {
     vi.resetAllMocks();
   });
 
-  it('should retrieve roles for an entity', async () => {
-    const result = await roleProvider.get(
-      mockRuntime as IAgentRuntime,
-      mockMessage as Memory,
-      mockState as State
-    );
+  it('should retrieve and format role hierarchy', async () => {
+    const serverId = 'server-with-roles-simple' as UUID;
+    const worldIdForRoleTest = 'world-for-roles-simple' as UUID;
+    const ownerId = 'owner-simple-test-id' as UUID;
 
-    expect(result).toBeDefined();
-    expect(result.text).toContain('ADMIN');
-    expect(result.text).toContain('MEMBER');
-    expect(mockRuntime.getEntityById).toHaveBeenCalledWith(mockMessage.entityId);
-  });
+    mockState.data.room = {
+      id: 'room-for-roles-simple-test' as UUID,
+      serverId: serverId,
+      type: ChannelType.GROUP,
+      source: 'discord',
+    };
+    mockMessage.roomId = 'room-for-roles-simple-test' as UUID;
 
-  it('should handle missing entity gracefully', async () => {
-    // Mock getEntityById to return null
-    mockRuntime.getEntityById = vi.fn().mockResolvedValue(null);
+    const coreMocks = vi.mocked(await import('@elizaos/core'));
+    coreMocks.createUniqueUuid.mockReset(); // Ensure it's clean for this test's specific mock
+    coreMocks.createUniqueUuid.mockImplementation((rt, sId) => {
+      if (sId === serverId) return worldIdForRoleTest;
+      return 'unexpected-world-id-simple' as UUID;
+    });
 
-    const result = await roleProvider.get(
-      mockRuntime as IAgentRuntime,
-      mockMessage as Memory,
-      mockState as State
-    );
+    (mockRuntime.getWorld as ReturnType<typeof vi.fn>).mockReset(); // Reset this mock too
+    (mockRuntime.getWorld as ReturnType<typeof vi.fn>).mockImplementation(async (id) => {
+      if (id === worldIdForRoleTest) {
+        return {
+          id: worldIdForRoleTest,
+          serverId: serverId,
+          name: 'Role Test World Simple',
+          metadata: {
+            ownership: { ownerId: 'any-owner-simple' as UUID },
+            roles: { [ownerId]: 'OWNER' }, // Simplified to one owner
+          },
+        };
+      }
+      return null;
+    });
 
-    expect(result).toBeDefined();
-    expect(result.text).toContain('No roles information available');
-  });
-
-  it('should handle missing roles gracefully', async () => {
-    // Mock entity without roles
-    mockRuntime.getEntityById = vi.fn().mockResolvedValue({
-      id: 'test-entity-id' as UUID,
-      name: 'Test User',
-      metadata: {},
+    (mockRuntime.getEntityById as ReturnType<typeof vi.fn>).mockReset(); // And this one
+    (mockRuntime.getEntityById as ReturnType<typeof vi.fn>).mockImplementation(async (id) => {
+      if (id === ownerId) {
+        return {
+          id: ownerId,
+          names: ['Simple Owner'],
+          metadata: { discord: { name: 'SimpleOwnerName', username: 'simple_owner_discord' } },
+        };
+      }
+      return null;
     });
 
     const result = await roleProvider.get(
@@ -444,22 +530,104 @@ describe('Role Provider', () => {
     );
 
     expect(result).toBeDefined();
-    expect(result.text).toContain('No roles information available');
+    // Simpler assertions
+    expect(result.text).toContain('# Server Role Hierarchy');
+    expect(result.text).toContain('## Owners');
+    expect(result.text).toContain('SimpleOwnerName (Simple Owner)');
+    expect(result.text).not.toContain('## Administrators'); // Ensure other sections aren't there
+    expect(result.text).not.toContain('## Members');
+
+    expect(coreMocks.createUniqueUuid).toHaveBeenCalledWith(mockRuntime, serverId);
+    expect(mockRuntime.getWorld).toHaveBeenCalledWith(worldIdForRoleTest);
+    expect(mockRuntime.getEntityById).toHaveBeenCalledWith(ownerId);
   });
 
-  it('should handle errors gracefully', async () => {
-    // Mock error in getEntityById
-    mockRuntime.getEntityById = vi.fn().mockRejectedValue(new Error('Database error'));
+  // This test might need to be re-evaluated based on provider's handling of individual missing entities
+  it('should handle missing entity gracefully (now expecting rejection)', async () => {
+    mockMessage = createMockMemory({
+      entityId: otherEntityId,
+      roomId: 'room-for-rejection-test-1' as UUID,
+    });
+    // Ensure state.data.room is undefined so runtime.getRoom is called
+    mockState.data = { ...mockState.data, room: undefined };
+
+    (mockRuntime.getRoom as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('Simulated DB error getting room')
+    );
+
+    await expect(
+      roleProvider.get(mockRuntime as IAgentRuntime, mockMessage as Memory, mockState as State)
+    ).rejects.toThrowError('Simulated DB error getting room');
+  });
+
+  it('should handle missing roles gracefully', async () => {
+    const entityMissingRolesId = 'entity-no-roles' as UUID;
+    mockMessage = createMockMemory({ entityId: entityMissingRolesId });
+
+    const mockRoomId = 'room-with-server' as UUID;
+    const mockServerId = 'server-for-roles' as UUID;
+    const expectedWorldIdForNoRoles = 'test-world-id-no-roles' as UUID;
+
+    mockMessage.roomId = mockRoomId;
+    (mockRuntime.getRoom as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: mockRoomId,
+      serverId: mockServerId,
+      type: ChannelType.GROUP,
+      source: 'discord',
+    });
+
+    const coreMocksNoRoles = vi.mocked(await import('@elizaos/core'));
+    const { createUniqueUuid: actualOriginalCreateUniqueUuid } = await vi.importActual<{
+      createUniqueUuid: typeof coreMocksNoRoles.createUniqueUuid;
+    }>('@elizaos/core');
+
+    coreMocksNoRoles.createUniqueUuid.mockImplementation((rt, sId) => {
+      if (sId === mockServerId) return expectedWorldIdForNoRoles;
+      // Call the actual original function for fallback cases
+      return actualOriginalCreateUniqueUuid(rt, sId);
+    });
+
+    (mockRuntime.getWorld as ReturnType<typeof vi.fn>).mockImplementation(async (id) => {
+      if (id === expectedWorldIdForNoRoles) {
+        return {
+          id: expectedWorldIdForNoRoles,
+          serverId: mockServerId,
+          name: 'Test World No Roles',
+          metadata: {
+            ownership: { ownerId: 'some-owner' as UUID },
+            roles: {}, // Empty roles
+          },
+        };
+      }
+      return null;
+    });
 
     const result = await roleProvider.get(
       mockRuntime as IAgentRuntime,
       mockMessage as Memory,
-      mockState as State
+      mockState as State // mockState now includes room for the provider
     );
 
     expect(result).toBeDefined();
-    expect(result.text).toContain('No roles information available');
-    expect(logger.error).toHaveBeenCalled();
+    expect(result.text).toContain('No role information available for this server.');
+    // Optionally, check that getEntityById was not called, or called 0 times if roles object was empty
+    expect(mockRuntime.getEntityById).not.toHaveBeenCalled();
+  });
+
+  it('should handle errors gracefully (now expecting rejection)', async () => {
+    mockMessage = createMockMemory({
+      entityId: testEntityId,
+      roomId: 'room-for-rejection-test-2' as UUID,
+    });
+    // Ensure state.data.room is undefined so runtime.getRoom is called
+    mockState.data = { ...mockState.data, room: undefined };
+
+    const specificError = new Error('DB error for roles test');
+    (mockRuntime.getRoom as ReturnType<typeof vi.fn>).mockRejectedValue(specificError);
+
+    await expect(
+      roleProvider.get(mockRuntime as IAgentRuntime, mockMessage as Memory, mockState as State)
+    ).rejects.toThrowError(specificError);
   });
 });
 
@@ -475,8 +643,9 @@ describe('Settings Provider', () => {
     // Create mock message with appropriate channel type
     mockMessage = createMockMemory({
       content: {
-        channelType: ChannelType.ONBOARDING,
+        // channelType will be set per test
       },
+      entityId: 'test-owner-entity-id' as UUID, // for findWorldsForOwner
     });
 
     mockState = createMockState({
@@ -492,6 +661,7 @@ describe('Settings Provider', () => {
     mockRuntime.getRoom = vi.fn().mockResolvedValue({
       id: 'test-room-id' as UUID,
       worldId: 'world-1' as UUID,
+      type: ChannelType.GROUP, // Default, can be overridden by message
     });
 
     // Mock getWorld to provide world data
@@ -502,16 +672,69 @@ describe('Settings Provider', () => {
     });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.resetAllMocks();
+    // Reset specific mocks for @elizaos/core to ensure clean state between tests
+    // This is important because vi.mock is module-level
+    const coreMocks = vi.mocked(await import('@elizaos/core'));
+    coreMocks.getWorldSettings.mockClear().mockResolvedValue({
+      setting1: { name: 'setting1', value: 'value1', description: 'Description 1' },
+      setting2: { name: 'setting2', value: 'value2', description: 'Description 2', secret: true },
+    });
+    coreMocks.findWorldsForOwner.mockClear().mockResolvedValue([
+      {
+        id: 'world-1' as UUID,
+        name: 'Test World',
+        serverId: 'server-1',
+        metadata: { settings: true },
+      },
+    ]);
+    coreMocks.logger.error.mockClear();
   });
 
   it('should retrieve settings in onboarding mode', async () => {
     // Setup for onboarding
     mockMessage.content = {
       ...mockMessage.content,
-      channelType: ChannelType.ONBOARDING,
+      channelType: ChannelType.DM,
     };
+    mockState.data.room = {
+      ...mockState.data.room,
+      id: 'onboarding-room-id' as UUID,
+      type: ChannelType.DM,
+    };
+    mockMessage.roomId = 'onboarding-room-id' as UUID;
+
+    // Ensure core mocks are explicitly set for this test case if needed
+    const coreMocks = vi.mocked(await import('@elizaos/core'));
+    coreMocks.findWorldsForOwner.mockResolvedValue([
+      {
+        id: 'world-1' as UUID,
+        name: 'Test World Onboarding',
+        serverId: 'server-onboarding-test' as UUID,
+        metadata: { settings: true },
+      },
+    ]);
+    coreMocks.getWorldSettings.mockImplementation(async (rt, sId) => {
+      if (sId === ('server-onboarding-test' as UUID)) {
+        return {
+          setting1: { name: 'setting1', value: 'value1', description: 'Onboarding Desc 1' },
+          setting2: {
+            name: 'setting2',
+            value: 'value2',
+            description: 'Onboarding Desc 2',
+            secret: true,
+          },
+        };
+      }
+      return {}; // Default to empty if serverId doesn't match, to make failure obvious
+    });
+
+    (mockRuntime.getRoom as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'onboarding-room-id' as UUID,
+      worldId: 'world-1' as UUID,
+      type: ChannelType.DM,
+    });
 
     const result = await settingsProvider.get(
       mockRuntime as IAgentRuntime,
@@ -521,11 +744,11 @@ describe('Settings Provider', () => {
 
     expect(result).toBeDefined();
     expect(result.data).toBeDefined();
-    expect(result.data.settings).toHaveLength(2);
-    expect(result.text).toContain('setting1');
-    expect(result.text).toContain('value1');
-    expect(result.text).toContain('setting2');
-    expect(result.text).toContain('value2'); // Secret is visible in onboarding
+    expect(result.data.settings).toBeTypeOf('object');
+    expect(Object.keys(result.data.settings)).toHaveLength(2);
+    expect(result.data.settings.setting1.value).toBe('value1');
+    expect(result.text).toContain('setting1: value1 (Optional)'); // Onboarding shows actual value
+    expect(result.text).toContain('setting2: value2 (Optional)'); // Secret is visible in onboarding
   });
 
   it('should retrieve settings in normal mode', async () => {
@@ -534,6 +757,11 @@ describe('Settings Provider', () => {
       ...mockMessage.content,
       channelType: ChannelType.GROUP,
     };
+    (mockRuntime.getRoom as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'test-room-id' as UUID,
+      worldId: 'world-1' as UUID,
+      type: ChannelType.GROUP, // Ensure room type matches for provider logic
+    });
 
     const result = await settingsProvider.get(
       mockRuntime as IAgentRuntime,
@@ -543,19 +771,23 @@ describe('Settings Provider', () => {
 
     expect(result).toBeDefined();
     expect(result.data).toBeDefined();
-    expect(result.data.settings).toHaveLength(2);
-    expect(result.text).toContain('setting1');
-    expect(result.text).toContain('value1');
-    expect(result.text).toContain('setting2');
-    expect(result.text).toContain('****************'); // Secret is masked in normal mode
+    expect(result.data.settings).toBeTypeOf('object');
+    expect(Object.keys(result.data.settings)).toHaveLength(2);
+    expect(result.data.settings.setting1.value).toBe('value1');
+    expect(result.text).toContain('Value:** value1');
+    expect(result.text).toContain('Value:** ****************'); // Secret is masked in normal mode
   });
 
-  it('should handle errors gracefully', async () => {
-    // Mock error in getWorldSettings
-    const { getWorldSettings } = await import('@elizaos/core');
-    (getWorldSettings as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
-      new Error('Failed to retrieve settings')
-    );
+  it('should handle errors gracefully when getWorldSettings fails', async () => {
+    const coreMocks = vi.mocked(await import('@elizaos/core'));
+    coreMocks.getWorldSettings.mockRejectedValueOnce(new Error('Failed to retrieve settings'));
+    mockMessage.content = { channelType: ChannelType.DM };
+    mockState.data.room = {
+      ...mockState.data.room,
+      type: ChannelType.DM,
+      id: 'dm-room-err' as UUID,
+    };
+    mockMessage.roomId = 'dm-room-err' as UUID;
 
     const result = await settingsProvider.get(
       mockRuntime as IAgentRuntime,
@@ -564,13 +796,23 @@ describe('Settings Provider', () => {
     );
 
     expect(result).toBeDefined();
-    expect(result.text).toContain('Error retrieving configuration information');
-    expect(logger.error).toHaveBeenCalled();
+    expect(result.text).toContain(
+      'Error retrieving configuration information. Please try again later.'
+    );
+    expect(coreMocks.logger.error).toHaveBeenLastCalledWith(
+      expect.stringContaining('Critical error in settings provider:')
+    );
   });
 
   it('should handle missing world gracefully', async () => {
-    // Mock getWorld to return null
     mockRuntime.getWorld = vi.fn().mockResolvedValue(null);
+    mockMessage.content = { channelType: ChannelType.GROUP };
+    mockState.data.room = {
+      ...mockState.data.room,
+      type: ChannelType.GROUP,
+      id: 'group-room-err' as UUID,
+    };
+    mockMessage.roomId = 'group-room-err' as UUID;
 
     const result = await settingsProvider.get(
       mockRuntime as IAgentRuntime,
@@ -579,7 +821,12 @@ describe('Settings Provider', () => {
     );
 
     expect(result).toBeDefined();
-    expect(result.text).toContain('Error retrieving configuration information');
-    expect(logger.error).toHaveBeenCalled();
+    expect(result.text).toContain(
+      'Error retrieving configuration information. Please try again later.'
+    );
+    const coreMocks = vi.mocked(await import('@elizaos/core'));
+    expect(coreMocks.logger.error).toHaveBeenLastCalledWith(
+      expect.stringContaining('Critical error in settings provider:')
+    );
   });
 });

@@ -6,7 +6,6 @@ export * from './actions';
 export * from './database';
 export * from './entities';
 export * from './logger';
-export * from './prompts';
 export * from './roles';
 export * from './runtime';
 export * from './settings';

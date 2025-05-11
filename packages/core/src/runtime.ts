@@ -4,7 +4,7 @@ import { createUniqueUuid } from './entities';
 import { decryptSecret, getSalt, safeReplacer } from './index';
 import { InstrumentationService } from './instrumentation/service';
 import logger from './logger';
-import { splitChunks } from './prompts';
+import { splitChunks } from './utils';
 import {
   ChannelType,
   MemoryType,

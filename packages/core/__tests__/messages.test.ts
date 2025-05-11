@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, test, vi } from 'vitest';
 import { formatEntities, getEntityDetails } from '../src/entities';
-import { formatMessages, formatTimestamp } from '../src/prompts';
+import { formatMessages, formatTimestamp } from '../src/utils';
 import type {
   Content,
   Entity,
@@ -269,8 +269,8 @@ describe('Messages', () => {
   describe('formatEntities', () => {
     it('should format entities with complete details', () => {
       const formatted = formatEntities({ entities: mockEntities });
-      expect(formatted).toContain('Alice\nID:');
-      expect(formatted).toContain('Bob\nID:');
+      expect(formatted).toContain('"Alice"\nID:');
+      expect(formatted).toContain('"Bob"\nID:');
     });
 
     it('should handle entities without details', () => {
@@ -282,7 +282,7 @@ describe('Messages', () => {
         },
       ];
       const formatted = formatEntities({ entities: actorsWithoutDetails });
-      expect(formatted).toContain('Charlie\nID:');
+      expect(formatted).toContain('"Charlie"\nID:');
     });
 
     it('should handle empty entities array', () => {

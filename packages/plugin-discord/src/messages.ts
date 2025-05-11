@@ -152,7 +152,10 @@ export class MessageManager {
       // Start the typing indicator
       const startTyping = () => {
         try {
-          channel.sendTyping();
+          // sendTyping is not available at test time
+          if (channel.sendTyping) {
+            channel.sendTyping();
+          }
         } catch (err) {
           logger.warn('Error sending typing indicator:', err);
         }

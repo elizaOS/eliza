@@ -27,6 +27,10 @@ vi.mock('telegraf', () => {
         sendAnimation: sendAnimationMock,
       },
     })),
+    Markup: {
+      markdown: vi.fn(() => ({})),
+      inlineKeyboard: vi.fn(() => ({})),
+    },
   };
 });
 

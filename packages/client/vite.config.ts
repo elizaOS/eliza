@@ -3,9 +3,19 @@ import react from '@vitejs/plugin-react-swc';
 import { type Plugin, type UserConfig, defineConfig, loadEnv } from 'vite';
 import viteCompression from 'vite-plugin-compression';
 import clientElizaLogger from './src/lib/logger';
+// @ts-ignore:next-line
+import type { InlineConfig } from 'vitest'; // Import Vitest config type
+// @ts-ignore:next-line
+import type { UserConfig as VitestUserConfigInterface } from 'vitest/config'; // Import Vitest config type for test property
 
 // https://vite.dev/config/
-export default defineConfig(({ mode }): UserConfig => {
+
+// Combine Vite's UserConfig with Vitest's config for the 'test' property
+interface CustomUserConfig extends UserConfig {
+  test?: VitestUserConfigInterface['test'];
+}
+
+export default defineConfig(({ mode }): CustomUserConfig => {
   const envDir = path.resolve(__dirname, '../..');
   const env = loadEnv(mode, envDir, '');
 
@@ -73,5 +83,21 @@ export default defineConfig(({ mode }): UserConfig => {
       },
     },
     logLevel: 'error', // Only show errors, not warnings
+    // Add Vitest configuration
+    test: {
+      globals: true, // Or false, depending on your preference
+      environment: 'jsdom', // Or 'happy-dom', 'node'
+      include: ['src/**/*.{test,spec}.{js,ts,jsx,tsx}'],
+      exclude: [
+        'src/tests/**/*.{test,spec}.{js,ts,jsx,tsx}', // Exclude Playwright tests
+        'node_modules/**',
+        'dist/**',
+        'cypress/**',
+        '**/*.d.ts',
+        '{playwright,vite,vitest}.config.{js,ts,jsx,tsx}',
+      ],
+      // You might have other Vitest specific configurations here
+      // setupFiles: './src/setupTests.ts', // if you have a setup file
+    },
   };
 });

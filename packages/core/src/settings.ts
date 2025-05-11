@@ -65,55 +65,49 @@ export function getSalt(): string {
  * @returns {string} - The encrypted value in 'iv:encrypted' format
  */
 export function encryptStringValue(value: string, salt: string): string {
-  try {
-    // Check if value is undefined or null
-    if (value === undefined || value === null) {
-      logger.debug('Attempted to encrypt undefined or null value');
-      return value; // Return the value as is (undefined or null)
-    }
+  // Check if value is undefined or null
+  if (value === undefined || value === null) {
+    logger.debug('Attempted to encrypt undefined or null value');
+    return value; // Return the value as is (undefined or null)
+  }
 
-    if (typeof value === 'boolean' || typeof value === 'number') {
-      logger.debug('Value is a boolean or number, returning as is');
-      return value;
-    }
-
-    if (typeof value !== 'string') {
-      logger.debug(`Value is not a string (type: ${typeof value}), returning as is`);
-      return value;
-    }
-
-    // Check if value is already encrypted (has the format "iv:encrypted")
-    const parts = value.split(':');
-    if (parts.length === 2) {
-      try {
-        // Try to parse the first part as hex to see if it's already encrypted
-        const possibleIv = Buffer.from(parts[0], 'hex');
-        if (possibleIv.length === 16) {
-          // Value is likely already encrypted, return as is
-          logger.debug('Value appears to be already encrypted, skipping re-encryption');
-          return value;
-        }
-      } catch (e) {
-        // Not a valid hex string, proceed with encryption
-      }
-    }
-
-    // Create key and iv from the salt
-    const key = crypto.createHash('sha256').update(salt).digest().slice(0, 32);
-    const iv = crypto.randomBytes(16);
-
-    // Encrypt the value
-    const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
-    let encrypted = cipher.update(value, 'utf8', 'hex');
-    encrypted += cipher.final('hex');
-
-    // Store IV with the encrypted value so we can decrypt it later
-    return `${iv.toString('hex')}:${encrypted}`;
-  } catch (error) {
-    logger.error(`Error encrypting value: ${error}`);
-    // Return the original value on error
+  if (typeof value === 'boolean' || typeof value === 'number') {
+    logger.debug('Value is a boolean or number, returning as is');
     return value;
   }
+
+  if (typeof value !== 'string') {
+    logger.debug(`Value is not a string (type: ${typeof value}), returning as is`);
+    return value;
+  }
+
+  // Check if value is already encrypted (has the format "iv:encrypted")
+  const parts = value.split(':');
+  if (parts.length === 2) {
+    try {
+      // Try to parse the first part as hex to see if it's already encrypted
+      const possibleIv = Buffer.from(parts[0], 'hex');
+      if (possibleIv.length === 16) {
+        // Value is likely already encrypted, return as is
+        logger.debug('Value appears to be already encrypted, skipping re-encryption');
+        return value;
+      }
+    } catch (e) {
+      // Not a valid hex string, proceed with encryption
+    }
+  }
+
+  // Create key and iv from the salt
+  const key = crypto.createHash('sha256').update(salt).digest().slice(0, 32);
+  const iv = crypto.randomBytes(16);
+
+  // Encrypt the value
+  const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
+  let encrypted = cipher.update(value, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+
+  // Store IV with the encrypted value so we can decrypt it later
+  return `${iv.toString('hex')}:${encrypted}`;
 }
 
 /**
@@ -123,55 +117,49 @@ export function encryptStringValue(value: string, salt: string): string {
  * @returns {string} - The decrypted string value
  */
 export function decryptStringValue(value: string, salt: string): string {
-  try {
-    // Check if value is undefined or null
-    if (value === undefined || value === null) {
-      logger.debug('Attempted to decrypt undefined or null value');
-      return value; // Return the value as is (undefined or null)
-    }
+  // Check if value is undefined or null
+  if (value === undefined || value === null) {
+    logger.debug('Attempted to decrypt undefined or null value');
+    return value; // Return the value as is (undefined or null)
+  }
 
-    if (typeof value === 'boolean' || typeof value === 'number') {
-      logger.debug('Value is a boolean or number, returning as is');
-      return value;
-    }
-
-    if (typeof value !== 'string') {
-      logger.debug(`Value is not a string (type: ${typeof value}), returning as is`);
-      return value;
-    }
-
-    // Split the IV and encrypted value
-    const parts = value.split(':');
-    if (parts.length !== 2) {
-      logger.debug(
-        `Invalid encrypted value format - expected 'iv:encrypted', returning original value`
-      );
-      return value; // Return the original value without decryption
-    }
-
-    const iv = Buffer.from(parts[0], 'hex');
-    const encrypted = parts[1];
-
-    // Verify IV length
-    if (iv.length !== 16) {
-      logger.debug(`Invalid IV length (${iv.length}) - expected 16 bytes`);
-      return value; // Return the original value without decryption
-    }
-
-    // Create key from the salt
-    const key = crypto.createHash('sha256').update(salt).digest().slice(0, 32);
-
-    // Decrypt the value
-    const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
-    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
-
-    return decrypted;
-  } catch (error) {
-    logger.error(`Error decrypting value: ${error}`);
-    // Return the encrypted value on error
+  if (typeof value === 'boolean' || typeof value === 'number') {
+    logger.debug('Value is a boolean or number, returning as is');
     return value;
   }
+
+  if (typeof value !== 'string') {
+    logger.debug(`Value is not a string (type: ${typeof value}), returning as is`);
+    return value;
+  }
+
+  // Split the IV and encrypted value
+  const parts = value.split(':');
+  if (parts.length !== 2) {
+    logger.debug(
+      `Invalid encrypted value format - expected 'iv:encrypted', returning original value`
+    );
+    return value; // Return the original value without decryption
+  }
+
+  const iv = Buffer.from(parts[0], 'hex');
+  const encrypted = parts[1];
+
+  // Verify IV length
+  if (iv.length !== 16) {
+    logger.debug(`Invalid IV length (${iv.length}) - expected 16 bytes`);
+    return value; // Return the original value without decryption
+  }
+
+  // Create key from the salt
+  const key = crypto.createHash('sha256').update(salt).digest().slice(0, 32);
+
+  // Decrypt the value
+  const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
+  let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+
+  return decrypted;
 }
 
 /**
@@ -238,35 +226,30 @@ export async function updateWorldSettings(
   serverId: string,
   worldSettings: WorldSettings
 ): Promise<boolean> {
-  try {
-    const worldId = createUniqueUuid(runtime, serverId);
-    const world = await runtime.getWorld(worldId);
+  const worldId = createUniqueUuid(runtime, serverId);
+  const world = await runtime.getWorld(worldId);
 
-    if (!world) {
-      logger.error(`No world found for server ${serverId}`);
-      return false;
-    }
-
-    // Initialize metadata if it doesn't exist
-    if (!world.metadata) {
-      world.metadata = {};
-    }
-
-    // Apply salt to settings before saving
-    const salt = getSalt();
-    const saltedSettings = saltWorldSettings(worldSettings, salt);
-
-    // Update settings state
-    world.metadata.settings = saltedSettings;
-
-    // Save updated world
-    await runtime.updateWorld(world);
-
-    return true;
-  } catch (error) {
-    logger.error(`Error updating settings state: ${error}`);
+  if (!world) {
+    logger.error(`No world found for server ${serverId}`);
     return false;
   }
+
+  // Initialize metadata if it doesn't exist
+  if (!world.metadata) {
+    world.metadata = {};
+  }
+
+  // Apply salt to settings before saving
+  const salt = getSalt();
+  const saltedSettings = saltWorldSettings(worldSettings, salt);
+
+  // Update settings state
+  world.metadata.settings = saltedSettings;
+
+  // Save updated world
+  await runtime.updateWorld(world);
+
+  return true;
 }
 
 /**
@@ -276,24 +259,19 @@ export async function getWorldSettings(
   runtime: IAgentRuntime,
   serverId: string
 ): Promise<WorldSettings | null> {
-  try {
-    const worldId = createUniqueUuid(runtime, serverId);
-    const world = await runtime.getWorld(worldId);
+  const worldId = createUniqueUuid(runtime, serverId);
+  const world = await runtime.getWorld(worldId);
 
-    if (!world || !world.metadata?.settings) {
-      return null;
-    }
-
-    // Get settings from metadata
-    const saltedSettings = world.metadata.settings as WorldSettings;
-
-    // Remove salt from settings before returning
-    const salt = getSalt();
-    return unsaltWorldSettings(saltedSettings, salt);
-  } catch (error) {
-    logger.error(`Error getting settings state: ${error}`);
+  if (!world || !world.metadata?.settings) {
     return null;
   }
+
+  // Get settings from metadata
+  const saltedSettings = world.metadata.settings as WorldSettings;
+
+  // Remove salt from settings before returning
+  const salt = getSalt();
+  return unsaltWorldSettings(saltedSettings, salt);
 }
 
 /**
@@ -304,42 +282,37 @@ export async function initializeOnboarding(
   world: World,
   config: OnboardingConfig
 ): Promise<WorldSettings | null> {
-  try {
-    // Check if settings state already exists
-    if (world.metadata?.settings) {
-      logger.info(`Onboarding state already exists for server ${world.serverId}`);
-      // Get settings from metadata and remove salt
-      const saltedSettings = world.metadata.settings as WorldSettings;
-      const salt = getSalt();
-      return unsaltWorldSettings(saltedSettings, salt);
-    }
-
-    // Create new settings state
-    const worldSettings: WorldSettings = {};
-
-    // Initialize settings from config
-    if (config.settings) {
-      for (const [key, configSetting] of Object.entries(config.settings)) {
-        worldSettings[key] = createSettingFromConfig(configSetting);
-      }
-    }
-
-    // Save settings state to world metadata
-    if (!world.metadata) {
-      world.metadata = {};
-    }
-
-    // No need to salt here as the settings are just initialized with null values
-    world.metadata.settings = worldSettings;
-
-    await runtime.updateWorld(world);
-
-    logger.info(`Initialized settings config for server ${world.serverId}`);
-    return worldSettings;
-  } catch (error) {
-    logger.error(`Error initializing settings config: ${error}`);
-    return null;
+  // Check if settings state already exists
+  if (world.metadata?.settings) {
+    logger.info(`Onboarding state already exists for server ${world.serverId}`);
+    // Get settings from metadata and remove salt
+    const saltedSettings = world.metadata.settings as WorldSettings;
+    const salt = getSalt();
+    return unsaltWorldSettings(saltedSettings, salt);
   }
+
+  // Create new settings state
+  const worldSettings: WorldSettings = {};
+
+  // Initialize settings from config
+  if (config.settings) {
+    for (const [key, configSetting] of Object.entries(config.settings)) {
+      worldSettings[key] = createSettingFromConfig(configSetting);
+    }
+  }
+
+  // Save settings state to world metadata
+  if (!world.metadata) {
+    world.metadata = {};
+  }
+
+  // No need to salt here as the settings are just initialized with null values
+  world.metadata.settings = worldSettings;
+
+  await runtime.updateWorld(world);
+
+  logger.info(`Initialized settings config for server ${world.serverId}`);
+  return worldSettings;
 }
 
 /**

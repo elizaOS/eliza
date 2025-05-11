@@ -69,7 +69,7 @@ export default defineConfig({
 
   /* Run your local dev server before starting the tests */
   webServer: {
-    command: 'cd ../../.. && bun start',
+    command: 'cd ../.. && bun start',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
     timeout: 120000, // ElizaOS might take some time to start, allow up to 2 minutes
