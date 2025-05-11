@@ -1822,14 +1822,20 @@ export class AgentRuntime implements IAgentRuntime {
       this.models.set(modelKey, []);
     }
 
+    const registrationOrder = Date.now(); // Use a timestamp as a unique registration order
     this.models.get(modelKey)?.push({
       handler,
       provider,
       priority: priority || 0,
+      registrationOrder,
     });
-
-    // Sort by priority (highest first)
-    this.models.get(modelKey)?.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+    // Sort by priority (highest first), then by registration order (earliest first)
+    this.models.get(modelKey)?.sort((a, b) => {
+      if ((b.priority || 0) !== (a.priority || 0)) {
+        return (b.priority || 0) - (a.priority || 0);
+      }
+      return a.registrationOrder - b.registrationOrder;
+    });
   }
 
   getModel(
@@ -1850,6 +1856,10 @@ export class AgentRuntime implements IAgentRuntime {
           `[AgentRuntime][${this.character.name}] Using model ${modelKey} from provider ${provider}`
         );
         return modelWithProvider.handler;
+      } else {
+        this.runtimeLogger.warn(
+          `[AgentRuntime][${this.character.name}] No model found for provider ${provider}`
+        );
       }
     }
 

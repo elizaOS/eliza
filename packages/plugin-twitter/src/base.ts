@@ -277,8 +277,8 @@ export class ClientBase {
       timeParsed: raw.timeParsed
         ? new Date(raw.timeParsed)
         : raw.legacy?.created_at
-        ? new Date(raw.legacy?.created_at)
-        : undefined,
+          ? new Date(raw.legacy?.created_at)
+          : undefined,
       timestamp:
         raw.timestamp ??
         (raw.legacy?.created_at ? new Date(raw.legacy.created_at).getTime() / 1000 : undefined),
@@ -841,8 +841,8 @@ export class ClientBase {
             profile.biography || typeof this.runtime.character.bio === 'string'
               ? (this.runtime.character.bio as string)
               : this.runtime.character.bio.length > 0
-              ? this.runtime.character.bio[0]
-              : '',
+                ? this.runtime.character.bio[0]
+                : '',
           nicknames: this.profile?.nicknames || [],
         } satisfies TwitterProfile;
       });
