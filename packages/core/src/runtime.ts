@@ -188,35 +188,37 @@ export class AgentRuntime implements IAgentRuntime {
     // Store plugins in the array but don't initialize them yet
     this.plugins = plugins;
 
-    // Initialize instrumentation service with appropriate configuration
-    try {
-      // Create instrumentation service with agent info
-      this.instrumentationService = new InstrumentationService({
-        serviceName: `agent-${this.character?.name || 'unknown'}-${this.agentId}`,
-        enabled: process.env.INSTRUMENTATION_ENABLED === 'true',
-      });
+    if (process.env.INSTRUMENTATION_ENABLED === 'true') {
+      // Initialize instrumentation service with appropriate configuration
+      try {
+        // Create instrumentation service with agent info
+        this.instrumentationService = new InstrumentationService({
+          serviceName: `agent-${this.character?.name || 'unknown'}-${this.agentId}`,
+          enabled: true,
+        });
 
-      // Get a tracer for the runtime
-      this.tracer = this.instrumentationService.getTracer('agent-runtime');
+        // Get a tracer for the runtime
+        this.tracer = this.instrumentationService.getTracer('agent-runtime');
 
-      this.runtimeLogger.debug(`Instrumentation service initialized for agent ${this.agentId}`);
-    } catch (error) {
-      // If instrumentation fails, provide a fallback implementation
-      this.runtimeLogger.warn(`Failed to initialize instrumentation: ${error.message}`);
-      // Create a no-op implementation
-      this.instrumentationService = {
-        getTracer: () => null,
-        start: async () => {},
-        stop: async () => {},
-        isStarted: () => false,
-        isEnabled: () => false,
-        name: 'INSTRUMENTATION',
-        capabilityDescription: 'Disabled instrumentation service (fallback)',
-        instrumentationConfig: { enabled: false },
-        getMeter: () => null,
-        flush: async () => {},
-      } as any;
-      this.tracer = null;
+        this.runtimeLogger.debug(`Instrumentation service initialized for agent ${this.agentId}`);
+      } catch (error) {
+        // If instrumentation fails, provide a fallback implementation
+        this.runtimeLogger.warn(`Failed to initialize instrumentation: ${error.message}`);
+        // Create a no-op implementation
+        this.instrumentationService = {
+          getTracer: () => null,
+          start: async () => {},
+          stop: async () => {},
+          isStarted: () => false,
+          isEnabled: () => false,
+          name: 'INSTRUMENTATION',
+          capabilityDescription: 'Disabled instrumentation service (fallback)',
+          instrumentationConfig: { enabled: false },
+          getMeter: () => null,
+          flush: async () => {},
+        } as any;
+        this.tracer = null;
+      }
     }
 
     this.runtimeLogger.debug(`Success: Agent ID: ${this.agentId}`);
