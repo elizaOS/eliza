@@ -204,6 +204,7 @@ export abstract class BaseDrizzleAdapter<
       const row = rows[0];
       return {
         ...row,
+        username: row.username || '',
         id: row.id as UUID,
       };
     });

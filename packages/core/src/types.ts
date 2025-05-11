@@ -1,3 +1,6 @@
+import { type Pool as PgPool } from 'pg';
+import { PGlite } from '@electric-sql/pglite';
+
 /**
  * Type definition for a Universally Unique Identifier (UUID) using a specific format.
  * @typedef {`${string}-${string}-${string}-${string}-${string}`} UUID
@@ -706,6 +709,8 @@ export interface IDatabaseAdapter {
   /** Close database connection */
   close(): Promise<void>;
 
+  getConnection(): Promise<PGlite | PgPool>;
+
   getAgent(agentId: UUID): Promise<Agent | null>;
 
   /** Get all agents */
@@ -828,6 +833,8 @@ export interface IDatabaseAdapter {
 
   getWorld(id: UUID): Promise<World | null>;
 
+  removeWorld(id: UUID): Promise<void>;
+
   getAllWorlds(): Promise<World[]>;
 
   updateWorld(world: World): Promise<void>;
@@ -837,6 +844,8 @@ export interface IDatabaseAdapter {
   createRoom({ id, name, source, type, channelId, serverId, worldId }: Room): Promise<UUID>;
 
   deleteRoom(roomId: UUID): Promise<void>;
+
+  deleteRoomsByServerId(serverId: UUID): Promise<void>;
 
   updateRoom(room: Room): Promise<void>;
 
@@ -993,6 +1002,8 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   registerPlugin(plugin: Plugin): Promise<void>;
 
   initialize(): Promise<void>;
+
+  getConnection(): Promise<PGlite | PgPool>;
 
   getKnowledge(
     message: Memory,
