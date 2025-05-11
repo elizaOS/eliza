@@ -5,6 +5,8 @@ import { PgliteDatabaseAdapter } from './pglite/adapter';
 import { PGliteClientManager } from './pglite/manager';
 import { PgDatabaseAdapter } from './pg/adapter';
 import { PostgresConnectionManager } from './pg/manager';
+import path from 'node:path';
+import { stringToUuid } from '@elizaos/core';
 
 /**
  * Global Singleton Instances (Package-scoped)
@@ -72,7 +74,8 @@ export function createDatabaseAdapter(
     return new PgDatabaseAdapter(agentId, globalSingletons.postgresConnectionManager);
   }
 
-  const dataDir = config.dataDir ?? './elizadb';
+  const dataDir =
+    config.dataDir ?? path.join(os.homedir(), '.eliza', stringToUuid(process.cwd()), 'pglite');
 
   if (!globalSingletons.pgLiteClientManager) {
     globalSingletons.pgLiteClientManager = new PGliteClientManager({ dataDir });
@@ -96,7 +99,9 @@ const sqlPlugin: Plugin = {
   description: 'SQL database adapter plugin using Drizzle ORM',
   init: async (_, runtime: IAgentRuntime) => {
     const config = {
-      dataDir: runtime.getSetting('PGLITE_DATA_DIR') ?? './pglite',
+      dataDir:
+        runtime.getSetting('PGLITE_DATA_DIR') ??
+        path.join(os.homedir(), '.eliza', stringToUuid(process.cwd()), 'pglite'),
       postgresUrl: runtime.getSetting('POSTGRES_URL'),
     };
 
