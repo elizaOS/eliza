@@ -41,6 +41,9 @@ jobs:
       - name: Install bats (npm)
         run: npm install -g bats
 
+      - name: Clean eliza cache
+        run: rm -rf ~/.eliza
+
       - name: Make test scripts executable
         run: chmod +x packages/cli/__test_scripts__/*.bats packages/cli/__test_scripts__/*.sh
 
