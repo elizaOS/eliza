@@ -646,6 +646,8 @@ export interface Plugin {
   events?: PluginEvents;
   routes?: Route[];
   tests?: TestSuite[];
+
+  priority?: number;
 }
 
 export interface ProjectAgent {
@@ -1157,7 +1159,12 @@ export interface IAgentRuntime extends IDatabaseAdapter {
     params: Omit<ModelParamsMap[T], 'runtime'> | any
   ): Promise<R>;
 
-  registerModel(modelType: ModelTypeName | string, handler: (params: any) => Promise<any>): void;
+  registerModel(
+    modelType: ModelTypeName | string,
+    handler: (params: any) => Promise<any>,
+    provider: string,
+    priority?: number
+  ): void;
 
   getModel(
     modelType: ModelTypeName | string
@@ -2092,34 +2099,6 @@ export interface ServiceError {
 }
 
 /**
- * Type-safe helper for accessing the video service
- */
-export function getVideoService(runtime: IAgentRuntime): IVideoService | null {
-  return runtime.getService<IVideoService>(ServiceType.VIDEO);
-}
-
-/**
- * Type-safe helper for accessing the browser service
- */
-export function getBrowserService(runtime: IAgentRuntime): IBrowserService | null {
-  return runtime.getService<IBrowserService>(ServiceType.BROWSER);
-}
-
-/**
- * Type-safe helper for accessing the PDF service
- */
-export function getPdfService(runtime: IAgentRuntime): IPdfService | null {
-  return runtime.getService<IPdfService>(ServiceType.PDF);
-}
-
-/**
- * Type-safe helper for accessing the file service
- */
-export function getFileService(runtime: IAgentRuntime): IFileService | null {
-  return runtime.getService<IFileService>(ServiceType.REMOTE_FILES);
-}
-
-/**
  * Memory type guard for document memories
  */
 export function isDocumentMemory(
@@ -2272,6 +2251,8 @@ export interface ModelHandler {
    * when multiple are available for a given model type. Defaults to 0 if not specified.
    */
   priority?: number; // Optional priority for selection order
+
+  registrationOrder?: number;
 }
 
 // Replace 'any' for service configurationa
