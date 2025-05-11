@@ -12,7 +12,7 @@ import {
   type Content, // Add Content import
 } from './types';
 
-import { BM25 } from './bm25';
+import { BM25 } from './search';
 import type {
   Action,
   Agent,

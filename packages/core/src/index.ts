@@ -12,9 +12,7 @@ export * from './settings';
 export * from './uuid';
 export * from './audioUtils';
 export * from './utils';
-
-// cloudflare
-export * from './cloudflare';
+export * from './search';
 
 // Export instrumentation types and service
 export * from './instrumentation/types';

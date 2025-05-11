@@ -51,7 +51,7 @@
  * @param char - The character code.
  * @returns True if the character is a vowel, false otherwise.
  */
-const is_v = (char: number) => {
+const isV = (char: number): boolean => {
   switch (char) {
     case 97:
     case 101:
@@ -71,7 +71,7 @@ const is_v = (char: number) => {
  * @param char - The character code.
  * @returns True if the character is w, x, y, or a vowel, false otherwise.
  */
-const is_wxy = (char: number) => {
+const isWxy = (char: number): boolean => {
   switch (char) {
     case 97:
     case 101:
@@ -94,7 +94,7 @@ const is_wxy = (char: number) => {
  * @param char - The character code.
  * @returns True if the character is a valid 'li' ending, false otherwise.
  */
-const is_valid_li = (char: number) => {
+const isValidLi = (char: number): boolean => {
   switch (char) {
     case 99:
     case 100:
@@ -118,7 +118,7 @@ const is_valid_li = (char: number) => {
  * @param char - The character code.
  * @returns True if the character forms a double consonant, false otherwise.
  */
-const is_double = (char: number) => {
+const isDouble = (char: number): boolean => {
   switch (char) {
     case 98:
     case 100:
@@ -144,12 +144,12 @@ const is_double = (char: number) => {
  * @param len - The current effective length of the word being considered.
  * @returns True if the word ends in a short syllable, false otherwise.
  */
-const is_shortv = (w: number[], len: number) => {
+const isShortV = (w: number[], len: number): boolean => {
   // backwardmode: ( non-v_WXY v non-v ) or ( non-v v atlimit )
   return (
     len >= 2 &&
-    is_v(w[len - 2]) &&
-    ((len === 2 && !is_v(w[len - 1])) || (len >= 3 && !is_v(w[len - 3]) && !is_wxy(w[len - 1])))
+    isV(w[len - 2]) &&
+    ((len === 2 && !isV(w[len - 1])) || (len >= 3 && !isV(w[len - 3]) && !isWxy(w[len - 1])))
   );
 };
 
@@ -176,7 +176,7 @@ const is_shortv = (w: number[], len: number) => {
  * @param word - The word to be stemmed.
  * @returns The stemmed version of the word.
  */
-const stem = (word: string) => {
+const stem = (word: string): string => {
   if (word.length < 3) return word;
   // exception1
   if (word.length <= 6) {
@@ -216,63 +216,65 @@ const stem = (word: string) => {
         return word;
     }
   }
-  var initial_offset = word.charCodeAt(0) === 39 /* ' */ ? 1 : 0;
-  var l = word.length - initial_offset;
-  var w = new Array(l);
-  var y_found = false;
-  for (var i = 0; i < l; ++i) {
-    // var ch = word[i + initial_offset]
-    var ch = word.charCodeAt(i + initial_offset);
-    if (ch === 121 && (i === 0 || is_v(w[i - 1]))) {
-      y_found = true;
+  const initialOffset = word.charCodeAt(0) === 39 /* ' */ ? 1 : 0;
+  let l = word.length - initialOffset;
+  const w = new Array<number>(l);
+  let yFound = false;
+  for (let i = 0; i < l; ++i) {
+    const ch = word.charCodeAt(i + initialOffset);
+    if (ch === 121 && (i === 0 || isV(w[i - 1]))) {
+      yFound = true;
       w[i] = 89;
       continue;
     }
     w[i] = ch;
   }
-  if (w[l - 1] === 39) --l;
-  if (l >= 2 && w[l - 2] === 39 && w[l - 1] === 115) l -= 2;
+  if (w[l - 1] === 39 /* ' */) --l;
+  if (l >= 2 && w[l - 2] === 39 /* ' */ && w[l - 1] === 115 /* s */) l -= 2;
   // mark_regions
-  var rv = 0;
+  let rv = 0;
   // rv is the position after the first vowel
-  while (rv < l && !is_v(w[rv])) ++rv;
+  while (rv < l && !isV(w[rv])) ++rv;
   if (rv < l) ++rv;
-  var r1 = rv;
+  let r1 = rv;
   if (
     l >= 5 &&
-    ((w[0] === 103 && w[1] === 101 && w[2] === 110 && w[3] === 101 && w[4] === 114) ||
-      (w[0] === 97 && w[1] === 114 && w[2] === 115 && w[3] === 101 && w[4] === 110))
+    ((w[0] === 103 && w[1] === 101 && w[2] === 110 && w[3] === 101 && w[4] === 114) || // gener
+      (w[0] === 97 && w[1] === 114 && w[2] === 115 && w[3] === 101 && w[4] === 110)) // arsen
   )
     r1 = 5;
   else if (
     l >= 6 &&
-    w[0] === 99 &&
-    w[1] === 111 &&
-    w[2] === 109 &&
-    w[3] === 109 &&
-    w[4] === 117 &&
-    w[5] === 110
+    w[0] === 99 && // c
+    w[1] === 111 && // o
+    w[2] === 109 && // m
+    w[3] === 109 && // m
+    w[4] === 117 && // u
+    w[5] === 110 // n
   )
+    // commun
     r1 = 6;
   else {
     // > R1 is the region after the first non-vowel following a vowel,
     // > or the end of the word if there is no such non-vowel.
-    while (r1 < l && is_v(w[r1])) ++r1;
+    while (r1 < l && isV(w[r1])) ++r1;
     if (r1 < l) ++r1;
   }
   // > R2 is the region after the first non-vowel following a vowel in R1,
   // > or the end of the word if there is no such non-vowel.
-  var r2 = r1;
-  var found_v = false;
-  while (r2 < l && !is_v(w[r2])) ++r2;
-  while (r2 < l && is_v(w[r2])) ++r2;
+  let r2 = r1;
+  while (r2 < l && !isV(w[r2])) ++r2;
+  while (r2 < l && isV(w[r2])) ++r2;
   if (r2 < l) ++r2;
   // Step_1a
   if (l >= 3) {
     if (w[l - 1] === 115) {
+      // s
       if (l >= 4 && w[l - 2] === 101 && w[l - 3] === 115 && w[l - 4] === 115)
+        // sses
         l -= 2; // sses -> ss
       else if (w[l - 2] === 101 && w[l - 3] === 105)
+        // ies
         l -= l >= 5 ? 2 : 1; // ies
       else if (w[l - 2] !== 117 && w[l - 2] !== 115 && rv < l - 1)
         // us ss -> <nothing>; s -> "delete if the preceding word part
@@ -283,93 +285,94 @@ const stem = (word: string) => {
   // exception2
   if (
     (l === 6 &&
-      ((w[0] === 105 &&
-        w[1] === 110 &&
-        w[2] === 110 &&
-        w[3] === 105 &&
-        w[4] === 110 &&
-        w[5] === 103) ||
-        (w[0] === 111 &&
-          w[1] === 117 &&
-          w[2] === 116 &&
-          w[3] === 105 &&
-          w[4] === 110 &&
-          w[5] === 103) ||
-        (w[0] === 101 &&
-          w[1] === 120 &&
-          w[2] === 99 &&
-          w[3] === 101 &&
-          w[4] === 101 &&
-          w[5] === 100))) ||
+      ((w[0] === 105 && // i
+        w[1] === 110 && // n
+        w[2] === 110 && // n
+        w[3] === 105 && // i
+        w[4] === 110 && // n
+        w[5] === 103) || // g (inning)
+        (w[0] === 111 && // o
+          w[1] === 117 && // u
+          w[2] === 116 && // t
+          w[3] === 105 && // i
+          w[4] === 110 && // n
+          w[5] === 103) || // g (outing)
+        (w[0] === 101 && // e
+          w[1] === 120 && // x
+          w[2] === 99 && // c
+          w[3] === 101 && // e
+          w[4] === 101 && // e
+          w[5] === 100))) || // d (exceed)
     (l === 7 &&
-      ((w[0] === 99 &&
-        w[1] === 97 &&
-        w[2] === 110 &&
-        w[3] === 110 &&
-        w[4] === 105 &&
-        w[5] === 110 &&
-        w[6] === 103) ||
-        (w[0] === 104 &&
-          w[1] === 101 &&
-          w[2] === 114 &&
-          w[3] === 114 &&
-          w[4] === 105 &&
-          w[5] === 110 &&
-          w[6] === 103) ||
-        (w[0] === 101 &&
-          w[1] === 97 &&
-          w[2] === 114 &&
-          w[3] === 114 &&
-          w[4] === 105 &&
-          w[5] === 110 &&
-          w[6] === 103) ||
-        (w[0] === 112 &&
-          w[1] === 114 &&
-          w[2] === 111 &&
-          w[3] === 99 &&
-          w[4] === 101 &&
-          w[5] === 101 &&
-          w[6] === 100) ||
-        (w[0] === 115 &&
-          w[1] === 117 &&
-          w[2] === 99 &&
-          w[3] === 99 &&
-          w[4] === 101 &&
-          w[5] === 101 &&
-          w[6] === 100)))
+      ((w[0] === 99 && // c
+        w[1] === 97 && // a
+        w[2] === 110 && // n
+        w[3] === 110 && // n
+        w[4] === 105 && // i
+        w[5] === 110 && // n
+        w[6] === 103) || // g (canning)
+        (w[0] === 104 && // h
+          w[1] === 101 && // e
+          w[2] === 114 && // r
+          w[3] === 114 && // r
+          w[4] === 105 && // i
+          w[5] === 110 && // n
+          w[6] === 103) || // g (herring)
+        (w[0] === 101 && // e
+          w[1] === 97 && // a
+          w[2] === 114 && // r
+          w[3] === 114 && // r
+          w[4] === 105 && // i
+          w[5] === 110 && // n
+          w[6] === 103) || // g (earring)
+        (w[0] === 112 && // p
+          w[1] === 114 && // r
+          w[2] === 111 && // o
+          w[3] === 99 && // c
+          w[4] === 101 && // e
+          w[5] === 101 && // e
+          w[6] === 100) || // d (proceed)
+        (w[0] === 115 && // s
+          w[1] === 117 && // u
+          w[2] === 99 && // c
+          w[3] === 99 && // c
+          w[4] === 101 && // e
+          w[5] === 101 && // e
+          w[6] === 100))) // d (succeed)
   ) {
-    var exp2_out = '';
-    for (var i = 0; i < l; ++i)
-      // exp2_out += w[i]
-      exp2_out += String.fromCharCode(w[i]);
-    return exp2_out;
+    let exp2Out = '';
+    for (let i = 0; i < l; ++i) exp2Out += String.fromCharCode(w[i]);
+    return exp2Out;
   }
   // Step_1b
-  var ll =
+  let ll =
     // l (length) without the -ly ending
     l >= 2 && w[l - 1] === 121 && w[l - 2] === 108 ? l - 2 : l;
   if (ll >= 3) {
     if (w[ll - 3] === 101 && w[ll - 2] === 101 && w[ll - 1] === 100) {
+      // eed
       if (ll >= r1 + 3) l = ll - 1; // eed eedly -> ee (if in R1)
     } else {
       // ll without: ed edly ing ingly (-1 if not found)
-      if (w[ll - 2] === 101 && w[ll - 1] === 100) ll -= 2;
-      else if (w[ll - 3] === 105 && w[ll - 2] === 110 && w[ll - 1] === 103) ll -= 3;
+      if (w[ll - 2] === 101 && w[ll - 1] === 100)
+        ll -= 2; // ed
+      else if (w[ll - 3] === 105 && w[ll - 2] === 110 && w[ll - 1] === 103)
+        ll -= 3; // ing
       else ll = -1;
       if (ll >= 0 && rv <= ll) {
         l = ll;
         if (l >= 2) {
           if (
-            (w[l - 1] === 116 && w[l - 2] === 97) ||
-            (w[l - 1] === 108 && w[l - 2] === 98) ||
-            (w[l - 1] === 122 && w[l - 2] === 105)
+            (w[l - 1] === 116 && w[l - 2] === 97) || // at
+            (w[l - 1] === 108 && w[l - 2] === 98) || // bl
+            (w[l - 1] === 122 && w[l - 2] === 105) // iz
           ) {
             // at -> ate   bl -> ble   iz -> ize
             w[l] = 101;
             ++l;
-          } else if (w[l - 2] === w[l - 1] && is_double(w[l - 1])) {
+          } else if (w[l - 2] === w[l - 1] && isDouble(w[l - 1])) {
             --l;
-          } else if (r1 >= l && is_shortv(w, l)) {
+          } else if (r1 >= l && isShortV(w, l)) {
             // <shortv> -> e
             w[l] = 101;
             ++l;
@@ -379,116 +382,134 @@ const stem = (word: string) => {
     }
   }
   // Step_1c
-  if (l >= 3 && (w[l - 1] === 89 || w[l - 1] === 121) && !is_v(w[l - 2])) w[l - 1] = 105;
+  if (l >= 3 && (w[l - 1] === 89 || w[l - 1] === 121) && !isV(w[l - 2])) w[l - 1] = 105; // i
   // Step_2
   if (l >= r1 + 2) {
     switch (w[l - 1]) {
-      case 108:
+      case 108: // l
         if (
           l >= r1 + 6 &&
-          w[l - 2] === 97 &&
-          w[l - 3] === 110 &&
-          w[l - 4] === 111 &&
-          w[l - 5] === 105 &&
-          w[l - 6] === 116
+          w[l - 2] === 97 && // a
+          w[l - 3] === 110 && // n
+          w[l - 4] === 111 && // o
+          w[l - 5] === 105 && // i
+          w[l - 6] === 116 // t (tional)
         ) {
           if (l >= 7 && w[l - 7] === 97) {
+            // a (ational)
             if (l >= r1 + 7) {
               // ational -> ate
               l -= 4;
-              w[l - 1] = 101;
+              w[l - 1] = 101; // e
             }
           } else {
             l -= 2; // tional -> tion
           }
         }
         break;
-      case 110:
+      case 110: // n
         if (
           l >= r1 + 5 &&
-          w[l - 2] === 111 &&
-          w[l - 3] === 105 &&
-          w[l - 4] === 116 &&
-          w[l - 5] === 97
+          w[l - 2] === 111 && // o
+          w[l - 3] === 105 && // i
+          w[l - 4] === 116 && // t
+          w[l - 5] === 97 // a (ation)
         ) {
           if (l >= 7 && w[l - 6] === 122 && w[l - 7] === 105) {
+            // iz (ization)
             if (l >= r1 + 7) {
               // ization -> ize
               l -= 4;
-              w[l - 1] = 101;
+              w[l - 1] = 101; // e
             }
           } else {
             // ation -> ate
             l -= 2;
-            w[l - 1] = 101;
+            w[l - 1] = 101; // e
           }
         }
         break;
-      case 114:
+      case 114: // r
         if (l >= r1 + 4) {
           if (w[l - 2] === 101) {
+            // e (er)
             if (w[l - 3] === 122 && w[l - 4] === 105) --l; // izer -> ize
           } else if (w[l - 2] === 111) {
+            // o (or)
             if (w[l - 3] === 116 && w[l - 4] === 97) {
+              // ator
               --l;
-              w[l - 1] = 101;
+              w[l - 1] = 101; // e
             }
           }
         }
         break;
-      case 115:
+      case 115: // s
         if (
           l >= r1 + 7 &&
-          w[l - 2] === 115 &&
-          w[l - 3] === 101 &&
-          w[l - 4] === 110 &&
-          ((w[l - 5] === 108 && w[l - 6] === 117 && w[l - 7] === 102) ||
-            (w[l - 5] === 115 && w[l - 6] === 117 && w[l - 7] === 111) ||
-            (w[l - 5] === 101 && w[l - 6] === 118 && w[l - 7] === 105))
+          w[l - 2] === 115 && // s
+          w[l - 3] === 101 && // e
+          w[l - 4] === 110 && // n (ness)
+          ((w[l - 5] === 108 && w[l - 6] === 117 && w[l - 7] === 102) || // fulness
+            (w[l - 5] === 115 && w[l - 6] === 117 && w[l - 7] === 111) || // ousness
+            (w[l - 5] === 101 && w[l - 6] === 118 && w[l - 7] === 105)) // iveness
         ) {
           l -= 4; // fulness -> ful   ousness -> ous   iveness -> ive
         }
         break;
-      case 109:
+      case 109: // m
         if (
           l >= r1 + 5 &&
-          w[l - 2] === 115 &&
-          w[l - 3] === 105 &&
-          w[l - 4] === 108 &&
-          w[l - 5] === 97
+          w[l - 2] === 115 && // s
+          w[l - 3] === 105 && // i
+          w[l - 4] === 108 && // l
+          w[l - 5] === 97 // a (alism)
         )
           l -= 3; // alism -> al
         break;
-      case 105:
+      case 105: // i
         if (w[l - 2] === 99) {
+          // c (ic)
           if (l >= r1 + 4 && (w[l - 4] === 101 || w[l - 4] === 97) && w[l - 3] === 110) {
+            // enci anci
             w[l - 1] = 101; // enci -> ence   anci -> ance
           }
         } else if (w[l - 2] === 103) {
+          // g (gi)
           if (l >= r1 + 3 && l >= 4 && w[l - 2] === 103 && w[l - 3] === 111 && w[l - 4] === 108)
+            // logi
             --l; // ogi -> og (if preceded by l)
         } else if (w[l - 2] === 116) {
+          // t (ti)
           if (l >= r1 + 5 && w[l - 3] === 105) {
+            // iti
             if (w[l - 4] === 108) {
+              // liti
               if (l >= 6 && w[l - 5] === 105 && w[l - 6] === 98) {
+                // biliti
                 if (l >= r1 + 6) {
                   // biliti -> ble
                   l -= 3;
-                  w[l - 2] = 108;
-                  w[l - 1] = 101;
+                  w[l - 2] = 108; // l
+                  w[l - 1] = 101; // e
                 }
               } else if (w[l - 4] === 108 && w[l - 5] === 97) {
+                // aliti
                 l -= 3; // aliti -> al
               }
             } else if (w[l - 4] === 118 && w[l - 5] === 105) {
+              // iviti
               // iviti -> ive
               l -= 2;
-              w[l - 1] = 101;
+              w[l - 1] = 101; // e
             }
           }
         } else if (w[l - 2] === 108 && l >= 3) {
+          // l (li)
           if (w[l - 3] === 98) {
+            // bli
             if (l >= 4 && w[l - 4] === 97) {
+              // abli
               if (l >= r1 + 4) w[l - 1] = 101; // abli -> able
             } else if (l >= r1 + 3) {
               w[l - 1] = 101; // bli -> ble
@@ -496,20 +517,27 @@ const stem = (word: string) => {
           } else {
             // Remove li
             if (w[l - 3] === 108) {
+              // lli
               if (l >= 5 && w[l - 4] === 117 && w[l - 5] === 102) {
+                // fulli
                 if (l >= r1 + 5) l -= 2; // fulli -> ful
               } else if (l >= r1 + 4 && w[l - 4] === 97) {
+                // alli
                 l -= 2; // alli -> al
               }
             } else if (w[l - 3] === 115) {
+              // sli
               if (l >= 6 && w[l - 4] === 115 && w[l - 5] === 101 && w[l - 6] === 108) {
+                // lessli
                 if (l >= r1 + 6) l -= 2; // lessli -> less
               } else if (l >= r1 + 5 && w[l - 4] === 117 && w[l - 5] === 111) {
+                // ousli
                 l -= 2; // ousli -> ous
               }
             } else if (l >= 5 && w[l - 3] === 116 && w[l - 4] === 110 && w[l - 5] === 101) {
+              // entli
               if (l >= r1 + 5) l -= 2; // entli -> ent
-            } else if (is_valid_li(w[l - 3])) {
+            } else if (isValidLi(w[l - 3])) {
               l -= 2;
             }
           }
@@ -519,24 +547,28 @@ const stem = (word: string) => {
   // Step_3
   if (l >= r1 + 3) {
     switch (w[l - 1]) {
-      case 108:
+      case 108: // l
         if (w[l - 3] === 99) {
+          // cal
           if (l >= r1 + 4 && w[l - 4] === 105 && w[l - 2] === 97) l -= 2; // ical -> ic
         } else if (w[l - 3] === 102) {
+          // ful
           if (w[l - 2] === 117) l -= 3; // ful -> <delete>
         } else if (w[l - 3] === 110) {
+          // nal
           if (
             l >= r1 + 6 &&
-            w[l - 2] === 97 &&
-            w[l - 4] === 111 &&
-            w[l - 5] === 105 &&
-            w[l - 6] === 116
+            w[l - 2] === 97 && // a
+            w[l - 4] === 111 && // o
+            w[l - 5] === 105 && // i
+            w[l - 6] === 116 // t (tional)
           ) {
             if (l >= 7 && w[l - 7] === 97) {
+              // ational
               if (l >= r1 + 7) {
                 // ational -> ate
                 l -= 4;
-                w[l - 1] = 101;
+                w[l - 1] = 101; // e
               }
             } else {
               l -= 2; // tional -> tion
@@ -544,66 +576,74 @@ const stem = (word: string) => {
           }
         }
         break;
-      case 101:
+      case 101: // e
         if (w[l - 2] === 122) {
+          // ze
           if (l >= r1 + 5 && w[l - 3] === 105 && w[l - 4] === 108 && w[l - 5] === 97) l -= 3; // alize -> al
         } else if (w[l - 2] === 116) {
+          // te
           if (l >= r1 + 5 && w[l - 3] === 97 && w[l - 4] === 99 && w[l - 5] === 105) l -= 3; // icate -> ic
         } else if (w[l - 2] === 118) {
+          // ve
           if (l >= r2 + 5 && w[l - 3] === 105 && w[l - 4] === 116 && w[l - 5] === 97) l -= 5; // ative -> <delete> (if in R2)
         }
         break;
-      case 105:
+      case 105: // i
         if (
           l >= r1 + 5 &&
-          w[l - 2] === 116 &&
-          w[l - 3] === 105 &&
-          w[l - 4] === 99 &&
-          w[l - 5] === 105
+          w[l - 2] === 116 && // t
+          w[l - 3] === 105 && // i
+          w[l - 4] === 99 && // c
+          w[l - 5] === 105 // i (iciti)
         )
           l -= 3; // iciti -> ic
         break;
-      case 115:
+      case 115: // s
         if (l >= r1 + 4 && w[l - 2] === 115 && w[l - 3] === 101 && w[l - 4] === 110) l -= 4; // ness -> <delete>
     }
   }
   // Step_4
   if (l >= r2 + 2) {
     switch (w[l - 1]) {
-      case 110:
+      case 110: // n
         if (
           l >= r2 + 3 &&
-          w[l - 2] === 111 &&
-          w[l - 3] === 105 &&
-          (w[l - 4] === 115 || w[l - 4] === 116)
+          w[l - 2] === 111 && // o
+          w[l - 3] === 105 && // i (ion)
+          (w[l - 4] === 115 || w[l - 4] === 116) // s or t
         )
           l -= 3; // ion -> <delete> (if preceded by s or t)
         break;
-      case 108:
+      case 108: // l
         if (w[l - 2] === 97) l -= 2; // al
         break;
-      case 114:
+      case 114: // r
         if (w[l - 2] === 101) l -= 2; // er
         break;
-      case 99:
+      case 99: // c
         if (w[l - 2] === 105) l -= 2; // ic
         break;
-      case 109:
+      case 109: // m
         if (l >= r2 + 3 && w[l - 2] === 115 && w[l - 3] === 105) l -= 3; // ism
         break;
-      case 105:
+      case 105: // i
         if (l >= r2 + 3 && w[l - 2] === 116 && w[l - 3] === 105) l -= 3; // iti
         break;
-      case 115:
+      case 115: // s
         if (l >= r2 + 3 && w[l - 2] === 117 && w[l - 3] === 111) l -= 3; // ous
         break;
-      case 116:
+      case 116: // t
         if (l >= r2 + 3 && w[l - 2] === 110) {
+          // nt
           if (w[l - 3] === 97) {
+            // ant
             l -= 3; // ant
           } else if (w[l - 3] === 101) {
+            // ent
             if (l >= 4 && w[l - 4] === 109) {
+              // ment
               if (l >= 5 && w[l - 5] === 101) {
+                // ement
                 if (l >= r2 + 5) l -= 5; // ement
               } else if (l >= r2 + 4) {
                 l -= 4; // ment
@@ -614,14 +654,18 @@ const stem = (word: string) => {
           }
         }
         break;
-      case 101:
+      case 101: // e
         if (w[l - 2] === 99) {
+          // ce
           if (l >= r2 + 4 && w[l - 3] === 110 && (w[l - 4] === 97 || w[l - 4] === 101)) l -= 4; // ance  ence
         } else if (w[l - 2] === 108) {
+          // le
           if (l >= r2 + 4 && w[l - 3] === 98 && (w[l - 4] === 97 || w[l - 4] === 105)) l -= 4; // able  ible
         } else if (w[l - 2] === 116) {
+          // te
           if (l >= r2 + 3 && w[l - 3] === 97) l -= 3; // ate
         } else if (l >= r2 + 3 && (w[l - 2] === 118 || w[l - 2] === 122) && w[l - 3] === 105) {
+          // ive ize
           l -= 3; // ive  ize
         }
     }
@@ -629,19 +673,17 @@ const stem = (word: string) => {
   // Step_5
   if (
     l >= r1 + 1 && // r1 is >= 1
-    ((l >= r2 + 1 && w[l - 1] === 108 && w[l - 2] === 108) ||
-      (w[l - 1] === 101 && (l >= r2 + 1 || !is_shortv(w, l - 1))))
+    ((l >= r2 + 1 && w[l - 1] === 108 && w[l - 2] === 108) || // ll
+      (w[l - 1] === 101 && (l >= r2 + 1 || !isShortV(w, l - 1)))) // e
   )
     --l;
-  var out = '';
-  if (y_found) {
-    for (var i = 0; i < l; ++i) {
-      out += String.fromCharCode(w[i] === 89 ? 121 : w[i]);
+  let out = '';
+  if (yFound) {
+    for (let i = 0; i < l; ++i) {
+      out += String.fromCharCode(w[i] === 89 ? 121 : w[i]); // Y -> y
     }
   } else {
-    for (var i = 0; i < l; ++i)
-      // out += w[i]
-      out += String.fromCharCode(w[i]);
+    for (let i = 0; i < l; ++i) out += String.fromCharCode(w[i]);
   }
   return out;
 };
@@ -653,7 +695,7 @@ const DEFAULT_OPTIONS = {
   k1: 1.2,
   b: 0.75,
   minLength: 2,
-  stopWords: /* @__PURE__ */ new Set([
+  stopWords: /* @__PURE__ */ new Set<string>([
     'a',
     'an',
     'and',
@@ -681,7 +723,7 @@ const DEFAULT_OPTIONS = {
     'with',
   ]),
   stemming: false,
-  stemWords: (word) => word,
+  stemWords: (word: string): string => word,
 };
 
 /**
@@ -740,21 +782,21 @@ interface TokenizerOptions {
  */
 class Tokenizer {
   /** Set of stop words to ignore. */
-  stopWords: Set<string>;
+  readonly stopWords: Set<string>;
   /** Minimum length of tokens to keep. */
-  minLength: number;
+  readonly minLength: number;
   /** Flag indicating if stemming is enabled. */
-  stemming: boolean;
+  readonly stemming: boolean;
   /** Custom stemming rules. */
-  stemmingRules: {
+  readonly stemmingRules: {
     pattern: RegExp;
     replacement: string | ((substring: string, ...args: any[]) => string);
     minMeasure?: number;
   }[];
 
   /** Default options for the Tokenizer. */
-  static DEFAULT_OPTIONS: Required<TokenizerOptions> = {
-    stopWords: /* @__PURE__ */ new Set(),
+  static readonly DEFAULT_OPTIONS: Required<TokenizerOptions> = {
+    stopWords: /* @__PURE__ */ new Set<string>(),
     minLength: 2,
     stemming: false,
     stemmingRules: [],
@@ -801,10 +843,10 @@ class Tokenizer {
       .split(/\s+/)
       .filter((token) => this.isValidToken(token))
       .map((token) => (this.stemming ? this.stemWord(token) : token));
-    const stats = includeStats
+    const stats: TokenizationStats = includeStats
       ? {
           originalWordCount: originalWords.length,
-          stopWordsRemoved: originalWords.length - tokens.length,
+          stopWordsRemoved: originalWords.length - tokens.length, // This might be incorrect if stemming changes token count
           stemmedWords: this.stemming ? tokens.length : 0,
           processingTimeMs: Date.now() - startTime,
         }
@@ -844,13 +886,13 @@ class Tokenizer {
     return text
       .toLowerCase()
       .normalize('NFKD')
-      .replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g, '')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '')
-      .replace(/[™®©℠‼]/g, '')
-      .replace(/[\p{P}]/gu, ' ')
-      .replace(/[^a-z0-9\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\s]/gu, ' ')
-      .replace(/\s+/g, ' ')
+      .replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g, '') // Control characters & zero-width spaces
+      .replace(/[\u0300-\u036f]/g, '') // Diacritical marks
+      .replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '') // Emojis and pictographs
+      .replace(/[™®©℠‼]/g, '') // Common symbols
+      .replace(/[\p{P}]/gu, ' ') // Unicode punctuation to space
+      .replace(/[^a-z0-9\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\s]/gu, ' ') // Keep only latin, cjk, hangul, numbers, whitespace
+      .replace(/\s+/g, ' ') // Collapse multiple spaces
       .trim();
   }
 
@@ -875,24 +917,36 @@ class Tokenizer {
    */
   stemWord(word: string): string {
     if (word.length < 3) return word;
-    let customRule = false;
+    let customRuleApplied = false;
     let stemmed = word;
     for (const rule of this.stemmingRules) {
       const match = stemmed.match(rule.pattern);
       if (match) {
-        customRule = true;
-        if (!rule.minMeasure || this.measure(stemmed) >= rule.minMeasure) {
+        if (
+          !rule.minMeasure ||
+          this.measure(stemmed.substring(0, match.index)) >= rule.minMeasure
+        ) {
+          // Apply replacement
           if (typeof rule.replacement === 'string') {
             stemmed = stemmed.replace(rule.pattern, rule.replacement);
           } else {
-            stemmed = stemmed.replace(rule.pattern, rule.replacement);
+            // If replacement is a function, it might need more specific arguments based on its definition.
+            // Assuming it takes the matched substring and potentially other match groups.
+            stemmed = stemmed.replace(rule.pattern, (...args) =>
+              (rule.replacement as Function)(...args)
+            );
           }
+          customRuleApplied = true; // Mark that a custom rule was (potentially) applied
+          // Depending on stemming strategy, might want to break or continue applying rules
         }
       }
     }
-    if (customRule) return stemmed;
-    stemmed = stem(stemmed);
-    return stemmed;
+    // If a custom rule was applied and modified the word, return it.
+    // Otherwise, or if custom rules are meant to precede default stemming, apply Porter2.
+    if (customRuleApplied && stemmed !== word) return stemmed; // Return if custom rule changed the word
+
+    // Fallback to Porter2 if no custom rule applied or if custom rules are pre-processing
+    return stem(stemmed); // Apply Porter2 to the (potentially already custom-stemmed) word
   }
 
   /**
@@ -989,11 +1043,11 @@ export interface SearchResult {
  */
 export class BM25 {
   /** Term frequency saturation parameter (k1). */
-  termFrequencySaturation: number; // k1
+  readonly termFrequencySaturation: number; // k1
   /** Document length normalization factor (b). */
-  lengthNormalizationFactor: number; // b
+  readonly lengthNormalizationFactor: number; // b
   /** Tokenizer instance used for processing text. */
-  tokenizer: Tokenizer;
+  readonly tokenizer: Tokenizer;
   /** Array storing the length (number of tokens, adjusted by field boosts) of each document. */
   documentLengths: Uint32Array;
   /** Average length of all documents in the index. */
@@ -1005,7 +1059,7 @@ export class BM25 {
   /** Map from term index to another map storing { docIndex: termFrequencyInDoc }. */
   termFrequencies: Map<number, Map<number, number>>; // TermIndex -> { DocIndex -> TF }
   /** Boost factors for different fields within documents. */
-  fieldBoosts: { [key: string]: number };
+  readonly fieldBoosts: { [key: string]: number };
   /** Array storing the original documents added to the index. */
   documents: any[]; // Consider using a generic <T>
 
@@ -1015,7 +1069,6 @@ export class BM25 {
    * @param options - Configuration options for BM25 parameters (k1, b), tokenizer (stopWords, stemming, minLength), and field boosts.
    */
   constructor(docs?: any[], options: BM25Options = {}) {
-    console.log('*** docs', docs);
     const opts = { ...DEFAULT_OPTIONS, ...options };
     this.termFrequencySaturation = opts.k1!; // Non-null assertion as DEFAULT_OPTIONS provides it
     this.lengthNormalizationFactor = opts.b!; // Non-null assertion
@@ -1032,7 +1085,6 @@ export class BM25 {
 
     // Index initial documents if provided
     if (docs && docs.length > 0) {
-      console.log('doing indexing');
       this.documents = [...docs]; // Store original documents
       const { documentLengths, termToIndex, documentFrequency, averageDocLength, termFrequencies } =
         this.processDocuments(docs);
@@ -1052,19 +1104,23 @@ export class BM25 {
    * @returns An object containing the calculated index data.
    * @internal
    */
-  private processDocuments(docs: any[]) {
-    console.log('*** processing documents');
+  private processDocuments(docs: any[]): {
+    documentLengths: Uint32Array;
+    termToIndex: Map<string, number>;
+    documentFrequency: Uint32Array;
+    averageDocLength: number;
+    termFrequencies: Map<number, Map<number, number>>;
+  } {
     const numDocs = docs.length;
     const documentLengths = new Uint32Array(numDocs);
     const termToIndex = new Map<string, number>();
     const termDocs = new Map<string, Set<number>>(); // Temp map: Term -> Set<DocIndex>
     const termFrequencies = new Map<number, Map<number, number>>(); // TermIndex -> { DocIndex -> TF }
-    let totalLength = 0;
+    let totalDocLength = 0;
     let nextTermIndex = 0;
 
     docs.forEach((doc, docIndex) => {
-      console.log('*** doc', doc);
-      let docLength = 0;
+      let currentDocLength = 0;
       const docTermFrequencies = new Map<number, number>(); // TermIndex -> TF for this doc
 
       // Iterate through fields of the document
@@ -1074,7 +1130,7 @@ export class BM25 {
         const fieldBoost = this.fieldBoosts[field] || 1;
         const { tokens } = this.tokenizer.tokenize(content);
         const fieldLength = tokens.length * fieldBoost;
-        docLength += fieldLength;
+        currentDocLength += fieldLength;
 
         // Calculate term frequencies within this field/doc
         tokens.forEach((term) => {
@@ -1082,7 +1138,7 @@ export class BM25 {
           if (!termToIndex.has(term)) {
             termToIndex.set(term, nextTermIndex++);
           }
-          const termIndex = termToIndex.get(term)!;
+          const termIndexVal = termToIndex.get(term)!;
 
           // Track which documents contain the term
           if (!termDocs.has(term)) {
@@ -1091,36 +1147,36 @@ export class BM25 {
           termDocs.get(term)!.add(docIndex);
 
           // Increment frequency for this term in this document
-          const currentFreq = docTermFrequencies.get(termIndex) || 0;
-          docTermFrequencies.set(termIndex, currentFreq + fieldBoost); // TF weighted by boost
+          const currentFreq = docTermFrequencies.get(termIndexVal) || 0;
+          docTermFrequencies.set(termIndexVal, currentFreq + fieldBoost); // TF weighted by boost
         });
       });
 
       // Store the calculated length for this document
-      documentLengths[docIndex] = docLength;
-      totalLength += docLength;
+      documentLengths[docIndex] = currentDocLength;
+      totalDocLength += currentDocLength;
 
       // Merge this document's term frequencies into the main structure
-      docTermFrequencies.forEach((freq, termIndex) => {
-        if (!termFrequencies.has(termIndex)) {
-          termFrequencies.set(termIndex, new Map<number, number>());
+      docTermFrequencies.forEach((freq, termIndexVal) => {
+        if (!termFrequencies.has(termIndexVal)) {
+          termFrequencies.set(termIndexVal, new Map<number, number>());
         }
-        termFrequencies.get(termIndex)!.set(docIndex, freq);
+        termFrequencies.get(termIndexVal)!.set(docIndex, freq);
       });
     });
 
     // Calculate document frequency (DF) for each term
     const documentFrequency = new Uint32Array(termToIndex.size);
     termDocs.forEach((docsSet, term) => {
-      const termIndex = termToIndex.get(term)!;
-      documentFrequency[termIndex] = docsSet.size;
+      const termIndexVal = termToIndex.get(term)!;
+      documentFrequency[termIndexVal] = docsSet.size;
     });
 
     return {
       documentLengths,
       termToIndex,
       documentFrequency,
-      averageDocLength: numDocs > 0 ? totalLength / numDocs : 0,
+      averageDocLength: numDocs > 0 ? totalDocLength / numDocs : 0,
       termFrequencies,
     };
   }
@@ -1129,7 +1185,7 @@ export class BM25 {
    * Recalculates the average document length based on the current `documentLengths`.
    * @internal
    */
-  private recalculateAverageLength() {
+  private recalculateAverageLength(): void {
     if (this.documentLengths.length === 0) {
       this.averageDocLength = 0;
       return;
@@ -1137,7 +1193,7 @@ export class BM25 {
     // Use Array.prototype.reduce for compatibility, though typed array reduce might be faster
     const totalLength = Array.prototype.reduce.call(
       this.documentLengths,
-      (sum, len) => sum + len,
+      (sum: number, len: number) => sum + len,
       0
     );
     this.averageDocLength = totalLength / this.documentLengths.length;
@@ -1160,7 +1216,7 @@ export class BM25 {
       // Ignore terms not found in the index
       if (termIndex === undefined) return;
 
-      const idf = this.calculateIDF(termIndex);
+      const idf = this.calculateIdf(termIndex);
       // Skip terms with non-positive IDF (e.g., term in all docs)
       if (idf <= 0) return;
 
@@ -1219,10 +1275,10 @@ export class BM25 {
       const termIndex = this.termToIndex.get(term);
       if (termIndex === undefined) return []; // Phrase cannot exist if any term is missing
 
-      const docsContainingTerm = this.termFrequencies.get(termIndex)?.keys();
-      if (!docsContainingTerm) return []; // Should not happen, but check
+      const docsContainingTermIter = this.termFrequencies.get(termIndex)?.keys();
+      if (!docsContainingTermIter) return []; // Should not happen, but check
 
-      const currentTermDocs = new Set(docsContainingTerm);
+      const currentTermDocs = new Set(docsContainingTermIter);
 
       if (candidateDocs === null) {
         // First term initializes the candidates
@@ -1264,8 +1320,8 @@ export class BM25 {
           }
           if (match) {
             // Phrase found! Calculate score for this document based on the phrase terms
-            const phraseScore = this.calculatePhraseScore(phraseTokens, docIndex) * fieldBoost;
-            scores.set(docIndex, (scores.get(docIndex) || 0) + phraseScore);
+            const phraseScoreVal = this.calculatePhraseScore(phraseTokens, docIndex) * fieldBoost;
+            scores.set(docIndex, (scores.get(docIndex) || 0) + phraseScoreVal);
             phraseFoundInDoc = true; // Only score once per doc even if phrase repeats
             break; // Move to next document once found in this one
           }
@@ -1289,12 +1345,12 @@ export class BM25 {
    * @internal
    */
   private calculatePhraseScore(phraseTokens: string[], docIndex: number): number {
-    return phraseTokens.reduce((score, term) => {
+    return phraseTokens.reduce((currentScore, term) => {
       const termIndex = this.termToIndex.get(term);
       // Ignore terms not in index (shouldn't happen if candidate selection worked)
-      if (termIndex === undefined) return score;
+      if (termIndex === undefined) return currentScore;
 
-      const idf = this.calculateIDF(termIndex);
+      const idf = this.calculateIdf(termIndex);
       const tf = this.termFrequencies.get(termIndex)?.get(docIndex) || 0;
       const docLength = this.documentLengths[docIndex];
 
@@ -1308,7 +1364,7 @@ export class BM25 {
             (this.lengthNormalizationFactor * docLength) / this.averageDocLength);
 
       // Add IDF * normalized TF to the total phrase score
-      return score + idf * (numerator / denominator);
+      return currentScore + idf * (numerator / denominator);
     }, 0); // Start score at 0
   }
 
@@ -1320,8 +1376,7 @@ export class BM25 {
    * @param doc - The document object (with string fields) to add.
    * @throws {Error} If the document is null or undefined.
    */
-  async addDocument(doc: any) {
-    // Allow Promise<void> return for potential future async ops
+  async addDocument(doc: any): Promise<void> {
     if (!doc) throw new Error('Document cannot be null');
 
     const docIndex = this.documentLengths.length; // Index for the new document
@@ -1334,7 +1389,7 @@ export class BM25 {
     // Calculate length later...
     this.documentLengths = newDocLengths; // Assign temporarily
 
-    let docLength = 0;
+    let currentDocLength = 0;
     const docTermFrequencies = new Map<number, number>(); // TermIndex -> TF for this new doc
 
     // --- Process Fields and Tokens ---
@@ -1343,50 +1398,58 @@ export class BM25 {
 
       const fieldBoost = this.fieldBoosts[field] || 1;
       const { tokens } = this.tokenizer.tokenize(content);
-      docLength += tokens.length * fieldBoost;
+      currentDocLength += tokens.length * fieldBoost;
 
       // Process each token in the field
       tokens.forEach((term) => {
-        let termIndex: number;
+        let termIndexVal: number;
         // Add term to index if new
         if (!this.termToIndex.has(term)) {
-          termIndex = this.termToIndex.size;
-          this.termToIndex.set(term, termIndex);
+          termIndexVal = this.termToIndex.size;
+          this.termToIndex.set(term, termIndexVal);
 
           // Ensure documentFrequency array is large enough
-          if (this.documentFrequency.length <= termIndex) {
+          if (this.documentFrequency.length <= termIndexVal) {
             const oldDf = this.documentFrequency;
             // Grow exponentially, ensure it's at least termIndex + 1
-            const newSize = Math.max(termIndex + 1, oldDf.length * 2);
+            const newSize = Math.max(termIndexVal + 1, oldDf.length * 2 || 1); // Ensure newSize is at least 1 if oldDf.length is 0
             this.documentFrequency = new Uint32Array(newSize);
             this.documentFrequency.set(oldDf, 0);
           }
           // Initialize DF for new term (will be incremented below)
-          this.documentFrequency[termIndex] = 0;
+          this.documentFrequency[termIndexVal] = 0;
         } else {
-          termIndex = this.termToIndex.get(term)!;
+          termIndexVal = this.termToIndex.get(term)!;
         }
 
         // Increment frequency for this term in this new document
-        const currentFreq = docTermFrequencies.get(termIndex) || 0;
-        docTermFrequencies.set(termIndex, currentFreq + fieldBoost); // Weighted TF
+        const currentFreq = docTermFrequencies.get(termIndexVal) || 0;
+        docTermFrequencies.set(termIndexVal, currentFreq + fieldBoost); // Weighted TF
       });
     });
 
     // --- Update Global Structures ---
     // Set the calculated length for the new document
-    this.documentLengths[docIndex] = docLength;
+    this.documentLengths[docIndex] = currentDocLength;
 
     // Add this document's term frequencies to the main map and update DF
-    docTermFrequencies.forEach((freq, termIndex) => {
+    docTermFrequencies.forEach((freq, termIndexVal) => {
       // Add TF entry
-      if (!this.termFrequencies.has(termIndex)) {
-        this.termFrequencies.set(termIndex, new Map<number, number>());
+      if (!this.termFrequencies.has(termIndexVal)) {
+        this.termFrequencies.set(termIndexVal, new Map<number, number>());
       }
-      this.termFrequencies.get(termIndex)!.set(docIndex, freq);
+      this.termFrequencies.get(termIndexVal)!.set(docIndex, freq);
 
       // Increment document frequency for the term
-      this.documentFrequency[termIndex]++;
+      // Ensure termIndexVal is within bounds of documentFrequency before incrementing
+      if (termIndexVal < this.documentFrequency.length) {
+        this.documentFrequency[termIndexVal]++;
+      } else {
+        // This case should ideally not be reached if array was resized correctly
+        console.error(
+          `Error: termIndexVal ${termIndexVal} is out of bounds for documentFrequency (length ${this.documentFrequency.length}). This indicates an issue with array resizing or term indexing.`
+        );
+      }
     });
 
     // Recalculate average document length
@@ -1402,7 +1465,7 @@ export class BM25 {
    * @param termIndex - The integer index of the term.
    * @returns The IDF score for the term. Returns 0 if the term is not found or has 0 DF.
    */
-  calculateIDF(termIndex: number): number {
+  calculateIdf(termIndex: number): number {
     // Ensure termIndex is valid
     if (termIndex < 0 || termIndex >= this.documentFrequency.length) {
       return 0; // Term not in index or index out of bounds
@@ -1471,11 +1534,11 @@ export class BM25 {
    * This method processes documents sequentially in the main thread.
    * @param docs - An array of documents to add.
    */
-  async addDocuments(docs: any[]) {
+  async addDocuments(docs: any[]): Promise<void[]> {
     // Allow Promise<void> return type
     // Using Promise.all to potentially run additions concurrently if addDocument becomes async
     // Although the current addDocument is sync, this structure allows future flexibility.
-    await Promise.all(docs.map((doc) => this.addDocument(doc)));
+    return Promise.all(docs.map((doc) => this.addDocument(doc)));
     // Note: If addDocument remains purely synchronous, a simple forEach would also work:
     // docs.forEach(doc => this.addDocument(doc));
   }
