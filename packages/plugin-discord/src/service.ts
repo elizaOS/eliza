@@ -116,6 +116,11 @@ export class DiscordService extends Service implements IDiscordService {
     }
   }
 
+  static async start(runtime: IAgentRuntime) {
+    const service = new DiscordService(runtime);
+    return service;
+  }
+
   /**
    * Registers the send handler with the runtime.
    * @private

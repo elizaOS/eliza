@@ -24,8 +24,10 @@ export const agentTable = pgTable(
     // Character
     name: text('name').notNull(),
     username: text('username'),
-    system: text('system').notNull(),
-    bio: jsonb('bio').$type<string | string[]>().notNull(),
+    system: text('system').default(''),
+    bio: jsonb('bio')
+      .$type<string | string[]>()
+      .default(sql`'[]'::jsonb`),
     messageExamples: jsonb('message_examples')
       .$type<MessageExample[][]>()
       .default(sql`'[]'::jsonb`)

@@ -52,13 +52,13 @@
           "name": "system",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "default": ""
         },
         "bio": {
           "name": "bio",
           "type": "jsonb",
           "primaryKey": false,
-          "notNull": true
+          "default": "[]::jsonb"
         },
         "message_examples": {
           "name": "message_examples",
