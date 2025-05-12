@@ -33,7 +33,7 @@ describe('Agent Integration Tests', () => {
   let testAgentId: UUID;
 
   // Test agents
-  const testAgent: Partial<Agent> = {
+  const testAgent: Agent = {
     name: 'Integration Test Agent',
     username: 'test_agent',
     bio: 'A test agent for integration tests',
@@ -41,6 +41,8 @@ describe('Agent Integration Tests', () => {
     settings: {
       testSetting: 'test value',
     },
+    createdAt: new Date().getTime(),
+    updatedAt: new Date().getTime(),
   };
 
   beforeAll(async () => {
@@ -205,6 +207,8 @@ describe('Agent Integration Tests', () => {
         id: uuidv4() as UUID,
         name: 'Minimal Agent',
         bio: 'Just the required fields',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
       };
 
       const result = await adapter.createAgent(minimalAgent);
@@ -474,6 +478,8 @@ describe('Agent Integration Tests', () => {
             propToRemove: 'will be removed',
           },
         },
+        createdAt: new Date().getTime(),
+        updatedAt: new Date().getTime(),
       };
       await adapter.createAgent(initialAgent);
 
@@ -515,12 +521,14 @@ describe('Agent Integration Tests', () => {
         someOtherSetting: 'should_remain',
       };
 
-      const agentToCreate: Partial<Agent> = {
+      const agentToCreate: Agent = {
         id: agentId,
         name: 'Complex Secrets Agent',
         bio: 'This is a test agent with complex secrets',
         username: 'complex_secrets_agent',
         settings: initialAgentSettings,
+        createdAt: new Date().getTime(),
+        updatedAt: new Date().getTime(),
       };
 
       const creationResult = await adapter.createAgent(agentToCreate);

@@ -1,9 +1,15 @@
 import { describe, expect, it, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import { PgDatabaseAdapter } from '../../src/pg/adapter';
 import { PostgresConnectionManager } from '../../src/pg/manager';
-import { type UUID, type Entity, type Room, type Agent } from '@elizaos/core';
+import { type UUID, type Entity, type Room, type Agent, type World } from '@elizaos/core';
 import { config } from './seed/config';
-import { logTestAgentSettings, logTestEntity, logTestRoom, logTestLogs } from './seed/log-seed';
+import {
+  logTestAgentSettings,
+  logTestEntity,
+  logTestRoom,
+  logTestLogs,
+  logTestWorld,
+} from './seed/log-seed';
 import { v4 as uuidv4 } from 'uuid';
 
 // Spy on runMigrations before any instance is created to prevent actual execution
@@ -32,12 +38,14 @@ describe('Log Integration Tests', () => {
   let testAgentId: UUID;
   let testEntityId: UUID;
   let testRoomId: UUID;
+  let testWorldId: UUID;
 
   beforeAll(async () => {
     // Use the shared test IDs
     testAgentId = logTestAgentSettings.id as UUID;
     testEntityId = logTestEntity.id;
     testRoomId = logTestRoom.id;
+    testWorldId = logTestWorld.id;
 
     // Initialize connection manager and adapter
     connectionManager = new PostgresConnectionManager(config.DATABASE_URL);
@@ -49,14 +57,20 @@ describe('Log Integration Tests', () => {
       // Use ensureAgentExists instead of createAgent
       await adapter.createAgent(logTestAgentSettings as Agent);
 
+      // Create the test world first
+      await adapter.createWorld({
+        ...logTestWorld,
+        agentId: testAgentId,
+      });
+
       // Create the test entity
-      const entityCreated = await adapter.createEntity({
+      await adapter.createEntity({
         ...logTestEntity,
         agentId: testAgentId,
       } as Entity);
 
       // Create the test room
-      const roomId = await adapter.createRoom({
+      await adapter.createRoom({
         ...logTestRoom,
         agentId: testAgentId,
       } as Room);
@@ -74,6 +88,7 @@ describe('Log Integration Tests', () => {
       await client.query(`DELETE FROM logs WHERE "entityId" = '${testEntityId}'`);
       await client.query(`DELETE FROM entities WHERE id = '${testEntityId}'`);
       await client.query(`DELETE FROM rooms WHERE id = '${testRoomId}'`);
+      await client.query(`DELETE FROM worlds WHERE id = '${testWorldId}'`);
       await client.query(`DELETE FROM agents WHERE id = '${testAgentId}'`);
     } catch (error) {
       console.error('Error cleaning test data:', error);

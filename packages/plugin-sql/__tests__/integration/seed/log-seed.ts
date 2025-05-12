@@ -34,6 +34,18 @@ export const logTestAgentSettings = {
 } as Agent;
 
 /**
+ * Test world for log tests
+ */
+export const logTestWorld = {
+  id: v4() as UUID,
+  agentId: logTestAgentSettings.id,
+  serverId: v4() as UUID,
+  name: 'Log Test World',
+  description: 'A world for log integration tests',
+  metadata: {},
+};
+
+/**
  * Test entity for log tests
  */
 export const logTestEntity = {
@@ -51,6 +63,7 @@ export const logTestRoom = {
   name: 'Log Test Room',
   type: ChannelType.DM,
   agentId: logTestAgentSettings.id,
+  worldId: logTestWorld.id,
   source: 'log-test',
   metadata: {},
 };
