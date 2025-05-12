@@ -70,8 +70,7 @@ export class DiscordService extends Service implements IDiscordService {
   constructor(runtime: IAgentRuntime) {
     super(runtime);
 
-    // Initialize character (assuming runtime has character info)
-    this.character = runtime.character; // Needs verification
+    this.character = runtime.character;
 
     // Check if Discord API token is available and valid
     const token = runtime.getSetting('DISCORD_API_TOKEN') as string;
@@ -993,7 +992,6 @@ export class DiscordService extends Service implements IDiscordService {
       const userName = reaction.message.author?.username || 'unknown';
       const name = reaction.message.author?.displayName || userName;
 
-      // TODO: Get the type of the channel
       await this.runtime.ensureConnection({
         entityId,
         roomId,
