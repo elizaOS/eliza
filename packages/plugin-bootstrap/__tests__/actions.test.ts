@@ -8,8 +8,8 @@ import { choiceAction } from '../src/actions/choice';
 import { sendMessageAction } from '../src/actions/sendMessage';
 import { updateEntityAction } from '../src/actions/updateEntity';
 import { noneAction } from '../src/actions/none';
-import updateRoleAction from '../src/actions/roles';
-import updateSettingsAction from '../src/actions/settings';
+import { updateRoleAction } from '../src/actions/roles';
+import { updateSettingsAction } from '../src/actions/settings';
 import { unfollowRoomAction } from '../src/actions/unfollowRoom';
 import {
   IAgentRuntime,
