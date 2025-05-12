@@ -719,11 +719,18 @@ export function stringToUuid(target: string | number): UUID {
  * Gets the base URL for a provider API based on environment variables.
  * This function checks for provider-specific environment variables to determine the base URL.
  *
- * @param {string} provider - The provider name (e.g., 'openai', 'anthropic')
+ * @param {string|any} provider - The provider name (e.g., 'openai', 'anthropic')
  * @returns {string} The base URL for the provider API
  */
-export function getProviderBaseURL(provider: string): string {
-  const envVarName = `${provider.toUpperCase()}_API_BASE`;
+export function getProviderBaseURL(provider: any): string {
+  // Handle non-string providers
+  if (typeof provider !== 'string') {
+    // Default to OpenAI if provider is not a string
+    return 'https://api.openai.com/v1';
+  }
+
+  const providerStr = String(provider);
+  const envVarName = `${providerStr.toUpperCase()}_API_BASE`;
   const baseUrl = process.env[envVarName];
 
   // Default base URLs for known providers
@@ -733,5 +740,5 @@ export function getProviderBaseURL(provider: string): string {
     // Add other providers as needed
   };
 
-  return baseUrl || defaultBaseUrls[provider.toLowerCase()] || '';
+  return baseUrl || defaultBaseUrls[providerStr.toLowerCase()] || '';
 }
