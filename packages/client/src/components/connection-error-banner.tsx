@@ -1,4 +1,4 @@
-import { AlertCircle, ExternalLink, RefreshCw } from 'lucide-react';
+import { AlertCircle, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useConnection } from '../context/ConnectionContext';
 
@@ -7,7 +7,7 @@ export interface ConnectionErrorBannerProps {
 }
 
 export function ConnectionErrorBanner({ className }: ConnectionErrorBannerProps) {
-  const { status, error, refetch } = useConnection();
+  const { status, error } = useConnection();
 
   const shouldShowBanner = status === 'error' || status === 'unauthorized';
 
@@ -93,18 +93,6 @@ export function ConnectionErrorBanner({ className }: ConnectionErrorBannerProps)
               <ExternalLink className="h-3 w-3 mr-1" />
               Troubleshooting Guide
             </a>
-            <button
-              onClick={refetch} // Use refetch from context
-              className={cn(
-                'text-xs flex items-center',
-                isUnauthorized
-                  ? 'hover:text-yellow-200 text-yellow-300'
-                  : 'hover:text-red-200 text-red-300'
-              )}
-            >
-              <RefreshCw className="h-3 w-3 mr-1" />
-              Retry Connection
-            </button>
           </div>
         </div>
       </div>
