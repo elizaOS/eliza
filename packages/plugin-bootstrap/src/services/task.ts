@@ -60,11 +60,11 @@ export class TaskService extends Service {
     this.runtime.registerTaskWorker({
       name: 'REPEATING_TEST_TASK',
       validate: async (_runtime, _message, _state) => {
-        logger.debug('Validating repeating test task');
+        logger.debug('[Bootstrap] Validating repeating test task');
         return true;
       },
       execute: async (_runtime, _options) => {
-        logger.debug('Executing repeating test task');
+        logger.debug('[Bootstrap] Executing repeating test task');
       },
     });
 
@@ -72,11 +72,11 @@ export class TaskService extends Service {
     this.runtime.registerTaskWorker({
       name: 'ONETIME_TEST_TASK',
       validate: async (_runtime, _message, _state) => {
-        logger.debug('Validating one-time test task');
+        logger.debug('[Bootstrap] Validating one-time test task');
         return true;
       },
       execute: async (_runtime, _options) => {
-        logger.debug('Executing one-time test task');
+        logger.debug('[Bootstrap] Executing one-time test task');
       },
     });
 
@@ -119,7 +119,7 @@ export class TaskService extends Service {
       try {
         await this.checkTasks();
       } catch (error) {
-        logger.error('Error checking tasks:', error);
+        logger.error('[Bootstrap] Error checking tasks:', error);
       }
     }, this.TICK_INTERVAL) as unknown as NodeJS.Timeout;
   }
@@ -157,7 +157,7 @@ export class TaskService extends Service {
             continue;
           }
         } catch (error) {
-          logger.error(`Error validating task ${task.name}:`, error);
+          logger.error(`[Bootstrap] Error validating task ${task.name}:`, error);
           continue;
         }
       }
@@ -219,7 +219,7 @@ export class TaskService extends Service {
 
         if (task.metadata?.updatedAt === task.metadata?.createdAt) {
           if (task.tags?.includes('immediate')) {
-            logger.debug('immediately running task', task.name);
+            logger.debug('[Bootstrap] Immediately running task', task.name);
             await this.executeTask(task);
             continue;
           }
@@ -228,13 +228,13 @@ export class TaskService extends Service {
         // Check if enough time has passed since last update
         if (now - taskStartTime >= updateIntervalMs) {
           logger.debug(
-            `Executing task ${task.name} - interval of ${updateIntervalMs}ms has elapsed`
+            `[Bootstrap] Executing task ${task.name} - interval of ${updateIntervalMs}ms has elapsed`
           );
           await this.executeTask(task);
         }
       }
     } catch (error) {
-      logger.error('Error checking tasks:', error);
+      logger.error('[Bootstrap] Error checking tasks:', error);
     }
   }
 
@@ -246,13 +246,13 @@ export class TaskService extends Service {
   private async executeTask(task: Task) {
     try {
       if (!task || !task.id) {
-        logger.debug(`Task not found`);
+        logger.debug(`[Bootstrap] Task not found`);
         return;
       }
 
       const worker = this.runtime.getTaskWorker(task.name);
       if (!worker) {
-        logger.debug(`No worker found for task type: ${task.name}`);
+        logger.debug(`[Bootstrap] No worker found for task type: ${task.name}`);
         return;
       }
 
@@ -265,20 +265,24 @@ export class TaskService extends Service {
             updatedAt: Date.now(),
           },
         });
-        logger.debug(`Updated repeating task ${task.name} (${task.id}) with new timestamp`);
+        logger.debug(
+          `[Bootstrap] Updated repeating task ${task.name} (${task.id}) with new timestamp`
+        );
       }
 
-      logger.debug(`Executing task ${task.name} (${task.id})`);
+      logger.debug(`[Bootstrap] Executing task ${task.name} (${task.id})`);
       await worker.execute(this.runtime, task.metadata || {}, task);
 
       // Handle repeating vs non-repeating tasks
       if (!task.tags?.includes('repeat')) {
         // For non-repeating tasks, delete the task after execution
         await this.runtime.deleteTask(task.id);
-        logger.debug(`Deleted non-repeating task ${task.name} (${task.id}) after execution`);
+        logger.debug(
+          `[Bootstrap] Deleted non-repeating task ${task.name} (${task.id}) after execution`
+        );
       }
     } catch (error) {
-      logger.error(`Error executing task ${task.id}:`, error);
+      logger.error(`[Bootstrap] Error executing task ${task.id}:`, error);
     }
   }
 

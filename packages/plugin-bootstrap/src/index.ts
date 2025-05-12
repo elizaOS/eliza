@@ -144,6 +144,7 @@ const messageReceivedHandler = async ({
   callback,
   onComplete,
 }: MessageReceivedHandlerParams): Promise<void> => {
+  logger.info(`[Bootstrap] Message received from ${message.entityId} in room ${message.roomId}`);
   // Generate a new response ID
   const responseId = v4();
   // Get or create the agent-specific map
@@ -200,10 +201,16 @@ const messageReceivedHandler = async ({
   const processingPromise = (async () => {
     try {
       if (message.entityId === runtime.agentId) {
+        logger.debug(`[Bootstrap] Skipping message from self (${runtime.agentId})`);
         throw new Error('Message is from the agent itself');
       }
 
+      logger.debug(
+        `[Bootstrap] Processing message: ${truncateToCompleteSentence(message.content.text || '', 50)}...`
+      );
+
       // First, save the incoming message
+      logger.debug('[Bootstrap] Saving message to memory and embeddings');
       await Promise.all([
         runtime.addEmbeddingToMemory(message),
         runtime.createMemory(message, 'messages'),
@@ -215,7 +222,7 @@ const messageReceivedHandler = async ({
         agentUserState === 'MUTED' &&
         !message.content.text?.toLowerCase().includes(runtime.character.name.toLowerCase())
       ) {
-        logger.debug('Ignoring muted room');
+        logger.debug(`[Bootstrap] Ignoring muted room ${message.roomId}`);
         return;
       }
 
@@ -232,7 +239,8 @@ const messageReceivedHandler = async ({
       const shouldSkipShouldRespond =
         room?.type === ChannelType.DM ||
         room?.type === ChannelType.VOICE_DM ||
-        room?.type === ChannelType.SELF;
+        room?.type === ChannelType.SELF ||
+        room?.type === ChannelType.API;
 
       let shouldRespond = true;
 
@@ -244,22 +252,21 @@ const messageReceivedHandler = async ({
         });
 
         logger.debug(
-          `*** Should Respond Prompt for ${runtime.character.name} ***\n`,
-          shouldRespondPrompt
+          `[Bootstrap] Evaluating response for ${runtime.character.name}\nPrompt: ${shouldRespondPrompt}`
         );
 
         const response = await runtime.useModel(ModelType.TEXT_SMALL, {
           prompt: shouldRespondPrompt,
         });
 
-        logger.debug(`*** Should Respond Response for ${runtime.character.name} ***\n`, response);
-        logger.debug(`*** Raw Response Type: ${typeof response} ***`);
+        logger.debug(`[Bootstrap] Response evaluation for ${runtime.character.name}:\n${response}`);
+        logger.debug(`[Bootstrap] Response type: ${typeof response}`);
 
         // Try to preprocess response by removing code blocks markers if present
         // let processedResponse = response.replace('```json', '').replaceAll('```', '').trim(); // No longer needed for XML
 
         const responseObject = parseKeyValueXml(response);
-        logger.debug('*** Parsed XML Response Object ***', responseObject);
+        logger.debug('[Bootstrap] Parsed response:', responseObject);
 
         shouldRespond = responseObject?.action && responseObject.action === 'RESPOND';
       } else {
@@ -287,11 +294,11 @@ const messageReceivedHandler = async ({
             prompt,
           });
 
-          logger.debug('*** Raw LLM Response ***\n', response);
+          logger.debug('[Bootstrap] *** Raw LLM Response ***\n', response);
 
           // Attempt to parse the XML response
           const parsedXml = parseKeyValueXml(response);
-          logger.debug('*** Parsed XML Content ***\n', parsedXml);
+          logger.debug('[Bootstrap] *** Parsed XML Content ***\n', parsedXml);
 
           // Map parsed XML to Content type, handling potential missing fields
           if (parsedXml) {
@@ -308,7 +315,9 @@ const messageReceivedHandler = async ({
 
           retries++;
           if (!responseContent?.thought || !responseContent?.actions) {
-            logger.warn('*** Missing required fields (thought or actions), retrying... ***');
+            logger.warn(
+              '[Bootstrap] *** Missing required fields (thought or actions), retrying... ***'
+            );
           }
         }
 
@@ -361,7 +370,7 @@ const messageReceivedHandler = async ({
         await runtime.evaluate(message, state, shouldRespond, callback, responseMessages);
       } else {
         // Handle the case where the agent decided not to respond
-        logger.debug('Agent decided not to respond (shouldRespond is false).');
+        logger.debug('[Bootstrap] Agent decided not to respond (shouldRespond is false).');
 
         // Check if we still have the latest response ID
         const currentResponseId = agentResponses.get(message.roomId);
@@ -373,7 +382,7 @@ const messageReceivedHandler = async ({
         }
 
         if (!message.id) {
-          logger.error('Message ID is missing, cannot create ignore response.');
+          logger.error('[Bootstrap] Message ID is missing, cannot create ignore response.');
           return;
         }
 
@@ -398,7 +407,7 @@ const messageReceivedHandler = async ({
           createdAt: Date.now(),
         };
         await runtime.createMemory(ignoreMemory, 'messages');
-        logger.debug('Saved ignore response to memory', { memoryId: ignoreMemory.id });
+        logger.debug('[Bootstrap] Saved ignore response to memory', { memoryId: ignoreMemory.id });
 
         // Clean up the response ID since we handled it
         agentResponses.delete(message.roomId);
@@ -470,10 +479,10 @@ const reactionReceivedHandler = async ({
     await runtime.createMemory(message, 'messages');
   } catch (error: any) {
     if (error.code === '23505') {
-      logger.warn('Duplicate reaction memory, skipping');
+      logger.warn('[Bootstrap] Duplicate reaction memory, skipping');
       return;
     }
-    logger.error('Error in reaction handler:', error);
+    logger.error('[Bootstrap] Error in reaction handler:', error);
   }
 };
 
@@ -494,7 +503,7 @@ const postGeneratedHandler = async ({
   roomId,
   source,
 }: InvokePayload) => {
-  logger.info('Generating new post...');
+  logger.info('[Bootstrap] Generating new post...');
   // Ensure world exists first
   await runtime.ensureWorldExists({
     id: worldId,
@@ -573,7 +582,7 @@ const postGeneratedHandler = async ({
 
     retries++;
     if (!responseContent?.thought || !responseContent?.actions) {
-      logger.warn('*** Missing required fields, retrying... ***');
+      logger.warn('[Bootstrap] *** Missing required fields, retrying... ***');
     }
   }
 
@@ -595,7 +604,10 @@ const postGeneratedHandler = async ({
   const parsedXmlResponse = parseKeyValueXml(xmlResponseText);
 
   if (!parsedXmlResponse) {
-    logger.error('Failed to parse XML response for post creation. Raw response:', xmlResponseText);
+    logger.error(
+      '[Bootstrap] Failed to parse XML response for post creation. Raw response:',
+      xmlResponseText
+    );
     // Handle the error appropriately, maybe retry or return an error state
     return;
   }
@@ -642,7 +654,7 @@ const postGeneratedHandler = async ({
   if (RM) {
     for (const m of RM.data.recentMessages) {
       if (cleanedText === m.content.text) {
-        logger.log("we've already recently posted that, retrying", cleanedText);
+        logger.log('[Bootstrap] Already recently posted that, retrying', cleanedText);
         postGeneratedHandler({
           runtime,
           callback,
@@ -673,7 +685,7 @@ const postGeneratedHandler = async ({
     googleRefusalRegex.test(cleanedText) ||
     generalRefusalRegex.test(cleanedText)
   ) {
-    logger.log('got prompt moderation refusal, retrying', cleanedText);
+    logger.log('[Bootstrap] Got prompt moderation refusal, retrying', cleanedText);
     postGeneratedHandler({
       runtime,
       callback,
@@ -745,11 +757,11 @@ const syncSingleUser = async (
 ) => {
   try {
     const entity = await runtime.getEntityById(entityId);
-    logger.info(`Syncing user: ${entity?.metadata?.[source]?.username || entityId}`);
+    logger.info(`[Bootstrap] Syncing user: ${entity?.metadata?.[source]?.username || entityId}`);
 
     // Ensure we're not using WORLD type and that we have a valid channelId
     if (!channelId) {
-      logger.warn(`Cannot sync user ${entity?.id} without a valid channelId`);
+      logger.warn(`[Bootstrap] Cannot sync user ${entity?.id} without a valid channelId`);
       return;
     }
 
@@ -769,9 +781,11 @@ const syncSingleUser = async (
       worldId,
     });
 
-    logger.success(`Successfully synced user: ${entity?.id}`);
+    logger.success(`[Bootstrap] Successfully synced user: ${entity?.id}`);
   } catch (error) {
-    logger.error(`Error syncing user: ${error instanceof Error ? error.message : String(error)}`);
+    logger.error(
+      `[Bootstrap] Error syncing user: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 };
 
@@ -786,7 +800,7 @@ const handleServerSync = async ({
   source,
   onComplete,
 }: WorldPayload) => {
-  logger.debug(`Handling server sync event for server: ${world.name}`);
+  logger.debug(`[Bootstrap] Handling server sync event for server: ${world.name}`);
   try {
     // Create/ensure the world exists for this server
     await runtime.ensureWorldExists({
@@ -825,7 +839,7 @@ const handleServerSync = async ({
         const firstRoomUserIsIn = rooms.length > 0 ? rooms[0] : null;
 
         if (!firstRoomUserIsIn) {
-          logger.warn(`No rooms found for syncing users`);
+          logger.warn(`[Bootstrap] No rooms found for syncing users`);
           continue;
         }
 
@@ -834,7 +848,7 @@ const handleServerSync = async ({
           entityBatch.map(async (entity: Entity) => {
             try {
               if (!entity?.id) {
-                logger.warn(`No entity ID found for syncing users`);
+                logger.warn(`[Bootstrap] No entity ID found for syncing users`);
                 return;
               }
 
@@ -850,7 +864,7 @@ const handleServerSync = async ({
                 worldId: world.id,
               });
             } catch (err) {
-              logger.warn(`Failed to sync user ${entity.metadata?.username}: ${err}`);
+              logger.warn(`[Bootstrap] Failed to sync user ${entity.metadata?.username}: ${err}`);
             }
           })
         );
@@ -984,8 +998,7 @@ const events = {
 
   [EventType.MESSAGE_SENT]: [
     async (payload: MessagePayload) => {
-      // Message sent tracking
-      logger.debug(`Message sent: ${payload.message.content.text}`);
+      logger.debug(`[Bootstrap] Message sent: ${payload.message.content.text}`);
     },
   ],
 
@@ -1004,15 +1017,15 @@ const events = {
   [EventType.ENTITY_JOINED]: [
     async (payload: EntityPayload) => {
       if (!payload.worldId) {
-        logger.error('No callback provided for entity joined');
+        logger.error('[Bootstrap] No callback provided for entity joined');
         return;
       }
       if (!payload.roomId) {
-        logger.error('No roomId provided for entity joined');
+        logger.error('[Bootstrap] No roomId provided for entity joined');
         return;
       }
       if (!payload.metadata?.type) {
-        logger.error('No type provided for entity joined');
+        logger.error('[Bootstrap] No type provided for entity joined');
         return;
       }
 
@@ -1040,36 +1053,40 @@ const events = {
           };
           await payload.runtime.updateEntity(entity);
         }
-        logger.info(`User ${payload.entityId} left world ${payload.worldId}`);
+        logger.info(`[Bootstrap] User ${payload.entityId} left world ${payload.worldId}`);
       } catch (error: any) {
-        logger.error(`Error handling user left: ${error.message}`);
+        logger.error(`[Bootstrap] Error handling user left: ${error.message}`);
       }
     },
   ],
 
   [EventType.ACTION_STARTED]: [
     async (payload: ActionEventPayload) => {
-      logger.debug(`Action started: ${payload.actionName} (${payload.actionId})`);
+      logger.debug(`[Bootstrap] Action started: ${payload.actionName} (${payload.actionId})`);
     },
   ],
 
   [EventType.ACTION_COMPLETED]: [
     async (payload: ActionEventPayload) => {
       const status = payload.error ? `failed: ${payload.error.message}` : 'completed';
-      logger.debug(`Action ${status}: ${payload.actionName} (${payload.actionId})`);
+      logger.debug(`[Bootstrap] Action ${status}: ${payload.actionName} (${payload.actionId})`);
     },
   ],
 
   [EventType.EVALUATOR_STARTED]: [
     async (payload: EvaluatorEventPayload) => {
-      logger.debug(`Evaluator started: ${payload.evaluatorName} (${payload.evaluatorId})`);
+      logger.debug(
+        `[Bootstrap] Evaluator started: ${payload.evaluatorName} (${payload.evaluatorId})`
+      );
     },
   ],
 
   [EventType.EVALUATOR_COMPLETED]: [
     async (payload: EvaluatorEventPayload) => {
       const status = payload.error ? `failed: ${payload.error.message}` : 'completed';
-      logger.debug(`Evaluator ${status}: ${payload.evaluatorName} (${payload.evaluatorId})`);
+      logger.debug(
+        `[Bootstrap] Evaluator ${status}: ${payload.evaluatorName} (${payload.evaluatorId})`
+      );
     },
   ],
 

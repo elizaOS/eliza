@@ -361,7 +361,7 @@ export async function getEntityDetails({
     // Create the entity details
     uniqueEntities.set(entity.id, {
       id: entity.id,
-      name: entity.metadata[room.source]?.name || entity.names[0],
+      name: room?.source ? entity.metadata[room.source]?.name || entity.names[0] : entity.names[0],
       names: entity.names,
       data: JSON.stringify({ ...mergedData, ...entity.metadata }),
     });

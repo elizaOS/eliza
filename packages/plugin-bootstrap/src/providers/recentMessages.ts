@@ -84,7 +84,10 @@ export const recentMessagesProvider: Provider = {
           : Promise.resolve([]),
       ]);
 
-      const isPostFormat = room?.type === ChannelType.FEED || room?.type === ChannelType.THREAD;
+      // Default to message format if room is not found or type is undefined
+      const isPostFormat = room?.type
+        ? room.type === ChannelType.FEED || room.type === ChannelType.THREAD
+        : false;
 
       // Format recent messages and posts in parallel
       const [formattedRecentMessages, formattedRecentPosts] = await Promise.all([
