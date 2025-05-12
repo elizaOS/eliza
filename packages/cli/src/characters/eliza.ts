@@ -1,4 +1,7 @@
 import type { Character } from '@elizaos/core';
+import dotenv from 'dotenv';
+
+dotenv.config({ path: '../../.env' });
 
 /**
  * Character object representing Eliza - a friendly, helpful community manager and member of the team.

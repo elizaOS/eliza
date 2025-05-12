@@ -1,4 +1,5 @@
 import type { Character, IAgentRuntime, OnboardingConfig, ProjectAgent } from '@elizaos/core';
+import dotenv from 'dotenv';
 import fs from 'node:fs';
 import path from 'node:path';
 import { initCharacter } from '../init';
@@ -10,6 +11,8 @@ const imagePath = path.resolve('./src/communityManager/assets/portrait.jpg');
 const avatar = fs.existsSync(imagePath)
   ? `data:image/jpeg;base64,${fs.readFileSync(imagePath).toString('base64')}`
   : '';
+
+dotenv.config({ path: '../../.env' });
 
 /**
  * Represents a character named Eli5 with specific behavior traits and message examples.

@@ -1,6 +1,7 @@
-import type { Character, IAgentRuntime, OnboardingConfig, ProjectAgent } from '@elizaos/core';
 import fs from 'node:fs';
 import path from 'node:path';
+import type { Character, IAgentRuntime, OnboardingConfig, ProjectAgent } from '@elizaos/core';
+import dotenv from 'dotenv';
 import { initCharacter } from '../init';
 
 const imagePath = path.resolve('./src/liaison/assets/portrait.jpg');
@@ -9,6 +10,7 @@ const imagePath = path.resolve('./src/liaison/assets/portrait.jpg');
 const avatar = fs.existsSync(imagePath)
   ? `data:image/jpeg;base64,${fs.readFileSync(imagePath).toString('base64')}`
   : '';
+dotenv.config({ path: '../../.env' });
 
 /**
  * Represents a character with a name and a list of plugins for various functionalities.

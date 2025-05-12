@@ -1,6 +1,15 @@
-import type { Character, IAgentRuntime, OnboardingConfig, ProjectAgent } from '@elizaos/core';
 import fs from 'node:fs';
 import path from 'node:path';
+import type {
+  Character,
+  IAgentRuntime,
+  OnboardingConfig,
+  ProjectAgent,
+  TestSuite,
+  UUID,
+} from '@elizaos/core';
+import dotenv from 'dotenv';
+import { v4 as uuidv4 } from 'uuid';
 import { initCharacter } from '../init';
 import twitterPostAction from './actions/post';
 
@@ -10,6 +19,8 @@ const imagePath = path.resolve('./src/socialMediaManager/assets/portrait.jpg');
 const avatar = fs.existsSync(imagePath)
   ? `data:image/jpeg;base64,${fs.readFileSync(imagePath).toString('base64')}`
   : '';
+
+dotenv.config({ path: '../../.env' });
 
 /**
  * Represents a character with specific attributes and behaviors for social media management.
