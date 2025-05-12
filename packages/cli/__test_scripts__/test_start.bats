@@ -49,6 +49,9 @@ teardown() {
   done
   [ "$SERVER_UP" -eq 1 ] || { echo "Server is not responding."; exit 1; }
 
+  # Wait for agent to be ready
+  sleep 5
+
   run $ELIZAOS_CMD agent --remote-url "http://localhost:3000" list
 
   [ "$status" -eq 0 ]
