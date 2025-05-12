@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { UUID } from '../src/types';
-import { stringToUuid } from '../src/uuid';
+import { stringToUuid } from '../src/';
 
 describe('UUID Module', () => {
   // Helper function to generate test strings
