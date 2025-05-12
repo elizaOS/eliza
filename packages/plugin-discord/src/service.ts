@@ -24,7 +24,6 @@ import {
   type Guild,
   type GuildMember,
   type MessageReaction,
-  type OAuth2Guild,
   type PartialMessageReaction,
   type PartialUser,
   Partials,
@@ -32,9 +31,6 @@ import {
   type TextChannel,
   type User,
   type Interaction,
-  type ButtonInteraction,
-  type StringSelectMenuInteraction,
-  type MessageComponentInteraction,
   Collection,
 } from 'discord.js';
 import { DISCORD_SERVICE_NAME } from './constants';

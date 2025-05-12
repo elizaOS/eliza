@@ -19,7 +19,7 @@ import {
   type TextChannel,
 } from 'discord.js';
 import { AttachmentManager } from './attachments';
-import { DiscordEventTypes, DiscordActionRow, DiscordComponentOptions } from './types';
+import { DiscordEventTypes } from './types';
 import { canSendMessage, sendMessageInChunks } from './utils';
 
 /**
