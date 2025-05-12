@@ -1,6 +1,3 @@
-import dotenv from 'dotenv';
-dotenv.config({ path: '../../.env' });
-
 import { logger, ProjectAgent } from '@elizaos/core';
 import communityManager from './communityManager';
 import devRel from './devRel';

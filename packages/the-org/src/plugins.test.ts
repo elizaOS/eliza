@@ -1,6 +1,3 @@
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import type { TestCase } from '@elizaos/core';
 import {
   AgentRuntime,
@@ -10,10 +7,11 @@ import {
   logger,
   stringToUuid,
 } from '@elizaos/core';
-import dotenv from 'dotenv';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { afterAll, beforeAll, describe, it } from 'vitest';
 import project from './index';
-dotenv.config({ path: '../../.env' });
 
 const TEST_TIMEOUT = 300000;
 

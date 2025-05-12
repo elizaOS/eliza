@@ -1,11 +1,8 @@
+import type { Character, IAgentRuntime, OnboardingConfig, ProjectAgent } from '@elizaos/core';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { Character, IAgentRuntime, OnboardingConfig, ProjectAgent } from '@elizaos/core';
-import dotenv from 'dotenv';
 import { initCharacter } from '../init';
-import { communityInvestorPlugin } from './plugins/community-investor';
 import { degenIntelPlugin } from './plugins/degen-intel';
-import { degenTraderPlugin } from './plugins/degen-trader';
 
 const imagePath = path.resolve('./src/investmentManager/assets/portrait.jpg');
 
@@ -13,8 +10,6 @@ const imagePath = path.resolve('./src/investmentManager/assets/portrait.jpg');
 const avatar = fs.existsSync(imagePath)
   ? `data:image/jpeg;base64,${fs.readFileSync(imagePath).toString('base64')}`
   : '';
-
-dotenv.config({ path: '../../.env' });
 
 /**
  * Represents a character named Spartan who is a DeFi trading agent specializing in Solana-based trading and liquidity pool management.

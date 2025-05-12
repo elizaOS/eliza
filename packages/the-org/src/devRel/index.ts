@@ -1,6 +1,5 @@
 import { logger } from '@elizaos/core';
 import type { Character } from '@elizaos/core/src/types';
-import dotenv from 'dotenv';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,8 +15,6 @@ const imagePath = path.resolve('./src/devRel/assets/portrait.jpg');
 const avatar = fs.existsSync(imagePath)
   ? `data:image/jpeg;base64,${fs.readFileSync(imagePath).toString('base64')}`
   : '';
-
-dotenv.config({ path: '../../.env' });
 
 /**
  * Recursively gets all files in a directory with the given extension
