@@ -31,8 +31,9 @@ export const character: Character = {
   plugins: [
     '@elizaos/plugin-sql',
     // '@elizaos/plugin-anthropic',
-    '@elizaos/plugin-openai',
+    //'@elizaos/plugin-openai',
     // '@elizaos/plugin-discord',
+    '@elizaos/plugin-local-ai',
     '@elizaos/plugin-twitter',
     '@elizaos/plugin-pdf',
     '@elizaos/plugin-video-understanding',
