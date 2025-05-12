@@ -716,29 +716,19 @@ export function stringToUuid(target: string | number): UUID {
 }
 
 /**
- * Gets the base URL for a provider API based on environment variables.
- * This function checks for provider-specific environment variables to determine the base URL.
+ * Gets the base URL for a provider API.
  *
- * @param {string|any} provider - The provider name (e.g., 'openai', 'anthropic')
+ * @param {IAgentRuntime} runtime - The agent runtime instance
+ * @param {string} provider - The provider name (e.g., 'redpill', 'openai')
+ * @param {string} defaultBaseURL - The default base URL to use for the provider
  * @returns {string} The base URL for the provider API
  */
-export function getProviderBaseURL(provider: any): string {
-  // Handle non-string providers
-  if (typeof provider !== 'string') {
-    // Default to OpenAI if provider is not a string
-    return 'https://api.openai.com/v1';
-  }
 
-  const providerStr = String(provider);
-  const envVarName = `${providerStr.toUpperCase()}_API_BASE`;
-  const baseUrl = process.env[envVarName];
-
-  // Default base URLs for known providers
-  const defaultBaseUrls: Record<string, string> = {
-    openai: 'https://api.openai.com/v1',
-    anthropic: 'https://api.anthropic.com',
-    // Add other providers as needed
-  };
-
-  return baseUrl || defaultBaseUrls[providerStr.toLowerCase()] || '';
+// Placeholder function untill all LLM plugins are fixed and published
+export function getProviderBaseURL(
+  runtime: IAgentRuntime,
+  provider: string,
+  defaultBaseURL: string
+): string {
+  return defaultBaseURL;
 }
