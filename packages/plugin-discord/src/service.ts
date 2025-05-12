@@ -35,6 +35,7 @@ import {
   type ButtonInteraction,
   type StringSelectMenuInteraction,
   type MessageComponentInteraction,
+  Collection,
 } from 'discord.js';
 import { DISCORD_SERVICE_NAME } from './constants';
 import { MessageManager } from './messages';
@@ -56,10 +57,10 @@ import { VoiceManager } from './voice';
 export class DiscordService extends Service implements IDiscordService {
   static serviceType: string = DISCORD_SERVICE_NAME;
   capabilityDescription = 'The agent is able to send and receive messages on discord';
-  client: DiscordJsClient;
+  client: DiscordJsClient | null;
   character: Character;
-  messageManager: MessageManager;
-  voiceManager: VoiceManager;
+  messageManager?: MessageManager;
+  voiceManager?: VoiceManager;
   private userSelections: Map<string, { [key: string]: any }> = new Map();
   private timeouts: NodeJS.Timeout[] = [];
 
@@ -72,6 +73,9 @@ export class DiscordService extends Service implements IDiscordService {
    */
   constructor(runtime: IAgentRuntime) {
     super(runtime);
+
+    // Initialize character (assuming runtime has character info)
+    this.character = runtime.character; // Needs verification
 
     // Check if Discord API token is available and valid
     const token = runtime.getSetting('DISCORD_API_TOKEN') as string;
@@ -102,16 +106,20 @@ export class DiscordService extends Service implements IDiscordService {
       this.voiceManager = new VoiceManager(this, runtime);
       this.messageManager = new MessageManager(this);
 
-      this.client.once(Events.ClientReady, this.onClientReady.bind(this));
+      this.client.once(Events.ClientReady, this.onReady.bind(this));
       this.client.login(token).catch((error) => {
-        logger.error(`Failed to login to Discord: ${error.message}`);
+        logger.error(
+          `Failed to login to Discord: ${error instanceof Error ? error.message : String(error)}`
+        );
         this.client = null;
       });
 
       this.setupEventListeners();
       this.registerSendHandler(); // Register handler during construction
     } catch (error) {
-      logger.error(`Error initializing Discord client: ${error.message}`);
+      logger.error(
+        `Error initializing Discord client: ${error instanceof Error ? error.message : String(error)}`
+      );
       this.client = null;
     }
   }
@@ -196,10 +204,13 @@ export class DiscordService extends Service implements IDiscordService {
         );
       }
     } catch (error) {
-      logger.error(`[Discord SendHandler] Error sending message: ${error.message}`, {
-        target,
-        content,
-      });
+      logger.error(
+        `[Discord SendHandler] Error sending message: ${error instanceof Error ? error.message : String(error)}`,
+        {
+          target,
+          content,
+        }
+      );
       throw error;
     }
   }
@@ -254,7 +265,8 @@ export class DiscordService extends Service implements IDiscordService {
       }
 
       try {
-        this.messageManager.handleMessage(message);
+        // Ensure messageManager exists
+        this.messageManager?.handleMessage(message);
       } catch (error) {
         logger.error(`Error handling message: ${error}`);
       }
@@ -313,7 +325,8 @@ export class DiscordService extends Service implements IDiscordService {
 
     this.client.on('userStream', (entityId, name, userName, channel, opusDecoder) => {
       if (entityId !== this.client?.user?.id) {
-        this.voiceManager.handleUserStream(entityId, name, userName, channel, opusDecoder);
+        // Ensure voiceManager exists
+        this.voiceManager?.handleUserStream(entityId, name, userName, channel, opusDecoder);
       }
     });
   }
@@ -371,7 +384,7 @@ export class DiscordService extends Service implements IDiscordService {
   private async handleGuildCreate(guild: Guild) {
     logger.log(`Joined guild ${guild.name}`);
     const fullGuild = await guild.fetch();
-    this.voiceManager.scanGuild(guild);
+    this.voiceManager?.scanGuild(guild);
 
     const ownerId = createUniqueUuid(this.runtime, fullGuild.ownerId);
 
@@ -417,10 +430,12 @@ export class DiscordService extends Service implements IDiscordService {
     if (interaction.isCommand()) {
       switch (interaction.commandName) {
         case 'joinchannel':
-          await this.voiceManager.handleJoinChannelCommand(interaction);
+          // Ensure voiceManager exists
+          await this.voiceManager?.handleJoinChannelCommand(interaction);
           break;
         case 'leavechannel':
-          await this.voiceManager.handleLeaveChannelCommand(interaction);
+          // Ensure voiceManager exists
+          await this.voiceManager?.handleLeaveChannelCommand(interaction);
           break;
       }
     }
@@ -436,6 +451,10 @@ export class DiscordService extends Service implements IDiscordService {
         this.userSelections.set(userId, {});
       }
       const userSelections = this.userSelections.get(userId);
+      if (!userSelections) {
+        logger.error(`User selections map unexpectedly missing for user ${userId}`);
+        return; // Should not happen
+      }
 
       try {
         // For select menus (type 3), store the values
@@ -450,7 +469,7 @@ export class DiscordService extends Service implements IDiscordService {
             ...userSelections[messageId],
             [interaction.customId]: interaction.values,
           };
-          this.userSelections.set(userId, userSelections);
+          // No need to call set again, modification is in place
 
           // Log the current state of all selections for this message
           logger.info(
@@ -488,7 +507,7 @@ export class DiscordService extends Service implements IDiscordService {
 
           // Clear selections for this form only
           delete userSelections[messageId];
-          this.userSelections.set(userId, userSelections);
+          // No need to call set again
           logger.info(`Cleared selections for message ${messageId}`);
 
           // Acknowledge the button press
@@ -521,7 +540,7 @@ export class DiscordService extends Service implements IDiscordService {
    * @private
    */
   private async buildStandardizedRooms(guild: Guild, _worldId: UUID): Promise<any[]> {
-    const rooms = [];
+    const rooms: any[] = [];
 
     for (const [channelId, channel] of guild.channels.cache) {
       // Only process text and voice channels
@@ -604,7 +623,11 @@ export class DiscordService extends Service implements IDiscordService {
             entities.push({
               id: createUniqueUuid(this.runtime, member.id),
               names: Array.from(
-                new Set([member.user.username, member.displayName, member.user.globalName])
+                new Set(
+                  [member.user.username, member.displayName, member.user.globalName].filter(
+                    Boolean
+                  ) as string[]
+                )
               ),
               agentId: this.runtime.agentId,
               metadata: {
@@ -647,7 +670,11 @@ export class DiscordService extends Service implements IDiscordService {
                 entities.push({
                   id: entityId,
                   names: Array.from(
-                    new Set([member.user.username, member.displayName, member.user.globalName])
+                    new Set(
+                      [member.user.username, member.displayName, member.user.globalName].filter(
+                        Boolean
+                      ) as string[]
+                    )
                   ),
                   agentId: this.runtime.agentId,
                   metadata: {
@@ -693,7 +720,11 @@ export class DiscordService extends Service implements IDiscordService {
             entities.push({
               id: createUniqueUuid(this.runtime, member.id),
               names: Array.from(
-                new Set([member.user.username, member.displayName, member.user.globalName])
+                new Set(
+                  [member.user.username, member.displayName, member.user.globalName].filter(
+                    Boolean
+                  ) as string[]
+                )
               ),
               agentId: this.runtime.agentId,
               metadata: {
@@ -734,9 +765,13 @@ export class DiscordService extends Service implements IDiscordService {
   private async onReady() {
     logger.log('DISCORD ON READY');
     const guilds = await this.client?.guilds.fetch();
+    if (!guilds) {
+      logger.warn('Could not fetch guilds, client might not be ready.');
+      return;
+    }
     for (const [, guild] of guilds) {
       const fullGuild = await guild.fetch();
-      await this.voiceManager.scanGuild(fullGuild);
+      await this.voiceManager?.scanGuild(fullGuild);
 
       // Send after a brief delay
       const timeoutId = setTimeout(async () => {
@@ -823,7 +858,7 @@ export class DiscordService extends Service implements IDiscordService {
 
     try {
       // Fetch the channel
-      const channel = (await this.client.channels.fetch(channelId)) as TextChannel;
+      const channel = (await this.client?.channels.fetch(channelId)) as TextChannel;
 
       // Validate channel
       if (!channel) {
@@ -844,7 +879,7 @@ export class DiscordService extends Service implements IDiscordService {
 
       // Determine strategy based on guild size and cache preference
       const useCacheOnly = useCache && guild.memberCount > 1000;
-      let members;
+      let members: Collection<string, GuildMember>;
 
       if (useCacheOnly) {
         logger.info(
@@ -872,10 +907,13 @@ export class DiscordService extends Service implements IDiscordService {
 
       // Filter members by permission to view the channel
       logger.info(`Filtering members for access to channel ${channel.name}`);
-      const channelMembers = Array.from(members.values())
-        .filter((member) => {
+      // Explicitly type the array from values()
+      const memberArray: GuildMember[] = Array.from(members.values());
+      const channelMembers = memberArray
+        .filter((member: GuildMember) => {
           // Skip bots except our own bot
-          if (member.user.bot && member.id !== this.client.user?.id) {
+          // Add null check for client and client.user
+          if (member.user.bot && member.id !== this.client?.user?.id) {
             return false;
           }
 
@@ -884,7 +922,7 @@ export class DiscordService extends Service implements IDiscordService {
             channel.permissionsFor(member)?.has(PermissionsBitField.Flags.ViewChannel) ?? false
           );
         })
-        .map((member) => ({
+        .map((member: GuildMember) => ({
           id: member.id,
           username: member.user.username,
           displayName: member.displayName || member.user.username,
@@ -895,6 +933,252 @@ export class DiscordService extends Service implements IDiscordService {
     } catch (error) {
       logger.error(`Error fetching channel members: ${error}`);
       return [];
+    }
+  }
+
+  /**
+   * Placeholder for handling reaction addition.
+   * @private
+   */
+  private async handleReactionAdd(
+    reaction: MessageReaction | PartialMessageReaction,
+    user: User | PartialUser
+  ) {
+    try {
+      logger.log('Reaction added');
+
+      // Early returns
+      if (!reaction || !user) {
+        logger.warn('Invalid reaction or user');
+        return;
+      }
+
+      // Get emoji info
+      let emoji = reaction.emoji.name;
+      if (!emoji && reaction.emoji.id) {
+        emoji = `<:${reaction.emoji.name}:${reaction.emoji.id}>`;
+      }
+
+      // Fetch full message if partial
+      if (reaction.partial) {
+        try {
+          await reaction.fetch();
+        } catch (error) {
+          logger.error('Failed to fetch partial reaction:', error);
+          return;
+        }
+      }
+
+      // Generate IDs with timestamp to ensure uniqueness
+      const timestamp = Date.now();
+      const roomId = createUniqueUuid(this.runtime, reaction.message.channel.id);
+      const entityId = createUniqueUuid(this.runtime, user.id);
+      const reactionUUID = createUniqueUuid(
+        this.runtime,
+        `${reaction.message.id}-${user.id}-${emoji}-${timestamp}`
+      );
+
+      // Validate IDs
+      if (!entityId || !roomId) {
+        logger.error('Invalid user ID or room ID', {
+          entityId,
+          roomId,
+        });
+        return;
+      }
+
+      // Process message content
+      const messageContent = reaction.message.content || '';
+      const truncatedContent =
+        messageContent.length > 50 ? `${messageContent.substring(0, 50)}...` : messageContent;
+      const reactionMessage = `*Added <${emoji}> to: \\"${truncatedContent}\\"*`; // Escaped quotes
+
+      // Get user info
+      const userName = reaction.message.author?.username || 'unknown';
+      const name = reaction.message.author?.displayName || userName;
+
+      // TODO: Get the type of the channel
+      await this.runtime.ensureConnection({
+        entityId,
+        roomId,
+        userName,
+        worldId: createUniqueUuid(this.runtime, reaction.message.guild?.id ?? roomId) as UUID,
+        worldName: reaction.message.guild?.name,
+        name: name,
+        source: 'discord',
+        channelId: reaction.message.channel.id,
+        serverId: reaction.message.guild?.id,
+        type: await this.getChannelType(reaction.message.channel as Channel),
+      });
+
+      const inReplyTo = createUniqueUuid(this.runtime, reaction.message.id);
+
+      const memory: Memory = {
+        id: reactionUUID,
+        entityId,
+        agentId: this.runtime.agentId,
+        content: {
+          // name,
+          // userName,
+          text: reactionMessage,
+          source: 'discord',
+          inReplyTo,
+          channelType: await this.getChannelType(reaction.message.channel as Channel),
+        },
+        roomId,
+        createdAt: timestamp,
+      };
+
+      const callback: HandlerCallback = async (content): Promise<Memory[]> => {
+        if (!reaction.message.channel) {
+          logger.error('No channel found for reaction message');
+          return [];
+        }
+        await (reaction.message.channel as TextChannel).send(content.text ?? '');
+        return [];
+      };
+
+      this.runtime.emitEvent(['DISCORD_REACTION_RECEIVED', 'REACTION_RECEIVED'], {
+        runtime: this.runtime,
+        message: memory,
+        callback,
+      });
+    } catch (error) {
+      logger.error('Error handling reaction:', error);
+    }
+  }
+
+  /**
+   * Placeholder for handling reaction removal.
+   * @private
+   */
+  private async handleReactionRemove(
+    reaction: MessageReaction | PartialMessageReaction,
+    user: User | PartialUser
+  ) {
+    try {
+      logger.log('Reaction removed');
+
+      let emoji = reaction.emoji.name;
+      if (!emoji && reaction.emoji.id) {
+        emoji = `<:${reaction.emoji.name}:${reaction.emoji.id}>`;
+      }
+
+      // Fetch the full message if it's a partial
+      if (reaction.partial) {
+        try {
+          await reaction.fetch();
+        } catch (error) {
+          logger.error('Something went wrong when fetching the message:', error);
+          return;
+        }
+      }
+
+      const messageContent = reaction.message.content || '';
+      const truncatedContent =
+        messageContent.length > 50 ? `${messageContent.substring(0, 50)}...` : messageContent;
+
+      const reactionMessage = `*Removed <${emoji}> from: \\"${truncatedContent}\\"*`; // Escaped quotes
+
+      const roomId = createUniqueUuid(this.runtime, reaction.message.channel.id);
+
+      const entityId = createUniqueUuid(this.runtime, user.id);
+      const timestamp = Date.now();
+      const reactionUUID = createUniqueUuid(
+        this.runtime,
+        `${reaction.message.id}-${user.id}-${emoji}-${timestamp}`
+      );
+
+      const userName = reaction.message.author?.username || 'unknown';
+      const name = reaction.message.author?.displayName || userName;
+
+      await this.runtime.ensureConnection({
+        entityId,
+        roomId,
+        userName,
+        worldId: createUniqueUuid(this.runtime, reaction.message.guild?.id ?? roomId) as UUID,
+        worldName: reaction.message.guild?.name,
+        name: name,
+        source: 'discord',
+        channelId: reaction.message.channel.id,
+        serverId: reaction.message.guild?.id,
+        type: await this.getChannelType(reaction.message.channel as Channel),
+      });
+
+      const memory: Memory = {
+        id: reactionUUID,
+        entityId,
+        agentId: this.runtime.agentId,
+        content: {
+          // name,
+          // userName,
+          text: reactionMessage,
+          source: 'discord',
+          inReplyTo: createUniqueUuid(this.runtime, reaction.message.id),
+          channelType: await this.getChannelType(reaction.message.channel as Channel),
+        },
+        roomId,
+        createdAt: Date.now(),
+      };
+
+      const callback: HandlerCallback = async (content): Promise<Memory[]> => {
+        if (!reaction.message.channel) {
+          logger.error('No channel found for reaction message');
+          return [];
+        }
+        await (reaction.message.channel as TextChannel).send(content.text ?? '');
+        return [];
+      };
+
+      this.runtime.emitEvent([DiscordEventTypes.REACTION_RECEIVED], {
+        runtime: this.runtime,
+        message: memory,
+        callback,
+      });
+    } catch (error) {
+      logger.error('Error handling reaction removal:', error);
+    }
+  }
+
+  /**
+   * Stops the Discord service and cleans up resources.
+   * Implements the abstract method from the Service class.
+   */
+  public async stop(): Promise<void> {
+    logger.info('Stopping Discord service...');
+    this.timeouts.forEach(clearTimeout); // Clear any pending timeouts
+    this.timeouts = [];
+    if (this.client) {
+      await this.client.destroy();
+      this.client = null;
+      logger.info('Discord client destroyed.');
+    }
+    // Additional cleanup if needed (e.g., voice manager)
+    if (this.voiceManager) {
+      // Assuming voiceManager has a stop or cleanup method
+      // await this.voiceManager.stop();
+    }
+    logger.info('Discord service stopped.');
+  }
+
+  /**
+   * Asynchronously retrieves the type of a given channel.
+   *
+   * @param {Channel} channel - The channel for which to determine the type.
+   * @returns {Promise<ChannelType>} A Promise that resolves with the type of the channel.
+   */
+  async getChannelType(channel: Channel): Promise<ChannelType> {
+    switch (channel.type) {
+      case DiscordChannelType.DM:
+        return ChannelType.DM;
+      case DiscordChannelType.GuildText:
+        return ChannelType.GROUP;
+      case DiscordChannelType.GuildVoice:
+        return ChannelType.VOICE_GROUP;
+      default:
+        // Fallback or handle other channel types as needed
+        logger.warn(`Unhandled channel type: ${channel.type}`);
+        return ChannelType.GROUP;
     }
   }
 }
