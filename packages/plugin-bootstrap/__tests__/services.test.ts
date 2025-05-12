@@ -225,7 +225,7 @@ describe('TaskService', () => {
 
     // Verify error was logged
     expect(logger.error).toHaveBeenCalledWith(
-      `Error executing task ${testTask.id}:`,
+      `[Bootstrap] Error executing task ${testTask.id}:`,
       expect.any(Error)
     );
 
