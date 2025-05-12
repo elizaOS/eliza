@@ -32,7 +32,7 @@ const character: Character = {
   name: 'Jimmy',
   plugins: [
     '@elizaos/plugin-sql',
-    // '@elizaos/plugin-anthropic',
+    '@elizaos/plugin-anthropic',
     '@elizaos/plugin-openai',
     '@elizaos/plugin-discord',
     '@elizaos/plugin-pdf',
@@ -45,7 +45,7 @@ const character: Character = {
       DISCORD_APPLICATION_ID: process.env.PROJECT_MANAGER_DISCORD_APPLICATION_ID,
       DISCORD_API_TOKEN: process.env.PROJECT_MANAGER_DISCORD_API_TOKEN,
       OPENAI_API_KEY: process.env.OPENAI_API_KEY,
-      TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+      TELEGRAM_BOT_TOKEN: process.env.PROJECT_MANAGER_TELEGRAM_BOT_TOKEN,
     },
     // discord: {
     //   shouldRespondOnlyToMentions: true,
