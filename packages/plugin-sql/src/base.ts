@@ -2112,19 +2112,12 @@ export abstract class BaseDrizzleAdapter<
   async addParticipantsRoom(entityIds: UUID[], roomId: UUID): Promise<boolean> {
     return this.withDatabase(async () => {
       try {
-        console.log('linking addParticipantsRoom');
         const values = entityIds.map((id) => ({
           entityId: id,
           roomId,
           agentId: this.agentId,
         }));
-        //console.log('values', values[0])
-        await this.db
-          .insert(participantTable)
-          .values(values)
-          //.onConflictDoNothing()
-          .execute();
-        console.log('linked', entityIds.length, 'entities', values);
+        await this.db.insert(participantTable).values(values).onConflictDoNothing().execute();
         logger.debug(entityIds.length, 'Entities linked successfully');
         return true;
       } catch (error) {
