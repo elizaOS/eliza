@@ -2,12 +2,8 @@ import { describe, expect, it, beforeAll, afterAll, beforeEach, afterEach, vi } 
 import { PgDatabaseAdapter } from '../../src/pg/adapter';
 import { PostgresConnectionManager } from '../../src/pg/manager';
 import { type UUID } from '@elizaos/core';
-import { config } from './seed/config';
-import {
-  cacheTestAgentSettings,
-  testCacheEntries,
-  testCacheWithExpiration,
-} from './seed/cache-seed';
+import { config } from '../config';
+import { cacheTestAgentSettings, testCacheEntries } from './seed';
 
 // Spy on runMigrations before any instance is created to prevent actual execution
 vi.spyOn(PostgresConnectionManager.prototype, 'runMigrations').mockImplementation(async () => {

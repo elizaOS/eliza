@@ -2,7 +2,7 @@ import { describe, expect, it, beforeAll, afterAll, beforeEach, afterEach, vi } 
 import { PgDatabaseAdapter } from '../../src/pg/adapter';
 import { PostgresConnectionManager } from '../../src/pg/manager';
 import { type UUID, type Entity, type Room, type World, type Agent } from '@elizaos/core';
-import { config } from './seed/config';
+import { config } from '../config';
 import {
   componentTestAgentSettings,
   componentTestEntity,
@@ -10,7 +10,7 @@ import {
   componentTestComponents,
   componentTestWorld,
   componentTestSourceEntity,
-} from './seed/component-seed';
+} from './seed';
 import { v4 as uuidv4 } from 'uuid';
 
 // Spy on runMigrations before any instance is created to prevent actual execution

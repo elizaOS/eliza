@@ -2,7 +2,7 @@ import { describe, expect, it, beforeAll, afterAll, beforeEach, afterEach, vi } 
 import { PgDatabaseAdapter } from '../../src/pg/adapter';
 import { PostgresConnectionManager } from '../../src/pg/manager';
 import { ChannelType, Agent, World, Room, type UUID } from '@elizaos/core';
-import { config } from './seed/config';
+import { config } from '../config';
 import {
   taskTestAgentId,
   taskTestRoomId,
@@ -10,7 +10,7 @@ import {
   taskTestTasks,
   taskTestTaskDifferentRoom,
   taskTestTaskWithSpecificTags,
-} from './seed/task-seed';
+} from './seed';
 
 // Spy on runMigrations before any instance is created to prevent actual execution
 vi.spyOn(PostgresConnectionManager.prototype, 'runMigrations').mockImplementation(async () => {

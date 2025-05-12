@@ -1,34 +1,19 @@
 /**
  * Seed data for agent integration tests
  */
-import { type UUID, type Agent, AgentStatus } from '@elizaos/core';
-import { v4 } from 'uuid';
+import { type Agent } from '@elizaos/core';
 
 /**
- * Default test agent settings for agent tests
+ * Test agent data used across agent integration tests
  */
-export const testAgentSettings = {
-  id: v4() as UUID,
-  name: 'Agent Test Agent',
-  username: 'agent_test_agent',
-  system: 'Test agent system prompt',
-  bio: 'An agent for testing agent operations',
+export const testAgent: Agent = {
+  name: 'Integration Test Agent',
+  username: 'test_agent',
+  bio: 'A test agent for integration tests',
   enabled: true,
-  status: AgentStatus.ACTIVE,
-  createdAt: Date.now(),
-  updatedAt: Date.now(),
-  messageExamples: [],
-  postExamples: [],
-  topics: [],
-  adjectives: [],
-  knowledge: [],
-  plugins: [],
   settings: {
-    agentTestSetting: 'agent test value',
+    testSetting: 'test value',
   },
-  style: {
-    all: [],
-    chat: [],
-    post: [],
-  },
-} as Agent;
+  createdAt: new Date().getTime(),
+  updatedAt: new Date().getTime(),
+};

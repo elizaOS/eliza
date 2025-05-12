@@ -7,7 +7,7 @@ import { join } from 'path';
 
 // Try to load test-specific env file first, then fall back to project root .env
 const testEnvPath = join(process.cwd(), '.env.test');
-const rootEnvPath = join(process.cwd(), '../../../.env');
+const rootEnvPath = join(process.cwd(), '../../.env');
 
 if (existsSync(testEnvPath)) {
   dotenvConfig({ path: testEnvPath });

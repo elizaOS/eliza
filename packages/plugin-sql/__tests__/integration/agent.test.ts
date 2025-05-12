@@ -5,7 +5,8 @@ import { type UUID, type Agent } from '@elizaos/core';
 import { agentTable } from '../../src/schema/agent';
 import { sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
-import { config } from './seed/config';
+import { config } from '../config';
+import { testAgent } from './seed';
 
 // Spy on runMigrations before any instance is created to prevent actual execution
 vi.spyOn(PostgresConnectionManager.prototype, 'runMigrations').mockImplementation(async () => {
@@ -31,19 +32,6 @@ describe('Agent Integration Tests', () => {
   let connectionManager: PostgresConnectionManager;
   let adapter: PgDatabaseAdapter;
   let testAgentId: UUID;
-
-  // Test agents
-  const testAgent: Agent = {
-    name: 'Integration Test Agent',
-    username: 'test_agent',
-    bio: 'A test agent for integration tests',
-    enabled: true,
-    settings: {
-      testSetting: 'test value',
-    },
-    createdAt: new Date().getTime(),
-    updatedAt: new Date().getTime(),
-  };
 
   beforeAll(async () => {
     // Create a random agent ID for use with the adapter

@@ -2,8 +2,8 @@ import { describe, expect, it, beforeAll, afterAll, beforeEach, afterEach, vi } 
 import { PgDatabaseAdapter } from '../../src/pg/adapter';
 import { PostgresConnectionManager } from '../../src/pg/manager';
 import { type UUID, type Entity, type Component } from '@elizaos/core';
-import { config } from './seed/config';
-import { entityTestAgentSettings, testEntities } from './seed/entity-seed';
+import { config } from '../config';
+import { entityTestAgentSettings, testEntities } from './seed';
 import { v4 } from 'uuid';
 
 // Spy on runMigrations before any instance is created to prevent actual execution
