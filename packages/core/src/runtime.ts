@@ -49,7 +49,7 @@ import type {
   ModelHandler,
 } from './types';
 import { EventType, type MessagePayload } from './types';
-import { stringToUuid } from './uuid';
+import { stringToUuid } from './utils';
 import { PGlite } from '@electric-sql/pglite';
 import { Pool } from 'pg';
 

@@ -1,9 +1,86 @@
+import { Buffer } from 'buffer';
 import handlebars from 'handlebars';
+import { sha1 } from 'js-sha1';
 import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
+import pkg from 'stream-browserify';
 import { names, uniqueNamesGenerator } from 'unique-names-generator';
-import logger from './logger';
+import { z } from 'zod';
+
 import type { Content, Entity, IAgentRuntime, Memory, State, TemplateType } from './types';
-import { ModelType } from './types';
+import { ModelType, UUID } from './types';
+import logger from './logger';
+
+const { PassThrough, Readable } = pkg;
+
+// Audio Utils
+
+/**
+ * Generates a WAV file header based on the provided audio parameters.
+ * @param {number} audioLength - The length of the audio data in bytes.
+ * @param {number} sampleRate - The sample rate of the audio.
+ * @param {number} [channelCount=1] - The number of channels (default is 1).
+ * @param {number} [bitsPerSample=16] - The number of bits per sample (default is 16).
+ * @returns {Buffer} The WAV file header as a Buffer object.
+ */
+function getWavHeader(
+  audioLength: number,
+  sampleRate: number,
+  channelCount = 1,
+  bitsPerSample = 16
+): Buffer {
+  const wavHeader = Buffer.alloc(44);
+  wavHeader.write('RIFF', 0);
+  wavHeader.writeUInt32LE(36 + audioLength, 4); // Length of entire file in bytes minus 8
+  wavHeader.write('WAVE', 8);
+  wavHeader.write('fmt ', 12);
+  wavHeader.writeUInt32LE(16, 16); // Length of format data
+  wavHeader.writeUInt16LE(1, 20); // Type of format (1 is PCM)
+  wavHeader.writeUInt16LE(channelCount, 22); // Number of channels
+  wavHeader.writeUInt32LE(sampleRate, 24); // Sample rate
+  wavHeader.writeUInt32LE((sampleRate * bitsPerSample * channelCount) / 8, 28); // Byte rate
+  wavHeader.writeUInt16LE((bitsPerSample * channelCount) / 8, 32); // Block align ((BitsPerSample * Channels) / 8)
+  wavHeader.writeUInt16LE(bitsPerSample, 34); // Bits per sample
+  wavHeader.write('data', 36); // Data chunk header
+  wavHeader.writeUInt32LE(audioLength, 40); // Data chunk size
+  return wavHeader;
+}
+
+/**
+ * Prepends a WAV header to a readable stream of audio data.
+ *
+ * @param {Readable} readable - The readable stream containing the audio data.
+ * @param {number} audioLength - The length of the audio data in seconds.
+ * @param {number} sampleRate - The sample rate of the audio data.
+ * @param {number} [channelCount=1] - The number of channels in the audio data (default is 1).
+ * @param {number} [bitsPerSample=16] - The number of bits per sample in the audio data (default is 16).
+ * @returns {Readable} A new readable stream with the WAV header prepended to the audio data.
+ */
+function prependWavHeader(
+  readable: typeof Readable,
+  audioLength: number,
+  sampleRate: number,
+  channelCount = 1,
+  bitsPerSample = 16
+): typeof Readable {
+  const wavHeader = getWavHeader(audioLength, sampleRate, channelCount, bitsPerSample);
+  let pushedHeader = false;
+  const passThrough = new PassThrough();
+  readable.on('data', (data) => {
+    if (!pushedHeader) {
+      passThrough.push(wavHeader);
+      pushedHeader = true;
+    }
+    passThrough.push(data);
+  });
+  readable.on('end', () => {
+    passThrough.end();
+  });
+  return passThrough;
+}
+
+export { getWavHeader, prependWavHeader };
+
+// Text Utils
 
 /**
  * Convert all double-brace bindings in a Handlebars template
@@ -62,11 +139,14 @@ export function upgradeDoubleToTriple(tpl) {
 
 /**
  * Function to compose a prompt using a provided template and state.
+ * It compiles the template (upgrading double braces to triple braces for non-HTML escaping)
+ * and then populates it with values from the state. Additionally, it processes the
+ * resulting string with `composeRandomUser` to replace placeholders like `{{nameX}}`.
  *
  * @param {Object} options - Object containing state and template information.
  * @param {State} options.state - The state object containing values to fill the template.
- * @param {TemplateType} options.template - The template to be used for composing the prompt.
- * @returns {string} The composed prompt output.
+ * @param {TemplateType} options.template - The template string or function to be used for composing the prompt.
+ * @returns {string} The composed prompt output, with state values and random user names populated.
  */
 export const composePrompt = ({
   state,
@@ -315,110 +395,6 @@ export const formatTimestamp = (messageDate: number) => {
 };
 
 const jsonBlockPattern = /```json\n([\s\S]*?)\n```/;
-
-export const shouldRespondTemplate = `<task>Decide on behalf of {{agentName}} whether they should respond to the message, ignore it or stop the conversation.</task>
-
-<providers>
-{{providers}}
-</providers>
-
-<instructions>Decide if {{agentName}} should respond to or interact with the conversation.
-If the message is directed at or relevant to {{agentName}}, respond with RESPOND action.
-If a user asks {{agentName}} to be quiet, respond with STOP action.
-If {{agentName}} should ignore the message, respond with IGNORE action.</instructions>
-
-<output>
-Respond using XML format like this:
-<response>
-  <name>{{agentName}}</name>
-  <reasoning>Your reasoning here</reasoning>
-  <action>RESPOND | IGNORE | STOP</action>
-</response>
-
-Your response should ONLY include the <response></response> XML block.
-</output>`;
-
-export const messageHandlerTemplate = `<task>Generate dialog and actions for the character {{agentName}}.</task>  
-
-<providers>
-{{providers}}
-</providers>
-
-These are the available valid actions:
-<actionNames>
-{{actionNames}}
-</actionNames>
-
-<instructions>
-Write a thought and plan for {{agentName}} and decide what actions to take. Also include the providers that {{agentName}} will use to have the right context for responding and acting, if any.
-First, think about what you want to do next and plan your actions. Then, write the next message and include the actions you plan to take.
-</instructions>
-
-<keys>
-"thought" should be a short description of what the agent is thinking about and planning.
-"actions" should be a comma-separated list of the actions {{agentName}} plans to take based on the thought (if none, use IGNORE, if simply responding with text, use REPLY)
-"providers" should be an optional comma-separated list of the providers that {{agentName}} will use to have the right context for responding and acting
-"evaluators" should be an optional comma-separated list of the evaluators that {{agentName}} will use to evaluate the conversation after responding
-"text" should be the text of the next message for {{agentName}} which they will send to the conversation.
-"simple" should be true if the message is a simple response and false if it is a more complex response that requires planning, knowledge or more context to handle or reply to.
-</keys>
-
-<output>
-Respond using XML format like this:
-<response>
-    <thought>Your thought here</thought>
-    <actions>ACTION1,ACTION2</actions>
-    <providers>PROVIDER1,PROVIDER2</providers>
-    <text>Your response text here</text>
-    <simple>true|false</simple>
-</response>
-
-Your response must ONLY include the <response></response> XML block.
-</output>`;
-
-export const postCreationTemplate = `# Task: Create a post in the voice and style and perspective of {{agentName}} @{{twitterUserName}}.
-
-Example task outputs:
-1. A post about the importance of AI in our lives
-<response>
-  <thought>I am thinking about writing a post about the importance of AI in our lives</thought>
-  <post>AI is changing the world and it is important to understand how it works</post>
-  <imagePrompt>A futuristic cityscape with flying cars and people using AI to do things</imagePrompt>
-</response>
-
-2. A post about dogs
-<response>
-  <thought>I am thinking about writing a post about dogs</thought>
-  <post>Dogs are man's best friend and they are loyal and loving</post>
-  <imagePrompt>A dog playing with a ball in a park</imagePrompt>
-</response>
-
-3. A post about finding a new job
-<response>
-  <thought>Getting a job is hard, I bet there's a good tweet in that</thought>
-  <post>Just keep going!</post>
-  <imagePrompt>A person looking at a computer screen with a job search website</imagePrompt>
-</response>
-
-{{providers}}
-
-Write a post that is {{adjective}} about {{topic}} (without mentioning {{topic}} directly), from the perspective of {{agentName}}. Do not add commentary or acknowledge this request, just write the post.
-Your response should be 1, 2, or 3 sentences (choose the length at random).
-Your response should not contain any questions. Brief, concise statements only. The total character count MUST be less than 280. No emojis. Use \\n\\n (double spaces) between statements if there are multiple statements in your response.
-
-Your output should be formatted in XML like this:
-<response>
-  <thought>Your thought here</thought>
-  <post>Your post text here</post>
-  <imagePrompt>Optional image prompt here</imagePrompt>
-</response>
-
-The "post" field should be the post you want to send. Do not including any thinking or internal reflection in the "post" field.
-The "imagePrompt" field is optional and should be a prompt for an image that is relevant to the post. It should be a single sentence that captures the essence of the post. ONLY USE THIS FIELD if it makes sense that the post would benefit from an image.
-The "thought" field should be a short description of what the agent is thinking about before responding, inlcuding a brief justification for the response. Includate an explanation how the post is relevant to the topic but unique and different than other posts.
-Your reponse should ONLY contain the XML block.`;
-
-export const booleanFooter = 'Respond with only a YES or a NO.';
 
 /**
  * Parses key-value pairs from a simple XML structure within a given text.
@@ -676,4 +652,65 @@ export function parseBooleanFromText(value: string | undefined | null): boolean 
 
   // For environment variables, we'll treat unrecognized values as false
   return false;
+}
+
+// UUID Utils
+
+const uuidSchema = z.string().uuid() as z.ZodType<UUID>;
+
+/**
+ * Validates a UUID value.
+ *
+ * @param {unknown} value - The value to validate.
+ * @returns {UUID | null} Returns the validated UUID value or null if validation fails.
+ */
+export function validateUuid(value: unknown): UUID | null {
+  const result = uuidSchema.safeParse(value);
+  return result.success ? result.data : null;
+}
+
+/**
+ * Converts a string or number to a UUID.
+ *
+ * @param {string | number} target - The string or number to convert to a UUID.
+ * @returns {UUID} The UUID generated from the input target.
+ * @throws {TypeError} Throws an error if the input target is not a string.
+ */
+export function stringToUuid(target: string | number): UUID {
+  if (typeof target === 'number') {
+    target = (target as number).toString();
+  }
+
+  if (typeof target !== 'string') {
+    throw TypeError('Value must be string');
+  }
+
+  const _uint8ToHex = (ubyte: number): string => {
+    const first = ubyte >> 4;
+    const second = ubyte - (first << 4);
+    const HEX_DIGITS = '0123456789abcdef'.split('');
+    return HEX_DIGITS[first] + HEX_DIGITS[second];
+  };
+
+  const _uint8ArrayToHex = (buf: Uint8Array): string => {
+    let out = '';
+    for (let i = 0; i < buf.length; i++) {
+      out += _uint8ToHex(buf[i]);
+    }
+    return out;
+  };
+
+  const escapedStr = encodeURIComponent(target);
+  const buffer = new Uint8Array(escapedStr.length);
+  for (let i = 0; i < escapedStr.length; i++) {
+    buffer[i] = escapedStr[i].charCodeAt(0);
+  }
+
+  const hash = sha1(buffer);
+  const hashBuffer = new Uint8Array(hash.length / 2);
+  for (let i = 0; i < hash.length; i += 2) {
+    hashBuffer[i / 2] = Number.parseInt(hash.slice(i, i + 2), 16);
+  }
+
+  return `${_uint8ArrayToHex(hashBuffer.slice(0, 4))}-${_uint8ArrayToHex(hashBuffer.slice(4, 6))}-${_uint8ToHex(hashBuffer[6] & 0x0f)}${_uint8ToHex(hashBuffer[7])}-${_uint8ToHex((hashBuffer[8] & 0x3f) | 0x80)}${_uint8ToHex(hashBuffer[9])}-${_uint8ArrayToHex(hashBuffer.slice(10, 16))}` as UUID;
 }
