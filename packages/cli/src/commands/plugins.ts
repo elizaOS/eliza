@@ -146,6 +146,7 @@ export const pluginsCommand = plugins
         '@elizaos/plugin-redpill',
         '@elizaos/plugin-ollama',
         '@elizaos/plugin-venice',
+        '@fleek-platform/eliza-plugin-mcp',
       ];
 
       const availablePlugins = hardcodedPlugins.filter((name) => name.includes('plugin')).sort();

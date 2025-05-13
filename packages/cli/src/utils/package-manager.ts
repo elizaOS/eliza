@@ -87,36 +87,37 @@ export async function executeInstallation(
 
   logger.info(`Attempting to install package: ${packageName} using ${packageManager}`);
 
-  // Extract and normalize the plugin name
-  let baseName = packageName;
-  let pluginName = '';
-
-  // Handle organization/repo format
-  if (packageName.includes('/') && !packageName.startsWith('@')) {
-    const parts = packageName.split('/');
-    baseName = parts[parts.length - 1];
-  } else if (packageName.startsWith('@')) {
-    // Handle scoped package format
-    const parts = packageName.split('/');
-    if (parts.length > 1) {
-      baseName = parts[1];
-    }
-  }
-
-  // Special case: if the package is the CLI itself or core, don't add plugin- prefix
-  const isElizaCorePackage = baseName === 'cli' || baseName === 'core';
-
-  // For regular plugins, ensure they have the plugin- prefix
+  // Handle package name formatting
   let npmStylePackageName;
-  if (isElizaCorePackage) {
-    // Core packages like @elizaos/cli and @elizaos/core should be used as-is
-    npmStylePackageName = `@elizaos/${baseName}`;
-    pluginName = baseName; // Set pluginName for later use in the function
+  let pluginName;
+
+  // If it's a fully qualified package name (starts with @ and has /), use it as-is
+  if (packageName.startsWith('@') && packageName.includes('/')) {
+    npmStylePackageName = packageName;
+    pluginName = packageName.split('/')[1]; // Use the package name part for plugin name
   } else {
-    // Remove plugin- prefix if present and ensure proper format for plugins
-    baseName = baseName.replace(/^plugin-/, '');
-    pluginName = baseName.startsWith('plugin-') ? baseName : `plugin-${baseName}`;
-    npmStylePackageName = `@elizaos/${pluginName}`;
+    // Handle non-scoped packages or short names
+    let baseName = packageName;
+
+    // Handle organization/repo format without @
+    if (packageName.includes('/') && !packageName.startsWith('@')) {
+      const parts = packageName.split('/');
+      baseName = parts[parts.length - 1];
+    }
+
+    // Special case: if the package is the CLI itself or core, don't add plugin- prefix
+    const isElizaCorePackage = baseName === 'cli' || baseName === 'core';
+
+    if (isElizaCorePackage) {
+      // Core packages like @elizaos/cli and @elizaos/core should be used as-is
+      npmStylePackageName = `@elizaos/${baseName}`;
+      pluginName = baseName;
+    } else {
+      // For regular ElizaOS plugins, ensure proper format
+      baseName = baseName.replace(/^plugin-/, '');
+      pluginName = baseName.startsWith('plugin-') ? baseName : `plugin-${baseName}`;
+      npmStylePackageName = `@elizaos/${pluginName}`;
+    }
   }
 
   // 1. Try npm registry (if enabled)
