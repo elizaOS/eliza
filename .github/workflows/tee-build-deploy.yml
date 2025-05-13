@@ -91,7 +91,8 @@ jobs:
           phala-api-key: ${{ secrets.PHALA_CLOUD_API_KEY }}
 
           # Optional parameters (with defaults)
-          cvm-name: 'elizaos'
+          app-id: ${{ env.APP_ID || '' }} # App ID of existing CVM (if updating)
+          cvm-name: ''
           compose-file: './tee-docker-compose.yaml' # Default: './docker-compose.yml'
           vcpu: '4' # Default: '2'
           memory: '4096' # Default: '2048'
@@ -121,6 +122,5 @@ jobs:
             TEE_MODE: ${{ env.TEE_MODE || 'PRODUCTION' }}
             WALLET_SECRET_SALT: ${{ env.WALLET_SECRET_SALT }}
             TEE_VENDOR: ${{ env.TEE_VENDOR || 'phala' }}
-          app-id: ${{ env.APP_ID || '' }} # App ID of existing CVM to (if updating)
           node-id: '' # Node ID (Teepod ID: Default to available node id)
           base-image: '' # Base image to use for the CVM (Default to latest dstack image)
