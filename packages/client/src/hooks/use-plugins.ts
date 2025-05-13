@@ -40,6 +40,7 @@ export function usePlugins() {
         '@elizaos/plugin-redpill',
         '@elizaos/plugin-ollama',
         '@elizaos/plugin-venice',
+        '@fleek-platform/eliza-plugin-mcp',
       ]
         .filter((name) => name.includes('plugin'))
         .sort();

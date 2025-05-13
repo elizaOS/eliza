@@ -86,6 +86,21 @@ teardown() {
   grep '@elizaos/plugin-bootstrap' package.json
 }
 
+
+# Verifies that third-party plugins can be installed successfully
+@test "plugins add third-party plugin" {
+  run $ELIZAOS_CMD create proj-third-party-app --yes
+  echo "STDOUT: $output"
+  echo "STATUS: $status"
+  [ "$status" -eq 0 ]
+  cd proj-third-party-app
+  run $ELIZAOS_CMD plugins add @fleek-platform/eliza-plugin-mcp --no-env-prompt
+  echo "STDOUT: $output"
+  echo "STATUS: $status"
+  [ "$status" -eq 0 ]
+  grep '@fleek-platform/eliza-plugin-mcp' package.json
+}
+
 # Checks that the plugins help command displays usage information.
 @test "plugins --help shows usage" {
   run $ELIZAOS_CMD plugins --help
