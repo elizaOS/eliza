@@ -96,7 +96,7 @@ export async function sendMessageInChunks(
   content: string,
   _inReplyTo: string,
   files: Array<{ attachment: Buffer | string; name: string }>,
-  components?: DiscordActionRow[]
+  components?: any[]
 ): Promise<DiscordMessage[]> {
   const sentMessages: DiscordMessage[] = [];
   const messages = splitMessage(content);
@@ -138,22 +138,27 @@ export async function sendMessageInChunks(
 
             if (!Array.isArray(components)) {
               logger.warn('Components is not an array, skipping component processing');
-              continue;
-            }
-
-            if (components[0] && typeof components[0].toJSON === 'function') {
+              // Instead of continue, maybe return or handle differently?
+              // For now, let's proceed assuming it might be an empty message with components
+            } else if (
+              components.length > 0 &&
+              components[0] &&
+              typeof components[0].toJSON === 'function'
+            ) {
+              // If it looks like discord.js components, pass them directly
               options.components = components;
             } else {
+              // Otherwise, build components from the assumed DiscordActionRow[] structure
               const {
                 ActionRowBuilder,
                 ButtonBuilder,
                 StringSelectMenuBuilder,
               } = require('discord.js');
 
-              const discordComponents = components
+              const discordComponents = (components as DiscordActionRow[]) // Cast here for building logic
                 .map((row: DiscordActionRow) => {
-                  if (!row || typeof row !== 'object') {
-                    logger.warn('Invalid component row, skipping');
+                  if (!row || typeof row !== 'object' || row.type !== 1) {
+                    logger.warn('Invalid component row structure, skipping');
                     return null;
                   }
 
@@ -251,7 +256,8 @@ function splitMessage(content: string): string[] {
   const rawLines = content?.split('\n') || [];
   // split all lines into MAX_MESSAGE_LENGTH chunks so any long lines are split
   const lines = rawLines.flatMap((line) => {
-    const chunks = [];
+    // Explicitly type chunks as string[]
+    const chunks: string[] = [];
     while (line.length > MAX_MESSAGE_LENGTH) {
       chunks.push(line.slice(0, MAX_MESSAGE_LENGTH));
       line = line.slice(MAX_MESSAGE_LENGTH);

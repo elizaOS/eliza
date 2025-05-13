@@ -15,7 +15,7 @@ import { ServiceType } from '../types';
  */
 export const channelStateProvider: Provider = {
   name: 'channelState',
-  get: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
+  get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
     const room = state.data?.room ?? (await runtime.getRoom(message.roomId));
     if (!room) {
       throw new Error('No room found');
@@ -24,7 +24,7 @@ export const channelStateProvider: Provider = {
     // if message source is not discord, return
     if (message.content.source !== 'discord') {
       return {
-        data: null,
+        data: {},
         values: {},
         text: '',
       };
@@ -78,7 +78,24 @@ export const channelStateProvider: Provider = {
         };
       }
 
-      const guild = discordService.client.guilds.cache.get(serverId);
+      const guild = discordService.client?.guilds.cache.get(serverId);
+      if (!guild) {
+        console.warn(`Guild not found for serverId: ${serverId}`);
+        return {
+          data: {
+            room,
+            channelType,
+            serverId,
+            channelId,
+          },
+          values: {
+            channelType,
+            serverId,
+            channelId,
+          },
+          text: '',
+        };
+      }
       serverName = guild.name;
 
       responseText = `${agentName} is currently having a conversation in the channel \`@${channelId} in the server \`${serverName}\` (@${serverId})`;

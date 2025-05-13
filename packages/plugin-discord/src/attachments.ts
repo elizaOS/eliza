@@ -1,14 +1,7 @@
 import fs from 'node:fs';
 import { trimTokens } from '@elizaos/core';
 import { parseJSONObjectFromText } from '@elizaos/core';
-import {
-  type IAgentRuntime,
-  type IPdfService,
-  type IVideoService,
-  type Media,
-  ModelType,
-  ServiceType,
-} from '@elizaos/core';
+import { type IAgentRuntime, type Media, ModelType, ServiceType } from '@elizaos/core';
 import { type Attachment, Collection } from 'discord.js';
 import ffmpeg from 'fluent-ffmpeg';
 
@@ -128,7 +121,7 @@ export class AttachmentManager {
       media = await this.processImageAttachment(attachment);
     } else if (
       attachment.contentType?.startsWith('video/') ||
-      this.runtime.getService<IVideoService>(ServiceType.VIDEO).isVideoUrl(attachment.url)
+      (this.runtime.getService(ServiceType.VIDEO) as any)?.isVideoUrl(attachment.url)
     ) {
       media = await this.processVideoAttachment(attachment);
     } else {
@@ -173,7 +166,9 @@ export class AttachmentManager {
         text: transcription || 'Audio/video content not available',
       };
     } catch (error) {
-      console.error(`Error processing audio/video attachment: ${error.message}`);
+      if (error instanceof Error) {
+        console.error(`Error processing audio/video attachment: ${error.message}`);
+      }
       return {
         id: attachment.id,
         url: attachment.url,
@@ -246,9 +241,11 @@ export class AttachmentManager {
     try {
       const response = await fetch(attachment.url);
       const pdfBuffer = await response.arrayBuffer();
-      const text = await this.runtime
-        .getService<IPdfService>(ServiceType.PDF)
-        .convertPdfToText(Buffer.from(pdfBuffer));
+      const pdfService = this.runtime.getService(ServiceType.PDF) as any;
+      if (!pdfService) {
+        throw new Error('PDF service not found');
+      }
+      const text = await pdfService.convertPdfToText(Buffer.from(pdfBuffer));
       const { title, description } = await generateSummary(this.runtime, text);
 
       return {
@@ -260,7 +257,9 @@ export class AttachmentManager {
         text: text,
       };
     } catch (error) {
-      console.error(`Error processing PDF attachment: ${error.message}`);
+      if (error instanceof Error) {
+        console.error(`Error processing PDF attachment: ${error.message}`);
+      }
       return {
         id: attachment.id,
         url: attachment.url,
@@ -292,7 +291,11 @@ export class AttachmentManager {
         text: text,
       };
     } catch (error) {
-      console.error(`Error processing plaintext attachment: ${error.message}`);
+      if (error instanceof Error) {
+        console.error(`Error processing plaintext attachment: ${error.message}`);
+      } else {
+        console.error(`An unknown error occurred during plaintext attachment processing`);
+      }
       return {
         id: attachment.id,
         url: attachment.url,
@@ -327,7 +330,9 @@ export class AttachmentManager {
         text: description || 'Image content not available',
       };
     } catch (error) {
-      console.error(`Error processing image attachment: ${error.message}`);
+      if (error instanceof Error) {
+        console.error(`Error processing image attachment: ${error.message}`);
+      }
       return this.createFallbackImageMedia(attachment);
     }
   }
@@ -357,13 +362,21 @@ export class AttachmentManager {
    * @throws {Error} If video service is not available.
    */
   private async processVideoAttachment(attachment: Attachment): Promise<Media> {
-    const videoService = this.runtime.getService<IVideoService>(ServiceType.VIDEO);
+    const videoService = this.runtime.getService(ServiceType.VIDEO) as any;
 
     if (!videoService) {
-      throw new Error('Video service not found');
+      return {
+        id: attachment.id,
+        url: attachment.url,
+        title: 'Video Attachment (Service Unavailable)',
+        source: 'Video',
+        description:
+          'Could not process video attachment because the required service is not available.',
+        text: 'Video content not available',
+      };
     }
 
-    if (videoService.isVideoUrl(attachment.url)) {
+    if (typeof videoService.isVideoUrl === 'function' && videoService.isVideoUrl(attachment.url)) {
       const videoInfo = await videoService.processVideo(attachment.url, this.runtime);
       return {
         id: attachment.id,
