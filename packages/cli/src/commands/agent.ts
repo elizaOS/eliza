@@ -167,7 +167,7 @@ agent
   .description('Get agent details')
   .requiredOption('-n, --name <name>', 'agent id, name, or index number from list')
   .option('-j, --json', 'display agent configuration as JSON in the console')
-  .option('-o, --output <file>', 'output to file (default: {name}.json)')
+  .option('-o, --output [file]', 'save agent config to JSON (defaults to {name}.json)')
   .action(async (opts) => {
     try {
       const resolvedAgentId = await resolveAgentId(opts.name, opts);
@@ -185,23 +185,31 @@ agent
 
       const { data: agent } = (await response.json()) as ApiResponse<Agent>;
 
-      // The displayAgent function expects a character object
-      displayAgent(agent, 'Agent Details');
-
-      // check if json argument is provided
-      if (opts.json) {
-        // exclude id and status fields from the json
+      // Save to file if output option is specified - exit early
+      if (opts.output !== undefined) {
+        // Extract config without metadata fields
         const { id, createdAt, updatedAt, enabled, ...agentConfig } = agent;
-        // Display JSON in console instead of saving to file
-        console.log(JSON.stringify(agentConfig, null, 2));
-      }
 
-      if (opts.output) {
-        const jsonPath = opts.output || path.join(process.cwd(), `${agent.name || 'agent'}.json`);
-        // exclude id and status fields from the json
-        const { id, createdAt, updatedAt, enabled, ...agentConfig } = agent;
+        // Create filename with appropriate .json extension
+        const filename =
+          opts.output === true
+            ? `${agent.name || 'agent'}.json`
+            : `${String(opts.output)}${String(opts.output).endsWith('.json') ? '' : '.json'}`;
+
+        // Save file and exit
+        const jsonPath = path.resolve(process.cwd(), filename);
         fs.writeFileSync(jsonPath, JSON.stringify(agentConfig, null, 2));
         console.log(`Saved agent configuration to ${jsonPath}`);
+        process.exit(0);
+      }
+
+      // Display agent details if not using output option
+      displayAgent(agent, 'Agent Details');
+
+      // Display JSON if requested
+      if (opts.json) {
+        const { id, createdAt, updatedAt, enabled, ...agentConfig } = agent;
+        console.log(JSON.stringify(agentConfig, null, 2));
       }
 
       process.exit(0);
