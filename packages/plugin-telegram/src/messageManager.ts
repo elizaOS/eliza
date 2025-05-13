@@ -172,7 +172,7 @@ export class MessageManager {
         const sentMessage = (await ctx.telegram.sendMessage(ctx.chat.id, chunk, {
           reply_parameters:
             i === 0 && replyToMessageId ? { message_id: replyToMessageId } : undefined,
-          parse_mode: 'Markdown',
+          parse_mode: 'MarkdownV2',
           ...Markup.inlineKeyboard(telegramButtons),
         })) as Message.TextMessage;
 
