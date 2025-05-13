@@ -146,6 +146,7 @@ export const pluginsCommand = plugins
         '@elizaos/plugin-redpill',
         '@elizaos/plugin-ollama',
         '@elizaos/plugin-venice',
+        '@fleek-platform/eliza-plugin-mcp',
       ];
 
       const availablePlugins = hardcodedPlugins.filter((name) => name.includes('plugin')).sort();
@@ -190,49 +191,74 @@ plugins
         process.exit(0);
       }
 
+      // Handle third-party plugins (fully qualified npm package names)
+      if (plugin.startsWith('@') && plugin.includes('/')) {
+        const npmPackageNameWithTag = `${plugin}${opts.tag ? `@${opts.tag}` : ''}`;
+        logger.info(
+          `Attempting to install third-party plugin ${npmPackageNameWithTag} from npm registry...`
+        );
+        const installResult = await installPlugin(
+          npmPackageNameWithTag,
+          cwd,
+          opts.tag,
+          opts.branch
+        );
+
+        if (installResult) {
+          console.log(`Successfully installed third-party plugin ${npmPackageNameWithTag}`);
+          process.exit(0);
+        }
+        console.error(
+          `Failed to install third-party plugin ${npmPackageNameWithTag} from npm registry.`
+        );
+        process.exit(1);
+      }
+
+      // Handle official ElizaOS plugins
       const tag = getCliInstallTag();
       const versionTag = tag ? `@${tag}` : '@latest';
 
+      // First try registry lookup for official plugins
+      const repo = await getPluginRepository(plugin);
+
+      if (repo) {
+        logger.info(`Found plugin in registry, installing ${repo}...`);
+        const registryInstallResult = await installPlugin(repo, cwd, opts.tag, opts.branch);
+
+        if (registryInstallResult) {
+          console.log(`Successfully installed ${repo}`);
+          process.exit(0);
+        }
+        console.error(`Failed to install ${repo} from registry.`);
+      }
+
+      // If not in registry, try npm with @elizaos scope
       const normalizedPluginName = normalizePluginNameForDisplay(plugin);
       const npmPackageName = `@elizaos/${normalizedPluginName}`;
       const npmPackageNameWithTag = `${npmPackageName}${versionTag}`;
 
-      console.info(`Attempting to install ${npmPackageNameWithTag} from npm registry...`);
+      logger.info(
+        `Plugin not found in registry. Attempting to install ${npmPackageNameWithTag} from npm...`
+      );
+      const npmInstallResult = await installPlugin(npmPackageName, cwd, tag, opts.branch);
 
-      let success = await installPlugin(npmPackageName, cwd, tag, opts.branch);
-
-      if (success) {
+      if (npmInstallResult) {
         console.log(`Successfully installed ${npmPackageNameWithTag}`);
         process.exit(0);
       }
 
-      console.warn(
-        `Failed to install ${npmPackageNameWithTag} directly from npm. Trying registry lookup...`
-      );
+      // If we get here, all installation attempts failed
+      console.error(`Failed to install plugin ${plugin} from all sources.`);
 
-      const repo = await getPluginRepository(plugin);
-
-      if (!repo) {
-        console.error(`Plugin "${plugin}" not found in registry`);
-        console.info('\nYou can specify plugins in multiple formats:');
-        console.info('  - Just the name: ton');
-        console.info('  - With plugin- prefix: plugin-abc');
-        console.info('  - With organization: elizaos/plugin-abc');
-        console.info('  - Full package name: @elizaos-plugins/plugin-abc');
-        console.info('\nTry listing available plugins with:');
-        console.info('  npx elizaos project list-plugins');
-        process.exit(1);
-      }
-
-      console.info(`Installing ${repo}...`);
-      success = await installPlugin(repo, cwd, opts.tag, opts.branch);
-
-      if (success) {
-        console.log(`Successfully installed ${repo}`);
-      } else {
-        console.error(`Failed to install ${repo}`);
-        process.exit(1);
-      }
+      // Show help about plugin formats and exit
+      console.error(`Plugin "${plugin}" not found in registry`);
+      console.info('\nYou can specify plugins in multiple formats:');
+      console.info('  - Just the name: ton');
+      console.info('  - With plugin- prefix: plugin-ton');
+      console.info('  - With scope: elizaos/plugin-ton');
+      console.info('  - Full package name: @elizaos/plugin-ton');
+      console.info('  - Third-party package: @organization/plugin-name');
+      process.exit(1);
     } catch (error) {
       handleError(error);
     }

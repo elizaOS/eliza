@@ -30,14 +30,6 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Setup Turbo Cache
-        uses: actions/cache@v3
-        with:
-          path: .turbo
-          key: ${{ runner.os }}-turbo-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-turbo-
-
       - name: Build all packages
         run: bun turbo run build --filter=!@elizaos/docs
 
