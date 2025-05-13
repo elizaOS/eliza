@@ -98,12 +98,12 @@ jobs:
           memory: '4096' # Default: '2048'
           disk-size: '40' # Default: '40'
           envs: | # Environment variables in YAML format (will be converted to dotenv)
+            DOCKER_REGISTRY_USERNAME: ${{ env.DOCKER_REGISTRY_USERNAME }}
+            DOCKER_REGISTRY_PASSWORD: ${{ env.DOCKER_REGISTRY_PASSWORD }}
+            DOCKER_REGISTRY: ${{ env.DOCKER_REGISTRY }}
             OPENAI_API_KEY: ${{ env.OPENAI_API_KEY }}
             ANTHROPIC_API_KEY: ${{ env.ANTHROPIC_API_KEY }}
             SERVER_PORT: ${{ env.SERVER_PORT }}
-            POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
-            POSTGRES_USER: ${{ env.POSTGRES_USER }}
-            POSTGRES_DB: ${{ env.POSTGRES_DB }}
             EVM_CHAINS: ${{ env.EVM_CHAINS }}
             BIRDEYE_API_KEY: ${{ env.BIRDEYE_API_KEY }}
             COMMUNITY_MANAGER_DISCORD_APPLICATION_ID: ${{ env.COMMUNITY_MANAGER_DISCORD_APPLICATION_ID }}

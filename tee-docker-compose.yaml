@@ -26,6 +26,9 @@ services:
     volumes:
       - /var/run/tappd.sock:/var/run/tappd.sock
     environment:
+      - DOCKER_REGISTRY_USERNAME=${DOCKER_REGISTRY_USERNAME}
+      - DOCKER_REGISTRY_PASSWORD=${DOCKER_REGISTRY_PASSWORD}
+      - DOCKER_REGISTRY=${DOCKER_REGISTRY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - SERVER_PORT=${SERVER_PORT}
