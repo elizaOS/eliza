@@ -2,9 +2,7 @@
 
 setup() {
   export TEST_TMP_DIR="$(mktemp -d /var/tmp/eliza-test-plugins-XXXXXX)"
-  # Get absolute path to the CLI dist directory
-  CLI_DIST="$(cd "$(dirname "$BATS_TEST_FILENAME")" && cd ../dist && pwd)"
-  export ELIZAOS_CMD="${ELIZAOS_CMD:-bun run $CLI_DIST/index.js}"
+  export ELIZAOS_CMD="${ELIZAOS_CMD:-bun run "$(cd ../dist && pwd)/index.js"}"
   cd "$TEST_TMP_DIR"
 }
 
@@ -88,7 +86,7 @@ teardown() {
   grep '@elizaos/plugin-bootstrap' package.json
 }
 
-# Checks that the plugins help command displays usage information.
+
 # Verifies that third-party plugins can be installed successfully
 @test "plugins add third-party plugin" {
   run $ELIZAOS_CMD create proj-third-party-app --yes
@@ -103,6 +101,7 @@ teardown() {
   grep '@fleek-platform/eliza-plugin-mcp' package.json
 }
 
+# Checks that the plugins help command displays usage information.
 @test "plugins --help shows usage" {
   run $ELIZAOS_CMD plugins --help
   echo "STDOUT: $output"
