@@ -1,8 +1,7 @@
 import { describe, expect, it, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
-import { PgDatabaseAdapter } from '../../src/pg/adapter';
-import { PostgresConnectionManager } from '../../src/pg/manager';
+import { PgliteDatabaseAdapter } from '../../src/pglite/adapter';
+import { PGliteClientManager } from '../../src/pglite/manager';
 import { ChannelType, Agent, World, Room, type UUID } from '@elizaos/core';
-import { config } from '../config';
 import {
   taskTestAgentId,
   taskTestRoomId,
@@ -11,11 +10,10 @@ import {
   taskTestTaskDifferentRoom,
   taskTestTaskWithSpecificTags,
 } from './seed';
+import { setupMockedMigrations } from '../test-helpers';
 
-// Spy on runMigrations before any instance is created to prevent actual execution
-vi.spyOn(PostgresConnectionManager.prototype, 'runMigrations').mockImplementation(async () => {
-  console.log('Skipping runMigrations in test environment.');
-});
+// Setup mocked migrations before any tests run or instances are created
+setupMockedMigrations();
 
 // Mock only the logger
 vi.mock('@elizaos/core', async () => {
@@ -27,14 +25,15 @@ vi.mock('@elizaos/core', async () => {
       error: vi.fn(),
       warn: vi.fn(),
       success: vi.fn(),
+      info: vi.fn(),
     },
   };
 });
 
 describe('Task Integration Tests', () => {
   // Database connection variables
-  let connectionManager: PostgresConnectionManager;
-  let adapter: PgDatabaseAdapter;
+  let connectionManager: PGliteClientManager;
+  let adapter: PgliteDatabaseAdapter;
   let agentId: UUID = taskTestAgentId;
 
   // Test data
@@ -71,9 +70,9 @@ describe('Task Integration Tests', () => {
 
   beforeAll(async () => {
     // Initialize connection manager and adapter
-    connectionManager = new PostgresConnectionManager(config.DATABASE_URL);
+    connectionManager = new PGliteClientManager({});
     await connectionManager.initialize();
-    adapter = new PgDatabaseAdapter(agentId, connectionManager);
+    adapter = new PgliteDatabaseAdapter(agentId, connectionManager);
     await adapter.init();
 
     try {
@@ -97,7 +96,7 @@ describe('Task Integration Tests', () => {
 
   afterAll(async () => {
     // Clean up test data
-    const client = await connectionManager.getClient();
+    const client = connectionManager.getConnection();
     try {
       // Order matters for foreign key constraints
       await client.query(`DELETE FROM tasks WHERE "agent_id" = '${taskTestAgentId}'`);
@@ -106,21 +105,18 @@ describe('Task Integration Tests', () => {
       await client.query(`DELETE FROM agents WHERE id = '${taskTestAgentId}'`);
     } catch (error) {
       console.error('Error cleaning test data:', error);
-    } finally {
-      client.release();
     }
-
     // Close all connections
     await adapter.close();
   }, 10000);
 
   beforeEach(async () => {
     // Clean up any existing test tasks before each test
-    const client = await connectionManager.getClient();
+    const client = connectionManager.getConnection();
     try {
       await client.query(`DELETE FROM tasks WHERE "agent_id" = '${taskTestAgentId}'`);
-    } finally {
-      client.release();
+    } catch (error) {
+      console.error('Error cleaning test task data:', error);
     }
   });
 

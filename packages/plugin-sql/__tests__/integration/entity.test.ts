@@ -1,15 +1,13 @@
 import { describe, expect, it, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
-import { PgDatabaseAdapter } from '../../src/pg/adapter';
-import { PostgresConnectionManager } from '../../src/pg/manager';
-import { type UUID, type Entity, type Component } from '@elizaos/core';
-import { config } from '../config';
+import { PgliteDatabaseAdapter } from '../../src/pglite/adapter';
+import { PGliteClientManager } from '../../src/pglite/manager';
+import { type UUID, type Entity } from '@elizaos/core';
 import { entityTestAgentSettings, testEntities } from './seed';
 import { v4 } from 'uuid';
+import { setupMockedMigrations } from '../test-helpers';
 
-// Spy on runMigrations before any instance is created to prevent actual execution
-vi.spyOn(PostgresConnectionManager.prototype, 'runMigrations').mockImplementation(async () => {
-  console.log('Skipping runMigrations in test environment.');
-});
+// Setup mocked migrations before any tests run or instances are created
+setupMockedMigrations();
 
 // Mock only the logger
 vi.mock('@elizaos/core', async () => {
@@ -22,14 +20,15 @@ vi.mock('@elizaos/core', async () => {
       warn: vi.fn(),
       success: vi.fn(),
       trace: vi.fn(),
+      info: vi.fn(),
     },
   };
 });
 
 describe('Entity Integration Tests', () => {
   // Database connection variables
-  let connectionManager: PostgresConnectionManager;
-  let adapter: PgDatabaseAdapter;
+  let connectionManager: PGliteClientManager;
+  let adapter: PgliteDatabaseAdapter;
   let testAgentId: UUID;
 
   beforeAll(async () => {
@@ -37,9 +36,9 @@ describe('Entity Integration Tests', () => {
     testAgentId = entityTestAgentSettings.id as UUID;
 
     // Initialize connection manager and adapter
-    connectionManager = new PostgresConnectionManager(config.DATABASE_URL);
+    connectionManager = new PGliteClientManager({});
     await connectionManager.initialize();
-    adapter = new PgDatabaseAdapter(testAgentId, connectionManager);
+    adapter = new PgliteDatabaseAdapter(testAgentId, connectionManager);
     await adapter.init();
 
     // Ensure the test agent exists
@@ -48,11 +47,11 @@ describe('Entity Integration Tests', () => {
 
   afterAll(async () => {
     // Clean up any test agents
-    const client = await connectionManager.getClient();
+    const client = connectionManager.getConnection();
     try {
       await client.query(`DELETE FROM agents WHERE name = '${entityTestAgentSettings.name}'`);
     } finally {
-      client.release();
+      // No release needed for PGlite instance from getConnection like with pg PoolClient
     }
 
     // Close all connections
@@ -62,14 +61,10 @@ describe('Entity Integration Tests', () => {
   beforeEach(async () => {
     // Clean up any existing entity entries for our test agent
     try {
-      const client = await connectionManager.getClient();
-      try {
-        await client.query(`DELETE FROM entities WHERE "agentId" = '${testAgentId}'`);
-        // Also clean up components
-        await client.query(`DELETE FROM components WHERE "agentId" = '${testAgentId}'`);
-      } finally {
-        client.release();
-      }
+      const client = connectionManager.getConnection();
+      await client.query(`DELETE FROM entities WHERE "agentId" = '${testAgentId}'`);
+      // Also clean up components
+      await client.query(`DELETE FROM components WHERE "agentId" = '${testAgentId}'`);
     } catch (error) {
       console.error('Error cleaning test entity data:', error);
     }

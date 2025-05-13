@@ -1,14 +1,10 @@
 import { describe, expect, it, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
-import { PgDatabaseAdapter } from '../../src/pg/adapter';
-import { PostgresConnectionManager } from '../../src/pg/manager';
+import { PgliteDatabaseAdapter } from '../../src/pglite/adapter';
+import { PGliteClientManager } from '../../src/pglite/manager';
 import { type UUID } from '@elizaos/core';
-import { config } from '../config';
 import { cacheTestAgentSettings, testCacheEntries } from './seed';
-
-// Spy on runMigrations before any instance is created to prevent actual execution
-vi.spyOn(PostgresConnectionManager.prototype, 'runMigrations').mockImplementation(async () => {
-  console.log('Skipping runMigrations in test environment.');
-});
+import { setupMockedMigrations } from '../test-helpers';
+setupMockedMigrations();
 
 // Mock only the logger
 vi.mock('@elizaos/core', async () => {
@@ -20,14 +16,15 @@ vi.mock('@elizaos/core', async () => {
       error: vi.fn(),
       warn: vi.fn(),
       success: vi.fn(),
+      info: vi.fn(),
     },
   };
 });
 
 describe('Cache Integration Tests', () => {
   // Database connection variables
-  let connectionManager: PostgresConnectionManager;
-  let adapter: PgDatabaseAdapter;
+  let connectionManager: PGliteClientManager;
+  let adapter: PgliteDatabaseAdapter;
   let testAgentId: UUID;
 
   beforeAll(async () => {
@@ -35,9 +32,9 @@ describe('Cache Integration Tests', () => {
     testAgentId = cacheTestAgentSettings.id as UUID;
 
     // Initialize connection manager and adapter
-    connectionManager = new PostgresConnectionManager(config.DATABASE_URL);
+    connectionManager = new PGliteClientManager({});
     await connectionManager.initialize();
-    adapter = new PgDatabaseAdapter(testAgentId, connectionManager);
+    adapter = new PgliteDatabaseAdapter(testAgentId, connectionManager);
     await adapter.init();
 
     // Ensure the test agent exists
@@ -46,11 +43,11 @@ describe('Cache Integration Tests', () => {
 
   afterAll(async () => {
     // Clean up any test agents
-    const client = await connectionManager.getClient();
+    const client = connectionManager.getConnection();
     try {
       await client.query(`DELETE FROM agents WHERE name = '${cacheTestAgentSettings.name}'`);
     } finally {
-      client.release();
+      // No release needed for PGlite instance from getConnection like with pg PoolClient
     }
 
     // Close all connections
@@ -60,12 +57,8 @@ describe('Cache Integration Tests', () => {
   beforeEach(async () => {
     // Clean up any existing cache entries for our test agent
     try {
-      const client = await connectionManager.getClient();
-      try {
-        await client.query(`DELETE FROM cache WHERE "agentId" = '${testAgentId}'`);
-      } finally {
-        client.release();
-      }
+      const client = connectionManager.getConnection();
+      await client.query(`DELETE FROM cache WHERE "agentId" = '${testAgentId}'`);
     } catch (error) {
       console.error('Error cleaning test cache data:', error);
     }
@@ -84,15 +77,20 @@ describe('Cache Integration Tests', () => {
       expect(result).toBe(true);
 
       // Verify the cache was set in the database
-      const client = await connectionManager.getClient();
+      interface CacheRow {
+        value: string;
+        // Add other relevant fields from the cache table if necessary for type safety
+        [key: string]: any; // Allow other properties
+      }
+      const client = connectionManager.getConnection();
       try {
-        const dbResult = await client.query(
+        const dbResult = await client.query<CacheRow>(
           `SELECT * FROM cache WHERE "agentId" = '${testAgentId}' AND key = '${key}'`
         );
         expect(dbResult.rows.length).toBe(1);
         expect(dbResult.rows[0].value).toBe(value);
       } finally {
-        client.release();
+        // No release needed for PGlite instance from getConnection like with pg PoolClient
       }
     });
 
@@ -271,40 +269,29 @@ describe('Cache Integration Tests', () => {
   });
 
   describe('Error handling', () => {
-    // Skip error handling tests if they're causing problems with the test suite
-    // These are more appropriate for unit tests than integration tests
     it('should handle errors when setting cache', async () => {
-      // This test would be better implemented as a unit test
-      // where we can properly mock the internal database methods
       const result = await adapter.setCache('error_key', 'error_value');
       expect(typeof result).toBe('boolean');
     });
 
     it('should handle errors when getting cache', async () => {
-      // This test would be better implemented as a unit test
-      // where we can properly mock the internal database methods
       const result = await adapter.getCache('error_key');
       expect(result).toBeUndefined();
     });
 
     it('should handle errors when deleting cache', async () => {
-      // This test would be better implemented as a unit test
-      // where we can properly mock the internal database methods
       const result = await adapter.deleteCache('error_key');
       expect(typeof result).toBe('boolean');
     });
 
-    // Test with very large values that might cause issues
     it('should handle large payloads when setting cache', async () => {
-      // Create a large object but not too large to cause actual failures
       const largeObject = {
-        data: Array(1000).fill('x').join(''), // 1KB string
+        data: Array(1000).fill('x').join(''),
       };
 
       const result = await adapter.setCache('large_key', largeObject);
       expect(result).toBe(true);
 
-      // Verify we can retrieve it
       const retrieved = await adapter.getCache('large_key');
       expect(retrieved).toEqual(largeObject);
     });
