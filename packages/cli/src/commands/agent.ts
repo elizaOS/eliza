@@ -232,6 +232,20 @@ agent
   .option('--remote-character <url>', 'remote URL to character JSON file')
   .action(async (options) => {
     try {
+      // Consolidated error handling for missing/invalid inputs
+      // First check if we have enough info to start an agent
+      const hasValidInput =
+        options.path ||
+        options.remoteCharacter ||
+        (options.name && options.name !== true && options.name !== '') ||
+        options.json;
+
+      if (!hasValidInput) {
+        // If any required option is missing, show the consolidated help message
+        await showAgentStartHelp(options);
+        process.exit(1);
+      }
+
       // API Endpoint: POST /agents
       const response: Response = await (async () => {
         const payload: AgentStartPayload = {};
@@ -294,11 +308,16 @@ agent
         }
 
         if (characterName) {
-          const agentId = await resolveAgentId(characterName, options);
-          return await fetch(`${baseUrl}/${agentId}`, {
-            method: 'POST',
-            headers,
-          });
+          try {
+            const agentId = await resolveAgentId(characterName, options);
+            return await fetch(`${baseUrl}/${agentId}`, {
+              method: 'POST',
+              headers,
+            });
+          } catch (error) {
+            // If agent resolution fails, throw to the outer error handler
+            throw error;
+          }
         }
 
         // Default behavior: Start a default agent if no specific option is provided
@@ -317,22 +336,6 @@ agent
           console.error('Failed to parse error response as JSON:', jsonError);
           // Use status text if JSON parsing fails
           throw new Error(`Failed to start agent: ${response.statusText}`);
-        }
-
-        // Handle common errors with helpful messages
-        if (
-          errorData?.error?.code === 'CREATE_ERROR' &&
-          errorData?.error?.details === 'No character configuration provided'
-        ) {
-          console.error('\nError: No character configuration provided.');
-          console.error(
-            '\nTo start an agent, you need to provide character information using one of these options:'
-          );
-          console.error('  --path <file>              Path to a local character JSON file');
-          console.error('  --remote-character <url>   URL to a remote character JSON file');
-          console.error('  -n <name>                  Name of an existing agent to start');
-          console.error('\nExample: elizaos agent start --path ./character.json');
-          process.exit(1);
         }
 
         throw new Error(
@@ -355,50 +358,95 @@ agent
       // Only display one success message (no need for duplicates)
       console.log(`\x1b[32m✓ Agent ${agentName} started successfully!\x1b[0m`);
     } catch (error) {
-      // Check for agent not found error
-      if (error instanceof Error && error.message.startsWith('AGENT_NOT_FOUND:')) {
-        const agentName = error.message.split(':')[1];
-
-        // Get list of available agents to show as alternatives
-        try {
-          const agents = await getAgents(options);
-          console.error(`\nError: No agent found with name "${agentName}"`);
-
-          if (agents.length > 0) {
-            console.error('\nAvailable agents in your project:');
-            agents.forEach((agent, index) => {
-              console.error(`  ${index}. ${agent.name}`);
-            });
-            console.error('\nYou can start one of these agents with:');
-            console.error(`  elizaos agent start -n "AGENT_NAME"`);
-          } else {
-            console.error('\nNo agents found in your project.');
-          }
-
-          console.error('\nTo create a new agent, you can:');
-          console.error(
-            `  1. Use a character definition: elizaos agent start --path ./path/to/character.json`
-          );
-          console.error(
-            `  2. Use a remote character: elizaos agent start --remote-character https://example.com/character.json`
-          );
-          console.error(
-            `  3. Create a new character from Eliza agent template: elizaos create -t agent ${agentName.toLowerCase()}`
-          );
-          process.exit(1);
-        } catch (listError) {
-          // Fall back to basic error if we can't get the agent list
-          console.error(`\nError: No agent found with name "${agentName}"`);
-          console.error('\nTo create a new agent, provide a character definition:');
-          console.error(`  elizaos agent start --path ./path/to/character.json`);
-          process.exit(1);
-        }
+      // Check for agent not found error or any other error
+      // Just pass all errors to our consolidated handler
+      if (error instanceof Error) {
+        const errorMsg = error.message;
+        // If it's an agent not found error, extract the name for showing in the help message
+        const agentName = errorMsg.startsWith('AGENT_NOT_FOUND:')
+          ? errorMsg.split(':')[1]
+          : undefined;
+        await showAgentStartHelp(options, agentName);
+      } else {
+        await checkServer(options);
+        handleError(error);
       }
-
-      await checkServer(options);
-      handleError(error);
+      process.exit(1);
     }
   });
+
+// Helper function to display consolidated agent start help
+async function showAgentStartHelp(options: OptionValues, missingAgentName?: string): Promise<void> {
+  // First check if server is available
+  try {
+    await checkServer(options);
+  } catch (error) {
+    // If server isn't available, just show basic error
+    handleError(error);
+    return;
+  }
+
+  // If we have a specific agent name that wasn't found, show that error
+  if (missingAgentName) {
+    console.error(`\nError: No agent found with name "${missingAgentName}"`);
+  } else if (options.name === true || options.name === '') {
+    // If -n was provided without a value
+    console.error("\nError: option '-n, --name <n>' argument missing");
+  } else {
+    // Generic error for no options provided
+    console.error('\nError: No character configuration provided.');
+  }
+
+  // Get list of available agents to show as alternatives
+  try {
+    const agents = await getAgents(options);
+
+    if (agents.length > 0) {
+      console.error('\nAvailable agents in your project:');
+      agents.forEach((agent, index) => {
+        console.error(`  ${index}. ${agent.name}`);
+      });
+      console.error('\nYou can start one of these agents with:');
+      console.error(`  elizaos agent start -n "AGENT_NAME"`);
+    } else {
+      console.error('\nNo agents found in your project.');
+    }
+
+    console.error('\nTo start an agent, you need to provide one of these options:');
+    console.error('  --path <file>              Path to a local character JSON file');
+    console.error('  --remote-character <url>   URL to a remote character JSON file');
+    console.error('  -n, --name <n>             Name of an existing agent to start');
+
+    console.error('\nTo create a new agent, you can:');
+    console.error(
+      '  1. Use a character definition: elizaos agent start --path ./path/to/character.json'
+    );
+    console.error(
+      '  2. Use a remote character: elizaos agent start --remote-character https://example.com/character.json'
+    );
+
+    // If we have a specific agent name that wasn't found, suggest creating it
+    if (missingAgentName) {
+      console.error(
+        `  3. Create a new character from Eliza agent template: elizaos create -t agent ${missingAgentName.toLowerCase()}`
+      );
+    } else {
+      console.error(
+        '  3. Create a new character from Eliza agent template: elizaos create -t agent my-agent-name'
+      );
+    }
+  } catch (listError) {
+    // Fall back to basic error if we can't get the agent list
+    console.error('\nFailed to retrieve available agents.');
+    console.error(
+      '\nTo start an agent, you need to provide character information using one of these options:'
+    );
+    console.error('  --path <file>              Path to a local character JSON file');
+    console.error('  --remote-character <url>   URL to a remote character JSON file');
+    console.error('  -n, --name <n>             Name of an existing agent to start');
+    console.error('\nExample: elizaos agent start --path ./character.json');
+  }
+}
 
 agent
   .command('stop')
