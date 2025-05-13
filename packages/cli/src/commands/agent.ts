@@ -157,7 +157,7 @@ agent
         }
       }
 
-      process.exit(0);
+      return;
     } catch (error) {
       await checkServer(opts);
       handleError(error);
@@ -203,7 +203,7 @@ agent
         const jsonPath = path.resolve(process.cwd(), filename);
         fs.writeFileSync(jsonPath, JSON.stringify(agentConfig, null, 2));
         console.log(`Saved agent configuration to ${jsonPath}`);
-        process.exit(0);
+        return;
       }
 
       // Display agent details if not using output option
@@ -215,7 +215,7 @@ agent
         console.log(JSON.stringify(agentConfig, null, 2));
       }
 
-      process.exit(0);
+      return;
     } catch (error) {
       await checkServer(opts);
       handleError(error);
@@ -269,7 +269,8 @@ Required configuration:
             });
           }
         } catch (error) {
-          // Ignore errors when showing agents
+          await checkServer(options);
+          handleError(error);
         }
 
         // Use commander's built-in help
@@ -486,7 +487,7 @@ agent
 
       // Server returns 204 No Content for successful deletion, no need to parse response
       console.log(`Successfully removed agent ${opts.name}`);
-      process.exit(0);
+      return;
     } catch (error) {
       await checkServer(opts);
       handleError(error);

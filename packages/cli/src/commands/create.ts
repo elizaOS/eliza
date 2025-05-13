@@ -187,7 +187,7 @@ export const create = new Command()
           });
 
           if (!type) {
-            process.exit(0);
+            return;
           }
           projectType = type;
         }
@@ -247,7 +247,7 @@ export const create = new Command()
           });
 
           if (!nameResponse) {
-            process.exit(0);
+            return;
           }
           projectName = nameResponse;
         }
@@ -307,7 +307,8 @@ export const create = new Command()
           console.error(
             'Please choose a different name or manually remove the directory contents first.'
           );
-          process.exit(1);
+          handleError(new Error(`Directory "${projectName}" is not empty`));
+          return;
         } else {
           // Directory exists but is empty - this is fine
           console.info(
@@ -418,7 +419,8 @@ export const create = new Command()
 
         if (!database) {
           console.error('No database selected or provided');
-          process.exit(1);
+          handleError(new Error('No database selected or provided'));
+          return;
         }
 
         await copyTemplateUtil('project', targetDir, projectName);
@@ -459,7 +461,6 @@ export const create = new Command()
           `\nYour project is ready! Here\'s what you can do next:\n1. \`cd ${cdPath}\` to change into your project directory\n2. Run \`elizaos start\` to start your project\n3. Visit \`http://localhost:3000\` (or your custom port) to view your project in the browser`
         );
         process.stdout.write(`\u001B]1337;CurrentDir=${targetDir}\u0007`);
-        process.exit(0);
       }
     } catch (error) {
       handleError(error);
