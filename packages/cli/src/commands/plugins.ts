@@ -122,29 +122,33 @@ export const pluginsCommand = plugins
     try {
       // Temporarily return hardcoded plugins as an array
       const hardcodedPlugins = [
+        '@elizaos/core',
         '@elizaos/plugin-bootstrap',
-        '@elizaos/plugin-sql',
-        '@elizaos/plugin-twitter',
-        '@elizaos/plugin-telegram',
-        '@elizaos/plugin-discord',
-        '@elizaos/plugin-farcaster',
-        '@elizaos/plugin-redpill',
-        '@elizaos/plugin-groq',
-        '@elizaos/plugin-local-ai',
-        '@elizaos/plugin-anthropic',
-        '@elizaos/plugin-openai',
-        '@elizaos/plugin-solana',
         '@elizaos/plugin-evm',
-        '@elizaos/plugin-pdf',
+        '@elizaos/plugin-solana',
+        '@elizaos/plugin-tee',
+        '@elizaos/plugin-twitter',
+        '@elizaos/plugin-openai',
+        '@elizaos/plugin-telegram',
+        '@elizaos/cli',
+        '@elizaos/plugin-discord',
+        '@elizaos/plugin-elevenlabs',
+        '@elizaos/plugin-anthropic',
+        '@elizaos/plugin-local-ai',
+        '@elizaos/plugin-sql',
+        '@elizaos/the-org',
         '@elizaos/plugin-browser',
-        '@elizaos/plugin-s3-storage',
         '@elizaos/plugin-video-understanding',
+        '@elizaos/plugin-pdf',
+        '@elizaos/plugin-storage-s3',
+        '@elizaos/plugin-farcaster',
+        '@elizaos/plugin-groq',
+        '@elizaos/plugin-redpill',
+        '@elizaos/plugin-ollama',
         '@elizaos/plugin-venice',
       ];
 
-      const availablePlugins = hardcodedPlugins
-        .filter((name) => !opts.type || name.includes(opts.type))
-        .sort();
+      const availablePlugins = hardcodedPlugins.filter((name) => name.includes('plugin')).sort();
 
       logHeader('Available plugins');
       for (const pluginName of availablePlugins) {

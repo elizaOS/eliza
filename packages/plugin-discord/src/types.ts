@@ -113,7 +113,8 @@ export interface DiscordEventPayloadMap {
  * @property {Character} character - The character object.
  */
 export interface IDiscordService {
-  client: DiscordJsClient;
+  // Allow client to be null to handle initialization failures
+  client: DiscordJsClient | null;
   character: Character;
 }
 

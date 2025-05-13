@@ -321,6 +321,7 @@
         "@discordjs/opus": "^0.10.0",
         "@discordjs/rest": "2.4.0",
         "@discordjs/voice": "0.18.0",
+        "@elizaos/core": "^1.0.0-beta.49",
         "discord.js": "14.16.3",
         "get-func-name": "^3.0.0",
         "node-opus": "^0.3.3",
@@ -406,6 +407,7 @@
       "name": "@elizaos/plugin-telegram",
       "version": "1.0.0-beta.49",
       "dependencies": {
+        "@elizaos/core": "^1.0.0-beta.49",
         "@telegraf/types": "7.1.0",
         "strip-literal": "^3.0.0",
         "telegraf": "4.16.3",
