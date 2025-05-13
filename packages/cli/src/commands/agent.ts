@@ -166,7 +166,7 @@ agent
   .alias('g')
   .description('Get agent details')
   .requiredOption('-n, --name <name>', 'agent id, name, or index number from list')
-  .option('-j, --json', 'output as JSON')
+  .option('-j, --json', 'display agent configuration as JSON in the console')
   .option('-o, --output <file>', 'output to file (default: {name}.json)')
   .action(async (opts) => {
     try {
@@ -190,6 +190,13 @@ agent
 
       // check if json argument is provided
       if (opts.json) {
+        // exclude id and status fields from the json
+        const { id, createdAt, updatedAt, enabled, ...agentConfig } = agent;
+        // Display JSON in console instead of saving to file
+        console.log(JSON.stringify(agentConfig, null, 2));
+      }
+
+      if (opts.output) {
         const jsonPath = opts.output || path.join(process.cwd(), `${agent.name || 'agent'}.json`);
         // exclude id and status fields from the json
         const { id, createdAt, updatedAt, enabled, ...agentConfig } = agent;
