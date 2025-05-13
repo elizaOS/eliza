@@ -4,11 +4,10 @@ import {
   EventType,
   type HandlerCallback,
   type IAgentRuntime,
-  type IBrowserService,
-  type IVideoService,
   type Media,
   type Memory,
   ServiceType,
+  type UUID,
   createUniqueUuid,
   logger,
 } from '@elizaos/core';
@@ -20,7 +19,7 @@ import {
   type TextChannel,
 } from 'discord.js';
 import { AttachmentManager } from './attachments';
-import { DiscordEventTypes, DiscordActionRow, DiscordComponentOptions } from './types';
+import { DiscordEventTypes } from './types';
 import { canSendMessage, sendMessageInChunks } from './utils';
 
 /**
@@ -75,7 +74,7 @@ export class MessageManager {
 
     if (
       this.runtime.character.settings?.discord?.shouldRespondOnlyToMentions &&
-      !message.mentions.users?.has(this.client.user?.id)
+      (!this.client.user?.id || !message.mentions.users?.has(this.client.user.id))
     ) {
       return;
     }
@@ -115,7 +114,7 @@ export class MessageManager {
       channelId: message.channel.id,
       serverId,
       type,
-      worldId: createUniqueUuid(this.runtime, serverId) as UUID,
+      worldId: createUniqueUuid(this.runtime, serverId ?? roomId) as UUID,
       worldName: message.guild?.name,
     });
 
@@ -206,7 +205,12 @@ export class MessageManager {
           }
 
           try {
-            const messages = await sendMessageInChunks(channel, content.text, message.id, files);
+            const messages = await sendMessageInChunks(
+              channel,
+              content.text ?? '',
+              message.id!,
+              files
+            );
 
             const memories: Memory[] = [];
             for (const m of messages) {
@@ -254,6 +258,7 @@ export class MessageManager {
             clearInterval(typingData.interval);
             typingData.cleared = true;
           }
+          return [];
         }
       };
 
@@ -323,12 +328,9 @@ export class MessageManager {
     const urls = processedContent.match(urlRegex) || [];
 
     for (const url of urls) {
-      if (this.runtime.getService<IVideoService>(ServiceType.VIDEO)?.isVideoUrl(url)) {
-        const videoService = this.runtime.getService<IVideoService>(ServiceType.VIDEO);
-        if (!videoService) {
-          logger.warn('Video service not found');
-          continue;
-        }
+      // Use string literal type for getService, assume methods exist at runtime
+      const videoService = this.runtime.getService(ServiceType.VIDEO) as any; // Cast to any
+      if (videoService?.isVideoUrl(url)) {
         const videoInfo = await videoService.processVideo(url, this.runtime);
 
         attachments.push({
@@ -340,7 +342,8 @@ export class MessageManager {
           text: videoInfo.text,
         });
       } else {
-        const browserService = this.runtime.getService<IBrowserService>(ServiceType.BROWSER);
+        // Use string literal type for getService, assume methods exist at runtime
+        const browserService = this.runtime.getService(ServiceType.BROWSER) as any; // Cast to any
         if (!browserService) {
           logger.warn('Browser service not found');
           continue;

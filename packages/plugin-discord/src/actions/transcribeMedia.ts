@@ -165,7 +165,7 @@ export const transcribeMedia: Action = {
     const attachment = recentMessages
       .filter((msg) => msg.content.attachments && msg.content.attachments.length > 0)
       .flatMap((msg) => msg.content.attachments)
-      .find((attachment) => attachment.id.toLowerCase() === attachmentId.toLowerCase());
+      .find((attachment) => attachment?.id.toLowerCase() === attachmentId.toLowerCase());
 
     if (!attachment) {
       console.error(`Couldn't find attachment with ID ${attachmentId}`);

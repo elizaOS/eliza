@@ -4,7 +4,6 @@ import {
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
-  type IVideoService,
   type Memory,
   ModelType,
   ServiceType,
@@ -98,7 +97,12 @@ export const downloadMedia: Action = {
     _options: any,
     callback: HandlerCallback
   ) => {
-    const videoService = runtime.getService<IVideoService>(ServiceType.VIDEO);
+    const videoService = runtime.getService(ServiceType.VIDEO) as any;
+
+    if (!videoService) {
+      console.error('Video service not found');
+      return;
+    }
 
     const mediaUrl = await getMediaUrl(runtime, message, state);
     if (!mediaUrl) {
