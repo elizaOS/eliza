@@ -6,21 +6,22 @@ services:
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_USER=postgres
       - POSTGRES_DB=eliza
+      - PGDATA=/var/lib/postgresql/data/pgdata
     volumes:
       - postgres-data:/var/lib/postgresql/data:rw
     ports:
       - '127.0.0.1:5432:5432'
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: always
     networks:
       - eliza-network
-    restart: always
-  eliza:
+
+  elizaos:
     image: ${DOCKER_IMAGE_FULL_NAME}
-    container_name: elizav2
     command: bun run start
     volumes:
       - /var/run/tappd.sock:/var/run/tappd.sock

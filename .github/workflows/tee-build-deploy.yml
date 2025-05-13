@@ -19,6 +19,7 @@ on:
 
 env:
   APP_NAME: ${{ vars.APP_NAME || secrets.APP_NAME }}
+  APP_ID: ${{ vars.APP_ID || secrets.APP_ID }}
   DOCKER_USERNAME: ${{ vars.DOCKER_USERNAME || secrets.DOCKER_USERNAME }}
   DOCKER_IMAGE: ${{ vars.DOCKER_IMAGE || secrets.DOCKER_IMAGE }}
   DOCKER_REGISTRY: ${{ vars.DOCKER_REGISTRY || secrets.DOCKER_REGISTRY || 'docker.io' }}
@@ -90,11 +91,11 @@ jobs:
           phala-api-key: ${{ secrets.PHALA_CLOUD_API_KEY }}
 
           # Optional parameters (with defaults)
-          cvm-name: ''
-          compose-file: './api-server/docker-compose.yml' # Default: './docker-compose.yml'
+          cvm-name: 'elizaos'
+          compose-file: './tee-docker-compose.yaml' # Default: './docker-compose.yml'
           vcpu: '4' # Default: '2'
           memory: '4096' # Default: '2048'
-          disk-size: '10' # Default: '40'
+          disk-size: '40' # Default: '40'
           envs: | # Environment variables in YAML format (will be converted to dotenv)
             OPENAI_API_KEY: ${{ env.OPENAI_API_KEY }}
             ANTHROPIC_API_KEY: ${{ env.ANTHROPIC_API_KEY }}
@@ -120,6 +121,6 @@ jobs:
             TEE_MODE: ${{ env.TEE_MODE || 'PRODUCTION' }}
             WALLET_SECRET_SALT: ${{ env.WALLET_SECRET_SALT }}
             TEE_VENDOR: ${{ env.TEE_VENDOR || 'phala' }}
-          app-id: '' # App ID of existing CVM to (if updating)
-          node-id: '' # Node ID (Teepod ID)
-          base-image: '' # Base image to use for the CVM
+          app-id: ${{ env.APP_ID || '' }} # App ID of existing CVM to (if updating)
+          node-id: '' # Node ID (Teepod ID: Default to available node id)
+          base-image: '' # Base image to use for the CVM (Default to latest dstack image)
