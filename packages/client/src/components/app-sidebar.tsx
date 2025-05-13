@@ -375,7 +375,7 @@ export function AppSidebar() {
           <FooterLink to="https://eliza.how/" Icon={Book} label="Documentation" />
           <FooterLink to="/logs" Icon={TerminalIcon} label="Logs" />
           <FooterLink to="/settings" Icon={Cog} label="Settings" />
-          <ConnectionStatus className="sidebar-connection-status" />
+          <ConnectionStatus />
         </SidebarMenu>
       </SidebarFooter>
     </Sidebar>
