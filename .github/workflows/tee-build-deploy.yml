@@ -50,7 +50,7 @@ env:
   TEE_MODE: ${{ vars.TEE_MODE || secrets.TEE_MODE || 'PRODUCTION' }}
   WALLET_SECRET_SALT: ${{ vars.WALLET_SECRET_SALT || secrets.WALLET_SECRET_SALT }}
   TEE_VENDOR: ${{ vars.TEE_VENDOR || secrets.TEE_VENDOR || 'phala' }}
-
+  TELEGRAM_BOT_TOKEN: ${{ vars.TELEGRAM_BOT_TOKEN || secrets.TELEGRAM_BOT_TOKEN }}
 jobs:
   build-and-push:
     permissions:
@@ -122,5 +122,6 @@ jobs:
             TEE_MODE: ${{ env.TEE_MODE || 'PRODUCTION' }}
             WALLET_SECRET_SALT: ${{ env.WALLET_SECRET_SALT }}
             TEE_VENDOR: ${{ env.TEE_VENDOR || 'phala' }}
+            TELEGRAM_BOT_TOKEN: ${{ env.TELEGRAM_BOT_TOKEN }}
           node-id: '' # Node ID (Teepod ID: Default to available node id)
           base-image: '' # Base image to use for the CVM (Default to latest dstack image)
