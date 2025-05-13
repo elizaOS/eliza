@@ -8,7 +8,7 @@ import {
   entersState,
 } from '@discordjs/voice';
 import { type IAgentRuntime, ModelType, type TestSuite, logger } from '@elizaos/core';
-import { ChannelType, Events, type TextChannel } from 'discord.js';
+import { ChannelType, Events, type TextChannel, AttachmentBuilder } from 'discord.js';
 import type { DiscordService } from './service';
 import { ServiceType } from './types';
 import { sendMessageInChunks } from './utils';
@@ -249,7 +249,8 @@ export class DiscordTestSuite implements TestSuite {
       if (!channel || !channel.isTextBased()) {
         throw new Error('Cannot send message to a non-text channel.');
       }
-      await this.sendMessageToChannel(channel as TextChannel, 'Testing Message', [TEST_IMAGE_URL]);
+      const attachment = new AttachmentBuilder(TEST_IMAGE_URL);
+      await this.sendMessageToChannel(channel as TextChannel, 'Testing Message', [attachment]);
     } catch (error) {
       throw new Error(`Error in sending text message: ${error}`);
     }
