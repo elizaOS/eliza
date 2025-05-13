@@ -18,6 +18,7 @@
     "dist"
   ],
   "dependencies": {
+    "@elizaos/core": "^1.0.0-beta.49",
     "@telegraf/types": "7.1.0",
     "strip-literal": "^3.0.0",
     "telegraf": "4.16.3",
