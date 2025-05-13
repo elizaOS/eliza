@@ -382,6 +382,9 @@ agent
           console.error(
             `  2. Use a remote character: elizaos agent start --remote-character https://example.com/character.json`
           );
+          console.error(
+            `  3. Create a new character from Eliza agent template: elizaos create -t agent ${agentName.toLowerCase()}`
+          );
           process.exit(1);
         } catch (listError) {
           // Fall back to basic error if we can't get the agent list
