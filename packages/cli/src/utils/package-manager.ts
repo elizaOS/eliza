@@ -87,62 +87,42 @@ export async function executeInstallation(
 
   logger.info(`Attempting to install package: ${packageName} using ${packageManager}`);
 
-  // Handle package name formatting
-  let npmStylePackageName;
-  let pluginName;
+  // Determine the package name to use for installation
+  let npmStylePackageName = packageName;
+  let pluginName = packageName;
 
-  // If it's a fully qualified package name (starts with @ and has /), use it as-is
-  if (packageName.startsWith('@') && packageName.includes('/')) {
-    npmStylePackageName = packageName;
-    pluginName = packageName.split('/')[1]; // Use the package name part for plugin name
-  } else {
-    // Handle non-scoped packages or short names
-    let baseName = packageName;
+  // Only transform non-scoped packages
+  if (!packageName.startsWith('@')) {
+    // Handle organization/repo format (e.g., 'elizaos/plugin-name')
+    const parts = packageName.includes('/') ? packageName.split('/') : [null, packageName];
+    const baseName = parts[parts.length - 1].replace(/^plugin-/, '');
 
-    // Handle organization/repo format without @
-    if (packageName.includes('/') && !packageName.startsWith('@')) {
-      const parts = packageName.split('/');
-      baseName = parts[parts.length - 1];
-    }
-
-    // Special case: if the package is the CLI itself or core, don't add plugin- prefix
-    const isElizaCorePackage = baseName === 'cli' || baseName === 'core';
-
-    if (isElizaCorePackage) {
-      // Core packages like @elizaos/cli and @elizaos/core should be used as-is
+    // Special case: CLI and core packages
+    if (baseName === 'cli' || baseName === 'core') {
       npmStylePackageName = `@elizaos/${baseName}`;
       pluginName = baseName;
     } else {
-      // For regular ElizaOS plugins, ensure proper format
-      baseName = baseName.replace(/^plugin-/, '');
-      pluginName = baseName.startsWith('plugin-') ? baseName : `plugin-${baseName}`;
+      // Regular ElizaOS plugins
+      pluginName = `plugin-${baseName}`;
       npmStylePackageName = `@elizaos/${pluginName}`;
     }
   }
 
   // 1. Try npm registry (if enabled)
   if (options.tryNpm !== false) {
-    // Format the package name with version if provided
-    let packageWithVersion;
-
-    // Special formatting for version string - make sure we use exact version format
-    if (versionOrTag) {
-      // Check if it already starts with @ or # (tag or git ref)
-      if (versionOrTag.startsWith('@') || versionOrTag.startsWith('#')) {
-        packageWithVersion = `${npmStylePackageName}${versionOrTag}`;
-      } else {
-        // When it's a specific version like "1.0.0-beta.41", use @1.0.0-beta.41 format
-        packageWithVersion = `${npmStylePackageName}@${versionOrTag}`;
-      }
-    } else {
-      packageWithVersion = npmStylePackageName;
-    }
+    // Format the package name with version
+    const packageWithVersion = versionOrTag
+      ? `${npmStylePackageName}${
+          versionOrTag.startsWith('@') || versionOrTag.startsWith('#')
+            ? versionOrTag
+            : `@${versionOrTag}`
+        }`
+      : npmStylePackageName;
 
     logger.debug(
       `Installing ${packageWithVersion} from npm registry using ${packageManager} in ${directory}`
     );
 
-    // Try to install from npm
     try {
       await execa(packageManager, [...installCommand, packageWithVersion], {
         cwd: directory,

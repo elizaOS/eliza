@@ -78,17 +78,8 @@ async function attemptInstallation(
   logger.info(`Attempting to install plugin ${context}...`);
 
   try {
-    // For third-party plugins (fully qualified npm packages), preserve the original name
-    const isThirdParty = packageName.startsWith('@') && packageName.includes('/');
-    const targetPackageName = isThirdParty ? packageName : packageName;
-
     // Use centralized installation function which now returns success status and identifier
-    const installResult = await executeInstallation(
-      targetPackageName,
-      versionString,
-      directory,
-      options
-    );
+    const installResult = await executeInstallation(packageName, versionString, directory, options);
 
     // If installation failed, return false immediately
     if (!installResult.success || !installResult.installedIdentifier) {
@@ -96,10 +87,11 @@ async function attemptInstallation(
       return false;
     }
 
-    // Installation succeeded, now verify the import using the correct identifier
-    const identifier = isThirdParty ? targetPackageName : installResult.installedIdentifier;
-    logger.info(`Installation successful for ${identifier}, verifying import...`);
-    return await verifyPluginImport(identifier, context);
+    // Installation succeeded, now verify the import
+    logger.info(
+      `Installation successful for ${installResult.installedIdentifier}, verifying import...`
+    );
+    return await verifyPluginImport(installResult.installedIdentifier, context);
   } catch (installError) {
     // Catch any unexpected errors during the process
     logger.warn(`Error during installation attempt ${context}: ${installError.message}`);
