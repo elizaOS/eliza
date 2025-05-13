@@ -80,11 +80,14 @@ async function resolveAgentId(idOrNameOrIndex: string, opts: OptionValues): Prom
 
   // Try to find agent by index
   if (!Number.isNaN(Number(idOrNameOrIndex))) {
-    return agents[Number(idOrNameOrIndex)].id;
+    const indexAgent = agents[Number(idOrNameOrIndex)];
+    if (indexAgent) {
+      return indexAgent.id;
+    }
   }
 
-  // If no agent is found, throw an error
-  console.error(`Agent not found: ${idOrNameOrIndex}`);
+  // If no agent is found, throw a specific error type that we can catch
+  throw new Error(`AGENT_NOT_FOUND:${idOrNameOrIndex}`);
 }
 
 export const agent = new Command()
@@ -229,19 +232,11 @@ agent
   .option('--remote-character <url>', 'remote URL to character JSON file')
   .action(async (options) => {
     try {
-      console.debug('Starting agent start command action handler');
-      console.debug('Options object:', JSON.stringify(options));
-      console.debug('path option value:', options.path);
-      console.debug('name option value:', options.name);
-      console.debug('json option value:', options.json ? '[JSON string present]' : undefined);
-      console.debug('remoteCharacter option value:', options.remoteCharacter);
-
       // API Endpoint: POST /agents
       const response: Response = await (async () => {
         const payload: AgentStartPayload = {};
         const headers = { 'Content-Type': 'application/json' };
         const baseUrl = getAgentsBaseUrl(options);
-        console.debug(`Base URL determined: ${baseUrl}`);
 
         let characterName = null;
 
@@ -257,17 +252,13 @@ agent
 
         // Handle the path option first
         if (options.path) {
-          console.debug('Using local path option:', options.path);
           try {
             const filePath = path.resolve(process.cwd(), options.path);
-            console.debug(`Resolved file path: ${filePath}`);
             if (!fs.existsSync(filePath)) {
               throw new Error(`File not found at path: ${filePath}`);
             }
             const fileContent = fs.readFileSync(filePath, 'utf8');
-            console.debug(`Read file content, size: ${fileContent.length} bytes`);
             payload.characterJson = JSON.parse(fileContent);
-            console.debug('Parsed character JSON from file');
             characterName = await createCharacter(payload);
           } catch (error) {
             console.error('Error reading or parsing local JSON file:', error);
@@ -277,10 +268,8 @@ agent
 
         // Then handle other options
         if (options.json) {
-          console.debug('Using JSON string option');
           try {
             payload.characterJson = JSON.parse(options.json);
-            console.debug('Parsed character JSON string');
             characterName = await createCharacter(payload);
           } catch (error) {
             console.error('Error parsing JSON string:', error);
@@ -289,7 +278,6 @@ agent
         }
 
         if (options.remoteCharacter) {
-          console.debug('Using remote character URL option');
           if (
             !options.remoteCharacter.startsWith('http://') &&
             !options.remoteCharacter.startsWith('https://')
@@ -298,25 +286,21 @@ agent
             throw new Error('Remote URL must start with http:// or https://');
           }
           payload.characterPath = options.remoteCharacter;
-          console.debug('Using remote character URL:', payload.characterPath);
           characterName = await createCharacter(payload);
         }
 
         if (options.name) {
           characterName = options.name;
-          console.debug('Using name option:', options.name);
         }
 
         if (characterName) {
           const agentId = await resolveAgentId(characterName, options);
-          console.debug(`Resolved agent ID: ${agentId} for name: ${options.name}`);
           return await fetch(`${baseUrl}/${agentId}`, {
             method: 'POST',
             headers,
           });
         }
 
-        console.debug('No specific start option provided, starting default agent');
         // Default behavior: Start a default agent if no specific option is provided
         return await fetch(baseUrl, {
           method: 'POST',
@@ -325,17 +309,32 @@ agent
         });
       })();
 
-      console.debug(`Response status: ${response.status} ${response.statusText}`);
       if (!response.ok) {
         let errorData: ApiResponse<unknown> | null = null;
         try {
           errorData = (await response.json()) as ApiResponse<unknown>;
-          console.debug('Received error data from server:', errorData);
         } catch (jsonError) {
           console.error('Failed to parse error response as JSON:', jsonError);
           // Use status text if JSON parsing fails
           throw new Error(`Failed to start agent: ${response.statusText}`);
         }
+
+        // Handle common errors with helpful messages
+        if (
+          errorData?.error?.code === 'CREATE_ERROR' &&
+          errorData?.error?.details === 'No character configuration provided'
+        ) {
+          console.error('\nError: No character configuration provided.');
+          console.error(
+            '\nTo start an agent, you need to provide character information using one of these options:'
+          );
+          console.error('  --path <file>              Path to a local character JSON file');
+          console.error('  --remote-character <url>   URL to a remote character JSON file');
+          console.error('  -n <name>                  Name of an existing agent to start');
+          console.error('\nExample: elizaos agent start --path ./character.json');
+          process.exit(1);
+        }
+
         throw new Error(
           errorData?.error?.message || `Failed to start agent: ${response.statusText}`
         );
@@ -343,22 +342,56 @@ agent
 
       // Type assertion to handle the specific structure returned by the start endpoint
       const data = (await response.json()) as ApiResponse<any>;
-      console.debug('Received successful response data:', data);
       const result = data.data;
 
       if (!result) {
         console.error('Server responded OK, but no agent data was returned');
         throw new Error('Failed to start agent: No data returned from server');
       }
-      console.debug('Agent start successful, result:', result);
 
-      // Correctly access the agent name from the nested character object
-      const agentName = result?.character?.name || 'unknown';
-      console.debug(`Successfully started agent ${agentName}`);
-      logger.success(`Agent ${agentName} started successfully!`);
+      // Get agent name from the response (either directly or from nested character)
+      const agentName = result.name || result?.character?.name || 'unknown';
+
+      // Only display one success message (no need for duplicates)
       console.log(`\x1b[32m✓ Agent ${agentName} started successfully!\x1b[0m`);
     } catch (error) {
-      console.error('Error in agent start command:', error);
+      // Check for agent not found error
+      if (error instanceof Error && error.message.startsWith('AGENT_NOT_FOUND:')) {
+        const agentName = error.message.split(':')[1];
+
+        // Get list of available agents to show as alternatives
+        try {
+          const agents = await getAgents(options);
+          console.error(`\nError: No agent found with name "${agentName}"`);
+
+          if (agents.length > 0) {
+            console.error('\nAvailable agents in your project:');
+            agents.forEach((agent, index) => {
+              console.error(`  ${index}. ${agent.name}`);
+            });
+            console.error('\nYou can start one of these agents with:');
+            console.error(`  elizaos agent start -n "AGENT_NAME"`);
+          } else {
+            console.error('\nNo agents found in your project.');
+          }
+
+          console.error('\nTo create a new agent, you can:');
+          console.error(
+            `  1. Use a character definition: elizaos agent start --path ./path/to/character.json`
+          );
+          console.error(
+            `  2. Use a remote character: elizaos agent start --remote-character https://example.com/character.json`
+          );
+          process.exit(1);
+        } catch (listError) {
+          // Fall back to basic error if we can't get the agent list
+          console.error(`\nError: No agent found with name "${agentName}"`);
+          console.error('\nTo create a new agent, provide a character definition:');
+          console.error(`  elizaos agent start --path ./path/to/character.json`);
+          process.exit(1);
+        }
+      }
+
       await checkServer(options);
       handleError(error);
     }
