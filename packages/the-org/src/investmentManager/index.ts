@@ -32,8 +32,9 @@ const character: Character = {
   name: 'Spartan',
   plugins: [
     '@elizaos/plugin-sql',
-    '@elizaos/plugin-anthropic',
-    '@elizaos/plugin-openai',
+    ...(process.env.ANTHROPIC_API_KEY ? ['@elizaos/plugin-anthropic'] : []),
+    ...(process.env.OPENAI_API_KEY ? ['@elizaos/plugin-openai'] : []),
+    ...(!process.env.OPENAI_API_KEY ? ['@elizaos/plugin-local-ai'] : []),
     '@elizaos/plugin-discord',
     '@elizaos/plugin-twitter',
     '@elizaos/plugin-pdf',
