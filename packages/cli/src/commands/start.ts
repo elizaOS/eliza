@@ -760,9 +760,7 @@ export const start = new Command()
   )
   .option('-b, --build', 'Build the project before starting')
   .option('-chars, --characters [paths...]', 'Multiple character files (comma or space-separated)')
-  .addOption(
-    new Option('-p, --port <port>', 'Port to listen on').argParser((val) => Number.parseInt(val))
-  )
+  .option('-p, --port <port>', 'Port to listen on', parseInt)
   .hook('preAction', async () => {
     await displayBanner();
   })
