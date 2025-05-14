@@ -1698,15 +1698,11 @@ export function agentRouter(
           };
 
           // Add knowledge to agent
-          await runtime.addKnowledge(
-            knowledgeItem,
-            undefined, // Default processing options
-            {
-              roomId: undefined,
-              worldId: effectiveWorldId, // Use the ensured effectiveWorldId
-              entityId: entityId,
-            }
-          );
+          await runtime.addKnowledge(knowledgeItem, undefined, {
+            roomId: undefined,
+            worldId: runtime.agentId,
+            entityId: runtime.agentId,
+          });
 
           // Clean up temp file immediately after successful processing
           if (file.path && fs.existsSync(file.path)) {
