@@ -58,7 +58,7 @@ A curated list of awesome things related to the [eliza framework](https://github
 
 ## 📚 Tutorials and Learning Resources
 
-- [Quickstart Guide](https://elizaos.github.io/eliza/quickstart) - Get up and running quickly with elizaOS
+- [Quickstart Guide](https://eliza.how/docs/quickstart) - Get up and running quickly with elizaOS
 - [Building a Social AI Agent in 15 Minutes](https://www.youtube.com/embed/6PZVwNTl5hI?si=0zB3OvYU4KiRQTxI) - Nader's Tutorial
 - [Creating an AI Agent with Your Own Personality](https://www.youtube.com/embed/uouSdtcWXTQ?si=cm13L4T7DQUMXd0C) - Nader's Tutorial
 - [How to Build an API Plugin](https://www.youtube.com/embed/25FxjscBHuo) - Nader's Tutorial ([Code](https://github.com/dabit3/eliza-nasa-plugin))
