@@ -8,31 +8,25 @@ image: /img/cli.jpg
 
 # Plugin Command
 
-The `plugin` command helps developers manage ElizaOS plugins, focusing on the publishing process.
+The `plugins` command helps developers manage ElizaOS plugins within a project, allowing you to list, add, remove, and inspect installed plugins.
 
 ## Subcommands
 
-| Subcommand          | Aliases               | Description                                | Arguments  | Options                                                                   |
-| ------------------- | --------------------- | ------------------------------------------ | ---------- | ------------------------------------------------------------------------- |
-| `list`              | `l`, `ls`             | List available plugins from the registry   |            | `-t, --type <type>`                                                       |
-| `add`               | `install`             | Add a plugin to the project                | `<plugin>` | `-n, --no-env-prompt`, `-b, --branch <branchName>`, `-T, --tag <tagname>` |
-| `installed-plugins` |                       | List plugins found in project dependencies |            |                                                                           |
-| `remove`            | `delete`, `del`, `rm` | Remove a plugin from the project           | `<plugin>` |                                                                           |
+| Subcommand          | Aliases               | Description                                        | Arguments                                                                | Options                                                                                         |
+| ------------------- | --------------------- | -------------------------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| `list`              | `l`, `ls`             | List available plugins to install into the project |                                                                          |                                                                                                 |
+| `add`               | `install`             | Add a plugin to the project                        | `<plugin>` (Plugin name e.g., "abc", "plugin-abc", "elizaos/plugin-abc") | `-n, --no-env-prompt`, `-b, --branch <branchName>` (default: v2-develop), `-T, --tag <tagname>` |
+| `installed-plugins` |                       | List plugins found in project dependencies         |                                                                          |                                                                                                 |
+| `remove`            | `delete`, `del`, `rm` | Remove a plugin from the project                   | `<plugin>` (Plugin name e.g., "abc", "plugin-abc", "elizaos/plugin-abc") |                                                                                                 |
 
 ## Examples
 
 ### Listing Available Plugins
 
 ```bash
-elizaos plugin publish [options]
+# List all available plugins
+elizaos plugins list
 ```
-
-Options:
-
-- `-r, --registry <registry>` - Target registry (default: 'elizaOS/registry')
-- `-n, --npm` - Publish to npm instead of GitHub (default: false)
-- `-t, --test` - Test publish process without making changes (default: false)
-- `-p, --platform <platform>` - Specify platform compatibility: node, browser, or universal (default: 'universal')
 
 ## Plugin Development Workflow
 
@@ -48,13 +42,15 @@ This creates a starter plugin with the required directory structure.
 
 ### 2. Develop Your Plugin
 
-The plugin structure includes:
+(This section refers to adding/managing plugins, for actual development guidance, see plugin development docs.)
+
+The plugin structure typically includes:
 
 - `src/index.ts` - Main plugin code
 - `src/plugin.ts` - Plugin configuration and initialization
 - `src/metadata.ts` - Plugin metadata (name, description, etc.)
 
-Run development mode to test your plugin:
+Examples of adding plugins:
 
 ```bash
 # Add the 'openai' plugin (will look up '@elizaos/plugin-openai')
