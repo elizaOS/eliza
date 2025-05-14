@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-discord",
-  "version": "1.0.0-beta.49",
+  "version": "1.0.0-beta.51",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -22,10 +22,10 @@
     "dist"
   ],
   "dependencies": {
-    "@elizaos/core": "^1.0.0-beta.49",
     "@discordjs/opus": "^0.10.0",
     "@discordjs/rest": "2.4.0",
     "@discordjs/voice": "0.18.0",
+    "@elizaos/core": "^1.0.0-beta.51",
     "discord.js": "14.16.3",
     "get-func-name": "^3.0.0",
     "node-opus": "^0.3.3",

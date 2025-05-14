@@ -77,7 +77,8 @@
   },
   "packageManager": "bun@1.2.5",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "plugin-specification/*"
   ],
   "module": "index.ts",
   "type": "module",

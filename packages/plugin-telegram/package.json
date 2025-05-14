@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-telegram",
-  "version": "1.0.0-beta.49",
+  "version": "1.0.0-beta.51",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -18,7 +18,7 @@
     "dist"
   ],
   "dependencies": {
-    "@elizaos/core": "^1.0.0-beta.49",
+    "@elizaos/core": "^1.0.0-beta.51",
     "@telegraf/types": "7.1.0",
     "strip-literal": "^3.0.0",
     "telegraf": "4.16.3",

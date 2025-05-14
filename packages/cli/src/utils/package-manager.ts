@@ -87,6 +87,26 @@ export async function executeInstallation(
 
   logger.info(`Attempting to install package: ${packageName} using ${packageManager}`);
 
+  // Special-case direct GitHub specifiers (e.g., github:owner/repo#ref)
+  if (packageName.startsWith('github:')) {
+    try {
+      await execa(packageManager, [...installCommand, packageName], {
+        cwd: directory,
+        stdio: 'inherit',
+      });
+      logger.info(`Successfully installed ${packageName} from GitHub.`);
+      // Derive installed identifier from package.json name
+      const spec = packageName.replace(/^github:/, '');
+      const [owner, repoWithRef] = spec.split('/');
+      const repo = repoWithRef.split('#')[0];
+      const installedIdentifier = `@${owner}/${repo}`;
+      return { success: true, installedIdentifier };
+    } catch (error) {
+      logger.warn(`Failed to install from GitHub specifier: ${packageName}`);
+      // Continue to next installation methods
+    }
+  }
+
   // Determine the package name to use for installation
   let npmStylePackageName = packageName;
   let pluginName = packageName;

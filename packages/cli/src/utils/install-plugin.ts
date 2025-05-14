@@ -87,7 +87,10 @@ async function attemptInstallation(
       return false;
     }
 
-    // Installation succeeded, now verify the import
+    // If installed via direct GitHub specifier, skip import verification
+    if (packageName.startsWith('github:')) {
+      return true;
+    }
     logger.info(
       `Installation successful for ${installResult.installedIdentifier}, verifying import...`
     );
@@ -111,7 +114,7 @@ async function attemptInstallation(
 export async function installPlugin(
   packageName: string,
   cwd: string,
-  versionSpecifier?: string,
+  versionSpecifier?: string, // This is now less relevant if packageName is a full GitHub specifier with #ref
   monorepoBranch?: string
 ): Promise<boolean> {
   // Mark this plugin as installed to ensure we don't get into an infinite loop
@@ -120,18 +123,38 @@ export async function installPlugin(
   // Get installation context info
   const cliDir = getCliDirectory();
 
-  // Simplified installation options
-  const installOptions = {
+  // Default install options
+  let installOptions = {
     tryNpm: true,
-    // Only try GitHub for non-scoped packages without version
-    tryGithub: !packageName.startsWith('@') && !versionSpecifier,
-    // Only try monorepo for non-versioned packages
-    tryMonorepo: !versionSpecifier,
+    tryGithub: !packageName.startsWith('@') && !versionSpecifier, // Original heuristic
+    tryMonorepo: !versionSpecifier, // Original heuristic
     monorepoBranch,
   };
 
+  // If packageName is a GitHub specifier, prioritize it
+  if (packageName.startsWith('github:')) {
+    logger.debug(`Detected GitHub specifier: ${packageName}. Prioritizing GitHub installation.`);
+    installOptions = {
+      tryNpm: false, // Don't try npm if a direct GitHub URL is given
+      tryGithub: true, // Definitely try GitHub
+      tryMonorepo: false, // Don't try monorepo if a direct GitHub URL is given
+      monorepoBranch: undefined, // Not applicable for direct GitHub specifier
+    };
+    // versionSpecifier is part of the packageName (e.g., github:user/repo#ref), so it's not passed separately to attemptInstallation for this case.
+    // attemptInstallation will pass packageName (which includes the ref) to executeInstallation.
+  }
+
   // Try installation in the current directory with determined approaches
-  if (await attemptInstallation(packageName, versionSpecifier || '', cwd, ':', installOptions)) {
+  // If it's a GitHub specifier, versionSpecifier is effectively contained within packageName, so pass undefined for it.
+  if (
+    await attemptInstallation(
+      packageName,
+      packageName.startsWith('github:') ? undefined : versionSpecifier,
+      cwd,
+      ':',
+      installOptions
+    )
+  ) {
     return true;
   }
 
@@ -140,7 +163,7 @@ export async function installPlugin(
     if (
       await attemptInstallation(
         packageName,
-        versionSpecifier || '',
+        packageName.startsWith('github:') ? undefined : versionSpecifier,
         cliDir,
         'in CLI directory',
         installOptions
