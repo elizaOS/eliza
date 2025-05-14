@@ -87,7 +87,7 @@ async function attemptInstallation(
       return false;
     }
 
-    // Installation succeeded, now verify the import using the correct identifier
+    // Installation succeeded, now verify the import
     logger.info(
       `Installation successful for ${installResult.installedIdentifier}, verifying import...`
     );

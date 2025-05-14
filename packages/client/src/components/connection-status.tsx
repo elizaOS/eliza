@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils';
-import { AlertCircle, ExternalLink, RefreshCw, CheckCircle } from 'lucide-react';
+import { AlertCircle, CheckCircle } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { SidebarMenuButton, SidebarMenuItem } from './ui/sidebar';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
@@ -12,12 +12,11 @@ export interface ConnectionStatusProps {
   [key: string]: any;
 }
 
-export default function ConnectionStatus({ className }: ConnectionStatusProps) {
-  const [isHovered, setIsHovered] = useState(false);
+export default function ConnectionStatus() {
   const { toast } = useToast();
   const [prevStatus, setPrevStatus] = useState<string | null>(null);
   const { openApiKeyDialog } = useAuth();
-  const { status, error, refetch } = useConnection();
+  const { status, error } = useConnection();
 
   // Derive states from context
   const isLoading = status === 'loading';
@@ -80,9 +79,6 @@ export default function ConnectionStatus({ className }: ConnectionStatusProps) {
     return isConnected ? 'text-green-600' : 'text-red-600';
   };
 
-  // Use the refetch function from the context
-  const refreshStatus = refetch;
-
   // Get a specific error message based on the error
   const getErrorMessage = () => {
     if (!error) return 'Connection failed'; // Use error from context
@@ -107,24 +103,16 @@ export default function ConnectionStatus({ className }: ConnectionStatusProps) {
       return 'Endpoint not found';
     }
     return error; // Return the error message directly
-
-    return 'Connection failed';
   };
 
   return (
     <SidebarMenuItem>
       <Tooltip>
         <TooltipTrigger asChild>
-          <SidebarMenuButton
-            onMouseEnter={() => setIsHovered(true)}
-            onMouseLeave={() => setIsHovered(false)}
-            onClick={refreshStatus}
-          >
+          <SidebarMenuButton>
             <div className="flex flex-col gap-1 select-none">
               <div className="flex items-center gap-1">
-                {isHovered ? (
-                  <RefreshCw className="h-3.5 w-3.5 text-muted-foreground animate-pulse" />
-                ) : showingError || isUnauthorized ? (
+                {showingError || isUnauthorized ? (
                   // Use AlertCircle for both general errors and unauthorized, but color differently
                   <AlertCircle
                     className={cn(
@@ -135,11 +123,7 @@ export default function ConnectionStatus({ className }: ConnectionStatusProps) {
                 ) : (
                   <div className={cn(['h-2.5 w-2.5 rounded-full', getStatusColor()])} />
                 )}
-                <span
-                  className={cn('text-xs', isHovered ? 'text-muted-foreground' : getTextColor())}
-                >
-                  {isHovered ? 'Refresh' : getStatusText()}
-                </span>
+                <span className={cn('text-xs', getTextColor())}>{getStatusText()}</span>
               </div>
             </div>
           </SidebarMenuButton>

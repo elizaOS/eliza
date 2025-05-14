@@ -32,7 +32,9 @@ export const character: Character = {
     '@elizaos/plugin-sql',
     ...(process.env.ANTHROPIC_API_KEY ? ['@elizaos/plugin-anthropic'] : []),
     ...(process.env.OPENAI_API_KEY ? ['@elizaos/plugin-openai'] : []),
-    ...(!process.env.OPENAI_API_KEY ? ['@elizaos/plugin-local-ai'] : []),
+    ...(!process.env.OPENAI_API_KEY
+      ? ['@elizaos/plugin-local-ai']
+      : []),
     '@elizaos/plugin-discord',
     '@elizaos/plugin-twitter',
     '@elizaos/plugin-pdf',

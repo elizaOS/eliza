@@ -17,6 +17,7 @@ import {
   logger,
 } from '@elizaos/core';
 import { type Context, Telegraf } from 'telegraf';
+import { type ChatMemberOwner, type ChatMemberAdministrator } from 'telegraf/types';
 import { TELEGRAM_SERVICE_NAME } from './constants';
 import { validateTelegramConfig } from './environment';
 import { MessageManager } from './messageManager';
@@ -529,14 +530,20 @@ export class TelegramService extends Service {
       : null;
 
     // Fetch admin information for proper role assignment
-    let admins = [];
-    let owner = null;
+    let admins: (ChatMemberOwner | ChatMemberAdministrator)[] = [];
+    let owner: ChatMemberOwner | null = null;
     if (chat.type === 'group' || chat.type === 'supergroup' || chat.type === 'channel') {
       try {
-        admins = await ctx.getChatAdministrators();
-        owner = admins.find((admin) => admin.status === 'creator');
+        const chatAdmins = await ctx.getChatAdministrators();
+        admins = chatAdmins;
+        const foundOwner = admins.find(
+          (admin): admin is ChatMemberOwner => admin.status === 'creator'
+        );
+        owner = foundOwner || null;
       } catch (error) {
-        logger.warn(`Could not get chat administrators: ${error.message}`);
+        logger.warn(
+          `Could not get chat administrators: ${error instanceof Error ? error.message : String(error)}`
+        );
       }
     }
 
@@ -554,7 +561,7 @@ export class TelegramService extends Service {
       serverId: chatId,
       metadata: {
         source: 'telegram',
-        ownership: { ownerId },
+        ...(ownerId && { ownership: { ownerId } }),
         roles: ownerId
           ? {
               [ownerId]: Role.OWNER,
@@ -590,8 +597,8 @@ export class TelegramService extends Service {
       const topicRoom = await this.buildForumTopicRoom(ctx, worldId);
       if (topicRoom) {
         rooms.push(topicRoom);
+        await this.runtime.ensureRoomExists(topicRoom);
       }
-      await this.runtime.ensureRoomExists(topicRoom);
     }
 
     // Build entities from chat
@@ -600,7 +607,7 @@ export class TelegramService extends Service {
     // Add sender if not already in entities
     if (ctx.from) {
       const senderEntity = this.buildMsgSenderEntity(ctx.from);
-      if (senderEntity && !entities.some((e) => e.id === senderEntity.id)) {
+      if (senderEntity && senderEntity.id && !entities.some((e) => e.id === senderEntity.id)) {
         entities.push(senderEntity);
         this.syncedEntityIds.add(senderEntity.id);
       }
@@ -609,9 +616,9 @@ export class TelegramService extends Service {
     // Use the new batch processing method for entities
     await this.batchProcessEntities(
       entities,
-      generalRoom.id,
-      generalRoom.channelId,
-      generalRoom.serverId,
+      generalRoom.id!,
+      generalRoom.channelId!,
+      generalRoom.serverId!,
       generalRoom.type,
       worldId
     );
@@ -624,7 +631,7 @@ export class TelegramService extends Service {
       entities,
       source: 'telegram',
       chat,
-      botUsername: this.bot.botInfo.username,
+      botUsername: this.bot.botInfo!.username,
     };
 
     // Emit telegram-specific world joined event
@@ -671,18 +678,24 @@ export class TelegramService extends Service {
       await Promise.all(
         entityBatch.map(async (entity: Entity) => {
           try {
-            await this.runtime.ensureConnection({
-              entityId: entity.id,
-              roomId: roomId,
-              userName: entity.metadata?.telegram?.username,
-              name: entity.metadata?.telegram?.name,
-              userId: entity.metadata?.telegram?.id,
-              source: 'telegram',
-              channelId: channelId,
-              serverId: serverId,
-              type: roomType,
-              worldId: worldId,
-            });
+            if (entity.id) {
+              await this.runtime.ensureConnection({
+                entityId: entity.id,
+                roomId: roomId,
+                userName: entity.metadata?.telegram?.username,
+                name: entity.metadata?.telegram?.name,
+                userId: entity.metadata?.telegram?.id,
+                source: 'telegram',
+                channelId: channelId,
+                serverId: serverId,
+                type: roomType,
+                worldId: worldId,
+              });
+            } else {
+              logger.warn(
+                `Skipping entity sync due to missing ID: ${JSON.stringify(entity.names)}`
+              );
+            }
           } catch (err) {
             logger.warn(`Failed to sync user ${entity.metadata?.telegram?.username}: ${err}`);
           }
@@ -936,10 +949,13 @@ export class TelegramService extends Service {
       await this.messageManager.sendMessage(chatId, content);
       logger.info(`[Telegram SendHandler] Message sent to chat ID: ${chatId}`);
     } catch (error) {
-      logger.error(`[Telegram SendHandler] Error sending message: ${error.message}`, {
-        target,
-        content,
-      });
+      logger.error(
+        `[Telegram SendHandler] Error sending message: ${error instanceof Error ? error.message : String(error)}`,
+        {
+          target,
+          content,
+        }
+      );
       throw error;
     }
   }
