@@ -40,8 +40,8 @@ teardown() {
   [[ "$output" == *"@elizaos/plugin-openai"* ]]
 }
 
-# Verifies that plugins add command adds a plugins to the plugins.
-@test "plugins add command adds plugins to plugins" {
+# Verifies that plugins add command adds a plugin.
+@test "plugins add command adds plugin" {
   run $ELIZAOS_CMD create proj-add-app --yes
   echo "STDOUT: $output"
   echo "STATUS: $status"
@@ -84,6 +84,52 @@ teardown() {
   echo "STATUS: $status"
   [ "$status" -eq 0 ]
   grep '@elizaos/plugin-bootstrap' package.json
+}
+
+
+# Verifies that third-party plugins can be installed successfully
+@test "plugins add third-party plugin" {
+  run $ELIZAOS_CMD create proj-third-party-app --yes
+  echo "STDOUT: $output"
+  echo "STATUS: $status"
+  [ "$status" -eq 0 ]
+  cd proj-third-party-app
+  run $ELIZAOS_CMD plugins add @fleek-platform/eliza-plugin-mcp --no-env-prompt
+  echo "STDOUT: $output"
+  echo "STATUS: $status"
+  [ "$status" -eq 0 ]
+  grep '@fleek-platform/eliza-plugin-mcp' package.json
+}
+
+# Verifies that plugins can be installed via a direct GitHub HTTPS URL
+@test "plugins add via direct GitHub URL" {
+  run $ELIZAOS_CMD create proj-direct-github-url-app --yes
+  echo "STDOUT: $output"
+  echo "STATUS: $status"
+  [ "$status" -eq 0 ]
+  cd proj-direct-github-url-app
+  run $ELIZAOS_CMD plugins add https://github.com/fleek-platform/eliza-plugin-mcp --no-env-prompt
+  echo "STDOUT: $output"
+  echo "STATUS: $status"
+  [ "$status" -eq 0 ]
+  grep '@fleek-platform/eliza-plugin-mcp' package.json
+  [ -d "node_modules/@fleek-platform/eliza-plugin-mcp" ]
+}
+
+# Verifies that plugins can be installed via GitHub shorthand URL
+@test "plugins add via GitHub shorthand URL" {
+  run $ELIZAOS_CMD create proj-shorthand-github-url-app --yes
+  echo "STDOUT: $output"
+  echo "STATUS: $status"
+  [ "$status" -eq 0 ]
+  cd proj-shorthand-github-url-app
+  # Using the same plugin for consistency in checks
+  run $ELIZAOS_CMD plugins add github:elizaos-plugins/plugin-openrouter#1.x --no-env-prompt
+  echo "STDOUT: $output"
+  echo "STATUS: $status"
+  [ "$status" -eq 0 ]
+  grep 'github:elizaos-plugins/plugin-openrouter#1.x' package.json
+  [ -d "node_modules/@elizaos/plugin-openrouter" ]
 }
 
 # Checks that the plugins help command displays usage information.

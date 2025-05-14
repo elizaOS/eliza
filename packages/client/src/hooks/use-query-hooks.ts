@@ -2,11 +2,16 @@ import { GROUP_CHAT_SOURCE, USER_NAME } from '@/constants';
 import { apiClient } from '@/lib/api';
 import { WorldManager } from '@/lib/world-manager';
 import type { Agent, Content, Memory, UUID, Room } from '@elizaos/core';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  useQueries,
+  UseQueryResult,
+} from '@tanstack/react-query';
 import { useState } from 'react';
 import { useToast } from './use-toast';
 
-// Define the ContentWithUser type
 /**
  * Represents content with additional user information.
  * @typedef {Object} ContentWithUser
@@ -74,14 +79,17 @@ const useNetworkStatus = () => {
 
 // Hook for fetching agents with smart polling
 /**
- * Custom hook to fetch a list of agents from the server.
- * @param {object} options - Optional configuration options.
- * @returns {object} - A query object with data containing an array of agents.
+ * Fetches a list of agents from the server with polling and network-aware intervals.
+ *
+ * @param options - Optional configuration to override default query behavior.
+ * @returns A React Query object containing the agents data and query state.
+ *
+ * @remark Polling frequency adapts to network conditions, using less frequent polling when offline or on slow connections.
  */
 export function useAgents(options = {}) {
   const network = useNetworkStatus();
 
-  return useQuery<{ data: { agents: Agent[] } }>({
+  return useQuery<{ data: { agents: Partial<Agent>[] } }>({
     queryKey: ['agents'],
     queryFn: () => apiClient.getAgents(),
     staleTime: STALE_TIMES.FREQUENT, // Use shorter stale time for real-time data
@@ -241,9 +249,10 @@ export function useStopAgent() {
 
 // Hook for fetching messages directly for a specific agent without requiring a room
 /**
- * Custom hook to fetch and return messages for a specific agent.
- * * @param { UUID } agentId - The unique identifier of the agent to get messages for.
- * @returns { Object } An object containing the messages for the agent.
+ * Returns cached messages for a specific agent in the current world.
+ *
+ * @param agentId - The unique identifier of the agent.
+ * @returns An object containing the cached messages for the agent, or an empty array if none are available.
  */
 export function useAgentMessages(agentId: UUID) {
   const queryClient = useQueryClient();
@@ -585,7 +594,9 @@ export function useAgentMemories(agentId: UUID, tableName?: string, roomId?: UUI
 }
 
 /**
- * Deletes a specific memory entry for an agent
+ * Provides a mutation hook to delete a specific memory entry for an agent.
+ *
+ * On success, invalidates related agent and room memory queries to ensure data consistency.
  */
 export function useDeleteMemory() {
   const queryClient = useQueryClient();
@@ -611,8 +622,41 @@ export function useDeleteMemory() {
 }
 
 /**
- * Hook to update a specific memory entry for an agent
- * @returns {UseMutationResult} - Object containing the mutation function and its handlers.
+ * Hook for deleting all memories associated with a specific agent in a given room.
+ *
+ * @returns A mutation object for triggering the deletion and tracking its state.
+ */
+export function /**
+ * Custom hook to delete all memories for an agent in a specific room.
+ * @returns {UseMutationResult} Object containing the mutation function and its handlers.
+ */
+/**
+ * Custom hook to delete all memories for an agent in a specific room.
+ * @returns {UseMutationResult} Object containing the mutation function and its handlers.
+ */
+useDeleteAllMemories() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ agentId, roomId }: { agentId: UUID; roomId: UUID }) => {
+      await apiClient.deleteAllAgentMemories(agentId, roomId);
+      return { agentId };
+    },
+    onSuccess: (data) => {
+      // Invalidate relevant queries to trigger refetch
+      queryClient.invalidateQueries({
+        queryKey: ['agents', data.agentId, 'memories'],
+      });
+    },
+  });
+}
+
+/**
+ * Updates a specific memory entry for an agent.
+ *
+ * Triggers cache invalidation for related agent and room memories, as well as messages, to ensure data consistency. Displays a toast notification on success or error.
+ *
+ * @returns A mutation object for updating an agent's memory entry.
  */
 export function useUpdateMemory() {
   const queryClient = useQueryClient();
@@ -674,7 +718,23 @@ export function useUpdateMemory() {
   });
 }
 
-export function useRooms(options = {}) {
+/**
+ * Fetches rooms for the current world, grouped by server ID.
+ *
+ * @param options - Optional query configuration.
+ * @returns A query result containing a map of server IDs to arrays of rooms.
+ */
+export function /**
+ * Custom hook to fetch rooms grouped by server ID.
+ * @param {object} [options] - Optional configuration options for the query.
+ * @returns {QueryResult<Map<string, Room[]>>} Query result containing map of server IDs to room arrays.
+ */
+/**
+ * Custom hook to fetch rooms grouped by server ID.
+ * @param {object} [options] - Optional configuration options for the query.
+ * @returns {QueryResult<Map<string, Room[]>>} Query result containing map of server IDs to room arrays.
+ */
+useRooms(options = {}) {
   const network = useNetworkStatus();
 
   return useQuery<Map<string, Room[]>>({
@@ -701,4 +761,102 @@ export function useRooms(options = {}) {
     refetchIntervalInBackground: false,
     ...options,
   });
+}
+
+// Hook for fetching agent panels (public GET routes)
+/**
+ * Custom hook to fetch public GET routes (panels) for a specific agent.
+ * @param {UUID | undefined | null} agentId - The ID of the agent.
+ * @param {object} options - Optional TanStack Query options.
+ * @returns {QueryResult} The result of the query containing agent panels.
+ */
+export type AgentPanel = {
+  name: string;
+  path: string;
+};
+
+export function useAgentPanels(agentId: UUID | undefined | null, options = {}) {
+  console.log('useAgentPanels', agentId);
+  const network = useNetworkStatus();
+
+  return useQuery<{
+    success: boolean;
+    data: AgentPanel[];
+    error?: { code: string; message: string; details?: string };
+  }>({
+    queryKey: ['agentPanels', agentId],
+    queryFn: () => apiClient.getAgentPanels(agentId || ''),
+    enabled: Boolean(agentId),
+    staleTime: STALE_TIMES.STANDARD, // Panels are unlikely to change very frequently
+    refetchInterval: !network.isOffline && Boolean(agentId) ? STALE_TIMES.RARE : false,
+    refetchIntervalInBackground: false,
+    ...(!network.isOffline &&
+      network.effectiveType === 'slow-2g' && {
+        refetchInterval: STALE_TIMES.NEVER, // Or even disable for slow connections
+      }),
+    ...options,
+  });
+}
+
+/**
+ * Custom hook that combines useAgents with individual useAgent calls for detailed data
+ * @returns {AgentsWithDetailsResult} Combined query results with both list and detailed data
+ */
+interface AgentsWithDetailsResult {
+  data: {
+    agents: Agent[];
+  };
+  isLoading: boolean;
+  isError: boolean;
+  error: unknown;
+}
+
+/**
+ * Fetches a list of agents with detailed information for each agent in parallel.
+ *
+ * Combines the agent list from {@link useAgents} with individual agent detail queries using `useQueries`, aggregating loading and error states. Polling intervals adapt to network conditions.
+ *
+ * @returns An object containing detailed agent data, loading and error states, and any encountered error.
+ */
+export function useAgentsWithDetails(): AgentsWithDetailsResult {
+  const network = useNetworkStatus();
+  const { data: agentsData, isLoading: isAgentsLoading } = useAgents();
+  const agentIds = agentsData?.data?.agents?.map((agent) => agent.id as UUID) || [];
+
+  // Use useQueries for parallel fetching
+  const agentQueries = useQueries<UseQueryResult<{ data: Agent }, Error>[]>({
+    queries: agentIds.map((id) => ({
+      queryKey: ['agent', id] as const,
+      queryFn: () => apiClient.getAgent(id),
+      staleTime: STALE_TIMES.FREQUENT,
+      enabled: Boolean(id),
+      refetchInterval: !network.isOffline && Boolean(id) ? STALE_TIMES.FREQUENT : false,
+      refetchIntervalInBackground: false,
+      ...(!network.isOffline &&
+        network.effectiveType === 'slow-2g' && {
+          refetchInterval: STALE_TIMES.STANDARD,
+        }),
+    })),
+  });
+
+  // Safely check loading and error states
+  const isLoading = isAgentsLoading || agentQueries.some((query) => query.isLoading);
+  const isError = agentQueries.some((query) => query.isError);
+  const error = agentQueries.find((query) => query.error)?.error;
+
+  // Safely collect agent details
+  const detailedAgents = agentQueries
+    .filter((query): query is UseQueryResult<{ data: Agent }, Error> & { data: { data: Agent } } =>
+      Boolean(query.data?.data)
+    )
+    .map((query) => query.data.data);
+
+  return {
+    data: {
+      agents: detailedAgents,
+    },
+    isLoading,
+    isError,
+    error,
+  };
 }

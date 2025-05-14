@@ -84,13 +84,6 @@ export async function copyTemplate(
   // Copy template files
   await copyDir(templateDir, targetDir);
 
-  // Explicitly check and copy .gitignore file (hidden files can be missed)
-  const srcGitignore = path.join(templateDir, '.gitignore');
-  const destGitignore = path.join(targetDir, '.gitignore');
-  if (existsSync(srcGitignore) && !existsSync(destGitignore)) {
-    await fs.copyFile(srcGitignore, destGitignore);
-  }
-
   // Update package.json with new name and dependency versions
   const packageJsonPath = path.join(targetDir, 'package.json');
 

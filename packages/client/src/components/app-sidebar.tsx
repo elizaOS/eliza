@@ -1,3 +1,13 @@
+import AgentAvatarStack from '@/components/agent-avatar-stack';
+import ConnectionStatus from '@/components/connection-status';
+import GroupPanel from '@/components/group-panel';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   Sidebar,
   SidebarContent,
@@ -10,21 +20,11 @@ import {
   SidebarMenuItem,
   SidebarMenuSkeleton,
 } from '@/components/ui/sidebar';
-import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import GroupPanel from '@/components/group-panel';
-import ConnectionStatus from '@/components/connection-status';
-import AgentAvatarStack from '@/components/agent-avatar-stack';
 
-import { useAgents, useRooms } from '@/hooks/use-query-hooks';
+import { useAgentsWithDetails, useRooms } from '@/hooks/use-query-hooks';
 import info from '@/lib/info.json';
-import { formatAgentName, cn } from '@/lib/utils';
-import { AgentStatus, type UUID, type Agent, type Room } from '@elizaos/core';
+import { cn, formatAgentName } from '@/lib/utils';
+import { AgentStatus, type Agent, type Room, type UUID } from '@elizaos/core';
 
 import { Book, ChevronDown, Cog, Plus, TerminalIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -128,7 +128,7 @@ const AgentListSection = ({
   className,
 }: {
   title: string;
-  agents: Agent[];
+  agents: Partial<Agent>[];
   isOnline: boolean;
   activePath: string;
   className?: string;
@@ -136,10 +136,10 @@ const AgentListSection = ({
   <SidebarSection title={title} className={className}>
     {agents.map((a) => (
       <AgentRow
-        key={a.id}
-        agent={a}
+        key={a?.id}
+        agent={a as Agent}
         isOnline={isOnline}
-        active={activePath.includes(String(a.id))}
+        active={activePath.includes(String(a?.id))}
       />
     ))}
   </SidebarSection>
@@ -153,7 +153,7 @@ const RoomListSection = ({
 }: {
   rooms: Map<string, { agentId: UUID; name: string }[]>;
   roomsLoading: boolean;
-  agents: Agent[];
+  agents: Partial<Agent>[];
   agentAvatarMap: Record<string, string | null>;
 }) => (
   <SidebarSection title="Groups" className="mt-2">
@@ -240,14 +240,18 @@ const CreateButton = ({ onCreateRoom }: { onCreateRoom: () => void }) => {
   );
 };
 
-/* ---------- main component ---------- */
+/**
+ * Renders the main application sidebar, displaying navigation, agent lists, group rooms, and utility links.
+ *
+ * The sidebar includes sections for online and offline agents, group rooms, a create button for agents and groups, and footer links to documentation, logs, and settings. It handles loading and error states for agent and room data, and conditionally displays a group creation panel.
+ */
 export function AppSidebar() {
   const location = useLocation();
 
-  const { data: agentsData, error: agentsError } = useAgents();
+  const { data: agentsData, error: agentsError } = useAgentsWithDetails();
   const { data: roomsData, isLoading: roomsLoading } = useRooms();
 
-  const agents = useMemo(() => agentsData?.data.agents || [], [agentsData]);
+  const agents = useMemo(() => agentsData?.agents || [], [agentsData]);
 
   const agentAvatarMap = useMemo(
     () =>
@@ -371,7 +375,7 @@ export function AppSidebar() {
           <FooterLink to="https://eliza.how/" Icon={Book} label="Documentation" />
           <FooterLink to="/logs" Icon={TerminalIcon} label="Logs" />
           <FooterLink to="/settings" Icon={Cog} label="Settings" />
-          <ConnectionStatus className="sidebar-connection-status" />
+          <ConnectionStatus />
         </SidebarMenu>
       </SidebarFooter>
     </Sidebar>

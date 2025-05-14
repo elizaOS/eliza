@@ -21,7 +21,7 @@ const TEST_IMAGE_URL =
 
 export class TelegramTestSuite implements TestSuite {
   name = 'telegram';
-  private telegramClient: TelegramService = null;
+  private telegramClient: TelegramService | null = null;
   private bot: Telegraf<Context> | null = null;
   private messageManager: MessageManager | null = null;
   tests: { name: string; fn: (runtime: IAgentRuntime) => Promise<void> }[];
@@ -86,6 +86,9 @@ export class TelegramTestSuite implements TestSuite {
   async getChatInfo(runtime: IAgentRuntime): Promise<Context['chat']> {
     try {
       const chatId = this.validateChatId(runtime);
+      if (!this.bot) {
+        throw new Error('Bot is not initialized.');
+      }
       const chat = await this.bot.telegram.getChat(chatId);
       logger.log(`Fetched real chat: ${JSON.stringify(chat)}`);
       return chat;
@@ -116,6 +119,7 @@ export class TelegramTestSuite implements TestSuite {
   async testSendingMessageWithAttachment(runtime: IAgentRuntime) {
     try {
       if (!this.messageManager) throw new Error('MessageManager not initialized.');
+      if (!this.bot) throw new Error('Bot not initialized.');
 
       const chat = await this.getChatInfo(runtime);
       const mockContext: Partial<Context> = {
@@ -149,6 +153,9 @@ export class TelegramTestSuite implements TestSuite {
 
   async testHandlingMessage(runtime: IAgentRuntime) {
     try {
+      if (!this.bot) throw new Error('Bot not initialized.');
+      if (!this.messageManager) throw new Error('MessageManager not initialized.');
+
       const chat = await this.getChatInfo(runtime);
       const mockContext: Partial<Context> = {
         chat,
@@ -180,21 +187,32 @@ export class TelegramTestSuite implements TestSuite {
 
   async testProcessingImages(runtime: IAgentRuntime) {
     try {
+      if (!this.bot) throw new Error('Bot not initialized.');
+      if (!this.messageManager) throw new Error('MessageManager not initialized.');
+
       const chatId = this.validateChatId(runtime);
       const fileId = await this.getFileId(chatId, TEST_IMAGE_URL);
 
       const mockMessage = {
-        message_id: undefined,
-        chat: { id: chatId } as Chat,
+        message_id: 12345,
+        chat: { id: chatId, type: 'private' } as Chat,
         date: Math.floor(Date.now() / 1000),
-        photo: [{ file_id: fileId }],
+        photo: [
+          {
+            file_id: fileId,
+            file_unique_id: `unique_${fileId}`,
+            width: 100,
+            height: 100,
+          },
+        ],
         text: `@${this.bot.botInfo?.username}!`,
       };
 
-      const { description } = await this.messageManager.processImage(mockMessage);
-      if (!description) {
-        throw new Error('Error processing Telegram image');
+      const result = await this.messageManager.processImage(mockMessage as any);
+      if (!result || !result.description) {
+        throw new Error('Error processing Telegram image or description not found');
       }
+      const { description } = result;
       logger.log(`Processing Telegram image successfully: ${description}`);
     } catch (error) {
       throw new Error(`Error processing Telegram image: ${error}`);
@@ -203,7 +221,13 @@ export class TelegramTestSuite implements TestSuite {
 
   async getFileId(chatId: string, imageUrl: string) {
     try {
+      if (!this.bot) {
+        throw new Error('Bot is not initialized.');
+      }
       const message = await this.bot.telegram.sendPhoto(chatId, imageUrl);
+      if (!message.photo || message.photo.length === 0) {
+        throw new Error('No photo received in the message response.');
+      }
       return message.photo[message.photo.length - 1].file_id;
     } catch (error) {
       logger.error(`Error sending image: ${error}`);

@@ -15,19 +15,20 @@ import path from 'node:path';
 import prompts from 'prompts';
 import colors from 'yoctocolors';
 import { z } from 'zod';
+import { character as elizaCharacter } from '@/src/characters/eliza';
 
 /**
- * This module handles creating both projects and plugins.
+ * This module handles creating projects, plugins, and agent characters.
  *
  * Previously, plugin creation was handled by the "plugins create" command,
  * but that has been unified with project creation in this single command.
  * Users are now prompted to select which type they want to create.
  *
  * The workflow includes:
- * 1. Asking if the user wants to create a project or plugin
- * 2. Getting the name and creating a directory
+ * 1. Asking if the user wants to create a project, plugin, or agent
+ * 2. Getting the name and creating a directory or file
  * 3. Setting up proper templates and configurations
- * 4. Installing dependencies
+ * 4. Installing dependencies (for projects/plugins)
  * 5. Automatically changing directory to the created project/plugin
  * 6. Showing the user the next steps
  */
@@ -35,7 +36,7 @@ import { z } from 'zod';
 const initOptionsSchema = z.object({
   dir: z.string().default('.'),
   yes: z.boolean().default(false),
-  type: z.enum(['project', 'plugin']).default('project'),
+  type: z.enum(['project', 'plugin', 'agent']).default('project'),
 });
 
 /**
@@ -72,6 +73,45 @@ async function installDependencies(targetDir: string) {
     console.warn(
       "Failed to install dependencies automatically. Please run 'bun install' manually."
     );
+  }
+}
+
+/**
+ * Creates .gitignore and .npmignore files in the target directory if they don't exist
+ */
+async function createIgnoreFiles(targetDir: string): Promise<void> {
+  const gitignorePath = path.join(targetDir, '.gitignore');
+  const npmignorePath = path.join(targetDir, '.npmignore');
+
+  // Check if .gitignore exists and create it if not
+  if (!existsSync(gitignorePath)) {
+    // Use the exact content from the original plugin-starter/.gitignore
+    const gitignoreContent = `dist/
+node_modules/
+`;
+
+    try {
+      await fs.writeFile(gitignorePath, gitignoreContent);
+    } catch (error) {
+      console.error(`Failed to create .gitignore: ${error.message}`);
+    }
+  }
+
+  // Check if .npmignore exists and create it if not
+  if (!existsSync(npmignorePath)) {
+    // Use the exact content from the original plugin-starter/.npmignore
+    const npmignoreContent = `.turbo
+dist
+node_modules
+.env
+*.env
+.env.local`;
+
+    try {
+      await fs.writeFile(npmignorePath, npmignoreContent);
+    } catch (error) {
+      console.error(`Failed to create .npmignore: ${error.message}`);
+    }
   }
 }
 
@@ -138,19 +178,23 @@ export const create = new Command()
                 title: 'Plugin - Can be added to the registry and installed by others',
                 value: 'plugin',
               },
+              {
+                title: 'Agent - Character definition file for an agent',
+                value: 'agent',
+              },
             ],
             initial: 0,
           });
 
           if (!type) {
-            process.exit(0);
+            return;
           }
           projectType = type;
         }
       } else {
         // Validate the provided type if -t was used
-        if (!['project', 'plugin'].includes(projectType)) {
-          console.error(`Invalid type: ${projectType}. Must be either 'project' or 'plugin'`);
+        if (!['project', 'plugin', 'agent'].includes(projectType)) {
+          console.error(`Invalid type: ${projectType}. Must be 'project', 'plugin', or 'agent'`);
           process.exit(1);
         }
       }
@@ -203,7 +247,7 @@ export const create = new Command()
           });
 
           if (!nameResponse) {
-            process.exit(0);
+            return;
           }
           projectName = nameResponse;
         }
@@ -263,7 +307,8 @@ export const create = new Command()
           console.error(
             'Please choose a different name or manually remove the directory contents first.'
           );
-          process.exit(1);
+          handleError(new Error(`Directory "${projectName}" is not empty`));
+          return;
         } else {
           // Directory exists but is empty - this is fine
           console.info(
@@ -283,6 +328,8 @@ export const create = new Command()
           : `@elizaos/plugin-${projectName.replace('plugin-', '')}`;
 
         await copyTemplateUtil('plugin', targetDir, pluginName);
+
+        await createIgnoreFiles(targetDir);
 
         console.info('Installing dependencies...');
         try {
@@ -311,6 +358,41 @@ export const create = new Command()
         );
         process.stdout.write(`\u001B]1337;CurrentDir=${targetDir}\u0007`);
         return;
+      } else if (options.type === 'agent') {
+        // Agent character creation
+        let characterName = projectName || 'MyAgent';
+
+        // Start with the default Eliza character from the same source used by start.ts
+        const agentTemplate = { ...elizaCharacter };
+
+        // Update only the name property
+        agentTemplate.name = characterName;
+
+        // In messageExamples, replace "Eliza" with the new character name
+        if (agentTemplate.messageExamples) {
+          agentTemplate.messageExamples.forEach((conversation) => {
+            conversation.forEach((message) => {
+              if (message.name === 'Eliza') {
+                message.name = characterName;
+              }
+            });
+          });
+        }
+
+        // Set a simple filename - either the provided name or default
+        let filename = characterName.endsWith('.json') ? characterName : `${characterName}.json`;
+
+        // Make sure we're in the current directory
+        const fullPath = path.join(process.cwd(), filename);
+
+        // Write the character file
+        await fs.writeFile(fullPath, JSON.stringify(agentTemplate, null, 2), 'utf8');
+
+        console.log(`Agent character created successfully: ${filename}`);
+        console.info(
+          `\nYou can now use this agent with:\n  elizaos agent start --path ${filename}`
+        );
+        return;
       } else {
         // Create directory if it doesn't exist
         if (!existsSync(targetDir)) {
@@ -337,10 +419,13 @@ export const create = new Command()
 
         if (!database) {
           console.error('No database selected or provided');
-          process.exit(1);
+          handleError(new Error('No database selected or provided'));
+          return;
         }
 
         await copyTemplateUtil('project', targetDir, projectName);
+
+        await createIgnoreFiles(targetDir);
 
         const { elizaDbDir, envFilePath } = await getElizaDirectories();
         if (database === 'pglite') {
@@ -376,7 +461,6 @@ export const create = new Command()
           `\nYour project is ready! Here\'s what you can do next:\n1. \`cd ${cdPath}\` to change into your project directory\n2. Run \`elizaos start\` to start your project\n3. Visit \`http://localhost:3000\` (or your custom port) to view your project in the browser`
         );
         process.stdout.write(`\u001B]1337;CurrentDir=${targetDir}\u0007`);
-        process.exit(0);
       }
     } catch (error) {
       handleError(error);

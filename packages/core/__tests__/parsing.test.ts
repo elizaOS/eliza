@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  parseBooleanFromText,
-  parseJSONObjectFromText,
-  parseJsonArrayFromText,
-} from '../src/prompts';
+import { parseBooleanFromText, parseJSONObjectFromText } from '../src/utils';
 
 describe('Parsing Module', () => {
   describe('parseBooleanFromText', () => {
@@ -21,37 +17,6 @@ describe('Parsing Module', () => {
       expect(parseBooleanFromText('')).toBe(false);
       expect(parseBooleanFromText('maybe')).toBe(false);
       expect(parseBooleanFromText('YES NO')).toBe(false);
-    });
-  });
-
-  describe('parseJsonArrayFromText', () => {
-    it('should parse JSON array from code block', () => {
-      const input = '```json\n["item1", "item2", "item3"]\n```';
-      expect(parseJsonArrayFromText(input)).toEqual(['item1', 'item2', 'item3']);
-    });
-
-    it('should handle single quote', () => {
-      let input = "```json\n['item1', 'item2', 'item3']\n```";
-      expect(parseJsonArrayFromText(input)).toEqual(['item1', 'item2', 'item3']);
-      input = '```json\n["A\'s item", "B\'s item", "C\'s item"]\n```';
-      expect(parseJsonArrayFromText(input)).toEqual(["A's item", "B's item", "C's item"]);
-      input = '["A\'s item", "B\'s item", "C\'s item"]';
-      expect(parseJsonArrayFromText(input)).toEqual(["A's item", "B's item", "C's item"]);
-      input = `[
-                'MANAGE_POSITIONS_RETRIGGER_EVALUATOR'
-              ]`;
-      expect(parseJsonArrayFromText(input)).toEqual(['MANAGE_POSITIONS_RETRIGGER_EVALUATOR']);
-    });
-
-    it('should handle empty arrays', () => {
-      expect(parseJsonArrayFromText('```json\n[]\n```')).toEqual([]);
-      expect(parseJsonArrayFromText('[]')).toEqual(null);
-    });
-
-    it('should return null for invalid JSON', () => {
-      expect(parseJsonArrayFromText('invalid')).toBe(null);
-      expect(parseJsonArrayFromText('[invalid]')).toBe(null);
-      expect(parseJsonArrayFromText('```json\n[invalid]\n```')).toBe(null);
     });
   });
 

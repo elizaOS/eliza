@@ -1,4 +1,7 @@
 import type { Agent, Character, UUID, Memory } from '@elizaos/core';
+
+export type AgentWithStatus = Omit<Agent, 'status'> & { status: 'active' | 'inactive' };
+
 import { WorldManager } from './world-manager';
 import clientLogger from './logger';
 
@@ -74,7 +77,7 @@ const fetcher = async ({
     const response = await fetch(normalizedUrl, options);
     const contentType = response.headers.get('Content-Type');
 
-    if (contentType === 'audio/mpeg') {
+    if (contentType?.startsWith('audio/')) {
       return await response.blob();
     }
 
@@ -232,12 +235,15 @@ interface AgentLog {
  * 		deleteLog: (agentId: string, logId: string) => Promise<void>;
  * 		getAgentMemories: (agentId: UUID, roomId?: UUID, tableName?: string) => Promise<any>;
  * 		deleteAgentMemory: (agentId: UUID, memoryId: string) => Promise<any>;
+ *    deleteAllAgentMemories: (agentId: UUID, roomId: UUID) => Promise<any>;
  * 		updateAgentMemory: (agentId: UUID, memoryId: string, memoryData: Partial<Memory>) => Promise<any>;
  * 	}
  * }}
  */
 export const apiClient = {
-  getAgents: () => fetcher({ url: '/agents' }),
+  // Get list of agents with minimal details
+  getAgents: (): Promise<{ data: { agents: Partial<Agent>[] } }> => fetcher({ url: '/agents' }),
+  // Get full agent details
   getAgent: (agentId: string): Promise<{ data: Agent }> => fetcher({ url: `/agents/${agentId}` }),
   ping: (): Promise<{ pong: boolean; timestamp: number }> => fetcher({ url: '/ping' }),
   testEndpoint: (endpoint: string): Promise<any> => fetcher({ url: endpoint }),
@@ -250,7 +256,7 @@ export const apiClient = {
       },
       headers: {
         'Content-Type': 'application/json',
-        Accept: 'audio/mpeg',
+        Accept: 'audio/*',
         'Transfer-Encoding': 'chunked',
       },
     }),
@@ -448,6 +454,13 @@ export const apiClient = {
     });
   },
 
+  deleteAllAgentMemories: (agentId: UUID, roomId: UUID) => {
+    return fetcher({
+      url: `/agents/${agentId}/memories/all/${roomId}`,
+      method: 'DELETE',
+    });
+  },
+
   updateAgentMemory: (agentId: UUID, memoryId: string, memoryData: Partial<Memory>) => {
     return fetcher({
       url: `/agents/${agentId}/memories/${memoryId}`,
@@ -539,5 +552,11 @@ export const apiClient = {
         content: envs,
       },
     });
+  },
+
+  // Agent Panels (public GET routes)
+  getAgentPanels: (agentId: string): Promise<{ success: boolean; data: AgentPanel[] }> => {
+    console.log('getAgentPanels', agentId);
+    return fetcher({ url: `/agents/${agentId}/panels`, method: 'GET' });
   },
 };

@@ -62,26 +62,52 @@ export async function generateSummary(
   };
 }
 
+interface DiscordComponentOptions {
+  type: number;
+  custom_id: string;
+  label?: string;
+  style?: number;
+  placeholder?: string;
+  min_values?: number;
+  max_values?: number;
+  options?: Array<{
+    label: string;
+    value: string;
+    description?: string;
+  }>;
+}
+
+interface DiscordActionRow {
+  type: 1;
+  components: DiscordComponentOptions[];
+}
+
 /**
  * Sends a message in chunks to a specified Discord TextChannel.
  * @param {TextChannel} channel - The Discord TextChannel to send the message to.
  * @param {string} content - The content of the message to be sent.
  * @param {string} _inReplyTo - The message ID to reply to (if applicable).
  * @param {any[]} files - Array of files to attach to the message.
+ * @param {any[]} components - Optional components to add to the message (buttons, dropdowns, etc.).
  * @returns {Promise<DiscordMessage[]>} - Array of sent Discord messages.
  */
 export async function sendMessageInChunks(
   channel: TextChannel,
   content: string,
   _inReplyTo: string,
-  files: any[]
+  files: Array<{ attachment: Buffer | string; name: string }>,
+  components?: any[]
 ): Promise<DiscordMessage[]> {
   const sentMessages: DiscordMessage[] = [];
   const messages = splitMessage(content);
   try {
     for (let i = 0; i < messages.length; i++) {
       const message = messages[i];
-      if (message.trim().length > 0 || (i === messages.length - 1 && files && files.length > 0)) {
+      if (
+        message.trim().length > 0 ||
+        (i === messages.length - 1 && files && files.length > 0) ||
+        components
+      ) {
         const options: any = {
           content: message.trim(),
         };
@@ -98,12 +124,121 @@ export async function sendMessageInChunks(
           options.files = files;
         }
 
+        // Add components to the last message or to a message with components only
+        if (i === messages.length - 1 && components && components.length > 0) {
+          try {
+            // Safe JSON stringify that handles BigInt
+            const safeStringify = (obj: any) => {
+              return JSON.stringify(obj, (_, value) =>
+                typeof value === 'bigint' ? value.toString() : value
+              );
+            };
+
+            logger.info(`Components received: ${safeStringify(components)}`);
+
+            if (!Array.isArray(components)) {
+              logger.warn('Components is not an array, skipping component processing');
+              // Instead of continue, maybe return or handle differently?
+              // For now, let's proceed assuming it might be an empty message with components
+            } else if (
+              components.length > 0 &&
+              components[0] &&
+              typeof components[0].toJSON === 'function'
+            ) {
+              // If it looks like discord.js components, pass them directly
+              options.components = components;
+            } else {
+              // Otherwise, build components from the assumed DiscordActionRow[] structure
+              const {
+                ActionRowBuilder,
+                ButtonBuilder,
+                StringSelectMenuBuilder,
+              } = require('discord.js');
+
+              const discordComponents = (components as DiscordActionRow[]) // Cast here for building logic
+                .map((row: DiscordActionRow) => {
+                  if (!row || typeof row !== 'object' || row.type !== 1) {
+                    logger.warn('Invalid component row structure, skipping');
+                    return null;
+                  }
+
+                  if (row.type === 1) {
+                    const actionRow = new ActionRowBuilder();
+
+                    if (!Array.isArray(row.components)) {
+                      logger.warn('Row components is not an array, skipping');
+                      return null;
+                    }
+
+                    const validComponents = row.components
+                      .map((comp: DiscordComponentOptions) => {
+                        if (!comp || typeof comp !== 'object') {
+                          logger.warn('Invalid component, skipping');
+                          return null;
+                        }
+
+                        try {
+                          if (comp.type === 2) {
+                            return new ButtonBuilder()
+                              .setCustomId(comp.custom_id)
+                              .setLabel(comp.label || '')
+                              .setStyle(comp.style || 1);
+                          }
+
+                          if (comp.type === 3) {
+                            const selectMenu = new StringSelectMenuBuilder()
+                              .setCustomId(comp.custom_id)
+                              .setPlaceholder(comp.placeholder || 'Select an option');
+
+                            if (typeof comp.min_values === 'number')
+                              selectMenu.setMinValues(comp.min_values);
+                            if (typeof comp.max_values === 'number')
+                              selectMenu.setMaxValues(comp.max_values);
+
+                            if (Array.isArray(comp.options)) {
+                              selectMenu.addOptions(
+                                comp.options.map((option) => ({
+                                  label: option.label,
+                                  value: option.value,
+                                  description: option.description,
+                                }))
+                              );
+                            }
+
+                            return selectMenu;
+                          }
+                        } catch (err) {
+                          logger.error(`Error creating component: ${err}`);
+                          return null;
+                        }
+                        return null;
+                      })
+                      .filter(Boolean);
+
+                    if (validComponents.length > 0) {
+                      actionRow.addComponents(validComponents);
+                      return actionRow;
+                    }
+                  }
+                  return null;
+                })
+                .filter(Boolean);
+
+              if (discordComponents.length > 0) {
+                options.components = discordComponents;
+              }
+            }
+          } catch (error) {
+            logger.error(`Error processing components: ${error}`);
+          }
+        }
+
         const m = await channel.send(options);
         sentMessages.push(m);
       }
     }
   } catch (error) {
-    logger.error('Error sending message:', error);
+    logger.error(`Error sending message: ${error}`);
   }
 
   return sentMessages;
@@ -121,7 +256,8 @@ function splitMessage(content: string): string[] {
   const rawLines = content?.split('\n') || [];
   // split all lines into MAX_MESSAGE_LENGTH chunks so any long lines are split
   const lines = rawLines.flatMap((line) => {
-    const chunks = [];
+    // Explicitly type chunks as string[]
+    const chunks: string[] = [];
     while (line.length > MAX_MESSAGE_LENGTH) {
       chunks.push(line.slice(0, MAX_MESSAGE_LENGTH));
       line = line.slice(MAX_MESSAGE_LENGTH);

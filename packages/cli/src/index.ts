@@ -16,7 +16,7 @@ import { update } from '@/src/commands/update';
 import { updateCLI } from '@/src/commands/update-cli';
 import { displayBanner, loadEnvironment } from '@/src/utils';
 import { logger } from '@elizaos/core';
-import { Command } from 'commander';
+import { Command, Option } from 'commander';
 import fs from 'node:fs';
 import path, { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -48,12 +48,19 @@ async function main() {
     version = packageJson.version;
   }
 
-  const program = new Command().name('elizaos').version(version).alias('-v');
+  const program = new Command()
+    .name('elizaos')
+    .version(version, '-v, --version', 'output the version number');
 
-  // Add global options
+  // Add global options but hide them from global help
+  // They will still be passed to all commands for backward compatibility
   program
-    .option('-r, --remote-url <url>', 'URL of the remote agent runtime')
-    .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val));
+    .addOption(new Option('-r, --remote-url <url>', 'URL of the remote agent runtime').hideHelp())
+    .addOption(
+      new Option('-p, --port <port>', 'Port to listen on')
+        .argParser((val) => Number.parseInt(val))
+        .hideHelp()
+    );
 
   // Create a stop command for testing purposes
   const stopCommand = new Command('stop')

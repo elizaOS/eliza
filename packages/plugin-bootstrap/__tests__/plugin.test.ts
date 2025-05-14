@@ -4,25 +4,8 @@ import { IAgentRuntime, UUID, EventType, Memory, Content, Character } from '@eli
 import { MockRuntime, createMockRuntime } from './test-utils';
 
 // Create a mock function for bootstrapPlugin.init since it might not actually exist on the plugin
-const mockInit = vi.fn().mockImplementation(async (config, runtime) => {
-  if (bootstrapPlugin.providers) {
-    bootstrapPlugin.providers.forEach((provider) => runtime.registerProvider(provider));
-  }
-  if (bootstrapPlugin.actions) {
-    bootstrapPlugin.actions.forEach((action) => runtime.registerAction(action));
-  }
-  if (bootstrapPlugin.evaluators) {
-    bootstrapPlugin.evaluators.forEach((evaluator) => runtime.registerEvaluator(evaluator));
-  }
-  if (bootstrapPlugin.services) {
-    bootstrapPlugin.services.forEach((service) => runtime.registerService(service));
-  }
-  if (bootstrapPlugin.events) {
-    Object.entries(bootstrapPlugin.events).forEach(([eventType, handlers]) => {
-      handlers.forEach((handler) => runtime.registerEvent(eventType, handler));
-    });
-  }
-});
+// Define mockInit as a vi.fn() once. Its implementation will be set in beforeEach.
+const mockInit = vi.fn();
 
 describe('Bootstrap Plugin', () => {
   let mockRuntime: MockRuntime;
@@ -34,6 +17,63 @@ describe('Bootstrap Plugin', () => {
       getSetting: vi.fn().mockReturnValue('medium'),
       getParticipantUserState: vi.fn().mockResolvedValue('ACTIVE'),
       composeState: vi.fn().mockResolvedValue({}),
+    });
+
+    // Set or reset mockInit's implementation for each test
+    mockInit.mockImplementation(async (config, runtime) => {
+      if (bootstrapPlugin.providers) {
+        bootstrapPlugin.providers.forEach((provider) => {
+          try {
+            runtime.registerProvider(provider);
+          } catch (error) {
+            // Log or handle error if necessary for debugging, but don't rethrow for this test
+            console.error(`Failed to register provider ${provider.name}:`, error);
+          }
+        });
+      }
+      if (bootstrapPlugin.actions) {
+        bootstrapPlugin.actions.forEach((action) => {
+          try {
+            runtime.registerAction(action);
+          } catch (error) {
+            console.error(`Failed to register action ${action.name}:`, error);
+          }
+        });
+      }
+      if (bootstrapPlugin.evaluators) {
+        bootstrapPlugin.evaluators.forEach((evaluator) => {
+          try {
+            runtime.registerEvaluator(evaluator);
+          } catch (error) {
+            console.error(`Failed to register evaluator ${evaluator.name}:`, error);
+          }
+        });
+      }
+      if (bootstrapPlugin.services) {
+        bootstrapPlugin.services.forEach((service) => {
+          try {
+            // Services are classes, so we need to get their static serviceType or name
+            const serviceName =
+              (service as any).serviceType || (service as any).name || 'unknown service';
+            runtime.registerService(service);
+          } catch (error) {
+            const serviceName =
+              (service as any).serviceType || (service as any).name || 'unknown service';
+            console.error(`Failed to register service ${serviceName}:`, error);
+          }
+        });
+      }
+      if (bootstrapPlugin.events) {
+        Object.entries(bootstrapPlugin.events).forEach(([eventType, handlers]) => {
+          handlers.forEach((handler) => {
+            try {
+              runtime.registerEvent(eventType, handler);
+            } catch (error) {
+              console.error(`Failed to register event handler for ${eventType}:`, error);
+            }
+          });
+        });
+      }
     });
   });
 

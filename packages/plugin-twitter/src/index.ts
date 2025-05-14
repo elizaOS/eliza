@@ -297,6 +297,7 @@ export class TwitterService extends Service {
       }
     } catch (error) {
       logger.error('Failed to create default Twitter client:', error);
+      throw error;
     }
 
     return twitterClientManager;

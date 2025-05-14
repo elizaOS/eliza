@@ -5,7 +5,7 @@ The ElizaOS CLI provides a comprehensive set of commands to manage your ElizaOS 
 ## Installation
 
 ```bash
-bun install -g @elizaos/cli
+bun install -g @elizaos/cli@beta
 ```
 
 ### Alternative usage with npx

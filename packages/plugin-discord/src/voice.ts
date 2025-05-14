@@ -175,7 +175,7 @@ export class VoiceManager extends EventEmitter {
     }
   > = new Map();
   private activeAudioPlayer: AudioPlayer | null = null;
-  private client: Client;
+  private client: Client | null;
   private runtime: IAgentRuntime;
   private streams: Map<string, Readable> = new Map();
   private connections: Map<string, VoiceConnection> = new Map();
@@ -193,10 +193,18 @@ export class VoiceManager extends EventEmitter {
     super();
     this.client = service.client;
     this.runtime = runtime;
+    this.ready = false;
 
-    this.client.on('voiceManagerReady', () => {
-      this.setReady(true);
-    });
+    if (this.client) {
+      this.client.on('voiceManagerReady', () => {
+        this.setReady(true);
+      });
+    } else {
+      logger.error(
+        'Discord client is not available in VoiceManager constructor for voiceManagerReady event'
+      );
+      this.ready = false;
+    }
   }
 
   /**
@@ -209,6 +217,13 @@ export class VoiceManager extends EventEmitter {
       case DiscordChannelType.GuildVoice:
       case DiscordChannelType.GuildStageVoice:
         return ChannelType.VOICE_GROUP;
+      default:
+        // This function should only be called with GuildVoice or GuildStageVoice channels
+        // If it receives another type, it's an unexpected error.
+        logger.error(
+          `getChannelType received unexpected channel type: ${channel.type} for channel ${channel.id}`
+        );
+        throw new Error(`Unexpected channel type encountered: ${channel.type}`);
     }
   }
 
@@ -242,7 +257,7 @@ export class VoiceManager extends EventEmitter {
     const newChannelId = newState.channelId;
     const member = newState.member;
     if (!member) return;
-    if (member.id === this.client.user?.id) {
+    if (member.id === this.client?.user?.id) {
       return;
     }
 
@@ -285,7 +300,7 @@ export class VoiceManager extends EventEmitter {
       adapterCreator: channel.guild.voiceAdapterCreator as any,
       selfDeaf: false,
       selfMute: false,
-      group: this.client.user.id,
+      group: this.client?.user?.id ?? 'default-group',
     });
 
     try {
@@ -360,6 +375,7 @@ export class VoiceManager extends EventEmitter {
             console.error('Failed to fetch user:', error);
           }
         }
+
         if (user && !user?.user.bot) {
           this.monitorMember(user as GuildMember, channel);
           this.streams.get(entityId)?.emit('speakingStarted');
@@ -386,7 +402,12 @@ export class VoiceManager extends EventEmitter {
    * @returns {VoiceConnection | undefined} The voice connection for the specified guild ID, or undefined if not found.
    */
   getVoiceConnection(guildId: string) {
-    const connections = getVoiceConnections(this.client.user.id);
+    const userId = this.client?.user?.id;
+    if (!userId) {
+      logger.error('Client user ID is not available.');
+      return undefined;
+    }
+    const connections = getVoiceConnections(userId);
     if (!connections) {
       return;
     }
@@ -407,18 +428,22 @@ export class VoiceManager extends EventEmitter {
     const userName = member?.user?.username;
     const name = member?.user?.displayName;
     const connection = this.getVoiceConnection(member?.guild?.id);
+
     const receiveStream = connection?.receiver.subscribe(entityId, {
       autoDestroy: true,
       emitClose: true,
     });
     if (!receiveStream || receiveStream.readableLength === 0) {
+      logger.warn(`[monitorMember] No receiveStream or empty stream for user ${entityId}`);
       return;
     }
+
     const opusDecoder = new prism.opus.Decoder({
       channels: 1,
       rate: DECODE_SAMPLE_RATE,
       frameSize: DECODE_FRAME_SIZE,
     });
+
     const volumeBuffer: number[] = [];
     const VOLUME_WINDOW_SIZE = 30;
     const SPEAKING_THRESHOLD = 0.05;
@@ -446,7 +471,11 @@ export class VoiceManager extends EventEmitter {
     });
     pipeline(receiveStream as AudioReceiveStream, opusDecoder as any, (err: Error | null) => {
       if (err) {
-        logger.debug(`Opus decoding pipeline error: ${err}`);
+        logger.debug(`[monitorMember] Opus decoding pipeline error for user ${entityId}: ${err}`);
+      } else {
+        logger.debug(
+          `[monitorMember] Opus decoding pipeline finished successfully for user ${entityId}`
+        );
       }
     });
     this.streams.set(entityId, opusDecoder);
@@ -472,7 +501,7 @@ export class VoiceManager extends EventEmitter {
     opusDecoder.on('close', closeHandler);
     receiveStream?.on('close', streamCloseHandler);
 
-    this.client.emit('userStream', entityId, name, userName, channel, opusDecoder);
+    this.client?.emit('userStream', entityId, name, userName, channel, opusDecoder);
   }
 
   /**
@@ -490,7 +519,7 @@ export class VoiceManager extends EventEmitter {
 
     // Stop monitoring all members in this channel
     for (const [memberId, monitorInfo] of this.activeMonitors) {
-      if (monitorInfo.channel.id === channel.id && memberId !== this.client.user?.id) {
+      if (monitorInfo.channel.id === channel.id && memberId !== this.client?.user?.id) {
         this.stopMonitoringMember(memberId);
       }
     }
@@ -536,8 +565,10 @@ export class VoiceManager extends EventEmitter {
 
     if (this.activeAudioPlayer || this.processingVoice) {
       const state = this.userStates.get(entityId);
-      state.buffers.length = 0;
-      state.totalLength = 0;
+      if (state) {
+        state.buffers.length = 0;
+        state.totalLength = 0;
+      }
       return;
     }
 
@@ -704,6 +735,8 @@ export class VoiceManager extends EventEmitter {
         channelId,
         serverId: channel.guild.id,
         type,
+        worldId: createUniqueUuid(this.runtime, channel.guild.id) as UUID,
+        worldName: channel.guild.name,
       });
 
       const memory: Memory = {
@@ -881,7 +914,7 @@ export class VoiceManager extends EventEmitter {
    *
    * @param {AudioPlayer} audioPlayer - The audio player to be cleaned up.
    */
-  cleanupAudioPlayer(audioPlayer: AudioPlayer) {
+  cleanupAudioPlayer(audioPlayer: AudioPlayer | null) {
     if (!audioPlayer) return;
 
     audioPlayer.stop();

@@ -83,7 +83,7 @@ export const choiceProvider: Provider = {
             if (typeof option === 'string') {
               // Handle string option
               const description =
-                task.metadata?.options.find((o) => o.name === option)?.description || '';
+                task.metadata?.options?.find((o) => o.name === option)?.description || '';
               output += `   - \`${option}\` ${description ? `- ${description}` : ''}\n`;
             } else {
               // Handle option object

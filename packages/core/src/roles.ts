@@ -34,28 +34,23 @@ export async function getUserServerRole(
   entityId: string,
   serverId: string
 ): Promise<Role> {
-  try {
-    const worldId = createUniqueUuid(runtime, serverId);
-    const world = await runtime.getWorld(worldId);
+  const worldId = createUniqueUuid(runtime, serverId);
+  const world = await runtime.getWorld(worldId);
 
-    if (!world || !world.metadata?.roles) {
-      return Role.NONE;
-    }
-
-    if (world.metadata.roles[entityId]) {
-      return world.metadata.roles[entityId] as Role;
-    }
-
-    // Also check original ID format
-    if (world.metadata.roles[entityId]) {
-      return world.metadata.roles[entityId] as Role;
-    }
-
-    return Role.NONE;
-  } catch (error) {
-    logger.error(`Error getting user role: ${error}`);
+  if (!world || !world.metadata?.roles) {
     return Role.NONE;
   }
+
+  if (world.metadata.roles[entityId]) {
+    return world.metadata.roles[entityId] as Role;
+  }
+
+  // Also check original ID format
+  if (world.metadata.roles[entityId]) {
+    return world.metadata.roles[entityId] as Role;
+  }
+
+  return Role.NONE;
 }
 
 /**
@@ -65,31 +60,26 @@ export async function findWorldsForOwner(
   runtime: IAgentRuntime,
   entityId: string
 ): Promise<World[] | null> {
-  try {
-    if (!entityId) {
-      logger.error('User ID is required to find server');
-      return null;
-    }
-
-    // Get all worlds for this agent
-    const worlds = await runtime.getAllWorlds();
-
-    if (!worlds || worlds.length === 0) {
-      logger.info('No worlds found for this agent');
-      return null;
-    }
-
-    const ownerWorlds = [];
-    // Find world where the user is the owner
-    for (const world of worlds) {
-      if (world.metadata?.ownership?.ownerId === entityId) {
-        ownerWorlds.push(world);
-      }
-    }
-
-    return ownerWorlds.length ? ownerWorlds : null;
-  } catch (error) {
-    logger.error(`Error finding server for owner: ${error}`);
+  if (!entityId) {
+    logger.error('User ID is required to find server');
     return null;
   }
+
+  // Get all worlds for this agent
+  const worlds = await runtime.getAllWorlds();
+
+  if (!worlds || worlds.length === 0) {
+    logger.info('No worlds found for this agent');
+    return null;
+  }
+
+  const ownerWorlds = [];
+  // Find world where the user is the owner
+  for (const world of worlds) {
+    if (world.metadata?.ownership?.ownerId === entityId) {
+      ownerWorlds.push(world);
+    }
+  }
+
+  return ownerWorlds.length ? ownerWorlds : null;
 }

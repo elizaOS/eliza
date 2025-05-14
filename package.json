@@ -1,7 +1,6 @@
 {
   "name": "eliza",
   "scripts": {
-    "preinstall": "only-allow bun",
     "start": "cd ./packages/the-org && bun run start",
     "start-cli": "cd ./packages/cli && bun run cli start",
     "start:debug": "cross-env NODE_NO_WARNINGS=1 LOG_LEVEL=debug elizaos start",
@@ -26,6 +25,8 @@
     "docker:start": "bash ./scripts/docker.sh start",
     "docker": "bun docker:build && bun docker:run && bun docker:bash",
     "test": "turbo run test --concurrency 20 --filter=!./packages/plugin-starter --filter=!./packages/project-starter --filter=!./packages/the-org --filter=!./packages/docs",
+    "test:client": "turbo run test --filter=./packages/client",
+    "test:core": "turbo run test --filter=./packages/core",
     "test:app": "turbo run test --concurrency 20 --filter=./packages/app",
     "prepare": "husky"
   },
@@ -34,13 +35,12 @@
     "@types/node": "^22.15.3",
     "@types/uuid": "^9.0.8",
     "@vitest/eslint-plugin": "1.0.1",
-    "bun": "1.2.5",
+    "bun": "^1.2.13",
     "concurrently": "9.1.0",
     "cross-env": "7.0.3",
     "husky": "^9.1.7",
     "lerna": "8.1.4",
     "lint-staged": "^15.5.0",
-    "only-allow": "^1.2.1",
     "sharp": "0.33.5",
     "tsup": "8.4.0",
     "turbo": "^2.4.4",
@@ -68,7 +68,6 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@babel/generator": "^7.26.10",
-    "@elizaos/plugin-openai": "workspace:*",
     "@hapi/shot": "^6.0.1",
     "@types/hapi": "^18.0.14",
     "node-opus": "^0.3.3",
@@ -78,7 +77,8 @@
   },
   "packageManager": "bun@1.2.5",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "plugin-specification/*"
   ],
   "module": "index.ts",
   "type": "module",

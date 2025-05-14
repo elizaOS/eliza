@@ -1,29 +1,5 @@
 import pino, { type LogFn, type DestinationStream } from 'pino';
-
-/**
- * Parses a boolean value from text input.
- *
- * @param {string | undefined | null} value - The text input to be parsed.
- * @returns {boolean} - The boolean value parsed from the text input.
- */
-function parseBooleanFromText(value: string | undefined | null): boolean {
-  if (!value) return false;
-
-  const affirmative = ['YES', 'Y', 'TRUE', 'T', '1', 'ON', 'ENABLE'];
-  const negative = ['NO', 'N', 'FALSE', 'F', '0', 'OFF', 'DISABLE'];
-
-  const normalizedText = value.trim().toUpperCase();
-
-  if (affirmative.includes(normalizedText)) {
-    return true;
-  }
-  if (negative.includes(normalizedText)) {
-    return false;
-  }
-
-  // For environment variables, we'll treat unrecognized values as false
-  return false;
-}
+import { parseBooleanFromText } from './utils';
 
 /**
  * Interface representing a log entry.

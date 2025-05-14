@@ -72,4 +72,13 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter<PgliteDatabase> {
   async close() {
     await this.manager.close();
   }
+
+  /**
+   * Asynchronously retrieves the connection from the manager.
+   *
+   * @returns {Promise<PGlite>} A Promise that resolves with the connection.
+   */
+  async getConnection() {
+    return this.manager.getConnection();
+  }
 }

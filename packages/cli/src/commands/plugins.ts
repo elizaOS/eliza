@@ -107,51 +107,48 @@ export const findPluginPackageName = (
 export const plugins = new Command()
   .name('plugins')
   .description('Manage ElizaOS plugins')
-  .option('--help', 'Show help for plugins command')
+  .option('-h, --help', 'Show help for plugins command')
   .action(function () {
-    // Display banner before showing help
-    displayBanner()
-      .then(() => {
-        this.help();
-      })
-      .catch((err) => {
-        // Silently continue if banner display fails
-        this.help();
-      });
+    // Just show help without displaying banner
+    this.help();
   });
 
 export const pluginsCommand = plugins
   .command('list')
   .aliases(['l', 'ls'])
   .description('List available plugins to install into the project')
-  .option('-t, --type <type>', 'filter by type (adapter, client, plugin)')
   .action(async (opts) => {
     try {
       // Temporarily return hardcoded plugins as an array
       const hardcodedPlugins = [
+        '@elizaos/core',
         '@elizaos/plugin-bootstrap',
-        '@elizaos/plugin-sql',
-        '@elizaos/plugin-twitter',
-        '@elizaos/plugin-telegram',
-        '@elizaos/plugin-discord',
-        '@elizaos/plugin-farcaster',
-        '@elizaos/plugin-redpill',
-        '@elizaos/plugin-groq',
-        '@elizaos/plugin-local-ai',
-        '@elizaos/plugin-anthropic',
-        '@elizaos/plugin-openai',
-        '@elizaos/plugin-solana',
         '@elizaos/plugin-evm',
-        '@elizaos/plugin-pdf',
+        '@elizaos/plugin-solana',
+        '@elizaos/plugin-tee',
+        '@elizaos/plugin-twitter',
+        '@elizaos/plugin-openai',
+        '@elizaos/plugin-telegram',
+        '@elizaos/cli',
+        '@elizaos/plugin-discord',
+        '@elizaos/plugin-elevenlabs',
+        '@elizaos/plugin-anthropic',
+        '@elizaos/plugin-local-ai',
+        '@elizaos/plugin-sql',
+        '@elizaos/the-org',
         '@elizaos/plugin-browser',
-        '@elizaos/plugin-s3-storage',
         '@elizaos/plugin-video-understanding',
+        '@elizaos/plugin-pdf',
+        '@elizaos/plugin-storage-s3',
+        '@elizaos/plugin-farcaster',
+        '@elizaos/plugin-groq',
+        '@elizaos/plugin-redpill',
+        '@elizaos/plugin-ollama',
         '@elizaos/plugin-venice',
+        '@fleek-platform/eliza-plugin-mcp',
       ];
 
-      const availablePlugins = hardcodedPlugins
-        .filter((name) => !opts.type || name.includes(opts.type))
-        .sort();
+      const availablePlugins = hardcodedPlugins.filter((name) => name.includes('plugin')).sort();
 
       logHeader('Available plugins');
       for (const pluginName of availablePlugins) {
@@ -166,7 +163,7 @@ export const pluginsCommand = plugins
 plugins
   .command('add')
   .alias('install')
-  .description('Add a plugins to the project')
+  .description('Add a plugin to the project')
   .argument('<plugin>', 'plugins name (e.g., "abc", "plugin-abc", "elizaos/plugin-abc")')
   .option('-n, --no-env-prompt', 'Skip prompting for environment variables')
   .option(
@@ -175,7 +172,7 @@ plugins
     'v2-develop'
   )
   .option('-T, --tag <tagname>', 'Specify a tag to install (e.g., beta)')
-  .action(async (plugin, opts) => {
+  .action(async (pluginArg, opts) => {
     const cwd = process.cwd();
     const pkgData = readPackageJson(cwd);
 
@@ -186,54 +183,132 @@ plugins
       process.exit(1);
     }
 
+    let plugin = pluginArg;
+
     try {
+      // --- Convert full GitHub HTTPS URL to shorthand ---
+      const httpsGitHubUrlRegex =
+        // eslint-disable-next-line no-useless-escape
+        /^https?:\/\/github\.com\/([a-zA-Z0-9_-]+)\/([a-zA-Z0-9_.-]+?)(?:\.git)?(?:(?:#|\/tree\/|\/commit\/)([a-zA-Z0-9_.-]+))?\/?$/;
+      const httpsMatch = plugin.match(httpsGitHubUrlRegex);
+
+      if (httpsMatch) {
+        const [, owner, repo, ref] = httpsMatch;
+        plugin = `github:${owner}/${repo}${ref ? `#${ref}` : ''}`;
+        logger.info(`Detected GitHub URL. Converted to: ${plugin}`);
+      }
+      // --- End GitHub URL conversion ---
+
       const installedPluginName = findPluginPackageName(plugin, pkgData.allDependencies);
       if (installedPluginName) {
         logger.info(`Plugin "${installedPluginName}" is already added to this project.`);
         process.exit(0);
       }
 
-      const tag = getCliInstallTag();
-      const versionTag = tag ? `@${tag}` : '@latest';
+      // --- GitHub Plugin Installation ---
+      const githubRegex =
+        /^(?:github:)?([a-zA-Z0-9_-]+)\/([a-zA-Z0-9_.-]+)(?:#([a-zA-Z0-9_.-]+))?$/;
+      const githubMatch = plugin.match(githubRegex);
 
-      const normalizedPluginName = normalizePluginNameForDisplay(plugin);
-      const npmPackageName = `@elizaos/${normalizedPluginName}`;
-      const npmPackageNameWithTag = `${npmPackageName}${versionTag}`;
+      if (githubMatch) {
+        const [, owner, repo, ref] = githubMatch;
+        const githubSpecifier = `github:${owner}/${repo}${ref ? `#${ref}` : ''}`;
+        // The plugin name for Eliza's internal purposes could be derived from the repo name.
+        // For now, we'll use the repo name, but this might need refinement
+        // to check package.json inside the repo after installation.
+        const pluginNameForPostInstall = repo;
 
-      console.info(`Attempting to install ${npmPackageNameWithTag} from npm registry...`);
+        logger.info(`Attempting to install plugin directly from GitHub: ${githubSpecifier}`);
 
-      let success = await installPlugin(npmPackageName, cwd, tag, opts.branch);
+        // For GitHub installs, opts.tag and opts.branch are superseded by the #ref in the specifier.
+        // We pass undefined for them to installPlugin, which should be updated to handle this.
+        const success = await installPlugin(githubSpecifier, cwd);
 
-      if (success) {
-        console.log(`Successfully installed ${npmPackageNameWithTag}`);
-        process.exit(0);
-      }
+        if (success) {
+          logger.info(
+            `Successfully installed ${pluginNameForPostInstall} from ${githubSpecifier}.`
+          );
+          // TODO: Add post-installation steps here, similar to other plugin types
+          // e.g., prompting for env vars, updating config.
+          // For now, just exit cleanly.
+          process.exit(0);
+        } else {
+          logger.error(`Failed to install plugin from ${githubSpecifier}.`);
+          process.exit(1);
+        }
+      } else {
+        // --- Existing Plugin Installation Logic (NPM, Registry) ---
+        // Handle third-party plugins (fully qualified npm package names)
+        if (plugin.startsWith('@') && plugin.includes('/')) {
+          const npmPackageNameWithTag = `${plugin}${opts.tag ? `@${opts.tag}` : ''}`;
+          logger.info(
+            `Attempting to install third-party plugin ${npmPackageNameWithTag} from npm registry...`
+          );
+          const installResult = await installPlugin(
+            npmPackageNameWithTag,
+            cwd,
+            opts.tag,
+            opts.branch
+          );
 
-      console.warn(
-        `Failed to install ${npmPackageNameWithTag} directly from npm. Trying registry lookup...`
-      );
+          if (installResult) {
+            console.log(`Successfully installed third-party plugin ${npmPackageNameWithTag}`);
+            process.exit(0);
+          }
+          console.error(
+            `Failed to install third-party plugin ${npmPackageNameWithTag} from npm registry.`
+          );
+          process.exit(1);
+        }
 
-      const repo = await getPluginRepository(plugin);
+        // Handle official ElizaOS plugins
+        const tag = getCliInstallTag();
+        const versionTag = tag ? `@${tag}` : '@latest';
 
-      if (!repo) {
+        // First try registry lookup for official plugins
+        const repo = await getPluginRepository(plugin);
+
+        if (repo) {
+          logger.info(`Found plugin in registry, installing ${repo}...`);
+          const registryInstallResult = await installPlugin(repo, cwd, opts.tag, opts.branch);
+
+          if (registryInstallResult) {
+            console.log(`Successfully installed ${repo}`);
+            process.exit(0);
+          }
+          console.error(`Failed to install ${repo} from registry.`);
+        }
+
+        // If not in registry, try npm with @elizaos scope
+        const normalizedPluginName = normalizePluginNameForDisplay(plugin);
+        const npmPackageName = `@elizaos/${normalizedPluginName}`;
+        const npmPackageNameWithTag = `${npmPackageName}${versionTag}`;
+
+        logger.info(
+          `Plugin not found in registry. Attempting to install ${npmPackageNameWithTag} from npm...`
+        );
+        const npmInstallResult = await installPlugin(npmPackageName, cwd, tag, opts.branch);
+
+        if (npmInstallResult) {
+          console.log(`Successfully installed ${npmPackageNameWithTag}`);
+          process.exit(0);
+        }
+
+        // If we get here, all installation attempts failed
+        console.error(`Failed to install plugin ${plugin} from all sources.`);
+
+        // Show help about plugin formats and exit
         console.error(`Plugin "${plugin}" not found in registry`);
         console.info('\nYou can specify plugins in multiple formats:');
         console.info('  - Just the name: ton');
-        console.info('  - With plugin- prefix: plugin-abc');
-        console.info('  - With organization: elizaos/plugin-abc');
-        console.info('  - Full package name: @elizaos-plugins/plugin-abc');
-        console.info('\nTry listing available plugins with:');
-        console.info('  npx elizaos project list-plugins');
-        process.exit(1);
-      }
-
-      console.info(`Installing ${repo}...`);
-      success = await installPlugin(repo, cwd, opts.tag, opts.branch);
-
-      if (success) {
-        console.log(`Successfully installed ${repo}`);
-      } else {
-        console.error(`Failed to install ${repo}`);
+        console.info('  - With plugin- prefix: plugin-ton');
+        console.info('  - With scope: elizaos/plugin-ton');
+        console.info('  - Full package name: @elizaos/plugin-ton');
+        console.info('  - Third-party package: @organization/plugin-name');
+        console.info('  - GitHub: owner/repo (e.g., myuser/my-eliza-plugin)');
+        console.info(
+          '  - GitHub with branch/tag/commit: owner/repo#my-branch (or github:owner/repo#my-tag)'
+        );
         process.exit(1);
       }
     } catch (error) {

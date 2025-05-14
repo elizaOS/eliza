@@ -399,7 +399,7 @@ async function extractSettingValues(
     }
 
     function extractValidSettings(obj: unknown, worldSettings: WorldSettings) {
-      const extracted = [];
+      const extracted: SettingUpdate[] = [];
 
       function traverse(node: unknown): void {
         if (Array.isArray(node)) {
@@ -700,7 +700,7 @@ export const updateSettingsAction: Action = {
   description:
     'Saves a configuration setting during the onboarding process, or update an existing setting. Use this when you are onboarding with a world owner or admin.',
 
-  validate: async (runtime: IAgentRuntime, message: Memory, _state: State): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     try {
       if (message.content.channelType !== ChannelType.DM) {
         logger.debug(`Skipping settings in non-DM channel (type: ${message.content.channelType})`);
@@ -714,13 +714,13 @@ export const updateSettingsAction: Action = {
         return false;
       }
 
-      const world = worlds.find((world) => world.metadata.settings);
+      const world = worlds.find((world) => world.metadata?.settings);
 
       // Check if there's an active settings state in world metadata
-      const worldSettings = world.metadata.settings;
+      const worldSettings = world?.metadata?.settings;
 
       if (!worldSettings) {
-        logger.error(`No settings state found for server ${world.serverId}`);
+        logger.error(`No settings state found for server ${world?.serverId}`);
         return false;
       }
 
@@ -735,23 +735,43 @@ export const updateSettingsAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State,
-    _options: any,
-    callback: HandlerCallback
+    state?: State,
+    _options?: any,
+    callback?: HandlerCallback
   ): Promise<void> => {
     try {
+      if (!state) {
+        logger.error('State is required for settings handler');
+        throw new Error('State is required for settings handler');
+      }
+
+      if (!message) {
+        logger.error('Message is required for settings handler');
+        throw new Error('Message is required for settings handler');
+      }
+
+      if (!callback) {
+        logger.error('Callback is required for settings handler');
+        throw new Error('Callback is required for settings handler');
+      }
+
       // Find the server where this user is the owner
       logger.info(`Handler looking for server for user ${message.entityId}`);
       const worlds = await findWorldsForOwner(runtime, message.entityId);
-      const serverOwnership = worlds.find((world) => world.metadata.settings);
+      const serverOwnership = worlds?.find((world) => world.metadata?.settings);
       if (!serverOwnership) {
         logger.error(`No server found for user ${message.entityId} in handler`);
         await generateErrorResponse(runtime, state, callback);
         return;
       }
 
-      const serverId = serverOwnership.serverId;
+      const serverId = serverOwnership?.serverId;
       logger.info(`Using server ID: ${serverId}`);
+
+      if (!serverId) {
+        logger.error(`No server ID found for user ${message.entityId} in handler`);
+        return;
+      }
 
       // Get settings state from world metadata
       const worldSettings = await getWorldSettings(runtime, serverId);
@@ -800,7 +820,9 @@ export const updateSettingsAction: Action = {
       }
     } catch (error) {
       logger.error(`Error in settings handler: ${error}`);
-      await generateErrorResponse(runtime, state, callback);
+      if (state && callback) {
+        await generateErrorResponse(runtime, state, callback);
+      }
     }
   },
   examples: [

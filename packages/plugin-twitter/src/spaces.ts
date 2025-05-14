@@ -244,28 +244,17 @@ export class TwitterSpaceClient {
       // Ensure world exists first
       await this.runtime.ensureWorldExists({
         id: worldId,
+        worldName: config.title || 'Twitter Space',
         name: `${this.client.profile.username}'s Twitter`,
         agentId: this.runtime.agentId,
         serverId: userId,
+        source: 'twitter',
         metadata: {
           ownership: { ownerId: userId },
           twitter: {
             username: this.client.profile.username,
             id: userId,
           },
-        },
-      });
-
-      // Ensure space room exists
-      await this.runtime.ensureRoomExists({
-        id: spaceRoomId,
-        name: config.title || 'Twitter Space',
-        source: 'twitter',
-        type: ChannelType.GROUP,
-        channelId: this.spaceId,
-        serverId: userId,
-        worldId: worldId,
-        metadata: {
           spaceInfo: {
             title: config.title,
             description: config.description,

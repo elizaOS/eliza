@@ -41,10 +41,17 @@ export enum MediaType {
 const MAX_MESSAGE_LENGTH = 4096; // Telegram's max message length
 
 const getChannelType = (chat: Chat): ChannelType => {
-  if (chat.type === 'private') return ChannelType.DM;
-  if (chat.type === 'supergroup') return ChannelType.GROUP;
-  if (chat.type === 'channel') return ChannelType.GROUP;
-  if (chat.type === 'group') return ChannelType.GROUP;
+  // Use a switch statement for clarity and exhaustive checks
+  switch (chat.type) {
+    case 'private':
+      return ChannelType.DM;
+    case 'group':
+    case 'supergroup':
+    case 'channel':
+      return ChannelType.GROUP;
+    default:
+      throw new Error(`Unrecognized Telegram chat type: ${(chat as any).type}`);
+  }
 };
 
 /**
@@ -129,7 +136,7 @@ export class MessageManager {
         let mediaType: MediaType | undefined = undefined;
 
         for (const prefix in typeMap) {
-          if (attachment.contentType.startsWith(prefix)) {
+          if (attachment.contentType?.startsWith(prefix)) {
             mediaType = typeMap[prefix];
             break;
           }
@@ -143,20 +150,29 @@ export class MessageManager {
 
         await this.sendMedia(ctx, attachment.url, mediaType, attachment.description);
       });
+      return [];
     } else {
-      const chunks = this.splitMessage(content.text);
+      const chunks = this.splitMessage(content.text ?? '');
       const sentMessages: Message.TextMessage[] = [];
 
       const telegramButtons = convertToTelegramButtons(content.buttons ?? []);
 
+      if (!ctx.chat) {
+        logger.error('sendMessageInChunks: ctx.chat is undefined');
+        return [];
+      }
       await ctx.telegram.sendChatAction(ctx.chat.id, 'typing');
 
       for (let i = 0; i < chunks.length; i++) {
         const chunk = convertMarkdownToTelegram(chunks[i]);
+        if (!ctx.chat) {
+          logger.error('sendMessageInChunks loop: ctx.chat is undefined');
+          continue;
+        }
         const sentMessage = (await ctx.telegram.sendMessage(ctx.chat.id, chunk, {
           reply_parameters:
             i === 0 && replyToMessageId ? { message_id: replyToMessageId } : undefined,
-          parse_mode: 'Markdown',
+          parse_mode: 'MarkdownV2',
           ...Markup.inlineKeyboard(telegramButtons),
         })) as Message.TextMessage;
 
@@ -199,6 +215,10 @@ export class MessageManager {
         throw new Error(`Unsupported media type: ${type}`);
       }
 
+      if (!ctx.chat) {
+        throw new Error('sendMedia: ctx.chat is undefined');
+      }
+
       if (isUrl) {
         // Handle HTTP URLs
         await sendFunction(ctx.chat.id, mediaPath, { caption });
@@ -211,6 +231,9 @@ export class MessageManager {
         const fileStream = fs.createReadStream(mediaPath);
 
         try {
+          if (!ctx.chat) {
+            throw new Error('sendMedia (file): ctx.chat is undefined');
+          }
           await sendFunction(ctx.chat.id, { source: fileStream }, { caption });
         } finally {
           fileStream.destroy();
@@ -221,8 +244,10 @@ export class MessageManager {
         `${type.charAt(0).toUpperCase() + type.slice(1)} sent successfully: ${mediaPath}`
       );
     } catch (error) {
-      logger.error(`Failed to send ${type}. Path: ${mediaPath}. Error: ${error.message}`);
-      logger.debug(error.stack);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error(`Failed to send ${type}. Path: ${mediaPath}. Error: ${errorMessage}`, {
+        originalError: error,
+      });
       throw error;
     }
   }
@@ -236,6 +261,7 @@ export class MessageManager {
    */
   private splitMessage(text: string): string[] {
     const chunks: string[] = [];
+    if (!text) return chunks;
     let currentChunk = '';
 
     const lines = text.split('\n');
@@ -273,6 +299,11 @@ export class MessageManager {
           ? message.message_thread_id?.toString()
           : undefined;
 
+      // Add null check for ctx.chat
+      if (!ctx.chat) {
+        logger.error('handleMessage: ctx.chat is undefined');
+        return;
+      }
       // Generate room ID based on whether this is in a forum topic
       const roomId = createUniqueUuid(
         this.runtime,
@@ -341,6 +372,7 @@ export class MessageManager {
               roomId,
               content: {
                 ...content,
+                source: 'telegram',
                 text: sentMessage.text,
                 inReplyTo: messageId,
                 channelType: channelType,
@@ -399,8 +431,17 @@ export class MessageManager {
     if (!ctx.update.message_reaction || !ctx.from) return;
 
     const reaction = ctx.update.message_reaction;
+    const reactedToMessageId = reaction.message_id;
+
+    const originalMessagePlaceholder: Partial<Message> = {
+      message_id: reactedToMessageId,
+      chat: reaction.chat,
+      from: ctx.from,
+      date: Math.floor(Date.now() / 1000),
+    };
+
     const reactionType = reaction.new_reaction[0].type;
-    const reactionEmoji = (reaction.new_reaction[0] as ReactionType).type;
+    const reactionEmoji = (reaction.new_reaction[0] as ReactionType).type; // Assuming ReactionType has 'type' for emoji
 
     try {
       const entityId = createUniqueUuid(this.runtime, ctx.from.id.toString()) as UUID;
@@ -429,7 +470,9 @@ export class MessageManager {
       // Create callback for handling reaction responses
       const callback: HandlerCallback = async (content: Content) => {
         try {
-          const sentMessage = await ctx.reply(content.text);
+          // Add null check for content.text
+          const replyText = content.text ?? '';
+          const sentMessage = await ctx.reply(replyText);
           const responseMemory: Memory = {
             id: createUniqueUuid(this.runtime, sentMessage.message_id.toString()),
             entityId: this.runtime.agentId,
@@ -454,7 +497,11 @@ export class MessageManager {
         message: memory,
         callback,
         source: 'telegram',
-      });
+        ctx,
+        originalMessage: originalMessagePlaceholder as Message, // Cast needed due to placeholder
+        reactionString: reactionType === 'emoji' ? reactionEmoji : reactionType,
+        originalReaction: reaction.new_reaction[0] as ReactionType,
+      } as TelegramReactionReceivedPayload);
 
       // Also emit the platform-specific event
       this.runtime.emitEvent(TelegramEventTypes.REACTION_RECEIVED, {
@@ -463,11 +510,13 @@ export class MessageManager {
         callback,
         source: 'telegram',
         ctx,
+        originalMessage: originalMessagePlaceholder as Message, // Cast needed due to placeholder
         reactionString: reactionType === 'emoji' ? reactionEmoji : reactionType,
         originalReaction: reaction.new_reaction[0] as ReactionType,
       } as TelegramReactionReceivedPayload);
     } catch (error) {
-      logger.error('Error handling reaction:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error('Error handling reaction:', { error: errorMessage, originalError: error });
     }
   }
 
@@ -543,7 +592,11 @@ export class MessageManager {
 
       return sentMessages;
     } catch (error) {
-      logger.error('Error sending message to Telegram:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error('Error sending message to Telegram:', {
+        error: errorMessage,
+        originalError: error,
+      });
       return [];
     }
   }

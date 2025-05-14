@@ -67,6 +67,11 @@ export const followRoomAction: Action = {
     _callback?: HandlerCallback,
     _responses?: Memory[]
   ) => {
+    if (!state) {
+      logger.error('State is required for followRoomAction');
+      throw new Error('State is required for followRoomAction');
+    }
+
     async function _shouldFollow(state: State): Promise<boolean> {
       const shouldFollowPrompt = composePromptFromState({
         state,

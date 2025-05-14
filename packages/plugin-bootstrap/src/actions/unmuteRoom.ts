@@ -134,11 +134,16 @@ export const unmuteRoomAction: Action = {
       return false;
     }
 
-    if (await _shouldUnmute(state)) {
+    if (state && (await _shouldUnmute(state))) {
       await runtime.setParticipantUserState(message.roomId, runtime.agentId, null);
     }
 
     const room = await runtime.getRoom(message.roomId);
+
+    if (!room) {
+      logger.warn(`Room not found: ${message.roomId}`);
+      return false;
+    }
 
     await runtime.createMemory(
       {

@@ -105,7 +105,7 @@ export class ScenarioService extends Service {
         startTime: Date.now(),
         completed: false,
       });
-      logger.debug('Evaluator started', data);
+      logger.debug('[Bootstrap] Evaluator started', data);
       return Promise.resolve();
     });
 
@@ -117,7 +117,7 @@ export class ScenarioService extends Service {
           evaluator.completed = true;
           evaluator.error = data.error;
         }
-        logger.debug('Evaluator completed', data);
+        logger.debug('[Bootstrap] Evaluator completed', data);
         return Promise.resolve();
       }
     );
@@ -210,6 +210,7 @@ export class ScenarioService extends Service {
       type: ChannelType.GROUP,
       channelId: roomId,
       serverId: worldId,
+      worldId,
     });
 
     return roomId;
@@ -343,7 +344,7 @@ const scenarios = [
     const worldId = await service.createWorld('Test Server', 'Test Owner');
 
     // Create groups for each member
-    const roomIds = [];
+    const roomIds: UUID[] = [];
     for (const member of members) {
       const roomId = await service.createRoom(worldId, `Test Room for ${member.character.name}`);
       roomIds.push(roomId);

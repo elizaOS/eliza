@@ -10,6 +10,7 @@ import {
   type Memory,
   type Provider,
   type UUID,
+  logger,
 } from '@elizaos/core';
 
 // Move getRecentInteractions outside the provider
@@ -64,182 +65,236 @@ export const recentMessagesProvider: Provider = {
   description: 'Recent messages, interactions and other memories',
   position: 100,
   get: async (runtime: IAgentRuntime, message: Memory) => {
-    const { roomId } = message;
-    const conversationLength = runtime.getConversationLength();
+    try {
+      const { roomId } = message;
+      const conversationLength = runtime.getConversationLength();
 
-    // Parallelize initial data fetching operations including recentInteractions
-    const [entitiesData, room, recentMessagesData, recentInteractionsData] = await Promise.all([
-      getEntityDetails({ runtime, roomId }),
-      runtime.getRoom(roomId),
-      runtime.getMemories({
-        tableName: 'messages',
-        roomId,
-        count: conversationLength,
-        unique: false,
-      }),
-      message.entityId !== runtime.agentId
-        ? getRecentInteractions(runtime, message.entityId, runtime.agentId, roomId)
-        : Promise.resolve([]),
-    ]);
+      // Parallelize initial data fetching operations including recentInteractions
+      const [entitiesData, room, recentMessagesData, recentInteractionsData] = await Promise.all([
+        getEntityDetails({ runtime, roomId }),
+        runtime.getRoom(roomId),
+        runtime.getMemories({
+          tableName: 'messages',
+          roomId,
+          count: conversationLength,
+          unique: false,
+        }),
+        message.entityId !== runtime.agentId
+          ? getRecentInteractions(runtime, message.entityId, runtime.agentId, roomId)
+          : Promise.resolve([]),
+      ]);
 
-    const isPostFormat = room?.type === ChannelType.FEED || room?.type === ChannelType.THREAD;
+      // Default to message format if room is not found or type is undefined
+      const isPostFormat = room?.type
+        ? room.type === ChannelType.FEED || room.type === ChannelType.THREAD
+        : false;
 
-    // Format recent messages and posts in parallel
-    const [formattedRecentMessages, formattedRecentPosts] = await Promise.all([
-      formatMessages({
-        messages: recentMessagesData,
-        entities: entitiesData,
-      }),
-      formatPosts({
-        messages: recentMessagesData,
-        entities: entitiesData,
-        conversationHeader: false,
-      }),
-    ]);
+      // Format recent messages and posts in parallel
+      const [formattedRecentMessages, formattedRecentPosts] = await Promise.all([
+        formatMessages({
+          messages: recentMessagesData,
+          entities: entitiesData,
+        }),
+        formatPosts({
+          messages: recentMessagesData,
+          entities: entitiesData,
+          conversationHeader: false,
+        }),
+      ]);
 
-    // Create formatted text with headers
-    const recentPosts =
-      formattedRecentPosts && formattedRecentPosts.length > 0
-        ? addHeader('# Posts in Thread', formattedRecentPosts)
+      // Create formatted text with headers
+      const recentPosts =
+        formattedRecentPosts && formattedRecentPosts.length > 0
+          ? addHeader('# Posts in Thread', formattedRecentPosts)
+          : '';
+
+      const recentMessages =
+        formattedRecentMessages && formattedRecentMessages.length > 0
+          ? addHeader('# Conversation Messages', formattedRecentMessages)
+          : '';
+
+      // If there are no messages at all, and no current message to process, return a specific message.
+      // The check for recentMessagesData.length === 0 ensures we only show this if there's truly nothing.
+      if (
+        !recentPosts &&
+        !recentMessages &&
+        recentMessagesData.length === 0 &&
+        !message.content.text
+      ) {
+        return {
+          data: {
+            recentMessages: [],
+            recentInteractions: [],
+          },
+          values: {
+            recentPosts: '',
+            recentMessages: '',
+            recentMessageInteractions: '',
+            recentPostInteractions: '',
+            recentInteractions: '',
+          },
+          text: 'No recent messages available',
+        };
+      }
+
+      const metaData = message.metadata as CustomMetadata;
+      const senderName = metaData?.entityName || 'unknown';
+      const receivedMessageContent = message.content.text;
+
+      const hasReceivedMessage = !!receivedMessageContent?.trim();
+
+      const receivedMessageHeader = hasReceivedMessage
+        ? addHeader('# Received Message', `${senderName}: ${receivedMessageContent}`)
         : '';
 
-    const metaData = message.metadata as CustomMetadata;
-    const senderName = metaData?.entityName || 'unknown';
-    const receivedMessageContent = message.content.text;
-
-    const receivedMessageHeader = addHeader(
-      '# Received Message',
-      `${senderName}: ${receivedMessageContent}`
-    );
-
-    const focusHeader = addHeader(
-      '# ⚡ Focus your response',
-      `You are replying to the above message from **${senderName}**. Keep your answer relevant to that message. Do not repeat earlier replies unless the sender asks again.`
-    );
-
-    const recentMessages =
-      formattedRecentMessages && formattedRecentMessages.length > 0
-        ? addHeader('# Conversation Messages', formattedRecentMessages)
+      const focusHeader = hasReceivedMessage
+        ? addHeader(
+            '# Focus your response',
+            `You are replying to the above message from **${senderName}**. Keep your answer relevant to that message. Do not repeat earlier replies unless the sender asks again.`
+          )
         : '';
 
-    // Preload all necessary entities for both types of interactions
-    const interactionEntityMap = new Map<UUID, Entity>();
+      // Preload all necessary entities for both types of interactions
+      const interactionEntityMap = new Map<UUID, Entity>();
 
-    // Only proceed if there are interactions to process
-    if (recentInteractionsData.length > 0) {
-      // Get unique entity IDs that aren't the runtime agent
-      const uniqueEntityIds = [
-        ...new Set(
-          recentInteractionsData
-            .map((message) => message.entityId)
-            .filter((id) => id !== runtime.agentId)
-        ),
-      ];
+      // Only proceed if there are interactions to process
+      if (recentInteractionsData.length > 0) {
+        // Get unique entity IDs that aren't the runtime agent
+        const uniqueEntityIds = [
+          ...new Set(
+            recentInteractionsData
+              .map((message) => message.entityId)
+              .filter((id) => id !== runtime.agentId)
+          ),
+        ];
 
-      // Create a Set for faster lookup
-      const uniqueEntityIdSet = new Set(uniqueEntityIds);
+        // Create a Set for faster lookup
+        const uniqueEntityIdSet = new Set(uniqueEntityIds);
 
-      // Add entities already fetched in entitiesData to the map
-      const entitiesDataIdSet = new Set<UUID>();
-      entitiesData.forEach((entity) => {
-        if (uniqueEntityIdSet.has(entity.id)) {
-          interactionEntityMap.set(entity.id, entity);
-          entitiesDataIdSet.add(entity.id);
-        }
-      });
-
-      // Get the remaining entities that weren't already loaded
-      // Use Set difference for efficient filtering
-      const remainingEntityIds = uniqueEntityIds.filter((id) => !entitiesDataIdSet.has(id));
-
-      // Only fetch the entities we don't already have
-      if (remainingEntityIds.length > 0) {
-        const entities = await Promise.all(
-          remainingEntityIds.map((entityId) => runtime.getEntityById(entityId))
-        );
-
-        entities.forEach((entity, index) => {
-          if (entity) {
-            interactionEntityMap.set(remainingEntityIds[index], entity);
+        // Add entities already fetched in entitiesData to the map
+        const entitiesDataIdSet = new Set<UUID>();
+        entitiesData.forEach((entity) => {
+          if (uniqueEntityIdSet.has(entity.id)) {
+            interactionEntityMap.set(entity.id, entity);
+            entitiesDataIdSet.add(entity.id);
           }
         });
+
+        // Get the remaining entities that weren't already loaded
+        // Use Set difference for efficient filtering
+        const remainingEntityIds = uniqueEntityIds.filter((id) => !entitiesDataIdSet.has(id));
+
+        // Only fetch the entities we don't already have
+        if (remainingEntityIds.length > 0) {
+          const entities = await Promise.all(
+            remainingEntityIds.map((entityId) => runtime.getEntityById(entityId))
+          );
+
+          entities.forEach((entity, index) => {
+            if (entity) {
+              interactionEntityMap.set(remainingEntityIds[index], entity);
+            }
+          });
+        }
       }
+
+      // Format recent message interactions
+      const getRecentMessageInteractions = async (
+        recentInteractionsData: Memory[]
+      ): Promise<string> => {
+        // Format messages using the pre-fetched entities
+        const formattedInteractions = recentInteractionsData.map((message) => {
+          const isSelf = message.entityId === runtime.agentId;
+          let sender: string;
+
+          if (isSelf) {
+            sender = runtime.character.name;
+          } else {
+            sender = interactionEntityMap.get(message.entityId)?.metadata?.username || 'unknown';
+          }
+
+          return `${sender}: ${message.content.text}`;
+        });
+
+        return formattedInteractions.join('\n');
+      };
+
+      // Format recent post interactions
+      const getRecentPostInteractions = async (
+        recentInteractionsData: Memory[],
+        entities: Entity[]
+      ): Promise<string> => {
+        // Combine pre-loaded entities with any other entities
+        const combinedEntities = [...entities];
+
+        // Add entities from interactionEntityMap that aren't already in entities
+        const actorIds = new Set(entities.map((entity) => entity.id));
+        for (const [id, entity] of interactionEntityMap.entries()) {
+          if (!actorIds.has(id)) {
+            combinedEntities.push(entity);
+          }
+        }
+
+        const formattedInteractions = formatPosts({
+          messages: recentInteractionsData,
+          entities: combinedEntities,
+          conversationHeader: true,
+        });
+
+        return formattedInteractions;
+      };
+
+      // Process both types of interactions in parallel
+      const [recentMessageInteractions, recentPostInteractions] = await Promise.all([
+        getRecentMessageInteractions(recentInteractionsData),
+        getRecentPostInteractions(recentInteractionsData, entitiesData),
+      ]);
+
+      const data = {
+        recentMessages: recentMessagesData,
+        recentInteractions: recentInteractionsData,
+      };
+
+      const values = {
+        recentPosts,
+        recentMessages,
+        recentMessageInteractions,
+        recentPostInteractions,
+        recentInteractions: isPostFormat ? recentPostInteractions : recentMessageInteractions,
+      };
+
+      // Combine all text sections
+      const text = [
+        isPostFormat ? recentPosts : recentMessages,
+        // Only add received message and focus headers if there are messages or a current message to process
+        recentMessages || recentPosts || message.content.text ? receivedMessageHeader : '',
+        recentMessages || recentPosts || message.content.text ? focusHeader : '',
+      ]
+        .filter(Boolean)
+        .join('\n\n');
+
+      return {
+        data,
+        values,
+        text,
+      };
+    } catch (error) {
+      logger.error('Error in recentMessagesProvider:', error);
+      // Return a default state in case of error, similar to the empty message list
+      return {
+        data: {
+          recentMessages: [],
+          recentInteractions: [],
+        },
+        values: {
+          recentPosts: '',
+          recentMessages: '',
+          recentMessageInteractions: '',
+          recentPostInteractions: '',
+          recentInteractions: '',
+        },
+        text: 'Error retrieving recent messages.', // Or 'No recent messages available' as the test expects
+      };
     }
-
-    // Format recent message interactions
-    const getRecentMessageInteractions = async (
-      recentInteractionsData: Memory[]
-    ): Promise<string> => {
-      // Format messages using the pre-fetched entities
-      const formattedInteractions = recentInteractionsData.map((message) => {
-        const isSelf = message.entityId === runtime.agentId;
-        let sender: string;
-
-        if (isSelf) {
-          sender = runtime.character.name;
-        } else {
-          sender = interactionEntityMap.get(message.entityId)?.metadata?.username || 'unknown';
-        }
-
-        return `${sender}: ${message.content.text}`;
-      });
-
-      return formattedInteractions.join('\n');
-    };
-
-    // Format recent post interactions
-    const getRecentPostInteractions = async (
-      recentInteractionsData: Memory[],
-      entities: Entity[]
-    ): Promise<string> => {
-      // Combine pre-loaded entities with any other entities
-      const combinedEntities = [...entities];
-
-      // Add entities from interactionEntityMap that aren't already in entities
-      const actorIds = new Set(entities.map((entity) => entity.id));
-      for (const [id, entity] of interactionEntityMap.entries()) {
-        if (!actorIds.has(id)) {
-          combinedEntities.push(entity);
-        }
-      }
-
-      const formattedInteractions = formatPosts({
-        messages: recentInteractionsData,
-        entities: combinedEntities,
-        conversationHeader: true,
-      });
-
-      return formattedInteractions;
-    };
-
-    // Process both types of interactions in parallel
-    const [recentMessageInteractions, recentPostInteractions] = await Promise.all([
-      getRecentMessageInteractions(recentInteractionsData),
-      getRecentPostInteractions(recentInteractionsData, entitiesData),
-    ]);
-
-    const data = {
-      recentMessages: recentMessagesData,
-      recentInteractions: recentInteractionsData,
-    };
-
-    const values = {
-      recentPosts,
-      recentMessages,
-      recentMessageInteractions,
-      recentPostInteractions,
-      recentInteractions: isPostFormat ? recentPostInteractions : recentMessageInteractions,
-    };
-
-    // Combine all text sections
-    const text = [isPostFormat ? recentPosts : recentMessages + receivedMessageHeader + focusHeader]
-      .filter(Boolean)
-      .join('\n\n');
-
-    return {
-      data,
-      values,
-      text,
-    };
   },
 };

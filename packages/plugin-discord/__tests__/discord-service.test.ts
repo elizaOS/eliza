@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { DiscordService } from '../src/discordService';
+import type { DiscordService } from '../src/service';
 
 // Mock @elizaos/core
 vi.mock('@elizaos/core', () => ({

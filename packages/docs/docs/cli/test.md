@@ -13,7 +13,7 @@ The `test` command allows you to run tests for your ElizaOS projects, plugins, a
 ## Usage
 
 ```bash
-npx @elizaos/cli@beta test [options]
+elizaos test [options]
 ```
 
 ## Options
@@ -77,7 +77,7 @@ Run all tests in the current project:
 cd my-agent-project
 
 # Run all tests
-npx @elizaos/cli@beta test
+elizaos test
 ```
 
 ### Running Specific Tests
@@ -86,13 +86,13 @@ Filter tests by plugin or skip certain test types:
 
 ```bash
 # Run only tests for 'my-custom-plugin'
-npx @elizaos/cli@beta test -pl my-custom-plugin
+elizaos test -pl my-custom-plugin
 
 # Run project tests but skip all plugin tests
-npx @elizaos/cli@beta test -sp
+elizaos test -sp
 
 # Run plugin tests but skip all project tests
-npx @elizaos/cli@beta test -spt
+elizaos test -spt
 ```
 
 ## Test Output
@@ -227,14 +227,14 @@ test('check_knowledge_retrieval', async (runtime) => {
 
 ```bash
 # Run all tests
-npx @elizaos/cli@beta test
+elizaos test
 ```
 
 ### CI/CD Integration
 
 ```bash
 # Run tests in CI environment
-npx @elizaos/cli@beta test
+elizaos test
 ```
 
 ## Troubleshooting
@@ -245,10 +245,10 @@ If tests aren't being discovered:
 
 ```bash
 # Check test discovery with verbose logging
-npx @elizaos/cli@beta test --dry-run --verbose
+elizaos test --dry-run --verbose
 
 # Try specifying the test file directly
-npx @elizaos/cli@beta test --file src/tests/main.test.ts
+elizaos test --file src/tests/main.test.ts
 ```
 
 ### Tests timing out
@@ -265,7 +265,7 @@ If TypeScript compilation is failing:
 
 ```bash
 # Build the project first
-npx @elizaos/cli@beta project build
+elizaos project build
 
 # Then run tests without recompilation (not applicable)
 ```

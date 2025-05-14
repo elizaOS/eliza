@@ -8,16 +8,16 @@ image: /img/cli.jpg
 
 # Plugin Command
 
-The `plugins` command helps you manage ElizaOS plugins within your project. You can list available plugins, add them to your project, see which ones are installed, and remove them.
+The `plugins` command helps developers manage ElizaOS plugins within a project, allowing you to list, add, remove, and inspect installed plugins.
 
 ## Subcommands
 
-| Subcommand          | Aliases               | Description                                | Arguments  | Options                                                                   |
-| ------------------- | --------------------- | ------------------------------------------ | ---------- | ------------------------------------------------------------------------- |
-| `list`              | `l`, `ls`             | List available plugins from the registry   |            | `-t, --type <type>`                                                       |
-| `add`               | `install`             | Add a plugin to the project                | `<plugin>` | `-n, --no-env-prompt`, `-b, --branch <branchName>`, `-T, --tag <tagname>` |
-| `installed-plugins` |                       | List plugins found in project dependencies |            |                                                                           |
-| `remove`            | `delete`, `del`, `rm` | Remove a plugin from the project           | `<plugin>` |                                                                           |
+| Subcommand          | Aliases               | Description                                        | Arguments                                                                | Options                                                                                         |
+| ------------------- | --------------------- | -------------------------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| `list`              | `l`, `ls`             | List available plugins to install into the project |                                                                          |                                                                                                 |
+| `add`               | `install`             | Add a plugin to the project                        | `<plugin>` (Plugin name e.g., "abc", "plugin-abc", "elizaos/plugin-abc") | `-n, --no-env-prompt`, `-b, --branch <branchName>` (default: v2-develop), `-T, --tag <tagname>` |
+| `installed-plugins` |                       | List plugins found in project dependencies         |                                                                          |                                                                                                 |
+| `remove`            | `delete`, `del`, `rm` | Remove a plugin from the project                   | `<plugin>` (Plugin name e.g., "abc", "plugin-abc", "elizaos/plugin-abc") |                                                                                                 |
 
 ## Examples
 
@@ -26,12 +26,31 @@ The `plugins` command helps you manage ElizaOS plugins within your project. You 
 ```bash
 # List all available plugins
 elizaos plugins list
-
-# List only adapter plugins
-elizaos plugins list --type adapter
 ```
 
-### Adding a Plugin
+## Plugin Development Workflow
+
+### 1. Create a Plugin
+
+Start by creating a new plugin:
+
+```bash
+elizaos create -t plugin my-plugin
+```
+
+This creates a starter plugin with the required directory structure.
+
+### 2. Develop Your Plugin
+
+(This section refers to adding/managing plugins, for actual development guidance, see plugin development docs.)
+
+The plugin structure typically includes:
+
+- `src/index.ts` - Main plugin code
+- `src/plugin.ts` - Plugin configuration and initialization
+- `src/metadata.ts` - Plugin metadata (name, description, etc.)
+
+Examples of adding plugins:
 
 ```bash
 # Add the 'openai' plugin (will look up '@elizaos/plugin-openai')
