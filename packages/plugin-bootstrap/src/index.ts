@@ -303,6 +303,7 @@ const messageReceivedHandler = async ({
           // Map parsed XML to Content type, handling potential missing fields
           if (parsedXml) {
             responseContent = {
+              ...parsedXml,
               thought: parsedXml.thought || '',
               actions: parsedXml.actions || ['IGNORE'],
               providers: parsedXml.providers || [],
