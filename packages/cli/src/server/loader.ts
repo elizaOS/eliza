@@ -31,6 +31,11 @@ export function tryLoadFile(filePath: string): string | null {
 export async function loadCharactersFromUrl(url: string): Promise<Character[]> {
   try {
     const response = await fetch(url);
+
+    if (!response.ok) {
+      throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
+    }
+
     const responseJson = await response.json();
 
     let characters: Character[] = [];
@@ -42,8 +47,21 @@ export async function loadCharactersFromUrl(url: string): Promise<Character[]> {
     }
     return characters;
   } catch (e) {
-    logger.error(`Error loading character(s) from ${url}: ${e}`);
-    process.exit(1);
+    const errorMsg = e instanceof Error ? e.message : String(e);
+    logger.error(`Error loading character(s) from ${url}: ${errorMsg}`);
+
+    // Instead of process.exit(1), throw a descriptive error that can be caught by our handlers
+    if (errorMsg.includes('JSON')) {
+      throw new Error(
+        `Invalid JSON response from URL '${url}'. The resource may not contain valid character data.`
+      );
+    } else if (errorMsg.includes('fetch')) {
+      throw new Error(
+        `Failed to fetch character from URL '${url}'. The URL may be incorrect or unavailable.`
+      );
+    } else {
+      throw new Error(`Failed to load character from URL '${url}': ${errorMsg}`);
+    }
   }
 }
 
@@ -99,8 +117,23 @@ export async function loadCharacter(filePath: string): Promise<Character> {
  * @returns {never}
  */
 function handleCharacterLoadError(path: string, error: unknown): never {
-  logger.error(`Error loading character from ${path}: ${error}`);
-  throw new Error(`Error loading character from ${path}: ${error}`);
+  const errorMsg = error instanceof Error ? error.message : String(error);
+
+  // Check if it's a file not found error or JSON parsing error
+  if (errorMsg.includes('ENOENT') || errorMsg.includes('no such file')) {
+    logger.error(`Character file not found: ${path}`);
+    throw new Error(
+      `Character '${path}' not found. Please check if the file exists and the path is correct.`
+    );
+  } else if (errorMsg.includes('JSON')) {
+    logger.error(`Invalid character file format: ${path}`);
+    throw new Error(
+      `Character file '${path}' has invalid JSON format. Please check the file content.`
+    );
+  } else {
+    logger.error(`Error loading character from ${path}: ${errorMsg}`);
+    throw new Error(`Failed to load character '${path}': ${errorMsg}`);
+  }
 }
 
 /**
@@ -130,8 +163,16 @@ async function safeLoadCharacter(path: string): Promise<Character> {
  */
 export async function loadCharacterTryPath(characterPath: string): Promise<Character> {
   if (characterPath.startsWith('http')) {
-    const characters = await loadCharactersFromUrl(characterPath);
-    return characters[0];
+    try {
+      const characters = await loadCharactersFromUrl(characterPath);
+      if (!characters || characters.length === 0) {
+        throw new Error('No characters found in the URL response');
+      }
+      return characters[0];
+    } catch (error) {
+      // The error is already formatted by loadCharactersFromUrl, so just re-throw it
+      throw error;
+    }
   }
 
   const pathsToTry = [
@@ -147,14 +188,28 @@ export async function loadCharacterTryPath(characterPath: string): Promise<Chara
     path.resolve(__dirname, '../../../characters', path.basename(characterPath)),
   ];
 
+  let lastError = null;
+
   for (const tryPath of pathsToTry) {
-    const content = tryLoadFile(tryPath);
-    if (content !== null) {
-      return safeLoadCharacter(tryPath);
+    try {
+      const content = tryLoadFile(tryPath);
+      if (content !== null) {
+        return safeLoadCharacter(tryPath);
+      }
+    } catch (e) {
+      lastError = e;
+      // Continue trying other paths
     }
   }
 
-  return handleCharacterLoadError(characterPath, 'File not found in any of the expected locations');
+  // If we get here, all paths failed
+  const errorMessage = lastError
+    ? `${lastError}`
+    : 'File not found in any of the expected locations';
+  return handleCharacterLoadError(
+    characterPath,
+    `Character not found. Tried ${pathsToTry.length} locations. ${errorMessage}`
+  );
 }
 
 /**

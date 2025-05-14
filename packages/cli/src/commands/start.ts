@@ -775,76 +775,99 @@ export const start = new Command()
 
       // Store characters in a new array to avoid issues with commander
       let loadedCharacters: Character[] = [];
+      let failedCharacters: string[] = [];
 
       // Collect server options
       const characterPath = options.character;
 
       if (characterPath) {
-        try {
-          // if character path is a comma separated list, load all characters
-          // can be remote path also
-          if (characterPath.includes(',')) {
-            const paths = characterPath.split(',').map((p) => p.trim().replace(/^['"]|["']$/g, ''));
+        // if character path is a comma separated list, load all characters
+        // can be remote path also
+        if (characterPath.includes(',')) {
+          const paths = characterPath.split(',').map((p) => p.trim().replace(/^['"]|["']$/g, ''));
 
-            for (const path of paths) {
-              if (!path) continue;
+          for (const path of paths) {
+            if (!path) continue;
+
+            try {
               logger.info(`Loading character from ${path}`);
               const characterData = await loadCharacterTryPath(path);
               loadedCharacters.push(characterData);
+            } catch (error) {
+              failedCharacters.push(path);
+              logger.error(`Failed to load character from ${path}: ${error}`);
             }
-          } else {
-            // Single character, remove any quotes
-            const cleanPath = characterPath.trim().replace(/^["']|["']$/g, '');
+          }
+        } else {
+          // Single character, remove any quotes
+          const cleanPath = characterPath.trim().replace(/^["']|["']$/g, '');
+
+          try {
             logger.info(`Loading character from ${cleanPath}`);
             const characterData = await loadCharacterTryPath(cleanPath);
             loadedCharacters.push(characterData);
+          } catch (error) {
+            failedCharacters.push(cleanPath);
+            logger.error(`Failed to load character from ${cleanPath}: ${error}`);
           }
-        } catch (error) {
-          logger.error(`Error loading character: ${error}`);
-          return;
         }
       } else if (options.characters) {
         // Process the -chars option (handle both array and string)
-        try {
-          // Convert to array of clean paths
-          let charPaths: string[] = [];
+        // Convert to array of clean paths
+        let charPaths: string[] = [];
 
-          if (Array.isArray(options.characters)) {
-            // Handle array from Commander's <paths...> format
-            for (const item of options.characters) {
-              const cleanItem = item.trim().replace(/^['"]|["']$/g, '');
-              if (cleanItem.includes(',')) {
-                // Split comma-separated values within an item
-                const subPaths = cleanItem
-                  .split(',')
-                  .map((p) => p.trim())
-                  .filter(Boolean);
-                charPaths = [...charPaths, ...subPaths];
-              } else {
-                charPaths.push(cleanItem);
-              }
+        if (Array.isArray(options.characters)) {
+          // Handle array from Commander's <paths...> format
+          for (const item of options.characters) {
+            const cleanItem = item.trim().replace(/^['"]|["']$/g, '');
+            if (cleanItem.includes(',')) {
+              // Split comma-separated values within an item
+              const subPaths = cleanItem
+                .split(',')
+                .map((p) => p.trim())
+                .filter(Boolean);
+              charPaths = [...charPaths, ...subPaths];
+            } else {
+              charPaths.push(cleanItem);
             }
-          } else if (typeof options.characters === 'string') {
-            // Handle plain string input
-            const items = options.characters
-              .split(',')
-              .map((p) => p.trim())
-              .filter(Boolean);
-            charPaths = [...charPaths, ...items];
-          } else if (options.characters === true) {
-            // Handle the case where -chars is provided without arguments
-            charPaths = [];
           }
+        } else if (typeof options.characters === 'string') {
+          // Handle plain string input
+          const items = options.characters
+            .split(',')
+            .map((p) => p.trim())
+            .filter(Boolean);
+          charPaths = [...charPaths, ...items];
+        } else if (options.characters === true) {
+          // Handle the case where -chars is provided without arguments
+          charPaths = [];
+        }
 
-          // Load each character
-          for (const path of charPaths) {
+        // Load each character
+        for (const path of charPaths) {
+          try {
             logger.info(`Loading character from ${path}`);
             const characterData = await loadCharacterTryPath(path);
             loadedCharacters.push(characterData);
+          } catch (error) {
+            failedCharacters.push(path);
+            logger.error(`Failed to load character from ${path}: ${error}`);
           }
-        } catch (error) {
-          logger.error(`Error loading characters: ${error}`);
-          return;
+        }
+      }
+
+      // If we have both successes and failures, log a message
+      if (loadedCharacters.length > 0 && failedCharacters.length > 0) {
+        logger.warn(
+          `${failedCharacters.length} character(s) failed to load, but ${loadedCharacters.length} succeeded. Starting server with valid characters.`
+        );
+      }
+      // If all characters failed, log error and handle gracefully
+      else if (loadedCharacters.length === 0 && (characterPath || options.characters)) {
+        if (failedCharacters.length > 0) {
+          logger.error(
+            `All ${failedCharacters.length} character(s) failed to load. Starting server with default character...`
+          );
         }
       }
 
