@@ -141,15 +141,18 @@ export const recentMessagesProvider: Provider = {
       const senderName = metaData?.entityName || 'unknown';
       const receivedMessageContent = message.content.text;
 
-      const receivedMessageHeader = addHeader(
-        '# Received Message',
-        `${senderName}: ${receivedMessageContent}`
-      );
+      const hasReceivedMessage = !!receivedMessageContent?.trim();
 
-      const focusHeader = addHeader(
-        '# ⚡ Focus your response',
-        `You are replying to the above message from **${senderName}**. Keep your answer relevant to that message. Do not repeat earlier replies unless the sender asks again.`
-      );
+      const receivedMessageHeader = hasReceivedMessage
+        ? addHeader('# Received Message', `${senderName}: ${receivedMessageContent}`)
+        : '';
+
+      const focusHeader = hasReceivedMessage
+        ? addHeader(
+            '# Focus your response',
+            `You are replying to the above message from **${senderName}**. Keep your answer relevant to that message. Do not repeat earlier replies unless the sender asks again.`
+          )
+        : '';
 
       // Preload all necessary entities for both types of interactions
       const interactionEntityMap = new Map<UUID, Entity>();
