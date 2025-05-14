@@ -787,7 +787,10 @@ const startAgents = async (options: {
 export const start = new Command()
   .name('start')
   .description('Start the Eliza agent with configurable plugins and services')
-  .option('-c, --configure', 'Reconfigure services and AI models (skips using saved configuration)')
+  .option(
+    '-c, --configure',
+    'Force reconfiguration of services and AI models (ignores existing saved configuration)'
+  )
   .option(
     '-char, --character <character>',
     'Path or URL to character file to use instead of default'
