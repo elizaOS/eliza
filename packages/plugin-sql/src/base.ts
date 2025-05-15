@@ -659,7 +659,7 @@ export abstract class BaseDrizzleAdapter<
 
   /**
    * Asynchronously retrieves an entity and its components by entity IDs.
-   * @param {UUID[]} entityIds - The unique identifier of the entity to retrieve.
+   * @param {UUID[]} entityIds - The unique identifiers of the entities to retrieve.
    * @returns {Promise<Entity[] | null>} A Promise that resolves to the entity with its components if found, null otherwise.
    */
   async getEntityByIds(entityIds: UUID[]): Promise<Entity[] | null> {
