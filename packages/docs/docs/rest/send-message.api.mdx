@@ -57,11 +57,21 @@ Sends a message to an agent and receives a response
         schema: {
           type: 'object',
           properties: {
-            senderId: { type: 'string', description: 'ID of the sender' },
-            roomId: { type: 'string', description: 'ID of the room' },
+            entityId: {
+              type: 'string',
+              format: 'uuid',
+              description: 'ID of the entity sending the message',
+            },
+            roomId: { type: 'string', format: 'uuid', description: 'ID of the room' },
+            source: { type: 'string', description: 'Source of the message (e.g., curl-test)' },
             text: { type: 'string', description: 'Message text' },
-            source: { type: 'string', description: 'Source of the message' },
+            channelType: {
+              type: 'string',
+              enum: ['API', 'VOICE', 'DM', 'GROUP', 'FEED', 'SELF', 'SYSTEM'],
+              description: 'Type of the channel',
+            },
           },
+          required: ['entityId', 'roomId', 'text', 'channelType'],
         },
       },
     },
@@ -86,33 +96,44 @@ Sends a message to an agent and receives a response
                   message: {
                     type: 'object',
                     properties: {
-                      text: { type: 'string', description: 'Text content of the message' },
-                      thought: { type: 'string', description: "Agent's internal thought process" },
-                      plan: { type: 'string', description: "Agent's plan or reasoning" },
+                      text: { type: 'string', description: "Text content of the agent's response" },
+                      thought: {
+                        type: 'string',
+                        description: "Agent's internal thought process for the response",
+                      },
                       actions: {
                         type: 'array',
                         items: { type: 'string' },
-                        description: 'Actions the agent wants to take',
-                      },
-                      source: { type: 'string', description: 'Source of the message' },
-                      inReplyTo: {
-                        type: 'string',
-                        format: 'uuid',
-                        description: 'ID of the message this is in reply to',
+                        description: 'Actions the agent decided on (e.g., [\"REPLY\"])',
                       },
                     },
-                    title: 'Content',
+                    title: 'AgentResponseContent',
                   },
-                  messageId: { type: 'string', format: 'uuid' },
-                  name: { type: 'string' },
-                  roomId: { type: 'string' },
-                  source: { type: 'string' },
+                  messageId: {
+                    type: 'string',
+                    format: 'uuid',
+                    description: "ID of the user's incoming message that was processed",
+                  },
+                  name: { type: 'string', description: 'Name of the agent that responded' },
+                  roomId: {
+                    type: 'string',
+                    format: 'uuid',
+                    description: 'ID of the room where the interaction occurred',
+                  },
+                  source: {
+                    type: 'string',
+                    description: "Original source from the user's request",
+                  },
                 },
               },
             },
           },
         },
       },
+    },
+    '204': {
+      description:
+        'Message processed successfully, but the agent chose not to reply or no textual reply was generated. This can happen if the agent decides to IGNORE or perform a non-reply action.',
     },
     '400': {
       description: 'Invalid agent ID or request body',
