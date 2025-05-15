@@ -1,15 +1,6 @@
 import type { Plugin, IAgentRuntime } from '@elizaos/core';
 
-import { TradeChainService } from './services/srv_chain';
-import { TradeDataProviderService } from './services/srv_dataprovider';
-import { TradeStrategyService } from './services/srv_strategy';
 import { JupiterService } from './services/srv_jupiter';
-
-// Strategies
-import { llmStrategy } from './strategies/strategy_llm';
-import { copyStrategy } from './strategies/strategy_copy';
-
-import { registerTasks } from './tasks';
 
 export const jupiterPlugin: Plugin = {
   name: 'jupiterOS',
@@ -17,15 +8,29 @@ export const jupiterPlugin: Plugin = {
   actions: [],
   evaluators: [],
   providers: [],
-  services: [TradeChainService, TradeDataProviderService, TradeStrategyService, JupiterService],
+  services: [JupiterService],
   init: async (_, runtime: IAgentRuntime) => {
-    console.log('trader init');
-    // register strategies
-    llmStrategy(runtime); // is async
-    copyStrategy(runtime); // is async
-    // register tasks
-    registerTasks(runtime); // is async
-    console.log('trader init done');
+    console.log('jupiter init');
+
+    const asking = 'jupiter';
+    const serviceType = 'solana';
+    let solanaService = runtime.getService(serviceType) as any;
+    while (!solanaService) {
+      console.log(asking, 'waiting for', serviceType, 'service...');
+      solanaService = runtime.getService(serviceType) as any;
+      if (!solanaService) {
+        await new Promise((waitResolve) => setTimeout(waitResolve, 1000));
+      } else {
+        console.log(asking, 'Acquired', serviceType, 'service...');
+      }
+    }
+
+    const me = {
+      name: 'Jupiter DEX services',
+    };
+    solanaService.registerExchange(me);
+
+    console.log('jupiter init done');
   },
 };
 

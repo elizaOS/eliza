@@ -1,7 +1,8 @@
-import { Service, logger } from '@elizaos/core';
+import { IAgentRuntime, Service, logger } from '@elizaos/core';
 
 export class TradeChainService extends Service {
   private isRunning = false;
+  private registry: Record<number, any> = {};
 
   static serviceType = 'TRADER_CHAIN';
   capabilityDescription = 'The agent is able to trade with blockchains';
@@ -10,6 +11,20 @@ export class TradeChainService extends Service {
 
   constructor(public runtime: IAgentRuntime) {
     super(runtime); // sets this.runtime
+    this.registry = {};
+    logger.log('TRADER_CHAIN_SERVICE constructor');
+  }
+
+  /**
+   * Registers a trading provider with the service.
+   * @param {any} provider - The provider to register
+   * @returns {Promise<number>} The ID assigned to the registered provider
+   */
+  async registerChain(provider: any): Promise<number> {
+    const id = Object.values(this.registry).length + 1;
+    logger.log('Registered', provider.name, 'as Trading Chain provider #' + id);
+    this.registry[id] = provider;
+    return id;
   }
 
   /**

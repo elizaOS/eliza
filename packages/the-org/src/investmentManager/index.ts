@@ -44,6 +44,7 @@ const character: Character = {
     '@elizaos/plugin-video-understanding',
     '@elizaos/plugin-bootstrap',
     '@elizaos-plugins/plugin-trader',
+    '@elizaos-plugins/plugin-jupiter',
   ],
   settings: {
     secrets: {

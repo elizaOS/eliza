@@ -2,8 +2,9 @@ import { type IAgentRuntime, Service, logger } from '@elizaos/core';
 import { Connection, PublicKey } from '@solana/web3.js';
 import BigNumber from 'bignumber.js';
 import { SOLANA_SERVICE_NAME, SOLANA_WALLET_DATA_CACHE_KEY } from './constants';
-import { getWalletKey } from './keypairUtils';
+import { getWalletKey, KeypairResult } from './keypairUtils';
 import type { Item, Prices, WalletPortfolio } from './types';
+import { Keypair } from '@solana/web3.js';
 
 const PROVIDER_CONFIG = {
   BIRDEYE_API: 'https://public-api.birdeye.so',
@@ -31,6 +32,7 @@ export class SolanaService extends Service {
   private readonly UPDATE_INTERVAL = 120000; // 2 minutes
   private connection: Connection;
   private publicKey: PublicKey;
+  private exchangeRegistry: Record<number, any> = {};
 
   /**
    * Constructor for creating an instance of the class.
@@ -38,13 +40,35 @@ export class SolanaService extends Service {
    */
   constructor(protected runtime: IAgentRuntime) {
     super();
+    this.exchangeRegistry = {};
     const connection = new Connection(
       runtime.getSetting('SOLANA_RPC_URL') || PROVIDER_CONFIG.DEFAULT_RPC
     );
     this.connection = connection;
-    getWalletKey(runtime, false).then(({ publicKey }) => {
-      this.publicKey = publicKey;
-    });
+    // Initialize publicKey using getWalletKey
+    getWalletKey(runtime, false)
+      .then(({ publicKey }) => {
+        if (!publicKey) {
+          throw new Error('Failed to initialize public key');
+        }
+        this.publicKey = publicKey;
+      })
+      .catch((error) => {
+        logger.error('Error initializing public key:', error);
+      });
+  }
+
+  /**
+   * Gets the wallet keypair for operations requiring private key access
+   * @returns {Promise<Keypair>} The wallet keypair
+   * @throws {Error} If private key is not available
+   */
+  private async getWalletKeypair(): Promise<Keypair> {
+    const { keypair } = await getWalletKey(this.runtime, true);
+    if (!keypair) {
+      throw new Error('Failed to get wallet keypair');
+    }
+    return keypair;
   }
 
   /**
@@ -328,5 +352,32 @@ export class SolanaService extends Service {
    */
   public getConnection(): Connection {
     return this.connection;
+  }
+
+  // keypairUtils
+  public validateAddress(address: string | undefined): boolean {
+    if (!address) return false;
+    try {
+      // Handle Solana addresses
+      if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)) {
+        logger.warn(`Invalid Solana address format: ${address}`);
+        return false;
+      }
+
+      const pubKey = new PublicKey(address);
+      const isValid = Boolean(pubKey.toBase58());
+      logger.log(`Solana address validation: ${address}`, { isValid });
+      return isValid;
+    } catch (error) {
+      logger.error(`Address validation error: ${address}`, { error });
+      return false;
+    }
+  }
+
+  async registerExchange(provider: any) {
+    const id = Object.values(this.exchangeRegistry).length + 1;
+    logger.log('Registered', provider.name, 'as Solana provider #' + id);
+    this.exchangeRegistry[id] = provider;
+    return id;
   }
 }

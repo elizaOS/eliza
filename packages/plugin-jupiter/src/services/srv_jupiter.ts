@@ -439,7 +439,7 @@ export class JupiterService extends Service {
     await service.stop();
   }
 
-  public async start(): Promise<void> {
+  async start(): Promise<void> {
     if (this.isRunning) {
       logger.warn('Jupiter service is already running');
       return;
@@ -456,7 +456,7 @@ export class JupiterService extends Service {
     }
   }
 
-  public async stop(): Promise<void> {
+  async stop(): Promise<void> {
     if (!this.isRunning) {
       logger.warn('Jupiter service is not running');
       return;
