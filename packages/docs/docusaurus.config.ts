@@ -8,7 +8,7 @@ const config = {
   title: 'eliza',
   tagline: 'Flexible, scalable AI agents for everyone',
   favicon: 'img/favicon.ico',
-  url: 'https://docs.eliza.how',
+  url: 'https://eliza.how',
   baseUrl: '/',
   organizationName: 'elizaos',
   projectName: 'eliza',
