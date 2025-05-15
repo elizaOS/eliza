@@ -4,9 +4,11 @@ import { TradeChainService } from './services/srv_chain';
 import { TradeDataProviderService } from './services/srv_dataprovider';
 import { TradeStrategyService } from './services/srv_strategy';
 
-import { birdeyeStart } from './birdeye';
 // Strategies
 import { llmStrategy } from './strategies/strategy_llm';
+import { copyStrategy } from './strategies/strategy_copy';
+
+import { registerTasks } from './tasks';
 
 export const traderPlugin: Plugin = {
   name: 'spartanOS',
@@ -17,9 +19,11 @@ export const traderPlugin: Plugin = {
   services: [TradeChainService, TradeDataProviderService, TradeStrategyService],
   init: async (_, runtime: IAgentRuntime) => {
     console.log('trader init');
-    birdeyeStart(runtime); // is async
     // register strategies
     llmStrategy(runtime); // is async
+    copyStrategy(runtime); // is async
+    // register tasks
+    registerTasks(runtime); // is async
     console.log('trader init done');
   },
 };

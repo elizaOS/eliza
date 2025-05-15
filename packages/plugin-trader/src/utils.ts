@@ -41,7 +41,8 @@ export async function askLlmObject(
     return hasAll;
   }
 
-  while (retries < maxRetries && !checkRequired(responseContent)) {
+  let good = false;
+  while (retries < maxRetries && !good) {
     const response = await runtime.useModel(ModelType.TEXT_LARGE, {
       ...ask, // prompt, system
       temperature: 0.2,
@@ -53,8 +54,16 @@ export async function askLlmObject(
     responseContent = parseJSONObjectFromText(response) as any;
 
     retries++;
-    if (!checkRequired(responseContent)) {
-      logger.warn('*** Missing required fields, retrying... generateSignal ***');
+    good = checkRequired(responseContent);
+    if (!good) {
+      logger.warn(
+        '*** Missing required fields',
+        responseContent,
+        'needs',
+        requiredFields,
+        ', retrying... ***'
+      );
     }
   }
+  return responseContent;
 }
