@@ -53,7 +53,6 @@ export default defineConfig(({ mode }): CustomUserConfig => {
       Buffer: '{}',
     },
     optimizeDeps: {
-      exclude: ['@elizaos/core'],
       esbuildOptions: {
         define: {
           global: 'globalThis',
@@ -68,7 +67,7 @@ export default defineConfig(({ mode }): CustomUserConfig => {
       cssMinify: true,
       sourcemap: true,
       rollupOptions: {
-        external: ['@elizaos/core', 'cloudflare:sockets'],
+        external: ['cloudflare:sockets'],
         output: {
           manualChunks: {
             vendor: ['react', 'react-dom', 'react-router-dom'],
@@ -94,6 +93,7 @@ export default defineConfig(({ mode }): CustomUserConfig => {
     resolve: {
       alias: {
         '@': '/src',
+        '@elizaos/core': path.resolve(__dirname, '../core/src/index.ts'),
       },
     },
     logLevel: 'error', // Only show errors, not warnings
