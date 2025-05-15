@@ -1656,7 +1656,9 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async createEntities(entities: Entity[]): Promise<boolean[]> {
-    entities.map((e) => ({ ...e, agentId: this.agentId }));
+    entities.forEach((e) => {
+      e.agentId = this.agentId;
+    });
     return await this.adapter.createEntities(entities);
   }
 
