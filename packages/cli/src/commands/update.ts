@@ -461,9 +461,16 @@ export const update = new Command()
       // Neither flag: Update both CLI and packages
       // Both flags: Update both CLI and packages
 
-      const updateCli = options.cli || (!options.cli && !options.packages);
-      const updatePackages = options.packages || (!options.cli && !options.packages);
+      let updateCli = false;
+      let updatePackages = false;
 
+      if (!options.cli && !options.packages) {
+        updateCli = true;
+        updatePackages = true;
+      } else {
+        updateCli = !!options.cli;
+        updatePackages = !!options.packages;
+      }
       // Handle CLI update if requested
       if (updateCli) {
         // Check if we're running via npx/bunx
