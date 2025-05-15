@@ -55,7 +55,7 @@ export async function loadCharactersFromUrl(url: string): Promise<Character[]> {
       throw new Error(
         `Invalid JSON response from URL '${url}'. The resource may not contain valid character data.`
       );
-    } else if (errorMsg.includes('fetch')) {
+    } else if (e instanceof TypeError) {
       throw new Error(
         `Failed to fetch character from URL '${url}'. The URL may be incorrect or unavailable.`
       );

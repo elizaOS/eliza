@@ -760,7 +760,13 @@ export const start = new Command()
   )
   .option('-b, --build', 'Build the project before starting')
   .option('-chars, --characters [paths...]', 'Multiple character files (comma or space-separated)')
-  .option('-p, --port <port>', 'Port to listen on', parseInt)
+  .option('-p, --port <port>', 'Port to listen on', (v) => {
+    const n = Number.parseInt(v, 10);
+    if (Number.isNaN(n) || n <= 0 || n > 65535) {
+      throw new Error('Port must be a number between 1 and 65535');
+    }
+    return n;
+  })
   .hook('preAction', async () => {
     await displayBanner();
   })
