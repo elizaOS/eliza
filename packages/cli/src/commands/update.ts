@@ -106,6 +106,10 @@ function isMajorUpdate(currentVersion: string, targetVersion: string): boolean {
       return false;
     }
 
+    // Validate targetVersion
+    if (!semver.valid(targetVersion)) {
+      return false;
+    }
     return semver.major(targetVersion) > semver.major(cleanCurrent);
   } catch {
     return false; // Assume not major on error
