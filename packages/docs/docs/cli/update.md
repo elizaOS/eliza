@@ -167,7 +167,7 @@ The update command currently updates all `@elizaos/*` packages (excluding worksp
 
 Here are some recommended practices when updating ElizaOS dependencies:
 
-1. **Backup Your Project**: Always make a backup of your project before updating.
+1. **Back Up Your Project**: Always back up your project before updating.
 2. **Test After Updating**: Make sure your project works correctly after updating.
 3. **Review Changelogs**: Check the ElizaOS changelog for any breaking changes between your current version and the latest version.
 

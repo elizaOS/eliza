@@ -399,32 +399,29 @@ export async function performCliUpdate(): Promise<boolean> {
     // Install the specified version globally - use specific version instead of tag
     logger.info(`Updating Eliza CLI to version: ${latestVersion}`);
     try {
-      // First try with beta tag which is more reliable
-      const installResult = await executeInstallation(
-        '@elizaos/cli',
-        'beta', // Use beta tag instead of specific version to avoid dependency conflicts
-        process.cwd(), // Specify CWD, actual install location depends on PM/global flag
-        { tryNpm: true, tryGithub: false, tryMonorepo: false } // Prioritize npm
-      );
-
-      // If beta tag fails, try with specific version
-      if (!installResult.success) {
-        const specificVersionResult = await executeInstallation(
-          '@elizaos/cli',
-          latestVersion, // Try with specific version as fallback
-          process.cwd(),
-          { tryNpm: true, tryGithub: false, tryMonorepo: false }
-        );
-
-        if (!specificVersionResult.success) {
+      // Use direct npm install command for global installation
+      try {
+        // First try with beta tag which is more reliable
+        const { stdout, stderr } = await execa('npm', ['install', '-g', '@elizaos/cli@beta']);
+        logger.info(`Successfully updated Eliza CLI to latest version`);
+        logger.info('Please restart your terminal for the changes to take effect.');
+      } catch (npmError) {
+        // If beta tag fails, try with specific version
+        try {
+          logger.info(`Beta installation failed, trying specific version: ${latestVersion}`);
+          const { stdout, stderr } = await execa('npm', [
+            'install',
+            '-g',
+            `@elizaos/cli@${latestVersion}`,
+          ]);
+          logger.info(`Successfully updated Eliza CLI to version ${latestVersion}`);
+          logger.info('Please restart your terminal for the changes to take effect.');
+        } catch (versionError) {
           throw new Error(
             `Installation of @elizaos/cli version ${latestVersion} failed. Try manually with: npm install -g @elizaos/cli@beta`
           );
         }
       }
-
-      logger.info(`Successfully updated Eliza CLI to latest version`);
-      logger.info('Please restart your terminal for the changes to take effect.');
     } catch (error) {
       logger.error('Failed to update Eliza CLI:', error.message);
       logger.info('You can try manually with: npm install -g @elizaos/cli@beta');
@@ -470,12 +467,12 @@ export const update = new Command()
       // Handle CLI update if requested
       if (updateCli) {
         // Check if we're running via npx/bunx
-        if (isRunningViaNpx() || isRunningViaBunx()) {
+        if ((await isRunningViaNpx()) || (await isRunningViaBunx())) {
           console.warn('CLI update is not available when running via npx or bunx.');
           console.info('To install the latest version, run: npm install -g @elizaos/cli@beta');
         }
         // Check if globally installed
-        else if (!isGlobalInstallation()) {
+        else if (!(await isGlobalInstallation())) {
           console.warn('The CLI update is only available for globally installed CLI.');
           console.info('To update a local installation, use your package manager manually.');
           console.info('For global installation, run: npm install -g @elizaos/cli@beta');
@@ -524,78 +521,3 @@ export const update = new Command()
       handleError(error);
     }
   });
-
-export function displayBanner() {
-  // Color ANSI escape codes
-  const b = '\x1b[38;5;27m';
-  const lightblue = '\x1b[38;5;51m';
-  const w = '\x1b[38;5;255m';
-  const r = '\x1b[0m';
-  const red = '\x1b[38;5;196m';
-  let versionColor = lightblue;
-
-  const version = getVersion();
-
-  // if version includes "beta" or "alpha" then use red
-  if (version?.includes('beta') || version?.includes('alpha')) {
-    versionColor = red;
-  }
-  const banners = [
-    //     // Banner 2
-    //     `
-    // ${b}          ###                                  ${w}  # ###       #######  ${r}
-    // ${b}         ###    #                            / ${w} /###     /       ###  ${r}
-    // ${b}          ##   ###                          /  ${w}/  ###   /         ##  ${r}
-    // ${b}          ##    #                          / ${w} ##   ###  ##        #   ${r}
-    // ${b}          ##                              /  ${w}###    ###  ###          ${r}
-    // ${b}   /##    ##  ###    ######      /###    ${w}##   ##     ## ## ###        ${r}
-    // ${b}  / ###   ##   ###  /#######    / ###  / ${w}##   ##     ##  ### ###      ${r}
-    // ${b} /   ###  ##    ## /      ##   /   ###/  ${w}##   ##     ##    ### ###    ${r}
-    // ${b}##    ### ##    ##        /   ##    ##   ${w}##   ##     ##      ### /##  ${r}
-    // ${b}########  ##    ##       /    ##    ##   ${w}##   ##     ##        #/ /## ${r}
-    // ${b}#######   ##    ##      ###   ##    ##   ${w} ##  ##     ##         #/ ## ${r}
-    // ${b}##        ##    ##       ###  ##    ##   ${w}  ## #      /           # /  ${r}
-    // ${b}####    / ##    ##        ### ##    /#   ${w}   ###     /  /##        /   ${r}
-    // ${b} ######/  ### / ### /      ##  ####/ ##  ${w}    ######/  /  ########/    ${r}
-    // ${b}  #####    ##/   ##/       ##   ###   ## ${w}      ###   /     #####      ${r}
-    // ${b}                           /             ${w}            |                ${r}
-    // ${b}                          /              ${w}             \)              ${r}
-    // ${b}                         /               ${w}                             ${r}
-    // ${b}                        /                ${w}                             ${r}
-    // `,
-
-    //     // Banner 3
-    //     `
-    // ${b}      :::::::::::::      ::::::::::::::::::::    ::: ${w}    ::::::::  :::::::: ${r}
-    // ${b}     :+:       :+:          :+:         :+:   :+: :+:${w}  :+:    :+::+:    :+: ${r}
-    // ${b}    +:+       +:+          +:+        +:+   +:+   +:+${w} +:+    +:++:+         ${r}
-    // ${b}   +#++:++#  +#+          +#+       +#+   +#++:++#++:${w}+#+    +:++#++:++#++   ${r}
-    // ${b}  +#+       +#+          +#+      +#+    +#+     +#+${w}+#+    +#+       +#+    ${r}
-    // ${b} #+#       #+#          #+#     #+#     #+#     #+##${w}+#    #+##+#    #+#     ${r}
-    // ${b}##########################################     #### ${w}#######  ########       ${r}`,
-
-    `
-${b}⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣸⣿⠀⠙⠛⠿⢤⣦⣐⠀${w}⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀${r}
-${b}⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣐⣿⣿⢰⡀⠀⠀⠀⠈⠻⠀${w}⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀${r}
-${b}⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣴⠤⠾⠛⠛⣿⣶⣇⠀⠀⡆⠀⠀⠀${w}⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀${r}
-${b}⠀⠀⢰⣋⡳⡄⠀⠀⠀⢨⣭⡀⠀⡤⠀⣀⣝⢿⣶⣿⡅⠀⠀⠀${w}⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀${r}
-${b}⠀⠀⢸⣯⠀⣇⠀⠀⠀⣼⣿⣿⣆⢷⣴⣿⣿⡏⣛⡉⠀⠀⠀⠀${w}⢸⣿⣿⣿⣿⣿⣿⢸⣿⣿⠀⠀⠀⠀⠀⣿⣿⡇⣿⣿⣿⣿⣿⣿⣿⡇⠀⠀⠀⣾⣿⣿⣧⠀⠀⠀⢸⠟⢀⣴⣿⣿⣿⣿⣦⡀⣠⣾⣿⣿⣿⣿⣦⡙⢿⠀${r}
-${b}⠀⠀⠀⠙⢷⣮⠀⠀⢸⣿⣿⣿⣿⣷⣯⣟⣏⣼⣷⣅⠾⡟⠀⠀${w}⢸⣿⣇⣀⣀⣀⠀⢸⣿⣿⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⣠⣿⣿⠟⠁⠀⠀⣼⣿⡟⣿⣿⣆⠀⠀⠀⠀⣿⣿⠋⠀⠈⠻⣿⡇⣿⣿⣅⣀⣀⡛⠛⠃⠀⠀${r}
-${b}⠀⠀⠀⠀⠀⠁⠀⠀⢸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠋⠀⠀⠀⠀${w}⢸⣿⡿⠿⠿⠿⠀⢸⣿⣿⠀⠀⠀⠀⠀⣿⣿⡇⠀⣠⣾⣿⠟⠁⠀⠀⠀⣰⣿⣿⣁⣸⣿⣿⡄⠀⠀⠀⣿⣿⡀⠀⠀⢘⣿⣿⢈⣛⠿⠿⠿⣿⣷⡄⠀⠀${r}
-${b}⠀⠀⠀⠀⠀⠀⠀⠀⠸⣿⣿⣿⣿⣿⣿⣿⣿⣉⡟⠀⠀⠀⠀⠀${w}⢸⣿⣧⣤⣤⣤⣤⢸⣿⣿⣦⣤⣤⣤⡄⣿⣿⡇⣾⣿⣿⣧⣤⣤⣤⡄⢰⣿⣿⠟⠛⠛⠻⣿⣿⡄⢠⡀⠻⣿⣿⣦⣴⣿⣿⠇⢿⣿⣦⣤⣤⣿⣿⠇⣠⠀${r}
-${b}⠀⠀⠀⠀⠀⠀⠀⠀⢰⡈⠛⠿⣿⣿⣿⣿⣿⠋⠀⣦⣤⣄⠀⠀${w}⠘⠛⠛⠛⠛⠛⠛⠈⠛⠛⠛⠛⠛⠛⠃⠛⠛⠃⠛⠛⠛⠛⠛⠛⠛⠃⠛⠛⠃⠀⠀⠀⠀⠙⠛⠃⠘⠛⠀⠈⠛⠛⠛⠛⠁⠀⠀⠙⠛⠛⠛⠛⠁⠚⠛⠀${r}
-${b}⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡦⠀⠀⠉⠛⠿⠃⠀⠀⠀⠁⠉⠀⠀${w}⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀${r}
-${b}⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⢾⡃⠀⠀${w}⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀${r}
-`,
-  ];
-
-  // Randomly select and log one banner
-  const randomBanner = banners[Math.floor(Math.random() * banners.length)];
-
-  console.log(randomBanner);
-
-  if (version) {
-    // log the version
-    console.log(`${versionColor}Version: ${version}${r}`);
-  }
-}
