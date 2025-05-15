@@ -324,40 +324,73 @@ export abstract class BaseDrizzleAdapter<
       .where(eq(agentTable.id, agentId))
       .limit(1);
 
-    if (currentAgent.length === 0 || !currentAgent[0].settings) {
-      return updatedSettings;
-    }
+    const currentSettings =
+      currentAgent.length > 0 && currentAgent[0].settings ? currentAgent[0].settings : {};
 
-    const currentSettings = currentAgent[0].settings;
+    const deepMerge = (target: any, source: any): any => {
+      // If source is explicitly null, it means the intention is to set this entire branch to null (or delete if top-level handled by caller).
+      // For recursive calls, if a sub-object in source is null, it effectively means "remove this sub-object from target".
+      // However, our primary deletion signal is a *property value* being null within an object.
+      if (source === null) {
+        // If the entire source for a given key is null, we treat it as "delete this key from target"
+        // by returning undefined, which the caller can use to delete the key.
+        return undefined;
+      }
 
-    // Handle secrets with special null-values treatment
-    if (updatedSettings.secrets) {
-      const currentSecrets = currentSettings.secrets || {};
-      const updatedSecrets = updatedSettings.secrets;
+      // If source is an array or a primitive, it replaces the target value.
+      if (Array.isArray(source) || typeof source !== 'object') {
+        return source;
+      }
 
-      // Create a new secrets object
-      const mergedSecrets = { ...currentSecrets };
+      // Initialize output. If target is not an object, start with an empty one to merge source into.
+      const output =
+        typeof target === 'object' && target !== null && !Array.isArray(target)
+          ? { ...target }
+          : {};
 
-      // Process the incoming secrets updates
-      for (const [key, value] of Object.entries(updatedSecrets)) {
-        if (value === null) {
-          // If value is null, remove the key
-          delete mergedSecrets[key];
+      let isEmpty = true; // Flag to track if the resulting object is empty
+      for (const key of Object.keys(source)) {
+        // Iterate over source keys
+        const sourceValue = source[key];
+
+        if (sourceValue === null) {
+          // If a value in source is null, delete the corresponding key from output.
+          delete output[key];
+        } else if (typeof sourceValue === 'object' && !Array.isArray(sourceValue)) {
+          // If value is an object, recurse.
+          const nestedMergeResult = deepMerge(output[key], sourceValue);
+          if (nestedMergeResult === undefined) {
+            // If recursive merge resulted in undefined (meaning the nested object should be deleted)
+            delete output[key];
+          } else {
+            output[key] = nestedMergeResult;
+            isEmpty = false; // The object is not empty if it has a nested object
+          }
         } else {
-          // Otherwise, update the value
-          mergedSecrets[key] = value as string | number | boolean;
+          // Primitive or array value from source, assign it.
+          output[key] = sourceValue;
+          isEmpty = false; // The object is not empty
         }
       }
 
-      // Replace the secrets in updatedSettings with our processed version
-      updatedSettings.secrets = mergedSecrets;
-    }
+      // After processing all keys from source, check if output became empty.
+      // An object is empty if all its keys were deleted or resulted in undefined.
+      // This is a more direct check than iterating 'output' after building it.
+      if (Object.keys(output).length === 0) {
+        // If the source itself was not an explicitly empty object,
+        // and the merge resulted in an empty object, signal deletion.
+        if (!(typeof source === 'object' && source !== null && Object.keys(source).length === 0)) {
+          return undefined; // Signal to delete this (parent) key if it became empty.
+        }
+      }
 
-    // Deep merge the settings objects
-    return {
-      ...currentSettings,
-      ...updatedSettings,
-    };
+      return output;
+    }; // End of deepMerge
+
+    const finalSettings = deepMerge(currentSettings, updatedSettings);
+    // If the entire settings object becomes undefined (e.g. all keys removed),
+    // return an empty object instead of undefined/null to keep the settings field present.
+    return finalSettings === undefined ? {} : finalSettings;
   }
 
   /**
@@ -1134,6 +1167,7 @@ export abstract class BaseDrizzleAdapter<
         agentId: row.memory.agentId as UUID,
         roomId: row.memory.roomId as UUID,
         unique: row.memory.unique,
+        metadata: row.memory.metadata as MemoryMetadata,
         embedding: row.embedding ?? undefined,
       };
     });
@@ -1800,7 +1834,7 @@ export abstract class BaseDrizzleAdapter<
           return;
         }
 
-        // 2) delete any fragments for “document” memories & their embeddings
+        // 2) delete any fragments for "document" memories & their embeddings
         await Promise.all(
           ids.map(async (memoryId) => {
             await this.deleteMemoryFragments(tx, memoryId);
@@ -1854,12 +1888,14 @@ export abstract class BaseDrizzleAdapter<
       const result = await this.db
         .select({
           id: roomTable.id,
+          name: roomTable.name, // Added name
           channelId: roomTable.channelId,
           agentId: roomTable.agentId,
           serverId: roomTable.serverId,
           worldId: roomTable.worldId,
           type: roomTable.type,
           source: roomTable.source,
+          metadata: roomTable.metadata, // Added metadata
         })
         .from(roomTable)
         .where(and(eq(roomTable.id, roomId), eq(roomTable.agentId, this.agentId)))
@@ -1870,11 +1906,13 @@ export abstract class BaseDrizzleAdapter<
       return {
         ...room,
         id: room.id as UUID,
+        name: room.name ?? undefined, // Corrected to handle null
         agentId: room.agentId as UUID,
         serverId: room.serverId as UUID,
         worldId: room.worldId as UUID,
         channelId: room.channelId as UUID,
         type: room.type as ChannelType,
+        metadata: room.metadata as RoomMetadata, // Added metadata
       };
     });
   }
