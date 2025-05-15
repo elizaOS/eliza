@@ -24,6 +24,12 @@ Eliza thrive on information from diverse sources (GitHub, Discord, etc.). Effici
 
 The following diagram illustrates this broader flow, showing how various data streams are collected, processed, enriched (often with AI), and centralized into our [knowledge repository](https://github.com/elizaOS/knowledge). This repository then feeds various consumption layers, including AI agents, human users, and visual dashboards.
 
+
+![](/blog/autodocs.svg)
+
+<summary>View mermaid</summary>
+
+<details>
 ```mermaid
 flowchart
     %% Data collection systems side by side
@@ -159,6 +165,8 @@ Visualizations"]
     style KR_OUTPUTS fill:#ffe6f7,stroke:#ff66cc,stroke-width:2px,color:#990066,font-weight:bold
     style ConsumptionLayer fill:#e6ffff,stroke:#66cccc,stroke-width:2px,color:#006666,font-weight:bold
 ```
+
+</details>
 
 While this diagram captures the full scope, this article will zoom in on the "📚 docs/" portion within the "KNOW (Central Repository)" and how our CI/CD pipelines automate its maintenance and enrichment.
 
