@@ -65,7 +65,10 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
     const timeout = setTimeout(() => {
       logger.warn('Shutdown timeout reached, forcing database connection closure...');
       this.client.close().finally(() => {
-        process.exit(1);
+        logger.warn('Forced database connection closure complete.');
+        if (process.env.NODE_ENV !== 'test') {
+          process.exit(1);
+        }
       });
     }, this.shutdownTimeout);
 
@@ -73,10 +76,16 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
       await this.client.close();
       clearTimeout(timeout);
       logger.info('PGlite client shutdown completed successfully');
-      process.exit(0);
+      if (process.env.NODE_ENV !== 'test') {
+        process.exit(0);
+      }
     } catch (error) {
       logger.error('Error during graceful shutdown:', error);
-      process.exit(1);
+      if (process.env.NODE_ENV !== 'test') {
+        process.exit(1);
+      } else {
+        throw error;
+      }
     }
   }
 
