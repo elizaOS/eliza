@@ -53,10 +53,10 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
 
   /**
    * Retrieves an account by its ID.
-   * @param entityId The UUID of the user account to retrieve.
+   * @param entityIds The UUIDs of the user account to retrieve.
    * @returns A Promise that resolves to the Entity object or null if not found.
    */
-  abstract getEntityById(entityId: UUID): Promise<Entity | null>;
+  abstract getEntityByIds(entityIds: UUID[]): Promise<Entity[] | null>;
 
   abstract getEntitiesForRoom(roomId: UUID, includeComponents?: boolean): Promise<Entity[]>;
 
@@ -66,6 +66,8 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
    * @returns A Promise that resolves when the account creation is complete.
    */
   abstract createEntity(entity: Entity): Promise<boolean>;
+
+  abstract createEntities(entities: Entity[]): Promise<boolean[]>;
 
   /**
    * Updates an existing entity in the database.
@@ -312,7 +314,7 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
    * @param roomId The UUID of the room to retrieve.
    * @returns A Promise that resolves to the room ID or null if not found.
    */
-  abstract getRoom(roomId: UUID): Promise<Room | null>;
+  abstract getRoomsByIds(roomIds: UUID[]): Promise<Room[] | null>;
 
   /**
    * Retrieves all rooms for a given world.
@@ -327,6 +329,8 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
    * @returns A Promise that resolves to the UUID of the created room.
    */
   abstract createRoom({ id, source, type, channelId, serverId, worldId }: Room): Promise<UUID>;
+
+  abstract createRooms(rooms: Room[]): Promise<UUID[]>;
 
   /**
    * Updates a specific room in the database.
@@ -370,6 +374,7 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
    * @returns A Promise that resolves to a boolean indicating success or failure.
    */
   abstract addParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
+  abstract addParticipantsRoom(entityIds: UUID[], roomId: UUID): Promise<boolean>;
 
   /**
    * Removes a user as a participant from a specific room.
