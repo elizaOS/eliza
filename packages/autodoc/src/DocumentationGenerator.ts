@@ -64,8 +64,11 @@ export class DocumentationGenerator {
     public configuration: Configuration,
     public aiService: AIService
   ) {
-    this.typeScriptFiles = this.directoryTraversal.traverse();
+    this.typeScriptFiles = [];
     this.jsDocValidator = new JSDocValidator(aiService);
+  }
+  private async initializeFiles(): Promise<void> {
+    this.typeScriptFiles = await this.directoryTraversal.traverse();
   }
 
   /**
@@ -78,6 +81,8 @@ export class DocumentationGenerator {
     documentedItems: ASTQueueItem[];
     branchName: string | undefined;
   }> {
+    await this.initializeFiles();
+
     let fileChanges: PrModeFileChange[] | FullModeFileChange[] = [];
     this.fileOffsets.clear();
 
@@ -107,7 +112,7 @@ export class DocumentationGenerator {
         return isInTargetDir && !isExcluded;
       });
     } else {
-      const typeScriptFiles = this.directoryTraversal.traverse();
+      const typeScriptFiles = await this.directoryTraversal.traverse();
       fileChanges = typeScriptFiles.map((file) => ({
         filename: this.configuration.toRelativePath(file),
         status: 'modified',
@@ -424,6 +429,9 @@ export class DocumentationGenerator {
     todoItems: TodoItem[];
     envUsages: EnvUsage[];
   }> {
+    // Ensure files are initialized
+    await this.initializeFiles();
+
     const todoItems: TodoItem[] = [];
     const envUsages: EnvUsage[] = [];
 

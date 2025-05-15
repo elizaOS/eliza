@@ -67,54 +67,79 @@ export class DirectoryTraversal {
    *
    * @returns An array of string containing the files to process.
    */
-  public traverse(): string[] {
+  public async traverse(): Promise<string[]> {
     if (this.prFiles.length > 0) {
       console.log('Detected PR Files:', this.prFiles);
 
       // PR files are already relative to repo root, filter and convert to absolute paths
-      const files = this.prFiles
-        .filter((file) => {
-          // Convert PR file (repo-relative) to absolute path
-          const absolutePath = this.config.toAbsolutePath(file);
+      const filePromises = this.prFiles.map(async (file) => {
+        // Convert PR file (repo-relative) to absolute path
+        const absolutePath = this.config.toAbsolutePath(file);
 
-          // Check if the file is within our target directory
-          const isInTargetDir = absolutePath.startsWith(this.config.absolutePath);
+        // Check if the file is within our target directory
+        const isInTargetDir = absolutePath.startsWith(this.config.absolutePath);
 
-          return (
+        try {
+          const exists = await fs.promises
+            .access(absolutePath)
+            .then(() => true)
+            .catch(() => false);
+
+          if (
             isInTargetDir &&
-            fs.existsSync(absolutePath) &&
+            exists &&
             !this.isExcluded(absolutePath) &&
             path.extname(file) === '.ts'
-          );
-        })
-        .map((file) => this.config.toAbsolutePath(file));
+          ) {
+            return this.config.toAbsolutePath(file);
+          }
+        } catch (error) {
+          console.error(`Error processing PR file ${file}:`, error);
+        }
+        return null;
+      });
+
+      const results = await Promise.all(filePromises);
+      const files = results.filter(Boolean) as string[];
 
       console.log('Files to process:', files);
       return files;
     }
+
     console.log('No PR Files Detected, Scanning all files in root directory');
     const typeScriptFiles: string[] = [];
 
-    const traverseDirectory = (currentDirectory: string) => {
-      const files = fs.readdirSync(currentDirectory);
+    const traverseDirectory = async (currentDirectory: string): Promise<void> => {
+      try {
+        const files = await fs.promises.readdir(currentDirectory);
 
-      files.forEach((file) => {
-        const filePath = path.join(currentDirectory, file);
-        const stats = fs.statSync(filePath);
+        await Promise.all(
+          files.map(async (file) => {
+            const filePath = path.join(currentDirectory, file);
 
-        if (stats.isDirectory()) {
-          if (!this.isExcluded(filePath)) {
-            traverseDirectory(filePath);
-          }
-        } else if (stats.isFile() && !this.isExcluded(filePath)) {
-          if (path.extname(file) === '.ts') {
-            typeScriptFiles.push(filePath);
-          }
-        }
-      });
+            try {
+              const stats = await fs.promises.stat(filePath);
+
+              if (stats.isDirectory()) {
+                if (!this.isExcluded(filePath)) {
+                  await traverseDirectory(filePath);
+                }
+              } else if (stats.isFile() && !this.isExcluded(filePath)) {
+                if (path.extname(file) === '.ts') {
+                  typeScriptFiles.push(filePath);
+                }
+              }
+            } catch (error) {
+              console.error(`Error processing file ${filePath}:`, error);
+            }
+          })
+        );
+      } catch (error) {
+        console.error(`Error reading directory ${currentDirectory}:`, error);
+      }
     };
 
-    traverseDirectory(this.config.absolutePath);
+    await traverseDirectory(this.config.absolutePath);
     return typeScriptFiles;
   }
 

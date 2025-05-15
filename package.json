@@ -32,7 +32,7 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/node": "^22.15.3",
+    "@types/node": "^22.15.18",
     "@types/uuid": "^9.0.8",
     "@vitest/eslint-plugin": "1.0.1",
     "bun": "^1.2.13",
@@ -40,12 +40,12 @@
     "cross-env": "7.0.3",
     "husky": "^9.1.7",
     "lerna": "8.1.4",
-    "lint-staged": "^15.5.0",
+    "lint-staged": "^15.5.2",
     "sharp": "0.33.5",
     "tsup": "8.4.0",
-    "turbo": "^2.4.4",
+    "turbo": "^2.5.3",
     "typedoc": "0.27.9",
-    "typescript": "^5.8.2",
+    "typescript": "^5.8.3",
     "vite": "5.4.12",
     "vitest": "3.0.5"
   },
@@ -67,7 +67,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
-    "@babel/generator": "^7.26.10",
+    "@babel/generator": "^7.27.1",
     "@hapi/shot": "^6.0.1",
     "@types/hapi": "^18.0.14",
     "node-opus": "^0.3.3",
