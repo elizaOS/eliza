@@ -18,8 +18,8 @@ import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import prompts from 'prompts';
-// Import performCliUpdate directly for updating CLI
-import { performCliUpdate } from './update-cli';
+// Import performCliUpdate directly from update instead of update-cli
+import { performCliUpdate } from './update';
 
 // Registry integration constants
 const REGISTRY_REPO = 'elizaos/registry';

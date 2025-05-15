@@ -362,7 +362,7 @@ function checkIfPluginDir(dir: string): boolean {
  * Updates the CLI to the latest version based on the most recently published version
  * @returns {Promise<boolean>} Whether the update was successful
  */
-async function performCliUpdate(): Promise<boolean> {
+export async function performCliUpdate(): Promise<boolean> {
   try {
     // get the current version
     const currentVersion = getVersion();
