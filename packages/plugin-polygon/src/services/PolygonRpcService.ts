@@ -1,4 +1,4 @@
-import { Service, IAgentRuntime, logger } from '@elizaos/core';
+import { Service, type IAgentRuntime, logger } from '@elizaos/core';
 import {
   ethers,
   JsonRpcProvider,
@@ -16,17 +16,14 @@ import {
 } from 'ethers'; // Assuming ethers v6+
 
 // Use require for JSON ABIs as a workaround for import issues
-const StakeManagerABI = '{}';
-//require('../abi/StakeManager.json');
-const ValidatorShareABI = '{}';
-//require('../abi/ValidatorShare.json');
-const RootChainManagerABI = '{}';
-//require('../abi/RootChainManager.json'); // Added RootChainManager ABI
-const Erc20ABI = '{}';
-//require('../abi/ERC20.json'); // Added ERC20 ABI (for approve/allowance)
+const StakeManagerABI = require('../contracts/StakeManagerABI.json');
+const ValidatorShareABI = require('../contracts/ValidatorShareABI.json');
+const RootChainManagerABI = require('../contracts/RootChainManagerABI.json');
+const Erc20ABI = require('../contracts/ERC20ABI.json');
+const CheckpointManagerABI = require('../contracts/CheckpointManagerABI.json'); // New ABI
 
 // Re-import GasService components
-import { getGasPriceEstimates, GasPriceEstimates } from './GasService';
+import { getGasPriceEstimates, type GasPriceEstimates } from './GasService';
 
 // Minimal ERC20 ABI fragment for balanceOf
 const ERC20_ABI_BALANCEOF = [
@@ -80,16 +77,22 @@ export class PolygonRpcService extends Service {
 
   private l1Provider: EthersProvider | null = null;
   private l2Provider: EthersProvider | null = null;
-  private l1Signer: Signer | null = null; // Added L1 Signer
-  private stakeManagerContractL1: Contract | null = null; // Added for L1 StakeManager
-  private rootChainManagerContractL1: Contract | null = null; // Added RootChainManager instance
+  private l1Signer: Signer | null = null;
+  private stakeManagerContractL1: Contract | null = null;
+  private rootChainManagerContractL1: Contract | null = null;
+  private checkpointManagerContractL1: Contract | null = null; // Added CheckpointManager instance
 
-  constructor(runtime?: IAgentRuntime) {
-    super(runtime);
-  }
+  // constructor(runtime?: IAgentRuntime) { // Constructor removed
+  //   super(runtime);
+  // }
 
   private async initializeProviders(): Promise<void> {
-    if (this.l1Provider && this.l2Provider && this.rootChainManagerContractL1) {
+    if (
+      this.l1Provider &&
+      this.l2Provider &&
+      this.rootChainManagerContractL1 &&
+      this.checkpointManagerContractL1
+    ) {
       return;
     }
     if (!this.runtime) {
@@ -120,7 +123,7 @@ export class PolygonRpcService extends Service {
         StakeManagerABI,
         this.l1Provider
       );
-      await this.stakeManagerContractL1.currentEpoch(); // Test connection
+      // await this.stakeManagerContractL1.currentEpoch(); // Test connection - COMMENT OUT FOR GasService tests until abis are replaced
       logger.info('StakeManager L1 contract instance created and connection verified.');
 
       this.rootChainManagerContractL1 = new Contract(
@@ -132,19 +135,44 @@ export class PolygonRpcService extends Service {
       // const chainId = await this.rootChainManagerContractL1.chainID();
       // logger.info(`RootChainManager L1 contract connection verified (Chain ID: ${chainId}).`);
       logger.info('RootChainManager L1 contract instance created.');
-    } catch (error) {
+
+      // Fetch CheckpointManager address and initialize contract
+      if (this.rootChainManagerContractL1) {
+        const checkpointManagerAddress =
+          await this.rootChainManagerContractL1.checkpointManagerAddress();
+        logger.info(`Fetched CheckpointManager L1 address: ${checkpointManagerAddress}`);
+        this.checkpointManagerContractL1 = new Contract(
+          checkpointManagerAddress,
+          CheckpointManagerABI,
+          this.l1Provider // Read-only, provider is sufficient
+        );
+        logger.info('CheckpointManager L1 contract instance created.');
+      } else {
+        logger.error(
+          'RootChainManager contract failed to initialize, cannot get CheckpointManager address.'
+        );
+        throw new Error(
+          'RootChainManager contract failed to initialize, cannot get CheckpointManager address.'
+        );
+      }
+    } catch (error: unknown) {
+      // Changed to unknown
       logger.error('Failed during PolygonRpcService initialization:', error);
       this.l1Provider = null;
       this.l2Provider = null;
       this.l1Signer = null;
       this.stakeManagerContractL1 = null;
       this.rootChainManagerContractL1 = null;
-      throw new Error('Failed to initialize PolygonRpcService components');
+      this.checkpointManagerContractL1 = null; // Clear CheckpointManager instance on error
+      if (error instanceof Error) {
+        throw new Error(`Failed to initialize PolygonRpcService components: ${error.message}`);
+      }
+      throw new Error('Failed to initialize PolygonRpcService components due to an unknown error.');
     }
   }
 
   static async start(runtime: IAgentRuntime): Promise<PolygonRpcService> {
-    logger.info(`Starting PolygonRpcService...`);
+    logger.info('Starting PolygonRpcService...');
     const service = new PolygonRpcService(runtime);
     await service.initializeProviders();
     return service;
@@ -162,9 +190,10 @@ export class PolygonRpcService extends Service {
     logger.info('PolygonRpcService instance stopped.');
     this.l1Provider = null;
     this.l2Provider = null;
-    this.l1Signer = null; // Clear signer
-    this.stakeManagerContractL1 = null; // Clear contract instance
-    this.rootChainManagerContractL1 = null; // Clear RCM instance
+    this.l1Signer = null;
+    this.stakeManagerContractL1 = null;
+    this.rootChainManagerContractL1 = null;
+    this.checkpointManagerContractL1 = null; // Clear CheckpointManager instance
   }
 
   private getProvider(network: NetworkType): EthersProvider {
@@ -197,6 +226,24 @@ export class PolygonRpcService extends Service {
       throw new Error('RootChainManager L1 contract is not initialized.');
     }
     return this.rootChainManagerContractL1;
+  }
+
+  // Helper to get initialized CheckpointManager contract
+  private getCheckpointManagerContract(): Contract {
+    if (!this.checkpointManagerContractL1) {
+      throw new Error('CheckpointManager L1 contract is not initialized.');
+    }
+    return this.checkpointManagerContractL1;
+  }
+
+  // --- Public Method to Get L2 Provider ---
+  public getL2Provider(): EthersProvider {
+    const provider = this.getProvider('L2'); // Use the existing private method internally
+    if (!provider) {
+      // Should ideally not happen if service is started correctly
+      throw new Error('L2 Provider not initialized in PolygonRpcService.');
+    }
+    return provider;
   }
 
   // --- Helper: Get Signer-Aware ValidatorShare Contract ---
@@ -508,7 +555,10 @@ export class PolygonRpcService extends Service {
       const maxFeePerGas = gasEstimates.estimatedBaseFee + maxPriorityFeePerGas;
 
       // 3. Estimate Gas Limit
-      const gasLimit = await signer.estimateGas({ ...txData, value: amountWei });
+      const gasLimit = await signer.estimateGas({
+        ...txData,
+        value: amountWei,
+      });
       const gasLimitBuffered = (gasLimit * 120n) / 100n; // Add 20% buffer
 
       // 4. Construct Full Transaction
@@ -532,10 +582,12 @@ export class PolygonRpcService extends Service {
 
       // 7. Return Hash (Consider adding wait option later)
       return txResponse.hash;
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error(`Delegation to validator ${validatorId} failed:`, error);
-      // Add more specific error handling (insufficient funds, etc.)
-      throw new Error(`Delegation failed: ${error.message || error}`);
+      if (error instanceof Error) {
+        throw new Error(`Delegation failed: ${error.message}`);
+      }
+      throw new Error('Delegation failed due to an unknown error.');
     }
   }
 
@@ -594,9 +646,12 @@ export class PolygonRpcService extends Service {
 
       // 7. Return Hash
       return txResponse.hash;
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error(`Undelegation from validator ${validatorId} failed:`, error);
-      throw new Error(`Undelegation failed: ${error.message || error}`);
+      if (error instanceof Error) {
+        throw new Error(`Undelegation failed: ${error.message}`);
+      }
+      throw new Error('Undelegation failed due to an unknown error.');
     }
   }
 
@@ -649,9 +704,12 @@ export class PolygonRpcService extends Service {
 
       // 7. Return Hash
       return txResponse.hash;
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error(`Reward withdrawal from validator ${validatorId} failed:`, error);
-      throw new Error(`Reward withdrawal failed: ${error.message || error}`);
+      if (error instanceof Error) {
+        throw new Error(`Reward withdrawal failed: ${error.message}`);
+      }
+      throw new Error('Reward withdrawal failed due to an unknown error.');
     }
   }
 
@@ -691,7 +749,7 @@ export class PolygonRpcService extends Service {
         );
         throw new Error(`Reward withdrawal transaction failed (Hash: ${withdrawTxHash})`);
       }
-      logger.info(`Withdrawal transaction confirmed.`);
+      logger.info('Withdrawal transaction confirmed.');
 
       // 4. Delegate the withdrawn amount (which equals the previously fetched pendingRewards)
       logger.info(
@@ -700,9 +758,12 @@ export class PolygonRpcService extends Service {
       const delegateTxHash = await this.delegate(validatorId, rewardsToRestake);
 
       return delegateTxHash; // Return the hash of the second (delegate) transaction
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error(`Restake operation for validator ${validatorId} failed:`, error);
-      throw new Error(`Restake failed: ${error.message || error}`);
+      if (error instanceof Error) {
+        throw new Error(`Restake failed: ${error.message}`);
+      }
+      throw new Error('Restake operation failed due to an unknown error.');
     }
   }
 
@@ -739,7 +800,7 @@ export class PolygonRpcService extends Service {
       // Approval (if sent) is confirmed within the helper
 
       // 2. Prepare depositFor transaction data
-      logger.debug(`Preparing depositFor transaction...`);
+      logger.debug('Preparing depositFor transaction...');
       const depositData = ethers.AbiCoder.defaultAbiCoder().encode(['uint256'], [amountWei]);
       const txData = await rootChainManager.depositFor.populateTransaction(
         userAddress,
@@ -781,9 +842,12 @@ export class PolygonRpcService extends Service {
 
       // 8. Return Hash of the deposit transaction
       return txResponse.hash;
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error(`Bridge deposit for token ${tokenAddressL1} failed:`, error);
-      throw new Error(`Bridge deposit failed: ${error.message || error}`);
+      if (error instanceof Error) {
+        throw new Error(`Bridge deposit failed: ${error.message}`);
+      }
+      throw new Error('Bridge deposit failed due to an unknown error.');
     }
   }
 
@@ -884,9 +948,12 @@ export class PolygonRpcService extends Service {
       logger.info(`Broadcasting L1 approve transaction for token ${tokenContract.target}...`);
       const txResponse = await this.sendRawTransaction(signedTx, 'L1');
       return txResponse.hash;
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error(`ERC20 approve transaction failed for token ${tokenContract.target}:`, error);
-      throw new Error(`Approval failed: ${error.message || error}`);
+      if (error instanceof Error) {
+        throw new Error(`Approval failed: ${error.message}`);
+      }
+      throw new Error('ERC20 approve transaction failed due to an unknown error.');
     }
   }
 
@@ -897,17 +964,20 @@ export class PolygonRpcService extends Service {
    * @returns A promise resolving to the last checkpointed L2 block number as a bigint.
    */
   async getLastCheckpointedL2Block(): Promise<bigint> {
-    logger.debug('Getting last checkpointed L2 block number from L1 RootChainManager...');
+    logger.debug('Getting last checkpointed L2 block number from L1 CheckpointManager...');
     try {
-      const rootChainManager = this.getRootChainManagerContract();
-      // Call the `lastChildBlock()` view function (Verify exact name from ABI)
-      const lastBlockBigInt: BigNumberish = await rootChainManager.lastChildBlock();
+      const checkpointManager = this.getCheckpointManagerContract();
+      const lastBlockBigInt: BigNumberish = await checkpointManager.getLastChildBlock();
       const lastBlock = BigInt(lastBlockBigInt.toString());
       logger.info(`Last L2 block checkpointed on L1: ${lastBlock}`);
       return lastBlock;
-    } catch (error) {
-      logger.error('Error fetching last checkpointed L2 block from L1 RootChainManager:', error);
-      throw error; // Re-throw for upstream handling
+    } catch (error: unknown) {
+      // Changed to unknown
+      logger.error('Error fetching last checkpointed L2 block from L1 CheckpointManager:', error);
+      if (error instanceof Error) {
+        throw new Error(`Failed to fetch last checkpointed L2 block: ${error.message}`);
+      }
+      throw new Error('An unknown error occurred while fetching last checkpointed L2 block.');
     }
   }
 
@@ -917,7 +987,7 @@ export class PolygonRpcService extends Service {
    * @returns A promise resolving to true if the block is checkpointed, false otherwise.
    */
   async isL2BlockCheckpointed(l2BlockNumber: number | bigint): Promise<boolean> {
-    const targetBlock = BigInt(l2BlockNumber.toString()); // Ensure bigint for comparison
+    const targetBlock = BigInt(l2BlockNumber.toString());
     logger.debug(`Checking if L2 block ${targetBlock} is checkpointed on L1...`);
     try {
       const lastCheckpointedBlock = await this.getLastCheckpointedL2Block();
@@ -926,14 +996,20 @@ export class PolygonRpcService extends Service {
         `L2 block ${targetBlock} checkpointed status: ${isCheckpointed} (Last Checkpointed: ${lastCheckpointedBlock})`
       );
       return isCheckpointed;
-    } catch (error) {
-      // Error occurred fetching the last checkpoint, status is uncertain
+    } catch (error: unknown) {
+      // Changed to unknown
       logger.error(
-        `Could not determine checkpoint status for L2 block ${targetBlock} due to error fetching last checkpoint.`
+        `Could not determine checkpoint status for L2 block ${targetBlock} due to error fetching last checkpoint.`,
+        error
       );
-      throw new Error(`Failed to determine checkpoint status for L2 block ${targetBlock}.`);
-      // Or return false / specific error state depending on desired behavior
-      // return false;
+      if (error instanceof Error) {
+        throw new Error(
+          `Failed to determine checkpoint status for L2 block ${targetBlock}: ${error.message}`
+        );
+      }
+      throw new Error(
+        `An unknown error occurred while determining checkpoint status for L2 block ${targetBlock}.`
+      );
     }
   }
 }

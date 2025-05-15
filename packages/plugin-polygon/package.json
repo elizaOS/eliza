@@ -30,12 +30,16 @@
     "@lifi/data-types": "5.15.5",
     "@lifi/sdk": "3.4.1",
     "@lifi/types": "16.3.0",
-    "zod": "3.24.2"
+    "axios": "^1.7.2",
+    "ethers": "^6.14.0",
+    "node-cache": "^5.1.2",
+    "zod": "3.24.1"
   },
   "devDependencies": {
     "tsup": "8.4.0",
     "typescript": "5.8.2",
-    "prettier": "3.5.3"
+    "prettier": "3.5.3",
+    "dotenv": "^16.4.5"
   },
   "scripts": {
     "start": "elizaos start",

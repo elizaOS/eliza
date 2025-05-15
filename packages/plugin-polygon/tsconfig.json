@@ -11,6 +11,7 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": false,
     "allowImportingTsExtensions": true,
+    "types": ["vitest/globals", "node", "vitest"],
     "declaration": true,
     "emitDeclarationOnly": true,
     "resolveJsonModule": true,
