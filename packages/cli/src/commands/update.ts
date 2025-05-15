@@ -117,11 +117,13 @@ function isMajorUpdate(currentVersion: string, targetVersion: string): boolean {
  * @param cwd Working directory of the project/plugin
  * @param isPlugin Whether this is a plugin or project
  * @param dryRun Only check for updates without applying them
+ * @param skipBuild Skip building the project after updates
  */
 async function updateDependencies(
   cwd: string,
   isPlugin: boolean,
-  dryRun: boolean = false
+  dryRun: boolean = false,
+  skipBuild: boolean = false
 ): Promise<void> {
   console.info(
     `${dryRun ? 'Checking' : 'Updating'} ${isPlugin ? 'plugin' : 'project'} dependencies...`
@@ -290,7 +292,11 @@ async function updateDependencies(
     await runBunCommand(['install'], cwd);
 
     // Build the project/plugin with updated dependencies
-    await buildProject(cwd, isPlugin);
+    if (!skipBuild) {
+      await buildProject(cwd, isPlugin);
+    } else {
+      console.log('Skipping build phase as requested with --skip-build flag');
+    }
   } catch (error) {
     console.error(`Error updating dependencies: ${error.message}`);
   }
@@ -343,12 +349,12 @@ export const update = new Command()
 
       if (options.check) {
         // Call updateDependencies with dryRun=true to check for updates without applying them
-        await updateDependencies(cwd, isPlugin, true);
+        await updateDependencies(cwd, isPlugin, true, false);
         return;
       }
 
       // Update dependencies
-      await updateDependencies(cwd, isPlugin, false);
+      await updateDependencies(cwd, isPlugin, false, options.skipBuild);
 
       console.log(
         `${isPlugin ? 'Plugin' : 'Project'} successfully updated to the latest ElizaOS packages`
