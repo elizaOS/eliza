@@ -33,13 +33,14 @@ function HomepageHeader() {
                   title="GitHub"
                 ></iframe>
               </div>
-              <p>
-                NEW! Copy
-                <Link href="/llms-full.txt" target="_blank">
-                  <b>llms-full.txt</b>
+              <div className={styles.llmsCallout}>
+                <span className={styles.newBadge}>NEW! </span>
+                <span>Copy </span>
+                <Link href="/llms-full.txt" target="_blank" className={styles.llmsLink}>
+                  llms-full.txt
                 </Link>
-                to chat with the docs using LLMs
-              </p>
+                <span> to chat with the docs using LLMs 💬</span>
+              </div>
             </div>
           </div>
           <div className={styles.heroRight}>
