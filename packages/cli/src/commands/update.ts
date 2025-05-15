@@ -81,11 +81,20 @@ function checkVersionNeedsUpdate(
       return { needsUpdate: false, error: 'Cannot determine if update needed - invalid semver' };
     }
 
+    // Get the minimum version if cleanCurrent is a range
+    let versionToCompare = cleanCurrent;
+    if (semver.validRange(cleanCurrent) && !semver.valid(cleanCurrent)) {
+      const minVer = semver.minVersion(cleanCurrent);
+      if (!minVer) {
+        return { needsUpdate: false, error: 'Could not determine minimum version from range' };
+      }
+      versionToCompare = minVer.version;
+    }
+
     // Compare versions
-    return { needsUpdate: semver.lt(cleanCurrent, targetVersion) };
+    return { needsUpdate: semver.lt(versionToCompare, targetVersion) };
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-    return { needsUpdate: false, error: `Version comparison error: ${errorMessage}` };
+    return { needsUpdate: false, error: `Version comparison error: ${error.message}` };
   }
 }
 
@@ -273,8 +282,20 @@ async function updateDependencies(
       }
     }
 
+    // Update only the ones that actually need it
+    const packagesNeedingUpdate = elizaPackages.filter(
+      (pkg) => checkVersionNeedsUpdate(String(pkg.version), latestCliVersion).needsUpdate
+    );
+
+    if (packagesNeedingUpdate.length === 0) {
+      console.info('No packages need updates.');
+      return;
+    }
+
+    console.info(`Updating ${packagesNeedingUpdate.length} package(s)...`);
+
     // Update each package to the latest CLI version
-    for (const pkg of elizaPackages) {
+    for (const pkg of packagesNeedingUpdate) {
       try {
         console.info(`Updating ${pkg.name} to version ${latestCliVersion}...`);
         await runBunCommand(['add', `${pkg.name}@${latestCliVersion}`], cwd);
