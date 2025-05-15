@@ -982,6 +982,7 @@ const events = {
         runtime: payload.runtime,
         message: payload.message,
         callback: payload.callback,
+        onComplete: payload.onComplete,
       });
     },
   ],
