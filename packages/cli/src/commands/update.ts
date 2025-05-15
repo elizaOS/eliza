@@ -84,7 +84,8 @@ function checkVersionNeedsUpdate(
     // Compare versions
     return { needsUpdate: semver.lt(cleanCurrent, targetVersion) };
   } catch (error) {
-    return { needsUpdate: false, error: `Version comparison error: ${error.message}` };
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    return { needsUpdate: false, error: `Version comparison error: ${errorMessage}` };
   }
 }
 
