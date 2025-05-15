@@ -1,9 +1,18 @@
 import type { AgentServer } from '@/src/server';
 import { upload } from '@/src/server/loader';
 import { convertToAudioBuffer } from '@/src/utils';
-import type { Agent, Character, Content, IAgentRuntime, Memory, UUID } from '@elizaos/core';
+import type {
+  Agent,
+  Character,
+  Content,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  UUID,
+} from '@elizaos/core';
 import {
   ChannelType,
+  EventType,
   MemoryType,
   ModelType,
   composePrompt,
@@ -909,7 +918,7 @@ export function agentRouter(
         };
 
         // Reuse the message endpoint logic
-        await this.post('/:agentId/messages')(messageRequest, res);
+        await this.post('/:agentId/message')(messageRequest, res);
       } catch (error) {
         logger.error('[AUDIO MESSAGE] Error processing audio:', error);
         res.status(500).json({
@@ -1409,106 +1418,107 @@ export function agentRouter(
       return;
     }
 
-    const entityId = req.body.entityId;
-    const roomId = req.body.roomId;
+    const entityId = req.body.entityId as UUID;
+    const roomId = req.body.roomId as UUID;
 
     const source = req.body.source;
     const text = req.body.text.trim();
 
     const channelType = req.body.channelType;
+    const incomingMessageVirtualId = createUniqueUuid(
+      runtime,
+      `${roomId}-${entityId}-${Date.now()}`
+    );
 
     try {
-      const messageId = createUniqueUuid(runtime, Date.now().toString());
+      await runtime.ensureConnection({
+        entityId,
+        roomId,
+        userName: req.body.userName,
+        name: req.body.name,
+        source: 'api-message',
+        type: ChannelType.API,
+        worldId: createUniqueUuid(runtime, 'api-message'),
+        worldName: 'api-message',
+      });
 
       const content: Content = {
         text,
         attachments: [],
         source,
-        inReplyTo: undefined,
+        inReplyTo: undefined, // Handled by response memory if needed
         channelType: channelType || ChannelType.API,
       };
 
-      const userMessage = {
-        content,
+      const userMessageMemory: Memory = {
+        id: incomingMessageVirtualId, // Use a consistent ID for the incoming message
         entityId,
         roomId,
-        agentId: runtime.agentId,
-      };
-
-      const memory: Memory = {
-        id: createUniqueUuid(runtime, messageId),
-        ...userMessage,
-        agentId: runtime.agentId,
-        entityId,
-        roomId,
+        agentId: runtime.agentId, // The agent this message is directed to
         content,
         createdAt: Date.now(),
       };
 
-      // save message
-      await runtime.createMemory(memory, 'messages');
+      // Define the callback for sending the HTTP response
+      const apiCallback: HandlerCallback = async (responseContent: Content) => {
+        let sentMemory: Memory | null = null;
+        if (!res.headersSent) {
+          res.status(201).json({
+            success: true,
+            data: {
+              message: responseContent,
+              messageId: userMessageMemory.id,
+              name: runtime.character.name,
+              roomId: req.body.roomId,
+              source,
+            },
+          });
 
-      let state = await runtime.composeState(memory);
+          // Construct Memory for the agent's HTTP response
+          sentMemory = {
+            id: createUniqueUuid(runtime, `api-response-${userMessageMemory.id}-${Date.now()}`),
+            entityId: runtime.agentId, // Agent is the sender
+            agentId: runtime.agentId,
+            content: {
+              ...responseContent,
+              text: responseContent.text || '',
+              inReplyTo: userMessageMemory.id,
+            },
+            roomId: roomId,
+            createdAt: Date.now(),
+          };
 
-      const prompt = composePromptFromState({
-        state,
-        template: messageHandlerTemplate,
+          await runtime.createMemory(sentMemory, 'messages');
+        }
+        return sentMemory ? [sentMemory] : [];
+      };
+
+      // Emit event for message processing
+      await runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
+        runtime,
+        message: userMessageMemory,
+        callback: apiCallback,
+        onComplete: () => {
+          if (!res.headersSent) {
+            logger.warn(
+              '[MESSAGES CREATE] API Callback was not called by a handler. Responding with 204 No Content.'
+            );
+            res.status(204).send(); // Send 204 No Content
+          }
+        },
       });
-
-      const response = await runtime.useModel(ModelType.OBJECT_LARGE, {
-        prompt,
-      });
-
-      if (!response) {
+    } catch (error) {
+      logger.error('Error processing message:', error.message);
+      if (!res.headersSent) {
         res.status(500).json({
           success: false,
           error: {
-            code: 'MODEL_ERROR',
-            message: 'No response from model',
+            code: 'PROCESSING_ERROR',
+            message: 'Error processing message',
+            details: error.message,
           },
         });
-        return;
       }
-
-      const responseMessage: Memory = {
-        id: createUniqueUuid(runtime, messageId),
-        ...userMessage,
-        entityId: runtime.agentId,
-        content: response,
-        createdAt: Date.now(),
-      };
-
-      const replyHandler = async (message: Content) => {
-        res.status(201).json({
-          success: true,
-          data: {
-            message,
-            messageId,
-            name: runtime.character.name,
-            roomId: req.body.roomId,
-            source,
-          },
-        });
-        return [memory];
-      };
-
-      await runtime.processActions(memory, [responseMessage], state, replyHandler);
-
-      await runtime.evaluate(memory, state);
-
-      if (!res.headersSent) {
-        res.status(202).json();
-      }
-    } catch (error) {
-      logger.error('Error processing message:', error.message);
-      res.status(500).json({
-        success: false,
-        error: {
-          code: 'PROCESSING_ERROR',
-          message: 'Error processing message',
-          details: error.message,
-        },
-      });
     }
   });
 
