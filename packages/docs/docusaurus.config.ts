@@ -414,9 +414,21 @@ const config = {
           ],
         },
         {
-          to: 'blog',
+          type: 'dropdown',
           label: 'Blog',
           position: 'left',
+          items: [
+            {
+              label: 'Main Blog',
+              to: '/blog',
+            },
+            {
+              label: 'GitHub Activity',
+              href: 'https://elizaos.github.io/',
+              target: '_blank',
+              rel: 'noopener noreferrer',
+            },
+          ],
         },
         {
           href: '/news',
