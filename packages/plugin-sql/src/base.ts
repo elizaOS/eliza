@@ -676,8 +676,8 @@ export abstract class BaseDrizzleAdapter<
       if (result.length === 0) return null;
 
       // Group components by entity
-      const entities = {};
-      const entityComponents = {};
+      const entities: Record<UUID, Entity> = {};
+      const entityComponents: Record<UUID, Entity['components']> = {};
       for (const e of result) {
         const key = e.entity.id;
         entities[key] = e.entity;
