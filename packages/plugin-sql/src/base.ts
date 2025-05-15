@@ -1871,8 +1871,8 @@ export abstract class BaseDrizzleAdapter<
   }
 
   /**
-   * Asynchronously retrieves a rooms from the database based on the provided parameters.
-   * @param {UUID[]} roomId - The ID of the rooms to retrieve.
+   * Asynchronously retrieves rooms from the database based on the provided parameters.
+   * @param {UUID[]} roomIds - The IDs of the rooms to retrieve.
    * @returns {Promise<Room[] | null>} A Promise that resolves to the rooms if found, null otherwise.
    */
   async getRoomsByIds(roomIds: UUID[]): Promise<Room[] | null> {
