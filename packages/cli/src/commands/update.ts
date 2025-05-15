@@ -48,12 +48,84 @@ function isWorkspaceVersion(versionString: string): boolean {
 }
 
 /**
+ * Check if a package version is a special tag
+ * @param version The version string to check
+ * @returns Whether the version is a special tag
+ */
+function isSpecialVersionTag(version: string): boolean {
+  const specialTags = ['beta', 'latest', 'next', 'canary', 'rc', 'dev', 'nightly', 'alpha'];
+  return specialTags.includes(version);
+}
+
+/**
+ * Check if a package version needs updating
+ * @param currentVersion Current package version
+ * @param targetVersion Target version to update to
+ * @returns Object with needsUpdate flag and optional error message
+ */
+function checkVersionNeedsUpdate(
+  currentVersion: string,
+  targetVersion: string
+): { needsUpdate: boolean; error?: string } {
+  try {
+    // Remove version qualifiers
+    const cleanCurrent = String(currentVersion).replace(/^\^|~/, '');
+
+    // Handle special tags
+    if (isSpecialVersionTag(cleanCurrent)) {
+      return { needsUpdate: true };
+    }
+
+    // Skip comparison if not a valid semver string
+    if (!semver.valid(cleanCurrent) && !semver.validRange(cleanCurrent)) {
+      return { needsUpdate: false, error: 'Cannot determine if update needed - invalid semver' };
+    }
+
+    // Compare versions
+    return { needsUpdate: semver.lt(cleanCurrent, targetVersion) };
+  } catch (error) {
+    return { needsUpdate: false, error: `Version comparison error: ${error.message}` };
+  }
+}
+
+/**
+ * Check if updating would result in a major version jump
+ * @param currentVersion Current package version
+ * @param targetVersion Target version to update to
+ * @returns Whether update would cross major versions
+ */
+function isMajorUpdate(currentVersion: string, targetVersion: string): boolean {
+  try {
+    const cleanCurrent = String(currentVersion).replace(/^\^|~/, '');
+
+    // Skip comparison for special cases
+    if (
+      isSpecialVersionTag(cleanCurrent) ||
+      (!semver.valid(cleanCurrent) && !semver.validRange(cleanCurrent))
+    ) {
+      return false;
+    }
+
+    return semver.major(targetVersion) > semver.major(cleanCurrent);
+  } catch {
+    return false; // Assume not major on error
+  }
+}
+
+/**
  * Updates dependencies in a project or plugin to the latest ElizaOS versions
  * @param cwd Working directory of the project/plugin
  * @param isPlugin Whether this is a plugin or project
+ * @param dryRun Only check for updates without applying them
  */
-async function updateDependencies(cwd: string, isPlugin: boolean): Promise<void> {
-  console.info(`Updating ${isPlugin ? 'plugin' : 'project'} dependencies...`);
+async function updateDependencies(
+  cwd: string,
+  isPlugin: boolean,
+  dryRun: boolean = false
+): Promise<void> {
+  console.info(
+    `${dryRun ? 'Checking' : 'Updating'} ${isPlugin ? 'plugin' : 'project'} dependencies...`
+  );
 
   // Get the current CLI version (for informational purposes)
   const currentCliVersion = getVersion();
@@ -134,7 +206,7 @@ async function updateDependencies(cwd: string, isPlugin: boolean): Promise<void>
       }
 
       console.info(
-        `Will update ${packagesToUpdate.length} non-workspace packages: ${packagesToUpdate.map((p) => p.name).join(', ')}`
+        `Will ${dryRun ? 'check' : 'update'} ${packagesToUpdate.length} non-workspace packages: ${packagesToUpdate.map((p) => p.name).join(', ')}`
       );
 
       // Update the list to only include non-workspace packages
@@ -146,13 +218,39 @@ async function updateDependencies(cwd: string, isPlugin: boolean): Promise<void>
       );
     }
 
-    // Determine update type - minor by default, major requires confirmation
-    const hasMajorUpdates = elizaPackages.some((pkg) => {
+    // Display outdated packages
+    console.info(`\nElizaOS packages that can be updated to version ${latestCliVersion}:`);
+    let outdatedPackagesFound = false;
+
+    for (const pkg of elizaPackages) {
       const pkgVersion = String(pkg.version).replace(/^\^|~/, '');
-      return (
-        pkgVersion && latestCliVersion && semver.major(latestCliVersion) > semver.major(pkgVersion)
-      );
-    });
+      const versionCheck = checkVersionNeedsUpdate(pkgVersion, latestCliVersion);
+
+      if (versionCheck.error) {
+        console.info(`  - ${pkg.name} (${pkgVersion}) → ${versionCheck.error}`);
+        continue;
+      }
+
+      if (versionCheck.needsUpdate) {
+        console.info(`  - ${pkg.name} (${pkgVersion}) → ${latestCliVersion}`);
+        outdatedPackagesFound = true;
+      }
+    }
+
+    if (!outdatedPackagesFound) {
+      console.info('All ElizaOS packages are up to date!');
+      return;
+    }
+
+    if (dryRun) {
+      console.info('\nTo update these packages, run the command without the --check flag');
+      return;
+    }
+
+    // Determine update type - minor by default, major requires confirmation
+    const hasMajorUpdates = elizaPackages.some((pkg) =>
+      isMajorUpdate(String(pkg.version), latestCliVersion)
+    );
 
     if (hasMajorUpdates) {
       const { confirmMajor } = await prompts({
@@ -244,16 +342,13 @@ export const update = new Command()
       console.info(`Detected ${isPlugin ? 'plugin' : 'project'} directory`);
 
       if (options.check) {
-        // Only check for updates without applying them
-        console.info('Checking for available updates...');
-        const cliVersion = getVersion();
-        console.info(`Current CLI version: ${cliVersion}`);
-        console.info('To apply updates, run this command without the --check flag');
+        // Call updateDependencies with dryRun=true to check for updates without applying them
+        await updateDependencies(cwd, isPlugin, true);
         return;
       }
 
       // Update dependencies
-      await updateDependencies(cwd, isPlugin);
+      await updateDependencies(cwd, isPlugin, false);
 
       console.log(
         `${isPlugin ? 'Plugin' : 'Project'} successfully updated to the latest ElizaOS packages`
