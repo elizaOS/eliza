@@ -1,216 +1,73 @@
-# Eliza - Multi-agent simulation framework
-
-# https://github.com/elizaOS/eliza
-
-# Visit https://eliza.builders for support
-
-## 🌍 README Translations
-
-[العربية](./README_AR.md) |[中文说明](./README_CN.md) | [Deutsch](./README_DE.md) | [Français](./README_FR.md) | [ไทย](./README_TH.md) | [Español](README_ES.md)
-
-# dev branch
-
-<img src="static/img/eliza_banner.jpg" alt="Eliza Banner" width="100%" />
-
-_As seen powering [@DegenSpartanAI](https://x.com/degenspartanai) and [@MarcAIndreessen](https://x.com/pmairca)_
-
-- Multi-agent simulation framework
-- Add as many unique characters as you want with [characterfile](https://github.com/lalalune/characterfile/)
-- Full-featured Discord and Twitter connectors, with Discord voice channel support
-- Full conversational and document RAG memory
-- Can read links and PDFs, transcribe audio and videos, summarize conversations, and more
-- Highly extensible - create your own actions and clients to extend Eliza's capabilities
-- Supports open source and local models (default configured with Nous Hermes Llama 3.1B)
-- Supports OpenAI for cloud inference on a light-weight device
-- "Ask Claude" mode for calling Claude on more complex queries
-- 100% Typescript
-
-# Getting Started
-
-**Prerequisites (MUST):**
-
-- [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
-- [bun](https://bun.io/installation)
-
-### Edit the .env file
-
-- Copy .env.example to .env and fill in the appropriate values
-- Edit the TWITTER environment variables to add your bot's username and password
-
-### Edit the character file
-
-- Check out the file `packages/core/src/defaultCharacter.ts` - you can modify this
-- You can also load characters with the `bun start --characters="path/to/your/character.json"` and run multiple bots at the same time.
-
-After setting up the .env file and character file, you can start the bot with the following command:
-
-```
-bun i
-bun start
-```
-
-# Customising Eliza
-
-### Adding custom actions
-
-To avoid git clashes in the core directory, we recommend adding custom actions to a `custom_actions` directory and then adding them to the `elizaConfig.yaml` file. See the `elizaConfig.example.yaml` file for an example.
-
-## Running with different models
-
-### Run with Llama
-
-You can run Llama 70B or 405B models by setting the environment variable for a provider that supports these models. Llama is also supported locally if no other provider is set.
-
-### Run with Grok
-
-You can run Grok models by setting the `GROK_API_KEY` environment variable to your Grok API key and setting grok as the model provider in your character file.
-
-### Run with OpenAI
-
-You can run OpenAI models by setting the `OPENAI_API_KEY` environment variable to your OpenAI API key and setting openai as the model provider in your character file.
-
-## Additional Requirements
-
-You may need to install Sharp. If you see an error when starting up, try installing it with the following command:
-
-```
-bun install --include=optional sharp
-```
-
-# Environment Setup
-
-You will need to add environment variables to your .env file to connect to various platforms:
-
-```
-# Required environment variables
-DISCORD_APPLICATION_ID=
-DISCORD_API_TOKEN= # Bot token
-OPENAI_API_KEY=sk-* # OpenAI API key, starting with sk-
-ELEVENLABS_XI_API_KEY= # API key from elevenlabs
-
-# ELEVENLABS SETTINGS
-ELEVENLABS_MODEL_ID=eleven_multilingual_v2
-ELEVENLABS_VOICE_ID=21m00Tcm4TlvDq8ikWAM
-ELEVENLABS_VOICE_STABILITY=0.5
-ELEVENLABS_VOICE_SIMILARITY_BOOST=0.9
-ELEVENLABS_VOICE_STYLE=0.66
-ELEVENLABS_VOICE_USE_SPEAKER_BOOST=false
-ELEVENLABS_OPTIMIZE_STREAMING_LATENCY=4
-ELEVENLABS_OUTPUT_FORMAT=pcm_16000
-
-TWITTER_DRY_RUN=false
-TWITTER_USERNAME= # Account username
-TWITTER_PASSWORD= # Account password
-TWITTER_EMAIL= # Account email
-
-
-# For asking Claude stuff
-ANTHROPIC_API_KEY=
-
-WALLET_SECRET_KEY=EXAMPLE_WALLET_SECRET_KEY
-WALLET_PUBLIC_KEY=EXAMPLE_WALLET_PUBLIC_KEY
-
-BIRDEYE_API_KEY=
-
-SOL_ADDRESS=So11111111111111111111111111111111111111112
-SLIPPAGE=1
-SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
-HELIUS_API_KEY=
-
-
-## Telegram
-TELEGRAM_BOT_TOKEN=
-
-TOGETHER_API_KEY=
-```
-
-# Local Inference Setup
-
-### CUDA Setup
-
-If you have an NVIDIA GPU, you can install CUDA to speed up local inference dramatically.
-
-```
-bun install
-npx --no node-llama-cpp source download --gpu cuda
-```
-
-Make sure that you've installed the CUDA Toolkit, including cuDNN and cuBLAS.
-
-### Running locally
-
-By default, the bot will download and use a local model. You can change this by setting the environment variables for the model you want to use.
-
-# Clients
-
-## Discord Bot
-
-For help with setting up your Discord Bot, check out here: https://discordjs.guide/preparations/setting-up-a-bot-application.html
-
-# Development
-
-## Testing
-
-To run the test suite:
-
-```bash
-bun test           # Run tests once
-bun test:watch    # Run tests in watch mode
-```
-
-For database-specific tests:
-
-```bash
-bun test:sqlite   # Run tests with SQLite
-bun test:sqljs    # Run tests with SQL.js
-```
-
-Tests are written using Jest and can be found in `src/**/*.test.ts` files. The test environment is configured to:
-
-- Load environment variables from `.env.test`
-- Use a 2-minute timeout for long-running tests
-- Support ESM modules
-- Run tests in sequence (--runInBand)
-
-To create new tests, add a `.test.ts` file adjacent to the code you're testing.
-
-## Docs Updates
-
-Please make sure to verify if the documentation provided is correct. In order to do so, please run the docs service.
+# ElizaOS Docs: Maintenance & Automation
+
+This README provides an overview of how the Eliza OS documentation (the Docusaurus site within this `packages/docs` directory) is maintained, automated, and kept up-to-date. It serves as a technical reference for contributors and anyone interested in our documentation pipeline.
+
+The live documentation can be found at [eliza.how/docs](https://eliza.how/docs).
+
+## Documentation Lifecycle & Automation Overview
+
+Our documentation lifecycle is built on a "docs-as-code" philosophy, heavily reliant on automation to ensure accuracy, consistency, and timeliness. Here's a breakdown of the key stages and technical components involved:
+
+- **Content Origination & Ingestion:**
+  - Manual Markdown authoring for core documentation, guides (`./docs/`), and blog posts (`./blog/`).
+  - Developer-written JSDoc comments within TypeScript source code (primarily in `../core/src/`).
+  - OpenAPI specifications (e.g., `./src/openapi/eliza-v1.yaml`) defining REST APIs.
+  - Automated news fetching by the [`./scripts/update-news.sh`](./scripts/update-news.sh) script (orchestrated by the [`.github/workflows/update-news.yml`](../../.github/workflows/update-news.yml) workflow) into the `./news/` directory. This script ensures the last 14 days of news are maintained.
+- **Automated Generation & Transformation:**
+  - The `docusaurus-plugin-typedoc` (configured in [`./docusaurus.config.ts`](./docusaurus.config.ts)) processes JSDoc comments from source code into browsable API documentation, output to `./api/`.
+  - The `docusaurus-plugin-openapi-docs` (configured in [`./docusaurus.config.ts`](./docusaurus.config.ts)) converts OpenAPI specification files into REST API documentation, output to `./docs/rest/`.
+  - The `repomix` tool, driven by the [`.github/workflows/llmstxt-generator.yml`](../../.github/workflows/llmstxt-generator.yml) workflow and configured via [`../../scripts/repomix.config.json`](../../scripts/repomix.config.json) & [`../../scripts/repomix-full.config.json`](../../scripts/repomix-full.config.json), generates consolidated AI context files. These are output to `./static/llms.txt` (community-focused) and `./static/llms-full.txt` (technical focus).
+  - The `autodoc` package ([`../autodoc/`](../autodoc/README.md)), leveraged by the [`.github/workflows/jsdoc-automation.yml`](../../.github/workflows/jsdoc-automation.yml) workflow, assists in generating JSDoc comment skeletons for source code.
+  - AI-driven translation of the root project [README.md](../../README.md) is handled by the [`.github/workflows/generate-readme-translations.yml`](../../.github/workflows/generate-readme-translations.yml) workflow, with outputs stored in `./packages/docs/i18n/readme/` (note: this path might need verification relative to the workflow's execution context).
+  - Various custom scripts residing in [`./scripts/`](./scripts/README.md) (e.g., `get-changelog.py`, `update-partner-pages.js`) handle updates for specific documentation sections.
+- **CI/CD Validation & Build Pipeline (GitHub Actions):**
+  - Workflows such as [`ci.yaml`](../../.github/workflows/ci.yaml) and [`pr.yaml`](../../.github/workflows/pr.yaml) (defined in [`.github/workflows/`](../../.github/workflows/README.md)) trigger on code pushes and pull requests to the repository.
+  - These CI pipelines execute essential checks including Markdown linting, broken link detection, and a full Docusaurus site build (`bun run build` within this `packages/docs` directory).
+- **Deployment & Delivery:**
+  - Upon successful validation and merge to the main branch, the Docusaurus site is automatically built and deployed (typically via `gh-pages` as configured in [`docusaurus.config.ts`](./docusaurus.config.ts)) to [eliza.how/docs](https://eliza.how/docs).
+  - All generated artifacts, including API documentation, news articles, and AI context files, are versioned and become part of the deployed documentation site.
+- **Iterative Refinement & Monitoring:**
+  - Continuous monitoring of GitHub Actions workflow success, documentation build times, and overall site health.
+  - Manual review cycles for AI-generated content (such as JSDoc suggestions and language translations) to ensure quality and accuracy.
+  - Community feedback via GitHub Issues and Pull Requests on the main repository is crucial for driving improvements to both the documentation content and the automation processes.
+
+## Local Verification & Manual Triggers
+
+### Verifying Documentation Locally
+
+To ensure your documentation changes are correct and render as expected before pushing, you can run the Docusaurus development server locally:
 
 ```console
-docker compose -f docker-compose-docs.yaml up --build
+# Navigate to the docs package directory if you are not already there
+cd packages/docs
+
+# Install dependencies (if you haven't already or if they changed)
+bun install
+
+# Start the Docusaurus development server
+bun run start
 ```
 
-The docusaurus server will get started and you can verify it locally at https://localhost:3000/eliza.
+This will typically make the local development site available at `http://localhost:3000` (Docusaurus will confirm the port in the console output).
 
-### Automated Documentation Maintenance
+Alternatively, for a full build similar to the CI process:
 
-The documentation is automatically maintained through several automated processes:
+```console
+# Navigate to the docs package directory
+cd packages/docs
 
-1. **Daily News Updates**
+# Run the build command
+bun run build
+```
 
-   - A GitHub workflow runs daily at midnight UTC to fetch the latest news
-   - News files are fetched from `https://m3-org.github.io/ai-news/elizaos/md/`
-   - Last 14 days of news are maintained in `packages/docs/news/`
-   - Updates are automatically committed to the `autodocs` branch
+This will build the static site into the `build/` directory within `packages/docs`.
 
-2. **LLMs Context Generation**
+### Manually Triggering Automated Processes
 
-   - The repomix tool generates consolidated documentation for LLM consumption
-   - Two main files are maintained:
-     - `llms-full.txt`: Complete technical documentation for development context
-     - `llms-community.txt`: Community-focused documentation and updates
-   - Configuration files:
-     - `scripts/repomix-full.config.json`: Technical documentation config
-     - `scripts/repomix.config.json`: Community documentation config
+While most updates are automated, some workflows can be manually triggered if needed:
 
-3. **Scripts and Workflows**
-   - `scripts/update-news.sh`: Fetches news files and updates repomix config
-   - `.github/workflows/update-news.yml`: Runs the automated process daily
-   - Changes are committed directly to the `autodocs` branch
+1.  **GitHub Actions Workflows:** Many of the documentation-related workflows (e.g., `llmstxt-generator.yml`, `update-news.yml`) can be run manually via the "Actions" tab of the [Eliza OS GitHub repository](https://github.com/elizaOS/eliza/actions). Look for the specific workflow and use the "Run workflow" option.
+2.  **Local Script Execution:** Some underlying scripts can be run locally:
+    - To update news and the Repomix config: `cd ../../scripts && ./update-news.sh` (adjust path if running from a different directory).
 
-To manually trigger the documentation update process, you can:
-
-1. Run the GitHub workflow manually through the Actions tab
-2. Run the update script locally: `./scripts/update-news.sh`
+This structured, automated lifecycle ensures our documentation remains a dynamic, accurate, and comprehensive resource for the ElizaOS community.
