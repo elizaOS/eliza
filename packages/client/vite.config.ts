@@ -5,6 +5,7 @@ import viteCompression from 'vite-plugin-compression';
 // @ts-ignore:next-line
 // @ts-ignore:next-line
 import type { ViteUserConfig } from 'vitest/config'; // Import Vitest config type for test property
+import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
 // https://vite.dev/config/
 
@@ -36,6 +37,7 @@ export default defineConfig(({ mode }): CustomUserConfig => {
   return {
     plugins: [
       react() as unknown as Plugin,
+      nodePolyfills() as unknown as Plugin,
       viteCompression({
         algorithm: 'brotliCompress',
         ext: '.br',
@@ -49,8 +51,6 @@ export default defineConfig(({ mode }): CustomUserConfig => {
       'import.meta.env.VITE_SERVER_PORT': JSON.stringify(env.SERVER_PORT || '3000'),
       // Add empty shims for Node.js globals
       global: 'globalThis',
-      process: '{}',
-      Buffer: '{}',
     },
     optimizeDeps: {
       esbuildOptions: {
