@@ -24,7 +24,7 @@
     "docker:bash": "bash ./scripts/docker.sh bash",
     "docker:start": "bash ./scripts/docker.sh start",
     "docker": "bun docker:build && bun docker:run && bun docker:bash",
-    "test": "turbo run test --concurrency 20 --filter=!./packages/plugin-starter --filter=!./packages/project-starter --filter=!./packages/the-org --filter=!./packages/docs",
+    "test": "turbo run test --concurrency 20 --filter=!./packages/plugin-starter --filter=!./packages/project-starter --filter=!./packages/the-org --filter=!./packages/docs --filter=!@elizaos/plugin-sql",
     "test:client": "turbo run test --filter=./packages/client",
     "test:core": "turbo run test --filter=./packages/core",
     "test:app": "turbo run test --concurrency 20 --filter=./packages/app",

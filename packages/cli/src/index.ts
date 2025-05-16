@@ -54,13 +54,9 @@ async function main() {
 
   // Add global options but hide them from global help
   // They will still be passed to all commands for backward compatibility
-  program
-    .addOption(new Option('-r, --remote-url <url>', 'URL of the remote agent runtime').hideHelp())
-    .addOption(
-      new Option('-p, --port <port>', 'Port to listen on')
-        .argParser((val) => Number.parseInt(val))
-        .hideHelp()
-    );
+  program.addOption(
+    new Option('-r, --remote-url <url>', 'URL of the remote agent runtime').hideHelp()
+  );
 
   // Create a stop command for testing purposes
   const stopCommand = new Command('stop')

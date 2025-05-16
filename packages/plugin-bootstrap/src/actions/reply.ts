@@ -113,7 +113,7 @@ export const replyAction = {
       template: replyTemplate,
     });
 
-    const response = await runtime.useModel(ModelType.OBJECT_SMALL, {
+    const response = await runtime.useModel(ModelType.OBJECT_LARGE, {
       prompt,
     });
 

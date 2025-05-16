@@ -348,41 +348,39 @@ Provide clear documentation about:
 export async function copyClientDist() {
   logger.info('Copying client dist files to CLI package');
 
-  // Determine source and destination paths
   const srcClientDist = path.resolve(process.cwd(), '../client/dist');
   const destClientDist = path.resolve(process.cwd(), './dist');
+  const indexSrc = path.join(srcClientDist, 'index.html');
+  const indexDest = path.join(destClientDist, 'index.html');
 
-  // Create destination directory
   await fs.mkdir(destClientDist, { recursive: true });
 
-  // Wait for source directory to exist and have files
+  // Wait specifically for index.html to appear
   let retries = 0;
   const maxRetries = 10;
-  const retryDelay = 1000; // 1 second
-
+  const retryDelay = 1000;
   while (retries < maxRetries) {
-    if (existsSync(srcClientDist)) {
-      const files = await fs.readdir(srcClientDist);
-      if (files.length > 0) {
-        break;
-      }
+    if (existsSync(indexSrc)) {
+      break;
     }
-
-    logger.info(
-      `Waiting for client dist files to be built (attempt ${retries + 1}/${maxRetries})...`
-    );
-    await new Promise((resolve) => setTimeout(resolve, retryDelay));
+    logger.info(`Waiting for client index.html (attempt ${retries + 1}/${maxRetries})…`);
+    await new Promise((r) => setTimeout(r, retryDelay));
     retries++;
   }
 
-  // Check if source exists after retries
-  if (!existsSync(srcClientDist)) {
-    logger.error(`Client dist not found at ${srcClientDist} after ${maxRetries} attempts`);
+  if (!existsSync(indexSrc)) {
+    logger.error(`index.html not found at ${indexSrc} after ${maxRetries} attempts`);
     return;
   }
 
-  // Copy client dist files
+  // Copy everything
   await copyDir(srcClientDist, destClientDist);
+
+  // Verify it made it into CLI dist
+  if (!existsSync(indexDest)) {
+    logger.error(`index.html missing in CLI dist at ${indexDest}`);
+    return;
+  }
 
   logger.success('Client dist files copied successfully');
 }
