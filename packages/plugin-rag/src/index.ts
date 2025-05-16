@@ -12,6 +12,7 @@ import { Worker } from 'node:worker_threads';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Buffer } from 'node:buffer';
+import { extractTextFromFileBuffer } from './utils'; // Import the utility function
 
 // Get __dirname in ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -38,6 +39,7 @@ export class RagService extends Service {
     UUID,
     (error: Error | null, result?: { clientDocumentId: UUID; storedDocumentMemoryId: UUID }) => void
   >;
+  private workerReadyPromises: Map<string, Promise<void>> = new Map(); // For awaiting worker readiness
 
   constructor(protected runtime: IAgentRuntime) {
     super(runtime);
@@ -107,37 +109,66 @@ export class RagService extends Service {
   getOrInitializeWorker(agentId: string): RagWorker {
     if (!this.workers.has(agentId)) {
       logger.info(`Initializing new RAG worker for agentId: ${agentId}`);
-      const workerPath = path.resolve(__dirname, 'rag.worker.js'); // Assuming .js after tsup build from .ts
+      const workerPath = path.resolve(__dirname, 'rag.worker.js');
 
       const dbConfig = this.getDbConfigForWorker();
-      logger.info(`Resolved DB config for worker ${agentId}:`, dbConfig);
+      logger.debug(`Resolved DB config for worker ${agentId}:`, dbConfig);
 
       const worker = new Worker(workerPath, {
         workerData: {
           agentId,
-          dbConfig, // This needs to be the config object createDatabaseAdapter expects
+          dbConfig,
         },
       }) as RagWorker;
 
-      worker.isReady = false;
+      // Setup a promise that resolves when the worker is ready
+      const readyPromise = new Promise<void>((resolve, reject) => {
+        worker.once('message', (message) => {
+          if (message.type === 'WORKER_READY') {
+            worker.isReady = true;
+            logger.info(`RAG Worker for agent ${message.payload.agentId} reported ready.`);
+            resolve();
+          } else if (message.type === 'WORKER_ERROR' && !worker.isReady) {
+            // If worker errors before becoming ready (e.g. DB init failure)
+            logger.error(
+              `RAG Worker for agent ${agentId} failed to initialize: ${message.payload.error}`,
+              message.payload.stack
+            );
+            reject(new Error(`Worker ${agentId} failed to initialize: ${message.payload.error}`));
+          }
+        });
+        worker.once('error', (err) => {
+          logger.error(`RAG Worker for agent ${agentId} critical error during init:`, err);
+          reject(err); // Reject ready promise on critical error
+          this.workers.delete(agentId);
+          this.workerReadyPromises.delete(agentId);
+        });
+        worker.once('exit', (code) => {
+          const exitMsg = `RAG Worker for agent ${agentId} exited with code ${code} during init.`;
+          logger.warn(exitMsg);
+          if (!worker.isReady) reject(new Error(exitMsg)); // Reject if exited before ready
+          this.workers.delete(agentId);
+          this.workerReadyPromises.delete(agentId);
+        });
+      });
+      this.workerReadyPromises.set(agentId, readyPromise);
 
       worker.on('message', async (message) => {
         logger.debug(
-          `RagService (agent: ${agentId}) received message from worker: ${message.type}`
+          `RagService (agent: ${agentId}) received message from worker: ${message.type}`,
+          message.payload
         );
         switch (message.type) {
           case 'WORKER_READY':
-            worker.isReady = true;
-            logger.info(`RAG Worker for agent ${message.payload.agentId} reported ready.`);
-            // Process any queued tasks for this worker
+            // Handled by the readyPromise setup above for initial readiness
             break;
           case 'KNOWLEDGE_ADDED':
             logger.info(
               `RagService: Worker confirmed knowledge added for doc ${message.payload.documentId}, count: ${message.payload.count} (agent: ${message.payload.agentId}).`
             );
             break;
-          case 'PDF_MAIN_DOCUMENT_STORED': // New message type from worker
-            logger.info(
+          case 'PDF_MAIN_DOCUMENT_STORED':
+            logger.debug(
               `RagService: Worker confirmed PDF main document stored for clientDocId ${message.payload.clientDocumentId}, dbDocId: ${message.payload.storedDocumentMemoryId} (agent: ${message.payload.agentId}).`
             );
             const callback = this.pendingPdfCallbacks.get(message.payload.clientDocumentId as UUID);
@@ -165,14 +196,43 @@ export class RagService extends Service {
             break;
           case 'PROCESSING_ERROR':
             logger.error(
-              `RAG Worker for agent ${message.payload.agentId} reported an error for doc ${message.payload.documentId}:`,
+              `RAG Worker for agent ${message.payload.agentId} reported a processing error for doc ${message.payload.documentId}:`,
               message.payload.error,
               message.payload.stack
             );
+            // Potentially notify onDocumentStored callback if it's a non-PDF that failed in worker during fragmenting
+            // This part might need more sophisticated error mapping if addKnowledge directly awaits fragmenting.
+            // For now, PDF errors are handled via pendingPdfCallbacks.
+            // If it was a non-PDF, the main doc might have succeeded but fragments failed.
+            // The onDocumentStored for non-PDFs is currently called *before* offloading to worker.
+            // If that callback needs to know about fragmenting errors, the flow needs adjustment.
+            const processingErrorCallback = this.pendingPdfCallbacks.get(
+              message.payload.documentId as UUID
+            );
+            if (processingErrorCallback) {
+              // This case implies a PDF processing error that happened after PDF_MAIN_DOCUMENT_STORED or if that failed.
+              // Or, if we started using pendingPdfCallbacks for non-PDF fragment errors.
+              processingErrorCallback(
+                new Error(
+                  `Worker processing failed for ${message.payload.documentId}: ${message.payload.error.message || message.payload.error}`
+                ),
+                undefined
+              );
+              this.pendingPdfCallbacks.delete(message.payload.documentId as UUID);
+            }
             break;
-          case 'WORKER_STARTED': // Worker script loaded, but not necessarily fully ready (DB adapter init pending)
-            logger.info(`RAG worker for agent ${message.payload.agentId} has started its script.`);
+          case 'WORKER_ERROR': // General worker error not tied to a specific document, usually init.
+            logger.error(
+              `RAG Worker for agent ${message.payload.agentId} reported a worker-level error:`,
+              message.payload.error,
+              message.payload.stack
+            );
+            // This might have already been handled by the readyPromise rejection if it was an init error.
+            // If it occurs post-initialization, we might need to re-initialize or mark as unhealthy.
+            this.workers.delete(agentId);
+            this.workerReadyPromises.delete(agentId);
             break;
+          // WORKER_STARTED is not used in the service logic, it's mostly for worker's internal logging.
           default:
             logger.warn(
               `RagService (agent: ${agentId}) received unknown message type from worker: ${message.type}`
@@ -180,23 +240,71 @@ export class RagService extends Service {
         }
       });
 
+      // Error and Exit handlers primarily for post-initialization issues.
+      // Initial errors/exits are caught by the readyPromise setup.
       worker.on('error', (err) => {
-        logger.error(`RAG Worker for agent ${agentId} encountered an error:`, err);
-        this.workers.delete(agentId); // Remove from active workers on critical error
+        if (worker.isReady) {
+          // Only log if it wasn't an init error handled by readyPromise
+          logger.error(
+            `RAG Worker for agent ${agentId} encountered an error post-initialization:`,
+            err
+          );
+        }
+        this.workers.delete(agentId);
+        this.workerReadyPromises.delete(agentId);
       });
 
       worker.on('exit', (code) => {
-        logger.info(`RAG Worker for agent ${agentId} exited with code ${code}.`);
+        if (worker.isReady) {
+          // Only log if it wasn't an init exit handled by readyPromise
+          logger.info(
+            `RAG Worker for agent ${agentId} exited with code ${code} post-initialization.`
+          );
+        }
         this.workers.delete(agentId);
+        this.workerReadyPromises.delete(agentId);
       });
 
       this.workers.set(agentId, worker);
-      // Send initialization message to the worker
+      logger.debug(`Sending INIT_DB_ADAPTER to new RAG worker for agent ${agentId}`);
       worker.postMessage({ type: 'INIT_DB_ADAPTER' });
-      logger.info(`Sent INIT_DB_ADAPTER to new RAG worker for agent ${agentId}`);
       return worker;
     }
     return this.workers.get(agentId)!;
+  }
+
+  private async ensureWorkerIsReady(agentId: string, operationName: string): Promise<RagWorker> {
+    const worker = this.getOrInitializeWorker(agentId);
+    const readyPromise = this.workerReadyPromises.get(agentId);
+
+    if (!worker.isReady && readyPromise) {
+      logger.debug(
+        `Waiting for RAG worker for agent ${agentId} to be ready for operation: ${operationName}...`
+      );
+      try {
+        await readyPromise; // Wait for the worker to signal readiness or fail initialization
+      } catch (error) {
+        logger.error(
+          `Worker ${agentId} failed to become ready for ${operationName}:`,
+          (error as Error).message
+        );
+        throw new Error(
+          `Failed to ensure worker readiness for ${agentId} for ${operationName}: ${(error as Error).message}`
+        );
+      }
+    } else if (!worker.isReady && !readyPromise) {
+      // Should not happen if getOrInitializeWorker sets up promise correctly
+      logger.error(
+        `Worker ${agentId} is not ready and no ready promise found for ${operationName}. Re-initializing attempt.`
+      );
+      // Potentially attempt re-initialization or throw critical error.
+      // For now, throw, as this indicates a logic flaw.
+      throw new Error(
+        `Critical: Worker ${agentId} not ready and no ready promise for ${operationName}.`
+      );
+    }
+    logger.debug(`Worker ${agentId} is ready for ${operationName}.`);
+    return worker;
   }
 
   async addKnowledge(
@@ -210,40 +318,52 @@ export class RagService extends Service {
       result?: { clientDocumentId: UUID; storedDocumentMemoryId: UUID }
     ) => void
   ): Promise<void> {
-    const agentId = this.runtime.agentId;
+    const agentId = this.runtime.agentId as string;
     logger.info(
       `RagService (agent: ${agentId}) addKnowledge for clientDocId: ${clientDocumentId}, filename: ${originalFilename}, type: ${contentType}`
     );
 
-    if (contentType !== 'application/pdf') {
-      // Handle non-PDFs directly in the main thread for the initial document storage
+    if (contentType.toLowerCase() !== 'application/pdf') {
       try {
-        const extractedText = fileBuffer.toString('utf-8');
-        if (extractedText === null || extractedText.trim() === '') {
-          const noTextError = new Error('No text content extracted from the non-PDF document.');
+        logger.debug(
+          `Processing non-PDF ${originalFilename} (type: ${contentType}) in main thread for initial storage.`
+        );
+        // Use the utility function for text extraction
+        const extractedText = await extractTextFromFileBuffer(
+          fileBuffer,
+          contentType,
+          originalFilename
+        );
+
+        if (!extractedText || extractedText.trim() === '') {
+          const noTextError = new Error(
+            `No text content extracted from ${originalFilename} (type: ${contentType}).`
+          );
           logger.warn(
             noTextError.message + ` for agent ${agentId}, clientDocId ${clientDocumentId}`
           );
           if (onDocumentStored) {
             onDocumentStored(noTextError);
           }
-          throw noTextError; // Or just return if preferred
+          // Optionally re-throw or simply return if allowing no-text docs
+          return; // Or throw noTextError;
         }
 
         const fileExt = originalFilename.split('.').pop()?.toLowerCase() || '';
         const title = originalFilename.replace(`.${fileExt}`, '');
+        // Create a unique ID for this main document memory in the DB
         const dbDocumentId = createUniqueUuid(
           this.runtime,
-          `doc-${originalFilename}-${Date.now()}`
+          `doc-main-${originalFilename}-${Date.now()}`
         ) as UUID;
 
         const documentMemory: Memory = {
           id: dbDocumentId,
-          agentId: agentId,
-          roomId: agentId,
+          agentId: agentId as UUID,
+          roomId: agentId as UUID, // Assuming agent's own space
           worldId: worldId,
-          entityId: agentId,
-          content: { text: extractedText },
+          entityId: agentId as UUID, // Assuming agent is the entity
+          content: { text: extractedText }, // Store the extracted text
           metadata: {
             type: MemoryType.DOCUMENT,
             documentId: clientDocumentId, // Link to the client's ID
@@ -252,12 +372,12 @@ export class RagService extends Service {
             title: title,
             fileExt: fileExt,
             fileSize: fileBuffer.length,
-            source: 'rag-service-upload-non-pdf',
+            source: 'rag-service-main-upload-non-pdf', // Clarified source
             timestamp: Date.now(),
           },
         };
 
-        logger.info(
+        logger.debug(
           `Storing full non-PDF document ${originalFilename} (Memory ID: ${dbDocumentId}, clientDocId: ${clientDocumentId}) to 'documents' table for agent ${agentId}.`
         );
         await this.runtime.createMemory(documentMemory, 'documents');
@@ -272,86 +392,84 @@ export class RagService extends Service {
           });
         }
 
-        // Offload to worker for fragment processing (even for non-PDFs if chunking is desired)
-        const worker = this.getOrInitializeWorker(agentId as string);
-        // Ensure worker is ready (simplified wait, consider more robust ready check)
-        let attempts = 0;
-        while (!worker.isReady && attempts < 20) {
-          await new Promise((resolve) => setTimeout(resolve, 500));
-          attempts++;
-        }
-        if (worker.isReady) {
-          const fileContentB64 = fileBuffer.toString('base64'); // Worker expects base64
+        // Offload to worker for fragment processing
+        try {
+          const worker = await this.ensureWorkerIsReady(agentId, `fragmenting ${originalFilename}`);
+          const fileContentB64 = fileBuffer.toString('base64');
           worker.postMessage({
-            type: 'PROCESS_DOCUMENT', // Worker will chunk and store fragments
+            type: 'PROCESS_DOCUMENT',
             payload: {
-              documentId: clientDocumentId, // Client's document ID for linking fragments
+              documentId: clientDocumentId, // Use client's ID for linking fragments
               fileContentB64: fileContentB64,
               contentType: contentType,
-              // Worker can re-derive text if needed for chunking, or we pass extractedText
+              originalFilename: originalFilename, // Pass filename for worker's context
             },
           });
           logger.info(
             `Non-PDF document ${clientDocumentId} (filename: ${originalFilename}) fragment processing offloaded to RAG worker for agent ${agentId}.`
           );
-        } else {
+        } catch (workerError: any) {
           logger.error(
-            `RAG worker for ${agentId} not ready for fragmenting non-PDF ${originalFilename}. Main doc stored.`
+            `Failed to offload ${originalFilename} to worker for fragmenting due to worker readiness issue: ${workerError.message}`,
+            workerError.stack
           );
+          // The onDocumentStored has already been called for the main document.
+          // If critical that fragments are processed, this error needs to bubble up or be handled differently.
+          // For now, log it. The main document IS stored.
         }
-      } catch (error) {
+      } catch (error: any) {
         logger.error(
-          `RagService (agent: ${agentId}): Error processing or storing full non-PDF document ${originalFilename} (clientDocId: ${clientDocumentId}):`,
-          error
+          `RagService (agent: ${agentId}): Error processing or storing full non-PDF document ${originalFilename} (clientDocId: ${clientDocumentId}): ${error.message}`,
+          error.stack
         );
         if (onDocumentStored) {
           onDocumentStored(error as Error);
         }
+        // Optionally re-throw if this should halt further processing in the caller
+        // throw error;
       }
     } else {
       // Handle PDFs: Offload PDF parsing, main document storage, and fragmenting to the worker
-      logger.info(
+      logger.debug(
         `PDF detected: ${originalFilename}. Offloading entire processing to worker for agent ${agentId}, clientDocId ${clientDocumentId}.`
       );
       if (onDocumentStored) {
+        // Register callback before attempting to get/start worker to avoid race conditions
         this.pendingPdfCallbacks.set(clientDocumentId, onDocumentStored);
       }
 
-      const worker = this.getOrInitializeWorker(agentId as string);
-      let attempts = 0;
-      while (!worker.isReady && attempts < 20) {
-        logger.debug(
-          `Worker for ${agentId} (PDF task) not ready, waiting... (attempt ${attempts + 1})`
+      try {
+        const worker = await this.ensureWorkerIsReady(
+          agentId,
+          `processing PDF ${originalFilename}`
         );
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        attempts++;
-      }
-
-      if (!worker.isReady) {
-        const workerErrorMsg = `RAG worker for agent ${agentId} not ready for PDF ${originalFilename}. Processing cannot start.`;
-        logger.error(workerErrorMsg);
+        const fileContentB64 = fileBuffer.toString('base64');
+        worker.postMessage({
+          type: 'PROCESS_PDF_THEN_FRAGMENTS',
+          payload: {
+            clientDocumentId: clientDocumentId,
+            fileContentB64: fileContentB64,
+            contentType: contentType,
+            originalFilename: originalFilename,
+            worldId: worldId,
+          },
+        });
+        logger.info(
+          `PDF document ${clientDocumentId} (filename: ${originalFilename}) task offloaded to RAG worker for agent ${agentId}.`
+        );
+      } catch (workerError: any) {
+        logger.error(
+          `Failed to offload PDF ${originalFilename} to worker due to worker readiness issue: ${workerError.message}`,
+          workerError.stack
+        );
         const callback = this.pendingPdfCallbacks.get(clientDocumentId);
         if (callback) {
-          callback(new Error(workerErrorMsg));
+          callback(
+            new Error(`Worker not available for PDF ${originalFilename}: ${workerError.message}`)
+          );
           this.pendingPdfCallbacks.delete(clientDocumentId);
         }
-        return;
       }
-
-      const fileContentB64 = fileBuffer.toString('base64');
-      worker.postMessage({
-        type: 'PROCESS_PDF_THEN_FRAGMENTS', // New type for worker
-        payload: {
-          clientDocumentId: clientDocumentId,
-          fileContentB64: fileContentB64,
-          contentType: contentType,
-          originalFilename: originalFilename,
-          worldId: worldId,
-        },
-      });
-      logger.info(
-        `PDF document ${clientDocumentId} (filename: ${originalFilename}) entire processing offloaded to RAG worker for agent ${agentId}.`
-      );
     }
   }
 }

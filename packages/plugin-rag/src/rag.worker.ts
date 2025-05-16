@@ -1,12 +1,12 @@
 import { parentPort, workerData } from 'node:worker_threads';
 import { Buffer } from 'node:buffer';
-import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { createDatabaseAdapter } from '@elizaos/plugin-sql';
 import type { IDatabaseAdapter, UUID, Memory } from '@elizaos/core';
-import { MemoryType, logger } from '@elizaos/core';
+import { MemoryType, logger, splitChunks } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
 import { generateTextEmbedding } from './llm';
+import { extractTextFromFileBuffer, convertPdfToTextFromBuffer } from './utils';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = './pdf.worker.mjs';
 
@@ -14,9 +14,22 @@ logger.info('RAG Worker starting...');
 
 let dbAdapter: IDatabaseAdapter | null = null;
 
+function postProcessingErrorToParent(documentId: string | UUID, errorMsg: string, stack?: string) {
+  logger.error(errorMsg, stack);
+  parentPort?.postMessage({
+    type: 'PROCESSING_ERROR',
+    payload: {
+      documentId,
+      error: errorMsg,
+      stack,
+      agentId: workerData.agentId,
+    },
+  });
+}
+
 async function initializeDatabaseAdapter() {
   try {
-    logger.info('Initializing Database Adapter in worker with config:', workerData.dbConfig);
+    logger.debug('Initializing Database Adapter in worker with config:', workerData.dbConfig);
     if (!workerData.agentId || !workerData.dbConfig) {
       throw new Error(
         'agentId and dbConfig must be provided in workerData for worker DB adapter initialization.'
@@ -28,25 +41,18 @@ async function initializeDatabaseAdapter() {
     }
     logger.info('Database Adapter initialized successfully in worker.');
 
-    // --- Log dbAdapter.db state IMMEDIATELY after init ---
-    logger.info(`[RAG_WORKER_DEBUG] State of dbAdapter.db AFTER init call completion:`);
-    logger.info(`[RAG_WORKER_DEBUG]   dbAdapter.db === null: ${dbAdapter.db === null}`);
-    logger.info(`[RAG_WORKER_DEBUG]   dbAdapter.db === undefined: ${dbAdapter.db === undefined}`);
+    logger.debug(`[RAG_WORKER] State of dbAdapter.db AFTER init call completion:`);
+    logger.debug(`[RAG_WORKER]   dbAdapter.db === null: ${dbAdapter.db === null}`);
+    logger.debug(`[RAG_WORKER]   dbAdapter.db === undefined: ${dbAdapter.db === undefined}`);
     if (dbAdapter.db) {
-      logger.info(`[RAG_WORKER_DEBUG]   dbAdapter.db object type: ${typeof dbAdapter.db}`);
-      logger.info(
-        `[RAG_WORKER_DEBUG]   dbAdapter.db keys: ${Object.keys(dbAdapter.db).join(', ')}`
-      );
+      logger.debug(`[RAG_WORKER]   dbAdapter.db object type: ${typeof dbAdapter.db}`);
+      logger.debug(`[RAG_WORKER]   dbAdapter.db keys: ${Object.keys(dbAdapter.db).join(', ')}`);
     } else {
-      logger.warn(`[RAG_WORKER_DEBUG]   dbAdapter.db is null or undefined AFTER init call.`);
+      logger.warn(`[RAG_WORKER]   dbAdapter.db is null or undefined AFTER init call.`);
     }
-    // --- End log ---
 
-    // Ensure embedding dimension is set based on the provider
     try {
-      logger.info('Determining embedding dimension for worker...');
-      // Generate a sample embedding to determine the dimension
-      // Assuming generateTextEmbedding returns { embedding: number[] } or number[]
+      logger.debug('Determining embedding dimension for worker...');
       const sampleEmbeddingResult = await generateTextEmbedding('dimension_check_string');
       let dimension = 0;
 
@@ -66,9 +72,8 @@ async function initializeDatabaseAdapter() {
       }
 
       if (dimension > 0) {
-        logger.info(`Determined embedding dimension: ${dimension}. Ensuring in DB adapter.`);
+        logger.debug(`Determined embedding dimension: ${dimension}. Ensuring in DB adapter.`);
         if (!dbAdapter) {
-          // This case should ideally not be reached if init was called on dbAdapter
           const criticalErrorMsg =
             'CRITICAL: dbAdapter is unexpectedly null before calling ensureEmbeddingDimension!';
           logger.error(criticalErrorMsg);
@@ -78,26 +83,23 @@ async function initializeDatabaseAdapter() {
           });
           throw new Error(criticalErrorMsg);
         }
-        // Detailed logging for dbAdapter state:
-        logger.info(
-          `[RAG_WORKER_DEBUG] About to call ensureEmbeddingDimension on dbAdapter for agentId: ${workerData.agentId}.`
+        logger.debug(
+          `[RAG_WORKER] About to call ensureEmbeddingDimension on dbAdapter for agentId: ${workerData.agentId}.`
         );
-        logger.info(
-          `[RAG_WORKER_DEBUG] dbAdapter has 'db' own property: ${Object.prototype.hasOwnProperty.call(dbAdapter, 'db')}`
+        logger.debug(
+          `[RAG_WORKER] dbAdapter has 'db' own property: ${Object.prototype.hasOwnProperty.call(dbAdapter, 'db')}`
         );
-        logger.info(`[RAG_WORKER_DEBUG] dbAdapter.db === null: ${dbAdapter.db === null}`);
-        logger.info(`[RAG_WORKER_DEBUG] dbAdapter.db === undefined: ${dbAdapter.db === undefined}`);
+        logger.debug(`[RAG_WORKER] dbAdapter.db === null: ${dbAdapter.db === null}`);
+        logger.debug(`[RAG_WORKER] dbAdapter.db === undefined: ${dbAdapter.db === undefined}`);
         if (dbAdapter.db) {
-          logger.info(`[RAG_WORKER_DEBUG] dbAdapter.db object type: ${typeof dbAdapter.db}`);
-          logger.info(
-            `[RAG_WORKER_DEBUG] dbAdapter.db keys: ${Object.keys(dbAdapter.db).join(', ')}`
-          );
+          logger.debug(`[RAG_WORKER] dbAdapter.db object type: ${typeof dbAdapter.db}`);
+          logger.debug(`[RAG_WORKER]   dbAdapter.db keys: ${Object.keys(dbAdapter.db).join(', ')}`);
         } else {
-          logger.warn(`[RAG_WORKER_DEBUG] dbAdapter.db is null or undefined.`);
+          logger.warn(`[RAG_WORKER] dbAdapter.db is null or undefined.`);
         }
 
         await dbAdapter.ensureEmbeddingDimension(dimension);
-        logger.info(`Embedding dimension ${dimension} ensured successfully in worker.`);
+        logger.debug(`Embedding dimension ${dimension} ensured successfully in worker.`);
       } else {
         throw new Error(
           'Failed to determine a valid embedding dimension from generateTextEmbedding.'
@@ -109,7 +111,6 @@ async function initializeDatabaseAdapter() {
         dimError.message,
         dimError.stack
       );
-      // Post a specific error for dimension failure, then rethrow to prevent WORKER_READY
       parentPort?.postMessage({
         type: 'WORKER_ERROR',
         payload: {
@@ -118,7 +119,7 @@ async function initializeDatabaseAdapter() {
           stack: dimError.stack,
         },
       });
-      throw dimError; // Rethrow to prevent worker from becoming ready
+      throw dimError;
     }
 
     parentPort?.postMessage({ type: 'WORKER_READY', payload: { agentId: workerData.agentId } });
@@ -131,38 +132,44 @@ async function initializeDatabaseAdapter() {
   }
 }
 
-async function convertPdfToText(pdfBuffer: Buffer): Promise<string> {
+async function chunkAndSaveDocumentFragments(documentId: UUID, textContent: string, agentId: UUID) {
+  if (!textContent || textContent.trim() === '') {
+    postProcessingErrorToParent(documentId, 'No text content available to chunk and save.');
+    return;
+  }
+
+  const targetCharChunkSize = 1000;
+  const targetCharChunkOverlap = 100;
+  const charsToTokensApproximation = 3.5;
+
+  const tokenChunkSize = Math.round(targetCharChunkSize / charsToTokensApproximation);
+  const tokenChunkOverlap = Math.round(targetCharChunkOverlap / charsToTokensApproximation);
+
+  logger.debug(
+    `Using core splitChunks with effective char settings: targetChunkSize=${targetCharChunkSize} (tokens: ${tokenChunkSize}), targetOverlap=${targetCharChunkOverlap} (tokens: ${tokenChunkOverlap})`
+  );
+  const chunks = await splitChunks(textContent, tokenChunkSize, tokenChunkOverlap);
+
+  logger.info(`Split content into ${chunks.length} chunks for document ${documentId}.`);
+
+  if (chunks.length === 0) {
+    logger.warn(`No chunks generated from text for ${documentId}. No fragments to save.`);
+    return;
+  }
+
   try {
-    const uint8ArrayBuffer = new Uint8Array(pdfBuffer);
-    const loadingTask = pdfjsLib.getDocument({ data: uint8ArrayBuffer });
-    const pdfDocument = await loadingTask.promise;
-    let allPagesText: string[] = [];
-
-    for (let i = 1; i <= pdfDocument.numPages; i++) {
-      const page = await pdfDocument.getPage(i);
-      const textContent = await page.getTextContent();
-
-      // Filter for items that are actual text items and then map them
-      const pageText = textContent.items
-        .filter((item) => typeof (item as any).str === 'string' && (item as any).str.trim() !== '')
-        .map((item) => (item as any).str as string)
-        .join(' ');
-
-      if (pageText.length > 0) {
-        // Check if the joined pageText has content
-        allPagesText.push(pageText);
-      }
-    }
-    // Join the text from all pages with a single newline character.
-    // If a page had no text, it won't contribute an extra newline.
-    return allPagesText.join('\n').trim();
-  } catch (error) {
-    logger.error('Error parsing PDF in worker:', error);
-    // It's good to log the specific error if possible
-    if (error instanceof Error) {
-      logger.error('PDF parsing error details:', error.message, error.stack);
-    }
-    throw new Error('Failed to convert PDF to text in worker.');
+    await saveToDbViaAdapter({
+      documentId,
+      chunks,
+      agentId,
+      isFragment: true,
+    });
+  } catch (e: any) {
+    postProcessingErrorToParent(
+      documentId,
+      `Error during fragment embedding or saving for doc ${documentId}: ${e.message}`,
+      e.stack
+    );
   }
 }
 
@@ -170,65 +177,52 @@ async function processAndChunkDocument({
   documentId,
   fileContentB64,
   contentType,
+  originalFilename,
 }: {
   documentId: string;
   fileContentB64: string;
   contentType: string;
+  originalFilename: string;
 }) {
-  logger.info(`Worker processing document ${documentId}, type: ${contentType}`);
+  logger.info(
+    `Processing document in worker. Document ID: ${documentId}, ContentType: "${contentType}", Filename: "${originalFilename}"`
+  );
   let textContent = '';
   const fileBuffer = Buffer.from(fileContentB64, 'base64');
 
-  if (contentType === 'application/pdf') {
-    logger.info('Parsing PDF content...');
-    textContent = await convertPdfToText(fileBuffer);
-    logger.info(`PDF parsing complete. Text length: ${textContent.length}`);
-  } else if (contentType.startsWith('text/')) {
-    textContent = fileBuffer.toString('utf-8');
-  } else {
-    const errorMsg = `Unsupported content type: ${contentType}`;
-    logger.warn(errorMsg);
-    parentPort?.postMessage({
-      type: 'PROCESSING_ERROR',
-      payload: { documentId, error: errorMsg, agentId: workerData.agentId },
-    });
-    return;
-  }
-
-  if (!textContent) {
-    const errorMsg = 'No text content extracted.';
-    logger.warn(errorMsg);
-    parentPort?.postMessage({
-      type: 'PROCESSING_ERROR',
-      payload: { documentId, error: errorMsg, agentId: workerData.agentId },
-    });
-    return;
-  }
-
-  const splitter = new RecursiveCharacterTextSplitter({
-    chunkSize: 1000,
-    chunkOverlap: 100,
-  });
-  const chunks = await splitter.splitText(textContent);
-  logger.info(`Split content into ${chunks.length} chunks for document ${documentId}.`);
-
   try {
-    // Directly proceed to save chunks and embeddings to DB
-    await saveToDbViaAdapter({
-      documentId,
-      chunks,
-      agentId: workerData.agentId as UUID,
-    });
-  } catch (e: any) {
-    logger.error(
-      `Error during embedding generation or saving for doc ${documentId}:`,
-      e.message,
-      e.stack
+    if (contentType === 'application/pdf') {
+      logger.debug(`Extracting text from PDF: ${originalFilename} (Doc ID: ${documentId})`);
+      textContent = await convertPdfToTextFromBuffer(fileBuffer, originalFilename);
+    } else {
+      logger.debug(
+        `Extracting text from non-PDF: ${originalFilename} (Doc ID: ${documentId}, Type: ${contentType})`
+      );
+      textContent = await extractTextFromFileBuffer(fileBuffer, contentType, originalFilename);
+    }
+
+    if (!textContent || textContent.trim() === '') {
+      postProcessingErrorToParent(
+        documentId,
+        `No text content extracted from ${originalFilename}.`
+      );
+      return;
+    }
+    logger.debug(
+      `Text extraction complete for ${documentId}. Text length: ${textContent.length}. Now chunking.`
     );
-    parentPort?.postMessage({
-      type: 'PROCESSING_ERROR',
-      payload: { documentId, error: e.message, stack: e.stack, agentId: workerData.agentId },
-    });
+
+    await chunkAndSaveDocumentFragments(
+      documentId as UUID,
+      textContent,
+      workerData.agentId as UUID
+    );
+  } catch (error: any) {
+    postProcessingErrorToParent(
+      documentId,
+      `Failed to process document ${originalFilename}: ${error.message}`,
+      error.stack
+    );
   }
 }
 
@@ -250,6 +244,7 @@ async function saveToDbViaAdapter({
     originalFilename: string;
     worldId: UUID;
     fileSize: number;
+    clientDocumentId: UUID;
   };
 }) {
   if (!dbAdapter) {
@@ -272,28 +267,35 @@ async function saveToDbViaAdapter({
       content: { text: mainDocText },
       metadata: {
         type: MemoryType.DOCUMENT,
-        documentId: documentId,
+        documentId: originalMetadata.clientDocumentId,
         originalFilename: originalMetadata.originalFilename,
         contentType: originalMetadata.contentType,
         title: title,
         fileExt: fileExt,
         fileSize: originalMetadata.fileSize,
-        source: 'rag-worker-pdf-main-upload',
+        source: 'rag-worker-main-document-upload',
         timestamp: Date.now(),
       },
     };
     await dbAdapter.createMemory(mainDocumentMemory, 'documents');
     logger.info(
-      `Worker saved main PDF document ${originalMetadata.originalFilename} (Client ID: ${documentId}, DB ID: ${actualStoredMainDocId}) for agent ${agentId}.`
+      `Worker saved main document ${originalMetadata.originalFilename} (Client ID: ${originalMetadata.clientDocumentId}, DB ID: ${actualStoredMainDocId}) for agent ${agentId}.`
     );
-    return { actualStoredMainDocId };
+    return { actualStoredMainDocId, clientDocumentId: originalMetadata.clientDocumentId };
   } else if (isFragment && chunks && chunks.length > 0) {
-    logger.info(
+    logger.debug(
       `Worker saving ${chunks.length} chunks for document ${documentId} via DatabaseAdapter for agent ${agentId}.`
     );
     let savedCount = 0;
     for (let i = 0; i < chunks.length; i++) {
       const embeddingResult = await generateTextEmbedding(chunks[i]);
+      const embedding = Array.isArray(embeddingResult)
+        ? embeddingResult
+        : embeddingResult?.embedding;
+      if (!embedding || embedding.length === 0) {
+        logger.warn(`Skipping chunk ${i + 1} for document ${documentId} due to empty embedding.`);
+        continue;
+      }
 
       const fragmentMemory: Memory = {
         id: uuidv4() as UUID,
@@ -301,34 +303,40 @@ async function saveToDbViaAdapter({
         roomId: agentId,
         worldId: agentId,
         entityId: agentId,
-        embedding: embeddingResult.embedding,
+        embedding: embedding,
         content: { text: chunks[i] },
         metadata: {
           type: MemoryType.FRAGMENT,
           documentId: documentId,
           position: i,
           timestamp: Date.now(),
-          source: 'rag-worker-upload',
+          source: 'rag-worker-fragment-upload',
         },
       };
 
       await dbAdapter.createMemory(fragmentMemory, 'knowledge');
-      logger.info(
-        `Saved chunk ${i + 1}/${chunks.length} for document ${documentId} (ID: ${fragmentMemory.id})`
+      logger.debug(
+        `Saved chunk ${i + 1}/${chunks.length} for document ${documentId} (Fragment ID: ${fragmentMemory.id})`
       );
       savedCount++;
     }
-    parentPort?.postMessage({
-      type: 'KNOWLEDGE_ADDED',
-      payload: { documentId, count: chunks.length, agentId },
-    });
+    if (savedCount > 0) {
+      parentPort?.postMessage({
+        type: 'KNOWLEDGE_ADDED',
+        payload: { documentId, count: savedCount, agentId },
+      });
+    }
+    logger.info(`Finished saving ${savedCount} fragments for document ${documentId}.`);
     return { savedFragmentCount: savedCount };
+  } else if (isFragment && (!chunks || chunks.length === 0)) {
+    logger.warn(`No chunks provided to save for document ${documentId}. Nothing saved.`);
+    return { savedFragmentCount: 0 };
   }
   return {};
 }
 
 parentPort?.on('message', async (message: any) => {
-  logger.info('Worker received message:', message.type);
+  logger.debug('RAG Worker received message:', message.type, 'for agent:', workerData.agentId);
 
   if (!dbAdapter && message.type !== 'INIT_DB_ADAPTER') {
     logger.warn(
@@ -354,7 +362,17 @@ parentPort?.on('message', async (message: any) => {
         await initializeDatabaseAdapter();
         break;
       case 'PROCESS_DOCUMENT':
-        await processAndChunkDocument(message.payload);
+        if (!message.payload.originalFilename) {
+          logger.warn(
+            `PROCESS_DOCUMENT message for docId ${message.payload.documentId} missing originalFilename. Utility functions might need it.`
+          );
+        }
+        await processAndChunkDocument({
+          documentId: message.payload.documentId,
+          fileContentB64: message.payload.fileContentB64,
+          contentType: message.payload.contentType,
+          originalFilename: message.payload.originalFilename || 'unknown_file',
+        });
         break;
       case 'PROCESS_PDF_THEN_FRAGMENTS':
         const { clientDocumentId, fileContentB64, contentType, originalFilename, worldId } =
@@ -362,19 +380,24 @@ parentPort?.on('message', async (message: any) => {
         logger.info(
           `Worker processing PDF_THEN_FRAGMENTS for clientDocId: ${clientDocumentId}, filename: ${originalFilename}`
         );
+
         let mainPdfText: string | null = null;
-        let actualStoredMainDocId: UUID | null = null;
-        let pdfProcessingError: any = null;
+        let storedMainDocInfo: { actualStoredMainDocId: UUID; clientDocumentId: UUID } | null =
+          null;
+        let pdfProcessingErrorDetails: { message: string; stack?: string } | null = null;
         const pdfFileBuffer = Buffer.from(fileContentB64, 'base64');
 
         try {
-          mainPdfText = await convertPdfToText(pdfFileBuffer);
+          mainPdfText = await convertPdfToTextFromBuffer(pdfFileBuffer, originalFilename);
           if (!mainPdfText || mainPdfText.trim() === '') {
-            throw new Error('No text content extracted from PDF by worker.');
+            throw new Error(`No text content extracted from PDF ${originalFilename} by worker.`);
           }
+          logger.debug(
+            `Main PDF text extracted for ${originalFilename}, length: ${mainPdfText.length}`
+          );
 
           const saveResult = await saveToDbViaAdapter({
-            documentId: clientDocumentId,
+            documentId: uuidv4() as UUID,
             agentId: workerData.agentId as UUID,
             isFragment: false,
             mainDocText: mainPdfText,
@@ -383,70 +406,45 @@ parentPort?.on('message', async (message: any) => {
               originalFilename,
               worldId,
               fileSize: pdfFileBuffer.length,
+              clientDocumentId: clientDocumentId as UUID,
             },
           });
-          actualStoredMainDocId = saveResult.actualStoredMainDocId as UUID;
-        } catch (error) {
+          if (saveResult.actualStoredMainDocId && saveResult.clientDocumentId) {
+            storedMainDocInfo = {
+              actualStoredMainDocId: saveResult.actualStoredMainDocId as UUID,
+              clientDocumentId: saveResult.clientDocumentId as UUID,
+            };
+          } else {
+            throw new Error('Failed to get stored main document ID after saving.');
+          }
+        } catch (error: any) {
           logger.error(
             `Error processing main PDF ${originalFilename} (clientDocId: ${clientDocumentId}) in worker:`,
-            (error as Error).message,
-            (error as Error).stack
+            error.message,
+            error.stack
           );
-          pdfProcessingError = { message: (error as Error).message, stack: (error as Error).stack };
+          pdfProcessingErrorDetails = { message: error.message, stack: error.stack };
         }
 
         parentPort?.postMessage({
           type: 'PDF_MAIN_DOCUMENT_STORED',
           payload: {
             clientDocumentId: clientDocumentId,
-            storedDocumentMemoryId: actualStoredMainDocId,
+            storedDocumentMemoryId: storedMainDocInfo?.actualStoredMainDocId || null,
             agentId: workerData.agentId,
-            error: pdfProcessingError,
+            error: pdfProcessingErrorDetails,
           },
         });
 
-        if (mainPdfText && !pdfProcessingError) {
-          logger.info(
+        if (mainPdfText && !pdfProcessingErrorDetails && storedMainDocInfo) {
+          logger.debug(
             `Main PDF ${originalFilename} (clientDocId: ${clientDocumentId}) processed. Now chunking for fragments.`
           );
-          const splitter = new RecursiveCharacterTextSplitter({
-            chunkSize: 1000,
-            chunkOverlap: 100,
-          });
-          const chunks = await splitter.splitText(mainPdfText);
-          logger.info(
-            `Split PDF content into ${chunks.length} chunks for document ${clientDocumentId}.`
+          await chunkAndSaveDocumentFragments(
+            storedMainDocInfo.clientDocumentId,
+            mainPdfText,
+            workerData.agentId as UUID
           );
-
-          if (chunks.length > 0) {
-            try {
-              await saveToDbViaAdapter({
-                documentId: clientDocumentId,
-                chunks,
-                agentId: workerData.agentId as UUID,
-                isFragment: true,
-              });
-            } catch (e: any) {
-              logger.error(
-                `Error during fragment embedding/saving for PDF doc ${clientDocumentId}:`,
-                e.message,
-                e.stack
-              );
-              parentPort?.postMessage({
-                type: 'PROCESSING_ERROR',
-                payload: {
-                  documentId: clientDocumentId,
-                  error: e.message,
-                  stack: e.stack,
-                  agentId: workerData.agentId,
-                },
-              });
-            }
-          } else {
-            logger.warn(
-              `No chunks generated from PDF text for ${clientDocumentId}. No fragments to save.`
-            );
-          }
         } else {
           logger.warn(
             `Skipping fragment processing for PDF ${originalFilename} (clientDocId: ${clientDocumentId}) due to earlier error or no text.`
@@ -458,15 +456,13 @@ parentPort?.on('message', async (message: any) => {
     }
   } catch (error: any) {
     logger.error('Error processing message in RAG worker:', error.message, error.stack);
-    parentPort?.postMessage({
-      type: 'PROCESSING_ERROR',
-      payload: {
-        documentId: message.payload?.documentId,
-        error: error.message,
-        stack: error.stack,
-        agentId: workerData.agentId,
-      },
-    });
+    const docIdForError =
+      message.payload?.documentId || message.payload?.clientDocumentId || 'unknown_document';
+    postProcessingErrorToParent(
+      docIdForError,
+      `Unhandled error processing message type ${message.type}: ${error.message}`,
+      error.stack
+    );
   }
 });
 
