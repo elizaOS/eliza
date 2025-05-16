@@ -5,6 +5,7 @@ import { SOLANA_SERVICE_NAME, SOLANA_WALLET_DATA_CACHE_KEY } from './constants';
 import { getWalletKey, KeypairResult } from './keypairUtils';
 import type { Item, Prices, WalletPortfolio } from './types';
 import { Keypair } from '@solana/web3.js';
+import bs58 from 'bs58';
 
 const PROVIDER_CONFIG = {
   BIRDEYE_API: 'https://public-api.birdeye.so',
@@ -354,7 +355,11 @@ export class SolanaService extends Service {
     return this.connection;
   }
 
-  // keypairUtils
+  /**
+   * Validates a Solana address.
+   * @param {string | undefined} address - The address to validate.
+   * @returns {boolean} True if the address is valid, false otherwise.
+   */
   public validateAddress(address: string | undefined): boolean {
     if (!address) return false;
     try {
@@ -374,6 +379,37 @@ export class SolanaService extends Service {
     }
   }
 
+  /**
+   * Creates a new Solana wallet by generating a keypair
+   * @returns {Promise<{publicKey: string, privateKey: string}>} Object containing base58-encoded public and private keys
+   */
+  public async createWallet(): Promise<{ publicKey: string; privateKey: string }> {
+    try {
+      // Generate new keypair
+      const newKeypair = Keypair.generate();
+
+      // Convert to base58 strings for secure storage
+      const publicKey = newKeypair.publicKey.toBase58();
+      const privateKey = bs58.encode(newKeypair.secretKey);
+
+      // Clear the keypair from memory
+      newKeypair.secretKey.fill(0);
+
+      return {
+        publicKey,
+        privateKey,
+      };
+    } catch (error) {
+      logger.error('Error creating wallet:', error);
+      throw new Error('Failed to create new wallet');
+    }
+  }
+
+  /**
+   * Registers a provider with the service.
+   * @param {any} provider - The provider to register
+   * @returns {Promise<number>} The ID assigned to the registered provider
+   */
   async registerExchange(provider: any) {
     const id = Object.values(this.exchangeRegistry).length + 1;
     logger.log('Registered', provider.name, 'as Solana provider #' + id);

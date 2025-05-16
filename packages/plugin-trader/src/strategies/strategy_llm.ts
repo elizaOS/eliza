@@ -125,7 +125,10 @@ async function generateBuySignal(runtime, strategyService, hndl) {
 
   // if looks good, get token(s) info (birdeye?) (infoService)
   const infoService = await acquireService(runtime, 'TRADER_DATAPROVIDER', 'llm trading info');
-  infoService.getToken(response.recommend_buy_chain, response.recommend_buy_address);
+  const token = await infoService.getToken(
+    response.recommend_buy_chain,
+    response.recommend_buy_address
+  );
 
   // validateTokenForTrading (look at liquidity/volume/suspicious atts)
 
