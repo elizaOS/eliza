@@ -207,14 +207,33 @@ async function listEnvVars(): Promise<void> {
     }
   }
 
-  if (localEnvPath) {
-    console.info(colors.bold('\nLocal Environment Variables:'));
-    console.info(`Path: ${localEnvPath}`);
+  // Always display local environment section regardless of whether a file exists
+  console.info(colors.bold('\nLocal Environment Variables:'));
+  const localEnvFilePath = path.join(process.cwd(), '.env');
+  console.info(`Path: ${localEnvFilePath}`);
 
-    if (!existsSync(localEnvPath)) {
+  if (!existsSync(localEnvFilePath)) {
+    // No local .env file exists, provide guidance to the user
+    console.info(colors.yellow('  No local .env file found'));
+
+    // Check if .env.example exists and suggest copying it as a starting point
+    const exampleEnvPath = path.join(process.cwd(), '.env.example');
+    if (existsSync(exampleEnvPath)) {
+      console.info(colors.red('  ✖ Missing .env file. Create one with:'));
+      console.info(`     ${colors.bold(colors.green('cp .env.example .env'))}`);
+    } else {
+      console.info(
+        colors.red(
+          '  ✖ Missing .env file. Create one in your project directory to set local environment variables.'
+        )
+      );
+    }
+  } else {
+    // .env file exists, parse and display its contents
+    const localEnvVars = await parseEnvFile(localEnvFilePath);
+    if (Object.keys(localEnvVars).length === 0) {
       console.info('  No local environment variables set');
     } else {
-      const localEnvVars = await parseEnvFile(localEnvPath);
       for (const [key, value] of Object.entries(localEnvVars)) {
         console.info(`  ${colors.green(key)}: ${maskedValue(value)}`);
       }
