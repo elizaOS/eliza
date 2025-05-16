@@ -582,11 +582,22 @@ export const env = new Command()
 env
   .command('list')
   .description('List all environment variables')
+  .option('--system', 'List only system information')
   .option('--global', 'List only global environment variables')
   .option('--local', 'List only local environment variables')
-  .action(async (options: { global?: boolean; local?: boolean }) => {
+  .action(async (options: { global?: boolean; local?: boolean; system?: boolean }) => {
     try {
-      if (options.local) {
+      if (options.system) {
+        // Show only system information
+        const envInfo = await UserEnvironment.getInstanceInfo();
+        console.info(colors.bold('\nSystem Information:'));
+        console.info(`  Platform: ${colors.cyan(envInfo.os.platform)} (${envInfo.os.release})`);
+        console.info(`  Architecture: ${colors.cyan(envInfo.os.arch)}`);
+        console.info(`  CLI Version: ${colors.cyan(envInfo.cli.version)}`);
+        console.info(
+          `  Package Manager: ${colors.cyan(envInfo.packageManager.name)}${envInfo.packageManager.version ? ` v${envInfo.packageManager.version}` : ''}`
+        );
+      } else if (options.local) {
         const localEnvPath = getLocalEnvPath();
         if (!localEnvPath) {
           console.error('No local .env file found in the current directory');
