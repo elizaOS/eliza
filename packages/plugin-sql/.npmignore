@@ -7,3 +7,4 @@
 !schema.sql
 !seed.sql
 !config.toml
+__tests__/**
