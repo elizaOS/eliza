@@ -989,7 +989,7 @@ async function showMainMenu(yes = false): Promise<void> {
         exit = !returnToMainFromLocal;
         break;
       }
-      case 'set_path':
+      case 'set_path': {
         // Prompt for a path and use the existing setEnvPath function
         const { path: customPath } = await prompts({
           type: 'text',
@@ -1001,6 +1001,7 @@ async function showMainMenu(yes = false): Promise<void> {
           await setEnvPath(customPath, yes);
         }
         break;
+      }
       case 'reset':
         await resetEnv();
         break;
