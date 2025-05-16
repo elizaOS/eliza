@@ -17,6 +17,11 @@ teardown() {
   run $ELIZAOS_CMD update --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"Usage: elizaos update"* ]]
+  # Verify the help shows all consolidated options
+  [[ "$output" == *"--cli"* ]]
+  [[ "$output" == *"--packages"* ]]
+  [[ "$output" == *"--check"* ]]
+  [[ "$output" == *"--skip-build"* ]]
 }
 
 # Checks that update runs in a valid project.
@@ -46,9 +51,32 @@ teardown() {
   [ "$status" -eq 0 ] || [[ "$output" == *"already up to date"* ]]
 }
 
-# Checks that update errors in a non-project directory.
-# This test expects a non-zero exit status, which is the correct behavior.
-# Do not treat this as a failure in CI; this is a "positive" negative test.
+# Test the --packages flag
+@test "update --packages works" {
+  run $ELIZAOS_CMD create update-packages-app --yes
+  [ "$status" -eq 0 ]
+  cd update-packages-app
+  run $ELIZAOS_CMD update --packages
+  [ "$status" -eq 0 ] || [[ "$output" == *"already up to date"* ]]
+}
+
+# Test the --cli flag
+@test "update --cli works" {
+  run $ELIZAOS_CMD update --cli
+  [ "$status" -eq 0 ]
+}
+
+# Test combined flags
+@test "update --cli --packages works" {
+  run $ELIZAOS_CMD create update-combined-app --yes
+  [ "$status" -eq 0 ]
+  cd update-combined-app
+  run $ELIZAOS_CMD update --cli --packages
+  [ "$status" -eq 0 ] || [[ "$output" == *"already up to date"* ]]
+}
+
+# Checks that update succeeds outside a project.
+# Update is still expected to run outside a project with appropriate warnings.
 @test "update succeeds outside a project" {
   run $ELIZAOS_CMD update
   [ "$status" -eq 0 ]

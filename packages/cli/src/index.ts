@@ -13,7 +13,6 @@ import { start } from '@/src/commands/start';
 import { teeCommand as tee } from '@/src/commands/tee';
 import { test } from '@/src/commands/test';
 import { update } from '@/src/commands/update';
-import { updateCLI } from '@/src/commands/update-cli';
 import { displayBanner, loadEnvironment } from '@/src/utils';
 import { logger } from '@elizaos/core';
 import { Command, Option } from 'commander';
@@ -91,7 +90,6 @@ async function main() {
     .addCommand(env)
     .addCommand(dev)
     .addCommand(publish)
-    .addCommand(updateCLI)
     .addCommand(stopCommand);
 
   // if no args are passed, display the banner
