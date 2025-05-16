@@ -73,7 +73,7 @@
 
 ## v0.25.8 (February 24, 2025)
 
-#### Major changes since [v0.25.6-alpha.1](https://github.com/elizaOS/eliza/releases/tag/v0.25.6-alpha.1)
+#### Major changes since [v0.25.6-alpha.1]()
 
 #### Features
 
