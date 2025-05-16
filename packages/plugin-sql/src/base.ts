@@ -208,6 +208,8 @@ export abstract class BaseDrizzleAdapter<
         ...row,
         username: row.username || '',
         id: row.id as UUID,
+        system: row.system === null ? undefined : row.system,
+        bio: row.bio === null ? '' : row.bio,
       };
     });
   }
@@ -229,6 +231,7 @@ export abstract class BaseDrizzleAdapter<
       return rows.map((row) => ({
         ...row,
         id: row.id as UUID,
+        bio: row.bio === null ? '' : row.bio,
       }));
     });
   }
@@ -2590,7 +2593,7 @@ export abstract class BaseDrizzleAdapter<
         return result.map((row) => ({
           id: row.id as UUID,
           name: row.name,
-          description: row.description,
+          description: row.description ?? '',
           roomId: row.roomId as UUID,
           worldId: row.worldId as UUID,
           tags: row.tags || [],
@@ -2616,7 +2619,7 @@ export abstract class BaseDrizzleAdapter<
         return result.map((row) => ({
           id: row.id as UUID,
           name: row.name,
-          description: row.description,
+          description: row.description ?? '',
           roomId: row.roomId as UUID,
           worldId: row.worldId as UUID,
           tags: row.tags || [],
@@ -2648,7 +2651,7 @@ export abstract class BaseDrizzleAdapter<
         return {
           id: row.id as UUID,
           name: row.name,
-          description: row.description,
+          description: row.description ?? '',
           roomId: row.roomId as UUID,
           worldId: row.worldId as UUID,
           tags: row.tags || [],
