@@ -349,6 +349,26 @@
         "vitest": "^3.0.0",
       },
     },
+    "packages/plugin-rag": {
+      "name": "@elizaos/plugin-rag",
+      "version": "1.0.0-beta.52",
+      "dependencies": {
+        "@ai-sdk/anthropic": "^1.2.11",
+        "@ai-sdk/google": "^1.2.18",
+        "@ai-sdk/openai": "^1.3.22",
+        "@elizaos/cli": "^1.0.0-beta.52",
+        "@elizaos/core": "^1.0.0-beta.52",
+        "@elizaos/plugin-sql": "^1.0.0-beta.52",
+        "ai": "^4.3.15",
+        "dotenv": "^16.5.0",
+        "zod": "3.24.2",
+      },
+      "devDependencies": {
+        "prettier": "3.5.3",
+        "tsup": "8.4.0",
+        "typescript": "5.8.2",
+      },
+    },
     "packages/plugin-sql": {
       "name": "@elizaos/plugin-sql",
       "version": "1.0.0-beta.52",
@@ -473,6 +493,7 @@
         "@elizaos/plugin-discord": "^1.0.0-beta.52",
         "@elizaos/plugin-openai": "^1.0.0-beta.49",
         "@elizaos/plugin-pdf": "^1.0.0-beta.40",
+        "@elizaos/plugin-rag": "^1.0.0-beta.52",
         "@elizaos/plugin-sql": "^1.0.0-beta.52",
         "@elizaos/plugin-tee": "^1.0.0-beta.52",
         "@elizaos/plugin-telegram": "^1.0.0-beta.52",
@@ -648,6 +669,8 @@
     "@adraffy/ens-normalize": ["@adraffy/ens-normalize@1.11.0", "", {}, "sha512-/3DDPKHqqIqxUULp8yP4zODUY1i+2xvVWsv8A79xGWdCAG+8sb0hRh0Rk2QyOJUnnbyPUAZYcpBuRe3nS2OIUg=="],
 
     "@ai-sdk/anthropic": ["@ai-sdk/anthropic@1.2.11", "", { "dependencies": { "@ai-sdk/provider": "1.1.3", "@ai-sdk/provider-utils": "2.2.8" }, "peerDependencies": { "zod": "^3.0.0" } }, "sha512-lZLcEMh8MXY4NVSrN/7DyI2rnid8k7cn/30nMmd3bwJrnIsOuIuuFvY8f0nj+pFcTi6AYK7ujLdqW5dQVz1YQw=="],
+
+    "@ai-sdk/google": ["@ai-sdk/google@1.2.18", "", { "dependencies": { "@ai-sdk/provider": "1.1.3", "@ai-sdk/provider-utils": "2.2.8" }, "peerDependencies": { "zod": "^3.0.0" } }, "sha512-8B70+i+uB12Ae6Sn6B9Oc6W0W/XorGgc88Nx0pyUrcxFOdytHBaAVhTPqYsO3LLClfjYN8pQ9GMxd5cpGEnUcA=="],
 
     "@ai-sdk/openai": ["@ai-sdk/openai@1.3.22", "", { "dependencies": { "@ai-sdk/provider": "1.1.3", "@ai-sdk/provider-utils": "2.2.8" }, "peerDependencies": { "zod": "^3.0.0" } }, "sha512-QwA+2EkG0QyjVR+7h6FE7iOu2ivNqAVMm9UJZkVxxTk5OIq5fFJDTEI/zICEMuHImTTXR2JjsL6EirJ28Jc4cw=="],
 
@@ -1214,6 +1237,8 @@
     "@elizaos/plugin-openai": ["@elizaos/plugin-openai@1.0.0-beta.51", "", { "dependencies": { "@ai-sdk/openai": "^1.3.20", "@ai-sdk/ui-utils": "^1.2.8", "@elizaos/core": "^1.0.0-beta.51", "ai": "^4.3.9", "js-tiktoken": "^1.0.18", "tsup": "8.4.0", "undici": "^7.9.0" } }, "sha512-nDcublbK+3zC8OE+j5CEXD9d+Xz/kQtWiEPphC8ue6izHiY5Ds8Pf/Igjm42xjYW+9tUs9ukw6tWUE4kSogK2A=="],
 
     "@elizaos/plugin-pdf": ["@elizaos/plugin-pdf@1.0.0-beta.40", "", { "dependencies": { "@aws-sdk/client-s3": "^3.705.0", "@aws-sdk/s3-request-presigner": "^3.705.0", "@elizaos/core": "^1.0.0-beta.40", "@types/uuid": "10.0.0", "capsolver-npm": "2.0.2", "fluent-ffmpeg": "2.1.3", "glob": "11.0.0", "patchright": "1.50.1", "pdfjs-dist": "4.7.76", "uuid": "11.0.3", "youtube-dl-exec": "3.0.15" }, "peerDependencies": { "whatwg-url": "7.1.0" } }, "sha512-DkbNSCTFSA+YFUoyJ7bE/xRXxhRGI7X3LtFMemVU13cYLvBPqQVFMgIjJsqaW+NV8wk9/pTLrHd9dmlyI0eNvQ=="],
+
+    "@elizaos/plugin-rag": ["@elizaos/plugin-rag@workspace:packages/plugin-rag"],
 
     "@elizaos/plugin-sql": ["@elizaos/plugin-sql@workspace:packages/plugin-sql"],
 
@@ -6202,6 +6227,8 @@
     "@elizaos/plugin-pdf/glob": ["glob@11.0.0", "", { "dependencies": { "foreground-child": "^3.1.0", "jackspeak": "^4.0.1", "minimatch": "^10.0.0", "minipass": "^7.1.2", "package-json-from-dist": "^1.0.0", "path-scurry": "^2.0.0" }, "bin": { "glob": "dist/esm/bin.mjs" } }, "sha512-9UiX/Bl6J2yaBbxKoEBRm4Cipxgok8kQYcOPEhScPwebu2I0HoQOuYdIO6S3hLuWoZgpDpwQZMzTFxgpkyT76g=="],
 
     "@elizaos/plugin-pdf/pdfjs-dist": ["pdfjs-dist@4.7.76", "", { "optionalDependencies": { "canvas": "^2.11.2", "path2d": "^0.2.1" } }, "sha512-8y6wUgC/Em35IumlGjaJOCm3wV4aY/6sqnIT3fVW/67mXsOZ9HWBn8GDKmJUK0GSzpbmX3gQqwfoFayp78Mtqw=="],
+
+    "@elizaos/plugin-rag/typescript": ["typescript@5.8.2", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-aJn6wq13/afZp/jT9QZmwEjDqqvSGp1VT5GVg+f/t6/oVyrgXM6BY1h9BRh/O5p3PlUPAe+WuiEZOmb/49RqoQ=="],
 
     "@elizaos/plugin-starter/typescript": ["typescript@5.8.2", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-aJn6wq13/afZp/jT9QZmwEjDqqvSGp1VT5GVg+f/t6/oVyrgXM6BY1h9BRh/O5p3PlUPAe+WuiEZOmb/49RqoQ=="],
 

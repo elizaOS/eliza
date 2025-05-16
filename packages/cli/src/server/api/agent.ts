@@ -27,6 +27,9 @@ import {
 } from '@elizaos/core';
 import express from 'express';
 import fs from 'node:fs';
+// Attempt to import RagService type directly for casting.
+// This might require a common types package or careful path management in a monorepo.
+// import type { RagService } from '../../../plugin-rag/src'; // Removed problematic import
 
 // Utility functions for response handling
 const sendError = (
@@ -1619,45 +1622,76 @@ export function agentRouter(
     const agentId = validateUuid(req.params.agentId);
 
     if (!agentId) {
-      res.status(400).json({
-        success: false,
-        error: {
-          code: 'INVALID_ID',
-          message: 'Invalid agent ID format',
-        },
-      });
+      sendError(res, 400, 'INVALID_ID', 'Invalid agent ID format');
       return;
     }
 
     const runtime = agents.get(agentId);
 
     if (!runtime) {
-      res.status(404).json({
-        success: false,
-        error: {
-          code: 'NOT_FOUND',
-          message: 'Agent not found',
-        },
-      });
+      sendError(res, 404, 'NOT_FOUND', 'Agent not found');
       return;
     }
 
     const files = req.files as Express.Multer.File[];
 
     if (!files || files.length === 0) {
-      res.status(400).json({
-        success: false,
-        error: {
-          code: 'NO_FILES',
-          message: 'No files uploaded',
-        },
-      });
+      sendError(res, 400, 'NO_FILES', 'No files uploaded');
       return;
     }
 
     try {
       const results = [];
+      const ragService = runtime.getService('rag') as any;
 
+      if (ragService && typeof ragService.addKnowledge === 'function') {
+        logger.info(
+          `[KNOWLEDGE POST] Agent ${agentId}: RAG service is active. Processing with RagService.`
+        );
+        for (const file of files) {
+          try {
+            const fileBuffer = fs.readFileSync(file.path);
+            const fileContentB64 = fileBuffer.toString('base64');
+            // Allow providing documentId via form field for each file or a general one
+            const documentId =
+              (req.body?.documentIds && req.body.documentIds[files.indexOf(file)]) ||
+              req.body?.documentId ||
+              createUniqueUuid(runtime, `knowledge-${file.originalname}-${Date.now()}`);
+            const contentType = file.mimetype;
+
+            await ragService.addKnowledge(agentId, documentId, fileContentB64, contentType);
+
+            cleanupFile(file.path); // Clean up temp file
+
+            results.push({
+              documentId: documentId,
+              filename: file.originalname,
+              type: file.mimetype,
+              size: file.size,
+              status: 'processing_offloaded_to_rag',
+              uploadedAt: Date.now(),
+            });
+          } catch (fileError) {
+            logger.error(
+              `[KNOWLEDGE POST] Error processing file ${file.originalname} with RAG: ${fileError}`
+            );
+            cleanupFile(file.path); // Ensure cleanup on error too
+            results.push({
+              filename: file.originalname,
+              status: 'error_processing_with_rag',
+              error: fileError.message,
+            });
+            // Continue with other files even if one fails
+          }
+        }
+        sendSuccess(res, results);
+        return; // Exit after RAG processing
+      }
+
+      // Generic logic if RAG service is not active
+      logger.info(
+        `[KNOWLEDGE POST] Agent ${agentId}: RAG service not active. Using generic knowledge add.`
+      );
       for (const file of files) {
         try {
           // Read file content into a buffer
@@ -1674,7 +1708,10 @@ export function agentRouter(
           const formattedMainText = `Path: ${relativePath}\n\n${extractedTextForContent}`;
 
           // Create knowledge item with proper metadata
-          const knowledgeId = createUniqueUuid(runtime, `knowledge-${Date.now()}`);
+          const knowledgeId = createUniqueUuid(
+            runtime,
+            `knowledge-${file.originalname}-${Date.now()}`
+          );
           const fileExt = file.originalname.split('.').pop()?.toLowerCase() || '';
           const filename = file.originalname;
           const title = filename.replace(`.${fileExt}`, '');
@@ -1699,15 +1736,14 @@ export function agentRouter(
 
           // Add knowledge to agent
           await runtime.addKnowledge(knowledgeItem, undefined, {
-            roomId: undefined,
-            worldId: runtime.agentId,
-            entityId: runtime.agentId,
+            // Scope knowledge appropriately. If worldId is not available, consider agentId or a default.
+            // Assuming worldId might come from req.body or a default for API uploads.
+            worldId: (req.body.worldId as UUID) || runtime.agentId,
+            entityId: runtime.agentId, // Typically, knowledge uploaded by an agent is for that agent.
           });
 
           // Clean up temp file immediately after successful processing
-          if (file.path && fs.existsSync(file.path)) {
-            fs.unlinkSync(file.path);
-          }
+          cleanupFile(file.path);
 
           results.push({
             id: knowledgeId,
@@ -1722,15 +1758,17 @@ export function agentRouter(
           });
         } catch (fileError) {
           logger.error(`[KNOWLEDGE POST] Error processing file ${file.originalname}: ${fileError}`);
-          cleanupFile(file.path);
+          cleanupFile(file.path); // Ensure cleanup on error too
+          results.push({
+            filename: file.originalname,
+            status: 'error_processing_generic',
+            error: fileError.message,
+          });
           // Continue with other files even if one fails
         }
       }
 
-      res.json({
-        success: true,
-        data: results,
-      });
+      sendSuccess(res, results);
     } catch (error) {
       logger.error(`[KNOWLEDGE POST] Error uploading knowledge: ${error}`);
 

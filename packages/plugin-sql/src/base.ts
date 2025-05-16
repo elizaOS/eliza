@@ -182,7 +182,6 @@ export abstract class BaseDrizzleAdapter<
         const usedDimension = Object.entries(DIMENSION_MAP).find(
           ([_, colName]) => existingMemory[0].embedding[colName] !== null
         );
-        // We don't actually need to use usedDimension for now, but it's good to know it's there.
       }
 
       this.embeddingDimension = DIMENSION_MAP[dimension];
