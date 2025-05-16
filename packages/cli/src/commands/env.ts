@@ -514,6 +514,11 @@ async function resetEnv(yes = false): Promise<void> {
  * @param autoConfirm Automatically confirm prompts
  */
 async function setEnvPath(customPath: string, autoConfirm = false): Promise<void> {
+  // Expand tilde (~) in the path if present
+  if (customPath.startsWith('~')) {
+    customPath = path.join(os.homedir(), customPath.substring(1));
+  }
+
   // Validate the path
   const resolvedPath = path.resolve(customPath);
   const isDirectory = existsSync(resolvedPath) && (await fs.stat(resolvedPath)).isDirectory();
@@ -539,8 +544,14 @@ async function setEnvPath(customPath: string, autoConfirm = false): Promise<void
     }
 
     if (createDir) {
-      await fs.mkdir(parentDir, { recursive: true });
-      console.log(`Created directory: ${parentDir}`);
+      try {
+        await fs.mkdir(parentDir, { recursive: true });
+        console.log(`Created directory: ${parentDir}`);
+      } catch (error) {
+        console.error(`Failed to create directory: ${error.message}`);
+        console.info('Custom path not set');
+        return;
+      }
     } else {
       console.info('Custom path not set');
       return;
@@ -762,9 +773,16 @@ async function showMainMenu(yes = false): Promise<void> {
         break;
       }
       case 'set_path':
-        console.info(
-          colors.yellow('\nTo set a custom path, run: elizaos env set-path <path> [--yes]')
-        );
+        // Prompt for a path and use the existing setEnvPath function
+        const { path: customPath } = await prompts({
+          type: 'text',
+          name: 'path',
+          message: 'Enter custom path for global environment file:',
+        });
+
+        if (customPath) {
+          await setEnvPath(customPath, yes);
+        }
         break;
       case 'reset':
         await resetEnv();
