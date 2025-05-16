@@ -23,6 +23,7 @@ import {
   logger,
   messageHandlerTemplate,
   validateUuid,
+  convertPdfToText,
 } from '@elizaos/core';
 import express from 'express';
 import fs from 'node:fs';
@@ -1659,12 +1660,18 @@ export function agentRouter(
 
       for (const file of files) {
         try {
-          // Read file content
-          const content = fs.readFileSync(file.path, 'utf8');
-
-          // Format the content with Path: prefix like in the devRel/index.ts example
+          // Read file content into a buffer
+          const fileBuffer = fs.readFileSync(file.path);
+          let extractedTextForContent: string;
           const relativePath = file.originalname;
-          const formattedContent = `Path: ${relativePath}\n\n${content}`;
+
+          if (file.mimetype === 'application/pdf') {
+            extractedTextForContent = await convertPdfToText(fileBuffer);
+          } else {
+            extractedTextForContent = fileBuffer.toString('utf8');
+          }
+
+          const formattedMainText = `Path: ${relativePath}\n\n${extractedTextForContent}`;
 
           // Create knowledge item with proper metadata
           const knowledgeId = createUniqueUuid(runtime, `knowledge-${Date.now()}`);
@@ -1675,7 +1682,7 @@ export function agentRouter(
           const knowledgeItem = {
             id: knowledgeId,
             content: {
-              text: formattedContent,
+              text: formattedMainText,
             },
             metadata: {
               type: MemoryType.DOCUMENT,
@@ -1709,8 +1716,8 @@ export function agentRouter(
             size: file.size,
             uploadedAt: Date.now(),
             preview:
-              formattedContent.length > 0
-                ? `${formattedContent.substring(0, 150)}${formattedContent.length > 150 ? '...' : ''}`
+              formattedMainText.length > 0
+                ? `${formattedMainText.substring(0, 150)}${formattedMainText.length > 150 ? '...' : ''}`
                 : 'No preview available',
           });
         } catch (fileError) {
