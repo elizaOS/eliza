@@ -168,22 +168,25 @@ export abstract class BaseDrizzleAdapter<
    * @returns {Promise<void>} - Resolves once the embedding dimension is ensured.
    */
   async ensureEmbeddingDimension(dimension: number) {
-    const existingMemory = await this.db
-      .select({
-        embedding: embeddingTable,
-      })
-      .from(memoryTable)
-      .innerJoin(embeddingTable, eq(embeddingTable.memoryId, memoryTable.id))
-      .where(eq(memoryTable.agentId, this.agentId))
-      .limit(1);
+    return this.withDatabase(async () => {
+      const existingMemory = await this.db
+        .select({
+          embedding: embeddingTable,
+        })
+        .from(memoryTable)
+        .innerJoin(embeddingTable, eq(embeddingTable.memoryId, memoryTable.id))
+        .where(eq(memoryTable.agentId, this.agentId))
+        .limit(1);
 
-    if (existingMemory.length > 0) {
-      const usedDimension = Object.entries(DIMENSION_MAP).find(
-        ([_, colName]) => existingMemory[0].embedding[colName] !== null
-      );
-    }
+      if (existingMemory.length > 0) {
+        const usedDimension = Object.entries(DIMENSION_MAP).find(
+          ([_, colName]) => existingMemory[0].embedding[colName] !== null
+        );
+        // We don't actually need to use usedDimension for now, but it's good to know it's there.
+      }
 
-    this.embeddingDimension = DIMENSION_MAP[dimension];
+      this.embeddingDimension = DIMENSION_MAP[dimension];
+    });
   }
 
   /**
