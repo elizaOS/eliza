@@ -437,75 +437,288 @@ async function addNewVariable(envPath: string, envVars: Record<string, string>):
 }
 
 /**
- * Reset all environment variables and wipe the cache folder
+ * Helper function to reset an environment file by keeping keys but clearing values
+ * @param filePath Path to the environment file
+ * @returns A boolean indicating success/failure
  */
-async function resetEnv(yes = false): Promise<void> {
-  console.log('resetEnv called with yes =', yes);
-  let confirm = true;
-  if (!yes) {
-    const resp = await prompts({
-      type: 'confirm',
-      name: 'confirm',
-      message:
-        'This will delete all environment variables and wipe the cache folder. Are you sure?',
-      initial: false,
-    });
-    confirm = resp.confirm;
+async function resetEnvFile(filePath: string): Promise<boolean> {
+  try {
+    if (!existsSync(filePath)) {
+      return false;
+    }
+
+    const envVars = await parseEnvFile(filePath);
+    if (Object.keys(envVars).length === 0) {
+      return false; // No variables to reset
+    }
+
+    const resetVars = Object.keys(envVars).reduce(
+      (acc, key) => {
+        acc[key] = '';
+        return acc;
+      },
+      {} as Record<string, string>
+    );
+
+    await writeEnvFile(filePath, resetVars);
+    return true;
+  } catch (error) {
+    console.error(`Error resetting environment file at ${filePath}: ${error.message}`);
+    return false;
   }
-  if (!confirm) {
-    console.log('Reset cancelled.');
-    return;
+}
+
+// Reset operation types and helper functions
+type ResetTarget = 'globalEnv' | 'localEnv' | 'cache' | 'globalDb' | 'localDb';
+type ResetAction = 'reset' | 'deleted' | 'skipped' | 'warning';
+
+interface ResetItem {
+  title: string;
+  value: ResetTarget;
+  description?: string;
+  selected?: boolean;
+}
+
+/**
+ * Delete a directory with error handling
+ * @param dir Directory path to delete
+ * @param actions Action log collection to update
+ * @param label Description label for this operation
+ * @returns Success or failure
+ */
+async function safeDeleteDirectory(
+  dir: string,
+  actions: Record<string, string[]>,
+  label: string
+): Promise<boolean> {
+  if (!existsSync(dir)) {
+    actions.skipped.push(`${label} (not found)`);
+    return false;
   }
 
-  // Get paths
+  try {
+    await rimraf(dir);
+    if (!existsSync(dir)) {
+      actions.deleted.push(label);
+      return true;
+    } else {
+      actions.warnings.push(`Failed to delete ${label.toLowerCase()}`);
+      return false;
+    }
+  } catch (error) {
+    actions.warnings.push(`Failed to delete ${label.toLowerCase()}: ${error.message}`);
+    return false;
+  }
+}
+
+/**
+ * Reset environment variables and selected folders
+ */
+async function resetEnv(yes = false): Promise<void> {
+  // Get all relevant paths
   const homeDir = os.homedir();
   const elizaDir = path.join(homeDir, '.eliza');
   const globalEnvPath = await getGlobalEnvPath();
   const cacheDir = path.join(elizaDir, 'cache');
-  const dbDir = path.join(elizaDir, 'projects', stringToUuid(process.cwd()), 'db');
+  const projectUuid = stringToUuid(process.cwd());
+  const globalDbDir = path.join(elizaDir, 'projects', projectUuid, 'db');
+  const globalPgliteDir = path.join(elizaDir, 'projects', projectUuid, 'pglite');
+  const localEnvPath = path.join(process.cwd(), '.env');
+  const localDbDir = path.join(process.cwd(), 'elizadb');
 
-  // Remove global .env file
-  if (existsSync(globalEnvPath)) {
-    await fs.unlink(globalEnvPath);
-    console.log('Removed global .env file');
+  // Check if external Postgres is in use
+  let usingExternalPostgres = false;
+  try {
+    const globalEnvVars = await parseEnvFile(globalEnvPath);
+    const localEnvVars = await parseEnvFile(localEnvPath);
+    usingExternalPostgres =
+      (globalEnvVars.POSTGRES_URL && globalEnvVars.POSTGRES_URL.trim() !== '') ||
+      (localEnvVars.POSTGRES_URL && localEnvVars.POSTGRES_URL.trim() !== '');
+  } catch (error) {
+    // Ignore errors
   }
 
-  // Clear custom env path if set
-  if (existsSync(CONFIG_FILE)) {
-    try {
-      const content = await fs.readFile(CONFIG_FILE, 'utf-8');
-      const config = JSON.parse(content);
+  // Create reset item options
+  const resetItems: ResetItem[] = [
+    {
+      title: 'Global environment variables',
+      value: 'globalEnv',
+      description: 'Reset values in global .env file',
+      selected: false,
+    },
+    {
+      title: 'Local environment variables',
+      value: 'localEnv',
+      description: 'Reset values in local .env file',
+      selected: false,
+    },
+    {
+      title: 'Cache folder',
+      value: 'cache',
+      description: existsSync(cacheDir)
+        ? 'Delete the cache folder'
+        : 'Cache folder not found, nothing to delete',
+      selected: false,
+    },
+    {
+      title: 'Global database files',
+      value: 'globalDb',
+      description:
+        !existsSync(globalDbDir) && !existsSync(globalPgliteDir)
+          ? 'Global database files not found, nothing to delete'
+          : usingExternalPostgres
+            ? 'WARNING: External PostgreSQL database detected - only local files will be removed'
+            : 'Delete global database files',
+      selected: false,
+    },
+    {
+      title: 'Local database files',
+      value: 'localDb',
+      description: existsSync(localDbDir)
+        ? 'Delete local database files'
+        : 'Local database folder not found, nothing to delete',
+      selected: false,
+    },
+  ];
 
-      if (config.envPath) {
-        const { envPath, ...restConfig } = config;
-        await fs.writeFile(CONFIG_FILE, JSON.stringify(restConfig, null, 2));
-        console.log('Cleared custom environment path setting');
-      }
-    } catch (error) {
-      console.error(`Error clearing custom env path: ${error.message}`);
+  // Get selected items (from options or defaults)
+  let selectedValues: ResetTarget[] = [];
+
+  if (yes) {
+    // Use default selections if using --yes flag
+    selectedValues = resetItems.filter((item) => item.selected).map((item) => item.value);
+  } else {
+    // Prompt user to select items with styling matching interactive mode
+    const { selections } = await prompts({
+      type: 'multiselect',
+      name: 'selections',
+      message: colors.cyan(colors.bold('Select items to reset:')),
+      choices: resetItems,
+      instructions: false,
+      hint: '- Space to select, Enter to confirm',
+      min: 1,
+    });
+
+    if (!selections || selections.length === 0) {
+      console.log('No items selected. Reset cancelled.');
+      return;
+    }
+
+    selectedValues = selections;
+
+    // Show selected items
+    console.log('\nYou selected:');
+    for (const value of selectedValues) {
+      const item = resetItems.find((item) => item.value === value);
+      console.log(`  • ${item.title}`);
+    }
+
+    // Final confirmation
+    const { confirm } = await prompts({
+      type: 'confirm',
+      name: 'confirm',
+      message: 'Are you sure you want to reset the selected items?',
+      initial: false,
+    });
+
+    if (!confirm) {
+      console.log('Reset cancelled.');
+      return;
     }
   }
 
-  // Wipe cache folder
-  if (existsSync(cacheDir)) {
-    await rimraf(cacheDir);
-    console.log('Wiped cache folder');
+  // Track reset results
+  const actions: Record<ResetAction, string[]> = {
+    reset: [],
+    deleted: [],
+    skipped: [],
+    warning: [],
+  };
+
+  // Process each selected item
+  for (const target of selectedValues) {
+    switch (target) {
+      case 'globalEnv':
+        if (await resetEnvFile(globalEnvPath)) {
+          actions.reset.push('Global environment variables');
+        } else {
+          actions.skipped.push('Global environment variables (no file or empty)');
+        }
+        break;
+
+      case 'localEnv':
+        if (await resetEnvFile(localEnvPath)) {
+          actions.reset.push('Local environment variables');
+        } else {
+          actions.skipped.push('Local environment variables (no file or empty)');
+        }
+        break;
+
+      case 'cache':
+        await safeDeleteDirectory(cacheDir, actions, 'Cache folder');
+        break;
+
+      case 'globalDb':
+        if (usingExternalPostgres) {
+          actions.warning.push(
+            'External PostgreSQL database detected. Database data cannot be reset but local database cache files will be removed.'
+          );
+        }
+
+        let anyGlobalDbDeleted = false;
+
+        // Try deleting db dir
+        if (existsSync(globalDbDir)) {
+          if (await safeDeleteDirectory(globalDbDir, actions, 'Global database folder')) {
+            anyGlobalDbDeleted = true;
+          }
+        }
+
+        // Try deleting PGLite dir
+        if (existsSync(globalPgliteDir)) {
+          if (
+            await safeDeleteDirectory(globalPgliteDir, actions, 'Global PGLite database folder')
+          ) {
+            anyGlobalDbDeleted = true;
+          }
+        }
+
+        // If neither existed and nothing was deleted
+        if (!anyGlobalDbDeleted && !existsSync(globalDbDir) && !existsSync(globalPgliteDir)) {
+          actions.skipped.push('Global database files (not found)');
+        }
+        break;
+
+      case 'localDb':
+        await safeDeleteDirectory(localDbDir, actions, 'Local database folder');
+        break;
+    }
   }
 
-  // Ask if user wants to reset database too
-  const { resetDb } = await prompts({
-    type: 'confirm',
-    name: 'resetDb',
-    message: 'Do you also want to reset the database folder?',
-    initial: false,
-  });
+  // Print summary report
+  console.log(colors.bold('\nReset Summary:'));
 
-  if (resetDb && existsSync(dbDir)) {
-    await rimraf(dbDir);
-    console.log('Wiped database folder');
+  if (actions.reset.length > 0) {
+    console.log(colors.green('  Values Cleared:'));
+    actions.reset.forEach((item) => console.log(`    • ${item}`));
   }
 
-  console.log('Environment reset complete');
+  if (actions.deleted.length > 0) {
+    console.log(colors.green('  Deleted:'));
+    actions.deleted.forEach((item) => console.log(`    • ${item}`));
+  }
+
+  if (actions.skipped.length > 0) {
+    console.log(colors.yellow('  Skipped:'));
+    actions.skipped.forEach((item) => console.log(`    • ${item}`));
+  }
+
+  if (actions.warning.length > 0) {
+    console.log(colors.red('  Warnings:'));
+    actions.warning.forEach((item) => console.log(`    • ${item}`));
+  }
+
+  console.log(colors.bold('\nEnvironment reset complete'));
 }
 
 /**
@@ -676,11 +889,12 @@ env
 // Reset subcommand
 env
   .command('reset')
-  .description('Reset all environment variables and wipe the cache folder')
-  .option('-y, --yes', 'Automatically confirm prompts')
+  .description(
+    'Reset environment variables and clean up database/cache files (interactive selection)'
+  )
+  .option('-y, --yes', 'Automatically reset using default selections')
   .action(async (options: { yes?: boolean }) => {
     try {
-      console.log('Reset options:', options);
       await resetEnv(options.yes);
     } catch (error) {
       handleError(error);
@@ -722,7 +936,9 @@ env.action(() => {
   console.log('  edit-global           Edit global environment variables');
   console.log('  edit-local            Edit local environment variables');
   console.log('  set-path <path>       Set a custom path for the global environment file');
-  console.log('  reset                 Reset all environment variables and wipe the cache folder');
+  console.log(
+    '  reset                 Reset environment variables and clean up database/cache files (interactive selection)'
+  );
   console.log('  interactive           Start interactive environment variable manager');
   console.log('\nYou can also edit environment variables in the web UI:');
   console.log('  http://localhost:3000/settings');
