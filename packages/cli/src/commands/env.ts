@@ -585,8 +585,8 @@ async function resetEnv(yes = false): Promise<void> {
   let selectedValues: ResetTarget[] = [];
 
   if (yes) {
-    // Use default selections if using --yes flag
-    selectedValues = resetItems.filter((item) => item.selected).map((item) => item.value);
+    // When using --yes flag, include all reset items rather than relying on selected flag
+    selectedValues = resetItems.map((item) => item.value);
   } else {
     // Prompt user to select items with styling matching interactive mode
     const { selections } = await prompts({
