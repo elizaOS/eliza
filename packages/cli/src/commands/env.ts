@@ -658,7 +658,7 @@ async function resetEnv(yes = false): Promise<void> {
         await safeDeleteDirectory(cacheDir, actions, 'Cache folder');
         break;
 
-      case 'globalDb':
+      case 'globalDb': {
         if (usingExternalPostgres) {
           actions.warning.push(
             'External PostgreSQL database detected. Database data cannot be reset but local database cache files will be removed.'
@@ -688,6 +688,7 @@ async function resetEnv(yes = false): Promise<void> {
           actions.skipped.push('Global database files (not found)');
         }
         break;
+      }
 
       case 'localDb':
         await safeDeleteDirectory(localDbDir, actions, 'Local database folder');
