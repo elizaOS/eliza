@@ -57,6 +57,7 @@
     "commander": "^10.0.0",
     "diff": "^5.1.0",
     "dotenv": "^16.4.5",
+    "esbuild-plugin-copy": "^2.1.1",
     "execa": "^7.0.0",
     "fs-extra": "^11.1.0",
     "glob": "^11.0.0",

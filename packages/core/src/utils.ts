@@ -5,6 +5,14 @@ import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
 import pkg from 'stream-browserify';
 import { names, uniqueNamesGenerator } from 'unique-names-generator';
 import { z } from 'zod';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
+
+// Explicitly set the workerSrc.
+// This tells pdf.js where to load its worker script from.
+// Your application's build process (e.g., for packages/cli) must ensure that
+// 'pdf.worker.mjs' is available at a path relative to the main script or application root.
+// A common setup is to copy 'node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs' to the output directory.
+pdfjsLib.GlobalWorkerOptions.workerSrc = './pdf.worker.mjs';
 
 import type { Content, Entity, IAgentRuntime, Memory, State, TemplateType } from './types';
 import { ModelType, UUID } from './types';
@@ -731,4 +739,34 @@ export function getProviderBaseURL(
   defaultBaseURL: string
 ): string {
   return defaultBaseURL;
+}
+
+/**
+ * Converts a PDF file (provided as a Buffer) into raw text.
+ * @param pdfBuffer The PDF file content as a Buffer.
+ * @returns A Promise that resolves to the extracted text string.
+ */
+export async function convertPdfToText(pdfBuffer: Buffer): Promise<string> {
+  try {
+    const uint8ArrayBuffer = new Uint8Array(pdfBuffer);
+    const loadingTask = pdfjsLib.getDocument({ data: uint8ArrayBuffer });
+    const pdfDocument = await loadingTask.promise;
+    let fullText = '';
+
+    for (let i = 1; i <= pdfDocument.numPages; i++) {
+      const page = await pdfDocument.getPage(i);
+      const textContent = await page.getTextContent();
+      // Filter for items that are TextItem and have the 'str' property
+      const pageText = textContent.items
+        .filter((item) => 'str' in item)
+        .map((item) => (item as any).str) // Cast to any to access str after filtering, or use a proper type guard
+        .join(' ');
+      fullText += pageText + (textContent.items.length > 0 ? '\n' : '');
+    }
+    return fullText.trim();
+  } catch (error) {
+    console.error('Error parsing PDF with pdfjs-dist:', error);
+    logger.error('[convertPdfToText] Error parsing PDF with pdfjs-dist:', { error });
+    throw new Error('Failed to convert PDF to text using pdfjs-dist.');
+  }
 }
