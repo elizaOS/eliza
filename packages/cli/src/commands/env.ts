@@ -729,7 +729,8 @@ async function resetEnv(yes = false): Promise<void> {
 async function setEnvPath(customPath: string, autoConfirm = false): Promise<void> {
   // Expand tilde (~) in the path if present
   if (customPath.startsWith('~')) {
-    customPath = path.join(os.homedir(), customPath.substring(1));
+    // Use string concatenation instead of path.join to preserve slashes
+    customPath = os.homedir() + customPath.substring(1);
   }
 
   // Validate the path
