@@ -229,13 +229,11 @@ const messageReceivedHandler = async ({
           return;
         }
 
-        let state = await runtime.composeState(message, [
-          'ANXIETY',
-          'SHOULD_RESPOND',
-          'ENTITIES',
-          'CHARACTER',
-          'RECENT_MESSAGES',
-        ]);
+        let state = await runtime.composeState(
+          message,
+          ['ANXIETY', 'SHOULD_RESPOND', 'ENTITIES', 'CHARACTER', 'RECENT_MESSAGES'],
+          true
+        );
 
         // Skip shouldRespond check for DM and VOICE_DM channels
         const room = await runtime.getRoom(message.roomId);
