@@ -18,14 +18,14 @@ elizaos env [command] [options]
 
 ## Subcommands
 
-| Subcommand        | Description                                               | Options               |
-| ----------------- | --------------------------------------------------------- | --------------------- |
-| `list`            | List all environment variables                            | `--global`, `--local` |
-| `edit-global`     | Edit global environment variables                         | `-y, --yes`           |
-| `edit-local`      | Edit local environment variables                          | `-y, --yes`           |
-| `reset`           | Reset all environment variables and wipe the cache folder | `-y, --yes`           |
-| `set-path <path>` | Set a custom path for the global environment file         | `-y, --yes`           |
-| `interactive`     | Start interactive environment variable manager            | `-y, --yes`           |
+| Subcommand        | Description                                                   | Options                           |
+| ----------------- | ------------------------------------------------------------- | --------------------------------- |
+| `list`            | List all environment variables                                | `--system`, `--global`, `--local` |
+| `edit-global`     | Edit global environment variables                             | `-y, --yes`                       |
+| `edit-local`      | Edit local environment variables                              | `-y, --yes`                       |
+| `reset`           | Reset environment variables and clean up database/cache files | `-y, --yes`                       |
+| `set-path <path>` | Set a custom path for the global environment file             | `-y, --yes`                       |
+| `interactive`     | Start interactive environment variable manager                | `-y, --yes`                       |
 
 ## Environment Levels
 
@@ -64,6 +64,14 @@ elizaos env list
 
 This will display both global and local variables (if available).
 
+You can also filter the output:
+
+```bash
+elizaos env list --system  # Show only system information
+elizaos env list --global  # Show only global environment variables
+elizaos env list --local   # Show only local environment variables
+```
+
 ### Editing Global Variables
 
 Edit the global environment variables interactively:
@@ -99,20 +107,31 @@ elizaos env set-path /path/to/custom/location
 
 If the specified path is a directory, the command will use `/path/to/custom/location/.env`.
 
-### Resetting Environment Variables
+The command supports tilde expansion, so you can use paths like `~/eliza-config/.env`.
 
-Reset all environment variables and clear the cache:
+### Resetting Environment Variables and Data
+
+Reset environment variables and optionally delete database and cache files:
 
 ```bash
 elizaos env reset
 ```
 
-This will:
+This command provides an interactive selection interface where you can choose which items to reset:
 
-1. Remove the global `.env` file
-2. Clear any custom environment path setting
-3. Wipe the cache folder
-4. Optionally reset the database folder (you'll be prompted)
+- **Global environment variables** - Clears values in global `.env` file while preserving keys
+- **Local environment variables** - Clears values in local `.env` file while preserving keys
+- **Cache folder** - Deletes the cache folder
+- **Global database files** - Deletes global database files (with special handling for PostgreSQL)
+- **Local database files** - Deletes local database files
+
+After selecting items, you'll be shown a summary and asked for confirmation before proceeding.
+
+Use the `-y, --yes` flag to automatically reset using default selections:
+
+```bash
+elizaos env reset --yes
+```
 
 ## Key Variables
 
@@ -148,6 +167,12 @@ elizaos env list
 Output example:
 
 ```
+System Information:
+  Platform: darwin (24.3.0)
+  Architecture: arm64
+  CLI Version: 1.0.0-beta.51
+  Package Manager: bun v1.2.5
+
 Global environment variables (.eliza/.env):
   OPENAI_API_KEY: sk-1234...5678
   MODEL_PROVIDER: openai
@@ -175,6 +200,16 @@ elizaos env edit-global
 
 # Edit only local variables
 elizaos env edit-local
+```
+
+### Resetting Environment
+
+```bash
+# Interactive reset with selection
+elizaos env reset
+
+# Reset with default selections
+elizaos env reset --yes
 ```
 
 ## Related Commands
