@@ -62,7 +62,17 @@ jobs:
             path="$MODEL_DIR/$name"
             if [ ! -f "$path" ]; then
               echo "Downloading $name..."
-              curl -L -f --progress-bar -o "$path" "$url"
+              start=$(date +%s)
+              curl -L -f -sS -o "$path" "$url"
+              status=$?
+              end=$(date +%s)
+              duration=$((end - start))
+              if [ $status -eq 0 ]; then
+                echo "Downloaded $name in ${duration}s."
+              else
+                echo "Failed to download $name after ${duration}s."
+                exit 1
+              fi
             else
               echo "$name already exists, skipping."
             fi
