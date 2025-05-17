@@ -210,7 +210,7 @@ pluginsCmd
       const okPackages = ['@elizaos/client-direct', '@elizaos/core', '@elizaos/core-plugin-v1', '@elizaos/plugin-bootstrap']
       for (const dep in deps) {
         if (okPackages.indexOf(dep) !== -1) continue // skip these, they're fine
-        // do we want/need to perserve local packages like core?
+        // do we want/need to preserve local packages like core?
         if (dep.startsWith("@elizaos/")) {
           const newDep = dep.replace("@elizaos/", "@elizaos-plugins/")
           deps[newDep] = deps[dep]

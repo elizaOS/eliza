@@ -682,7 +682,7 @@ export type Plugin = {
     /** Optional adapters */
     adapters?: Adapter[];
 
-    /** Optional post charactor processor handler */
+    /** Optional post character processor handler */
     handlePostCharacterLoaded?: (char: Character) => Promise<Character>;
 };
 

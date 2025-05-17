@@ -475,7 +475,7 @@ export class AgentRuntime implements IAgentRuntime {
             }
         }
 
-        // should already be initiailized
+        // should already be initialized
         /*
         for (const plugin of this.plugins) {
             if (plugin.services)

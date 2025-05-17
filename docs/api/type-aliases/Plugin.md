@@ -76,7 +76,7 @@ Optional adapters
 
 > `optional` **handlePostCharacterLoaded**: (`char`) => `Promise`\<[`Character`](Character.md)\>
 
-Optional post charactor processor handler
+Optional post character processor handler
 
 #### Parameters
 
