@@ -168,22 +168,25 @@ export abstract class BaseDrizzleAdapter<
    * @returns {Promise<void>} - Resolves once the embedding dimension is ensured.
    */
   async ensureEmbeddingDimension(dimension: number) {
-    const existingMemory = await this.db
-      .select({
-        embedding: embeddingTable,
-      })
-      .from(memoryTable)
-      .innerJoin(embeddingTable, eq(embeddingTable.memoryId, memoryTable.id))
-      .where(eq(memoryTable.agentId, this.agentId))
-      .limit(1);
+    return this.withDatabase(async () => {
+      const existingMemory = await this.db
+        .select({
+          embedding: embeddingTable,
+        })
+        .from(memoryTable)
+        .innerJoin(embeddingTable, eq(embeddingTable.memoryId, memoryTable.id))
+        .where(eq(memoryTable.agentId, this.agentId))
+        .limit(1);
 
-    if (existingMemory.length > 0) {
-      const usedDimension = Object.entries(DIMENSION_MAP).find(
-        ([_, colName]) => existingMemory[0].embedding[colName] !== null
-      );
-    }
+      if (existingMemory.length > 0) {
+        const usedDimension = Object.entries(DIMENSION_MAP).find(
+          ([_, colName]) => existingMemory[0].embedding[colName] !== null
+        );
+        // We don't actually need to use usedDimension for now, but it's good to know it's there.
+      }
 
-    this.embeddingDimension = DIMENSION_MAP[dimension];
+      this.embeddingDimension = DIMENSION_MAP[dimension];
+    });
   }
 
   /**
@@ -206,6 +209,8 @@ export abstract class BaseDrizzleAdapter<
         ...row,
         username: row.username || '',
         id: row.id as UUID,
+        system: row.system === null ? undefined : row.system,
+        bio: row.bio === null ? '' : row.bio,
       };
     });
   }
@@ -227,6 +232,7 @@ export abstract class BaseDrizzleAdapter<
       return rows.map((row) => ({
         ...row,
         id: row.id as UUID,
+        bio: row.bio === null ? '' : row.bio,
       }));
     });
   }
@@ -2588,7 +2594,7 @@ export abstract class BaseDrizzleAdapter<
         return result.map((row) => ({
           id: row.id as UUID,
           name: row.name,
-          description: row.description,
+          description: row.description ?? '',
           roomId: row.roomId as UUID,
           worldId: row.worldId as UUID,
           tags: row.tags || [],
@@ -2614,7 +2620,7 @@ export abstract class BaseDrizzleAdapter<
         return result.map((row) => ({
           id: row.id as UUID,
           name: row.name,
-          description: row.description,
+          description: row.description ?? '',
           roomId: row.roomId as UUID,
           worldId: row.worldId as UUID,
           tags: row.tags || [],
@@ -2646,7 +2652,7 @@ export abstract class BaseDrizzleAdapter<
         return {
           id: row.id as UUID,
           name: row.name,
-          description: row.description,
+          description: row.description ?? '',
           roomId: row.roomId as UUID,
           worldId: row.worldId as UUID,
           tags: row.tags || [],
