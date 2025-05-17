@@ -173,6 +173,7 @@ const character: Partial<Character> = {
     '@elizaos/plugin-pdf',
     '@elizaos/plugin-video-understanding',
     '@elizaos/plugin-bootstrap',
+    '@elizaos/plugin-rag',
   ],
   settings: {
     secrets: {

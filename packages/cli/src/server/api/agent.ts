@@ -1017,7 +1017,7 @@ export function agentRouter(
       }
 
       try {
-        const audioBuffer = fs.readFileSync(audioFile.path);
+        const audioBuffer = await fs.promises.readFile(audioFile.path);
         const transcription = await runtime.useModel(ModelType.TRANSCRIPTION, audioBuffer);
 
         // Process the transcribed text as a message
@@ -1389,7 +1389,7 @@ export function agentRouter(
 
       try {
         logger.debug('[TRANSCRIPTION] Reading audio file');
-        const audioBuffer = fs.readFileSync(audioFile.path);
+        const audioBuffer = await fs.promises.readFile(audioFile.path);
 
         logger.debug('[TRANSCRIPTION] Transcribing audio');
         const transcription = await runtime.useModel(ModelType.TRANSCRIPTION, audioBuffer);
@@ -1618,56 +1618,157 @@ export function agentRouter(
     const agentId = validateUuid(req.params.agentId);
 
     if (!agentId) {
-      res.status(400).json({
-        success: false,
-        error: {
-          code: 'INVALID_ID',
-          message: 'Invalid agent ID format',
-        },
-      });
+      sendError(res, 400, 'INVALID_ID', 'Invalid agent ID format');
       return;
     }
 
     const runtime = agents.get(agentId);
 
     if (!runtime) {
-      res.status(404).json({
-        success: false,
-        error: {
-          code: 'NOT_FOUND',
-          message: 'Agent not found',
-        },
-      });
+      sendError(res, 404, 'NOT_FOUND', 'Agent not found');
       return;
     }
 
     const files = req.files as Express.Multer.File[];
 
     if (!files || files.length === 0) {
-      res.status(400).json({
-        success: false,
-        error: {
-          code: 'NO_FILES',
-          message: 'No files uploaded',
-        },
-      });
+      sendError(res, 400, 'NO_FILES', 'No files uploaded');
       return;
     }
 
     try {
       const results = [];
+      const ragService = runtime.getService('rag') as any;
 
+      if (ragService && typeof ragService.addKnowledge === 'function') {
+        logger.info(
+          `[KNOWLEDGE POST] Agent ${agentId}: RAG service is active. Processing with RagService.`
+        );
+
+        const processingPromises = files.map(async (file, index) => {
+          let clientDocumentId: UUID;
+          const originalFilename = file.originalname;
+          const contentType = file.mimetype;
+          const worldId = (req.body.worldId as UUID) || runtime.agentId;
+          const filePath = file.path;
+
+          // Define clientDocumentId early for error reporting and consistent use
+          clientDocumentId =
+            (req.body?.documentIds && req.body.documentIds[index]) ||
+            req.body?.documentId ||
+            (createUniqueUuid(runtime, `knowledge-${originalFilename}-${Date.now()}`) as UUID);
+
+          try {
+            const fileBuffer = await fs.promises.readFile(filePath);
+
+            return new Promise((resolve) => {
+              ragService
+                .addKnowledge(
+                  clientDocumentId,
+                  fileBuffer,
+                  contentType,
+                  originalFilename,
+                  worldId,
+                  (
+                    error: Error | null,
+                    result?: { clientDocumentId: UUID; storedDocumentMemoryId: UUID }
+                  ) => {
+                    cleanupFile(filePath); // Clean up temp file after processing attempt
+                    if (error) {
+                      logger.error(
+                        `[KNOWLEDGE POST] Error during RAG processing for ${originalFilename} (ID: ${clientDocumentId}) for agent ${agentId}: ${error.message}`,
+                        error
+                      );
+                      resolve({
+                        clientDocumentId: clientDocumentId,
+                        filename: originalFilename,
+                        status: 'error_processing_document',
+                        error: error.message,
+                      });
+                    } else if (result) {
+                      logger.info(
+                        `[KNOWLEDGE POST] Main document ${originalFilename} (Client ID: ${result.clientDocumentId}, DB ID: ${result.storedDocumentMemoryId}) stored for agent ${agentId}. Background fragment processing initiated.`
+                      );
+                      resolve({
+                        clientDocumentId: result.clientDocumentId,
+                        dbDocumentId: result.storedDocumentMemoryId,
+                        filename: originalFilename,
+                        status: 'main_document_stored_processing_fragments',
+                        uploadedAt: Date.now(),
+                      });
+                    }
+                  }
+                )
+                .catch((serviceCallError) => {
+                  cleanupFile(filePath); // Cleanup if addKnowledge call itself fails synchronously
+                  logger.error(
+                    `[KNOWLEDGE POST] Synchronous error calling ragService.addKnowledge for ${originalFilename} (ID: ${clientDocumentId}): ${serviceCallError.message}`,
+                    serviceCallError
+                  );
+                  resolve({
+                    clientDocumentId: clientDocumentId,
+                    filename: originalFilename,
+                    status: 'error_initiating_processing',
+                    error: serviceCallError.message,
+                  });
+                });
+            });
+          } catch (fileProcessingError) {
+            cleanupFile(filePath); // Cleanup on synchronous error (e.g., readFileSync)
+            logger.error(
+              `[KNOWLEDGE POST] Synchronous error preparing file ${originalFilename} for RAG: ${fileProcessingError.message}`,
+              fileProcessingError
+            );
+            return Promise.resolve({
+              // Ensure it's a promise for Promise.all
+              clientDocumentId: clientDocumentId,
+              filename: originalFilename,
+              status: 'error_preparing_file',
+              error: fileProcessingError.message,
+            });
+          }
+        });
+
+        const finalResults = await Promise.all(processingPromises);
+        sendSuccess(res, finalResults);
+        return;
+      }
+
+      // Generic logic if RAG service is not active
+      logger.info(
+        `[KNOWLEDGE POST] Agent ${agentId}: RAG service not active. Using generic knowledge add.`
+      );
       for (const file of files) {
         try {
-          // Read file content
-          const content = fs.readFileSync(file.path, 'utf8');
+          // Check if the file is a PDF and RAG service is not active
+          if (file.mimetype === 'application/pdf') {
+            const errorMsg =
+              'RAG plugin is required to process PDF files. Please enable the RAG plugin.';
+            logger.warn(
+              `[KNOWLEDGE POST] Attempted to upload PDF without RAG plugin for agent ${agentId}. File: ${file.originalname}`
+            );
+            // Add to results with an error status for this specific file
+            results.push({
+              filename: file.originalname,
+              status: 'error_pdf_requires_rag',
+              error: errorMsg,
+            });
+            cleanupFile(file.path); // Clean up the unprocessed PDF file
+            continue; // Skip to the next file
+          }
 
-          // Format the content with Path: prefix like in the devRel/index.ts example
+          // Read file content into a buffer
+          const fileBuffer = await fs.promises.readFile(file.path);
+          let extractedTextForContent = fileBuffer.toString('utf8');
           const relativePath = file.originalname;
-          const formattedContent = `Path: ${relativePath}\n\n${content}`;
+
+          const formattedMainText = `Path: ${relativePath}\n\n${extractedTextForContent}`;
 
           // Create knowledge item with proper metadata
-          const knowledgeId = createUniqueUuid(runtime, `knowledge-${Date.now()}`);
+          const knowledgeId = createUniqueUuid(
+            runtime,
+            `knowledge-${file.originalname}-${Date.now()}`
+          );
           const fileExt = file.originalname.split('.').pop()?.toLowerCase() || '';
           const filename = file.originalname;
           const title = filename.replace(`.${fileExt}`, '');
@@ -1675,7 +1776,7 @@ export function agentRouter(
           const knowledgeItem = {
             id: knowledgeId,
             content: {
-              text: formattedContent,
+              text: formattedMainText,
             },
             metadata: {
               type: MemoryType.DOCUMENT,
@@ -1692,15 +1793,14 @@ export function agentRouter(
 
           // Add knowledge to agent
           await runtime.addKnowledge(knowledgeItem, undefined, {
-            roomId: undefined,
-            worldId: runtime.agentId,
-            entityId: runtime.agentId,
+            // Scope knowledge appropriately. If worldId is not available, consider agentId or a default.
+            // Assuming worldId might come from req.body or a default for API uploads.
+            worldId: (req.body.worldId as UUID) || runtime.agentId,
+            entityId: runtime.agentId, // Typically, knowledge uploaded by an agent is for that agent.
           });
 
           // Clean up temp file immediately after successful processing
-          if (file.path && fs.existsSync(file.path)) {
-            fs.unlinkSync(file.path);
-          }
+          cleanupFile(file.path);
 
           results.push({
             id: knowledgeId,
@@ -1709,21 +1809,23 @@ export function agentRouter(
             size: file.size,
             uploadedAt: Date.now(),
             preview:
-              formattedContent.length > 0
-                ? `${formattedContent.substring(0, 150)}${formattedContent.length > 150 ? '...' : ''}`
+              formattedMainText.length > 0
+                ? `${formattedMainText.substring(0, 150)}${formattedMainText.length > 150 ? '...' : ''}`
                 : 'No preview available',
           });
         } catch (fileError) {
           logger.error(`[KNOWLEDGE POST] Error processing file ${file.originalname}: ${fileError}`);
-          cleanupFile(file.path);
+          cleanupFile(file.path); // Ensure cleanup on error too
+          results.push({
+            filename: file.originalname,
+            status: 'error_processing_generic',
+            error: fileError.message,
+          });
           // Continue with other files even if one fails
         }
       }
 
-      res.json({
-        success: true,
-        data: results,
-      });
+      sendSuccess(res, results);
     } catch (error) {
       logger.error(`[KNOWLEDGE POST] Error uploading knowledge: ${error}`);
 
