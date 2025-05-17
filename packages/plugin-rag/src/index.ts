@@ -13,6 +13,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Buffer } from 'node:buffer';
 import { extractTextFromFileBuffer } from './utils'; // Import the utility function
+import { validateModelConfig } from './llm'; // Import the validation function
 
 // Get __dirname in ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -119,30 +120,22 @@ export class RagService extends Service {
       logger.info(`Initializing new RAG worker for agentId: ${agentId}`);
       const workerPath = path.resolve(__dirname, 'rag.worker.js'); // Assuming .ts worker is compiled to .js
 
+      // Simplified workerData - only pass the agentId and database config
+      // All other settings will be read from environment variables
       const dbConfig = this.getDbConfigForWorker();
       logger.debug(`Resolved DB config for worker ${agentId}:`, dbConfig);
 
-      // Get contextual RAG settings
-      const ctxRagEnabledSetting = this.runtime.getSetting('CTX_RAG_ENABLED');
-      const ctxRagEnabled = ctxRagEnabledSetting === 'true' || ctxRagEnabledSetting === true;
-      // Default to claude-3-haiku-20240307 if not set, as per cookbook and common small models
-      const ctxRagModel = this.runtime.getSetting('CTX_RAG_MODEL') || 'claude-3-haiku-20240307';
-
-      if (ctxRagEnabled) {
-        logger.info(`Contextual RAG is ENABLED for agent ${agentId} using model ${ctxRagModel}`);
-      } else {
-        logger.info(`Contextual RAG is DISABLED for agent ${agentId}`);
-      }
-
-      const workerData: RagWorkerData = {
+      // Simplified workerData - only include essential identifying information
+      const workerData: {
+        agentId: string;
+        dbConfig: WorkerDbConfig;
+      } = {
         agentId,
         dbConfig,
-        ctxRagEnabled,
-        ctxRagModel,
       };
 
       const worker = new Worker(workerPath, {
-        workerData, // Pass structured workerData
+        workerData,
       }) as RagWorker;
 
       // Setup a promise that resolves when the worker is ready
@@ -508,12 +501,42 @@ export const ragPlugin: Plugin = {
   description:
     'Plugin for Retrieval Augmented Generation, including knowledge management and embedding.',
   config: {
-    EXAMPLE_PLUGIN_VARIABLE: process.env.EXAMPLE_PLUGIN_VARIABLE,
+    // Required env variables for the plugin
+    EMBEDDING_PROVIDER: process.env.EMBEDDING_PROVIDER,
+    TEXT_PROVIDER: process.env.TEXT_PROVIDER,
+    TEXT_EMBEDDING_MODEL: process.env.TEXT_EMBEDDING_MODEL,
+    TEXT_MODEL: process.env.TEXT_MODEL,
+
+    // API keys (will depend on selected providers)
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+    OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+    GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
+
+    // Optional base URLs
+    OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
+    ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL,
+    OPENROUTER_BASE_URL: process.env.OPENROUTER_BASE_URL,
+    GOOGLE_BASE_URL: process.env.GOOGLE_BASE_URL,
+
+    // Token limits
+    MAX_INPUT_TOKENS: process.env.MAX_INPUT_TOKENS,
+    MAX_OUTPUT_TOKENS: process.env.MAX_OUTPUT_TOKENS,
+
+    // Contextual RAG settings
+    CTX_RAG_ENABLED: process.env.CTX_RAG_ENABLED || 'false',
+
+    // Legacy settings (for backwards compatibility)
     RAG_PLUGIN_SETTING: process.env.RAG_PLUGIN_SETTING,
   },
   async init(config: Record<string, string>, runtime?: IAgentRuntime) {
     logger.info('Initializing RAG Plugin...');
     try {
+      // Validate the model configuration
+      logger.info('Validating model configuration for RAG plugin...');
+      validateModelConfig();
+      logger.info('Model configuration validated successfully.');
+
       if (runtime) {
         logger.info(
           `RAG Plugin global init for agent: ${runtime.agentId}. Per-agent RAG services will manage their own workers.`
