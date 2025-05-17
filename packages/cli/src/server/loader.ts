@@ -175,18 +175,41 @@ export async function loadCharacterTryPath(characterPath: string): Promise<Chara
     }
   }
 
-  const pathsToTry = [
-    characterPath,
-    path.resolve(process.cwd(), characterPath),
-    path.resolve(process.cwd(), '..', '..', characterPath),
-    path.resolve(process.cwd(), '..', '..', '..', characterPath),
-    path.resolve(process.cwd(), 'agent', characterPath),
-    path.resolve(__dirname, characterPath),
-    path.resolve(__dirname, 'characters', path.basename(characterPath)),
-    path.resolve(__dirname, '../characters', path.basename(characterPath)),
-    path.resolve(__dirname, '../../characters', path.basename(characterPath)),
-    path.resolve(__dirname, '../../../characters', path.basename(characterPath)),
+  // Create path variants with and without .json extension
+  const hasJsonExtension = characterPath.toLowerCase().endsWith('.json');
+  const basePath = hasJsonExtension ? characterPath : characterPath;
+  const jsonPath = hasJsonExtension ? characterPath : `${characterPath}.json`;
+
+  const basePathsToTry = [
+    basePath,
+    path.resolve(process.cwd(), basePath),
+    path.resolve(process.cwd(), '..', '..', basePath),
+    path.resolve(process.cwd(), '..', '..', '..', basePath),
+    path.resolve(process.cwd(), 'agent', basePath),
+    path.resolve(__dirname, basePath),
+    path.resolve(__dirname, 'characters', path.basename(basePath)),
+    path.resolve(__dirname, '../characters', path.basename(basePath)),
+    path.resolve(__dirname, '../../characters', path.basename(basePath)),
+    path.resolve(__dirname, '../../../characters', path.basename(basePath)),
   ];
+
+  const jsonPathsToTry = hasJsonExtension
+    ? []
+    : [
+        jsonPath,
+        path.resolve(process.cwd(), jsonPath),
+        path.resolve(process.cwd(), '..', '..', jsonPath),
+        path.resolve(process.cwd(), '..', '..', '..', jsonPath),
+        path.resolve(process.cwd(), 'agent', jsonPath),
+        path.resolve(__dirname, jsonPath),
+        path.resolve(__dirname, 'characters', path.basename(jsonPath)),
+        path.resolve(__dirname, '../characters', path.basename(jsonPath)),
+        path.resolve(__dirname, '../../characters', path.basename(jsonPath)),
+        path.resolve(__dirname, '../../../characters', path.basename(jsonPath)),
+      ];
+
+  // Combine the paths to try both variants
+  const pathsToTry = Array.from(new Set([...basePathsToTry, ...jsonPathsToTry]));
 
   let lastError = null;
 

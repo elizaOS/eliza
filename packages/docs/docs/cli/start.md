@@ -18,13 +18,12 @@ elizaos start [options]
 
 ## Options
 
-| Option                           | Description                                              |
-| -------------------------------- | -------------------------------------------------------- |
-| `-c, --configure`                | Reconfigure services and AI models                       |
-| `-char, --character <character>` | Path or URL to character file to use instead of default  |
-| `-b, --build`                    | Build the project before starting                        |
-| `-chars, --characters <paths>`   | Multiple character configuration files (comma-separated) |
-| `-p, --port <port>`              | Port to listen on (default: 3000)                        |
+| Option                          | Description                        |
+| ------------------------------- | ---------------------------------- |
+| `-p, --port <port>`             | Port to listen on (default: 3000)  |
+| `-c, --configure`               | Reconfigure services and AI models |
+| `-char, --character [paths...]` | Character file(s) to use           |
+| `-b, --build`                   | Build the project before starting  |
 
 ## Production Features
 
@@ -92,10 +91,23 @@ elizaos start --configure
 elizaos start --port 8080
 ```
 
-### Starting with a custom character
+### Starting with a single character
 
 ```bash
 elizaos start --character path/to/character.json
+```
+
+### Starting with multiple characters
+
+```bash
+# Pass multiple characters separated by spaces
+elizaos start --character ./character1.json ./character2.json
+
+# Or by commas
+elizaos start --character "character1.json,character2.json"
+
+# Characters can be specified without the .json extension
+elizaos start --character character1 character2
 ```
 
 ## Building Before Starting
