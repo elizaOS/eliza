@@ -186,7 +186,7 @@ packages/
 ## File: packages/docs/api/classes/AgentRuntime.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / AgentRuntime
+[@elizaos/core v1.0.0-beta.51](../index.md) / AgentRuntime
 
 # Class: AgentRuntime
 
@@ -1127,7 +1127,7 @@ Optional target element identifier
 ## File: packages/docs/api/classes/DatabaseAdapter.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / DatabaseAdapter
+[@elizaos/core v1.0.0-beta.51](../index.md) / DatabaseAdapter
 
 # Class: `abstract` DatabaseAdapter\<DB\>
 
@@ -2945,7 +2945,7 @@ Promise resolving when the deletion is complete
 ## File: packages/docs/api/classes/Service.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / Service
+[@elizaos/core v1.0.0-beta.51](../index.md) / Service
 
 # Class: `abstract` Service
 
@@ -3051,7 +3051,7 @@ Stop service connection
 ## File: packages/docs/api/enumerations/EventType.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / EventType
+[@elizaos/core v1.0.0-beta.51](../index.md) / EventType
 
 # Enumeration: EventType
 
@@ -3291,7 +3291,7 @@ Standard event types across all platforms
 ## File: packages/docs/api/enumerations/PlatformPrefix.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / PlatformPrefix
+[@elizaos/core v1.0.0-beta.51](../index.md) / PlatformPrefix
 
 # Enumeration: PlatformPrefix
 
@@ -3331,7 +3331,7 @@ Platform-specific event type prefix
 ## File: packages/docs/api/enumerations/SOCKET_MESSAGE_TYPE.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / SOCKET_MESSAGE_TYPE
+[@elizaos/core v1.0.0-beta.51](../index.md) / SOCKET_MESSAGE_TYPE
 
 # Enumeration: SOCKET_MESSAGE_TYPE
 
@@ -3401,7 +3401,7 @@ Update the Plugin interface with typed events
 ## File: packages/docs/api/functions/addHeader.md
 
 ````markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / addHeader
+[@elizaos/core v1.0.0-beta.51](../index.md) / addHeader
 
 # Function: addHeader()
 
@@ -3448,7 +3448,7 @@ const text = addHeader(header, body);
 ## File: packages/docs/api/functions/asUUID.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / asUUID
+[@elizaos/core v1.0.0-beta.51](../index.md) / asUUID
 
 # Function: asUUID()
 
@@ -3476,7 +3476,7 @@ The same UUID with branded type information
 ## File: packages/docs/api/functions/cleanJsonResponse.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / cleanJsonResponse
+[@elizaos/core v1.0.0-beta.51](../index.md) / cleanJsonResponse
 
 # Function: cleanJsonResponse()
 
@@ -3505,7 +3505,7 @@ The cleaned string, ready for parsing or further processing.
 ## File: packages/docs/api/functions/composeActionExamples.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / composeActionExamples
+[@elizaos/core v1.0.0-beta.51](../index.md) / composeActionExamples
 
 # Function: composeActionExamples()
 
@@ -3537,7 +3537,7 @@ The formatted action examples.
 ## File: packages/docs/api/functions/composePrompt.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / composePrompt
+[@elizaos/core v1.0.0-beta.51](../index.md) / composePrompt
 
 # Function: composePrompt()
 
@@ -3573,7 +3573,7 @@ The composed prompt output.
 ## File: packages/docs/api/functions/composePromptFromState.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / composePromptFromState
+[@elizaos/core v1.0.0-beta.51](../index.md) / composePromptFromState
 
 # Function: composePromptFromState()
 
@@ -3609,7 +3609,7 @@ The composed prompt output.
 ## File: packages/docs/api/functions/composeRandomUser.md
 
 ````markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / composeRandomUser
+[@elizaos/core v1.0.0-beta.51](../index.md) / composeRandomUser
 
 # Function: composeRandomUser()
 
@@ -3657,7 +3657,7 @@ const result = composeRandomUser(template, length);
 ## File: packages/docs/api/functions/createMessageMemory.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / createMessageMemory
+[@elizaos/core v1.0.0-beta.51](../index.md) / createMessageMemory
 
 # Function: createMessageMemory()
 
@@ -3693,7 +3693,7 @@ Factory function to create a new message memory with proper defaults
 ## File: packages/docs/api/functions/createServiceError.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / createServiceError
+[@elizaos/core v1.0.0-beta.51](../index.md) / createServiceError
 
 # Function: createServiceError()
 
@@ -3719,7 +3719,7 @@ Safely create a ServiceError from any caught error
 ## File: packages/docs/api/functions/createSettingFromConfig.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / createSettingFromConfig
+[@elizaos/core v1.0.0-beta.51](../index.md) / createSettingFromConfig
 
 # Function: createSettingFromConfig()
 
@@ -3747,7 +3747,7 @@ A new Setting object created from the provided configSetting object.
 ## File: packages/docs/api/functions/createUniqueUuid.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / createUniqueUuid
+[@elizaos/core v1.0.0-beta.51](../index.md) / createUniqueUuid
 
 # Function: createUniqueUuid()
 
@@ -3779,7 +3779,7 @@ The base user ID to use in generating the UUID.
 ## File: packages/docs/api/functions/decryptedCharacter.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / decryptedCharacter
+[@elizaos/core v1.0.0-beta.51](../index.md) / decryptedCharacter
 
 # Function: decryptedCharacter()
 
@@ -3811,7 +3811,7 @@ The runtime information needed for salt generation
 ## File: packages/docs/api/functions/decryptObjectValues.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / decryptObjectValues
+[@elizaos/core v1.0.0-beta.51](../index.md) / decryptObjectValues
 
 # Function: decryptObjectValues()
 
@@ -3843,7 +3843,7 @@ The salt to use for decryption
 ## File: packages/docs/api/functions/decryptStringValue.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / decryptStringValue
+[@elizaos/core v1.0.0-beta.51](../index.md) / decryptStringValue
 
 # Function: decryptStringValue()
 
@@ -3875,7 +3875,7 @@ The salt to use for decryption
 ## File: packages/docs/api/functions/encryptedCharacter.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / encryptedCharacter
+[@elizaos/core v1.0.0-beta.51](../index.md) / encryptedCharacter
 
 # Function: encryptedCharacter()
 
@@ -3903,7 +3903,7 @@ The character object to encrypt secrets for
 ## File: packages/docs/api/functions/encryptObjectValues.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / encryptObjectValues
+[@elizaos/core v1.0.0-beta.51](../index.md) / encryptObjectValues
 
 # Function: encryptObjectValues()
 
@@ -3935,7 +3935,7 @@ The salt to use for encryption
 ## File: packages/docs/api/functions/encryptStringValue.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / encryptStringValue
+[@elizaos/core v1.0.0-beta.51](../index.md) / encryptStringValue
 
 # Function: encryptStringValue()
 
@@ -3967,7 +3967,7 @@ The salt to use for encryption
 ## File: packages/docs/api/functions/extractAttributes.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / extractAttributes
+[@elizaos/core v1.0.0-beta.51](../index.md) / extractAttributes
 
 # Function: extractAttributes()
 
@@ -3999,7 +3999,7 @@ An object containing the extracted attributes.
 ## File: packages/docs/api/functions/findEntityByName.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / findEntityByName
+[@elizaos/core v1.0.0-beta.51](../index.md) / findEntityByName
 
 # Function: findEntityByName()
 
@@ -4035,7 +4035,7 @@ A promise that resolves to the found entity or null if not found.
 ## File: packages/docs/api/functions/findWorldsForOwner.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / findWorldsForOwner
+[@elizaos/core v1.0.0-beta.51](../index.md) / findWorldsForOwner
 
 # Function: findWorldsForOwner()
 
@@ -4061,7 +4061,7 @@ Finds a server where the given user is the owner
 ## File: packages/docs/api/functions/formatActionNames.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / formatActionNames
+[@elizaos/core v1.0.0-beta.51](../index.md) / formatActionNames
 
 # Function: formatActionNames()
 
@@ -4089,7 +4089,7 @@ A comma-separated string of action names.
 ## File: packages/docs/api/functions/formatActions.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / formatActions
+[@elizaos/core v1.0.0-beta.51](../index.md) / formatActions
 
 # Function: formatActions()
 
@@ -4117,7 +4117,7 @@ A detailed string of actions, including names and descriptions.
 ## File: packages/docs/api/functions/formatEntities.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / formatEntities
+[@elizaos/core v1.0.0-beta.51](../index.md) / formatEntities
 
 # Function: formatEntities()
 
@@ -4149,7 +4149,7 @@ A formatted string representing the entities.
 ## File: packages/docs/api/functions/formatMessages.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / formatMessages
+[@elizaos/core v1.0.0-beta.51](../index.md) / formatMessages
 
 # Function: formatMessages()
 
@@ -4185,7 +4185,7 @@ Formatted message string with timestamps and user information
 ## File: packages/docs/api/functions/getBrowserService.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / getBrowserService
+[@elizaos/core v1.0.0-beta.51](../index.md) / getBrowserService
 
 # Function: getBrowserService()
 
@@ -4209,7 +4209,7 @@ Type-safe helper for accessing the browser service
 ## File: packages/docs/api/functions/getEntityDetails.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / getEntityDetails
+[@elizaos/core v1.0.0-beta.51](../index.md) / getEntityDetails
 
 # Function: getEntityDetails()
 
@@ -4245,7 +4245,7 @@ The ID of the room to retrieve entity details for
 ## File: packages/docs/api/functions/getFileService.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / getFileService
+[@elizaos/core v1.0.0-beta.51](../index.md) / getFileService
 
 # Function: getFileService()
 
@@ -4269,7 +4269,7 @@ Type-safe helper for accessing the file service
 ## File: packages/docs/api/functions/getMemoryText.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / getMemoryText
+[@elizaos/core v1.0.0-beta.51](../index.md) / getMemoryText
 
 # Function: getMemoryText()
 
@@ -4301,7 +4301,7 @@ The text content or default value
 ## File: packages/docs/api/functions/getPdfService.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / getPdfService
+[@elizaos/core v1.0.0-beta.51](../index.md) / getPdfService
 
 # Function: getPdfService()
 
@@ -4325,7 +4325,7 @@ Type-safe helper for accessing the PDF service
 ## File: packages/docs/api/functions/getSalt.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / getSalt
+[@elizaos/core v1.0.0-beta.51](../index.md) / getSalt
 
 # Function: getSalt()
 
@@ -4347,7 +4347,7 @@ The salt for the agent.
 ## File: packages/docs/api/functions/getTypedService.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / getTypedService
+[@elizaos/core v1.0.0-beta.51](../index.md) / getTypedService
 
 # Function: getTypedService()
 
@@ -4383,7 +4383,7 @@ The service instance or null if not available
 ## File: packages/docs/api/functions/getUserServerRole.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / getUserServerRole
+[@elizaos/core v1.0.0-beta.51](../index.md) / getUserServerRole
 
 # Function: getUserServerRole()
 
@@ -4419,7 +4419,7 @@ The role of the user entity within the server, resolved as a Promise.
 ## File: packages/docs/api/functions/getVideoService.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / getVideoService
+[@elizaos/core v1.0.0-beta.51](../index.md) / getVideoService
 
 # Function: getVideoService()
 
@@ -4443,7 +4443,7 @@ Type-safe helper for accessing the video service
 ## File: packages/docs/api/functions/getWavHeader.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / getWavHeader
+[@elizaos/core v1.0.0-beta.51](../index.md) / getWavHeader
 
 # Function: getWavHeader()
 
@@ -4483,7 +4483,7 @@ The WAV file header as a Buffer object.
 ## File: packages/docs/api/functions/getWorldSettings.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / getWorldSettings
+[@elizaos/core v1.0.0-beta.51](../index.md) / getWorldSettings
 
 # Function: getWorldSettings()
 
@@ -4509,7 +4509,7 @@ Gets settings state from world metadata
 ## File: packages/docs/api/functions/initializeOnboarding.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / initializeOnboarding
+[@elizaos/core v1.0.0-beta.51](../index.md) / initializeOnboarding
 
 # Function: initializeOnboarding()
 
@@ -4537,7 +4537,7 @@ Initializes settings configuration for a server
 ## File: packages/docs/api/functions/isCustomMetadata.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / isCustomMetadata
+[@elizaos/core v1.0.0-beta.51](../index.md) / isCustomMetadata
 
 # Function: isCustomMetadata()
 
@@ -4565,7 +4565,7 @@ True if the metadata is a CustomMetadata
 ## File: packages/docs/api/functions/isDescriptionMetadata.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / isDescriptionMetadata
+[@elizaos/core v1.0.0-beta.51](../index.md) / isDescriptionMetadata
 
 # Function: isDescriptionMetadata()
 
@@ -4593,7 +4593,7 @@ True if the metadata is a DescriptionMetadata
 ## File: packages/docs/api/functions/isDocumentMemory.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / isDocumentMemory
+[@elizaos/core v1.0.0-beta.51](../index.md) / isDocumentMemory
 
 # Function: isDocumentMemory()
 
@@ -4617,7 +4617,7 @@ Memory type guard for document memories
 ## File: packages/docs/api/functions/isDocumentMetadata.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / isDocumentMetadata
+[@elizaos/core v1.0.0-beta.51](../index.md) / isDocumentMetadata
 
 # Function: isDocumentMetadata()
 
@@ -4645,7 +4645,7 @@ True if the metadata is a DocumentMetadata
 ## File: packages/docs/api/functions/isFragmentMemory.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / isFragmentMemory
+[@elizaos/core v1.0.0-beta.51](../index.md) / isFragmentMemory
 
 # Function: isFragmentMemory()
 
@@ -4669,7 +4669,7 @@ Memory type guard for fragment memories
 ## File: packages/docs/api/functions/isFragmentMetadata.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / isFragmentMetadata
+[@elizaos/core v1.0.0-beta.51](../index.md) / isFragmentMetadata
 
 # Function: isFragmentMetadata()
 
@@ -4697,7 +4697,7 @@ True if the metadata is a FragmentMetadata
 ## File: packages/docs/api/functions/isMessageMetadata.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / isMessageMetadata
+[@elizaos/core v1.0.0-beta.51](../index.md) / isMessageMetadata
 
 # Function: isMessageMetadata()
 
@@ -4725,7 +4725,7 @@ True if the metadata is a MessageMetadata
 ## File: packages/docs/api/functions/normalizeJsonString.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / normalizeJsonString
+[@elizaos/core v1.0.0-beta.51](../index.md) / normalizeJsonString
 
 # Function: normalizeJsonString()
 
@@ -4762,7 +4762,7 @@ A properly formatted JSON string.
 ## File: packages/docs/api/functions/parseBooleanFromText.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / parseBooleanFromText
+[@elizaos/core v1.0.0-beta.51](../index.md) / parseBooleanFromText
 
 # Function: parseBooleanFromText()
 
@@ -4793,7 +4793,7 @@ The input text to parse
 ## File: packages/docs/api/functions/parseJsonArrayFromText.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / parseJsonArrayFromText
+[@elizaos/core v1.0.0-beta.51](../index.md) / parseJsonArrayFromText
 
 # Function: parseJsonArrayFromText()
 
@@ -4824,7 +4824,7 @@ An array parsed from the JSON string if successful; otherwise, null.
 ## File: packages/docs/api/functions/parseJSONObjectFromText.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / parseJSONObjectFromText
+[@elizaos/core v1.0.0-beta.51](../index.md) / parseJSONObjectFromText
 
 # Function: parseJSONObjectFromText()
 
@@ -4856,7 +4856,7 @@ An object parsed from the JSON string if successful; otherwise, null or the resu
 ## File: packages/docs/api/functions/prependWavHeader.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / prependWavHeader
+[@elizaos/core v1.0.0-beta.51](../index.md) / prependWavHeader
 
 # Function: prependWavHeader()
 
@@ -4900,7 +4900,7 @@ A new readable stream with the WAV header prepended to the audio data.
 ## File: packages/docs/api/functions/saltSettingValue.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / saltSettingValue
+[@elizaos/core v1.0.0-beta.51](../index.md) / saltSettingValue
 
 # Function: saltSettingValue()
 
@@ -4927,7 +4927,7 @@ Only applies to secret settings with string values
 ## File: packages/docs/api/functions/saltWorldSettings.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / saltWorldSettings
+[@elizaos/core v1.0.0-beta.51](../index.md) / saltWorldSettings
 
 # Function: saltWorldSettings()
 
@@ -4953,7 +4953,7 @@ Applies salt to all settings in a WorldSettings object
 ## File: packages/docs/api/functions/stringToUuid.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / stringToUuid
+[@elizaos/core v1.0.0-beta.51](../index.md) / stringToUuid
 
 # Function: stringToUuid()
 
@@ -4985,7 +4985,7 @@ Throws an error if the input target is not a string.
 ## File: packages/docs/api/functions/trimTokens.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / trimTokens
+[@elizaos/core v1.0.0-beta.51](../index.md) / trimTokens
 
 # Function: trimTokens()
 
@@ -5013,7 +5013,7 @@ Trims the provided text prompt to a specified token limit using a tokenizer mode
 ## File: packages/docs/api/functions/truncateToCompleteSentence.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / truncateToCompleteSentence
+[@elizaos/core v1.0.0-beta.51](../index.md) / truncateToCompleteSentence
 
 # Function: truncateToCompleteSentence()
 
@@ -5039,7 +5039,7 @@ Truncate text to fit within the character limit, ensuring it ends at a complete 
 ## File: packages/docs/api/functions/unsaltSettingValue.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / unsaltSettingValue
+[@elizaos/core v1.0.0-beta.51](../index.md) / unsaltSettingValue
 
 # Function: unsaltSettingValue()
 
@@ -5066,7 +5066,7 @@ Only applies to secret settings with string values
 ## File: packages/docs/api/functions/unsaltWorldSettings.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / unsaltWorldSettings
+[@elizaos/core v1.0.0-beta.51](../index.md) / unsaltWorldSettings
 
 # Function: unsaltWorldSettings()
 
@@ -5092,7 +5092,7 @@ Removes salt from all settings in a WorldSettings object
 ## File: packages/docs/api/functions/updateWorldSettings.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / updateWorldSettings
+[@elizaos/core v1.0.0-beta.51](../index.md) / updateWorldSettings
 
 # Function: updateWorldSettings()
 
@@ -5120,7 +5120,7 @@ Updates settings state in world metadata
 ## File: packages/docs/api/functions/validateUuid.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / validateUuid
+[@elizaos/core v1.0.0-beta.51](../index.md) / validateUuid
 
 # Function: validateUuid()
 
@@ -5148,7 +5148,7 @@ The validated UUID value or null if validation fails.
 ## File: packages/docs/api/interfaces/Action.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / Action
+[@elizaos/core v1.0.0-beta.51](../index.md) / Action
 
 # Interface: Action
 
@@ -5230,7 +5230,7 @@ Validation function
 ## File: packages/docs/api/interfaces/ActionEventPayload.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / ActionEventPayload
+[@elizaos/core v1.0.0-beta.51](../index.md) / ActionEventPayload
 
 # Interface: ActionEventPayload
 
@@ -5244,7 +5244,7 @@ Action event payload type
 ## File: packages/docs/api/interfaces/ActionExample.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / ActionExample
+[@elizaos/core v1.0.0-beta.51](../index.md) / ActionExample
 
 # Interface: ActionExample
 
@@ -5278,7 +5278,7 @@ Content of the example
 ## File: packages/docs/api/interfaces/AudioProcessingParams.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / AudioProcessingParams
+[@elizaos/core v1.0.0-beta.51](../index.md) / AudioProcessingParams
 
 # Interface: AudioProcessingParams
 
@@ -5332,7 +5332,7 @@ The type of audio processing to perform
 ## File: packages/docs/api/interfaces/BaseMetadata.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / BaseMetadata
+[@elizaos/core v1.0.0-beta.51](../index.md) / BaseMetadata
 
 # Interface: BaseMetadata
 
@@ -5342,7 +5342,7 @@ Base interface for all memory metadata types
 ## File: packages/docs/api/interfaces/BaseModelParams.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / BaseModelParams
+[@elizaos/core v1.0.0-beta.51](../index.md) / BaseModelParams
 
 # Interface: BaseModelParams
 
@@ -5378,7 +5378,7 @@ The agent runtime for accessing services and utilities
 ## File: packages/docs/api/interfaces/Character.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / Character
+[@elizaos/core v1.0.0-beta.51](../index.md) / Character
 
 # Interface: Character
 
@@ -5592,7 +5592,7 @@ Writing style guides
 ## File: packages/docs/api/interfaces/Content.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / Content
+[@elizaos/core v1.0.0-beta.51](../index.md) / Content
 
 # Interface: Content
 
@@ -5702,7 +5702,7 @@ Array of media attachments
 ## File: packages/docs/api/interfaces/ControlMessage.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / ControlMessage
+[@elizaos/core v1.0.0-beta.51](../index.md) / ControlMessage
 
 # Interface: ControlMessage
 
@@ -5765,7 +5765,7 @@ Room ID to ensure signal is directed to the correct chat window
 ## File: packages/docs/api/interfaces/DetokenizeTextParams.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / DetokenizeTextParams
+[@elizaos/core v1.0.0-beta.51](../index.md) / DetokenizeTextParams
 
 # Interface: DetokenizeTextParams
 
@@ -5819,7 +5819,7 @@ The agent runtime for accessing services and utilities
 ## File: packages/docs/api/interfaces/EmbeddingSearchResult.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / EmbeddingSearchResult
+[@elizaos/core v1.0.0-beta.51](../index.md) / EmbeddingSearchResult
 
 # Interface: EmbeddingSearchResult
 
@@ -5829,7 +5829,7 @@ Result interface for embedding similarity searches
 ## File: packages/docs/api/interfaces/EnhancedState.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / EnhancedState
+[@elizaos/core v1.0.0-beta.51](../index.md) / EnhancedState
 
 # Interface: EnhancedState
 
@@ -5839,7 +5839,7 @@ Enhanced State interface with more specific types
 ## File: packages/docs/api/interfaces/Entity.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / Entity
+[@elizaos/core v1.0.0-beta.51](../index.md) / Entity
 
 # Interface: Entity
 
@@ -5913,7 +5913,7 @@ Optional array of components
 ## File: packages/docs/api/interfaces/EntityPayload.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / EntityPayload
+[@elizaos/core v1.0.0-beta.51](../index.md) / EntityPayload
 
 # Interface: EntityPayload
 
@@ -5927,7 +5927,7 @@ Payload for entity-related events
 ## File: packages/docs/api/interfaces/EvaluationExample.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / EvaluationExample
+[@elizaos/core v1.0.0-beta.51](../index.md) / EvaluationExample
 
 # Interface: EvaluationExample
 
@@ -5973,7 +5973,7 @@ Expected outcome
 ## File: packages/docs/api/interfaces/Evaluator.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / Evaluator
+[@elizaos/core v1.0.0-beta.51](../index.md) / Evaluator
 
 # Interface: Evaluator
 
@@ -6067,7 +6067,7 @@ Validation function
 ## File: packages/docs/api/interfaces/EvaluatorEventPayload.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / EvaluatorEventPayload
+[@elizaos/core v1.0.0-beta.51](../index.md) / EvaluatorEventPayload
 
 # Interface: EvaluatorEventPayload
 
@@ -6081,7 +6081,7 @@ Evaluator event payload type
 ## File: packages/docs/api/interfaces/EventPayload.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / EventPayload
+[@elizaos/core v1.0.0-beta.51](../index.md) / EventPayload
 
 # Interface: EventPayload
 
@@ -6102,7 +6102,7 @@ Base payload interface for all events
 ## File: packages/docs/api/interfaces/EventPayloadMap.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / EventPayloadMap
+[@elizaos/core v1.0.0-beta.51](../index.md) / EventPayloadMap
 
 # Interface: EventPayloadMap
 
@@ -6112,7 +6112,7 @@ Maps event types to their corresponding payload types
 ## File: packages/docs/api/interfaces/IDatabaseAdapter.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / IDatabaseAdapter
+[@elizaos/core v1.0.0-beta.51](../index.md) / IDatabaseAdapter
 
 # Interface: IDatabaseAdapter
 
@@ -6522,7 +6522,7 @@ Promise resolving to an array of Relationship objects
 ## File: packages/docs/api/interfaces/ImageDescriptionParams.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / ImageDescriptionParams
+[@elizaos/core v1.0.0-beta.51](../index.md) / ImageDescriptionParams
 
 # Interface: ImageDescriptionParams
 
@@ -6576,7 +6576,7 @@ Optional prompt to guide the description
 ## File: packages/docs/api/interfaces/ImageGenerationParams.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / ImageGenerationParams
+[@elizaos/core v1.0.0-beta.51](../index.md) / ImageGenerationParams
 
 # Interface: ImageGenerationParams
 
@@ -6642,7 +6642,7 @@ Number of images to generate
 ## File: packages/docs/api/interfaces/InvokePayload.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / InvokePayload
+[@elizaos/core v1.0.0-beta.51](../index.md) / InvokePayload
 
 # Interface: InvokePayload
 
@@ -6656,7 +6656,7 @@ Payload for events that are invoked without a message
 ## File: packages/docs/api/interfaces/Log.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / Log
+[@elizaos/core v1.0.0-beta.51](../index.md) / Log
 
 # Interface: Log
 
@@ -6742,7 +6742,7 @@ Log creation timestamp
 ## File: packages/docs/api/interfaces/Memory.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / Memory
+[@elizaos/core v1.0.0-beta.51](../index.md) / Memory
 
 # Interface: Memory
 
@@ -6876,7 +6876,7 @@ Metadata for the memory
 ## File: packages/docs/api/interfaces/MemoryRetrievalOptions.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / MemoryRetrievalOptions
+[@elizaos/core v1.0.0-beta.51](../index.md) / MemoryRetrievalOptions
 
 # Interface: MemoryRetrievalOptions
 
@@ -6886,7 +6886,7 @@ Options for memory retrieval operations
 ## File: packages/docs/api/interfaces/MemorySearchOptions.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / MemorySearchOptions
+[@elizaos/core v1.0.0-beta.51](../index.md) / MemorySearchOptions
 
 # Interface: MemorySearchOptions
 
@@ -6896,7 +6896,7 @@ Options for memory search operations
 ## File: packages/docs/api/interfaces/MessageExample.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / MessageExample
+[@elizaos/core v1.0.0-beta.51](../index.md) / MessageExample
 
 # Interface: MessageExample
 
@@ -6930,7 +6930,7 @@ Message content
 ## File: packages/docs/api/interfaces/MessageMemory.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / MessageMemory
+[@elizaos/core v1.0.0-beta.51](../index.md) / MessageMemory
 
 # Interface: MessageMemory
 
@@ -7110,7 +7110,7 @@ Memory content
 ## File: packages/docs/api/interfaces/MessagePayload.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / MessagePayload
+[@elizaos/core v1.0.0-beta.51](../index.md) / MessagePayload
 
 # Interface: MessagePayload
 
@@ -7124,7 +7124,7 @@ Payload for reaction-related events
 ## File: packages/docs/api/interfaces/ModelEventPayload.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / ModelEventPayload
+[@elizaos/core v1.0.0-beta.51](../index.md) / ModelEventPayload
 
 # Interface: ModelEventPayload
 
@@ -7138,7 +7138,7 @@ Model event payload type
 ## File: packages/docs/api/interfaces/ModelParamsMap.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / ModelParamsMap
+[@elizaos/core v1.0.0-beta.51](../index.md) / ModelParamsMap
 
 # Interface: ModelParamsMap
 
@@ -7148,7 +7148,7 @@ Map of model types to their parameter types
 ## File: packages/docs/api/interfaces/ModelResultMap.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / ModelResultMap
+[@elizaos/core v1.0.0-beta.51](../index.md) / ModelResultMap
 
 # Interface: ModelResultMap
 
@@ -7158,7 +7158,7 @@ Map of model types to their return value types
 ## File: packages/docs/api/interfaces/MultiRoomMemoryOptions.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / MultiRoomMemoryOptions
+[@elizaos/core v1.0.0-beta.51](../index.md) / MultiRoomMemoryOptions
 
 # Interface: MultiRoomMemoryOptions
 
@@ -7168,7 +7168,7 @@ Options for multi-room memory retrieval
 ## File: packages/docs/api/interfaces/ObjectGenerationParams.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / ObjectGenerationParams
+[@elizaos/core v1.0.0-beta.51](../index.md) / ObjectGenerationParams
 
 # Interface: ObjectGenerationParams\<T\>
 
@@ -7288,7 +7288,7 @@ Sequences that should stop generation
 ## File: packages/docs/api/interfaces/Participant.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / Participant
+[@elizaos/core v1.0.0-beta.51](../index.md) / Participant
 
 # Interface: Participant
 
@@ -7322,7 +7322,7 @@ Associated account
 ## File: packages/docs/api/interfaces/Plugin.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / Plugin
+[@elizaos/core v1.0.0-beta.51](../index.md) / Plugin
 
 # Interface: Plugin
 
@@ -7332,7 +7332,7 @@ Plugin for extending agent functionality
 ## File: packages/docs/api/interfaces/Provider.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / Provider
+[@elizaos/core v1.0.0-beta.51](../index.md) / Provider
 
 # Interface: Provider
 
@@ -7428,7 +7428,7 @@ Data retrieval function
 ## File: packages/docs/api/interfaces/Relationship.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / Relationship
+[@elizaos/core v1.0.0-beta.51](../index.md) / Relationship
 
 # Interface: Relationship
 
@@ -7526,7 +7526,7 @@ Optional creation timestamp
 ## File: packages/docs/api/interfaces/RunEventPayload.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / RunEventPayload
+[@elizaos/core v1.0.0-beta.51](../index.md) / RunEventPayload
 
 # Interface: RunEventPayload
 
@@ -7540,7 +7540,7 @@ Run event payload type
 ## File: packages/docs/api/interfaces/RuntimeSettings.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / RuntimeSettings
+[@elizaos/core v1.0.0-beta.51](../index.md) / RuntimeSettings
 
 # Interface: RuntimeSettings
 
@@ -7550,7 +7550,7 @@ Interface representing settings with string key-value pairs.
 ## File: packages/docs/api/interfaces/ServerOwnershipState.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / ServerOwnershipState
+[@elizaos/core v1.0.0-beta.51](../index.md) / ServerOwnershipState
 
 # Interface: ServerOwnershipState
 
@@ -7560,7 +7560,7 @@ Interface representing the ownership state of servers.
 ## File: packages/docs/api/interfaces/ServiceError.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / ServiceError
+[@elizaos/core v1.0.0-beta.51](../index.md) / ServiceError
 
 # Interface: ServiceError
 
@@ -7570,7 +7570,7 @@ Standardized service error type for consistent error handling
 ## File: packages/docs/api/interfaces/State.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / State
+[@elizaos/core v1.0.0-beta.51](../index.md) / State
 
 # Interface: State
 
@@ -7584,7 +7584,7 @@ Represents the current state/context of a conversation
 ## File: packages/docs/api/interfaces/TextEmbeddingParams.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / TextEmbeddingParams
+[@elizaos/core v1.0.0-beta.51](../index.md) / TextEmbeddingParams
 
 # Interface: TextEmbeddingParams
 
@@ -7626,7 +7626,7 @@ The text to create embeddings for
 ## File: packages/docs/api/interfaces/TextGenerationParams.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / TextGenerationParams
+[@elizaos/core v1.0.0-beta.51](../index.md) / TextGenerationParams
 
 # Interface: TextGenerationParams
 
@@ -7728,7 +7728,7 @@ Presence penalty to apply
 ## File: packages/docs/api/interfaces/TextToSpeechParams.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / TextToSpeechParams
+[@elizaos/core v1.0.0-beta.51](../index.md) / TextToSpeechParams
 
 # Interface: TextToSpeechParams
 
@@ -7794,7 +7794,7 @@ The speaking speed
 ## File: packages/docs/api/interfaces/TokenizeTextParams.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / TokenizeTextParams
+[@elizaos/core v1.0.0-beta.51](../index.md) / TokenizeTextParams
 
 # Interface: TokenizeTextParams
 
@@ -7848,7 +7848,7 @@ The agent runtime for accessing services and utilities
 ## File: packages/docs/api/interfaces/TranscriptionParams.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / TranscriptionParams
+[@elizaos/core v1.0.0-beta.51](../index.md) / TranscriptionParams
 
 # Interface: TranscriptionParams
 
@@ -7902,7 +7902,7 @@ Optional prompt to guide transcription
 ## File: packages/docs/api/interfaces/TypedService.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / TypedService
+[@elizaos/core v1.0.0-beta.51](../index.md) / TypedService
 
 # Interface: TypedService\<ConfigType, ResultType\>
 
@@ -7998,7 +7998,7 @@ A promise resolving to the result
 ## File: packages/docs/api/interfaces/UnifiedMemoryOptions.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / UnifiedMemoryOptions
+[@elizaos/core v1.0.0-beta.51](../index.md) / UnifiedMemoryOptions
 
 # Interface: UnifiedMemoryOptions
 
@@ -8013,7 +8013,7 @@ Provides a simpler, more consistent interface
 ## File: packages/docs/api/interfaces/UnifiedSearchOptions.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / UnifiedSearchOptions
+[@elizaos/core v1.0.0-beta.51](../index.md) / UnifiedSearchOptions
 
 # Interface: UnifiedSearchOptions
 
@@ -8027,7 +8027,7 @@ Specialized memory search options
 ## File: packages/docs/api/interfaces/VideoProcessingParams.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / VideoProcessingParams
+[@elizaos/core v1.0.0-beta.51](../index.md) / VideoProcessingParams
 
 # Interface: VideoProcessingParams
 
@@ -8081,7 +8081,7 @@ The type of video processing to perform
 ## File: packages/docs/api/interfaces/WorldPayload.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / WorldPayload
+[@elizaos/core v1.0.0-beta.51](../index.md) / WorldPayload
 
 # Interface: WorldPayload
 
@@ -8095,7 +8095,7 @@ Payload for world-related events
 ## File: packages/docs/api/type-aliases/EventHandler.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / EventHandler
+[@elizaos/core v1.0.0-beta.51](../index.md) / EventHandler
 
 # Type Alias: EventHandler()\<T\>
 
@@ -8123,7 +8123,7 @@ Event handler function type
 ## File: packages/docs/api/type-aliases/Handler.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / Handler
+[@elizaos/core v1.0.0-beta.51](../index.md) / Handler
 
 # Type Alias: Handler()
 
@@ -8157,7 +8157,7 @@ Handler function type for processing messages
 ## File: packages/docs/api/type-aliases/HandlerCallback.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / HandlerCallback
+[@elizaos/core v1.0.0-beta.51](../index.md) / HandlerCallback
 
 # Type Alias: HandlerCallback()
 
@@ -8183,7 +8183,7 @@ Callback function type for handlers
 ## File: packages/docs/api/type-aliases/JSONSchema.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / JSONSchema
+[@elizaos/core v1.0.0-beta.51](../index.md) / JSONSchema
 
 # Type Alias: JSONSchema
 
@@ -8221,7 +8221,7 @@ Optional JSON schema for validating generated objects
 ## File: packages/docs/api/type-aliases/Media.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / Media
+[@elizaos/core v1.0.0-beta.51](../index.md) / Media
 
 # Type Alias: Media
 
@@ -8281,7 +8281,7 @@ Content type
 ## File: packages/docs/api/type-aliases/MemoryTypeAlias.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / MemoryTypeAlias
+[@elizaos/core v1.0.0-beta.51](../index.md) / MemoryTypeAlias
 
 # Type Alias: MemoryTypeAlias
 
@@ -8297,7 +8297,7 @@ Memory type enumeration for built-in memory types
 ## File: packages/docs/api/type-aliases/MessageReceivedHandlerParams.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / MessageReceivedHandlerParams
+[@elizaos/core v1.0.0-beta.51](../index.md) / MessageReceivedHandlerParams
 
 # Type Alias: MessageReceivedHandlerParams
 
@@ -8335,7 +8335,7 @@ Represents the parameters for a message received handler.
 ## File: packages/docs/api/type-aliases/StateValue.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / StateValue
+[@elizaos/core v1.0.0-beta.51](../index.md) / StateValue
 
 # Type Alias: StateValue
 
@@ -8351,7 +8351,7 @@ Replace 'any' types with more specific types
 ## File: packages/docs/api/type-aliases/UUID.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / UUID
+[@elizaos/core v1.0.0-beta.51](../index.md) / UUID
 
 # Type Alias: UUID
 
@@ -8367,7 +8367,7 @@ Defines a custom type UUID representing a universally unique identifier
 ## File: packages/docs/api/type-aliases/Validator.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / Validator
+[@elizaos/core v1.0.0-beta.51](../index.md) / Validator
 
 # Type Alias: Validator()
 
@@ -8395,7 +8395,7 @@ Validator function type for actions/evaluators
 ## File: packages/docs/api/variables/ModelType.md
 
 ```markdown
-[@elizaos/core v1.0.0-beta.34](../index.md) / ModelType
+[@elizaos/core v1.0.0-beta.51](../index.md) / ModelType
 
 # Variable: ModelType
 
@@ -8489,7 +8489,7 @@ Model size/type classification
 ## File: packages/docs/api/index.md
 
 ```markdown
-# @elizaos/core v1.0.0-beta.34
+# @elizaos/core v1.0.0-beta.51
 
 ## Enumerations
 

@@ -6,11 +6,18 @@
 import {
   ChannelType,
   type IAgentRuntime,
+  ServiceType,
   type UUID,
   createUniqueUuid,
   logger,
+  stringToUuid,
+  Service,
 } from '@elizaos/core';
-const TWITTER_SERVICE = 'twitter';
+
+interface TwitterService extends Service {
+  getClientKey(clientId: UUID, agentId: UUID): string;
+  clients: Map<string, any>;
+}
 
 export default class Twitter {
   runtime: IAgentRuntime;
@@ -33,8 +40,22 @@ export default class Twitter {
       type: ChannelType.FEED,
     });
 
-    // get the twitterClient from runtime
-    const twitterClient = this.runtime.getService(TWITTER_SERVICE) as any;
+    // Get the Twitter service from runtime
+    let manager = this.runtime.getService(ServiceType.TWITTER) as TwitterService;
+    while (!manager) {
+      //console.log('Waiting for Twitter service...');
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      manager = this.runtime.getService(ServiceType.TWITTER) as TwitterService;
+    }
+    console.log('degen-intel: Twitter manager acquired, starting sync');
+
+    const client = manager.getClient(this.runtime.agentId, this.runtime.agentId);
+    // it's not client.client
+    //console.log('client keys', Object.keys(client)) //[ "client", "post", "interaction", "service" ]
+    //console.log('client.client keys', Object.keys(client.client)) // "lastCheckedTweetId", "temperature", "requestQueue", "callback", "runtime", "state", "twitterClient", "profile"
+
+    // Get the Twitter client directly from the manager
+    let twitterClient = client.client.twitterClient;
     if (!twitterClient) {
       logger.error('Twitter client not found');
       return false;
@@ -58,8 +79,9 @@ export default class Twitter {
           await this.runtime.createMemory(
             {
               id: tweetId,
-              entityId: this.runtime.agentId,
               agentId: this.runtime.agentId,
+              roomId: this.feedRoomId,
+              entityId: this.runtime.agentId,
               content: {
                 text: item.text,
                 source: 'twitter',
@@ -70,7 +92,6 @@ export default class Twitter {
                   timestamp: new Date(item.timestamp * 1000).toISOString(),
                 },
               },
-              roomId: this.feedRoomId,
               createdAt: item.timestamp * 1000,
             },
             'messages'

@@ -48,7 +48,7 @@ export class TeamUpdateTrackerService extends Service {
         logger.warn(
           'Telegram service not found or client not available - will try to connect later'
         );
-        this.setupTelegramRetry();
+        // this.setupTelegramRetry();
       }
     } catch (error) {
       logger.error('Error initializing Discord Channel Service:', error);
@@ -114,7 +114,6 @@ export class TeamUpdateTrackerService extends Service {
 
             // Get all chats the bot is a member of
             logger.info('Fetching all Telegram chats...');
-            // channel id : -1002524701365
             const channelId = '-1002524701365';
             logger.info('Fetching topics for channel:', channelId);
             try {
