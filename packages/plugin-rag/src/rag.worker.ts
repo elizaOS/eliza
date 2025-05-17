@@ -287,39 +287,71 @@ async function saveToDbViaAdapter({
       `Worker saving ${chunks.length} chunks for document ${documentId} via DatabaseAdapter for agent ${agentId}.`
     );
     let savedCount = 0;
-    for (let i = 0; i < chunks.length; i++) {
-      const embeddingResult = await generateTextEmbedding(chunks[i]);
-      const embedding = Array.isArray(embeddingResult)
-        ? embeddingResult
-        : embeddingResult?.embedding;
-      if (!embedding || embedding.length === 0) {
-        logger.warn(`Skipping chunk ${i + 1} for document ${documentId} due to empty embedding.`);
-        continue;
-      }
+    const CONCURRENCY_LIMIT = 10; // Max concurrent embedding requests
 
-      const fragmentMemory: Memory = {
-        id: uuidv4() as UUID,
-        agentId: agentId,
-        roomId: agentId,
-        worldId: agentId,
-        entityId: agentId,
-        embedding: embedding,
-        content: { text: chunks[i] },
-        metadata: {
-          type: MemoryType.FRAGMENT,
-          documentId: documentId,
-          position: i,
-          timestamp: Date.now(),
-          source: 'rag-worker-fragment-upload',
-        },
-      };
+    for (let i = 0; i < chunks.length; i += CONCURRENCY_LIMIT) {
+      const batchChunks = chunks.slice(i, i + CONCURRENCY_LIMIT);
+      const batchOriginalIndices = Array.from({ length: batchChunks.length }, (_, k) => i + k);
 
-      await dbAdapter.createMemory(fragmentMemory, 'knowledge');
       logger.debug(
-        `Saved chunk ${i + 1}/${chunks.length} for document ${documentId} (Fragment ID: ${fragmentMemory.id})`
+        `Processing batch of ${batchChunks.length} chunks for document ${documentId}. Starting original index: ${batchOriginalIndices[0]}`
       );
-      savedCount++;
+
+      const embeddingPromises = batchChunks.map((chunk) => generateTextEmbedding(chunk));
+
+      try {
+        const embeddingResults = await Promise.all(embeddingPromises);
+
+        for (let j = 0; j < batchChunks.length; j++) {
+          const originalChunkIndex = batchOriginalIndices[j];
+          const chunkText = batchChunks[j];
+          const embeddingResult = embeddingResults[j];
+
+          const embedding = Array.isArray(embeddingResult)
+            ? embeddingResult
+            : embeddingResult?.embedding;
+
+          if (!embedding || embedding.length === 0) {
+            logger.warn(
+              `Skipping chunk ${originalChunkIndex + 1} for document ${documentId} due to empty embedding.`
+            );
+            continue;
+          }
+
+          const fragmentMemory: Memory = {
+            id: uuidv4() as UUID,
+            agentId: agentId,
+            roomId: agentId, // TODO: Review if roomId should be different, e.g. worldId or a dedicated room for docs
+            worldId: agentId, // TODO: Review if worldId should be from original document or context
+            entityId: agentId, // Assuming agent is the entity creating/owning this fragment
+            embedding: embedding,
+            content: { text: chunkText },
+            metadata: {
+              type: MemoryType.FRAGMENT,
+              documentId: documentId, // Link to the original document ID (could be clientDocId or storedMainDocId)
+              position: originalChunkIndex, // Original position of the chunk in the document
+              timestamp: Date.now(),
+              source: 'rag-worker-fragment-upload',
+            },
+          };
+
+          await dbAdapter.createMemory(fragmentMemory, 'knowledge');
+          logger.debug(
+            `Saved chunk ${originalChunkIndex + 1}/${chunks.length} for document ${documentId} (Fragment ID: ${fragmentMemory.id})`
+          );
+          savedCount++;
+        }
+      } catch (batchError: any) {
+        logger.error(
+          `Error processing a batch of embeddings for document ${documentId} (starting index ${batchOriginalIndices[0]}): ${batchError.message}`,
+          batchError.stack
+        );
+        // Decide if we want to skip the whole batch or continue with other batches.
+        // For now, we log and continue with the next batch. The failed chunks in this batch won't be saved.
+        // To inform parent, we could accumulate errors and send a more comprehensive PROCESSING_ERROR.
+      }
     }
+
     if (savedCount > 0) {
       parentPort?.postMessage({
         type: 'KNOWLEDGE_ADDED',
@@ -374,7 +406,7 @@ parentPort?.on('message', async (message: any) => {
           originalFilename: message.payload.originalFilename || 'unknown_file',
         });
         break;
-      case 'PROCESS_PDF_THEN_FRAGMENTS':
+      case 'PROCESS_PDF_THEN_FRAGMENTS': {
         const { clientDocumentId, fileContentB64, contentType, originalFilename, worldId } =
           message.payload;
         logger.info(
@@ -451,6 +483,7 @@ parentPort?.on('message', async (message: any) => {
           );
         }
         break;
+      }
       default:
         logger.warn('Unknown message type received by RAG worker:', message.type);
     }

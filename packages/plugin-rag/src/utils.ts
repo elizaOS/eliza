@@ -19,6 +19,9 @@ const PLAIN_TEXT_CONTENT_TYPES = [
   'text/csv',
 ];
 
+const MAX_FALLBACK_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
+const BINARY_CHECK_BYTES = 1024; // Check first 1KB for binary indicators
+
 /**
  * Extracts text content from a file buffer based on its content type.
  * Supports DOCX, plain text, and provides a fallback for unknown types.
@@ -61,11 +64,27 @@ export async function extractTextFromFileBuffer(
     logger.warn(
       `[TextUtil] Unsupported content type: "${contentType}" for ${originalFilename}. Attempting fallback to plain text.`
     );
+
+    if (fileBuffer.length > MAX_FALLBACK_SIZE_BYTES) {
+      const sizeErrorMsg = `[TextUtil] File ${originalFilename} (type: ${contentType}) exceeds maximum size for fallback (${MAX_FALLBACK_SIZE_BYTES} bytes). Cannot process as plain text.`;
+      logger.error(sizeErrorMsg);
+      throw new Error(sizeErrorMsg);
+    }
+
+    // Simple binary detection: check for null bytes in the first N bytes
+    const initialBytes = fileBuffer.subarray(0, Math.min(fileBuffer.length, BINARY_CHECK_BYTES));
+    if (initialBytes.includes(0)) {
+      // Check for NUL byte
+      const binaryHeuristicMsg = `[TextUtil] File ${originalFilename} (type: ${contentType}) appears to be binary based on initial byte check. Cannot process as plain text.`;
+      logger.error(binaryHeuristicMsg);
+      throw new Error(binaryHeuristicMsg);
+    }
+
     try {
       const textContent = fileBuffer.toString('utf-8');
       if (textContent.includes('\ufffd')) {
         // Replacement character, indicating potential binary or wrong encoding
-        const binaryErrorMsg = `[TextUtil] File ${originalFilename} (type: ${contentType}) seems to be binary or has encoding issues after fallback to plain text.`;
+        const binaryErrorMsg = `[TextUtil] File ${originalFilename} (type: ${contentType}) seems to be binary or has encoding issues after fallback to plain text (detected \ufffd).`;
         logger.error(binaryErrorMsg);
         throw new Error(binaryErrorMsg); // Throw error for likely binary content
       }
