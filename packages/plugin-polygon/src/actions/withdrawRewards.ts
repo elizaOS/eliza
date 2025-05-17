@@ -67,5 +67,26 @@ export const withdrawRewardsAction: Action = {
   },
 
   // TODO: Add relevant examples
-  examples: [],
+  examples: [
+    {
+      input: 'Withdraw my staking rewards from Polygon',
+      output: 'Initiated staking reward withdrawal. Transaction hash: 0x7a3b5d8f1e6c4b2a9d0e1f2a3b4c5d6e7f8a9b0c\nTotal rewards: 45.23 MATIC\nEstimated completion time: ~5 minutes\nGas used: 150,000 gwei',
+    },
+    {
+      input: 'Claim my MATIC rewards from validator 0x1234abcd...',
+      output: 'Withdrawing rewards from validator 0x1234abcd...\nTransaction hash: 0x2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c\nTotal rewards: 12.5 MATIC\nReward period: May 1 - June 1, 2023\nGas fee: 0.002 MATIC',
+    },
+    {
+      input: 'Collect all staking rewards from my Polygon validators',
+      output: 'Initiated withdrawal of all staking rewards\nTransaction hash: 0x3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d\nTotal from 3 validators: 30.75 MATIC\nBreakdown:\n- Validator Alpha: 15.3 MATIC\n- NodeOps: 10.2 MATIC\n- PolyStake: 5.25 MATIC',
+    },
+    {
+      input: "What's the gas cost to withdraw my staking rewards?",
+      output: 'Current estimated gas cost for withdrawing staking rewards:\nStandard: 0.003 MATIC (~$0.002 USD)\nFast: 0.005 MATIC (~$0.003 USD)\nYou have 45.23 MATIC in pending rewards available for withdrawal.',
+    },
+    {
+      input: 'Withdraw my rewards and restake them',
+      output: 'Executing compound strategy (withdraw + restake):\nStep 1: Withdrew 45.23 MATIC rewards\nTransaction: 0x7a3b5d8f1e6c4b2a9d0e1f2a3b4c5d6e7f8a9b0c\nStep 2: Restaked 45.00 MATIC to same validators\nTransaction: 0x8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c\nGas fees: 0.23 MATIC',
+    }
+  ],
 };

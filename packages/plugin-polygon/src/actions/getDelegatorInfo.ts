@@ -74,5 +74,26 @@ export const getDelegatorInfoAction: Action = {
   },
 
   // TODO: Add relevant examples
-  examples: [],
+  examples: [
+    {
+      input: 'Show me my staking information on Polygon',
+      output: 'Staking Info for 0xYourAddress:\nTotal Staked: 5,000 MATIC\nUnclaimed Rewards: 123.45 MATIC\nStaking Positions:\n- Validator Alpha: 2,500 MATIC (50%)\n- NodeOps: 1,500 MATIC (30%)\n- PolyStake: 1,000 MATIC (20%)\nEstimated Annual Yield: 9.8%',
+    },
+    {
+      input: 'How much have I delegated to Polygon validators?',
+      output: 'Your Polygon Staking Summary:\nTotal Delegated: 5,000 MATIC (~$4,250 USD)\nActive Validators: 3\nUnclaimed Rewards: 123.45 MATIC (~$105 USD)\nNext Reward Distribution: ~8 hours\nTotal Earned Since Staking: 412.36 MATIC',
+    },
+    {
+      input: 'Check delegation status for address 0x5678efgh...',
+      output: 'Staking Info for 0x5678efgh...:\nTotal Staked: 10,000 MATIC\nUnclaimed Rewards: 245.78 MATIC\nActive Since: March 15, 2023 (102 days)\nDelegation Positions:\n- Validator Alpha: 5,000 MATIC (8.7% APY)\n- Polygon Foundation: 3,000 MATIC (7.8% APY)\n- BlockDaemon: 2,000 MATIC (9.1% APY)',
+    },
+    {
+      input: 'Compare my delegation performance across validators',
+      output: 'Delegation Performance Comparison:\n1. PolyStake: 1,000 MATIC staked, 31.5 MATIC rewards (10.2% APY)\n2. NodeOps: 1,500 MATIC staked, 42.3 MATIC rewards (9.1% APY)\n3. Validator Alpha: 2,500 MATIC staked, 49.65 MATIC rewards (6.4% APY)\nRecommendation: Consider reallocating to higher performing validators',
+    },
+    {
+      input: 'How long have I been staking on Polygon?',
+      output: 'Delegation History for 0xYourAddress:\nStaking since: January 12, 2023 (172 days)\nTotal Delegations: 5,000 MATIC\nTotal Earned: 412.36 MATIC\nAverage APY: 8.9%\nLast Claim: May 15, 2023 (37 days ago)',
+    }
+  ],
 };

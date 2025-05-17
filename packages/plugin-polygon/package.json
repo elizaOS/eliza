@@ -30,23 +30,43 @@
     "@lifi/data-types": "5.15.5",
     "@lifi/sdk": "3.4.1",
     "@lifi/types": "16.3.0",
+    "ethers": "6.9.0",
+    "viem": "^2.7.2",
+    "axios": "^1.6.0",
     "zod": "3.24.2"
   },
   "devDependencies": {
     "tsup": "8.4.0",
     "typescript": "5.8.2",
-    "prettier": "3.5.3"
+    "prettier": "3.5.3",
+    "vitest": "^1.4.0",
+    "@types/node": "^20.11.30"
   },
   "scripts": {
     "start": "elizaos start",
     "test-with-cli": "cd ../cli && bun run build && cd ../plugin-starter && elizaos test",
-    "dev": "elizaos dev",
+    "dev": "tsup --watch",
     "build": "tsup",
-    "lint": "prettier --write ./src",
-    "test": "elizaos test",
+    "lint": "eslint \"src/**/*.ts\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "test:legacy": "vitest run src/tests",
+    "test:rpc": "node test-scripts/rpc-check.js",
+    "test:plugin": "node test-scripts/plugin-init.js",
+    "test:bridge": "node test-scripts/bridge-transaction-test.js",
+    "test:bridge-tx": "vitest run src/tests/bridge-transaction.test.ts",
+    "test:encoding": "node test-scripts/deposit-encoding-test.js",
+    "test:standalone": "node standalone-test.js",
+    "test:all": "npm run test:bridge && npm run test:encoding && npm run test:standalone",
+    "typecheck": "tsc --noEmit",
     "publish": "elizaos plugin publish",
     "format": "prettier --write ./src",
-    "format:check": "prettier --check ./src"
+    "format:check": "prettier --check ./src",
+    "coverage": "vitest run --coverage",
+    "clean": "rm -rf dist node_modules .turbo"
   },
   "publishConfig": {
     "access": "public"
@@ -59,9 +79,37 @@
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {
-      "API_KEY": {
+      "POLYGON_RPC_URL": {
         "type": "string",
-        "description": "API key for the service"
+        "description": "Polygon (L2) JSON-RPC endpoint URL"
+      },
+      "ETHEREUM_RPC_URL": {
+        "type": "string",
+        "description": "Ethereum (L1) JSON-RPC endpoint URL"
+      },
+      "PRIVATE_KEY": {
+        "type": "string",
+        "description": "Private key for transaction signing (keep secure)",
+        "sensitive": true
+      },
+      "POLYGONSCAN_KEY": {
+        "type": "string",
+        "description": "PolygonScan API key for gas estimations and other queries"
+      },
+      "GOVERNOR_ADDRESS": {
+        "type": "string",
+        "description": "Address of the governance contract",
+        "optional": true
+      },
+      "TOKEN_ADDRESS": {
+        "type": "string",
+        "description": "Address of the governance token contract",
+        "optional": true
+      },
+      "TIMELOCK_ADDRESS": {
+        "type": "string",
+        "description": "Address of the timelock controller contract",
+        "optional": true
       }
     }
   }

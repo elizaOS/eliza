@@ -75,5 +75,26 @@ export const getCheckpointStatusAction: Action = {
   },
 
   // TODO: Add relevant examples
-  examples: [],
+  examples: [
+    {
+      input: 'What is the status of checkpoint 12345?',
+      output: 'Checkpoint 12345 is included in the root chain at block 9876543. Last verified at 2023-06-15 14:32 UTC.',
+    },
+    {
+      input: 'Check if the latest checkpoint has been processed',
+      output: 'The latest checkpoint (ID: 12400) has been included in the root chain at block 9876700. This checkpoint secured 5,230 Polygon transactions.',
+    },
+    {
+      input: 'Has the checkpoint from yesterday been committed to Ethereum?',
+      output: 'Yes, checkpoint 12350 from yesterday has been included in Ethereum root chain at block 9876600. This checkpoint took 3.5 hours to be committed from Polygon to Ethereum.',
+    },
+    {
+      input: 'Are my transactions from yesterday part of a checkpoint?',
+      output: 'Yes, transactions from your address 0x742d35Cc6634C0532925a3b844Bc454e4438f44e have been included in checkpoint 12380, which was committed to Ethereum at block 9876650.',
+    },
+    {
+      input: 'Check the checkpoint status for my bridge transaction from last week',
+      output: 'Your bridge transaction 0x7a3b5d8f1e6c4b2a9d0e1f2a3b4c5d6e7f8a9b0c was included in checkpoint 12200, which was committed to Ethereum root chain at block 9875500. The assets have been fully bridged.',
+    }
+  ],
 };

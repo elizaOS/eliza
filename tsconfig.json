@@ -1,31 +1,19 @@
 {
-  "extends": "@elizaos/tsconfig/base.json",
+  "extends": "./tsconfig.build.json",
   "compilerOptions": {
-    "outDir": "./dist",
-    "rootDir": "packages/plugin-polygon/src",
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "NodeNext",
     "resolveJsonModule": true,
+    "isolatedModules": true,
     "esModuleInterop": true,
-    "target": "ES2022",
-    "module": "ES2022",
-    "lib": ["ES2021.String"],
-    "moduleResolution": "node",
     "skipLibCheck": true,
+    "lib": ["ES2020", "DOM"],
+    "strict": true,
     "forceConsistentCasingInFileNames": true,
-    "allowImportingTsExtensions": true,
-    "noEmit": true,
-    "allowSyntheticDefaultImports": true,
-    "baseUrl": ".",
-    "paths": {
-      "@elizaos/core": ["packages/core/src"],
-      "@elizaos/core/*": ["packages/core/src/*"]
-    }
+    "declaration": true,
+    "outDir": "dist"
   },
-  "include": ["packages/plugin-polygon/src/**/*"],
-  "exclude": ["node_modules", "dist"],
-  "files": [],
-  "references": [
-    {
-      "path": "packages/core"
-    }
-  ]
+  "exclude": ["**/__tests__/*", "dist", "node_modules"],
+  "include": ["src/**/*.ts", "src/**/*.d.ts"]
 }

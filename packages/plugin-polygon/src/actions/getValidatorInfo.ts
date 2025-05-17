@@ -76,5 +76,26 @@ export const getValidatorInfoAction: Action = {
   },
 
   // TODO: Add relevant examples
-  examples: [],
+  examples: [
+    {
+      input: 'Show me information about validator 0x1234abcd...',
+      output: 'Validator Info - Name: Validator Alpha\nCommission Rate: 10%\nTotal Staked: 1,000,000 MATIC\nStatus: Active\nUptime: 99.8%\nDelegator Count: 145',
+    },
+    {
+      input: 'Who are the top validators on Polygon?',
+      output: 'Here are the top 3 validators by stake:\n1. Validator Alpha - 1,000,000 MATIC staked, 10% commission\n2. Polygon Foundation - 950,000 MATIC staked, 5% commission\n3. NodeOps - 850,000 MATIC staked, 7% commission',
+    },
+    {
+      input: 'What is the commission rate for validator NodeOps?',
+      output: 'Validator NodeOps (0x5678efgh...):\nCommission Rate: 7%\nTotal Staked: 850,000 MATIC\nRewards Generated (30d): 25,500 MATIC\nSignature Rate: 99.7%',
+    },
+    {
+      input: 'Find validators with the lowest commission rate',
+      output: 'Validators with lowest commission rates:\n1. PolyStake - 3% commission (600,000 MATIC staked)\n2. BlockDaemon - 4% commission (780,000 MATIC staked)\n3. Polygon Foundation - 5% commission (950,000 MATIC staked)',
+    },
+    {
+      input: 'How much has validator 0x1234abcd earned in the last month?',
+      output: 'Validator Alpha (0x1234abcd...):\nRewards Earned (30d): 30,000 MATIC\nCommission Earned (30d): 3,000 MATIC\nEffective APY for Delegators: 10.5%',
+    }
+  ],
 };

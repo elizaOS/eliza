@@ -1,15 +1,8 @@
 import axios from 'axios';
-import { parseUnits, formatUnits } from 'ethers'; // Assuming ethers v6 for bigint handling
-import { IAgentRuntime } from '@elizaos/core';
-// Placeholder for core RPC interaction wrapper - replace with actual ElizaOS mechanism
-const coreRpc = {
-  eth_gasPrice: async (): Promise<bigint> => {
-    // In a real scenario, this would call the configured Polygon RPC endpoint
-    console.warn('Using fallback eth_gasPrice RPC method.');
-    // Simulating a typical gas price in Wei (e.g., 50 Gwei)
-    return parseUnits('50', 'gwei');
-  },
-};
+import { IAgentRuntime, logger } from '@elizaos/core';
+import { formatUnits, parseUnits } from '../utils/formatters';
+import { PolygonRpcService } from './PolygonRpcService';
+import { GasPriceInfo } from '../types';
 
 /**
  * Structure of the expected successful response from the PolygonScan Gas Oracle API.
@@ -62,10 +55,10 @@ const POLYGONSCAN_API_URL = 'https://api.polygonscan.com/api';
  */
 function gweiToWei(gweiString: string): bigint {
   try {
-    // Use parseUnits which handles decimals correctly
-    return parseUnits(gweiString, 'gwei');
+    // Use our formatters from utils
+    return parseUnits(gweiString, 9);
   } catch (error) {
-    console.error(`Error converting Gwei string "${gweiString}" to Wei:`, error);
+    logger.error(`Error converting Gwei string "${gweiString}" to Wei:`, error);
     throw new Error(`Invalid Gwei value format: ${gweiString}`);
   }
 }
@@ -79,8 +72,8 @@ export const getGasPriceEstimates = async (runtime: IAgentRuntime): Promise<GasP
   const apiKey = runtime.getSetting('POLYGONSCAN_KEY');
 
   if (!apiKey) {
-    console.warn('POLYGONSCAN_KEY not found in configuration. Falling back to eth_gasPrice.');
-    return fetchFallbackGasPrice();
+    logger.warn('POLYGONSCAN_KEY not found in configuration. Falling back to RPC gas price.');
+    return fetchFallbackGasPrice(runtime);
   }
 
   const params = {
@@ -100,9 +93,9 @@ export const getGasPriceEstimates = async (runtime: IAgentRuntime): Promise<GasP
 
     // PolygonScan sometimes returns status "0" with a message for errors (like invalid key)
     if (data.status !== '1' || !data.result) {
-      console.error(`PolygonScan API returned an error: ${data.message} (Status: ${data.status})`);
-      console.warn('Falling back to eth_gasPrice.');
-      return fetchFallbackGasPrice();
+      logger.error(`PolygonScan API returned an error: ${data.message} (Status: ${data.status})`);
+      logger.warn('Falling back to RPC gas price.');
+      return fetchFallbackGasPrice(runtime);
     }
 
     const { SafeGasPrice, ProposeGasPrice, FastGasPrice, suggestBaseFee } = data.result;
@@ -121,34 +114,39 @@ export const getGasPriceEstimates = async (runtime: IAgentRuntime): Promise<GasP
       fallbackGasPrice: null, // Indicate fallback was not used
     };
   } catch (error) {
-    console.error('Error fetching or parsing PolygonScan gas estimates:', error);
-    console.warn('Falling back to eth_gasPrice.');
-    return fetchFallbackGasPrice();
+    logger.error('Error fetching or parsing PolygonScan gas estimates:', error);
+    logger.warn('Falling back to RPC gas price.');
+    return fetchFallbackGasPrice(runtime);
   }
 };
 
 /**
- * Fetches gas price using the eth_gasPrice RPC method as a fallback.
+ * Fetches gas price using the RPC provider's getGasPrice method as a fallback.
  *
  * @returns A promise resolving to a simplified GasPriceEstimates object.
  */
-const fetchFallbackGasPrice = async (): Promise<GasPriceEstimates> => {
+const fetchFallbackGasPrice = async (runtime: IAgentRuntime): Promise<GasPriceEstimates> => {
   try {
-    const gasPriceWei = await coreRpc.eth_gasPrice();
+    // Get the RPC service
+    const rpcService = runtime.getService<PolygonRpcService>(PolygonRpcService.serviceType);
+    if (!rpcService) {
+      throw new Error('PolygonRpcService not available');
+    }
+
+    // Get gas price from Polygon L2
+    const gasPriceWei = await rpcService.getGasPrice('L2');
 
     // When using fallback, we only have a single gas price.
-    // We might assign it to 'average' priority or provide it separately.
     // We set priority fees and base fee to null as they aren't directly available.
-    // Providing the raw fallback value allows consumers to decide how to use it.
     return {
       safeLow: null,
-      average: null, // Or potentially { maxPriorityFeePerGas: gasPriceWei } if treating as priority
+      average: null,
       fast: null,
       estimatedBaseFee: null,
-      fallbackGasPrice: gasPriceWei, // Provide the fallback value explicitly
+      fallbackGasPrice: gasPriceWei, // Provide the fallback value directly
     };
-  } catch (rpcError) {
-    console.error('Error fetching fallback gas price via eth_gasPrice:', rpcError);
+  } catch (error) {
+    logger.error('Error fetching fallback gas price:', error);
     // Return empty estimates if fallback also fails
     return {
       safeLow: null,

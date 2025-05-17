@@ -1,188 +1,146 @@
+/**
+ * Action for bridging ERC20 tokens from Ethereum (L1) to Polygon (L2).
+ * 
+ * This implementation uses the Polygon bridge service to transfer tokens
+ * between networks in a standardized way.
+ */
+
 import {
   type Action,
-  type Content,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   type State,
   logger,
-  composePromptFromState,
-  ModelType,
   type ActionExample,
-  TemplateType,
 } from '@elizaos/core';
-import {
-  createConfig,
-  executeRoute,
-  type ExtendedChain,
-  getRoutes,
-  type LiFiStep,
-  type Route,
-  type ChainKey,
-} from '@lifi/sdk';
-import {
-  createWalletClient,
-  http,
-  type WalletClient,
-  parseEther,
-  type PublicClient,
-  createPublicClient,
-  fallback,
-  type Address,
-  type Hex,
-  type Transport,
-  type Account,
-  type Chain,
-} from 'viem';
-import { WalletProvider, initWalletProvider } from '../providers/PolygonWalletProvider';
+import { PolygonBridgeService } from '../services/PolygonBridgeService.js';
+import { z } from 'zod';
+import { formatUnits, parseUnits } from '../utils/formatters.js';
+import { PolygonRpcProvider, initPolygonRpcProvider } from '../providers/PolygonRpcProvider.js';
+import { type Address } from '../types.js';
+import { TIMEOUTS } from '../config.js';
 
-interface BridgeParams {
-  fromChain: string;
-  toChain: string;
-  fromToken: Address;
-  toToken: Address;
+interface BridgeERC20Params {
+  tokenAddress: string;
   amount: string;
-  toAddress?: Address;
-}
-interface Transaction {
-  hash: `0x${string}`;
-  from: Address;
-  to: Address;
-  value: bigint;
-  chainId: number;
-  data?: Hex;
-  logs?: any[];
+  recipient?: string;
 }
 
+// Template for parsing user input
 const bridgeTemplate = {
-  name: 'Bridge Tokens',
+  name: 'Bridge ERC20 Tokens',
   description:
-    'Bridge tokens between different EVM chains using LiFi. // Respond with a valid JSON object containing the extracted parameters.',
+    'Bridge ERC20 tokens from Ethereum (L1) to Polygon (L2) using the Polygon bridge. Respond with a valid JSON object containing the extracted parameters.',
   parameters: {
     type: 'object',
     properties: {
-      fromChain: {
+      tokenAddress: {
         type: 'string',
-        description: 'Name of the source chain (e.g., Ethereum, Polygon)',
+        description: 'Address of the ERC20 token on Ethereum (L1)',
       },
-      toChain: {
+      amount: {
         type: 'string',
-        description: 'Name of the destination chain (e.g., Polygon, Arbitrum)',
+        description: 'Amount of tokens to bridge (e.g., "10.5" or "1")',
       },
-      fromToken: {
+      recipient: {
         type: 'string',
-        description: 'Address of the token to bridge from source chain',
-      },
-      toToken: {
-        type: 'string',
-        description: 'Address of the token to receive on destination chain',
-      },
-      amount: { type: 'string', description: 'Amount of tokens to bridge (e.g., \"10.5\")' },
-      toAddress: {
-        type: 'string',
-        description: 'Optional: Address on destination chain. Defaults to sender.',
+        description: 'Optional: Address on Polygon to receive the tokens. Defaults to sender.',
       },
     },
-    required: ['fromChain', 'toChain', 'fromToken', 'toToken', 'amount'],
+    required: ['tokenAddress', 'amount'],
   },
 };
 
-class PolygonBridgeActionRunner {
-  private config;
-  private walletProvider: WalletProvider;
+// Examples to help users understand how to use the action
+const examples: ActionExample[] = [
+  {
+    input: 'Bridge 5 POL tokens to Polygon',
+    output: 'Starting bridge deposit of 5 POL tokens to Polygon...',
+  },
+  {
+    input: 'Send 1.5 USDC from Ethereum to Polygon',
+    output: 'Starting bridge deposit of 1.5 USDC tokens to Polygon...',
+  },
+];
 
-  constructor(walletProvider: WalletProvider) {
-    this.walletProvider = walletProvider;
-    const extendedChains = Object.values(this.walletProvider.chains).map((chainConfig: Chain) => {
-      const rpcUrls = chainConfig.rpcUrls.custom?.http || chainConfig.rpcUrls.default.http;
-      const blockExplorerUrl = chainConfig.blockExplorers?.default?.url || '';
-
-      return {
-        ...chainConfig,
-        key: chainConfig.name.toLowerCase().replace(/\s+/g, '-') as ChainKey,
-        chainType: 'EVM',
-        coin: chainConfig.nativeCurrency.symbol,
-        mainnet: !chainConfig.testnet,
-        logoURI: '',
-        diamondAddress: undefined,
-        nativeToken: {
-          address: '0x0000000000000000000000000000000000000000',
-          chainId: chainConfig.id,
-          symbol: chainConfig.nativeCurrency.symbol,
-          decimals: chainConfig.nativeCurrency.decimals,
-          name: chainConfig.nativeCurrency.name,
-          priceUSD: '0',
-          logoURI: '',
-          coinKey: chainConfig.nativeCurrency.symbol,
-        },
-        metamask: {
-          chainId: `0x${chainConfig.id.toString(16)}`,
-          blockExplorerUrls: blockExplorerUrl ? [blockExplorerUrl] : [],
-          chainName: chainConfig.name,
-          nativeCurrency: chainConfig.nativeCurrency,
-          rpcUrls: rpcUrls.slice(),
-        },
-      } as ExtendedChain;
-    });
-
-    this.config = createConfig({ integrator: 'ElizaOS-PolygonPlugin', chains: extendedChains });
-  }
-  async bridge(params: BridgeParams): Promise<Transaction> {
-    const walletClient = this.walletProvider.getWalletClient(params.fromChain);
-    const [fromAddress] = await walletClient.getAddresses();
-
-    const routes = await getRoutes({
-      fromChainId: this.walletProvider.getChainConfigs(params.fromChain).id,
-      toChainId: this.walletProvider.getChainConfigs(params.toChain).id,
-      fromTokenAddress: params.fromToken,
-      toTokenAddress: params.toToken,
-      fromAmount: parseEther(params.amount).toString(),
-      fromAddress: fromAddress,
-      toAddress: params.toAddress || fromAddress,
-    });
-
-    if (!routes.routes.length) throw new Error('No routes found');
-
-    const execution = await executeRoute(routes.routes[0], this.config);
-    const process = execution.steps[0]?.execution?.process[0];
-
-    if (!process?.status || process.status === 'FAILED') {
-      throw new Error('Transaction failed');
+const bridgeOptionsSchema = z.object({
+  tokenAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/, {
+    message: 'Token address must be a valid Ethereum address (0x followed by 40 hex characters)'
+  }),
+  amount: z.string().refine(val => {
+    try {
+      const num = parseFloat(val);
+      return !isNaN(num) && num > 0;
+    } catch (e) {
+      return false;
     }
+  }, {
+    message: 'Amount must be a positive number'
+  }),
+  recipientAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/, {
+    message: 'Recipient address must be a valid Ethereum address (0x followed by 40 hex characters)'
+  }).optional()
+});
 
-    return {
-      hash: process.txHash as `0x${string}`,
-      from: fromAddress,
-      to: routes.routes[0].steps[0].estimate.approvalAddress as `0x${string}`,
-      value: BigInt(params.amount),
-      chainId: this.walletProvider.getChainConfigs(params.fromChain).id,
-    };
-  }
-}
-
+/**
+ * Action to bridge ERC20 tokens from Ethereum (L1) to Polygon (L2)
+ * This implementation replaces the old LiFi-based implementation with a more standardized approach.
+ */
 export const bridgeDepositAction: Action = {
   name: 'BRIDGE_DEPOSIT_POLYGON',
-  similes: ['POLYGON_BRIDGE_FUNDS', 'MOVE_ETH_TO_POLYGON_LIFI'],
-  description: 'Initiates a deposit/bridge using LiFi.',
-  validate: async (runtime: IAgentRuntime, _m: Memory, _s: State | undefined): Promise<boolean> => {
-    logger.debug('Validating BRIDGE_DEPOSIT_POLYGON...');
-    const checks = [
-      runtime.getSetting('WALLET_PRIVATE_KEY'),
-      runtime.getSetting('POLYGON_PLUGINS_ENABLED'),
-    ];
-    if (checks.some((check) => !check)) {
-      logger.error('Required settings (WALLET_PRIVATE_KEY, POLYGON_PLUGINS_ENABLED) missing.');
-      return false;
-    }
+  similes: ['POLYGON_BRIDGE_FUNDS', 'MOVE_ETH_TO_POLYGON_LIFI', 'BRIDGE_TOKENS_TO_L2', 'DEPOSIT_TO_POLYGON', 'BRIDGE_ERC20_TO_POLYGON'],
+  description: 'Bridge ERC20 tokens from Ethereum (L1) to Polygon (L2).',
+  examples: [
+    "Bridge 5 USDC from Ethereum to Polygon",
+    "Transfer 0.5 DAI to my Polygon address",
+    "Send 10 LINK tokens from Ethereum to Polygon address 0x1234567890abcdef1234567890abcdef12345678"
+  ],
+  validate: async (options: any, runtime: IAgentRuntime) => {
     try {
-      await initWalletProvider(runtime);
-    } catch (e) {
-      const errMsg = e instanceof Error ? e.message : String(e);
-      logger.error(`WalletProvider initialization failed during validation: ${errMsg} `);
-      return false;
+      // Check if required RPC URLs and private key are set
+      const ethereumRpcUrl = runtime.getSetting('ETHEREUM_RPC_URL');
+      const polygonRpcUrl = runtime.getSetting('POLYGON_RPC_URL');
+      const privateKey = runtime.getSetting('PRIVATE_KEY');
+      
+      if (!ethereumRpcUrl) {
+        return 'ETHEREUM_RPC_URL setting is required for bridging';
+      }
+      
+      if (!polygonRpcUrl) {
+        return 'POLYGON_RPC_URL setting is required for bridging';
+      }
+      
+      if (!privateKey) {
+        return 'PRIVATE_KEY setting is required for bridging';
+      }
+      
+      // Check if token address and amount are provided
+      if (!options?.tokenAddress) {
+        return 'Token address is required for bridging';
+      }
+      
+      if (!options?.amount) {
+        return 'Amount is required for bridging';
+      }
+      
+      // Validate options format
+      try {
+        bridgeOptionsSchema.parse(options);
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          return error.errors[0].message;
+        }
+        return 'Invalid bridge options format';
+      }
+      
+      return true;
+    } catch (error) {
+      logger.error('Validation error:', error);
+      return 'Invalid bridge options';
     }
-    return true;
   },
+  
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -192,78 +150,110 @@ export const bridgeDepositAction: Action = {
     _rs: Memory[] | undefined
   ) => {
     logger.info('Handling BRIDGE_DEPOSIT_POLYGON for:', message.id);
+    
     try {
-      const walletProvider = await initWalletProvider(runtime);
-      const actionRunner = new PolygonBridgeActionRunner(walletProvider);
-      const prompt = composePromptFromState({
-        state,
-        template: bridgeTemplate as unknown as TemplateType,
-      });
-      const modelResponse = await runtime.useModel(ModelType.LARGE, { prompt });
-      let paramsJson;
-      try {
-        const responseText = modelResponse || '';
-        const jsonString = responseText.replace(/^```json\n ?|\n ? ```$/g, '');
-        paramsJson = JSON.parse(jsonString);
-      } catch (e) {
-        logger.error('Failed to parse LLM response for bridge params:', modelResponse, e);
-        throw new Error('Could not understand bridge parameters.');
+      const { tokenAddress, amount, recipientAddress } = message.content.parameters;
+      
+      logger.info(`Preparing to bridge ${amount} tokens from Ethereum to Polygon`);
+      logger.info(`Token address: ${tokenAddress}`);
+      if (recipientAddress) {
+        logger.info(`Recipient address: ${recipientAddress}`);
       }
-      if (
-        !paramsJson.fromChain ||
-        !paramsJson.toChain ||
-        !paramsJson.fromToken ||
-        !paramsJson.toToken ||
-        !paramsJson.amount
-      ) {
-        throw new Error('Incomplete bridge parameters extracted.');
+      
+      // Get the RPC provider for token metadata
+      const rpcProvider = await initPolygonRpcProvider(runtime);
+      if (!rpcProvider) {
+        throw new Error('PolygonRpcProvider not available');
       }
-      const bridgeOptions: BridgeParams = {
-        fromChain: paramsJson.fromChain,
-        toChain: paramsJson.toChain,
-        fromToken: paramsJson.fromToken as Address,
-        toToken: paramsJson.toToken as Address,
-        amount: paramsJson.amount,
-        toAddress: paramsJson.toAddress as Address | undefined,
-      };
-      logger.debug('Parsed bridge options:', bridgeOptions);
-      const bridgeResp = await actionRunner.bridge(bridgeOptions);
-      const successMessage = `Initiated bridge: ${bridgeOptions.amount} token from ${bridgeOptions.fromChain} to ${bridgeOptions.toChain}.TxHash: ${bridgeResp.hash} `;
-      logger.info(successMessage);
+      
+      // Get the bridge service
+      const bridgeService = runtime.getService(PolygonBridgeService.serviceType) as PolygonBridgeService;
+      if (!bridgeService) {
+        throw new Error('PolygonBridgeService not available');
+      }
+      
+      // Get token metadata
+      logger.info(`Fetching token metadata from Ethereum...`);
+      const metadata = await rpcProvider.getErc20Metadata(tokenAddress as Address, 'L1');
+      
+      // Convert amount to wei based on token decimals
+      const amountWei = parseUnits(amount, metadata.decimals);
+      
+      logger.info(`Bridging ${amount} ${metadata.symbol} (${formatUnits(amountWei, 0)} wei) to Polygon`);
+      
+      // Execute the bridge operation with timeout options
+      logger.info(`Initiating bridge transaction...`);
+      const result = await bridgeService.bridgeDeposit(
+        tokenAddress as Address,
+        amountWei,
+        recipientAddress as Address | undefined,
+        {
+          approvalTimeoutMs: TIMEOUTS.APPROVAL,
+          gasPriceMultiplier: 1.1, // Slight boost for faster processing
+        }
+      );
+      
+      logger.info(`Bridge transaction submitted successfully!`);
+      logger.info(`Deposit transaction hash: ${result.depositTxHash}`);
+      if (result.approvalTxHash) {
+        logger.info(`Approval transaction hash: ${result.approvalTxHash}`);
+      }
+      
+      // Create success message with detailed information
+      const successMessage = `
+Bridge deposit completed successfully!
+- Token: ${metadata.symbol}
+- Amount: ${amount}
+- Deposit Transaction: ${result.depositTxHash}
+${result.approvalTxHash ? `- Approval Transaction: ${result.approvalTxHash}` : '- No approval needed (already approved)'}
+- Recipient: ${result.recipientAddress}
+
+The tokens should appear on Polygon in approximately 20-30 minutes.
+      `.trim();
+      
       if (cb) {
         await cb({
           text: successMessage,
-          content: { success: true, hash: bridgeResp.hash },
+          content: { 
+            success: true, 
+            ...result,
+            symbol: metadata.symbol,
+            decimals: metadata.decimals
+          },
           actions: ['BRIDGE_DEPOSIT_POLYGON'],
           source: message.content.source,
         });
       }
-      return { success: true, hash: bridgeResp.hash };
+      
+      return { 
+        success: true, 
+        ...result,
+        symbol: metadata.symbol,
+        decimals: metadata.decimals
+      };
     } catch (error) {
-      const errMsg = error instanceof Error ? error.message : String(error);
-      logger.error('BRIDGE_DEPOSIT_POLYGON handler error:', errMsg, error);
+      logger.error('Error bridging tokens:', error);
+      
+      // Provide a more user-friendly error message based on error type
+      let userErrorMsg = `Error bridging tokens: ${error instanceof Error ? error.message : String(error)}`;
+      
+      if (error instanceof Error && error.message.includes('timed out')) {
+        userErrorMsg = 'The approval transaction is taking longer than expected. This could be due to network congestion. You can check your wallet or block explorer for the transaction status.';
+      } else if (error instanceof Error && error.message.includes('insufficient funds')) {
+        userErrorMsg = 'You don\'t have enough ETH to pay for the transaction gas costs. Please add more ETH to your wallet and try again.';
+      } else if (error instanceof Error && (error.message.includes('rejected') || error.message.includes('denied'))) {
+        userErrorMsg = 'The transaction was rejected. Please check your wallet and try again.';
+      }
+      
       if (cb) {
         await cb({
-          text: `Error bridging: ${errMsg} `,
+          text: userErrorMsg,
           actions: ['BRIDGE_DEPOSIT_POLYGON'],
           source: message.content.source,
         });
       }
-      return { success: false, error: errMsg };
+      
+      return { success: false, error: userErrorMsg };
     }
   },
-  examples: [
-    [
-      {
-        name: 'user',
-        content: { text: 'Bridge 0.5 WETH from Polygon to Ethereum mainnet.' },
-      },
-    ],
-    [
-      {
-        name: 'user',
-        content: { text: 'Move 100 USDC from Arbitrum to Polygon, send it to 0x123...' },
-      },
-    ],
-  ],
 };

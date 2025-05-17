@@ -68,8 +68,9 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@babel/generator": "^7.26.10",
-    "@elizaos/plugin-evm": "^1.0.0-beta.40",
+    "@elizaos/plugin-evm": "^0.25.6-alpha.1",
     "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-polygon": "workspace:*",
     "@hapi/shot": "^6.0.1",
     "@types/hapi": "^18.0.14",
     "node-opus": "^0.3.3",
