@@ -7,10 +7,18 @@ import { MemoryType, logger, splitChunks } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
 import { generateTextEmbedding } from './llm';
 import { extractTextFromFileBuffer, convertPdfToTextFromBuffer } from './utils';
+import {
+  getContextualizationPrompt,
+  getChunkWithContext,
+  getPromptForMimeType,
+} from './ctx-embeddings';
+import { generateSmallText } from './llm';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = './pdf.worker.mjs';
 
 logger.info('RAG Worker starting...');
+
+const { agentId: workerAgentId, dbConfig: workerDbConfig, ctxRagEnabled, ctxRagModel } = workerData;
 
 let dbAdapter: IDatabaseAdapter | null = null;
 
@@ -22,20 +30,20 @@ function postProcessingErrorToParent(documentId: string | UUID, errorMsg: string
       documentId,
       error: errorMsg,
       stack,
-      agentId: workerData.agentId,
+      agentId: workerAgentId,
     },
   });
 }
 
 async function initializeDatabaseAdapter() {
   try {
-    logger.debug('Initializing Database Adapter in worker with config:', workerData.dbConfig);
-    if (!workerData.agentId || !workerData.dbConfig) {
+    logger.debug('Initializing Database Adapter in worker with config:', workerDbConfig);
+    if (!workerAgentId || !workerDbConfig) {
       throw new Error(
         'agentId and dbConfig must be provided in workerData for worker DB adapter initialization.'
       );
     }
-    dbAdapter = createDatabaseAdapter(workerData.dbConfig, workerData.agentId as UUID);
+    dbAdapter = createDatabaseAdapter(workerDbConfig, workerAgentId as UUID);
     if (typeof dbAdapter.init === 'function') {
       await dbAdapter.init();
     }
@@ -79,12 +87,12 @@ async function initializeDatabaseAdapter() {
           logger.error(criticalErrorMsg);
           parentPort?.postMessage({
             type: 'WORKER_ERROR',
-            payload: { agentId: workerData.agentId, error: criticalErrorMsg },
+            payload: { agentId: workerAgentId, error: criticalErrorMsg },
           });
           throw new Error(criticalErrorMsg);
         }
         logger.debug(
-          `[RAG_WORKER] About to call ensureEmbeddingDimension on dbAdapter for agentId: ${workerData.agentId}.`
+          `[RAG_WORKER] About to call ensureEmbeddingDimension on dbAdapter for agentId: ${workerAgentId}.`
         );
         logger.debug(
           `[RAG_WORKER] dbAdapter has 'db' own property: ${Object.prototype.hasOwnProperty.call(dbAdapter, 'db')}`
@@ -114,7 +122,7 @@ async function initializeDatabaseAdapter() {
       parentPort?.postMessage({
         type: 'WORKER_ERROR',
         payload: {
-          agentId: workerData.agentId,
+          agentId: workerAgentId,
           error: `Failed to set embedding dimension: ${dimError.message}`,
           stack: dimError.stack,
         },
@@ -122,18 +130,23 @@ async function initializeDatabaseAdapter() {
       throw dimError;
     }
 
-    parentPort?.postMessage({ type: 'WORKER_READY', payload: { agentId: workerData.agentId } });
+    parentPort?.postMessage({ type: 'WORKER_READY', payload: { agentId: workerAgentId } });
   } catch (e: any) {
     logger.error('Failed to initialize Database Adapter in worker:', e.message, e.stack);
     parentPort?.postMessage({
       type: 'WORKER_ERROR',
-      payload: { agentId: workerData.agentId, error: e.message, stack: e.stack },
+      payload: { agentId: workerAgentId, error: e.message, stack: e.stack },
     });
   }
 }
 
-async function chunkAndSaveDocumentFragments(documentId: UUID, textContent: string, agentId: UUID) {
-  if (!textContent || textContent.trim() === '') {
+async function chunkAndSaveDocumentFragments(
+  documentId: UUID,
+  fullDocumentText: string,
+  agentId: UUID,
+  contentType?: string
+) {
+  if (!fullDocumentText || fullDocumentText.trim() === '') {
     postProcessingErrorToParent(documentId, 'No text content available to chunk and save.');
     return;
   }
@@ -148,7 +161,7 @@ async function chunkAndSaveDocumentFragments(documentId: UUID, textContent: stri
   logger.debug(
     `Using core splitChunks with effective char settings: targetChunkSize=${targetCharChunkSize} (tokens: ${tokenChunkSize}), targetOverlap=${targetCharChunkOverlap} (tokens: ${tokenChunkOverlap})`
   );
-  const chunks = await splitChunks(textContent, tokenChunkSize, tokenChunkOverlap);
+  const chunks = await splitChunks(fullDocumentText, tokenChunkSize, tokenChunkOverlap);
 
   logger.info(`Split content into ${chunks.length} chunks for document ${documentId}.`);
 
@@ -163,6 +176,8 @@ async function chunkAndSaveDocumentFragments(documentId: UUID, textContent: stri
       chunks,
       agentId,
       isFragment: true,
+      fullDocumentTextForContext: fullDocumentText,
+      contentTypeForContext: contentType,
     });
   } catch (e: any) {
     postProcessingErrorToParent(
@@ -215,7 +230,8 @@ async function processAndChunkDocument({
     await chunkAndSaveDocumentFragments(
       documentId as UUID,
       textContent,
-      workerData.agentId as UUID
+      workerData.agentId as UUID,
+      contentType
     );
   } catch (error: any) {
     postProcessingErrorToParent(
@@ -233,6 +249,8 @@ async function saveToDbViaAdapter({
   isFragment = true,
   mainDocText,
   originalMetadata,
+  fullDocumentTextForContext,
+  contentTypeForContext,
 }: {
   documentId: string;
   chunks?: string[];
@@ -246,6 +264,8 @@ async function saveToDbViaAdapter({
     fileSize: number;
     clientDocumentId: UUID;
   };
+  fullDocumentTextForContext?: string;
+  contentTypeForContext?: string;
 }) {
   if (!dbAdapter) {
     const errMsg = 'Database Adapter not initialized in worker. Cannot save.';
@@ -297,14 +317,51 @@ async function saveToDbViaAdapter({
         `Processing batch of ${batchChunks.length} chunks for document ${documentId}. Starting original index: ${batchOriginalIndices[0]}`
       );
 
-      const embeddingPromises = batchChunks.map((chunk) => generateTextEmbedding(chunk));
+      const chunksToEmbedPromises = batchChunks.map(async (chunkText, indexInBatch) => {
+        let finalChunkText = chunkText;
+        if (ctxRagEnabled && fullDocumentTextForContext) {
+          try {
+            const prompt = contentTypeForContext
+              ? getPromptForMimeType(contentTypeForContext, fullDocumentTextForContext, chunkText)
+              : getContextualizationPrompt(fullDocumentTextForContext, chunkText);
+
+            if (prompt.startsWith('Error:')) {
+              logger.warn(
+                `Skipping contextualization for a chunk of doc ${documentId} due to: ${prompt}`
+              );
+            } else {
+              logger.debug(
+                `Generating context for chunk ${batchOriginalIndices[indexInBatch]} of doc ${documentId} using model ${ctxRagModel}`
+              );
+              const llmResponse = await generateSmallText(prompt, undefined, ctxRagModel);
+              const generatedContext = llmResponse.text;
+              finalChunkText = getChunkWithContext(chunkText, generatedContext);
+              logger.debug(
+                `Context added for chunk ${batchOriginalIndices[indexInBatch]} of doc ${documentId}. New length: ${finalChunkText.length}`
+              );
+            }
+          } catch (contextError: any) {
+            logger.error(
+              `Error generating context for chunk ${batchOriginalIndices[indexInBatch]} of doc ${documentId}: ${contextError.message}`,
+              contextError.stack
+            );
+          }
+        }
+        return finalChunkText;
+      });
+
+      const chunksToEmbed = await Promise.all(chunksToEmbedPromises);
+
+      const embeddingPromises = chunksToEmbed.map((chunkToEmbed) =>
+        generateTextEmbedding(chunkToEmbed)
+      );
 
       try {
         const embeddingResults = await Promise.all(embeddingPromises);
 
         for (let j = 0; j < batchChunks.length; j++) {
           const originalChunkIndex = batchOriginalIndices[j];
-          const chunkText = batchChunks[j];
+          const contextualizedChunkText = chunksToEmbed[j];
           const embeddingResult = embeddingResults[j];
 
           const embedding = Array.isArray(embeddingResult)
@@ -325,7 +382,7 @@ async function saveToDbViaAdapter({
             worldId: agentId, // TODO: Review if worldId should be from original document or context
             entityId: agentId, // Assuming agent is the entity creating/owning this fragment
             embedding: embedding,
-            content: { text: chunkText },
+            content: { text: contextualizedChunkText },
             metadata: {
               type: MemoryType.FRAGMENT,
               documentId: documentId, // Link to the original document ID (could be clientDocId or storedMainDocId)
