@@ -138,7 +138,10 @@ export const recentMessagesProvider: Provider = {
       }
 
       const metaData = message.metadata as CustomMetadata;
-      const senderName = metaData?.entityName || 'unknown';
+      const senderName =
+        entitiesData.find((entity: Entity) => entity.id === message.entityId)?.names[0] ||
+        metaData?.entityName ||
+        'Unknown User';
       const receivedMessageContent = message.content.text;
 
       const hasReceivedMessage = !!receivedMessageContent?.trim();
