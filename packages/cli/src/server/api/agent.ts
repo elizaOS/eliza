@@ -1017,7 +1017,7 @@ export function agentRouter(
       }
 
       try {
-        const audioBuffer = fs.readFileSync(audioFile.path);
+        const audioBuffer = await fs.promises.readFile(audioFile.path);
         const transcription = await runtime.useModel(ModelType.TRANSCRIPTION, audioBuffer);
 
         // Process the transcribed text as a message
@@ -1389,7 +1389,7 @@ export function agentRouter(
 
       try {
         logger.debug('[TRANSCRIPTION] Reading audio file');
-        const audioBuffer = fs.readFileSync(audioFile.path);
+        const audioBuffer = await fs.promises.readFile(audioFile.path);
 
         logger.debug('[TRANSCRIPTION] Transcribing audio');
         const transcription = await runtime.useModel(ModelType.TRANSCRIPTION, audioBuffer);
@@ -1659,7 +1659,7 @@ export function agentRouter(
             (createUniqueUuid(runtime, `knowledge-${originalFilename}-${Date.now()}`) as UUID);
 
           try {
-            const fileBuffer = fs.readFileSync(filePath);
+            const fileBuffer = await fs.promises.readFile(filePath);
 
             return new Promise((resolve) => {
               ragService
@@ -1758,7 +1758,7 @@ export function agentRouter(
           }
 
           // Read file content into a buffer
-          const fileBuffer = fs.readFileSync(file.path);
+          const fileBuffer = await fs.promises.readFile(file.path);
           let extractedTextForContent = fileBuffer.toString('utf8');
           const relativePath = file.originalname;
 

@@ -167,7 +167,7 @@ export class RagService extends Service {
               `RagService: Worker confirmed knowledge added for doc ${message.payload.documentId}, count: ${message.payload.count} (agent: ${message.payload.agentId}).`
             );
             break;
-          case 'PDF_MAIN_DOCUMENT_STORED':
+          case 'PDF_MAIN_DOCUMENT_STORED': {
             logger.debug(
               `RagService: Worker confirmed PDF main document stored for clientDocId ${message.payload.clientDocumentId}, dbDocId: ${message.payload.storedDocumentMemoryId} (agent: ${message.payload.agentId}).`
             );
@@ -194,7 +194,8 @@ export class RagService extends Service {
               );
             }
             break;
-          case 'PROCESSING_ERROR':
+          }
+          case 'PROCESSING_ERROR': {
             logger.error(
               `RAG Worker for agent ${message.payload.agentId} reported a processing error for doc ${message.payload.documentId}:`,
               message.payload.error,
@@ -221,6 +222,7 @@ export class RagService extends Service {
               this.pendingPdfCallbacks.delete(message.payload.documentId as UUID);
             }
             break;
+          }
           case 'WORKER_ERROR': // General worker error not tied to a specific document, usually init.
             logger.error(
               `RAG Worker for agent ${message.payload.agentId} reported a worker-level error:`,
