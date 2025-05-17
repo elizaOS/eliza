@@ -16,11 +16,6 @@ on:
     paths:
       - 'packages/app/**'
       - '.github/workflows/**'
-  pull_request:
-    branches: [v2-develop]
-    paths:
-      - 'packages/app/**'
-      - '.github/workflows/**'
 
 jobs:
   test-build:
