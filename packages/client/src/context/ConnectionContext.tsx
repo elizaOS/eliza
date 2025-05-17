@@ -1,6 +1,20 @@
-import { createContext, useContext, useState, ReactNode, useEffect, useRef } from 'react';
+import {
+  createContext,
+  useContext,
+  useState,
+  ReactNode,
+  useEffect,
+  useRef,
+  useCallback,
+} from 'react';
 import { useToast } from '@/hooks/use-toast';
 import SocketIOManager from '@/lib/socketio-manager';
+
+export const connectionStatusActions = {
+  setUnauthorized: (message: string) => {
+    console.warn('setUnauthorized called before ConnectionContext is ready', message);
+  },
+};
 
 export type ConnectionStatusType =
   | 'loading'
@@ -12,6 +26,7 @@ export type ConnectionStatusType =
 interface ConnectionContextType {
   status: ConnectionStatusType;
   error: string | null;
+  setUnauthorizedFromApi: (message: string) => void;
 }
 
 const ConnectionContext = createContext<ConnectionContextType | undefined>(undefined);
@@ -22,6 +37,23 @@ export const ConnectionProvider = ({ children }: { children: ReactNode }) => {
   const [error, setError] = useState<string | null>(null);
   const isFirstConnect = useRef(true);
   const socketManager = SocketIOManager.getInstance();
+
+  const setUnauthorizedFromApi = useCallback(
+    (message: string) => {
+      setStatus('unauthorized');
+      setError(message);
+      toast({
+        title: 'Authorization Required',
+        description: message || 'Please provide a valid API Key.',
+        variant: 'destructive',
+      });
+    },
+    [toast]
+  );
+
+  useEffect(() => {
+    connectionStatusActions.setUnauthorized = setUnauthorizedFromApi;
+  }, [setUnauthorizedFromApi]);
 
   useEffect(() => {
     const onConnect = () => {
@@ -88,7 +120,9 @@ export const ConnectionProvider = ({ children }: { children: ReactNode }) => {
   }, [toast]);
 
   return (
-    <ConnectionContext.Provider value={{ status, error }}>{children}</ConnectionContext.Provider>
+    <ConnectionContext.Provider value={{ status, error, setUnauthorizedFromApi }}>
+      {children}
+    </ConnectionContext.Provider>
   );
 };
 
