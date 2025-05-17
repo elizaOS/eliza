@@ -31,6 +31,7 @@ import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
 import yargs from "yargs";
+import { blockendCharacter } from "./blockend.character.ts";
 
 export const wait = (minTime = 1000, maxTime = 3000) => {
     const waitTime =
@@ -214,7 +215,7 @@ async function jsonToCharacter(
     // Handle plugins
     elizaLogger.debug(
         `Constructing plugins for ${character.name} character ` +
-        `(count=${character.plugins.length})`,
+            `(count=${character.plugins.length})`
     );
     character.plugins = await handlePluginImporting(character.plugins);
     elizaLogger.info(
@@ -379,7 +380,7 @@ export async function loadCharacters(
 
     if (loadedCharacters.length === 0) {
         elizaLogger.info("No characters found, using default character");
-        loadedCharacters.push(defaultCharacter);
+        loadedCharacters.push(blockendCharacter);
     }
 
     return loadedCharacters;
@@ -879,11 +880,11 @@ const startAgents = async () => {
     let serverPort = Number.parseInt(settings.SERVER_PORT || "3000");
     const args = parseArguments();
     const charactersArg = args.characters || args.character;
-    let characters = [defaultCharacter];
+    let characters = [blockendCharacter];
 
-    if (charactersArg || hasValidRemoteUrls()) {
-        characters = await loadCharacters(charactersArg);
-    }
+    // if (charactersArg || hasValidRemoteUrls()) {
+    //     characters = await loadCharacters(charactersArg);
+    // }
 
     try {
         for (const character of characters) {

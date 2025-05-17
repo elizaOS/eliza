@@ -1,0 +1,42 @@
+{
+    "name": "@elizaos/plugin-blockend",
+    "version": "0.0.1",
+    "type": "module",
+    "main": "dist/index.js",
+    "module": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "exports": {
+        "./package.json": "./package.json",
+        ".": {
+            "import": {
+                "@elizaos/source": "./src/index.ts",
+                "types": "./dist/index.d.ts",
+                "default": "./dist/index.js"
+            }
+        }
+    },
+    "files": [
+        "dist"
+    ],
+    "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "buffer": "^6.0.3",
+        "bs58": "^@4.0.1",
+        "@solana/web3.js": "^1.95.8"
+    },
+    "devDependencies": {
+        "@types/node": "^22.10.5",
+        "ethers": "^6.13.7",
+        "tsup": "8.3.5"
+    },
+    "scripts": {
+        "build": "tsup --format esm --dts",
+        "dev": "tsup --format esm --dts --watch"
+    },
+    "peerDependencies": {
+        "whatwg-url": "7.1.0"
+    },
+    "browser": {
+        "buffer": "buffer"
+    }
+}

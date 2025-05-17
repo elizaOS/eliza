@@ -44,7 +44,7 @@ cp .env.example .env
 pnpm i && pnpm build && pnpm start
 ```
 
-Leia a [Documentação](https://ai16z.github.io/eliza/) para aprender como customizar a sua Eliza.
+Leia a [Documentação](https://elizaos.github.io/eliza/) para aprender como customizar a sua Eliza.
 
 ### Executando Eliza manualmente (Recomendado apenas se você souber o que está fazendo)
 
