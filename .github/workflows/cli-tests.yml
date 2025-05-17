@@ -44,8 +44,38 @@ jobs:
       - name: Install bats (npm)
         run: npm install -g bats
 
-      - name: Clean eliza cache
-        run: rm -rf ~/.eliza
+      - name: Clean eliza projects cache
+        run: rm -rf ~/.eliza/projects
+
+      - name: Download models
+        run: |
+          MODEL_DIR="$HOME/.eliza/models"
+          mkdir -p "$MODEL_DIR"
+          declare -a models=(
+            "DeepHermes-3-Llama-3-3B-Preview-q4.gguf https://huggingface.co/NousResearch/DeepHermes-3-Llama-3-3B-Preview-GGUF/resolve/main/DeepHermes-3-Llama-3-3B-Preview-q4.gguf"
+            "bge-small-en-v1.5.Q4_K_M.gguf https://huggingface.co/ChristianAzinn/bge-small-en-v1.5-gguf/resolve/main/bge-small-en-v1.5.Q4_K_M.gguf"
+          )
+          for entry in "${models[@]}"; do
+            name="${entry%% *}"
+            url="${entry#* }"
+            path="$MODEL_DIR/$name"
+            if [ ! -f "$path" ]; then
+              echo "Downloading $name..."
+              start=$(date +%s)
+              curl -L -f -sS -o "$path" "$url"
+              status=$?
+              end=$(date +%s)
+              duration=$((end - start))
+              if [ $status -eq 0 ]; then
+                echo "Downloaded $name in ${duration}s."
+              else
+                echo "Failed to download $name after ${duration}s."
+                exit 1
+              fi
+            else
+              echo "$name already exists, skipping."
+            fi
+          done
 
       - name: Make test scripts executable
         run: chmod +x packages/cli/__test_scripts__/*.bats packages/cli/__test_scripts__/*.sh
