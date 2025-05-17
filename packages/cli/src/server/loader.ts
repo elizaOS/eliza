@@ -209,7 +209,7 @@ export async function loadCharacterTryPath(characterPath: string): Promise<Chara
       ];
 
   // Combine the paths to try both variants
-  const pathsToTry = [...basePathsToTry, ...jsonPathsToTry];
+  const pathsToTry = Array.from(new Set([...basePathsToTry, ...jsonPathsToTry]));
 
   let lastError = null;
 
