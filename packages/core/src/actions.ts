@@ -4,14 +4,6 @@ import type { Action, ActionExample } from './types';
 /**
  * Composes a set of example conversations based on provided actions and a specified count.
  * It randomly selects examples from the provided actions and formats them with generated names.
- * @param actionsData - An array of `Action` objects from which to draw examples.
- * @param count - The number of examples to generate.
- * @returns A string containing formatted examples of conversations.
- */
-
-/**
- * Composes a set of example conversations based on provided actions and a specified count.
- * It randomly selects examples from the provided actions and formats them with generated names.
  *
  * @param actionsData - An array of `Action` objects from which to draw examples.
  * @param count - The number of examples to generate.
