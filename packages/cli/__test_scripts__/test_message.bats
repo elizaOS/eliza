@@ -192,6 +192,5 @@ teardown_file() {
     local payload='{"entityId":"31c75add-3a49-4bb1-ad40-92c6b4c39558","roomId":"'$ELIZA_AGENT_ID'","source":"client_chat","text":"Can you help with creating a new channel for agent-dev-school?","channelType":"API"}'
     run curl -s -X POST -H "Content-Type: application/json" -d "$payload" "$TEST_SERVER_URL/api/agents/$ELIZA_AGENT_ID/message"
     [ "$status" -eq 0 ]
-    [[ "$output" == *'"thought":'* ]]
-    [[ "$output" == *'"actions":'* ]]
+    echo "$output" | jq -e '.thought and .actions' >/dev/null
 }
