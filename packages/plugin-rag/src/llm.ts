@@ -1,11 +1,16 @@
-import { generateText, embed, GenerateTextResult, EmbedResult } from 'ai';
+import { generateText, embed, GenerateTextResult } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';
+import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
 const OPENAI_EMBEDDING_MODEL_HARDCODED = 'text-embedding-3-small';
+const OPENROUTER_DEFAULT_SMALL_MODEL = 'google/gemini-flash';
+const OPENROUTER_DEFAULT_LARGE_MODEL = 'google/gemini-pro';
+const ANTHROPIC_DEFAULT_SMALL_MODEL = 'claude-3-haiku-20240307';
+const ANTHROPIC_DEFAULT_LARGE_MODEL = 'claude-3-5-sonnet-latest';
 
 export async function generateTextEmbedding(text: string): Promise<{ embedding: number[] }> {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -37,64 +42,156 @@ export async function generateTextEmbedding(text: string): Promise<{ embedding: 
 
 export async function generateSmallText(
   prompt: string,
-  system?: string
+  system?: string,
+  config?: { provider?: 'anthropic' | 'openrouter'; modelName?: string }
 ): Promise<GenerateTextResult<any, any>> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  const modelName = process.env.ANTHROPIC_SMALL_MODEL ?? 'claude-3-haiku-20240307';
+  const provider = config?.provider || 'anthropic';
 
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY environment variable is not set.');
-  }
+  if (provider === 'anthropic') {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    const modelName =
+      config?.modelName || process.env.ANTHROPIC_SMALL_MODEL || ANTHROPIC_DEFAULT_SMALL_MODEL;
+    const maxTokens = parseInt(process.env.ANTHROPIC_SMALL_MAX_TOKENS || '1024', 10);
 
-  const anthropic = createAnthropic({ apiKey });
-  const modelInstance = anthropic(modelName);
+    if (!apiKey) {
+      throw new Error('ANTHROPIC_API_KEY environment variable is not set for Anthropic provider.');
+    }
 
-  try {
-    const result = await generateText({
-      model: modelInstance,
-      prompt: prompt,
-      system: system,
-      temperature: 0.7,
-      maxTokens: 1024,
-    });
-    console.log(
-      `[LLM Service - Anthropic Small Text] Text generated. Usage: ${result.usage.promptTokens} prompt tokens, ${result.usage.completionTokens} completion tokens.`
-    );
-    return result;
-  } catch (error) {
-    console.error('[LLM Service - Anthropic Small Text] Error generating text:', error);
-    throw error;
+    const anthropic = createAnthropic({ apiKey });
+    const modelInstance = anthropic(modelName);
+
+    try {
+      const result = await generateText({
+        model: modelInstance,
+        prompt: prompt,
+        system: system,
+        temperature: 0.7,
+        maxTokens: maxTokens,
+      });
+      console.log(
+        `[LLM Service - Anthropic Small Text] Text generated with ${modelName}. Usage: ${result.usage.promptTokens} prompt tokens, ${result.usage.completionTokens} completion tokens.`
+      );
+      return result;
+    } catch (error) {
+      console.error(
+        `[LLM Service - Anthropic Small Text] Error generating text with ${modelName}:`,
+        error
+      );
+      throw error;
+    }
+  } else if (provider === 'openrouter') {
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    const baseURL = process.env.OPENROUTER_BASE_URL;
+    const modelName =
+      config?.modelName || process.env.OPENROUTER_SMALL_MODEL || OPENROUTER_DEFAULT_SMALL_MODEL;
+    const maxTokens = parseInt(process.env.OPENROUTER_SMALL_MAX_TOKENS || '1024', 10);
+
+    if (!apiKey) {
+      throw new Error(
+        'OPENROUTER_API_KEY environment variable is not set for OpenRouter provider.'
+      );
+    }
+
+    const openrouter = createOpenRouter({ apiKey, baseURL });
+    const modelInstance = openrouter.chat(modelName);
+
+    try {
+      const result = await generateText({
+        model: modelInstance,
+        prompt: prompt,
+        system: system,
+        temperature: 0.7,
+        maxTokens: maxTokens,
+      });
+      console.log(
+        `[LLM Service - OpenRouter Small Text] Text generated with ${modelName}. Usage: ${result.usage.promptTokens} prompt tokens, ${result.usage.completionTokens} completion tokens.`
+      );
+      return result;
+    } catch (error) {
+      console.error(
+        `[LLM Service - OpenRouter Small Text] Error generating text with ${modelName}:`,
+        error
+      );
+      throw error;
+    }
+  } else {
+    throw new Error(`Unsupported small text provider: ${provider}`);
   }
 }
 
 export async function generateLargeText(
   prompt: string,
-  system?: string
+  system?: string,
+  config?: { provider?: 'anthropic' | 'openrouter'; modelName?: string }
 ): Promise<GenerateTextResult<any, any>> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  const modelName = process.env.ANTHROPIC_LARGE_MODEL ?? 'claude-3-5-sonnet-latest';
+  const provider = config?.provider || 'anthropic';
 
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY environment variable is not set.');
-  }
+  if (provider === 'anthropic') {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    const modelName =
+      config?.modelName || process.env.ANTHROPIC_LARGE_MODEL || ANTHROPIC_DEFAULT_LARGE_MODEL;
 
-  const anthropic = createAnthropic({ apiKey });
-  const modelInstance = anthropic(modelName);
+    if (!apiKey) {
+      throw new Error('ANTHROPIC_API_KEY environment variable is not set for Anthropic provider.');
+    }
 
-  try {
-    const result = await generateText({
-      model: modelInstance,
-      prompt: prompt,
-      system: system,
-      temperature: 0.7,
-      maxTokens: 4096,
-    });
-    console.log(
-      `[LLM Service - Anthropic Large Text] Text generated. Usage: ${result.usage.promptTokens} prompt tokens, ${result.usage.completionTokens} completion tokens.`
-    );
-    return result;
-  } catch (error) {
-    console.error('[LLM Service - Anthropic Large Text] Error generating text:', error);
-    throw error;
+    const anthropic = createAnthropic({ apiKey });
+    const modelInstance = anthropic(modelName);
+
+    try {
+      const result = await generateText({
+        model: modelInstance,
+        prompt: prompt,
+        system: system,
+        temperature: 0.7,
+        maxTokens: 4096,
+      });
+      console.log(
+        `[LLM Service - Anthropic Large Text] Text generated with ${modelName}. Usage: ${result.usage.promptTokens} prompt tokens, ${result.usage.completionTokens} completion tokens.`
+      );
+      return result;
+    } catch (error) {
+      console.error(
+        `[LLM Service - Anthropic Large Text] Error generating text with ${modelName}:`,
+        error
+      );
+      throw error;
+    }
+  } else if (provider === 'openrouter') {
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    const baseURL = process.env.OPENROUTER_BASE_URL;
+    const modelName =
+      config?.modelName || process.env.OPENROUTER_LARGE_MODEL || OPENROUTER_DEFAULT_LARGE_MODEL;
+
+    if (!apiKey) {
+      throw new Error(
+        'OPENROUTER_API_KEY environment variable is not set for OpenRouter provider.'
+      );
+    }
+
+    const openrouter = createOpenRouter({ apiKey, baseURL });
+    const modelInstance = openrouter.chat(modelName);
+
+    try {
+      const result = await generateText({
+        model: modelInstance,
+        prompt: prompt,
+        system: system,
+        temperature: 0.7,
+        maxTokens: 4096,
+      });
+      console.log(
+        `[LLM Service - OpenRouter Large Text] Text generated with ${modelName}. Usage: ${result.usage.promptTokens} prompt tokens, ${result.usage.completionTokens} completion tokens.`
+      );
+      return result;
+    } catch (error) {
+      console.error(
+        `[LLM Service - OpenRouter Large Text] Error generating text with ${modelName}:`,
+        error
+      );
+      throw error;
+    }
+  } else {
+    throw new Error(`Unsupported large text provider: ${provider}`);
   }
 }

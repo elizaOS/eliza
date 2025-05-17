@@ -3,7 +3,7 @@ import { copy } from 'esbuild-plugin-copy';
 import path from 'path';
 
 export default defineConfig({
-  entry: ['src/index.ts', 'src/rag.worker.ts'],
+  entry: ['src/index.ts', 'src/rag-worker.ts'],
   outDir: 'dist',
   tsconfig: './tsconfig.build.json', // Use build-specific tsconfig
   sourcemap: true,

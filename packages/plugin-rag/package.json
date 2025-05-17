@@ -33,6 +33,7 @@
     "@elizaos/cli": "^1.0.0-beta.52",
     "@elizaos/core": "^1.0.0-beta.52",
     "@elizaos/plugin-sql": "^1.0.0-beta.52",
+    "@openrouter/ai-sdk-provider": "^0.4.5",
     "ai": "^4.3.15",
     "dotenv": "^16.5.0",
     "esbuild-plugin-copy": "^2.1.1",

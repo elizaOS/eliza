@@ -29,6 +29,14 @@ interface WorkerDbConfig {
   postgresUrl?: string;
 }
 
+// Define workerData structure explicitly
+interface RagWorkerData {
+  agentId: string;
+  dbConfig: WorkerDbConfig;
+  ctxRagEnabled?: boolean;
+  ctxRagModel?: string;
+}
+
 export class RagService extends Service {
   static serviceType = 'rag';
   capabilityDescription =
@@ -109,16 +117,32 @@ export class RagService extends Service {
   getOrInitializeWorker(agentId: string): RagWorker {
     if (!this.workers.has(agentId)) {
       logger.info(`Initializing new RAG worker for agentId: ${agentId}`);
-      const workerPath = path.resolve(__dirname, 'rag.worker.js');
+      const workerPath = path.resolve(__dirname, 'rag.worker.js'); // Assuming .ts worker is compiled to .js
 
       const dbConfig = this.getDbConfigForWorker();
       logger.debug(`Resolved DB config for worker ${agentId}:`, dbConfig);
 
+      // Get contextual RAG settings
+      const ctxRagEnabledSetting = this.runtime.getSetting('CTX_RAG_ENABLED');
+      const ctxRagEnabled = ctxRagEnabledSetting === 'true' || ctxRagEnabledSetting === true;
+      // Default to claude-3-haiku-20240307 if not set, as per cookbook and common small models
+      const ctxRagModel = this.runtime.getSetting('CTX_RAG_MODEL') || 'claude-3-haiku-20240307';
+
+      if (ctxRagEnabled) {
+        logger.info(`Contextual RAG is ENABLED for agent ${agentId} using model ${ctxRagModel}`);
+      } else {
+        logger.info(`Contextual RAG is DISABLED for agent ${agentId}`);
+      }
+
+      const workerData: RagWorkerData = {
+        agentId,
+        dbConfig,
+        ctxRagEnabled,
+        ctxRagModel,
+      };
+
       const worker = new Worker(workerPath, {
-        workerData: {
-          agentId,
-          dbConfig,
-        },
+        workerData, // Pass structured workerData
       }) as RagWorker;
 
       // Setup a promise that resolves when the worker is ready
@@ -167,7 +191,7 @@ export class RagService extends Service {
               `RagService: Worker confirmed knowledge added for doc ${message.payload.documentId}, count: ${message.payload.count} (agent: ${message.payload.agentId}).`
             );
             break;
-          case 'PDF_MAIN_DOCUMENT_STORED': {
+          case 'PDF_MAIN_DOCUMENT_STORED':
             logger.debug(
               `RagService: Worker confirmed PDF main document stored for clientDocId ${message.payload.clientDocumentId}, dbDocId: ${message.payload.storedDocumentMemoryId} (agent: ${message.payload.agentId}).`
             );
@@ -194,8 +218,7 @@ export class RagService extends Service {
               );
             }
             break;
-          }
-          case 'PROCESSING_ERROR': {
+          case 'PROCESSING_ERROR':
             logger.error(
               `RAG Worker for agent ${message.payload.agentId} reported a processing error for doc ${message.payload.documentId}:`,
               message.payload.error,
@@ -222,7 +245,6 @@ export class RagService extends Service {
               this.pendingPdfCallbacks.delete(message.payload.documentId as UUID);
             }
             break;
-          }
           case 'WORKER_ERROR': // General worker error not tied to a specific document, usually init.
             logger.error(
               `RAG Worker for agent ${message.payload.agentId} reported a worker-level error:`,
@@ -325,6 +347,9 @@ export class RagService extends Service {
       `RagService (agent: ${agentId}) addKnowledge for clientDocId: ${clientDocumentId}, filename: ${originalFilename}, type: ${contentType}`
     );
 
+    // CTX RAG settings are read when the worker is initialized and passed via workerData.
+    // The worker will use these settings internally.
+
     if (contentType.toLowerCase() !== 'application/pdf') {
       try {
         logger.debug(
@@ -405,6 +430,7 @@ export class RagService extends Service {
               fileContentB64: fileContentB64,
               contentType: contentType,
               originalFilename: originalFilename, // Pass filename for worker's context
+              // Worker internally uses ctxRagEnabled and ctxRagModel from its workerData
             },
           });
           logger.info(
@@ -454,6 +480,7 @@ export class RagService extends Service {
             contentType: contentType,
             originalFilename: originalFilename,
             worldId: worldId,
+            // Worker internally uses ctxRagEnabled and ctxRagModel from its workerData
           },
         });
         logger.info(
