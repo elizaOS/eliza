@@ -319,6 +319,7 @@ export const dev = new Command()
     'Path or URL to character file to use instead of default'
   )
   .option('-b, --build', 'Build the project before starting')
+  .option('-chars, --characters [paths...]', 'Multiple character files (comma or space-separated)')
   .addOption(
     new Option('-p, --port <port>', 'Port to listen on').argParser((val) => Number.parseInt(val))
   )
@@ -333,6 +334,11 @@ export const dev = new Command()
       if (options.configure) cliArgs.push('--configure');
       if (options.character) cliArgs.push('--character', options.character);
       if (options.build) cliArgs.push('--build');
+      if (options.characters)
+        cliArgs.push(
+          '--characters',
+          ...(Array.isArray(options.characters) ? options.characters : [options.characters])
+        );
 
       // Function to rebuild and restart the server
       const rebuildAndRestart = async () => {
