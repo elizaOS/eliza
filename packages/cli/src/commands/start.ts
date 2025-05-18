@@ -33,11 +33,6 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export const wait = (minTime = 1000, maxTime = 3000) => {
-  const waitTime = Math.floor(Math.random() * (maxTime - minTime + 1)) + minTime;
-  return new Promise((resolve) => setTimeout(resolve, waitTime));
-};
-
 /**
  * Attempts to load a plugin module, installing it if necessary.
  * Handles various export patterns (default, named export).
