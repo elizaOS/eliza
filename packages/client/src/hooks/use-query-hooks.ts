@@ -173,13 +173,9 @@ export function useStartAgent() {
       // Return context for potential rollback
       return { agentId };
     },
-    onSuccess: (data) => {
-      // Immediately invalidate the queries for fresh data
+    onSuccess: (data, agentId) => {
       queryClient.invalidateQueries({ queryKey: ['agents'] });
-      queryClient.invalidateQueries({ queryKey: ['active-agents'] });
-      if (data?.id) {
-        queryClient.invalidateQueries({ queryKey: ['agent', data.id] });
-      }
+      queryClient.invalidateQueries({ queryKey: ['agent', agentId] });
 
       toast({
         title: 'Agent Started',
