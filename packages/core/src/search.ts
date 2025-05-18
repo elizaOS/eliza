@@ -1056,7 +1056,7 @@ export class BM25 {
   termToIndex: Map<string, number>;
   /** Array storing the document frequency (number of docs containing the term) for each term index. */
   documentFrequency: Uint32Array; // DF for each term index
-  /** Map from term index to another map storing */
+  /** Map from term index to another map storing `docIndex: termFrequencyInDoc`. */
   termFrequencies: Map<number, Map<number, number>>; // TermIndex -> { DocIndex -> TF }
   /** Boost factors for different fields within documents. */
   readonly fieldBoosts: { [key: string]: number };
