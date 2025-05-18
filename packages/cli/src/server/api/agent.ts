@@ -1663,13 +1663,13 @@ export function agentRouter(
 
             return new Promise((resolve) => {
               ragService
-                .addKnowledge(
+                .addKnowledge({
                   clientDocumentId,
                   fileBuffer,
                   contentType,
                   originalFilename,
                   worldId,
-                  (
+                  onDocumentStored: (
                     error: Error | null,
                     result?: { clientDocumentId: UUID; storedDocumentMemoryId: UUID }
                   ) => {
@@ -1697,8 +1697,8 @@ export function agentRouter(
                         uploadedAt: Date.now(),
                       });
                     }
-                  }
-                )
+                  },
+                })
                 .catch((serviceCallError) => {
                   cleanupFile(filePath); // Cleanup if addKnowledge call itself fails synchronously
                   logger.error(
