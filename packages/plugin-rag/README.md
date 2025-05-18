@@ -1,112 +1,197 @@
-# Eliza OS Plugin: RAG
+# RAG Plugin for ElizaOS
 
-This plugin provides Retrieval Augmented Generation (RAG) capabilities for Eliza OS agents, enabling them to retrieve and incorporate relevant information from a knowledge base when responding to queries.
+This plugin provides Retrieval Augmented Generation (RAG) capabilities for ElizaOS agents, allowing them to load, index, and query knowledge from various sources.
+
+## Architecture
+
+The plugin is built with a modular, clean architecture that follows SOLID principles:
+
+```
+packages/plugin-rag/
+├── src/
+│   ├── index.ts           # Main entry point and plugin definition
+│   ├── service.ts         # RAG service implementation
+│   ├── worker.ts          # Worker thread management
+│   ├── rag-worker.ts      # Worker implementation for processing docs
+│   ├── types.ts           # Type definitions
+│   ├── llm.ts             # LLM interactions (text generation, embeddings)
+│   ├── config.ts          # Configuration validation
+│   ├── ctx-embeddings.ts  # Contextual embedding generation
+│   └── utils.ts           # Utility functions
+├── README.md              # This file
+└── package.json           # Package definition
+```
+
+## Component Overview
+
+- **RagService**: Core service that manages document processing and storage
+- **WorkerManager**: Handles worker lifecycle and communication
+- **Worker Implementation**: Processes documents, creates embeddings, and chunks text
 
 ## Features
 
-- Text embedding generation using multiple providers (OpenAI, Google)
-- Text generation using multiple providers (OpenAI, Anthropic, OpenRouter, Google)
-- Document processing and chunking
-- Knowledge base management
-- Support for contextual RAG (improved chunking with LLM-enhanced context)
-
-## Configuration
-
-The plugin supports multiple AI service providers and can be configured using environment variables:
-
-### Required Settings
-
-```env
-# Provider selection
-EMBEDDING_PROVIDER=openai  # Options: openai, google
-TEXT_PROVIDER=openai       # Options: openai, anthropic, openrouter, google
-
-# Model names
-TEXT_EMBEDDING_MODEL=text-embedding-3-small  # Model name for embeddings
-TEXT_MODEL=gpt-4o                           # Model name for text generation
-
-# API Keys (based on chosen providers)
-OPENAI_API_KEY=sk-...       # Required when using OpenAI
-ANTHROPIC_API_KEY=sk-...    # Required when using Anthropic
-OPENROUTER_API_KEY=sk-...   # Required when using OpenRouter
-GOOGLE_API_KEY=...          # Required when using Google
-```
-
-### Optional Settings
-
-```env
-# Optional base URLs (for custom endpoints)
-OPENAI_BASE_URL=https://api.openai.com/v1
-ANTHROPIC_BASE_URL=https://api.anthropic.com
-OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-GOOGLE_BASE_URL=https://generativelanguage.googleapis.com/v1beta
-
-# Token limits
-MAX_INPUT_TOKENS=4000      # Maximum input tokens
-MAX_OUTPUT_TOKENS=4096     # Maximum output tokens
-
-# Contextual RAG settings
-CTX_RAG_ENABLED=true       # Enable improved chunking with contextual RAG (uses TEXT_MODEL)
-```
+- Document upload and processing (PDF, text, and other formats)
+- Contextual chunking and embedding generation
+- Parallel processing via worker threads
+- Robust error handling and recovery
+- Rate limiting to respect provider limitations
+- Support for multiple LLM providers
 
 ## Usage
 
-The plugin automatically starts the RAG service when your agent initializes. The service provides the following capabilities:
+### Basic Usage
 
-1. **Knowledge Upload**: Add documents to the knowledge base
-2. **Knowledge Retrieval**: Retrieve relevant information for queries
+```typescript
+import { RagService } from '@elizaos/plugin-rag';
 
-### Example: Adding Knowledge
-
-```javascript
-// Example of adding a PDF document to the knowledge base
-const fileBuffer = fs.readFileSync('document.pdf');
-const contentType = 'application/pdf';
-const originalFilename = 'document.pdf';
-
-// Get the RAG service from agent runtime
-const ragService = runtime.getService('rag');
-
-// Add the document to the knowledge base
-await ragService.addKnowledge(
-  'document-1', // Client document ID
-  fileBuffer, // File content as Buffer
-  contentType, // MIME type
-  originalFilename, // Original filename
-  worldId // World ID
-);
+// Add knowledge to an agent
+await ragService.addKnowledge({
+  clientDocumentId: 'unique-id',
+  fileBuffer: documentBuffer,
+  contentType: 'application/pdf',
+  originalFilename: 'document.pdf',
+  worldId: 'world-id',
+  onDocumentStored: (error, result) => {
+    if (error) {
+      console.error('Error storing document:', error);
+      return;
+    }
+    console.log('Document stored:', result);
+  },
+});
 ```
 
-### Contextual RAG
+### Configuration
 
-When `CTX_RAG_ENABLED=true`, the plugin uses your configured `TEXT_MODEL` to enhance document chunks with additional contextual information, improving the quality of embeddings and retrieval. This technique, inspired by Anthropic's Cookbook, produces better search results by ensuring each chunk has sufficient context for accurate understanding.
+The plugin has two main operating modes that affect which configuration variables are required:
 
-## Supported Models
+#### Basic Embedding Mode (CTX_RAG_ENABLED=false)
 
-### OpenAI
+When contextual RAG is disabled, the plugin only requires embedding configuration:
 
-- Text Embedding: text-embedding-3-small, text-embedding-3-large, text-embedding-ada-002
-- Text Generation: gpt-4o, gpt-4-turbo, gpt-3.5-turbo, etc.
+```env
+# Basic embedding-only configuration (minimum required)
+EMBEDDING_PROVIDER=openai
+TEXT_EMBEDDING_MODEL=text-embedding-3-small
+OPENAI_API_KEY=your-openai-api-key
 
-### Google
+# Optional: Embedding dimension (default: 1536)
+EMBEDDING_DIMENSION=1536
+```
 
-- Text Embedding: text-embedding-004, gemini-embedding-exp-03-07
-- Text Generation: gemini-1.5-pro-latest, gemini-1.5-flash-latest, etc.
+**Important**: In this mode, TEXT_PROVIDER and TEXT_MODEL are not required. The EMBEDDING_PROVIDER and TEXT_EMBEDDING_MODEL should match your ElizaOS configuration to ensure compatibility. For instance, if your ElizaOS uses OpenAI for embeddings, you should configure this plugin to use OpenAI as well.
 
-### Anthropic
+This mode uses simple text splitting without contextual enrichment. Documents are chunked, but each chunk's embedding is generated without additional context from the full document.
 
-- Text Generation: claude-3-opus-20240229, claude-3-sonnet-20240229, claude-3-haiku-20240307, etc.
+#### Contextual RAG Mode (CTX_RAG_ENABLED=true)
 
-### OpenRouter
+When contextual RAG is enabled, both embedding and text generation configurations are required:
 
-- Text Generation: Various models from multiple providers
+```env
+# Comprehensive configuration for Contextual RAG
 
-## Troubleshooting
+# Required embedding settings
+EMBEDDING_PROVIDER=openai
+TEXT_EMBEDDING_MODEL=text-embedding-3-small
+OPENAI_API_KEY=your-openai-api-key
 
-If you encounter issues with the RAG plugin:
+# Required text generation settings (only when CTX_RAG_ENABLED=true)
+TEXT_PROVIDER=openrouter
+TEXT_MODEL=google/gemini-2.5-flash-preview
+OPENROUTER_API_KEY=your-openrouter-api-key
 
-1. Ensure all required environment variables are set correctly
-2. Check that your API keys are valid and have sufficient quota
-3. Verify that the chosen models are supported by the respective providers
+# Optional base URLs if using custom endpoints
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 
-For more detailed logs, set `LOG_LEVEL=debug` in your environment.
+# Enable contextual RAG
+CTX_RAG_ENABLED=true
+
+# Optional: Customize dimensions and token limits
+EMBEDDING_DIMENSION=1536
+MAX_INPUT_TOKENS=4000
+MAX_OUTPUT_TOKENS=4096
+```
+
+**Note**: TEXT_PROVIDER and TEXT_MODEL are only required when CTX_RAG_ENABLED is set to true. The embedding dimension and model should match your ElizaOS configuration for optimal compatibility.
+
+#### Recommended Configurations
+
+For optimal contextual RAG performance, we recommend the following provider combinations:
+
+**Option 1: OpenRouter with Claude/Gemini**
+
+```env
+EMBEDDING_PROVIDER=openai
+TEXT_EMBEDDING_MODEL=text-embedding-3-small
+OPENAI_API_KEY=your-openai-api-key
+
+TEXT_PROVIDER=openrouter
+TEXT_MODEL=anthropic/claude-3.5-sonnet
+# or TEXT_MODEL=google/gemini-2.5-flash-preview
+OPENROUTER_API_KEY=your-openrouter-api-key
+CTX_RAG_ENABLED=true
+```
+
+This setup enables document caching for improved performance and reduced costs.
+
+**Option 2: OpenAI for Everything**
+
+```env
+EMBEDDING_PROVIDER=openai
+TEXT_EMBEDDING_MODEL=text-embedding-3-small
+TEXT_PROVIDER=openai
+TEXT_MODEL=gpt-4o
+OPENAI_API_KEY=your-openai-api-key
+CTX_RAG_ENABLED=true
+```
+
+**Option 3: Google AI for Everything**
+
+```env
+EMBEDDING_PROVIDER=google
+TEXT_EMBEDDING_MODEL=text-embedding-004
+TEXT_PROVIDER=google
+TEXT_MODEL=gemini-1.5-pro-latest
+GOOGLE_API_KEY=your-google-api-key
+CTX_RAG_ENABLED=true
+```
+
+#### Advanced Configuration Options
+
+| Variable                  | Description                     | Default | Required? |
+| ------------------------- | ------------------------------- | ------- | --------- |
+| `EMBEDDING_DIMENSION`     | Dimension of embedding vectors  | 1536    | No        |
+| `MAX_INPUT_TOKENS`        | Maximum tokens for model input  | 4000    | No        |
+| `MAX_OUTPUT_TOKENS`       | Maximum tokens for model output | 4096    | No        |
+| `MAX_CONCURRENT_REQUESTS` | Maximum concurrent API requests | 30      | No        |
+| `REQUESTS_PER_MINUTE`     | Rate limit for API requests     | 60      | No        |
+
+## Development
+
+### Adding a new feature
+
+1. Identify which module the feature belongs to
+2. Add necessary types to types.ts
+3. Implement the feature in the appropriate module
+4. Update the service or worker if needed
+5. Export any new public API from index.ts
+
+### Design Principles
+
+- **Single Responsibility**: Each module has a clear, focused responsibility
+- **DRY (Don't Repeat Yourself)**: Common functionality is extracted into helper functions
+- **KISS (Keep It Simple, Stupid)**: Code is straightforward and avoids unnecessary complexity
+- **Composition over Inheritance**: Modules are composed together rather than inheriting
+- **Strong Typing**: TypeScript type safety is used throughout
+
+## Testing
+
+Tests can be run with:
+
+```bash
+npm test
+```
+
+## License
+
+See the ElizaOS license for details.

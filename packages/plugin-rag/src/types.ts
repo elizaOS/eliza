@@ -1,0 +1,226 @@
+import z from 'zod';
+import { UUID, Memory, IAgentRuntime } from '@elizaos/core';
+import { Worker } from 'node:worker_threads';
+
+// Schema for validating model configuration
+export const ModelConfigSchema = z.object({
+  // Provider configuration
+  EMBEDDING_PROVIDER: z.enum(['openai', 'google']),
+  TEXT_PROVIDER: z.enum(['openai', 'anthropic', 'openrouter', 'google']).optional(),
+
+  // API keys
+  OPENAI_API_KEY: z.string().optional(),
+  ANTHROPIC_API_KEY: z.string().optional(),
+  OPENROUTER_API_KEY: z.string().optional(),
+  GOOGLE_API_KEY: z.string().optional(),
+
+  // Base URLs (optional for most providers)
+  OPENAI_BASE_URL: z.string().optional(),
+  ANTHROPIC_BASE_URL: z.string().optional(),
+  OPENROUTER_BASE_URL: z.string().optional(),
+  GOOGLE_BASE_URL: z.string().optional(),
+
+  // Model names
+  TEXT_EMBEDDING_MODEL: z.string(),
+  TEXT_MODEL: z.string().optional(),
+
+  // Token limits
+  MAX_INPUT_TOKENS: z
+    .string()
+    .or(z.number())
+    .transform((val) => (typeof val === 'string' ? parseInt(val, 10) : val)),
+  MAX_OUTPUT_TOKENS: z
+    .string()
+    .or(z.number())
+    .optional()
+    .transform((val) => (val ? (typeof val === 'string' ? parseInt(val, 10) : val) : 4096)),
+
+  // Embedding dimension
+  // For OpenAI: Only applies to text-embedding-3-small and text-embedding-3-large models
+  // Default: 1536 dimensions
+  EMBEDDING_DIMENSION: z
+    .string()
+    .or(z.number())
+    .optional()
+    .transform((val) => (val ? (typeof val === 'string' ? parseInt(val, 10) : val) : 1536)),
+
+  // Contextual RAG settings
+  CTX_RAG_ENABLED: z.boolean().default(false),
+});
+
+export type ModelConfig = z.infer<typeof ModelConfigSchema>;
+
+/**
+ * Interface for provider rate limits
+ */
+export interface ProviderRateLimits {
+  // Maximum concurrent requests recommended for this provider
+  maxConcurrentRequests: number;
+  // Maximum requests per minute allowed
+  requestsPerMinute: number;
+  // Maximum tokens per minute allowed (if applicable)
+  tokensPerMinute?: number;
+  // Name of the provider
+  provider: string;
+}
+
+/**
+ * Options for text generation overrides
+ */
+export interface TextGenerationOptions {
+  provider?: 'anthropic' | 'openai' | 'openrouter' | 'google';
+  modelName?: string;
+  maxTokens?: number;
+  /**
+   * Document to cache for contextual retrieval.
+   * When provided (along with an Anthropic model via OpenRouter), this enables prompt caching.
+   * The document is cached with the provider and subsequent requests will reuse the cached document,
+   * significantly reducing costs for multiple operations on the same document.
+   * Most effective with contextual retrieval for RAG applications.
+   */
+  cacheDocument?: string;
+
+  /**
+   * Options for controlling the cache behavior.
+   * Currently supports { type: 'ephemeral' } which sets up a temporary cache.
+   * Cache expires after approximately 5 minutes with Anthropic models.
+   * This can reduce costs by up to 90% for reads after the initial cache write.
+   */
+  cacheOptions?: {
+    type: 'ephemeral';
+  };
+  /**
+   * Whether to automatically detect and enable caching for contextual retrieval.
+   * Default is true for OpenRouter+Anthropic models with document-chunk prompts.
+   * Set to false to disable automatic caching detection.
+   */
+  autoCacheContextualRetrieval?: boolean;
+}
+
+/**
+ * Worker-specific database configuration
+ */
+export interface WorkerDbConfig {
+  /** Data directory for PGLite */
+  dataDir?: string;
+  /** Postgres connection URL */
+  postgresUrl?: string;
+}
+
+/**
+ * Extended Worker type for RAG workers
+ */
+export interface RagWorker extends Worker {
+  /** Whether the worker is ready to receive work */
+  isReady?: boolean;
+}
+
+/**
+ * Base worker message type
+ */
+export interface WorkerMessage {
+  type: string;
+  payload: any;
+}
+
+/**
+ * Worker ready message
+ */
+export interface WorkerReadyMessage extends WorkerMessage {
+  type: 'WORKER_READY';
+  payload: {
+    agentId: UUID;
+  };
+}
+
+/**
+ * Worker error message
+ */
+export interface WorkerErrorMessage extends WorkerMessage {
+  type: 'WORKER_ERROR';
+  payload: {
+    agentId: UUID;
+    error: string;
+    stack?: string;
+  };
+}
+
+/**
+ * Knowledge added message
+ */
+export interface KnowledgeAddedMessage extends WorkerMessage {
+  type: 'KNOWLEDGE_ADDED';
+  payload: {
+    documentId: UUID;
+    count: number;
+    agentId: UUID;
+  };
+}
+
+/**
+ * PDF document stored message
+ */
+export interface PdfDocumentStoredMessage extends WorkerMessage {
+  type: 'PDF_MAIN_DOCUMENT_STORED';
+  payload: {
+    clientDocumentId: UUID;
+    storedDocumentMemoryId: UUID | null;
+    agentId: UUID;
+    error: {
+      message: string;
+      stack?: string;
+    } | null;
+  };
+}
+
+/**
+ * Processing error message
+ */
+export interface ProcessingErrorMessage extends WorkerMessage {
+  type: 'PROCESSING_ERROR';
+  payload: {
+    documentId: UUID;
+    error: string;
+    stack?: string;
+    agentId: UUID;
+  };
+}
+
+/**
+ * Union type of all worker messages
+ */
+export type WorkerMessageTypes =
+  | WorkerReadyMessage
+  | WorkerErrorMessage
+  | KnowledgeAddedMessage
+  | PdfDocumentStoredMessage
+  | ProcessingErrorMessage;
+
+/**
+ * Callback for document storage operations
+ */
+export type DocumentStoredCallback = (
+  error: Error | null,
+  result?: {
+    clientDocumentId: UUID;
+    storedDocumentMemoryId: UUID;
+  }
+) => void;
+
+/**
+ * Options for adding knowledge to the system
+ */
+export interface AddKnowledgeOptions {
+  /** Client-provided document ID */
+  clientDocumentId: UUID;
+  /** File buffer containing the document */
+  fileBuffer: Buffer;
+  /** MIME type of the file */
+  contentType: string;
+  /** Original filename */
+  originalFilename: string;
+  /** World ID for storage */
+  worldId: UUID;
+  /** Callback when document is stored */
+  onDocumentStored?: DocumentStoredCallback;
+}
