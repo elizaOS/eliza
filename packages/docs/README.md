@@ -1,216 +1,98 @@
-# Eliza - Multi-agent simulation framework
+# ElizaOS Docs: Maintenance & Automation
 
-# https://github.com/elizaOS/eliza
+This README provides an overview of how the Eliza OS documentation (the Docusaurus site within this `packages/docs` directory) is maintained, automated, and kept up-to-date. It serves as a technical reference for contributors and anyone interested in our documentation pipeline.
 
-# Visit https://eliza.builders for support
+The live documentation can be found at [eliza.how/docs](https://eliza.how/docs).
 
-## 🌍 README Translations
+## Documentation Lifecycle & Automation Overview
 
-[العربية](./README_AR.md) |[中文说明](./README_CN.md) | [Deutsch](./README_DE.md) | [Français](./README_FR.md) | [ไทย](./README_TH.md) | [Español](README_ES.md)
+Our documentation lifecycle is built on a "docs-as-code" philosophy, heavily reliant on automation to ensure accuracy, consistency, and timeliness. Here's a breakdown of the key stages and technical components involved:
 
-# dev branch
+- **Docusaurus Source Structure (`./src/`):** The [`./src/`](https://github.com/elizaOS/eliza/tree/v2-develop/packages/docs/src/) directory is the heart of the Docusaurus application. It contains:
+  - [`pages/`](https://github.com/elizaOS/eliza/tree/v2-develop/packages/docs/src/pages/): Custom standalone pages (e.g., custom landing pages).
+  - [`data/`](https://github.com/elizaOS/eliza/tree/v2-develop/packages/docs/src/data/): Data files, like [`partners.tsx`](https://github.com/elizaOS/eliza/blob/v2-develop/packages/docs/src/data/partners.tsx), used to populate components or pages.
+  - [`components/`](https://github.com/elizaOS/eliza/tree/v2-develop/packages/docs/src/components/): Reusable React components specific to the documentation site.
+  - [`css/`](https://github.com/elizaOS/eliza/tree/v2-develop/packages/docs/src/css/): Custom CSS stylesheets for theming and styling.
+  - [`theme/`](https://github.com/elizaOS/eliza/tree/v2-develop/packages/docs/src/theme/): Docusaurus theme customizations, allowing for overriding or "swizzling" default theme components.
+  - [`openapi/`](https://github.com/elizaOS/eliza/tree/v2-develop/packages/docs/src/openapi/): Stores OpenAPI specification files (e.g., [`eliza-v1.yaml`](https://github.com/elizaOS/eliza/blob/v2-develop/packages/docs/src/openapi/eliza-v1.yaml)) used to generate REST API documentation.
+- **Content Origination & Ingestion:**
+  - Manually authored Markdown for various documentation sections:
+    - Core Documentation: Conceptual explanations, guides, and tutorials for ElizaOS, primarily located in [`./docs/`](https://github.com/elizaOS/eliza/tree/v2-develop/packages/docs/docs/) and accessible at [eliza.how/docs](https://eliza.how/docs).
+    - Packages: Documentation for individual adapters, clients, and plugins, showcased at [eliza.how/packages](https://eliza.how/packages). This showcase is dynamically generated and maintained as follows:
+      - The primary source of truth for available plugins is the external [ElizaOS Plugins Registry](https://raw.githubusercontent.com/elizaos-plugins/registry/refs/heads/main/index.json).
+      - The [`./scripts/update-registry.js`](https://github.com/elizaOS/eliza/blob/v2-develop/packages/docs/scripts/update-registry.js) script fetches this registry data.
+      - This script also reads from [`./src/data/plugin-descriptions.json`](https://github.com/elizaOS/eliza/blob/v2-develop/packages/docs/src/data/plugin-descriptions.json), which allows for manually overriding or providing richer descriptions and custom preview images for plugins where the default GitHub information is insufficient.
+      - `update-registry.js` then processes this combined information and generates the [`./src/data/registry-users.tsx`](https://github.com/elizaOS/eliza/blob/v2-develop/packages/docs/src/data/registry-users.tsx) file. This file exports the `registryUsers` array, which contains structured data for each plugin (title, description, preview image, website/source links, tags).
+      - The [`./src/data/users.tsx`](https://github.com/elizaOS/eliza/blob/v2-develop/packages/docs/src/data/users.tsx) file imports `registryUsers`, defines tag types (like `favorite`, `adapter`, `client`, `plugin`), and provides sorting logic for how plugins are displayed.
+      - Finally, the [`./src/pages/showcase/index.tsx`](https://github.com/elizaOS/eliza/blob/v2-develop/packages/docs/src/pages/showcase/index.tsx) page (along with its helper components in [`./src/pages/showcase/_components/`](https://github.com/elizaOS/eliza/tree/v2-develop/packages/docs/src/pages/showcase/_components/)) consumes this data to render the interactive showcase page at [eliza.how/packages](https://eliza.how/packages).
+        - While not directly part of `update-registry.js`, the [`./scripts/plugin_summary_prompt.txt`](https://github.com/elizaOS/eliza/blob/v2-develop/packages/docs/scripts/plugin_summary_prompt.txt) serves as a template for AI-driven summarization. This prompt can be used with the [`./scripts/summarize.sh`](https://github.com/elizaOS/eliza/blob/v2-develop/packages/docs/scripts/summarize.sh) script (e.g., `bash ./scripts/summarize.sh -i <path_to_plugin_readme> -p ./scripts/plugin_summary_prompt.txt`) to help generate standardized summaries for plugin READMEs or to populate the descriptions in `plugin-descriptions.json`.
+    - Partners & Community: Information related to our ecosystem partners and community initiatives, accessible at [eliza.how/partners](https://eliza.how/partners). The individual partner pages are managed as follows:
+      - Partner data (name, description, logo, website, social links, etc.) is maintained in the [`./src/data/partners.tsx`](https://github.com/elizaOS/eliza/blob/v2-develop/packages/docs/src/data/partners.tsx) file.
+      - The [`./scripts/update-partner-pages.js`](https://github.com/elizaOS/eliza/blob/v2-develop/packages/docs/scripts/update-partner-pages.js) script reads this data file.
+      - For each partner, the script generates a standardized Markdown page (e.g., `index.md`) within a dedicated subdirectory in [`./partners/`](https://github.com/elizaOS/eliza/tree/v2-develop/packages/docs/partners/) (e.g., `./partners/<partner-slug>/index.md`).
+      - This ensures partner pages are consistent and easily updated by modifying the central `partners.tsx` data source, with the script handling the regeneration of the Markdown files.
+      - Community-related content, such as video tutorials, talks, and showcases, is often presented using custom React components like the [`VideoGallery`](https://github.com/elizaOS/eliza/tree/v2-develop/packages/docs/src/components/VideoGallery) found in [`./src/components/`](https://github.com/elizaOS/eliza/tree/v2-develop/packages/docs/src/components/). The content for such galleries (video links, titles, descriptions, thumbnails) is typically managed within the component itself or a dedicated data file it consumes.
+    - Blog & News: Articles, updates, and aggregated news in [`./blog/`](https://github.com/elizaOS/eliza/tree/v2-develop/packages/docs/blog/) and [`./news/`](https://github.com/elizaOS/eliza/tree/v2-develop/packages/docs/news/).
+      - News articles are automatically fetched and updated by the [`./scripts/update-news.sh`](https://github.com/elizaOS/eliza/blob/v2-develop/packages/docs/scripts/update-news.sh) script.
+      - This script is orchestrated by the [`.github/workflows/update-news.yml`](../../.github/workflows/update-news.yml) GitHub workflow, which typically runs daily.
+      - The script maintains the most recent 14 days of news in the [`./news/`](https://github.com/elizaOS/eliza/tree/v2-develop/packages/docs/news/) directory.
+  - Developer-written JSDoc comments within TypeScript source code (primarily in [`../core/src/`](https://github.com/elizaOS/eliza/tree/v2-develop/packages/core/src/)), which serve as the source for the API Reference.
+  - OpenAPI specifications (e.g., [`./src/openapi/eliza-v1.yaml`](https://github.com/elizaOS/eliza/blob/v2-develop/packages/docs/src/openapi/eliza-v1.yaml)) defining REST APIs.
+- **Automated Generation & Transformation:**
+  - The `docusaurus-plugin-typedoc` (configured in [`./docusaurus.config.ts`](https://github.com/elizaOS/eliza/blob/v2-develop/packages/docs/docusaurus.config.ts)) processes JSDoc comments from source code into browsable API documentation, output to [`./api/`](https://github.com/elizaOS/eliza/tree/v2-develop/packages/docs/api/).
+  - The `docusaurus-plugin-openapi-docs` (configured in [`./docusaurus.config.ts`](https://github.com/elizaOS/eliza/blob/v2-develop/packages/docs/docusaurus.config.ts)) converts OpenAPI specification files into REST API documentation, output to [`./docs/rest/`](https://github.com/elizaOS/eliza/tree/v2-develop/packages/docs/docs/rest/).
+  - The `repomix` tool, driven by the [`.github/workflows/llmstxt-generator.yml`](../../.github/workflows/llmstxt-generator.yml) workflow and configured via [`../../scripts/repomix.config.json`](../../scripts/repomix.config.json) & [`../../scripts/repomix-full.config.json`](../../scripts/repomix-full.config.json), generates consolidated AI context files. These are output to [`./static/llms.txt`](https://github.com/elizaOS/eliza/blob/v2-develop/packages/docs/static/llms.txt) (community-focused) and [`./static/llms-full.txt`](https://github.com/elizaOS/eliza/blob/v2-develop/packages/docs/static/llms-full.txt) (technical focus).
+  - The `autodoc` package ([`../autodoc/README.md`](../../packages/autodoc/README.md)), leveraged by the [`.github/workflows/jsdoc-automation.yml`](../../.github/workflows/jsdoc-automation.yml) workflow, assists in generating JSDoc comment skeletons for source code.
+  - AI-driven translation of the root project [README.md](../../README.md) is handled by the [`.github/workflows/generate-readme-translations.yml`](../../.github/workflows/generate-readme-translations.yml) workflow, with outputs stored in [`./i18n/readme/`](https://github.com/elizaOS/eliza/tree/v2-develop/packages/docs/i18n/readme/).
+  - Various custom scripts residing in [`./scripts/`](https://github.com/elizaOS/eliza/tree/v2-develop/packages/docs/scripts/README.md) (e.g., [`get-changelog.py`](https://github.com/elizaOS/eliza/blob/v2-develop/packages/docs/scripts/get-changelog.py), [`update-partner-pages.js`](https://github.com/elizaOS/eliza/blob/v2-develop/packages/docs/scripts/update-partner-pages.js)) handle updates for specific documentation sections.
+- **CI/CD Validation & Build Pipeline (GitHub Actions):**
+  - Workflows such as [`ci.yaml`](../../.github/workflows/ci.yaml) and [`pr.yaml`](../../.github/workflows/pr.yaml) (defined in [`.github/workflows/`](../../.github/workflows/README.md)) trigger on code pushes and pull requests to the repository.
+  - These CI pipelines execute essential checks including Markdown linting, broken link detection, and a full Docusaurus site build (`bun run build` within this `packages/docs` directory).
+- **Deployment & Delivery:**
+  - Upon successful validation and merge to the main branch, the Docusaurus site is automatically built and deployed (typically via `gh-pages` as configured in [`./docusaurus.config.ts`](https://github.com/elizaOS/eliza/blob/v2-develop/packages/docs/docusaurus.config.ts)) to [eliza.how/docs](https://eliza.how/docs).
+  - All generated artifacts, including API documentation, news articles, and AI context files, are versioned and become part of the deployed documentation site.
+- **Iterative Refinement & Monitoring:**
+  - Continuous monitoring of GitHub Actions workflow success, documentation build times, and overall site health.
+  - Manual review cycles for AI-generated content (such as JSDoc suggestions and language translations) to ensure quality and accuracy.
+  - Community feedback via GitHub Issues and Pull Requests on the main repository is crucial for driving improvements to both the documentation content and the automation processes.
 
-<img src="static/img/eliza_banner.jpg" alt="Eliza Banner" width="100%" />
+## Local Verification & Manual Triggers
 
-_As seen powering [@DegenSpartanAI](https://x.com/degenspartanai) and [@MarcAIndreessen](https://x.com/pmairca)_
+### Verifying Documentation Locally
 
-- Multi-agent simulation framework
-- Add as many unique characters as you want with [characterfile](https://github.com/lalalune/characterfile/)
-- Full-featured Discord and Twitter connectors, with Discord voice channel support
-- Full conversational and document RAG memory
-- Can read links and PDFs, transcribe audio and videos, summarize conversations, and more
-- Highly extensible - create your own actions and clients to extend Eliza's capabilities
-- Supports open source and local models (default configured with Nous Hermes Llama 3.1B)
-- Supports OpenAI for cloud inference on a light-weight device
-- "Ask Claude" mode for calling Claude on more complex queries
-- 100% Typescript
+To ensure your documentation changes are correct and render as expected before pushing, you can run the Docusaurus development server locally:
 
-# Getting Started
+```bash
+# Navigate to the docs package directory if you are not already there
+cd packages/docs
 
-**Prerequisites (MUST):**
-
-- [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
-- [bun](https://bun.io/installation)
-
-### Edit the .env file
-
-- Copy .env.example to .env and fill in the appropriate values
-- Edit the TWITTER environment variables to add your bot's username and password
-
-### Edit the character file
-
-- Check out the file `packages/core/src/defaultCharacter.ts` - you can modify this
-- You can also load characters with the `bun start --characters="path/to/your/character.json"` and run multiple bots at the same time.
-
-After setting up the .env file and character file, you can start the bot with the following command:
-
-```
+# Install dependencies (if you haven't already or if they changed)
 bun i
-bun start
+
+# Start the Docusaurus development server
+bun run dev
 ```
 
-# Customising Eliza
+This will typically make the local development site available at `http://localhost:3000` (Docusaurus will confirm the port in the console output).
 
-### Adding custom actions
-
-To avoid git clashes in the core directory, we recommend adding custom actions to a `custom_actions` directory and then adding them to the `elizaConfig.yaml` file. See the `elizaConfig.example.yaml` file for an example.
-
-## Running with different models
-
-### Run with Llama
-
-You can run Llama 70B or 405B models by setting the environment variable for a provider that supports these models. Llama is also supported locally if no other provider is set.
-
-### Run with Grok
-
-You can run Grok models by setting the `GROK_API_KEY` environment variable to your Grok API key and setting grok as the model provider in your character file.
-
-### Run with OpenAI
-
-You can run OpenAI models by setting the `OPENAI_API_KEY` environment variable to your OpenAI API key and setting openai as the model provider in your character file.
-
-## Additional Requirements
-
-You may need to install Sharp. If you see an error when starting up, try installing it with the following command:
-
-```
-bun install --include=optional sharp
-```
-
-# Environment Setup
-
-You will need to add environment variables to your .env file to connect to various platforms:
-
-```
-# Required environment variables
-DISCORD_APPLICATION_ID=
-DISCORD_API_TOKEN= # Bot token
-OPENAI_API_KEY=sk-* # OpenAI API key, starting with sk-
-ELEVENLABS_XI_API_KEY= # API key from elevenlabs
-
-# ELEVENLABS SETTINGS
-ELEVENLABS_MODEL_ID=eleven_multilingual_v2
-ELEVENLABS_VOICE_ID=21m00Tcm4TlvDq8ikWAM
-ELEVENLABS_VOICE_STABILITY=0.5
-ELEVENLABS_VOICE_SIMILARITY_BOOST=0.9
-ELEVENLABS_VOICE_STYLE=0.66
-ELEVENLABS_VOICE_USE_SPEAKER_BOOST=false
-ELEVENLABS_OPTIMIZE_STREAMING_LATENCY=4
-ELEVENLABS_OUTPUT_FORMAT=pcm_16000
-
-TWITTER_DRY_RUN=false
-TWITTER_USERNAME= # Account username
-TWITTER_PASSWORD= # Account password
-TWITTER_EMAIL= # Account email
-
-
-# For asking Claude stuff
-ANTHROPIC_API_KEY=
-
-WALLET_SECRET_KEY=EXAMPLE_WALLET_SECRET_KEY
-WALLET_PUBLIC_KEY=EXAMPLE_WALLET_PUBLIC_KEY
-
-BIRDEYE_API_KEY=
-
-SOL_ADDRESS=So11111111111111111111111111111111111111112
-SLIPPAGE=1
-SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
-HELIUS_API_KEY=
-
-
-## Telegram
-TELEGRAM_BOT_TOKEN=
-
-TOGETHER_API_KEY=
-```
-
-# Local Inference Setup
-
-### CUDA Setup
-
-If you have an NVIDIA GPU, you can install CUDA to speed up local inference dramatically.
-
-```
-bun install
-npx --no node-llama-cpp source download --gpu cuda
-```
-
-Make sure that you've installed the CUDA Toolkit, including cuDNN and cuBLAS.
-
-### Running locally
-
-By default, the bot will download and use a local model. You can change this by setting the environment variables for the model you want to use.
-
-# Clients
-
-## Discord Bot
-
-For help with setting up your Discord Bot, check out here: https://discordjs.guide/preparations/setting-up-a-bot-application.html
-
-# Development
-
-## Testing
-
-To run the test suite:
+Alternatively, for a full build similar to the CI process:
 
 ```bash
-bun test           # Run tests once
-bun test:watch    # Run tests in watch mode
+# Navigate to the docs package directory
+cd packages/docs
+
+# Run the build command
+bun run build
 ```
 
-For database-specific tests:
+This will build the static site into the `build/` directory within `packages/docs`.
 
-```bash
-bun test:sqlite   # Run tests with SQLite
-bun test:sqljs    # Run tests with SQL.js
-```
+### Manually Triggering Automated Processes
 
-Tests are written using Jest and can be found in `src/**/*.test.ts` files. The test environment is configured to:
+While most updates are automated, some workflows can be manually triggered if needed:
 
-- Load environment variables from `.env.test`
-- Use a 2-minute timeout for long-running tests
-- Support ESM modules
-- Run tests in sequence (--runInBand)
+1.  **GitHub Actions Workflows:** Many of the documentation-related workflows (e.g., `llmstxt-generator.yml`, `update-news.yml`) can be run manually via the "Actions" tab of the [Eliza OS GitHub repository](https://github.com/elizaOS/eliza/actions). Look for the specific workflow and use the "Run workflow" option.
+2.  **Local Script Execution:** Some underlying scripts can be run locally:
+    - To update news and the Repomix config: `cd ../../scripts && ./update-news.sh` (adjust path if running from a different directory).
 
-To create new tests, add a `.test.ts` file adjacent to the code you're testing.
-
-## Docs Updates
-
-Please make sure to verify if the documentation provided is correct. In order to do so, please run the docs service.
-
-```console
-docker compose -f docker-compose-docs.yaml up --build
-```
-
-The docusaurus server will get started and you can verify it locally at https://localhost:3000/eliza.
-
-### Automated Documentation Maintenance
-
-The documentation is automatically maintained through several automated processes:
-
-1. **Daily News Updates**
-
-   - A GitHub workflow runs daily at midnight UTC to fetch the latest news
-   - News files are fetched from `https://m3-org.github.io/ai-news/elizaos/md/`
-   - Last 14 days of news are maintained in `packages/docs/news/`
-   - Updates are automatically committed to the `autodocs` branch
-
-2. **LLMs Context Generation**
-
-   - The repomix tool generates consolidated documentation for LLM consumption
-   - Two main files are maintained:
-     - `llms-full.txt`: Complete technical documentation for development context
-     - `llms-community.txt`: Community-focused documentation and updates
-   - Configuration files:
-     - `scripts/repomix-full.config.json`: Technical documentation config
-     - `scripts/repomix.config.json`: Community documentation config
-
-3. **Scripts and Workflows**
-   - `scripts/update-news.sh`: Fetches news files and updates repomix config
-   - `.github/workflows/update-news.yml`: Runs the automated process daily
-   - Changes are committed directly to the `autodocs` branch
-
-To manually trigger the documentation update process, you can:
-
-1. Run the GitHub workflow manually through the Actions tab
-2. Run the update script locally: `./scripts/update-news.sh`
+This structured, automated lifecycle ensures our documentation remains a dynamic, accurate, and comprehensive resource for the ElizaOS community.
