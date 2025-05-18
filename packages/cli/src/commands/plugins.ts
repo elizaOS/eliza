@@ -6,6 +6,7 @@ import {
   logHeader,
 } from '@/src/utils';
 import { getPluginRepository } from '@/src/utils/registry/index';
+import { readCache, updatePluginRegistryCache, PluginInfo } from '@/src/utils/plugin-discovery';
 import { logger } from '@elizaos/core';
 import { Command } from 'commander';
 import { execa } from 'execa';
@@ -117,42 +118,90 @@ export const pluginsCommand = plugins
   .command('list')
   .aliases(['l', 'ls'])
   .description('List available plugins to install into the project')
-  .action(async (opts) => {
+  .option('--all', 'List all plugins from the registry with detailed version info')
+  .option('--v0', 'List only v0.x compatible plugins')
+  .action(async (opts: { all?: boolean; v0?: boolean }) => {
     try {
-      // Temporarily return hardcoded plugins as an array
-      const hardcodedPlugins = [
-        '@elizaos/core',
-        '@elizaos/plugin-bootstrap',
-        '@elizaos/plugin-evm',
-        '@elizaos/plugin-solana',
-        '@elizaos/plugin-tee',
-        '@elizaos/plugin-twitter',
-        '@elizaos/plugin-openai',
-        '@elizaos/plugin-telegram',
-        '@elizaos/cli',
-        '@elizaos/plugin-discord',
-        '@elizaos/plugin-elevenlabs',
-        '@elizaos/plugin-anthropic',
-        '@elizaos/plugin-local-ai',
-        '@elizaos/plugin-sql',
-        '@elizaos/the-org',
-        '@elizaos/plugin-browser',
-        '@elizaos/plugin-video-understanding',
-        '@elizaos/plugin-pdf',
-        '@elizaos/plugin-storage-s3',
-        '@elizaos/plugin-farcaster',
-        '@elizaos/plugin-groq',
-        '@elizaos/plugin-redpill',
-        '@elizaos/plugin-ollama',
-        '@elizaos/plugin-venice',
-        '@fleek-platform/eliza-plugin-mcp',
-      ];
+      logHeader('Listing available plugins from cache...');
+      const cachedRegistry = await readCache();
 
-      const availablePlugins = hardcodedPlugins.filter((name) => name.includes('plugin')).sort();
+      if (
+        !cachedRegistry ||
+        !cachedRegistry.plugins ||
+        Object.keys(cachedRegistry.plugins).length === 0
+      ) {
+        logger.info('Plugin cache is empty or not found.');
+        console.log('\nPlease run "eliza plugins update" to fetch the latest plugin registry.');
+        return;
+      }
+      let availablePluginsToDisplay: string[] = [];
+      const allPlugins = cachedRegistry ? Object.values(cachedRegistry.plugins) : [];
+      let displayTitle = 'Available v1.x plugins (from local cache)';
 
-      logHeader('Available plugins');
-      for (const pluginName of availablePlugins) {
-        console.log(`${pluginName}`);
+      if (opts.all) {
+        displayTitle = 'All plugins in local cache (detailed view)';
+        if (allPlugins.length === 0) {
+          console.log('No plugins found in the registry.');
+        }
+        allPlugins.forEach((p) => {
+          // Prefer npmQueryName for display, fallback to registryKey
+          const displayName = p.npmQueryName || p.registryKey;
+          console.log(`\nPlugin: ${displayName} (Registry Key: ${p.registryKey})`);
+          console.log(`  GitHub: ${p.githubLocator}, Official Repo: ${p.isOfficialRepo}`);
+
+          let v0DetailString = 'N/A';
+          const v0ResDetail = p.versions.v0.resolutionDetail;
+          if (v0ResDetail) {
+            if (v0ResDetail.kind === 'npm') {
+              v0DetailString = `NPM: ${v0ResDetail.npmVersion || 'N/A'}`;
+            } else {
+              // GitHubResolutionDetail
+              v0DetailString = `GitHub: Core ${v0ResDetail.coreDependency} (branch: ${v0ResDetail.branch})`;
+            }
+          }
+          console.log(
+            `  v0 Compatible: ${p.versions.v0.version ? 'Yes' : 'No'} (Source: ${p.versions.v0.source || 'N/A'}, Detail: ${v0DetailString})`
+          );
+
+          let v1DetailString = 'N/A';
+          const v1ResDetail = p.versions.v1.resolutionDetail;
+          if (v1ResDetail) {
+            if (v1ResDetail.kind === 'npm') {
+              v1DetailString = `NPM: ${v1ResDetail.npmVersion || 'N/A'}`;
+            } else {
+              // GitHubResolutionDetail
+              v1DetailString = `GitHub: Core ${v1ResDetail.coreDependency} (branch: ${v1ResDetail.branch})`;
+            }
+          }
+          console.log(
+            `  v1 Compatible: ${p.versions.v1.version ? 'Yes' : 'No'} (Source: ${p.versions.v1.source || 'N/A'}, Detail: ${v1DetailString})`
+          );
+
+          if (p.errors.length > 0) {
+            console.log(`  Processing Errors: ${p.errors.join('; ')}`);
+          }
+        });
+        console.log('');
+        return;
+      } else if (opts.v0) {
+        displayTitle = 'Available v0.x plugins (from local cache)';
+        availablePluginsToDisplay = allPlugins
+          .filter((p) => p.versions.v0.version !== null)
+          .map((p) => p.npmQueryName || p.registryKey);
+      } else {
+        // Default to v1.x
+        availablePluginsToDisplay = allPlugins
+          .filter((p) => p.versions.v1.version !== null)
+          .map((p) => p.npmQueryName || p.registryKey);
+      }
+
+      logHeader(displayTitle);
+      if (availablePluginsToDisplay.length === 0) {
+        console.log('No plugins found matching the criteria in the registry.');
+      } else {
+        for (const pluginName of availablePluginsToDisplay) {
+          console.log(`${pluginName}`);
+        }
       }
       console.log('');
     } catch (error) {
@@ -310,6 +359,25 @@ plugins
           '  - GitHub with branch/tag/commit: owner/repo#my-branch (or github:owner/repo#my-tag)'
         );
         process.exit(1);
+      }
+    } catch (error) {
+      handleError(error);
+    }
+  });
+
+plugins
+  .command('update')
+  .alias('refresh')
+  .description('Fetch the latest plugin registry and update local cache')
+  .action(async () => {
+    try {
+      logHeader('Updating plugin registry cache...');
+      const success = await updatePluginRegistryCache();
+      if (success) {
+        logger.info('Plugin registry cache updated successfully.');
+      } else {
+        // updatePluginRegistryCache logs specific errors, so a general message here is fine.
+        logger.warn('Plugin registry cache update failed. Please check logs for more details.');
       }
     } catch (error) {
       handleError(error);
