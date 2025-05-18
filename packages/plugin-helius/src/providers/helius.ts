@@ -186,29 +186,6 @@ export const heliusProvider: Provider = {
   dynamic: true,
 
   get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
-    const laserstream = new HeliusWebSocket(runtime.getSetting('HELIUS_API_KEY'), runtime);
-
-    // Example subscription to token program
-    const request: SubscribeRequest = {
-      transactions: {
-        client: {
-          accountInclude: ['TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'], // Token program
-          accountExclude: [],
-          accountRequired: [],
-          vote: false,
-          failed: false,
-        },
-      },
-      commitment: CommitmentLevel.CONFIRMED,
-      accounts: {},
-      slots: {},
-      transactionsStatus: {},
-      blocks: {},
-      blocksMeta: {},
-      entry: {},
-      accountsDataSlice: [],
-    };
-
     try {
       // Get token data from Helius API
       const url = `https://api.helius.xyz/v0/token-metadata?api-key=${runtime.getSetting('HELIUS_API_KEY')}`;

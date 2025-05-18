@@ -34,6 +34,7 @@ export class SolanaService extends Service {
   private connection: Connection;
   private publicKey: PublicKey;
   private exchangeRegistry: Record<number, any> = {};
+  private subscriptions: Map<string, number> = new Map();
 
   /**
    * Constructor for creating an instance of the class.
@@ -57,6 +58,7 @@ export class SolanaService extends Service {
       .catch((error) => {
         logger.error('Error initializing public key:', error);
       });
+    this.subscriptions = new Map();
   }
 
   /**
@@ -119,6 +121,11 @@ export class SolanaService extends Service {
    * @returns {Promise<void>} A Promise that resolves when the update interval is stopped.
    */
   async stop(): Promise<void> {
+    // Unsubscribe from all accounts
+    for (const [address] of this.subscriptions) {
+      await this.unsubscribeFromAccount(address);
+    }
+
     if (this.updateInterval) {
       clearInterval(this.updateInterval);
       this.updateInterval = null;
@@ -415,5 +422,88 @@ export class SolanaService extends Service {
     logger.log('Registered', provider.name, 'as Solana provider #' + id);
     this.exchangeRegistry[id] = provider;
     return id;
+  }
+
+  /**
+   * Subscribes to account changes for the given public key
+   * @param {string} accountAddress - The account address to subscribe to
+   * @returns {Promise<number>} Subscription ID
+   */
+  public async subscribeToAccount(accountAddress: string): Promise<number> {
+    try {
+      if (!this.validateAddress(accountAddress)) {
+        throw new Error('Invalid account address');
+      }
+
+      // Check if already subscribed
+      if (this.subscriptions.has(accountAddress)) {
+        return this.subscriptions.get(accountAddress)!;
+      }
+
+      // Create WebSocket connection if needed
+      const ws = this.connection.connection._rpcWebSocket;
+
+      const subscriptionId = await ws.call('accountSubscribe', [
+        accountAddress,
+        {
+          encoding: 'jsonParsed',
+          commitment: 'finalized',
+        },
+      ]);
+
+      // Setup notification handler
+      ws.subscribe(subscriptionId, 'accountNotification', async (notification: any) => {
+        try {
+          const { result } = notification;
+          if (result?.value) {
+            // Force update wallet data to reflect changes
+            await this.updateWalletData(true);
+
+            // Emit an event that can be handled by the agent
+            this.runtime.emit('solana:account:update', {
+              address: accountAddress,
+              data: result.value,
+            });
+          }
+        } catch (error) {
+          logger.error('Error handling account notification:', error);
+        }
+      });
+
+      this.subscriptions.set(accountAddress, subscriptionId);
+      logger.log(`Subscribed to account ${accountAddress} with ID ${subscriptionId}`);
+      return subscriptionId;
+    } catch (error) {
+      logger.error('Error subscribing to account:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Unsubscribes from account changes
+   * @param {string} accountAddress - The account address to unsubscribe from
+   * @returns {Promise<boolean>} Success status
+   */
+  public async unsubscribeFromAccount(accountAddress: string): Promise<boolean> {
+    try {
+      const subscriptionId = this.subscriptions.get(accountAddress);
+      if (!subscriptionId) {
+        logger.warn(`No subscription found for account ${accountAddress}`);
+        return false;
+      }
+
+      const ws = this.connection.connection._rpcWebSocket;
+      const success = await ws.call('accountUnsubscribe', [subscriptionId]);
+
+      if (success) {
+        this.subscriptions.delete(accountAddress);
+        logger.log(`Unsubscribed from account ${accountAddress}`);
+      }
+
+      return success;
+    } catch (error) {
+      logger.error('Error unsubscribing from account:', error);
+      throw error;
+    }
   }
 }
