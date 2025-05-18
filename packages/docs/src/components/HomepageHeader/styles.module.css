@@ -241,9 +241,11 @@
   0% {
     transform: translateY(0px);
   }
+
   50% {
     transform: translateY(-10px);
   }
+
   100% {
     transform: translateY(0px);
   }
@@ -329,4 +331,48 @@
     margin: 1rem 0 0;
     justify-content: center;
   }
+}
+
+/* Styles for the llms-full.txt callout */
+.llmsCallout {
+  background-color: var(--ifm-background-surface-color);
+  color: var(--ifm-font-color-base);
+  padding: 0.75rem 1.25rem;
+  border-radius: 8px;
+  margin-top: 1.5rem;
+  display: inline-block;
+  font-size: 0.95rem;
+  text-align: center;
+  border: 1px solid var(--ifm-color-emphasis-300);
+  box-shadow: var(--ifm-global-shadow-lw);
+  transition:
+    box-shadow 0.3s ease,
+    transform 0.3s ease;
+}
+
+.llmsCallout:hover {
+  box-shadow: var(--ifm-global-shadow-md);
+  transform: translateY(-2px);
+}
+
+.newBadge {
+  background-color: var(--ifm-color-warning-dark);
+  color: var(--ifm-color-warning-contrast-foreground);
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-weight: bold;
+  font-size: 0.8rem;
+  margin-right: 0.5rem;
+  text-transform: uppercase;
+}
+
+.llmsLink {
+  font-weight: bold;
+  color: var(--ifm-link-color);
+  text-decoration: none;
+}
+
+.llmsLink:hover {
+  color: var(--ifm-link-hover-color);
+  text-decoration: underline;
 }
