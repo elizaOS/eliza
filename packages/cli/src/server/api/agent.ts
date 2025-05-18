@@ -381,11 +381,12 @@ export function agentRouter(
         character.settings.secrets = encryptObjectValues(character.settings.secrets, salt);
       }
 
-      await db.ensureAgentExists(character);
+      const createdAgent = await db.ensureAgentExists(character);
 
       res.status(201).json({
         success: true,
         data: {
+          id: createdAgent.id,
           character: character,
         },
       });
