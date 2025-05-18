@@ -3,13 +3,6 @@ name: Deploy Documentation
 on:
   push:
     branches:
-      - main
-      - v2-develop
-    paths:
-      - 'packages/docs/**'
-  pull_request:
-    branches:
-      - main
       - v2-develop
     paths:
       - 'packages/docs/**'
@@ -29,7 +22,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '23'
-          cache: 'npm'
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
