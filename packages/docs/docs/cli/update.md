@@ -196,7 +196,9 @@ If the build fails after updating:
 ```bash
 # Check the build output for errors
 # Manually attempt to rebuild with verbose logging
-elizaos build --verbose
+elizaos dev --build --verbose
+# or
+elizaos start --build --verbose
 ```
 
 #### Version Mismatches
@@ -209,6 +211,6 @@ bun install @elizaos/core@1.3.5
 ```
 
 ## Related Commands
-- [Build Command](./build.md): Build your project manually.
+- To build your project, use the `--build` flag with the `elizaos dev` or `elizaos start` commands.
 - [`start`](./start.md): Start your project with updated dependencies.
 - [`dev`](./dev.md): Run your project in development mode.
