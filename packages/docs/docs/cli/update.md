@@ -211,6 +211,7 @@ bun install @elizaos/core@1.3.5
 ```
 
 ## Related Commands
+
 - To build your project, use the `--build` flag with the `elizaos dev` or `elizaos start` commands.
 - [`start`](./start.md): Start your project with updated dependencies.
 - [`dev`](./dev.md): Run your project in development mode.

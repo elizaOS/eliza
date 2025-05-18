@@ -33,7 +33,7 @@ type JupiterQuoteResult = {
   outputMint: string;
   inAmount: string;
   outAmount: string;
-  routePlan: any[];
+  routePlan: unknown[];
 };
 
 /**

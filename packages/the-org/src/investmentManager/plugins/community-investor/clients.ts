@@ -263,7 +263,7 @@ export class JupiterClient {
    * @param {string} outputMint The mint of the output token.
    * @param {string} amount The amount to be swapped.
    * @param {number} [slippageBps=50] The slippage tolerance in basis points (default: 50).
-   * @returns {Promise<{inputMint: string, outputMint: string, inAmount: string, outAmount: string, routePlan: any[]} | {error: unknown}>} The quote object or an error object.
+   * @returns {Promise<{inputMint: string, outputMint: string, inAmount: string, outAmount: string, routePlan: unknown[]} | {error: unknown}>} The quote object or an error object.
    */
   static async getQuote(inputMint: string, outputMint: string, amount: string, slippageBps = 50) {
     const headers: Record<string, string> = {};
@@ -277,7 +277,7 @@ export class JupiterClient {
           outputMint: string;
           inAmount: string;
           outAmount: string;
-          routePlan: any[];
+          routePlan: unknown[];
         }
       | { error: unknown }
     >(

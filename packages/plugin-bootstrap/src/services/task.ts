@@ -4,6 +4,7 @@ import {
   logger,
   Service,
   ServiceType,
+  type UUID,
   type IAgentRuntime,
   type Memory,
   type ServiceTypeName,
@@ -182,6 +183,12 @@ export class TaskService extends Service {
 
       // validate the tasks and sort them
       const tasks = await this.validateTasks(allTasks);
+
+      /*
+      if (tasks.length > 0) {
+        logger.debug(`Found ${tasks.length} queued tasks`);
+      }
+      */
 
       const now = Date.now();
 

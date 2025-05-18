@@ -1,7 +1,7 @@
 ---
 slug: autodocs
 title: "Automating Eliza's Documentation"
-description: "A look into the agentic automation workflows being used to maintain a high-quality, up-to-date knowledge base."
+description: 'A look into the agentic automation workflows being used to maintain a high-quality, up-to-date knowledge base.'
 authors: jin
 date: 2025-05-14
 tags: [documentation, ci-cd, automation, devops, open-source, ai, docs-as-code]
@@ -24,7 +24,6 @@ Eliza thrive on information from diverse sources (GitHub, Discord, etc.). Effici
 
 The following diagram illustrates this broader flow, showing how various data streams are collected, processed, enriched (often with AI), and centralized into our [knowledge repository](https://github.com/elizaOS/knowledge). This repository then feeds various consumption layers, including AI agents, human users, and visual dashboards.
 
-
 ![](/blog/autodocs.svg)
 
 <summary>View mermaid</summary>
@@ -35,36 +34,37 @@ flowchart
     %% Data collection systems side by side
 
 subgraph DataCollection["Data Collection Systems"]
-    subgraph ELIZA["elizaos.github.io (Contributor Analytics)"]
-        EG_INGEST["📥 Ingest GitHub Data
+subgraph ELIZA["elizaos.github.io (Contributor Analytics)"]
+EG_INGEST["📥 Ingest GitHub Data
 PRs, Issues, Comments"] --> EG_DB[("💾 SQLite DB +
 Diffable Format")]
-        EG_PROCESS["⚙️ Process & Score
+EG_PROCESS["⚙️ Process & Score
 Contributions"]
-        EG_DB <--> EG_PROCESS
-        EG_PROCESS --> EG_EXPORT["📊 Export
+EG_DB <--> EG_PROCESS
+EG_PROCESS --> EG_EXPORT["📊 Export
 JSON Files"]
-        EG_PROCESS <--> EG_SUMMARIZE["📝 Generate
+EG_PROCESS <--> EG_SUMMARIZE["📝 Generate
 AI Summaries"]
-        EG_SUMMARIZE --> EG_DEPLOY["🚀 Deploy to
+EG_SUMMARIZE --> EG_DEPLOY["🚀 Deploy to
 GitHub Pages"]
-        EG_EXPORT --> EG_DEPLOY
-    end
+EG_EXPORT --> EG_DEPLOY
+end
 
     subgraph AI_News["ai-news (Data Collector/Miner)"]
         direction LR
         AI_EXTRACT["⛏️ Extract Raw Data
+
 Discord, X, Github
- Blockchain, Telegram"]
-        AI_STORE[("💾 Encrypted
+Blockchain, Telegram"]
+AI_STORE[("💾 Encrypted
 SQLite DB")]
-        AI_ENRICH["🧠 AI Analysis
+AI_ENRICH["🧠 AI Analysis
 & Enrichment"]
-        AI_GENERATE["📝 Generate
+AI_GENERATE["📝 Generate
 AI Summaries"]
-        AI_DEPLOY["🚀 Deploy to
+AI_DEPLOY["🚀 Deploy to
 GitHub Pages"]
-    end
+end
 
         %% Define connections explicitly
         AI_EXTRACT --> AI_STORE <--> AI_ENRICH --> AI_GENERATE --> AI_DEPLOY
@@ -75,6 +75,7 @@ GitHub Pages"]
         TL["Twitter lists about AI"]
         LLM["LLM summarization"]
         TL --> LLM --> DS_FETCH["⛏️ Discord Fetch
+
 Embedded Messages"] --> DS_JSON[("💾 JSON Files
 YYYY-MM-DD")] --> DS_DEPLOY["🚀 Deploy to
 GitHub Pages"]
@@ -90,80 +91,88 @@ GitHub Pages"]
 
         subgraph KR_SOURCES["Data Sources"]
             DOCS["📚 docs/
+
 ElizaOS Documentation
-+ Packages & Partners"]
-            GITHUB["🐙 github/
-Stats, PRs, Issues, Commits"]
-            AINEWS["📰 ai-news/
-ElizaOS & Hyperfy
-Summaries"]
-            DS["📰 daily-silk/
-AI twitter news"]
 
-            DOCS---GITHUB---AINEWS---DS
-        end
+- Packages & Partners"]
+  GITHUB["🐙 github/
+  Stats, PRs, Issues, Commits"]
+  AINEWS["📰 ai-news/
+  ElizaOS & Hyperfy
+  Summaries"]
+  DS["📰 daily-silk/
+  AI twitter news"]
 
-        KR_MAP["🗺️ Context Map
-Structured JSON"]
+              DOCS---GITHUB---AINEWS---DS
+          end
 
-        subgraph KR_OUTPUTS["Outputs"]
-            KR_STRATEGIC["🧩 Strategic Context
-AI Council Insights"]
-            KR_NOTES["📒 HackMD Notes
-Prompt-Generated
-Content"]
-        end
+          KR_MAP["🗺️ Context Map
 
-        subgraph KR_PROMPTS["Prompt Templates"]
-            COMMS["💬 comms/
-Communication"] --- DEV["💻 dev/
-Development"] --- STRATEGY["🎯 strategy/
-Strategic Planning"]
-        end
+  Structured JSON"]
 
-        %% Internal connections within KNOW
-        KR_SOURCES -->|"⏰ Generate Context
-Daily 5:00 UTC"| KR_MAP
-        KR_MAP --> KR_OUTPUTS
-        KR_PROMPTS -->|"Generate
-Content"| KR_NOTES
-    end
+          subgraph KR_OUTPUTS["Outputs"]
+              KR_STRATEGIC["🧩 Strategic Context
 
-    %% Consumption layer
-    subgraph ConsumptionLayer["Consumption Layer"]
-        RAG["🤖 RAG Systems
-AI Agents"] <-.-> USER["👤 Human
-Users"] <-.-> SHOW["🎬 AI Shows
-Visualizations"]
-    end
+  AI Council Insights"]
+  KR_NOTES["📒 HackMD Notes
+  Prompt-Generated
+  Content"]
+  end
 
-    %% Connections between systems - simplified
-    AI_DEPLOY -.->|"⏰ Sync Daily 4:00 UTC"| KNOW
-    EG_DEPLOY -.->|"⏰ Sync Daily 4:00 UTC"| KNOW
-    DS_DEPLOY -.->|"⏰ Sync Daily 4:00 UTC"| KNOW
+          subgraph KR_PROMPTS["Prompt Templates"]
+              COMMS["💬 comms/
 
-    %% Main flow connection to consumption
-    KR_OUTPUTS & KR_NOTES --> ConsumptionLayer
+  Communication"] --- DEV["💻 dev/
+  Development"] --- STRATEGY["🎯 strategy/
+  Strategic Planning"]
+  end
 
-    %% Styling
-    classDef process fill:#f7e8ff,stroke:#9966cc,stroke-width:1px,color:#333,font-weight:bold,border-radius:8px
-    classDef storage fill:#ffe6e6,stroke:#ff6666,stroke-width:1px,color:#333,font-weight:bold,border-radius:16px
-    classDef output fill:#e6ffe6,stroke:#66cc66,stroke-width:1px,color:#333,font-weight:bold,border-radius:8px
-    classDef source fill:#fff9e6,stroke:#ffcc66,stroke-width:1px,color:#333,font-weight:bold,border-radius:8px
+          %% Internal connections within KNOW
+          KR_SOURCES -->|"⏰ Generate Context
 
-    class AI_EXTRACT,AI_ENRICH,AI_GENERATE,EG_INGEST,EG_EXPORT,EG_SUMMARIZE process
-    class AI_STORE,EG_DB,DS_JSON storage
-    class AI_DEPLOY,EG_DEPLOY,DS_DEPLOY,KR_MAP,KR_STRATEGIC,KR_NOTES output
-    class DOCS,GITHUB,DS,AINEWS,SILK,ARCHIVE,COMMS,DEV,STRATEGY source
+  Daily 5:00 UTC"| KR_MAP
+  KR_MAP --> KR_OUTPUTS
+  KR_PROMPTS -->|"Generate
+  Content"| KR_NOTES
+  end
 
-    %% Style subgraphs
-    style AI_News fill:#f9f0ff,stroke:#9966cc,stroke-width:2px,color:#6600cc,font-weight:bold
-    style ELIZA fill:#fff0e6,stroke:#ff9933,stroke-width:2px,color:#cc6600,font-weight:bold
-    style KNOW fill:#e6fff0,stroke:#33cc99,stroke-width:2px,color:#006633,font-weight:bold
-    style KR_SOURCES fill:#fff9e6,stroke:#ffcc66,stroke-width:2px,color:#997a00,font-weight:bold
-    style KR_PROMPTS fill:#e6f7ff,stroke:#66ccff,stroke-width:2px,color:#006699,font-weight:bold
-    style KR_OUTPUTS fill:#ffe6f7,stroke:#ff66cc,stroke-width:2px,color:#990066,font-weight:bold
-    style ConsumptionLayer fill:#e6ffff,stroke:#66cccc,stroke-width:2px,color:#006666,font-weight:bold
+      %% Consumption layer
+      subgraph ConsumptionLayer["Consumption Layer"]
+          RAG["🤖 RAG Systems
+
+  AI Agents"] <-.-> USER["👤 Human
+  Users"] <-.-> SHOW["🎬 AI Shows
+  Visualizations"]
+  end
+
+      %% Connections between systems - simplified
+      AI_DEPLOY -.->|"⏰ Sync Daily 4:00 UTC"| KNOW
+      EG_DEPLOY -.->|"⏰ Sync Daily 4:00 UTC"| KNOW
+      DS_DEPLOY -.->|"⏰ Sync Daily 4:00 UTC"| KNOW
+
+      %% Main flow connection to consumption
+      KR_OUTPUTS & KR_NOTES --> ConsumptionLayer
+
+      %% Styling
+      classDef process fill:#f7e8ff,stroke:#9966cc,stroke-width:1px,color:#333,font-weight:bold,border-radius:8px
+      classDef storage fill:#ffe6e6,stroke:#ff6666,stroke-width:1px,color:#333,font-weight:bold,border-radius:16px
+      classDef output fill:#e6ffe6,stroke:#66cc66,stroke-width:1px,color:#333,font-weight:bold,border-radius:8px
+      classDef source fill:#fff9e6,stroke:#ffcc66,stroke-width:1px,color:#333,font-weight:bold,border-radius:8px
+
+      class AI_EXTRACT,AI_ENRICH,AI_GENERATE,EG_INGEST,EG_EXPORT,EG_SUMMARIZE process
+      class AI_STORE,EG_DB,DS_JSON storage
+      class AI_DEPLOY,EG_DEPLOY,DS_DEPLOY,KR_MAP,KR_STRATEGIC,KR_NOTES output
+      class DOCS,GITHUB,DS,AINEWS,SILK,ARCHIVE,COMMS,DEV,STRATEGY source
+
+      %% Style subgraphs
+      style AI_News fill:#f9f0ff,stroke:#9966cc,stroke-width:2px,color:#6600cc,font-weight:bold
+      style ELIZA fill:#fff0e6,stroke:#ff9933,stroke-width:2px,color:#cc6600,font-weight:bold
+      style KNOW fill:#e6fff0,stroke:#33cc99,stroke-width:2px,color:#006633,font-weight:bold
+      style KR_SOURCES fill:#fff9e6,stroke:#ffcc66,stroke-width:2px,color:#997a00,font-weight:bold
+      style KR_PROMPTS fill:#e6f7ff,stroke:#66ccff,stroke-width:2px,color:#006699,font-weight:bold
+      style KR_OUTPUTS fill:#ffe6f7,stroke:#ff66cc,stroke-width:2px,color:#990066,font-weight:bold
+      style ConsumptionLayer fill:#e6ffff,stroke:#66cccc,stroke-width:2px,color:#006666,font-weight:bold
+
 ```
 
 </details>
@@ -278,3 +287,4 @@ Our goal is to make the documentation process even more seamless, intelligent, a
 *   **AI-Driven Content Strategy:** Using site analytics to guide AI in suggesting or outlining new documentation.
 
 We're always refining these processes. Your contributions and feedback via GitHub or Discord are invaluable in helping us build an even better documentation experience, we're listening!
+```

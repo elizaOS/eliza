@@ -129,9 +129,8 @@ export function agentRouter(
 
     const entityId = req.body.entityId as UUID;
     const roomId = req.body.roomId as UUID;
-    const worldId =
-      (validateUuid(req.query.worldId as string) ||
-        ('00000000-0000-0000-0000-000000000000' as UUID)) as UUID;
+    const worldId = (validateUuid(req.query.worldId as string) ||
+      ('00000000-0000-0000-0000-000000000000' as UUID)) as UUID;
 
     const source = req.body.source;
     const text = req.body.text.trim();

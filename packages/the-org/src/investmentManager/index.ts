@@ -7,6 +7,9 @@ import { communityInvestorPlugin } from './plugins/community-investor';
 import { degenIntelPlugin } from './plugins/degen-intel';
 import { degenTraderPlugin } from './plugins/degen-trader';
 
+import { autofunPlugin } from './plugins/plugin-autofun';
+import { autofunTraderPlugin } from './plugins/autofun-trader';
+
 const imagePath = path.resolve('./src/investmentManager/assets/portrait.jpg');
 
 // Read and convert to Base64
@@ -40,11 +43,17 @@ const character: Character = {
     '@elizaos/plugin-pdf',
     '@elizaos/plugin-video-understanding',
     '@elizaos/plugin-bootstrap',
+    '@elizaos-plugins/plugin-trader',
+    '@elizaos-plugins/plugin-jupiter',
   ],
   settings: {
     secrets: {
       DISCORD_APPLICATION_ID: process.env.INVESTMENT_MANAGER_DISCORD_APPLICATION_ID,
       DISCORD_API_TOKEN: process.env.INVESTMENT_MANAGER_DISCORD_API_TOKEN,
+      TELEGRAM_BOT_TOKEN: process.env.INVESTMENT_MANAGER_TELEGRAM_BOT_TOKEN,
+      TWITTER_EMAIL: process.env.INVESTMENT_MANAGER_TWITTER_EMAIL,
+      TWITTER_USERNAME: process.env.INVESTMENT_MANAGER_TWITTER_USERNAME,
+      TWITTER_PASSWORD: process.env.INVESTMENT_MANAGER_TWITTER_PASSWORD,
     },
     avatar,
   },
@@ -244,8 +253,10 @@ const config: OnboardingConfig = {
 
 export const investmentManager: ProjectAgent = {
   plugins: [
-    degenIntelPlugin,
-    // degenTraderPlugin,
+    //degenTraderPlugin,
+    //degenIntelPlugin, // has to be after trader for buy/sell signals to be enabled
+    //autofunPlugin,
+    //autofunTraderPlugin,
     // communityInvestorPlugin,
   ],
   character,

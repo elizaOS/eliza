@@ -118,51 +118,81 @@ export default class Birdeye {
   }
 
   private async syncWalletHistory() {
-    /** Get entire transaction history */
-    const options = {
-      method: 'GET',
-      headers: {
-        accept: 'application/json',
-        'x-chain': 'solana',
-        'X-API-KEY': this.apiKey,
-      },
-    };
+    try {
+      const publicKey =
+        this.runtime.getSetting('SOLANA_PUBLIC_KEY') ||
+        'BzsJQeZ7cvk3pTHmKeuvdhNDkDxcZ6uCXxW2rjwC7RTq';
 
-    const publicKey =
-      this.runtime.getSetting('SOLANA_PUBLIC_KEY') ||
-      'BzsJQeZ7cvk3pTHmKeuvdhNDkDxcZ6uCXxW2rjwC7RTq';
+      // First get data from Birdeye
+      const options = {
+        method: 'GET',
+        headers: {
+          accept: 'application/json',
+          'x-chain': 'solana',
+          'X-API-KEY': this.apiKey,
+        },
+      };
 
-    const res = await fetch(
-      `https://public-api.birdeye.so/v1/wallet/tx_list?wallet=${publicKey}&limit=100`,
-      options
-    );
+      const res = await fetch(
+        `https://public-api.birdeye.so/v1/wallet/tx_list?wallet=${publicKey}&limit=100`,
+        options
+      );
 
-    const resp = await res.json();
-    const data = resp?.data?.solana;
+      const resp = await res.json();
+      const birdeyeData = resp?.data?.solana || [];
 
-    // Get existing transactions
-    const cachedTxs = await this.runtime.getCache<TransactionHistory[]>('transaction_history');
-    const transactions: TransactionHistory[] = cachedTxs ? cachedTxs : [];
+      //console.log('intel/be/syncWalletHistory - birdeyeData', birdeyeData)
 
-    // Update transactions
-    for (const tx of data) {
-      const existingIndex = transactions.findIndex((t) => t.txHash === tx.txHash);
-      const newTx = {
+      // Convert Birdeye data to our transaction format
+      let transactions: TransactionHistory[] = birdeyeData.map((tx: any) => ({
         txHash: tx.txHash,
         blockTime: new Date(tx.blockTime),
         data: tx,
-      };
+      }));
 
-      if (existingIndex >= 0) {
-        transactions[existingIndex] = newTx;
-      } else {
-        transactions.push(newTx);
+      //console.log('intel/be/syncWalletHistory - transactions', transactions)
+
+      // Then try to get cached transactions
+      try {
+        const cachedTxs = await this.runtime.getCache<TransactionHistory[]>('transaction_history');
+        if (cachedTxs && Array.isArray(cachedTxs)) {
+          // Add cached transactions that don't exist in Birdeye data
+          for (const cachedTx of cachedTxs) {
+            if (!transactions.some((tx) => tx.txHash === cachedTx.txHash)) {
+              transactions.push(cachedTx);
+            }
+          }
+        }
+      } catch (error) {
+        // If cache fails, continue with just Birdeye data
+        logger.debug('Failed to get cached transactions, continuing with Birdeye data only');
       }
+
+      //console.log('intel/be/syncWalletHistory - transactions', transactions)
+      for (const tx of transactions) {
+        //console.log('test', typeof(tx.blockTime), tx.blockTime, tx.blockTime?.getTime && tx.blockTime?.getTime())
+        if (typeof tx.blockTime === 'string') {
+          tx.blockTime = new Date(tx.blockTime);
+        }
+      }
+
+      // Sort transactions by blockTime descending (newest first)
+      transactions.sort((a, b) => b.blockTime.getTime() - a.blockTime.getTime());
+
+      // Try to update cache, but don't fail if it doesn't work
+      try {
+        await this.runtime.setCache<TransactionHistory[]>('transaction_history', transactions);
+        logger.debug(`Updated transaction history with ${transactions.length} transactions`);
+      } catch (error) {
+        logger.debug('Failed to set transaction cache, continuing without caching', error);
+      }
+
+      return transactions;
+    } catch (error) {
+      logger.error('Failed to sync wallet history from Birdeye', error);
+      // Return empty array if everything fails
+      return [];
     }
-
-    await this.runtime.setCache<TransactionHistory[]>('transaction_history', transactions);
-
-    logger.debug(`Updated transaction history with ${data.length} transactions`);
   }
 
   private async syncWalletPortfolio() {
@@ -199,68 +229,76 @@ export default class Birdeye {
   }
 
   async syncTrendingTokens(chain: 'solana' | 'base'): Promise<boolean> {
-    const options = {
-      method: 'GET',
-      headers: {
-        accept: 'application/json',
-        'x-chain': chain,
-        'X-API-KEY': this.apiKey,
-      },
-    };
+    try {
+      const options = {
+        method: 'GET',
+        headers: {
+          accept: 'application/json',
+          'x-chain': chain,
+          'X-API-KEY': this.apiKey,
+        },
+      };
 
-    // Get existing tokens
-    const cachedTokens = await this.runtime.getCache<IToken[]>(`tokens_${chain}`);
-    const tokens: IToken[] = cachedTokens ? cachedTokens : [];
+      // Get existing tokens
+      const cachedTokens = await this.runtime.getCache<IToken[]>(`tokens_${chain}`);
+      const tokens: IToken[] = cachedTokens ? cachedTokens : [];
 
-    /** Fetch top 100 in batches of 20 (which is the limit) */
-    for (let batch = 0; batch < 5; batch++) {
-      const currentOffset = batch * 20;
-      const res = await fetch(
-        `https://public-api.birdeye.so/defi/token_trending?sort_by=rank&sort_type=asc&offset=${currentOffset}&limit=20`,
-        options
-      );
-      const resp = await res.json();
-      const data = resp?.data;
-      const last_updated = new Date(data?.updateUnixTime * 1000);
-      const newTokens = data?.tokens;
-
-      for (const token of newTokens) {
-        const tokenData: IToken = {
-          address: token?.address,
-          chain: chain,
-          provider: 'birdeye',
-          decimals: token.decimals,
-          liquidity: token.liquidity,
-          logoURI: token.logoURI,
-          name: token.name,
-          symbol: token.symbol,
-          marketcap: 0,
-          volume24hUSD: token.volume24hUSD,
-          rank: token.rank,
-          price: token.price,
-          price24hChangePercent: token.price24hChangePercent,
-          last_updated,
-        };
-
-        const existingIndex = tokens.findIndex(
-          (t) => t.provider === 'birdeye' && t.rank === token.rank && t.chain === chain
+      /** Fetch top 100 in batches of 20 (which is the limit) */
+      for (let batch = 0; batch < 5; batch++) {
+        const currentOffset = batch * 20;
+        const res = await fetch(
+          `https://public-api.birdeye.so/defi/token_trending?sort_by=rank&sort_type=asc&offset=${currentOffset}&limit=20`,
+          options
         );
-        if (existingIndex >= 0) {
-          tokens[existingIndex] = tokenData;
-        } else {
-          tokens.push(tokenData);
+        const resp = await res.json();
+        const data = resp?.data;
+        const last_updated = new Date(data?.updateUnixTime * 1000);
+        const newTokens = data?.tokens;
+
+        if (!newTokens) {
+          continue;
         }
+        for (const token of newTokens) {
+          const existingIndex = tokens.findIndex(
+            (t) => t.provider === 'birdeye' && t.rank === token.rank && t.chain === chain
+          );
+
+          const tokenData: IToken = {
+            address: token.address,
+            chain: chain,
+            provider: 'birdeye',
+            decimals: token.decimals || 0,
+            liquidity: token.liquidity || 0,
+            logoURI: token.logoURI || '',
+            name: token.name || token.symbol,
+            symbol: token.symbol,
+            marketcap: 0,
+            volume24hUSD: token.volume24hUSD || 0,
+            rank: token.rank || 0,
+            price: token.price || 0,
+            price24hChangePercent: token.price24hChangePercent || 0,
+            last_updated,
+          };
+
+          if (existingIndex >= 0) {
+            tokens[existingIndex] = tokenData;
+          } else {
+            tokens.push(tokenData);
+          }
+        }
+
+        // Add extra delay
+        await new Promise((resolve) => setTimeout(resolve, 250));
       }
+      await this.runtime.setCache<IToken[]>(`tokens_${chain}`, tokens);
 
-      /** Add extra delay */
-      await new Promise((resolve) => setTimeout(resolve, 250));
+      logger.debug(`Updated ${chain} tokens cache with ${tokens.length} tokens`);
+
+      return true;
+    } catch (error) {
+      logger.error('Failed to sync trending tokens', error);
+      throw error;
     }
-
-    await this.runtime.setCache<IToken[]>(`tokens_${chain}`, tokens);
-
-    logger.debug(`Updated ${chain} tokens cache with ${tokens.length} tokens`);
-
-    return true;
   }
 
   async fillTimeframe() {

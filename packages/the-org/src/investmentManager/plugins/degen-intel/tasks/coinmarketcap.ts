@@ -23,9 +23,11 @@ export default class CoinmarketCap {
     );
 
     const resp = await res.json();
+    //console.log('resp', resp)
     const data = resp?.data;
 
     const ops = [];
+    const tokens = [];
     for (const token of data) {
       /** If the token is not a Layer 1 token it will have platform defined */
       if (token.platform !== null) {
@@ -37,7 +39,7 @@ export default class CoinmarketCap {
 
       const address = token?.platform?.token_address ?? token.slug;
 
-      const data: IToken = {
+      const data2: IToken = {
         provider: 'coinmarketcap',
         chain: token?.platform?.slug ?? 'L1',
         address,
@@ -53,23 +55,27 @@ export default class CoinmarketCap {
         price24hChangePercent: token?.quote?.USD?.percent_change_24h,
         last_updated: new Date(token.last_updated),
       };
+      tokens.push(data2);
 
       ops.push({
         updateOne: {
           filter: {
             provider: 'coinmarketcap',
-            rank: data.rank,
+            rank: data2.rank,
           },
           update: {
-            $set: data,
+            $set: data2,
           },
           upsert: true,
         },
       });
     }
 
-    const writeResult = await DB.Token.bulkWrite(ops);
-    logger.info(writeResult, 'Coinmarketcap sync resulted in:');
+    // this isn't right
+    //const writeResult = await this.runtime.databaseAdapter.Token.bulkWrite(ops);
+    await this.runtime.setCache<IToken[]>('coinmarketcap_sync', tokens);
+    //logger.info("Coinmarketcap sync done");
+    //logger.info(ops, "Coinmarketcap sync resulted in:");
 
     return true;
   }
