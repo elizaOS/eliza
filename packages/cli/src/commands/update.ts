@@ -8,6 +8,13 @@ import path, { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import prompts from 'prompts';
 import semver from 'semver';
+import {
+  isGlobalInstallation,
+  isRunningViaNpx,
+  isRunningViaBunx,
+  executeInstallation,
+} from '@/src/utils';
+import { logger } from '@elizaos/core';
 
 // Function to get the package version
 function getVersion(): string {
@@ -351,11 +358,93 @@ function checkIfPluginDir(dir: string): boolean {
   }
 }
 
+/**
+ * Updates the CLI to the latest version based on the most recently published version
+ * @returns {Promise<boolean>} Whether the update was successful
+ */
+export async function performCliUpdate(): Promise<boolean> {
+  try {
+    // get the current version
+    const currentVersion = getVersion();
+
+    // Get the time data for all published versions to find the most recent
+    const { stdout } = await execa('npm', ['view', '@elizaos/cli', 'time', '--json']);
+    const timeData = JSON.parse(stdout);
+
+    // Remove metadata entries like 'created' and 'modified'
+    delete timeData.created;
+    delete timeData.modified;
+
+    // Find the most recently published version
+    let latestVersion = '';
+    let latestDate = new Date(0); // Start with epoch time
+
+    for (const [version, dateString] of Object.entries(timeData)) {
+      const publishDate = new Date(dateString as string);
+      if (publishDate > latestDate) {
+        latestDate = publishDate;
+        latestVersion = version;
+      }
+    }
+
+    // If we couldn't determine the latest version or already at latest, exit
+    if (!latestVersion || currentVersion === latestVersion) {
+      await showBanner();
+      console.info('ElizaOS CLI is already up to date!');
+      return true;
+    }
+
+    console.info(`Updating ElizaOS CLI from ${currentVersion} to ${latestVersion}...`);
+
+    // Install the specified version globally - use specific version instead of tag
+    logger.info(`Updating Eliza CLI to version: ${latestVersion}`);
+    try {
+      // Use direct npm install command for global installation
+      try {
+        // First try with beta tag which is more reliable
+        const { stdout, stderr } = await execa('npm', ['install', '-g', '@elizaos/cli@beta']);
+        logger.info(`Successfully updated Eliza CLI to latest version`);
+        logger.info('Please restart your terminal for the changes to take effect.');
+      } catch (npmError) {
+        // If beta tag fails, try with specific version
+        try {
+          logger.info(`Beta installation failed, trying specific version: ${latestVersion}`);
+          const { stdout, stderr } = await execa('npm', [
+            'install',
+            '-g',
+            `@elizaos/cli@${latestVersion}`,
+          ]);
+          logger.info(`Successfully updated Eliza CLI to version ${latestVersion}`);
+          logger.info('Please restart your terminal for the changes to take effect.');
+        } catch (versionError) {
+          throw new Error(
+            `Installation of @elizaos/cli version ${latestVersion} failed. Try manually with: npm install -g @elizaos/cli@beta`
+          );
+        }
+      }
+    } catch (error) {
+      logger.error('Failed to update Eliza CLI:', error.message);
+      logger.info('You can try manually with: npm install -g @elizaos/cli@beta');
+      process.exit(1);
+    }
+
+    await showBanner();
+    console.info('ElizaOS CLI has been successfully updated!');
+    return true;
+  } catch (error) {
+    console.error('Failed to update ElizaOS CLI:', error);
+    return false;
+  }
+}
+
 // Create command for updating dependencies
 export const update = new Command()
   .name('update')
-  .description('Update ElizaOS packages to the latest versions')
+  .description('Update ElizaOS CLI and project dependencies')
   .option('-c, --check', 'Check for available updates without applying them')
+  .option('-sb, --skip-build', 'Skip building after updating')
+  .option('--cli', 'Update only the global CLI installation (without updating packages)')
+  .option('--packages', 'Update only packages (without updating the CLI)')
   .hook('preAction', async () => {
     try {
       await showBanner();
@@ -364,103 +453,78 @@ export const update = new Command()
       console.debug('Banner display failed, continuing with update');
     }
   })
-  .option('-sb, --skip-build', 'Skip building after updating')
   .action(async (options) => {
     try {
-      const cwd = process.cwd();
+      // Flag combinations define behavior:
+      // --cli: Update only the CLI
+      // --packages: Update only packages
+      // Neither flag: Update both CLI and packages
+      // Both flags: Update both CLI and packages
 
-      // Determine if we're in a project or plugin directory
-      const isPlugin = checkIfPluginDir(cwd);
-      console.info(`Detected ${isPlugin ? 'plugin' : 'project'} directory`);
+      let updateCli = false;
+      let updatePackages = false;
 
-      if (options.check) {
-        // Call updateDependencies with dryRun=true to check for updates without applying them
-        await updateDependencies(cwd, isPlugin, true, false);
-        return;
+      if (!options.cli && !options.packages) {
+        updateCli = true;
+        updatePackages = true;
+      } else {
+        updateCli = !!options.cli;
+        updatePackages = !!options.packages;
+      }
+      // Handle CLI update if requested
+      if (updateCli) {
+        // Check if we're running via npx/bunx
+        if ((await isRunningViaNpx()) || (await isRunningViaBunx())) {
+          console.warn('CLI update is not available when running via npx or bunx.');
+          console.info('To install the latest version, run: npm install -g @elizaos/cli@beta');
+        }
+        // Check if globally installed
+        else if (!(await isGlobalInstallation())) {
+          console.warn('The CLI update is only available for globally installed CLI.');
+          console.info('To update a local installation, use your package manager manually.');
+          console.info('For global installation, run: npm install -g @elizaos/cli@beta');
+        }
+        // Run CLI update
+        else {
+          console.info('Checking for ElizaOS CLI updates...');
+          try {
+            const cliUpdated = await performCliUpdate();
+            if (!updatePackages && cliUpdated) {
+              return; // Exit if only CLI update was requested and it succeeded
+            }
+          } catch (error) {
+            if (!updatePackages) {
+              handleError(error);
+              return; // Exit if only CLI update was requested and it failed
+            }
+            // Otherwise continue with package updates
+            console.warn('CLI update failed, continuing with package updates...');
+          }
+        }
       }
 
-      // Update dependencies
-      await updateDependencies(cwd, isPlugin, false, options.skipBuild);
+      // Handle package updates if requested
+      if (updatePackages) {
+        const cwd = process.cwd();
 
-      console.log(
-        `${isPlugin ? 'Plugin' : 'Project'} successfully updated to the latest ElizaOS packages`
-      );
+        // Determine if we're in a project or plugin directory
+        const isPlugin = checkIfPluginDir(cwd);
+        console.info(`Detected ${isPlugin ? 'plugin' : 'project'} directory`);
+
+        if (options.check) {
+          // Call updateDependencies with dryRun=true to check for updates without applying them
+          await updateDependencies(cwd, isPlugin, true, false);
+          return;
+        }
+
+        // Update dependencies
+        await updateDependencies(cwd, isPlugin, false, options.skipBuild);
+
+        console.log(
+          `${isPlugin ? 'Plugin' : 'Project'} successfully updated to the latest ElizaOS packages`
+        );
+      }
     } catch (error) {
       handleError(error);
     }
   });
-
-export function displayBanner() {
-  // Color ANSI escape codes
-  const b = '\x1b[38;5;27m';
-  const lightblue = '\x1b[38;5;51m';
-  const w = '\x1b[38;5;255m';
-  const r = '\x1b[0m';
-  const red = '\x1b[38;5;196m';
-  let versionColor = lightblue;
-
-  const version = getVersion();
-
-  // if version includes "beta" or "alpha" then use red
-  if (version?.includes('beta') || version?.includes('alpha')) {
-    versionColor = red;
-  }
-  const banners = [
-    //     // Banner 2
-    //     `
-    // ${b}          ###                                  ${w}  # ###       #######  ${r}
-    // ${b}         ###    #                            / ${w} /###     /       ###  ${r}
-    // ${b}          ##   ###                          /  ${w}/  ###   /         ##  ${r}
-    // ${b}          ##    #                          / ${w} ##   ###  ##        #   ${r}
-    // ${b}          ##                              /  ${w}###    ###  ###          ${r}
-    // ${b}   /##    ##  ###    ######      /###    ${w}##   ##     ## ## ###        ${r}
-    // ${b}  / ###   ##   ###  /#######    / ###  / ${w}##   ##     ##  ### ###      ${r}
-    // ${b} /   ###  ##    ## /      ##   /   ###/  ${w}##   ##     ##    ### ###    ${r}
-    // ${b}##    ### ##    ##        /   ##    ##   ${w}##   ##     ##      ### /##  ${r}
-    // ${b}########  ##    ##       /    ##    ##   ${w}##   ##     ##        #/ /## ${r}
-    // ${b}#######   ##    ##      ###   ##    ##   ${w} ##  ##     ##         #/ ## ${r}
-    // ${b}##        ##    ##       ###  ##    ##   ${w}  ## #      /           # /  ${r}
-    // ${b}####    / ##    ##        ### ##    /#   ${w}   ###     /  /##        /   ${r}
-    // ${b} ######/  ### / ### /      ##  ####/ ##  ${w}    ######/  /  ########/    ${r}
-    // ${b}  #####    ##/   ##/       ##   ###   ## ${w}      ###   /     #####      ${r}
-    // ${b}                           /             ${w}            |                ${r}
-    // ${b}                          /              ${w}             \)              ${r}
-    // ${b}                         /               ${w}                             ${r}
-    // ${b}                        /                ${w}                             ${r}
-    // `,
-
-    //     // Banner 3
-    //     `
-    // ${b}      :::::::::::::      ::::::::::::::::::::    ::: ${w}    ::::::::  :::::::: ${r}
-    // ${b}     :+:       :+:          :+:         :+:   :+: :+:${w}  :+:    :+::+:    :+: ${r}
-    // ${b}    +:+       +:+          +:+        +:+   +:+   +:+${w} +:+    +:++:+         ${r}
-    // ${b}   +#++:++#  +#+          +#+       +#+   +#++:++#++:${w}+#+    +:++#++:++#++   ${r}
-    // ${b}  +#+       +#+          +#+      +#+    +#+     +#+${w}+#+    +#+       +#+    ${r}
-    // ${b} #+#       #+#          #+#     #+#     #+#     #+##${w}+#    #+##+#    #+#     ${r}
-    // ${b}##########################################     #### ${w}#######  ########       ${r}`,
-
-    `
-${b}⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣸⣿⠀⠙⠛⠿⢤⣦⣐⠀${w}⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀${r}
-${b}⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣐⣿⣿⢰⡀⠀⠀⠀⠈⠻⠀${w}⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀${r}
-${b}⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣴⠤⠾⠛⠛⣿⣶⣇⠀⠀⡆⠀⠀⠀${w}⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀${r}
-${b}⠀⠀⢰⣋⡳⡄⠀⠀⠀⢨⣭⡀⠀⡤⠀⣀⣝⢿⣶⣿⡅⠀⠀⠀${w}⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀${r}
-${b}⠀⠀⢸⣯⠀⣇⠀⠀⠀⣼⣿⣿⣆⢷⣴⣿⣿⡏⣛⡉⠀⠀⠀⠀${w}⢸⣿⣿⣿⣿⣿⣿⢸⣿⣿⠀⠀⠀⠀⠀⣿⣿⡇⣿⣿⣿⣿⣿⣿⣿⡇⠀⠀⠀⣾⣿⣿⣧⠀⠀⠀⢸⠟⢀⣴⣿⣿⣿⣿⣦⡀⣠⣾⣿⣿⣿⣿⣦⡙⢿⠀${r}
-${b}⠀⠀⠀⠙⢷⣮⠀⠀⢸⣿⣿⣿⣿⣷⣯⣟⣏⣼⣷⣅⠾⡟⠀⠀${w}⢸⣿⣇⣀⣀⣀⠀⢸⣿⣿⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⣠⣿⣿⠟⠁⠀⠀⣼⣿⡟⣿⣿⣆⠀⠀⠀⠀⣿⣿⠋⠀⠈⠻⣿⡇⣿⣿⣅⣀⣀⡛⠛⠃⠀⠀${r}
-${b}⠀⠀⠀⠀⠀⠁⠀⠀⢸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠋⠀⠀⠀⠀${w}⢸⣿⡿⠿⠿⠿⠀⢸⣿⣿⠀⠀⠀⠀⠀⣿⣿⡇⠀⣠⣾⣿⠟⠁⠀⠀⠀⣰⣿⣿⣁⣸⣿⣿⡄⠀⠀⠀⣿⣿⡀⠀⠀⢘⣿⣿⢈⣛⠿⠿⠿⣿⣷⡄⠀⠀${r}
-${b}⠀⠀⠀⠀⠀⠀⠀⠀⠸⣿⣿⣿⣿⣿⣿⣿⣿⣉⡟⠀⠀⠀⠀⠀${w}⢸⣿⣧⣤⣤⣤⣤⢸⣿⣿⣦⣤⣤⣤⡄⣿⣿⡇⣾⣿⣿⣧⣤⣤⣤⡄⢰⣿⣿⠟⠛⠛⠻⣿⣿⡄⢠⡀⠻⣿⣿⣦⣴⣿⣿⠇⢿⣿⣦⣤⣤⣿⣿⠇⣠⠀${r}
-${b}⠀⠀⠀⠀⠀⠀⠀⠀⢰⡈⠛⠿⣿⣿⣿⣿⣿⠋⠀⣦⣤⣄⠀⠀${w}⠘⠛⠛⠛⠛⠛⠛⠈⠛⠛⠛⠛⠛⠛⠃⠛⠛⠃⠛⠛⠛⠛⠛⠛⠛⠃⠛⠛⠃⠀⠀⠀⠀⠙⠛⠃⠘⠛⠀⠈⠛⠛⠛⠛⠁⠀⠀⠙⠛⠛⠛⠛⠁⠚⠛⠀${r}
-${b}⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡦⠀⠀⠉⠛⠿⠃⠀⠀⠀⠁⠉⠀⠀${w}⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀${r}
-${b}⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⢾⡃⠀⠀${w}⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀${r}
-`,
-  ];
-
-  // Randomly select and log one banner
-  const randomBanner = banners[Math.floor(Math.random() * banners.length)];
-
-  console.log(randomBanner);
-
-  if (version) {
-    // log the version
-    console.log(`${versionColor}Version: ${version}${r}`);
-  }
-}

@@ -1,13 +1,21 @@
 import type { AgentServer } from '@/src/server';
 import { upload } from '@/src/server/loader';
 import { convertToAudioBuffer } from '@/src/utils';
-import type { Agent, Character, Content, IAgentRuntime, Memory, UUID } from '@elizaos/core';
+import type {
+  Agent,
+  Character,
+  Content,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  UUID,
+} from '@elizaos/core';
 import {
   ChannelType,
+  EventType,
   MemoryType,
   ModelType,
   composePrompt,
-  composePromptFromState,
   createUniqueUuid,
   encryptObjectValues,
   encryptStringValue,
@@ -102,6 +110,119 @@ export function agentRouter(
 ): express.Router {
   const router = express.Router();
   const db = server?.database;
+
+  // Message handler
+  const handleAgentMessage = async (req: CustomRequest, res: express.Response) => {
+    logger.debug('[MESSAGES CREATE] Creating new message');
+    const agentId = validateUuid(req.params.agentId);
+    if (!agentId) {
+      sendError(res, 400, 'INVALID_ID', 'Invalid agent ID format');
+      return;
+    }
+
+    // get runtime
+    const runtime = agents.get(agentId);
+    if (!runtime) {
+      sendError(res, 404, 'NOT_FOUND', 'Agent not found');
+      return;
+    }
+
+    const entityId = req.body.entityId as UUID;
+    const roomId = req.body.roomId as UUID;
+
+    const source = req.body.source;
+    const text = req.body.text.trim();
+
+    const channelType = req.body.channelType;
+    const incomingMessageVirtualId = createUniqueUuid(
+      runtime,
+      `${roomId}-${entityId}-${Date.now()}`
+    );
+
+    try {
+      await runtime.ensureConnection({
+        entityId,
+        roomId,
+        userName: req.body.userName,
+        name: req.body.name,
+        source: 'api-message',
+        type: ChannelType.API,
+        worldId: createUniqueUuid(runtime, 'api-message'),
+        worldName: 'api-message',
+      });
+
+      const content: Content = {
+        text,
+        attachments: [],
+        source,
+        inReplyTo: undefined, // Handled by response memory if needed
+        channelType: channelType || ChannelType.API,
+      };
+
+      const userMessageMemory: Memory = {
+        id: incomingMessageVirtualId, // Use a consistent ID for the incoming message
+        entityId,
+        roomId,
+        agentId: runtime.agentId, // The agent this message is directed to
+        content,
+        createdAt: Date.now(),
+      };
+
+      // Define the callback for sending the HTTP response
+      const apiCallback: HandlerCallback = async (responseContent: Content) => {
+        let sentMemory: Memory | null = null;
+        if (!res.headersSent) {
+          res.status(201).json({
+            success: true,
+            data: {
+              message: responseContent,
+              messageId: userMessageMemory.id,
+              name: runtime.character.name,
+              roomId: req.body.roomId,
+              source,
+            },
+          });
+
+          // Construct Memory for the agent's HTTP response
+          sentMemory = {
+            id: createUniqueUuid(runtime, `api-response-${userMessageMemory.id}-${Date.now()}`),
+            entityId: runtime.agentId, // Agent is the sender
+            agentId: runtime.agentId,
+            content: {
+              ...responseContent,
+              text: responseContent.text || '',
+              inReplyTo: userMessageMemory.id,
+            },
+            roomId: roomId,
+            createdAt: Date.now(),
+          };
+
+          await runtime.createMemory(sentMemory, 'messages');
+        }
+        return sentMemory ? [sentMemory] : [];
+      };
+
+      // Emit event for message processing
+      await runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
+        runtime,
+        message: userMessageMemory,
+        callback: apiCallback,
+        onComplete: () => {
+          if (!res.headersSent) {
+            logger.warn(
+              '[MESSAGES CREATE] API Callback was not called by a handler. Responding with 204 No Content.'
+            );
+            res.status(204).send(); // Send 204 No Content
+          }
+        },
+      });
+    } catch (error) {
+      logger.error('Error processing message:', error.message);
+      if (!res.headersSent) {
+        sendError(res, 500, 'PROCESSING_ERROR', 'Error processing message', error.message);
+      }
+    }
+  };
 
   // List all agents with minimal details
   router.get('/', async (_, res) => {
@@ -260,11 +381,12 @@ export function agentRouter(
         character.settings.secrets = encryptObjectValues(character.settings.secrets, salt);
       }
 
-      await db.ensureAgentExists(character);
+      const createdAgent = await db.ensureAgentExists(character);
 
       res.status(201).json({
         success: true,
         data: {
+          id: createdAgent.id,
           character: character,
         },
       });
@@ -909,7 +1031,7 @@ export function agentRouter(
         };
 
         // Reuse the message endpoint logic
-        await this.post('/:agentId/messages')(messageRequest, res);
+        await handleAgentMessage(messageRequest as CustomRequest, res);
       } catch (error) {
         logger.error('[AUDIO MESSAGE] Error processing audio:', error);
         res.status(500).json({
@@ -1382,135 +1504,7 @@ export function agentRouter(
     }
   });
 
-  router.post('/:agentId/message', async (req: CustomRequest, res) => {
-    logger.debug('[MESSAGES CREATE] Creating new message');
-    const agentId = validateUuid(req.params.agentId);
-    if (!agentId) {
-      res.status(400).json({
-        success: false,
-        error: {
-          code: 'INVALID_ID',
-          message: 'Invalid agent ID format',
-        },
-      });
-      return;
-    }
-
-    // get runtime
-    const runtime = agents.get(agentId);
-    if (!runtime) {
-      res.status(404).json({
-        success: false,
-        error: {
-          code: 'NOT_FOUND',
-          message: 'Agent not found',
-        },
-      });
-      return;
-    }
-
-    const entityId = req.body.entityId;
-    const roomId = req.body.roomId;
-
-    const source = req.body.source;
-    const text = req.body.text.trim();
-
-    const channelType = req.body.channelType;
-
-    try {
-      const messageId = createUniqueUuid(runtime, Date.now().toString());
-
-      const content: Content = {
-        text,
-        attachments: [],
-        source,
-        inReplyTo: undefined,
-        channelType: channelType || ChannelType.API,
-      };
-
-      const userMessage = {
-        content,
-        entityId,
-        roomId,
-        agentId: runtime.agentId,
-      };
-
-      const memory: Memory = {
-        id: createUniqueUuid(runtime, messageId),
-        ...userMessage,
-        agentId: runtime.agentId,
-        entityId,
-        roomId,
-        content,
-        createdAt: Date.now(),
-      };
-
-      // save message
-      await runtime.createMemory(memory, 'messages');
-
-      let state = await runtime.composeState(memory);
-
-      const prompt = composePromptFromState({
-        state,
-        template: messageHandlerTemplate,
-      });
-
-      const response = await runtime.useModel(ModelType.OBJECT_LARGE, {
-        prompt,
-      });
-
-      if (!response) {
-        res.status(500).json({
-          success: false,
-          error: {
-            code: 'MODEL_ERROR',
-            message: 'No response from model',
-          },
-        });
-        return;
-      }
-
-      const responseMessage: Memory = {
-        id: createUniqueUuid(runtime, messageId),
-        ...userMessage,
-        entityId: runtime.agentId,
-        content: response,
-        createdAt: Date.now(),
-      };
-
-      const replyHandler = async (message: Content) => {
-        res.status(201).json({
-          success: true,
-          data: {
-            message,
-            messageId,
-            name: runtime.character.name,
-            roomId: req.body.roomId,
-            source,
-          },
-        });
-        return [memory];
-      };
-
-      await runtime.processActions(memory, [responseMessage], state, replyHandler);
-
-      await runtime.evaluate(memory, state);
-
-      if (!res.headersSent) {
-        res.status(202).json();
-      }
-    } catch (error) {
-      logger.error('Error processing message:', error.message);
-      res.status(500).json({
-        success: false,
-        error: {
-          code: 'PROCESSING_ERROR',
-          message: 'Error processing message',
-          details: error.message,
-        },
-      });
-    }
-  });
+  router.post('/:agentId/message', handleAgentMessage);
 
   // get all memories for an agent
   router.get('/:agentId/memories', async (req, res) => {

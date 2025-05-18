@@ -4,6 +4,7 @@ export type AgentWithStatus = Omit<Agent, 'status'> & { status: 'active' | 'inac
 
 import { WorldManager } from './world-manager';
 import clientLogger from './logger';
+import { connectionStatusActions } from '../context/ConnectionContext';
 
 const API_PREFIX = '/api';
 
@@ -88,16 +89,15 @@ const fetcher = async ({
       clientLogger.error('Response:', errorText);
 
       let errorMessage = `${response.status}: ${response.statusText}`;
+      let errorObj: any = {}; // Define errorObj to ensure it's available
       try {
-        const errorObj = JSON.parse(errorText);
+        errorObj = JSON.parse(errorText);
         errorMessage = errorObj.error?.message || errorObj.message || errorMessage;
 
-        // Include the status code explicitly in the error message
         if (!errorMessage.includes(response.status.toString())) {
           errorMessage = `${response.status}: ${errorMessage}`;
         }
       } catch {
-        // If we can't parse as JSON, use the raw text
         if (errorText.includes('<!DOCTYPE html>')) {
           errorMessage = `${response.status}: Received HTML instead of JSON. API endpoint may be incorrect.`;
         } else {
@@ -105,13 +105,17 @@ const fetcher = async ({
         }
       }
 
-      // Add more context to specific HTTP status codes
-      if (response.status === 404) {
+      if (response.status === 401) {
+        const unauthorizedMessage =
+          errorObj?.error?.message ||
+          errorObj?.message ||
+          `Unauthorized: Invalid or missing X-API-KEY. Server responded with ${response.status}.`;
+        connectionStatusActions.setUnauthorized(unauthorizedMessage);
+        errorMessage = unauthorizedMessage;
+      } else if (response.status === 404) {
         errorMessage = `${errorMessage} - API endpoint not found`;
       } else if (response.status === 403) {
         errorMessage = `${errorMessage} - Access denied`;
-      } else if (response.status === 401) {
-        errorMessage = `${errorMessage} - Authentication required`;
       } else if (response.status === 429) {
         errorMessage = `${errorMessage} - Too many requests, please try again later`;
       } else if (response.status >= 500) {
@@ -119,7 +123,6 @@ const fetcher = async ({
       }
 
       const error = new Error(errorMessage);
-      // Add status code to the error object for easier checking
       (error as any).statusCode = response.status;
       throw error;
     }
