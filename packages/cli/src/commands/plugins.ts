@@ -5,7 +5,7 @@ import {
   installPlugin,
   logHeader,
 } from '@/src/utils';
-import { getPluginRepository } from '@/src/utils/registry/index';
+import { getLocalRegistryIndex, normalizePluginName } from '@/src/utils/registry/index';
 import { readCache, updatePluginRegistryCache, PluginInfo } from '@/src/utils/plugin-discovery';
 import { logger } from '@elizaos/core';
 import { Command } from 'commander';
@@ -286,78 +286,34 @@ plugins
           process.exit(1);
         }
       } else {
-        // --- Existing Plugin Installation Logic (NPM, Registry) ---
-        // Handle third-party plugins (fully qualified npm package names)
-        if (plugin.startsWith('@') && plugin.includes('/')) {
-          const npmPackageNameWithTag = `${plugin}${opts.tag ? `@${opts.tag}` : ''}`;
-          logger.info(
-            `Attempting to install third-party plugin ${npmPackageNameWithTag} from npm registry...`
-          );
-          const installResult = await installPlugin(
-            npmPackageNameWithTag,
-            cwd,
-            opts.tag,
-            opts.branch
-          );
+        // --- Registry-based Plugin Installation ---
+        const possibleNames = normalizePluginName(plugin);
+        const registry = await getLocalRegistryIndex();
+        let repo: string | null = null;
 
-          if (installResult) {
-            console.log(`Successfully installed third-party plugin ${npmPackageNameWithTag}`);
-            process.exit(0);
+        for (const name of possibleNames) {
+          if (registry[name]) {
+            repo = registry[name];
+            break;
           }
+        }
+
+        if (!repo) {
           console.error(
-            `Failed to install third-party plugin ${npmPackageNameWithTag} from npm registry.`
+            `Plugin "${plugin}" not found in registry. Provide a github: specifier or git URL to install.`
           );
           process.exit(1);
         }
 
-        // Handle official ElizaOS plugins
-        const tag = getCliInstallTag();
-        const versionTag = tag ? `@${tag}` : '@latest';
+        logger.info(`Found plugin in registry, installing ${repo}...`);
+        const registryInstallResult = await installPlugin(repo, cwd, opts.tag, opts.branch);
 
-        // First try registry lookup for official plugins
-        const repo = await getPluginRepository(plugin);
-
-        if (repo) {
-          logger.info(`Found plugin in registry, installing ${repo}...`);
-          const registryInstallResult = await installPlugin(repo, cwd, opts.tag, opts.branch);
-
-          if (registryInstallResult) {
-            console.log(`Successfully installed ${repo}`);
-            process.exit(0);
-          }
-          console.error(`Failed to install ${repo} from registry.`);
-        }
-
-        // If not in registry, try npm with @elizaos scope
-        const normalizedPluginName = normalizePluginNameForDisplay(plugin);
-        const npmPackageName = `@elizaos/${normalizedPluginName}`;
-        const npmPackageNameWithTag = `${npmPackageName}${versionTag}`;
-
-        logger.info(
-          `Plugin not found in registry. Attempting to install ${npmPackageNameWithTag} from npm...`
-        );
-        const npmInstallResult = await installPlugin(npmPackageName, cwd, tag, opts.branch);
-
-        if (npmInstallResult) {
-          console.log(`Successfully installed ${npmPackageNameWithTag}`);
+        if (registryInstallResult) {
+          console.log(`Successfully installed ${repo}`);
           process.exit(0);
         }
 
-        // If we get here, all installation attempts failed
-        console.error(`Failed to install plugin ${plugin} from all sources.`);
-
-        // Show help about plugin formats and exit
-        console.error(`Plugin "${plugin}" not found in registry`);
-        console.info('\nYou can specify plugins in multiple formats:');
-        console.info('  - Just the name: ton');
-        console.info('  - With plugin- prefix: plugin-ton');
-        console.info('  - With scope: elizaos/plugin-ton');
-        console.info('  - Full package name: @elizaos/plugin-ton');
-        console.info('  - Third-party package: @organization/plugin-name');
-        console.info('  - GitHub: owner/repo (e.g., myuser/my-eliza-plugin)');
-        console.info(
-          '  - GitHub with branch/tag/commit: owner/repo#my-branch (or github:owner/repo#my-tag)'
-        );
+        console.error(`Failed to install ${repo} from registry.`);
         process.exit(1);
       }
     } catch (error) {
