@@ -30,14 +30,6 @@ interface WorkerDbConfig {
   postgresUrl?: string;
 }
 
-// Define workerData structure explicitly
-interface RagWorkerData {
-  agentId: string;
-  dbConfig: WorkerDbConfig;
-  ctxRagEnabled?: boolean;
-  ctxRagModel?: string;
-}
-
 export class RagService extends Service {
   static serviceType = 'rag';
   capabilityDescription =
@@ -118,7 +110,7 @@ export class RagService extends Service {
   getOrInitializeWorker(agentId: string): RagWorker {
     if (!this.workers.has(agentId)) {
       logger.info(`Initializing new RAG worker for agentId: ${agentId}`);
-      const workerPath = path.resolve(__dirname, 'rag.worker.js'); // Assuming .ts worker is compiled to .js
+      const workerPath = path.resolve(__dirname, 'rag-worker.js');
 
       // Simplified workerData - only pass the agentId and database config
       // All other settings will be read from environment variables
@@ -525,9 +517,6 @@ export const ragPlugin: Plugin = {
 
     // Contextual RAG settings
     CTX_RAG_ENABLED: process.env.CTX_RAG_ENABLED || 'false',
-
-    // Legacy settings (for backwards compatibility)
-    RAG_PLUGIN_SETTING: process.env.RAG_PLUGIN_SETTING,
   },
   async init(config: Record<string, string>, runtime?: IAgentRuntime) {
     logger.info('Initializing RAG Plugin...');

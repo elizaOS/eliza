@@ -5,12 +5,22 @@ import { createDatabaseAdapter } from '@elizaos/plugin-sql';
 import type { IDatabaseAdapter, UUID, Memory } from '@elizaos/core';
 import { MemoryType, logger, splitChunks } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
-import { generateTextEmbedding, generateText, getProviderRateLimits } from './llm';
+import {
+  generateTextEmbedding,
+  generateText,
+  getProviderRateLimits,
+  validateModelConfig,
+} from './llm';
 import { extractTextFromFileBuffer, convertPdfToTextFromBuffer } from './utils';
 import {
   getContextualizationPrompt,
   getChunkWithContext,
   getPromptForMimeType,
+  getCachingContextualizationPrompt,
+  getCachingPromptForMimeType,
+  DEFAULT_CHUNK_TOKEN_SIZE,
+  DEFAULT_CHUNK_OVERLAP_TOKENS,
+  DEFAULT_CHARS_PER_TOKEN,
 } from './ctx-embeddings';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = './pdf.worker.mjs';
@@ -60,16 +70,6 @@ async function initializeDatabaseAdapter() {
     }
     logger.info('Database Adapter initialized successfully in worker.');
 
-    logger.debug(`[RAG_WORKER] State of dbAdapter.db AFTER init call completion:`);
-    logger.debug(`[RAG_WORKER]   dbAdapter.db === null: ${dbAdapter.db === null}`);
-    logger.debug(`[RAG_WORKER]   dbAdapter.db === undefined: ${dbAdapter.db === undefined}`);
-    if (dbAdapter.db) {
-      logger.debug(`[RAG_WORKER]   dbAdapter.db object type: ${typeof dbAdapter.db}`);
-      logger.debug(`[RAG_WORKER]   dbAdapter.db keys: ${Object.keys(dbAdapter.db).join(', ')}`);
-    } else {
-      logger.warn(`[RAG_WORKER]   dbAdapter.db is null or undefined AFTER init call.`);
-    }
-
     try {
       logger.debug('Determining embedding dimension for worker...');
       const sampleEmbeddingResult = await generateTextEmbedding('dimension_check_string');
@@ -80,6 +80,7 @@ async function initializeDatabaseAdapter() {
         Array.isArray(sampleEmbeddingResult) &&
         sampleEmbeddingResult.length > 0
       ) {
+        logger.debug('EMBEDDING SAMPLE DIMENSION:', sampleEmbeddingResult.length);
         dimension = sampleEmbeddingResult.length;
       } else if (
         sampleEmbeddingResult &&
@@ -87,6 +88,7 @@ async function initializeDatabaseAdapter() {
         Array.isArray(sampleEmbeddingResult.embedding) &&
         sampleEmbeddingResult.embedding.length > 0
       ) {
+        logger.debug('EMBEDDING SAMPLE DIMENSION:', sampleEmbeddingResult.embedding.length);
         dimension = sampleEmbeddingResult.embedding.length;
       }
 
@@ -162,15 +164,18 @@ async function chunkAndSaveDocumentFragments(
     return;
   }
 
-  const targetCharChunkSize = 1000;
-  const targetCharChunkOverlap = 100;
-  const charsToTokensApproximation = 3.5;
+  // Use the standardized constants from ctx-embeddings.ts
+  const tokenChunkSize = DEFAULT_CHUNK_TOKEN_SIZE;
+  const tokenChunkOverlap = DEFAULT_CHUNK_OVERLAP_TOKENS;
+  const charsToTokensApproximation = DEFAULT_CHARS_PER_TOKEN;
 
-  const tokenChunkSize = Math.round(targetCharChunkSize / charsToTokensApproximation);
-  const tokenChunkOverlap = Math.round(targetCharChunkOverlap / charsToTokensApproximation);
+  // Calculate character-based chunking sizes from token sizes for compatibility with splitChunks
+  const targetCharChunkSize = Math.round(tokenChunkSize * charsToTokensApproximation);
+  const targetCharChunkOverlap = Math.round(tokenChunkOverlap * charsToTokensApproximation);
 
   logger.debug(
-    `Using core splitChunks with effective char settings: targetChunkSize=${targetCharChunkSize} (tokens: ${tokenChunkSize}), targetOverlap=${targetCharChunkOverlap} (tokens: ${tokenChunkOverlap})`
+    `Using core splitChunks with settings: tokenChunkSize=${tokenChunkSize}, tokenChunkOverlap=${tokenChunkOverlap}, ` +
+      `charChunkSize=${targetCharChunkSize}, charChunkOverlap=${targetCharChunkOverlap}`
   );
   const chunks = await splitChunks(fullDocumentText, tokenChunkSize, tokenChunkOverlap);
 
@@ -275,32 +280,76 @@ async function generateContextsInBatch(
   const providerLimits = await getProviderRateLimits();
   const rateLimiter = createRateLimiter(providerLimits.requestsPerMinute || 60);
 
-  // Prepare prompts in parallel
-  const prompts = chunks.map((chunkText, idx) => {
+  // Get active provider from validateModelConfig
+  const config = validateModelConfig();
+  const isUsingOpenRouter = config.TEXT_PROVIDER === 'openrouter';
+  const isUsingCacheCapableModel =
+    isUsingOpenRouter &&
+    (config.TEXT_MODEL.toLowerCase().includes('claude') ||
+      config.TEXT_MODEL.toLowerCase().includes('gemini'));
+
+  logger.info(
+    `Using provider: ${config.TEXT_PROVIDER}, model: ${config.TEXT_MODEL}, caching capability: ${isUsingCacheCapableModel}`
+  );
+
+  // Prepare prompts or system messages in parallel
+  const promptConfigs = chunks.map((chunkText, idx) => {
     const originalIndex = batchIndices ? batchIndices[idx] : idx;
     try {
-      const prompt = contentTypeForContext
-        ? getPromptForMimeType(contentTypeForContext, fullDocumentTextForContext, chunkText)
-        : getContextualizationPrompt(fullDocumentTextForContext, chunkText);
+      // If we're using OpenRouter with Claude/Gemini, use the newer caching approach
+      if (isUsingCacheCapableModel) {
+        // Get optimized caching prompt from ctx-embeddings.ts
+        const cachingPromptInfo = contentTypeForContext
+          ? getCachingPromptForMimeType(contentTypeForContext, chunkText)
+          : getCachingContextualizationPrompt(chunkText);
 
-      if (prompt.startsWith('Error:')) {
-        logger.warn(`Skipping contextualization for chunk ${originalIndex} due to: ${prompt}`);
-        return { prompt: null, originalIndex, chunkText, valid: false };
+        // If there was an error in prompt generation
+        if (cachingPromptInfo.prompt.startsWith('Error:')) {
+          logger.warn(
+            `Skipping contextualization for chunk ${originalIndex} due to: ${cachingPromptInfo.prompt}`
+          );
+          return {
+            originalIndex,
+            chunkText,
+            valid: false,
+            usesCaching: false,
+          };
+        }
+
+        return {
+          valid: true,
+          originalIndex,
+          chunkText,
+          usesCaching: true,
+          systemPrompt: cachingPromptInfo.systemPrompt,
+          promptText: cachingPromptInfo.prompt,
+          fullDocumentTextForContext,
+        };
+      } else {
+        // Original approach - embed document in the prompt
+        const prompt = contentTypeForContext
+          ? getPromptForMimeType(contentTypeForContext, fullDocumentTextForContext, chunkText)
+          : getContextualizationPrompt(fullDocumentTextForContext, chunkText);
+
+        if (prompt.startsWith('Error:')) {
+          logger.warn(`Skipping contextualization for chunk ${originalIndex} due to: ${prompt}`);
+          return { prompt: null, originalIndex, chunkText, valid: false, usesCaching: false };
+        }
+
+        return { prompt, originalIndex, chunkText, valid: true, usesCaching: false };
       }
-
-      return { prompt, originalIndex, chunkText, valid: true };
     } catch (error: any) {
       logger.error(
         `Error preparing prompt for chunk ${originalIndex}: ${error.message}`,
         error.stack
       );
-      return { prompt: null, originalIndex, chunkText, valid: false };
+      return { prompt: null, originalIndex, chunkText, valid: false, usesCaching: false };
     }
   });
 
   // Process valid prompts with rate limiting
   const contextualizedChunks = await Promise.all(
-    prompts.map(async (item) => {
+    promptConfigs.map(async (item) => {
       if (!item.valid) {
         return {
           contextualizedText: item.chunkText,
@@ -313,7 +362,19 @@ async function generateContextsInBatch(
       await rateLimiter();
 
       try {
-        const llmResponse = await generateText(item.prompt!);
+        let llmResponse;
+
+        if (item.usesCaching) {
+          // Use the newer caching approach with separate document
+          llmResponse = await generateText(item.promptText!, item.systemPrompt, {
+            cacheDocument: item.fullDocumentTextForContext,
+            cacheOptions: { type: 'ephemeral' },
+          });
+        } else {
+          // Original approach - document embedded in prompt
+          llmResponse = await generateText(item.prompt!);
+        }
+
         const generatedContext = llmResponse.text;
         const contextualizedText = getChunkWithContext(item.chunkText, generatedContext);
 
@@ -337,7 +398,19 @@ async function generateContextsInBatch(
 
           // Try once more
           try {
-            const llmResponse = await generateText(item.prompt!);
+            let llmResponse;
+
+            if (item.usesCaching) {
+              // Use the newer caching approach with separate document
+              llmResponse = await generateText(item.promptText!, item.systemPrompt, {
+                cacheDocument: item.fullDocumentTextForContext,
+                cacheOptions: { type: 'ephemeral' },
+              });
+            } else {
+              // Original approach - document embedded in prompt
+              llmResponse = await generateText(item.prompt!);
+            }
+
             const generatedContext = llmResponse.text;
             const contextualizedText = getChunkWithContext(item.chunkText, generatedContext);
 
