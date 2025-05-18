@@ -312,12 +312,11 @@ async function watchDirectory(dir: string, onChange: () => void): Promise<void> 
  */
 export const dev = new Command()
   .name('dev')
-  .description('Start the project or plugin in development mode and rebuild on file changes')
-  .option('-c, --configure', 'Reconfigure services and AI models (skips using saved configuration)')
-  .option(
-    '-char, --character <character>',
-    'Path or URL to character file to use instead of default'
+  .description(
+    'Start the project or plugin in development mode with auto-rebuild, detailed logging, and file change detection'
   )
+  .option('-c, --configure', 'Reconfigure services and AI models (skips using saved configuration)')
+  .option('-char, --character [paths...]', 'Character file(s) to use - accepts paths or URLs')
   .option('-b, --build', 'Build the project before starting')
   .addOption(
     new Option('-p, --port <port>', 'Port to listen on').argParser((val) => Number.parseInt(val))
@@ -331,7 +330,16 @@ export const dev = new Command()
       const cliArgs: string[] = [];
       if (options.port) cliArgs.push('--port', options.port.toString());
       if (options.configure) cliArgs.push('--configure');
-      if (options.character) cliArgs.push('--character', options.character);
+
+      // Handle characters - pass through to start command
+      if (options.character) {
+        if (Array.isArray(options.character)) {
+          cliArgs.push('--character', ...options.character);
+        } else {
+          cliArgs.push('--character', options.character);
+        }
+      }
+
       if (options.build) cliArgs.push('--build');
 
       // Function to rebuild and restart the server
