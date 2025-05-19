@@ -1,10 +1,13 @@
 import z from 'zod';
-import { UUID, Memory, IAgentRuntime } from '@elizaos/core';
-import { Worker } from 'node:worker_threads';
+import { UUID } from '@elizaos/core';
+import { Buffer } from 'node:buffer';
 
 // Schema for validating model configuration
 export const ModelConfigSchema = z.object({
   // Provider configuration
+  // NOTE: If EMBEDDING_PROVIDER is not specified, the plugin automatically assumes
+  // plugin-openai is being used and will use OPENAI_EMBEDDING_MODEL and
+  // OPENAI_EMBEDDING_DIMENSIONS for configuration
   EMBEDDING_PROVIDER: z.enum(['openai', 'google']),
   TEXT_PROVIDER: z.enum(['openai', 'anthropic', 'openrouter', 'google']).optional(),
 
@@ -98,129 +101,19 @@ export interface TextGenerationOptions {
 }
 
 /**
- * Worker-specific database configuration
- */
-export interface WorkerDbConfig {
-  /** Data directory for PGLite */
-  dataDir?: string;
-  /** Postgres connection URL */
-  postgresUrl?: string;
-}
-
-/**
- * Extended Worker type for RAG workers
- */
-export interface RagWorker extends Worker {
-  /** Whether the worker is ready to receive work */
-  isReady?: boolean;
-}
-
-/**
- * Base worker message type
- */
-export interface WorkerMessage {
-  type: string;
-  payload: any;
-}
-
-/**
- * Worker ready message
- */
-export interface WorkerReadyMessage extends WorkerMessage {
-  type: 'WORKER_READY';
-  payload: {
-    agentId: UUID;
-  };
-}
-
-/**
- * Worker error message
- */
-export interface WorkerErrorMessage extends WorkerMessage {
-  type: 'WORKER_ERROR';
-  payload: {
-    agentId: UUID;
-    error: string;
-    stack?: string;
-  };
-}
-
-/**
- * Knowledge added message
- */
-export interface KnowledgeAddedMessage extends WorkerMessage {
-  type: 'KNOWLEDGE_ADDED';
-  payload: {
-    documentId: UUID;
-    count: number;
-    agentId: UUID;
-  };
-}
-
-/**
- * PDF document stored message
- */
-export interface PdfDocumentStoredMessage extends WorkerMessage {
-  type: 'PDF_MAIN_DOCUMENT_STORED';
-  payload: {
-    clientDocumentId: UUID;
-    storedDocumentMemoryId: UUID | null;
-    agentId: UUID;
-    error: {
-      message: string;
-      stack?: string;
-    } | null;
-  };
-}
-
-/**
- * Processing error message
- */
-export interface ProcessingErrorMessage extends WorkerMessage {
-  type: 'PROCESSING_ERROR';
-  payload: {
-    documentId: UUID;
-    error: string;
-    stack?: string;
-    agentId: UUID;
-  };
-}
-
-/**
- * Union type of all worker messages
- */
-export type WorkerMessageTypes =
-  | WorkerReadyMessage
-  | WorkerErrorMessage
-  | KnowledgeAddedMessage
-  | PdfDocumentStoredMessage
-  | ProcessingErrorMessage;
-
-/**
- * Callback for document storage operations
- */
-export type DocumentStoredCallback = (
-  error: Error | null,
-  result?: {
-    clientDocumentId: UUID;
-    storedDocumentMemoryId: UUID;
-  }
-) => void;
-
-/**
  * Options for adding knowledge to the system
  */
 export interface AddKnowledgeOptions {
   /** Client-provided document ID */
   clientDocumentId: UUID;
   /** File buffer containing the document */
-  fileBuffer: Buffer;
+  fileBuffer?: Buffer;
   /** MIME type of the file */
   contentType: string;
   /** Original filename */
   originalFilename: string;
   /** World ID for storage */
   worldId: UUID;
-  /** Callback when document is stored */
-  onDocumentStored?: DocumentStoredCallback;
+  /** Direct text content (optional, used when fileBuffer is not available) */
+  text?: string;
 }

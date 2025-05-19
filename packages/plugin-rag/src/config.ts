@@ -12,11 +12,34 @@ export function validateModelConfig(): ModelConfig {
     const ctxRagEnabled = process.env.CTX_RAG_ENABLED === 'true';
     logger.debug(`Configuration: CTX_RAG_ENABLED=${ctxRagEnabled}`);
 
+    // If EMBEDDING_PROVIDER is not provided, assume we're using plugin-openai
+    const assumePluginOpenAI = !process.env.EMBEDDING_PROVIDER;
+
+    if (assumePluginOpenAI) {
+      if (process.env.OPENAI_API_KEY && process.env.OPENAI_EMBEDDING_MODEL) {
+        logger.info('EMBEDDING_PROVIDER not specified, using configuration from plugin-openai');
+      } else {
+        logger.warn(
+          'EMBEDDING_PROVIDER not specified, but plugin-openai configuration incomplete. Check OPENAI_API_KEY and OPENAI_EMBEDDING_MODEL.'
+        );
+      }
+    }
+
+    // Set embedding provider defaults based on plugin-openai if EMBEDDING_PROVIDER is not set
+    const embeddingProvider = process.env.EMBEDDING_PROVIDER || 'openai';
+    const textEmbeddingModel =
+      process.env.TEXT_EMBEDDING_MODEL || process.env.OPENAI_EMBEDDING_MODEL;
+    const embeddingDimension =
+      process.env.EMBEDDING_DIMENSION || process.env.OPENAI_EMBEDDING_DIMENSIONS || 1536;
+
+    // Use OpenAI API key from main config if available
+    const openaiApiKey = process.env.OPENAI_API_KEY;
+
     const config = ModelConfigSchema.parse({
-      EMBEDDING_PROVIDER: process.env.EMBEDDING_PROVIDER,
+      EMBEDDING_PROVIDER: embeddingProvider,
       TEXT_PROVIDER: process.env.TEXT_PROVIDER,
 
-      OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+      OPENAI_API_KEY: openaiApiKey,
       ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
       OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
       GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
@@ -26,18 +49,18 @@ export function validateModelConfig(): ModelConfig {
       OPENROUTER_BASE_URL: process.env.OPENROUTER_BASE_URL,
       GOOGLE_BASE_URL: process.env.GOOGLE_BASE_URL,
 
-      TEXT_EMBEDDING_MODEL: process.env.TEXT_EMBEDDING_MODEL,
+      TEXT_EMBEDDING_MODEL: textEmbeddingModel,
       TEXT_MODEL: process.env.TEXT_MODEL,
 
       MAX_INPUT_TOKENS: process.env.MAX_INPUT_TOKENS || 4000,
       MAX_OUTPUT_TOKENS: process.env.MAX_OUTPUT_TOKENS || 4096,
 
-      EMBEDDING_DIMENSION: process.env.EMBEDDING_DIMENSION || 1536,
+      EMBEDDING_DIMENSION: embeddingDimension,
 
       CTX_RAG_ENABLED: ctxRagEnabled,
     });
 
-    validateConfigRequirements(config);
+    validateConfigRequirements(config, assumePluginOpenAI);
     return config;
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -53,15 +76,27 @@ export function validateModelConfig(): ModelConfig {
 /**
  * Validates the required API keys and configuration based on the selected mode
  * @param config The model configuration to validate
+ * @param assumePluginOpenAI Whether we're assuming plugin-openai is being used
  * @throws Error if a required configuration value is missing
  */
-function validateConfigRequirements(config: ModelConfig): void {
-  // First, always validate embedding provider since it's required in both modes
-  if (config.EMBEDDING_PROVIDER === 'openai' && !config.OPENAI_API_KEY) {
-    throw new Error('OPENAI_API_KEY is required when EMBEDDING_PROVIDER is set to "openai"');
-  }
-  if (config.EMBEDDING_PROVIDER === 'google' && !config.GOOGLE_API_KEY) {
-    throw new Error('GOOGLE_API_KEY is required when EMBEDDING_PROVIDER is set to "google"');
+function validateConfigRequirements(config: ModelConfig, assumePluginOpenAI: boolean): void {
+  // Skip validation for embedding provider if we're using plugin-openai's configuration
+  if (!assumePluginOpenAI) {
+    // Only validate embedding provider if not using plugin-openai
+    if (config.EMBEDDING_PROVIDER === 'openai' && !config.OPENAI_API_KEY) {
+      throw new Error('OPENAI_API_KEY is required when EMBEDDING_PROVIDER is set to "openai"');
+    }
+    if (config.EMBEDDING_PROVIDER === 'google' && !config.GOOGLE_API_KEY) {
+      throw new Error('GOOGLE_API_KEY is required when EMBEDDING_PROVIDER is set to "google"');
+    }
+  } else {
+    // If we're assuming plugin-openai, make sure we have the required values
+    if (!config.OPENAI_API_KEY) {
+      throw new Error('OPENAI_API_KEY is required when using plugin-openai configuration');
+    }
+    if (!config.TEXT_EMBEDDING_MODEL) {
+      throw new Error('OPENAI_EMBEDDING_MODEL is required when using plugin-openai configuration');
+    }
   }
 
   // If Contextual RAG is enabled, we need additional validations
@@ -101,7 +136,12 @@ function validateConfigRequirements(config: ModelConfig): void {
       }
     }
   } else {
-    logger.info('Contextual RAG is disabled. Using basic embedding-only configuration.');
+    // Log appropriate message based on where embedding config came from
+    if (assumePluginOpenAI) {
+      logger.info('Contextual RAG is disabled. Using embedding configuration from plugin-openai.');
+    } else {
+      logger.info('Contextual RAG is disabled. Using basic embedding-only configuration.');
+    }
   }
 }
 

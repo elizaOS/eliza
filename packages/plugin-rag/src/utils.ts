@@ -1,10 +1,8 @@
 import { Buffer } from 'node:buffer';
 import * as mammoth from 'mammoth';
-import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { logger } from '@elizaos/core';
-
-// It's crucial that pdf.worker.mjs is accessible.
-// pdfjsLib.GlobalWorkerOptions.workerSrc = './pdf.worker.mjs'; // This line is usually set closer to the execution context (e.g., in the worker itself or main thread init)
+import { getDocument, PDFDocumentProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import type { TextItem, TextMarkedContent } from 'pdfjs-dist/types/src/display/api';
 
 const PLAIN_TEXT_CONTENT_TYPES = [
   'application/typescript',
@@ -105,38 +103,71 @@ export async function extractTextFromFileBuffer(
  * Converts a PDF file buffer to text content.
  * Requires pdfjs-dist to be properly configured, especially its worker.
  */
+/**
+ * Converts a PDF Buffer to text with enhanced formatting preservation.
+ *
+ * @param {Buffer} pdfBuffer - The PDF Buffer to convert to text
+ * @param {string} [filename] - Optional filename for logging purposes
+ * @returns {Promise<string>} Text content of the PDF
+ */
 export async function convertPdfToTextFromBuffer(
   pdfBuffer: Buffer,
-  pdfFilename: string
+  filename?: string
 ): Promise<string> {
-  logger.debug(`[PDFUtil] Starting PDF to text conversion for ${pdfFilename}.`);
-  try {
-    // Ensure GlobalWorkerOptions.workerSrc is set appropriately in the environment calling this function.
-    // Example: pdfjsLib.GlobalWorkerOptions.workerSrc = './pdf.worker.mjs'; (if in dist folder relative to execution)
-    const uint8ArrayBuffer = new Uint8Array(pdfBuffer);
-    const loadingTask = pdfjsLib.getDocument({ data: uint8ArrayBuffer });
-    const pdfDocument = await loadingTask.promise;
-    const allPagesText: string[] = [];
+  const docName = filename || 'unnamed-document';
+  logger.debug(`[PdfService] Starting conversion for ${docName}`);
 
-    for (let i = 1; i <= pdfDocument.numPages; i++) {
-      const page = await pdfDocument.getPage(i);
+  try {
+    const uint8Array = new Uint8Array(pdfBuffer);
+    const pdf: PDFDocumentProxy = await getDocument({ data: uint8Array }).promise;
+    const numPages = pdf.numPages;
+    const textPages: string[] = [];
+
+    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+      logger.debug(`[PdfService] Processing page ${pageNum}/${numPages}`);
+      const page = await pdf.getPage(pageNum);
       const textContent = await page.getTextContent();
-      const pageText = textContent.items
-        .filter((item: any) => typeof item.str === 'string' && item.str.trim() !== '')
-        .map((item: any) => item.str as string)
-        .join(' ');
-      if (pageText.length > 0) {
-        allPagesText.push(pageText);
-      }
+
+      // Group text items by their y-position to maintain line structure
+      const lineMap = new Map<number, TextItem[]>();
+
+      textContent.items.filter(isTextItem).forEach((item) => {
+        // Round y-position to account for small variations in the same line
+        const yPos = Math.round(item.transform[5]);
+        if (!lineMap.has(yPos)) {
+          lineMap.set(yPos, []);
+        }
+        lineMap.get(yPos)!.push(item);
+      });
+
+      // Sort lines by y-position (top to bottom) and items within lines by x-position (left to right)
+      const sortedLines = Array.from(lineMap.entries())
+        .sort((a, b) => b[0] - a[0]) // Reverse sort for top-to-bottom
+        .map(([_, items]) =>
+          items
+            .sort((a, b) => a.transform[4] - b.transform[4])
+            .map((item) => item.str)
+            .join(' ')
+        );
+
+      textPages.push(sortedLines.join('\n'));
     }
-    const fullText = allPagesText.join('\n').trim();
-    logger.debug(
-      `[PDFUtil] PDF to text conversion complete for ${pdfFilename}. Text length: ${fullText.length}`
-    );
+
+    const fullText = textPages.join('\n\n').replace(/\s+/g, ' ').trim();
+    logger.debug(`[PdfService] Conversion complete for ${docName}, length: ${fullText.length}`);
     return fullText;
   } catch (error: any) {
-    // Catching as any to access error.message and error.stack
-    logger.error(`[PDFUtil] Error parsing PDF ${pdfFilename}:`, error.message, error.stack);
-    throw new Error(`Failed to convert PDF ${pdfFilename} to text.`);
+    logger.error(`[PdfService] Error converting PDF ${docName}:`, error.message);
+    throw new Error(`Failed to convert PDF to text: ${error.message}`);
   }
+}
+
+/**
+ * Check if the input is a TextItem.
+ *
+ * @param item - The input item to check.
+ * @returns A boolean indicating if the input is a TextItem.
+ */
+function isTextItem(item: TextItem | TextMarkedContent): item is TextItem {
+  return 'str' in item;
 }

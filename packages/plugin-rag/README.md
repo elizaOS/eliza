@@ -2,6 +2,121 @@
 
 This plugin provides Retrieval Augmented Generation (RAG) capabilities for ElizaOS agents, allowing them to load, index, and query knowledge from various sources.
 
+## Quick Setup
+
+### Basic Setup (With plugin-openai)
+
+If you already have plugin-openai configured, you don't need any additional environment variables! The RAG plugin will automatically use your OpenAI configuration.
+
+1. Make sure you have plugin-openai configured with:
+
+   ```env
+   OPENAI_API_KEY=your-openai-api-key
+   OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+   ```
+
+2. Add the RAG plugin to your agent's configuration
+3. That's it! The plugin will work without any additional variables
+
+### Enabling Contextual RAG
+
+If you want enhanced RAG capabilities with contextual embeddings, add:
+
+```env
+# Enable contextual RAG
+CTX_RAG_ENABLED=true
+
+# Required text generation settings
+TEXT_PROVIDER=openrouter  # Choose your provider: openai, anthropic, openrouter, or google
+TEXT_MODEL=anthropic/claude-3.5-sonnet  # Model for your chosen provider
+
+# Provider-specific API key (based on TEXT_PROVIDER)
+OPENROUTER_API_KEY=your-openrouter-api-key
+# OR ANTHROPIC_API_KEY=your-anthropic-api-key
+# OR GOOGLE_API_KEY=your-google-api-key
+# OR use existing OPENAI_API_KEY
+```
+
+### Custom Embedding Configuration (Without plugin-openai)
+
+If you're not using plugin-openai or want to use different embedding settings:
+
+```env
+# Required embedding settings
+EMBEDDING_PROVIDER=openai  # or google
+TEXT_EMBEDDING_MODEL=text-embedding-3-small
+
+# Provider-specific API key
+OPENAI_API_KEY=your-openai-api-key  # if using openai
+# OR GOOGLE_API_KEY=your-google-api-key  # if using google
+
+# Optional: Custom embedding dimension
+EMBEDDING_DIMENSION=1536
+```
+
+## Advanced Configuration
+
+### Recommended Configurations for Contextual RAG
+
+For optimal performance with contextual RAG, we recommend these provider combinations:
+
+**Option 1: OpenRouter with Claude/Gemini (Best for cost efficiency)**
+
+```env
+# If using with plugin-openai, only need these additions:
+CTX_RAG_ENABLED=true
+TEXT_PROVIDER=openrouter
+TEXT_MODEL=anthropic/claude-3.5-sonnet  # or google/gemini-2.5-flash-preview
+OPENROUTER_API_KEY=your-openrouter-api-key
+```
+
+**Option 2: OpenAI for Everything**
+
+```env
+# If using with plugin-openai, only need these additions:
+CTX_RAG_ENABLED=true
+TEXT_PROVIDER=openai
+TEXT_MODEL=gpt-4o
+```
+
+**Option 3: Google AI for Everything**
+
+```env
+EMBEDDING_PROVIDER=google
+TEXT_EMBEDDING_MODEL=text-embedding-004
+TEXT_PROVIDER=google
+TEXT_MODEL=gemini-1.5-pro-latest
+GOOGLE_API_KEY=your-google-api-key
+CTX_RAG_ENABLED=true
+```
+
+### Advanced Rate Limiting Options
+
+```env
+# Rate limiting (optional)
+MAX_CONCURRENT_REQUESTS=30  # Default: 30
+REQUESTS_PER_MINUTE=60      # Default: 60
+TOKENS_PER_MINUTE=150000    # Default: 150000
+```
+
+### Custom API Endpoints
+
+```env
+# Only needed if using custom API endpoints
+OPENAI_BASE_URL=https://your-openai-proxy.com/v1
+ANTHROPIC_BASE_URL=https://your-anthropic-proxy.com
+OPENROUTER_BASE_URL=https://your-openrouter-proxy.com/api/v1
+GOOGLE_BASE_URL=https://your-google-proxy.com
+```
+
+### Token Limits
+
+```env
+# Advanced token handling (optional)
+MAX_INPUT_TOKENS=4000   # Default: 4000
+MAX_OUTPUT_TOKENS=4096  # Default: 4096
+```
+
 ## Architecture
 
 The plugin is built with a modular, clean architecture that follows SOLID principles:
@@ -11,28 +126,46 @@ packages/plugin-rag/
 ├── src/
 │   ├── index.ts           # Main entry point and plugin definition
 │   ├── service.ts         # RAG service implementation
-│   ├── worker.ts          # Worker thread management
-│   ├── rag-worker.ts      # Worker implementation for processing docs
 │   ├── types.ts           # Type definitions
 │   ├── llm.ts             # LLM interactions (text generation, embeddings)
 │   ├── config.ts          # Configuration validation
 │   ├── ctx-embeddings.ts  # Contextual embedding generation
+│   ├── document-processor.ts # Shared document processing utilities
 │   └── utils.ts           # Utility functions
 ├── README.md              # This file
 └── package.json           # Package definition
 ```
+
+### Database-Specific Processing Paths
+
+The RAG plugin adapts to the database technology being used:
+
+1. **PostgreSQL Mode**: Uses worker threads to offload document processing from the main thread
+2. **PGLite Mode**: Uses synchronous processing in the main thread due to PGLite's single-threaded nature
+
+This allows the plugin to work optimally with both databases while maintaining the same functionality.
+
+### Processing Flow
+
+The document processing flow follows these steps regardless of database type:
+
+1. Extract text from the document based on content type
+2. Store the main document in the database
+3. Split the document into chunks
+4. Generate embeddings for each chunk (with optional context enrichment)
+5. Store the chunks with embeddings in the database
 
 ## Component Overview
 
 - **RagService**: Core service that manages document processing and storage
 - **WorkerManager**: Handles worker lifecycle and communication
 - **Worker Implementation**: Processes documents, creates embeddings, and chunks text
+- **Document Processor**: Provides shared document processing utilities for both paths
 
 ## Features
 
 - Document upload and processing (PDF, text, and other formats)
 - Contextual chunking and embedding generation
-- Parallel processing via worker threads
 - Robust error handling and recovery
 - Rate limiting to respect provider limitations
 - Support for multiple LLM providers
@@ -59,137 +192,6 @@ await ragService.addKnowledge({
     console.log('Document stored:', result);
   },
 });
-```
-
-### Configuration
-
-The plugin has two main operating modes that affect which configuration variables are required:
-
-#### Basic Embedding Mode (CTX_RAG_ENABLED=false)
-
-When contextual RAG is disabled, the plugin only requires embedding configuration:
-
-```env
-# Basic embedding-only configuration (minimum required)
-EMBEDDING_PROVIDER=openai
-TEXT_EMBEDDING_MODEL=text-embedding-3-small
-OPENAI_API_KEY=your-openai-api-key
-
-# Optional: Embedding dimension (default: 1536)
-EMBEDDING_DIMENSION=1536
-```
-
-**Important**: In this mode, TEXT_PROVIDER and TEXT_MODEL are not required. The EMBEDDING_PROVIDER and TEXT_EMBEDDING_MODEL should match your ElizaOS configuration to ensure compatibility. For instance, if your ElizaOS uses OpenAI for embeddings, you should configure this plugin to use OpenAI as well.
-
-This mode uses simple text splitting without contextual enrichment. Documents are chunked, but each chunk's embedding is generated without additional context from the full document.
-
-#### Contextual RAG Mode (CTX_RAG_ENABLED=true)
-
-When contextual RAG is enabled, both embedding and text generation configurations are required:
-
-```env
-# Comprehensive configuration for Contextual RAG
-
-# Required embedding settings
-EMBEDDING_PROVIDER=openai
-TEXT_EMBEDDING_MODEL=text-embedding-3-small
-OPENAI_API_KEY=your-openai-api-key
-
-# Required text generation settings (only when CTX_RAG_ENABLED=true)
-TEXT_PROVIDER=openrouter
-TEXT_MODEL=google/gemini-2.5-flash-preview
-OPENROUTER_API_KEY=your-openrouter-api-key
-
-# Optional base URLs if using custom endpoints
-OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-
-# Enable contextual RAG
-CTX_RAG_ENABLED=true
-
-# Optional: Customize dimensions and token limits
-EMBEDDING_DIMENSION=1536
-MAX_INPUT_TOKENS=4000
-MAX_OUTPUT_TOKENS=4096
-```
-
-**Note**: TEXT_PROVIDER and TEXT_MODEL are only required when CTX_RAG_ENABLED is set to true. The embedding dimension and model should match your ElizaOS configuration for optimal compatibility.
-
-#### Recommended Configurations
-
-For optimal contextual RAG performance, we recommend the following provider combinations:
-
-**Option 1: OpenRouter with Claude/Gemini**
-
-```env
-EMBEDDING_PROVIDER=openai
-TEXT_EMBEDDING_MODEL=text-embedding-3-small
-OPENAI_API_KEY=your-openai-api-key
-
-TEXT_PROVIDER=openrouter
-TEXT_MODEL=anthropic/claude-3.5-sonnet
-# or TEXT_MODEL=google/gemini-2.5-flash-preview
-OPENROUTER_API_KEY=your-openrouter-api-key
-CTX_RAG_ENABLED=true
-```
-
-This setup enables document caching for improved performance and reduced costs.
-
-**Option 2: OpenAI for Everything**
-
-```env
-EMBEDDING_PROVIDER=openai
-TEXT_EMBEDDING_MODEL=text-embedding-3-small
-TEXT_PROVIDER=openai
-TEXT_MODEL=gpt-4o
-OPENAI_API_KEY=your-openai-api-key
-CTX_RAG_ENABLED=true
-```
-
-**Option 3: Google AI for Everything**
-
-```env
-EMBEDDING_PROVIDER=google
-TEXT_EMBEDDING_MODEL=text-embedding-004
-TEXT_PROVIDER=google
-TEXT_MODEL=gemini-1.5-pro-latest
-GOOGLE_API_KEY=your-google-api-key
-CTX_RAG_ENABLED=true
-```
-
-#### Advanced Configuration Options
-
-| Variable                  | Description                     | Default | Required? |
-| ------------------------- | ------------------------------- | ------- | --------- |
-| `EMBEDDING_DIMENSION`     | Dimension of embedding vectors  | 1536    | No        |
-| `MAX_INPUT_TOKENS`        | Maximum tokens for model input  | 4000    | No        |
-| `MAX_OUTPUT_TOKENS`       | Maximum tokens for model output | 4096    | No        |
-| `MAX_CONCURRENT_REQUESTS` | Maximum concurrent API requests | 30      | No        |
-| `REQUESTS_PER_MINUTE`     | Rate limit for API requests     | 60      | No        |
-
-## Development
-
-### Adding a new feature
-
-1. Identify which module the feature belongs to
-2. Add necessary types to types.ts
-3. Implement the feature in the appropriate module
-4. Update the service or worker if needed
-5. Export any new public API from index.ts
-
-### Design Principles
-
-- **Single Responsibility**: Each module has a clear, focused responsibility
-- **DRY (Don't Repeat Yourself)**: Common functionality is extracted into helper functions
-- **KISS (Keep It Simple, Stupid)**: Code is straightforward and avoids unnecessary complexity
-- **Composition over Inheritance**: Modules are composed together rather than inheriting
-- **Strong Typing**: TypeScript type safety is used throughout
-
-## Testing
-
-Tests can be run with:
-
-```bash
-npm test
 ```
 
 ## License
