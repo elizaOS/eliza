@@ -100,7 +100,7 @@ teardown() {
   echo "STATUS: $status"
   [ "$status" -eq 0 ]
   cd proj-missing-plugin
-  run $ELIZAOS_CMD plugins add @elizaos/plugin-bootstrap --no-env-prompt
+  run $ELIZAOS_CMD plugins add missing --no-env-prompt
   echo "STDOUT: $output"
   echo "STATUS: $status"
   [ "$status" -ne 0 ]
