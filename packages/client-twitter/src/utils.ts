@@ -8,6 +8,8 @@ import type { Media } from "@elizaos/core";
 import fs from "fs";
 import path from "path";
 
+const MAX_CONVERSATION_LENGTH = 10;
+
 export const wait = (minTime = 1000, maxTime = 3000) => {
     const waitTime =
         Math.floor(Math.random() * (maxTime - minTime + 1)) + minTime;
@@ -32,7 +34,7 @@ export const isValidTweet = (tweet: Tweet): boolean => {
 export async function buildConversationThread(
     tweet: Tweet,
     client: ClientBase,
-    maxReplies = 10
+    maxReplies = 10,
 ): Promise<Tweet[]> {
     const thread: Tweet[] = [];
     const visited: Set<string> = new Set();
@@ -57,11 +59,11 @@ export async function buildConversationThread(
 
         // Handle memory storage
         const memory = await client.runtime.messageManager.getMemoryById(
-            stringToUuid(currentTweet.id + "-" + client.runtime.agentId)
+            stringToUuid(currentTweet.id + "-" + client.runtime.agentId),
         );
         if (!memory) {
             const roomId = stringToUuid(
-                currentTweet.conversationId + "-" + client.runtime.agentId
+                currentTweet.conversationId + "-" + client.runtime.agentId,
             );
             const userId = stringToUuid(currentTweet.userId);
 
@@ -70,12 +72,12 @@ export async function buildConversationThread(
                 roomId,
                 currentTweet.username,
                 currentTweet.name,
-                "twitter"
+                "twitter",
             );
 
             await client.runtime.messageManager.createMemory({
                 id: stringToUuid(
-                    currentTweet.id + "-" + client.runtime.agentId
+                    currentTweet.id + "-" + client.runtime.agentId,
                 ),
                 agentId: client.runtime.agentId,
                 content: {
@@ -86,7 +88,7 @@ export async function buildConversationThread(
                         ? stringToUuid(
                               currentTweet.inReplyToStatusId +
                                   "-" +
-                                  client.runtime.agentId
+                                  client.runtime.agentId,
                           )
                         : undefined,
                 },
@@ -118,11 +120,11 @@ export async function buildConversationThread(
         if (currentTweet.inReplyToStatusId) {
             elizaLogger.debug(
                 "Fetching parent tweet:",
-                currentTweet.inReplyToStatusId
+                currentTweet.inReplyToStatusId,
             );
             try {
                 const parentTweet = await client.twitterClient.getTweet(
-                    currentTweet.inReplyToStatusId
+                    currentTweet.inReplyToStatusId,
                 );
 
                 if (parentTweet) {
@@ -134,7 +136,7 @@ export async function buildConversationThread(
                 } else {
                     elizaLogger.debug(
                         "No parent tweet found for:",
-                        currentTweet.inReplyToStatusId
+                        currentTweet.inReplyToStatusId,
                     );
                 }
             } catch (error) {
@@ -146,7 +148,7 @@ export async function buildConversationThread(
         } else {
             elizaLogger.debug(
                 "Reached end of reply chain at:",
-                currentTweet.id
+                currentTweet.id,
             );
         }
     }
@@ -169,10 +171,21 @@ export async function sendTweet(
     content: Content,
     roomId: UUID,
     twitterUsername: string,
-    inReplyTo: string
+    inReplyTo: string,
 ): Promise<Memory[]> {
     const maxTweetLength = client.twitterConfig.MAX_TWEET_LENGTH;
     const isLongTweet = maxTweetLength > 280;
+
+    const parentTweet = await client.twitterClient.getTweetV2(inReplyTo);
+    const thread = parentTweet.thread;
+    elizaLogger.log(
+        `Replying to thread with conversation length: ${thread.length}`,
+    );
+
+    if (thread.length > MAX_CONVERSATION_LENGTH) {
+        elizaLogger.error("Reply conversation length is too long");
+        return [];
+    }
 
     const tweetChunks = splitTweetContent(content.text, maxTweetLength);
     const sentTweets: Tweet[] = [];
@@ -189,44 +202,44 @@ export async function sendTweet(
                         const response = await fetch(attachment.url);
                         if (!response.ok) {
                             throw new Error(
-                                `Failed to fetch file: ${attachment.url}`
+                                `Failed to fetch file: ${attachment.url}`,
                             );
                         }
                         const mediaBuffer = Buffer.from(
-                            await response.arrayBuffer()
+                            await response.arrayBuffer(),
                         );
                         const mediaType = attachment.contentType;
                         return { data: mediaBuffer, mediaType };
                     } else if (fs.existsSync(attachment.url)) {
                         // Handle local file paths
                         const mediaBuffer = await fs.promises.readFile(
-                            path.resolve(attachment.url)
+                            path.resolve(attachment.url),
                         );
                         const mediaType = attachment.contentType;
                         return { data: mediaBuffer, mediaType };
                     } else {
                         throw new Error(
-                            `File not found: ${attachment.url}. Make sure the path is correct.`
+                            `File not found: ${attachment.url}. Make sure the path is correct.`,
                         );
                     }
-                })
+                }),
             );
         }
 
-        const cleanChunk = deduplicateMentions(chunk.trim())
+        const cleanChunk = deduplicateMentions(chunk.trim());
 
         const result = await client.requestQueue.add(async () =>
             isLongTweet
                 ? client.twitterClient.sendLongTweet(
                       cleanChunk,
                       previousTweetId,
-                      mediaData
+                      mediaData,
                   )
                 : client.twitterClient.sendTweet(
                       cleanChunk,
                       previousTweetId,
-                      mediaData
-                  )
+                      mediaData,
+                  ),
         );
 
         const body = await result.json();
@@ -276,7 +289,7 @@ export async function sendTweet(
             url: tweet.permanentUrl,
             inReplyTo: tweet.inReplyToStatusId
                 ? stringToUuid(
-                      tweet.inReplyToStatusId + "-" + client.runtime.agentId
+                      tweet.inReplyToStatusId + "-" + client.runtime.agentId,
                   )
                 : undefined,
         },
@@ -402,34 +415,34 @@ function splitSentencesAndWords(text: string, maxLength: number): string[] {
 
 function deduplicateMentions(paragraph: string) {
     // Regex to match mentions at the beginning of the string
-  const mentionRegex = /^@(\w+)(?:\s+@(\w+))*(\s+|$)/;
+    const mentionRegex = /^@(\w+)(?:\s+@(\w+))*(\s+|$)/;
 
-  // Find all matches
-  const matches = paragraph.match(mentionRegex);
+    // Find all matches
+    const matches = paragraph.match(mentionRegex);
 
-  if (!matches) {
-    return paragraph; // If no matches, return the original string
-  }
+    if (!matches) {
+        return paragraph; // If no matches, return the original string
+    }
 
-  // Extract mentions from the match groups
-  let mentions = matches.slice(0, 1)[0].trim().split(' ')
+    // Extract mentions from the match groups
+    let mentions = matches.slice(0, 1)[0].trim().split(" ");
 
-  // Deduplicate mentions
-  mentions = [...new Set(mentions)];
+    // Deduplicate mentions
+    mentions = [...new Set(mentions)];
 
-  // Reconstruct the string with deduplicated mentions
-  const uniqueMentionsString = mentions.join(' ');
+    // Reconstruct the string with deduplicated mentions
+    const uniqueMentionsString = mentions.join(" ");
 
-  // Find where the mentions end in the original string
-  const endOfMentions = paragraph.indexOf(matches[0]) + matches[0].length;
+    // Find where the mentions end in the original string
+    const endOfMentions = paragraph.indexOf(matches[0]) + matches[0].length;
 
-  // Construct the result by combining unique mentions with the rest of the string
-  return uniqueMentionsString + ' ' + paragraph.slice(endOfMentions);
+    // Construct the result by combining unique mentions with the rest of the string
+    return uniqueMentionsString + " " + paragraph.slice(endOfMentions);
 }
 
 function restoreUrls(
     chunks: string[],
-    placeholderMap: Map<string, string>
+    placeholderMap: Map<string, string>,
 ): string[] {
     return chunks.map((chunk) => {
         // Replace all <<URL_CONSIDERER_23_>> in chunk back to original URLs using regex
@@ -447,7 +460,7 @@ function splitParagraph(paragraph: string, maxLength: number): string[] {
     // 2) Use first section's logic to split by sentences first, then do secondary split
     const splittedChunks = splitSentencesAndWords(
         textWithPlaceholders,
-        maxLength
+        maxLength,
     );
 
     // 3) Replace placeholders back to original URLs
