@@ -41,7 +41,8 @@
     "test:setup-commands": "vitest run test/setup-commands.test.js",
     "test:agent-commands": "vitest run test/agent-commands.test.js",
     "test:agent-customisations": "vitest run test/agent-customisation.test.js",
-    "test:cli": "bun run test:setup-commands && bun run test:agent-commands && bun run test:agent-customisations"
+    "test:setup-monorepo": "vitest run test/setup-monorepo.test.js",
+    "test:cli": "bun run test:setup-commands && bun run test:agent-commands && bun run test:agent-customisations && bun run test:setup-monorepo"
   },
   "devDependencies": {
     "@babel/core": "^7.22.1",

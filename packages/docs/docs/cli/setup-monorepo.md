@@ -33,6 +33,8 @@ elizaos setup-monorepo [options]
     - Build the project (`bun run build`).
     - Start the development server (`bun run dev`) or production server (`bun run start`).
 
+The command will properly use your specified branch and directory path, making it easy to work with different versions of the ElizaOS repository.
+
 ## Example
 
 ```bash

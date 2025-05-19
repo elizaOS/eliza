@@ -82,6 +82,11 @@ Clone ElizaOS monorepo from a specific branch (defaults to v2-develop).
   - `-b, --branch <branch>`: Branch to install (default: `v2-develop`)
   - `-d, --dir <directory>`: Destination directory (default: `./eliza`)
 
+**Notes:**
+
+- The destination directory must be empty or non-existent
+- After cloning, follow the displayed instructions to install dependencies and build the project
+
 ### Plugin Management
 
 #### `elizaos plugin <subcommand>`
