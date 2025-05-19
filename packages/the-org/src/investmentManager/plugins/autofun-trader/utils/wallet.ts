@@ -31,7 +31,7 @@ export function getWalletKeypair(runtime?: IAgentRuntime): Keypair {
 export async function getWalletBalance(runtime: IAgentRuntime): Promise<number> {
   try {
     const walletKeypair = getWalletKeypair(runtime);
-    const connection = new Connection(runtime.getSetting('RPC_URL'));
+    const connection = new Connection(runtime.getSetting('SOLANA_RPC_URL'));
     const balance = await connection.getBalance(walletKeypair.publicKey);
     const solBalance = balance / 1e9;
 
