@@ -21,12 +21,18 @@ elizaos update --cli
 
 # Update only project packages
 elizaos update --packages
+
+# Check for available updates without applying them
+elizaos update --check
+
+# Update packages but skip building the project afterward
+elizaos update --skip-build
 ```
 
 ## Options
 
-- `-c`, `--check`: Check for available updates without applying them. The command will list the current version, the latest available version, and the packages that would be updated, but will not perform the update or installation.
-- `-sb`, `--skip-build`: Skip building the project after updating packages.
+- `-c`, `--check`: Check for available updates without applying them. The command will scan all packages, identify which ones need updating, show the current version and the latest available version for each package, but won't actually modify anything.
+- `-sb`, `--skip-build`: Skip building the project after updating packages. This is useful for large projects where you want to update dependencies but handle the build process manually or as a separate step.
 - `--cli`: Update only the globally installed ElizaOS CLI (without updating packages).
 - `--packages`: Update only project packages (without updating the CLI).
 
@@ -37,9 +43,10 @@ When updating project packages, ElizaOS will:
 1. Detect whether you're in a project or plugin directory.
 2. Find the latest published version of `@elizaos/cli` on npm.
 3. Identify all `@elizaos/*` packages in your `package.json` (dependencies and devDependencies), excluding workspace references.
-4. Prompt for confirmation before proceeding if major updates are detected.
-5. Update all identified ElizaOS packages to the determined latest version using `bun install` or `bun add`.
-6. Automatically rebuild the project or plugin after updating dependencies (unless `--skip-build` is specified).
+4. Compare current package versions with the latest available version and list packages that need updates.
+5. When not in check mode, prompt for confirmation before proceeding if major updates are detected.
+6. Update all identified outdated ElizaOS packages to the determined latest version.
+7. Automatically rebuild the project or plugin after updating dependencies (unless `--skip-build` is specified).
 
 When updating the CLI, ElizaOS will:
 
@@ -151,12 +158,41 @@ Check for available updates without applying them:
 elizaos update -c
 ```
 
+Example output:
+
+```
+Checking project dependencies...
+Current CLI version: 1.3.5
+Latest available CLI version: 1.4.0
+
+ElizaOS packages that can be updated to version 1.4.0:
+  - @elizaos/core (1.3.0) → 1.4.0
+  - @elizaos/runtime (1.3.2) → 1.4.0
+  - @elizaos/models (1.2.0) → 1.4.0
+
+To update these packages, run the command without the --check flag
+```
+
 ### Skip Building
 
 Update dependencies without rebuilding the project:
 
 ```bash
 elizaos update -sb
+```
+
+Example output with --skip-build:
+
+```
+Updating project dependencies...
+Current CLI version: 1.3.5
+Latest available CLI version: 1.4.0
+...
+Dependencies updated successfully.
+Installing updated dependencies...
+Installed 4 packages
+Skipping build phase as requested with --skip-build flag
+Project successfully updated to the latest ElizaOS packages (1.4.0)
 ```
 
 ## Version Management
@@ -168,8 +204,9 @@ The update command currently updates all `@elizaos/*` packages (excluding worksp
 Here are some recommended practices when updating ElizaOS dependencies:
 
 1. **Back Up Your Project**: Always back up your project before updating.
-2. **Test After Updating**: Make sure your project works correctly after updating.
+2. **Check First**: Use the `--check` flag to see what will be updated before making changes.
 3. **Review Changelogs**: Check the ElizaOS changelog for any breaking changes between your current version and the latest version.
+4. **Test After Updating**: Make sure your project works correctly after updating.
 
 ## Troubleshooting
 
@@ -211,6 +248,7 @@ bun install @elizaos/core@1.3.5
 ```
 
 ## Related Commands
+
 - To build your project, use the `--build` flag with the `elizaos dev` or `elizaos start` commands.
 - [`start`](./start.md): Start your project with updated dependencies.
 - [`dev`](./dev.md): Run your project in development mode.

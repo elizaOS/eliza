@@ -2,7 +2,7 @@
 
 setup() {
   export TEST_TMP_DIR="$(mktemp -d /var/tmp/eliza-test-update-XXXXXX)"
-  export ELIZAOS_CMD="${ELIZAOS_CMD:-bun run "$(cd ../dist && pwd)/index.js"}"
+  export ELIZAOS_CMD="bun run $(cd "$(dirname "$BATS_TEST_DIRNAME")" && pwd)/dist/index.js"
   cd "$TEST_TMP_DIR"
 }
 
@@ -33,22 +33,38 @@ teardown() {
   [ "$status" -eq 0 ] || [[ "$output" == *"already up to date"* ]]
 }
 
-# Checks that update --check works.
+# Checks that update --check works and properly identifies packages without applying updates.
 @test "update --check works" {
   run $ELIZAOS_CMD create update-check-app --yes
   [ "$status" -eq 0 ]
   cd update-check-app
+  
+  # Run check mode and verify proper output
   run $ELIZAOS_CMD update --check
-  [ "$status" -eq 0 ] || [[ "$output" == *"already up to date"* ]]
+  [ "$status" -eq 0 ]
+  
+  # Check should mention packages found or say they're up to date
+  [[ "$output" == *"ElizaOS packages"* ]] || [[ "$output" == *"up to date"* ]]
+  
+  # Check should have the dry run message if packages need updates
+  [[ "$output" != *"packages need updates"* ]] || [[ "$output" == *"run the command without the --check flag"* ]]
 }
 
-# Checks that update --skip-build works.
+# Checks that update --skip-build works and actually skips the build phase.
 @test "update --skip-build works" {
   run $ELIZAOS_CMD create update-skip-build-app --yes
   [ "$status" -eq 0 ]
   cd update-skip-build-app
+  
+  # Run with skip-build and check output
   run $ELIZAOS_CMD update --skip-build
-  [ "$status" -eq 0 ] || [[ "$output" == *"already up to date"* ]]
+  [ "$status" -eq 0 ]
+  
+  # If updates were found and applied, should mention skipping build
+  if [[ "$output" == *"Updating"* ]]; then
+    [[ "$output" == *"Skipping build phase"* ]]
+    [[ "$output" != *"Building project"* ]]
+  fi
 }
 
 # Test the --packages flag
