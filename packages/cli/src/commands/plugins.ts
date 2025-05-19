@@ -1,12 +1,6 @@
-import {
-  displayBanner,
-  getCliInstallTag,
-  handleError,
-  installPlugin,
-  logHeader,
-} from '@/src/utils';
-import { getLocalRegistryIndex, normalizePluginName } from '@/src/utils/registry/index';
-import { readCache, updatePluginRegistryCache, PluginInfo } from '@/src/utils/plugin-discovery';
+import { handleError, installPlugin, logHeader } from '@/src/utils';
+import { readCache, updatePluginRegistryCache } from '@/src/utils/plugin-discovery';
+import { normalizePluginName } from '@/src/utils/registry';
 import { logger } from '@elizaos/core';
 import { Command } from 'commander';
 import { execa } from 'execa';
@@ -127,15 +121,15 @@ export const pluginsCommand = plugins
 
       if (
         !cachedRegistry ||
-        !cachedRegistry.plugins ||
-        Object.keys(cachedRegistry.plugins).length === 0
+        !cachedRegistry.registry ||
+        Object.keys(cachedRegistry.registry).length === 0
       ) {
         logger.info('Plugin cache is empty or not found.');
         console.log('\nPlease run "eliza plugins update" to fetch the latest plugin registry.');
         return;
       }
       let availablePluginsToDisplay: string[] = [];
-      const allPlugins = cachedRegistry ? Object.values(cachedRegistry.plugins) : [];
+      const allPlugins = cachedRegistry ? Object.entries(cachedRegistry.registry) : [];
       let displayTitle = 'Available v1.x plugins (from local cache)';
 
       if (opts.all) {
@@ -143,42 +137,21 @@ export const pluginsCommand = plugins
         if (allPlugins.length === 0) {
           console.log('No plugins found in the registry.');
         }
-        allPlugins.forEach((p) => {
-          // Prefer npmQueryName for display, fallback to registryKey
-          const displayName = p.npmQueryName || p.registryKey;
-          console.log(`\nPlugin: ${displayName} (Registry Key: ${p.registryKey})`);
-          console.log(`  GitHub: ${p.githubLocator}, Official Repo: ${p.isOfficialRepo}`);
-
-          let v0DetailString = 'N/A';
-          const v0ResDetail = p.versions.v0.resolutionDetail;
-          if (v0ResDetail) {
-            if (v0ResDetail.kind === 'npm') {
-              v0DetailString = `NPM: ${v0ResDetail.npmVersion || 'N/A'}`;
-            } else {
-              // GitHubResolutionDetail
-              v0DetailString = `GitHub: Core ${v0ResDetail.coreDependency} (branch: ${v0ResDetail.branch})`;
-            }
+        allPlugins.forEach(([name, info]) => {
+          console.log(`\nPlugin: ${name}`);
+          const repoInfo = info.git?.repo || info.npm?.repo;
+          console.log(`  Repository: ${repoInfo || 'N/A'}`);
+          console.log(`  v0 Compatible: ${info.supports.v0 ? 'Yes' : 'No'}`);
+          if (info.npm?.v0 || info.git?.v0?.version) {
+            const ver = info.npm?.v0 || info.git?.v0?.version;
+            const branch = info.git?.v0?.branch;
+            console.log(`    Version: ${ver || 'N/A'}${branch ? ` (branch: ${branch})` : ''}`);
           }
-          console.log(
-            `  v0 Compatible: ${p.versions.v0.version ? 'Yes' : 'No'} (Source: ${p.versions.v0.source || 'N/A'}, Detail: ${v0DetailString})`
-          );
-
-          let v1DetailString = 'N/A';
-          const v1ResDetail = p.versions.v1.resolutionDetail;
-          if (v1ResDetail) {
-            if (v1ResDetail.kind === 'npm') {
-              v1DetailString = `NPM: ${v1ResDetail.npmVersion || 'N/A'}`;
-            } else {
-              // GitHubResolutionDetail
-              v1DetailString = `GitHub: Core ${v1ResDetail.coreDependency} (branch: ${v1ResDetail.branch})`;
-            }
-          }
-          console.log(
-            `  v1 Compatible: ${p.versions.v1.version ? 'Yes' : 'No'} (Source: ${p.versions.v1.source || 'N/A'}, Detail: ${v1DetailString})`
-          );
-
-          if (p.errors.length > 0) {
-            console.log(`  Processing Errors: ${p.errors.join('; ')}`);
+          console.log(`  v1 Compatible: ${info.supports.v1 ? 'Yes' : 'No'}`);
+          if (info.npm?.v1 || info.git?.v1?.version) {
+            const ver = info.npm?.v1 || info.git?.v1?.version;
+            const branch = info.git?.v1?.branch;
+            console.log(`    Version: ${ver || 'N/A'}${branch ? ` (branch: ${branch})` : ''}`);
           }
         });
         console.log('');
@@ -186,13 +159,13 @@ export const pluginsCommand = plugins
       } else if (opts.v0) {
         displayTitle = 'Available v0.x plugins (from local cache)';
         availablePluginsToDisplay = allPlugins
-          .filter((p) => p.versions.v0.version !== null)
-          .map((p) => p.npmQueryName || p.registryKey);
+          .filter(([, info]) => info.supports.v0)
+          .map(([name]) => name);
       } else {
         // Default to v1.x
         availablePluginsToDisplay = allPlugins
-          .filter((p) => p.versions.v1.version !== null)
-          .map((p) => p.npmQueryName || p.registryKey);
+          .filter(([, info]) => info.supports.v1)
+          .map(([name]) => name);
       }
 
       logHeader(displayTitle);
@@ -286,34 +259,33 @@ plugins
           process.exit(1);
         }
       } else {
-        // --- Registry-based Plugin Installation ---
-        const possibleNames = normalizePluginName(plugin);
-        const registry = await getLocalRegistryIndex();
-        let repo: string | null = null;
-
-        for (const name of possibleNames) {
-          if (registry[name]) {
-            repo = registry[name];
-            break;
-          }
-        }
-
-        if (!repo) {
-          console.error(
-            `Plugin "${plugin}" not found in registry. Provide a github: specifier or git URL to install.`
-          );
+        // --- Registry-based or fuzzy Plugin Installation ---
+        const cachedRegistry = await readCache();
+        if (!cachedRegistry || !cachedRegistry.registry) {
+          logger.error('Plugin registry cache not found. Please run "eliza plugins update" first.');
           process.exit(1);
         }
 
-        logger.info(`Found plugin in registry, installing ${repo}...`);
-        const registryInstallResult = await installPlugin(repo, cwd, opts.tag, opts.branch);
+        const possibleNames = normalizePluginName(plugin);
+        const pluginKey = possibleNames.find((name) => cachedRegistry.registry[name]);
+
+        const targetName = pluginKey || plugin;
+        if (pluginKey) {
+          logger.info(`Found plugin in registry, installing ${pluginKey}...`);
+        } else {
+          logger.info(
+            `Plugin "${plugin}" not found directly in registry, attempting fuzzy lookup...`
+          );
+        }
+
+        const registryInstallResult = await installPlugin(targetName, cwd, opts.tag);
 
         if (registryInstallResult) {
-          console.log(`Successfully installed ${repo}`);
+          console.log(`Successfully installed ${targetName}`);
           process.exit(0);
         }
 
-        console.error(`Failed to install ${repo} from registry.`);
+        console.error(`Failed to install ${targetName} from registry.`);
         process.exit(1);
       }
     } catch (error) {

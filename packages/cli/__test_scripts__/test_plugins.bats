@@ -1,5 +1,12 @@
 #!/usr/bin/env bats
 
+setup_file() {
+  # Pre-populate the plugin registry before running tests
+  pushd ../../../ >/dev/null
+  bun run packages/cli/src/utils/parse-registry.ts
+  popd >/dev/null
+}
+
 setup() {
   export TEST_TMP_DIR="$(mktemp -d /var/tmp/eliza-test-plugins-XXXXXX)"
   export ELIZAOS_CMD="${ELIZAOS_CMD:-bun run "$(cd ../dist && pwd)/index.js"}"

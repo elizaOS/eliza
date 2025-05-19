@@ -15,7 +15,7 @@ import { RawRegistry, VersionInfo } from '../types/plugins';
 /*───────────────────────────────────────────────────────────────────────────*/
 
 const REGISTRY_URL = 'https://github.com/elizaos-plugins/registry/raw/main/index.json';
-const GH_TOKEN = process.env.GITHUB_TOKEN;
+const GH_TOKEN = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
 const octokit = new Octokit({ auth: GH_TOKEN || undefined });
 const hasAuth = Boolean(GH_TOKEN);
 
@@ -78,12 +78,14 @@ async function getLatestGitTags(owner: string, repo: string) {
     const latestV0 = sorted.find((v) => semver.major(v) === 0);
     const latestV1 = sorted.find((v) => semver.major(v) === 1);
     return {
+      repo: `${owner}/${repo}`,
       v0: latestV0 || null,
       v1: latestV1 || null,
     };
   } catch (error) {
     console.warn(`⚠️  Failed to fetch tags for ${owner}/${repo}:`, error.message);
     return {
+      repo: `${owner}/${repo}`,
       v0: null,
       v1: null,
     };
@@ -92,13 +94,13 @@ async function getLatestGitTags(owner: string, repo: string) {
 
 async function inspectNpm(pkgName: string): Promise<VersionInfo['npm']> {
   const meta = await safeFetchJSON<any>(`https://registry.npmjs.org/${pkgName}`);
-  if (!meta) return { exists: false } as any;
+  if (!meta) return {} as any;
   const versions = Object.keys(meta.versions || {});
   const sorted = versions.sort(semver.rcompare);
   const v0 = sorted.find((v) => semver.major(v) === 0);
   const v1 = sorted.find((v) => semver.major(v) === 1);
   return {
-    exists: true,
+    repo: pkgName,
     v0,
     v1,
   };
@@ -120,7 +122,7 @@ async function processRepo(npmId: string, gitRef: string): Promise<[string, Vers
       npmId,
       {
         supports: { v0: false, v1: false },
-        npm: { exists: false },
+        npm: { repo: null },
       } as VersionInfo,
     ];
   }
@@ -208,6 +210,7 @@ async function processRepo(npmId: string, gitRef: string): Promise<[string, Vers
 
   // Prepare git info with versions and branches
   const gitInfo = {
+    repo: gitTagInfo?.repo || npmInfo?.repo || null,
     v0: {
       version: gitTagInfo?.v0 || npmInfo?.v0 || null,
       branch: supportedBranches.v0,
