@@ -803,16 +803,13 @@ export class AgentRuntime implements IAgentRuntime {
     let ragService = this.getService('rag' as ServiceTypeName);
 
     while (!ragService && retries < maxRetries) {
-      this.runtimeLogger.debug(`RAG service not found, retrying... (${retries + 1}/${maxRetries})`);
       await new Promise((resolve) => setTimeout(resolve, retryDelay));
       ragService = this.getService('rag' as ServiceTypeName);
       retries++;
     }
 
-    if (ragService) {
-      this.runtimeLogger.debug(`Successfully obtained RAG service after ${retries} retries`);
-    } else {
-      this.runtimeLogger.warn(`Failed to get RAG service after ${maxRetries} retries`);
+    if (!ragService && retries > 0) {
+      this.runtimeLogger.debug(`RAG service not available after ${retries} retries`);
     }
 
     return ragService;
@@ -890,6 +887,65 @@ export class AgentRuntime implements IAgentRuntime {
     await Promise.all(processingPromises);
   }
 
+  /**
+   * Try to use RAG service for knowledge processing if available
+   * @param item Knowledge item to process
+   * @param scope Scope parameters for storage
+   * @returns true if RAG service was used, false otherwise
+   * @throws Error if RAG service is required but not available
+   */
+  private async tryUseRagService(
+    item: KnowledgeItem,
+    scope: { roomId: UUID; worldId: UUID; entityId: UUID }
+  ): Promise<boolean> {
+    // Try to get the RAG service
+    const ragService = await this.getRagServiceWithRetry();
+    const contentType = (item.metadata as any)?.fileType || '';
+    const fileExt = (item.metadata as any)?.fileExt?.toLowerCase() || '';
+
+    // Check if this is a binary file that requires RAG processing
+    const isPdfOrDocx =
+      contentType.includes('pdf') ||
+      contentType.includes('application/vnd.openxmlformats-officedocument') ||
+      ['pdf', 'docx', 'doc', 'pptx', 'xlsx'].includes(fileExt);
+
+    // If it's a binary file that requires RAG processing but RAG service is not available, throw a helpful error
+    if (isPdfOrDocx && !ragService) {
+      const errorMsg =
+        `RAG plugin is required to process ${contentType || fileExt} files. ` +
+        `Please install the RAG plugin (@elizaos/plugin-rag) and ensure it's properly configured.`;
+      this.runtimeLogger.error(`[addKnowledge] ${errorMsg}`);
+      throw new Error(errorMsg);
+    }
+
+    // If RAG service is available, use it
+    if (ragService && typeof (ragService as any).addKnowledge === 'function') {
+      this.runtimeLogger.debug(`[addKnowledge] Using RAG service for ${item.id}`);
+
+      try {
+        await (ragService as any).addKnowledge({
+          clientDocumentId: item.id,
+          contentType: contentType || 'text/plain',
+          originalFilename: (item.metadata as any)?.filename || `document-${item.id}.txt`,
+          worldId: scope.worldId,
+          content: item.content.text,
+          roomId: scope.roomId,
+          entityId: scope.entityId,
+        });
+
+        this.runtimeLogger.debug(`[addKnowledge] Document ${item.id} processed by RAG service`);
+        return true;
+      } catch (error) {
+        // Add more context to the error
+        const errorMsg = `Error calling RAG service: ${error.message}`;
+        this.runtimeLogger.error(`[addKnowledge] ${errorMsg}`);
+        throw new Error(errorMsg);
+      }
+    }
+
+    return false;
+  }
+
   async addKnowledge(
     item: KnowledgeItem,
     options = {
@@ -904,17 +960,6 @@ export class AgentRuntime implements IAgentRuntime {
     }
   ): Promise<void> {
     return this.startSpan('AgentRuntime.addKnowledge', async (span) => {
-      span.setAttributes({
-        'item.id': item.id,
-        'agent.id': this.agentId,
-        'options.targetTokens': options.targetTokens,
-        'options.overlap': options.overlap,
-        // Log scope
-        'scope.roomId': scope?.roomId,
-        'scope.worldId': scope?.worldId,
-        'scope.entityId': scope?.entityId,
-      });
-
       // Define default scope if not provided
       const finalScope = {
         roomId: scope?.roomId ?? this.agentId,
@@ -922,78 +967,30 @@ export class AgentRuntime implements IAgentRuntime {
         entityId: scope?.entityId ?? this.agentId, // Default entityId to agentId
       };
 
-      // Try to get the RAG service with retries for character knowledge
-      const ragService = await this.getRagServiceWithRetry();
-
-      // Log RAG service availability
-      this.runtimeLogger.debug(
-        `RAG service ${ragService ? 'found' : 'not available'} for document ${item.id}`
-      );
-
-      // Check if item content indicates a binary file that requires RAG service
       const contentType = (item.metadata as any)?.fileType || '';
-      const isPdfOrDocx =
-        contentType.includes('pdf') ||
-        contentType.includes(
-          'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-        ) ||
-        ((item.metadata as any)?.fileExt &&
-          ['pdf', 'docx'].includes((item.metadata as any).fileExt.toLowerCase()));
 
-      // If it's a PDF or DOCX and RAG service is not available, throw error
-      if (isPdfOrDocx && !ragService) {
-        const errorMsg =
-          'RAG plugin is required to process PDF or DOCX files. Please enable the RAG plugin.';
-        this.runtimeLogger.error(`[addKnowledge] ${errorMsg}`);
-        throw new Error(errorMsg);
+      // Log basic info about the document
+      span.setAttributes({
+        'item.id': item.id,
+        'agent.id': this.agentId,
+        'document.content_type': contentType,
+      });
+
+      // Try to use RAG service first if available
+      try {
+        const usedRagService = await this.tryUseRagService(item, finalScope);
+        if (usedRagService) {
+          span.addEvent('used_rag_service');
+          return;
+        }
+      } catch (error) {
+        span.recordException(error as Error);
+        throw error;
       }
 
-      // If RAG service is available, use it regardless of file type
-      if (ragService && typeof (ragService as any).addKnowledge === 'function') {
-        span.addEvent('using_rag_service');
-        this.runtimeLogger.debug(`[addKnowledge] Using RAG service for ${item.id}`);
-
-        // Check if we have content in base64 format (for binary files)
-        let fileBuffer: Buffer | null = null;
-        if ((item.content as any).base64) {
-          fileBuffer = Buffer.from((item.content as any).base64, 'base64');
-        } else if (item.content.text && isPdfOrDocx) {
-          // For PDFs/DOCXs that might have text as base64
-          try {
-            fileBuffer = Buffer.from(item.content.text, 'base64');
-          } catch (e) {
-            this.runtimeLogger.warn(
-              `[addKnowledge] Failed to convert text to buffer for ${item.id}, will pass as text`
-            );
-          }
-        }
-
-        // Use RAG service with Promise-based approach
-        try {
-          const result = await (ragService as any).addKnowledge({
-            clientDocumentId: item.id,
-            fileBuffer: fileBuffer, // May be null if we're passing text
-            contentType: contentType || 'text/plain',
-            originalFilename: (item.metadata as any)?.filename || `document-${item.id}.txt`,
-            worldId: finalScope.worldId,
-            text: item.content.text, // Make sure to always pass the text content
-          });
-
-          this.runtimeLogger.debug(
-            `[addKnowledge] Document ${item.id} processed by RAG service with ${result?.fragmentCount || 'unknown'} fragments`
-          );
-          return; // Simply return void as the original contract expected
-        } catch (error) {
-          this.runtimeLogger.error(`[addKnowledge] Error calling RAG service: ${error.message}`);
-          throw error;
-        }
-      }
-
-      // If we reach here, RAG service is not available or not used, proceed with standard processing
-      // This is the original flow - we're maintaining it exactly as it was
-      this.runtimeLogger.debug(
-        `[addKnowledge] Using standard processing for ${item.id} (RAG service not available)`
-      );
+      // If RAG service is not available or not used, process document using standard approach
+      span.addEvent('using_standard_processing');
+      this.runtimeLogger.debug(`[addKnowledge] Using standard processing for ${item.id}`);
 
       // First store the document
       const documentMemory: Memory = {
@@ -1005,12 +1002,6 @@ export class AgentRuntime implements IAgentRuntime {
         content: item.content,
         metadata: item.metadata,
         createdAt: Date.now(),
-      };
-
-      const options_ = options || {
-        targetTokens: 1500,
-        overlap: 200,
-        modelContextSize: 4096,
       };
 
       // Check if the document already exists
@@ -1025,15 +1016,13 @@ export class AgentRuntime implements IAgentRuntime {
         await this.createMemory(documentMemory, 'documents');
       }
 
-      // For regular text documents, we need to handle the processing ourselves
-      // by splitting the text into fragments and processing them
-
       // Create fragments from the document
       const fragments = await this.splitAndCreateFragments(
         item,
-        options_.targetTokens,
-        options_.overlap,
-        options_.modelContextSize
+        options.targetTokens,
+        options.overlap,
+        options.modelContextSize,
+        finalScope
       );
 
       // Process all the fragments
@@ -1049,17 +1038,11 @@ export class AgentRuntime implements IAgentRuntime {
 
       // Log fragment processing stats
       this.runtimeLogger.debug(`Processed ${fragmentsProcessed} / ${fragments.length} fragments.`);
-      span.setAttributes({
-        'fragments.total': fragments.length,
-        'fragments.processed': fragmentsProcessed,
-        'fragments.success_rate': fragmentsProcessed / fragments.length,
-      });
       span.addEvent('knowledge_processing_complete');
 
       this.runtimeLogger.debug(
         `[addKnowledge] Document ${item.id} processed with ${fragmentsProcessed} fragments`
       );
-      return; // Simply return void as the original contract expected
     });
   }
 
@@ -1068,11 +1051,17 @@ export class AgentRuntime implements IAgentRuntime {
     document: KnowledgeItem,
     targetTokens: number,
     overlap: number,
-    modelContextSize: number
+    modelContextSize: number,
+    scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID }
   ): Promise<Memory[]> {
     if (!document.content.text) {
       return [];
     }
+
+    // Use provided scope or defaults
+    const roomId = scope?.roomId ?? this.agentId;
+    const entityId = scope?.entityId ?? this.agentId;
+    const worldId = scope?.worldId ?? this.agentId;
 
     // Split the document into chunks based on target token size and overlap
     const text = document.content.text;
@@ -1084,10 +1073,10 @@ export class AgentRuntime implements IAgentRuntime {
 
       return {
         id: fragmentId,
-        entityId: this.agentId,
+        entityId,
         agentId: this.agentId,
-        roomId: this.agentId,
-        worldId: document.metadata?.timestamp ? undefined : this.agentId,
+        roomId,
+        worldId: document.metadata?.timestamp ? undefined : worldId,
         content: {
           text: chunk,
         },
