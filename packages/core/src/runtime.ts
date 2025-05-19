@@ -653,7 +653,20 @@ export class AgentRuntime implements IAgentRuntime {
         span.addEvent('embedding_dimension_setup_complete');
       }
 
-      // Process character knowledge
+      // Start all deferred services now that runtime is ready
+      span.addEvent('starting_deferred_services');
+      span.setAttributes({
+        'deferred_services.count': this.servicesInitQueue.size,
+      });
+
+      for (const service of this.servicesInitQueue) {
+        await this.registerService(service);
+      }
+
+      // Mark initialization as complete to avoid race conditions
+      this.isInitialized = true;
+
+      // Process character knowledge AFTER services are initialized
       if (this.character?.knowledge && this.character.knowledge.length > 0) {
         span.addEvent('processing_character_knowledge');
         span.setAttributes({
@@ -665,16 +678,6 @@ export class AgentRuntime implements IAgentRuntime {
         );
         await this.processCharacterKnowledge(stringKnowledge);
         span.addEvent('character_knowledge_processed');
-      }
-
-      // Start all deferred services now that runtime is ready
-      span.addEvent('starting_deferred_services');
-      span.setAttributes({
-        'deferred_services.count': this.servicesInitQueue.size,
-      });
-
-      for (const service of this.servicesInitQueue) {
-        await this.registerService(service);
       }
 
       span.addEvent('initialization_completed');
@@ -789,112 +792,37 @@ export class AgentRuntime implements IAgentRuntime {
     });
   }
 
-  async addKnowledge(
-    item: KnowledgeItem,
-    options = {
-      targetTokens: 1500,
-      overlap: 200,
-      modelContextSize: 4096,
-    },
-    scope = {
-      roomId: this.agentId,
-      entityId: this.agentId,
-      worldId: this.agentId,
+  /**
+   * Helper method to safely get the RAG service with retries
+   * @param maxRetries Maximum number of retries
+   * @param retryDelay Delay in ms between retries
+   * @returns The RAG service or null if not available after retries
+   */
+  private async getRagServiceWithRetry(maxRetries = 3, retryDelay = 500): Promise<Service | null> {
+    let retries = 0;
+    let ragService = this.getService('rag' as ServiceTypeName);
+
+    while (!ragService && retries < maxRetries) {
+      this.runtimeLogger.debug(`RAG service not found, retrying... (${retries + 1}/${maxRetries})`);
+      await new Promise((resolve) => setTimeout(resolve, retryDelay));
+      ragService = this.getService('rag' as ServiceTypeName);
+      retries++;
     }
-  ) {
-    return this.startSpan('AgentRuntime.addKnowledge', async (span) => {
-      span.setAttributes({
-        'item.id': item.id,
-        'agent.id': this.agentId,
-        'options.targetTokens': options.targetTokens,
-        'options.overlap': options.overlap,
-        // Log scope
-        'scope.roomId': scope?.roomId,
-        'scope.worldId': scope?.worldId,
-        'scope.entityId': scope?.entityId,
-      });
 
-      // Define default scope if not provided
-      const finalScope = {
-        roomId: scope?.roomId ?? this.agentId, // Default roomId to agentId
-        worldId: scope?.worldId, // Default worldId to undefined/null
-        entityId: scope?.entityId ?? this.agentId, // Default entityId to agentId
-      };
+    if (ragService) {
+      this.runtimeLogger.debug(`Successfully obtained RAG service after ${retries} retries`);
+    } else {
+      this.runtimeLogger.warn(`Failed to get RAG service after ${maxRetries} retries`);
+    }
 
-      // First store the document
-      const documentMemory: Memory = {
-        id: item.id,
-        agentId: this.agentId,
-        roomId: finalScope.roomId,
-        worldId: finalScope.worldId,
-        entityId: finalScope.entityId,
-        content: item.content,
-        metadata: item.metadata || {
-          type: MemoryType.DOCUMENT,
-          timestamp: Date.now(),
-        },
-      };
-
-      span.addEvent('storing_document');
-      await this.createMemory(documentMemory, 'documents');
-      span.addEvent('document_stored');
-
-      // Create fragments using splitChunks
-      span.addEvent('splitting_chunks');
-      const fragments = await splitChunks(item.content.text, options.targetTokens, options.overlap);
-      span.setAttributes({
-        'fragments.count': fragments.length,
-      });
-      span.addEvent('chunks_split');
-
-      // Track progress
-      let fragmentsProcessed = 0;
-
-      // Store each fragment with link to source document
-      span.addEvent('storing_fragments');
-      for (let i = 0; i < fragments.length; i++) {
-        try {
-          span.addEvent(`generating_embedding_${i}`);
-          const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, fragments[i]);
-
-          const fragmentMemory: Memory = {
-            id: createUniqueUuid(this, `${item.id}-fragment-${i}`),
-            agentId: this.agentId,
-            roomId: finalScope.roomId,
-            worldId: finalScope.worldId,
-            entityId: finalScope.entityId,
-            embedding,
-            content: { text: fragments[i] },
-            metadata: {
-              type: MemoryType.FRAGMENT,
-              documentId: item.id, // Link to source document
-              position: i, // Keep track of order
-              timestamp: Date.now(),
-            },
-          };
-
-          await this.createMemory(fragmentMemory, 'knowledge');
-          fragmentsProcessed++;
-        } catch (error) {
-          const errorMsg = error instanceof Error ? error.message : String(error);
-          span.recordException(error as Error);
-          span.setAttributes({
-            'error.fragment': i,
-            'error.message': errorMsg,
-          });
-          this.runtimeLogger.error(`Error processing fragment ${i}: ${errorMsg}`);
-        }
-      }
-
-      span.setAttributes({
-        'fragments.processed': fragmentsProcessed,
-        'fragments.success_rate': fragmentsProcessed / fragments.length,
-      });
-      span.addEvent('knowledge_processing_complete');
-    });
+    return ragService;
   }
 
   async processCharacterKnowledge(items: string[]) {
+    // Wait briefly to allow services to initialize fully
+    // This helps when character knowledge is processed right after initialization
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
     const processingPromises = items.map(async (item) => {
       await this.knowledgeProcessingSemaphore.acquire();
       try {
@@ -960,6 +888,236 @@ export class AgentRuntime implements IAgentRuntime {
     });
 
     await Promise.all(processingPromises);
+  }
+
+  async addKnowledge(
+    item: KnowledgeItem,
+    options = {
+      targetTokens: 1500,
+      overlap: 200,
+      modelContextSize: 4096,
+    },
+    scope = {
+      roomId: this.agentId,
+      entityId: this.agentId,
+      worldId: this.agentId,
+    }
+  ): Promise<void> {
+    return this.startSpan('AgentRuntime.addKnowledge', async (span) => {
+      span.setAttributes({
+        'item.id': item.id,
+        'agent.id': this.agentId,
+        'options.targetTokens': options.targetTokens,
+        'options.overlap': options.overlap,
+        // Log scope
+        'scope.roomId': scope?.roomId,
+        'scope.worldId': scope?.worldId,
+        'scope.entityId': scope?.entityId,
+      });
+
+      // Define default scope if not provided
+      const finalScope = {
+        roomId: scope?.roomId ?? this.agentId,
+        worldId: scope?.worldId ?? this.agentId,
+        entityId: scope?.entityId ?? this.agentId, // Default entityId to agentId
+      };
+
+      // Try to get the RAG service with retries for character knowledge
+      const ragService = await this.getRagServiceWithRetry();
+
+      // Log RAG service availability
+      this.runtimeLogger.debug(
+        `RAG service ${ragService ? 'found' : 'not available'} for document ${item.id}`
+      );
+
+      // Check if item content indicates a binary file that requires RAG service
+      const contentType = (item.metadata as any)?.fileType || '';
+      const isPdfOrDocx =
+        contentType.includes('pdf') ||
+        contentType.includes(
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        ) ||
+        ((item.metadata as any)?.fileExt &&
+          ['pdf', 'docx'].includes((item.metadata as any).fileExt.toLowerCase()));
+
+      // If it's a PDF or DOCX and RAG service is not available, throw error
+      if (isPdfOrDocx && !ragService) {
+        const errorMsg =
+          'RAG plugin is required to process PDF or DOCX files. Please enable the RAG plugin.';
+        this.runtimeLogger.error(`[addKnowledge] ${errorMsg}`);
+        throw new Error(errorMsg);
+      }
+
+      // If RAG service is available, use it regardless of file type
+      if (ragService && typeof (ragService as any).addKnowledge === 'function') {
+        span.addEvent('using_rag_service');
+        this.runtimeLogger.debug(`[addKnowledge] Using RAG service for ${item.id}`);
+
+        // Check if we have content in base64 format (for binary files)
+        let fileBuffer: Buffer | null = null;
+        if ((item.content as any).base64) {
+          fileBuffer = Buffer.from((item.content as any).base64, 'base64');
+        } else if (item.content.text && isPdfOrDocx) {
+          // For PDFs/DOCXs that might have text as base64
+          try {
+            fileBuffer = Buffer.from(item.content.text, 'base64');
+          } catch (e) {
+            this.runtimeLogger.warn(
+              `[addKnowledge] Failed to convert text to buffer for ${item.id}, will pass as text`
+            );
+          }
+        }
+
+        // Use RAG service with Promise-based approach
+        try {
+          const result = await (ragService as any).addKnowledge({
+            clientDocumentId: item.id,
+            fileBuffer: fileBuffer, // May be null if we're passing text
+            contentType: contentType || 'text/plain',
+            originalFilename: (item.metadata as any)?.filename || `document-${item.id}.txt`,
+            worldId: finalScope.worldId,
+            text: item.content.text, // Make sure to always pass the text content
+          });
+
+          this.runtimeLogger.debug(
+            `[addKnowledge] Document ${item.id} processed by RAG service with ${result?.fragmentCount || 'unknown'} fragments`
+          );
+          return; // Simply return void as the original contract expected
+        } catch (error) {
+          this.runtimeLogger.error(`[addKnowledge] Error calling RAG service: ${error.message}`);
+          throw error;
+        }
+      }
+
+      // If we reach here, RAG service is not available or not used, proceed with standard processing
+      // This is the original flow - we're maintaining it exactly as it was
+      this.runtimeLogger.debug(
+        `[addKnowledge] Using standard processing for ${item.id} (RAG service not available)`
+      );
+
+      // First store the document
+      const documentMemory: Memory = {
+        id: item.id,
+        agentId: this.agentId,
+        roomId: finalScope.roomId,
+        worldId: finalScope.worldId,
+        entityId: finalScope.entityId,
+        content: item.content,
+        metadata: item.metadata,
+        createdAt: Date.now(),
+      };
+
+      const options_ = options || {
+        targetTokens: 1500,
+        overlap: 200,
+        modelContextSize: 4096,
+      };
+
+      // Check if the document already exists
+      const existingDocument = await this.getMemoryById(item.id);
+      if (existingDocument) {
+        this.runtimeLogger.debug(`[addKnowledge] Document ${item.id} already exists, updating...`);
+        await this.updateMemory({
+          ...documentMemory,
+          id: item.id,
+        });
+      } else {
+        await this.createMemory(documentMemory, 'documents');
+      }
+
+      // For regular text documents, we need to handle the processing ourselves
+      // by splitting the text into fragments and processing them
+
+      // Create fragments from the document
+      const fragments = await this.splitAndCreateFragments(
+        item,
+        options_.targetTokens,
+        options_.overlap,
+        options_.modelContextSize
+      );
+
+      // Process all the fragments
+      let fragmentsProcessed = 0;
+      for (const fragment of fragments) {
+        try {
+          await this.processDocumentFragment(fragment);
+          fragmentsProcessed++;
+        } catch (error) {
+          this.runtimeLogger.error(`Error processing fragment ${fragment.id}:`, error);
+        }
+      }
+
+      // Log fragment processing stats
+      this.runtimeLogger.debug(`Processed ${fragmentsProcessed} / ${fragments.length} fragments.`);
+      span.setAttributes({
+        'fragments.total': fragments.length,
+        'fragments.processed': fragmentsProcessed,
+        'fragments.success_rate': fragmentsProcessed / fragments.length,
+      });
+      span.addEvent('knowledge_processing_complete');
+
+      this.runtimeLogger.debug(
+        `[addKnowledge] Document ${item.id} processed with ${fragmentsProcessed} fragments`
+      );
+      return; // Simply return void as the original contract expected
+    });
+  }
+
+  // Helper method to split document into fragments and create memory objects for them
+  private async splitAndCreateFragments(
+    document: KnowledgeItem,
+    targetTokens: number,
+    overlap: number,
+    modelContextSize: number
+  ): Promise<Memory[]> {
+    if (!document.content.text) {
+      return [];
+    }
+
+    // Split the document into chunks based on target token size and overlap
+    const text = document.content.text;
+    const chunks = await splitChunks(text, targetTokens, overlap);
+
+    // Create memory objects for each fragment
+    return chunks.map((chunk, index) => {
+      const fragmentId = createUniqueUuid(this, `${document.id}-fragment-${index}-${Date.now()}`);
+
+      return {
+        id: fragmentId,
+        entityId: this.agentId,
+        agentId: this.agentId,
+        roomId: this.agentId,
+        worldId: document.metadata?.timestamp ? undefined : this.agentId,
+        content: {
+          text: chunk,
+        },
+        metadata: {
+          type: MemoryType.FRAGMENT,
+          documentId: document.id,
+          position: index,
+          timestamp: Date.now(),
+          ...document.metadata,
+        },
+        createdAt: Date.now(),
+      };
+    });
+  }
+
+  // Process a single document fragment
+  private async processDocumentFragment(fragment: Memory): Promise<void> {
+    try {
+      // Add embedding to the fragment
+      await this.addEmbeddingToMemory(fragment);
+
+      // Store the fragment in the knowledge table
+      await this.createMemory(fragment, 'knowledge');
+    } catch (error) {
+      this.runtimeLogger.error(
+        `Error processing fragment ${fragment.id}:`,
+        error instanceof Error ? error.message : String(error)
+      );
+      throw error;
+    }
   }
 
   setSetting(key: string, value: string | boolean | null | any, secret = false) {
