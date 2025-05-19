@@ -8,29 +8,7 @@ import semver from 'semver';
 // Types
 /*───────────────────────────────────────────────────────────────────────────*/
 
-type RawRegistry = Record<string, string>; // <npmName> → "github:owner/repo" (ideally)
-
-interface VersionInfo {
-  git?: {
-    v0?: {
-      version: string | null;
-      branch: string | null;
-    };
-    v1?: {
-      version: string | null;
-      branch: string | null;
-    };
-  };
-  npm?: {
-    v0?: string;
-    v1?: string;
-    exists: boolean;
-  };
-  supports: {
-    v0: boolean;
-    v1: boolean;
-  };
-}
+import { RawRegistry, VersionInfo } from '../types/plugins';
 
 /*───────────────────────────────────────────────────────────────────────────*/
 // Constants & helpers
