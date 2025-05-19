@@ -2,8 +2,10 @@ import { type IAgentRuntime, Service, logger } from '@elizaos/core';
 import { Connection, PublicKey } from '@solana/web3.js';
 import BigNumber from 'bignumber.js';
 import { SOLANA_SERVICE_NAME, SOLANA_WALLET_DATA_CACHE_KEY } from './constants';
-import { getWalletKey } from './keypairUtils';
+import { getWalletKey, KeypairResult } from './keypairUtils';
 import type { Item, Prices, WalletPortfolio } from './types';
+import { Keypair } from '@solana/web3.js';
+import bs58 from 'bs58';
 
 const PROVIDER_CONFIG = {
   BIRDEYE_API: 'https://public-api.birdeye.so',
@@ -31,6 +33,8 @@ export class SolanaService extends Service {
   private readonly UPDATE_INTERVAL = 120000; // 2 minutes
   private connection: Connection;
   private publicKey: PublicKey;
+  private exchangeRegistry: Record<number, any> = {};
+  private subscriptions: Map<string, number> = new Map();
 
   /**
    * Constructor for creating an instance of the class.
@@ -38,13 +42,36 @@ export class SolanaService extends Service {
    */
   constructor(protected runtime: IAgentRuntime) {
     super();
+    this.exchangeRegistry = {};
     const connection = new Connection(
       runtime.getSetting('SOLANA_RPC_URL') || PROVIDER_CONFIG.DEFAULT_RPC
     );
     this.connection = connection;
-    getWalletKey(runtime, false).then(({ publicKey }) => {
-      this.publicKey = publicKey;
-    });
+    // Initialize publicKey using getWalletKey
+    getWalletKey(runtime, false)
+      .then(({ publicKey }) => {
+        if (!publicKey) {
+          throw new Error('Failed to initialize public key');
+        }
+        this.publicKey = publicKey;
+      })
+      .catch((error) => {
+        logger.error('Error initializing public key:', error);
+      });
+    this.subscriptions = new Map();
+  }
+
+  /**
+   * Gets the wallet keypair for operations requiring private key access
+   * @returns {Promise<Keypair>} The wallet keypair
+   * @throws {Error} If private key is not available
+   */
+  private async getWalletKeypair(): Promise<Keypair> {
+    const { keypair } = await getWalletKey(this.runtime, true);
+    if (!keypair) {
+      throw new Error('Failed to get wallet keypair');
+    }
+    return keypair;
   }
 
   /**
@@ -94,6 +121,11 @@ export class SolanaService extends Service {
    * @returns {Promise<void>} A Promise that resolves when the update interval is stopped.
    */
   async stop(): Promise<void> {
+    // Unsubscribe from all accounts
+    for (const [address] of this.subscriptions) {
+      await this.unsubscribeFromAccount(address);
+    }
+
     if (this.updateInterval) {
       clearInterval(this.updateInterval);
       this.updateInterval = null;
@@ -328,5 +360,150 @@ export class SolanaService extends Service {
    */
   public getConnection(): Connection {
     return this.connection;
+  }
+
+  /**
+   * Validates a Solana address.
+   * @param {string | undefined} address - The address to validate.
+   * @returns {boolean} True if the address is valid, false otherwise.
+   */
+  public validateAddress(address: string | undefined): boolean {
+    if (!address) return false;
+    try {
+      // Handle Solana addresses
+      if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)) {
+        logger.warn(`Invalid Solana address format: ${address}`);
+        return false;
+      }
+
+      const pubKey = new PublicKey(address);
+      const isValid = Boolean(pubKey.toBase58());
+      logger.log(`Solana address validation: ${address}`, { isValid });
+      return isValid;
+    } catch (error) {
+      logger.error(`Address validation error: ${address}`, { error });
+      return false;
+    }
+  }
+
+  /**
+   * Creates a new Solana wallet by generating a keypair
+   * @returns {Promise<{publicKey: string, privateKey: string}>} Object containing base58-encoded public and private keys
+   */
+  public async createWallet(): Promise<{ publicKey: string; privateKey: string }> {
+    try {
+      // Generate new keypair
+      const newKeypair = Keypair.generate();
+
+      // Convert to base58 strings for secure storage
+      const publicKey = newKeypair.publicKey.toBase58();
+      const privateKey = bs58.encode(newKeypair.secretKey);
+
+      // Clear the keypair from memory
+      newKeypair.secretKey.fill(0);
+
+      return {
+        publicKey,
+        privateKey,
+      };
+    } catch (error) {
+      logger.error('Error creating wallet:', error);
+      throw new Error('Failed to create new wallet');
+    }
+  }
+
+  /**
+   * Registers a provider with the service.
+   * @param {any} provider - The provider to register
+   * @returns {Promise<number>} The ID assigned to the registered provider
+   */
+  async registerExchange(provider: any) {
+    const id = Object.values(this.exchangeRegistry).length + 1;
+    logger.log('Registered', provider.name, 'as Solana provider #' + id);
+    this.exchangeRegistry[id] = provider;
+    return id;
+  }
+
+  /**
+   * Subscribes to account changes for the given public key
+   * @param {string} accountAddress - The account address to subscribe to
+   * @returns {Promise<number>} Subscription ID
+   */
+  public async subscribeToAccount(accountAddress: string): Promise<number> {
+    try {
+      if (!this.validateAddress(accountAddress)) {
+        throw new Error('Invalid account address');
+      }
+
+      // Check if already subscribed
+      if (this.subscriptions.has(accountAddress)) {
+        return this.subscriptions.get(accountAddress)!;
+      }
+
+      // Create WebSocket connection if needed
+      const ws = this.connection.connection._rpcWebSocket;
+
+      const subscriptionId = await ws.call('accountSubscribe', [
+        accountAddress,
+        {
+          encoding: 'jsonParsed',
+          commitment: 'finalized',
+        },
+      ]);
+
+      // Setup notification handler
+      ws.subscribe(subscriptionId, 'accountNotification', async (notification: any) => {
+        try {
+          const { result } = notification;
+          if (result?.value) {
+            // Force update wallet data to reflect changes
+            await this.updateWalletData(true);
+
+            // Emit an event that can be handled by the agent
+            this.runtime.emit('solana:account:update', {
+              address: accountAddress,
+              data: result.value,
+            });
+          }
+        } catch (error) {
+          logger.error('Error handling account notification:', error);
+        }
+      });
+
+      this.subscriptions.set(accountAddress, subscriptionId);
+      logger.log(`Subscribed to account ${accountAddress} with ID ${subscriptionId}`);
+      return subscriptionId;
+    } catch (error) {
+      logger.error('Error subscribing to account:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Unsubscribes from account changes
+   * @param {string} accountAddress - The account address to unsubscribe from
+   * @returns {Promise<boolean>} Success status
+   */
+  public async unsubscribeFromAccount(accountAddress: string): Promise<boolean> {
+    try {
+      const subscriptionId = this.subscriptions.get(accountAddress);
+      if (!subscriptionId) {
+        logger.warn(`No subscription found for account ${accountAddress}`);
+        return false;
+      }
+
+      const ws = this.connection.connection._rpcWebSocket;
+      const success = await ws.call('accountUnsubscribe', [subscriptionId]);
+
+      if (success) {
+        this.subscriptions.delete(accountAddress);
+        logger.log(`Unsubscribed from account ${accountAddress}`);
+      }
+
+      return success;
+    } catch (error) {
+      logger.error('Error unsubscribing from account:', error);
+      throw error;
+    }
   }
 }
