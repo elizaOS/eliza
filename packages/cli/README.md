@@ -154,10 +154,10 @@ Publish a plugin or project to the registry, GitHub, or npm.
 Start the Eliza agent with configurable plugins and services.
 
 - **Options:**
-  - `-c, --configure`: Reconfigure services and AI models
-  - `-char, --character <character>`: Path or URL to character file
+  - `-c, --configure`: Force reconfiguration of services and AI models
+  - `-char, --character [paths...]`: Character file(s) to use - accepts paths or URLs
   - `-b, --build`: Build the project before starting
-  - `-chars, --characters <paths>`: Multiple character configuration files
+  - `-p, --port <port>`: Port to listen on (default: 3000)
 
 ### Testing
 

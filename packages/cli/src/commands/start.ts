@@ -754,10 +754,7 @@ export const start = new Command()
     '-c, --configure',
     'Force reconfiguration of services and AI models (bypasses saved configuration)'
   )
-  .option(
-    '-char, --character [paths...]',
-    'Character file(s) to use - accepts multiple paths/URLs separated by spaces or commas with or without quotes (e.g., "file1.json file2.json", "file1.json, file2.json", etc)'
-  )
+  .option('-char, --character [paths...]', 'Character file(s) to use - accepts paths or URLs')
   .option('-b, --build', 'Build the project before starting')
   .option('-p, --port <port>', 'Port to listen on (default: 3000)', (v) => {
     const n = Number.parseInt(v, 10);
