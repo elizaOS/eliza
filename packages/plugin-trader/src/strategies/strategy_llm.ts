@@ -111,8 +111,24 @@ async function generateBuySignal(runtime, strategyService, hndl) {
     requiredFields
   );
   console.log('response', response);
+
   // verify address for this chain (plugin-solana)
+  if (response.recommend_buy_chain !== 'solana') {
+    // abort
+    return;
+  }
+  const solanaService = await acquireService(runtime, 'chain_solana', 'llm trading strategy');
+  if (!solanaService.validateAddress(response.recommend_buy_address)) {
+    // handle failure
+    // maybe just recall itself
+  }
+
   // if looks good, get token(s) info (birdeye?) (infoService)
+  const infoService = await acquireService(runtime, 'TRADER_DATAPROVIDER', 'llm trading info');
+  const token = await infoService.getToken(
+    response.recommend_buy_chain,
+    response.recommend_buy_address
+  );
 
   // validateTokenForTrading (look at liquidity/volume/suspicious atts)
 

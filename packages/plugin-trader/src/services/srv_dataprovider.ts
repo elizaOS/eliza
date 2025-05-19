@@ -96,6 +96,16 @@ export class TradeDataProviderService extends Service {
     }
   }
 
+  async getTokenInfo(chain, address) {
+    const token = await this.runtime.getCache<IToken[]>('token_' + chain + '_' + address);
+    console.log('token', token);
+    if (!token) {
+      // not cache, go fetch realtime
+    }
+    // needs to include liquidity, 24h volume, suspicous atts
+    return token;
+  }
+
   /**
    * Start the scenario service with the given runtime.
    * @param {IAgentRuntime} runtime - The agent runtime
