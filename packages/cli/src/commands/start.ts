@@ -754,7 +754,10 @@ export const start = new Command()
     '-c, --configure',
     'Force reconfiguration of services and AI models (bypasses saved configuration)'
   )
-  .option('-char, --character [paths...]', 'Character file(s) to use - accepts paths or URLs')
+  .option(
+    '-char, --character [paths...]',
+    'Character file(s) to use - accepts multiple paths/URLs separated by spaces or commas with or without quotes (e.g., "file1.json file2.json", "file1.json, file2.json", etc)'
+  )
   .option('-b, --build', 'Build the project before starting')
   .option('-p, --port <port>', 'Port to listen on (default: 3000)', (v) => {
     const n = Number.parseInt(v, 10);
@@ -785,19 +788,23 @@ export const start = new Command()
         if (Array.isArray(options.character)) {
           for (const item of options.character) {
             // Split by commas in case user provided comma-separated list
+            // Strip quotes if present (handles both single and double quotes)
             const parts = item
               .trim()
               .split(',')
               .map((part) => part.trim())
+              .map((part) => part.replace(/^['"](.*)['"]$/, '$1'))
               .filter(Boolean);
             characterPaths.push(...parts);
           }
         } else if (typeof options.character === 'string') {
           // Split by commas in case user provided comma-separated list
+          // Strip quotes if present (handles both single and double quotes)
           const parts = options.character
             .trim()
             .split(',')
             .map((part) => part.trim())
+            .map((part) => part.replace(/^['"](.*)['"]$/, '$1'))
             .filter(Boolean);
           characterPaths.push(...parts);
         } else if (options.character === true) {
