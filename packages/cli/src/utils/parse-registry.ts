@@ -10,10 +10,16 @@ import semver from 'semver';
 
 type RawRegistry = Record<string, string>; // <npmName> → "github:owner/repo" (ideally)
 
-type VersionInfo = {
+interface VersionInfo {
   git?: {
-    v0?: string;
-    v1?: string;
+    v0?: {
+      version: string | null;
+      branch: string | null;
+    };
+    v1?: {
+      version: string | null;
+      branch: string | null;
+    };
   };
   npm?: {
     v0?: string;
@@ -24,7 +30,7 @@ type VersionInfo = {
     v0: boolean;
     v1: boolean;
   };
-};
+}
 
 /*───────────────────────────────────────────────────────────────────────────*/
 // Constants & helpers
@@ -39,7 +45,9 @@ async function safeFetchJSON<T = unknown>(url: string): Promise<T | null> {
   try {
     const res = await fetch(url);
     if (!res.ok) return null;
-    return (await res.json()) as T;
+    const data = (await res.json()) as T;
+    const filtered = Object.entries(data).filter(([key]) => Boolean(key));
+    return Object.fromEntries(filtered) as T;
   } catch {
     return null;
   }
@@ -91,9 +99,16 @@ async function getLatestGitTags(owner: string, repo: string) {
     const sorted = versions.sort(semver.rcompare);
     const latestV0 = sorted.find((v) => semver.major(v) === 0);
     const latestV1 = sorted.find((v) => semver.major(v) === 1);
-    return { v0: latestV0, v1: latestV1 };
-  } catch {
-    return { v0: undefined, v1: undefined };
+    return {
+      v0: latestV0 || null,
+      v1: latestV1 || null,
+    };
+  } catch (error) {
+    console.warn(`⚠️  Failed to fetch tags for ${owner}/${repo}:`, error.message);
+    return {
+      v0: null,
+      v1: null,
+    };
   }
 }
 
@@ -143,7 +158,40 @@ async function processRepo(npmId: string, gitRef: string): Promise<[string, Vers
   const branchCandidates = ['main', 'master', '0.x', '1.x'].filter((b) => branches.includes(b));
 
   const pkgPromises = branchCandidates.map((br) => fetchPackageJSON(owner, repo, br));
-  const pkgs = await Promise.all(pkgPromises);
+  const pkgResults = await Promise.allSettled(pkgPromises);
+
+  const pkgs = [];
+  const supportedBranches = {
+    v0: null as string | null,
+    v1: null as string | null,
+  };
+
+  for (let i = 0; i < pkgResults.length; i++) {
+    const result = pkgResults[i];
+    if (result.status === 'fulfilled' && result.value) {
+      const pkg = result.value;
+      pkgs.push(pkg);
+      const branch = branchCandidates[i];
+
+      let coreRange = pkg?.coreRange;
+      if (coreRange?.startsWith('workspace:')) {
+        coreRange = coreRange.substring('workspace:'.length);
+        if (['*', '^', '~'].includes(coreRange)) {
+          coreRange = '>=0.0.0';
+        }
+      }
+
+      if (coreRange && coreRange !== 'latest') {
+        try {
+          const major = semver.minVersion(coreRange)?.major;
+          if (major === 0) supportedBranches.v0 = branch;
+          if (major === 1) supportedBranches.v1 = branch;
+        } catch (e) {
+          console.warn(`Invalid version range for ${npmId} (${branch}): ${coreRange}`);
+        }
+      }
+    }
+  }
 
   let supportsV0 = false;
   let supportsV1 = false;
@@ -156,19 +204,50 @@ async function processRepo(npmId: string, gitRef: string): Promise<[string, Vers
         coreRange = '>=0.0.0';
       }
     }
-    const major = coreRange ? semver.minVersion(coreRange)?.major : undefined;
+    let major;
+    if (coreRange && coreRange !== 'latest') {
+      try {
+        major = semver.minVersion(coreRange)?.major;
+      } catch (e) {
+        console.warn(`Invalid version range for ${npmId}: ${coreRange}`);
+      }
+    }
     if (major === 0) supportsV0 = true;
     if (major === 1) supportsV1 = true;
   }
 
   const [gitTagInfo, npmInfo] = await Promise.all([tagsPromise, npmPromise]);
 
-  console.log(`${npmId} → gv0:${supportsV0} gv1:${supportsV1}`);
+  // Set version support based on npm versions
+  if (npmInfo?.v0) {
+    supportsV0 = true;
+  }
+  if (npmInfo?.v1) {
+    supportsV1 = true;
+  }
+
+  console.log(`${npmId} → v0:${supportsV0} v1:${supportsV1}`);
+
+  // Prepare git info with versions and branches
+  const gitInfo = {
+    v0: {
+      version: gitTagInfo?.v0 || npmInfo?.v0 || null,
+      branch: supportedBranches.v0,
+    },
+    v1: {
+      version: gitTagInfo?.v1 || npmInfo?.v1 || null,
+      branch: supportedBranches.v1,
+    },
+  };
+
+  // Set version support flags based on both branch detection and npm versions
+  supportsV0 = supportsV0 || !!supportedBranches.v0;
+  supportsV1 = supportsV1 || !!supportedBranches.v1;
 
   return [
     npmId,
     {
-      git: gitTagInfo,
+      git: gitInfo,
       npm: npmInfo,
       supports: { v0: supportsV0, v1: supportsV1 },
     },
@@ -192,7 +271,7 @@ async function processRepo(npmId: string, gitRef: string): Promise<[string, Vers
     for (const task of tasks) {
       const [id, info] = await task;
       report[id] = info;
-      await new Promise((r) => setTimeout(r, 250));
+      await new Promise((r) => setTimeout(r, 500));
     }
   }
 
