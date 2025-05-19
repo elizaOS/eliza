@@ -80,11 +80,10 @@ export async function executeInstallation(
   logger.info(`Attempting to install package: ${packageName} using ${packageManager}`);
 
   const finalSpecifier = packageName.startsWith('github:')
-    ? packageName
+    ? `${packageName}${versionOrTag ? `#${versionOrTag}` : ''}`
     : versionOrTag
       ? `${packageName}@${versionOrTag}`
       : packageName;
-
   try {
     await execa(packageManager, [...installCommand, finalSpecifier], {
       cwd: directory,
