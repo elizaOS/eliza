@@ -19,9 +19,12 @@ const GH_TOKEN = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
 const octokit = new Octokit({ auth: GH_TOKEN || undefined });
 const hasAuth = Boolean(GH_TOKEN);
 
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const nodeFetch = globalThis.fetch ? undefined : require('node-fetch');
+
 async function safeFetchJSON<T = unknown>(url: string): Promise<T | null> {
   try {
-    const res = await fetch(url);
+    const res = await (globalThis.fetch ?? nodeFetch)(url);
     if (!res.ok) return null;
     const data = (await res.json()) as T;
     const filtered = Object.entries(data).filter(([key]) => Boolean(key));
