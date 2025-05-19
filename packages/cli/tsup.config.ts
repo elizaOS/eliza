@@ -15,7 +15,9 @@ export default defineConfig({
     'octokit',
     'execa',
   ],
-  noExternal: [/^(?!(@electric-sql\/pglite|zod)).*/],
+  // Ensure that all external dependencies are properly handled.
+  // The regex explicitly includes dependencies that should not be externalized.
+  noExternal: [/^(?!(@electric-sql\/pglite|zod|@elizaos\/core|chokidar|semver|octokit|execa)).*/],
   platform: 'node',
   minify: false,
   target: 'esnext',
