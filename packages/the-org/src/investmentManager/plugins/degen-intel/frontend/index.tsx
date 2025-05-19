@@ -16,13 +16,6 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <div className="flex flex-col gap-4 my-4 bg-background">
         <div className="container flex items-center gap-4">
-          <img
-            src="/logos/degen.png"
-            height="128"
-            width="128"
-            className="object-contain size-20 rounded-md"
-            alt="logo"
-          />
           <div className="text-3xl font-bold">Degen Data Layer</div>
         </div>
         <Statistics />

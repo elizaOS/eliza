@@ -110,7 +110,7 @@ export const characterProvider: Provider = {
               .map((message) => {
                 let messageString = `${message.name}: ${message.content.text}${
                   message.content.action || message.content.actions
-                    ? ` (actions: ${message.content.action || message.content.actions.join(', ')})`
+                    ? ` (actions: ${message.content.action || message.content.actions?.join(', ')})`
                     : ''
                 }`;
                 exampleNames.forEach((name, index) => {
@@ -138,7 +138,8 @@ export const characterProvider: Provider = {
 
     // Style directions
     const postDirections =
-      character?.style?.all?.length > 0 || character?.style?.post?.length > 0
+      (character?.style?.all?.length && character?.style?.all?.length > 0) ||
+      (character?.style?.post?.length && character?.style?.post?.length > 0)
         ? addHeader(
             `# Post Directions for ${character.name}`,
             (() => {
@@ -150,7 +151,8 @@ export const characterProvider: Provider = {
         : '';
 
     const messageDirections =
-      character?.style?.all?.length > 0 || character?.style?.chat?.length > 0
+      (character?.style?.all?.length && character?.style?.all?.length > 0) ||
+      (character?.style?.chat?.length && character?.style?.chat?.length > 0)
         ? addHeader(
             `# Message Directions for ${character.name}`,
             (() => {
@@ -190,10 +192,12 @@ export const characterProvider: Provider = {
       system,
     };
 
-    const topic2 = topicString ? `${character.name} is currently interested in ${topicString}` : '';
-    const adjective2 = adjectiveString ? `${character.name} is ${adjectiveString}` : '';
+    const topicSentence = topicString
+      ? `${character.name} is currently interested in ${topicString}`
+      : '';
+    const adjectiveSentence = adjectiveString ? `${character.name} is ${adjectiveString}` : '';
     // Combine all text sections
-    const text = [bio, adjective2, topic2, topics, directions, examples, system]
+    const text = [bio, adjectiveSentence, topicSentence, topics, directions, examples, system]
       .filter(Boolean)
       .join('\n\n');
 

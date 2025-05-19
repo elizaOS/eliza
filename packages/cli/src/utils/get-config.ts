@@ -1,10 +1,10 @@
-import { promises as fs, existsSync } from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
+import { logger, stringToUuid } from '@elizaos/core';
 import dotenv from 'dotenv';
-import { z } from 'zod';
+import { existsSync, promises as fs } from 'node:fs';
+import path from 'node:path';
 import prompts from 'prompts';
-import { logger } from '@elizaos/core';
+import { z } from 'zod';
+import { UserEnvironment } from './user-environment';
 
 // Database config schemas
 const postgresConfigSchema = z.object({
@@ -42,14 +42,21 @@ export function isValidPostgresUrl(url: string): boolean {
 }
 
 /**
- * Gets the standard Eliza directories
- * @returns Object containing standard directory paths
+ * Retrieves the standard directory paths used by Eliza for configuration and database storage.
+ *
+ * @returns An object containing the user's home directory, the Eliza configuration directory, the Eliza database directory for the current project, and the path to the Eliza `.env` file.
  */
-export function getElizaDirectories() {
-  const homeDir = os.homedir();
+export async function getElizaDirectories() {
+  const envInfo = await UserEnvironment.getInstanceInfo();
+  const homeDir = envInfo.os.homedir;
+
+  logger.debug('[Config] Using home directory:', homeDir);
+
   const elizaDir = path.join(homeDir, '.eliza');
-  const elizaDbDir = path.join(elizaDir, 'db');
+  const elizaDbDir = path.join(elizaDir, 'projects', stringToUuid(process.cwd()), 'pglite/');
   const envFilePath = path.join(elizaDir, '.env');
+
+  logger.debug('[Config] Using database directory:', elizaDbDir);
 
   return {
     homeDir,
@@ -60,29 +67,36 @@ export function getElizaDirectories() {
 }
 
 /**
- * Ensures the .eliza directory exists
- * @returns The eliza directories object
+ * Generic function to ensure a directory exists
+ * @param dirPath Path to the directory
  */
-export async function ensureElizaDir() {
-  const dirs = getElizaDirectories();
-
-  if (!existsSync(dirs.elizaDir)) {
-    await fs.mkdir(dirs.elizaDir, { recursive: true });
-    logger.info(`Created directory: ${dirs.elizaDir}`);
+async function ensureDir(dirPath: string) {
+  if (!existsSync(dirPath)) {
+    await fs.mkdir(dirPath, { recursive: true });
+    logger.info(`Created directory: ${dirPath}`);
   }
-
-  return dirs;
 }
 
 /**
- * Ensures the .env file exists
- * @param envFilePath Path to the .env file
+ * Generic function to ensure a file exists
+ * @param filePath Path to the file
  */
-export async function ensureEnvFile(envFilePath: string) {
-  if (!existsSync(envFilePath)) {
-    await fs.writeFile(envFilePath, '', { encoding: 'utf8' });
-    logger.debug(`Created empty .env file at ${envFilePath}`);
+async function ensureFile(filePath: string) {
+  if (!existsSync(filePath)) {
+    await fs.writeFile(filePath, '', { encoding: 'utf8' });
+    logger.info(`Created file: ${filePath}`);
   }
+}
+
+/**
+ * Ensures the Eliza configuration directory exists and returns standard Eliza directory paths.
+ *
+ * @returns An object containing paths for the user's home directory, the Eliza configuration directory, the Eliza database directory, and the `.env` file.
+ */
+export async function ensureElizaDir() {
+  const dirs = await getElizaDirectories();
+  await ensureDir(dirs.elizaDir);
+  return dirs;
 }
 
 /**
@@ -90,26 +104,36 @@ export async function ensureEnvFile(envFilePath: string) {
  * @param elizaDbDir The directory for PGLite database
  * @param envFilePath Path to the .env file
  */
-export async function setupPgLite(elizaDbDir: string, envFilePath: string): Promise<void> {
+export async function setupPgLite(dbDir: any, envPath: any): Promise<void> {
+  const dirs = await ensureElizaDir();
+  const { elizaDir, elizaDbDir, envFilePath } = dirs;
+
+  // Use provided parameters or defaults from dirs
+  const targetDbDir = dbDir || elizaDbDir;
+  const targetEnvPath = envPath || envFilePath;
+
   try {
     // Ensure the PGLite database directory exists
-    if (!existsSync(elizaDbDir)) {
-      await fs.mkdir(elizaDbDir, { recursive: true });
-      logger.info(`Created PGLite database directory: ${elizaDbDir}`);
-    }
+    await ensureDir(targetDbDir);
+    logger.debug('[PGLite] Created database directory:', targetDbDir);
 
     // Ensure .env file exists
-    await ensureEnvFile(envFilePath);
+    await ensureFile(targetEnvPath);
+    logger.debug('[PGLite] Ensured .env file exists:', targetEnvPath);
 
     // Store PGLITE_DATA_DIR in the environment file
-    await fs.writeFile(envFilePath, `PGLITE_DATA_DIR=${elizaDbDir}\n`, { flag: 'a' });
+    await fs.writeFile(targetEnvPath, `PGLITE_DATA_DIR=${targetDbDir}\n`, { flag: 'a' });
 
     // Also set in process.env for the current session
-    process.env.PGLITE_DATA_DIR = elizaDbDir;
+    process.env.PGLITE_DATA_DIR = targetDbDir;
 
     logger.success('PGLite configuration saved');
   } catch (error) {
-    logger.error('Error setting up PGLite directory:', error);
+    logger.error('Error setting up PGLite directory:', {
+      error: error instanceof Error ? error.message : String(error),
+      elizaDbDir,
+      envFilePath,
+    });
     throw error;
   }
 }
@@ -124,7 +148,7 @@ export async function storePostgresUrl(url: string, envFilePath: string): Promis
 
   try {
     // Ensure .env file exists
-    await ensureEnvFile(envFilePath);
+    await ensureFile(envFilePath);
 
     // Store the URL in the .env file
     await fs.writeFile(envFilePath, `POSTGRES_URL=${url}\n`, { flag: 'a' });
@@ -181,17 +205,22 @@ export async function promptAndStorePostgresUrl(envFilePath: string): Promise<st
 export async function configureDatabaseSettings(reconfigure = false): Promise<string | null> {
   // Set up directories and env file
   const { elizaDbDir, envFilePath } = await ensureElizaDir();
-  await ensureEnvFile(envFilePath);
+  await ensureFile(envFilePath);
   await loadEnvironment(elizaDbDir);
 
   // Check if we already have database configuration in env
   let postgresUrl = process.env.POSTGRES_URL;
-  const pgliteDataDir = process.env.PGLITE_DATA_DIR;
+  const pgliteDataDir = process.env.PGLITE_DATA_DIR || path.join(elizaDbDir, 'pglite');
 
-  // If we already have a postgres URL configured and not reconfiguring, use that
-  if (postgresUrl && !reconfigure) {
-    logger.debug('Using existing PostgreSQL configuration');
-    return postgresUrl;
+  // Add debug logging
+  logger.debug(`Configuration check - POSTGRES_URL: ${postgresUrl ? 'SET' : 'NOT SET'}`);
+  logger.debug(`Configuration check - PGLITE_DATA_DIR: ${pgliteDataDir ? 'SET' : 'NOT SET'}`);
+  logger.debug(`Configuration check - reconfigure: ${reconfigure}`);
+
+  // BYPASS ADDED: Skip prompts and always use postgres if URL is provided
+  if (process.env.POSTGRES_URL) {
+    console.log('BYPASS: Using postgres URL from environment variable');
+    return process.env.POSTGRES_URL;
   }
 
   // If we already have PGLITE_DATA_DIR set in env and not reconfiguring, use PGLite
@@ -199,59 +228,15 @@ export async function configureDatabaseSettings(reconfigure = false): Promise<st
     logger.debug(`Using existing PGLite configuration: ${pgliteDataDir}`);
 
     // Ensure the directory exists
-    if (!existsSync(pgliteDataDir)) {
-      await fs.mkdir(pgliteDataDir, { recursive: true });
-      logger.info(`Created PGLite database directory: ${pgliteDataDir}`);
-    }
+    await ensureDir(pgliteDataDir);
 
     return null;
   }
 
-  try {
-    // Prompt for database selection
-    const { database } = await prompts({
-      type: 'select',
-      name: 'database',
-      message: 'Select your database:',
-      choices: [
-        { title: 'pglite (embedded database)', value: 'pglite' },
-        { title: 'postgres (external database)', value: 'postgres' },
-      ],
-      initial: 0,
-    });
-
-    if (!database || database === 'pglite') {
-      // If selection canceled or pglite selected
-      const dbChoice = !database ? 'Selection canceled, defaulting to' : 'Selected';
-      logger.info(`${dbChoice} pglite database`);
-
-      await setupPgLite(elizaDbDir, envFilePath);
-      return null;
-    }
-
-    // User selected postgres
-    const result = await promptAndStorePostgresUrl(envFilePath);
-    if (!result) {
-      // If no valid Postgres URL provided, default to PGLite
-      logger.warn('No valid Postgres URL provided, defaulting to pglite database');
-      await setupPgLite(elizaDbDir, envFilePath);
-      return null;
-    }
-
-    return result;
-  } catch (error) {
-    logger.error('Error during database configuration:', error);
-    logger.info('Defaulting to pglite database');
-
-    try {
-      await setupPgLite(elizaDbDir, envFilePath);
-    } catch (setupError) {
-      logger.error('Critical error setting up database:', setupError);
-      throw new Error('Failed to configure database');
-    }
-  }
-
-  return null; // Default to pglite
+  // BYPASS ADDED: Default to pglite if no configuration is provided
+  console.log('BYPASS: No database configuration found, defaulting to pglite');
+  await setupPgLite(elizaDbDir, envFilePath);
+  return null;
 }
 
 // Main config schema
@@ -309,18 +294,15 @@ export async function resolveConfigPaths(cwd: string, config: RawConfig) {
  * Load environment variables, trying project .env first, then global ~/.eliza/.env
  */
 /**
- * Loads environment variables from either the project directory or global config.
- * If the .env file is found in the project directory, it will be loaded.
- * If not found in the project directory, it will try to load from the global config.
- * If neither exist, it will create the global .env file with a default comment.
+ * Loads environment variables from a project-specific or global `.env` file, creating the global file if neither exists.
  *
- * @param {string} projectDir - The directory where the project is located (default: process.cwd()).
- * @returns {Promise<void>} A Promise that resolves once the environment variables are loaded or created.
+ * If a `.env` file is present in the project directory, its variables are loaded. Otherwise, the function attempts to load from the global Eliza configuration. If neither file exists, a global `.env` file is created with a default comment.
+ *
+ * @param projectDir - The directory to search for a project-specific `.env` file. Defaults to the current working directory.
  */
 export async function loadEnvironment(projectDir: string = process.cwd()): Promise<void> {
   const projectEnvPath = path.join(projectDir, '.env');
-  const globalEnvDir = path.join(os.homedir(), '.eliza');
-  const globalEnvPath = path.join(globalEnvDir, '.env');
+  const { elizaDir: globalEnvDir, envFilePath: globalEnvPath } = await getElizaDirectories();
 
   // First try loading from project directory
   if (existsSync(projectEnvPath)) {
@@ -334,13 +316,10 @@ export async function loadEnvironment(projectDir: string = process.cwd()): Promi
     return;
   }
 
-  // If neither exists, create the global .env
-  if (!existsSync(globalEnvDir)) {
-    await fs.mkdir(globalEnvDir, { recursive: true });
-  }
-
-  // Create an empty .env file
-  if (!existsSync(globalEnvPath)) {
-    await fs.writeFile(globalEnvPath, '# Global environment variables for Eliza\n');
-  }
+  // Ensure global env directory and file exist
+  await ensureDir(globalEnvDir);
+  await ensureFile(globalEnvPath);
+  await fs.writeFile(globalEnvPath, '# Global environment variables for Eliza\n', {
+    encoding: 'utf8',
+  });
 }

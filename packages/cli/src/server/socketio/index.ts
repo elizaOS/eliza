@@ -289,7 +289,7 @@ export class SocketIORouter {
           name: senderName,
           source,
           type: ChannelType.API,
-          worldId: worldId as UUID,
+          worldId: (worldId as UUID) || createUniqueUuid(runtime, 'client-chat'),
         });
         logger.info(`[SocketIO] Connection ensured successfully`);
       } catch (error) {

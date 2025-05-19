@@ -79,7 +79,7 @@ export const unfollowRoomAction: Action = {
       return parsedResponse;
     }
 
-    if (await _shouldUnfollow(state)) {
+    if (state && (await _shouldUnfollow(state))) {
       await runtime.setParticipantUserState(message.roomId, runtime.agentId, null);
 
       const room = state.data.room ?? (await runtime.getRoom(message.roomId));

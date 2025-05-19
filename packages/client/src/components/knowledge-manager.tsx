@@ -351,7 +351,7 @@ export function KnowledgeManager({ agentId }: { agentId: UUID }) {
             </DialogTitle>
             <DialogDescription className="flex items-center mt-1">
               <Clock className="h-3.5 w-3.5 mr-1" />
-              Added on{' '}
+              Added on
               {viewingContent
                 ? formatDate(viewingContent.createdAt || viewingContent.metadata?.timestamp || 0)
                 : ''}

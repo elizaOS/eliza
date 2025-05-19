@@ -3,6 +3,7 @@ import { type NodePgDatabase, drizzle } from 'drizzle-orm/node-postgres';
 import { BaseDrizzleAdapter } from '../base';
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from '../schema/embedding';
 import type { PostgresConnectionManager } from './manager';
+import { type Pool as PgPool } from 'pg';
 
 /**
  * Adapter class for interacting with a PostgreSQL database.
@@ -68,5 +69,14 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter<NodePgDatabase> {
    */
   async close(): Promise<void> {
     await this.manager.close();
+  }
+
+  /**
+   * Asynchronously retrieves the connection from the manager.
+   *
+   * @returns {Promise<PgPool>} A Promise that resolves with the connection.
+   */
+  async getConnection() {
+    return this.manager.getConnection();
   }
 }

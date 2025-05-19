@@ -1,8 +1,15 @@
 import type { Agent, Character, UUID, Memory } from '@elizaos/core';
+
+export type AgentWithStatus = Omit<Agent, 'status'> & { status: 'active' | 'inactive' };
+
 import { WorldManager } from './world-manager';
 import clientLogger from './logger';
+import { connectionStatusActions } from '../context/ConnectionContext';
 
 const API_PREFIX = '/api';
+
+// Key for storing the API key in localStorage, now a function
+const getLocalStorageApiKey = () => `eliza-api-key-${window.location.origin}`;
 
 /**
  * A function that handles fetching data from a specified URL with various options.
@@ -29,14 +36,24 @@ const fetcher = async ({
 
   clientLogger.info('API Request:', method || 'GET', normalizedUrl);
 
+  // --- BEGIN Add API Key Header ---
+  const storageKey = getLocalStorageApiKey();
+  const apiKey = localStorage.getItem(storageKey);
+  const baseHeaders = headers
+    ? { ...headers } // Clone if headers are provided
+    : {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      };
+
+  if (apiKey) {
+    (baseHeaders as Record<string, string>)['X-API-KEY'] = apiKey;
+  }
+  // --- END Add API Key Header ---
+
   const options: RequestInit = {
     method: method ?? 'GET',
-    headers: headers
-      ? headers
-      : {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-        },
+    headers: baseHeaders, // Use the modified headers
     // Add timeout signal for DELETE operations to prevent hanging
     signal: method === 'DELETE' ? AbortSignal.timeout(30000) : undefined,
   };
@@ -61,7 +78,7 @@ const fetcher = async ({
     const response = await fetch(normalizedUrl, options);
     const contentType = response.headers.get('Content-Type');
 
-    if (contentType === 'audio/mpeg') {
+    if (contentType?.startsWith('audio/')) {
       return await response.blob();
     }
 
@@ -72,16 +89,15 @@ const fetcher = async ({
       clientLogger.error('Response:', errorText);
 
       let errorMessage = `${response.status}: ${response.statusText}`;
+      let errorObj: any = {}; // Define errorObj to ensure it's available
       try {
-        const errorObj = JSON.parse(errorText);
+        errorObj = JSON.parse(errorText);
         errorMessage = errorObj.error?.message || errorObj.message || errorMessage;
 
-        // Include the status code explicitly in the error message
         if (!errorMessage.includes(response.status.toString())) {
           errorMessage = `${response.status}: ${errorMessage}`;
         }
       } catch {
-        // If we can't parse as JSON, use the raw text
         if (errorText.includes('<!DOCTYPE html>')) {
           errorMessage = `${response.status}: Received HTML instead of JSON. API endpoint may be incorrect.`;
         } else {
@@ -89,13 +105,17 @@ const fetcher = async ({
         }
       }
 
-      // Add more context to specific HTTP status codes
-      if (response.status === 404) {
+      if (response.status === 401) {
+        const unauthorizedMessage =
+          errorObj?.error?.message ||
+          errorObj?.message ||
+          `Unauthorized: Invalid or missing X-API-KEY. Server responded with ${response.status}.`;
+        connectionStatusActions.setUnauthorized(unauthorizedMessage);
+        errorMessage = unauthorizedMessage;
+      } else if (response.status === 404) {
         errorMessage = `${errorMessage} - API endpoint not found`;
       } else if (response.status === 403) {
         errorMessage = `${errorMessage} - Access denied`;
-      } else if (response.status === 401) {
-        errorMessage = `${errorMessage} - Authentication required`;
       } else if (response.status === 429) {
         errorMessage = `${errorMessage} - Too many requests, please try again later`;
       } else if (response.status >= 500) {
@@ -103,7 +123,6 @@ const fetcher = async ({
       }
 
       const error = new Error(errorMessage);
-      // Add status code to the error object for easier checking
       (error as any).statusCode = response.status;
       throw error;
     }
@@ -219,12 +238,15 @@ interface AgentLog {
  * 		deleteLog: (agentId: string, logId: string) => Promise<void>;
  * 		getAgentMemories: (agentId: UUID, roomId?: UUID, tableName?: string) => Promise<any>;
  * 		deleteAgentMemory: (agentId: UUID, memoryId: string) => Promise<any>;
+ *    deleteAllAgentMemories: (agentId: UUID, roomId: UUID) => Promise<any>;
  * 		updateAgentMemory: (agentId: UUID, memoryId: string, memoryData: Partial<Memory>) => Promise<any>;
  * 	}
  * }}
  */
 export const apiClient = {
-  getAgents: () => fetcher({ url: '/agents' }),
+  // Get list of agents with minimal details
+  getAgents: (): Promise<{ data: { agents: Partial<Agent>[] } }> => fetcher({ url: '/agents' }),
+  // Get full agent details
   getAgent: (agentId: string): Promise<{ data: Agent }> => fetcher({ url: `/agents/${agentId}` }),
   ping: (): Promise<{ pong: boolean; timestamp: number }> => fetcher({ url: '/ping' }),
   testEndpoint: (endpoint: string): Promise<any> => fetcher({ url: endpoint }),
@@ -237,7 +259,7 @@ export const apiClient = {
       },
       headers: {
         'Content-Type': 'application/json',
-        Accept: 'audio/mpeg',
+        Accept: 'audio/*',
         'Transfer-Encoding': 'chunked',
       },
     }),
@@ -435,6 +457,13 @@ export const apiClient = {
     });
   },
 
+  deleteAllAgentMemories: (agentId: UUID, roomId: UUID) => {
+    return fetcher({
+      url: `/agents/${agentId}/memories/all/${roomId}`,
+      method: 'DELETE',
+    });
+  },
+
   updateAgentMemory: (agentId: UUID, memoryId: string, memoryData: Partial<Memory>) => {
     return fetcher({
       url: `/agents/${agentId}/memories/${memoryId}`,
@@ -526,5 +555,11 @@ export const apiClient = {
         content: envs,
       },
     });
+  },
+
+  // Agent Panels (public GET routes)
+  getAgentPanels: (agentId: string): Promise<{ success: boolean; data: AgentPanel[] }> => {
+    console.log('getAgentPanels', agentId);
+    return fetcher({ url: `/agents/${agentId}/panels`, method: 'GET' });
   },
 };

@@ -1,11 +1,10 @@
+import { logger } from '@elizaos/core';
+import type { Character } from '@elizaos/core/src/types';
+import dotenv from 'dotenv';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { logger, TestSuite, IAgentRuntime, UUID } from '@elizaos/core';
-import type { Character } from '@elizaos/core/src/types';
-import dotenv from 'dotenv';
 import { initCharacter } from '../init';
-import { v4 as uuidv4 } from 'uuid';
 
 // Get the current file's directory
 const __filename = fileURLToPath(import.meta.url);
@@ -66,7 +65,7 @@ function getFilesRecursively(dir: string, extensions: string[]): string[] {
 function loadDocumentation(directoryPath: string): string[] {
   try {
     const basePath = path.resolve(directoryPath);
-    const files = getFilesRecursively(basePath, ['.md']);
+    const files = getFilesRecursively(basePath, ['.md', '.mdx']);
 
     return files.map((filePath) => {
       try {
@@ -167,8 +166,9 @@ const character: Partial<Character> = {
   name: 'Eddy',
   plugins: [
     '@elizaos/plugin-sql',
-    '@elizaos/plugin-anthropic',
-    '@elizaos/plugin-openai',
+    ...(process.env.ANTHROPIC_API_KEY ? ['@elizaos/plugin-anthropic'] : []),
+    ...(process.env.OPENAI_API_KEY ? ['@elizaos/plugin-openai'] : []),
+    ...(!process.env.OPENAI_API_KEY ? ['@elizaos/plugin-local-ai'] : []),
     '@elizaos/plugin-discord',
     '@elizaos/plugin-pdf',
     '@elizaos/plugin-video-understanding',

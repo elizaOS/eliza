@@ -1,24 +1,25 @@
-import { promises as fs, existsSync } from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { getGitHubCredentials } from '@/src/utils/github';
-import { handleError } from '@/src/utils/handle-error';
 import {
+  displayBanner,
+  getGitHubCredentials,
+  handleError,
   publishToGitHub,
   testPublishToGitHub,
   testPublishToNpm,
-} from '@/src/utils/plugin-publisher';
+} from '@/src/utils';
 import {
   getRegistrySettings,
   initializeDataDir,
   saveRegistrySettings,
   validateDataDir,
 } from '@/src/utils/registry/index';
-import { logger } from '@elizaos/core';
-import { Octokit } from '@octokit/rest';
 import { Command } from 'commander';
 import { execa } from 'execa';
+import { existsSync, promises as fs } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import prompts from 'prompts';
+// Import performCliUpdate directly from update instead of update-cli
+import { performCliUpdate } from './update';
 
 // Registry integration constants
 const REGISTRY_REPO = 'elizaos/registry';
@@ -60,16 +61,32 @@ async function checkCliVersion() {
     const cliPackageJson = JSON.parse(cliPackageJsonContent);
     const currentVersion = cliPackageJson.version || '0.0.0';
 
-    // Check NPM for latest version
-    const { stdout } = await execa('npm', ['view', '@elizaos/cli', 'version']);
-    const latestVersion = stdout.trim();
+    // Get the time data for all published versions to find the most recent
+    const { stdout } = await execa('npm', ['view', '@elizaos/cli', 'time', '--json']);
+    const timeData = JSON.parse(stdout);
+
+    // Remove metadata entries like 'created' and 'modified'
+    delete timeData.created;
+    delete timeData.modified;
+
+    // Find the most recently published version
+    let latestVersion = '';
+    let latestDate = new Date(0); // Start with epoch time
+
+    for (const [version, dateString] of Object.entries(timeData)) {
+      const publishDate = new Date(dateString as string);
+      if (publishDate > latestDate) {
+        latestDate = publishDate;
+        latestVersion = version;
+      }
+    }
 
     // Compare versions
-    if (latestVersion !== currentVersion) {
+    if (latestVersion && latestVersion !== currentVersion) {
       console.warn(
-        `You are using CLI version ${currentVersion}, but the latest is ${latestVersion}`
+        `You are using CLI version ${currentVersion}, but the latest version is ${latestVersion} (published ${new Date(timeData[latestVersion]).toLocaleDateString()})`
       );
-      console.info("Run 'npx @elizaos/cli update' to update to the latest version");
+      console.info(`Run 'elizaos update' to update to the latest version`);
 
       const { update } = await prompts({
         type: 'confirm',
@@ -80,8 +97,15 @@ async function checkCliVersion() {
 
       if (update) {
         console.info('Updating CLI...');
-        await execa('npx', ['@elizaos/cli', 'update'], { stdio: 'inherit' });
-        process.exit(0);
+        // Instead of using npx (which gets blocked), directly call the update function
+        try {
+          await performCliUpdate();
+          // If update is successful, exit
+          process.exit(0);
+        } catch (updateError) {
+          console.error('Failed to update CLI:', updateError);
+          // Continue with current version if update fails
+        }
       }
     }
 
@@ -123,6 +147,13 @@ async function generatePackageMetadata(
 
   if (packageJson.githubRepo) {
     metadata.githubRepo = packageJson.githubRepo;
+  }
+
+  // Ensure appropriate tag is included based on type
+  if (metadata.type === 'plugin' && !metadata.tags.includes('plugin')) {
+    metadata.tags.push('plugin');
+  } else if (metadata.type === 'project' && !metadata.tags.includes('project')) {
+    metadata.tags.push('project');
   }
 
   return metadata;
@@ -256,135 +287,17 @@ async function savePackageToRegistry(packageMetadata, dryRun = false) {
   }
 }
 
-/**
- * Fork the registry repository if needed and create pull request
- */
-async function createRegistryPullRequest(packageJson, packageMetadata, username, token) {
-  try {
-    const octokit = new Octokit({ auth: token });
-    const [registryOwner, registryRepo] = REGISTRY_REPO.split('/');
-
-    // Check if user already has a fork
-    console.info('Checking for existing fork of registry...');
-    let fork;
-    try {
-      const { data: repos } = await octokit.repos.listForUser({
-        username,
-        sort: 'updated',
-        per_page: 100,
-      });
-
-      fork = repos.find((repo) => repo.name === registryRepo);
-    } catch (error) {
-      console.debug(`Error checking for existing fork: ${error.message}`);
-    }
-
-    // Create fork if it doesn't exist
-    if (!fork) {
-      console.info(`Creating fork of ${REGISTRY_REPO}...`);
-      const { data: newFork } = await octokit.repos.createFork({
-        owner: registryOwner,
-        repo: registryRepo,
-      });
-      fork = newFork;
-
-      // Wait for fork creation to complete
-      console.info('Waiting for fork to be ready...');
-      await new Promise((resolve) => setTimeout(resolve, 5000));
-    }
-
-    // Clone the forked repo
-    const tempDir = path.join(process.cwd(), 'temp-registry');
-    if (existsSync(tempDir)) {
-      await fs.rm(tempDir, { recursive: true, force: true });
-    }
-
-    console.info(`Cloning registry fork...`);
-    await execa(
-      'git',
-      [
-        'clone',
-        `https://${username}:${token}@github.com/${username}/${registryRepo}.git`,
-        'temp-registry',
-      ],
-      { cwd: process.cwd() }
-    );
-
-    // Create a new branch
-    const branchName = `plugin-${packageJson.name}-${packageJson.version}`.replace(
-      /[^a-zA-Z0-9-_]/g,
-      '-'
-    );
-    console.info(`Creating branch ${branchName}...`);
-    await execa('git', ['checkout', '-b', branchName], { cwd: tempDir });
-
-    // Save package metadata and update index
-    await savePackageToRegistry(packageMetadata, false);
-
-    // Commit changes
-    console.info('Committing changes...');
-    await execa('git', ['add', '.'], { cwd: tempDir });
-    await execa('git', ['commit', '-m', `Add ${packageJson.name}@${packageJson.version}`], {
-      cwd: tempDir,
-    });
-
-    // Push branch
-    console.info('Pushing changes...');
-    await execa('git', ['push', 'origin', branchName], { cwd: tempDir });
-
-    // Create pull request
-    console.info('Creating pull request...');
-    const { data: pullRequest } = await octokit.pulls.create({
-      owner: registryOwner,
-      repo: registryRepo,
-      title: `Add ${packageJson.name}@${packageJson.version}`,
-      head: `${username}:${branchName}`,
-      base: 'main',
-      body: `
-## New Plugin/Project Submission
-
-- Name: ${packageJson.name}
-- Version: ${packageJson.version}
-- Type: ${packageJson.type || 'plugin'}
-- Platform: ${packageJson.platform || 'universal'}
-- Description: ${packageJson.description || ''}
-- Runtime Version: ${packageMetadata.runtimeVersion}
-
-Submitted by: @${username}
-			`,
-    });
-
-    console.log(`Pull request created: ${pullRequest.html_url}`);
-    return pullRequest.html_url;
-  } catch (error) {
-    console.error(`Failed to create pull request: ${error.message}`);
-    return null;
-  } finally {
-    // Clean up temp directory
-    try {
-      const tempDir = path.join(process.cwd(), 'temp-registry');
-      if (existsSync(tempDir)) {
-        await fs.rm(tempDir, { recursive: true, force: true });
-      }
-    } catch (error) {
-      console.debug(`Error cleaning up temp directory: ${error.message}`);
-    }
-  }
-}
-
 export const publish = new Command()
   .name('publish')
   .description('Publish a plugin or project to the registry')
   .option('-r, --registry <registry>', 'target registry', 'elizaOS/registry')
   .option('-n, --npm', 'publish to npm instead of GitHub', false)
   .option('-t, --test', 'test publish process without making changes', false)
-  .option(
-    '-px, --platform <platform>',
-    'specify platform compatibility (node, browser, universal)',
-    'universal'
-  )
   .option('-d, --dry-run', 'generate registry files locally without publishing', false)
   .option('-sr, --skip-registry', 'skip publishing to the registry', false)
+  .hook('preAction', async () => {
+    await displayBanner();
+  })
   .action(async (opts) => {
     try {
       const cwd = process.cwd();
@@ -458,6 +371,15 @@ export const publish = new Command()
           detectedType = 'project';
           console.info('Detected Eliza project in current directory (legacy format)');
         }
+      } else if (packageJson.packageType) {
+        // Check packageType field
+        if (packageJson.packageType === 'plugin') {
+          detectedType = 'plugin';
+          console.info('Detected Eliza plugin based on packageType field');
+        } else if (packageJson.packageType === 'project') {
+          detectedType = 'project';
+          console.info('Detected Eliza project based on packageType field');
+        }
       } else {
         // Use heuristics to detect the type
         // Check if name contains plugin
@@ -505,18 +427,9 @@ export const publish = new Command()
         }
       }
 
-      // Validate platform option
-      const validPlatforms = ['node', 'browser', 'universal'];
-      if (opts.platform && !validPlatforms.includes(opts.platform)) {
-        console.error(
-          `Invalid platform: ${opts.platform}. Valid options are: ${validPlatforms.join(', ')}`
-        );
-        process.exit(1);
-      }
-
-      // Add type and platform to package.json for publishing
-      packageJson.type = detectedType;
-      packageJson.platform = opts.platform;
+      // Add packageType and platform to package.json for publishing
+      packageJson.packageType = detectedType;
+      packageJson.platform ??= 'node'; // Default to 'node' platform if not specified
 
       // Preserve agentConfig if it exists or create it
       if (!packageJson.agentConfig) {
@@ -563,6 +476,32 @@ export const publish = new Command()
         credentials = newCredentials;
       }
 
+      // Ensure repository URL is in the correct format for GitHub
+      if (!opts.npm) {
+        // Only if we're publishing to GitHub
+        // Extract the package name without scope
+        const packageName = packageJson.name.replace(/^@elizaos\//, '');
+
+        if (!packageJson.repository) {
+          // If repository field doesn't exist, create it
+          packageJson.repository = {
+            type: 'git',
+            url: `github:${credentials.username}/${packageName}`,
+          };
+          console.info(`Set repository URL to: ${packageJson.repository.url}`);
+        } else if (
+          !packageJson.repository.url ||
+          !packageJson.repository.url.includes(credentials.username)
+        ) {
+          // Update repository URL to include the correct username
+          packageJson.repository.url = `github:${credentials.username}/${packageName}`;
+          console.info(`Updated repository URL to: ${packageJson.repository.url}`);
+        }
+
+        // Save updated package.json
+        await fs.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2), 'utf-8');
+      }
+
       // Update registry settings
       const settings = await getRegistrySettings();
       settings.defaultRegistry = opts.registry;
@@ -570,7 +509,7 @@ export const publish = new Command()
         registry: opts.registry,
         username: credentials.username,
         useNpm: opts.npm,
-        platform: opts.platform,
+        platform: packageJson.platform,
       };
       await saveRegistrySettings(settings);
 
@@ -637,6 +576,10 @@ export const publish = new Command()
             console.error('Registry publishing test failed');
             process.exit(1);
           }
+        } else {
+          console.info(
+            '\nSkipping registry publishing test as requested with --skip-registry flag'
+          );
         }
 
         console.log('All tests passed successfully!');
@@ -644,6 +587,10 @@ export const publish = new Command()
       }
 
       // Handle actual publishing
+
+      // Variable to store PR URL if one is created during GitHub publishing
+      let publishResult: boolean | { success: boolean; prUrl?: string } = false;
+      let registryPrUrl: string = null;
 
       // Handle npm publishing
       if (opts.npm) {
@@ -671,15 +618,16 @@ export const publish = new Command()
         packageMetadata.npmPackage = packageJson.name;
       } else {
         // Handle GitHub publishing
-        const success = await publishToGitHub(
+        publishResult = await publishToGitHub(
           cwd,
           packageJson,
           cliVersion,
           credentials.username,
+          opts.skipRegistry,
           false
         );
 
-        if (!success) {
+        if (!publishResult) {
           process.exit(1);
         }
 
@@ -689,26 +637,31 @@ export const publish = new Command()
 
         // Add GitHub repo info to metadata
         packageMetadata.githubRepo = `${credentials.username}/${packageJson.name}`;
+
+        // Store PR URL if returned from publishToGitHub
+        if (typeof publishResult === 'object' && publishResult.prUrl) {
+          registryPrUrl = publishResult.prUrl;
+          console.log(`Registry pull request created: ${registryPrUrl}`);
+        }
       }
 
-      // Handle registry publication
-      if (!opts.skipRegistry) {
+      // Handle registry publication - only for plugins, not for projects
+      if (!opts.skipRegistry && detectedType === 'plugin') {
         console.info('Publishing to registry...');
 
         if (userIsMaintainer) {
-          // For maintainers, create a PR to the registry
-          console.info('Creating pull request to registry as maintainer...');
-          const prUrl = await createRegistryPullRequest(
-            packageJson,
-            packageMetadata,
-            credentials.username,
-            credentials.token
-          );
-
-          if (prUrl) {
-            console.log(`Registry pull request created: ${prUrl}`);
+          if (!opts.npm) {
+            // For GitHub publishing, PR is already created by publishToGitHub
+            console.info('Registry PR was created during GitHub publishing process.');
           } else {
-            console.error('Failed to create registry pull request');
+            // For npm publishing, we need to use the npm-specific publishing flow
+            // In a future version, this should be refactored to use publishToGitHub
+            // with npm-specific options instead of duplicating PR creation logic
+            console.warn('NPM publishing currently does not update the registry.');
+            console.info('To include this package in the registry:');
+            console.info('1. Fork the registry repository at https://github.com/elizaos/registry');
+            console.info('2. Add your package metadata');
+            console.info('3. Submit a pull request to the main repository');
           }
         } else {
           // For non-maintainers, just show a message about how to request inclusion
@@ -718,11 +671,37 @@ export const publish = new Command()
           console.info('2. Add your package metadata');
           console.info('3. Submit a pull request to the main repository');
         }
+      } else if (detectedType === 'project') {
+        console.info('Skipping registry publication for projects');
+      } else if (opts.skipRegistry) {
+        console.info('Skipping registry publication as requested with --skip-registry flag');
       }
 
       console.log(
         `Successfully published ${detectedType} ${packageJson.name}@${packageJson.version}`
       );
+
+      // Add a tailored next steps message based on package type
+      if (detectedType === 'plugin') {
+        console.log('\nYour plugin is now available at:');
+        console.log(
+          `https://github.com/${credentials.username}/${packageJson.name.replace(/^@elizaos\//, '')}`
+        );
+
+        if (!opts.skipRegistry) {
+          console.log('\nAfter your registry PR is merged, users will be able to install it with:');
+          console.log(`elizaos plugins add ${packageJson.name}`);
+        }
+      } else {
+        console.log('\nYour project is now available at:');
+        console.log(
+          `https://github.com/${credentials.username}/${packageJson.name.replace(/^@elizaos\//, '')}`
+        );
+        console.log('\nUsers can clone and use your project with:');
+        console.log(
+          `git clone https://github.com/${credentials.username}/${packageJson.name.replace(/^@elizaos\//, '')}`
+        );
+      }
     } catch (error) {
       handleError(error);
     }

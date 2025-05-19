@@ -378,9 +378,9 @@ export class Client {
     const res = await requestApi<TimelineV2>(
       `${UserTweetsUrl}?variables=${encodeURIComponent(
         JSON.stringify(variables)
-      )}&features=${encodeURIComponent(
-        JSON.stringify(features)
-      )}&fieldToggles=${encodeURIComponent(JSON.stringify(fieldToggles))}`,
+      )}&features=${encodeURIComponent(JSON.stringify(features))}&fieldToggles=${encodeURIComponent(
+        JSON.stringify(fieldToggles)
+      )}`,
       this.auth
     );
 
@@ -460,6 +460,12 @@ export class Client {
     mediaData?: { data: Buffer; mediaType: string }[],
     hideLinkPreview?: boolean
   ) {
+    if (!text || text.trim().length === 0) {
+      throw new Error('Text is required');
+    }
+    if (text.toLowerCase().startsWith('error:')) {
+      throw new Error('Error sending tweet: ' + text);
+    }
     return await createCreateTweetRequest(
       text,
       this.auth,
@@ -474,6 +480,12 @@ export class Client {
     replyToTweetId?: string,
     mediaData?: { data: Buffer; mediaType: string }[]
   ) {
+    if (!text || text.trim().length === 0) {
+      throw new Error('Text is required');
+    }
+    if (text.toLowerCase().startsWith('error:')) {
+      throw new Error('Error sending note tweet: ' + text);
+    }
     return await createCreateNoteTweetRequest(text, this.auth, replyToTweetId, mediaData);
   }
 

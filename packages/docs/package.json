@@ -1,8 +1,8 @@
 {
   "name": "@elizaos/docs",
-  "version": "1.0.0-beta.0",
+  "version": "1.0.0-beta.41",
   "private": true,
-  "packageManager": "bun@9.4.0",
+  "packageManager": "bun@1.2.13",
   "scripts": {
     "docusaurus": "docusaurus",
     "start": "docusaurus start --no-open --port 3002",
@@ -10,7 +10,7 @@
     "update-registry": "node scripts/update-registry.js",
     "build": "docusaurus build",
     "swizzle": "docusaurus swizzle",
-    "deploy": "docusaurus deploy",
+    "deploy": "echo docs.eliza.how > build/CNAME && docusaurus deploy",
     "clear": "docusaurus clear",
     "serve": "docusaurus serve",
     "write-translations": "docusaurus write-translations",
@@ -35,7 +35,7 @@
     "dotenv": "^16.4.7",
     "lunr": "2.3.9",
     "prism-react-renderer": "2.3.1",
-    "react": "^19.0.0",
+    "react": "^19.1.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {

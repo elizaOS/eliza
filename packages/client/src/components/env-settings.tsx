@@ -2,9 +2,10 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useEffect, useRef, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from './ui/input';
-import { Check, Eye, EyeOff, MoreVertical, X } from 'lucide-react';
+import { Check, Eye, EyeOff, MoreVertical, Settings, X } from 'lucide-react';
 import { Button } from './ui/button';
 import { apiClient } from '@/lib/api';
+import { ApiKeyDialog } from './api-key-dialog';
 
 enum EnvType {
   GLOBAL = 'global',
@@ -23,6 +24,7 @@ export default function EnvSettings() {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState(EnvType.GLOBAL);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isApiKeyDialogOpen, setIsApiKeyDialogOpen] = useState(false);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -125,13 +127,29 @@ export default function EnvSettings() {
     setEditingIndex(null);
   };
 
+  // Dummy function for onApiKeySaved
+  const handleApiKeySaved = () => {
+    console.log('API Key was saved');
+    // Potentially refetch envs or perform other actions here
+  };
+
   return (
     <div className="container max-w-4xl mx-auto p-6">
+      <ApiKeyDialog
+        open={isApiKeyDialogOpen}
+        onOpenChange={setIsApiKeyDialogOpen}
+        onApiKeySaved={handleApiKeySaved}
+      />
+
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-3xl font-bold">Envs settings</h1>
           <p className="text-muted-foreground mt-1">Envs settings</p>
         </div>
+        <Button onClick={() => setIsApiKeyDialogOpen(true)} aria-label="Manage API Key">
+          <Settings className="h-5 w-5" />
+          Manage API Key
+        </Button>
       </div>
 
       <Tabs

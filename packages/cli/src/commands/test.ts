@@ -1,18 +1,16 @@
-import { buildProject } from '@/src/utils/build-project';
-import { type IAgentRuntime, type ProjectAgent, logger } from '@elizaos/core';
-import { Command } from 'commander';
+import { loadProject } from '@/src/project';
+import { AgentServer } from '@/src/server/index';
+import { jsonToCharacter, loadCharacterTryPath } from '@/src/server/loader';
+import { TestRunner, buildProject, promptForEnvVars } from '@/src/utils';
+import { type IAgentRuntime, type ProjectAgent } from '@elizaos/core';
+import { Command, Option } from 'commander';
 import * as dotenv from 'dotenv';
 import * as fs from 'node:fs';
 import { existsSync } from 'node:fs';
 import * as net from 'node:net';
 import * as os from 'node:os';
 import path from 'node:path';
-import { loadProject } from '../project.js';
-import { AgentServer } from '../server/index.js';
-import { jsonToCharacter, loadCharacterTryPath } from '../server/loader';
-import { TestRunner } from '../testRunner.js';
-import { promptForEnvVars } from '../utils/env-prompt.js';
-import { startAgent } from './start.js';
+import { startAgent } from './start';
 
 // Helper function to check port availability
 async function checkPortAvailable(port: number): Promise<boolean> {
@@ -155,7 +153,7 @@ const runAgentTests = async (options: {
         const checkInterval = setInterval(async () => {
           try {
             // Check if the database is already initialized
-            if (server.database?.isInitialized) {
+            if (await server.database?.getConnection()) {
               clearInterval(checkInterval);
               resolve();
               return;
@@ -176,7 +174,7 @@ const runAgentTests = async (options: {
 
               // Check if we've reached the maximum attempts
               if (initializationAttempts >= maxAttempts) {
-                if (server.database?.connection) {
+                if (await server.database?.getConnection()) {
                   // If we have a connection, consider it good enough even with migration errors
                   console.warn(
                     'Max initialization attempts reached, but database connection exists. Proceeding anyway.'
@@ -202,9 +200,9 @@ const runAgentTests = async (options: {
         }, 1000);
 
         // Timeout after 30 seconds
-        setTimeout(() => {
+        setTimeout(async () => {
           clearInterval(checkInterval);
-          if (server.database?.connection) {
+          if (await server.database?.getConnection()) {
             // If we have a connection, consider it good enough even with initialization issues
             console.warn(
               'Database initialization timeout, but connection exists. Proceeding anyway.'
@@ -435,7 +433,9 @@ const runAgentTests = async (options: {
 export const test = new Command()
   .name('test')
   .description('Run tests for Eliza agent plugins')
-  .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
+  .addOption(
+    new Option('-p, --port <port>', 'Port to listen on').argParser((val) => Number.parseInt(val))
+  )
   .option('-pl, --plugin <name>', 'Name of plugin to test')
   .option('-sp, --skip-plugins', 'Skip plugin tests')
   .option('-spt, --skip-project-tests', 'Skip project tests')

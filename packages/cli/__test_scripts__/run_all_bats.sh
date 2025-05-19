@@ -33,18 +33,21 @@ FAILED_FILES=()
 for bats_file in "${ALL_BATS[@]}"; do
   echo "==================================================="
   echo "[INFO] Running $bats_file"
+  start=$(date +%s)
   if "$BATS_BIN" "$bats_file"; then
     passed=$((passed+1))
   else
     failed=$((failed+1))
     FAILED_FILES+=("$bats_file")
   fi
+  end=$(date +%s)
+  elapsed=$((end - start))
+  printf "Time: %ds\n" "$elapsed"
   total=$((total+1))
   echo "==================================================="
   echo
 done
 
-# Summary Table
 printf '\n==================== SUMMARY ====================\n'
 printf "Total test files: %d\n" "$total"
 printf "Passed:          %d\n" "$passed"

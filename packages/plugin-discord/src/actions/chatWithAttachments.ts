@@ -201,20 +201,24 @@ export const chatWithAttachments: Action = {
     const attachments = recentMessages
       .filter((msg) => msg.content.attachments && msg.content.attachments.length > 0)
       .flatMap((msg) => msg.content.attachments)
-      // check by first 5 characters of uuid
+      // Ensure attachment is not undefined before accessing properties
       .filter(
         (attachment) =>
-          attachmentIds
+          attachment &&
+          (attachmentIds
             .map((attch) => attch.toLowerCase().slice(0, 5))
             .includes(attachment.id.toLowerCase().slice(0, 5)) ||
-          // or check the other way
-          attachmentIds.some((id) => {
-            const attachmentId = id.toLowerCase().slice(0, 5);
-            return attachment.id.toLowerCase().includes(attachmentId);
-          })
+            // or check the other way
+            attachmentIds.some((id) => {
+              const attachmentId = id.toLowerCase().slice(0, 5);
+              // Add check here too
+              return attachment && attachment.id.toLowerCase().includes(attachmentId);
+            }))
       );
 
     const attachmentsWithText = attachments
+      // Ensure attachment is not undefined before accessing properties
+      .filter((attachment): attachment is NonNullable<typeof attachment> => !!attachment)
       .map((attachment) => `# ${attachment.title}\n${attachment.text}`)
       .join('\n\n');
 

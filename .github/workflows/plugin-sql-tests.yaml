@@ -1,0 +1,30 @@
+name: Plugin SQL Integration Tests
+on:
+  push:
+    branches:
+      - '*'
+  pull_request_target:
+    branches:
+      - '*'
+
+jobs:
+  databaseIntegrationTests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '23'
+      - name: Install root dependencies
+        run: bun install
+      - name: Build all packages
+        run: bun run build
+      - name: Install dependencies and build plugin-sql
+        working-directory: ./packages/plugin-sql
+        run: |
+          bun install
+          bun run build
+      - name: Run plugin-sql integration tests
+        working-directory: ./packages/plugin-sql
+        run: bun run test:integration

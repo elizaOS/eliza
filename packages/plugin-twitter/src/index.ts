@@ -19,6 +19,7 @@ import type { TwitterConfig } from './environment';
 import { TwitterInteractionClient } from './interactions';
 import { TwitterPostClient } from './post';
 import { TwitterSpaceClient } from './spaces';
+import { TwitterTimelineClient } from './timeline';
 import { ClientBaseTestSuite } from './tests';
 import { type ITwitterClient, TwitterEventTypes } from './types';
 
@@ -41,6 +42,7 @@ export class TwitterClientInstance implements ITwitterClient {
   client: ClientBase;
   post: TwitterPostClient;
   interaction: TwitterInteractionClient;
+  timeline?: TwitterTimelineClient;
   space?: TwitterSpaceClient;
   service: TwitterService;
 
@@ -49,10 +51,19 @@ export class TwitterClientInstance implements ITwitterClient {
     this.client = new ClientBase(runtime, state);
 
     // Posting logic
-    this.post = new TwitterPostClient(this.client, runtime, state);
+    if (runtime.getSetting('TWITTER_ENABLE_POST_GENERATION') === true) {
+      this.post = new TwitterPostClient(this.client, runtime, state);
+    }
 
     // Mentions and interactions
-    this.interaction = new TwitterInteractionClient(this.client, runtime, state);
+    if (runtime.getSetting('TWITTER_INTERACTION_ENABLE') === true) {
+      this.interaction = new TwitterInteractionClient(this.client, runtime, state);
+    }
+
+    // handle timeline
+    if (runtime.getSetting('TWITTER_TIMELINE_ENABLE') === true) {
+      this.timeline = new TwitterTimelineClient(this.client, runtime, state);
+    }
 
     // Optional Spaces logic (enabled if TWITTER_SPACES_ENABLE is true)
     if (runtime.getSetting('TWITTER_SPACES_ENABLE') === true) {
@@ -108,6 +119,10 @@ export class TwitterService extends Service {
 
       if (client.interaction) {
         client.interaction.start();
+      }
+
+      if (client.timeline) {
+        client.timeline.start();
       }
 
       // Store the client instance
@@ -282,6 +297,7 @@ export class TwitterService extends Service {
       }
     } catch (error) {
       logger.error('Failed to create default Twitter client:', error);
+      throw error;
     }
 
     return twitterClientManager;

@@ -1,13 +1,11 @@
-import { spawn } from 'node:child_process';
+import { buildProject, handleError, isMonorepoContext, UserEnvironment } from '@/src/utils';
+import { Command, Option } from 'commander';
+import chokidar from 'chokidar';
 import type { ChildProcess } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildProject } from '@/src/utils/build-project';
-import { logger } from '@elizaos/core';
-import { Command } from 'commander';
-import { execa } from 'execa';
-import { handleError } from '../utils/handle-error';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -76,11 +74,19 @@ async function startServer(args: string[] = []): Promise<void> {
 }
 
 /**
- * Determines if the current directory is a project or plugin
+ * Determines whether the current working directory represents a project or a plugin.
+ *
+ * Examines `package.json` fields, naming conventions, keywords, and source exports to heuristically identify if the directory is an Eliza project or plugin.
+ *
+ * @returns An object indicating whether the directory is a project (`isProject`) or a plugin (`isPlugin`).
  */
 async function determineProjectType(): Promise<{ isProject: boolean; isPlugin: boolean }> {
   const cwd = process.cwd();
   const packageJsonPath = path.join(cwd, 'package.json');
+  const isMonorepo = await isMonorepoContext();
+
+  console.info(`Running in directory: ${cwd}`);
+  console.info(`Detected Eliza monorepo context: ${isMonorepo}`);
 
   let isProject = false;
   let isPlugin = false;
@@ -157,24 +163,7 @@ async function determineProjectType(): Promise<{ isProject: boolean; isPlugin: b
  * Sets up file watching for the given directory
  */
 async function watchDirectory(dir: string, onChange: () => void): Promise<void> {
-  // First check if chokidar is installed
   try {
-    await execa('npm', ['list', 'chokidar'], { stdio: 'ignore', reject: false });
-  } catch (error) {
-    // If chokidar isn't installed, install it
-    console.info('Installing chokidar dependency for file watching...');
-    try {
-      await execa('npm', ['install', 'chokidar', '--no-save'], { stdio: 'inherit' });
-    } catch (installError) {
-      console.error(`Failed to install chokidar: ${installError.message}`);
-      return;
-    }
-  }
-
-  try {
-    // Dynamically import chokidar
-    const chokidar = await import('chokidar');
-
     // Get the absolute path of the directory
     const absoluteDir = path.resolve(dir);
     console.info(`Setting up file watching for directory: ${absoluteDir}`);
@@ -306,13 +295,15 @@ async function watchDirectory(dir: string, onChange: () => void): Promise<void> 
  */
 export const dev = new Command()
   .name('dev')
-  .description('Start the project or plugin in development mode and rebuild on file changes')
-  .option('-c, --configure', 'Reconfigure services and AI models (skips using saved configuration)')
-  .option(
-    '-char, --character <character>',
-    'Path or URL to character file to use instead of default'
+  .description(
+    'Start the project or plugin in development mode with auto-rebuild, detailed logging, and file change detection'
   )
+  .option('-c, --configure', 'Reconfigure services and AI models (skips using saved configuration)')
+  .option('-char, --character [paths...]', 'Character file(s) to use - accepts paths or URLs')
   .option('-b, --build', 'Build the project before starting')
+  .addOption(
+    new Option('-p, --port <port>', 'Port to listen on').argParser((val) => Number.parseInt(val))
+  )
   .action(async (options) => {
     try {
       const cwd = process.cwd();
@@ -322,7 +313,16 @@ export const dev = new Command()
       const cliArgs: string[] = [];
       if (options.port) cliArgs.push('--port', options.port.toString());
       if (options.configure) cliArgs.push('--configure');
-      if (options.character) cliArgs.push('--character', options.character);
+
+      // Handle characters - pass through to start command
+      if (options.character) {
+        if (Array.isArray(options.character)) {
+          cliArgs.push('--character', ...options.character);
+        } else {
+          cliArgs.push('--character', options.character);
+        }
+      }
+
       if (options.build) cliArgs.push('--build');
 
       // Function to rebuild and restart the server
@@ -333,7 +333,46 @@ export const dev = new Command()
 
           console.info('Rebuilding project after file change...');
 
-          // Run the build process
+          const isMonorepo = await isMonorepoContext();
+
+          if (isMonorepo) {
+            const { monorepoRoot } = await UserEnvironment.getInstance().getPathInfo();
+            if (monorepoRoot) {
+              const corePackages = [
+                {
+                  name: 'core',
+                  path: path.join(monorepoRoot, 'packages', 'core'),
+                  isPlugin: false,
+                },
+                {
+                  name: 'client',
+                  path: path.join(monorepoRoot, 'packages', 'client'),
+                  isPlugin: false,
+                },
+                {
+                  name: 'plugin-bootstrap',
+                  path: path.join(monorepoRoot, 'packages', 'plugin-bootstrap'),
+                  isPlugin: true,
+                },
+              ];
+
+              console.info('Building core monorepo packages...');
+              for (const pkg of corePackages) {
+                try {
+                  console.info(`Building ${pkg.name}...`);
+                  await buildProject(pkg.path, pkg.isPlugin);
+                } catch (buildError) {
+                  console.error(`Error building ${pkg.name}: ${buildError.message}`);
+                  // Decide if we should stop or continue
+                }
+              }
+            } else {
+              console.warn('Monorepo context detected, but failed to find monorepo root.');
+            }
+          }
+
+          // Build the current project/plugin
+          console.info(`Building current package: ${cwd}`);
           await buildProject(cwd, isPlugin);
 
           console.log('Rebuild successful, restarting server...');

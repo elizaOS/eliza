@@ -13,6 +13,8 @@ import type {
   UUID,
   World,
 } from './types';
+import { type Pool as PgPool } from 'pg';
+import { PGlite } from '@electric-sql/pglite';
 
 /**
  * An abstract class representing a database adapter for managing various entities
@@ -23,7 +25,7 @@ import type {
  *
  * @template DB - The type of the database instance.
  * @abstract
- * @implements {IDatabaseAdapter}
+ * implements IDatabaseAdapter
  */
 export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter {
   /**
@@ -42,6 +44,12 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
    * @returns A Promise that resolves when closing is complete.
    */
   abstract close(): Promise<void>;
+
+  /**
+   * Retrieves a connection to the database.
+   * @returns A Promise that resolves to the database connection.
+   */
+  abstract getConnection(): Promise<PGlite | PgPool>;
 
   /**
    * Retrieves an account by its ID.
@@ -123,12 +131,13 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
   abstract getMemories(params: {
     entityId?: UUID;
     agentId?: UUID;
-    roomId?: UUID;
     count?: number;
     unique?: boolean;
     tableName: string;
     start?: number;
     end?: number;
+    roomId?: UUID;
+    worldId?: UUID;
   }): Promise<Memory[]>;
 
   abstract getMemoriesByRoomIds(params: {
@@ -212,11 +221,14 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
    */
   abstract searchMemories(params: {
     tableName: string;
-    roomId: UUID;
     embedding: number[];
-    match_threshold: number;
-    count: number;
-    unique: boolean;
+    match_threshold?: number;
+    count?: number;
+    unique?: boolean;
+    query?: string;
+    roomId?: UUID;
+    worldId?: UUID;
+    entityId?: UUID;
   }): Promise<Memory[]>;
 
   /**
@@ -331,6 +343,13 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
   abstract deleteRoom(roomId: UUID): Promise<void>;
 
   /**
+   * Deletes all rooms associated with a specific server ID.
+   * @param serverId The ID of the server whose rooms should be deleted.
+   * @returns A Promise that resolves when all rooms have been deleted.
+   */
+  abstract deleteRoomsByServerId(serverId: UUID): Promise<void>;
+
+  /**
    * Retrieves room IDs for which a specific user is a participant.
    * @param entityId The UUID of the user.
    * @returns A Promise that resolves to an array of room IDs.
@@ -437,7 +456,7 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
    * Retrieves all agents from the database.
    * @returns A Promise that resolves to an array of Agent objects.
    */
-  abstract getAgents(): Promise<Agent[]>;
+  abstract getAgents(): Promise<Partial<Agent>[]>;
 
   /**
    * Creates a new agent in the database.
@@ -510,7 +529,7 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
    * @param params Object containing optional roomId and tags to filter tasks
    * @returns Promise resolving to an array of Task objects
    */
-  abstract getTasks(params: { roomId?: UUID; tags?: string[] }): Promise<Task[]>;
+  abstract getTasks(params: { roomId?: UUID; tags?: string[]; entityId?: UUID }): Promise<Task[]>;
 
   /**
    * Retrieves a specific task by its ID.

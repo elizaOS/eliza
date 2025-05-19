@@ -7,5 +7,11 @@ export default function AgentRoute() {
 
   if (!serverId) return <div>No data.</div>;
 
-  return <Room serverId={serverId} />;
+  return (
+    <div className="flex w-full justify-center">
+      <div className="w-full md:max-w-4xl">
+        <Room serverId={serverId} />
+      </div>
+    </div>
+  );
 }

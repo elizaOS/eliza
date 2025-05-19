@@ -1,0 +1,3 @@
+[submodule "plugin-specification"]
+	path = plugin-specification
+	url = https://github.com/elizaos/plugin-specification

@@ -104,12 +104,25 @@ export async function copyTemplate(
     // Set project name
     packageJson.name = name;
 
+    // Set a standard initial version
+    packageJson.version = '0.1.0';
+
+    // Use a dedicated field for ElizaOS package type to avoid collision with Node.js module type
+    packageJson.packageType = templateType;
+
+    // Ensure the module type is set to 'module' for ES modules
+    if (!packageJson.type) {
+      packageJson.type = 'module';
+    }
+
     // Process dependencies - set all @elizaos/* packages to use cliPackageVersion
     if (packageJson.dependencies) {
       for (const depName of Object.keys(packageJson.dependencies)) {
         if (depName.startsWith('@elizaos/')) {
           logger.info(`Setting ${depName} to use latest version dynamically`);
-          packageJson.dependencies[depName] = cliPackageVersion;
+          packageJson.dependencies[depName] = cliPackageVersion.includes('beta')
+            ? 'beta'
+            : 'latest';
         }
       }
     }
@@ -119,29 +132,27 @@ export async function copyTemplate(
       for (const depName of Object.keys(packageJson.devDependencies)) {
         if (depName.startsWith('@elizaos/')) {
           logger.info(`Setting dev dependency ${depName} to use version ${cliPackageVersion}`);
-          packageJson.devDependencies[depName] = cliPackageVersion;
+          packageJson.devDependencies[depName] = cliPackageVersion.includes('beta')
+            ? 'beta'
+            : 'latest';
         }
       }
     }
 
-    // For plugins, add required registry configuration
+    // Create or update repository URL with the GitHub format
+    // Extract the name without scope for the repository URL
+    const nameWithoutScope = name.replace('@elizaos/', '');
+
+    // Get the GitHub username from environment if available, or use a default
+    const githubUsername = process.env.GITHUB_USERNAME || 'elizaos';
+
+    // Always create/update repository field with proper URL format
+    packageJson.repository = {
+      type: 'git',
+      url: `github:${githubUsername}/${nameWithoutScope}`,
+    };
+
     if (templateType === 'plugin') {
-      // Fix repository URL format and replace placeholder with actual plugin name
-      if (packageJson.repository && packageJson.repository.url) {
-        // Extract the plugin name without scope for the repository URL
-        const pluginNameWithoutScope = name.replace('@elizaos/', '');
-
-        // Get the GitHub username from environment if available, or use a default
-        const githubUsername = process.env.GITHUB_USERNAME || 'elizaos-plugins';
-
-        // Replace placeholders with actual values
-        packageJson.repository.url = packageJson.repository.url
-          .replace('{{PLUGIN_NAME}}', pluginNameWithoutScope)
-          .replace('{{GITHUB_USERNAME}}', githubUsername)
-          .replace('https://github.com/', 'github:')
-          .replace('.git', '');
-      }
-
       // Add platform if missing
       if (!packageJson.platform) {
         packageJson.platform = 'universal';
@@ -231,10 +242,10 @@ Before publishing your plugin to the ElizaOS registry, ensure you meet these req
 3. **Publishing Process**
    \`\`\`bash
    # Check if your plugin meets all registry requirements
-   npx elizaos plugin publish --test
+   npx elizaos publish --test
    
    # Publish to the registry
-   npx elizaos plugin publish
+   npx elizaos publish
    \`\`\`
 
 After publishing, your plugin will be submitted as a pull request to the ElizaOS registry for review.
@@ -293,6 +304,32 @@ Provide clear documentation about:
       } catch (error) {
         logger.error(`Error updating index.ts: ${error}`);
       }
+    } else if (templateType === 'project') {
+      // Add agentConfig for projects if missing
+      if (!packageJson.agentConfig) {
+        packageJson.agentConfig = {
+          pluginType: 'elizaos:project:1.0.0',
+          projectConfig: {
+            name: name,
+            description: packageJson.description || 'An ElizaOS Project',
+          },
+        };
+      }
+
+      // Add repository configuration for projects
+      if (!packageJson.repository) {
+        // Get the GitHub username from environment if available, or use a default
+        const githubUsername = process.env.GITHUB_USERNAME || 'elizaos';
+
+        // Extract the project name without scope for the repository URL
+        const projectNameWithoutScope = name.replace('@elizaos/', '');
+
+        // Set the repository URL
+        packageJson.repository = {
+          type: 'git',
+          url: `github:${githubUsername}/${projectNameWithoutScope}`,
+        };
+      }
     }
 
     // Write the updated package.json
@@ -311,41 +348,39 @@ Provide clear documentation about:
 export async function copyClientDist() {
   logger.info('Copying client dist files to CLI package');
 
-  // Determine source and destination paths
   const srcClientDist = path.resolve(process.cwd(), '../client/dist');
   const destClientDist = path.resolve(process.cwd(), './dist');
+  const indexSrc = path.join(srcClientDist, 'index.html');
+  const indexDest = path.join(destClientDist, 'index.html');
 
-  // Create destination directory
   await fs.mkdir(destClientDist, { recursive: true });
 
-  // Wait for source directory to exist and have files
+  // Wait specifically for index.html to appear
   let retries = 0;
   const maxRetries = 10;
-  const retryDelay = 1000; // 1 second
-
+  const retryDelay = 1000;
   while (retries < maxRetries) {
-    if (existsSync(srcClientDist)) {
-      const files = await fs.readdir(srcClientDist);
-      if (files.length > 0) {
-        break;
-      }
+    if (existsSync(indexSrc)) {
+      break;
     }
-
-    logger.info(
-      `Waiting for client dist files to be built (attempt ${retries + 1}/${maxRetries})...`
-    );
-    await new Promise((resolve) => setTimeout(resolve, retryDelay));
+    logger.info(`Waiting for client index.html (attempt ${retries + 1}/${maxRetries})…`);
+    await new Promise((r) => setTimeout(r, retryDelay));
     retries++;
   }
 
-  // Check if source exists after retries
-  if (!existsSync(srcClientDist)) {
-    logger.error(`Client dist not found at ${srcClientDist} after ${maxRetries} attempts`);
+  if (!existsSync(indexSrc)) {
+    logger.error(`index.html not found at ${indexSrc} after ${maxRetries} attempts`);
     return;
   }
 
-  // Copy client dist files
+  // Copy everything
   await copyDir(srcClientDist, destClientDist);
+
+  // Verify it made it into CLI dist
+  if (!existsSync(indexDest)) {
+    logger.error(`index.html missing in CLI dist at ${indexDest}`);
+    return;
+  }
 
   logger.success('Client dist files copied successfully');
 }

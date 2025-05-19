@@ -2,26 +2,23 @@
 process.env.NODE_OPTIONS = '--no-deprecation';
 process.env.NODE_NO_WARNINGS = '1';
 
-import fs from 'node:fs';
-import path from 'node:path';
-import { dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { agent } from '@/src/commands/agent';
+import { create } from '@/src/commands/create';
+import { dev } from '@/src/commands/dev';
+import { env } from '@/src/commands/env';
+import { plugins } from '@/src/commands/plugins';
+import { publish } from '@/src/commands/publish';
+import { setupMonorepo } from '@/src/commands/setup-monorepo';
+import { start } from '@/src/commands/start';
+import { teeCommand as tee } from '@/src/commands/tee';
+import { test } from '@/src/commands/test';
+import { update } from '@/src/commands/update';
+import { displayBanner, loadEnvironment } from '@/src/utils';
 import { logger } from '@elizaos/core';
-import { Command } from 'commander';
-import { agent } from './commands/agent';
-import { create } from './commands/create';
-import { dev } from './commands/dev';
-import { env } from './commands/env';
-import { publish } from './commands/publish';
-import { start } from './commands/start';
-import { teeCommand as tee } from './commands/tee';
-import { test } from './commands/test';
-import { update } from './commands/update';
-import { loadEnvironment } from './utils/get-config';
-import { displayBanner, getVersion } from './displayBanner';
-import { setupMonorepo } from './commands/install';
-import { updateCLI } from './commands/update-cli';
-import { plugins } from './commands/plugins';
+import { Command, Option } from 'commander';
+import fs from 'node:fs';
+import path, { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 process.on('SIGINT', () => process.exit(0));
 process.on('SIGTERM', () => process.exit(0));
@@ -50,12 +47,15 @@ async function main() {
     version = packageJson.version;
   }
 
-  const program = new Command().name('elizaos').version(version).alias('-v');
+  const program = new Command()
+    .name('elizaos')
+    .version(version, '-v, --version', 'output the version number');
 
-  // Add global options
-  program
-    .option('-r, --remote-url <url>', 'URL of the remote agent runtime')
-    .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val));
+  // Add global options but hide them from global help
+  // They will still be passed to all commands for backward compatibility
+  program.addOption(
+    new Option('-r, --remote-url <url>', 'URL of the remote agent runtime').hideHelp()
+  );
 
   // Create a stop command for testing purposes
   const stopCommand = new Command('stop')
@@ -90,12 +90,11 @@ async function main() {
     .addCommand(env)
     .addCommand(dev)
     .addCommand(publish)
-    .addCommand(updateCLI)
     .addCommand(stopCommand);
 
   // if no args are passed, display the banner
   if (process.argv.length === 2) {
-    displayBanner();
+    await displayBanner();
   }
 
   await program.parseAsync();

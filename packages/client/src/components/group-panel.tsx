@@ -21,14 +21,23 @@ interface Option {
 }
 
 interface GroupPanel {
-  agents: Agent[] | undefined;
+  agents: Partial<Agent>[] | undefined;
   onClose: () => void;
   groupId?: UUID;
 }
 
+/**
+ * Displays a modal panel for creating or editing a group chat, allowing users to set a group name and select agents to include.
+ *
+ * If a {@link groupId} is provided, the panel loads the existing group chat's details for editing; otherwise, it initializes for group creation. Users can invite agents, update the group name, create a new group, update an existing group, or delete a group chat. Upon successful operations, the component navigates to the relevant room, closes the panel, and refreshes the room list.
+ *
+ * @param onClose - Callback invoked to close the panel.
+ * @param agents - List of available agents to invite to the group chat.
+ * @param groupId - Optional ID of the group chat to edit.
+ */
 export default function GroupPanel({ onClose, agents, groupId }: GroupPanel) {
   const [chatName, setChatName] = useState('');
-  const [selectedAgents, setSelectedAgents] = useState<Agent[]>([]);
+  const [selectedAgents, setSelectedAgents] = useState<Partial<Agent>[]>([]);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [initialOptions, setInitialOptions] = useState<Option[]>([]);
@@ -193,7 +202,7 @@ export default function GroupPanel({ onClose, agents, groupId }: GroupPanel) {
                   );
                 }
               } catch (error) {
-                console.error('Failed to create room', error);
+                console.error('Failed to create group', error);
               } finally {
                 setCreating(false);
                 navigate(`/room/${serverId}`);

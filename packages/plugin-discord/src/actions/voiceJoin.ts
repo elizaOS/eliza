@@ -62,6 +62,8 @@ export const joinVoice: Action = {
     callback: HandlerCallback
   ): Promise<boolean> => {
     const room = state.data.room ?? (await runtime.getRoom(message.roomId));
+    // Ensure messageContent is a string, defaulting to empty if undefined
+    const messageContent = message?.content?.text?.toLowerCase() ?? '';
 
     if (!room) {
       throw new Error('No room found');
@@ -92,10 +94,10 @@ export const joinVoice: Action = {
 
     const targetChannel = voiceChannels.find((channel) => {
       const name = (channel as { name: string }).name.toLowerCase();
-      const messageContent = message?.content?.text;
       // remove all non-alphanumeric characters (keep spaces between words)
       const replacedName = name.replace(/[^a-z0-9 ]/g, '');
 
+      // messageContent is now guaranteed to be a string
       return (
         name.includes(messageContent) ||
         messageContent.includes(name) ||
@@ -117,7 +119,8 @@ export const joinVoice: Action = {
     );
 
     if (member?.voice?.channel) {
-      voiceManager.joinChannel(member?.voice?.channel as BaseGuildVoiceChannel);
+      const userVoiceChannel = member.voice.channel as BaseGuildVoiceChannel;
+      voiceManager.joinChannel(userVoiceChannel);
       await runtime.createMemory(
         {
           entityId: message.entityId,
@@ -125,7 +128,7 @@ export const joinVoice: Action = {
           roomId: message.roomId,
           content: {
             source: 'discord',
-            thought: `I joined the voice channel ${member?.voice?.channel?.name}`,
+            thought: `I joined the voice channel ${userVoiceChannel.name}`,
             actions: ['JOIN_VOICE_STARTED'],
           },
           metadata: {
@@ -140,10 +143,10 @@ export const joinVoice: Action = {
         {
           entityId: message.entityId,
           agentId: message.agentId,
-          roomId: createUniqueUuid(runtime, targetChannel.id),
+          roomId: createUniqueUuid(runtime, userVoiceChannel.id),
           content: {
             source: 'discord',
-            thought: `I joined the voice channel ${targetChannel.name}`,
+            thought: `I joined the voice channel ${userVoiceChannel.name}`,
             actions: ['JOIN_VOICE_STARTED'],
           },
           metadata: {
@@ -208,7 +211,7 @@ You should only respond with the name of the voice channel or none, no commentar
             roomId: message.roomId,
             content: {
               source: 'discord',
-              thought: `I joined the voice channel ${member?.voice?.channel?.name}`,
+              thought: `I joined the voice channel ${targetChannel.name}`,
               actions: ['JOIN_VOICE_STARTED'],
             },
             metadata: {

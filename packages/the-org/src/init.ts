@@ -132,8 +132,8 @@ export async function initializeAllSystems(
         },
       };
       await runtime.ensureWorldExists(world);
-      await initializeOnboarding(runtime, world, config);
-      await startOnboardingDM(runtime, server, worldId);
+      // await initializeOnboarding(runtime, world, config);
+      // await startOnboardingDM(runtime, server, worldId);
       console.log('world', world);
     }
   } catch (error) {

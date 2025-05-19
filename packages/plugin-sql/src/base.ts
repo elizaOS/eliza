@@ -13,21 +13,12 @@ import {
   type World,
   type Log,
   logger,
+  stringToUuid,
+  TaskMetadata,
+  ChannelType,
+  RoomMetadata,
 } from '@elizaos/core';
-import {
-  Column,
-  and,
-  cosineDistance,
-  count,
-  desc,
-  eq,
-  gte,
-  inArray,
-  lte,
-  or,
-  sql,
-  not,
-} from 'drizzle-orm';
+import { and, cosineDistance, count, desc, eq, gte, inArray, lte, or, sql, not } from 'drizzle-orm';
 import { v4 } from 'uuid';
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from './schema/embedding';
 import {
@@ -44,7 +35,7 @@ import {
   taskTable,
   worldTable,
 } from './schema/index';
-import type { DrizzleOperations } from './types';
+import type { DrizzleDatabase } from './types';
 
 // Define the metadata type inline since we can't import it
 /**
@@ -71,11 +62,11 @@ import type { DrizzleOperations } from './types';
  * management, and transaction support. Concrete implementations must provide the
  * withDatabase method to execute operations against their specific database.
  *
- * @template TDatabase - The type of Drizzle operations supported by the adapter.
+ * @template TDrizzleDatabase - The type of Drizzle operations supported by the adapter.
  */
 export abstract class BaseDrizzleAdapter<
-  TDatabase extends DrizzleOperations,
-> extends DatabaseAdapter<TDatabase> {
+  TDrizzleDatabase extends DrizzleDatabase,
+> extends DatabaseAdapter<TDrizzleDatabase> {
   protected readonly maxRetries: number = 3;
   protected readonly baseDelay: number = 1000;
   protected readonly maxDelay: number = 10000;
@@ -152,18 +143,22 @@ export abstract class BaseDrizzleAdapter<
     }
 
     const agents = await this.getAgents();
-    const existingAgent = agents.find(
-      (a: Partial<Agent & { status: string }>) => a.name === agent.name
-    );
 
-    if (existingAgent) {
+    const existingAgentId = agents.find((a) => a.name === agent.name)?.id;
+
+    if (existingAgentId) {
+      const existingAgent = (await this.getAgent(existingAgentId)) as Agent;
       return existingAgent;
     }
 
-    agent.id = agent.id || (v4() as UUID);
-    await this.createAgent(agent);
+    const newAgent: Agent = {
+      ...agent,
+      id: stringToUuid(agent.name),
+    } as Agent;
 
-    return agent as Agent;
+    await this.createAgent(newAgent);
+
+    return newAgent;
   }
 
   /**
@@ -173,22 +168,25 @@ export abstract class BaseDrizzleAdapter<
    * @returns {Promise<void>} - Resolves once the embedding dimension is ensured.
    */
   async ensureEmbeddingDimension(dimension: number) {
-    const existingMemory = await this.db
-      .select({
-        embedding: embeddingTable,
-      })
-      .from(memoryTable)
-      .innerJoin(embeddingTable, eq(embeddingTable.memoryId, memoryTable.id))
-      .where(eq(memoryTable.agentId, this.agentId))
-      .limit(1);
+    return this.withDatabase(async () => {
+      const existingMemory = await this.db
+        .select({
+          embedding: embeddingTable,
+        })
+        .from(memoryTable)
+        .innerJoin(embeddingTable, eq(embeddingTable.memoryId, memoryTable.id))
+        .where(eq(memoryTable.agentId, this.agentId))
+        .limit(1);
 
-    if (existingMemory.length > 0) {
-      const usedDimension = Object.entries(DIMENSION_MAP).find(
-        ([_, colName]) => existingMemory[0].embedding[colName] !== null
-      );
-    }
+      if (existingMemory.length > 0) {
+        const usedDimension = Object.entries(DIMENSION_MAP).find(
+          ([_, colName]) => existingMemory[0].embedding[colName] !== null
+        );
+        // We don't actually need to use usedDimension for now, but it's good to know it's there.
+      }
 
-    this.embeddingDimension = DIMENSION_MAP[dimension];
+      this.embeddingDimension = DIMENSION_MAP[dimension];
+    });
   }
 
   /**
@@ -198,37 +196,53 @@ export abstract class BaseDrizzleAdapter<
    */
   async getAgent(agentId: UUID): Promise<Agent | null> {
     return this.withDatabase(async () => {
-      const result = await this.db
+      const rows = await this.db
         .select()
         .from(agentTable)
         .where(eq(agentTable.id, agentId))
         .limit(1);
 
-      if (result.length === 0) return null;
-      return result[0];
+      if (rows.length === 0) return null;
+
+      const row = rows[0];
+      return {
+        ...row,
+        username: row.username || '',
+        id: row.id as UUID,
+        system: row.system === null ? undefined : row.system,
+        bio: row.bio === null ? '' : row.bio,
+      };
     });
   }
 
   /**
    * Asynchronously retrieves a list of agents from the database.
    *
-   * @returns {Promise<Agent[]>} A Promise that resolves to an array of Agent objects.
+   * @returns {Promise<Partial<Agent>[]>} A Promise that resolves to an array of Agent objects.
    */
-  async getAgents(): Promise<Agent[]> {
+  async getAgents(): Promise<Partial<Agent>[]> {
     return this.withDatabase(async () => {
-      const result = await this.db.select().from(agentTable);
-
-      return result;
+      const rows = await this.db
+        .select({
+          id: agentTable.id,
+          name: agentTable.name,
+          bio: agentTable.bio,
+        })
+        .from(agentTable);
+      return rows.map((row) => ({
+        ...row,
+        id: row.id as UUID,
+        bio: row.bio === null ? '' : row.bio,
+      }));
     });
   }
-
   /**
    * Asynchronously creates a new agent record in the database.
    *
    * @param {Partial<Agent>} agent The agent object to be created.
    * @returns {Promise<boolean>} A promise that resolves to a boolean indicating the success of the operation.
    */
-  async createAgent(agent: Partial<Agent>): Promise<boolean> {
+  async createAgent(agent: Agent): Promise<boolean> {
     return this.withDatabase(async () => {
       try {
         await this.db.transaction(async (tx) => {
@@ -305,7 +319,7 @@ export abstract class BaseDrizzleAdapter<
    * @private
    */
   private async mergeAgentSettings(
-    tx: DrizzleOperations,
+    tx: TDrizzleDatabase,
     agentId: UUID,
     updatedSettings: any
   ): Promise<any> {
@@ -316,40 +330,73 @@ export abstract class BaseDrizzleAdapter<
       .where(eq(agentTable.id, agentId))
       .limit(1);
 
-    if (currentAgent.length === 0 || !currentAgent[0].settings) {
-      return updatedSettings;
-    }
+    const currentSettings =
+      currentAgent.length > 0 && currentAgent[0].settings ? currentAgent[0].settings : {};
 
-    const currentSettings = currentAgent[0].settings;
+    const deepMerge = (target: any, source: any): any => {
+      // If source is explicitly null, it means the intention is to set this entire branch to null (or delete if top-level handled by caller).
+      // For recursive calls, if a sub-object in source is null, it effectively means "remove this sub-object from target".
+      // However, our primary deletion signal is a *property value* being null within an object.
+      if (source === null) {
+        // If the entire source for a given key is null, we treat it as "delete this key from target"
+        // by returning undefined, which the caller can use to delete the key.
+        return undefined;
+      }
 
-    // Handle secrets with special null-values treatment
-    if (updatedSettings.secrets) {
-      const currentSecrets = currentSettings.secrets || {};
-      const updatedSecrets = updatedSettings.secrets;
+      // If source is an array or a primitive, it replaces the target value.
+      if (Array.isArray(source) || typeof source !== 'object') {
+        return source;
+      }
 
-      // Create a new secrets object
-      const mergedSecrets = { ...currentSecrets };
+      // Initialize output. If target is not an object, start with an empty one to merge source into.
+      const output =
+        typeof target === 'object' && target !== null && !Array.isArray(target)
+          ? { ...target }
+          : {};
 
-      // Process the incoming secrets updates
-      for (const [key, value] of Object.entries(updatedSecrets)) {
-        if (value === null) {
-          // If value is null, remove the key
-          delete mergedSecrets[key];
+      let isEmpty = true; // Flag to track if the resulting object is empty
+      for (const key of Object.keys(source)) {
+        // Iterate over source keys
+        const sourceValue = source[key];
+
+        if (sourceValue === null) {
+          // If a value in source is null, delete the corresponding key from output.
+          delete output[key];
+        } else if (typeof sourceValue === 'object' && !Array.isArray(sourceValue)) {
+          // If value is an object, recurse.
+          const nestedMergeResult = deepMerge(output[key], sourceValue);
+          if (nestedMergeResult === undefined) {
+            // If recursive merge resulted in undefined (meaning the nested object should be deleted)
+            delete output[key];
+          } else {
+            output[key] = nestedMergeResult;
+            isEmpty = false; // The object is not empty if it has a nested object
+          }
         } else {
-          // Otherwise, update the value
-          mergedSecrets[key] = value;
+          // Primitive or array value from source, assign it.
+          output[key] = sourceValue;
+          isEmpty = false; // The object is not empty
         }
       }
 
-      // Replace the secrets in updatedSettings with our processed version
-      updatedSettings.secrets = mergedSecrets;
-    }
+      // After processing all keys from source, check if output became empty.
+      // An object is empty if all its keys were deleted or resulted in undefined.
+      // This is a more direct check than iterating 'output' after building it.
+      if (Object.keys(output).length === 0) {
+        // If the source itself was not an explicitly empty object,
+        // and the merge resulted in an empty object, signal deletion.
+        if (!(typeof source === 'object' && source !== null && Object.keys(source).length === 0)) {
+          return undefined; // Signal to delete this (parent) key if it became empty.
+        }
+      }
 
-    // Deep merge the settings objects
-    return {
-      ...currentSettings,
-      ...updatedSettings,
-    };
+      return output;
+    }; // End of deepMerge
+
+    const finalSettings = deepMerge(currentSettings, updatedSettings);
+    // If the entire settings object becomes undefined (e.g. all keys removed),
+    // return an empty object instead of undefined/null to keep the settings field present.
+    return finalSettings === undefined ? {} : finalSettings;
   }
 
   /**
@@ -357,7 +404,8 @@ export abstract class BaseDrizzleAdapter<
    *
    * @param {UUID} agentId - The UUID of the agent to be deleted.
    * @returns {Promise<boolean>} - A boolean indicating if the deletion was successful.
-   */ async deleteAgent(agentId: UUID): Promise<boolean> {
+   */
+  async deleteAgent(agentId: UUID): Promise<boolean> {
     logger.debug(`[DB] Starting deletion of agent with ID: ${agentId}`);
 
     return this.withDatabase(async () => {
@@ -372,7 +420,7 @@ export abstract class BaseDrizzleAdapter<
           }, 30000);
 
           this.db
-            .transaction(async (tx) => {
+            .transaction(async (tx: DrizzleDatabase) => {
               try {
                 // Step 1: Find all entities belonging to this agent
                 logger.debug(`[DB] Fetching entities for agent: ${agentId}`);
@@ -440,7 +488,7 @@ export abstract class BaseDrizzleAdapter<
                     .from(memoryTable)
                     .where(inArray(memoryTable.entityId, entityIds));
 
-                  memoryIds = memories.map((m) => m.id);
+                  memoryIds = memories.map((m) => m.id as UUID);
                   logger.debug(`[DB] Found ${memoryIds.length} memories belonging to entities`);
                 }
 
@@ -451,7 +499,7 @@ export abstract class BaseDrizzleAdapter<
                   .from(memoryTable)
                   .where(eq(memoryTable.agentId, agentId));
 
-                memoryIds = [...memoryIds, ...agentMemories.map((m) => m.id)];
+                memoryIds = [...memoryIds, ...agentMemories.map((m) => m.id as UUID)];
                 logger.debug(`[DB] Found total of ${memoryIds.length} memories to delete`);
 
                 // Step 5: Find memories that belong to the rooms
@@ -462,7 +510,7 @@ export abstract class BaseDrizzleAdapter<
                     .from(memoryTable)
                     .where(inArray(memoryTable.roomId, roomIds));
 
-                  memoryIds = [...memoryIds, ...roomMemories.map((m) => m.id)];
+                  memoryIds = [...memoryIds, ...roomMemories.map((m) => m.id as UUID)];
                   logger.debug(`[DB] Updated total to ${memoryIds.length} memories to delete`);
                 }
 
@@ -662,15 +710,23 @@ export abstract class BaseDrizzleAdapter<
         })
         .from(entityTable)
         .leftJoin(componentTable, eq(componentTable.entityId, entityTable.id))
-        .where(eq(entityTable.id, entityId));
+        .where(eq(entityTable.id, entityId))
+        .limit(1);
 
       if (result.length === 0) return null;
 
       // Group components by entity
       const entity = result[0].entity;
-      entity.components = result.filter((row) => row.components).map((row) => row.components);
 
-      return entity;
+      const components = result.map((r) => r.components).filter((c): c is Component => c !== null);
+
+      return {
+        ...entity,
+        id: entity.id as UUID,
+        agentId: entity.agentId as UUID,
+        metadata: entity.metadata as { [key: string]: any },
+        components,
+      };
     });
   }
 
@@ -709,6 +765,9 @@ export abstract class BaseDrizzleAdapter<
         if (!entitiesByIdMap.has(entityId)) {
           const entity: Entity = {
             ...row.entity,
+            id: entityId,
+            agentId: row.entity.agentId as UUID,
+            metadata: row.entity.metadata as { [key: string]: any },
             components: includeComponents ? [] : undefined,
           };
           entitiesByIdMap.set(entityId, entity);
@@ -822,7 +881,21 @@ export abstract class BaseDrizzleAdapter<
         .select()
         .from(componentTable)
         .where(and(...conditions));
-      return result.length > 0 ? result[0] : null;
+
+      if (result.length === 0) return null;
+
+      const component = result[0];
+
+      return {
+        ...component,
+        id: component.id as UUID,
+        entityId: component.entityId as UUID,
+        agentId: component.agentId as UUID,
+        roomId: component.roomId as UUID,
+        worldId: (component.worldId ?? '') as UUID,
+        sourceEntityId: (component.sourceEntityId ?? '') as UUID,
+        data: component.data as { [key: string]: any },
+      };
     });
   }
 
@@ -852,12 +925,28 @@ export abstract class BaseDrizzleAdapter<
           type: componentTable.type,
           data: componentTable.data,
           worldId: componentTable.worldId,
+          agentId: componentTable.agentId,
+          roomId: componentTable.roomId,
           sourceEntityId: componentTable.sourceEntityId,
           createdAt: componentTable.createdAt,
         })
         .from(componentTable)
         .where(and(...conditions));
-      return result;
+
+      if (result.length === 0) return [];
+
+      const components = result.map((component) => ({
+        ...component,
+        id: component.id as UUID,
+        entityId: component.entityId as UUID,
+        agentId: component.agentId as UUID,
+        roomId: component.roomId as UUID,
+        worldId: (component.worldId ?? '') as UUID,
+        sourceEntityId: (component.sourceEntityId ?? '') as UUID,
+        data: component.data as { [key: string]: any },
+      }));
+
+      return components;
     });
   }
 
@@ -912,18 +1001,20 @@ export abstract class BaseDrizzleAdapter<
   async getMemories(params: {
     entityId?: UUID;
     agentId?: UUID;
-    roomId?: UUID;
     count?: number;
     unique?: boolean;
     tableName: string;
     start?: number;
     end?: number;
+    roomId?: UUID;
+    worldId?: UUID;
   }): Promise<Memory[]> {
-    const { entityId, agentId, roomId, tableName, count, unique, start, end } = params;
+    const { entityId, agentId, roomId, worldId, tableName, count, unique, start, end } = params;
 
     if (!tableName) throw new Error('tableName is required');
-    if (!roomId && !entityId && !agentId)
-      throw new Error('roomId, entityId, or agentId is required');
+    // Allow filtering by any combination now
+    // if (!roomId && !entityId && !agentId && !worldId)
+    //   throw new Error('roomId, entityId, agentId, or worldId is required');
 
     return this.withDatabase(async () => {
       const conditions = [eq(memoryTable.type, tableName)];
@@ -938,6 +1029,11 @@ export abstract class BaseDrizzleAdapter<
 
       if (roomId) {
         conditions.push(eq(memoryTable.roomId, roomId));
+      }
+
+      // Add worldId condition
+      if (worldId) {
+        conditions.push(eq(memoryTable.worldId, worldId));
       }
 
       if (end) {
@@ -986,7 +1082,7 @@ export abstract class BaseDrizzleAdapter<
         agentId: row.memory.agentId as UUID,
         roomId: row.memory.roomId as UUID,
         unique: row.memory.unique,
-        metadata: row.memory.metadata,
+        metadata: row.memory.metadata as MemoryMetadata,
         embedding: row.embedding ? Array.from(row.embedding) : undefined,
       }));
     });
@@ -1077,6 +1173,7 @@ export abstract class BaseDrizzleAdapter<
         agentId: row.memory.agentId as UUID,
         roomId: row.memory.roomId as UUID,
         unique: row.memory.unique,
+        metadata: row.memory.metadata as MemoryMetadata,
         embedding: row.embedding ?? undefined,
       };
     });
@@ -1120,7 +1217,7 @@ export abstract class BaseDrizzleAdapter<
         agentId: row.memory.agentId as UUID,
         roomId: row.memory.roomId as UUID,
         unique: row.memory.unique,
-        metadata: row.memory.metadata,
+        metadata: row.memory.metadata as MemoryMetadata,
         embedding: row.embedding ?? undefined,
       }));
     });
@@ -1163,7 +1260,7 @@ export abstract class BaseDrizzleAdapter<
                             AND m.content->>${opts.query_field_sub_name} IS NOT NULL
                     ),
                     embedded_text AS (
-                        SELECT 
+                        SELECT
                             ct.content_text,
                             COALESCE(
                                 e.dim_384,
@@ -1230,9 +1327,16 @@ export abstract class BaseDrizzleAdapter<
   }): Promise<void> {
     return this.withDatabase(async () => {
       try {
+        // Sanitize JSON body to prevent Unicode escape sequence errors
+        const sanitizedBody = this.sanitizeJsonObject(params.body);
+
+        // Serialize to JSON string first for an additional layer of protection
+        // This ensures any problematic characters are properly escaped during JSON serialization
+        const jsonString = JSON.stringify(sanitizedBody);
+
         await this.db.transaction(async (tx) => {
           await tx.insert(logTable).values({
-            body: sql`${params.body}::jsonb`,
+            body: sql`${jsonString}::jsonb`,
             entityId: params.entityId,
             roomId: params.roomId,
             type: params.type,
@@ -1248,6 +1352,49 @@ export abstract class BaseDrizzleAdapter<
         throw error;
       }
     });
+  }
+
+  /**
+   * Sanitizes a JSON object by replacing problematic Unicode escape sequences
+   * that could cause errors during JSON serialization/storage
+   *
+   * @param value - The value to sanitize
+   * @returns The sanitized value
+   */
+  private sanitizeJsonObject(value: unknown): unknown {
+    if (value === null || value === undefined) {
+      return value;
+    }
+
+    if (typeof value === 'string') {
+      // Handle multiple cases that can cause PostgreSQL/PgLite JSON parsing errors:
+      // 1. Remove null bytes (U+0000) which are not allowed in PostgreSQL text fields
+      // 2. Escape single backslashes that might be interpreted as escape sequences
+      // 3. Fix broken Unicode escape sequences (\u not followed by 4 hex digits)
+      return value
+        .replace(/\u0000/g, '') // Remove null bytes
+        .replace(/\\(?!["\\/bfnrtu])/g, '\\\\') // Escape single backslashes not part of valid escape sequences
+        .replace(/\\u(?![0-9a-fA-F]{4})/g, '\\\\u'); // Fix malformed Unicode escape sequences
+    }
+
+    if (typeof value === 'object') {
+      if (Array.isArray(value)) {
+        return value.map((item) => this.sanitizeJsonObject(item));
+      } else {
+        const result: Record<string, unknown> = {};
+        for (const [key, val] of Object.entries(value)) {
+          // Also sanitize object keys
+          const sanitizedKey =
+            typeof key === 'string'
+              ? key.replace(/\u0000/g, '').replace(/\\u(?![0-9a-fA-F]{4})/g, '\\\\u')
+              : key;
+          result[sanitizedKey] = this.sanitizeJsonObject(val);
+        }
+        return result;
+      }
+    }
+
+    return value;
   }
 
   /**
@@ -1282,7 +1429,19 @@ export abstract class BaseDrizzleAdapter<
         .orderBy(desc(logTable.createdAt))
         .limit(count ?? 10)
         .offset(offset ?? 0);
-      return result;
+
+      const logs = result.map((log) => ({
+        ...log,
+        id: log.id as UUID,
+        entityId: log.entityId as UUID,
+        roomId: log.roomId as UUID,
+        body: log.body as { [key: string]: unknown },
+        createdAt: new Date(log.createdAt),
+      }));
+
+      if (logs.length === 0) return [];
+
+      return logs;
     });
   }
 
@@ -1301,25 +1460,34 @@ export abstract class BaseDrizzleAdapter<
    * Asynchronously searches for memories in the database based on the provided parameters.
    * @param {Object} params - The parameters for searching for memories.
    * @param {string} params.tableName - The name of the table to search for memories in.
-   * @param {UUID} params.roomId - The ID of the room to search for memories in.
    * @param {number[]} params.embedding - The embedding to search for.
    * @param {number} [params.match_threshold] - The threshold for the cosine distance.
    * @param {number} [params.count] - The maximum number of memories to retrieve.
    * @param {boolean} [params.unique] - Whether to retrieve unique memories only.
+   * @param {string} [params.query] - Optional query string for potential reranking.
+   * @param {UUID} [params.roomId] - Optional room ID to filter by.
+   * @param {UUID} [params.worldId] - Optional world ID to filter by.
+   * @param {UUID} [params.entityId] - Optional entity ID to filter by.
    * @returns {Promise<Memory[]>} A Promise that resolves to an array of memories.
    */
   async searchMemories(params: {
     tableName: string;
-    roomId: UUID;
     embedding: number[];
-    match_threshold: number;
-    count: number;
-    unique: boolean;
+    match_threshold?: number;
+    count?: number;
+    unique?: boolean;
+    query?: string;
+    roomId?: UUID;
+    worldId?: UUID;
+    entityId?: UUID;
   }): Promise<Memory[]> {
     return await this.searchMemoriesByEmbedding(params.embedding, {
       match_threshold: params.match_threshold,
       count: params.count,
+      // Pass direct scope fields down
       roomId: params.roomId,
+      worldId: params.worldId,
+      entityId: params.entityId,
       unique: params.unique,
       tableName: params.tableName,
     });
@@ -1331,7 +1499,9 @@ export abstract class BaseDrizzleAdapter<
    * @param {Object} params - The parameters for searching for memories.
    * @param {number} [params.match_threshold] - The threshold for the cosine distance.
    * @param {number} [params.count] - The maximum number of memories to retrieve.
-   * @param {UUID} [params.roomId] - The ID of the room to search for memories in.
+   * @param {UUID} [params.roomId] - Optional room ID to filter by.
+   * @param {UUID} [params.worldId] - Optional world ID to filter by.
+   * @param {UUID} [params.entityId] - Optional entity ID to filter by.
    * @param {boolean} [params.unique] - Whether to retrieve unique memories only.
    * @param {string} [params.tableName] - The name of the table to search for memories in.
    * @returns {Promise<Memory[]>} A Promise that resolves to an array of memories.
@@ -1342,6 +1512,8 @@ export abstract class BaseDrizzleAdapter<
       match_threshold?: number;
       count?: number;
       roomId?: UUID;
+      worldId?: UUID;
+      entityId?: UUID;
       unique?: boolean;
       tableName: string;
     }
@@ -1362,8 +1534,15 @@ export abstract class BaseDrizzleAdapter<
 
       conditions.push(eq(memoryTable.agentId, this.agentId));
 
+      // Add filters based on direct params
       if (params.roomId) {
         conditions.push(eq(memoryTable.roomId, params.roomId));
+      }
+      if (params.worldId) {
+        conditions.push(eq(memoryTable.worldId, params.worldId));
+      }
+      if (params.entityId) {
+        conditions.push(eq(memoryTable.entityId, params.entityId));
       }
 
       if (params.match_threshold) {
@@ -1393,8 +1572,9 @@ export abstract class BaseDrizzleAdapter<
         entityId: row.memory.entityId as UUID,
         agentId: row.memory.agentId as UUID,
         roomId: row.memory.roomId as UUID,
+        worldId: row.memory.worldId as UUID | undefined, // Include worldId
         unique: row.memory.unique,
-        metadata: row.memory.metadata,
+        metadata: row.memory.metadata as MemoryMetadata,
         embedding: row.embedding ?? undefined,
         similarity: row.similarity,
       }));
@@ -1431,7 +1611,10 @@ export abstract class BaseDrizzleAdapter<
     if (memory.embedding && Array.isArray(memory.embedding)) {
       const similarMemories = await this.searchMemoriesByEmbedding(memory.embedding, {
         tableName,
+        // Use the scope fields from the memory object for similarity check
         roomId: memory.roomId,
+        worldId: memory.worldId,
+        entityId: memory.entityId,
         match_threshold: 0.95,
         count: 1,
       });
@@ -1450,7 +1633,8 @@ export abstract class BaseDrizzleAdapter<
           metadata: sql`${memory.metadata || {}}::jsonb`,
           entityId: memory.entityId,
           roomId: memory.roomId,
-          agentId: memory.agentId,
+          worldId: memory.worldId, // Include worldId
+          agentId: this.agentId,
           unique: memory.unique ?? isUnique,
           createdAt: memory.createdAt,
         },
@@ -1594,7 +1778,7 @@ export abstract class BaseDrizzleAdapter<
    * @param documentId The UUID of the document memory whose fragments should be deleted
    * @private
    */
-  private async deleteMemoryFragments(tx: DrizzleOperations, documentId: UUID): Promise<void> {
+  private async deleteMemoryFragments(tx: DrizzleDatabase, documentId: UUID): Promise<void> {
     const fragmentsToDelete = await this.getMemoryFragments(tx, documentId);
 
     if (fragmentsToDelete.length > 0) {
@@ -1620,7 +1804,7 @@ export abstract class BaseDrizzleAdapter<
    * @returns An array of memory fragments
    * @private
    */
-  private async getMemoryFragments(tx: DrizzleOperations, documentId: UUID): Promise<Memory[]> {
+  private async getMemoryFragments(tx: DrizzleDatabase, documentId: UUID): Promise<{ id: UUID }[]> {
     const fragments = await tx
       .select({ id: memoryTable.id })
       .from(memoryTable)
@@ -1631,7 +1815,7 @@ export abstract class BaseDrizzleAdapter<
         )
       );
 
-    return fragments;
+    return fragments.map((f) => ({ id: f.id as UUID }));
   }
 
   /**
@@ -1643,29 +1827,34 @@ export abstract class BaseDrizzleAdapter<
   async deleteAllMemories(roomId: UUID, tableName: string): Promise<void> {
     return this.withDatabase(async () => {
       await this.db.transaction(async (tx) => {
-        const memoryIds = await tx
+        // 1) fetch all memory IDs for this room + table
+        const rows = await tx
           .select({ id: memoryTable.id })
           .from(memoryTable)
           .where(and(eq(memoryTable.roomId, roomId), eq(memoryTable.type, tableName)));
 
-        if (memoryIds.length > 0) {
-          await tx.delete(embeddingTable).where(
-            inArray(
-              embeddingTable.memoryId,
-              memoryIds.map((m) => m.id)
-            )
-          );
+        const ids = rows.map((r) => r.id);
+        logger.debug('[deleteAllMemories] memory IDs to delete:', { roomId, tableName, ids });
 
-          await tx
-            .delete(memoryTable)
-            .where(and(eq(memoryTable.roomId, roomId), eq(memoryTable.type, tableName)));
+        if (ids.length === 0) {
+          return;
         }
+
+        // 2) delete any fragments for "document" memories & their embeddings
+        await Promise.all(
+          ids.map(async (memoryId) => {
+            await this.deleteMemoryFragments(tx, memoryId);
+            await tx.delete(embeddingTable).where(eq(embeddingTable.memoryId, memoryId));
+          })
+        );
+
+        // 3) delete the memories themselves
+        await tx
+          .delete(memoryTable)
+          .where(and(eq(memoryTable.roomId, roomId), eq(memoryTable.type, tableName)));
       });
 
-      logger.debug('All memories removed successfully:', {
-        roomId,
-        tableName,
-      });
+      logger.debug('All memories removed successfully:', { roomId, tableName });
     });
   }
 
@@ -1705,18 +1894,32 @@ export abstract class BaseDrizzleAdapter<
       const result = await this.db
         .select({
           id: roomTable.id,
+          name: roomTable.name, // Added name
           channelId: roomTable.channelId,
           agentId: roomTable.agentId,
           serverId: roomTable.serverId,
           worldId: roomTable.worldId,
           type: roomTable.type,
           source: roomTable.source,
+          metadata: roomTable.metadata, // Added metadata
         })
         .from(roomTable)
         .where(and(eq(roomTable.id, roomId), eq(roomTable.agentId, this.agentId)))
         .limit(1);
       if (result.length === 0) return null;
-      return result[0];
+
+      const room = result[0];
+      return {
+        ...room,
+        id: room.id as UUID,
+        name: room.name ?? undefined, // Corrected to handle null
+        agentId: room.agentId as UUID,
+        serverId: room.serverId as UUID,
+        worldId: room.worldId as UUID,
+        channelId: room.channelId as UUID,
+        type: room.type as ChannelType,
+        metadata: room.metadata as RoomMetadata, // Added metadata
+      };
     });
   }
 
@@ -1728,7 +1931,19 @@ export abstract class BaseDrizzleAdapter<
   async getRooms(worldId: UUID): Promise<Room[]> {
     return this.withDatabase(async () => {
       const result = await this.db.select().from(roomTable).where(eq(roomTable.worldId, worldId));
-      return result;
+      const rooms = result.map((room) => ({
+        ...room,
+        id: room.id as UUID,
+        name: room.name ?? undefined,
+        agentId: room.agentId as UUID,
+        serverId: room.serverId as UUID,
+        worldId: room.worldId as UUID,
+        channelId: room.channelId as UUID,
+        type: room.type as ChannelType,
+        metadata: room.metadata as RoomMetadata,
+      }));
+      if (rooms.length === 0) return [];
+      return rooms;
     });
   }
 
@@ -1762,6 +1977,8 @@ export abstract class BaseDrizzleAdapter<
     worldId,
     metadata,
   }: Room): Promise<UUID> {
+    if (!worldId) throw new Error('worldId is required');
+
     return this.withDatabase(async () => {
       const newRoomId = id || v4();
       await this.db
@@ -2102,10 +2319,10 @@ export abstract class BaseDrizzleAdapter<
         }
 
         return {
-          id: result[0].id,
-          sourceEntityId: result[0].sourceEntityId,
-          targetEntityId: result[0].targetEntityId,
-          agentId: result[0].agentId,
+          id: result[0].id as UUID,
+          sourceEntityId: result[0].sourceEntityId as UUID,
+          targetEntityId: result[0].targetEntityId as UUID,
+          agentId: result[0].agentId as UUID,
           tags: result[0].tags || [],
           metadata: result[0].metadata || {},
           createdAt: result[0].createdAt?.toString(),
@@ -2129,48 +2346,35 @@ export abstract class BaseDrizzleAdapter<
    */
   async getRelationships(params: { entityId: UUID; tags?: string[] }): Promise<Relationship[]> {
     return this.withDatabase(async () => {
-      try {
-        let query = this.db
-          .select()
-          .from(relationshipTable)
-          .where(
-            and(
-              or(
-                eq(relationshipTable.sourceEntityId, params.entityId),
-                eq(relationshipTable.targetEntityId, params.entityId)
-              ),
-              eq(relationshipTable.agentId, this.agentId)
-            )
-          );
+      const conditions = [
+        or(
+          eq(relationshipTable.sourceEntityId, params.entityId),
+          eq(relationshipTable.targetEntityId, params.entityId)
+        ),
+        eq(relationshipTable.agentId, this.agentId),
+        ...(params.tags && params.tags.length > 0
+          ? [
+              sql`${relationshipTable.tags} @> ARRAY[${sql.raw(
+                params.tags.map((tag) => `'${tag.replace(/'/g, "''")}'`).join(', ')
+              )}]::text[]`,
+            ]
+          : []),
+      ];
 
-        // Filter by tags if provided
-        if (params.tags && params.tags.length > 0) {
-          // Filter by tags - find tasks that have ALL of the specified tags
-          // Using @> operator which checks if left array contains all elements from right array
-          const tagParams = params.tags.map((tag) => `'${tag.replace(/'/g, "''")}'`).join(', ');
-          query = query.where(
-            sql`${relationshipTable.tags} @> ARRAY[${sql.raw(tagParams)}]::text[]`
-          );
-        }
+      const results = await this.db
+        .select()
+        .from(relationshipTable)
+        .where(and(...conditions));
 
-        const results = await query;
-
-        return results.map((result) => ({
-          id: result.id,
-          sourceEntityId: result.sourceEntityId,
-          targetEntityId: result.targetEntityId,
-          agentId: result.agentId,
-          tags: result.tags || [],
-          metadata: result.metadata || {},
-          createdAt: result.createdAt?.toString(),
-        }));
-      } catch (error) {
-        logger.error('Error getting relationships:', {
-          error: error instanceof Error ? error.message : String(error),
-          params,
-        });
-        return [];
-      }
+      return results.map((row) => ({
+        id: row.id as UUID,
+        sourceEntityId: row.sourceEntityId as UUID,
+        targetEntityId: row.targetEntityId as UUID,
+        agentId: row.agentId as UUID,
+        tags: row.tags || [],
+        metadata: row.metadata || {},
+        createdAt: row.createdAt?.toString(),
+      }));
     });
   }
 
@@ -2271,6 +2475,7 @@ export abstract class BaseDrizzleAdapter<
       await this.db.insert(worldTable).values({
         ...world,
         id: newWorldId,
+        name: world.name || '',
       });
       return newWorldId;
     });
@@ -2330,6 +2535,9 @@ export abstract class BaseDrizzleAdapter<
    * @returns {Promise<UUID>} A Promise that resolves to the ID of the created task.
    */
   async createTask(task: Task): Promise<UUID> {
+    if (!task.worldId) {
+      throw new Error('worldId is required');
+    }
     return this.withRetry(async () => {
       return this.withDatabase(async () => {
         const now = new Date();
@@ -2339,56 +2547,58 @@ export abstract class BaseDrizzleAdapter<
           id: task.id as UUID,
           name: task.name,
           description: task.description,
-          roomId: task.roomId,
-          worldId: task.worldId,
+          roomId: task.roomId as UUID,
+          worldId: task.worldId as UUID,
           tags: task.tags,
           metadata: metadata,
           createdAt: now,
           updatedAt: now,
-          agentId: this.agentId,
+          agentId: this.agentId as UUID,
         };
-        const result = await this.db
-          .insert(taskTable)
-          .values(values)
-          .returning({ id: taskTable.id });
+        const result = await this.db.insert(taskTable).values(values).returning();
 
-        return result[0].id;
+        return result[0].id as UUID;
       });
     });
   }
 
   /**
    * Asynchronously retrieves tasks based on specified parameters.
-   * @param params Object containing optional roomId and tags to filter tasks
+   * @param params Object containing optional roomId, tags, and entityId to filter tasks
    * @returns Promise resolving to an array of Task objects
    */
-  async getTasks(params: { roomId?: UUID; tags?: string[] }): Promise<Task[]> {
+  async getTasks(params: {
+    roomId?: UUID;
+    tags?: string[];
+    entityId?: UUID; // Added entityId parameter
+  }): Promise<Task[]> {
     return this.withRetry(async () => {
       return this.withDatabase(async () => {
-        let query = this.db.select().from(taskTable).where(eq(taskTable.agentId, this.agentId));
-
-        // Apply filters if provided
-        if (params.roomId) {
-          query = query.where(eq(taskTable.roomId, params.roomId));
-        }
-
-        if (params.tags && params.tags.length > 0) {
-          // Filter by tags - find tasks that have ALL of the specified tags
-          // Using @> operator which checks if left array contains all elements from right array
-          const tagParams = params.tags.map((tag) => `'${tag.replace(/'/g, "''")}'`).join(', ');
-          query = query.where(sql`${taskTable.tags} @> ARRAY[${sql.raw(tagParams)}]::text[]`);
-        }
-
-        const result = await query;
+        const result = await this.db
+          .select()
+          .from(taskTable)
+          .where(
+            and(
+              eq(taskTable.agentId, this.agentId),
+              ...(params.roomId ? [eq(taskTable.roomId, params.roomId)] : []),
+              ...(params.tags && params.tags.length > 0
+                ? [
+                    sql`${taskTable.tags} @> ARRAY[${sql.raw(
+                      params.tags.map((t) => `'${t.replace(/'/g, "''")}'`).join(', ')
+                    )}]::text[]`,
+                  ]
+                : [])
+            )
+          );
 
         return result.map((row) => ({
-          id: row.id,
+          id: row.id as UUID,
           name: row.name,
-          description: row.description,
-          roomId: row.roomId,
-          worldId: row.worldId,
-          tags: row.tags,
-          metadata: row.metadata,
+          description: row.description ?? '',
+          roomId: row.roomId as UUID,
+          worldId: row.worldId as UUID,
+          tags: row.tags || [],
+          metadata: row.metadata as TaskMetadata,
         }));
       });
     });
@@ -2408,13 +2618,13 @@ export abstract class BaseDrizzleAdapter<
           .where(and(eq(taskTable.name, name), eq(taskTable.agentId, this.agentId)));
 
         return result.map((row) => ({
-          id: row.id,
+          id: row.id as UUID,
           name: row.name,
-          description: row.description,
-          roomId: row.roomId,
-          worldId: row.worldId,
+          description: row.description ?? '',
+          roomId: row.roomId as UUID,
+          worldId: row.worldId as UUID,
           tags: row.tags || [],
-          metadata: row.metadata || {},
+          metadata: (row.metadata || {}) as TaskMetadata,
         }));
       });
     });
@@ -2440,13 +2650,13 @@ export abstract class BaseDrizzleAdapter<
 
         const row = result[0];
         return {
-          id: row.id,
+          id: row.id as UUID,
           name: row.name,
-          description: row.description,
-          roomId: row.roomId,
-          worldId: row.worldId,
+          description: row.description ?? '',
+          roomId: row.roomId as UUID,
+          worldId: row.worldId as UUID,
           tags: row.tags || [],
-          metadata: row.metadata || {},
+          metadata: (row.metadata || {}) as TaskMetadata,
         };
       });
     });
@@ -2492,7 +2702,8 @@ export abstract class BaseDrizzleAdapter<
 
         await this.db
           .update(taskTable)
-          .set(updateValues)
+          // createdAt is hella borked, number / Date
+          .set(updateValues as any)
           .where(and(eq(taskTable.id, id), eq(taskTable.agentId, this.agentId)));
       });
     });

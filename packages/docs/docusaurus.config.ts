@@ -35,7 +35,7 @@ const config = {
       '@docusaurus/plugin-content-docs',
       {
         id: 'partners',
-        path: 'partners',
+        path: './partners',
         routeBasePath: 'partners',
         sidebarItemsGenerator: async ({ defaultSidebarItemsGenerator, ...args }) => {
           const sidebarItems = await defaultSidebarItemsGenerator(args);
@@ -308,6 +308,14 @@ const config = {
     ],
   ],
   themeConfig: {
+    announcementBar: {
+      id: 'llms_full_feature',
+      content:
+        '🔥 Interact with our full documentation using your favorite LLM! <a href="/llms-full.txt" target="_blank" rel="noopener noreferrer">Copy <code>llms-full.txt</code></a> to get started. ✨',
+      backgroundColor: 'var(--ifm-color-warning-light)',
+      textColor: '#1f1f1f',
+      isCloseable: true,
+    },
     prism: {
       theme: require('prism-react-renderer').themes.github,
       darkTheme: require('prism-react-renderer').themes.dracula,
@@ -406,9 +414,21 @@ const config = {
           ],
         },
         {
-          to: 'blog',
+          type: 'dropdown',
           label: 'Blog',
           position: 'left',
+          items: [
+            {
+              label: 'Main Blog',
+              to: '/blog',
+            },
+            {
+              label: 'GitHub Activity',
+              href: 'https://elizaos.github.io/',
+              target: '_blank',
+              rel: 'noopener noreferrer',
+            },
+          ],
         },
         {
           href: '/news',

@@ -2,33 +2,128 @@ import { logger } from '@elizaos/core';
 import fs from 'node:fs';
 import path from 'node:path';
 
+interface PackageJson {
+  module?: string;
+  main?: string;
+}
+
+interface ImportStrategy {
+  name: string;
+  tryImport: (repository: string) => Promise<any | null>;
+}
+
+const DEFAULT_ENTRY_POINT = 'dist/index.js';
+
+/**
+ * Get the global node_modules path based on Node.js installation
+ */
+function getGlobalNodeModulesPath(): string {
+  // process.execPath gives us the path to the node executable
+  const nodeDir = path.dirname(process.execPath);
+
+  if (process.platform === 'win32') {
+    // On Windows, node_modules is typically in the same directory as node.exe
+    return path.join(nodeDir, 'node_modules');
+  } else {
+    // On Unix systems, we go up one level from bin directory
+    return path.join(nodeDir, '..', 'lib', 'node_modules');
+  }
+}
+
+/**
+ * Helper function to resolve a path within node_modules
+ */
+function resolveNodeModulesPath(repository: string, ...segments: string[]): string {
+  return path.resolve(process.cwd(), 'node_modules', repository, ...segments);
+}
+
+/**
+ * Helper function to read and parse package.json
+ */
+async function readPackageJson(repository: string): Promise<PackageJson | null> {
+  const packageJsonPath = resolveNodeModulesPath(repository, 'package.json');
+  try {
+    if (fs.existsSync(packageJsonPath)) {
+      return JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+    }
+  } catch (error) {
+    logger.debug(`Failed to read package.json for '${repository}':`, error);
+  }
+  return null;
+}
+
 /**
  * Attempts to import a module from a given path and logs the outcome.
- * @param importPath The path to attempt importing from.
- * @param description A description of the import attempt for logging (e.g., 'direct path', 'local node_modules').
- * @param repository The original plugin repository/package name for logging.
- * @returns The loaded module if successful, null otherwise.
  */
 async function tryImporting(
   importPath: string,
-  description: string,
+  strategy: string,
   repository: string
 ): Promise<any | null> {
   try {
     const module = await import(importPath);
-    // Check if the resolved path is different from the input (useful for direct imports)
-    // This might require more sophisticated checking depending on how 'import' resolves
-    const resolvedPath = importPath; // Placeholder - actual resolution might be complex
-    logger.debug(
-      `Successfully loaded plugin '${repository}' from ${description} (${resolvedPath})`
-    );
+    logger.debug(`Successfully loaded plugin '${repository}' using ${strategy} (${importPath})`);
     return module;
   } catch (error) {
-    // Log import failures only at debug level unless it's the final fallback
-    logger.debug(`Import failed from ${description} ('${importPath}'):`, error);
+    logger.debug(`Import failed using ${strategy} ('${importPath}'):`, error);
     return null;
   }
 }
+
+/**
+ * Collection of import strategies
+ */
+const importStrategies: ImportStrategy[] = [
+  {
+    name: 'direct path',
+    tryImport: async (repository: string) => tryImporting(repository, 'direct path', repository),
+  },
+  {
+    name: 'local node_modules',
+    tryImport: async (repository: string) =>
+      tryImporting(resolveNodeModulesPath(repository), 'local node_modules', repository),
+  },
+  {
+    name: 'global node_modules',
+    tryImport: async (repository: string) => {
+      const globalPath = path.resolve(getGlobalNodeModulesPath(), repository);
+      if (!fs.existsSync(path.dirname(globalPath))) {
+        logger.debug(
+          `Global node_modules directory not found at ${path.dirname(globalPath)}, skipping for ${repository}`
+        );
+        return null;
+      }
+      return tryImporting(globalPath, 'global node_modules', repository);
+    },
+  },
+  {
+    name: 'package.json entry',
+    tryImport: async (repository: string) => {
+      const packageJson = await readPackageJson(repository);
+      if (!packageJson) return null;
+
+      const entryPoint = packageJson.module || packageJson.main || DEFAULT_ENTRY_POINT;
+      return tryImporting(
+        resolveNodeModulesPath(repository, entryPoint),
+        `package.json entry (${entryPoint})`,
+        repository
+      );
+    },
+  },
+  {
+    name: 'common dist pattern',
+    tryImport: async (repository: string) => {
+      const packageJson = await readPackageJson(repository);
+      if (packageJson?.main === DEFAULT_ENTRY_POINT) return null;
+
+      return tryImporting(
+        resolveNodeModulesPath(repository, DEFAULT_ENTRY_POINT),
+        'common dist pattern',
+        repository
+      );
+    },
+  },
+];
 
 /**
  * Attempts to load a plugin module using various strategies.
@@ -40,79 +135,12 @@ async function tryImporting(
  */
 export async function loadPluginModule(repository: string): Promise<any | null> {
   logger.debug(`Attempting to load plugin module: ${repository}`);
-  let loadedModule: any | null = null;
 
-  // Strategy 1: Direct import
-  loadedModule = await tryImporting(repository, 'direct path', repository);
-  if (loadedModule) return loadedModule;
-
-  // Strategy 2: Try local node_modules explicit path
-  // Use process.cwd() for local context
-  const localNodeModulesPath = path.resolve(process.cwd(), 'node_modules', repository);
-  loadedModule = await tryImporting(localNodeModulesPath, 'local node_modules', repository);
-  if (loadedModule) return loadedModule;
-
-  // Strategy 3: Try global node_modules explicit path
-  // This path might vary, but '/usr/local/lib/node_modules' is common
-  // Consider making this configurable or detecting it more dynamically if needed
-  // Be cautious with assumptions about global paths.
-  const globalNodeModulesPath = path.resolve('/usr/local/lib/node_modules', repository);
-  // Check existence first to avoid unnecessary error logs for non-existent global paths
-  if (fs.existsSync(path.dirname(globalNodeModulesPath))) {
-    // Check if the parent dir exists
-    loadedModule = await tryImporting(globalNodeModulesPath, 'global node_modules', repository);
-    if (loadedModule) return loadedModule;
-  } else {
-    logger.debug(
-      `Global node_modules directory not found or inaccessible, skipping global check for ${repository}.`
-    );
+  for (const strategy of importStrategies) {
+    const result = await strategy.tryImport(repository);
+    if (result) return result;
   }
 
-  // Strategy 4: Try to find local package.json and load entry point
-  try {
-    const localPackageJsonPath = path.resolve(
-      process.cwd(),
-      'node_modules',
-      repository,
-      'package.json'
-    );
-    if (fs.existsSync(localPackageJsonPath)) {
-      const packageJson = JSON.parse(fs.readFileSync(localPackageJsonPath, 'utf-8'));
-      // Prioritize 'module', then 'main', fallback to 'dist/index.js'
-      const entryPoint = packageJson.module || packageJson.main || 'dist/index.js';
-      const fullEntryPath = path.resolve(process.cwd(), 'node_modules', repository, entryPoint);
-
-      loadedModule = await tryImporting(
-        fullEntryPath,
-        `package.json entry point ('${entryPoint}')`,
-        repository
-      );
-      if (loadedModule) return loadedModule;
-    }
-  } catch (packageJsonError) {
-    logger.debug(
-      `Local package.json lookup/import failed for '${repository}': ${packageJsonError.message}`
-    );
-  }
-
-  // Strategy 5: Fallback - try common dist pattern in local node_modules
-  const commonDistPath = path.resolve(process.cwd(), 'node_modules', repository, 'dist/index.js');
-  // Only try this if it wasn't already tried via package.json main/module
-  if (
-    !loadedModule &&
-    (!fs.existsSync(path.resolve(process.cwd(), 'node_modules', repository, 'package.json')) ||
-      JSON.parse(
-        fs.readFileSync(
-          path.resolve(process.cwd(), 'node_modules', repository, 'package.json'),
-          'utf-8'
-        )
-      ).main !== 'dist/index.js')
-  ) {
-    loadedModule = await tryImporting(commonDistPath, 'common dist pattern', repository);
-    if (loadedModule) return loadedModule;
-  }
-
-  // If all strategies failed
   logger.warn(`Failed to load plugin module '${repository}' using all available strategies.`);
   return null;
 }

@@ -1,8 +1,10 @@
 import { useAgentManagement } from '@/hooks/use-agent-management';
-import { formatAgentName } from '@/lib/utils';
-import type { Agent } from '@elizaos/core';
-import { Cog, Loader2, Play, X } from 'lucide-react';
+import { formatAgentName, moment } from '@/lib/utils';
+import type { Agent, UUID } from '@elizaos/core';
+import { AgentStatus } from '@elizaos/core';
+import { Brain, Cog, Loader2, Play, X } from 'lucide-react';
 import { useNavigate } from 'react-router';
+import { useAgent } from '../hooks/use-query-hooks';
 import StopAgentButton from './stop-agent-button';
 import { Button } from './ui/button';
 import { Card, CardContent, CardFooter, CardHeader } from './ui/card';
@@ -11,20 +13,34 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 interface ProfileOverlayProps {
   isOpen: boolean;
   onClose: () => void;
-  agent: Agent;
-  agents: Agent[];
+  agentId: UUID;
 }
 
-export default function ProfileOverlay({ isOpen, onClose, agent }: ProfileOverlayProps) {
+/**
+ * Displays a modal overlay with detailed information and controls for a specific agent.
+ *
+ * Renders an interactive profile card for the agent identified by {@link agentId}, including avatar, status, metadata, capabilities, plugins, and action buttons for starting, stopping, messaging, and navigating to settings. The overlay is visible when {@link isOpen} is true and can be closed via the provided callback.
+ *
+ * @param isOpen - Whether the overlay is visible.
+ * @param onClose - Callback invoked to close the overlay.
+ * @param agentId - UUID of the agent whose profile is displayed.
+ *
+ * @returns The profile overlay component, or null if not open.
+ */
+export default function ProfileOverlay({ isOpen, onClose, agentId }: ProfileOverlayProps) {
   if (!isOpen) return null;
 
   const { startAgent, isAgentStarting, isAgentStopping } = useAgentManagement();
 
   const navigate = useNavigate();
 
-  const isActive = (agent as Agent & { status?: string }).status === 'active';
-  const isStarting = isAgentStarting(agent.id);
-  const isStopping = isAgentStopping(agent.id);
+  const { data: agentData } = useAgent(agentId);
+
+  const agent = agentData?.data as Agent | undefined;
+
+  const isActive = agent?.status === AgentStatus.ACTIVE;
+  const isStarting = isAgentStarting(agentId);
+  const isStopping = isAgentStopping(agentId);
   const isProcessing = isStarting || isStopping;
 
   // Start button configuration
@@ -41,12 +57,12 @@ export default function ProfileOverlay({ isOpen, onClose, agent }: ProfileOverla
   // Handle agent start
   const handleAgentStart = () => {
     if (isProcessing) return;
-    startAgent(agent);
+    startAgent(agent!);
   };
 
   // Navigate to settings
   const navigateToSettings = () => {
-    navigate(`/settings/${agent.id}`);
+    navigate(`/settings/${agentId}`);
   };
 
   return (
@@ -75,14 +91,14 @@ export default function ProfileOverlay({ isOpen, onClose, agent }: ProfileOverla
               <div className="flex flex-col gap-2">
                 <div className="w-24 h-24 flex justify-center items-center relative">
                   <div className="text-4xl bg-muted rounded-full h-full w-full flex justify-center items-center overflow-hidden border-4 border-background">
-                    {agent.settings?.avatar ? (
+                    {agent?.settings?.avatar ? (
                       <img
-                        src={agent.settings.avatar}
+                        src={agent?.settings.avatar}
                         alt="Agent Avatar"
                         className="w-full h-full object-cover"
                       />
                     ) : (
-                      formatAgentName(agent.name)
+                      formatAgentName(agent?.name ?? '')
                     )}
                   </div>
                   <div
@@ -92,7 +108,7 @@ export default function ProfileOverlay({ isOpen, onClose, agent }: ProfileOverla
                   />
                 </div>
                 <div className="flex flex-col justify-center mr-4">
-                  <div className="text-xl font-bold truncate max-w-48">{agent.name}</div>
+                  <div className="text-xl font-bold truncate max-w-48">{agent?.name}</div>
                   <div className="text-xs text-muted-foreground">
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -100,20 +116,20 @@ export default function ProfileOverlay({ isOpen, onClose, agent }: ProfileOverla
                           className="cursor-pointer hover:underline"
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (agent.id) {
+                            if (agent?.id) {
                               navigator.clipboard.writeText(agent.id);
                             }
                           }}
                           onKeyUp={(e) => {
                             if (e.key === 'Enter' || e.key === ' ') {
                               e.stopPropagation();
-                              if (agent.id) {
+                              if (agent?.id) {
                                 navigator.clipboard.writeText(agent.id);
                               }
                             }
                           }}
                         >
-                          ID: {agent.id ?? 'N/A'}
+                          ID: {agent?.id ?? 'N/A'}
                         </span>
                       </TooltipTrigger>
                       <TooltipContent side="bottom">
@@ -130,7 +146,7 @@ export default function ProfileOverlay({ isOpen, onClose, agent }: ProfileOverla
         <CardContent className="p-6 overflow-auto">
           <div className="rounded-md bg-muted p-4 mb-6 h-60 overflow-y-auto">
             <p className="font-medium text-sm mb-2">About Me</p>
-            <p className="font-light text-sm text-gray-500">{agent.system}</p>
+            <p className="font-light text-sm text-gray-500">{agentData?.data?.system}</p>
           </div>
 
           <div className="space-y-6">
@@ -145,12 +161,32 @@ export default function ProfileOverlay({ isOpen, onClose, agent }: ProfileOverla
             </div>
 
             <div>
+              <p className="font-medium text-sm mb-2">Model</p>
+              <div className="flex items-center gap-2">
+                <Brain className="w-4 h-4 text-muted-foreground" />
+                <span className="text-sm">{agent?.settings?.model || 'Default'}</span>
+              </div>
+            </div>
+
+            <div>
               <p className="font-medium text-sm mb-2">Created</p>
               <p className="text-sm text-gray-500">
-                {agent?.createdAt
-                  ? new Date(agent.createdAt).toLocaleDateString()
-                  : new Date().toLocaleDateString()}
+                {agent?.createdAt ? moment(agent.createdAt).format('LLL') : moment().format('LLL')}
               </p>
+            </div>
+
+            <div>
+              <p className="font-medium text-sm mb-2">Capabilities</p>
+              <div className="flex flex-wrap gap-2">
+                {agent?.settings?.capabilities?.map((capability: string, index: number) => (
+                  <span
+                    key={index}
+                    className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary-foreground"
+                  >
+                    {capability}
+                  </span>
+                )) || <span className="text-sm text-gray-500">No special capabilities</span>}
+              </div>
             </div>
 
             <div>
