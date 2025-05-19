@@ -1642,7 +1642,6 @@ export function agentRouter(
       const processingPromises = files.map(async (file, index) => {
         let knowledgeId: UUID;
         const originalFilename = file.originalname;
-        const contentType = file.mimetype;
         const worldId = (req.body.worldId as UUID) || runtime.agentId;
         const filePath = file.path;
 
@@ -1650,7 +1649,7 @@ export function agentRouter(
         knowledgeId =
           (req.body?.documentIds && req.body.documentIds[index]) ||
           req.body?.documentId ||
-          (createUniqueUuid(runtime, `knowledge-${originalFilename}-${Date.now()}`) as UUID);
+          (createUniqueUuid(runtime, `knowledge-${originalFilename}`) as UUID);
 
         try {
           // Read file content into a buffer
@@ -1661,11 +1660,14 @@ export function agentRouter(
           const filename = file.originalname;
           const title = filename.replace(`.${fileExt}`, '');
 
+          // Convert file buffer to base64 string for all file types
+          const base64Content = fileBuffer.toString('base64');
+
           // Create knowledge item with proper metadata
           const knowledgeItem: KnowledgeItem = {
             id: knowledgeId,
             content: {
-              text: '',
+              text: base64Content, // Always use base64 content
             },
             metadata: {
               type: MemoryType.DOCUMENT,
@@ -1679,19 +1681,6 @@ export function agentRouter(
               source: 'upload',
             },
           };
-
-          // Binary files (PDFs, etc.) need to be base64 encoded
-          if (
-            contentType === 'application/pdf' ||
-            contentType.includes('officedocument') ||
-            ['pdf', 'docx', 'doc', 'ppt', 'pptx', 'xls', 'xlsx'].includes(fileExt)
-          ) {
-            (knowledgeItem.content as any).base64 = fileBuffer.toString('base64');
-          } else {
-            // For text files, use the buffer as UTF-8 text
-            const extractedText = fileBuffer.toString('utf8');
-            knowledgeItem.content.text = `Path: ${originalFilename}\n\n${extractedText}`;
-          }
 
           // Add knowledge to agent - wait for the complete processing
           await runtime.addKnowledge(
@@ -1725,6 +1714,9 @@ export function agentRouter(
           // Check if the error is related to RAG being required for PDFs/DOCX
           if (fileError.message && fileError.message.includes('RAG plugin is required')) {
             status = 'error_requires_rag_plugin';
+          } else if (fileError.message && fileError.message.includes('base64')) {
+            status = 'error_encoding';
+            errorMessage = 'Error encoding file content as base64. The file may be corrupted.';
           }
 
           return {
