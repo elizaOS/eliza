@@ -177,8 +177,6 @@ export async function installPlugin(
   }
 
   const info = cache!.registry[key];
-  const repo = registry[key];
-
   // Prefer npm installation if repository is available
   if (info.npm?.repo) {
     const ver = versionSpecifier || info.npm.v1 || '';
