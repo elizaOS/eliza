@@ -1,6 +1,6 @@
 import { buildProject, handleError, isMonorepoContext, UserEnvironment } from '@/src/utils';
 import { Command, Option } from 'commander';
-import { execa } from 'execa';
+import chokidar from 'chokidar';
 import type { ChildProcess } from 'node:child_process';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -163,23 +163,7 @@ async function determineProjectType(): Promise<{ isProject: boolean; isPlugin: b
  * Sets up file watching for the given directory
  */
 async function watchDirectory(dir: string, onChange: () => void): Promise<void> {
-  // First check if chokidar is installed
   try {
-    await execa('npm', ['list', 'chokidar'], { stdio: 'ignore', reject: false });
-  } catch (error) {
-    // If chokidar isn't installed, install it
-    console.info('Installing chokidar dependency for file watching...');
-    try {
-      await execa('npm', ['install', 'chokidar', '--no-save'], { stdio: 'inherit' });
-    } catch (installError) {
-      console.error(`Failed to install chokidar: ${installError.message}`);
-      return;
-    }
-  }
-
-  try {
-    // Dynamically import chokidar
-    const chokidar = await import('chokidar');
 
     // Get the absolute path of the directory
     const absoluteDir = path.resolve(dir);
