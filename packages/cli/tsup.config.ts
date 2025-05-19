@@ -8,6 +8,8 @@ export default defineConfig({
   sourcemap: false,
   external: ['@electric-sql/pglite', 'zod', '@elizaos/core', 'octokit', 'semver'],
   noExternal: [/^(?!(@electric-sql\/pglite|zod)).*/],
+  external: ['@electric-sql/pglite', 'zod', '@elizaos/core', 'chokidar'],
+  noExternal: [/^(?!(@electric-sql\/pglite|zod)).*/],
   platform: 'node',
   minify: false,
   target: 'esnext',
