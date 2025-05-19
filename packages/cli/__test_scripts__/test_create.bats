@@ -13,14 +13,18 @@ teardown() {
   fi
 }
 
-# Checks that the create help command displays usage information.
+# Checks that the create help command displays usage information for all types.
 @test "create --help shows usage" {
   run $ELIZAOS_CMD create --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"Usage: elizaos create"* ]]
+  # Verify all three types are mentioned
+  [[ "$output" == *"project"* ]]
+  [[ "$output" == *"plugin"* ]]
+  [[ "$output" == *"agent"* ]]
 }
 
-# Checks that creating a default project succeeds.
+# Checks that creating a default project succeeds with all required directories.
 @test "create default project succeeds" {
   run $ELIZAOS_CMD create my-default-app --yes
   [ "$status" -eq 0 ]
@@ -28,13 +32,19 @@ teardown() {
   [ -d "my-default-app" ]
   [ -f "my-default-app/package.json" ]
   [ -d "my-default-app/src" ]
+  # Check for knowledge directory (added in current implementation)
+  [ -d "my-default-app/knowledge" ]
+  # Check for ignore files
+  [ -f "my-default-app/.gitignore" ]
+  [ -f "my-default-app/.npmignore" ]
 }
 
-# Checks that creating a plugin project succeeds.
+# Checks that creating a plugin project succeeds (with plugin- prefix automatically added if needed).
 @test "create plugin project succeeds" {
   run $ELIZAOS_CMD create my-plugin-app --yes --type plugin
   [ "$status" -eq 0 ]
   [[ "$output" == *"Plugin initialized successfully!"* ]]
+  # Current implementation adds plugin- prefix if not present
   if [ -d "my-plugin-app" ]; then
     plugin_dir="my-plugin-app"
   else
@@ -43,6 +53,22 @@ teardown() {
   [ -d "$plugin_dir" ]
   [ -f "$plugin_dir/package.json" ]
   [ -f "$plugin_dir/src/index.ts" ]
+}
+
+# Checks that creating an agent succeeds.
+@test "create agent succeeds" {
+  run $ELIZAOS_CMD create my-test-agent --yes --type agent
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Agent character created successfully"* ]]
+  [ -f "my-test-agent.json" ]
+  
+  # Verify the JSON file is valid
+  run cat "my-test-agent.json"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"\"name\": \"my-test-agent\""* ]]
+  [[ "$output" == *"\"system\":"* ]]
+  [[ "$output" == *"\"bio\":"* ]]
+  [[ "$output" == *"\"messageExamples\":"* ]]
 }
 
 # Checks that creating a project in an existing directory is rejected (expected failure or warning).
@@ -109,4 +135,17 @@ teardown() {
   [ -d "$plugin_dir" ]
   [ -f "$plugin_dir/package.json" ]
   [ -f "$plugin_dir/src/index.ts" ]
+}
+
+# Verifies that the create-eliza command can create an agent successfully.
+@test "create-eliza agent succeeds" {
+  run $CREATE_ELIZA_CMD my-create-agent --yes --type agent
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Agent character created successfully"* ]]
+  [ -f "my-create-agent.json" ]
+  
+  # Verify the JSON structure
+  run cat "my-create-agent.json"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"\"name\": \"my-create-agent\""* ]]
 }

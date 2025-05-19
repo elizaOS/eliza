@@ -26,14 +26,20 @@ Below is a comprehensive reference for all ElizaOS CLI commands, including their
 
 #### `elizaos create [name]`
 
-Initialize a new project or plugin.
+Initialize a new project, plugin, or agent.
 
 - **Arguments:**
-  - `[name]`: Name for the project or plugin (optional)
+  - `[name]`: Name for the project, plugin, or agent (optional)
 - **Options:**
   - `-d, --dir <dir>`: Installation directory (default: `.`)
-  - `-y, --yes`: Skip confirmation (default: `false`)
-  - `-t, --type <type>`: Type of template to use (project or plugin)
+  - `-y, --yes`: Skip confirmation and use defaults (default: `false`)
+  - `-t, --type <type>`: Type to create: 'project', 'plugin', or 'agent' (default: 'project')
+
+**Important notes:**
+
+- Projects include a knowledge directory and prompt for database selection (pglite or postgres)
+- Plugins are automatically prefixed with "plugin-" if the prefix is missing
+- Agents are created as JSON character definition files in the current directory
 
 ### Development
 
@@ -212,6 +218,24 @@ Publishes the current project or plugin.
 
 ## Development Guide
 
+### Developing Agents
+
+Agents are character definitions for ElizaOS bots.
+
+1. **Create a new agent character**:
+
+   ```bash
+   elizaos create my-assistant --type agent
+   ```
+
+   This creates a JSON file (my-assistant.json) with the character definition.
+
+2. **Start an agent with the character**:
+
+   ```bash
+   elizaos agent start --path my-assistant.json
+   ```
+
 ### Developing Plugins
 
 Plugins extend the functionality of ElizaOS agents by providing additional capabilities or integrations.
@@ -220,7 +244,7 @@ Plugins extend the functionality of ElizaOS agents by providing additional capab
 
    ```bash
    elizaos create my-plugin --type plugin
-   cd plugin-my-plugin
+   cd plugin-my-plugin  # Note: CLI automatically adds plugin- prefix if not present
    ```
 
 2. **Structure of a plugin**:

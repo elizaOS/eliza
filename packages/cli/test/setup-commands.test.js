@@ -93,7 +93,7 @@ describe('CLI Command Structure Tests', () => {
     const projectPath = path.join(testDir, projectName);
 
     // Act
-    // Use the -y flag to skip confirmations
+    // Use the -y flag to skip confirmations (will use default pglite database)
     const command = `${cliCommand} create -t project -y ${projectName}`;
 
     // Use exec directly for this interactive command
@@ -109,7 +109,7 @@ describe('CLI Command Structure Tests', () => {
         }
       });
 
-      // Send newlines for any remaining prompts (database selection)
+      // Send newlines for any remaining prompts
       child.stdin.write('\n\n\n\n');
       child.stdin.end();
     });
@@ -117,63 +117,110 @@ describe('CLI Command Structure Tests', () => {
     // Wait longer for creation of files
     await new Promise((resolve) => setTimeout(resolve, 5000));
 
-    // Assert
+    // Assert command execution success
     expect(execResult.stderr).not.toContain('Error');
     expect(existsSync(projectPath)).toBe(true);
+
+    try {
+      // Verify project structure
+      expect(existsSync(path.join(projectPath, 'package.json'))).toBe(true);
+      expect(existsSync(path.join(projectPath, 'tsconfig.json'))).toBe(true);
+      expect(existsSync(path.join(projectPath, 'src'))).toBe(true);
+
+      // Verify knowledge directory (new in current implementation)
+      expect(existsSync(path.join(projectPath, 'knowledge'))).toBe(true);
+
+      // Verify .gitignore and .npmignore were created
+      expect(existsSync(path.join(projectPath, '.gitignore'))).toBe(true);
+      expect(existsSync(path.join(projectPath, '.npmignore'))).toBe(true);
+
+      // Read package.json and verify name
+      const packageJson = JSON.parse(
+        await fsPromises.readFile(path.join(projectPath, 'package.json'), 'utf8')
+      );
+      expect(packageJson.name).toBe(projectName);
+    } catch (error) {
+      elizaLogger.error(`Error verifying project structure: ${error}`);
+      throw error;
+    }
   }, 60000); // Increase timeout to 60 seconds
 
   it('should create a plugin with valid structure', async () => {
     // Arrange
-    const pluginName = 'test-plugin';
+    const pluginBaseName = 'test-plugin';
+    // Test without the plugin- prefix to verify auto-prefixing
+    const nonPrefixedName = pluginBaseName.replace('plugin-', '');
 
     // Act
-    const command = `${cliCommand} create -t plugin -y ${pluginName}`;
-    const result = await execAsync(command, {
-      cwd: testDir,
-      reject: false,
-    });
+    const command = `${cliCommand} create -t plugin -y ${nonPrefixedName}`;
 
-    // Add a delay to ensure file creation is complete
-    await new Promise((resolve) => setTimeout(resolve, 5000));
+    try {
+      const result = await execAsync(command, {
+        cwd: testDir,
+        reject: false,
+      });
 
-    const pluginDir = path.join(testDir, pluginName);
+      // Add a delay to ensure file creation is complete
+      await new Promise((resolve) => setTimeout(resolve, 5000));
 
-    // Verify that at least the directory was created
-    expect(existsSync(pluginDir)).toBe(true);
+      // The command should have auto-prefixed the name with "plugin-"
+      const pluginDir = path.join(testDir, `plugin-${nonPrefixedName}`);
 
-    // More specific assertions
-    expect(existsSync(path.join(pluginDir, 'src'))).toBe(true);
-    expect(existsSync(path.join(pluginDir, 'package.json'))).toBe(true);
-    expect(existsSync(path.join(pluginDir, 'tsconfig.json'))).toBe(true);
+      // Verify that the directory was created with the plugin- prefix
+      expect(existsSync(pluginDir)).toBe(true);
+
+      // Verify basic plugin structure
+      expect(existsSync(path.join(pluginDir, 'src'))).toBe(true);
+      expect(existsSync(path.join(pluginDir, 'package.json'))).toBe(true);
+      expect(existsSync(path.join(pluginDir, 'tsconfig.json'))).toBe(true);
+
+      // Verify .gitignore and .npmignore were created
+      expect(existsSync(path.join(pluginDir, '.gitignore'))).toBe(true);
+      expect(existsSync(path.join(pluginDir, '.npmignore'))).toBe(true);
+
+      // Verify package.json has correct plugin name
+      const packageJson = JSON.parse(
+        await fsPromises.readFile(path.join(pluginDir, 'package.json'), 'utf8')
+      );
+      expect(packageJson.name).toContain(`plugin-${nonPrefixedName}`);
+    } catch (error) {
+      elizaLogger.error(`Error creating plugin: ${error}`);
+      throw error;
+    }
   }, 120000); // Double the timeout to 120 seconds
 
   it('should create an agent with valid structure', async () => {
     // Arrange
     const agentName = 'test-agent';
+    const agentJsonPath = path.join(testDir, `${agentName}.json`);
 
-    // Instead of relying on the agent command, we'll directly create the directory structure
-    // as this test only verifies structure, not the command itself
-    const agentDir = path.join(testDir, agentName);
-    await fsPromises.mkdir(agentDir, { recursive: true });
-    await fsPromises.mkdir(path.join(agentDir, 'src'), { recursive: true });
+    // Use the create command with agent type instead of manual file creation
+    const command = `${cliCommand} create -t agent -y ${agentName}`;
 
-    // Create a basic character JSON file
-    const characterFile = path.join(agentDir, `${agentName}.character.json`);
-    await fsPromises.writeFile(
-      characterFile,
-      JSON.stringify({
-        name: agentName,
-        system: 'Test agent',
-        bio: ['Test agent for testing'],
-      })
-    );
+    try {
+      const result = await execAsync(command, {
+        cwd: testDir,
+        reject: false,
+      });
 
-    // Verify file path exists
-    expect(existsSync(agentDir)).toBe(true);
+      // Add delay to ensure file creation is complete
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
-    // More specific assertions
-    expect(existsSync(path.join(agentDir, 'src'))).toBe(true);
-    expect(existsSync(path.join(agentDir, `${agentName}.character.json`))).toBe(true);
+      // Verify agent file exists and has the correct structure
+      expect(existsSync(agentJsonPath)).toBe(true);
+
+      // Read the JSON file to validate its structure
+      const agentData = JSON.parse(await fsPromises.readFile(agentJsonPath, 'utf8'));
+
+      // Validate agent structure
+      expect(agentData.name).toBe(agentName);
+      expect(agentData.system).toBeDefined();
+      expect(Array.isArray(agentData.bio)).toBe(true);
+      expect(Array.isArray(agentData.messageExamples)).toBe(true);
+    } catch (error) {
+      elizaLogger.error(`Error creating agent: ${error}`);
+      throw error;
+    }
   }, 30000);
 
   it('should handle invalid project name', async () => {
