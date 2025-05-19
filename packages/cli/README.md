@@ -113,26 +113,28 @@ Manage ElizaOS agents.
     - Options: `-j, --json` (output as JSON)
   - `get` (alias: `g`): Get agent details
     - Options:
-      - `-n, --name <name>` (required): Agent id, name, or index number from list
-      - `-j, --json`: Output as JSON
-      - `-o, --output <file>`: Output to file (default: {name}.json)
+      - `-n, --name <name>`: Agent id, name, or index number from list
+      - `-j, --json`: Display JSON output in terminal
+      - `-o, --output <file>`: Save agent data to file
   - `start` (alias: `s`): Start an agent
     - Options:
-      - `-n, --name <n>`: Character name to start the agent with
-      - `-j, --json <json>`: Character JSON string
+      - `-n, --name <name>`: Name of an existing agent to start
+      - `-j, --json <json>`: Character JSON configuration string
       - `--path <path>`: Local path to character JSON file
-      - `--remote-character <url>`: Remote URL to character JSON file
+      - `--remote-character <url>`: URL to remote character JSON file
   - `stop` (alias: `st`): Stop an agent
     - Options:
-      - `-n, --name <name>` (required): Agent id, name, or index number from list
+      - `-n, --name <name>`: Agent id, name, or index number from list
   - `remove` (alias: `rm`): Remove an agent
     - Options:
-      - `-n, --name <name>` (required): Agent id, name, or index number from list
+      - `-n, --name <name>`: Agent id, name, or index number from list
   - `set`: Update agent configuration
     - Options:
-      - `-n, --name <name>` (required): Agent id, name, or index number from list
+      - `-n, --name <name>`: Agent id, name, or index number from list
       - `-c, --config <json>`: Agent configuration as JSON string
       - `-f, --file <path>`: Path to agent configuration JSON file
+
+**Note:** All agent commands support interactive mode when run without key parameters.
 
 ### Publishing
 
