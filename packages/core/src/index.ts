@@ -9,9 +9,8 @@ export * from './logger';
 export * from './prompts';
 export * from './roles';
 export * from './runtime';
+export * from './search';
 export * from './settings';
-export * from './uuid';
-export * from './audioUtils';
 export * from './utils';
 
 // Export instrumentation types and service

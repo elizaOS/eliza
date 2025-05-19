@@ -21,8 +21,11 @@ export const entityTable = pgTable(
       .notNull(),
     names: text('names')
       .array()
-      .default(sql`'{}'::text[]`),
-    metadata: jsonb('metadata').default(sql`'{}'::jsonb`),
+      .default(sql`'{}'::text[]`)
+      .notNull(),
+    metadata: jsonb('metadata')
+      .default(sql`'{}'::jsonb`)
+      .notNull(),
   },
   (table) => {
     return {

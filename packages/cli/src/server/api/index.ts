@@ -1,19 +1,28 @@
 import type { IAgentRuntime, UUID } from '@elizaos/core';
-import { AgentRuntime, createUniqueUuid, logger as Logger, logger } from '@elizaos/core';
+import {
+  AgentRuntime,
+  ChannelType,
+  createUniqueUuid,
+  EventType,
+  logger as Logger,
+  logger,
+  SOCKET_MESSAGE_TYPE,
+  validateUuid,
+} from '@elizaos/core';
+import type { Tracer } from '@opentelemetry/api';
+import { SpanStatusCode } from '@opentelemetry/api';
 import * as bodyParser from 'body-parser';
 import cors from 'cors';
 import express from 'express';
-import path from 'node:path';
+import crypto from 'node:crypto';
+import http from 'node:http';
+import { match, MatchFunction } from 'path-to-regexp';
+import { Server as SocketIOServer } from 'socket.io';
 import type { AgentServer } from '..';
 import { agentRouter } from './agent';
-import { teeRouter } from './tee';
-import { Server as SocketIOServer } from 'socket.io';
-import { SOCKET_MESSAGE_TYPE, EventType, ChannelType } from '@elizaos/core';
-import http from 'node:http';
-import crypto from 'node:crypto';
-import { worldRouter } from './world';
 import { envRouter } from './env';
-import { SpanStatusCode } from '@opentelemetry/api';
+import { teeRouter } from './tee';
+import { worldRouter } from './world';
 
 // Custom levels from @elizaos/core logger
 const LOG_LEVELS = {
@@ -38,6 +47,209 @@ interface LogEntry {
   time: number;
   msg: string;
   [key: string]: string | number | boolean | null | undefined;
+}
+
+/**
+ * Processes an incoming socket message, handling agent logic and potential instrumentation.
+ */
+async function processSocketMessage(
+  runtime: IAgentRuntime,
+  payload: any,
+  socketId: string,
+  socketRoomId: string,
+  io: SocketIOServer,
+  tracer?: Tracer
+) {
+  const agentId = runtime.agentId;
+  const senderId = payload.senderId;
+
+  // Ensure the sender and recipient are different agents
+  if (senderId === agentId) {
+    logger.debug(`Message sender and recipient are the same agent (${agentId}), ignoring.`);
+    return;
+  }
+
+  if (!payload.message || !payload.message.length) {
+    logger.warn(`no message found for agent ${agentId}`);
+    return;
+  }
+
+  const entityId = createUniqueUuid(runtime, senderId);
+  const uniqueRoomId = createUniqueUuid(runtime, socketRoomId);
+  const source = payload.source;
+  const worldId = payload.worldId;
+
+  const executeLogic = async () => {
+    // Ensure connection between entity and room
+    await runtime.ensureConnection({
+      entityId: entityId,
+      roomId: uniqueRoomId,
+      userName: payload.senderName || 'User',
+      name: payload.senderName || 'User',
+      source: 'client_chat',
+      channelId: uniqueRoomId,
+      serverId: 'client-chat',
+      type: ChannelType.DM,
+      worldId: worldId || createUniqueUuid(runtime, 'client-chat'),
+    });
+
+    // Create unique message ID
+    const messageId = crypto.randomUUID() as UUID;
+
+    // Create message object for the agent
+    const newMessage = {
+      id: messageId,
+      entityId: entityId,
+      agentId: runtime.agentId,
+      roomId: uniqueRoomId,
+      content: {
+        text: payload.message,
+        source: `${source}:${payload.senderName}`,
+      },
+      metadata: {
+        entityName: payload.senderName,
+      },
+      createdAt: Date.now(),
+    };
+
+    // Define callback for agent responses
+    const callback = async (content) => {
+      // NOTE: This callback runs *after* the main span might have ended.
+      // If detailed tracing of the callback is needed, a new linked span could be created here.
+      try {
+        logger.debug('Callback received content:', {
+          contentType: typeof content,
+          contentKeys: content ? Object.keys(content) : 'null',
+        });
+        if (messageId && !content.inReplyTo) content.inReplyTo = messageId;
+
+        const broadcastData: Record<string, any> = {
+          senderId: runtime.agentId,
+          senderName: runtime.character.name,
+          text: content.text || '',
+          roomId: socketRoomId,
+          createdAt: Date.now(),
+          source,
+        };
+
+        // Check if the response is simple, has a message, AND has no actions or only a REPLY action
+        const isSimple = content.simple === true || content.simple === 'true';
+        const hasMessage = !!content.message;
+        const actions = content.actions || [];
+        const isReplyOnlyAction =
+          actions.length === 0 || (actions.length === 1 && actions[0] === 'REPLY');
+
+        if (isSimple && hasMessage && isReplyOnlyAction) {
+          broadcastData.text = content.message;
+        }
+
+        if (content.thought) broadcastData.thought = content.thought;
+        if (content.actions) broadcastData.actions = content.actions;
+
+        logger.debug(`Broadcasting message to room ${socketRoomId}`, {
+          room: socketRoomId,
+        });
+        io.to(socketRoomId).emit('messageBroadcast', broadcastData);
+        io.emit('messageBroadcast', broadcastData);
+
+        // Save agent's response as memory
+        const memory = {
+          id: crypto.randomUUID() as UUID,
+          entityId: runtime.agentId,
+          agentId: runtime.agentId,
+          content: {
+            ...content,
+            inReplyTo: messageId,
+            channelType: ChannelType.DM,
+            source: `${source}:agent`,
+          },
+          roomId: uniqueRoomId,
+          createdAt: Date.now(),
+        };
+        logger.debug('Memory object for response:', { memoryId: memory.id });
+        await runtime.createMemory(memory, 'messages');
+        return [content];
+      } catch (error) {
+        logger.error('Error in socket message callback:', error);
+        return [];
+      }
+    };
+
+    logger.debug('Emitting MESSAGE_RECEIVED', { messageId: newMessage.id });
+
+    // Emit message received event to trigger agent's message handler
+    runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
+      runtime: runtime,
+      message: newMessage,
+      callback,
+      onComplete: () => {
+        // Emit completion event (client might use this for UI like stopping loading indicators)
+        io.to(socketRoomId).emit('messageComplete', {
+          roomId: socketRoomId,
+          agentId,
+          senderId,
+        });
+        // Also explicitly send control message to re-enable input
+        io.to(socketRoomId).emit('controlMessage', {
+          action: 'enable_input',
+          roomId: socketRoomId,
+        });
+        logger.debug('[SOCKET] Sent messageComplete and enable_input controlMessage', {
+          roomId: socketRoomId,
+          agentId,
+          senderId,
+        });
+      },
+    });
+  };
+
+  // Handle instrumentation if tracer is provided and enabled
+  if (tracer && (runtime as AgentRuntime).instrumentationService?.isEnabled?.()) {
+    logger.debug('[SOCKET MESSAGE] Instrumentation enabled. Starting span.', {
+      agentId,
+      entityId,
+      roomId: uniqueRoomId,
+    });
+    await tracer.startActiveSpan('socket.message.received', async (span) => {
+      span.setAttributes({
+        'eliza.agent.id': agentId,
+        'eliza.room.id': uniqueRoomId,
+        'eliza.entity.id': entityId,
+        'eliza.channel.type': ChannelType.DM,
+        'eliza.message.source': source,
+        'eliza.socket.id': socketId,
+      });
+
+      try {
+        await executeLogic();
+        span.setStatus({ code: SpanStatusCode.OK });
+      } catch (error) {
+        logger.error('Error processing instrumented socket message:', error);
+        span.recordException(error);
+        span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+        throw error;
+      } finally {
+        span.end();
+        logger.debug('[SOCKET MESSAGE] Ending instrumentation span.', {
+          agentId,
+          entityId,
+          roomId: uniqueRoomId,
+        });
+      }
+    });
+  } else {
+    // Execute logic without instrumentation
+    logger.debug('[SOCKET MESSAGE] Instrumentation disabled or unavailable, skipping span.', {
+      agentId,
+      entityId,
+      roomId: uniqueRoomId,
+    });
+    try {
+      await executeLogic();
+    } catch (error) {
+      logger.error('Error processing socket message (no instrumentation):', error);
+    }
+  }
 }
 
 /**
@@ -78,277 +290,28 @@ export function setupSocketIO(
       if (messageData.type === SOCKET_MESSAGE_TYPE.SEND_MESSAGE) {
         const payload = messageData.payload;
         const socketRoomId = payload.roomId;
-        const worldId = payload.worldId;
         const senderId = payload.senderId;
 
-        // Get all agents in this room
+        // Get all agents associated with this room (using roomParticipants map)
         const agentsInRoom = roomParticipants.get(socketRoomId) || new Set([socketRoomId as UUID]);
 
         for (const agentId of agentsInRoom) {
-          // Find the primary agent for this room (for simple 1:1 chats)
-          // In more complex implementations, we'd have a proper room management system
           const agentRuntime = agents.get(agentId);
 
           if (!agentRuntime) {
-            logger.warn(`Agent runtime not found for ${agentId}`);
+            logger.warn(`Agent runtime not found for ${agentId} in room ${socketRoomId}`);
             continue;
           }
 
-          // Ensure the sender and recipient are different agents
-          if (senderId === agentId) {
-            logger.debug(`Message sender and recipient are the same agent (${agentId}), ignoring.`);
-            continue;
-          }
-
-          if (!payload.message || !payload.message.length) {
-            logger.warn(`no message found`);
-            continue;
-          }
-          const entityId = createUniqueUuid(agentRuntime, senderId);
-          const uniqueRoomId = createUniqueUuid(agentRuntime, socketRoomId);
-          const source = payload.source;
-
-          // Cast to AgentRuntime to access instrumentation properties
+          // Extract tracer if instrumentation is available
           const concreteRuntime = agentRuntime as AgentRuntime;
+          const tracer =
+            concreteRuntime.instrumentationService?.isEnabled?.() && concreteRuntime.tracer
+              ? concreteRuntime.tracer
+              : undefined;
 
-          // Check if instrumentation is enabled and tracer exists on the concrete runtime
-          if (concreteRuntime.instrumentationService?.isEnabled?.() && concreteRuntime.tracer) {
-            logger.debug('[SOCKET MESSAGE] Instrumentation enabled. Starting span.', {
-              agentId,
-              entityId,
-              roomId: uniqueRoomId,
-            });
-            await concreteRuntime.tracer.startActiveSpan(
-              'socket.message.received',
-              async (span) => {
-                span.setAttributes({
-                  'eliza.agent.id': agentId,
-                  'eliza.room.id': uniqueRoomId,
-                  'eliza.entity.id': entityId,
-                  'eliza.channel.type': ChannelType.DM, // Assuming DM for socket for now
-                  'eliza.message.source': source,
-                  'eliza.socket.id': socket.id,
-                });
-
-                try {
-                  // Ensure connection between entity and room
-                  await agentRuntime.ensureConnection({
-                    entityId: entityId,
-                    roomId: uniqueRoomId,
-                    userName: payload.senderName || 'User',
-                    name: payload.senderName || 'User',
-                    source: 'client_chat',
-                    channelId: uniqueRoomId,
-                    serverId: 'client-chat',
-                    type: ChannelType.DM,
-                    worldId: worldId,
-                  });
-
-                  // Create unique message ID
-                  const messageId = crypto.randomUUID() as UUID;
-
-                  // Create message object for the agent
-                  const newMessage = {
-                    id: messageId,
-                    entityId: entityId,
-                    agentId: agentRuntime.agentId,
-                    roomId: uniqueRoomId,
-                    content: {
-                      text: payload.message,
-                      source: `${source}:${payload.senderName}`,
-                    },
-                    metadata: {
-                      entityName: payload.senderName,
-                    },
-                    createdAt: Date.now(),
-                  };
-
-                  // Define callback for agent responses
-                  const callback = async (content) => {
-                    // NOTE: This callback runs *after* the main span might have ended.
-                    // If detailed tracing of the callback is needed, a new linked span could be created here.
-                    try {
-                      logger.debug('Callback received content:', {
-                        contentType: typeof content,
-                        contentKeys: content ? Object.keys(content) : 'null',
-                      });
-                      if (messageId && !content.inReplyTo) content.inReplyTo = messageId;
-
-                      const broadcastData: Record<string, any> = {
-                        senderId: agentRuntime.agentId,
-                        senderName: agentRuntime.character.name,
-                        text: content.text || '',
-                        roomId: socketRoomId,
-                        createdAt: Date.now(),
-                        source,
-                      };
-                      if (content.thought) broadcastData.thought = content.thought;
-                      if (content.actions) broadcastData.actions = content.actions;
-
-                      logger.debug(`Broadcasting message to room ${socketRoomId}`, {
-                        room: socketRoomId,
-                      });
-                      io.to(socketRoomId).emit('messageBroadcast', broadcastData);
-                      io.emit('messageBroadcast', broadcastData); // Fallback broadcast
-
-                      const memory = {
-                        id: crypto.randomUUID() as UUID,
-                        entityId: agentRuntime.agentId,
-                        agentId: agentRuntime.agentId,
-                        content: {
-                          ...content,
-                          inReplyTo: messageId,
-                          channelType: ChannelType.DM,
-                          source: `${source}:agent`,
-                        },
-                        roomId: uniqueRoomId,
-                        createdAt: Date.now(),
-                      };
-                      logger.debug('Memory object for response:', { memoryId: memory.id });
-                      await agentRuntime.createMemory(memory, 'messages');
-                      return [content];
-                    } catch (error) {
-                      logger.error('Error in socket message callback:', error);
-                      return [];
-                    }
-                  };
-
-                  logger.debug('Emitting MESSAGE_RECEIVED', { messageId: newMessage.id });
-
-                  // Emit message received event to trigger agent's message handler (which has its own spans)
-                  agentRuntime.emitEvent(EventType.MESSAGE_RECEIVED, {
-                    runtime: agentRuntime,
-                    message: newMessage,
-                    callback,
-                    onComplete: () => {
-                      io.emit('messageComplete', {
-                        roomId: socketRoomId,
-                        agentId,
-                        senderId,
-                      });
-                    },
-                  });
-                  span.setStatus({ code: SpanStatusCode.OK });
-                } catch (error) {
-                  logger.error('Error processing socket message:', error);
-                  span.recordException(error);
-                  span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
-                } finally {
-                  span.end();
-                  logger.debug('[SOCKET MESSAGE] Ending instrumentation span.', {
-                    agentId,
-                    entityId,
-                    roomId: uniqueRoomId,
-                  });
-                }
-              }
-            );
-          } else {
-            // Execute original logic without instrumentation if disabled
-            logger.debug(
-              '[SOCKET MESSAGE] Instrumentation disabled or unavailable, skipping span.',
-              { agentId, entityId, roomId: uniqueRoomId }
-            );
-            try {
-              // Ensure connection between entity and room
-              await agentRuntime.ensureConnection({
-                entityId: entityId,
-                roomId: uniqueRoomId,
-                userName: payload.senderName || 'User',
-                name: payload.senderName || 'User',
-                source: 'client_chat',
-                channelId: uniqueRoomId,
-                serverId: 'client-chat',
-                type: ChannelType.DM,
-                worldId: worldId,
-              });
-
-              // Create unique message ID
-              const messageId = crypto.randomUUID() as UUID;
-
-              // Create message object for the agent
-              const newMessage = {
-                id: messageId,
-                entityId: entityId,
-                agentId: agentRuntime.agentId,
-                roomId: uniqueRoomId,
-                content: {
-                  text: payload.message,
-                  source: `${source}:${payload.senderName}`,
-                },
-                metadata: {
-                  entityName: payload.senderName,
-                },
-                createdAt: Date.now(),
-              };
-
-              // Define callback for agent responses
-              const callback = async (content) => {
-                try {
-                  logger.debug('Callback received content:', {
-                    contentType: typeof content,
-                    contentKeys: content ? Object.keys(content) : 'null',
-                  });
-                  if (messageId && !content.inReplyTo) content.inReplyTo = messageId;
-
-                  const broadcastData: Record<string, any> = {
-                    senderId: agentRuntime.agentId,
-                    senderName: agentRuntime.character.name,
-                    text: content.text || '',
-                    roomId: socketRoomId,
-                    createdAt: Date.now(),
-                    source,
-                  };
-                  if (content.thought) broadcastData.thought = content.thought;
-                  if (content.actions) broadcastData.actions = content.actions;
-
-                  logger.debug(`Broadcasting message to room ${socketRoomId}`, {
-                    room: socketRoomId,
-                  });
-                  io.to(socketRoomId).emit('messageBroadcast', broadcastData);
-                  io.emit('messageBroadcast', broadcastData); // Fallback broadcast
-
-                  const memory = {
-                    id: crypto.randomUUID() as UUID,
-                    entityId: agentRuntime.agentId,
-                    agentId: agentRuntime.agentId,
-                    content: {
-                      ...content,
-                      inReplyTo: messageId,
-                      channelType: ChannelType.DM,
-                      source: `${source}:agent`,
-                    },
-                    roomId: uniqueRoomId,
-                    createdAt: Date.now(),
-                  };
-                  logger.debug('Memory object for response:', { memoryId: memory.id });
-                  await agentRuntime.createMemory(memory, 'messages');
-                  return [content];
-                } catch (error) {
-                  logger.error('Error in socket message callback:', error);
-                  return [];
-                }
-              };
-
-              logger.debug('Emitting MESSAGE_RECEIVED', { messageId: newMessage.id });
-
-              // Emit message received event to trigger agent's message handler
-              agentRuntime.emitEvent(EventType.MESSAGE_RECEIVED, {
-                runtime: agentRuntime,
-                message: newMessage,
-                callback,
-                onComplete: () => {
-                  io.emit('messageComplete', {
-                    roomId: socketRoomId,
-                    agentId,
-                    senderId,
-                  });
-                },
-              });
-            } catch (error) {
-              logger.error('Error processing socket message (no instrumentation):', error);
-            }
-          }
+          // Call the unified processing function
+          await processSocketMessage(agentRuntime, payload, socket.id, socketRoomId, io, tracer);
         }
       } else if (messageData.type === SOCKET_MESSAGE_TYPE.ROOM_JOINING) {
         const payload = messageData.payload;
@@ -379,6 +342,209 @@ export function setupSocketIO(
   });
 
   return io;
+}
+
+// Extracted function to handle plugin routes
+export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): express.RequestHandler {
+  return (req, res, next) => {
+    logger.debug('Handling plugin request in the plugin route handler', {
+      path: req.path,
+      method: req.method,
+      query: req.query,
+    });
+
+    // Debug output for JavaScript requests
+    if (
+      req.path.endsWith('.js') ||
+      req.path.includes('.js?') ||
+      req.path.match(/index-[A-Za-z0-9]{8}\.js/) // Escaped dot for regex
+    ) {
+      logger.debug(`JavaScript request in plugin handler: ${req.method} ${req.path}`);
+      res.setHeader('Content-Type', 'application/javascript');
+    }
+
+    if (agents.size === 0) {
+      logger.debug('No agents available, skipping plugin route handling.');
+      return next();
+    }
+
+    let handled = false;
+    const agentIdFromQuery = req.query.agentId as UUID | undefined;
+    const reqPath = req.path; // Path to match against plugin routes (e.g., /hello2)
+
+    if (agentIdFromQuery && validateUuid(agentIdFromQuery)) {
+      const runtime = agents.get(agentIdFromQuery);
+      if (runtime) {
+        logger.debug(
+          `Agent-scoped request for Agent ID: ${agentIdFromQuery} from query. Path: ${reqPath}`
+        );
+        for (const route of runtime.routes) {
+          if (handled) break;
+
+          const methodMatches = req.method.toLowerCase() === route.type.toLowerCase();
+          if (!methodMatches) continue;
+
+          const routePath = route.path.startsWith('/') ? route.path : `/${route.path}`;
+
+          if (routePath.endsWith('/*')) {
+            const baseRoute = routePath.slice(0, -1);
+            if (reqPath.startsWith(baseRoute)) {
+              logger.debug(
+                `Agent ${agentIdFromQuery} plugin wildcard route: [${route.type.toUpperCase()}] ${routePath} for request: ${reqPath}`
+              );
+              try {
+                route.handler(req, res, runtime);
+                handled = true;
+              } catch (error) {
+                logger.error(
+                  `Error handling plugin wildcard route for agent ${agentIdFromQuery}: ${routePath}`,
+                  {
+                    error,
+                    path: reqPath,
+                    agent: agentIdFromQuery,
+                  }
+                );
+                if (!res.headersSent) {
+                  const status =
+                    error.code === 'ENOENT' || error.message?.includes('not found') ? 404 : 500;
+                  res
+                    .status(status)
+                    .json({ error: error.message || 'Error processing wildcard route' });
+                }
+                handled = true;
+              }
+            }
+          } else {
+            logger.debug(
+              `Agent ${agentIdFromQuery} attempting plugin route match: [${route.type.toUpperCase()}] ${routePath} vs request path: ${reqPath}`
+            );
+            let matcher: MatchFunction<object>;
+            try {
+              matcher = match(routePath, { decode: decodeURIComponent });
+            } catch (err) {
+              logger.error(
+                `Invalid plugin route path syntax for agent ${agentIdFromQuery}: "${routePath}"`,
+                err
+              );
+              continue;
+            }
+
+            const matched = matcher(reqPath);
+
+            if (matched) {
+              logger.debug(
+                `Agent ${agentIdFromQuery} plugin route matched: [${route.type.toUpperCase()}] ${routePath} vs request path: ${reqPath}`
+              );
+              req.params = { ...(matched.params || {}) };
+              try {
+                route.handler(req, res, runtime);
+                handled = true;
+              } catch (error) {
+                logger.error(
+                  `Error handling plugin route for agent ${agentIdFromQuery}: ${routePath}`,
+                  {
+                    error,
+                    path: reqPath,
+                    agent: agentIdFromQuery,
+                    params: req.params,
+                  }
+                );
+                if (!res.headersSent) {
+                  const status =
+                    error.code === 'ENOENT' || error.message?.includes('not found') ? 404 : 500;
+                  res.status(status).json({ error: error.message || 'Error processing route' });
+                }
+                handled = true;
+              }
+            }
+          }
+        } // End route loop
+      } else {
+        logger.warn(
+          `Agent ID ${agentIdFromQuery} provided in query, but agent runtime not found. Path: ${reqPath}. Passing to next middleware.`
+        );
+      }
+    } else if (agentIdFromQuery && !validateUuid(agentIdFromQuery)) {
+      logger.warn(
+        `Invalid Agent ID format in query: ${agentIdFromQuery}. Path: ${reqPath}. Passing to next middleware.`
+      );
+    } else {
+      // No agentId in query, or it was invalid. Try matching globally for any agent that might have this route.
+      // This allows for non-agent-specific plugin routes if any plugin defines them.
+      logger.debug(`No valid agentId in query. Trying global match for path: ${reqPath}`);
+      for (const [_, runtime] of agents) {
+        // Iterate over all agents
+        if (handled) break; // If handled by a previous agent's route (e.g. specific match)
+
+        for (const route of runtime.routes) {
+          if (handled) break;
+
+          const methodMatches = req.method.toLowerCase() === route.type.toLowerCase();
+          if (!methodMatches) continue;
+
+          const routePath = route.path.startsWith('/') ? route.path : `/${route.path}`;
+
+          // Do not allow agent-specific routes (containing placeholders like :id) to be matched globally
+          if (routePath.includes(':')) {
+            continue;
+          }
+
+          if (routePath.endsWith('/*')) {
+            const baseRoute = routePath.slice(0, -1);
+            if (reqPath.startsWith(baseRoute)) {
+              logger.debug(
+                `Global plugin wildcard route: [${route.type.toUpperCase()}] ${routePath} (Agent: ${runtime.agentId}) for request: ${reqPath}`
+              );
+              try {
+                route.handler(req, res, runtime);
+                handled = true;
+              } catch (error) {
+                logger.error(
+                  `Error handling global plugin wildcard route ${routePath} (Agent: ${runtime.agentId})`,
+                  { error, path: reqPath }
+                );
+                if (!res.headersSent) {
+                  const status =
+                    error.code === 'ENOENT' || error.message?.includes('not found') ? 404 : 500;
+                  res
+                    .status(status)
+                    .json({ error: error.message || 'Error processing wildcard route' });
+                }
+                handled = true;
+              }
+            }
+          } else if (reqPath === routePath) {
+            // Exact match for global routes
+            logger.debug(
+              `Global plugin route matched: [${route.type.toUpperCase()}] ${routePath} (Agent: ${runtime.agentId}) for request: ${reqPath}`
+            );
+            try {
+              route.handler(req, res, runtime);
+              handled = true;
+            } catch (error) {
+              logger.error(
+                `Error handling global plugin route ${routePath} (Agent: ${runtime.agentId})`,
+                { error, path: reqPath }
+              );
+              if (!res.headersSent) {
+                const status =
+                  error.code === 'ENOENT' || error.message?.includes('not found') ? 404 : 500;
+                res.status(status).json({ error: error.message || 'Error processing route' });
+              }
+              handled = true;
+            }
+          }
+        } // End route loop for global matching
+      } // End agent loop for global matching
+    }
+
+    if (handled) {
+      return;
+    }
+
+    logger.debug(`No plugin route handled ${req.method} ${req.path}, passing to next middleware.`);
+    next();
+  };
 }
 
 /**
@@ -434,204 +600,17 @@ export function createApiRouter(
     );
   });
 
-  // Define plugin routes middleware function
-  const handlePluginRoutes = (
-    req: express.Request,
-    res: express.Response,
-    next: express.NextFunction
-  ) => {
-    // Debug output for all JavaScript requests to help diagnose MIME type issues
-    if (
-      req.path.endsWith('.js') ||
-      req.path.includes('.js?') ||
-      req.path.match(/index-[A-Za-z0-9]{8}\.js/)
-    ) {
-      logger.debug(`JavaScript request: ${req.method} ${req.path}`);
-
-      // Pre-emptively set the correct MIME type for all JavaScript files
-      // This ensures even files served by the static middleware get the right type
-      res.setHeader('Content-Type', 'application/javascript');
-    }
-
-    // Skip if we don't have an agent server or no agents
-    if (!server || agents.size === 0) {
-      return next();
-    }
-
-    // Attempt to match the request with a plugin route
-    let handled = false;
-
-    // Check each agent for matching plugin routes
-    for (const [, runtime] of agents) {
-      if (handled) break;
-
-      // Check each plugin route
-      for (const route of runtime.routes) {
-        // Skip if method doesn't match
-        if (req.method.toLowerCase() !== route.type.toLowerCase()) {
-          continue;
-        }
-
-        // Check if path matches
-        // Make sure we're comparing the path properly
-        const routePath = route.path.startsWith('/') ? route.path : `/${route.path}`;
-        const reqPath = req.path;
-
-        // Handle exact matches
-        if (reqPath === routePath) {
-          try {
-            route.handler(req, res, runtime);
-            handled = true;
-            break;
-          } catch (error) {
-            logger.error('Error handling plugin route', {
-              error,
-              path: reqPath,
-              agent: runtime.agentId,
-            });
-            res.status(500).json({ error: 'Internal Server Error' });
-            handled = true;
-            break;
-          }
-        }
-
-        // Handle wildcard paths (e.g., /portal/*)
-        if (routePath.endsWith('*') && reqPath.startsWith(routePath.slice(0, -1))) {
-          try {
-            // Set the correct MIME type based on the file extension
-            // This is important for any static files served by plugin routes
-            const ext = path.extname(reqPath).toLowerCase();
-
-            // Map extensions to content types
-            const contentTypes: Record<string, string> = {
-              '.js': 'application/javascript',
-              '.mjs': 'application/javascript',
-              '.css': 'text/css',
-              '.html': 'text/html',
-              '.json': 'application/json',
-              '.png': 'image/png',
-              '.jpg': 'image/jpeg',
-              '.jpeg': 'image/jpeg',
-              '.gif': 'image/gif',
-              '.svg': 'image/svg+xml',
-              '.ico': 'image/x-icon',
-              '.webp': 'image/webp',
-              '.woff': 'font/woff',
-              '.woff2': 'font/woff2',
-              '.ttf': 'font/ttf',
-              '.eot': 'application/vnd.ms-fontobject',
-              '.otf': 'font/otf',
-            };
-
-            // Set content type if we have a mapping for this extension
-            if (ext && contentTypes[ext]) {
-              res.setHeader('Content-Type', contentTypes[ext]);
-              logger.debug(`Set MIME type for ${reqPath}: ${contentTypes[ext]}`);
-            }
-
-            // Check for Vite's hashed filenames pattern (common in assets directories)
-            if (reqPath.match(/[a-zA-Z0-9]+-[a-zA-Z0-9]{8}\.[a-z]{2,4}$/)) {
-              // Ensure JS modules get the correct MIME type
-              if (reqPath.endsWith('.js')) {
-                res.setHeader('Content-Type', 'application/javascript');
-              } else if (reqPath.endsWith('.css')) {
-                res.setHeader('Content-Type', 'text/css');
-              }
-            }
-
-            // Now let the route handler process the request
-            // The plugin's handler is responsible for finding and sending the file
-            route.handler(req, res, runtime);
-            handled = true;
-            break;
-          } catch (error) {
-            logger.error('Error handling plugin wildcard route', {
-              error,
-              path: reqPath,
-              agent: runtime.agentId,
-            });
-
-            // Handle errors for different file types appropriately
-            const ext = path.extname(reqPath).toLowerCase();
-
-            // If the error was from trying to find a static file that doesn't exist,
-            // we should return a response with the appropriate MIME type based on file extension
-            if (
-              error.code === 'ENOENT' ||
-              error.message?.includes('not found') ||
-              error.message?.includes('cannot find')
-            ) {
-              logger.debug(`File not found: ${reqPath}`);
-
-              // Return responses with the correct MIME type
-              // This prevents browsers from misinterpreting the response type
-              if (ext === '.js' || ext === '.mjs') {
-                res.setHeader('Content-Type', 'application/javascript');
-                return res.status(404).send(`// JavaScript file not found: ${reqPath}`);
-              }
-
-              if (ext === '.css') {
-                res.setHeader('Content-Type', 'text/css');
-                return res.status(404).send(`/* CSS file not found: ${reqPath} */`);
-              }
-
-              if (ext === '.svg') {
-                res.setHeader('Content-Type', 'image/svg+xml');
-                return res.status(404).send(`<!-- SVG not found: ${reqPath} -->`);
-              }
-
-              if (ext === '.json') {
-                res.setHeader('Content-Type', 'application/json');
-                return res.status(404).send(`{ "error": "File not found", "path": "${reqPath}" }`);
-              }
-
-              // Generic 404 for other file types
-              res.status(404).send(`File not found: ${reqPath}`);
-              handled = true;
-              break;
-            }
-
-            // Return a 500 error for other types of errors
-            res.status(500).json({
-              error: 'Internal Server Error',
-              message: error.message || 'Unknown error',
-            });
-            handled = true;
-            break;
-          }
-        }
-      }
-    }
-
-    // If a plugin route handled the request, stop here
-    if (handled) {
-      return;
-    }
-
-    // Otherwise, continue to the next middleware
-    next();
-  };
-
-  // Add the plugin routes middleware directly to the router
-  // We'll do this by handling all routes with a wildcard
-  router.all('*', (req, res, next) => {
-    // Skip for sub-routes that are already handled
-    if (req.path.startsWith('/agents/') || req.path.startsWith('/tee/')) {
-      return next();
-    }
-
-    // Otherwise run our plugin handler
-    handlePluginRoutes(req, res, next);
-  });
-
-  // Mount sub-routers
+  // Mount specific sub-routers FIRST
   router.use('/agents', agentRouter(agents, server));
   router.use('/world', worldRouter(server));
   router.use('/envs', envRouter());
   router.use('/tee', teeRouter(agents));
 
+  // Add the plugin routes middleware AFTER specific routers
+  router.all('*', createPluginRouteHandler(agents));
+
   router.get('/stop', (_req, res) => {
-    server.stop();
+    server?.stop(); // Use optional chaining in case server is undefined
     logger.log(
       {
         apiRoute: '/stop',
@@ -650,7 +629,7 @@ export function createApiRouter(
     const limit = Math.min(Number(req.query.limit) || 100, 1000); // Max 1000 entries
 
     // Access the underlying logger instance
-    const destination = (logger as unknown)[Symbol.for('pino-destination')];
+    const destination = (logger as any)[Symbol.for('pino-destination')];
 
     if (!destination?.recentLogs) {
       return res.status(500).json({
@@ -725,7 +704,7 @@ export function createApiRouter(
   const logsClearHandler = (_req, res) => {
     try {
       // Access the underlying logger instance
-      const destination = (logger as unknown)[Symbol.for('pino-destination')];
+      const destination = (logger as any)[Symbol.for('pino-destination')];
 
       if (!destination?.clear) {
         return res.status(500).json({

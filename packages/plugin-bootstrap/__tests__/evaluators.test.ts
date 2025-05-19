@@ -67,6 +67,18 @@ describe('Reflection Evaluator', () => {
     const composeSpy = vi.spyOn(entityUtils, 'composePrompt').mockReturnValue('Composed prompt');
 
     // Arrange
+    // Ensure mockMessage.content.channelType is defined for the roomType
+    mockMessage.content = { ...mockMessage.content, channelType: 'group' };
+    // Mock getRelationships and getMemories as they are called before composePrompt
+    mockRuntime.getRelationships.mockResolvedValue([]);
+    mockRuntime.getMemories.mockResolvedValue([]); // For knownFacts
+
+    // Assume mockRuntime.character.templates.reflectionTemplate is set, causing the specific template string
+    if (!mockRuntime.character) mockRuntime.character = {} as any;
+    if (!mockRuntime.character.templates) mockRuntime.character.templates = {};
+    mockRuntime.character.templates.reflectionTemplate =
+      'Test reflection template {{recentMessages}}';
+
     mockRuntime.useModel.mockResolvedValueOnce({
       thought: 'I am doing well in this conversation.',
       facts: [{ claim: 'User likes ice cream', type: 'fact', in_bio: false, already_known: false }],
@@ -87,10 +99,20 @@ describe('Reflection Evaluator', () => {
     expect(composeSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         state: expect.objectContaining({
-          roomType: 'GROUP',
+          ...(mockState.data?.values || {}), // Include actual values from mockState
+          roomType: 'group',
           senderId: 'test-entity-id',
+          knownFacts: '', // Assuming formatFacts returns '' for empty knownFacts
+          entitiesInRoom: JSON.stringify([
+            // This comes from the global getEntityDetails mock
+            { id: 'test-entity-id', names: ['Test Entity'], metadata: {} },
+            { id: 'test-agent-id', names: ['Test Agent'], metadata: {} },
+            { id: 'entity-1', names: ['Entity 1'], metadata: {} },
+            { id: 'entity-2', names: ['Entity 2'], metadata: {} },
+          ]),
+          existingRelationships: JSON.stringify([]), // from mockRuntime.getRelationships
         }),
-        template: expect.any(String),
+        template: 'Test reflection template {{recentMessages}}',
       })
     );
 
@@ -115,7 +137,18 @@ describe('Reflection Evaluator', () => {
     // Spy on the composePrompt function in the @elizaos/core module
     const composeSpy = vi.spyOn(entityUtils, 'composePrompt').mockReturnValue('Composed prompt');
 
+    // Explicitly mock getEntityDetails using spyOn for this test case
+    const getEntityDetailsSpy = vi.spyOn(entityUtils, 'getEntityDetails').mockResolvedValue([
+      { id: 'test-entity-id', names: ['Test Entity'], metadata: {} },
+      { id: 'test-agent-id', names: ['Test Agent'], metadata: {} },
+      { id: 'entity-1', names: ['Entity 1'], metadata: {} },
+      { id: 'entity-2', names: ['Entity 2'], metadata: {} },
+    ]);
+
     // Arrange
+    mockRuntime.getRelationships.mockResolvedValue([]); // Ensure getRelationships returns an array
+    mockRuntime.getMemories.mockResolvedValue([]); // Ensure getMemories for knownFacts returns an array
+
     mockRuntime.useModel.mockResolvedValueOnce({
       thought: 'I am doing well in this conversation.',
       facts: [{ claim: 'User likes ice cream', type: 'fact', in_bio: false, already_known: false }],
@@ -175,6 +208,7 @@ describe('Reflection Evaluator', () => {
 
     // Clean up
     composeSpy.mockRestore();
+    getEntityDetailsSpy.mockRestore(); // Restore the spy
   });
 
   it('should handle model errors without crashing', async () => {
@@ -521,26 +555,4 @@ describe('Multiple Prompt Evaluator Factory', () => {
       }),
     });
   });
-});
-
-describe('Evaluator Factory Patterns', () => {
-  let mockRuntime: MockRuntime;
-  let mockMessage: Partial<Memory>;
-  let mockState: Partial<State>;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-
-    // Use setupActionTest for consistent test setup
-    const setup = setupActionTest();
-    mockRuntime = setup.mockRuntime;
-    mockMessage = setup.mockMessage;
-    mockState = setup.mockState;
-  });
-
-  afterEach(() => {
-    vi.resetAllMocks();
-  });
-
-  // ... existing code ...
 });

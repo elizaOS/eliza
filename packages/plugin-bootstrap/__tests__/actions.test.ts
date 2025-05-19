@@ -8,8 +8,8 @@ import { choiceAction } from '../src/actions/choice';
 import { sendMessageAction } from '../src/actions/sendMessage';
 import { updateEntityAction } from '../src/actions/updateEntity';
 import { noneAction } from '../src/actions/none';
-import updateRoleAction from '../src/actions/roles';
-import updateSettingsAction from '../src/actions/settings';
+import { updateRoleAction } from '../src/actions/roles';
+import { updateSettingsAction } from '../src/actions/settings';
 import { unfollowRoomAction } from '../src/actions/unfollowRoom';
 import {
   IAgentRuntime,
@@ -45,19 +45,16 @@ describe('Reply Action', () => {
   let mockState: Partial<State>;
   let callbackFn: ReturnType<typeof vi.fn>;
 
-  beforeEach(() => {
-    const setup = setupActionTest();
-    mockRuntime = setup.mockRuntime;
-    mockMessage = setup.mockMessage;
-    mockState = setup.mockState;
-    callbackFn = setup.callbackFn;
-  });
-
   afterEach(() => {
     vi.resetAllMocks();
   });
 
   it('should validate reply action correctly', async () => {
+    const setup = setupActionTest();
+    mockRuntime = setup.mockRuntime;
+    mockMessage = setup.mockMessage;
+    mockState = setup.mockState;
+
     const isValid = await replyAction.validate(
       mockRuntime as IAgentRuntime,
       mockMessage as Memory,
@@ -68,6 +65,26 @@ describe('Reply Action', () => {
   });
 
   it('should handle reply action successfully', async () => {
+    const specificUseModelMock = vi.fn().mockImplementation(async (modelType, params) => {
+      console.log('specificUseModelMock CALLED WITH - modelType:', modelType, 'params:', params);
+      const result = {
+        message: 'Hello there! How can I help you today?',
+        thought: 'Responding to the user greeting.',
+      };
+      console.log('specificUseModelMock RETURNING:', result);
+      return Promise.resolve(result);
+    });
+
+    const setup = setupActionTest({
+      runtimeOverrides: {
+        useModel: specificUseModelMock,
+      },
+    });
+    mockRuntime = setup.mockRuntime;
+    mockMessage = setup.mockMessage;
+    mockState = setup.mockState;
+    callbackFn = setup.callbackFn;
+
     await replyAction.handler(
       mockRuntime as IAgentRuntime,
       mockMessage as Memory,
@@ -76,7 +93,7 @@ describe('Reply Action', () => {
       callbackFn
     );
 
-    expect(mockRuntime.useModel).toHaveBeenCalled();
+    expect(specificUseModelMock).toHaveBeenCalled();
     expect(callbackFn).toHaveBeenCalledWith(
       expect.objectContaining({
         text: 'Hello there! How can I help you today?',
@@ -85,8 +102,16 @@ describe('Reply Action', () => {
   });
 
   it('should handle errors in reply action gracefully', async () => {
-    // Setup the model to throw an error with a specific message
-    mockRuntime.useModel = vi.fn().mockRejectedValue(new Error('Model API timeout'));
+    const errorUseModelMock = vi.fn().mockRejectedValue(new Error('Model API timeout'));
+    const setup = setupActionTest({
+      runtimeOverrides: {
+        useModel: errorUseModelMock,
+      },
+    });
+    mockRuntime = setup.mockRuntime;
+    mockMessage = setup.mockMessage;
+    mockState = setup.mockState;
+    callbackFn = setup.callbackFn;
 
     // Implement a fallback handler within the test
     const mockReplyAction = {
@@ -96,14 +121,14 @@ describe('Reply Action', () => {
         message: Memory,
         state: State,
         options: any,
-        callback: HandlerCallback
+        cb: HandlerCallback
       ) => {
         try {
-          // This will throw
-          await runtime.useModel(ModelType.OBJECT_LARGE, {});
+          // This will throw because runtime.useModel is errorUseModelMock
+          await runtime.useModel(ModelType.OBJECT_SMALL, {});
         } catch (error) {
           logger.error(`Error in reply action: ${(error as Error).message}`);
-          await callback({
+          await cb({
             text: `I apologize, but I encountered an issue while processing your request: ${(error as Error).message}`,
             actions: ['REPLY_ERROR'],
           });
@@ -1118,7 +1143,7 @@ describe('Send Message Action (Extended)', () => {
     ) => {
       try {
         // Parse the destination from model
-        const targetDetails = await runtime.useModel(ModelType.OBJECT_LARGE, {
+        const targetDetails = await runtime.useModel(ModelType.OBJECT_SMALL, {
           prompt: 'Where to send message?',
         });
 
@@ -1214,7 +1239,7 @@ describe('Send Message Action (Extended)', () => {
     ) => {
       try {
         // Parse the destination from model
-        const targetDetails = await runtime.useModel(ModelType.OBJECT_LARGE, {
+        const targetDetails = await runtime.useModel(ModelType.OBJECT_SMALL, {
           prompt: 'Where to send message?',
         });
 

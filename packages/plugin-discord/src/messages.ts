@@ -4,11 +4,10 @@ import {
   EventType,
   type HandlerCallback,
   type IAgentRuntime,
-  type IBrowserService,
-  type IVideoService,
   type Media,
   type Memory,
   ServiceType,
+  type UUID,
   createUniqueUuid,
   logger,
 } from '@elizaos/core';
@@ -75,7 +74,7 @@ export class MessageManager {
 
     if (
       this.runtime.character.settings?.discord?.shouldRespondOnlyToMentions &&
-      !message.mentions.users?.has(this.client.user?.id)
+      (!this.client.user?.id || !message.mentions.users?.has(this.client.user.id))
     ) {
       return;
     }
@@ -115,6 +114,8 @@ export class MessageManager {
       channelId: message.channel.id,
       serverId,
       type,
+      worldId: createUniqueUuid(this.runtime, serverId ?? roomId) as UUID,
+      worldName: message.guild?.name,
     });
 
     try {
@@ -144,6 +145,33 @@ export class MessageManager {
 
       const messageId = createUniqueUuid(this.runtime, message.id);
 
+      // Start typing indicator immediately when processing the message
+      const channel = message.channel as TextChannel;
+
+      // Start the typing indicator
+      const startTyping = () => {
+        try {
+          // sendTyping is not available at test time
+          if (channel.sendTyping) {
+            channel.sendTyping();
+          }
+        } catch (err) {
+          logger.warn('Error sending typing indicator:', err);
+        }
+      };
+
+      // Initial typing indicator
+      startTyping();
+
+      // Create interval to keep the typing indicator active
+      const typingInterval = setInterval(startTyping, 8000);
+
+      // Store the interval globally to be accessed by the callback
+      const typingData = {
+        interval: typingInterval,
+        cleared: false,
+      };
+
       const newMessage: Memory = {
         id: messageId,
         entityId: entityId,
@@ -162,49 +190,74 @@ export class MessageManager {
         },
         metadata: {
           entityName: name,
+          type: 'message',
         },
         createdAt: message.createdTimestamp,
       };
 
-      const callback: HandlerCallback = async (content: Content, files: any[]) => {
+      const callback: HandlerCallback = async (
+        content: Content,
+        files: Array<{ attachment: Buffer | string; name: string }>
+      ) => {
         try {
           if (message.id && !content.inReplyTo) {
             content.inReplyTo = createUniqueUuid(this.runtime, message.id);
           }
-          const messages = await sendMessageInChunks(
-            message.channel as TextChannel,
-            content.text,
-            message.id,
-            files
-          );
 
-          const memories: Memory[] = [];
-          for (const m of messages) {
-            const actions = content.actions;
+          try {
+            const messages = await sendMessageInChunks(
+              channel,
+              content.text ?? '',
+              message.id!,
+              files
+            );
 
-            const memory: Memory = {
-              id: createUniqueUuid(this.runtime, m.id),
-              entityId: this.runtime.agentId,
-              agentId: this.runtime.agentId,
-              content: {
-                ...content,
-                actions,
-                inReplyTo: messageId,
-                url: m.url,
-                channelType: type,
-              },
-              roomId,
-              createdAt: m.createdTimestamp,
-            };
-            memories.push(memory);
+            const memories: Memory[] = [];
+            for (const m of messages) {
+              const actions = content.actions;
+
+              const memory: Memory = {
+                id: createUniqueUuid(this.runtime, m.id),
+                entityId: this.runtime.agentId,
+                agentId: this.runtime.agentId,
+                content: {
+                  ...content,
+                  actions,
+                  inReplyTo: messageId,
+                  url: m.url,
+                  channelType: type,
+                },
+                roomId,
+                createdAt: m.createdTimestamp,
+              };
+              memories.push(memory);
+            }
+
+            for (const m of memories) {
+              await this.runtime.createMemory(m, 'messages');
+            }
+
+            // Clear typing indicator
+            if (typingData.interval && !typingData.cleared) {
+              clearInterval(typingData.interval);
+              typingData.cleared = true;
+            }
+
+            return memories;
+          } catch (error) {
+            console.error('Error sending message:', error);
+            if (typingData.interval && !typingData.cleared) {
+              clearInterval(typingData.interval);
+              typingData.cleared = true;
+            }
+            return [];
           }
-
-          for (const m of memories) {
-            await this.runtime.createMemory(m, 'messages');
-          }
-          return memories;
         } catch (error) {
-          console.error('Error sending message:', error);
+          console.error('Error handling message:', error);
+          if (typingData.interval && !typingData.cleared) {
+            clearInterval(typingData.interval);
+            typingData.cleared = true;
+          }
           return [];
         }
       };
@@ -214,6 +267,13 @@ export class MessageManager {
         message: newMessage,
         callback,
       });
+
+      setTimeout(() => {
+        if (typingData.interval && !typingData.cleared) {
+          clearInterval(typingData.interval);
+          typingData.cleared = true;
+        }
+      }, 500);
     } catch (error) {
       console.error('Error handling message:', error);
     }
@@ -268,11 +328,9 @@ export class MessageManager {
     const urls = processedContent.match(urlRegex) || [];
 
     for (const url of urls) {
-      if (this.runtime.getService<IVideoService>(ServiceType.VIDEO)?.isVideoUrl(url)) {
-        const videoService = this.runtime.getService<IVideoService>(ServiceType.VIDEO);
-        if (!videoService) {
-          throw new Error('Video service not found');
-        }
+      // Use string literal type for getService, assume methods exist at runtime
+      const videoService = this.runtime.getService(ServiceType.VIDEO) as any; // Cast to any
+      if (videoService?.isVideoUrl(url)) {
         const videoInfo = await videoService.processVideo(url, this.runtime);
 
         attachments.push({
@@ -284,9 +342,11 @@ export class MessageManager {
           text: videoInfo.text,
         });
       } else {
-        const browserService = this.runtime.getService<IBrowserService>(ServiceType.BROWSER);
+        // Use string literal type for getService, assume methods exist at runtime
+        const browserService = this.runtime.getService(ServiceType.BROWSER) as any; // Cast to any
         if (!browserService) {
-          throw new Error('Browser service not found');
+          logger.warn('Browser service not found');
+          continue;
         }
 
         const { title, description: summary } = await browserService.getPageContent(

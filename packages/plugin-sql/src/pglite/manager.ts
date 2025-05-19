@@ -65,7 +65,10 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
     const timeout = setTimeout(() => {
       logger.warn('Shutdown timeout reached, forcing database connection closure...');
       this.client.close().finally(() => {
-        process.exit(1);
+        logger.warn('Forced database connection closure complete.');
+        if (process.env.NODE_ENV !== 'test') {
+          process.exit(1);
+        }
       });
     }, this.shutdownTimeout);
 
@@ -73,10 +76,16 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
       await this.client.close();
       clearTimeout(timeout);
       logger.info('PGlite client shutdown completed successfully');
-      process.exit(0);
+      if (process.env.NODE_ENV !== 'test') {
+        process.exit(0);
+      }
     } catch (error) {
       logger.error('Error during graceful shutdown:', error);
-      process.exit(1);
+      if (process.env.NODE_ENV !== 'test') {
+        process.exit(1);
+      } else {
+        throw error;
+      }
     }
   }
 
@@ -147,11 +156,16 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
     try {
       const db = drizzle(this.client);
 
-      const __filename = fileURLToPath(import.meta.url);
-      const __dirname = pathDirname(__filename);
+      const packageJsonUrl = await import.meta.resolve('@elizaos/plugin-sql/package.json');
+      const packageJsonPath = fileURLToPath(packageJsonUrl);
+      const packageRoot = pathDirname(packageJsonPath);
+      const migrationsPath = pathResolve(packageRoot, 'drizzle/migrations');
+      logger.debug(
+        `Resolved migrations path (pglite) using import.meta.resolve: ${migrationsPath}`
+      );
 
       await migrate(db, {
-        migrationsFolder: pathResolve(__dirname, '../drizzle/migrations'),
+        migrationsFolder: migrationsPath,
         migrationsSchema: 'public',
       });
     } catch (error) {

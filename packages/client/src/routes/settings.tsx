@@ -23,5 +23,11 @@ export default function AgentRoute() {
 
   if (!agent) return null;
 
-  return <AgentSettings agent={agent} agentId={agentId} />;
+  return (
+    <div className="flex w-full justify-center">
+      <div className="w-full md:max-w-4xl">
+        <AgentSettings agent={agent} agentId={agentId} />
+      </div>
+    </div>
+  );
 }

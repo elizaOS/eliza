@@ -1,0 +1,33 @@
+# Bossu
+
+## Overview
+
+Bossu is an AI agent platform specialized for Web3 applications, bridging autonomous AI systems with decentralized technologies. It partners with ElizaOS ecosystem to provide specialized Web3 capabilities complementing Eliza's general-purpose AI agent framework.
+
+## Eliza Integration
+
+- Integrates via ElizaOS's plugin architecture
+- Technical synergies:
+
+  - ERC-6551 token-bound accounts for unified agent identity
+  - Shared memory layer for cross-platform context
+  - Delegated transaction signing via Eliza's secure enclave
+  - Plugin registry enabling one-click deployment
+
+- Developer access through Eliza's plugin marketplace:
+
+```typescript
+import { BossuWeb3 } from '@elizaos-plugins/bossu-integration';
+const agent = new BossuWeb3({ network: 'arbitrum' });
+```
+
+## Recent Updates (Q1 2025)
+
+- February: Added Optimism Superchain integration support
+- March: Released testnet version of cross-chain MEV protection system
+
+## Market Position
+
+- Niche provider in Web3 AI sector
+- Competes with Chainlink Functions and OpenZeppelin Defender
+- Key partnerships: LayerZero (omnichain messaging), Axiom (ZK-proof infrastructure), Socket (liquidity routing)

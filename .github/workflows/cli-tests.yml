@@ -1,14 +1,13 @@
 name: Eliza CLI Tests
 
+env:
+  GH_TOKEN: ${{ secrets.GH_TOKEN }}
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 on:
   push:
-    paths:
-      - 'packages/cli/**'
-      - '.github/workflows/cli-tests.yml'
-  pull_request:
-    paths:
-      - 'packages/cli/**'
-      - '.github/workflows/cli-tests.yml'
+  pull_request_target:
+    branches:
+      - 'v2-develop'
 
 jobs:
   test:
@@ -24,9 +23,12 @@ jobs:
           node-version: 23
 
       - name: Set up Bun
-        uses: oven-sh/setup-bun@v1
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
+
+      - name: Mention Bun version
+        run: bun --version
 
       - name: Install dependencies
         run: bun install
@@ -35,10 +37,9 @@ jobs:
         uses: actions/cache@v3
         with:
           path: .turbo
-          key: ${{ runner.os }}-turbo-${{ github.sha }}
+          key: ${{ runner.os }}-turbo-${{ github.event.pull_request.head.sha || github.sha }}
           restore-keys: |
             ${{ runner.os }}-turbo-
-
 
       - name: Build all packages
         run: bun turbo run build --filter=!@elizaos/docs
@@ -46,10 +47,41 @@ jobs:
       - name: Install bats (npm)
         run: npm install -g bats
 
+      - name: Clean eliza projects cache
+        run: rm -rf ~/.eliza/projects
+
+      - name: Download models
+        run: |
+          MODEL_DIR="$HOME/.eliza/models"
+          mkdir -p "$MODEL_DIR"
+          declare -a models=(
+            "DeepHermes-3-Llama-3-3B-Preview-q4.gguf https://huggingface.co/NousResearch/DeepHermes-3-Llama-3-3B-Preview-GGUF/resolve/main/DeepHermes-3-Llama-3-3B-Preview-q4.gguf"
+            "bge-small-en-v1.5.Q4_K_M.gguf https://huggingface.co/ChristianAzinn/bge-small-en-v1.5-gguf/resolve/main/bge-small-en-v1.5.Q4_K_M.gguf"
+          )
+          for entry in "${models[@]}"; do
+            name="${entry%% *}"
+            url="${entry#* }"
+            path="$MODEL_DIR/$name"
+            if [ ! -f "$path" ]; then
+              echo "Downloading $name..."
+              start=$(date +%s)
+              curl -L -f -sS -o "$path" "$url"
+              status=$?
+              end=$(date +%s)
+              duration=$((end - start))
+              if [ $status -eq 0 ]; then
+                echo "Downloaded $name in ${duration}s."
+              else
+                echo "Failed to download $name after ${duration}s."
+                exit 1
+              fi
+            else
+              echo "$name already exists, skipping."
+            fi
+          done
+
       - name: Make test scripts executable
         run: chmod +x packages/cli/__test_scripts__/*.bats packages/cli/__test_scripts__/*.sh
-
-      
 
       - name: Run CLI shell tests
         run: ./run_all_bats.sh

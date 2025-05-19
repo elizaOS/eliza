@@ -50,17 +50,17 @@ interface EvaluatorTracker {
 
 /**
  * Represents a service that allows the agent to interact in a scenario testing environment.
- * The agent can create rooms, send messages, and communicate with other agents in a live interactive testing environment.
+ * The agent can Create groups, send messages, and communicate with other agents in a live interactive testing environment.
  * @extends Service
  */
 /**
  * Represents a Scenario Service that allows the agent to interact in a scenario testing environment.
- * This service can create rooms, send messages, and communicate with other agents in a live interactive testing environment.
+ * This service can Create groups, send messages, and communicate with other agents in a live interactive testing environment.
  */
 export class ScenarioService extends Service {
   static serviceType = 'scenario';
   capabilityDescription =
-    'The agent is currently in a scenario testing environment. It can create rooms, send messages, and talk to other agents in a live interactive testing environment.';
+    'The agent is currently in a scenario testing environment. It can Create groups, send messages, and talk to other agents in a live interactive testing environment.';
   private messageHandlers: Map<UUID, HandlerCallback[]> = new Map();
   private worlds: Map<UUID, World> = new Map();
   private activeActions: Map<UUID, ActionTracker> = new Map();
@@ -105,7 +105,7 @@ export class ScenarioService extends Service {
         startTime: Date.now(),
         completed: false,
       });
-      logger.debug('Evaluator started', data);
+      logger.debug('[Bootstrap] Evaluator started', data);
       return Promise.resolve();
     });
 
@@ -117,7 +117,7 @@ export class ScenarioService extends Service {
           evaluator.completed = true;
           evaluator.error = data.error;
         }
-        logger.debug('Evaluator completed', data);
+        logger.debug('[Bootstrap] Evaluator completed', data);
         return Promise.resolve();
       }
     );
@@ -210,6 +210,7 @@ export class ScenarioService extends Service {
       type: ChannelType.GROUP,
       channelId: roomId,
       serverId: worldId,
+      worldId,
     });
 
     return roomId;
@@ -342,8 +343,8 @@ const scenarios = [
     // Create a test world
     const worldId = await service.createWorld('Test Server', 'Test Owner');
 
-    // Create rooms for each member
-    const roomIds = [];
+    // Create groups for each member
+    const roomIds: UUID[] = [];
     for (const member of members) {
       const roomId = await service.createRoom(worldId, `Test Room for ${member.character.name}`);
       roomIds.push(roomId);

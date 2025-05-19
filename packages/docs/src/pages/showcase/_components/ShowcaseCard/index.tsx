@@ -56,7 +56,7 @@ function ShowcaseCardTag({ tags }: { tags: TagType[] }) {
 export default function ShowcaseCard({ user }: { user: User }) {
   // Function to convert title to documentation link
   const getDocLink = (user: User) => {
-    const baseUrl = '/eliza/packages/'; // Make sure to include your baseUrl prefix
+    const baseUrl = '/packages/'; // Make sure to include your baseUrl prefix
     let category = '';
 
     if (user.tags.includes('adapter')) {

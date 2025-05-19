@@ -189,4 +189,3 @@ After creation, see the [Getting Started](../quickstart.md) for next steps.
 - [`start`](./start.md): Start your created project
 - [`dev`](./dev.md): Run your project in development mode
 - [`env`](./env.md): Configure environment variables
-- [`plugin`](./plugins.md): Manage plugins in your project

@@ -72,7 +72,7 @@ bun build
 ## Running Multiple Agents
 
 ```bash
-npx @elizaos/cli@beta start --characters="characters/agent1.json,characters/agent2.json"
+elizaos start --characters="characters/agent1.json,characters/agent2.json"
 ```
 
 2. Create separate projects for each agent with their own configurations
@@ -211,7 +211,7 @@ Check your database for null memory entries and ensure proper content formatting
 Using the CLI:
 
 ```bash
-npx @elizaos/cli@beta agent reset-memory
+elizaos agent reset-memory
 ```
 
 Or manually:
@@ -234,7 +234,7 @@ Or manually:
 Using the CLI:
 
 ```bash
-npx @elizaos/cli@beta project add-plugin @elizaos/plugin-name
+elizaos project add-plugin @elizaos/plugin-name
 ```
 
 Or manually:

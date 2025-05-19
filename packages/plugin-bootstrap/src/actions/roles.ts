@@ -11,6 +11,7 @@ import {
   Role,
   type State,
   type UUID,
+  World,
 } from '@elizaos/core';
 import dedent from 'dedent';
 
@@ -109,7 +110,7 @@ export const updateRoleAction: Action = {
   similes: ['CHANGE_ROLE', 'SET_PERMISSIONS', 'ASSIGN_ROLE', 'MAKE_ADMIN'],
   description: 'Assigns a role (Admin, Owner, None) to a user or list of users in a channel.',
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state: State): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
     // Only activate in group chats where the feature is enabled
     const channelType = message.content.channelType as ChannelType;
     const serverId = message.content.serverId as string;
@@ -125,25 +126,30 @@ export const updateRoleAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State,
-    _options: any,
-    callback: HandlerCallback
+    state?: State,
+    _options?: any,
+    callback?: HandlerCallback
   ): Promise<void> => {
+    if (!state) {
+      logger.error('State is required for role assignment');
+      throw new Error('State is required for role assignment');
+    }
+
     // Extract needed values from message and state
     const { roomId } = message;
-    const channelType = message.content.channelType as ChannelType;
     const serverId = message.content.serverId as string;
     const worldId = runtime.getSetting('WORLD_ID');
 
     // First, get the world for this server
-    let world;
+    let world: World | null = null;
+
     if (worldId) {
       world = await runtime.getWorld(worldId as UUID);
     }
 
     if (!world) {
       logger.error('World not found');
-      await callback({
+      await callback?.({
         text: "I couldn't find the world. This action only works in a world.",
       });
       return;
@@ -223,7 +229,7 @@ export const updateRoleAction: Action = {
     );
 
     if (!result?.length) {
-      await callback({
+      await callback?.({
         text: 'No valid role assignments found in the request.',
         actions: ['UPDATE_ROLE'],
         source: 'discord',
@@ -244,8 +250,8 @@ export const updateRoleAction: Action = {
 
       // Validate role modification permissions
       if (!canModifyRole(requesterRole, currentRole, assignment.newRole)) {
-        await callback({
-          text: `You don't have permission to change ${targetEntity.names[0]}'s role to ${assignment.newRole}.`,
+        await callback?.({
+          text: `You don't have permission to change ${targetEntity?.names[0]}'s role to ${assignment.newRole}.`,
           actions: ['UPDATE_ROLE'],
           source: 'discord',
         });
@@ -257,8 +263,8 @@ export const updateRoleAction: Action = {
 
       worldUpdated = true;
 
-      await callback({
-        text: `Updated ${targetEntity.names[0]}'s role to ${assignment.newRole}.`,
+      await callback?.({
+        text: `Updated ${targetEntity?.names[0]}'s role to ${assignment.newRole}.`,
         actions: ['UPDATE_ROLE'],
         source: 'discord',
       });

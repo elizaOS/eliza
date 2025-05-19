@@ -565,6 +565,12 @@ paths:
             type: string
             format: uuid
           description: ID of the agent
+        - name: worldId
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: ID of the world (defaults to zero UUID)
         - name: roomId
           in: query
           schema:
@@ -1181,6 +1187,12 @@ paths:
             type: string
             format: uuid
           description: ID of the agent
+        - name: worldId
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: ID of the world (defaults to zero UUID)
       requestBody:
         required: true
         content:

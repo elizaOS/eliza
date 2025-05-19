@@ -1,3 +1,5 @@
+import { Service, logger } from '@elizaos/core';
+
 import { IAgentRuntime, Service, logger } from '@elizaos/core';
 
 export class TradeChainService extends Service {

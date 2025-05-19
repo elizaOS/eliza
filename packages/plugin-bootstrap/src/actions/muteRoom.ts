@@ -67,6 +67,11 @@ export const muteRoomAction: Action = {
     _callback?: HandlerCallback,
     _responses?: Memory[]
   ) => {
+    if (!state) {
+      logger.error('State is required for muting a room');
+      throw new Error('State is required for muting a room');
+    }
+
     async function _shouldMute(state: State): Promise<boolean> {
       const shouldMutePrompt = composePromptFromState({
         state,

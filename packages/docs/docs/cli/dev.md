@@ -8,7 +8,7 @@ image: /img/cli.jpg
 
 # Dev Command
 
-The `dev` command runs your ElizaOS project or plugin in development mode with auto-rebuild and restart on file changes. This is the recommended way to develop and test your implementations locally.
+The `dev` command runs your ElizaOS project or plugin in development mode with auto-rebuild and restart on file changes. It provides detailed logging and is the recommended way to develop and test your implementations locally.
 
 ## Usage
 
@@ -20,11 +20,12 @@ elizaos dev [options]
 
 ## Options
 
-| Option                           | Description                                             |
-| -------------------------------- | ------------------------------------------------------- |
-| `-c, --configure`                | Reconfigure services and AI models                      |
-| `-char, --character <character>` | Path or URL to character file to use instead of default |
-| `-b, --build`                    | Build the project before starting                       |
+| Option                          | Description                        |
+| ------------------------------- | ---------------------------------- |
+| `-p, --port <port>`             | Port number to run the server on   |
+| `-c, --configure`               | Reconfigure services and AI models |
+| `-char, --character [paths...]` | Character file(s) to use           |
+| `-b, --build`                   | Build the project before starting  |
 
 ## Development Features
 
@@ -66,10 +67,23 @@ elizaos dev
 elizaos dev --port 8080
 ```
 
-### Using a Custom Character
+### Using a Single Character
 
 ```bash
 elizaos dev --character ./characters/custom-assistant.json
+```
+
+### Using Multiple Characters
+
+```bash
+# Pass multiple characters separated by spaces
+elizaos dev --character ./character1.json ./character2.json
+
+# Or by commas
+elizaos dev --character "character1.json,character2.json"
+
+# Characters can be specified without the .json extension
+elizaos dev --character character1 character2
 ```
 
 ### Force Configuration
@@ -143,4 +157,3 @@ If file changes aren't being detected:
 
 - [`start`](./start.md): Run your project in production mode
 - [`test`](./test.md): Run tests for your project
-- [`project`](./projects.md): Manage project settings

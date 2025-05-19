@@ -1,7 +1,7 @@
 import PageTitle from '@/components/page-title';
 import ProfileCard from '@/components/profile-card';
 import ProfileOverlay from '@/components/profile-overlay';
-import { useAgents, useRooms } from '@/hooks/use-query-hooks';
+import { useAgentsWithDetails, useRooms } from '@/hooks/use-query-hooks';
 import { formatAgentName } from '@/lib/utils';
 import type { Agent, UUID } from '@elizaos/core';
 import { AgentStatus } from '@elizaos/core';
@@ -14,8 +14,13 @@ import { useAgentManagement } from '../hooks/use-agent-management';
 import GroupPanel from '@/components/group-panel';
 import { Button } from '../components/ui/button';
 import { Separator } from '../components/ui/separator';
+/**
+ * Renders the main dashboard for managing agents and groups, providing interactive controls for viewing, starting, messaging, and configuring agents, as well as creating and editing groups.
+ *
+ * Displays lists of agents and groups with status indicators, action buttons, and overlays for detailed views and settings. Handles loading and error states, and supports navigation to chat and settings pages.
+ */
 export default function Home() {
-  const { data: { data: agentsData } = {}, isLoading, isError, error } = useAgents();
+  const { data: agentsData, isLoading, isError, error } = useAgentsWithDetails();
   const navigate = useNavigate();
 
   // Extract agents properly from the response
@@ -25,11 +30,11 @@ export default function Home() {
 
   const [isOverlayOpen, setOverlayOpen] = useState(false);
   const [isGroupPanelOpen, setIsGroupPanelOpen] = useState(false);
-  const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
+  const [selectedAgent, setSelectedAgent] = useState<Partial<Agent> | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState<UUID | null>(null);
   const { startAgent, isAgentStarting, isAgentStopping } = useAgentManagement();
 
-  const openOverlay = (agent: Agent) => {
+  const openOverlay = (agent: Partial<Agent>) => {
     setSelectedAgent(agent);
     setOverlayOpen(true);
   };
@@ -41,8 +46,8 @@ export default function Home() {
 
   return (
     <>
-      <div className="flex-1 p-3">
-        <div className="flex flex-col gap-4 h-full">
+      <div className="flex-1 p-3 w-full h-full">
+        <div className="flex flex-col gap-4 h-full w-full md:max-w-4xl mx-auto">
           <div className="flex items-center justify-between gap-2 p-2">
             <PageTitle title="Agents" />
             <Button
@@ -58,7 +63,7 @@ export default function Home() {
           {isLoading && <div className="text-center py-8">Loading agents...</div>}
 
           {isError && (
-            <div className="text-center py-8 text-destructive">
+            <div className="text-center py-8">
               Error loading agents: {error instanceof Error ? error.message : 'Unknown error'}
             </div>
           )}
@@ -72,17 +77,17 @@ export default function Home() {
           )}
 
           {!isLoading && !isError && (
-            <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-6 gap-4 p-2 auto-rows-fr agents-section">
+            <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-2 auto-rows-fr agents-section">
               {agents
-                ?.sort((a: Agent, b: Agent) => Number(b?.enabled) - Number(a?.enabled))
-                .map((agent: Agent) => {
+                ?.sort((a, b) => Number(b?.enabled) - Number(a?.enabled))
+                .map((agent) => {
                   return (
                     <ProfileCard
                       key={agent.id}
                       className="agent-card"
                       title={
                         <div className="flex gap-2 items-center">
-                          <div className="truncate max-w-24">{agent.name}</div>
+                          <div className="truncate max-w-24">{agent.name ?? 'Unnamed Agent'}</div>
                           {agent?.status === AgentStatus.ACTIVE ? (
                             <Tooltip>
                               <TooltipTrigger asChild>
@@ -131,7 +136,7 @@ export default function Home() {
                                 className="w-full h-full object-cover"
                               />
                             ) : (
-                              formatAgentName(agent.name)
+                              formatAgentName(agent?.name ?? '')
                             )}
                           </div>
                           {agent.status !== AgentStatus.ACTIVE && (
@@ -193,7 +198,7 @@ export default function Home() {
           <Separator />
 
           {!isLoading && !isError && (
-            <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-6 gap-4 p-2 auto-rows-fr groups-section">
+            <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-2 auto-rows-fr groups-section">
               {roomsData &&
                 Array.from(roomsData.entries()).map(([roomId, roomArray]) => {
                   const roomName = roomArray.length > 0 ? roomArray[0]?.name : null;
@@ -216,7 +221,7 @@ export default function Home() {
                           }}
                         >
                           <div className="w-full h-full flex items-center justify-center brightness-[100%] hover:brightness-[107%]">
-                            {formatAgentName(roomName ?? '')}
+                            {roomName ? formatAgentName(roomName) : 'Unnamed Group'}
                           </div>
                         </div>
                       }
@@ -247,21 +252,13 @@ export default function Home() {
         </div>
       </div>
 
-      <ProfileOverlay
-        isOpen={isOverlayOpen}
-        onClose={closeOverlay}
-        agent={
-          agents.find((a) => a.id === selectedAgent?.id) ||
-          (selectedAgent as Agent) ||
-          agents[0] ||
-          ({} as Agent)
-        }
-        agents={agents}
-      />
+      {selectedAgent?.id && (
+        <ProfileOverlay isOpen={isOverlayOpen} onClose={closeOverlay} agentId={selectedAgent.id} />
+      )}
 
       {isGroupPanelOpen && (
         <GroupPanel
-          agents={agents}
+          agents={agents as Agent[]}
           onClose={() => {
             setSelectedGroupId(null);
             setIsGroupPanelOpen(false);

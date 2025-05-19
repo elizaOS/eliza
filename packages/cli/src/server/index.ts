@@ -2,15 +2,22 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { type Character, type IAgentRuntime, type UUID, logger } from '@elizaos/core';
+import {
+  type Character,
+  DatabaseAdapter,
+  type IAgentRuntime,
+  type UUID,
+  logger,
+} from '@elizaos/core';
 import { createDatabaseAdapter } from '@elizaos/plugin-sql';
 import * as bodyParser from 'body-parser';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import express from 'express';
 import { Server as SocketIOServer } from 'socket.io';
-import { createApiRouter, setupSocketIO } from './api';
+import { createApiRouter, setupSocketIO, createPluginRouteHandler } from './api';
 import http from 'node:http';
+import { apiKeyAuthMiddleware } from './authMiddleware';
 
 // Load environment variables
 dotenv.config();
@@ -57,7 +64,7 @@ export class AgentServer {
   public socketIO: SocketIOServer;
   private serverPort: number = 3000; // Add property to store current port
 
-  public database: any;
+  public database: DatabaseAdapter;
   public startAgent!: (character: Character) => Promise<IAgentRuntime>;
   public stopAgent!: (runtime: IAgentRuntime) => void;
   public loadCharacterTryPath!: (characterPath: string) => Promise<Character>;
@@ -72,7 +79,6 @@ export class AgentServer {
   constructor(options?: ServerOptions) {
     try {
       logger.debug('Initializing AgentServer...');
-      this.app = express();
       this.agents = new Map();
 
       let dataDir = options?.dataDir ?? process.env.PGLITE_DATA_DIR ?? './elizadb';
@@ -117,6 +123,7 @@ export class AgentServer {
       // Success message moved to start method
     } catch (error) {
       logger.error('Failed to initialize:', error);
+      console.trace(error);
       throw error;
     }
   }
@@ -142,14 +149,22 @@ export class AgentServer {
 
       // Setup middleware for all requests
       logger.debug('Setting up standard middlewares...');
-      this.app.use(cors());
-      this.app.use(bodyParser.json());
-      this.app.use(bodyParser.urlencoded({ extended: true }));
-      this.app.use(
-        express.json({
-          limit: process.env.EXPRESS_MAX_PAYLOAD || '100kb',
-        })
-      );
+      this.app.use(cors()); // Enable CORS first
+      this.app.use(bodyParser.json()); // Parse JSON bodies
+
+      // Optional Authentication Middleware
+      const serverAuthToken = process.env.ELIZA_SERVER_AUTH_TOKEN;
+      if (serverAuthToken) {
+        logger.info('Server authentication enabled. Requires X-API-KEY header for /api routes.');
+        // Apply middleware only to /api paths
+        this.app.use('/api', (req, res, next) => {
+          apiKeyAuthMiddleware(req, res, next);
+        });
+      } else {
+        logger.warn(
+          'Server authentication is disabled. Set ELIZA_SERVER_AUTH_TOKEN environment variable to enable.'
+        );
+      }
 
       const uploadsPath = path.join(process.cwd(), '/data/uploads');
       const generatedPath = path.join(process.cwd(), '/generatedImages');
@@ -207,96 +222,14 @@ export class AgentServer {
 
       // Serve static assets from the client dist path
       const clientPath = path.join(__dirname, '..', 'dist');
-      this.app.use('/', express.static(clientPath, staticOptions));
 
-      // Serve static assets from plugins
-      // Look for well-known static asset directories in plugins
-      for (const [, runtime] of this.agents) {
-        if (!runtime.plugins?.length) continue;
+      // *** NEW: Mount the plugin route handler BEFORE static serving ***
+      const pluginRouteHandler = createPluginRouteHandler(this.agents);
+      this.app.use(pluginRouteHandler);
 
-        // Check each plugin for static assets
-        for (const plugin of runtime.plugins) {
-          if (!plugin.name) continue;
-
-          try {
-            // Try to find the plugin's directory
-            let pluginDir;
-            try {
-              const packagePath = require.resolve(`${plugin.name}/package.json`, {
-                paths: [process.cwd()],
-              });
-              pluginDir = path.dirname(packagePath);
-            } catch (err) {
-              pluginDir = path.join(process.cwd(), 'node_modules', plugin.name);
-              if (!fs.existsSync(pluginDir)) continue;
-            }
-
-            // Check common locations for static assets
-            // These patterns cover most common frontend build outputs
-            const commonDirs = [
-              // Vite build output
-              { path: 'dist/assets', mount: '/assets' },
-
-              // Main dist directories at various levels
-              { path: 'frontend/dist', mount: '/' },
-              { path: 'dist/client', mount: '/' },
-              { path: 'dist', mount: '/' },
-
-              // Common public/static asset directories
-              { path: 'public', mount: '/' },
-              { path: 'static', mount: '/' },
-              { path: 'assets', mount: '/assets' },
-            ];
-
-            // For each plugin route, also check for related asset directories
-            if (plugin.routes) {
-              // Find potential static route paths (like /portal)
-              const staticRoutes = plugin.routes.filter(
-                (route) =>
-                  route.type === 'GET' &&
-                  (route.path.endsWith('/*') || !route.path.includes('api/'))
-              );
-
-              for (const route of staticRoutes) {
-                // Extract the base path without wildcards
-                let basePath = route.path;
-                if (basePath.endsWith('/*')) {
-                  basePath = basePath.slice(0, -2);
-                }
-                if (basePath.startsWith('/')) {
-                  basePath = basePath.slice(1);
-                }
-
-                if (basePath) {
-                  // Check for static assets related to this route
-                  commonDirs.push({
-                    path: `${basePath}/dist`,
-                    mount: `/${basePath}`,
-                  });
-                }
-              }
-            }
-
-            // Serve static assets from any existing plugin asset directories
-            for (const dir of commonDirs) {
-              const dirPath = path.join(pluginDir, dir.path);
-              if (fs.existsSync(dirPath)) {
-                logger.debug(
-                  `Serving static assets for plugin ${plugin.name} from ${dirPath} at ${dir.mount}`
-                );
-                this.app.use(dir.mount, express.static(dirPath, staticOptions));
-              }
-            }
-          } catch (error) {
-            logger.error(`Error setting up static assets for plugin ${plugin.name}:`, error);
-          }
-        }
-      }
-
+      // Mount the core API router under /api
       // API Router setup
       const apiRouter = createApiRouter(this.agents, this);
-
-      // Add explicit error handling for API routes
       this.app.use(
         '/api',
         (req, res, next) => {
@@ -316,6 +249,9 @@ export class AgentServer {
         }
       );
 
+      // *** Mount client static serving AFTER plugin routes and /api ***
+      this.app.use('/', express.static(clientPath, staticOptions));
+
       // Add a catch-all route for API 404s
       this.app.use('/api/*', (req, res) => {
         logger.warn(`API 404: ${req.method} ${req.path}`);
@@ -331,9 +267,9 @@ export class AgentServer {
       // Main fallback for the SPA - must be registered after all other routes
       // For Express 4, we need to use the correct method for fallback routes
       // @ts-ignore - Express 4 type definitions are incorrect for .all()
-      this.app.all('*', (req, res) => {
-        // Skip for API routes
-        if (req.path.startsWith('/api') || req.path.startsWith('/media')) {
+      this.app.all('*' /* Removed check for /api here, should be caught earlier */, (req, res) => {
+        // Skip media routes handled by static middleware earlier
+        if (req.path.startsWith('/media')) {
           return res.status(404).send('Not found');
         }
 
@@ -384,11 +320,9 @@ export class AgentServer {
         throw new Error('Runtime missing character configuration');
       }
 
-      logger.debug(`Registering agent: ${runtime.agentId} (${runtime.character.name})`);
-
       // Register the agent
       this.agents.set(runtime.agentId, runtime);
-      logger.debug(`Agent ${runtime.agentId} added to agents map`);
+      logger.debug(`Agent ${runtime.character.name} (${runtime.agentId}) added to agents map`);
 
       // Register TEE plugin if present
       const teePlugin = runtime.plugins.find((p) => p.name === 'phala-tee-plugin');
@@ -403,11 +337,10 @@ export class AgentServer {
           logger.debug(`Registered TEE action: ${action.name}`);
         }
       }
-      logger.debug(`Registered reply action for agent ${runtime.agentId}`);
 
       // Register routes
       logger.debug(
-        `Registering ${runtime.routes.length} custom routes for agent ${runtime.agentId}`
+        `Registering ${runtime.routes.length} custom routes for agent ${runtime.character.name} (${runtime.agentId})`
       );
       for (const route of runtime.routes) {
         const routePath = route.path;
@@ -440,7 +373,7 @@ export class AgentServer {
       }
 
       logger.success(
-        `Successfully registered agent ${runtime.agentId} (${runtime.character.name})`
+        `Successfully registered agent ${runtime.character.name} (${runtime.agentId})`
       );
     } catch (error) {
       logger.error('Failed to register agent:', error);
@@ -461,6 +394,25 @@ export class AgentServer {
     }
 
     try {
+      // Retrieve the agent before deleting it from the map
+      const agent = this.agents.get(agentId);
+
+      if (agent) {
+        // Stop all services of the agent before unregistering it
+        try {
+          agent.stop().catch((stopError) => {
+            logger.error(
+              `[AGENT UNREGISTER] Error stopping agent services for ${agentId}:`,
+              stopError
+            );
+          });
+          logger.debug(`[AGENT UNREGISTER] Stopping services for agent ${agentId}`);
+        } catch (stopError) {
+          logger.error(`[AGENT UNREGISTER] Error initiating stop for agent ${agentId}:`, stopError);
+        }
+      }
+
+      // Delete the agent from the map
       this.agents.delete(agentId);
       logger.debug(`Agent ${agentId} removed from agents map`);
     } catch (error) {
@@ -500,6 +452,8 @@ export class AgentServer {
         console.log(
           `\x1b[32mStartup successful!\nGo to the dashboard at \x1b[1mhttp://localhost:${port}\x1b[22m\x1b[0m`
         );
+        // Add log for test readiness
+        console.log(`AgentServer is listening on port ${port}`);
 
         logger.success(
           `REST API bound to 0.0.0.0:${port}. If running locally, access it at http://localhost:${port}.`
@@ -555,7 +509,7 @@ export class AgentServer {
   public async stop() {
     if (this.server) {
       this.server.close(() => {
-        this.database.stop();
+        this.database.close();
         logger.success('Server stopped');
       });
     }

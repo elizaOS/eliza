@@ -3,6 +3,7 @@
 setup() {
   export TEST_TMP_DIR="$(mktemp -d /var/tmp/eliza-test-XXXXXX)"
   export ELIZAOS_CMD="${ELIZAOS_CMD:-bun run "$(cd ../dist && pwd)/index.js"}"
+  export CREATE_ELIZA_CMD="${CREATE_ELIZA_CMD:-bun run "$(cd "$BATS_TEST_DIRNAME/../../create-eliza" && pwd)/index.mjs"}"
   cd "$TEST_TMP_DIR"
 }
 
@@ -83,4 +84,29 @@ teardown() {
   run $ELIZAOS_CMD create bad-type-proj --yes --type bad-type
   [ "$status" -ne 0 ]
   [[ "$output" == *"Invalid type"* ]] || [[ "$error" == *"Invalid type"* ]]
+}
+
+# Verifies that the create-eliza command can create a default project successfully.
+@test "create-eliza default project succeeds" {
+  run $CREATE_ELIZA_CMD my-create-app --yes
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Project initialized successfully!"* ]]
+  [ -d "my-create-app" ]
+  [ -f "my-create-app/package.json" ]
+  [ -d "my-create-app/src" ]
+}
+
+# Verifies that the create-eliza command can create a plugin project successfully.
+@test "create-eliza plugin project succeeds" {
+  run $CREATE_ELIZA_CMD my-create-plugin --yes --type plugin
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Plugin initialized successfully!"* ]]
+  if [ -d "my-create-plugin" ]; then
+    plugin_dir="my-create-plugin"
+  else
+    plugin_dir="plugin-my-create-plugin"
+  fi
+  [ -d "$plugin_dir" ]
+  [ -f "$plugin_dir/package.json" ]
+  [ -f "$plugin_dir/src/index.ts" ]
 }

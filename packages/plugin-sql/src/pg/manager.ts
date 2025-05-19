@@ -194,11 +194,14 @@ export class PostgresConnectionManager implements IDatabaseClientManager<PgPool>
     try {
       const db = drizzle(this.pool);
 
-      const __filename = fileURLToPath(import.meta.url);
-      const __dirname = path.dirname(__filename);
+      const packageJsonUrl = await import.meta.resolve('@elizaos/plugin-sql/package.json');
+      const packageJsonPath = fileURLToPath(packageJsonUrl);
+      const packageRoot = path.dirname(packageJsonPath);
+      const migrationsPath = path.resolve(packageRoot, 'drizzle/migrations');
+      logger.debug(`Resolved migrations path (pg) using import.meta.resolve: ${migrationsPath}`);
 
       await migrate(db, {
-        migrationsFolder: path.resolve(__dirname, '../drizzle/migrations'),
+        migrationsFolder: migrationsPath,
         migrationsSchema: 'public',
       });
     } catch (error) {

@@ -23,7 +23,7 @@ const stringToUuid = (id: string): UUID => id as UUID;
 const { mockSplitChunks } = vi.hoisted(() => {
   return { mockSplitChunks: vi.fn() };
 });
-vi.mock('../src/prompts', async (importOriginal) => {
+vi.mock('../src/utils', async (importOriginal) => {
   const original = (await importOriginal()) as any;
   return {
     ...original,
@@ -154,6 +154,7 @@ const createMockState = (text = '', values = {}, data = {}): State => ({
 const mockCharacter: Character = {
   id: stringToUuid(uuidv4()),
   name: 'Test Character',
+  plugins: ['@elizaos/plugin-sql'],
   username: 'test',
   bio: ['Test bio'],
   messageExamples: [], // Ensure required fields are present
@@ -249,7 +250,13 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       });
 
       // Mock adapter calls needed for initialize
-      vi.mocked(mockDatabaseAdapter.ensureAgentExists).mockResolvedValue(undefined);
+      vi.mocked(mockDatabaseAdapter.ensureAgentExists).mockResolvedValue({
+        ...mockCharacter,
+        id: agentId, // ensureAgentExists should return the agent
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        enabled: true,
+      });
       vi.mocked(mockDatabaseAdapter.getAgent).mockResolvedValue({
         ...mockCharacter,
         createdAt: Date.now(),
@@ -275,13 +282,13 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
   describe('Initialization', () => {
     beforeEach(() => {
       // Mock adapter calls needed for a successful initialize
-      vi.mocked(mockDatabaseAdapter.ensureAgentExists).mockResolvedValue(undefined);
-      vi.mocked(mockDatabaseAdapter.getAgent).mockResolvedValue({
+      vi.mocked(mockDatabaseAdapter.ensureAgentExists).mockResolvedValue({
         ...mockCharacter,
+        id: agentId, // ensureAgentExists should return the agent
         createdAt: Date.now(),
         updatedAt: Date.now(),
         enabled: true,
-      }); // Add required Agent fields
+      });
       vi.mocked(mockDatabaseAdapter.getEntityById).mockResolvedValue({
         id: agentId,
         agentId: agentId,
@@ -289,6 +296,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       });
       vi.mocked(mockDatabaseAdapter.getRoom).mockResolvedValue(null);
       vi.mocked(mockDatabaseAdapter.getParticipantsForRoom).mockResolvedValue([]);
+      // mockDatabaseAdapter.getAgent is NOT called by initialize anymore after ensureAgentExists returns the agent
     });
 
     it('should call adapter.init and core setup methods', async () => {
@@ -296,7 +304,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
 
       expect(mockDatabaseAdapter.init).toHaveBeenCalledTimes(1);
       expect(mockDatabaseAdapter.ensureAgentExists).toHaveBeenCalledWith(mockCharacter);
-      expect(mockDatabaseAdapter.getAgent).toHaveBeenCalledWith(agentId);
+      // expect(mockDatabaseAdapter.getAgent).toHaveBeenCalledWith(agentId); // This is no longer called
       expect(mockDatabaseAdapter.getEntityById).toHaveBeenCalledWith(agentId);
       expect(mockDatabaseAdapter.getRoom).toHaveBeenCalledWith(agentId);
       expect(mockDatabaseAdapter.createRoom).toHaveBeenCalled();
@@ -349,8 +357,8 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       expect(state.values).toHaveProperty('p2_val', 2);
       // Check combined values includes provider outputs
       expect(state.values).toHaveProperty('providers'); // Check if the combined text is stored
-      expect(state.data.providers).toHaveProperty('P1', { p1_val: 1 }); // Check provider data cache
-      expect(state.data.providers).toHaveProperty('P2', { p2_val: 2 });
+      expect(state.data.providers.P1.values).toEqual({ p1_val: 1 }); // Check provider data cache
+      expect(state.data.providers.P2.values).toEqual({ p2_val: 2 });
     });
 
     it('should filter providers', async () => {
@@ -363,7 +371,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       runtime.registerProvider(provider2);
 
       const message = createMockMemory('test message', undefined, undefined, undefined, agentId);
-      const state = await runtime.composeState(message, ['P1']); // Filter to only P1
+      const state = await runtime.composeState(message, ['P1'], true); // Filter to only P1
 
       expect(provider1Get).toHaveBeenCalledTimes(1);
       expect(provider2Get).not.toHaveBeenCalled();
@@ -547,6 +555,11 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
 
       vi.mocked(mockDatabaseAdapter.searchMemories).mockResolvedValue(mockFragments);
 
+      // Mock rerankMemories to avoid BM25 filtering issues for this specific test
+      const rerankSpy = vi
+        .spyOn(runtime, 'rerankMemories')
+        .mockImplementation(async (_query, memories) => memories);
+
       const results = await runtime.getKnowledge(message);
 
       expect(runtime.useModel).toHaveBeenCalledTimes(1);
@@ -556,12 +569,13 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         expect.objectContaining({
           tableName: 'knowledge',
           embedding: expect.any(Array), // Check that an embedding was passed
-          roomId: agentId, // Should search in agent's own room context
-          count: 5,
+          count: 20,
         })
       );
       expect(results).toHaveLength(2);
       expect(results[0].content.text).toBe('found fragment 1');
+
+      rerankSpy.mockRestore(); // Restore the original implementation
     });
   });
 

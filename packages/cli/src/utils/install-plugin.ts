@@ -3,7 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { loadPluginModule } from './load-plugin';
 import { executeInstallation } from './package-manager';
-import { getPluginVersion } from './registry';
+import { readCache } from './plugin-discovery';
+import { getLocalRegistryIndex, normalizePluginName } from './registry';
 
 /**
  * Get the CLI's installation directory when running globally
@@ -68,19 +69,13 @@ async function attemptInstallation(
   packageName: string,
   versionString: string,
   directory: string,
-  context: string,
-  options: {
-    tryNpm?: boolean;
-    tryGithub?: boolean;
-    tryMonorepo?: boolean;
-    monorepoBranch?: string;
-  } = {}
+  context: string
 ): Promise<boolean> {
   logger.info(`Attempting to install plugin ${context}...`);
 
   try {
     // Use centralized installation function which now returns success status and identifier
-    const installResult = await executeInstallation(packageName, versionString, directory, options);
+    const installResult = await executeInstallation(packageName, versionString, directory);
 
     // If installation failed, return false immediately
     if (!installResult.success || !installResult.installedIdentifier) {
@@ -88,7 +83,16 @@ async function attemptInstallation(
       return false;
     }
 
-    // Installation succeeded, now verify the import using the correct identifier
+    // If installed via direct GitHub specifier, skip import verification
+    if (packageName.startsWith('github:')) {
+      return true;
+    }
+    if (process.env.ELIZA_SKIP_PLUGIN_VERIFY) {
+      logger.info(
+        `Installation successful for ${installResult.installedIdentifier}, skipping verification`
+      );
+      return true;
+    }
     logger.info(
       `Installation successful for ${installResult.installedIdentifier}, verifying import...`
     );
@@ -112,75 +116,92 @@ async function attemptInstallation(
 export async function installPlugin(
   packageName: string,
   cwd: string,
-  versionSpecifier?: string,
-  monorepoBranch?: string
+  versionSpecifier?: string
 ): Promise<boolean> {
-  // Mark this plugin as installed to ensure we don't get into an infinite loop
   logger.info(`Installing plugin: ${packageName}`);
 
-  // Get installation context info
   const cliDir = getCliDirectory();
 
-  // Get the version string for installation
-  let versionString = '';
+  // Direct GitHub installation
+  if (packageName.startsWith('github:')) {
+    return await attemptInstallation(packageName, '', cwd, ':');
+  }
 
-  // If we have a version (tag or specific version)
-  if (versionSpecifier) {
-    // Basic check if it looks like a git commit hash (e.g., 7+ hex characters)
-    const looksLikeGitHash = /^[a-f0-9]{7,}$/i.test(versionSpecifier);
+  // Handle full GitHub URLs as well
+  const httpsGitHubUrlRegex =
+    /^https?:\/\/github\.com\/([a-zA-Z0-9_-]+)\/([a-zA-Z0-9_.-]+?)(?:\.git)?(?:#([a-zA-Z0-9_.-]+))?\/?$/;
+  const httpsMatch = packageName.match(httpsGitHubUrlRegex);
+  if (httpsMatch) {
+    const [, owner, repo, ref] = httpsMatch;
+    const spec = `github:${owner}/${repo}${ref ? `#${ref}` : ''}`;
+    return await attemptInstallation(spec, '', cwd, ':');
+  }
 
-    if (looksLikeGitHash) {
-      // If the input itself looks like a hash, use #
-      versionString = `#${versionSpecifier}`;
-    } else {
-      // Otherwise, assume it's an npm tag/version range and use @
-      // No need to call getPluginVersion here, just use the tag directly.
-      // The package manager will resolve the tag (@beta, @latest, @1.2.3)
-      versionString = `@${versionSpecifier}`;
+  const cache = await readCache();
+  const registry = await getLocalRegistryIndex();
+  const possible = normalizePluginName(packageName);
+
+  let key: string | null = null;
+  for (const name of possible) {
+    if (cache?.registry[name]) {
+      key = name;
+      break;
     }
-    logger.debug(`Using version string: ${versionString} for package manager.`);
   }
 
-  // Determine installation options based on input
-  let installOptions = {
-    tryNpm: true,
-    tryGithub: true,
-    tryMonorepo: true,
-    monorepoBranch,
-  };
+  if (!key && cache && cache.registry) {
+    // Fuzzy search by stripped base name
+    let base = packageName;
+    if (base.includes('/')) {
+      const parts = base.split('/');
+      base = parts[parts.length - 1];
+    }
+    base = base.replace(/^@/, '').replace(/^(plugin|client)-/, '');
+    const lower = base.toLowerCase();
 
-  // If installing a specific scoped package version/tag, prioritize npm ONLY
-  if (packageName.startsWith('@') && versionSpecifier) {
-    installOptions = {
-      ...installOptions, // Keep monorepoBranch if passed
-      tryNpm: true,
-      tryGithub: false,
-      tryMonorepo: false,
-    };
-    logger.info(`Prioritizing npm install for ${packageName}@${versionSpecifier}`);
+    const matches = Object.keys(cache.registry).filter(
+      (cand) => cand.toLowerCase().includes(lower) && !cand.includes('client-')
+    );
+
+    if (matches.length > 0) {
+      const pluginMatch = matches.find((c) => c.includes('plugin-'));
+      key = pluginMatch || matches[0];
+    }
   }
 
-  // Try installation in the current directory with determined approaches
-  if (await attemptInstallation(packageName, versionString, cwd, ':', installOptions)) {
-    return true;
+  if (!key) {
+    logger.warn(
+      `Plugin ${packageName} not found in registry cache, attempting direct installation`
+    );
+    return await attemptInstallation(packageName, versionSpecifier || '', cwd, '');
   }
 
-  // If all local installations failed and we're running globally, try CLI directory installation
-  if (cliDir) {
-    if (
-      await attemptInstallation(
-        packageName,
-        versionString,
-        cliDir,
-        'in CLI directory',
-        installOptions
-      )
-    ) {
+  const info = cache!.registry[key];
+  // Prefer npm installation if repository is available
+  if (info.npm?.repo) {
+    const ver = versionSpecifier || info.npm.v1 || '';
+    if (await attemptInstallation(info.npm.repo, ver, cwd, '')) {
+      return true;
+    }
+  } else if (info.npm?.v1) {
+    if (await attemptInstallation(key, info.npm.v1, cwd, '')) {
       return true;
     }
   }
 
-  // If we got here, all installation attempts failed
-  logger.error(`All installation attempts failed for plugin ${packageName}`);
+  if (info.git?.repo) {
+    const branchOrTag = info.git.v1?.version || info.git.v1?.branch || '';
+    const spec = `github:${info.git.repo}${branchOrTag ? `#${branchOrTag}` : ''}`;
+
+    if (await attemptInstallation(spec, '', cwd, '')) {
+      return true;
+    }
+
+    if (cliDir) {
+      return await attemptInstallation(spec, '', cliDir, 'in CLI directory');
+    }
+  }
+
+  logger.error(`Failed to install plugin ${packageName}`);
   return false;
 }

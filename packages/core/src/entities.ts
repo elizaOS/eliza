@@ -1,5 +1,5 @@
 import { logger, stringToUuid } from './index';
-import { composePrompt, parseJSONObjectFromText } from './prompts';
+import { composePrompt, parseJSONObjectFromText } from './utils';
 import {
   type Entity,
   type IAgentRuntime,
@@ -136,158 +136,152 @@ export async function findEntityByName(
   message: Memory,
   state: State
 ): Promise<Entity | null> {
-  try {
-    const room = state.data.room ?? (await runtime.getRoom(message.roomId));
-    if (!room) {
-      logger.warn('Room not found for entity search');
-      return null;
-    }
+  const room = state.data.room ?? (await runtime.getRoom(message.roomId));
+  if (!room) {
+    logger.warn('Room not found for entity search');
+    return null;
+  }
 
-    const world = room.worldId ? await runtime.getWorld(room.worldId) : null;
+  const world = room.worldId ? await runtime.getWorld(room.worldId) : null;
 
-    // Get all entities in the room with their components
-    const entitiesInRoom = await runtime.getEntitiesForRoom(room.id, true);
+  // Get all entities in the room with their components
+  const entitiesInRoom = await runtime.getEntitiesForRoom(room.id, true);
 
-    // Filter components for each entity based on permissions
-    const filteredEntities = await Promise.all(
-      entitiesInRoom.map(async (entity) => {
-        if (!entity.components) return entity;
+  // Filter components for each entity based on permissions
+  const filteredEntities = await Promise.all(
+    entitiesInRoom.map(async (entity) => {
+      if (!entity.components) return entity;
 
-        // Get world roles if we have a world
+      // Get world roles if we have a world
+      const worldRoles = world?.metadata?.roles || {};
+
+      // Filter components based on permissions
+      entity.components = entity.components.filter((component) => {
+        // 1. Pass if sourceEntityId matches the requesting entity
+        if (component.sourceEntityId === message.entityId) return true;
+
+        // 2. Pass if sourceEntityId is an owner/admin of the current world
+        if (world && component.sourceEntityId) {
+          const sourceRole = worldRoles[component.sourceEntityId];
+          if (sourceRole === 'OWNER' || sourceRole === 'ADMIN') return true;
+        }
+
+        // 3. Pass if sourceEntityId is the agentId
+        if (component.sourceEntityId === runtime.agentId) return true;
+
+        // Filter out components that don't meet any criteria
+        return false;
+      });
+
+      return entity;
+    })
+  );
+
+  // Get relationships for the message sender
+  const relationships = await runtime.getRelationships({
+    entityId: message.entityId,
+  });
+
+  // Get entities from relationships
+  const relationshipEntities = await Promise.all(
+    relationships.map(async (rel) => {
+      const entityId =
+        rel.sourceEntityId === message.entityId ? rel.targetEntityId : rel.sourceEntityId;
+      return runtime.getEntityById(entityId);
+    })
+  );
+
+  // Filter out nulls and combine with room entities
+  const allEntities = [
+    ...filteredEntities,
+    ...relationshipEntities.filter((e): e is Entity => e !== null),
+  ];
+
+  // Get interaction strength data for relationship entities
+  const interactionData = await getRecentInteractions(
+    runtime,
+    message.entityId,
+    allEntities,
+    room.id,
+    relationships
+  );
+
+  // Compose context for LLM
+  const prompt = composePrompt({
+    state: {
+      roomName: room.name || room.id,
+      worldName: world?.name || 'Unknown',
+      entitiesInRoom: JSON.stringify(filteredEntities, null, 2),
+      entityId: message.entityId,
+      senderId: message.entityId,
+    },
+    template: entityResolutionTemplate,
+  });
+
+  // Use LLM to analyze and resolve the entity
+  const result = await runtime.useModel(ModelType.TEXT_SMALL, {
+    prompt,
+    stopSequences: [],
+  });
+
+  // Parse LLM response
+  const resolution = parseJSONObjectFromText(result);
+  if (!resolution) {
+    logger.warn('Failed to parse entity resolution result');
+    return null;
+  }
+
+  // If we got an exact entity ID match
+  if (resolution.type === 'EXACT_MATCH' && resolution.entityId) {
+    const entity = await runtime.getEntityById(resolution.entityId as UUID);
+    if (entity) {
+      // Filter components again for the returned entity
+      if (entity.components) {
         const worldRoles = world?.metadata?.roles || {};
-
-        // Filter components based on permissions
         entity.components = entity.components.filter((component) => {
-          // 1. Pass if sourceEntityId matches the requesting entity
           if (component.sourceEntityId === message.entityId) return true;
-
-          // 2. Pass if sourceEntityId is an owner/admin of the current world
           if (world && component.sourceEntityId) {
             const sourceRole = worldRoles[component.sourceEntityId];
             if (sourceRole === 'OWNER' || sourceRole === 'ADMIN') return true;
           }
-
-          // 3. Pass if sourceEntityId is the agentId
           if (component.sourceEntityId === runtime.agentId) return true;
-
-          // Filter out components that don't meet any criteria
           return false;
         });
-
-        return entity;
-      })
-    );
-
-    // Get relationships for the message sender
-    const relationships = await runtime.getRelationships({
-      entityId: message.entityId,
-    });
-
-    // Get entities from relationships
-    const relationshipEntities = await Promise.all(
-      relationships.map(async (rel) => {
-        const entityId =
-          rel.sourceEntityId === message.entityId ? rel.targetEntityId : rel.sourceEntityId;
-        return runtime.getEntityById(entityId);
-      })
-    );
-
-    // Filter out nulls and combine with room entities
-    const allEntities = [
-      ...filteredEntities,
-      ...relationshipEntities.filter((e): e is Entity => e !== null),
-    ];
-
-    // Get interaction strength data for relationship entities
-    const interactionData = await getRecentInteractions(
-      runtime,
-      message.entityId,
-      allEntities,
-      room.id,
-      relationships
-    );
-
-    // Compose context for LLM
-    const prompt = composePrompt({
-      state: {
-        roomName: room.name || room.id,
-        worldName: world?.name || 'Unknown',
-        entitiesInRoom: JSON.stringify(filteredEntities, null, 2),
-        entityId: message.entityId,
-        senderId: message.entityId,
-      },
-      template: entityResolutionTemplate,
-    });
-
-    // Use LLM to analyze and resolve the entity
-    const result = await runtime.useModel(ModelType.TEXT_SMALL, {
-      prompt,
-      stopSequences: [],
-    });
-
-    // Parse LLM response
-    const resolution = parseJSONObjectFromText(result);
-    if (!resolution) {
-      logger.warn('Failed to parse entity resolution result');
-      return null;
-    }
-
-    // If we got an exact entity ID match
-    if (resolution.type === 'EXACT_MATCH' && resolution.entityId) {
-      const entity = await runtime.getEntityById(resolution.entityId as UUID);
-      if (entity) {
-        // Filter components again for the returned entity
-        if (entity.components) {
-          const worldRoles = world?.metadata?.roles || {};
-          entity.components = entity.components.filter((component) => {
-            if (component.sourceEntityId === message.entityId) return true;
-            if (world && component.sourceEntityId) {
-              const sourceRole = worldRoles[component.sourceEntityId];
-              if (sourceRole === 'OWNER' || sourceRole === 'ADMIN') return true;
-            }
-            if (component.sourceEntityId === runtime.agentId) return true;
-            return false;
-          });
-        }
-        return entity;
       }
+      return entity;
     }
+  }
 
-    // For username/name/relationship matches, search through all entities
-    if (resolution.matches?.[0]?.name) {
-      const matchName = resolution.matches[0].name.toLowerCase();
+  // For username/name/relationship matches, search through all entities
+  if (resolution.matches?.[0]?.name) {
+    const matchName = resolution.matches[0].name.toLowerCase();
 
-      // Find matching entity by username/handle in components or by name
-      const matchingEntity = allEntities.find((entity) => {
-        // Check names
-        if (entity.names.some((n) => n.toLowerCase() === matchName)) return true;
+    // Find matching entity by username/handle in components or by name
+    const matchingEntity = allEntities.find((entity) => {
+      // Check names
+      if (entity.names.some((n) => n.toLowerCase() === matchName)) return true;
 
-        // Check components for username/handle match
-        return entity.components?.some(
-          (c) =>
-            c.data.username?.toLowerCase() === matchName ||
-            c.data.handle?.toLowerCase() === matchName
-        );
-      });
+      // Check components for username/handle match
+      return entity.components?.some(
+        (c) =>
+          c.data.username?.toLowerCase() === matchName || c.data.handle?.toLowerCase() === matchName
+      );
+    });
 
-      if (matchingEntity) {
-        // If this is a relationship match, sort by interaction strength
-        if (resolution.type === 'RELATIONSHIP_MATCH') {
-          const interactionInfo = interactionData.find((d) => d.entity.id === matchingEntity.id);
-          if (interactionInfo && interactionInfo.count > 0) {
-            return matchingEntity;
-          }
-        } else {
+    if (matchingEntity) {
+      // If this is a relationship match, sort by interaction strength
+      if (resolution.type === 'RELATIONSHIP_MATCH') {
+        const interactionInfo = interactionData.find((d) => d.entity.id === matchingEntity.id);
+        if (interactionInfo && interactionInfo.count > 0) {
           return matchingEntity;
         }
+      } else {
+        return matchingEntity;
       }
     }
-
-    return null;
-  } catch (error) {
-    logger.error('Error in findEntityByName:', error);
-    return null;
   }
+
+  return null;
 }
 
 /**
@@ -367,7 +361,7 @@ export async function getEntityDetails({
     // Create the entity details
     uniqueEntities.set(entity.id, {
       id: entity.id,
-      name: entity.metadata[room.source]?.name || entity.names[0],
+      name: room?.source ? entity.metadata[room.source]?.name || entity.names[0] : entity.names[0],
       names: entity.names,
       data: JSON.stringify({ ...mergedData, ...entity.metadata }),
     });
