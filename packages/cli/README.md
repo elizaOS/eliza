@@ -203,17 +203,27 @@ Update ElizaOS CLI and project dependencies to the latest versions.
   - `--cli`: Update only the global CLI installation (without updating packages)
   - `--packages`: Update only packages (without updating the CLI)
 
-Manages environment variables in global and local scopes.
+### Environment Configuration
 
-- **`list`**: Shows variables from both scopes
-- **`edit`**: Interactively edit variables
-- **`set <key> <value>`**: Sets/updates a variable
-  - `--global` or `--local`: Specify scope
-- **`unset <key>`**: Removes a variable
-  - `--global` or `--local`: Specify scope
-- **`reset`**: Clears all variables (requires confirmation)
-  - `--global` or `--local`: Specify scope
-- **`set-path <path>`**: Sets custom path for global environment file
+#### `elizaos env`
+
+Manage environment variables and secrets.
+
+- **Subcommands:**
+  - `list`: List all environment variables
+    - Options: `--system`, `--global`, `--local`
+  - `edit-global`: Edit global environment variables
+    - Options: `-y, --yes`
+  - `edit-local`: Edit local environment variables
+    - Options: `-y, --yes`
+  - `reset`: Reset environment variables and clean up database/cache files
+    - Options: `-y, --yes`
+  - `set-path <path>`: Set a custom path for the global environment file
+    - Options: `-y, --yes`
+  - `interactive`: Start interactive environment variable manager
+    - Options: `-y, --yes`
+
+Global variables apply to all projects, while local variables are specific to the current directory.
 
 ### Publishing
 
