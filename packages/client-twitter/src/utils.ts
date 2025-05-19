@@ -176,7 +176,7 @@ export async function sendTweet(
     const maxTweetLength = client.twitterConfig.MAX_TWEET_LENGTH;
     const isLongTweet = maxTweetLength > 280;
 
-    const parentTweet = await client.twitterClient.getTweetV2(inReplyTo);
+    const parentTweet = await client.twitterClient.getTweet(inReplyTo);
     const thread = parentTweet.thread;
     elizaLogger.log(
         `Replying to thread with conversation length: ${thread.length}`,
