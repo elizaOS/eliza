@@ -268,8 +268,6 @@ export async function startAgent(
 
   const characterPlugins: Plugin[] = [];
 
-  const characterPlugins: Plugin[] = [];
-
   // Process and load plugins specified by name in the character definition
   // encryptedChar.plugins is guaranteed to be string[] according to Character type
   for (const pluginName of encryptedChar.plugins) {
