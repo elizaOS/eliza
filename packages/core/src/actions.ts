@@ -115,5 +115,5 @@ export function formatActions(actions: Action[]): string {
   return [...actions]
     .sort(() => Math.random() - 0.5)
     .map((action) => `${action.name}: ${action.description}`)
-    .join('\n');
+    .join(',\n');
 }
