@@ -49,8 +49,30 @@ Start the project or plugin in development mode and rebuild on file changes.
 
 - **Options:**
   - `-c, --configure`: Reconfigure services and AI models
-  - `-char, --character <character>`: Path or URL to character file
+  - `-char, --character [paths...]`: Character file(s) to use - accepts paths or URLs
   - `-b, --build`: Build the project before starting
+  - `-p, --port <port>`: Port number to run the server on
+
+**Character Handling:**
+
+The `dev` command supports flexible character specification:
+
+```bash
+# Space-separated paths
+elizaos dev --character file1.json file2.json
+
+# Comma-separated paths
+elizaos dev --character "file1.json,file2.json"
+
+# Mixed formats with optional quotes
+elizaos dev --character "'file1.json'" "file2.json"
+
+# With or without .json extension
+elizaos dev --character assistant     # .json extension added automatically
+
+# URLs are also supported
+elizaos dev --character https://example.com/characters/assistant.json
+```
 
 ### Environment Management
 
@@ -113,24 +135,24 @@ Manage ElizaOS agents.
     - Options: `-j, --json` (output as JSON)
   - `get` (alias: `g`): Get agent details
     - Options:
-      - `-n, --name <name>`: Agent id, name, or index number from list
+      - `-n, --name <n>`: Agent id, name, or index number from list
       - `-j, --json`: Display JSON output in terminal
       - `-o, --output <file>`: Save agent data to file
   - `start` (alias: `s`): Start an agent
     - Options:
-      - `-n, --name <name>`: Name of an existing agent to start
+      - `-n, --name <n>`: Name of an existing agent to start
       - `-j, --json <json>`: Character JSON configuration string
       - `--path <path>`: Local path to character JSON file
       - `--remote-character <url>`: URL to remote character JSON file
   - `stop` (alias: `st`): Stop an agent
     - Options:
-      - `-n, --name <name>`: Agent id, name, or index number from list
+      - `-n, --name <n>`: Agent id, name, or index number from list
   - `remove` (alias: `rm`): Remove an agent
     - Options:
-      - `-n, --name <name>`: Agent id, name, or index number from list
+      - `-n, --name <n>`: Agent id, name, or index number from list
   - `set`: Update agent configuration
     - Options:
-      - `-n, --name <name>`: Agent id, name, or index number from list
+      - `-n, --name <n>`: Agent id, name, or index number from list
       - `-c, --config <json>`: Agent configuration as JSON string
       - `-f, --file <path>`: Path to agent configuration JSON file
 
@@ -159,6 +181,33 @@ Start the Eliza agent with configurable plugins and services.
   - `-b, --build`: Build the project before starting
   - `-p, --port <port>`: Port to listen on (default: 3000)
 
+**Character Handling:**
+
+The `start` command accepts characters in various formats:
+
+```bash
+# Multiple character files (space-separated)
+elizaos start --character file1.json file2.json
+
+# Comma-separated format
+elizaos start --character "file1.json,file2.json"
+
+# With or without quotes
+elizaos start --character "'file1.json'" "file2.json"
+
+# Extension-optional (.json added automatically if missing)
+elizaos start --character character1
+
+# URLs are supported
+elizaos start --character https://example.com/characters/assistant.json
+```
+
+If any character files fail to load, ElizaOS will:
+
+- Log errors for the failed characters
+- Continue starting with any successfully loaded characters
+- Fall back to the default Eliza character if no characters loaded successfully
+
 ### Testing
 
 #### `elizaos test`
@@ -167,7 +216,7 @@ Run tests for Eliza agent plugins.
 
 - **Options:**
   - `-p, --port <port>`: Port to listen on
-  - `-pl, --plugin <name>`: Name of plugin to test
+  - `-pl, --plugin <n>`: Name of plugin to test
   - `-sp, --skip-plugins`: Skip plugin tests
   - `-spt, --skip-project-tests`: Skip project tests
   - `-sb, --skip-build`: Skip building before running tests
@@ -180,16 +229,16 @@ Manage TEE deployments with Phala vendor.
 
 - **Subcommands:**
   - `deploy`: Deploy to TEE cloud
-    - Options: `-t, --type <type>`, `-m, --mode <mode>`, `-n, --name <name>`, `-c, --compose <compose>`, `-e, --env <env...>`, `--env-file <envFile>`, `--debug`
+    - Options: `-t, --type <type>`, `-m, --mode <mode>`, `-n, --name <n>`, `-c, --compose <compose>`, `-e, --env <env...>`, `--env-file <envFile>`, `--debug`
   - `teepods`: Query the teepods
   - `images`: Query the images
     - Options: `--teepod-id <teepodId>`
   - `upgrade`: Upgrade the TEE CLI
     - Options: `-m, --mode <mode>`, `--app-id <appId>`, `-e, --env <env...>`, `--env-file <envFile>`, `-c, --compose <compose>`
   - `build-compose`: Build a docker-compose file for Eliza Agent
-    - Options: `-i, --image <name>`, `-u, --username <name>`, `-t, --tag <tag>`, `-c, --character <path>`, `-e, --env-file <path>`, `-v, --version <version>`
+    - Options: `-i, --image <n>`, `-u, --username <n>`, `-t, --tag <tag>`, `-c, --character <path>`, `-e, --env-file <path>`, `-v, --version <version>`
   - `publish`: Publish Docker image to Docker Hub
-    - Options: `-i, --image <name>`, `-u, --username <name>`, `-t, --tag <tag>`
+    - Options: `-i, --image <n>`, `-u, --username <n>`, `-t, --tag <tag>`
 
 ### Updates
 
