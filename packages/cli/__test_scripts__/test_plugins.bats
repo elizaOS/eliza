@@ -1,5 +1,12 @@
 #!/usr/bin/env bats
 
+setup_file() {
+  # Pre-populate the plugin registry before running tests
+  pushd ../../../ >/dev/null
+  bun run packages/cli/src/utils/parse-registry.ts
+  popd >/dev/null
+}
+
 setup() {
   export TEST_TMP_DIR="$(mktemp -d /var/tmp/eliza-test-plugins-XXXXXX)"
   export ELIZAOS_CMD="${ELIZAOS_CMD:-bun run "$(cd ../dist && pwd)/index.js"}"
@@ -79,11 +86,25 @@ teardown() {
   echo "STATUS: $status"
   [ "$status" -eq 0 ]
   cd proj-mod-app
-  run $ELIZAOS_CMD plugins add @elizaos/plugin-bootstrap --no-env-prompt
+  run $ELIZAOS_CMD plugins add @elizaos/plugin-discord --no-env-prompt
   echo "STDOUT: $output"
   echo "STATUS: $status"
   [ "$status" -eq 0 ]
-  grep '@elizaos/plugin-bootstrap' package.json
+  grep '@elizaos/plugin-discord' package.json
+}
+
+# Verifies that attempting to install a plugin not listed in the registry fails.
+@test "plugins add fails for missing plugin" {
+  run $ELIZAOS_CMD create proj-missing-plugin --yes
+  echo "STDOUT: $output"
+  echo "STATUS: $status"
+  [ "$status" -eq 0 ]
+  cd proj-missing-plugin
+  run $ELIZAOS_CMD plugins add missing --no-env-prompt
+  echo "STDOUT: $output"
+  echo "STATUS: $status"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"not found in registry"* ]] || [[ "$error" == *"not found in registry"* ]]
 }
 
 
