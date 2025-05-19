@@ -176,14 +176,22 @@ export async function sendTweet(
     const maxTweetLength = client.twitterConfig.MAX_TWEET_LENGTH;
     const isLongTweet = maxTweetLength > 280;
 
-    const parentTweet = await client.twitterClient.getTweet(inReplyTo);
-    const thread = parentTweet.thread;
-    elizaLogger.log(
-        `Replying to thread with conversation length: ${thread.length}`,
-    );
+    let currentTweetId = inReplyTo;
+    let depth = 0;
 
-    if (thread.length > MAX_CONVERSATION_LENGTH) {
-        elizaLogger.error("Reply conversation length is too long");
+    while (currentTweetId) {
+        const parentTweet = await client.twitterClient.getTweet(currentTweetId);
+        if (!parentTweet || !parentTweet.inReplyToStatusId) {
+            break;
+        }
+        currentTweetId = parentTweet.inReplyToStatusId;
+        depth++;
+    }
+
+    elizaLogger.log(`Replying to thread with conversation depth: ${depth}`);
+
+    if (depth > MAX_CONVERSATION_LENGTH) {
+        elizaLogger.error("Reply conversation depth is too long");
         return [];
     }
 
