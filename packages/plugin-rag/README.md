@@ -158,9 +158,7 @@ The document processing flow follows these steps regardless of database type:
 ## Component Overview
 
 - **RagService**: Core service that manages document processing and storage
-- **WorkerManager**: Handles worker lifecycle and communication
-- **Worker Implementation**: Processes documents, creates embeddings, and chunks text
-- **Document Processor**: Provides shared document processing utilities for both paths
+- **Document Processor**: Provides shared document processing utilities for both processing paths
 
 ## Features
 
@@ -178,20 +176,18 @@ The document processing flow follows these steps regardless of database type:
 import { RagService } from '@elizaos/plugin-rag';
 
 // Add knowledge to an agent
-await ragService.addKnowledge({
+const result = await ragService.addKnowledge({
   clientDocumentId: 'unique-id',
-  fileBuffer: documentBuffer,
+  content: documentContent, // Base64 string for binary files or plain text for text files
   contentType: 'application/pdf',
   originalFilename: 'document.pdf',
   worldId: 'world-id',
-  onDocumentStored: (error, result) => {
-    if (error) {
-      console.error('Error storing document:', error);
-      return;
-    }
-    console.log('Document stored:', result);
-  },
+  roomId: 'optional-room-id', // Optional scoping
+  entityId: 'optional-entity-id', // Optional scoping
 });
+
+console.log(`Document stored with ID: ${result.storedDocumentMemoryId}`);
+console.log(`Created ${result.fragmentCount} searchable fragments`);
 ```
 
 ## License

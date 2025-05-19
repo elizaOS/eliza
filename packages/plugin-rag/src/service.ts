@@ -1,7 +1,6 @@
 import { Service, IAgentRuntime, logger, UUID } from '@elizaos/core';
 import { AddKnowledgeOptions } from './types';
 import {
-  processDocumentSynchronously,
   processFragmentsSynchronously,
   extractTextFromDocument,
   createDocumentMemory,
@@ -61,12 +60,13 @@ export class RagService extends Service {
    */
   async addKnowledge({
     clientDocumentId,
-    fileBuffer,
     contentType,
     originalFilename,
     worldId,
-    text,
-  }: Omit<AddKnowledgeOptions, 'onDocumentStored'> & { text?: string }): Promise<{
+    content,
+    roomId,
+    entityId,
+  }: AddKnowledgeOptions): Promise<{
     clientDocumentId: string;
     storedDocumentMemoryId: UUID;
     fragmentCount: number;
@@ -103,94 +103,31 @@ export class RagService extends Service {
       );
     }
 
-    // Check if this is a PDF or other document type
-    if (contentType.toLowerCase() === 'application/pdf') {
-      return this.processPdfDocument({
-        clientDocumentId,
-        fileBuffer,
-        contentType,
-        originalFilename,
-        worldId,
-      });
-    } else {
-      return this.processNonPdfDocument({
-        clientDocumentId,
-        fileBuffer,
-        contentType,
-        originalFilename,
-        worldId,
-        text,
-      });
-    }
+    return this.processDocument({
+      clientDocumentId,
+      contentType,
+      originalFilename,
+      worldId,
+      content,
+      roomId: roomId || this.runtime.agentId,
+      entityId: entityId || this.runtime.agentId,
+    });
   }
 
   /**
-   * Process a PDF document
+   * Process a document regardless of type
    * @param options Document options
    * @returns Promise with document processing result
    */
-  private async processPdfDocument({
+  private async processDocument({
     clientDocumentId,
-    fileBuffer,
     contentType,
     originalFilename,
     worldId,
-  }: Omit<AddKnowledgeOptions, 'onDocumentStored'>): Promise<{
-    clientDocumentId: string;
-    storedDocumentMemoryId: UUID;
-    fragmentCount: number;
-  }> {
-    const agentId = this.runtime.agentId as string;
-
-    try {
-      logger.debug(`Processing PDF document: ${originalFilename}`);
-
-      // Ensure fileBuffer exists
-      if (!fileBuffer) {
-        throw new Error(`No file buffer provided for PDF document ${originalFilename}`);
-      }
-
-      // Process the document synchronously
-      const { documentId, fragmentCount } = await processDocumentSynchronously({
-        runtime: this.runtime,
-        clientDocumentId,
-        fileBuffer,
-        contentType,
-        originalFilename,
-        worldId,
-      });
-
-      logger.info(
-        `PDF document ${originalFilename} processed with ${fragmentCount} fragments for agent ${agentId}`
-      );
-
-      return {
-        clientDocumentId,
-        storedDocumentMemoryId: documentId,
-        fragmentCount,
-      };
-    } catch (error: any) {
-      logger.error(
-        `Error processing PDF document ${originalFilename}: ${error.message}`,
-        error.stack
-      );
-      throw error;
-    }
-  }
-
-  /**
-   * Process a non-PDF document
-   * @param options Document options
-   * @returns Promise with document processing result
-   */
-  private async processNonPdfDocument({
-    clientDocumentId,
-    fileBuffer,
-    contentType,
-    originalFilename,
-    worldId,
-    text,
-  }: Omit<AddKnowledgeOptions, 'onDocumentStored'> & { text?: string }): Promise<{
+    content,
+    roomId,
+    entityId,
+  }: AddKnowledgeOptions): Promise<{
     clientDocumentId: string;
     storedDocumentMemoryId: UUID;
     fragmentCount: number;
@@ -198,26 +135,34 @@ export class RagService extends Service {
     const agentId = this.runtime.agentId as UUID;
 
     try {
-      logger.debug(`Processing non-PDF document: ${originalFilename} (type: ${contentType})`);
+      logger.debug(`Processing document: ${originalFilename} (type: ${contentType})`);
 
-      // Use the provided text if available, otherwise extract it from the fileBuffer
+      // Convert content to buffer if it's binary content type
+      let fileBuffer: Buffer | null = null;
       let extractedText: string;
+      const isPdfFile =
+        contentType === 'application/pdf' || originalFilename.toLowerCase().endsWith('.pdf');
+      const isBinaryFile = this.isBinaryContentType(contentType, originalFilename);
 
-      if (text) {
-        // Use the text that was directly provided
-        logger.debug(`Using provided text content for ${originalFilename}`);
-        extractedText = text;
-      } else if (fileBuffer) {
-        // Extract text from fileBuffer
-        logger.debug(`Extracting text from non-PDF: ${originalFilename} (Type: ${contentType})`);
+      if (isBinaryFile) {
+        // For binary files (PDF, DOCX, etc.), content should be base64
+        try {
+          fileBuffer = Buffer.from(content, 'base64');
+          logger.debug(
+            `Converted base64 to buffer for ${originalFilename} (size: ${fileBuffer.length} bytes)`
+          );
+        } catch (e: any) {
+          logger.error(`Failed to convert base64 to buffer for ${originalFilename}: ${e.message}`);
+          throw new Error(`Invalid base64 content for binary file ${originalFilename}`);
+        }
+
+        // Extract text for processing fragments
+        logger.debug(`Extracting text from binary file: ${originalFilename}`);
         extractedText = await extractTextFromDocument(fileBuffer, contentType, originalFilename);
       } else {
-        // Neither text nor fileBuffer was provided - throw an error
-        const noContentError = new Error(
-          `No content provided for ${originalFilename}. Both fileBuffer and text are missing.`
-        );
-        logger.warn(noContentError.message);
-        throw noContentError;
+        // For text files, content is already plain text
+        logger.debug(`Using provided text content for ${originalFilename}`);
+        extractedText = content;
       }
 
       if (!extractedText || extractedText.trim() === '') {
@@ -228,9 +173,11 @@ export class RagService extends Service {
         throw noTextError;
       }
 
-      // Create and save main document memory
+      // Create document memory
       const documentMemory = createDocumentMemory({
-        text: extractedText,
+        // Only PDF files are stored as base64, all other files are stored as extracted text
+        // This makes all non-PDF files readable directly in the UI
+        text: isPdfFile ? content : extractedText,
         agentId,
         clientDocumentId,
         originalFilename,
@@ -239,10 +186,19 @@ export class RagService extends Service {
         fileSize: fileBuffer ? fileBuffer.length : extractedText.length,
       });
 
-      logger.debug(`Storing main document: ${originalFilename} (Memory ID: ${documentMemory.id})`);
-      await this.runtime.createMemory(documentMemory, 'documents');
+      // Store the document in the database
+      logger.debug(`Storing document: ${originalFilename} (Memory ID: ${documentMemory.id})`);
 
-      // Process fragments
+      // Make sure to apply roomId and entityId to the memory
+      const memoryWithScope = {
+        ...documentMemory,
+        roomId: roomId || agentId,
+        entityId: entityId || agentId,
+      };
+
+      await this.runtime.createMemory(memoryWithScope, 'documents');
+
+      // Process fragments using the extracted text
       logger.debug(`Processing fragments for document: ${originalFilename}`);
       const fragmentCount = await processFragmentsSynchronously({
         runtime: this.runtime,
@@ -250,10 +206,13 @@ export class RagService extends Service {
         fullDocumentText: extractedText,
         agentId,
         contentType,
+        roomId: roomId || agentId,
+        entityId: entityId || agentId,
+        worldId: worldId || agentId,
       });
 
       logger.info(
-        `Non-PDF document ${originalFilename} processed with ${fragmentCount} fragments for agent ${agentId}`
+        `Document ${originalFilename} processed with ${fragmentCount} fragments for agent ${agentId}`
       );
 
       return {
@@ -262,11 +221,59 @@ export class RagService extends Service {
         fragmentCount,
       };
     } catch (error: any) {
-      logger.error(
-        `Error processing non-PDF document ${originalFilename}: ${error.message}`,
-        error.stack
-      );
+      logger.error(`Error processing document ${originalFilename}: ${error.message}`, error.stack);
       throw error;
     }
+  }
+
+  /**
+   * Determines if a file should be treated as binary based on its content type and filename
+   * @param contentType MIME type of the file
+   * @param filename Original filename
+   * @returns True if the file should be treated as binary (base64 encoded)
+   */
+  private isBinaryContentType(contentType: string, filename: string): boolean {
+    const binaryContentTypes = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument',
+      'application/vnd.ms-excel',
+      'application/vnd.ms-powerpoint',
+      'application/zip',
+      'application/x-zip-compressed',
+      'application/octet-stream',
+      'image/',
+      'audio/',
+      'video/',
+    ];
+
+    // Check MIME type
+    const isBinaryMimeType = binaryContentTypes.some((type) => contentType.includes(type));
+
+    if (isBinaryMimeType) {
+      return true;
+    }
+
+    // Check file extension as fallback
+    const fileExt = filename.split('.').pop()?.toLowerCase() || '';
+    const binaryExtensions = [
+      'pdf',
+      'docx',
+      'doc',
+      'xls',
+      'xlsx',
+      'ppt',
+      'pptx',
+      'zip',
+      'jpg',
+      'jpeg',
+      'png',
+      'gif',
+      'mp3',
+      'mp4',
+      'wav',
+    ];
+
+    return binaryExtensions.includes(fileExt);
   }
 }

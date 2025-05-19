@@ -106,14 +106,20 @@ export interface TextGenerationOptions {
 export interface AddKnowledgeOptions {
   /** Client-provided document ID */
   clientDocumentId: UUID;
-  /** File buffer containing the document */
-  fileBuffer?: Buffer;
   /** MIME type of the file */
   contentType: string;
   /** Original filename */
   originalFilename: string;
   /** World ID for storage */
   worldId: UUID;
-  /** Direct text content (optional, used when fileBuffer is not available) */
-  text?: string;
+  /**
+   * Content of the document. Should be:
+   * - Base64 encoded string for binary files (PDFs, DOCXs, etc)
+   * - Plain text for text files
+   */
+  content: string;
+  /** Optional room ID for storage scoping */
+  roomId?: UUID;
+  /** Optional entity ID for storage scoping */
+  entityId?: UUID;
 }

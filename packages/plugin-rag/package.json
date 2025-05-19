@@ -38,6 +38,7 @@
     "esbuild-plugin-copy": "^2.1.1",
     "mammoth": "^1.9.0",
     "pdfjs-dist": "^5.2.133",
+    "textract": "^2.5.0",
     "zod": "3.24.2"
   },
   "devDependencies": {

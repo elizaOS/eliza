@@ -35,68 +35,6 @@ if (ctxRagEnabled) {
 // =============================================================================
 
 /**
- * Process a document synchronously
- * This is the main entry point for document processing that:
- * 1. Extracts text from the document
- * 2. Creates and stores the main document memory
- * 3. Processes document fragments with embeddings
- *
- * @param params Document parameters
- * @returns Document ID and fragment count
- */
-export async function processDocumentSynchronously({
-  runtime,
-  clientDocumentId,
-  fileBuffer,
-  contentType,
-  originalFilename,
-  worldId,
-}: {
-  runtime: IAgentRuntime;
-  clientDocumentId: UUID;
-  fileBuffer: Buffer;
-  contentType: string;
-  originalFilename: string;
-  worldId: UUID;
-}): Promise<{ documentId: UUID; fragmentCount: number }> {
-  const agentId = runtime.agentId as UUID;
-
-  // Extract text from document
-  logger.debug(`Extracting text from ${originalFilename}`);
-  const extractedText = await extractTextFromDocument(fileBuffer, contentType, originalFilename);
-
-  if (!extractedText || extractedText.trim() === '') {
-    throw new Error(`No text content extracted from ${originalFilename}.`);
-  }
-
-  // Create and save main document memory
-  const documentMemory = createDocumentMemory({
-    text: extractedText,
-    agentId,
-    clientDocumentId,
-    originalFilename,
-    contentType,
-    worldId,
-    fileSize: fileBuffer.length,
-  });
-
-  logger.debug(`Storing main document ${originalFilename} (Memory ID: ${documentMemory.id})`);
-  await runtime.createMemory(documentMemory, 'documents');
-  logger.info(`Document ${originalFilename} stored successfully for agent ${agentId}`);
-
-  // Process fragments
-  const fragmentCount = await processFragmentsSynchronously({
-    runtime,
-    documentId: clientDocumentId,
-    fullDocumentText: extractedText,
-    agentId,
-    contentType,
-  });
-
-  return { documentId: documentMemory.id as UUID, fragmentCount };
-}
-
-/**
  * Process document fragments synchronously
  * This function:
  * 1. Splits the document text into chunks
@@ -113,12 +51,18 @@ export async function processFragmentsSynchronously({
   fullDocumentText,
   agentId,
   contentType,
+  roomId,
+  entityId,
+  worldId,
 }: {
   runtime: IAgentRuntime;
   documentId: UUID;
   fullDocumentText: string;
   agentId: UUID;
   contentType?: string;
+  roomId?: UUID;
+  entityId?: UUID;
+  worldId?: UUID;
 }): Promise<number> {
   if (!fullDocumentText || fullDocumentText.trim() === '') {
     logger.warn(`No text content available to chunk for document ${documentId}.`);
@@ -148,6 +92,9 @@ export async function processFragmentsSynchronously({
     fullDocumentText,
     contentType,
     agentId,
+    roomId: roomId || agentId,
+    entityId: entityId || agentId,
+    worldId: worldId || agentId,
     concurrencyLimit: CONCURRENCY_LIMIT,
     rateLimiter,
   });
@@ -179,12 +126,39 @@ export async function extractTextFromDocument(
   contentType: string,
   originalFilename: string
 ): Promise<string> {
-  if (contentType === 'application/pdf') {
-    logger.debug(`Extracting text from PDF: ${originalFilename}`);
-    return await convertPdfToTextFromBuffer(fileBuffer, originalFilename);
-  } else {
-    logger.debug(`Extracting text from non-PDF: ${originalFilename} (Type: ${contentType})`);
-    return await extractTextFromFileBuffer(fileBuffer, contentType, originalFilename);
+  // Validate buffer
+  if (!fileBuffer || fileBuffer.length === 0) {
+    throw new Error(`Empty file buffer provided for ${originalFilename}. Cannot extract text.`);
+  }
+
+  try {
+    if (contentType === 'application/pdf') {
+      logger.debug(`Extracting text from PDF: ${originalFilename}`);
+      return await convertPdfToTextFromBuffer(fileBuffer, originalFilename);
+    } else {
+      logger.debug(`Extracting text from non-PDF: ${originalFilename} (Type: ${contentType})`);
+
+      // For plain text files, try UTF-8 decoding first
+      if (
+        contentType.includes('text/') ||
+        contentType.includes('application/json') ||
+        contentType.includes('application/xml')
+      ) {
+        try {
+          return fileBuffer.toString('utf8');
+        } catch (textError) {
+          logger.warn(
+            `Failed to decode ${originalFilename} as UTF-8, falling back to binary extraction`
+          );
+        }
+      }
+
+      // For other files, use general extraction
+      return await extractTextFromFileBuffer(fileBuffer, contentType, originalFilename);
+    }
+  } catch (error: any) {
+    logger.error(`Error extracting text from ${originalFilename}: ${error.message}`);
+    throw new Error(`Failed to extract text from ${originalFilename}: ${error.message}`);
   }
 }
 
@@ -278,6 +252,9 @@ async function processAndSaveFragments({
   fullDocumentText,
   contentType,
   agentId,
+  roomId,
+  entityId,
+  worldId,
   concurrencyLimit,
   rateLimiter,
 }: {
@@ -287,6 +264,9 @@ async function processAndSaveFragments({
   fullDocumentText: string;
   contentType?: string;
   agentId: UUID;
+  roomId?: UUID;
+  entityId?: UUID;
+  worldId?: UUID;
   concurrencyLimit: number;
   rateLimiter: () => Promise<void>;
 }): Promise<{ savedCount: number; failedCount: number; failedChunks: number[] }> {
@@ -342,9 +322,9 @@ async function processAndSaveFragments({
         const fragmentMemory: Memory = {
           id: uuidv4() as UUID,
           agentId,
-          roomId: agentId,
-          worldId: agentId,
-          entityId: agentId,
+          roomId: roomId || agentId,
+          worldId: worldId || agentId,
+          entityId: entityId || agentId,
           embedding,
           content: { text: contextualizedChunkText },
           metadata: {

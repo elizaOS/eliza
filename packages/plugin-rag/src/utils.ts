@@ -51,6 +51,16 @@ export async function extractTextFromFileBuffer(
       throw new Error(errorMsg);
     }
   } else if (
+    lowerContentType === 'application/msword' ||
+    originalFilename.toLowerCase().endsWith('.doc')
+  ) {
+    // For .doc files, we'll store the content as-is, and just add a message
+    // The frontend will handle the display appropriately
+    logger.debug(`[TextUtil] Handling Microsoft Word .doc file: ${originalFilename}`);
+
+    // We'll add a descriptive message as a placeholder
+    return `[Microsoft Word Document: ${originalFilename}]\n\nThis document was indexed for search but cannot be displayed directly in the browser. The original document content is preserved for retrieval purposes.`;
+  } else if (
     lowerContentType.startsWith('text/') ||
     PLAIN_TEXT_CONTENT_TYPES.includes(lowerContentType)
   ) {
