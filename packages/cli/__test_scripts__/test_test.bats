@@ -1,19 +1,27 @@
 #!/usr/bin/env bats
 
+# -----------------------------------------------------------------------------
+# Simple smoke‑test for the `elizaos test` command.
+# -----------------------------------------------------------------------------
+
 setup() {
+  set -euo pipefail
+
   export TEST_TMP_DIR="$(mktemp -d /var/tmp/eliza-test-test-XXXXXX)"
-  export ELIZAOS_CMD="${ELIZAOS_CMD:-bun run "$(cd ../dist && pwd)/index.js"}"
   cd "$TEST_TMP_DIR"
+
+  # Point to the built CLI bundle unless caller overrides.
+  export ELIZAOS_CMD="${ELIZAOS_CMD:-bun run $(cd "$BATS_TEST_DIRNAME/../dist" && pwd)/index.js}"
 }
 
 teardown() {
-  if [ -n "$TEST_TMP_DIR" ] && [[ "$TEST_TMP_DIR" == /var/tmp/eliza-test-* ]]; then
-    rm -rf "$TEST_TMP_DIR"
-  fi
+  [[ -n "${TEST_TMP_DIR:-}" && "$TEST_TMP_DIR" == /var/tmp/eliza-test-* ]] && rm -rf "$TEST_TMP_DIR"
 }
 
-# Checks that the test help command displays usage information.
-@test "test help displays usage information and exits successfully" {
+# -----------------------------------------------------------------------------
+# --help output
+# -----------------------------------------------------------------------------
+@test "test --help shows usage" {
   run $ELIZAOS_CMD test --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"Usage: elizaos test"* ]]

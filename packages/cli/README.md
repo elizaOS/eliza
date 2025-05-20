@@ -111,7 +111,7 @@ Clone ElizaOS monorepo from a specific branch (defaults to v2-develop).
 
 ### Plugin Management
 
-#### `elizaos plugin <subcommand>`
+#### `elizaos plugins <subcommand>`
 
 Manage an ElizaOS plugin.
 
@@ -397,13 +397,13 @@ Plugins extend the functionality of ElizaOS agents by providing additional capab
 
    ```bash
    # Test publishing process
-   elizaos plugin publish --test
+   elizaos plugins publish --test
 
    # Publish to registry
-   elizaos plugin publish
+   elizaos plugins publish
 
    # Or publish to npm
-   elizaos plugin publish --npm
+   elizaos plugins publish --npm
    ```
 
 ### Developing Projects (Agents)

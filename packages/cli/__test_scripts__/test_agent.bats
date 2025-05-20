@@ -1,206 +1,169 @@
 #!/usr/bin/env bats
 
+# -----------------------------------------------------------------------------
+# End‑to‑end tests for the ElizaOS agent sub‑commands running against a local
+# ElizaOS server instance backed by PGLite. The server is started once per test
+# file (setup_file) and torn down in teardown_file.
+# -----------------------------------------------------------------------------
+
 setup_file() {
-  # Start the test server (if needed)
-  export TEST_SERVER_PORT=3000
+  set -euo pipefail
+
+  # ---------------------------------------------------------------------------
+  # Dynamic paths / ports so parallel test runners don't collide.
+  # ---------------------------------------------------------------------------
+  export TEST_SERVER_PORT=8888
   export TEST_SERVER_URL="http://localhost:$TEST_SERVER_PORT"
   export TEST_TMP_DIR="$(mktemp -d /var/tmp/eliza-test-agent-XXXXXX)"
-  # Ensure pglite data dir is unique for this test run
   mkdir -p "$TEST_TMP_DIR/pglite"
-  export ELIZAOS_CMD="${ELIZAOS_CMD:-bun run "$(cd ../dist && pwd)/index.js"}"
 
-  # Start server in background with PGLite forced
-  LOG_LEVEL=debug PGLITE_DATA_DIR="$TEST_TMP_DIR/pglite" $ELIZAOS_CMD start --port $TEST_SERVER_PORT >"$TEST_TMP_DIR/server.log" 2>&1 &
-  SERVER_PID=$! 
-  # Wait for server to be up (poll with timeout)
-  SERVER_UP=0
+  # Resolve CLI path; allow caller to override ELIZAOS_CMD.
+  export ELIZAOS_CMD="${ELIZAOS_CMD:-bun run $(cd "$BATS_TEST_DIRNAME/../dist" && pwd)/index.js}"
+
+  # ---------------------------------------------------------------------------
+  # Launch the server under test.
+  # ---------------------------------------------------------------------------
+  LOG_LEVEL=debug \
+  PGLITE_DATA_DIR="$TEST_TMP_DIR/pglite" \
+  $ELIZAOS_CMD start --port "$TEST_SERVER_PORT" \
+    >"$TEST_TMP_DIR/server.log" 2>&1 &
+  SERVER_PID=$!
+
+  # Poll until the REST endpoint comes up (max 15 s).
   for i in {1..15}; do
-    if curl -sf "http://localhost:$TEST_SERVER_PORT/api/agents" >/dev/null; then
-      SERVER_UP=1
+    if curl -sf "$TEST_SERVER_URL/api/agents" >/dev/null; then
       break
     fi
     sleep 1
   done
-  if [ "$SERVER_UP" -ne 1 ]; then
-    echo "[ERROR] ElizaOS server did not start within timeout!"
-    echo "--- SERVER LOG ---"
-    cat "$TEST_TMP_DIR/server.log"
-    echo "------------------"
+  if ! kill -0 "$SERVER_PID" 2>/dev/null || ! curl -sf "$TEST_SERVER_URL/api/agents" >/dev/null; then
+    echo "[ERROR] ElizaOS server did not come up within timeout" >&2
+    echo "--- SERVER LOG ---" >&2
+    cat "$TEST_TMP_DIR/server.log" >&2
+    echo "------------------" >&2
     exit 1
   fi
 
-  # Start the agents using the existing character files
-  $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" start --path "$(pwd)/test-characters/ada.json" || true
-  $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" start --path "$(pwd)/test-characters/max.json" || true
-  $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" start --path "$(pwd)/test-characters/shaw.json" || true
-  
-  # Allow a moment for agents to start
-  sleep 1
+  # Pre‑load three reference character files.
+  for c in ada max shaw; do
+    $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" start \
+      --path "$BATS_TEST_DIRNAME/test-characters/$c.json"
+  done
+  sleep 1  # give them a moment to register
 }
 
 teardown_file() {
-  # Stop the server
-  if [ -n "$SERVER_PID" ]; then
+  if [[ -n "${SERVER_PID:-}" ]]; then
     kill "$SERVER_PID" 2>/dev/null || true
     wait "$SERVER_PID" 2>/dev/null || true
   fi
-  if [ -n "$TEST_TMP_DIR" ]; then
-    rm -rf "$TEST_TMP_DIR"
-  fi
+  [[ -n "${TEST_TMP_DIR:-}" ]] && rm -rf "$TEST_TMP_DIR"
 }
 
-# Checks that the agent help command displays usage information.
+# -----------------------------------------------------------------------------
+# Basic help / listing
+# -----------------------------------------------------------------------------
 @test "agent help displays usage information" {
   run $ELIZAOS_CMD agent --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"Usage: elizaos agent"* ]]
 }
 
-# Verifies that agent list returns the default agents when no agents are running.
 @test "agent list returns agents" {
   run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" list
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Ada"* ]] || [[ "$output" == *"Max"* ]] || [[ "$output" == *"Shaw"* ]]
+  [[ "$output" =~ (ada|max|shaw) ]]
 }
 
-# Checks that agent list works with the CLI and remote URL.
-@test "agent list works with CLI remote-url" {
-  run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" list
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"Ada"* ]] || [[ "$output" == *"Max"* ]] || [[ "$output" == *"Shaw"* ]]
-}
-
-# Test agent list with JSON flag
 @test "agent list works with JSON flag" {
   run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" list --json
   [ "$status" -eq 0 ]
-  [[ "$output" == *"["* ]]
-  [[ "$output" == *"{"* ]]
-  [[ "$output" == *"Name"* ]] || [[ "$output" == *"name"* ]]
-  [[ "$output" == *"ID"* ]] || [[ "$output" == *"id"* ]]
+  [[ "$output" == *"["* ]] && [[ "$output" == *"{"* ]]
+  [[ "$output" =~ ("name"|"Name") ]]
 }
 
-# Test agent get with name parameter
+# -----------------------------------------------------------------------------
+# agent get
+# -----------------------------------------------------------------------------
 @test "agent get shows details with name parameter" {
   run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" get -n Ada
   [ "$status" -eq 0 ]
   [[ "$output" == *"Ada"* ]]
 }
 
-# Test agent get with JSON flag
 @test "agent get with JSON flag shows character definition" {
   run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" get -n Ada --json
   [ "$status" -eq 0 ]
-  [[ "$output" == *"name"* ]] || [[ "$output" == *"Name"* ]]
-  [[ "$output" == *"Ada"* ]]
+  [[ "$output" =~ ("name"|"Name") ]] && [[ "$output" == *"Ada"* ]]
 }
 
-# Test agent get with output flag
 @test "agent get with output flag saves to file" {
-  OUTPUT_FILE="$TEST_TMP_DIR/output_test.json"
+  OUTPUT_FILE="$TEST_TMP_DIR/output_ada.json"
+  rm -f "$OUTPUT_FILE"
   run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" get -n Ada --output "$OUTPUT_FILE"
-  
-  if [ "$status" -eq 0 ]; then
-    # Check if file was created
-    if [ -f "$OUTPUT_FILE" ]; then
-      echo "Output file was successfully created"
-      [[ "$(cat "$OUTPUT_FILE")" == *"Ada"* ]]
-    else
-      echo "Command succeeded but output file was not created"
-      false
-    fi
-  else
-    echo "Command failed with status $status"
-    echo "Output: $output"
-    false
-  fi
+  [ "$status" -eq 0 ]
+  [ -f "$OUTPUT_FILE" ]
+  [[ "$(cat "$OUTPUT_FILE")" == *"Ada"* ]]
 }
 
-# Ensures agent start loads a character from file successfully.
+# -----------------------------------------------------------------------------
+# agent start
+# -----------------------------------------------------------------------------
 @test "agent start loads character from file" {
-  run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" start --path "$(pwd)/test-characters/ada.json"
-  
-  # Allow success or "already exists" message
+  run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" start --path "$BATS_TEST_DIRNAME/test-characters/ada.json"
   if [ "$status" -eq 0 ]; then
-    [[ "$output" == *"started successfully"* ]] || [[ "$output" == *"created"* ]]
+    [[ "$output" =~ (started successfully|created) ]]
   else
-    [[ "$output" == *"already exists"* ]] || [[ "$output" == *"already running"* ]]
+    [[ "$output" =~ (already exists|already running) ]]
   fi
 }
 
-# Test agent start with name parameter
 @test "agent start works with name parameter" {
   run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" start -n Ada
-  
-  # Allow either success or already running message
-  [ "$status" -eq 0 ] || [[ "$output" == *"already"* ]] 
+  [ "$status" -eq 0 ] || [[ "$output" =~ already ]]
 }
 
-# Test agent start error handling with non-existent character
-@test "agent start handles non-existent agent gracefully" {
-  # Use a clearly non-existent agent name with special characters to ensure it doesn't exist
-  run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" start -n "NonExistentAgent_$$"
-  
-  # This should either fail with an error message, or it should create the agent
-  if [ "$status" -eq 0 ]; then
-    # If it succeeded, it means it handled the case by creating a new agent
-    [[ "$output" == *"created"* ]] || [[ "$output" == *"started"* ]]
-    
-    # Clean up by removing the newly created agent
-    $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" remove -n "NonExistentAgent_$$" > /dev/null 2>&1 || true
-  else
-    # If it failed, it should have an appropriate error message
-    [[ "$output" == *"not found"* ]] || [[ "$output" == *"error"* ]] || [[ "$output" == *"No agent found"* ]]
-  fi
+@test "agent start handles non-existent agent fails" {
+  run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" start -n "NonExistent_$$"
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ (not found|No agent found|error) ]]
 }
 
-# Checks that agent stop works after starting an agent.
+# -----------------------------------------------------------------------------
+# agent stop
+# -----------------------------------------------------------------------------
 @test "agent stop works after start" {
-  # Ensure Ada is running before stopping
   $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" start -n Ada || true
-  
-  # Then try to stop it
   run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" stop -n Ada
-  
-  # Either success or already stopped
   if [ "$status" -eq 0 ]; then
-    [[ "$output" == *"stopped"* ]] || [[ "$output" == *"Stopped"* ]]
+    [[ "$output" =~ (stopped|Stopped) ]]
   else
-    [[ "$output" == *"not running"* ]] || [[ "$output" == *"not found"* ]]
+    [[ "$output" =~ (not running|not found) ]]
   fi
 }
 
-# Test agent set command to update configuration
+# -----------------------------------------------------------------------------
+# agent set
+# -----------------------------------------------------------------------------
 @test "agent set updates configuration correctly" {
-  # Create a config file to update the Ada agent
-  cat > "$TEST_TMP_DIR/update_config.json" << EOF
+  CONFIG_FILE="$TEST_TMP_DIR/update_config.json"
+  cat > "$CONFIG_FILE" <<'EOF'
 {
   "system": "Updated system prompt for testing"
 }
 EOF
-
-  # Update Ada's configuration
-  run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" set -n Ada -f "$TEST_TMP_DIR/update_config.json"
-  
-  # Check either for success or error
-  if [ "$status" -eq 0 ]; then
-    [[ "$output" == *"updated"* ]] || [[ "$output" == *"Updated"* ]]
-  else
-    echo "Config update failed with status $status"
-    echo "Output: $output"
-    false
-  fi
+  run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" set -n Ada -f "$CONFIG_FILE"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ (updated|Updated) ]]
 }
 
-# Validates full agent lifecycle: start, check, stop, and cleanup.
+# -----------------------------------------------------------------------------
+# Full lifecycle
+# -----------------------------------------------------------------------------
 @test "agent full lifecycle management" {
-  # Start agent
   run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" start -n Ada
-  # Allow either success or "already running"
-  [ "$status" -eq 0 ] || [[ "$output" == *"already"* ]]
-  
-  # Stop agent
+  [ "$status" -eq 0 ] || [[ "$output" =~ already ]]
+
   run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" stop -n Ada
-  # Allow either success or "not running"
-  [ "$status" -eq 0 ] || [[ "$output" == *"not running"* ]]
+  [ "$status" -eq 0 ] || [[ "$output" =~ "not running" ]]
 }

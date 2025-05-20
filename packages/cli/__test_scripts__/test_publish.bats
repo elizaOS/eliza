@@ -1,54 +1,75 @@
 #!/usr/bin/env bats
 
+# -----------------------------------------------------------------------------
+# End‑to‑end tests for the ElizaOS CLI `plugins publish` sub‑command.
+#
+# These tests verify that the `plugins publish` command works correctly with
+# various flags (`--validate`, `--pack`, `--auth`, `--bump-version`), ensuring
+# they run without errors and produce the expected outputs. For the `--pack`
+# flag, we also verify that it creates a tarball as expected.
+#
+# Each test runs in an isolated temporary directory to ensure test isolation
+# and prevent side effects.
+# -----------------------------------------------------------------------------
+
 setup() {
+  # Fail fast inside helper functions and loops.
+  set -euo pipefail
+
+  # One top‑level tmp dir per test run.
   export TEST_TMP_DIR="$(mktemp -d /var/tmp/eliza-test-publish-XXXXXX)"
-  # Guarantee CLI is built
-  if [ ! -f "$(cd ../dist && pwd)/index.js" ]; then
-    (cd .. && bun run build)
+
+  # Resolve the CLI entry point we'll be testing.
+  # Ensure the CLI bundle is present; build once if missing.
+  if [ ! -f "$BATS_TEST_DIRNAME/../dist/index.js" ]; then
+    (cd "$BATS_TEST_DIRNAME/.." && bun run build)
   fi
-  export ELIZAOS_CMD="${ELIZAOS_CMD:-bun run $(cd ../dist && pwd)/index.js}"
+  export ELIZAOS_CMD="${ELIZAOS_CMD:-bun run $(cd "$BATS_TEST_DIRNAME/../dist" && pwd)/index.js}"
+
   cd "$TEST_TMP_DIR"
 }
 
 teardown() {
-  if [ -n "$TEST_TMP_DIR" ] && [[ "$TEST_TMP_DIR" == /var/tmp/eliza-test-* ]]; then
+  if [[ -n "${TEST_TMP_DIR:-}" && "$TEST_TMP_DIR" == /var/tmp/eliza-test-publish-* ]]; then
     rm -rf "$TEST_TMP_DIR"
   fi
 }
 
-# Checks that the publish help command displays usage information (matching actual CLI output).
+# -----------------------------------------------------------------------------
+# Helper: Create a new plugin for testing
+# -----------------------------------------------------------------------------
+create_plugin() {
+  local name="$1"
+  run $ELIZAOS_CMD create "$name" --yes --type plugin
+  [ "$status" -eq 0 ]
+  cd "plugin-$name"
+}
+
+# -----------------------------------------------------------------------------
+# plugins publish --help
+# -----------------------------------------------------------------------------
 @test "plugins publish help displays usage information" {
   run $ELIZAOS_CMD plugins publish --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"Manage ElizaOS plugins"* ]]
+  [[ "$output" =~ (--validate|--pack|--auth|--bump-version) ]]
 }
 
-# Verifies that plugins validation runs in a newly created plugins project directory.
-@test "plugins publish validate runs in plugins project" {
-  run $ELIZAOS_CMD create my-plugins --yes --type plugin
-  echo "$output"
-  echo "$error"
-  [ "$status" -eq 0 ]
-  cd plugin-my-plugins
+# -----------------------------------------------------------------------------
+# plugins publish --validate
+# -----------------------------------------------------------------------------
+@test "plugins publish --validate runs in plugins project" {
+  create_plugin myplugins
   run $ELIZAOS_CMD plugins publish --validate
-  [ "$status" -ne 127 ]
-}
-
-# Checks that plugins packaging runs in a newly created plugins project directory.
-@test "plugins publish pack runs in plugins project" {
-  run $ELIZAOS_CMD create pkg-plugins --yes --type plugin
-  echo "$output"
-  echo "$error"
   [ "$status" -eq 0 ]
-  cd plugin-pkg-plugins
-  run $ELIZAOS_CMD plugins publish --pack
-  [ "$status" -ne 127 ]
 }
 
-# Ensures plugins publish with authentication flag runs in a plugins project directory.
-@test "plugins publish with auth flag runs in plugins project" {
-  run $ELIZAOS_CMD create pub-plugins --yes --type plugin
-  echo "$output"
+# -----------------------------------------------------------------------------
+# plugins publish --pack
+# -----------------------------------------------------------------------------
+@test "plugins publish --pack creates a tarball" {
+  create_plugin pkgplugins
+  run $ELIZAOS_CMD plugins publish --pack
   echo "$error"
   [ "$status" -eq 0 ]
   cd plugin-pub-plugins
