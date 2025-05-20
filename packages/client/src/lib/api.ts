@@ -2,6 +2,12 @@ import type { Agent, Character, UUID, Memory } from '@elizaos/core';
 
 export type AgentWithStatus = Omit<Agent, 'status'> & { status: 'active' | 'inactive' };
 
+// Interface for agent panels (public routes)
+export interface AgentPanel {
+  name: string;
+  path: string;
+}
+
 import { WorldManager } from './world-manager';
 import clientLogger from './logger';
 import { connectionStatusActions } from '../context/ConnectionContext';
@@ -375,6 +381,14 @@ export const apiClient = {
     const worldId = WorldManager.getWorldId();
     return fetcher({
       url: `/world/${worldId}/rooms`,
+      method: 'GET',
+    });
+  },
+
+  // Get all worlds
+  getWorlds: () => {
+    return fetcher({
+      url: '/worlds',
       method: 'GET',
     });
   },

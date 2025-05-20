@@ -111,6 +111,26 @@ export function agentRouter(
   const router = express.Router();
   const db = server?.database;
 
+  // Get all worlds
+  router.get('/worlds', async (req, res) => {
+    try {
+      // Find any active runtime to use for getting worlds
+      const runtime = Array.from(agents.values())[0];
+
+      if (!runtime) {
+        sendError(res, 404, 'NOT_FOUND', 'No active agents found to get worlds');
+        return;
+      }
+
+      const worlds = await runtime.getAllWorlds();
+
+      sendSuccess(res, { worlds });
+    } catch (error) {
+      logger.error('[WORLDS LIST] Error retrieving worlds:', error);
+      sendError(res, 500, '500', 'Error retrieving worlds', error.message);
+    }
+  });
+
   // Message handler
   const handleAgentMessage = async (req: CustomRequest, res: express.Response) => {
     logger.debug('[MESSAGES CREATE] Creating new message');
