@@ -116,22 +116,22 @@ node_modules
 }
 
 /**
- * Initialize a new project or plugin.
+ * Initialize a new project, plugin, or agent.
  *
  * @param {Object} opts - Options for initialization.
  * @param {string} opts.dir - Installation directory.
  * @param {boolean} opts.yes - Skip confirmation.
- * @param {string} opts.type - Type of template to use (project or plugin).
+ * @param {string} opts.type - Type to create (project, plugin, or agent).
  *
  * @returns {Promise<void>} Promise that resolves once the initialization process is complete.
  */
 export const create = new Command()
   .name('create')
-  .description('Initialize a new project or plugin')
+  .description('Initialize a new project, plugin, or agent')
   .option('-d, --dir <dir>', 'installation directory', '.')
   .option('-y, --yes', 'skip confirmation', false)
-  .option('-t, --type <type>', 'type of template to use (project or plugin)', 'project')
-  .argument('[name]', 'name for the project or plugin')
+  .option('-t, --type <type>', 'type to create (project, plugin, or agent)', 'project')
+  .argument('[name]', 'name for the project, plugin, or agent')
   .action(async (name, opts) => {
     // Set non-interactive mode if environment variable is set or if -y/--yes flag is present in process.argv
     if (
@@ -354,7 +354,7 @@ export const create = new Command()
         console.log('Plugin initialized successfully!');
         const cdPath = options.dir === '.' ? projectName : path.relative(process.cwd(), targetDir);
         console.info(
-          `\nYour plugin is ready! Here's your development workflow:\n\n[1] Development\n   cd ${cdPath}\n   ${colors.cyan('elizaos dev')}                   # Start development with hot-reloading\n\n[2] Testing\n   ${colors.cyan('elizaos test')}                  # Run automated tests\n   ${colors.cyan('elizaos start')}                 # Test in a live agent environment\n\n[3] Publishing\n   ${colors.cyan('elizaos plugin publish --test')} # Check registry requirements\n   ${colors.cyan('elizaos plugin publish')}        # Submit to registry\n\n[?] Learn more: https://eliza.how/docs/cli/plugins`
+          `\nYour plugin is ready! Here's your development workflow:\n\n[1] Development\n   cd ${cdPath}\n   ${colors.cyan('elizaos dev')}                   # Start development with hot-reloading\n\n[2] Testing\n   ${colors.cyan('elizaos test')}                  # Run automated tests\n   ${colors.cyan('elizaos start')}                 # Test in a live agent environment\n\n[3] Publishing\n   ${colors.cyan('elizaos plugins publish --test')} # Check registry requirements\n   ${colors.cyan('elizaos plugins publish')}        # Submit to registry\n\n[?] Learn more: https://eliza.how/docs/cli/plugins`
         );
         process.stdout.write(`\u001B]1337;CurrentDir=${targetDir}\u0007`);
         return;

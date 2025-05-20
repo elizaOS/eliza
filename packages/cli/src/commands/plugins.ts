@@ -102,10 +102,9 @@ export const findPluginPackageName = (
 export const plugins = new Command()
   .name('plugins')
   .description('Manage ElizaOS plugins')
-  .option('-h, --help', 'Show help for plugins command')
   .action(function () {
-    // Just show help without displaying banner
-    this.help();
+    // Show help automatically if no subcommand is specified
+    this.help({ showGlobals: false });
   });
 
 export const pluginsCommand = plugins
@@ -116,7 +115,7 @@ export const pluginsCommand = plugins
   .option('--v0', 'List only v0.x compatible plugins')
   .action(async (opts: { all?: boolean; v0?: boolean }) => {
     try {
-      logHeader('Listing available plugins from cache...');
+      logHeader('Listing available plugins from cached registry...');
       const cachedRegistry = await readCache();
 
       if (

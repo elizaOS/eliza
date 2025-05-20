@@ -67,6 +67,18 @@ elizaos plugins add custom-plugin --branch feature/new-api
 
 # Add a specific version/tag of a plugin from npm
 elizaos plugins add elevenlabs --tag beta
+
+# Install a plugin directly from GitHub (HTTPS URL)
+elizaos plugins add https://github.com/owner/my-plugin
+
+# Install from GitHub with branch reference
+elizaos plugins add https://github.com/owner/my-plugin/tree/feature-branch
+
+# Install using GitHub shorthand syntax
+elizaos plugins add github:owner/my-plugin
+
+# Install specific branch using GitHub shorthand
+elizaos plugins add github:owner/my-plugin#feature-branch
 ```
 
 ### Listing Installed Plugins
