@@ -34,4 +34,28 @@ describe('Discord Environment Configuration', () => {
       'Discord configuration validation failed:\nDISCORD_API_TOKEN: Expected string, received null'
     );
   });
+
+  it('should parse CHANNEL_IDS into an array when provided', async () => {
+    const runtimeWithChannels = {
+      ...mockRuntime,
+      env: {
+        DISCORD_API_TOKEN: 'mocked-discord-token',
+        CHANNEL_IDS: '123, 456,789',
+      },
+      getEnv: function (key: string) {
+        return this.env[key] || null;
+      },
+      getSetting: function (key: string) {
+        return this.env[key] || null;
+      },
+    } as unknown as IAgentRuntime;
+
+    const config = await validateDiscordConfig(runtimeWithChannels);
+    expect(config.CHANNEL_IDS).toEqual(['123', '456', '789']);
+  });
+
+  it('should leave CHANNEL_IDS undefined when not provided', async () => {
+    const config = await validateDiscordConfig(mockRuntime);
+    expect(config.CHANNEL_IDS).toBeUndefined();
+  });
 });

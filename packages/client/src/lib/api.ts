@@ -379,6 +379,25 @@ export const apiClient = {
     });
   },
 
+  // Create a room for a specific agent
+  createRoom: (
+    agentId: string,
+    params: {
+      name: string;
+      type?: string;
+      source?: string;
+      worldId?: string;
+      serverId?: string;
+      metadata?: Record<string, any>;
+    }
+  ) => {
+    return fetcher({
+      url: `/agents/${agentId}/rooms`,
+      method: 'POST',
+      body: params,
+    });
+  },
+
   getLogs: ({
     level,
     agentName,
@@ -540,22 +559,6 @@ export const apiClient = {
     });
   },
 
-  getGlobalEnvs: () => {
-    return fetcher({
-      url: `/envs/global`,
-      method: 'GET',
-    });
-  },
-
-  updateGlobalEnvs: (envs: Record<string, string>) => {
-    return fetcher({
-      url: `/envs/global`,
-      method: 'POST',
-      body: {
-        content: envs,
-      },
-    });
-  },
 
   // Agent Panels (public GET routes)
   getAgentPanels: (agentId: string): Promise<{ success: boolean; data: AgentPanel[] }> => {

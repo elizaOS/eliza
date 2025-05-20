@@ -59,6 +59,11 @@ export class DiscordService extends Service implements IDiscordService {
   voiceManager?: VoiceManager;
   private userSelections: Map<string, { [key: string]: any }> = new Map();
   private timeouts: NodeJS.Timeout[] = [];
+  /**
+   * List of allowed channel IDs (parsed from CHANNEL_IDS env var).
+   * If undefined, all channels are allowed.
+   */
+  private allowedChannelIds?: string[];
 
   /**
    * Constructor for Discord client.
@@ -71,6 +76,15 @@ export class DiscordService extends Service implements IDiscordService {
     super(runtime);
 
     this.character = runtime.character;
+
+    // Parse CHANNEL_IDS env var to restrict the bot to specific channels
+    const channelIdsRaw = runtime.getSetting('CHANNEL_IDS') as string | undefined;
+    if (channelIdsRaw && channelIdsRaw.trim()) {
+      this.allowedChannelIds = channelIdsRaw
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+    }
 
     // Check if Discord API token is available and valid
     const token = runtime.getSetting('DISCORD_API_TOKEN') as string;
@@ -150,6 +164,18 @@ export class DiscordService extends Service implements IDiscordService {
     if (!this.client?.isReady()) {
       logger.error('[Discord SendHandler] Client not ready.');
       throw new Error('Discord client is not ready.');
+    }
+
+    // Skip sending if channel restrictions are set and target channel is not allowed
+    if (
+      target.channelId &&
+      this.allowedChannelIds &&
+      !this.allowedChannelIds.includes(target.channelId)
+    ) {
+      logger.warn(
+        `[Discord SendHandler] Channel ${target.channelId} is not in allowed channels, skipping send.`
+      );
+      return;
     }
 
     let targetChannel: Channel | undefined | null = null;
@@ -259,6 +285,11 @@ export class DiscordService extends Service implements IDiscordService {
         return;
       }
 
+      // Skip if channel restrictions are set and this channel is not allowed
+      if (this.allowedChannelIds && !this.allowedChannelIds.includes(message.channel.id)) {
+        return;
+      }
+
       try {
         // Ensure messageManager exists
         this.messageManager?.handleMessage(message);
@@ -272,6 +303,14 @@ export class DiscordService extends Service implements IDiscordService {
       if (user.id === this.client?.user?.id) {
         return;
       }
+      // Skip if channel restrictions are set and this reaction is not in an allowed channel
+      if (
+        this.allowedChannelIds &&
+        reaction.message.channel &&
+        !this.allowedChannelIds.includes(reaction.message.channel.id)
+      ) {
+        return;
+      }
       try {
         await this.handleReactionAdd(reaction, user);
       } catch (error) {
@@ -282,6 +321,14 @@ export class DiscordService extends Service implements IDiscordService {
     // Handle reaction removal
     this.client.on('messageReactionRemove', async (reaction, user) => {
       if (user.id === this.client?.user?.id) {
+        return;
+      }
+      // Skip if channel restrictions are set and this reaction is not in an allowed channel
+      if (
+        this.allowedChannelIds &&
+        reaction.message.channel &&
+        !this.allowedChannelIds.includes(reaction.message.channel.id)
+      ) {
         return;
       }
       try {
@@ -311,6 +358,14 @@ export class DiscordService extends Service implements IDiscordService {
 
     // Interaction handlers
     this.client.on('interactionCreate', async (interaction) => {
+      // Skip if channel restrictions are set and this interaction is not in an allowed channel
+      if (
+        this.allowedChannelIds &&
+        interaction.channelId &&
+        !this.allowedChannelIds.includes(interaction.channelId)
+      ) {
+        return;
+      }
       try {
         await this.handleInteractionCreate(interaction);
       } catch (error) {
