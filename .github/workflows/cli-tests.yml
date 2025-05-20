@@ -1,8 +1,11 @@
 name: Eliza CLI Tests
 
+env:
+  GH_TOKEN: ${{ secrets.GH_TOKEN }}
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 on:
   push:
-  pull_request_target:
+  pull_request:
     branches:
       - 'v2-develop'
 

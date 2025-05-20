@@ -253,7 +253,7 @@ Or manually:
 
 1. Use the CLI to scaffold a plugin:
 2. Implement required interfaces (actions, providers, evaluators)
-3. Publish with `elizaos plugin publish`
+3. Publish with `elizaos plugins publish`
 
 ---
 

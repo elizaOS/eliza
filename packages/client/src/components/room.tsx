@@ -7,7 +7,13 @@ import {
 import { ChatInput } from '@/components/ui/chat/chat-input';
 import { ChatMessageList } from '@/components/ui/chat/chat-message-list';
 import { GROUP_CHAT_SOURCE, USER_NAME } from '@/constants';
-import { useAgents, useGroupMessages, useRooms } from '@/hooks/use-query-hooks';
+import {
+  useAgents,
+  useGroupMessages,
+  useRooms,
+  useDeleteGroupMemory,
+  useClearGroupChat,
+} from '@/hooks/use-query-hooks';
 import SocketIOManager from '@/lib/socketio-manager';
 import { getEntityId, moment, randomUUID } from '@/lib/utils';
 import { WorldManager } from '@/lib/world-manager';
@@ -16,7 +22,7 @@ import type { Content, UUID } from '@elizaos/core';
 import { AgentStatus } from '@elizaos/core';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
 import { useQueryClient } from '@tanstack/react-query';
-import { ChevronRight, Edit, Paperclip, Send, X } from 'lucide-react';
+import { ChevronRight, Edit, Paperclip, Send, X, Trash2 } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import AIWriter from 'react-aiwriter';
 import clientLogger from '../lib/logger';
@@ -161,6 +167,8 @@ export default function Page({ serverId }: { serverId: UUID }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const queryClient = useQueryClient();
+  const deleteGroupMemoryMutation = useDeleteGroupMemory();
+  const clearGroupChatMutation = useClearGroupChat();
   const worldId = WorldManager.getWorldId();
 
   const { data: roomsData } = useRooms();
@@ -442,6 +450,20 @@ export default function Page({ serverId }: { serverId: UUID }) {
     }
   };
 
+  const handleDeleteMessage = (id: string) => {
+    deleteGroupMemoryMutation.mutate({ serverId, memoryId: id });
+    queryClient.setQueryData(['groupmessages', serverId, worldId], (old: ContentWithUser[] = []) =>
+      old.filter((m) => m.id !== id)
+    );
+  };
+
+  const handleClearChat = () => {
+    if (window.confirm('Clear all messages?')) {
+      clearGroupChatMutation.mutate(serverId);
+      queryClient.setQueryData(['groupmessages', serverId, worldId], []);
+    }
+  };
+
   // Create a map of agent avatars for easy lookup
   const agentAvatars: Record<string, string | null> = {};
   agents.forEach((agent) => {
@@ -517,14 +539,14 @@ export default function Page({ serverId }: { serverId: UUID }) {
               </div>
             </div>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setShowGroupPanel(true)}
-            className="ml-auto"
-          >
-            <Edit className="h-4 w-4" />
-          </Button>
+          <div className="flex gap-2 ml-auto">
+            <Button variant="ghost" size="icon" onClick={handleClearChat}>
+              <Trash2 className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" onClick={() => setShowGroupPanel(true)}>
+              <Edit className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
         <div className="flex flex-row w-full overflow-y-auto grow gap-4">
@@ -585,6 +607,15 @@ export default function Page({ serverId }: { serverId: UUID }) {
                           isUser={isUser}
                         />
                       </ChatBubble>
+                      <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDeleteMessage(message.id as string)}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </div>
                     </div>
                   );
                 })}

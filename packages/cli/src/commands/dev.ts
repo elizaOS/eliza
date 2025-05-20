@@ -1,11 +1,12 @@
 import { buildProject, handleError, isMonorepoContext, UserEnvironment } from '@/src/utils';
 import { Command, Option } from 'commander';
-import { execa } from 'execa';
+import chokidar from 'chokidar';
 import type { ChildProcess } from 'node:child_process';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { logger } from '@elizaos/core';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -42,6 +43,15 @@ async function startServer(args: string[] = []): Promise<void> {
 
   console.info('Starting server...');
 
+  // Debug info about environment
+  console.debug('Environment:', {
+    execPath: process.execPath,
+    scriptPath: process.argv[1],
+    cwd: process.cwd(),
+    args: args,
+    env: process.env.NODE_ENV || 'development',
+  });
+
   // We'll use the same executable that's currently running, with 'start' command
   const nodeExecutable = process.execPath;
   const scriptPath = process.argv[1]; // Current script path
@@ -50,6 +60,12 @@ async function startServer(args: string[] = []): Promise<void> {
   serverProcess = spawn(nodeExecutable, [scriptPath, 'start', ...args], {
     stdio: 'inherit',
     detached: false, // We want to keep control of this process
+    env: { ...process.env, FORCE_COLOR: '1' }, // Ensure color output in CI
+  });
+
+  logger.debug('Started server process with:', {
+    cmd: nodeExecutable,
+    args: [scriptPath, 'start', ...args],
   });
 
   // Handle process exit events
@@ -85,8 +101,8 @@ async function determineProjectType(): Promise<{ isProject: boolean; isPlugin: b
   const packageJsonPath = path.join(cwd, 'package.json');
   const isMonorepo = await isMonorepoContext();
 
-  console.info(`Running in directory: ${cwd}`);
-  console.info(`Detected Eliza monorepo context: ${isMonorepo}`);
+  logger.info(`Running in directory: ${cwd}`);
+  logger.info(`Detected Eliza monorepo context: ${isMonorepo}`);
 
   let isProject = false;
   let isPlugin = false;
@@ -163,24 +179,7 @@ async function determineProjectType(): Promise<{ isProject: boolean; isPlugin: b
  * Sets up file watching for the given directory
  */
 async function watchDirectory(dir: string, onChange: () => void): Promise<void> {
-  // First check if chokidar is installed
   try {
-    await execa('npm', ['list', 'chokidar'], { stdio: 'ignore', reject: false });
-  } catch (error) {
-    // If chokidar isn't installed, install it
-    console.info('Installing chokidar dependency for file watching...');
-    try {
-      await execa('npm', ['install', 'chokidar', '--no-save'], { stdio: 'inherit' });
-    } catch (installError) {
-      console.error(`Failed to install chokidar: ${installError.message}`);
-      return;
-    }
-  }
-
-  try {
-    // Dynamically import chokidar
-    const chokidar = await import('chokidar');
-
     // Get the absolute path of the directory
     const absoluteDir = path.resolve(dir);
     console.info(`Setting up file watching for directory: ${absoluteDir}`);
@@ -328,8 +327,18 @@ export const dev = new Command()
 
       // Prepare CLI arguments for the start command
       const cliArgs: string[] = [];
-      if (options.port) cliArgs.push('--port', options.port.toString());
-      if (options.configure) cliArgs.push('--configure');
+
+      // Pass through port option
+      if (options.port) {
+        cliArgs.push('--port', options.port.toString());
+        console.debug(`Using port: ${options.port}`);
+      }
+
+      // Pass through configure option
+      if (options.configure) {
+        cliArgs.push('--configure');
+        console.debug('Using configure option');
+      }
 
       // Handle characters - pass through to start command
       if (options.character) {
@@ -338,9 +347,14 @@ export const dev = new Command()
         } else {
           cliArgs.push('--character', options.character);
         }
+        console.debug(`Using character(s): ${options.character}`);
       }
 
-      if (options.build) cliArgs.push('--build');
+      // Pass through build option
+      if (options.build) {
+        cliArgs.push('--build');
+        console.debug('Using build option');
+      }
 
       // Function to rebuild and restart the server
       const rebuildAndRestart = async () => {

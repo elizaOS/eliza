@@ -379,6 +379,25 @@ export const apiClient = {
     });
   },
 
+  // Create a room for a specific agent
+  createRoom: (
+    agentId: string,
+    params: {
+      name: string;
+      type?: string;
+      source?: string;
+      worldId?: string;
+      serverId?: string;
+      metadata?: Record<string, any>;
+    }
+  ) => {
+    return fetcher({
+      url: `/agents/${agentId}/rooms`,
+      method: 'POST',
+      body: params,
+    });
+  },
+
   getLogs: ({
     level,
     agentName,
@@ -523,6 +542,20 @@ export const apiClient = {
     });
   },
 
+  deleteGroupMemory: (serverId: string, memoryId: string) => {
+    return fetcher({
+      url: `/agents/groups/${serverId}/memories/${memoryId}`,
+      method: 'DELETE',
+    });
+  },
+
+  clearGroupChat: (serverId: string) => {
+    return fetcher({
+      url: `/agents/groups/${serverId}/memories`,
+      method: 'DELETE',
+    });
+  },
+
   getLocalEnvs: () => {
     return fetcher({
       url: `/envs/local`,
@@ -533,23 +566,6 @@ export const apiClient = {
   updateLocalEnvs: (envs: Record<string, string>) => {
     return fetcher({
       url: `/envs/local`,
-      method: 'POST',
-      body: {
-        content: envs,
-      },
-    });
-  },
-
-  getGlobalEnvs: () => {
-    return fetcher({
-      url: `/envs/global`,
-      method: 'GET',
-    });
-  },
-
-  updateGlobalEnvs: (envs: Record<string, string>) => {
-    return fetcher({
-      url: `/envs/global`,
       method: 'POST',
       body: {
         content: envs,

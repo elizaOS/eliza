@@ -28,15 +28,10 @@ async function runMigrations() {
       process.exit(1);
     }
   } else {
-    let elizaDbDir =
-      process.env.PGLITE_DATA_DIR ??
-      path.join(os.homedir(), '.eliza', stringToUuid(process.cwd()), 'pglite');
-    if (!elizaDbDir) {
-      const homeDir = os.homedir();
-      const elizaDir = path.join(homeDir, '.eliza');
-      // Construct project-specific path
-      elizaDbDir = path.join(elizaDir, 'projects', stringToUuid(process.cwd()), 'pglite');
-      logger.info(`PGLITE_DATA_DIR not set, defaulting to project-specific path: ${elizaDbDir}`);
+    const elizaDbDir = process.env.PGLITE_DATA_DIR ?? path.join(process.cwd(), '.pglite');
+
+    if (!process.env.PGLITE_DATA_DIR) {
+      logger.info(`PGLITE_DATA_DIR not set, defaulting to project path: ${elizaDbDir}`);
     } else {
       logger.info(`Using PGLITE_DATA_DIR: ${elizaDbDir}`);
     }

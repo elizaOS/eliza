@@ -6,8 +6,18 @@ export default defineConfig({
   format: ['esm'],
   dts: true,
   sourcemap: false,
-  external: ['@electric-sql/pglite', 'zod', '@elizaos/core'],
-  noExternal: [/^(?!(@electric-sql\/pglite|zod)).*/],
+  external: [
+    '@electric-sql/pglite',
+    'zod',
+    '@elizaos/core',
+    'chokidar',
+    'semver',
+    'octokit',
+    'execa',
+  ],
+  // Ensure that all external dependencies are properly handled.
+  // The regex explicitly includes dependencies that should not be externalized.
+  noExternal: [/^(?!(@electric-sql\/pglite|zod|@elizaos\/core|chokidar|semver|octokit|execa)).*/],
   platform: 'node',
   minify: false,
   target: 'esnext',
