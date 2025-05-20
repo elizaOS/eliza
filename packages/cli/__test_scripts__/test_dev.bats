@@ -19,10 +19,25 @@ setup() {
 }
 
 teardown() {
-  # Best‑effort cleanup of any lingering dev instances.
-  pkill -f "bun .*elizaos dev" 2>/dev/null || true
-  sleep 1  # Give processes time to terminate
-  [[ -n "${TEST_TMP_DIR:-}" && "$TEST_TMP_DIR" == /var/tmp/eliza-test-* ]] && rm -rf "$TEST_TMP_DIR" || true
+  # Cleanup any lingering dev instances
+  local pids=$(pgrep -f "bun .*elizaos dev" 2>/dev/null)
+  if [[ -n "$pids" ]]; then
+    echo "Terminating dev processes: $pids"
+    kill $pids 2>/dev/null || pkill -f "bun .*elizaos dev" 2>/dev/null || true
+    # Wait up to 5 seconds for processes to terminate gracefully
+    for i in {1..5}; do
+      pgrep -f "bun .*elizaos dev" >/dev/null || break
+      sleep 1
+    done
+    # Force kill if still running
+    pkill -9 -f "bun .*elizaos dev" 2>/dev/null || true
+  fi
+
+  # Safely cleanup test directory
+  if [[ -n "${TEST_TMP_DIR:-}" && "$TEST_TMP_DIR" =~ ^/var/tmp/eliza-test-[a-zA-Z0-9]+$ ]]; then
+    echo "Cleaning up test directory: $TEST_TMP_DIR"
+    rm -rf "$TEST_TMP_DIR" || true
+  fi
 }
 
 # -----------------------------------------------------------------------------
@@ -103,14 +118,17 @@ EOF
   setup_test_project
   $ELIZAOS_CMD dev --port 3400 > output.log 2>&1 &
   local dev_pid=$!
-  sleep 3
+  for _ in $(seq 1 15); do
+    grep -q "Starting server.*port.*3400" output.log && break
+    sleep 1
+  done
 
   kill -0 "$dev_pid" 2>/dev/null  # process should still be running
   [ "$?" -eq 0 ]
 
   run cat output.log
   [ "$status" -eq 0 ]
-  [[ "$output" =~ (Go to the dashboard at http://localhost:3400 | AgentServer is listening on port 3400) ]]
+  [[ "$output" =~ (Starting server.*port.*3400|Server.*listening.*3400) ]]
 
   kill "$dev_pid" 2>/dev/null
 }
@@ -123,7 +141,10 @@ EOF
 
   $ELIZAOS_CMD dev --build > output.log 2>&1 &
   local dev_pid=$!
-  sleep 4
+  for _ in $(seq 1 20); do
+    grep -q "Build executed" output.log && break
+    sleep 1
+  done
 
   [ -f build.log ]
   run cat build.log
@@ -141,7 +162,10 @@ EOF
 
   $ELIZAOS_CMD dev > output.log 2>&1 &
   local dev_pid=$!
-  sleep 3
+  for _ in $(seq 1 15); do
+    grep -q "AgentServer is listening" output.log && break
+    sleep 1
+  done
 
   echo "// Modified" >> src/index.ts
   sleep 6  # watcher debounce + build time
@@ -160,7 +184,10 @@ EOF
   setup_test_project
   $ELIZAOS_CMD dev --configure > output.log 2>&1 &
   local dev_pid=$!
-  sleep 3
+  for _ in $(seq 1 15); do
+    grep -F "--configure" output.log && break
+    sleep 1
+  done
 
   run cat output.log
   [ "$status" -eq 0 ]
@@ -176,7 +203,10 @@ EOF
   setup_buildable_project
   $ELIZAOS_CMD dev --build --port 4567 --configure > output.log 2>&1 &
   local dev_pid=$!
-  sleep 5
+  for _ in $(seq 1 20); do
+    grep -q "Starting server.*port.*4567" output.log && break
+    sleep 1
+  done
 
   [ -f build.log ]
 

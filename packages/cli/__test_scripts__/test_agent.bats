@@ -10,8 +10,13 @@ setup_file() {
   set -euo pipefail
 
   # ---- Ensure port is free.
-  kill -9 $(lsof -t -i :3000)
-  sleep 1
+  if command -v lsof >/dev/null; then
+    pids="$(lsof -t -i :3000 2>/dev/null || true)"
+    if [ -n "$pids" ]; then
+      kill -9 $pids 2>/dev/null || true
+      sleep 1
+    fi
+  fi
   # -----
 
   # ---------------------------------------------------------------------------
@@ -35,7 +40,7 @@ setup_file() {
   SERVER_PID=$!
 
   # Poll until the REST endpoint comes up (max 15 s).
-  for i in {1..15}; do
+  for i in $(seq 1 15); do
     if curl -sf "$TEST_SERVER_URL/api/agents" >/dev/null; then
       break
     fi
