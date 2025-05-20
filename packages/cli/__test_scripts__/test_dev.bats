@@ -101,7 +101,7 @@ EOF
 # -----------------------------------------------------------------------------
 @test "dev --port properly passes port to server" {
   setup_test_project
-  $ELIZAOS_CMD dev --port 4999 > output.log 2>&1 &
+  $ELIZAOS_CMD dev --port 3400 > output.log 2>&1 &
   local dev_pid=$!
   sleep 3
 
@@ -110,7 +110,7 @@ EOF
 
   run cat output.log
   [ "$status" -eq 0 ]
-  [[ "$output" =~ (--port[[:space:]]+4999|port:[[:space:]]+4999) ]]
+  [[ "$output" =~ (Go to the dashboard at http://localhost:3400 | AgentServer is listening on port 3400) ]]
 
   kill "$dev_pid" 2>/dev/null
 }
