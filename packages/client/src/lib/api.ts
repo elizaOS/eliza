@@ -402,6 +402,15 @@ export const apiClient = {
     });
   },
 
+  // Update a world's properties
+  updateWorld: (agentId: string, worldId: string, params: { name?: string; metadata?: any }) => {
+    return fetcher({
+      url: `/agents/${agentId}/worlds/${worldId}`,
+      method: 'PATCH',
+      body: params,
+    });
+  },
+
   // Create a room for a specific agent
   createRoom: (
     agentId: string,

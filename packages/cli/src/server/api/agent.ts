@@ -212,6 +212,59 @@ export function agentRouter(
     }
   });
 
+  // Update world properties
+  router.patch('/:agentId/worlds/:worldId', async (req, res) => {
+    const agentId = validateUuid(req.params.agentId);
+    const worldId = validateUuid(req.params.worldId);
+
+    if (!agentId || !worldId) {
+      sendError(res, 400, 'INVALID_ID', 'Invalid agent ID or world ID format');
+      return;
+    }
+
+    // get runtime
+    const runtime = agents.get(agentId);
+    if (!runtime) {
+      sendError(res, 404, 'NOT_FOUND', 'Agent not found');
+      return;
+    }
+
+    try {
+      // Get existing world
+      const world = (await runtime.getAllWorlds()).find((w) => w.id === worldId);
+
+      if (!world) {
+        sendError(res, 404, 'NOT_FOUND', 'World not found');
+        return;
+      }
+
+      const { name, metadata } = req.body;
+
+      // Merge updates with existing world data
+      const updatedWorld = {
+        ...world,
+        name: name !== undefined ? name : world.name,
+        metadata:
+          metadata !== undefined
+            ? world.metadata
+              ? { ...world.metadata, ...metadata }
+              : metadata
+            : world.metadata,
+      };
+
+      // Update the world
+      await runtime.updateWorld(updatedWorld);
+
+      // Get the updated world to return
+      const refreshedWorld = (await runtime.getAllWorlds()).find((w) => w.id === worldId);
+
+      sendSuccess(res, { world: refreshedWorld });
+    } catch (error) {
+      logger.error('[WORLD UPDATE] Error updating world:', error);
+      sendError(res, 500, '500', 'Error updating world', error.message);
+    }
+  });
+
   // Message handler
   const handleAgentMessage = async (req: CustomRequest, res: express.Response) => {
     logger.debug('[MESSAGES CREATE] Creating new message');
