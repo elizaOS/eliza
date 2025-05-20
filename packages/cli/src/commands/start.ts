@@ -441,7 +441,7 @@ const startAgents = async (options: {
   port?: number;
   characters?: Character[];
 }) => {
-  // Load environment variables from project .env or .eliza/.env
+  // Load environment variables from project .env
   await loadEnvironment();
 
   // Configure database settings - pass reconfigure option to potentially force reconfiguration

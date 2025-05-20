@@ -559,22 +559,6 @@ export const apiClient = {
     });
   },
 
-  getGlobalEnvs: () => {
-    return fetcher({
-      url: `/envs/global`,
-      method: 'GET',
-    });
-  },
-
-  updateGlobalEnvs: (envs: Record<string, string>) => {
-    return fetcher({
-      url: `/envs/global`,
-      method: 'POST',
-      body: {
-        content: envs,
-      },
-    });
-  },
 
   // Agent Panels (public GET routes)
   getAgentPanels: (agentId: string): Promise<{ success: boolean; data: AgentPanel[] }> => {
