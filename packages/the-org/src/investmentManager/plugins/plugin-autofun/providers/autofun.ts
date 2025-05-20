@@ -24,7 +24,7 @@ import type { IToken } from '../types';
  */
 export const autofunProvider: Provider = {
   name: 'AUTOFUN_INFORMATION',
-  description: 'Coinmarketcaps latest information about the cryptocurrencies',
+  description: "Autofun latest information about the cryptocurrencies on it's platform",
   dynamic: true,
   //position: -1,
   get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
@@ -98,7 +98,7 @@ export const autofunProvider: Provider = {
       lastSupplyUpdate: "2025-04-28T20:23:50.565Z",
 */
 
-    console.log('autofun data', tokens);
+    console.log('autofun data', tokens.length);
 
     // get holders
 
