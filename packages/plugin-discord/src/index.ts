@@ -25,7 +25,7 @@ const discordPlugin: Plugin = {
         'Discord API Token not provided - Discord plugin is loaded but will not be functional'
       );
       logger.warn(
-        'To enable Discord functionality, please provide DISCORD_API_TOKEN in your .eliza/.env file'
+        'To enable Discord functionality, please provide DISCORD_API_TOKEN in your .env file'
       );
     }
   },

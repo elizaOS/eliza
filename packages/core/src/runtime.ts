@@ -374,7 +374,7 @@ export class AgentRuntime implements IAgentRuntime {
             console.warn(
               'Please check your environment variables and ensure all required API keys are set.'
             );
-            console.warn('You can set these in your .eliza/.env file.');
+            console.warn('You can set these in your .env file.');
             span.addEvent('plugin_configuration_warning');
             // We don't throw here, allowing the application to continue
             // with reduced functionality
