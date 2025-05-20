@@ -118,7 +118,9 @@ EOF
   setup_test_project
   $ELIZAOS_CMD dev --port 3400 > output.log 2>&1 &
   local dev_pid=$!
-  for _ in $(seq 1 15); do
+  local timeout=30
+  local start_time=$(date +%s)
+  while [ $(( $(date +%s) - start_time )) -lt $timeout ]; do
     grep -q "Starting server.*port.*3400" output.log && break
     sleep 1
   done
@@ -141,7 +143,9 @@ EOF
 
   $ELIZAOS_CMD dev --build > output.log 2>&1 &
   local dev_pid=$!
-  for _ in $(seq 1 20); do
+  local timeout=30
+  local start_time=$(date +%s)
+  while [ $(( $(date +%s) - start_time )) -lt $timeout ]; do
     grep -q "Build executed" output.log && break
     sleep 1
   done
@@ -162,7 +166,9 @@ EOF
 
   $ELIZAOS_CMD dev > output.log 2>&1 &
   local dev_pid=$!
-  for _ in $(seq 1 15); do
+  local timeout=30
+  local start_time=$(date +%s)
+  while [ $(( $(date +%s) - start_time )) -lt $timeout ]; do
     grep -q "AgentServer is listening" output.log && break
     sleep 1
   done
@@ -184,7 +190,9 @@ EOF
   setup_test_project
   $ELIZAOS_CMD dev --configure > output.log 2>&1 &
   local dev_pid=$!
-  for _ in $(seq 1 15); do
+  local timeout=30
+  local start_time=$(date +%s)
+  while [ $(( $(date +%s) - start_time )) -lt $timeout ]; do
     grep -F "--configure" output.log && break
     sleep 1
   done
@@ -203,7 +211,9 @@ EOF
   setup_buildable_project
   $ELIZAOS_CMD dev --build --port 4567 --configure > output.log 2>&1 &
   local dev_pid=$!
-  for _ in $(seq 1 20); do
+  local timeout=30
+  local start_time=$(date +%s)
+  while [ $(( $(date +%s) - start_time )) -lt $timeout ]; do
     grep -q "Starting server.*port.*4567" output.log && break
     sleep 1
   done
