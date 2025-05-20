@@ -1,5 +1,6 @@
 import pino, { type LogFn, type DestinationStream } from 'pino';
 import { parseBooleanFromText } from './utils';
+import { Sentry } from './sentry/instrument';
 
 /**
  * Interface representing a log entry.
@@ -223,6 +224,21 @@ const options = {
   hooks: {
     logMethod(inputArgs: [string | Record<string, unknown>, ...unknown[]], method: LogFn): void {
       const [arg1, ...rest] = inputArgs;
+      console.log('logMethod', arg1, rest, process.env.SENTRY_LOGGING === 'true');
+      if (process.env.SENTRY_LOGGING === 'true') {
+        if (arg1 instanceof Error) {
+          console.log('Sentry.captureException', arg1);
+          Sentry.captureException(arg1);
+        } else {
+          for (const item of rest) {
+            if (item instanceof Error) {
+              console.log('Sentry.captureException', arg1);
+
+              Sentry.captureException(item);
+            }
+          }
+        }
+      }
 
       const formatError = (err: Error) => ({
         message: `(${err.name}) ${err.message}`,
