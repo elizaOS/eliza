@@ -8148,18 +8148,18 @@ Develop your plugin following the structure in your generated project:
 # Test your plugin
 elizaos start
 # Publish your plugin when ready
-elizaos plugin publish
+elizaos plugins publish
 ```
 
 ### Publishing options:
 
 ```bash
 # Test publish without making changes
-elizaos plugin publish --test
+elizaos plugins publish --test
 # Publish to npm
-elizaos plugin publish --npm
+elizaos plugins publish --npm
 # Specify platform compatibility
-elizaos plugin publish --platform node
+elizaos plugins publish --platform node
 ```
 
 ---

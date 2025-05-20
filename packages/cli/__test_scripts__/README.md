@@ -8,19 +8,19 @@ This directory contains Bash test scripts that verify the functionality of the `
 
 ## Test Coverage
 
-| Test File              | Command(s) Tested        | Test Cases Summary                                                                |
-| ---------------------- | ------------------------ | --------------------------------------------------------------------------------- |
-| `test_agent.bats`      | `elizaos agent`          | Help, list (default/API), start/stop agent, full agent lifecycle                  |
-| `test_create.bats`     | `elizaos create`         | Help, create (project/plugin), duplicate/invalid names/types, deps                |
-| `test_dev.bats`        | `elizaos dev`            | Help, dev server (port/background), server/API endpoints, agent commands, cleanup |
-| `test_env.bats`        | `elizaos env`            | Help, list environment variables from server API                                  |
-| `test_plugin.bats`     | `elizaos plugin`         | TBD (add summary when implemented)                                                |
-| `test_project.bats`    | `elizaos project`        | Help, create/list projects, plugins, add plugin                                   |
-| `test_publish.bats`    | `elizaos plugin publish` | Help, validate, pack, publish with auth, bump-version in plugin projects          |
-| `test_start.bats`      | `elizaos start`          | Help, (add more tests as implemented)                                             |
-| `test_test.bats`       | `elizaos test`           | Help, run simple test file, fail on error                                         |
-| `test_update.bats`     | `elizaos update`         | TBD (add summary when implemented)                                                |
-| `test_update-cli.bats` | `elizaos update-cli`     | TBD (add summary when implemented)                                                |
+| Test File              | Command(s) Tested         | Test Cases Summary                                                                |
+| ---------------------- | ------------------------- | --------------------------------------------------------------------------------- |
+| `test_agent.bats`      | `elizaos agent`           | Help, list (default/API), start/stop agent, full agent lifecycle                  |
+| `test_create.bats`     | `elizaos create`          | Help, create (project/plugin), duplicate/invalid names/types, deps                |
+| `test_dev.bats`        | `elizaos dev`             | Help, dev server (port/background), server/API endpoints, agent commands, cleanup |
+| `test_env.bats`        | `elizaos env`             | Help, list environment variables from server API                                  |
+| `test_plugin.bats`     | `elizaos plugins`         | TBD (add summary when implemented)                                                |
+| `test_project.bats`    | `elizaos project`         | Help, create/list projects, plugins, add plugin                                   |
+| `test_publish.bats`    | `elizaos plugins publish` | Help, validate, pack, publish with auth, bump-version in plugin projects          |
+| `test_start.bats`      | `elizaos start`           | Help, (add more tests as implemented)                                             |
+| `test_test.bats`       | `elizaos test`            | Help, run simple test file, fail on error                                         |
+| `test_update.bats`     | `elizaos update`          | TBD (add summary when implemented)                                                |
+| `test_update-cli.bats` | `elizaos update-cli`      | TBD (add summary when implemented)                                                |
 
 _Note: Plugin installation is now tested via `test_project.bats` using `elizaos project add-plugin`. If any test file is present but not yet implemented, its test cases are marked as 'TBD.'_.\_
 

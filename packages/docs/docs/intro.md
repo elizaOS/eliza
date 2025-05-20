@@ -123,7 +123,7 @@ Develop and test your plugin:
 elizaos start
 
 # Publish your plugin when ready
-elizaos plugin publish
+elizaos plugins publish
 ```
 
   </TabItem>
