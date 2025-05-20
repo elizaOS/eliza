@@ -53,19 +53,103 @@ function hasRequiredEnvVars(agent: ProjectAgent): boolean {
 }
 
 // Define which agents you want to enable
-const enabledAgents = [
-  devRel,
-  communityManager,
+const allAgents = [
+  // devRel,
+  // communityManager,
   investmentManager,
-  liaison,
-  projectManager,
-  socialMediaManager,
+  // liaison,
+  // projectManager,
+  // socialMediaManager,
 ];
+
+// Get command line arguments
+const rawArgs = process.argv.slice(2);
+
+let enabledAgents = allAgents;
+let potentialAgentFlags: string[] = [];
+
+const doubleDashIndex = rawArgs.indexOf('--');
+
+if (doubleDashIndex !== -1) {
+  // If "--" is present, only consider arguments after it
+  potentialAgentFlags = rawArgs.slice(doubleDashIndex + 1).filter((arg) => arg.startsWith('--'));
+} else {
+  // If "--" is not present (e.g. direct execution like `bun src/index.ts --devRel`)
+  // Filter out known script runner commands or non-flag arguments
+  potentialAgentFlags = rawArgs.filter((arg) => arg.startsWith('--') && arg !== '--');
+}
+
+if (potentialAgentFlags.length > 0) {
+  const requestedAgentNames = potentialAgentFlags.map((arg) =>
+    arg.replace(/^--/, '').toLowerCase()
+  );
+  const matchedAgents = allAgents.filter((agent) =>
+    // Only match by object key, not by character name anymore
+    requestedAgentNames.includes(
+      Object.keys({
+        devRel,
+        communityManager,
+        investmentManager,
+        liaison,
+        projectManager,
+        socialMediaManager,
+      })
+        .find(
+          (key) =>
+            ({
+              devRel,
+              communityManager,
+              investmentManager,
+              liaison,
+              projectManager,
+              socialMediaManager,
+            })[key] === agent
+        )
+        ?.toLowerCase()
+    )
+  );
+
+  console.log('allAgents', allAgents);
+  console.log('matchedAgents', matchedAgents);
+
+  if (matchedAgents.length > 0) {
+    enabledAgents = matchedAgents;
+  } else {
+    logger.warn(
+      `No matching agents found for flags: ${potentialAgentFlags.join(', ')}. Available agent names (use --name):`
+    );
+    allAgents.forEach((agent) => {
+      const objectKey = Object.keys({
+        devRel,
+        communityManager,
+        investmentManager,
+        liaison,
+        projectManager,
+        socialMediaManager,
+      }).find(
+        (key) =>
+          ({
+            devRel,
+            communityManager,
+            investmentManager,
+            liaison,
+            projectManager,
+            socialMediaManager,
+          })[key] === agent
+      );
+      logger.warn(`  --${objectKey} (for ${agent.character.name})`);
+    });
+    // If flags were passed but none matched, we should probably not run all agents.
+    // Setting enabledAgents to empty will trigger the "NO AGENTS AVAILABLE" message later.
+    enabledAgents = [];
+  }
+}
+// If potentialAgentFlags is empty, enabledAgents remains allAgents (run all by default)
 
 const availableAgents = enabledAgents.filter(hasRequiredEnvVars);
 
 // Log the filtering results with accurate counts
-if (enabledAgents.length === 0) {
+if (allAgents.length === 0) {
   logger.warn('No agents are enabled in the configuration');
 } else if (availableAgents.length === 0) {
   logger.error('NO AGENTS AVAILABLE - INITIALIZING DEFAULT ELIZA CHARACTER');

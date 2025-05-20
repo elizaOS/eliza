@@ -40,21 +40,22 @@ Analyze the following data:
 {{walletBalance}}
 </wallet_data>
 
-Provide a JSON response with the following format:
-{
-  "shouldTrade": boolean,
-  "recommendedAction": "buy" | "sell" | "hold" | "SKIP",
-  "suggestedAmount": number,
-  "confidence": "low" | "medium" | "high",
-  "reason": string,
-  "riskScore": number,  // 1-10 scale
-  "technicalFactors": {
-    "trend": "bullish" | "bearish" | "neutral",
-    "momentum": number,  // -100 to 100
-    "volumeProfile": "increasing" | "decreasing" | "stable",
-    "liquidityScore": number  // 1-10 scale
-  }
-}`;
+Provide an XML response in the following format. Example:
+<trade_analysis>
+  <shouldTrade>true</shouldTrade>
+  <recommendedAction>buy</recommendedAction>
+  <suggestedAmount>0.5</suggestedAmount>
+  <confidence>high</confidence>
+  <reason>Market conditions are favorable.</reason>
+  <riskScore>3</riskScore>
+  <technicalFactors>
+    <trend>bullish</trend>
+    <momentum>80</momentum>
+    <volumeProfile>increasing</volumeProfile>
+    <liquidityScore>7</liquidityScore>
+  </technicalFactors>
+</trade_analysis>
+`;
 
 import { ServiceTypes } from '../types';
 import { type IAgentRuntime, logger } from '@elizaos/core';
@@ -65,7 +66,7 @@ export async function assessMarketCondition(
 ): Promise<'bullish' | 'neutral' | 'bearish'> {
   try {
     // might be best to move this out of this function
-    const tradeService = runtime.getService(ServiceTypes.AUTOFUN_TRADING);
+    const tradeService = runtime.getService(ServiceTypes.AUTOFUN_TRADING) as any;
     const solData = await tradeService.dataService.getTokenMarketData(
       'So11111111111111111111111111111111111111112' // SOL address
     );

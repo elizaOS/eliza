@@ -4,6 +4,7 @@ import {
   logger,
   type UUID,
   parseJSONObjectFromText,
+  parseKeyValueXml,
 } from '@elizaos/core';
 import { BaseTradeService } from '../base/BaseTradeService';
 import { TokenValidationService } from '../validation/TokenValidationService';
@@ -31,14 +32,21 @@ Tokens:
 
 {{tokens}}
 
-Only return the following JSON:
+Only return XML in the following format:
+<buy_signal>
+  <recommended_buy>DEGENAI</recommended_buy>
+  <recommend_buy_address>2sCUCJdVkmyXp4dT8sFaA9LKgSMK4yDPi9zLHiwXpump</recommend_buy_address>
+  <reason>The reason why you think this is a good buy, and why you chose the specific amount.</reason>
+  <buy_amount>0.1</buy_amount>
+</buy_signal>
+`;
 
-{
-recommended_buy: "the symbol of the token for example DEGENAI",
-recommend_buy_address: "the address of the token to purchase, for example: 2sCUCJdVkmyXp4dT8sFaA9LKgSMK4yDPi9zLHiwXpump",
-reason: "the reason why you think this is a good buy, and why you chose the specific amount",
-buy_amount: "number, for example: 0.1"
-}`;
+interface IBuySignalOutput {
+  recommended_buy: string;
+  recommend_buy_address: string;
+  reason: string;
+  buy_amount: string;
+}
 
 export class BuyService extends BaseTradeService {
   private validationService: TokenValidationService;
@@ -143,7 +151,7 @@ export class BuyService extends BaseTradeService {
 
     // get balance from plugin-solana
     const walletBalance = await this.walletService.getBalance();
-    prompt = prompt.replace('{{solana_balance}}', walletBalance);
+    prompt = prompt.replace('{{solana_balance}}', walletBalance.toString());
 
     console.log('buy-signal - calling llm');
 
@@ -170,7 +178,17 @@ export class BuyService extends BaseTradeService {
       });
 
       console.log('afTrader:buy-signal - response', response);
-      responseContent = parseJSONObjectFromText(response) as IBuySignalOutput;
+      const parsedXml = parseKeyValueXml(response);
+      if (parsedXml) {
+        responseContent = {
+          recommended_buy: parsedXml.recommended_buy || '',
+          recommend_buy_address: parsedXml.recommend_buy_address || '',
+          reason: parsedXml.reason || '',
+          buy_amount: parsedXml.buy_amount || '',
+        };
+      } else {
+        responseContent = null;
+      }
 
       retries++;
       if (

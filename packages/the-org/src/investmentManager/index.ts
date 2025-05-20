@@ -6,6 +6,7 @@ import { initCharacter } from '../init';
 import { communityInvestorPlugin } from './plugins/community-investor';
 import { degenIntelPlugin } from './plugins/degen-intel';
 import { degenTraderPlugin } from './plugins/degen-trader';
+import { solanaPlugin } from '@elizaos/plugin-solana';
 
 import { autofunPlugin } from './plugins/plugin-autofun';
 import { autofunTraderPlugin } from './plugins/autofun-trader';
@@ -35,18 +36,20 @@ const character: Character = {
   name: 'Spartan',
   plugins: [
     '@elizaos/plugin-sql',
+    // ...(process.env.GROQ_API_KEY ? ['@elizaos/plugin-groq'] : []),
     ...(process.env.ANTHROPIC_API_KEY ? ['@elizaos/plugin-anthropic'] : []),
     ...(process.env.OPENAI_API_KEY ? ['@elizaos/plugin-openai'] : []),
-    ...(!process.env.OPENAI_API_KEY ? ['@elizaos/plugin-local-ai'] : []),
-    '@elizaos/plugin-discord',
-    '@elizaos/plugin-twitter',
-    '@elizaos/plugin-pdf',
-    '@elizaos/plugin-video-understanding',
+    // ...(!process.env.OPENAI_API_KEY ? ['@elizaos/plugin-local-ai'] : []),
+    // '@elizaos/plugin-discord',
+    // '@elizaos/plugin-twitter',
     '@elizaos/plugin-bootstrap',
-    '@elizaos-plugins/plugin-trader',
-    '@elizaos-plugins/plugin-jupiter',
+    // '@elizaos-plugins/plugin-trader',
+    // '@elizaos-plugins/plugin-jupiter',
   ],
   settings: {
+    GROQ_PLUGIN_LARGE:
+      process.env.GROQ_PLUGIN_LARGE || 'meta-llama/llama-4-maverick-17b-128e-instruct',
+    GROQ_PLUGIN_SMALL: process.env.GROQ_PLUGIN_SMALL || 'meta-llama/llama-4-scout-17b-16e-instruct',
     secrets: {
       DISCORD_APPLICATION_ID: process.env.INVESTMENT_MANAGER_DISCORD_APPLICATION_ID,
       DISCORD_API_TOKEN: process.env.INVESTMENT_MANAGER_DISCORD_API_TOKEN,
@@ -253,11 +256,12 @@ const config: OnboardingConfig = {
 
 export const investmentManager: ProjectAgent = {
   plugins: [
-    //degenTraderPlugin,
-    //degenIntelPlugin, // has to be after trader for buy/sell signals to be enabled
-    //autofunPlugin,
-    //autofunTraderPlugin,
-    // communityInvestorPlugin,
+    solanaPlugin,
+    degenTraderPlugin,
+    degenIntelPlugin, // has to be after trader for buy/sell signals to be enabled
+    autofunPlugin,
+    autofunTraderPlugin,
+    communityInvestorPlugin,
   ],
   character,
   init: async (runtime: IAgentRuntime) => await initCharacter({ runtime, config }),

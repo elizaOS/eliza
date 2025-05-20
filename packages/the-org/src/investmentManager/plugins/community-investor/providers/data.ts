@@ -60,7 +60,8 @@ const dataProviderTemplate = `<data_provider>
 Always give a full details report if user ask anything about the positions, tokens, recommenders.
 Write the report to be display in telegram.
 Always Include links for the token addresses and accounts(wallets, creators) using solscan.
-Include links to the tradings pairs using defined.fi
+Include links to the tradings pairs using defined.fi.
+If generating structured data as part of this report, use XML tags. Example: <example_data><field1>value1</field1></example_data>
 Links:
 
 - Token: https://solscan.io/token/[tokenAddress]

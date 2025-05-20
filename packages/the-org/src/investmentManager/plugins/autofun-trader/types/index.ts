@@ -42,6 +42,7 @@ export interface BuySignalMessage {
   positionId: UUID;
   tokenAddress: string;
   entityId: string;
+  tradeAmount: string;
   expectedOutAmount: string;
 }
 

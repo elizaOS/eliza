@@ -11,6 +11,7 @@ import {
   getUserServerRole,
   getWorldSettings,
   logger,
+  parseKeyValueXml,
 } from '@elizaos/core';
 
 /**
@@ -31,14 +32,14 @@ About {{agentName}}:
 Recent Context:
 {{recentMessages}}
 
-# Instructions: Write a tweet that captures the essence of what {{agentName}} wants to share. The tweet should be:
-- Under 280 characters
-- In {{agentName}}'s authentic voice and style
-- Related to the ongoing conversation or context
-- Not include hashtags unless specifically requested
-- Natural and conversational in tone
+# Instructions: Write a tweet that captures the essence of what {{agentName}} wants to share.
 
-Return only the tweet text, no additional commentary.`;
+Return an XML response in the following format. Example:
+<tweet_generation>
+  <thought>Concise thought about why this tweet is appropriate and in character.</thought>
+  <tweet_text>The actual tweet content here. It should be under 280 characters, in {{agentName}}'s authentic voice and style, related to the ongoing conversation or context, not include hashtags unless specifically requested, and natural and conversational in tone.</tweet_text>
+</tweet_generation>
+`;
 
 // Required Twitter configuration fields that must be present
 const REQUIRED_TWITTER_FIELDS = ['TWITTER_USERNAME', 'TWITTER_EMAIL', 'TWITTER_PASSWORD'];
@@ -219,15 +220,30 @@ const twitterPostAction: Action = {
         template: tweetGenerationTemplate,
       });
 
-      const tweetContent = await runtime.useModel(ModelType.TEXT_SMALL, {
+      const tweetContentRaw = await runtime.useModel(ModelType.TEXT_SMALL, {
         prompt,
       });
 
       // Clean up the generated content
-      const cleanTweet = tweetContent
-        .trim()
-        .replace(/^["'](.*)["']$/, '$1')
-        .replace(/\\n/g, '\n');
+      const parsedXml = parseKeyValueXml(tweetContentRaw);
+      let cleanTweet = '';
+      let thought = '';
+
+      if (parsedXml && parsedXml.tweet_text) {
+        cleanTweet = parsedXml.tweet_text
+          .trim()
+          .replace(/^["'](.*)["']$/, '$1')
+          .replace(/\\n/g, '\n');
+        thought = parsedXml.thought || 'Generated tweet content.';
+      } else {
+        // Fallback for safety, though ideally the XML is always returned
+        logger.warn('[Bootstrap] Failed to parse XML for tweet generation, using raw output.');
+        cleanTweet = tweetContentRaw
+          .trim()
+          .replace(/^["'](.*)["']$/, '$1')
+          .replace(/\\n/g, '\n');
+        thought = 'Failed to parse tweet XML, using raw content.';
+      }
 
       const userRole = await getUserServerRole(runtime, message.entityId, serverId);
       if (userRole !== 'OWNER' && userRole !== 'ADMIN') {
