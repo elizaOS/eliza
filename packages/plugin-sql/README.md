@@ -112,7 +112,7 @@ The plugin uses the following environment variables:
 
 - `POSTGRES_URL`: Connection string for PostgreSQL database (e.g., `postgresql://user:password@localhost:5432/dbname`)
   - If not provided, the plugin will use PGlite as a fallback
-- `PGLITE_DATA_DIR`: (Optional) Directory for PGlite data storage (default: `../../pglite`)
+- `PGLITE_DATA_DIR`: (Optional) Directory for PGlite data storage (default: `./pglite`)
 
 These variables should be defined in a `.env` file at the root of your project.
 
@@ -225,7 +225,7 @@ export default defineConfig({
   schema: './src/schema/index.ts',
   out: './drizzle/migrations',
   dbCredentials: {
-    url: process.env.POSTGRES_URL || 'file://../../pglite',
+    url: process.env.POSTGRES_URL || 'file:../../.pglite',
   },
   breakpoints: true,
 });
