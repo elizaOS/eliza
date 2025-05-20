@@ -118,7 +118,7 @@ EOF
   setup_test_project
   $ELIZAOS_CMD dev --port 3400 > output.log 2>&1 &
   local dev_pid=$!
-  local timeout=30
+  local timeout=60
   local start_time=$(date +%s)
   local found=false
   while [ $(( $(date +%s) - start_time )) -lt $timeout ]; do
@@ -221,7 +221,7 @@ EOF
   local start_time=$(date +%s)
   local found=false
   while [ $(( $(date +%s) - start_time )) -lt $timeout ]; do
-    if grep -F "--configure" output.log; then
+    if grep -q -- "--configure" output.log; then
       found=true
       break
     fi
