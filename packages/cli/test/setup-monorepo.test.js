@@ -31,6 +31,17 @@ describe('setup-monorepo Command', () => {
     gitArgs = [];
     dirCreated = '';
 
+    // Reset all mocks to their default implementation
+    mockExeca.mockImplementation((cmd, args) => {
+      if (cmd === 'git' && args[0] === 'clone') {
+        gitArgs = args;
+      }
+      return { exitCode: 0 };
+    });
+
+    mockExists.mockReturnValue(false);
+    mockReaddir.mockReturnValue([]);
+
     // Create a fresh command
     setupCommand = new Command()
       .name('setup-monorepo')
@@ -87,5 +98,27 @@ describe('setup-monorepo Command', () => {
 
     // Act & Assert
     await expect(setupCommand.parseAsync(['node', 'cmd'])).rejects.toThrow('not empty');
+  });
+
+  it('handles git clone errors', async () => {
+    // Arrange
+    mockExeca.mockImplementationOnce(() => {
+      throw new Error('Git clone failed');
+    });
+
+    // Act & Assert
+    await expect(setupCommand.parseAsync(['node', 'cmd'])).rejects.toThrow('Git clone failed');
+  });
+
+  it('handles branch not found errors', async () => {
+    // Arrange - simulate a git exit code 128 error message about branch
+    mockExeca.mockImplementationOnce(() => {
+      const error = new Error('exit code 128');
+      error.message = 'fatal: Remote branch v2-develop not found in upstream origin';
+      throw error;
+    });
+
+    // Act & Assert
+    await expect(setupCommand.parseAsync(['node', 'cmd'])).rejects.toThrow(/branch.*not found/i);
   });
 });
