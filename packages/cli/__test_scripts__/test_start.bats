@@ -8,7 +8,10 @@
 
 setup() {
   set -euo pipefail
+  # ---- Ensure port is free.
   kill -9 $(lsof -t -i :3000)
+  sleep 1
+  # -----
   export TEST_TMP_DIR="$(mktemp -d /var/tmp/eliza-test-start-XXXXXX)"
   export TEST_SERVER_PORT=3000
   cd "$TEST_TMP_DIR"

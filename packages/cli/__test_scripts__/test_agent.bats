@@ -9,6 +9,11 @@
 setup_file() {
   set -euo pipefail
 
+  # ---- Ensure port is free.
+  kill -9 $(lsof -t -i :3000)
+  sleep 1
+  # -----
+
   # ---------------------------------------------------------------------------
   # Dynamic paths / ports so parallel test runners don't collide.
   # ---------------------------------------------------------------------------
