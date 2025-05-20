@@ -21,7 +21,8 @@ setup() {
 teardown() {
   # Best‑effort cleanup of any lingering dev instances.
   pkill -f "bun .*elizaos dev" 2>/dev/null || true
-  [[ -n "${TEST_TMP_DIR:-}" && "$TEST_TMP_DIR" == /var/tmp/eliza-test-* ]] && rm -rf "$TEST_TMP_DIR"
+  sleep 1  # Give processes time to terminate
+  [[ -n "${TEST_TMP_DIR:-}" && "$TEST_TMP_DIR" == /var/tmp/eliza-test-* ]] && rm -rf "$TEST_TMP_DIR" || true
 }
 
 # -----------------------------------------------------------------------------
@@ -111,7 +112,7 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" =~ (--port[[:space:]]+4999|port:[[:space:]]+4999) ]]
 
-  kill "$dev_pid" 2>/dev/null || true
+  kill "$dev_pid" 2>/dev/null
 }
 
 # -----------------------------------------------------------------------------
@@ -129,7 +130,7 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"Build executed at"* ]]
 
-  kill "$dev_pid" 2>/dev/null || true
+  kill "$dev_pid" 2>/dev/null
 }
 
 # -----------------------------------------------------------------------------
@@ -149,7 +150,7 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"Rebuilding project after file change"* ]]
 
-  kill "$dev_pid" 2>/dev/null || true
+  kill "$dev_pid" 2>/dev/null
 }
 
 # -----------------------------------------------------------------------------
@@ -165,7 +166,7 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"--configure"* ]]
 
-  kill "$dev_pid" 2>/dev/null || true
+  kill "$dev_pid" 2>/dev/null
 }
 
 # -----------------------------------------------------------------------------
@@ -185,5 +186,5 @@ EOF
   [[ "$output" == *"--configure"* ]]
   [[ "$output" == *"Build"* ]]
 
-  kill "$dev_pid" 2>/dev/null || true
+  kill "$dev_pid" 2>/dev/null
 }
