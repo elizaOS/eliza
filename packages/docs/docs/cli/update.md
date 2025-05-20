@@ -12,7 +12,7 @@ The `update` command updates all ElizaOS dependencies (`@elizaos/*`) in your pro
 
 ## Usage
 
-```bash
+```console
 # Update both CLI and project packages (default)
 elizaos update
 
@@ -23,10 +23,10 @@ elizaos update --cli
 elizaos update --packages
 
 # Check for available updates without applying them
-elizaos update --check
+elizaos update --check   # dry-run
 
 # Update packages but skip building the project afterward
-elizaos update --skip-build
+elizaos update --skip-build   # skip rebuild step
 ```
 
 ## Options
@@ -44,9 +44,8 @@ When updating project packages, ElizaOS will:
 2. Find the latest published version of `@elizaos/cli` on npm.
 3. Identify all `@elizaos/*` packages in your `package.json` (dependencies and devDependencies), excluding workspace references.
 4. Compare current package versions with the latest available version and list packages that need updates.
-5. When not in check mode, prompt for confirmation before proceeding if major updates are detected.
-6. Update all identified outdated ElizaOS packages to the determined latest version.
-7. Automatically rebuild the project or plugin after updating dependencies (unless `--skip-build` is specified).
+
+If not using `--check` mode: 5. Prompt for confirmation before proceeding if major updates are detected. 6. Update all identified outdated ElizaOS packages to the determined latest version. 7. Automatically rebuild the project or plugin after updating dependencies (unless `--skip-build` is specified).
 
 When updating the CLI, ElizaOS will:
 
@@ -82,7 +81,7 @@ The command properly handles workspace references in monorepo setups:
 
 Update both the CLI and all ElizaOS dependencies in the current directory to the latest published version (default behavior):
 
-```bash
+```console
 elizaos update
 ```
 
@@ -90,13 +89,13 @@ elizaos update
 
 Update only the globally installed ElizaOS CLI:
 
-```bash
+```console
 elizaos update --cli
 ```
 
 Example CLI update output (versions may vary):
 
-```
+```console
 Checking for ElizaOS CLI updates...
 Updating ElizaOS CLI from 1.3.5 to 1.4.0...
 Updating Eliza CLI to version: 1.4.0
@@ -107,7 +106,7 @@ ElizaOS CLI has been successfully updated!
 
 If you don't have the CLI installed globally, you'll see instructions to install it:
 
-```
+```console
 The CLI update is only available for globally installed CLI.
 To update a local installation, use your package manager manually.
 For global installation, run: npm install -g @elizaos/cli@beta
@@ -117,13 +116,13 @@ For global installation, run: npm install -g @elizaos/cli@beta
 
 Update only the ElizaOS dependencies in the current directory:
 
-```bash
+```console
 elizaos update --packages
 ```
 
 Example project update output (versions may vary):
 
-```
+```console
 Updating project dependencies...
 Current CLI version: 1.3.5
 Latest available CLI version: 1.4.0
@@ -140,11 +139,7 @@ Updating @elizaos/models@1.4.0...
 Updating @elizaos/plugin-discord@1.4.0...
 Dependencies updated successfully.
 Installing updated dependencies...
-+ @elizaos/core@1.4.0
-+ @elizaos/runtime@1.4.0
-+ @elizaos/models@1.4.0
-+ @elizaos/plugin-discord@1.4.0
-Installed 4 packages
+# Package installation details omitted for brevity
 Building project...
 Build completed successfully
 Project successfully updated to the latest ElizaOS packages (1.4.0)
@@ -154,13 +149,13 @@ Project successfully updated to the latest ElizaOS packages (1.4.0)
 
 Check for available updates without applying them:
 
-```bash
-elizaos update -c
+```console
+elizaos update --check   # dry-run
 ```
 
 Example output:
 
-```
+```console
 Checking project dependencies...
 Current CLI version: 1.3.5
 Latest available CLI version: 1.4.0
@@ -177,20 +172,20 @@ To update these packages, run the command without the --check flag
 
 Update dependencies without rebuilding the project:
 
-```bash
-elizaos update -sb
+```console
+elizaos update --skip-build   # skip rebuild step
 ```
 
 Example output with --skip-build:
 
-```
+```console
 Updating project dependencies...
 Current CLI version: 1.3.5
 Latest available CLI version: 1.4.0
-...
+# Package update information displayed here
 Dependencies updated successfully.
 Installing updated dependencies...
-Installed 4 packages
+# Installation process output
 Skipping build phase as requested with --skip-build flag
 Project successfully updated to the latest ElizaOS packages (1.4.0)
 ```
@@ -207,6 +202,7 @@ Here are some recommended practices when updating ElizaOS dependencies:
 2. **Check First**: Use the `--check` flag to see what will be updated before making changes.
 3. **Review Changelogs**: Check the ElizaOS changelog for any breaking changes between your current version and the latest version.
 4. **Test After Updating**: Make sure your project works correctly after updating.
+5. **Consider Staged Updates**: If upgrading across multiple major versions, consider updating one major version at a time.
 
 ## Troubleshooting
 
@@ -221,7 +217,7 @@ Here are some recommended practices when updating ElizaOS dependencies:
 
 If you encounter issues with dependency resolution:
 
-```bash
+```console
 # Run the command with full Node.js error stack traces
 NODE_OPTIONS=--stack-trace-limit=100 elizaos update
 ```
@@ -230,7 +226,7 @@ NODE_OPTIONS=--stack-trace-limit=100 elizaos update
 
 If the build fails after updating:
 
-```bash
+```console
 # Check the build output for errors
 # Manually attempt to rebuild with verbose logging
 elizaos dev --build --verbose
@@ -242,7 +238,7 @@ elizaos start --build --verbose
 
 If you need a specific version rather than the latest published version:
 
-```bash
+```console
 # Manually install the specific version needed
 bun install @elizaos/core@1.3.5
 ```

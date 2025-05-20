@@ -61,7 +61,7 @@ import TabItem from '@theme/TabItem';
 <Tabs>
 <TabItem value="list" label="List & Get Agents">
 
-```bash
+```console
 # List all agents with their status
 elizaos agent list
 
