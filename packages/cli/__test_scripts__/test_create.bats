@@ -44,12 +44,8 @@ teardown() {
   run $ELIZAOS_CMD create my-plugin-app --yes --type plugin
   [ "$status" -eq 0 ]
   [[ "$output" == *"Plugin initialized successfully!"* ]]
-  # Current implementation adds plugin- prefix if not present
-  if [ -d "my-plugin-app" ]; then
-    plugin_dir="my-plugin-app"
-  else
-    plugin_dir="plugin-my-plugin-app"
-  fi
+  # The CLI should always add the prefix when missing
+  plugin_dir="plugin-my-plugin-app"
   [ -d "$plugin_dir" ]
   [ -f "$plugin_dir/package.json" ]
   [ -f "$plugin_dir/src/index.ts" ]
@@ -127,11 +123,8 @@ teardown() {
   run $CREATE_ELIZA_CMD my-create-plugin --yes --type plugin
   [ "$status" -eq 0 ]
   [[ "$output" == *"Plugin initialized successfully!"* ]]
-  if [ -d "my-create-plugin" ]; then
-    plugin_dir="my-create-plugin"
-  else
-    plugin_dir="plugin-my-create-plugin"
-  fi
+  # The CLI should always add the prefix when missing
+  plugin_dir="plugin-my-create-plugin"
   [ -d "$plugin_dir" ]
   [ -f "$plugin_dir/package.json" ]
   [ -f "$plugin_dir/src/index.ts" ]
