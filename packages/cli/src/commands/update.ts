@@ -452,7 +452,7 @@ export const update = new Command()
       await showBanner();
     } catch (error) {
       // Silently continue if banner display fails
-      console.debug('Banner display failed, continuing with update');
+      logger.debug('Banner display failed, continuing with update');
     }
   })
   .action(async (options) => {
@@ -516,7 +516,11 @@ export const update = new Command()
         // Always call updateDependencies, passing the check flag to determine if it's a dry run
         await updateDependencies(cwd, isPlugin, options.check || false, options.skipBuild || false);
 
-        if (!options.check) {
+        if (options.check) {
+          // When checking, output current version
+          const version = getVersion();
+          console.log(`Version: ${version}`);
+        } else {
           console.log(
             `${isPlugin ? 'Plugin' : 'Project'} successfully updated to the latest ElizaOS packages`
           );
