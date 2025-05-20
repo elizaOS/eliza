@@ -1047,24 +1047,20 @@ export function agentRouter(
     try {
       // Get all worlds for this agent
       const worlds = await runtime.getAllWorlds();
+      const worldsMap = new Map(worlds.map((world) => [world.id, world]));
+
+      // Use getRoomsForParticipant to directly get room IDs where agent is a participant
+      const participantRoomIds = await runtime.getRoomsForParticipant(agentId);
+
       const agentRooms = [];
 
-      // For each world, get rooms
+      // For each world, get rooms and filter by participant room IDs
       for (const world of worlds) {
         const worldRooms = await runtime.getRooms(world.id);
 
-        // Get all memories for this agent
-        const memories = await runtime.getMemories({
-          agentId: runtime.agentId,
-          tableName: 'messages',
-        });
-
-        // Extract unique room IDs from agent's memories
-        const participatingRoomIds = [...new Set(memories.map((m) => m.roomId))];
-
-        // Filter rooms where agent has memories
+        // Filter rooms where agent is a participant
         for (const room of worldRooms) {
-          if (participatingRoomIds.includes(room.id)) {
+          if (participantRoomIds.includes(room.id)) {
             agentRooms.push({
               ...room,
               worldName: world.name,
