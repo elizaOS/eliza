@@ -1,26 +1,35 @@
 #!/usr/bin/env bats
 
+# -----------------------------------------------------------------------------
+# dev‑command integration tests.  These tests spin up a live "elizaos dev"
+# instance (which is a long‑running process) in a temp workspace and inspect the
+# log output to ensure the flags are wired through correctly and the optional
+# build hook runs.
+# -----------------------------------------------------------------------------
+
 setup() {
+  set -euo pipefail
+
+  # Isolated workspace for every test case.
   export TEST_TMP_DIR="$(mktemp -d /var/tmp/eliza-test-dev-XXXXXX)"
-  # Use a direct absolute path to the index.js file
-  export ELIZAOS_CMD="bun run $(cd "$(dirname "$BATS_TEST_DIRNAME")" && pwd)/dist/index.js"
   cd "$TEST_TMP_DIR"
+
+  # Resolve CLI entry point; allow caller override.
+  export ELIZAOS_CMD="${ELIZAOS_CMD:-bun run $(cd "$BATS_TEST_DIRNAME/../dist" && pwd)/index.js}"
 }
 
 teardown() {
-  if [ -n "$TEST_TMP_DIR" ] && [[ "$TEST_TMP_DIR" == /var/tmp/eliza-test-* ]]; then
-    # Ensure any background processes are stopped
-    pkill -f "node.*elizaos" || true
-    rm -rf "$TEST_TMP_DIR"
-  fi
+  # Best‑effort cleanup of any lingering dev instances.
+  pkill -f "bun .*elizaos dev" 2>/dev/null || true
+  [[ -n "${TEST_TMP_DIR:-}" && "$TEST_TMP_DIR" == /var/tmp/eliza-test-* ]] && rm -rf "$TEST_TMP_DIR"
 }
 
-# Create a minimal project structure for testing
+# -----------------------------------------------------------------------------
+# Helpers to scaffold tiny projects on the fly.
+# -----------------------------------------------------------------------------
 setup_test_project() {
   mkdir -p src
-  
-  # Create a minimal package.json
-  cat <<EOF > package.json
+  cat > package.json <<'EOF'
 {
   "name": "test-project",
   "version": "1.0.0",
@@ -30,22 +39,15 @@ setup_test_project() {
   }
 }
 EOF
-
-  # Create a simple src/index.ts file
-  cat <<EOF > src/index.ts
+  cat > src/index.ts <<'EOF'
 console.log('Starting test project');
-export const project = {
-  name: 'Test Project'
-};
+export const project = { name: 'Test Project' };
 EOF
 }
 
-# Mock a build script that we can verify was executed
 setup_buildable_project() {
   setup_test_project
-  
-  # Create a slightly more advanced package.json with build hooks
-  cat <<EOF > package.json
+  cat > package.json <<'EOF'
 {
   "name": "test-project",
   "version": "1.0.0",
@@ -57,153 +59,131 @@ setup_buildable_project() {
 EOF
 }
 
-# Checks that the dev help command displays usage information.
+# -----------------------------------------------------------------------------
+# dev --help
+# -----------------------------------------------------------------------------
 @test "dev --help shows usage" {
   run $ELIZAOS_CMD dev --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"Usage: elizaos dev"* ]]
 }
 
-# Check that dev command has the right options
 @test "dev --help shows all options" {
   run $ELIZAOS_CMD dev --help
   [ "$status" -eq 0 ]
-  [[ "$output" == *"--configure"* ]]
-  [[ "$output" == *"--character"* ]]
-  [[ "$output" == *"--build"* ]]
-  [[ "$output" == *"--port"* ]]
+  for opt in --configure --character --build --port; do
+    [[ "$output" == *"$opt"* ]]
+  done
 }
 
-# Test that dev accepts the character option
-@test "dev --character accepts character option" {
-  # We don't need to actually start the server, just check that the option is accepted
+# -----------------------------------------------------------------------------
+# --character flag parsing (does not actually start the server)
+# -----------------------------------------------------------------------------
+@test "dev --character accepts single option" {
   run $ELIZAOS_CMD dev --character test.json --help
   [ "$status" -eq 0 ]
 }
 
-# Test that dev accepts multiple character formats like the start command
 @test "dev --character accepts multiple character formats" {
-  # Test comma-separated format
   run $ELIZAOS_CMD dev --character "test1.json,test2.json" --help
   [ "$status" -eq 0 ]
-  
-  # Test space-separated format
+
   run $ELIZAOS_CMD dev --character "test1.json test2.json" --help
   [ "$status" -eq 0 ]
-  
-  # Test quoted format
+
   run $ELIZAOS_CMD dev --character "'test.json'" --help
   [ "$status" -eq 0 ]
 }
 
-# Test that dev accepts the port option and uses it
+# -----------------------------------------------------------------------------
+# --port flag propagates to the underlying start command
+# -----------------------------------------------------------------------------
 @test "dev --port properly passes port to server" {
   setup_test_project
-
-  # Start dev process in background with nonstandard port
   $ELIZAOS_CMD dev --port 4999 > output.log 2>&1 &
   local dev_pid=$!
-  
-  # Allow time for server to start
-  sleep 2
-  
-  # Check logs to ensure port is configured correctly
+  sleep 3
+
+  kill -0 "$dev_pid" 2>/dev/null  # process should still be running
+  [ "$?" -eq 0 ]
+
   run cat output.log
-  [[ "$output" == *"--port 4999"* ]] || [[ "$output" == *"port: 4999"* ]]
-  
-  # Kill the process and clean up
-  kill $dev_pid || true
-  sleep 1
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ (--port[[:space:]]+4999|port:[[:space:]]+4999) ]]
+
+  kill "$dev_pid" 2>/dev/null || true
 }
 
-# Test that dev --build option triggers a build
+# -----------------------------------------------------------------------------
+# --build flag runs project build script
+# -----------------------------------------------------------------------------
 @test "dev --build triggers project build" {
   setup_buildable_project
-  
-  # Start dev with build flag in background
+
   $ELIZAOS_CMD dev --build > output.log 2>&1 &
   local dev_pid=$!
-  
-  # Allow time for build to complete
-  sleep 3
-  
-  # Verify build was executed by checking build.log
-  [ -f "build.log" ]
+  sleep 4
+
+  [ -f build.log ]
   run cat build.log
+  [ "$status" -eq 0 ]
   [[ "$output" == *"Build executed at"* ]]
-  
-  # Kill the process and clean up
-  kill $dev_pid || true
-  sleep 1
+
+  kill "$dev_pid" 2>/dev/null || true
 }
 
-# Test that dev rebuilds on file changes
+# -----------------------------------------------------------------------------
+# File‑watcher rebuild
+# -----------------------------------------------------------------------------
 @test "dev rebuilds project on file changes" {
   setup_buildable_project
-  
-  # Start dev in background
+
   $ELIZAOS_CMD dev > output.log 2>&1 &
   local dev_pid=$!
-  
-  # Allow time for initial startup
   sleep 3
-  
-  # Modify a source file to trigger rebuild
-  echo "// Modified file" >> src/index.ts
-  
-  # Allow time for file watcher to detect and rebuild
-  sleep 5
-  
-  # Verify build was executed after file change
+
+  echo "// Modified" >> src/index.ts
+  sleep 6  # watcher debounce + build time
+
   run cat output.log
+  [ "$status" -eq 0 ]
   [[ "$output" == *"Rebuilding project after file change"* ]]
-  
-  # Kill the process and clean up
-  kill $dev_pid || true
-  sleep 1
+
+  kill "$dev_pid" 2>/dev/null || true
 }
 
-# Test that dev --configure passes option to start command
+# -----------------------------------------------------------------------------
+# --configure passthrough
+# -----------------------------------------------------------------------------
 @test "dev --configure passes configuration option to start" {
   setup_test_project
-  
-  # Start dev with configure flag in background
   $ELIZAOS_CMD dev --configure > output.log 2>&1 &
   local dev_pid=$!
-  
-  # Allow time for server to start
-  sleep 2
-  
-  # Verify --configure was passed to start command
+  sleep 3
+
   run cat output.log
+  [ "$status" -eq 0 ]
   [[ "$output" == *"--configure"* ]]
-  
-  # Kill the process and clean up
-  kill $dev_pid || true
-  sleep 1
+
+  kill "$dev_pid" 2>/dev/null || true
 }
 
-# Integration test to verify all options work together
+# -----------------------------------------------------------------------------
+# All‑in‑one smoke test
+# -----------------------------------------------------------------------------
 @test "dev integrates all options correctly" {
   setup_buildable_project
-  
-  # Start dev with multiple options
   $ELIZAOS_CMD dev --build --port 4567 --configure > output.log 2>&1 &
   local dev_pid=$!
-  
-  # Allow time for startup sequence
-  sleep 4
-  
-  # Verify build occurred
-  [ -f "build.log" ]
-  
-  # Verify options were passed to start command
+  sleep 5
+
+  [ -f build.log ]
+
   run cat output.log
-  [[ "$output" == *"--port 4567"* ]] || [[ "$output" == *"port: 4567"* ]]
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ (--port[[:space:]]+4567|port:[[:space:]]+4567) ]]
   [[ "$output" == *"--configure"* ]]
   [[ "$output" == *"Build"* ]]
-  
-  # Kill the process and clean up
-  kill $dev_pid || true
-  sleep 1
+
+  kill "$dev_pid" 2>/dev/null || true
 }

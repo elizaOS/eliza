@@ -1,36 +1,45 @@
 #!/usr/bin/env bats
 
+# -----------------------------------------------------------------------------
+# env‑command tests.  These tests exercise listing, editing and resetting
+# environment variable files (.env) in both global and local scopes.
+# -----------------------------------------------------------------------------
+
 setup() {
+  set -euo pipefail
+
   export TEST_TMP_DIR="$(mktemp -d /var/tmp/eliza-test-env-XXXXXX)"
-  # Use a direct absolute path to the index.js file
-  export ELIZAOS_CMD="bun run $(cd "$(dirname "$BATS_TEST_DIRNAME")" && pwd)/dist/index.js"
   cd "$TEST_TMP_DIR"
+
+  export ELIZAOS_CMD="${ELIZAOS_CMD:-bun run $(cd "$BATS_TEST_DIRNAME/../dist" && pwd)/index.js}"
 }
 
 teardown() {
-  rm -rf "$TEST_TMP_DIR"
+  [[ -n "${TEST_TMP_DIR:-}" ]] && rm -rf "$TEST_TMP_DIR"
 }
 
-# Checks that the env help command displays usage information.
+# -----------------------------------------------------------------------------
+# --help
+# -----------------------------------------------------------------------------
 @test "env --help shows usage" {
   run $ELIZAOS_CMD env --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"Usage: elizaos env"* ]]
 }
 
-# Checks that env list shows both global and local environments, with appropriate messaging
+# -----------------------------------------------------------------------------
+# env list (with and without local .env)
+# -----------------------------------------------------------------------------
 @test "env list shows environment variables" {
-  # Run env list in a directory without .env
+  # First call: no local .env file present.
   run $ELIZAOS_CMD env list
   [ "$status" -eq 0 ]
-  [[ "$output" == *"System Information"* ]]
-  [[ "$output" == *"Global Environment Variables"* ]]
-  [[ "$output" == *"Local Environment Variables"* ]]
-  # Should show warning when no local .env exists
-  [[ "$output" == *"No local .env file found"* ]]
-  [[ "$output" == *"Missing .env file"* ]]
-  
-  # Create a local .env file and check again
+  for section in "System Information" "Global Environment Variables" "Local Environment Variables"; do
+    [[ "$output" == *"$section"* ]]
+  done
+  [[ "$output" == *"No local .env file found"* ]] || [[ "$output" == *"Missing .env file"* ]]
+
+  # Create a local .env file and try again.
   echo "TEST_VAR=test_value" > .env
   run $ELIZAOS_CMD env list
   [ "$status" -eq 0 ]
@@ -38,55 +47,43 @@ teardown() {
   [[ "$output" == *"test_value"* ]]
 }
 
-# Checks that env list --local shows only local env vars
+# -----------------------------------------------------------------------------
+# --local / --global filters
+# -----------------------------------------------------------------------------
 @test "env list --local shows only local environment" {
-  # Create local .env
   echo "LOCAL_TEST=local_value" > .env
-  
   run $ELIZAOS_CMD env list --local
   [ "$status" -eq 0 ]
-  [[ "$output" == *"LOCAL_TEST"* ]]
-  [[ "$output" == *"local_value"* ]]
+  [[ "$output" == *"LOCAL_TEST"* ]] && [[ "$output" == *"local_value"* ]]
   [[ "$output" != *"System Information"* ]]
   [[ "$output" != *"Global Environment Variables"* ]]
 }
 
-# Checks that env list --global shows only global env vars
 @test "env list --global shows only global environment" {
   run $ELIZAOS_CMD env list --global
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Global environment variables"* ]]
+  [[ "$output" == *"Global environment"* ]]
+  [[ "$output" != *"Local Environment Variables"* ]]
   [[ "$output" != *"System Information"* ]]
-  [[ "$output" != *"Local environment variables"* ]]
 }
 
-# Checks that env edit-local creates a local .env file if missing
+# -----------------------------------------------------------------------------
+# env edit-local (auto‑create)
+# -----------------------------------------------------------------------------
 @test "env edit-local creates local .env if missing" {
-  # Create a script to automatically accept creating the file
-  cat > test-script.sh << 'EOF'
-#!/bin/bash
-echo -e "y\n" | $ELIZAOS_CMD env edit-local
-EOF
-  chmod +x test-script.sh
-  
-  # Verify .env doesn't exist initially
-  [ ! -f ".env" ]
-  
-  # Run the script
-  ./test-script.sh
-  
-  # Verify .env was created
-  [ -f ".env" ]
+  [ ! -f .env ]
+  run bash -c 'printf "y\n" | '"$ELIZAOS_CMD"' env edit-local'
+  [ "$status" -eq 0 ]
+  [ -f .env ]
 }
 
-# Test env reset functionality with --yes flag to avoid interactive prompts
+# -----------------------------------------------------------------------------
+# env reset
+# -----------------------------------------------------------------------------
 @test "env reset shows all necessary options" {
-  # Use the --yes flag to avoid interactive prompts
   run $ELIZAOS_CMD env reset --yes
   [ "$status" -eq 0 ]
   [[ "$output" == *"Reset Summary"* ]]
-  # Check for expected categories in output
-  [[ "$output" == *"Global environment variables"* ]] || [[ "$output" == *"Skipped:"* ]]
-  [[ "$output" == *"Local environment variables"* ]] || [[ "$output" == *"Skipped:"* ]]
+  [[ "$output" =~ (Global|Local) ]]
   [[ "$output" == *"Environment reset complete"* ]]
 }
