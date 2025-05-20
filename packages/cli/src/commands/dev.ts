@@ -164,7 +164,6 @@ async function determineProjectType(): Promise<{ isProject: boolean; isPlugin: b
  */
 async function watchDirectory(dir: string, onChange: () => void): Promise<void> {
   try {
-
     // Get the absolute path of the directory
     const absoluteDir = path.resolve(dir);
     console.info(`Setting up file watching for directory: ${absoluteDir}`);
@@ -312,8 +311,18 @@ export const dev = new Command()
 
       // Prepare CLI arguments for the start command
       const cliArgs: string[] = [];
-      if (options.port) cliArgs.push('--port', options.port.toString());
-      if (options.configure) cliArgs.push('--configure');
+
+      // Pass through port option
+      if (options.port) {
+        cliArgs.push('--port', options.port.toString());
+        console.debug(`Using port: ${options.port}`);
+      }
+
+      // Pass through configure option
+      if (options.configure) {
+        cliArgs.push('--configure');
+        console.debug('Using configure option');
+      }
 
       // Handle characters - pass through to start command
       if (options.character) {
@@ -322,9 +331,14 @@ export const dev = new Command()
         } else {
           cliArgs.push('--character', options.character);
         }
+        console.debug(`Using character(s): ${options.character}`);
       }
 
-      if (options.build) cliArgs.push('--build');
+      // Pass through build option
+      if (options.build) {
+        cliArgs.push('--build');
+        console.debug('Using build option');
+      }
 
       // Function to rebuild and restart the server
       const rebuildAndRestart = async () => {
