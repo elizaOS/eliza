@@ -9,7 +9,7 @@ if (process.env.SENTRY_LOGGING === 'true') {
       dsn,
       environment: process.env.SENTRY_ENVIRONMENT || process.env.NODE_ENV,
       tracesSampleRate: parseFloat(process.env.SENTRY_TRACES_SAMPLE_RATE ?? '') || 1.0,
-      sendDefaultPii: process.env.SENTRY_SEND_DEFAULT_PII === 'true' || true,
+      sendDefaultPii: process.env.SENTRY_SEND_DEFAULT_PII === 'true',
     });
   });
 }
