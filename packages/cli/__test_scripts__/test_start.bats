@@ -134,3 +134,16 @@ teardown() {
   kill "$pid" 2>/dev/null || true
   [ "$status" -eq 0 ]
 }
+
+# -----------------------------------------------------------------------------
+# send message to Ada agent and get a response
+# -----------------------------------------------------------------------------
+@test "send message to Ada agent and get a response" {
+  run $ELIZAOS_CMD agent --remote-url "http://localhost:$TEST_SERVER_PORT" list
+  ELIZA_AGENT_ID=$(echo "$output" | grep 'Ada' | sed -E 's/.*│ *([0-9a-f\-]{36}) *.*/\1/')
+  local payload="{\"entityId\":\"31c75add-3a49-4bb1-ad40-92c6b4c39558\",\"roomId\":\"$ELIZA_AGENT_ID\",\"source\":\"client_chat\",\"text\":\"Ada, What's your stance on AI regulation?\",\"channelType\":\"API\"}"
+  run curl -s -X POST -H "Content-Type: application/json" -d "$payload" "http://localhost:$TEST_SERVER_PORT/api/agents/$ELIZA_AGENT_ID/message"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *thought* ]]
+  [[ "$output" == *action* ]]
+}
