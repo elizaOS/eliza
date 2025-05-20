@@ -103,7 +103,10 @@ EOF
   setup_test_project
   $ELIZAOS_CMD dev --port 3400 > output.log 2>&1 &
   local dev_pid=$!
-  sleep 3
+  for _ in $(seq 1 15); do
+    grep -q "AgentServer is listening on port 3400" output.log && break
+    sleep 1
+  done
 
   kill -0 "$dev_pid" 2>/dev/null  # process should still be running
   [ "$?" -eq 0 ]
@@ -123,7 +126,10 @@ EOF
 
   $ELIZAOS_CMD dev --build > output.log 2>&1 &
   local dev_pid=$!
-  sleep 4
+  for _ in $(seq 1 20); do
+    grep -q "Build executed" output.log && break
+    sleep 1
+  done
 
   [ -f build.log ]
   run cat build.log
@@ -141,7 +147,10 @@ EOF
 
   $ELIZAOS_CMD dev > output.log 2>&1 &
   local dev_pid=$!
-  sleep 3
+  for _ in $(seq 1 15); do
+    grep -q "AgentServer is listening" output.log && break
+    sleep 1
+  done
 
   echo "// Modified" >> src/index.ts
   sleep 6  # watcher debounce + build time
@@ -160,7 +169,10 @@ EOF
   setup_test_project
   $ELIZAOS_CMD dev --configure > output.log 2>&1 &
   local dev_pid=$!
-  sleep 3
+  for _ in $(seq 1 15); do
+    grep -q "--configure" output.log && break
+    sleep 1
+  done
 
   run cat output.log
   [ "$status" -eq 0 ]
@@ -176,7 +188,10 @@ EOF
   setup_buildable_project
   $ELIZAOS_CMD dev --build --port 4567 --configure > output.log 2>&1 &
   local dev_pid=$!
-  sleep 5
+  for _ in $(seq 1 20); do
+    grep -q "AgentServer is listening on port 4567" output.log && break
+    sleep 1
+  done
 
   [ -f build.log ]
 

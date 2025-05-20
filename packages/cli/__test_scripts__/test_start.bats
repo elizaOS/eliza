@@ -9,8 +9,13 @@
 setup() {
   set -euo pipefail
   # ---- Ensure port is free.
-  kill -9 $(lsof -t -i :3000)
-  sleep 1
+  if command -v lsof >/dev/null; then
+    pids="$(lsof -t -i :3000 2>/dev/null || true)"
+    if [ -n "$pids" ]; then
+      kill -9 $pids 2>/dev/null || true
+      sleep 1
+    fi
+  fi
   # -----
   export TEST_TMP_DIR="$(mktemp -d /var/tmp/eliza-test-start-XXXXXX)"
   export TEST_SERVER_PORT=3000
@@ -31,14 +36,14 @@ setup() {
   SERVER_PID=$!
 
   # Wait until log line appears or 15 s timeout.
-  for _ in {1..15}; do
+  for _ in $(seq 1 15); do
     grep -q "AgentServer is listening on port $TEST_SERVER_PORT" "$TEST_TMP_DIR/server.log" && break
     sleep 1
   done
   grep -q "AgentServer is listening on port $TEST_SERVER_PORT" "$TEST_TMP_DIR/server.log"
 
   # API health probe.
-  for _ in {1..10}; do
+  for _ in $(seq 1 10); do
     curl -sf "http://localhost:$TEST_SERVER_PORT/api/agents" >/dev/null && break
     sleep 1
   done
