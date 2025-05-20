@@ -10,7 +10,7 @@ setup() {
   set -euo pipefail
 
   export TEST_TMP_DIR="$(mktemp -d /var/tmp/eliza-test-start-XXXXXX)"
-  export TEST_SERVER_PORT=8888
+  export TEST_SERVER_PORT=3000
   cd "$TEST_TMP_DIR"
 
   # Use the dist build that sits next to the tests unless caller overrides.
