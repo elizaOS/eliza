@@ -19,10 +19,25 @@ setup() {
 }
 
 teardown() {
-  # Best‑effort cleanup of any lingering dev instances.
-  pkill -f "bun .*elizaos dev" 2>/dev/null || true
-  sleep 1  # Give processes time to terminate
-  [[ -n "${TEST_TMP_DIR:-}" && "$TEST_TMP_DIR" == /var/tmp/eliza-test-* ]] && rm -rf "$TEST_TMP_DIR" || true
+  # Cleanup any lingering dev instances
+  local pids=$(pgrep -f "bun .*elizaos dev" 2>/dev/null)
+  if [[ -n "$pids" ]]; then
+    echo "Terminating dev processes: $pids"
+    kill $pids 2>/dev/null || pkill -f "bun .*elizaos dev" 2>/dev/null || true
+    # Wait up to 5 seconds for processes to terminate gracefully
+    for i in {1..5}; do
+      pgrep -f "bun .*elizaos dev" >/dev/null || break
+      sleep 1
+    done
+    # Force kill if still running
+    pkill -9 -f "bun .*elizaos dev" 2>/dev/null || true
+  fi
+
+  # Safely cleanup test directory
+  if [[ -n "${TEST_TMP_DIR:-}" && "$TEST_TMP_DIR" =~ ^/var/tmp/eliza-test-[a-zA-Z0-9]+$ ]]; then
+    echo "Cleaning up test directory: $TEST_TMP_DIR"
+    rm -rf "$TEST_TMP_DIR" || true
+  fi
 }
 
 # -----------------------------------------------------------------------------
