@@ -28,7 +28,10 @@ The client requires the following environment variables:
 DISCORD_APPLICATION_ID=your_application_id
 DISCORD_API_TOKEN=your_api_token
 
-# Optional Settings (add any additional details here if necessary)
+# Optional Settings
+# Comma-separated list of Discord channel IDs to restrict the bot to.
+# If not set, the bot operates in all channels as usual.
+CHANNEL_IDS=123456789012345678,987654321098765432
 ```
 
 ## Usage
