@@ -243,6 +243,11 @@ async function processRepo(npmId: string, gitRef: string): Promise<[string, Vers
 /*───────────────────────────────────────────────────────────────────────────*/
 
 (async () => {
+  const timeoutId = setTimeout(() => {
+    console.error('Registry parsing timeout: Process took longer than 20 seconds');
+    process.exit(1);
+  }, 30000);
+
   const registry = (await safeFetchJSON<RawRegistry>(REGISTRY_URL)) || {};
   const report: Record<string, VersionInfo> = {};
 
@@ -282,4 +287,5 @@ async function processRepo(npmId: string, gitRef: string): Promise<[string, Vers
 
   writeFileSync(cacheFilePath, JSON.stringify(dataToSave, null, 2));
   console.log(`\nDone → ${cacheFilePath}`);
+  clearTimeout(timeoutId);
 })();
