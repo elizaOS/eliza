@@ -92,6 +92,5 @@ export function envRouter(): express.Router {
     }
   });
 
-
   return router;
 }

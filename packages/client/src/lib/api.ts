@@ -605,7 +605,6 @@ export const apiClient = {
     });
   },
 
-
   // Agent Panels (public GET routes)
   getAgentPanels: (agentId: string): Promise<{ success: boolean; data: AgentPanel[] }> => {
     console.log('getAgentPanels', agentId);

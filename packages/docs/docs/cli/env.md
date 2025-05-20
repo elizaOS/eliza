@@ -18,17 +18,19 @@ elizaos env [command] [options]
 
 ## Subcommands
 
-| Subcommand        | Description                                                   | Options                           |
-| ----------------- | ------------------------------------------------------------- | --------------------------------- |
-| `list`            | List all environment variables                                | `--system`, `--local` |
-| `edit-local`      | Edit local environment variables                              | `-y, --yes`                       |
-| `reset`           | Reset environment variables and clean up database/cache files | `-y, --yes`                       |
-| `interactive`     | Start interactive environment variable manager                | `-y, --yes`                       |
+| Subcommand    | Description                                                   | Options               |
+| ------------- | ------------------------------------------------------------- | --------------------- |
+| `list`        | List all environment variables                                | `--system`, `--local` |
+| `edit-local`  | Edit local environment variables                              | `-y, --yes`           |
+| `reset`       | Reset environment variables and clean up database/cache files | `-y, --yes`           |
+| `interactive` | Start interactive environment variable manager                | `-y, --yes`           |
 
 ## Environment Levels
 
 ElizaOS maintains two levels of environment variables:
+
 1. **Local variables** - Stored in `.env` in your current project directory
+
 ## Interactive Mode
 
 The interactive mode provides a user-friendly way to manage environment variables:
@@ -75,6 +77,7 @@ elizaos env list --local   # Show only local environment variables
 Edit the global environment variables interactively:
 
 ```bash
+
 ```
 
 This provides an interactive interface to:
@@ -99,6 +102,7 @@ If no local `.env` file exists, you will be prompted to create one. The editor w
 Set a custom location for the global environment file:
 
 ```bash
+
 ```
 
 If the specified path is a directory, the command will use `/path/to/custom/location/.env`.
