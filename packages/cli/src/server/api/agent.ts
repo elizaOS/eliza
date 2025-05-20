@@ -1029,6 +1029,57 @@ export function agentRouter(
     }
   });
 
+  // Get all rooms where an agent is a participant
+  router.get('/:agentId/rooms', async (req, res) => {
+    const agentId = validateUuid(req.params.agentId);
+    if (!agentId) {
+      sendError(res, 400, 'INVALID_ID', 'Invalid agent ID format');
+      return;
+    }
+
+    // Get runtime
+    const runtime = agents.get(agentId);
+    if (!runtime) {
+      sendError(res, 404, 'NOT_FOUND', 'Agent not found');
+      return;
+    }
+
+    try {
+      // Get all worlds for this agent
+      const worlds = await runtime.getAllWorlds();
+      const agentRooms = [];
+
+      // For each world, get rooms
+      for (const world of worlds) {
+        const worldRooms = await runtime.getRooms(world.id);
+
+        // Get all memories for this agent
+        const memories = await runtime.getMemories({
+          agentId: runtime.agentId,
+          tableName: 'messages',
+        });
+
+        // Extract unique room IDs from agent's memories
+        const participatingRoomIds = [...new Set(memories.map((m) => m.roomId))];
+
+        // Filter rooms where agent has memories
+        for (const room of worldRooms) {
+          if (participatingRoomIds.includes(room.id)) {
+            agentRooms.push({
+              ...room,
+              worldName: world.name,
+            });
+          }
+        }
+      }
+
+      sendSuccess(res, { rooms: agentRooms });
+    } catch (error) {
+      logger.error(`[ROOMS LIST] Error retrieving rooms for agent ${agentId}:`, error);
+      sendError(res, 500, 'RETRIEVAL_ERROR', 'Failed to retrieve agent rooms', error.message);
+    }
+  });
+
   router.delete('/:agentId/logs/:logId', async (req, res) => {
     const agentId = validateUuid(req.params.agentId);
     const logId = validateUuid(req.params.logId);
