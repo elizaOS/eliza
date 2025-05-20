@@ -104,7 +104,7 @@ EOF
   $ELIZAOS_CMD dev --port 3400 > output.log 2>&1 &
   local dev_pid=$!
   for _ in $(seq 1 15); do
-    grep -q "AgentServer is listening on port 3400" output.log && break
+    grep -q "Starting server.*port.*3400" output.log && break
     sleep 1
   done
 
@@ -113,7 +113,7 @@ EOF
 
   run cat output.log
   [ "$status" -eq 0 ]
-  [[ "$output" =~ (Go to the dashboard at http://localhost:3400 | AgentServer is listening on port 3400) ]]
+  [[ "$output" =~ (Starting server.*port.*3400|Server.*listening.*3400) ]]
 
   kill "$dev_pid" 2>/dev/null
 }
@@ -170,7 +170,7 @@ EOF
   $ELIZAOS_CMD dev --configure > output.log 2>&1 &
   local dev_pid=$!
   for _ in $(seq 1 15); do
-    grep -q "--configure" output.log && break
+    grep -F "--configure" output.log && break
     sleep 1
   done
 
@@ -189,7 +189,7 @@ EOF
   $ELIZAOS_CMD dev --build --port 4567 --configure > output.log 2>&1 &
   local dev_pid=$!
   for _ in $(seq 1 20); do
-    grep -q "AgentServer is listening on port 4567" output.log && break
+    grep -q "Starting server.*port.*4567" output.log && break
     sleep 1
   done
 
