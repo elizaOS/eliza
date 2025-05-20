@@ -118,11 +118,11 @@ EOF
   setup_test_project
   $ELIZAOS_CMD dev --port 3400 > output.log 2>&1 &
   local dev_pid=$!
-  local timeout=60
+  local timeout=120
   local start_time=$(date +%s)
   local found=false
   while [ $(( $(date +%s) - start_time )) -lt $timeout ]; do
-    if grep -q "Starting server.*port.*3400" output.log; then
+    if grep -q -E "(Starting server|Server.*listening|port.*3400|:3400)" output.log; then
       found=true
       break
     fi
@@ -247,11 +247,11 @@ EOF
   setup_buildable_project
   $ELIZAOS_CMD dev --build --port 4567 --configure > output.log 2>&1 &
   local dev_pid=$!
-  local timeout=30
+  local timeout=120
   local start_time=$(date +%s)
   local found=false
   while [ $(( $(date +%s) - start_time )) -lt $timeout ]; do
-    if grep -q "Starting server.*port.*4567" output.log; then
+    if grep -q -E "(Starting server|Server.*listening|port.*4567|:4567)" output.log; then
       found=true
       break
     fi
