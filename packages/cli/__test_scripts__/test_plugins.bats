@@ -7,10 +7,10 @@
 # -----------------------------------------------------------------------------
 
 setup_file() {
-  set -euo pipefail
-  pushd "$BATS_TEST_DIRNAME/../../../" >/dev/null
+  if [[ -f "$HOME/.eliza/cached-registry.json" ]]; then
+    return 0
+  fi
   bun run packages/cli/src/utils/parse-registry.ts
-  popd >/dev/null
 }
 
 setup() {

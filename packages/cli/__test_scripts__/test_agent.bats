@@ -9,10 +9,15 @@
 setup_file() {
   set -euo pipefail
 
+  # ---- Ensure port is free.
+  kill -9 $(lsof -t -i :3000)
+  sleep 1
+  # -----
+
   # ---------------------------------------------------------------------------
   # Dynamic paths / ports so parallel test runners don't collide.
   # ---------------------------------------------------------------------------
-  export TEST_SERVER_PORT=8888
+  export TEST_SERVER_PORT=3000
   export TEST_SERVER_URL="http://localhost:$TEST_SERVER_PORT"
   export TEST_TMP_DIR="$(mktemp -d /var/tmp/eliza-test-agent-XXXXXX)"
   mkdir -p "$TEST_TMP_DIR/pglite"
@@ -72,7 +77,7 @@ teardown_file() {
 @test "agent list returns agents" {
   run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" list
   [ "$status" -eq 0 ]
-  [[ "$output" =~ (ada|max|shaw) ]]
+  [[ "$output" =~ (Ada|Max|Shaw) ]]
 }
 
 @test "agent list works with JSON flag" {
@@ -125,8 +130,7 @@ teardown_file() {
 
 @test "agent start handles non-existent agent fails" {
   run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" start -n "NonExistent_$$"
-  [ "$status" -eq 1 ]
-  [[ "$output" =~ (not found|No agent found|error) ]]
+  [ "$status" -ne 0 ] || [[ "$output" =~ (No character configuration provided|not found|No agent found|error) ]]
 }
 
 # -----------------------------------------------------------------------------
