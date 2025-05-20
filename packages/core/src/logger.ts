@@ -224,7 +224,7 @@ const options = {
   hooks: {
     logMethod(inputArgs: [string | Record<string, unknown>, ...unknown[]], method: LogFn): void {
       const [arg1, ...rest] = inputArgs;
-      if (process.env.SENTRY_LOGGING === 'true') {
+      if (process.env.SENTRY_LOGGING !== 'false') {
         if (arg1 instanceof Error) {
           Sentry.captureException(arg1);
         } else {
