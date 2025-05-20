@@ -49,7 +49,7 @@ This opens a menu with options to:
 - List environment variables
 - Edit global environment variables
 - Edit local environment variables
-- Set custom environment path
+- Set custom global environment path
 - Reset environment variables
 
 ## Managing Environment Variables
@@ -62,7 +62,13 @@ View all configured environment variables:
 elizaos env list
 ```
 
-This will display both global and local variables (if available).
+This will display:
+
+- System information (OS, architecture, CLI version, etc.)
+- Global environment variables from `~/.eliza/.env` or your custom path
+- Local environment variables from `./.env` in your current directory
+
+If no local `.env` file exists, the command will display a warning and instructions for creating one. This helps you quickly see if your project is missing required configuration.
 
 You can also filter the output:
 
@@ -95,7 +101,7 @@ Edit the local environment variables in the current project:
 elizaos env edit-local
 ```
 
-If no local `.env` file exists, you will be prompted to create one.
+If no local `.env` file exists, you will be prompted to create one. The editor will then allow you to add new variables to the created file.
 
 ### Setting Custom Environment Path
 
@@ -107,7 +113,9 @@ elizaos env set-path /path/to/custom/location
 
 If the specified path is a directory, the command will use `/path/to/custom/location/.env`.
 
-The command supports tilde expansion, so you can use paths like `~/eliza-config/.env`.
+The command supports tilde expansion, so you can use paths like `~/eliza-config/.env`. Non-existent directories will be created if you confirm.
+
+This setting affects where global environment variables are stored and loaded from in all ElizaOS commands.
 
 ### Resetting Environment Variables and Data
 
@@ -122,16 +130,29 @@ This command provides an interactive selection interface where you can choose wh
 - **Global environment variables** - Clears values in global `.env` file while preserving keys
 - **Local environment variables** - Clears values in local `.env` file while preserving keys
 - **Cache folder** - Deletes the cache folder
-- **Global database files** - Deletes global database files (with special handling for PostgreSQL)
+- **Global database files** - Deletes global database files (including PGLite data)
 - **Local database files** - Deletes local database files
+
+The command intelligently detects:
+
+- Missing files/folders (skipped automatically)
+- External PostgreSQL usage (warns that only local files will be removed)
+- PGLite configuration (ensures the correct folders are removed)
 
 After selecting items, you'll be shown a summary and asked for confirmation before proceeding.
 
-Use the `-y, --yes` flag to automatically reset using default selections:
+Use the `-y, --yes` flag to automatically reset all valid items without prompts:
 
 ```bash
 elizaos env reset --yes
 ```
+
+With `--yes`, the command will:
+
+1. Select only items that exist and can be reset
+2. Show a list of what will be reset
+3. Perform the reset without additional confirmation
+4. Display a detailed summary of actions taken
 
 ## Key Variables
 
@@ -144,6 +165,7 @@ ElizaOS commonly uses these environment variables:
 | `TELEGRAM_BOT_TOKEN` | Token for Telegram bot integration           |
 | `DISCORD_BOT_TOKEN`  | Token for Discord bot integration            |
 | `POSTGRES_URL`       | PostgreSQL database connection string        |
+| `PGLITE_DATA_DIR`    | Directory for PGLite database files          |
 | `MODEL_PROVIDER`     | Default model provider to use                |
 | `LOG_LEVEL`          | Logging verbosity (debug, info, warn, error) |
 | `PORT`               | HTTP API port number                         |
@@ -182,6 +204,15 @@ Local environment variables (.env):
   LOG_LEVEL: debug
 ```
 
+If the `.env` file is missing:
+
+```
+Local Environment Variables:
+Path: /current/directory/.env
+  No local .env file found
+  ✖ Missing .env file. Create one in your project directory to set local environment variables.
+```
+
 ### Setting Custom Environment Path
 
 ```bash
@@ -210,6 +241,27 @@ elizaos env reset
 
 # Reset with default selections
 elizaos env reset --yes
+```
+
+Example reset output:
+
+```
+The following items will be reset:
+  • Global environment variables
+  • Local environment variables
+  • Cache folder
+
+Reset Summary:
+  Values Cleared:
+    • Global environment variables
+    • Local environment variables
+  Deleted:
+    • Cache folder
+  Skipped:
+    • Global database files (not found)
+    • Local database files (not found)
+
+Environment reset complete
 ```
 
 ## Related Commands

@@ -326,9 +326,11 @@ async function updateDependencies(
 
     // Build the project/plugin with updated dependencies
     if (!skipBuild) {
+      console.info(`Building ${isPlugin ? 'plugin' : 'project'}...`);
       await buildProject(cwd, isPlugin);
+      console.info(`Build completed successfully`);
     } else {
-      console.log('Skipping build phase as requested with --skip-build flag');
+      console.info('Skipping build phase as requested with --skip-build flag');
     }
   } catch (error) {
     console.error(`Error updating dependencies: ${error.message}`);
@@ -511,18 +513,14 @@ export const update = new Command()
         const isPlugin = checkIfPluginDir(cwd);
         console.info(`Detected ${isPlugin ? 'plugin' : 'project'} directory`);
 
-        if (options.check) {
-          // Call updateDependencies with dryRun=true to check for updates without applying them
-          await updateDependencies(cwd, isPlugin, true, false);
-          return;
+        // Always call updateDependencies, passing the check flag to determine if it's a dry run
+        await updateDependencies(cwd, isPlugin, options.check || false, options.skipBuild || false);
+
+        if (!options.check) {
+          console.log(
+            `${isPlugin ? 'Plugin' : 'Project'} successfully updated to the latest ElizaOS packages`
+          );
         }
-
-        // Update dependencies
-        await updateDependencies(cwd, isPlugin, false, options.skipBuild);
-
-        console.log(
-          `${isPlugin ? 'Plugin' : 'Project'} successfully updated to the latest ElizaOS packages`
-        );
       }
     } catch (error) {
       handleError(error);
