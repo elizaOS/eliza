@@ -14,7 +14,7 @@ setup() {
   export TEST_TMP_DIR="$(mktemp -d /var/tmp/eliza-test-XXXXXX)"
 
   # Resolve the two CLI entry points we exercise in this suite.
-  export ELIZAOS_CMD="bun run $(pwd)/dist/index.js"
+  export ELIZAOS_CMD="${ELIZAOS_CMD:-bun run $(cd "$BATS_TEST_DIRNAME/../dist" && pwd)/index.js}"
   export CREATE_ELIZA_CMD="${CREATE_ELIZA_CMD:-bun run $(cd "$BATS_TEST_DIRNAME/../../create-eliza" && pwd)/index.mjs}"
 
   cd "$TEST_TMP_DIR"
@@ -41,8 +41,9 @@ validate_agent_json() {
     run jq -e --arg n "$expected_name" '
         .name == $n                          and
         (.system           | type == "string" and length > 0) and
-        (.bio              | type == "string" and length > 0) and
-        (.messageExamples  | type == "array"  and length > 0)
+        (.bio              | type == "array"  and length > 0) and
+        (.messageExamples  | type == "array"  and length > 0) and
+        (.style            | type == "object" and (.all | type == "array") and (.all | length > 0))
       ' "$json_file"
     [ "$status" -eq 0 ]
   else
@@ -52,6 +53,7 @@ validate_agent_json() {
     [[ "$output" == *"\"system\":"* ]]
     [[ "$output" == *"\"bio\":"* ]]
     [[ "$output" == *"\"messageExamples\":"* ]]
+    [[ "$output" == *"\"style\":"* ]]
   fi
 }
 
