@@ -120,10 +120,19 @@ EOF
   local dev_pid=$!
   local timeout=30
   local start_time=$(date +%s)
+  local found=false
   while [ $(( $(date +%s) - start_time )) -lt $timeout ]; do
-    grep -q "Starting server.*port.*3400" output.log && break
+    if grep -q "Starting server.*port.*3400" output.log; then
+      found=true
+      break
+    fi
     sleep 1
   done
+  [ "$found" = true ] || {
+    echo "Timeout waiting for server to start on port 3400"
+    kill "$dev_pid" 2>/dev/null
+    return 1
+  }
 
   kill -0 "$dev_pid" 2>/dev/null  # process should still be running
   [ "$?" -eq 0 ]
@@ -145,10 +154,19 @@ EOF
   local dev_pid=$!
   local timeout=30
   local start_time=$(date +%s)
+  local found=false
   while [ $(( $(date +%s) - start_time )) -lt $timeout ]; do
-    grep -q "Build executed" output.log && break
+    if grep -q "Build executed" output.log; then
+      found=true
+      break
+    fi
     sleep 1
   done
+  [ "$found" = true ] || {
+    echo "Timeout waiting for build to execute"
+    kill "$dev_pid" 2>/dev/null
+    return 1
+  }
 
   [ -f build.log ]
   run cat build.log
@@ -168,10 +186,19 @@ EOF
   local dev_pid=$!
   local timeout=30
   local start_time=$(date +%s)
+  local found=false
   while [ $(( $(date +%s) - start_time )) -lt $timeout ]; do
-    grep -q "AgentServer is listening" output.log && break
+    if grep -q "AgentServer is listening" output.log; then
+      found=true
+      break
+    fi
     sleep 1
   done
+  [ "$found" = true ] || {
+    echo "Timeout waiting for AgentServer to start"
+    kill "$dev_pid" 2>/dev/null
+    return 1
+  }
 
   echo "// Modified" >> src/index.ts
   sleep 6  # watcher debounce + build time
@@ -192,10 +219,19 @@ EOF
   local dev_pid=$!
   local timeout=30
   local start_time=$(date +%s)
+  local found=false
   while [ $(( $(date +%s) - start_time )) -lt $timeout ]; do
-    grep -F "--configure" output.log && break
+    if grep -F "--configure" output.log; then
+      found=true
+      break
+    fi
     sleep 1
   done
+  [ "$found" = true ] || {
+    echo "Timeout waiting for --configure option"
+    kill "$dev_pid" 2>/dev/null
+    return 1
+  }
 
   run cat output.log
   [ "$status" -eq 0 ]
@@ -213,10 +249,19 @@ EOF
   local dev_pid=$!
   local timeout=30
   local start_time=$(date +%s)
+  local found=false
   while [ $(( $(date +%s) - start_time )) -lt $timeout ]; do
-    grep -q "Starting server.*port.*4567" output.log && break
+    if grep -q "Starting server.*port.*4567" output.log; then
+      found=true
+      break
+    fi
     sleep 1
   done
+  [ "$found" = true ] || {
+    echo "Timeout waiting for server to start on port 4567"
+    kill "$dev_pid" 2>/dev/null
+    return 1
+  }
 
   [ -f build.log ]
 
