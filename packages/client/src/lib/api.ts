@@ -379,6 +379,25 @@ export const apiClient = {
     });
   },
 
+  // Create a room for a specific agent
+  createRoom: (
+    agentId: string,
+    params: {
+      name: string;
+      type?: string;
+      source?: string;
+      worldId?: string;
+      serverId?: string;
+      metadata?: Record<string, any>;
+    }
+  ) => {
+    return fetcher({
+      url: `/agents/${agentId}/rooms`,
+      method: 'POST',
+      body: params,
+    });
+  },
+
   getLogs: ({
     level,
     agentName,

@@ -116,22 +116,22 @@ node_modules
 }
 
 /**
- * Initialize a new project or plugin.
+ * Initialize a new project, plugin, or agent.
  *
  * @param {Object} opts - Options for initialization.
  * @param {string} opts.dir - Installation directory.
  * @param {boolean} opts.yes - Skip confirmation.
- * @param {string} opts.type - Type of template to use (project or plugin).
+ * @param {string} opts.type - Type to create (project, plugin, or agent).
  *
  * @returns {Promise<void>} Promise that resolves once the initialization process is complete.
  */
 export const create = new Command()
   .name('create')
-  .description('Initialize a new project or plugin')
+  .description('Initialize a new project, plugin, or agent')
   .option('-d, --dir <dir>', 'installation directory', '.')
   .option('-y, --yes', 'skip confirmation', false)
-  .option('-t, --type <type>', 'type of template to use (project or plugin)', 'project')
-  .argument('[name]', 'name for the project or plugin')
+  .option('-t, --type <type>', 'type to create (project, plugin, or agent)', 'project')
+  .argument('[name]', 'name for the project, plugin, or agent')
   .action(async (name, opts) => {
     // Set non-interactive mode if environment variable is set or if -y/--yes flag is present in process.argv
     if (

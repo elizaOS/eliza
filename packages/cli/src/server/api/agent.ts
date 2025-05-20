@@ -129,9 +129,8 @@ export function agentRouter(
 
     const entityId = req.body.entityId as UUID;
     const roomId = req.body.roomId as UUID;
-    const worldId =
-      (validateUuid(req.query.worldId as string) ||
-        ('00000000-0000-0000-0000-000000000000' as UUID)) as UUID;
+    const worldId = (validateUuid(req.query.worldId as string) ||
+      ('00000000-0000-0000-0000-000000000000' as UUID)) as UUID;
 
     const source = req.body.source;
     const text = req.body.text.trim();
@@ -946,6 +945,88 @@ export function agentRouter(
       success: true,
       data: logs,
     });
+  });
+
+  // Create a new room for an agent
+  router.post('/:agentId/rooms', async (req, res) => {
+    const agentId = validateUuid(req.params.agentId);
+    if (!agentId) {
+      sendError(res, 400, 'INVALID_ID', 'Invalid agent ID format');
+      return;
+    }
+
+    // Get runtime
+    const runtime = agents.get(agentId);
+    if (!runtime) {
+      sendError(res, 404, 'NOT_FOUND', 'Agent not found');
+      return;
+    }
+
+    try {
+      // Extract data from request body
+      const { name, type = 'dm', source = 'client', worldId, metadata } = req.body;
+
+      if (!name) {
+        sendError(res, 400, 'MISSING_PARAM', 'Room name is required');
+        return;
+      }
+
+      // Generate a unique ID for the room
+      const roomId = createUniqueUuid(runtime, `room-${Date.now()}`);
+      const serverId = req.body.serverId || `server-${Date.now()}`;
+
+      // Ensure world exists or create a new one
+      let resolvedWorldId = worldId;
+      if (!resolvedWorldId) {
+        // Create a default world if none provided
+        const worldName = `World for ${name}`;
+        resolvedWorldId = createUniqueUuid(runtime, `world-${Date.now()}`);
+
+        await runtime.ensureWorldExists({
+          id: resolvedWorldId,
+          name: worldName,
+          agentId: runtime.agentId,
+          serverId: serverId,
+          metadata: metadata,
+        });
+      }
+
+      // Create the room
+      await runtime.ensureRoomExists({
+        id: roomId,
+        name: name,
+        source: source,
+        type: type,
+        channelId: roomId,
+        serverId: serverId,
+        worldId: resolvedWorldId,
+        metadata: metadata,
+      });
+
+      // Add the agent as a participant
+      await runtime.addParticipant(runtime.agentId, roomId);
+      await runtime.ensureParticipantInRoom(runtime.agentId, roomId);
+      await runtime.setParticipantUserState(roomId, runtime.agentId, 'FOLLOWED');
+
+      // Return the created room
+      res.status(201).json({
+        success: true,
+        data: {
+          id: roomId,
+          name: name,
+          agentId: agentId,
+          createdAt: Date.now(),
+          source: source,
+          type: type,
+          worldId: resolvedWorldId,
+          serverId: serverId,
+          metadata: metadata,
+        },
+      });
+    } catch (error) {
+      logger.error(`[ROOM CREATE] Error creating room for agent ${agentId}:`, error);
+      sendError(res, 500, 'CREATE_ERROR', 'Failed to create room', error.message);
+    }
   });
 
   router.delete('/:agentId/logs/:logId', async (req, res) => {

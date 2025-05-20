@@ -528,14 +528,23 @@ async function resetEnv(yes = false): Promise<void> {
 
   // Check if external Postgres is in use
   let usingExternalPostgres = false;
+  let usingPglite = false;
   try {
-    const globalEnvVars = await parseEnvFile(globalEnvPath);
-    const localEnvVars = await parseEnvFile(localEnvPath);
+    const globalEnvVars = existsSync(globalEnvPath) ? await parseEnvFile(globalEnvPath) : {};
+    const localEnvVars = existsSync(localEnvPath) ? await parseEnvFile(localEnvPath) : {};
+
+    // Check for external Postgres
     usingExternalPostgres =
       (globalEnvVars.POSTGRES_URL && globalEnvVars.POSTGRES_URL.trim() !== '') ||
       (localEnvVars.POSTGRES_URL && localEnvVars.POSTGRES_URL.trim() !== '');
+
+    // Check for PGLite
+    usingPglite =
+      (globalEnvVars.PGLITE_DATA_DIR && globalEnvVars.PGLITE_DATA_DIR.trim() !== '') ||
+      (localEnvVars.PGLITE_DATA_DIR && localEnvVars.PGLITE_DATA_DIR.trim() !== '');
   } catch (error) {
-    // Ignore errors
+    // Ignore errors in env parsing
+    console.debug('Error checking database config:', error.message);
   }
 
   // Create reset item options
@@ -543,14 +552,18 @@ async function resetEnv(yes = false): Promise<void> {
     {
       title: 'Global environment variables',
       value: 'globalEnv',
-      description: 'Reset values in global .env file',
-      selected: false,
+      description: existsSync(globalEnvPath)
+        ? 'Reset values in global .env file'
+        : 'Global .env file not found, nothing to reset',
+      selected: existsSync(globalEnvPath),
     },
     {
       title: 'Local environment variables',
       value: 'localEnv',
-      description: 'Reset values in local .env file',
-      selected: false,
+      description: existsSync(localEnvPath)
+        ? 'Reset values in local .env file'
+        : 'Local .env file not found, nothing to reset',
+      selected: existsSync(localEnvPath),
     },
     {
       title: 'Cache folder',
@@ -558,7 +571,7 @@ async function resetEnv(yes = false): Promise<void> {
       description: existsSync(cacheDir)
         ? 'Delete the cache folder'
         : 'Cache folder not found, nothing to delete',
-      selected: false,
+      selected: existsSync(cacheDir),
     },
     {
       title: 'Global database files',
@@ -568,8 +581,10 @@ async function resetEnv(yes = false): Promise<void> {
           ? 'Global database files not found, nothing to delete'
           : usingExternalPostgres
             ? 'WARNING: External PostgreSQL database detected - only local files will be removed'
-            : 'Delete global database files',
-      selected: false,
+            : usingPglite
+              ? 'Delete global PGLite database files'
+              : 'Delete global database files',
+      selected: existsSync(globalDbDir) || existsSync(globalPgliteDir),
     },
     {
       title: 'Local database files',
@@ -577,16 +592,38 @@ async function resetEnv(yes = false): Promise<void> {
       description: existsSync(localDbDir)
         ? 'Delete local database files'
         : 'Local database folder not found, nothing to delete',
-      selected: false,
+      selected: existsSync(localDbDir),
     },
   ];
+
+  // Filter out non-existent items for automated selection
+  const validResetItems = resetItems.filter(
+    (item) =>
+      (item.value === 'globalEnv' && existsSync(globalEnvPath)) ||
+      (item.value === 'localEnv' && existsSync(localEnvPath)) ||
+      (item.value === 'cache' && existsSync(cacheDir)) ||
+      (item.value === 'globalDb' && (existsSync(globalDbDir) || existsSync(globalPgliteDir))) ||
+      (item.value === 'localDb' && existsSync(localDbDir))
+  );
 
   // Get selected items (from options or defaults)
   let selectedValues: ResetTarget[] = [];
 
   if (yes) {
-    // When using --yes flag, include all reset items rather than relying on selected flag
-    selectedValues = resetItems.map((item) => item.value);
+    // When using --yes flag, include all valid reset items
+    selectedValues = validResetItems.map((item) => item.value);
+
+    // Show what will be reset
+    if (selectedValues.length > 0) {
+      console.info(colors.bold('The following items will be reset:'));
+      for (const value of selectedValues) {
+        const item = resetItems.find((item) => item.value === value);
+        console.info(`  • ${item.title}`);
+      }
+    } else {
+      console.info('No valid items found to reset.');
+      return;
+    }
   } else {
     // Prompt user to select items with styling matching interactive mode
     const { selections } = await prompts({
@@ -996,9 +1033,11 @@ async function showMainMenu(yes = false): Promise<void> {
           type: 'text',
           name: 'path',
           message: 'Enter custom path for global environment file:',
+          initial: await getGlobalEnvPath(), // Show current path as default
         });
 
         if (customPath) {
+          // Use the same implementation as the set-path command
           await setEnvPath(customPath, yes);
         }
         break;
