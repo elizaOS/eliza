@@ -53,7 +53,7 @@ export async function getElizaDirectories() {
   logger.debug('[Config] Using home directory:', homeDir);
 
   const elizaDir = path.join(homeDir, '.eliza');
-  const elizaDbDir = path.join(elizaDir, 'projects', stringToUuid(process.cwd()), 'pglite/');
+  const elizaDbDir = path.join(process.cwd(), '.pglite/');
   const envFilePath = path.join(elizaDir, '.env');
 
   logger.debug('[Config] Using database directory:', elizaDbDir);
@@ -210,7 +210,7 @@ export async function configureDatabaseSettings(reconfigure = false): Promise<st
 
   // Check if we already have database configuration in env
   let postgresUrl = process.env.POSTGRES_URL;
-  const pgliteDataDir = process.env.PGLITE_DATA_DIR || path.join(elizaDbDir, 'pglite');
+  const pgliteDataDir = process.env.PGLITE_DATA_DIR || elizaDbDir;
 
   // Add debug logging
   logger.debug(`Configuration check - POSTGRES_URL: ${postgresUrl ? 'SET' : 'NOT SET'}`);
