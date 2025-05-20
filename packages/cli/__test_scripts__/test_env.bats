@@ -73,9 +73,10 @@ teardown() {
 # env reset
 # -----------------------------------------------------------------------------
 @test "env reset shows all necessary options" {
+  echo "DUMMY=value" > .env
   run $ELIZAOS_CMD env reset --yes
   [ "$status" -eq 0 ]
   [[ "$output" == *"Reset Summary"* ]]
-  [[ "$output" =~ (Global|Local) ]]
+  [[ "$output" == *"Local environment variables"* ]]
   [[ "$output" == *"Environment reset complete"* ]]
 }
