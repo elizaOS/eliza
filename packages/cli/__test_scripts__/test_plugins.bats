@@ -10,7 +10,7 @@ setup_file() {
   if [[ -f "$HOME/.eliza/cached-registry.json" ]]; then
     return 0
   fi
-  bun run packages/cli/src/utils/parse-registry.ts
+  bun run "$BATS_TEST_DIRNAME/../src/utils/parse-registry.ts"
 }
 
 setup() {
