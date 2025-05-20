@@ -131,6 +131,87 @@ export function agentRouter(
     }
   });
 
+  // Create new world
+  router.post('/worlds', async (req, res) => {
+    try {
+      // Find any active runtime to use for creating world
+      const runtime = Array.from(agents.values())[0];
+
+      if (!runtime) {
+        sendError(res, 404, 'NOT_FOUND', 'No active agents found to create world');
+        return;
+      }
+
+      const { name, serverId, metadata } = req.body;
+
+      if (!name) {
+        sendError(res, 400, 'BAD_REQUEST', 'World name is required');
+        return;
+      }
+
+      // Generate a unique ID for the world
+      const worldId = createUniqueUuid(runtime, `world-${Date.now()}`);
+
+      await runtime.createWorld({
+        id: worldId,
+        name,
+        agentId: runtime.agentId,
+        serverId: serverId || `server-${Date.now()}`,
+        metadata,
+      });
+
+      const world = (await runtime.getAllWorlds()).find((w) => w.id === worldId);
+
+      sendSuccess(res, { world }, 201);
+    } catch (error) {
+      logger.error('[WORLD CREATE] Error creating world:', error);
+      sendError(res, 500, '500', 'Error creating world', error.message);
+    }
+  });
+
+  // Create new world for specific agent
+  router.post('/:agentId/worlds', async (req, res) => {
+    const agentId = validateUuid(req.params.agentId);
+    if (!agentId) {
+      sendError(res, 400, 'INVALID_ID', 'Invalid agent ID format');
+      return;
+    }
+
+    // get runtime
+    const runtime = agents.get(agentId);
+    if (!runtime) {
+      sendError(res, 404, 'NOT_FOUND', 'Agent not found');
+      return;
+    }
+
+    try {
+      const { name, serverId, metadata } = req.body;
+
+      if (!name) {
+        sendError(res, 400, 'BAD_REQUEST', 'World name is required');
+        return;
+      }
+
+      // Generate a unique ID for the world
+      const worldId = createUniqueUuid(runtime, `world-${Date.now()}`);
+
+      await runtime.createWorld({
+        id: worldId,
+        name,
+        agentId: runtime.agentId,
+        serverId: serverId || `server-${Date.now()}`,
+        metadata,
+      });
+
+      const world = (await runtime.getAllWorlds()).find((w) => w.id === worldId);
+
+      sendSuccess(res, { world }, 201);
+    } catch (error) {
+      logger.error('[WORLD CREATE] Error creating world:', error);
+      sendError(res, 500, '500', 'Error creating world', error.message);
+    }
+  });
+
   // Message handler
   const handleAgentMessage = async (req: CustomRequest, res: express.Response) => {
     logger.debug('[MESSAGES CREATE] Creating new message');

@@ -388,8 +388,17 @@ export const apiClient = {
   // Get all worlds
   getWorlds: () => {
     return fetcher({
-      url: '/worlds',
+      url: '/agents/worlds',
       method: 'GET',
+    });
+  },
+
+  // Create a new world
+  createWorld: (agentId: string, params: { name: string; serverId?: string; metadata?: any }) => {
+    return fetcher({
+      url: `/agents/${agentId}/worlds`,
+      method: 'POST',
+      body: params,
     });
   },
 
