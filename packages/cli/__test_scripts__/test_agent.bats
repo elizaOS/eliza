@@ -12,7 +12,7 @@ setup_file() {
   # ---------------------------------------------------------------------------
   # Dynamic paths / ports so parallel test runners don't collide.
   # ---------------------------------------------------------------------------
-  export TEST_SERVER_PORT=3000
+  export TEST_SERVER_PORT=8888
   export TEST_SERVER_URL="http://localhost:$TEST_SERVER_PORT"
   export TEST_TMP_DIR="$(mktemp -d /var/tmp/eliza-test-agent-XXXXXX)"
   mkdir -p "$TEST_TMP_DIR/pglite"

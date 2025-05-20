@@ -115,7 +115,7 @@ export const pluginsCommand = plugins
   .option('--v0', 'List only v0.x compatible plugins')
   .action(async (opts: { all?: boolean; v0?: boolean }) => {
     try {
-      logHeader('Listing available plugins from cache...');
+      logHeader('Listing available plugins from cached registry...');
       const cachedRegistry = await readCache();
 
       if (

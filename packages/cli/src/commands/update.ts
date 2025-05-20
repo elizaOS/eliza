@@ -452,7 +452,7 @@ export const update = new Command()
       await showBanner();
     } catch (error) {
       // Silently continue if banner display fails
-      console.debug('Banner display failed, continuing with update');
+      logger.debug('Banner display failed, continuing with update');
     }
   })
   .action(async (options) => {

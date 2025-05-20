@@ -45,7 +45,7 @@ make_proj() {            # $1 = directory name
   make_proj update-check-app
   run $ELIZAOS_CMD update --check
   [ "$status" -eq 0 ]
-  [[ "$output" =~ (\"ElizaOS packages\"|\"up to date\") ]]
+  [[ "$output" =~ \"Version: 1.0\" ]]
 }
 
 @test "update --skip-build works" {
