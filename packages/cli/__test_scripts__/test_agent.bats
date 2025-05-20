@@ -47,7 +47,7 @@ setup_file() {
   # Pre‑load three reference character files.
   for c in ada max shaw; do
     $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" start \
-      --path "$BATS_TEST_DIRNAME/test-characters/$c.json" || true
+      --path "$BATS_TEST_DIRNAME/test-characters/$c.json"
   done
   sleep 1  # give them a moment to register
 }
@@ -72,7 +72,7 @@ teardown_file() {
 @test "agent list returns agents" {
   run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" list
   [ "$status" -eq 0 ]
-  [[ "$output" =~ (Ada|Max|Shaw) ]]
+  [[ "$output" =~ (ada|max|shaw) ]]
 }
 
 @test "agent list works with JSON flag" {
@@ -125,7 +125,7 @@ teardown_file() {
 
 @test "agent start handles non-existent agent fails" {
   run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" start -n "NonExistent_$$"
-  [ "$status" -ne 1 ]
+  [ "$status" -eq 1 ]
   [[ "$output" =~ (not found|No agent found|error) ]]
 }
 
