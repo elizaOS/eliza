@@ -7,7 +7,7 @@ import {
 import { ChatInput } from '@/components/ui/chat/chat-input';
 import { ChatMessageList } from '@/components/ui/chat/chat-message-list';
 import { USER_NAME } from '@/constants';
-import { useMessages } from '@/hooks/use-query-hooks';
+import { useMessages, useDeleteMemory, useDeleteAllMemories } from '@/hooks/use-query-hooks';
 import clientLogger from '@/lib/logger';
 import SocketIOManager from '@/lib/socketio-manager';
 import { cn, getEntityId, moment, randomUUID } from '@/lib/utils';
@@ -18,7 +18,7 @@ import { AgentStatus } from '@elizaos/core';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
 
 import { useQueryClient } from '@tanstack/react-query';
-import { ChevronRight, PanelRight, Paperclip, Send, X } from 'lucide-react';
+import { ChevronRight, PanelRight, Paperclip, Send, X, Trash2 } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import AIWriter from 'react-aiwriter';
 import { AudioRecorder } from './audio-recorder';
@@ -161,6 +161,8 @@ export default function Page({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const queryClient = useQueryClient();
+  const deleteMemoryMutation = useDeleteMemory();
+  const clearMemoriesMutation = useDeleteAllMemories();
 
   const entityId = getEntityId();
   const roomId = WorldManager.generateRoomId(agentId);
@@ -432,6 +434,21 @@ export default function Page({
     }
   };
 
+  const handleDeleteMessage = (id: string) => {
+    deleteMemoryMutation.mutate({ agentId, memoryId: id });
+    queryClient.setQueryData(
+      ['messages', agentId, roomId, worldId],
+      (old: ContentWithUser[] = []) => old.filter((m) => m.id !== id)
+    );
+  };
+
+  const handleClearChat = () => {
+    if (window.confirm('Clear all messages?')) {
+      clearMemoriesMutation.mutate({ agentId, roomId });
+      queryClient.setQueryData(['messages', agentId, roomId, worldId], []);
+    }
+  };
+
   return (
     <div
       className={`flex flex-col w-full h-screen items-center ${showDetails ? 'col-span-3' : 'col-span-4'}`}
@@ -479,14 +496,19 @@ export default function Page({
             </div>
           </div>
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={toggleDetails}
-            className={cn('gap-1.5', showDetails && 'bg-secondary')}
-          >
-            <PanelRight className="size-4" />
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={handleClearChat}>
+              <Trash2 className="size-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={toggleDetails}
+              className={cn('gap-1.5', showDetails && 'bg-secondary')}
+            >
+              <PanelRight className="size-4" />
+            </Button>
+          </div>
         </div>
 
         {/* Main Chat Area - takes remaining height */}
@@ -539,6 +561,15 @@ export default function Page({
                       shouldAnimate={shouldAnimate}
                     />
                   </ChatBubble>
+                  <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleDeleteMessage(message.id as string)}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  </div>
                 </div>
               );
             })}

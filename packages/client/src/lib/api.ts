@@ -574,6 +574,20 @@ export const apiClient = {
     });
   },
 
+  deleteGroupMemory: (serverId: string, memoryId: string) => {
+    return fetcher({
+      url: `/agents/groups/${serverId}/memories/${memoryId}`,
+      method: 'DELETE',
+    });
+  },
+
+  clearGroupChat: (serverId: string) => {
+    return fetcher({
+      url: `/agents/groups/${serverId}/memories`,
+      method: 'DELETE',
+    });
+  },
+
   getLocalEnvs: () => {
     return fetcher({
       url: `/envs/local`,
