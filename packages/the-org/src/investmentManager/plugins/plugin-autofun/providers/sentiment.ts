@@ -26,8 +26,8 @@ import { formatActionNames, formatActions } from '@elizaos/core';
  * @returns {Object} Object containing data, values, and text related to actions
  */
 export const sentimentProvider: Provider = {
-  name: 'CRYPTOCURRENCY_MARKET_SENTIMENT',
-  description: 'Information about the current cryptocurrency markets',
+  name: 'AUTOFUN_MARKET_SENTIMENT',
+  description: 'Information about the current autofun market',
   dynamic: true,
   //position: -1,
   get: async (runtime: IAgentRuntime, message: Memory, state: State): Promise<ProviderResult> => {
