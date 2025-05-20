@@ -176,6 +176,9 @@ describe('CLI Command Structure Tests', () => {
     for (const cmd of commands) {
       expect(result.stdout).toContain(cmd);
     }
+
+    // Check for empty stderr instead of using .not.toContain('Error')
+    expect(result.stderr).toBe('');
   }, 30000);
 
   it('should display version information', async () => {
@@ -186,6 +189,9 @@ describe('CLI Command Structure Tests', () => {
 
     // Verify version output format
     expect(result.stdout).toMatch(/\d+\.\d+\.\d+/); // Format like x.y.z
+
+    // Check for empty stderr instead of using .not.toContain('Error')
+    expect(result.stderr).toBe('');
   }, 30000);
 
   it('should create a project with valid structure', async () => {
@@ -200,6 +206,11 @@ describe('CLI Command Structure Tests', () => {
     try {
       // First try with non-interactive mode
       result = await execAsync(command, { cwd: testDir });
+
+      // Surface CLI errors explicitly
+      if (result.stderr) {
+        elizaLogger.warn(`CLI stderr (continuing test): ${result.stderr}`);
+      }
     } catch (error) {
       if (isCI) {
         // Skip test in CI if it fails in non-interactive mode
@@ -240,14 +251,19 @@ describe('CLI Command Structure Tests', () => {
     // Arrange
     const pluginBaseName = 'test-plugin';
     // Test without the plugin- prefix to verify auto-prefixing
-    const nonPrefixedName = pluginBaseName.replace('plugin-', '');
+    const nonPrefixedName = pluginBaseName.replace(/^plugin-/, '');
 
     // Use -y flag to run in non-interactive mode when possible
     const command = `${cliCommand} create -t plugin -y ${nonPrefixedName}`;
 
     try {
       // First try with non-interactive mode
-      await execAsync(command, { cwd: testDir });
+      const result = await execAsync(command, { cwd: testDir });
+
+      // Surface CLI errors explicitly
+      if (result.stderr) {
+        elizaLogger.warn(`CLI stderr (continuing test): ${result.stderr}`);
+      }
     } catch (error) {
       if (isCI) {
         // Skip test in CI if it fails in non-interactive mode
@@ -295,7 +311,12 @@ describe('CLI Command Structure Tests', () => {
 
     try {
       // First try with non-interactive mode
-      await execAsync(command, { cwd: testDir });
+      const result = await execAsync(command, { cwd: testDir });
+
+      // Surface CLI errors explicitly
+      if (result.stderr) {
+        elizaLogger.warn(`CLI stderr (continuing test): ${result.stderr}`);
+      }
     } catch (error) {
       if (isCI) {
         // Skip test in CI if it fails in non-interactive mode
