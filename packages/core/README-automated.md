@@ -78,6 +78,10 @@ These steps should help you successfully install and integrate the @elizaos/core
 3. `LOG_JSON_FORMAT`: configures whether the log messages are in JSON format.
 4. `DEFAULT_LOG_LEVEL`: specifies the default logging level if debug mode is not enabled.
 5. `SECRET_SALT`: stores a secret salt for encryption purposes.
+6. `SENTRY_DSN`: the DSN (Data Source Name) for sending events to Sentry for error reporting.
+7. `SENTRY_ENVIRONMENT`: identifies the deployment environment for Sentry (e.g., production, staging).
+8. `SENTRY_TRACES_SAMPLE_RATE`: sampling rate for performance tracing in Sentry (0.0 - 1.0).
+9. `SENTRY_SEND_DEFAULT_PII`: whether to send default PII (personally identifiable information) to Sentry (true/false).
 
 ### Example .env File:
 
@@ -87,6 +91,10 @@ LOG_DIAGNOSTIC=true
 LOG_JSON_FORMAT=false
 DEFAULT_LOG_LEVEL=info
 SECRET_SALT=mysecretsalt123
+SENTRY_DSN=https://08b7ad0d1e5e9795bd0734e59a752b40@o4509349865259008.ingest.us.sentry.io/4509352287272960
+SENTRY_ENVIRONMENT=production
+SENTRY_TRACES_SAMPLE_RATE=1.0
+SENTRY_SEND_DEFAULT_PII=true
 ```
 
 **Note:** The configuration should be done in the .env file. Ensure the .env file is added to the .gitignore to avoid committing sensitive data to the repository.
