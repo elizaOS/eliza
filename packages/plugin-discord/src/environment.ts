@@ -3,6 +3,21 @@ import { z } from 'zod';
 
 export const discordEnvSchema = z.object({
   DISCORD_API_TOKEN: z.string().min(1, 'Discord API token is required'),
+  /**
+   * Comma-separated list of channel IDs to restrict the bot to.
+   * If not set, the bot operates in all channels as usual.
+   */
+  CHANNEL_IDS: z
+    .string()
+    .optional()
+    .transform((val) =>
+      val
+        ? val
+            .split(',')
+            .map((s) => s.trim())
+            .filter((s) => s.length > 0)
+        : undefined
+    ),
 });
 
 /**
@@ -23,6 +38,7 @@ export async function validateDiscordConfig(runtime: IAgentRuntime): Promise<Dis
   try {
     const config = {
       DISCORD_API_TOKEN: runtime.getSetting('DISCORD_API_TOKEN'),
+      CHANNEL_IDS: runtime.getSetting('CHANNEL_IDS'),
     };
 
     return discordEnvSchema.parse(config);
