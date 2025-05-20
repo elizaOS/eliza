@@ -82,14 +82,10 @@ Manage environment variables and secrets.
 
 - **Subcommands:**
   - `list`: List all environment variables
-    - Options: `--global`, `--local`
-  - `edit-global`: Edit global environment variables
-    - Options: `-y, --yes`
+    - Options: `--local`
   - `edit-local`: Edit local environment variables
     - Options: `-y, --yes`
   - `reset`: Reset all environment variables
-    - Options: `-y, --yes`
-  - `set-path <path>`: Set a custom path for the global environment file
     - Options: `-y, --yes`
   - `interactive`: Interactive environment variable management
     - Options: `-y, --yes`
@@ -260,19 +256,14 @@ Manage environment variables and secrets.
 
 - **Subcommands:**
   - `list`: List all environment variables
-    - Options: `--system`, `--global`, `--local`
-  - `edit-global`: Edit global environment variables
-    - Options: `-y, --yes`
+    - Options: `--system`, `--local`
   - `edit-local`: Edit local environment variables
     - Options: `-y, --yes`
   - `reset`: Reset environment variables and clean up database/cache files
     - Options: `-y, --yes`
-  - `set-path <path>`: Set a custom path for the global environment file
-    - Options: `-y, --yes`
   - `interactive`: Start interactive environment variable manager
     - Options: `-y, --yes`
 
-Global variables apply to all projects, while local variables are specific to the current directory.
 
 ### Publishing
 

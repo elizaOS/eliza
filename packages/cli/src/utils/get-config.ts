@@ -54,7 +54,7 @@ export async function getElizaDirectories() {
 
   const elizaDir = path.join(homeDir, '.eliza');
   const elizaDbDir = path.join(process.cwd(), '.pglite/');
-  const envFilePath = path.join(elizaDir, '.env');
+  const envFilePath = path.join(process.cwd(), '.env');
 
   logger.debug('[Config] Using database directory:', elizaDbDir);
 
@@ -291,35 +291,14 @@ export async function resolveConfigPaths(cwd: string, config: RawConfig) {
 }
 
 /**
- * Load environment variables, trying project .env first, then global ~/.eliza/.env
- */
-/**
- * Loads environment variables from a project-specific or global `.env` file, creating the global file if neither exists.
+ * Load environment variables from the project `.env` file if it exists.
  *
- * If a `.env` file is present in the project directory, its variables are loaded. Otherwise, the function attempts to load from the global Eliza configuration. If neither file exists, a global `.env` file is created with a default comment.
- *
- * @param projectDir - The directory to search for a project-specific `.env` file. Defaults to the current working directory.
+ * @param projectDir - Directory containing the `.env` file. Defaults to the current working directory.
  */
 export async function loadEnvironment(projectDir: string = process.cwd()): Promise<void> {
   const projectEnvPath = path.join(projectDir, '.env');
-  const { elizaDir: globalEnvDir, envFilePath: globalEnvPath } = await getElizaDirectories();
 
-  // First try loading from project directory
   if (existsSync(projectEnvPath)) {
     dotenv.config({ path: projectEnvPath });
-    return;
   }
-
-  // If not found, try loading from global config
-  if (existsSync(globalEnvPath)) {
-    dotenv.config({ path: globalEnvPath });
-    return;
-  }
-
-  // Ensure global env directory and file exist
-  await ensureDir(globalEnvDir);
-  await ensureFile(globalEnvPath);
-  await fs.writeFile(globalEnvPath, '# Global environment variables for Eliza\n', {
-    encoding: 'utf8',
-  });
 }

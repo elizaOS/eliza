@@ -2,7 +2,7 @@
 
 # -----------------------------------------------------------------------------
 # env‑command tests.  These tests exercise listing, editing and resetting
-# environment variable files (.env) in both global and local scopes.
+# environment variable files (.env) in the project directory.
 # -----------------------------------------------------------------------------
 
 setup() {
@@ -34,7 +34,7 @@ teardown() {
   # First call: no local .env file present.
   run $ELIZAOS_CMD env list
   [ "$status" -eq 0 ]
-  for section in "System Information" "Global Environment Variables" "Local Environment Variables"; do
+  for section in "System Information" "Local Environment Variables"; do
     [[ "$output" == *"$section"* ]]
   done
   [[ "$output" == *"No local .env file found"* ]] || [[ "$output" == *"Missing .env file"* ]]
@@ -48,7 +48,7 @@ teardown() {
 }
 
 # -----------------------------------------------------------------------------
-# --local / --global filters
+# --local filter
 # -----------------------------------------------------------------------------
 @test "env list --local shows only local environment" {
   echo "LOCAL_TEST=local_value" > .env
@@ -56,16 +56,8 @@ teardown() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"LOCAL_TEST"* ]] && [[ "$output" == *"local_value"* ]]
   [[ "$output" != *"System Information"* ]]
-  [[ "$output" != *"Global Environment Variables"* ]]
 }
 
-@test "env list --global shows only global environment" {
-  run $ELIZAOS_CMD env list --global
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"Global environment"* ]]
-  [[ "$output" != *"Local Environment Variables"* ]]
-  [[ "$output" != *"System Information"* ]]
-}
 
 # -----------------------------------------------------------------------------
 # env edit-local (auto‑create)
@@ -81,9 +73,10 @@ teardown() {
 # env reset
 # -----------------------------------------------------------------------------
 @test "env reset shows all necessary options" {
+  echo "DUMMY=value" > .env
   run $ELIZAOS_CMD env reset --yes
   [ "$status" -eq 0 ]
   [[ "$output" == *"Reset Summary"* ]]
-  [[ "$output" =~ (Global|Local) ]]
+  [[ "$output" == *"Local environment variables"* ]]
   [[ "$output" == *"Environment reset complete"* ]]
 }
