@@ -251,7 +251,7 @@ export class UserEnvironment {
 
     return {
       elizaDir,
-      envFilePath: path.join(elizaDir, '.env'),
+      envFilePath: path.join(process.cwd(), '.env'),
       configPath: path.join(elizaDir, 'config.json'),
       pluginsDir: path.join(elizaDir, 'plugins'),
       monorepoRoot,

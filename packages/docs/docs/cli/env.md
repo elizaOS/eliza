@@ -18,23 +18,18 @@ elizaos env [command] [options]
 
 ## Subcommands
 
-| Subcommand        | Description                                                   | Options                           |
-| ----------------- | ------------------------------------------------------------- | --------------------------------- |
-| `list`            | List all environment variables                                | `--system`, `--global`, `--local` |
-| `edit-global`     | Edit global environment variables                             | `-y, --yes`                       |
-| `edit-local`      | Edit local environment variables                              | `-y, --yes`                       |
-| `reset`           | Reset environment variables and clean up database/cache files | `-y, --yes`                       |
-| `set-path <path>` | Set a custom path for the global environment file             | `-y, --yes`                       |
-| `interactive`     | Start interactive environment variable manager                | `-y, --yes`                       |
+| Subcommand    | Description                                                   | Options               |
+| ------------- | ------------------------------------------------------------- | --------------------- |
+| `list`        | List all environment variables                                | `--system`, `--local` |
+| `edit-local`  | Edit local environment variables                              | `-y, --yes`           |
+| `reset`       | Reset environment variables and clean up database/cache files | `-y, --yes`           |
+| `interactive` | Start interactive environment variable manager                | `-y, --yes`           |
 
 ## Environment Levels
 
 ElizaOS maintains two levels of environment variables:
 
-1. **Global variables** - Stored in `~/.eliza/.env` by default or in a custom location if set
-2. **Local variables** - Stored in `.env` in your current project directory
-
-Global variables are applied to all projects, while local variables are specific to the current project.
+1. **Local variables** - Stored in `.env` in your current project directory
 
 ## Interactive Mode
 
@@ -65,7 +60,6 @@ elizaos env list
 This will display:
 
 - System information (OS, architecture, CLI version, etc.)
-- Global environment variables from `~/.eliza/.env` or your custom path
 - Local environment variables from `./.env` in your current directory
 
 If no local `.env` file exists, the command will display a warning and instructions for creating one. This helps you quickly see if your project is missing required configuration.
@@ -83,7 +77,7 @@ elizaos env list --local   # Show only local environment variables
 Edit the global environment variables interactively:
 
 ```bash
-elizaos env edit-global
+
 ```
 
 This provides an interactive interface to:
@@ -108,7 +102,7 @@ If no local `.env` file exists, you will be prompted to create one. The editor w
 Set a custom location for the global environment file:
 
 ```bash
-elizaos env set-path /path/to/custom/location
+
 ```
 
 If the specified path is a directory, the command will use `/path/to/custom/location/.env`.
@@ -127,7 +121,6 @@ elizaos env reset
 
 This command provides an interactive selection interface where you can choose which items to reset:
 
-- **Global environment variables** - Clears values in global `.env` file while preserving keys
 - **Local environment variables** - Clears values in local `.env` file while preserving keys
 - **Cache folder** - Deletes the cache folder
 - **Global database files** - Deletes global database files (including PGLite data)
@@ -195,7 +188,6 @@ System Information:
   CLI Version: 1.0.0-beta.51
   Package Manager: bun v1.2.5
 
-Global environment variables (.eliza/.env):
   OPENAI_API_KEY: sk-1234...5678
   MODEL_PROVIDER: openai
 
@@ -217,7 +209,6 @@ Path: /current/directory/.env
 
 ```bash
 # Set a custom path for global environment variables
-elizaos env set-path ~/projects/eliza-config/.env
 ```
 
 ### Interactive Editing
@@ -227,7 +218,6 @@ elizaos env set-path ~/projects/eliza-config/.env
 elizaos env interactive
 
 # Edit only global variables
-elizaos env edit-global
 
 # Edit only local variables
 elizaos env edit-local
@@ -247,13 +237,11 @@ Example reset output:
 
 ```
 The following items will be reset:
-  • Global environment variables
   • Local environment variables
   • Cache folder
 
 Reset Summary:
   Values Cleared:
-    • Global environment variables
     • Local environment variables
   Deleted:
     • Cache folder

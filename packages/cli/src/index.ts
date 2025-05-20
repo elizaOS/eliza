@@ -29,7 +29,7 @@ process.on('SIGTERM', () => process.exit(0));
  * @returns {Promise<void>}
  */
 async function main() {
-  // Load environment variables, trying project .env first, then global ~/.eliza/.env
+  // Load environment variables from the project .env file
   await loadEnvironment();
 
   // For ESM modules we need to use import.meta.url instead of __dirname

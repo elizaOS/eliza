@@ -8,7 +8,6 @@ import { apiClient } from '@/lib/api';
 import { ApiKeyDialog } from './api-key-dialog';
 
 enum EnvType {
-  GLOBAL = 'global',
   LOCAL = 'local',
 }
 
@@ -19,10 +18,9 @@ export default function EnvSettings() {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editedValue, setEditedValue] = useState('');
-  const [globalEnvs, setGlobalEnvs] = useState<Record<string, string>>({});
   const [localEnvs, setLocalEnvs] = useState<Record<string, string>>({});
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const [activeTab, setActiveTab] = useState(EnvType.GLOBAL);
+  const [activeTab, setActiveTab] = useState(EnvType.LOCAL);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isApiKeyDialogOpen, setIsApiKeyDialogOpen] = useState(false);
 
@@ -40,14 +38,8 @@ export default function EnvSettings() {
   }, []);
 
   useEffect(() => {
-    fetchGlobalEnvs();
     fetchLocalEnvs();
   }, []);
-
-  const fetchGlobalEnvs = async () => {
-    const data = await apiClient.getGlobalEnvs();
-    setGlobalEnvs(data.data);
-  };
 
   const fetchLocalEnvs = async () => {
     const data = await apiClient.getLocalEnvs();
@@ -55,12 +47,7 @@ export default function EnvSettings() {
   };
 
   const handleReset = async () => {
-    if (activeTab === EnvType.GLOBAL) {
-      await fetchGlobalEnvs();
-    } else if (activeTab === EnvType.LOCAL) {
-      await fetchLocalEnvs();
-    }
-    // No other EnvType values exist as per the enum definition
+    await fetchLocalEnvs();
 
     setEditingIndex(null);
     setOpenIndex(null);
@@ -70,11 +57,6 @@ export default function EnvSettings() {
 
   const ENV_TABS_SCHEMA = [
     {
-      sectionTitle: 'Global Env',
-      sectionValue: EnvType.GLOBAL,
-      data: globalEnvs,
-    },
-    {
       sectionTitle: 'Local Env',
       sectionValue: EnvType.LOCAL,
       data: localEnvs,
@@ -83,14 +65,14 @@ export default function EnvSettings() {
 
   const handleEdit = (key: string) => {
     setEditingIndex(openIndex);
-    const envs = activeTab === EnvType.GLOBAL ? globalEnvs : localEnvs;
+    const envs = localEnvs;
     setEditedValue(envs[key]);
     setOpenIndex(null);
   };
 
   const handleRemove = (key: string) => {
-    const updateFn = activeTab === EnvType.GLOBAL ? setGlobalEnvs : setLocalEnvs;
-    const prevData = activeTab === EnvType.GLOBAL ? globalEnvs : localEnvs;
+    const updateFn = setLocalEnvs;
+    const prevData = localEnvs;
 
     const updatedData = { ...prevData };
     delete updatedData[key];
@@ -100,8 +82,8 @@ export default function EnvSettings() {
   };
 
   const saveEdit = (key: string) => {
-    const updateFn = activeTab === EnvType.GLOBAL ? setGlobalEnvs : setLocalEnvs;
-    const prevData = activeTab === EnvType.GLOBAL ? globalEnvs : localEnvs;
+    const updateFn = setLocalEnvs;
+    const prevData = localEnvs;
 
     updateFn({
       ...prevData,
@@ -114,8 +96,8 @@ export default function EnvSettings() {
   const addEnv = () => {
     if (!name || !value) return;
 
-    const updateFn = activeTab === EnvType.GLOBAL ? setGlobalEnvs : setLocalEnvs;
-    const prevData = activeTab === EnvType.GLOBAL ? globalEnvs : localEnvs;
+    const updateFn = setLocalEnvs;
+    const prevData = localEnvs;
 
     updateFn({
       ...prevData,
@@ -153,7 +135,7 @@ export default function EnvSettings() {
       </div>
 
       <Tabs
-        defaultValue="global"
+        defaultValue="local"
         className="w-full"
         value={activeTab}
         onValueChange={(val: any) => {
@@ -163,7 +145,7 @@ export default function EnvSettings() {
       >
         <TabsList
           className="grid w-full mb-6"
-          style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}
+          style={{ gridTemplateColumns: 'repeat(1, minmax(0, 1fr))' }}
         >
           {ENV_TABS_SCHEMA.map((section) => (
             <TabsTrigger key={section.sectionValue} value={section.sectionValue}>

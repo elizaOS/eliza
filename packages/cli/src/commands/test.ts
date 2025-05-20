@@ -72,20 +72,13 @@ const runAgentTests = async (options: {
     const homeDir = os.homedir();
     const elizaDir = path.join(homeDir, '.eliza');
     const elizaDbDir = path.join(elizaDir, 'db');
-    const envFilePath = path.join(elizaDir, '.env');
+    const envFilePath = path.join(process.cwd(), '.env');
 
     console.info('Setting up environment...');
     console.info(`Home directory: ${homeDir}`);
     console.info(`Eliza directory: ${elizaDir}`);
     console.info(`Database directory: ${elizaDbDir}`);
     console.info(`Environment file: ${envFilePath}`);
-
-    // Create .eliza directory if it doesn't exist
-    if (!fs.existsSync(elizaDir)) {
-      console.info(`Creating directory: ${elizaDir}`);
-      fs.mkdirSync(elizaDir, { recursive: true });
-      console.info(`Created directory: ${elizaDir}`);
-    }
 
     // Create db directory if it doesn't exist
     if (!fs.existsSync(elizaDbDir)) {
@@ -98,7 +91,7 @@ const runAgentTests = async (options: {
     process.env.PGLITE_DATA_DIR = elizaDbDir;
     console.info(`Using database directory: ${elizaDbDir}`);
 
-    // Load environment variables from .eliza/.env if it exists
+    // Load environment variables from project .env if it exists
     if (fs.existsSync(envFilePath)) {
       console.info(`Loading environment variables from: ${envFilePath}`);
       dotenv.config({ path: envFilePath });
