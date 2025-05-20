@@ -96,12 +96,9 @@ export const replyAction = {
         .filter((reply): reply is Content => reply !== null) ?? [];
 
     // Check if any responses had providers associated with them
-    const responsesWithProviders =
-      responses?.filter(
-        (res) => Array.isArray(res.content?.providers) && res.content.providers.length > 0
-      ) ?? [];
+    const allProviders = responses?.flatMap((res) => res.content?.providers ?? []) ?? [];
 
-    if (existingReplies.length > 0 && responsesWithProviders.length === 0) {
+    if (existingReplies.length > 0 && allProviders.length === 0) {
       for (const reply of existingReplies) {
         await callback(reply);
       }
@@ -109,10 +106,7 @@ export const replyAction = {
     }
 
     // Only generate response using LLM if no suitable response was found
-    state = await runtime.composeState(message, [
-      ...(message.content.providers ?? []),
-      'RECENT_MESSAGES',
-    ]);
+    state = await runtime.composeState(message, [...(allProviders ?? []), 'RECENT_MESSAGES']);
 
     const prompt = composePromptFromState({
       state,
