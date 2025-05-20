@@ -59,7 +59,7 @@ export const phalaRemoteAttestationAction = {
         message: {
           entityId: message.entityId,
           roomId: message.roomId,
-          content: message.content.text,
+          content: message?.content?.text || '',
         },
       };
       // Get the remote attestation of the agentId
