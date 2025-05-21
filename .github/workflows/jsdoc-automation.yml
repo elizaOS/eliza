@@ -35,10 +35,13 @@ on:
         default: ''
         type: string
       branch:
-        description: 'Target branch for PR (defaults to develop)'
+        description: 'Target branch for PR (defaults to v2-develop)'
         required: false
-        default: 'develop'
+        default: 'v2-develop'
         type: string
+  push:
+    branches:
+      - v2-develop
 
 jobs:
   generate-docs:
@@ -50,7 +53,7 @@ jobs:
       pull-requests: write
 
     env:
-      GITHUB_ACCESS_TOKEN: ${{ secrets.GH_PAT }}
+      GITHUB_ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
     steps:
@@ -102,7 +105,7 @@ jobs:
         working-directory: packages/autodoc
         run: bun run autodoc
         env:
-          INPUT_ROOT_DIRECTORY: ${{ github.event.inputs.root_directory }}
+          INPUT_ROOT_DIRECTORY: ${{ github.event.inputs.root_directory}}
           INPUT_PULL_NUMBER: ${{ github.event.inputs.pull_number }}
           INPUT_EXCLUDED_DIRECTORIES: ${{ github.event.inputs.excluded_directories }}
           INPUT_REVIEWERS: ${{ github.event.inputs.reviewers }}
