@@ -45,10 +45,12 @@ function MessageContent({
   message,
   agentId,
   shouldAnimate,
+  onDelete,
 }: {
   message: ContentWithUser;
   agentId: UUID;
   shouldAnimate: boolean;
+  onDelete: (id: string) => void;
 }) {
   return (
     <div className="flex flex-col w-full">
@@ -115,27 +117,32 @@ function MessageContent({
           <ChatBubbleTimestamp timestamp={moment(message.createdAt).format('LT')} />
         )}
       </ChatBubbleMessage>
-      {message.name !== USER_NAME && (
-        <div className="flex justify-between items-end w-full">
-          <div>
-            {message.text && !message.isLoading ? (
-              <div className="flex items-center gap-2">
+      <div className="flex justify-between items-end w-full">
+        <div className="flex items-center gap-2">
+          {message.name !== USER_NAME &&
+            message.text &&
+            !message.isLoading && (
+              <>
                 <CopyButton text={message.text} />
                 <ChatTtsButton agentId={agentId} text={message.text} />
-              </div>
-            ) : (
-              <div />
+              </>
             )}
-          </div>
-          <div>
-            {message.text && message.actions && (
-              <Badge variant="outline" className="text-sm">
-                {message.actions}
-              </Badge>
-            )}
-          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => onDelete(message.id as string)}
+          >
+            <Trash2 className="size-3.5" />
+          </Button>
         </div>
-      )}
+        <div>
+          {message.text && message.actions && (
+            <Badge variant="outline" className="text-sm">
+              {message.actions}
+            </Badge>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -555,22 +562,14 @@ export default function Page({
                       </Avatar>
                     )}
 
-                    <MemoizedMessageContent
-                      message={message}
-                      agentId={agentId}
-                      shouldAnimate={shouldAnimate}
-                    />
-                  </ChatBubble>
-                  <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleDeleteMessage(message.id as string)}
-                    >
-                      <Trash2 className="size-3.5" />
-                    </Button>
-                  </div>
-                </div>
+                  <MemoizedMessageContent
+                    message={message}
+                    agentId={agentId}
+                    shouldAnimate={shouldAnimate}
+                    onDelete={handleDeleteMessage}
+                  />
+                </ChatBubble>
+              </div>
               );
             })}
           </ChatMessageList>
