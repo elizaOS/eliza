@@ -280,10 +280,17 @@ export const myPlugin = {
       logger.info('\nRunning e2e tests...');
 
       // Get all .ts files in the e2e directory
-      const testFiles = fs
-        .readdirSync(e2eDir)
-        .filter((file) => file.endsWith('.test.ts'))
-        .map((file) => path.join(e2eDir, file));
+      const walk = (dir: string): string[] =>
+        fs
+          .readdirSync(dir, { withFileTypes: true })
+          .flatMap((entry) =>
+            entry.isDirectory()
+              ? walk(path.join(dir, entry.name))
+              : entry.name.match(/\.test\.(t|j)sx?$/)
+                ? [path.join(dir, entry.name)]
+                : []
+          );
+      const testFiles = walk(e2eDir);
 
       if (testFiles.length === 0) {
         logger.info('No e2e test files found');
