@@ -614,7 +614,7 @@ const startAgents = async (options: {
       character.plugins = character.plugins || [];
 
       // make sure character has sql plugin
-      const hasSqlPlugin = character.plugins.some((plugin) => plugin.includes('plugin-sql'));
+      const hasSqlPlugin = character.plugins.some((plugin) => plugin.includes('plugin-sql') || plugin.includes('plugin-mysql'));
       if (!hasSqlPlugin) {
         character.plugins.push('@elizaos/plugin-sql');
       }
