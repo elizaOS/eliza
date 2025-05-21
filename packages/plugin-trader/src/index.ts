@@ -1,12 +1,12 @@
 import type { Plugin, IAgentRuntime } from '@elizaos/core';
 
-import { TradeChainService } from './services/srv_chain';
-import { TradeDataProviderService } from './services/srv_dataprovider';
-import { TradeStrategyService } from './services/srv_strategy';
+import { TradeChainService } from './services/chain';
+import { TradeDataProviderService } from './services/dataprovider';
+import { TradeStrategyService } from './services/strategy';
 
 // Strategies
-import { llmStrategy } from './strategies/strategy_llm';
-import { copyStrategy } from './strategies/strategy_copy';
+import { llmStrategy } from './strategies/llm';
+import { copyStrategy } from './strategies/copy';
 
 import { registerTasks } from './tasks';
 

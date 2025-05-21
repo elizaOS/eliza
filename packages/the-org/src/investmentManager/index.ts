@@ -6,7 +6,6 @@ import { initCharacter } from '../init';
 import { communityInvestorPlugin } from './plugins/community-investor';
 import { degenIntelPlugin } from './plugins/degen-intel';
 import { degenTraderPlugin } from './plugins/degen-trader';
-import { solanaPlugin } from '@elizaos/plugin-solana';
 
 import { autofunPlugin } from './plugins/plugin-autofun';
 import { autofunTraderPlugin } from './plugins/autofun-trader';
@@ -48,7 +47,7 @@ const character: Character = {
     '@elizaos/plugin-bootstrap',
     // '@elizaos-plugins/plugin-trader',
     // '@elizaos-plugins/plugin-jupiter',
-    // '@elizaos/plugin-solana',
+    '@elizaos/plugin-solana',
   ],
   settings: {
     GROQ_PLUGIN_LARGE:
@@ -541,7 +540,6 @@ const config: OnboardingConfig = {
 
 export const investmentManager: ProjectAgent = {
   plugins: [
-    solanaPlugin,
     degenTraderPlugin,
     degenIntelPlugin, // has to be after trader for buy/sell signals to be enabled
     autofunPlugin,

@@ -1,6 +1,8 @@
-import type { IAgentRuntime } from '@elizaos/core';
+import { logger, type IAgentRuntime } from '@elizaos/core';
 
 import { acquireService, askLlmObject } from '../utils';
+import { Sentiment } from '@elizaos/the-org/src/investmentManager/plugins/degen-intel/types';
+import { IToken } from '@elizaos/the-org/src/investmentManager/plugins/degen-intel/types';
 
 // agentic personal application? separate strategy
 
@@ -69,8 +71,8 @@ export async function llmStrategy(runtime: IAgentRuntime) {
 
 // maybe should be a class to reuse the service handles
 async function generateBuySignal(runtime, strategyService, hndl) {
-  const sentimentsData = (await runtime.getCache<Sentiment[]>('sentiments')) || [];
-  const trendingData = (await runtime.getCache<IToken[]>('tokens_solana')) || [];
+  const sentimentsData = (await runtime.getCache('sentiments')) || [];
+  const trendingData = (await runtime.getCache('tokens_solana')) || [];
 
   let sentiments = '';
 
@@ -119,7 +121,7 @@ async function generateBuySignal(runtime, strategyService, hndl) {
     // abort
     return;
   }
-  const solanaService = await acquireService(runtime, 'chain_solana', 'llm trading strategy');
+  const solanaService = await acquireService(runtime, 'solana', 'llm trading strategy');
   if (!solanaService.validateAddress(response.recommend_buy_address)) {
     // handle failure
     // maybe just recall itself
