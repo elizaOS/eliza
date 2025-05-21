@@ -43,4 +43,4 @@ jobs:
         env:
           GIT_USER: github-actions[bot]
           USE_SSH: false
-          GITHUB_TOKEN: ${{ secrets.AUTODOCS_GITHUB }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
