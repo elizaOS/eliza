@@ -15,6 +15,67 @@ npm run build
 npm run test
 ```
 
+## Testing
+
+ElizaOS provides a comprehensive testing structure for plugins:
+
+### Test Structure
+
+- **Component Tests** (`__tests__/` directory):
+
+  - **Unit Tests**: Test individual functions/classes in isolation
+  - **Integration Tests**: Test how components work together
+  - Run with: `npm run test:component`
+
+- **End-to-End Tests** (`e2e/` directory):
+
+  - Test the plugin within a full ElizaOS runtime
+  - Run with: `npm run test:e2e`
+
+- **Running All Tests**:
+  - `npm run test` runs both component and e2e tests
+
+### Writing Tests
+
+Component tests use Vitest:
+
+```typescript
+// Unit test example (__tests__/plugin.test.ts)
+describe('Plugin Configuration', () => {
+  it('should have correct plugin metadata', () => {
+    expect(starterPlugin.name).toBe('plugin-starter');
+  });
+});
+
+// Integration test example (__tests__/integration.test.ts)
+describe('Integration: HelloWorld Action with StarterService', () => {
+  it('should handle HelloWorld action with StarterService', async () => {
+    // Test interactions between components
+  });
+});
+```
+
+E2E tests use ElizaOS test interface:
+
+```typescript
+// E2E test example (e2e/starter-plugin.test.ts)
+export class StarterPluginTestSuite implements TestSuite {
+  name = 'plugin_starter_test_suite';
+  tests = [
+    {
+      name: 'example_test',
+      fn: async (runtime) => {
+        // Test plugin in a real runtime
+      },
+    },
+  ];
+}
+
+export default new StarterPluginTestSuite();
+```
+
+The test utilities in `__tests__/test-utils.ts` provide mock objects and setup functions to simplify writing tests.
+
 ## Publishing
 
 Before publishing your plugin to the ElizaOS registry, ensure you meet these requirements:

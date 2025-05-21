@@ -244,9 +244,7 @@ describe('StarterService', () => {
       expect(startResult).toBeDefined();
       expect(startResult.constructor.name).toBe('StarterService');
 
-      // Test real functionality
-      const servicePropertyNames = Object.getOwnPropertyNames(startResult);
-      expect(servicePropertyNames).toContain('stop');
+      // Test real functionality - check stop method is available
       expect(typeof startResult.stop).toBe('function');
     } catch (e) {
       error = e as Error;
