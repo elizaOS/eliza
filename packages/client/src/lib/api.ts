@@ -217,6 +217,12 @@ interface AgentLog {
   [key: string]: any;
 }
 
+// Interface for agent panels (public routes)
+export interface AgentPanel {
+  name: string;
+  path: string;
+}
+
 /**
  * Library for interacting with the API to perform various actions related to agents, messages, rooms, logs, etc.
  * @type {{
@@ -381,6 +387,14 @@ export const apiClient = {
     const worldId = WorldManager.getWorldId();
     return fetcher({
       url: `/world/${worldId}/rooms`,
+      method: 'GET',
+    });
+  },
+
+  // Get all rooms where an agent is a participant
+  getAgentRooms: (agentId: string) => {
+    return fetcher({
+      url: `/agents/${agentId}/rooms`,
       method: 'GET',
     });
   },
@@ -574,6 +588,20 @@ export const apiClient = {
     });
   },
 
+  deleteGroupMemory: (serverId: string, memoryId: string) => {
+    return fetcher({
+      url: `/agents/groups/${serverId}/memories/${memoryId}`,
+      method: 'DELETE',
+    });
+  },
+
+  clearGroupChat: (serverId: string) => {
+    return fetcher({
+      url: `/agents/groups/${serverId}/memories`,
+      method: 'DELETE',
+    });
+  },
+
   getLocalEnvs: () => {
     return fetcher({
       url: `/envs/local`,
@@ -590,7 +618,6 @@ export const apiClient = {
       },
     });
   },
-
 
   // Agent Panels (public GET routes)
   getAgentPanels: (agentId: string): Promise<{ success: boolean; data: AgentPanel[] }> => {

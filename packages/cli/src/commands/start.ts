@@ -85,16 +85,16 @@ async function loadAndPreparePlugin(pluginName: string, version: string): Promis
     .replace(/^@elizaos-plugins\//, '') // Remove alternative prefix
     .replace(/-./g, (match) => match[1].toUpperCase())}Plugin`; // Convert kebab-case to camelCase and add 'Plugin' suffix
 
-  logger.debug(`Looking for plugin export: ${expectedFunctionName} or default`);
-  logger.debug(`Available exports: ${Object.keys(pluginModule).join(', ')}`);
-  logger.debug(`Has default export: ${!!pluginModule.default}`);
+  //logger.debug(`Looking for plugin export: ${expectedFunctionName} or default`);
+  //logger.debug(`Available exports: ${Object.keys(pluginModule).join(', ')}`);
+  //logger.debug(`Has default export: ${!!pluginModule.default}`);
 
   // --- Improved Export Resolution Logic ---
 
   // 1. Prioritize the expected named export if it exists
   const expectedExport = pluginModule[expectedFunctionName];
   if (isValidPluginShape(expectedExport)) {
-    logger.debug(`Found valid plugin export using expected name: ${expectedFunctionName}`);
+    logger.success(`Found valid plugin export using expected name: ${expectedFunctionName}`);
     return expectedExport as Plugin;
   }
 
@@ -103,15 +103,15 @@ async function loadAndPreparePlugin(pluginName: string, version: string): Promis
   if (isValidPluginShape(defaultExport)) {
     // Ensure it's not the same invalid object we might have checked above
     if (expectedExport !== defaultExport) {
-      logger.debug('Found valid plugin export using default export');
+      logger.success('Found valid plugin export using default export');
       return defaultExport as Plugin;
     }
   }
 
   // 3. If neither primary method worked, search all exports aggressively
-  logger.debug(
-    `Primary exports (named: ${expectedFunctionName}, default) not found or invalid, searching all exports...`
-  );
+  //logger.debug(
+    //`Primary exports (named: ${expectedFunctionName}, default) not found or invalid, searching all exports...`
+  //);
   for (const key of Object.keys(pluginModule)) {
     // Skip keys we already checked (or might be checking)
     if (key === expectedFunctionName || key === 'default') {
@@ -120,7 +120,7 @@ async function loadAndPreparePlugin(pluginName: string, version: string): Promis
 
     const potentialPlugin = pluginModule[key];
     if (isValidPluginShape(potentialPlugin)) {
-      logger.debug(
+      logger.success(
         `Found alternative valid plugin export under key: ${key}, Name: ${potentialPlugin.name}`
       );
       return potentialPlugin as Plugin;
@@ -280,7 +280,7 @@ export async function startAgent(
     }
 
     if (!loadedPluginsMap.has(pluginName)) {
-      logger.debug(`Attempting to load plugin by name from character definition: ${pluginName}`);
+      //logger.debug(`Attempting to load plugin by name from character definition: ${pluginName}`);
       const loadedPlugin = await loadAndPreparePlugin(pluginName, installTag);
       if (loadedPlugin) {
         characterPlugins.push(loadedPlugin);
@@ -595,7 +595,7 @@ const startAgents = async (options: {
       character.plugins = character.plugins || [];
 
       // make sure character has sql plugin
-      const hasSqlPlugin = character.plugins.some((plugin) => plugin.includes('plugin-sql'));
+      const hasSqlPlugin = character.plugins.some((plugin) => plugin.includes('plugin-sql') || plugin.includes('plugin-mysql'));
       if (!hasSqlPlugin) {
         character.plugins.push('@elizaos/plugin-sql');
       }

@@ -264,7 +264,6 @@ Manage environment variables and secrets.
   - `interactive`: Start interactive environment variable manager
     - Options: `-y, --yes`
 
-
 ### Publishing
 
 #### `elizaos publish`

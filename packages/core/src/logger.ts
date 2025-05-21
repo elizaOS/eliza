@@ -1,6 +1,6 @@
-import pino, { type LogFn, type DestinationStream } from 'pino';
-import { parseBooleanFromText } from './utils';
+import pino, { type DestinationStream, type LogFn } from 'pino';
 import { Sentry } from './sentry/instrument';
+import { parseBooleanFromText } from './utils';
 
 /**
  * Interface representing a log entry.

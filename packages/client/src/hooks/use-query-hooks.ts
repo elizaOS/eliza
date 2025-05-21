@@ -714,6 +714,34 @@ export function useUpdateMemory() {
   });
 }
 
+export function useDeleteGroupMemory() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ serverId, memoryId }: { serverId: UUID; memoryId: UUID }) => {
+      await apiClient.deleteGroupMemory(serverId, memoryId);
+      return { serverId };
+    },
+    onSuccess: ({ serverId }) => {
+      queryClient.invalidateQueries({ queryKey: ['groupmessages', serverId] });
+    },
+  });
+}
+
+export function useClearGroupChat() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (serverId: UUID) => {
+      await apiClient.clearGroupChat(serverId);
+      return { serverId };
+    },
+    onSuccess: ({ serverId }) => {
+      queryClient.invalidateQueries({ queryKey: ['groupmessages', serverId] });
+    },
+  });
+}
+
 /**
  * Fetches rooms for the current world, grouped by server ID.
  *

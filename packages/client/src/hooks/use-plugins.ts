@@ -30,7 +30,6 @@ export function usePlugins() {
         '@elizaos/plugin-anthropic',
         '@elizaos/plugin-local-ai',
         '@elizaos/plugin-sql',
-        '@elizaos/the-org',
         '@elizaos/plugin-browser',
         '@elizaos/plugin-video-understanding',
         '@elizaos/plugin-pdf',

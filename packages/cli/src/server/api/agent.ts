@@ -1154,6 +1154,53 @@ export function agentRouter(
     }
   });
 
+  // Get all rooms where an agent is a participant
+  router.get('/:agentId/rooms', async (req, res) => {
+    const agentId = validateUuid(req.params.agentId);
+    if (!agentId) {
+      sendError(res, 400, 'INVALID_ID', 'Invalid agent ID format');
+      return;
+    }
+
+    // Get runtime
+    const runtime = agents.get(agentId);
+    if (!runtime) {
+      sendError(res, 404, 'NOT_FOUND', 'Agent not found');
+      return;
+    }
+
+    try {
+      // Get all worlds for this agent
+      const worlds = await runtime.getAllWorlds();
+      const worldsMap = new Map(worlds.map((world) => [world.id, world]));
+
+      // Use getRoomsForParticipant to directly get room IDs where agent is a participant
+      const participantRoomIds = await runtime.getRoomsForParticipant(agentId);
+
+      const agentRooms = [];
+
+      // For each world, get rooms and filter by participant room IDs
+      for (const world of worlds) {
+        const worldRooms = await runtime.getRooms(world.id);
+
+        // Filter rooms where agent is a participant
+        for (const room of worldRooms) {
+          if (participantRoomIds.includes(room.id)) {
+            agentRooms.push({
+              ...room,
+              worldName: world.name,
+            });
+          }
+        }
+      }
+
+      sendSuccess(res, { rooms: agentRooms });
+    } catch (error) {
+      logger.error(`[ROOMS LIST] Error retrieving rooms for agent ${agentId}:`, error);
+      sendError(res, 500, 'RETRIEVAL_ERROR', 'Failed to retrieve agent rooms', error.message);
+    }
+  });
+
   router.delete('/:agentId/logs/:logId', async (req, res) => {
     const agentId = validateUuid(req.params.agentId);
     const logId = validateUuid(req.params.logId);
@@ -2034,6 +2081,49 @@ export function agentRouter(
     } catch (error) {
       logger.error('[GROUP DELETE] Error deleting group:', error);
       sendError(res, 500, 'DELETE_ERROR', 'Error deleting group', error.message);
+    }
+  });
+
+  router.delete('/groups/:serverId/memories', async (req, res) => {
+    const serverId = validateUuid(req.params.serverId);
+    try {
+      const memories = await db.getMemoriesByServerId({ serverId });
+      for (const memory of memories) {
+        await db.deleteMemory(memory.id);
+      }
+      res.status(204).send();
+    } catch (error) {
+      logger.error('[GROUP MEMORIES DELETE] Error clearing memories:', error);
+      sendError(res, 500, 'DELETE_ERROR', 'Error deleting group memories', error.message);
+    }
+  });
+
+  router.delete('/groups/:serverId/memories/:memoryId', async (req, res) => {
+    const serverId = validateUuid(req.params.serverId);
+    const memoryId = validateUuid(req.params.memoryId);
+
+    try {
+      const memory = await db.getMemoryById(memoryId);
+      if (!memory) {
+        sendError(res, 404, 'NOT_FOUND', 'Memory not found');
+        return;
+      }
+
+      // Optional: verify the memory belongs to the provided serverId
+      if (memory.roomId) {
+        const rooms = await db.getRooms(memory.worldId as UUID);
+        const room = rooms.find((r) => r.id === memory.roomId);
+        if (room && room.serverId !== serverId) {
+          sendError(res, 400, 'BAD_REQUEST', 'Memory does not belong to server');
+          return;
+        }
+      }
+
+      await db.deleteMemory(memoryId);
+      res.status(204).send();
+    } catch (error) {
+      logger.error('[GROUP MEMORY DELETE] Error deleting memory:', error);
+      sendError(res, 500, 'DELETE_ERROR', 'Error deleting memory', error.message);
     }
   });
 

@@ -209,8 +209,8 @@ export abstract class BaseDrizzleAdapter<
         ...row,
         username: row.username || '',
         id: row.id as UUID,
-        system: row.system === null ? undefined : row.system,
-        bio: row.bio === null ? '' : row.bio,
+        system: !row.system ? undefined : row.system,
+        bio: !row.bio ? '' : row.bio,
       };
     });
   }
