@@ -15,25 +15,28 @@ export const solanaPlugin: Plugin = {
   init: async (_, runtime: IAgentRuntime) => {
     console.log('solana init');
 
-    const asking = 'solana';
-    const serviceType = 'TRADER_CHAIN';
-    let traderChainService = runtime.getService(serviceType) as any;
-    while (!traderChainService) {
-      console.log(asking, 'waiting for', serviceType, 'service...');
-      traderChainService = runtime.getService(serviceType) as any;
-      if (!traderChainService) {
-        await new Promise((waitResolve) => setTimeout(waitResolve, 1000));
-      } else {
-        console.log(asking, 'Acquired', serviceType, 'service...');
+    new Promise<void>(async (resolve) => {
+      resolve();
+      const asking = 'solana';
+      const serviceType = 'TRADER_CHAIN';
+      let traderChainService = runtime.getService(serviceType) as any;
+      while (!traderChainService) {
+        console.log(asking, 'waiting for', serviceType, 'service...');
+        traderChainService = runtime.getService(serviceType) as any;
+        if (!traderChainService) {
+          await new Promise((waitResolve) => setTimeout(waitResolve, 1000));
+        } else {
+          console.log(asking, 'Acquired', serviceType, 'service...');
+        }
       }
-    }
 
-    const me = {
-      name: 'Solana services',
-    };
-    traderChainService.registerChain(me);
+      const me = {
+        name: 'Solana services',
+      };
+      traderChainService.registerChain(me);
 
-    console.log('jupiter init done');
+      console.log('solana init done');
+    });
   },
 };
 export default solanaPlugin;
