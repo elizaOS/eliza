@@ -351,7 +351,7 @@ async function resetEnvFile(filePath: string): Promise<boolean> {
 }
 
 // Reset operation types and helper functions
-type ResetTarget = 'localEnv' | 'cache' | 'globalDb' | 'localDb';
+type ResetTarget = 'localEnv' | 'cache' | 'localDb';
 type ResetAction = 'reset' | 'deleted' | 'skipped' | 'warning';
 
 interface ResetItem {
@@ -440,19 +440,6 @@ async function resetEnv(yes = false): Promise<void> {
       selected: existsSync(cacheDir),
     },
     {
-      title: 'Global database files',
-      value: 'globalDb',
-      description:
-        !existsSync(globalDbDir) && !existsSync(globalPgliteDir)
-          ? 'Global database files not found, nothing to delete'
-          : usingExternalPostgres
-            ? 'WARNING: External PostgreSQL database detected - only local files will be removed'
-            : usingPglite
-              ? 'Delete global PGLite database files'
-              : 'Delete global database files',
-      selected: existsSync(globalDbDir) || existsSync(globalPgliteDir),
-    },
-    {
       title: 'Local database files',
       value: 'localDb',
       description: existsSync(localDbDir)
@@ -467,7 +454,6 @@ async function resetEnv(yes = false): Promise<void> {
     (item) =>
       (item.value === 'localEnv' && existsSync(localEnvPath)) ||
       (item.value === 'cache' && existsSync(cacheDir)) ||
-      (item.value === 'globalDb' && (existsSync(globalDbDir) || existsSync(globalPgliteDir))) ||
       (item.value === 'localDb' && existsSync(localDbDir))
   );
 
@@ -552,38 +538,6 @@ async function resetEnv(yes = false): Promise<void> {
         await safeDeleteDirectory(cacheDir, actions, 'Cache folder');
         break;
 
-      case 'globalDb': {
-        if (usingExternalPostgres) {
-          actions.warning.push(
-            'External PostgreSQL database detected. Database data cannot be reset but local database cache files will be removed.'
-          );
-        }
-
-        let anyGlobalDbDeleted = false;
-
-        // Try deleting db dir
-        if (existsSync(globalDbDir)) {
-          if (await safeDeleteDirectory(globalDbDir, actions, 'Global database folder')) {
-            anyGlobalDbDeleted = true;
-          }
-        }
-
-        // Try deleting PGLite dir
-        if (existsSync(globalPgliteDir)) {
-          if (
-            await safeDeleteDirectory(globalPgliteDir, actions, 'Global PGLite database folder')
-          ) {
-            anyGlobalDbDeleted = true;
-          }
-        }
-
-        // If neither existed and nothing was deleted
-        if (!anyGlobalDbDeleted && !existsSync(globalDbDir) && !existsSync(globalPgliteDir)) {
-          actions.skipped.push('Global database files (not found)');
-        }
-        break;
-      }
-
       case 'localDb':
         await safeDeleteDirectory(localDbDir, actions, 'Local database folder');
         break;
@@ -627,7 +581,7 @@ env
   .description('List all environment variables')
   .option('--system', 'List only system information')
   .option('--local', 'List only local environment variables')
-  .action(async (options: { global?: boolean; local?: boolean; system?: boolean }) => {
+  .action(async (options: { local?: boolean; system?: boolean }) => {
     try {
       if (options.system) {
         // Show only system information
@@ -661,8 +615,6 @@ env
       handleError(error);
     }
   });
-
-// Edit global subcommand
 
 // Edit local subcommand
 env
