@@ -64,7 +64,11 @@ describe('Integration: HelloWorld Action with StarterService', () => {
       createdAt: Date.now(),
     };
 
-    const mockState = {} as State;
+    const mockState: State = {
+      values: {},
+      data: {},
+      text: '',
+    };
 
     // Create a mock callback to capture the response
     const callbackFn = vi.fn();
