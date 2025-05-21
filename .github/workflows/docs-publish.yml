@@ -32,6 +32,11 @@ jobs:
         working-directory: packages/docs
         run: bun install
 
+      - name: Configure Git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
       - name: Deploy Documentation
         working-directory: packages/docs
         run: bun run deploy
