@@ -78,6 +78,7 @@ export function createMockState(overrides: Partial<State> = {}): State {
 export function setupTest(
   options: {
     messageText?: string;
+    messageOverrides?: Partial<Memory>;
     runtimeOverrides?: Partial<IAgentRuntime>;
     stateOverrides?: Partial<State>;
   } = {}
@@ -86,7 +87,10 @@ export function setupTest(
   const callbackFn = vi.fn();
 
   // Create a message
-  const mockMessage = createMockMessage(options.messageText || 'Test message');
+  const mockMessage = createMockMessage(
+    options.messageText || 'Test message',
+    options.messageOverrides || {}
+  );
 
   // Create a state object
   const mockState = createMockState(options.stateOverrides || {});
