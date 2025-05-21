@@ -154,7 +154,7 @@ const runE2eTests = async (options: { port?: number; name?: string; skipBuild?: 
     // Set up standard paths and load .env
     const homeDir = os.homedir();
     const elizaDir = path.join(homeDir, '.eliza');
-    const elizaDbDir = path.join(elizaDir, 'db');
+    const elizaDbDir = path.join(elizaDir, '.pglite');
     const envFilePath = findNearestEnvFile() ?? path.join(process.cwd(), '.env');
 
     console.info('Setting up environment...');

@@ -81,7 +81,7 @@ export class AgentServer {
       logger.debug('Initializing AgentServer...');
       this.agents = new Map();
 
-      let dataDir = options?.dataDir ?? process.env.PGLITE_DATA_DIR ?? './elizadb';
+      let dataDir = options?.dataDir ?? process.env.PGLITE_DATA_DIR ?? './.pglite';
 
       // Expand tilde in database directory path
       dataDir = expandTildePath(dataDir);

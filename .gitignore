@@ -67,6 +67,7 @@ tsdoc_cache/
 tsdoc_comments/
 
 **/elizadb/**
+**/pglite/**
 *~
 \#*\#
 /.emacs.desktop

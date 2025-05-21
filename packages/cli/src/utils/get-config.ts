@@ -54,7 +54,7 @@ export async function getElizaDirectories() {
   logger.debug('[Config] Using home directory:', homeDir);
 
   const elizaDir = path.join(homeDir, '.eliza');
-  const elizaDbDir = path.join(process.cwd(), '.pglite/');
+  const elizaDbDir = path.join(process.cwd(), '.pglite');
   const envFilePath = findNearestEnvFile() ?? path.join(process.cwd(), '.env');
 
   logger.debug('[Config] Using database directory:', elizaDbDir);
