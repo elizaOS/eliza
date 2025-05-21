@@ -155,11 +155,7 @@ function maskedValue(value: string): string {
  * @param scope Edit local environment variables
  * @returns A boolean indicating whether the user wants to go back to the main menu
  */
-async function editEnvVars(
-  scope: 'local',
-  fromMainMenu = false,
-  yes = false
-): Promise<boolean> {
+async function editEnvVars(scope: 'local', fromMainMenu = false, yes = false): Promise<boolean> {
   const envPath = getLocalEnvPath();
 
   if (scope === 'local' && !envPath) {
@@ -418,12 +414,10 @@ async function resetEnv(yes = false): Promise<void> {
     const localEnvVars = existsSync(localEnvPath) ? await parseEnvFile(localEnvPath) : {};
 
     // Check for external Postgres
-    usingExternalPostgres =
-      localEnvVars.POSTGRES_URL && localEnvVars.POSTGRES_URL.trim() !== '';
+    usingExternalPostgres = localEnvVars.POSTGRES_URL && localEnvVars.POSTGRES_URL.trim() !== '';
 
     // Check for PGLite
-    usingPglite =
-      localEnvVars.PGLITE_DATA_DIR && localEnvVars.PGLITE_DATA_DIR.trim() !== '';
+    usingPglite = localEnvVars.PGLITE_DATA_DIR && localEnvVars.PGLITE_DATA_DIR.trim() !== '';
   } catch (error) {
     // Ignore errors in env parsing
     console.debug('Error checking database config:', error.message);
