@@ -10,7 +10,11 @@ import { existsSync } from 'node:fs';
 import * as net from 'node:net';
 import * as os from 'node:os';
 import path from 'node:path';
+import { exec } from 'node:child_process';
+import { promisify } from 'node:util';
 import { startAgent } from './start';
+
+const execAsync = promisify(exec);
 
 // Helper function to check port availability
 async function checkPortAvailable(port: number): Promise<boolean> {
@@ -40,27 +44,67 @@ function checkIfLikelyPluginDir(dir: string): boolean {
 }
 
 /**
- * Function that runs the tests.
+ * Run unit tests using Vitest
  */
-const runAgentTests = async (options: {
-  port?: number;
-  plugin?: string;
-  skipPlugins?: boolean;
-  skipProjectTests?: boolean;
-  skipBuild?: boolean;
-}) => {
+async function runUnitTests(options: { name?: string; skipBuild?: boolean }) {
+  const cwd = process.cwd();
+
+  // Build the project first unless skip-build is specified
+  if (!options.skipBuild) {
+    console.info('Building project...');
+    const isPlugin = checkIfLikelyPluginDir(cwd);
+    await buildProject(cwd, isPlugin);
+    console.info('Build completed successfully');
+  }
+
+  console.info('Running unit tests...');
+
+  try {
+    // Construct the vitest command
+    let command = 'bun run vitest run';
+
+    // Add filter if specified - Vitest supports both file path filtering and test name filtering
+    if (options.name) {
+      // First try to match file paths (more specific)
+      command += ` "__tests__/**/${options.name}*.test.{js,ts,jsx,tsx}"`;
+
+      // Also allow matching test names with -t (less specific, but more flexible)
+      command += ` -t "${options.name}"`;
+    }
+
+    const { stdout, stderr } = await execAsync(command);
+    console.log(stdout);
+    if (stderr) console.error(stderr);
+
+    console.info('Unit tests completed');
+
+    // Check if there were test failures in the output
+    if (stdout.includes('FAIL') || stderr?.includes('FAIL')) {
+      return { failed: true };
+    }
+
+    return { failed: false };
+  } catch (error) {
+    console.error('Error running unit tests:', error);
+    return { failed: true };
+  }
+}
+
+/**
+ * Function that runs the end-to-end tests.
+ */
+const runE2eTests = async (options: { port?: number; name?: string; skipBuild?: boolean }) => {
   // Build the project or plugin first unless skip-build is specified
-  if (options && !options.skipBuild) {
+  if (!options.skipBuild) {
     try {
       const cwd = process.cwd();
-      const isPlugin = options.plugin ? true : checkIfLikelyPluginDir(cwd);
+      const isPlugin = checkIfLikelyPluginDir(cwd);
       console.info(`Building ${isPlugin ? 'plugin' : 'project'}...`);
       await buildProject(cwd, isPlugin);
       console.info(`Build completed successfully`);
     } catch (buildError) {
       console.error(`Build error: ${buildError}`);
       console.warn(`Attempting to continue with tests despite build error`);
-      // Continue with tests despite build error - the project might already be built
     }
   }
 
@@ -132,7 +176,7 @@ const runAgentTests = async (options: {
     // Initialize the server explicitly before starting
     console.info('Initializing server...');
     try {
-      await server.initialize(); // <-- Add this line
+      await server.initialize();
       console.info('Server initialized successfully');
     } catch (initError) {
       console.error('Server initialization failed:', initError);
@@ -382,19 +426,19 @@ const runAgentTests = async (options: {
         // When in a plugin directory, we're testing only the current plugin
         // so we set skipPlugins to true to skip other loaded plugins (like OpenAI)
         // but we allow the current plugin's tests to run via isDirectPluginTest detection
-        const skipPlugins = project.isPlugin ? true : options.skipPlugins;
+        const skipPlugins = project.isPlugin;
 
         const results = await testRunner.runTests({
-          filter: options.plugin,
+          filter: options.name, // Use name for filtering
           skipPlugins: skipPlugins,
-          skipProjectTests: options.skipProjectTests,
+          skipProjectTests: false,
         });
         totalFailed += results.failed;
       }
 
       // Clean up
       await server.stop();
-      process.exit(totalFailed > 0 ? 1 : 0);
+      return { failed: totalFailed > 0 };
     } catch (error) {
       console.error('Error running tests:', error);
       if (error instanceof Error) {
@@ -405,7 +449,7 @@ const runAgentTests = async (options: {
       throw error;
     }
   } catch (error) {
-    console.error('Error in runAgentTests:', error);
+    console.error('Error in runE2eTests:', error);
     if (error instanceof Error) {
       console.error('Error details:', error.message);
       console.error('Stack trace:', error.stack);
@@ -418,44 +462,107 @@ const runAgentTests = async (options: {
         console.error('Could not stringify error:', e);
       }
     }
-    throw error;
+    return { failed: true };
   }
 };
 
-// Create command that can be imported directly
+/**
+ * Run both unit and E2E tests
+ */
+async function runAllTests(options: { port?: number; name?: string; skipBuild?: boolean }) {
+  // Run unit tests first
+  const unitResult = await runUnitTests(options);
+
+  // Run e2e tests
+  const e2eResult = await runE2eTests(options);
+
+  // Return combined result
+  return { failed: unitResult.failed || e2eResult.failed };
+}
+
+// Create base test command with basic description only
 export const test = new Command()
   .name('test')
-  .description('Run tests for Eliza agent plugins')
-  .addOption(
-    new Option('-p, --port <port>', 'Port to listen on').argParser((val) => Number.parseInt(val))
-  )
-  .option('-pl, --plugin <name>', 'Name of plugin to test')
-  .option('-sp, --skip-plugins', 'Skip plugin tests')
-  .option('-spt, --skip-project-tests', 'Skip project tests')
-  .option('-sb, --skip-build', 'Skip building before running tests')
-  .action(async (options) => {
-    console.info('Starting test command...');
+  .description('Run tests for Eliza agent projects and plugins');
+
+// Add subcommands first
+test
+  .command('unit')
+  .description('Run unit tests (via Vitest)')
+  .action(async (_, cmd) => {
+    // Get options from parent command
+    const options = {
+      name: cmd.parent.opts().name,
+      skipBuild: cmd.parent.opts().skipBuild,
+    };
+
+    console.info('Starting unit tests...');
     console.info('Command options:', options);
+
     try {
-      console.info('Running agent tests...');
-      await runAgentTests(options);
+      const result = await runUnitTests(options);
+      process.exit(result.failed ? 1 : 0);
     } catch (error) {
-      console.error('Error running tests:', error);
-      if (error instanceof Error) {
-        console.error('Error details:', error.message);
-        console.error('Stack trace:', error.stack);
-      } else {
-        console.error('Unknown error type:', typeof error);
-        console.error('Error value:', error);
-        try {
-          console.error('Stringified error:', JSON.stringify(error, null, 2));
-        } catch (e) {
-          console.error('Could not stringify error:', e);
-        }
-      }
+      console.error('Error running unit tests:', error);
       process.exit(1);
     }
   });
+
+test
+  .command('e2e')
+  .description('Run end-to-end runtime tests')
+  .action(async (_, cmd) => {
+    // Get options from parent command
+    const options = {
+      port: cmd.parent.opts().port,
+      name: cmd.parent.opts().name,
+      skipBuild: cmd.parent.opts().skipBuild,
+    };
+
+    console.info('Starting e2e tests...');
+    console.info('Command options:', options);
+
+    try {
+      const result = await runE2eTests(options);
+      process.exit(result.failed ? 1 : 0);
+    } catch (error) {
+      console.error('Error running e2e tests:', error);
+      process.exit(1);
+    }
+  });
+
+test
+  .command('all', { isDefault: true })
+  .description('Run both unit and e2e tests (default)')
+  .action(async (_, cmd) => {
+    // Get options from parent command
+    const options = {
+      port: cmd.parent.opts().port,
+      name: cmd.parent.opts().name,
+      skipBuild: cmd.parent.opts().skipBuild,
+    };
+
+    console.info('Starting all tests...');
+    console.info('Command options:', options);
+
+    try {
+      const result = await runAllTests(options);
+      process.exit(result.failed ? 1 : 0);
+    } catch (error) {
+      console.error('Error running tests:', error);
+      process.exit(1);
+    }
+  });
+
+// Add options after subcommands
+test
+  .addOption(
+    new Option('-p, --port <port>', 'Server port for e2e tests').argParser((val) =>
+      Number.parseInt(val)
+    )
+  )
+  .option('-n, --name <name>', 'Filter tests by name (matches file names or test suite names)')
+  .option('--skip-build', 'Skip building before running tests');
 
 // This is the function that registers the command with the CLI
 export default function registerCommand(cli: Command) {

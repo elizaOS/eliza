@@ -5,6 +5,8 @@ import {
   type TestSuite,
   logger,
 } from '@elizaos/core';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 interface TestStats {
   total: number;
@@ -17,6 +19,7 @@ interface TestOptions {
   filter?: string;
   skipPlugins?: boolean;
   skipProjectTests?: boolean;
+  skipE2eTests?: boolean;
 }
 
 export class TestRunner {
@@ -233,6 +236,83 @@ export const myPlugin = {
   }
 
   /**
+   * Runs tests from the e2e directory
+   */
+  private async runE2eTests(options: TestOptions) {
+    if (options.skipE2eTests) {
+      logger.info('Skipping e2e tests (--skip-e2e-tests flag)');
+      return;
+    }
+
+    try {
+      // Check for e2e directory
+      const e2eDir = path.join(process.cwd(), 'e2e');
+      if (!fs.existsSync(e2eDir)) {
+        logger.debug('No e2e directory found, skipping e2e tests');
+        return;
+      }
+
+      logger.info('\nRunning e2e tests...');
+
+      // Get all .ts files in the e2e directory
+      const testFiles = fs
+        .readdirSync(e2eDir)
+        .filter((file) => file.endsWith('.test.ts'))
+        .map((file) => path.join(e2eDir, file));
+
+      if (testFiles.length === 0) {
+        logger.info('No e2e test files found');
+        return;
+      }
+
+      logger.info(`Found ${testFiles.length} e2e test files`);
+
+      // Load and run each test file
+      for (const testFile of testFiles) {
+        try {
+          // Get the file name for logging
+          const fileName = path.basename(testFile);
+          const fileNameWithoutExt = path.basename(testFile, '.test.ts');
+          logger.info(`Loading test file: ${fileName}`);
+
+          // Dynamic import the test file
+          const testModule = await import(`file://${testFile}`);
+
+          // Get the default export which should be a TestSuite
+          const testSuite = testModule.default;
+
+          if (!testSuite || !testSuite.tests) {
+            logger.warn(`No valid test suite found in ${fileName}`);
+            continue;
+          }
+
+          // Apply filter if specified - match against either file name or suite name
+          if (options.filter) {
+            const matchesFileName = fileNameWithoutExt.includes(options.filter);
+            const matchesSuiteName = testSuite.name && testSuite.name.includes(options.filter);
+
+            if (!matchesFileName && !matchesSuiteName) {
+              logger.info(
+                `Skipping test suite "${testSuite.name}" in ${fileName} (doesn't match filter "${options.filter}")`
+              );
+              this.stats.skipped++;
+              continue;
+            }
+          }
+
+          // Run the test suite
+          await this.runTestSuite(testSuite);
+        } catch (error) {
+          logger.error(`Error running tests from ${testFile}:`, error);
+          this.stats.failed++;
+        }
+      }
+    } catch (error) {
+      logger.error(`Error running e2e tests:`, error);
+    }
+  }
+
+  /**
    * Runs all tests in the project
    * @param options Test options
    */
@@ -242,6 +322,9 @@ export const myPlugin = {
 
     // Then run plugin tests
     await this.runPluginTests(options);
+
+    // Then run e2e tests
+    await this.runE2eTests(options);
 
     // Log summary
     logger.info(
