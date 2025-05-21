@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { homedir } from 'node:os';
-import { execa } from 'execa';
+import parseRegistry from './parse-registry';
 import { CachedRegistry } from '../types/plugins';
 import { promises as fs } from 'node:fs';
 
@@ -25,11 +25,11 @@ export async function readCache(): Promise<CachedRegistry | null> {
 
 /** Run the parse-registry script to refresh the cache */
 export async function updatePluginRegistryCache(): Promise<boolean> {
-  const scriptPath = join(__dirname, 'parse-registry.ts');
   try {
-    await execa('bun', ['run', scriptPath], { stdio: 'inherit' });
+    await parseRegistry();
     return true;
-  } catch {
+  } catch (error) {
+    console.error('Failed to update plugin registry cache:', error);
     return false;
   }
 }
