@@ -13,6 +13,7 @@ import path from 'node:path';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import { startAgent } from './start';
+import { pathToFileURL } from 'url';
 
 const execAsync = promisify(exec);
 
@@ -44,17 +45,45 @@ function checkIfLikelyPluginDir(dir: string): boolean {
 }
 
 /**
+ * Process filter name to remove extensions consistently
+ *
+ * Note: Test filtering works in two ways:
+ * 1. Matching test suite names (the string in describe() blocks)
+ * 2. Matching file names (without extension)
+ *
+ * For best results, use the specific test suite name you want to run.
+ * The filter is applied case-insensitively for better user experience.
+ */
+function processFilterName(name?: string): string | undefined {
+  if (!name) return undefined;
+
+  // Handle common filter formats
+  let baseName = name;
+  if (baseName.endsWith('.test.ts') || baseName.endsWith('.test.js')) {
+    baseName = baseName.slice(0, -8); // Remove '.test.ts' or '.test.js'
+  } else if (baseName.endsWith('.test')) {
+    baseName = baseName.slice(0, -5); // Remove '.test'
+  }
+
+  return baseName;
+}
+
+/**
  * Run component tests using Vitest
  */
 async function runComponentTests(options: { name?: string; skipBuild?: boolean }) {
-  const cwd = process.cwd();
-
-  // Build the project first unless skip-build is specified
+  // Build the project or plugin first unless skip-build is specified
   if (!options.skipBuild) {
-    console.info('Building project...');
-    const isPlugin = checkIfLikelyPluginDir(cwd);
-    await buildProject(cwd, isPlugin);
-    console.info('Build completed successfully');
+    try {
+      const cwd = process.cwd();
+      const isPlugin = checkIfLikelyPluginDir(cwd);
+      console.info(`Building ${isPlugin ? 'plugin' : 'project'}...`);
+      await buildProject(cwd, isPlugin);
+      console.info(`Build completed successfully`);
+    } catch (buildError) {
+      console.error(`Build error: ${buildError}`);
+      console.warn(`Attempting to continue with tests despite build error`);
+    }
   }
 
   console.info('Running component tests...');
@@ -65,23 +94,14 @@ async function runComponentTests(options: { name?: string; skipBuild?: boolean }
 
     // Add filter if specified
     if (options.name) {
-      // Handle common filter formats
-      let baseName = options.name;
-      if (baseName.endsWith('.test.ts') || baseName.endsWith('.test.js')) {
-        baseName = baseName.slice(0, -8); // Remove '.test.ts' or '.test.js'
-      } else if (baseName.endsWith('.test')) {
-        baseName = baseName.slice(0, -5); // Remove '.test'
-      }
-
+      const baseName = processFilterName(options.name);
       console.info(`Using test filter: ${baseName}`);
 
-      // Instead of trying to match file names, which is failing,
-      // just use Vitest's test name filtering with the -t option
-      // This will match test descriptions and suite names
+      // Use Vitest's test name filtering with the -t option
       command += ` -t "${baseName}"`;
     }
 
-    const { stdout, stderr } = await execAsync(command);
+    const { stdout, stderr } = await execAsync(command, { maxBuffer: 10 * 1024 * 1024 });
     console.log(stdout);
     if (stderr) console.error(stderr);
 
@@ -284,178 +304,257 @@ const runE2eTests = async (options: { port?: number; name?: string; skipBuild?: 
     let project;
     try {
       console.info('Attempting to load project or plugin...');
-      project = await loadProject(process.cwd());
+      try {
+        project = await loadProject(process.cwd());
 
-      if (project.isPlugin) {
-        console.info(`Plugin loaded successfully: ${project.pluginModule?.name}`);
-      } else {
-        console.info('Project loaded successfully');
-      }
-
-      if (!project || !project.agents || project.agents.length === 0) {
-        throw new Error('No agents found in project configuration');
-      }
-
-      console.info(
-        `Found ${project.agents.length} agents in ${project.isPlugin ? 'plugin' : 'project'} configuration`
-      );
-    } catch (error) {
-      console.error('Error loading project/plugin:', error);
-      console.error('Tests cannot run without a valid project or plugin. Exiting.');
-      if (error instanceof Error) {
-        // If the error is specifically about not finding a project
-        if (error.message.includes('Could not find project entry point')) {
-          console.error('No Eliza project or plugin found in current directory.');
-          console.error('Tests can only run in a valid Eliza project or plugin directory.');
+        if (project.isPlugin) {
+          console.info(`Plugin loaded successfully: ${project.pluginModule?.name}`);
+        } else {
+          console.info('Project loaded successfully');
         }
-        console.error('Error details:', error.message);
-      }
-      process.exit(1);
-    }
 
-    console.info('Starting server...');
-    try {
-      await server.start(serverPort);
-      console.info('Server started successfully');
-    } catch (error) {
-      console.error('Error starting server:', error);
-      if (error instanceof Error) {
-        console.error('Error details:', error.message);
-        console.error('Stack trace:', error.stack);
-      }
-      throw error;
-    }
-
-    try {
-      // Start each agent in sequence
-      console.info(
-        `Found ${project.agents.length} agents in ${project.isPlugin ? 'plugin' : 'project'}`
-      );
-
-      // When testing a plugin, import and use the default Eliza character
-      // to ensure consistency with the start command
-      // For projects, only use default agent if no agents are defined
-      if (project.isPlugin || project.agents.length === 0) {
-        // Set environment variable to signal this is a direct plugin test
-        // The TestRunner uses this to identify direct plugin tests
-        process.env.ELIZA_TESTING_PLUGIN = 'true';
-
-        console.info('Using default Eliza character as test agent');
-        try {
-          // Import the default character (same approach as start.ts)
-          const { character: defaultElizaCharacter } = await import('../characters/eliza');
-
-          // Create the list of plugins for testing - exact same approach as start.ts
-          const pluginsToTest = [project.pluginModule];
-
-          console.info(`Starting test agent with plugin: ${project.pluginModule?.name}`);
-          console.debug(
-            `Using default character with plugins: ${defaultElizaCharacter.plugins ? defaultElizaCharacter.plugins.join(', ') : 'none'}`
-          );
-          console.info(
-            "Plugin test mode: Using default character's plugins plus the plugin being tested"
-          );
-
-          // Start the agent with the default character and our test plugin
-          // Use isPluginTestMode option just like start.ts does
-          const runtime = await startAgent(
-            defaultElizaCharacter,
-            server,
-            undefined,
-            pluginsToTest,
-            {
-              isPluginTestMode: true,
-            }
-          );
-
-          runtimes.push(runtime);
-          projectAgents.push({
-            character: defaultElizaCharacter,
-            plugins: pluginsToTest,
-          });
-
-          console.info('Default test agent started successfully');
-        } catch (pluginError) {
-          console.error(`Error starting plugin test agent: ${pluginError}`);
-          throw pluginError;
+        if (!project || !project.agents || project.agents.length === 0) {
+          throw new Error('No agents found in project configuration');
         }
-      } else {
-        // For regular projects, start each agent as defined
-        for (const agent of project.agents) {
+
+        console.info(
+          `Found ${project.agents.length} agents in ${project.isPlugin ? 'plugin' : 'project'} configuration`
+        );
+      } catch (loadError) {
+        console.error('Error loading project/plugin:', loadError);
+
+        // For testing purposes, let's try to find the dist version of index.js
+        const distIndexPath = path.join(process.cwd(), 'dist', 'index.js');
+        if (fs.existsSync(distIndexPath)) {
           try {
-            // Make a copy of the original character to avoid modifying the project configuration
-            const originalCharacter = { ...agent.character };
+            console.info(`Attempting to load project from dist/index.js instead...`);
+            const distModule = await import(pathToFileURL(distIndexPath).href);
+            if (distModule && (distModule.default || distModule.character || distModule.plugin)) {
+              console.info(`Successfully loaded project from dist/index.js`);
 
-            console.debug(`Starting agent: ${originalCharacter.name}`);
+              // Create a minimal project structure
+              project = {
+                isPlugin: Boolean(distModule.plugin || distModule.default?.plugin),
+                agents: [
+                  {
+                    character: distModule.character ||
+                      distModule.default?.character || { name: 'Test Character' },
+                    plugins: distModule.plugin
+                      ? [distModule.plugin]
+                      : distModule.default?.plugin
+                        ? [distModule.default.plugin]
+                        : [],
+                  },
+                ],
+              };
 
+              console.info(`Created project with ${project.agents.length} agents`);
+            } else {
+              throw new Error(`dist/index.js exists but doesn't export expected properties`);
+            }
+          } catch (distError) {
+            console.error(`Failed to load from dist/index.js:`, distError);
+            throw loadError; // Rethrow the original error
+          }
+        } else {
+          console.error('Tests cannot run without a valid project or plugin. Exiting.');
+          if (loadError instanceof Error) {
+            // If the error is specifically about not finding a project
+            if (loadError.message.includes('Could not find project entry point')) {
+              console.error('No Eliza project or plugin found in current directory.');
+              console.error('Tests can only run in a valid Eliza project or plugin directory.');
+            }
+            console.error('Error details:', loadError.message);
+          }
+          process.exit(1);
+        }
+      }
+
+      console.info('Starting server...');
+      try {
+        // Check if the port is available first
+        if (!(await checkPortAvailable(serverPort))) {
+          console.error(`Port ${serverPort} is already in use. Choose another with --port.`);
+          throw new Error(`Port ${serverPort} is already in use`);
+        }
+
+        await server.start(serverPort);
+        console.info('Server started successfully');
+      } catch (error) {
+        console.error('Error starting server:', error);
+        if (error instanceof Error) {
+          console.error('Error details:', error.message);
+          console.error('Stack trace:', error.stack);
+        }
+        throw error;
+      }
+
+      try {
+        // Start each agent in sequence
+        console.info(
+          `Found ${project.agents.length} agents in ${project.isPlugin ? 'plugin' : 'project'}`
+        );
+
+        // When testing a plugin, import and use the default Eliza character
+        // to ensure consistency with the start command
+        // For projects, only use default agent if no agents are defined
+        if (project.isPlugin || project.agents.length === 0) {
+          // Set environment variable to signal this is a direct plugin test
+          // The TestRunner uses this to identify direct plugin tests
+          process.env.ELIZA_TESTING_PLUGIN = 'true';
+
+          console.info('Using default Eliza character as test agent');
+          try {
+            // Import the default character (same approach as start.ts)
+            const { character: defaultElizaCharacter } = await import('../characters/eliza');
+
+            // Create the list of plugins for testing - exact same approach as start.ts
+            const pluginsToTest = [project.pluginModule];
+
+            console.info(`Starting test agent with plugin: ${project.pluginModule?.name}`);
+            console.debug(
+              `Using default character with plugins: ${defaultElizaCharacter.plugins ? defaultElizaCharacter.plugins.join(', ') : 'none'}`
+            );
+            console.info(
+              "Plugin test mode: Using default character's plugins plus the plugin being tested"
+            );
+
+            // Start the agent with the default character and our test plugin
+            // Use isPluginTestMode option just like start.ts does
             const runtime = await startAgent(
-              originalCharacter,
+              defaultElizaCharacter,
               server,
-              agent.init,
-              agent.plugins || []
+              undefined,
+              pluginsToTest,
+              {
+                isPluginTestMode: true,
+              }
             );
 
             runtimes.push(runtime);
-            projectAgents.push(agent);
+            projectAgents.push({
+              character: defaultElizaCharacter,
+              plugins: pluginsToTest,
+            });
 
-            // wait 1 second between agent starts
-            await new Promise((resolve) => setTimeout(resolve, 1000));
-          } catch (agentError) {
-            console.error(`Error starting agent ${agent.character.name}:`, agentError);
-            if (agentError instanceof Error) {
-              console.error('Error details:', agentError.message);
-              console.error('Stack trace:', agentError.stack);
+            console.info('Default test agent started successfully');
+          } catch (pluginError) {
+            console.error(`Error starting plugin test agent: ${pluginError}`);
+            throw pluginError;
+          }
+        } else {
+          // For regular projects, start each agent as defined
+          for (const agent of project.agents) {
+            try {
+              // Make a copy of the original character to avoid modifying the project configuration
+              const originalCharacter = { ...agent.character };
+
+              console.debug(`Starting agent: ${originalCharacter.name}`);
+
+              const runtime = await startAgent(
+                originalCharacter,
+                server,
+                agent.init,
+                agent.plugins || []
+              );
+
+              runtimes.push(runtime);
+              projectAgents.push(agent);
+
+              // wait 1 second between agent starts
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+            } catch (agentError) {
+              console.error(`Error starting agent ${agent.character.name}:`, agentError);
+              if (agentError instanceof Error) {
+                console.error('Error details:', agentError.message);
+                console.error('Stack trace:', agentError.stack);
+              }
+              // Log the error but don't fail the entire test run
+              console.warn(`Skipping agent ${agent.character.name} due to startup error`);
             }
-            // Log the error but don't fail the entire test run
-            console.warn(`Skipping agent ${agent.character.name} due to startup error`);
           }
         }
-      }
 
-      if (runtimes.length === 0) {
-        throw new Error('Failed to start any agents from project');
-      }
-
-      console.debug(`Successfully started ${runtimes.length} agents for testing`);
-
-      // Run tests for each agent
-      let totalFailed = 0;
-      for (let i = 0; i < runtimes.length; i++) {
-        const runtime = runtimes[i];
-        const projectAgent = projectAgents[i];
-
-        if (project.isPlugin) {
-          console.debug(`Running tests for plugin: ${project.pluginModule?.name}`);
-        } else {
-          console.debug(`Running tests for agent: ${runtime.character.name}`);
+        if (runtimes.length === 0) {
+          throw new Error('Failed to start any agents from project');
         }
 
-        const testRunner = new TestRunner(runtime, projectAgent);
+        console.debug(`Successfully started ${runtimes.length} agents for testing`);
 
-        // When in a plugin directory, we're testing only the current plugin
-        // so we set skipPlugins to true to skip other loaded plugins (like OpenAI)
-        // but we allow the current plugin's tests to run via isDirectPluginTest detection
-        const skipPlugins = project.isPlugin;
+        // Run tests for each agent
+        let totalFailed = 0;
+        try {
+          for (let i = 0; i < runtimes.length; i++) {
+            const runtime = runtimes[i];
+            const projectAgent = projectAgents[i];
 
-        const results = await testRunner.runTests({
-          filter: options.name, // Use name for filtering
-          skipPlugins: skipPlugins,
-          skipProjectTests: false,
-        });
-        totalFailed += results.failed;
+            if (project.isPlugin) {
+              console.debug(`Running tests for plugin: ${project.pluginModule?.name}`);
+            } else {
+              console.debug(`Running tests for agent: ${runtime.character.name}`);
+            }
+
+            const testRunner = new TestRunner(runtime, projectAgent);
+
+            // When in a plugin directory, we're testing only the current plugin
+            // so we set skipPlugins to true to skip other loaded plugins (like OpenAI)
+            // but we allow the current plugin's tests to run via isDirectPluginTest detection
+            const skipPlugins = project.isPlugin;
+
+            // Process filter name consistently
+            const processedFilter = processFilterName(options.name);
+
+            const results = await testRunner.runTests({
+              filter: processedFilter, // Use processed name for filtering
+              skipPlugins: skipPlugins,
+              skipProjectTests: false,
+            });
+            totalFailed += results.failed;
+          }
+
+          return { failed: totalFailed > 0 };
+        } catch (error) {
+          console.error('Error running tests:', error);
+          if (error instanceof Error) {
+            console.error('Error details:', error.message);
+            console.error('Stack trace:', error.stack);
+          }
+          throw error;
+        } finally {
+          // Clean up - ensure server is always stopped
+          await server.stop();
+        }
+      } catch (error) {
+        console.error('Error in runE2eTests:', error);
+        if (error instanceof Error) {
+          console.error('Error details:', error.message);
+          console.error('Stack trace:', error.stack);
+        } else {
+          console.error('Unknown error type:', typeof error);
+          console.error('Error value:', error);
+          try {
+            console.error('Stringified error:', JSON.stringify(error, null, 2));
+          } catch (e) {
+            console.error('Could not stringify error:', e);
+          }
+        }
+        return { failed: true };
       }
-
-      // Clean up
-      await server.stop();
-      return { failed: totalFailed > 0 };
     } catch (error) {
-      console.error('Error running tests:', error);
+      console.error('Error in runE2eTests:', error);
       if (error instanceof Error) {
         console.error('Error details:', error.message);
         console.error('Stack trace:', error.stack);
+      } else {
+        console.error('Unknown error type:', typeof error);
+        console.error('Error value:', error);
+        try {
+          console.error('Stringified error:', JSON.stringify(error, null, 2));
+        } catch (e) {
+          console.error('Could not stringify error:', e);
+        }
       }
-      await server.stop();
-      throw error;
+      return { failed: true };
     }
   } catch (error) {
     console.error('Error in runE2eTests:', error);
@@ -482,7 +581,7 @@ async function runAllTests(options: { port?: number; name?: string; skipBuild?: 
   // Run component tests first
   const componentResult = await runComponentTests(options);
 
-  // Run e2e tests
+  // Run e2e tests with the same processed filter name
   const e2eResult = await runE2eTests(options);
 
   // Return combined result
