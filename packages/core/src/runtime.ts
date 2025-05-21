@@ -133,7 +133,7 @@ export class AgentRuntime implements IAgentRuntime {
   // Event emitter methods
   private eventHandlers: Map<string, ((data: any) => void)[]> = new Map();
 
-  private runtimeLogger;
+  public runtimeLogger;
   private knowledgeProcessingSemaphore = new Semaphore(10);
   private settings: RuntimeSettings;
 
