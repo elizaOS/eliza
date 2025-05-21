@@ -2,6 +2,31 @@
 
 This is the starter template for ElizaOS projects.
 
+## Features
+
+- Pre-configured project structure for ElizaOS development
+- Comprehensive testing setup with component and e2e tests
+- Default character configuration with plugin integration
+- Example service, action, and provider implementations
+- TypeScript configuration for optimal developer experience
+- Built-in documentation and examples
+
+## Getting Started
+
+```bash
+# Clone the starter project
+npx elizaos create my-project
+
+# Navigate to the project directory
+cd my-project
+
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
+```
+
 ## Development
 
 ```bash
