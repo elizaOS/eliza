@@ -431,15 +431,15 @@ const config = {
           ],
         },
         {
-          href: '/news',
+          href: '/blog',
           position: 'right',
           className: 'header-rss-link',
           'aria-label': 'RSS Feed',
           to: '/news',
           items: [
-            { label: 'RSS (XML)', href: '/news/rss.xml', target: '_blank' },
-            { label: 'Atom', href: '/news/atom.xml', target: '_blank' },
-            { label: 'JSON Feed', href: '/news/feed.json', target: '_blank' },
+            { label: 'RSS (XML)', href: '/blog/rss.xml', target: '_blank' },
+            { label: 'Atom', href: '/blog/atom.xml', target: '_blank' },
+            { label: 'JSON Feed', href: '/blog/feed.json', target: '_blank' },
           ],
         },
         {
