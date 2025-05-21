@@ -5,13 +5,13 @@ import {
   buildProject,
   configureDatabaseSettings,
   displayBanner,
+  findNearestEnvFile,
   findNextAvailablePort,
   getCliInstallTag,
   handleError,
   installPlugin,
   loadConfig,
   loadEnvironment,
-  findNearestEnvFile,
   loadPluginModule,
   promptForEnvVars,
   saveConfig,
@@ -26,7 +26,7 @@ import {
   type IAgentRuntime,
   type Plugin,
 } from '@elizaos/core';
-import { Command, Option } from 'commander';
+import { Command } from 'commander';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -110,7 +110,7 @@ async function loadAndPreparePlugin(pluginName: string, version: string): Promis
 
   // 3. If neither primary method worked, search all exports aggressively
   //logger.debug(
-    //`Primary exports (named: ${expectedFunctionName}, default) not found or invalid, searching all exports...`
+  //`Primary exports (named: ${expectedFunctionName}, default) not found or invalid, searching all exports...`
   //);
   for (const key of Object.keys(pluginModule)) {
     // Skip keys we already checked (or might be checking)
@@ -595,7 +595,9 @@ const startAgents = async (options: {
       character.plugins = character.plugins || [];
 
       // make sure character has sql plugin
-      const hasSqlPlugin = character.plugins.some((plugin) => plugin.includes('plugin-sql') || plugin.includes('plugin-mysql'));
+      const hasSqlPlugin = character.plugins.some(
+        (plugin) => plugin.includes('plugin-sql') || plugin.includes('plugin-mysql')
+      );
       if (!hasSqlPlugin) {
         character.plugins.push('@elizaos/plugin-sql');
       }
