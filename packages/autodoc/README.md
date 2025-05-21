@@ -4,7 +4,7 @@
 
 ## Set up
 
-- Set GH_PAT & OPENAI_API_KEY in github actions as env variables
+- Set GITHUB_TOKEN & OPENAI_API_KEY in github actions as env variables
 
 ## Summary
 
@@ -58,7 +58,7 @@ The `src/Configuration.ts` handles configuration loading from environment variab
 
 The following environment variables need to be added to the GitHub repository secrets:
 
-- `GH_PAT`: Personal Access Token with sufficient permissions to create branches, commit changes, and create pull requests in the repository.
+- `GITHUB_TOKEN`: Personal Access Token with sufficient permissions to create branches, commit changes, and create pull requests in the repository.
 - `OPENAI_API_KEY`: API key for accessing the OpenAI chat API used by the `AIService` to generate comments.
 
 # Codebase Documentation
