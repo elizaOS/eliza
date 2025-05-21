@@ -1,22 +1,22 @@
 import {
-  Tracer,
-  Meter,
   diag,
   DiagConsoleLogger,
   DiagLogLevel,
+  Meter,
   metrics,
   trace,
+  Tracer,
 } from '@opentelemetry/api';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
-import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
-import { MeterProvider } from '@opentelemetry/sdk-metrics';
-import { SimpleSpanProcessor, ReadableSpan, SpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { PgInstrumentation } from '@opentelemetry/instrumentation-pg';
-import { IInstrumentationService, InstrumentationConfig } from './types';
+import { Resource, resourceFromAttributes } from '@opentelemetry/resources';
+import { MeterProvider } from '@opentelemetry/sdk-metrics';
+import { ReadableSpan, SpanProcessor } from '@opentelemetry/sdk-trace-base';
+import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
+import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
 import { elizaLogger } from '../logger';
-import { Service, ServiceType, IAgentRuntime } from '../types';
+import { IAgentRuntime, Service } from '../types';
+import { IInstrumentationService, InstrumentationConfig } from './types';
 let pg: typeof import('pg');
 
 const DEFAULT_SERVICE_NAME = 'eliza-agent';
@@ -324,7 +324,6 @@ export class InstrumentationService extends Service implements IInstrumentationS
   private resource: Resource;
   private tracerProvider: NodeTracerProvider | null = null;
   private meterProvider: MeterProvider | null = null;
-  private postgresSpanProcessor: PostgresSpanProcessor | null = null;
   private isShutdown = false;
 
   constructor(config?: InstrumentationConfig) {
@@ -336,7 +335,7 @@ export class InstrumentationService extends Service implements IInstrumentationS
       enabled: isEnabled,
     };
 
-    this.resource = new Resource({
+    this.resource = resourceFromAttributes({
       [SemanticResourceAttributes.SERVICE_NAME]: this.instrumentationConfig.serviceName,
     });
 
@@ -353,9 +352,8 @@ export class InstrumentationService extends Service implements IInstrumentationS
   private initializeProviders(): void {
     if (!this.isEnabled()) return;
 
-    this.tracerProvider = new NodeTracerProvider({ resource: this.resource });
-
     const postgresConnectionString = process.env.POSTGRES_URL_INSTRUMENTATION;
+    let postgresSpanProcessorInstance: PostgresSpanProcessor | null = null;
 
     if (!postgresConnectionString) {
       elizaLogger.error(
@@ -363,19 +361,29 @@ export class InstrumentationService extends Service implements IInstrumentationS
       );
     } else {
       try {
-        this.postgresSpanProcessor = new PostgresSpanProcessor(postgresConnectionString);
-        if (this.postgresSpanProcessor && (this.postgresSpanProcessor as any).pgClient) {
-          this.tracerProvider.addSpanProcessor(this.postgresSpanProcessor);
-          elizaLogger.info('📊 Added PostgreSQL span processor for telemetry data storage.');
-        } else {
+        postgresSpanProcessorInstance = new PostgresSpanProcessor(postgresConnectionString);
+        if (!postgresSpanProcessorInstance || !(postgresSpanProcessorInstance as any).pgClient) {
           elizaLogger.error(
-            'Failed to add PostgreSQL span processor likely due to initialization errors.'
+            'Failed to initialize PostgreSQL span processor, or pgClient is missing.'
           );
+          postgresSpanProcessorInstance = null; // Ensure it's null if initialization failed
         }
       } catch (e) {
         elizaLogger.error('Error creating PostgreSQL Span Processor instance:', e);
+        postgresSpanProcessorInstance = null; // Ensure it's null on error
       }
     }
+
+    const spanProcessors: SpanProcessor[] = [];
+    if (postgresSpanProcessorInstance) {
+      spanProcessors.push(postgresSpanProcessorInstance);
+      elizaLogger.info('📊 PostgreSQL span processor will be added.');
+    }
+
+    this.tracerProvider = new NodeTracerProvider({
+      resource: this.resource,
+      spanProcessors: spanProcessors as any,
+    });
 
     this.tracerProvider.register();
 
