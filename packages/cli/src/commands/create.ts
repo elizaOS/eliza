@@ -7,6 +7,7 @@ import {
   promptAndStorePostgresUrl,
   runBunCommand,
   setupPgLite,
+  findNearestEnvFile,
 } from '@/src/utils';
 import { Command } from 'commander';
 import { existsSync, readFileSync } from 'node:fs';
@@ -205,31 +206,17 @@ export const create = new Command()
         type: projectType,
       });
 
-      // Try to find .env file by recursively checking parent directories
-      const envPath = path.join(process.cwd(), '.env');
+      // Try to find the nearest .env file for database configuration
+      const envPath = findNearestEnvFile();
+      let postgresUrl: string | null = null;
 
-      let currentPath = envPath;
-      let depth = 0;
-      const maxDepth = 10;
-
-      let postgresUrl = null;
-
-      while (depth < maxDepth && currentPath.includes(path.sep)) {
-        if (existsSync(currentPath)) {
-          const env = readFileSync(currentPath, 'utf8');
-          const envVars = env.split('\n').filter((line) => line.trim() !== '');
-          const postgresUrlLine = envVars.find((line) => line.startsWith('POSTGRES_URL='));
-          if (postgresUrlLine) {
-            postgresUrl = postgresUrlLine.split('=')[1].trim();
-            break;
-          }
+      if (envPath && existsSync(envPath)) {
+        const env = readFileSync(envPath, 'utf8');
+        const envVars = env.split('\n').filter((line) => line.trim() !== '');
+        const postgresUrlLine = envVars.find((line) => line.startsWith('POSTGRES_URL='));
+        if (postgresUrlLine) {
+          postgresUrl = postgresUrlLine.split('=')[1].trim();
         }
-
-        // Move up one directory
-        const currentDir = path.dirname(currentPath);
-        const parentDir = path.dirname(currentDir);
-        currentPath = path.join(parentDir, '.env');
-        depth++;
       }
 
       // Prompt for project/plugin name if not provided

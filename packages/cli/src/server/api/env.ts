@@ -1,6 +1,7 @@
 import { logger } from '@elizaos/core';
 import express from 'express';
 import { parseEnvFile } from '@/src/commands/env';
+import { findNearestEnvFile } from '@/src/utils';
 import path from 'node:path';
 import { existsSync, writeFileSync } from 'fs';
 
@@ -10,24 +11,8 @@ function serializeEnvObject(envObj: Record<string, string>): string {
     .join('\n\n');
 }
 
-function findUpFile(filename: string, startDir: string = process.cwd()): string | null {
-  let currentDir = startDir;
-
-  while (true) {
-    const fullPath = path.join(currentDir, filename);
-    if (existsSync(fullPath)) return fullPath;
-
-    const parentDir = path.dirname(currentDir);
-    if (parentDir === currentDir) {
-      return null; // Reached root
-    }
-    currentDir = parentDir;
-  }
-}
-
 function getLocalEnvPath(): string | null {
-  const envPath = findUpFile('.env');
-  return envPath;
+  return findNearestEnvFile();
 }
 
 export function envRouter(): express.Router {

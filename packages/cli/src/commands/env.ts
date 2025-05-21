@@ -1,4 +1,4 @@
-import { handleError, UserEnvironment } from '@/src/utils';
+import { handleError, UserEnvironment, findNearestEnvFile } from '@/src/utils';
 import { stringToUuid } from '@elizaos/core';
 import { Command } from 'commander';
 import dotenv from 'dotenv';
@@ -15,7 +15,8 @@ import colors from 'yoctocolors';
  * @returns The path to the .env file
  */
 export async function getGlobalEnvPath(): Promise<string> {
-  return path.join(process.cwd(), '.env');
+  const envPath = findNearestEnvFile();
+  return envPath ?? path.join(process.cwd(), '.env');
 }
 
 /**
@@ -23,8 +24,7 @@ export async function getGlobalEnvPath(): Promise<string> {
  * @returns The path to the local .env file or null if not found
  */
 function getLocalEnvPath(): string | null {
-  const localEnvPath = path.join(process.cwd(), '.env');
-  return existsSync(localEnvPath) ? localEnvPath : null;
+  return findNearestEnvFile() ?? null;
 }
 
 /**
@@ -95,10 +95,10 @@ async function listEnvVars(): Promise<void> {
 
   // Display local environment section
   console.info(colors.bold('\nLocal Environment Variables:'));
-  const localEnvFilePath = path.join(process.cwd(), '.env');
-  console.info(`Path: ${localEnvFilePath}`);
+  const localEnvFilePath = getLocalEnvPath();
+  console.info(`Path: ${localEnvFilePath ?? path.join(process.cwd(), '.env')}`);
 
-  if (!existsSync(localEnvFilePath)) {
+  if (!localEnvFilePath || !existsSync(localEnvFilePath)) {
     // No local .env file exists, provide guidance to the user
     console.info(colors.yellow('  No local .env file found'));
 
@@ -408,7 +408,7 @@ async function resetEnv(yes = false): Promise<void> {
   const projectUuid = stringToUuid(process.cwd());
   const globalDbDir = path.join(elizaDir, 'projects', projectUuid, 'db');
   const globalPgliteDir = path.join(elizaDir, 'projects', projectUuid, 'pglite');
-  const localEnvPath = path.join(process.cwd(), '.env');
+  const localEnvPath = getLocalEnvPath() ?? path.join(process.cwd(), '.env');
   const localDbDir = path.join(process.cwd(), 'elizadb');
 
   // Check if external Postgres is in use

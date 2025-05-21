@@ -11,6 +11,7 @@ import {
   installPlugin,
   loadConfig,
   loadEnvironment,
+  findNearestEnvFile,
   loadPluginModule,
   promptForEnvVars,
   saveConfig,
@@ -317,26 +318,6 @@ export async function startAgent(
     } catch (err) {
       // Silently fail if require is not available (e.g., in browser environments)
       logger.debug('dotenv module not available');
-    }
-
-    function findNearestEnvFile(startDir = process.cwd()) {
-      let currentDir = startDir;
-
-      // Continue searching until we reach the root directory
-      while (currentDir !== path.parse(currentDir).root) {
-        const envPath = path.join(currentDir, '.env');
-
-        if (fs.existsSync(envPath)) {
-          return envPath;
-        }
-
-        // Move up to parent directory
-        currentDir = path.dirname(currentDir);
-      }
-
-      // Check root directory as well
-      const rootEnvPath = path.join(path.parse(currentDir).root, '.env');
-      return fs.existsSync(rootEnvPath) ? rootEnvPath : null;
     }
 
     // Node.js environment: load from .env file

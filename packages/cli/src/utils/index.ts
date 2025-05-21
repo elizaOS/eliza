@@ -20,3 +20,4 @@ export * from './run-bun';
 export * from './testRunner';
 export * from './user-environment';
 export * from './get-config';
+export * from './env-utils';
