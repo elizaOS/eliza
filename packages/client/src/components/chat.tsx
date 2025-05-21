@@ -7,7 +7,7 @@ import {
 import { ChatInput } from '@/components/ui/chat/chat-input';
 import { ChatMessageList } from '@/components/ui/chat/chat-message-list';
 import { USER_NAME } from '@/constants';
-import { useMessages, useDeleteMemory, useDeleteAllMemories } from '@/hooks/use-query-hooks';
+import { useDeleteAllMemories, useDeleteMemory, useMessages } from '@/hooks/use-query-hooks';
 import clientLogger from '@/lib/logger';
 import SocketIOManager from '@/lib/socketio-manager';
 import { cn, getEntityId, moment, randomUUID } from '@/lib/utils';
@@ -18,11 +18,12 @@ import { AgentStatus } from '@elizaos/core';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
 
 import { useQueryClient } from '@tanstack/react-query';
-import { ChevronRight, PanelRight, Paperclip, Send, X, Trash2 } from 'lucide-react';
+import { ChevronRight, PanelRight, Paperclip, Send, Trash2, X } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import AIWriter from 'react-aiwriter';
 import { AudioRecorder } from './audio-recorder';
 import CopyButton from './copy-button';
+import DeleteButton from './delete-button';
 import { Avatar, AvatarImage } from './ui/avatar';
 import { Badge } from './ui/badge';
 import ChatTtsButton from './ui/chat/chat-tts-button';
@@ -118,22 +119,14 @@ function MessageContent({
         )}
       </ChatBubbleMessage>
       <div className="flex justify-between items-end w-full">
-        <div className="flex items-center gap-2">
-          {message.name !== USER_NAME &&
-            message.text &&
-            !message.isLoading && (
-              <>
-                <CopyButton text={message.text} />
-                <ChatTtsButton agentId={agentId} text={message.text} />
-              </>
-            )}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => onDelete(message.id as string)}
-          >
-            <Trash2 className="size-3.5" />
-          </Button>
+        <div className="flex items-center gap-1">
+          {message.name !== USER_NAME && message.text && !message.isLoading && (
+            <>
+              <CopyButton text={message.text} />
+              <ChatTtsButton agentId={agentId} text={message.text} />
+            </>
+          )}
+          <DeleteButton onClick={() => onDelete(message.id as string)} />
         </div>
         <div>
           {message.text && message.actions && (
@@ -562,14 +555,14 @@ export default function Page({
                       </Avatar>
                     )}
 
-                  <MemoizedMessageContent
-                    message={message}
-                    agentId={agentId}
-                    shouldAnimate={shouldAnimate}
-                    onDelete={handleDeleteMessage}
-                  />
-                </ChatBubble>
-              </div>
+                    <MemoizedMessageContent
+                      message={message}
+                      agentId={agentId}
+                      shouldAnimate={shouldAnimate}
+                      onDelete={handleDeleteMessage}
+                    />
+                  </ChatBubble>
+                </div>
               );
             })}
           </ChatMessageList>
