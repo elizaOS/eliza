@@ -106,9 +106,20 @@ export class TestRunner {
       }
 
       // Apply filter if specified
-      if (options.filter && !suite.name.includes(options.filter)) {
-        this.stats.skipped++;
-        continue;
+      if (options.filter) {
+        // Handle common filter formats
+        let baseName = options.filter;
+        if (baseName.endsWith('.test.ts') || baseName.endsWith('.test.js')) {
+          baseName = baseName.slice(0, -8); // Remove '.test.ts' or '.test.js'
+        } else if (baseName.endsWith('.test')) {
+          baseName = baseName.slice(0, -5); // Remove '.test'
+        }
+
+        if (!suite.name.includes(baseName)) {
+          logger.info(`Skipping test suite "${suite.name}" (doesn't match filter "${baseName}")`);
+          this.stats.skipped++;
+          continue;
+        }
       }
 
       await this.runTestSuite(suite);
@@ -171,12 +182,22 @@ export const myPlugin = {
         }
 
         // Apply filter if specified
-        if (options.filter && !suite.name.includes(options.filter)) {
-          logger.info(
-            `Skipping test suite "${suite.name}" because it doesn't match filter "${options.filter}"`
-          );
-          this.stats.skipped++;
-          continue;
+        if (options.filter) {
+          // Handle common filter formats
+          let baseName = options.filter;
+          if (baseName.endsWith('.test.ts') || baseName.endsWith('.test.js')) {
+            baseName = baseName.slice(0, -8); // Remove '.test.ts' or '.test.js'
+          } else if (baseName.endsWith('.test')) {
+            baseName = baseName.slice(0, -5); // Remove '.test'
+          }
+
+          if (!suite.name.includes(baseName)) {
+            logger.info(
+              `Skipping test suite "${suite.name}" because it doesn't match filter "${baseName}"`
+            );
+            this.stats.skipped++;
+            continue;
+          }
         }
 
         await this.runTestSuite(suite);
@@ -219,10 +240,20 @@ export const myPlugin = {
             }
 
             // Apply filter if specified
-            if (options.filter && !suite.name.includes(options.filter)) {
-              logger.info(`Skipping test suite "${suite.name}" (doesn't match filter)`);
-              this.stats.skipped++;
-              continue;
+            if (options.filter) {
+              // Handle common filter formats
+              let baseName = options.filter;
+              if (baseName.endsWith('.test.ts') || baseName.endsWith('.test.js')) {
+                baseName = baseName.slice(0, -8); // Remove '.test.ts' or '.test.js'
+              } else if (baseName.endsWith('.test')) {
+                baseName = baseName.slice(0, -5); // Remove '.test'
+              }
+
+              if (!suite.name.includes(baseName)) {
+                logger.info(`Skipping test suite "${suite.name}" (doesn't match filter)`);
+                this.stats.skipped++;
+                continue;
+              }
             }
 
             await this.runTestSuite(suite);
@@ -288,12 +319,21 @@ export const myPlugin = {
 
           // Apply filter if specified - match against either file name or suite name
           if (options.filter) {
-            const matchesFileName = fileNameWithoutExt.includes(options.filter);
-            const matchesSuiteName = testSuite.name && testSuite.name.includes(options.filter);
+            // Handle common filter formats like component tests
+            let baseName = options.filter;
+            if (baseName.endsWith('.test.ts') || baseName.endsWith('.test.js')) {
+              baseName = baseName.slice(0, -8); // Remove '.test.ts' or '.test.js'
+            } else if (baseName.endsWith('.test')) {
+              baseName = baseName.slice(0, -5); // Remove '.test'
+            }
+
+            // Now match against filename or suite name with the processed filter
+            const matchesFileName = fileNameWithoutExt.includes(baseName);
+            const matchesSuiteName = testSuite.name && testSuite.name.includes(baseName);
 
             if (!matchesFileName && !matchesSuiteName) {
               logger.info(
-                `Skipping test suite "${testSuite.name}" in ${fileName} (doesn't match filter "${options.filter}")`
+                `Skipping test suite "${testSuite.name}" in ${fileName} (doesn't match filter "${baseName}")`
               );
               this.stats.skipped++;
               continue;

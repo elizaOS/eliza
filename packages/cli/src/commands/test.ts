@@ -63,13 +63,22 @@ async function runComponentTests(options: { name?: string; skipBuild?: boolean }
     // Construct the vitest command
     let command = 'bun run vitest run';
 
-    // Add filter if specified - Vitest supports both file path filtering and test name filtering
+    // Add filter if specified
     if (options.name) {
-      // First try to match file paths (more specific)
-      command += ` "__tests__/**/${options.name}*.test.{js,ts,jsx,tsx}"`;
+      // Handle common filter formats
+      let baseName = options.name;
+      if (baseName.endsWith('.test.ts') || baseName.endsWith('.test.js')) {
+        baseName = baseName.slice(0, -8); // Remove '.test.ts' or '.test.js'
+      } else if (baseName.endsWith('.test')) {
+        baseName = baseName.slice(0, -5); // Remove '.test'
+      }
 
-      // Also allow matching test names with -t (less specific, but more flexible)
-      command += ` -t "${options.name}"`;
+      console.info(`Using test filter: ${baseName}`);
+
+      // Instead of trying to match file names, which is failing,
+      // just use Vitest's test name filtering with the -t option
+      // This will match test descriptions and suite names
+      command += ` -t "${baseName}"`;
     }
 
     const { stdout, stderr } = await execAsync(command);
@@ -561,7 +570,7 @@ test
       Number.parseInt(val)
     )
   )
-  .option('-n, --name <name>', 'Filter tests by name (matches file names or test suite names)')
+  .option('-n, --name <n>', 'Filter tests by name (matches file names or test suite names)')
   .option('--skip-build', 'Skip building before running tests');
 
 // This is the function that registers the command with the CLI
