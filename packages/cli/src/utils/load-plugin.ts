@@ -62,7 +62,7 @@ async function tryImporting(
 ): Promise<any | null> {
   try {
     const module = await import(importPath);
-    logger.debug(`Successfully loaded plugin '${repository}' using ${strategy} (${importPath})`);
+    logger.success(`Successfully loaded plugin '${repository}' using ${strategy} (${importPath})`);
     return module;
   } catch (error) {
     logger.debug(`Import failed using ${strategy} ('${importPath}'):`, error);
@@ -134,7 +134,7 @@ const importStrategies: ImportStrategy[] = [
  * @returns The loaded plugin module or null if loading fails after all attempts.
  */
 export async function loadPluginModule(repository: string): Promise<any | null> {
-  logger.debug(`Attempting to load plugin module: ${repository}`);
+  //logger.debug(`Attempting to load plugin module: ${repository}`);
 
   for (const strategy of importStrategies) {
     const result = await strategy.tryImport(repository);
