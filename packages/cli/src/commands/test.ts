@@ -44,9 +44,9 @@ function checkIfLikelyPluginDir(dir: string): boolean {
 }
 
 /**
- * Run unit tests using Vitest
+ * Run component tests using Vitest
  */
-async function runUnitTests(options: { name?: string; skipBuild?: boolean }) {
+async function runComponentTests(options: { name?: string; skipBuild?: boolean }) {
   const cwd = process.cwd();
 
   // Build the project first unless skip-build is specified
@@ -57,7 +57,7 @@ async function runUnitTests(options: { name?: string; skipBuild?: boolean }) {
     console.info('Build completed successfully');
   }
 
-  console.info('Running unit tests...');
+  console.info('Running component tests...');
 
   try {
     // Construct the vitest command
@@ -76,7 +76,7 @@ async function runUnitTests(options: { name?: string; skipBuild?: boolean }) {
     console.log(stdout);
     if (stderr) console.error(stderr);
 
-    console.info('Unit tests completed');
+    console.info('Component tests completed');
 
     // Check if there were test failures in the output
     if (stdout.includes('FAIL') || stderr?.includes('FAIL')) {
@@ -85,7 +85,7 @@ async function runUnitTests(options: { name?: string; skipBuild?: boolean }) {
 
     return { failed: false };
   } catch (error) {
-    console.error('Error running unit tests:', error);
+    console.error('Error running component tests:', error);
     return { failed: true };
   }
 }
@@ -467,17 +467,17 @@ const runE2eTests = async (options: { port?: number; name?: string; skipBuild?: 
 };
 
 /**
- * Run both unit and E2E tests
+ * Run both component and E2E tests
  */
 async function runAllTests(options: { port?: number; name?: string; skipBuild?: boolean }) {
-  // Run unit tests first
-  const unitResult = await runUnitTests(options);
+  // Run component tests first
+  const componentResult = await runComponentTests(options);
 
   // Run e2e tests
   const e2eResult = await runE2eTests(options);
 
   // Return combined result
-  return { failed: unitResult.failed || e2eResult.failed };
+  return { failed: componentResult.failed || e2eResult.failed };
 }
 
 // Create base test command with basic description only
@@ -487,8 +487,8 @@ export const test = new Command()
 
 // Add subcommands first
 test
-  .command('unit')
-  .description('Run unit tests (via Vitest)')
+  .command('component')
+  .description('Run component tests (via Vitest)')
   .action(async (_, cmd) => {
     // Get options from parent command
     const options = {
@@ -496,14 +496,14 @@ test
       skipBuild: cmd.parent.opts().skipBuild,
     };
 
-    console.info('Starting unit tests...');
+    console.info('Starting component tests...');
     console.info('Command options:', options);
 
     try {
-      const result = await runUnitTests(options);
+      const result = await runComponentTests(options);
       process.exit(result.failed ? 1 : 0);
     } catch (error) {
-      console.error('Error running unit tests:', error);
+      console.error('Error running component tests:', error);
       process.exit(1);
     }
   });
@@ -533,7 +533,7 @@ test
 
 test
   .command('all', { isDefault: true })
-  .description('Run both unit and e2e tests (default)')
+  .description('Run both component and e2e tests (default)')
   .action(async (_, cmd) => {
     // Get options from parent command
     const options = {
