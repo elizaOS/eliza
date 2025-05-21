@@ -217,6 +217,12 @@ interface AgentLog {
   [key: string]: any;
 }
 
+// Interface for agent panels (public routes)
+export interface AgentPanel {
+  name: string;
+  path: string;
+}
+
 /**
  * Library for interacting with the API to perform various actions related to agents, messages, rooms, logs, etc.
  * @type {{
@@ -385,6 +391,14 @@ export const apiClient = {
     });
   },
 
+  // Get all rooms where an agent is a participant
+  getAgentRooms: (agentId: string) => {
+    return fetcher({
+      url: `/agents/${agentId}/rooms`,
+      method: 'GET',
+    });
+  },
+  
   // Get all worlds
   getWorlds: () => {
     return fetcher({
