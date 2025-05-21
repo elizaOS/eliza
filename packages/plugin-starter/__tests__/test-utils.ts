@@ -85,6 +85,7 @@ export function createMockMemory(overrides: Partial<Memory> = {}): Partial<Memor
  */
 export function createMockState(overrides: Partial<State> = {}): Partial<State> {
   return {
+    ...overrides,
     values: {
       recentMessages: 'User: Test message',
       ...overrides.values,
@@ -92,7 +93,6 @@ export function createMockState(overrides: Partial<State> = {}): Partial<State> 
     data: {
       ...overrides.data,
     },
-    ...overrides,
   };
 }
 
@@ -156,4 +156,7 @@ export function setupLoggerSpies() {
   vi.spyOn(logger, 'error').mockImplementation(() => {});
   vi.spyOn(logger, 'warn').mockImplementation(() => {});
   vi.spyOn(logger, 'debug').mockImplementation(() => {});
+
+  // allow tests to restore originals
+  return () => vi.restoreAllMocks();
 }

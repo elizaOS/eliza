@@ -109,21 +109,21 @@ describe('Plugin Configuration', () => {
 
 describe('Plugin Models', () => {
   it('should have TEXT_SMALL model defined', () => {
+    expect(starterPlugin.models?.[ModelType.TEXT_SMALL]).toBeDefined();
     if (starterPlugin.models) {
-      expect(starterPlugin.models).toHaveProperty(ModelType.TEXT_SMALL);
       expect(typeof starterPlugin.models[ModelType.TEXT_SMALL]).toBe('function');
     }
   });
 
   it('should have TEXT_LARGE model defined', () => {
+    expect(starterPlugin.models?.[ModelType.TEXT_LARGE]).toBeDefined();
     if (starterPlugin.models) {
-      expect(starterPlugin.models).toHaveProperty(ModelType.TEXT_LARGE);
       expect(typeof starterPlugin.models[ModelType.TEXT_LARGE]).toBe('function');
     }
   });
 
   it('should return a response from TEXT_SMALL model', async () => {
-    if (starterPlugin.models && starterPlugin.models[ModelType.TEXT_SMALL]) {
+    if (starterPlugin.models?.[ModelType.TEXT_SMALL]) {
       const runtime = createRealRuntime();
       const result = await starterPlugin.models[ModelType.TEXT_SMALL](runtime as any, {
         prompt: 'test',

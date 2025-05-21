@@ -101,7 +101,8 @@ export class StarterPluginTestSuite implements TestSuite {
           if (response.text && response.actions?.includes('HELLO_WORLD')) {
             responseReceived = true;
           }
-          return [];
+          // Return Promise<Memory[]> as required by the HandlerCallback interface
+          return Promise.resolve([]);
         };
 
         // Test the action directly

@@ -1,12 +1,4 @@
-// Define a minimal TestSuite interface that matches what's needed
-interface TestSuite {
-  name: string;
-  description: string;
-  tests: Array<{
-    name: string;
-    fn: (runtime: any) => Promise<any>;
-  }>;
-}
+import { TestSuite } from '../../core/src/types';
 
 export class ProjectTestSuite implements TestSuite {
   name = 'project';
@@ -29,8 +21,7 @@ export class ProjectTestSuite implements TestSuite {
             throw new Error('Character name is missing');
           }
 
-          // Test successful if we reach this point
-          return true;
+          // No need to return anything - assertions above will throw on failure
         } catch (error) {
           throw new Error(`Project runtime environment test failed: ${error.message}`);
         }

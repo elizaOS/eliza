@@ -48,7 +48,11 @@ export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgen
  * @returns A mock memory object
  */
 export function createMockMessage(text: string, overrides: Partial<Memory> = {}): Memory {
-  return createCoreMockMessage(text);
+  const baseMessage = createCoreMockMessage(text);
+  return {
+    ...baseMessage,
+    ...overrides,
+  };
 }
 
 /**
@@ -107,4 +111,7 @@ export function setupLoggerSpies() {
   vi.spyOn(logger, 'error').mockImplementation(() => {});
   vi.spyOn(logger, 'warn').mockImplementation(() => {});
   vi.spyOn(logger, 'debug').mockImplementation(() => {});
+
+  // allow tests to restore originals
+  return () => vi.restoreAllMocks();
 }

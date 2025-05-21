@@ -118,17 +118,12 @@ describe('Integration: Plugin initialization and service registration', () => {
           mockRuntime as unknown as IAgentRuntime
         );
 
-        // Manually register the service to simulate initialization behavior
-        mockRuntime.registerService('starter', serviceInstance);
+        // Register the Service class to match the core API
+        mockRuntime.registerService(StarterServiceClass);
       }
 
       // Now verify the service was registered with the runtime
-      expect(registerServiceSpy).toHaveBeenCalledWith(
-        'starter',
-        expect.objectContaining({
-          capabilityDescription: expect.stringContaining('starter service'),
-        })
-      );
+      expect(registerServiceSpy).toHaveBeenCalledWith(expect.any(Function));
     }
   });
 });

@@ -12,7 +12,7 @@ interface TestSuite {
 }
 
 // Define minimal interfaces for the types we need
-interface UUID extends String {}
+type UUID = string;
 
 interface Memory {
   entityId: UUID;
