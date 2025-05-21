@@ -57,12 +57,18 @@ function checkIfLikelyPluginDir(dir: string): boolean {
 function processFilterName(name?: string): string | undefined {
   if (!name) return undefined;
 
-  // Handle common filter formats
-  let baseName = name;
-  if (baseName.endsWith('.test.ts') || baseName.endsWith('.test.js')) {
-    baseName = baseName.slice(0, -8); // Remove '.test.ts' or '.test.js'
-  } else if (baseName.endsWith('.test')) {
-    baseName = baseName.slice(0, -5); // Remove '.test'
+  // Handle common filter formats (case-insensitive)
+  let baseName = name.toLowerCase();
+
+  if (
+    baseName.endsWith('.test.ts') ||
+    baseName.endsWith('.test.js') ||
+    baseName.endsWith('.spec.ts') ||
+    baseName.endsWith('.spec.js')
+  ) {
+    baseName = baseName.slice(0, -8); // Remove '.test.ts' / '.test.js' / '.spec.ts' / '.spec.js'
+  } else if (baseName.endsWith('.test') || baseName.endsWith('.spec')) {
+    baseName = baseName.slice(0, -5); // Remove '.test' / '.spec'
   }
 
   return baseName;
@@ -89,19 +95,23 @@ async function runComponentTests(options: { name?: string; skipBuild?: boolean }
   console.info('Running component tests...');
 
   try {
-    // Construct the vitest command
-    let command = 'bun run vitest run';
+    // Use safer approach to avoid command injection
+    const execa = await import('execa');
+    const args = ['run', 'vitest', 'run'];
 
     // Add filter if specified
     if (options.name) {
       const baseName = processFilterName(options.name);
       console.info(`Using test filter: ${baseName}`);
 
-      // Use Vitest's test name filtering with the -t option
-      command += ` -t "${baseName}"`;
+      // Add filter as separate arguments
+      args.push('-t', baseName);
     }
 
-    const { stdout, stderr } = await execAsync(command, { maxBuffer: 10 * 1024 * 1024 });
+    const { stdout, stderr } = await execa.execaCommand(`bun ${args.join(' ')}`, {
+      maxBuffer: 10 * 1024 * 1024,
+      shell: true,
+    });
     console.log(stdout);
     if (stderr) console.error(stderr);
 
@@ -582,7 +592,8 @@ async function runAllTests(options: { port?: number; name?: string; skipBuild?: 
   const componentResult = await runComponentTests(options);
 
   // Run e2e tests with the same processed filter name
-  const e2eResult = await runE2eTests(options);
+  // Skip the second build since we already built for component tests
+  const e2eResult = await runE2eTests({ ...options, skipBuild: true });
 
   // Return combined result
   return { failed: componentResult.failed || e2eResult.failed };
