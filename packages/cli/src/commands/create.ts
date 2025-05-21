@@ -416,7 +416,7 @@ export const create = new Command()
         await getElizaDirectories();
 
         if (database === 'pglite') {
-          const projectPgliteDbDir = path.join(targetDir, '.pglite');
+          const projectPgliteDbDir = process.env.PGLITE_DATA_DIR ?? path.join(targetDir, '.pglite');
           await setupPgLite(projectPgliteDbDir, projectEnvFilePath);
           console.debug(
             `PGLite database will be stored in project directory: ${projectPgliteDbDir}`
