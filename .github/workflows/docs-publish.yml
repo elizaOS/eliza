@@ -18,7 +18,8 @@ jobs:
   deploy-docs:
     name: Deploy Documentation
     runs-on: ubuntu-latest
-
+    permissions:
+      contents: write
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -39,14 +40,15 @@ jobs:
         working-directory: packages/docs
         run: bun install
 
-      - name: Configure Git identity
+      - name: Build Documentation
         working-directory: packages/docs
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+        run: bun run build
 
-      - name: Deploy Documentation
-        working-directory: packages/docs
-        env:
-          GIT_USER: ${{ github.actor }}
-        run: USE_SSH=false GITHUB_TOKEN=${{ secrets.AUTODOCS_GITHUB }} bun run deploy
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./packages/docs/build
+          user_name: 'github-actions[bot]'
+          user_email: '41898282+github-actions[bot]@users.noreply.github.com'
+          publish_branch: gh-pages
