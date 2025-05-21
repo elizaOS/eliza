@@ -34,7 +34,12 @@ for bats_file in "${ALL_BATS[@]}"; do
   echo "==================================================="
   echo "[INFO] Running $bats_file"
   start=$(date +%s)
-  if "$BATS_BIN" "$bats_file"; then
+  timeout_duration=1m
+  if [[ "$bats_file" == "test_start.bats" ]]; then
+    timeout_duration=6m
+  fi
+
+  if timeout "$timeout_duration" "$BATS_BIN" "$bats_file"; then
     passed=$((passed+1))
   else
     failed=$((failed+1))
