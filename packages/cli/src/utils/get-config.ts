@@ -2,6 +2,7 @@ import { logger, stringToUuid } from '@elizaos/core';
 import dotenv from 'dotenv';
 import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
+import { findNearestEnvFile } from './env-utils';
 import prompts from 'prompts';
 import { z } from 'zod';
 import { UserEnvironment } from './user-environment';
@@ -54,7 +55,7 @@ export async function getElizaDirectories() {
 
   const elizaDir = path.join(homeDir, '.eliza');
   const elizaDbDir = path.join(process.cwd(), '.pglite/');
-  const envFilePath = path.join(process.cwd(), '.env');
+  const envFilePath = findNearestEnvFile() ?? path.join(process.cwd(), '.env');
 
   logger.debug('[Config] Using database directory:', elizaDbDir);
 
@@ -296,9 +297,9 @@ export async function resolveConfigPaths(cwd: string, config: RawConfig) {
  * @param projectDir - Directory containing the `.env` file. Defaults to the current working directory.
  */
 export async function loadEnvironment(projectDir: string = process.cwd()): Promise<void> {
-  const projectEnvPath = path.join(projectDir, '.env');
+  const envPath = findNearestEnvFile(projectDir);
 
-  if (existsSync(projectEnvPath)) {
-    dotenv.config({ path: projectEnvPath });
+  if (envPath) {
+    dotenv.config({ path: envPath });
   }
 }

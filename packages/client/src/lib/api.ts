@@ -398,7 +398,7 @@ export const apiClient = {
       method: 'GET',
     });
   },
-  
+
   // Get all worlds
   getWorlds: () => {
     return fetcher({

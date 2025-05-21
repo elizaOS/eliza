@@ -285,6 +285,9 @@ export const formatPosts = ({
       .filter((message: Memory) => message.entityId)
       .map((message: Memory) => {
         const entity = entities.find((entity: Entity) => entity.id === message.entityId);
+        if (!entity) {
+          logger.warn('core::prompts:formatPosts - no entity for', message.entityId);
+        }
         // TODO: These are okay but not great
         const userName = entity?.names[0] || 'Unknown User';
         const displayName = entity?.names[0] || 'unknown';

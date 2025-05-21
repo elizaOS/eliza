@@ -1,9 +1,0 @@
-.env
-*.env
-.env*
-/data
-/generatedImages
-
-local_**
-cache/*
-models/*
