@@ -1,18 +1,9 @@
 name: Deploy Documentation
 
 on:
-  push:
-    branches:
-      - v2-develop
-    paths:
-      - 'packages/docs/**'
+  schedule:
+    - cron: '0 0 * * *'
   workflow_dispatch:
-    inputs:
-      manual_trigger:
-        description: 'Manually trigger documentation deployment'
-        type: boolean
-        required: true
-        default: true
 
 jobs:
   deploy-docs:
