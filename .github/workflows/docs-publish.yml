@@ -36,4 +36,6 @@ jobs:
         working-directory: packages/docs
         run: bun run deploy
         env:
-          USE_SSH: true
+          GIT_USER: github-actions[bot]
+          USE_SSH: false
+          GITHUB_TOKEN: ${{ secrets.AUTODOCS_GITHUB }}
