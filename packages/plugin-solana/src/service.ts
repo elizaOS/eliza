@@ -75,64 +75,6 @@ export class SolanaService extends Service {
   }
 
   /**
-   * Starts the Solana service with the given agent runtime.
-   *
-   * @param {IAgentRuntime} runtime - The agent runtime to use for the Solana service.
-   * @returns {Promise<SolanaService>} The initialized Solana service.
-   */
-  static async start(runtime: IAgentRuntime): Promise<SolanaService> {
-    logger.log('initSolanaService');
-
-    const solanaService = new SolanaService(runtime);
-
-    logger.log('SolanaService start');
-    if (solanaService.updateInterval) {
-      clearInterval(solanaService.updateInterval);
-    }
-
-    solanaService.updateInterval = setInterval(async () => {
-      logger.log('Updating wallet data');
-      await solanaService.updateWalletData();
-    }, solanaService.UPDATE_INTERVAL);
-
-    // Initial update
-    solanaService.updateWalletData().catch(console.error);
-
-    return solanaService;
-  }
-
-  /**
-   * Stops the Solana service.
-   *
-   * @param {IAgentRuntime} runtime - The agent runtime.
-   * @returns {Promise<void>} - A promise that resolves once the Solana service has stopped.
-   */
-  static async stop(runtime: IAgentRuntime) {
-    const client = runtime.getService(SOLANA_SERVICE_NAME);
-    if (!client) {
-      logger.error('SolanaService not found');
-      return;
-    }
-    await client.stop();
-  }
-
-  /**
-   * Stops the update interval if it is currently running.
-   * @returns {Promise<void>} A Promise that resolves when the update interval is stopped.
-   */
-  async stop(): Promise<void> {
-    // Unsubscribe from all accounts
-    for (const [address] of this.subscriptions) {
-      await this.unsubscribeFromAccount(address);
-    }
-
-    if (this.updateInterval) {
-      clearInterval(this.updateInterval);
-      this.updateInterval = null;
-    }
-  }
-
-  /**
    * Fetches data from the provided URL with retry logic.
    * @param {string} url - The URL to fetch data from.
    * @param {RequestInit} [options={}] - The options for the fetch request.
@@ -504,6 +446,60 @@ export class SolanaService extends Service {
     } catch (error) {
       logger.error('Error unsubscribing from account:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Starts the Solana service with the given agent runtime.
+   *
+   * @param {IAgentRuntime} runtime - The agent runtime to use for the Solana service.
+   * @returns {Promise<SolanaService>} The initialized Solana service.
+   */
+  static async start(runtime: IAgentRuntime): Promise<SolanaService> {
+    logger.log('SolanaService start for', runtime.character.name);
+
+    const solanaService = new SolanaService(runtime);
+
+    solanaService.updateInterval = setInterval(async () => {
+      logger.log('Updating wallet data');
+      await solanaService.updateWalletData();
+    }, solanaService.UPDATE_INTERVAL);
+
+    // Initial update
+    // won't matter because pubkey isn't set yet
+    //solanaService.updateWalletData().catch(console.error);
+
+    return solanaService;
+  }
+
+  /**
+   * Stops the Solana service.
+   *
+   * @param {IAgentRuntime} runtime - The agent runtime.
+   * @returns {Promise<void>} - A promise that resolves once the Solana service has stopped.
+   */
+  static async stop(runtime: IAgentRuntime) {
+    const client = runtime.getService(SOLANA_SERVICE_NAME);
+    if (!client) {
+      logger.error('SolanaService not found');
+      return;
+    }
+    await client.stop();
+  }
+
+  /**
+   * Stops the update interval if it is currently running.
+   * @returns {Promise<void>} A Promise that resolves when the update interval is stopped.
+   */
+  async stop(): Promise<void> {
+    // Unsubscribe from all accounts
+    for (const [address] of this.subscriptions) {
+      await this.unsubscribeFromAccount(address);
+    }
+
+    if (this.updateInterval) {
+      clearInterval(this.updateInterval);
+      this.updateInterval = null;
     }
   }
 }

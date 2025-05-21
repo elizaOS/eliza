@@ -41,6 +41,47 @@ export default class Twitter {
       'dankvr',
       'elizaos',
       'autodotfun',
+      'Overdose_AI',
+      'Heyitsyolotv',
+      'CryptoGodJohn',
+      'traderpow',
+      '0xRamonos',
+      'CryptoKaleo',
+      'TeTheGamer',
+      'CryptoHayes',
+      'JakeGagain',
+      'Yourpop8',
+      'LFGNOW1',
+      'garbinsky182',
+      'Bored_Hades18',
+      'gianinaskarlett',
+      'ZssBecker',
+      'CryptoWizardd',
+      'KookCapitalLLC',
+      'CrashiusClay69',
+      'rasmr_eth',
+      'MustStopMurad',
+      '0xSweep',
+      'CryptoTalkMan',
+      'Jeremyybtc',
+      'W0LF0FCRYPT0',
+      'blknoiz06',
+      'SrPetersETH',
+      'SolJakey',
+      'fuelkek',
+      'whalewatchalert',
+      'shax_btc',
+      'alphawifhat',
+      'CampbellJAustin',
+      'beast_ico',
+      '0xSisyphus',
+      'AltcoinGordon',
+      'imperooterxbt',
+      'basedkarbon',
+      'RektProof',
+      'trader1sz',
+      'notsofast ',
+      'cobie',
     ];
     //const username = this.runtime.getSetting('TWITTER_USERNAME');
 
@@ -88,10 +129,10 @@ export default class Twitter {
             // Check if we already have this tweet
             const existingTweet = await this.runtime.getMemoryById(tweetId);
             if (existingTweet) {
-              console.log('old tweet');
+              //console.log('old tweet');
               continue;
             }
-            console.log('new tweet', item);
+            //console.log('new tweet', item);
 
             // Create memory for the tweet
             await this.runtime.createMemory(
