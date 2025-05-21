@@ -5,9 +5,23 @@ env:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 on:
   push:
+    branches:
+      - 'v2-develop'
+    paths:
+      - 'packages/cli/**'
+      - 'packages/core/**'
+      - 'packages/plugin-bootstrap/**'
+      - 'packages/plugin-sql/**'
+      - '.github/workflows/cli-tests.yml'
   pull_request:
     branches:
       - 'v2-develop'
+    paths:
+      - 'packages/cli/**'
+      - 'packages/core/**'
+      - 'packages/plugin-bootstrap/**'
+      - 'packages/plugin-sql/**'
+      - '.github/workflows/cli-tests.yml'
 
 jobs:
   test:
