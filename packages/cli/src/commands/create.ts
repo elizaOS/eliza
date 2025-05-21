@@ -210,13 +210,9 @@ export const create = new Command()
       const envPath = findNearestEnvFile();
       let postgresUrl: string | null = null;
 
-      if (envPath && existsSync(envPath)) {
-        const env = readFileSync(envPath, 'utf8');
-        const envVars = env.split('\n').filter((line) => line.trim() !== '');
-        const postgresUrlLine = envVars.find((line) => line.startsWith('POSTGRES_URL='));
-        if (postgresUrlLine) {
-          postgresUrl = postgresUrlLine.split('=')[1].trim();
-        }
+      if (envPath) {
+        require('dotenv').config({ path: envPath });
+        postgresUrl = process.env.POSTGRES_URL || null;
       }
 
       // Prompt for project/plugin name if not provided
