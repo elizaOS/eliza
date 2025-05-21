@@ -133,7 +133,7 @@ export class AgentRuntime implements IAgentRuntime {
   // Event emitter methods
   private eventHandlers: Map<string, ((data: any) => void)[]> = new Map();
 
-  public runtimeLogger;
+  public logger;
   private knowledgeProcessingSemaphore = new Semaphore(10);
   private settings: RuntimeSettings;
 
@@ -164,13 +164,13 @@ export class AgentRuntime implements IAgentRuntime {
     const logLevel = process.env.LOG_LEVEL || 'info';
 
     // Create the logger with appropriate level - only show debug logs when explicitly configured
-    this.runtimeLogger = logger.child({
+    this.logger = logger.child({
       agentName: this.character?.name,
       agentId: this.agentId,
       level: logLevel === 'debug' ? 'debug' : 'error', // Show only errors unless debug mode is enabled
     });
 
-    this.runtimeLogger.debug(`[AgentRuntime] Process working directory: ${process.cwd()}`);
+    this.logger.debug(`[AgentRuntime] Process working directory: ${process.cwd()}`);
 
     this.#conversationLength = opts.conversationLength ?? this.#conversationLength;
 
@@ -200,10 +200,10 @@ export class AgentRuntime implements IAgentRuntime {
         // Get a tracer for the runtime
         this.tracer = this.instrumentationService.getTracer('agent-runtime');
 
-        this.runtimeLogger.debug(`Instrumentation service initialized for agent ${this.agentId}`);
+        this.logger.debug(`Instrumentation service initialized for agent ${this.agentId}`);
       } catch (error) {
         // If instrumentation fails, provide a fallback implementation
-        this.runtimeLogger.warn(`Failed to initialize instrumentation: ${error.message}`);
+        this.logger.warn(`Failed to initialize instrumentation: ${error.message}`);
         // Create a no-op implementation
         this.instrumentationService = {
           getTracer: () => null,
@@ -221,7 +221,7 @@ export class AgentRuntime implements IAgentRuntime {
       }
     }
 
-    this.runtimeLogger.debug(`Success: Agent ID: ${this.agentId}`);
+    this.logger.debug(`Success: Agent ID: ${this.agentId}`);
   }
 
   /**
@@ -336,7 +336,7 @@ export class AgentRuntime implements IAgentRuntime {
 
       if (!plugin) {
         span.setStatus({ code: SpanStatusCode.ERROR, message: 'Plugin is undefined' });
-        this.runtimeLogger.error('*** registerPlugin plugin is undefined');
+        this.logger.error('*** registerPlugin plugin is undefined');
         throw new Error('*** registerPlugin plugin is undefined');
       }
 
@@ -346,7 +346,7 @@ export class AgentRuntime implements IAgentRuntime {
         // Push to plugins array - this works because we're modifying the array, not reassigning it
         this.plugins.push(plugin);
         span.addEvent('plugin_added_to_array');
-        this.runtimeLogger.debug(`Success: Plugin ${plugin.name} registered successfully`);
+        this.logger.debug(`Success: Plugin ${plugin.name} registered successfully`);
       }
 
       // Initialize the plugin if it has an init function
@@ -355,7 +355,7 @@ export class AgentRuntime implements IAgentRuntime {
           span.addEvent('initializing_plugin');
           await plugin.init(plugin.config || {}, this);
           span.addEvent('plugin_initialized');
-          this.runtimeLogger.debug(`Success: Plugin ${plugin.name} initialized successfully`);
+          this.logger.debug(`Success: Plugin ${plugin.name} initialized successfully`);
         } catch (error) {
           // Check if the error is related to missing API keys
           const errorMessage = error instanceof Error ? error.message : String(error);
@@ -389,7 +389,7 @@ export class AgentRuntime implements IAgentRuntime {
       // Register plugin adapter
       if (plugin.adapter) {
         span.addEvent('registering_adapter');
-        this.runtimeLogger.debug(`Registering database adapter for plugin ${plugin.name}`);
+        this.logger.debug(`Registering database adapter for plugin ${plugin.name}`);
         this.registerDatabaseAdapter(plugin.adapter);
       }
 
@@ -474,12 +474,12 @@ export class AgentRuntime implements IAgentRuntime {
         'agent.name': this.character?.name || 'unknown',
       });
 
-      this.runtimeLogger.debug(`runtime::stop - character ${this.character.name}`);
+      this.logger.debug(`runtime::stop - character ${this.character.name}`);
       span.addEvent('stopping_services');
 
       // Stop all registered clients
       for (const [serviceName, service] of this.services) {
-        this.runtimeLogger.debug(`runtime::stop - requesting service stop for ${serviceName}`);
+        this.logger.debug(`runtime::stop - requesting service stop for ${serviceName}`);
         span.addEvent(`stopping_service_${serviceName}`);
         await service.stop();
       }
@@ -498,7 +498,7 @@ export class AgentRuntime implements IAgentRuntime {
 
       if (this.isInitialized) {
         span.addEvent('agent_already_initialized');
-        this.runtimeLogger.warn('Agent already initialized');
+        this.logger.warn('Agent already initialized');
         return;
       }
 
@@ -525,7 +525,7 @@ export class AgentRuntime implements IAgentRuntime {
 
       // Ensure adapter is initialized
       if (!this.adapter) {
-        this.runtimeLogger.error(
+        this.logger.error(
           'Database adapter not initialized. Make sure @elizaos/plugin-sql is included in your plugins.'
         );
         throw new Error(
@@ -571,7 +571,7 @@ export class AgentRuntime implements IAgentRuntime {
           agentEntity = await this.adapter.getEntityById(this.agentId);
           if (!agentEntity) throw new Error(`Agent entity not found for ${this.agentId}`);
 
-          this.runtimeLogger.debug(
+          this.logger.debug(
             `Success: Agent entity created successfully for ${this.character.name}`
           );
           span.addEvent('agent_entity_created');
@@ -582,7 +582,7 @@ export class AgentRuntime implements IAgentRuntime {
         const errorMsg = error instanceof Error ? error.message : String(error);
         span.recordException(error as Error);
         span.setStatus({ code: SpanStatusCode.ERROR, message: errorMsg });
-        this.runtimeLogger.error(`Failed to create agent entity: ${errorMsg}`);
+        this.logger.error(`Failed to create agent entity: ${errorMsg}`);
         throw error;
       }
 
@@ -595,7 +595,7 @@ export class AgentRuntime implements IAgentRuntime {
         const errorMsg = error instanceof Error ? error.message : String(error);
         span.recordException(error as Error);
         span.setStatus({ code: SpanStatusCode.ERROR, message: errorMsg });
-        this.runtimeLogger.error(`Failed to initialize: ${errorMsg}`);
+        this.logger.error(`Failed to initialize: ${errorMsg}`);
         throw error;
       }
 
@@ -624,9 +624,7 @@ export class AgentRuntime implements IAgentRuntime {
             span.setStatus({ code: SpanStatusCode.ERROR, message: errorMsg });
             throw new Error(errorMsg);
           }
-          this.runtimeLogger.debug(
-            `Agent ${this.character.name} linked to its own room successfully`
-          );
+          this.logger.debug(`Agent ${this.character.name} linked to its own room successfully`);
           span.addEvent('agent_added_as_participant');
         } else {
           span.addEvent('agent_already_participant');
@@ -635,7 +633,7 @@ export class AgentRuntime implements IAgentRuntime {
         const errorMsg = error instanceof Error ? error.message : String(error);
         span.recordException(error as Error);
         span.setStatus({ code: SpanStatusCode.ERROR, message: errorMsg });
-        this.runtimeLogger.error(`Failed to add agent as participant: ${errorMsg}`);
+        this.logger.error(`Failed to add agent as participant: ${errorMsg}`);
         throw error;
       }
 
@@ -643,7 +641,7 @@ export class AgentRuntime implements IAgentRuntime {
       const embeddingModel = this.getModel(ModelType.TEXT_EMBEDDING);
       if (!embeddingModel) {
         span.addEvent('embedding_model_missing');
-        this.runtimeLogger.warn(
+        this.logger.warn(
           `[AgentRuntime][${this.character.name}] No TEXT_EMBEDDING model registered. Skipping embedding dimension setup.`
         );
       } else {
@@ -689,7 +687,7 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   private async handleProcessingError(error: any, context: string) {
-    this.runtimeLogger.error(`Error ${context}:`, error?.message || error || 'Unknown error');
+    this.logger.error(`Error ${context}:`, error?.message || error || 'Unknown error');
     throw error;
   }
 
@@ -711,7 +709,7 @@ export class AgentRuntime implements IAgentRuntime {
           code: SpanStatusCode.ERROR,
           message: 'Invalid message for knowledge query',
         });
-        this.runtimeLogger.warn('Invalid message for knowledge query:', {
+        this.logger.warn('Invalid message for knowledge query:', {
           message,
           content: message?.content,
           text: message?.content?.text,
@@ -726,7 +724,7 @@ export class AgentRuntime implements IAgentRuntime {
           code: SpanStatusCode.ERROR,
           message: 'Empty text for knowledge query',
         });
-        this.runtimeLogger.warn('Empty text for knowledge query');
+        this.logger.warn('Empty text for knowledge query');
         return [];
       }
 
@@ -882,7 +880,7 @@ export class AgentRuntime implements IAgentRuntime {
             'error.fragment': i,
             'error.message': errorMsg,
           });
-          this.runtimeLogger.error(`Error processing fragment ${i}: ${errorMsg}`);
+          this.logger.error(`Error processing fragment ${i}: ${errorMsg}`);
         }
       }
 
@@ -903,7 +901,7 @@ export class AgentRuntime implements IAgentRuntime {
           return;
         }
 
-        this.runtimeLogger.debug(
+        this.logger.debug(
           'Processing knowledge for ',
           this.character.name,
           ' - ',
@@ -1000,12 +998,12 @@ export class AgentRuntime implements IAgentRuntime {
 
   registerDatabaseAdapter(adapter: IDatabaseAdapter) {
     if (this.adapter) {
-      this.runtimeLogger.warn(
+      this.logger.warn(
         'Database adapter already registered. Additional adapters will be ignored. This may lead to unexpected behavior.'
       );
     } else {
       this.adapter = adapter;
-      this.runtimeLogger.debug('Success: Database adapter registered successfully.');
+      this.logger.debug('Success: Database adapter registered successfully.');
     }
   }
 
@@ -1015,7 +1013,7 @@ export class AgentRuntime implements IAgentRuntime {
    */
   registerProvider(provider: Provider) {
     this.providers.push(provider);
-    this.runtimeLogger.debug(`Success: Provider ${provider.name} registered successfully.`);
+    this.logger.debug(`Success: Provider ${provider.name} registered successfully.`);
   }
 
   /**
@@ -1023,17 +1021,17 @@ export class AgentRuntime implements IAgentRuntime {
    * @param action The action to register.
    */
   registerAction(action: Action) {
-    this.runtimeLogger.debug(
+    this.logger.debug(
       `${this.character.name}(${this.agentId}) - Registering action: ${action.name}`
     );
     // if an action with the same name already exists, throw a warning and don't add the new action
     if (this.actions.find((a) => a.name === action.name)) {
-      this.runtimeLogger.warn(
+      this.logger.warn(
         `${this.character.name}(${this.agentId}) - Action ${action.name} already exists. Skipping registration.`
       );
     } else {
       this.actions.push(action);
-      this.runtimeLogger.debug(
+      this.logger.debug(
         `${this.character.name}(${this.agentId}) - Action ${action.name} registered successfully.`
       );
     }
@@ -1078,7 +1076,7 @@ export class AgentRuntime implements IAgentRuntime {
       for (const response of responses) {
         if (!response.content?.actions || response.content.actions.length === 0) {
           span.addEvent('no_actions_in_response');
-          this.runtimeLogger.warn('No action found in the response content.');
+          this.logger.warn('No action found in the response content.');
           continue;
         }
 
@@ -1091,15 +1089,13 @@ export class AgentRuntime implements IAgentRuntime {
         function normalizeAction(action: string) {
           return action.toLowerCase().replace('_', '');
         }
-        this.runtimeLogger.debug(
-          `Found actions: ${this.actions.map((a) => normalizeAction(a.name))}`
-        );
+        this.logger.debug(`Found actions: ${this.actions.map((a) => normalizeAction(a.name))}`);
 
         for (const responseAction of actions) {
           span.addEvent(`processing_action_${responseAction}`);
           state = await this.composeState(message, ['RECENT_MESSAGES']);
 
-          this.runtimeLogger.debug(`Success: Calling action: ${responseAction}`);
+          this.logger.debug(`Success: Calling action: ${responseAction}`);
           const normalizedResponseAction = normalizeAction(responseAction);
           let action = this.actions.find(
             (a: { name: string }) =>
@@ -1109,10 +1105,10 @@ export class AgentRuntime implements IAgentRuntime {
 
           if (action) {
             span.addEvent(`found_exact_action_${action.name}`);
-            this.runtimeLogger.debug(`Success: Found action: ${action?.name}`);
+            this.logger.debug(`Success: Found action: ${action?.name}`);
           } else {
             span.addEvent('looking_for_similar_action');
-            this.runtimeLogger.debug('Attempting to find action in similes.');
+            this.logger.debug('Attempting to find action in similes.');
             for (const _action of this.actions) {
               const simileAction = _action.similes?.find(
                 (simile) =>
@@ -1122,7 +1118,7 @@ export class AgentRuntime implements IAgentRuntime {
               if (simileAction) {
                 action = _action;
                 span.addEvent(`found_similar_action_${action.name}`);
-                this.runtimeLogger.debug(`Success: Action found in similes: ${action.name}`);
+                this.logger.debug(`Success: Action found in similes: ${action.name}`);
                 break;
               }
             }
@@ -1134,7 +1130,7 @@ export class AgentRuntime implements IAgentRuntime {
             span.setAttributes({
               'error.action': responseAction,
             });
-            this.runtimeLogger.error(errorMsg);
+            this.logger.error(errorMsg);
 
             const actionMemory: Memory = {
               id: uuidv4() as UUID,
@@ -1157,13 +1153,13 @@ export class AgentRuntime implements IAgentRuntime {
             span.setAttributes({
               'error.action': action.name,
             });
-            this.runtimeLogger.error(`Action ${action.name} has no handler.`);
+            this.logger.error(`Action ${action.name} has no handler.`);
             continue;
           }
 
           try {
             span.addEvent(`executing_action_${action.name}`);
-            this.runtimeLogger.debug(`Executing handler for action: ${action.name}`);
+            this.logger.debug(`Executing handler for action: ${action.name}`);
 
             // Wrap individual action handler invocation in its own span
             await this.startSpan(`Action.${action.name}`, async (actionSpan) => {
@@ -1224,7 +1220,7 @@ export class AgentRuntime implements IAgentRuntime {
             }); // End of Action.${action.name} span
 
             span.addEvent(`action_executed_successfully_${action.name}`);
-            this.runtimeLogger.debug(`Success: Action ${action.name} executed successfully.`);
+            this.logger.debug(`Success: Action ${action.name} executed successfully.`);
 
             // log to database
             this.adapter.log({
@@ -1250,7 +1246,7 @@ export class AgentRuntime implements IAgentRuntime {
               'error.action': action.name,
               'error.message': errorMessage,
             });
-            this.runtimeLogger.error(error);
+            this.logger.error(error);
 
             const actionMemory: Memory = {
               id: uuidv4() as UUID,
@@ -1419,7 +1415,7 @@ export class AgentRuntime implements IAgentRuntime {
           });
 
           if (success) {
-            this.runtimeLogger.debug(
+            this.logger.debug(
               `Created new entity ${entityId} for user ${name || userName || 'unknown'}`
             );
           } else {
@@ -1429,7 +1425,7 @@ export class AgentRuntime implements IAgentRuntime {
           // If we get a duplicate key error, the entity exists in the database but isn't
           // associated with this agent - this is expected in multi-agent scenarios
           if (error.message?.includes('duplicate key') || error.code === '23505') {
-            this.runtimeLogger.debug(
+            this.logger.debug(
               `Entity ${entityId} exists in database but not for this agent. This is normal in multi-agent setups.`
             );
           } else {
@@ -1486,7 +1482,7 @@ export class AgentRuntime implements IAgentRuntime {
           if (!added) {
             throw new Error(`Failed to add participant ${entityId} to room ${roomId}`);
           }
-          this.runtimeLogger.debug(`Added participant ${entityId} to room ${roomId} directly`);
+          this.logger.debug(`Added participant ${entityId} to room ${roomId} directly`);
         } else {
           throw error;
         }
@@ -1495,11 +1491,9 @@ export class AgentRuntime implements IAgentRuntime {
       // Always add the agent to the room
       await this.ensureParticipantInRoom(this.agentId, roomId);
 
-      this.runtimeLogger.debug(
-        `Success: Successfully connected entity ${entityId} in room ${roomId}`
-      );
+      this.logger.debug(`Success: Successfully connected entity ${entityId} in room ${roomId}`);
     } catch (error) {
-      this.runtimeLogger.error(
+      this.logger.error(
         `Failed to ensure connection: ${error instanceof Error ? error.message : String(error)}`
       );
       throw error;
@@ -1516,7 +1510,7 @@ export class AgentRuntime implements IAgentRuntime {
     // If entity is not found but it's not the agent itself, we might still want to proceed
     // This can happen when an entity exists in the database but isn't associated with this agent
     if (!entity && entityId !== this.agentId) {
-      this.runtimeLogger.warn(
+      this.logger.warn(
         `Entity ${entityId} not directly accessible to agent ${this.agentId}. Will attempt to add as participant anyway.`
       );
     } else if (!entity) {
@@ -1536,11 +1530,9 @@ export class AgentRuntime implements IAgentRuntime {
       }
 
       if (entityId === this.agentId) {
-        this.runtimeLogger.debug(
-          `Agent ${this.character.name} linked to room ${roomId} successfully.`
-        );
+        this.logger.debug(`Agent ${this.character.name} linked to room ${roomId} successfully.`);
       } else {
-        this.runtimeLogger.debug(`User ${entityId} linked to room ${roomId} successfully.`);
+        this.logger.debug(`User ${entityId} linked to room ${roomId} successfully.`);
       }
     }
   }
@@ -1568,7 +1560,7 @@ export class AgentRuntime implements IAgentRuntime {
     // try {
     const world = await this.getWorld(id);
     if (!world) {
-      this.runtimeLogger.debug('Creating world:', {
+      this.logger.debug('Creating world:', {
         id,
         name,
         serverId,
@@ -1581,10 +1573,10 @@ export class AgentRuntime implements IAgentRuntime {
         serverId: serverId || 'default',
         metadata,
       });
-      this.runtimeLogger.debug(`World ${id} created successfully.`);
+      this.logger.debug(`World ${id} created successfully.`);
     }
     // } catch (error) {
-    //   this.runtimeLogger.error(
+    //   this.logger.error(
     //     `Failed to ensure world exists: ${
     //       error instanceof Error ? error.message : String(error)
     //     }`
@@ -1615,7 +1607,7 @@ export class AgentRuntime implements IAgentRuntime {
         worldId,
         metadata,
       });
-      this.runtimeLogger.debug(`Room ${id} created successfully.`);
+      this.logger.debug(`Room ${id} created successfully.`);
     }
   }
 
@@ -1716,7 +1708,7 @@ export class AgentRuntime implements IAgentRuntime {
               });
               providerSpan.addEvent('provider_fetch_complete');
 
-              this.runtimeLogger.debug(`${provider.name} Provider took ${duration}ms to respond`);
+              this.logger.debug(`${provider.name} Provider took ${duration}ms to respond`);
               return {
                 ...result,
                 providerName: provider.name,
@@ -1842,7 +1834,7 @@ export class AgentRuntime implements IAgentRuntime {
     const serviceInstance = this.services.get(service);
     if (!serviceInstance) {
       // it's not a warn, a plugin might just not be installed
-      this.runtimeLogger.debug(`Service ${service} not found`);
+      this.logger.debug(`Service ${service} not found`);
       return null;
     }
     return serviceInstance as T;
@@ -1860,14 +1852,14 @@ export class AgentRuntime implements IAgentRuntime {
         span.addEvent('service_missing_type');
         return;
       }
-      this.runtimeLogger.debug(
+      this.logger.debug(
         `${this.character.name}(${this.agentId}) - Registering service:`,
         serviceType
       );
 
       if (this.services.has(serviceType)) {
         span.addEvent('service_already_registered');
-        this.runtimeLogger.warn(
+        this.logger.warn(
           `${this.character.name}(${this.agentId}) - Service ${serviceType} is already registered. Skipping registration.`
         );
         return;
@@ -1887,7 +1879,7 @@ export class AgentRuntime implements IAgentRuntime {
         // --- END NEW ---
 
         span.addEvent('service_registered');
-        this.runtimeLogger.debug(
+        this.logger.debug(
           `${this.character.name}(${this.agentId}) - Service ${serviceType} registered successfully`
         );
       } catch (error) {
@@ -1897,7 +1889,7 @@ export class AgentRuntime implements IAgentRuntime {
           code: SpanStatusCode.ERROR,
           message: errorMessage,
         });
-        this.runtimeLogger.error(
+        this.logger.error(
           `${this.character.name}(${this.agentId}) - Failed to register service ${serviceType}: ${errorMessage}`
         );
         throw error;
@@ -1946,19 +1938,19 @@ export class AgentRuntime implements IAgentRuntime {
     if (provider) {
       const modelWithProvider = models.find((m) => m.provider === provider);
       if (modelWithProvider) {
-        this.runtimeLogger.debug(
+        this.logger.debug(
           `[AgentRuntime][${this.character.name}] Using model ${modelKey} from provider ${provider}`
         );
         return modelWithProvider.handler;
       } else {
-        this.runtimeLogger.warn(
+        this.logger.warn(
           `[AgentRuntime][${this.character.name}] No model found for provider ${provider}`
         );
       }
     }
 
     // Return highest priority handler (first in array after sorting)
-    this.runtimeLogger.debug(
+    this.logger.debug(
       `[AgentRuntime][${this.character.name}] Using model ${modelKey} from provider ${models[0].provider}`
     );
     return models[0].handler;
@@ -2009,7 +2001,7 @@ export class AgentRuntime implements IAgentRuntime {
       }
 
       // Log input parameters (keep debug log if useful)
-      this.runtimeLogger.debug(
+      this.logger.debug(
         `[useModel] ${modelKey} input:`,
         JSON.stringify(params, safeReplacer(), 2).replace(/\\n/g, '\n')
       );
@@ -2057,12 +2049,12 @@ export class AgentRuntime implements IAgentRuntime {
         span.addEvent('model_response', { response: JSON.stringify(response, safeReplacer()) }); // Log processed response
 
         // Log timing (keep debug log if useful)
-        this.runtimeLogger.debug(
+        this.logger.debug(
           `[useModel] ${modelKey} completed in ${Number(elapsedTime.toFixed(2)).toLocaleString()}ms`
         );
 
         // Log response (keep debug log if useful)
-        this.runtimeLogger.debug(
+        this.logger.debug(
           `[useModel] ${modelKey} output:`,
           Array.isArray(response)
             ? `${JSON.stringify(response.slice(0, 5))}...${JSON.stringify(response.slice(-5))} (${
@@ -2172,7 +2164,7 @@ export class AgentRuntime implements IAgentRuntime {
           });
           rootSpan.setStatus({ code: SpanStatusCode.OK });
         } catch (error) {
-          this.runtimeLogger.error(
+          this.logger.error(
             `Error during instrumented handler execution for event ${eventName}:`,
             error
           );
@@ -2189,10 +2181,7 @@ export class AgentRuntime implements IAgentRuntime {
         try {
           await Promise.all(eventHandlers.map((handler) => handler(params)));
         } catch (error) {
-          this.runtimeLogger.error(
-            `Error during emitEvent for ${eventName} (handler execution):`,
-            error
-          );
+          this.logger.error(`Error during emitEvent for ${eventName} (handler execution):`, error);
           // throw error; // Re-throw if necessary
         }
       }
@@ -2200,9 +2189,7 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async ensureEmbeddingDimension() {
-    this.runtimeLogger.debug(
-      `[AgentRuntime][${this.character.name}] Starting ensureEmbeddingDimension`
-    );
+    this.logger.debug(`[AgentRuntime][${this.character.name}] Starting ensureEmbeddingDimension`);
 
     if (!this.adapter) {
       throw new Error(
@@ -2218,24 +2205,22 @@ export class AgentRuntime implements IAgentRuntime {
         );
       }
 
-      this.runtimeLogger.debug(
-        `[AgentRuntime][${this.character.name}] Getting embedding dimensions`
-      );
+      this.logger.debug(`[AgentRuntime][${this.character.name}] Getting embedding dimensions`);
       const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, null);
 
       if (!embedding || !embedding.length) {
         throw new Error(`[AgentRuntime][${this.character.name}] Invalid embedding received`);
       }
 
-      this.runtimeLogger.debug(
+      this.logger.debug(
         `[AgentRuntime][${this.character.name}] Setting embedding dimension: ${embedding.length}`
       );
       await this.adapter.ensureEmbeddingDimension(embedding.length);
-      this.runtimeLogger.debug(
+      this.logger.debug(
         `[AgentRuntime][${this.character.name}] Successfully set embedding dimension`
       );
     } catch (error) {
-      this.runtimeLogger.debug(
+      this.logger.debug(
         `[AgentRuntime][${this.character.name}] Error in ensureEmbeddingDimension:`,
         error
       );
@@ -2245,7 +2230,7 @@ export class AgentRuntime implements IAgentRuntime {
 
   registerTaskWorker(taskHandler: TaskWorker): void {
     if (this.taskWorkers.has(taskHandler.name)) {
-      this.runtimeLogger.warn(
+      this.logger.warn(
         `Task definition ${taskHandler.name} already registered. Will be overwritten.`
       );
     }
@@ -2684,9 +2669,9 @@ export class AgentRuntime implements IAgentRuntime {
         source: 'agent',
       });
 
-      this.runtimeLogger.debug(`Sent control message: ${action} to room ${roomId}`);
+      this.logger.debug(`Sent control message: ${action} to room ${roomId}`);
     } catch (error) {
-      this.runtimeLogger.error(`Error sending control message: ${error}`);
+      this.logger.error(`Error sending control message: ${error}`);
     }
   }
 
@@ -2697,12 +2682,10 @@ export class AgentRuntime implements IAgentRuntime {
    */
   registerSendHandler(source: string, handler: SendHandlerFunction): void {
     if (this.sendHandlers.has(source)) {
-      this.runtimeLogger.warn(
-        `Send handler for source '${source}' already registered. Overwriting.`
-      );
+      this.logger.warn(`Send handler for source '${source}' already registered. Overwriting.`);
     }
     this.sendHandlers.set(source, handler);
-    this.runtimeLogger.info(`Registered send handler for source: ${source}`);
+    this.logger.info(`Registered send handler for source: ${source}`);
   }
 
   /**
@@ -2726,7 +2709,7 @@ export class AgentRuntime implements IAgentRuntime {
       if (!handler) {
         const errorMsg = `No send handler registered for source: ${target.source}`;
         span.setStatus({ code: SpanStatusCode.ERROR, message: errorMsg });
-        this.runtimeLogger.error(errorMsg);
+        this.logger.error(errorMsg);
         // Optionally throw or just log the error
         throw new Error(errorMsg);
       }
@@ -2740,10 +2723,7 @@ export class AgentRuntime implements IAgentRuntime {
         const errorMsg = error instanceof Error ? error.message : String(error);
         span.recordException(error as Error);
         span.setStatus({ code: SpanStatusCode.ERROR, message: errorMsg });
-        this.runtimeLogger.error(
-          `Error executing send handler for source ${target.source}:`,
-          error
-        );
+        this.logger.error(`Error executing send handler for source ${target.source}:`, error);
         throw error; // Re-throw error after logging and tracing
       }
     });
