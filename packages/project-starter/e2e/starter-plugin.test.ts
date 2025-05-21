@@ -12,7 +12,7 @@ interface TestSuite {
 }
 
 // Define minimal interfaces for the types we need
-type UUID = string;
+type UUID = `${string}-${string}-${string}-${string}-${string}`;
 
 interface Memory {
   entityId: UUID;
