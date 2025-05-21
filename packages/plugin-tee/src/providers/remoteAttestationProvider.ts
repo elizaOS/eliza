@@ -95,7 +95,7 @@ const phalaRemoteAttestationProvider: Provider = {
         message: {
           entityId: message.entityId,
           roomId: message.roomId,
-          content: message?.content?.text || '',
+          content: message.content.text || '',
         },
       };
       logger.log('Generating attestation for: ', JSON.stringify(attestationMessage));

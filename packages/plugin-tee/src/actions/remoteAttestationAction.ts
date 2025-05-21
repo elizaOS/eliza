@@ -1,4 +1,5 @@
 import type {
+  Action,
   HandlerCallback,
   IAgentRuntime,
   Memory,
@@ -33,7 +34,7 @@ async function uploadUint8Array(data: Uint8Array) {
  *
  * @type {{name: string, similes: string[], description: string, handler: Function, validate: Function, examples: Array<Array<Object>>}}
  */
-export const phalaRemoteAttestationAction = {
+export const phalaRemoteAttestationAction: Action = {
   name: 'REMOTE_ATTESTATION',
   similes: [
     'REMOTE_ATTESTATION',
@@ -47,9 +48,9 @@ export const phalaRemoteAttestationAction = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    _state: State,
-    _options: { [key: string]: unknown },
-    callback: HandlerCallback
+    _state: State | undefined,
+    _options: { [key: string]: unknown } | undefined,
+    callback: HandlerCallback | undefined
   ) => {
     try {
       // Attestation will be generated based on the message info
@@ -59,7 +60,7 @@ export const phalaRemoteAttestationAction = {
         message: {
           entityId: message.entityId,
           roomId: message.roomId,
-          content: message?.content?.text || '',
+          content: message.content.text || '',
         },
       };
       // Get the remote attestation of the agentId
@@ -73,11 +74,13 @@ export const phalaRemoteAttestationAction = {
       const response = await uploadUint8Array(attestationData);
       const data = await response.json();
 
-      callback({
-        text: `Here's my 🧾 RA Quote 🫡
+      if (callback) {
+        callback({
+          text: `Here's my 🧾 RA Quote 🫡
 https://proof.t16z.com/reports/${data.checksum}`,
-        actions: ['NONE'],
-      });
+          actions: ['NONE'],
+        });
+      }
       return true;
     } catch (error) {
       console.error('Failed to fetch remote attestation: ', error);

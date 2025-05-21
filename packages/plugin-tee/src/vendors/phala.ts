@@ -29,8 +29,8 @@ export class PhalaVendor implements TeeVendor {
    *
    * @returns {Array} An array containing the remote attestation action.
    */
-  getActions() {
-    return [remoteAttestationAction as Action];
+  getActions(): Action[] {
+    return [remoteAttestationAction];
   }
   /**
    * Retrieve the list of providers.
