@@ -208,14 +208,16 @@ If any character files fail to load, ElizaOS will:
 
 #### `elizaos test`
 
-Run tests for Eliza agent plugins.
+Run tests for Eliza agent plugins and projects.
 
+- **Subcommands:**
+  - `component`: Run component tests (via Vitest)
+  - `e2e`: Run end-to-end runtime tests
+  - `all`: Run both component and e2e tests (default)
 - **Options:**
-  - `-p, --port <port>`: Port to listen on
-  - `-pl, --plugin <n>`: Name of plugin to test
-  - `-sp, --skip-plugins`: Skip plugin tests
-  - `-spt, --skip-project-tests`: Skip project tests
-  - `-sb, --skip-build`: Skip building before running tests
+  - `-p, --port <port>`: Port to listen on for e2e tests
+  - `-n, --name <n>`: Filter tests by name (matches file names or test suite names)
+  - `--skip-build`: Skip building before running tests
 
 ### Trusted Execution Environment (TEE) Management
 
