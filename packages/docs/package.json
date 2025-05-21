@@ -11,7 +11,7 @@
     "build": "docusaurus build",
     "swizzle": "docusaurus swizzle",
     "postbuild": "mkdir -p build && echo eliza.how > build/CNAME",
-    "deploy": "USE_SSH=true docusaurus deploy",
+    "deploy": "docusaurus deploy",
     "clear": "docusaurus clear",
     "serve": "docusaurus serve",
     "write-translations": "docusaurus write-translations",
