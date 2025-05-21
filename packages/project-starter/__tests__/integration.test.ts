@@ -148,7 +148,8 @@ describe('Integration: Runtime Initialization', () => {
 });
 
 // Skip scaffolding tests in CI environments as they modify the filesystem
-describe.skipIf(isCI)('Integration: Project Scaffolding', () => {
+const describeScaffolding = isCI ? describe.skip : describe;
+describeScaffolding('Integration: Project Scaffolding', () => {
   // Create a temp directory for testing the scaffolding
   const TEST_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'eliza-test-'));
 
