@@ -87,6 +87,7 @@ export default class Twitter {
 
     // Ensure feed room exists
     await this.runtime.ensureRoomExists({
+      worldId: this.feedRoomId, // is this right?
       id: this.feedRoomId,
       name: 'Twitter Feed',
       source: 'twitter',
