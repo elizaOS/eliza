@@ -7,6 +7,12 @@ on:
     paths:
       - 'packages/docs/**'
   workflow_dispatch:
+    inputs:
+      manual_trigger:
+        description: 'Manually trigger documentation deployment'
+        type: boolean
+        required: true
+        default: true
 
 jobs:
   deploy-docs:
@@ -41,4 +47,6 @@ jobs:
 
       - name: Deploy Documentation
         working-directory: packages/docs
+        env:
+          GIT_USER: ${{ github.actor }}
         run: USE_SSH=false GITHUB_TOKEN=${{ secrets.AUTODOCS_GITHUB }} bun run deploy
