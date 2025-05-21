@@ -9,7 +9,7 @@ import {
 } from '@opentelemetry/api';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { PgInstrumentation } from '@opentelemetry/instrumentation-pg';
-import { Resource, resourceFromAttributes } from '@opentelemetry/resources';
+import { Resource } from '@opentelemetry/resources';
 import { MeterProvider } from '@opentelemetry/sdk-metrics';
 import { ReadableSpan, SpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
@@ -335,7 +335,7 @@ export class InstrumentationService extends Service implements IInstrumentationS
       enabled: isEnabled,
     };
 
-    this.resource = resourceFromAttributes({
+    this.resource = new Resource({
       [SemanticResourceAttributes.SERVICE_NAME]: this.instrumentationConfig.serviceName,
     });
 
@@ -374,16 +374,14 @@ export class InstrumentationService extends Service implements IInstrumentationS
       }
     }
 
-    const spanProcessors: SpanProcessor[] = [];
-    if (postgresSpanProcessorInstance) {
-      spanProcessors.push(postgresSpanProcessorInstance);
-      elizaLogger.info('📊 PostgreSQL span processor will be added.');
-    }
-
     this.tracerProvider = new NodeTracerProvider({
       resource: this.resource,
-      spanProcessors: spanProcessors as any,
     });
+
+    if (postgresSpanProcessorInstance) {
+      this.tracerProvider.addSpanProcessor(postgresSpanProcessorInstance);
+      elizaLogger.info('📊 PostgreSQL span processor added.');
+    }
 
     this.tracerProvider.register();
 
