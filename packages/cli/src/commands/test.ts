@@ -1,7 +1,7 @@
 import { loadProject } from '@/src/project';
 import { AgentServer } from '@/src/server/index';
 import { jsonToCharacter, loadCharacterTryPath } from '@/src/server/loader';
-import { TestRunner, buildProject, promptForEnvVars } from '@/src/utils';
+import { TestRunner, buildProject, promptForEnvVars, findNearestEnvFile } from '@/src/utils';
 import { type IAgentRuntime, type ProjectAgent } from '@elizaos/core';
 import { Command, Option } from 'commander';
 import * as dotenv from 'dotenv';
@@ -72,7 +72,7 @@ const runAgentTests = async (options: {
     const homeDir = os.homedir();
     const elizaDir = path.join(homeDir, '.eliza');
     const elizaDbDir = path.join(elizaDir, 'db');
-    const envFilePath = path.join(process.cwd(), '.env');
+    const envFilePath = findNearestEnvFile() ?? path.join(process.cwd(), '.env');
 
     console.info('Setting up environment...');
     console.info(`Home directory: ${homeDir}`);
