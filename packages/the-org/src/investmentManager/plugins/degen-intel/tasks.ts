@@ -29,6 +29,7 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
     await runtime.deleteTask(task.id);
   }
 
+  /*
   if (runtime.getSetting('BIRDEYE_API_KEY')) {
     runtime.registerTaskWorker({
       name: 'INTEL_BIRDEYE_SYNC_TRENDING',
@@ -78,7 +79,7 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
         } catch (error) {
           logger.debug('Failed to sync tokens', error);
           // kill this task
-          await runtime.deleteTask(task.id);
+          //await runtime.deleteTask(task.id);
         }
       },
     });
@@ -99,6 +100,7 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
       'WARNING: COINMARKETCAP_API_KEY not found, skipping creation of INTEL_COINMARKETCAP_SYNC task'
     );
   }
+  */
 
   // shouldn't plugin-solana and plugin-evm handle this?
   runtime.registerTaskWorker({
@@ -113,7 +115,7 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
       } catch (error) {
         logger.error('Failed to sync wallet', error);
         // kill this task
-        await runtime.deleteTask(task.id);
+        //await runtime.deleteTask(task.id);
       }
     },
   });

@@ -4,6 +4,8 @@ import { acquireService, askLlmObject } from '../utils';
 
 // agentic personal application? separate strategy
 
+// fixme: an option to mix in autofun unbonded token
+// can't be per wallet since we're deciding across multiple wallets
 // fixme: include price history data
 
 const buyTemplate = `
@@ -147,6 +149,8 @@ async function generateBuySignal(runtime, strategyService, hndl) {
   // set up exit conditions
   //await strategyService.open_position(hndl, pos)
 }
+
+// 24h volume delta
 
 async function onSentimentDelta() {
   // get all positions with this chain/token

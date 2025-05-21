@@ -34,6 +34,8 @@
     "exec": "node --enable-source-maps --loader ts-node/esm src/index.ts"
   },
   "dependencies": {
+    "@coral-xyz/anchor": "^0.31.1",
+    "@elizaos/plugin-local-ai": "^1.0.0-beta.34",
     "@elizaos/cli": "^1.0.0-beta.52",
     "@elizaos/core": "^1.0.0-beta.52",
     "@elizaos/plugin-anthropic": "^1.0.0-beta.41",

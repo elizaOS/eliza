@@ -1,5 +1,5 @@
 import { type IAgentRuntime, logger } from '@elizaos/core';
-import { Connection, Keypair, VersionedTransaction } from '@solana/web3.js';
+import { Connection, Keypair, PublicKey, VersionedTransaction } from '@solana/web3.js';
 import { calculateDynamicSlippage } from '../utils/analyzeTrade';
 import bs58 from 'bs58';
 
@@ -14,10 +14,12 @@ export interface WalletOperationResult {
 
 export class WalletService {
   private connection: Connection | null = null;
-  private keypair: Keypair | null = null;
+  keypair: Keypair | null = null;
+  private _runtime;
   public CONFIRMATION_CONFIG: any;
 
   constructor(private runtime: IAgentRuntime) {
+    this._runtime = runtime;
     // Add configuration constants
     this.CONFIRMATION_CONFIG = {
       MAX_ATTEMPTS: 12, // Increased from 8
@@ -95,7 +97,7 @@ export class WalletService {
 
         try {
           const walletKeypair = keypair; //getWalletKeypair(runtime);
-          console.log('walletKeypair', walletKeypair.publicKey.toString());
+          //console.log('walletKeypair', walletKeypair.publicKey.toString());
           //const connection = new Connection(runtime.getSetting("RPC_URL"));
           const connection = this.connection;
 
@@ -335,6 +337,37 @@ export class WalletService {
         }
       },
     };
+  }
+
+  async getWalletBalances() {
+    try {
+      const connection = new Connection(this._runtime.getSetting('SOLANA_RPC_URL'));
+
+      const solBalance = await connection.getBalance(this.keypair.publicKey);
+      const tokenAccounts = await connection.getParsedTokenAccountsByOwner(this.keypair.publicKey, {
+        programId: new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'),
+      });
+      //console.log('tokenAccounts owners', tokenAccounts.value.map(v => v.account.data.parsed.info.owner)
+
+      const balances = {
+        solBalance: solBalance / 1e9,
+        tokens: tokenAccounts.value.map((account) => ({
+          mint: account.account.data.parsed.info.mint,
+          balance: account.account.data.parsed.info.tokenAmount.amount,
+          decimals: account.account.data.parsed.info.tokenAmount.decimals,
+          uiAmount: account.account.data.parsed.info.tokenAmount.uiAmount,
+        })),
+      };
+
+      //logger.log('Fetched wallet balances:', balances);
+      return balances;
+    } catch (error) {
+      logger.error('Failed to get wallet balances:', error);
+      return {
+        solBalance: 0,
+        tokens: [],
+      };
+    }
   }
 
   async getBalance(): Promise<number> {
