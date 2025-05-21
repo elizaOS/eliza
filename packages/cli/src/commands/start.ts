@@ -429,7 +429,7 @@ const startAgents = async (options: {
   const postgresUrl = await configureDatabaseSettings(options.configure);
 
   // Get PGLite data directory from environment (may have been set during configuration)
-  const pgliteDataDir = process.env.PGLITE_DATA_DIR;
+  const pgliteDataDir = process.env.PGLITE_DATA_DIR ?? path.join(process.cwd(), '.pglite');
 
   // Load existing configuration
   const existingConfig = await loadConfig();

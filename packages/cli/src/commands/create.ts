@@ -410,14 +410,20 @@ export const create = new Command()
 
         await createIgnoreFiles(targetDir);
 
-        const { elizaDbDir, envFilePath } = await getElizaDirectories();
+        // Define project-specific .env file path, this will be created if it doesn't exist by downstream functions.
+        const projectEnvFilePath = path.join(targetDir, '.env');
+
+        await getElizaDirectories();
+
         if (database === 'pglite') {
-          await setupPgLite(process.env.PGLITE_DATA_DIR || elizaDbDir, envFilePath);
+          const projectPgliteDbDir = process.env.PGLITE_DATA_DIR ?? path.join(targetDir, '.pglite');
+          await setupPgLite(projectPgliteDbDir, projectEnvFilePath);
           console.debug(
-            `Using PGLite database directory: ${process.env.PGLITE_DATA_DIR || elizaDbDir}`
+            `PGLite database will be stored in project directory: ${projectPgliteDbDir}`
           );
         } else if (database === 'postgres' && !postgresUrl) {
-          postgresUrl = await promptAndStorePostgresUrl(envFilePath);
+          // Store Postgres URL in the project's .env file.
+          postgresUrl = await promptAndStorePostgresUrl(projectEnvFilePath);
         }
 
         const srcDir = path.join(targetDir, 'src');
