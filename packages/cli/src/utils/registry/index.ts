@@ -111,6 +111,14 @@ export async function getGitHubToken(): Promise<string | undefined> {
       const env = dotenv.parse(envContent);
       return env.GITHUB_TOKEN;
     }
+
+    // Fall back to global .env if local one doesn't exist or doesn't have token
+    const globalEnvPath = path.join(ELIZA_DIR, '.env');
+    if (existsSync(globalEnvPath) && globalEnvPath !== envPath) {
+      const envContent = await fs.readFile(globalEnvPath, 'utf-8');
+      const env = dotenv.parse(envContent);
+      return env.GITHUB_TOKEN;
+    }
   } catch (error) {
     logger.debug(`Error reading GitHub token: ${error.message}`);
   }

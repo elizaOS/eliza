@@ -10,6 +10,7 @@ import {
   forkExists,
   forkRepository,
   getFileContent,
+  getGitHubCredentials,
   updateFile,
   ensureDirectory,
   createGitHubRepository,
@@ -123,13 +124,14 @@ export async function testPublishToGitHub(
   username: string
 ): Promise<boolean> {
   try {
-    // Check GitHub token
-    const token = await getGitHubToken();
-    if (!token) {
-      logger.error('GitHub token not found');
+    // Get GitHub credentials using getGitHubCredentials which will prompt if needed
+    const credentials = await getGitHubCredentials();
+    if (!credentials) {
+      logger.error('Failed to get GitHub credentials');
       return false;
     }
-    logger.info('✓ GitHub token found');
+    const token = credentials.token;
+    logger.info('✓ GitHub credentials found');
 
     // Validate token permissions
     const response = await fetch('https://api.github.com/user', {
@@ -275,11 +277,13 @@ export async function publishToGitHub(
   skipRegistry = false,
   isTest = false
 ): Promise<boolean | { success: boolean; prUrl?: string }> {
-  const token = await getGitHubToken();
-  if (!token) {
-    logger.error('GitHub token not found. Please set it using the login command.');
+  // Get GitHub credentials using getGitHubCredentials which will prompt if needed
+  const credentials = await getGitHubCredentials();
+  if (!credentials) {
+    logger.error('Failed to get GitHub credentials');
     return false;
   }
+  const token = credentials.token;
 
   // Validate required package type
   if (!packageJson.packageType) {
