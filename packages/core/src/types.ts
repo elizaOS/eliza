@@ -805,7 +805,7 @@ export interface IDatabaseAdapter {
   getEntitiesForRoom(roomId: UUID, includeComponents?: boolean): Promise<Entity[]>;
 
   /** Create new entities */
-  createEntities(entities: Entity[]): Promise<boolean[]>;
+  createEntities(entities: Entity[]): Promise<boolean>;
 
   /** Update entity */
   updateEntity(entity: Entity): Promise<void>;
