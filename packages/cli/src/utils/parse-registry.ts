@@ -271,14 +271,13 @@ async function executeParseRegistry(): Promise<void> {
   const envInfo = await UserEnvironment.getInstanceInfo();
   const { elizaDir } = envInfo.paths;
 
-  const cacheDir = join(elizaDir, '.eliza');
-  const cacheFilePath = join(cacheDir, 'cached-registry.json');
+  const cacheFilePath = join(elizaDir, 'cached-registry.json');
 
   try {
-    mkdirSync(cacheDir, { recursive: true });
+    mkdirSync(elizaDir, { recursive: true });
   } catch (error: any) {
     if (error.code !== 'EEXIST') {
-      console.error(`Failed to create cache directory at ${cacheDir}:`, error);
+      console.error(`Failed to create cache directory at ${elizaDir}:`, error);
       throw error;
     }
   }
