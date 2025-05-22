@@ -1,17 +1,16 @@
 name: Deploy Documentation
 
 on:
-  push:
-    branches:
-      - v2-develop
-    paths:
-      - 'packages/docs/**'
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
 
 jobs:
   deploy-docs:
     name: Deploy Documentation
     runs-on: ubuntu-latest
-
+    permissions:
+      contents: write
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -32,8 +31,15 @@ jobs:
         working-directory: packages/docs
         run: bun install
 
-      - name: Deploy Documentation
+      - name: Build Documentation
         working-directory: packages/docs
-        run: bun run deploy
-        env:
-          USE_SSH: true
+        run: bun run build
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./packages/docs/build
+          user_name: 'github-actions[bot]'
+          user_email: '41898282+github-actions[bot]@users.noreply.github.com'
+          publish_branch: gh-pages

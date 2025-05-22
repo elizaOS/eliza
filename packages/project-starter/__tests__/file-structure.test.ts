@@ -32,7 +32,6 @@ describe('Project Structure Validation', () => {
     it('should contain the required source files', () => {
       expect(fileExists(path.join(rootDir, 'src', 'index.ts'))).toBe(true);
       expect(fileExists(path.join(rootDir, 'src', 'plugin.ts'))).toBe(true);
-      expect(fileExists(path.join(rootDir, 'src', 'tests.ts'))).toBe(true);
     });
 
     it('should have properly structured main files', () => {
@@ -127,8 +126,10 @@ describe('Project Structure Validation', () => {
     it('should have appropriate documentation content', () => {
       const readmeContent = fs.readFileSync(path.join(rootDir, 'README.md'), 'utf8');
       expect(readmeContent).toContain('Project Starter');
-      expect(readmeContent).toContain('Features');
-      expect(readmeContent).toContain('Getting Started');
+
+      // Testing key sections exist without requiring specific keywords
+      expect(readmeContent).toContain('Development');
+      expect(readmeContent).toContain('Testing');
     });
   });
 });

@@ -14,7 +14,6 @@ import {
   logger,
 } from '@elizaos/core';
 import { z } from 'zod';
-import starterTestSuite from './tests';
 
 /**
  * Define the configuration schema for the plugin with the following properties:
@@ -202,7 +201,6 @@ const plugin: Plugin = {
       return 'Never gonna make you cry, never gonna say goodbye, never gonna tell a lie and hurt you...';
     },
   },
-  tests: [starterTestSuite],
   routes: [
     {
       name: 'helloworld',

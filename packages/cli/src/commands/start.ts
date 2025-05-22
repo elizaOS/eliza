@@ -1,4 +1,4 @@
-import { character as defaultCharacter } from '@/src/characters/eliza';
+import { character as defaultCharacter, getElizaCharacter } from '@/src/characters/eliza';
 import { AgentServer } from '@/src/server/index';
 import { jsonToCharacter, loadCharacterTryPath } from '@/src/server/loader';
 import {
@@ -10,10 +10,11 @@ import {
   handleError,
   installPlugin,
   loadConfig,
-  loadEnvironment,
   loadPluginModule,
   promptForEnvVars,
+  resolvePgliteDir,
   saveConfig,
+  UserEnvironment,
 } from '@/src/utils';
 import {
   AgentRuntime,
@@ -25,7 +26,7 @@ import {
   type IAgentRuntime,
   type Plugin,
 } from '@elizaos/core';
-import { Command, Option } from 'commander';
+import { Command } from 'commander';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -84,16 +85,16 @@ async function loadAndPreparePlugin(pluginName: string, version: string): Promis
     .replace(/^@elizaos-plugins\//, '') // Remove alternative prefix
     .replace(/-./g, (match) => match[1].toUpperCase())}Plugin`; // Convert kebab-case to camelCase and add 'Plugin' suffix
 
-  logger.debug(`Looking for plugin export: ${expectedFunctionName} or default`);
-  logger.debug(`Available exports: ${Object.keys(pluginModule).join(', ')}`);
-  logger.debug(`Has default export: ${!!pluginModule.default}`);
+  //logger.debug(`Looking for plugin export: ${expectedFunctionName} or default`);
+  //logger.debug(`Available exports: ${Object.keys(pluginModule).join(', ')}`);
+  //logger.debug(`Has default export: ${!!pluginModule.default}`);
 
   // --- Improved Export Resolution Logic ---
 
   // 1. Prioritize the expected named export if it exists
   const expectedExport = pluginModule[expectedFunctionName];
   if (isValidPluginShape(expectedExport)) {
-    logger.debug(`Found valid plugin export using expected name: ${expectedFunctionName}`);
+    logger.success(`Found valid plugin export using expected name: ${expectedFunctionName}`);
     return expectedExport as Plugin;
   }
 
@@ -102,15 +103,15 @@ async function loadAndPreparePlugin(pluginName: string, version: string): Promis
   if (isValidPluginShape(defaultExport)) {
     // Ensure it's not the same invalid object we might have checked above
     if (expectedExport !== defaultExport) {
-      logger.debug('Found valid plugin export using default export');
+      logger.success('Found valid plugin export using default export');
       return defaultExport as Plugin;
     }
   }
 
   // 3. If neither primary method worked, search all exports aggressively
-  logger.debug(
-    `Primary exports (named: ${expectedFunctionName}, default) not found or invalid, searching all exports...`
-  );
+  //logger.debug(
+  //`Primary exports (named: ${expectedFunctionName}, default) not found or invalid, searching all exports...`
+  //);
   for (const key of Object.keys(pluginModule)) {
     // Skip keys we already checked (or might be checking)
     if (key === expectedFunctionName || key === 'default') {
@@ -119,7 +120,7 @@ async function loadAndPreparePlugin(pluginName: string, version: string): Promis
 
     const potentialPlugin = pluginModule[key];
     if (isValidPluginShape(potentialPlugin)) {
-      logger.debug(
+      logger.success(
         `Found alternative valid plugin export under key: ${key}, Name: ${potentialPlugin.name}`
       );
       return potentialPlugin as Plugin;
@@ -279,7 +280,7 @@ export async function startAgent(
     }
 
     if (!loadedPluginsMap.has(pluginName)) {
-      logger.debug(`Attempting to load plugin by name from character definition: ${pluginName}`);
+      //logger.debug(`Attempting to load plugin by name from character definition: ${pluginName}`);
       const loadedPlugin = await loadAndPreparePlugin(pluginName, installTag);
       if (loadedPlugin) {
         characterPlugins.push(loadedPlugin);
@@ -306,7 +307,7 @@ export async function startAgent(
     `Final loaded plugins (${loadedPluginsMap.size}): ${[...characterPlugins, ...plugins].map((p) => p.name).join(', ')}`
   );
 
-  function loadEnvConfig(): RuntimeSettings {
+  async function loadEnvConfig(): Promise<RuntimeSettings> {
     // Only import dotenv in Node.js environment
     let dotenv = null;
     try {
@@ -319,28 +320,9 @@ export async function startAgent(
       logger.debug('dotenv module not available');
     }
 
-    function findNearestEnvFile(startDir = process.cwd()) {
-      let currentDir = startDir;
-
-      // Continue searching until we reach the root directory
-      while (currentDir !== path.parse(currentDir).root) {
-        const envPath = path.join(currentDir, '.env');
-
-        if (fs.existsSync(envPath)) {
-          return envPath;
-        }
-
-        // Move up to parent directory
-        currentDir = path.dirname(currentDir);
-      }
-
-      // Check root directory as well
-      const rootEnvPath = path.join(path.parse(currentDir).root, '.env');
-      return fs.existsSync(rootEnvPath) ? rootEnvPath : null;
-    }
-
     // Node.js environment: load from .env file
-    const envPath = findNearestEnvFile();
+    const envInfo = await UserEnvironment.getInstanceInfo();
+    const envPath = envInfo.paths.envFilePath;
     if (envPath) {
       console.log(`[elizaos] Resolved .env file from: ${envPath}`);
     } else {
@@ -399,7 +381,7 @@ export async function startAgent(
     character: encryptedChar,
     // order matters here: make sure plugins are loaded after so they can interact with tasks (degen-intel)
     plugins: [...characterPlugins, ...plugins], // Use the deduplicated list
-    settings: loadEnvConfig(),
+    settings: await loadEnvConfig(),
   });
   if (init) {
     await init(runtime);
@@ -441,17 +423,14 @@ const startAgents = async (options: {
   port?: number;
   characters?: Character[];
 }) => {
-  // Load environment variables from project .env
-  await loadEnvironment();
+  // Load existing configuration
+  const existingConfig = await loadConfig();
 
   // Configure database settings - pass reconfigure option to potentially force reconfiguration
   const postgresUrl = await configureDatabaseSettings(options.configure);
 
   // Get PGLite data directory from environment (may have been set during configuration)
-  const pgliteDataDir = process.env.PGLITE_DATA_DIR;
-
-  // Load existing configuration
-  const existingConfig = await loadConfig();
+  const pgliteDataDir = await resolvePgliteDir();
 
   // Check if we should reconfigure based on command-line option or if using default config
   const shouldConfigure = options.configure || existingConfig.isDefault;
@@ -471,8 +450,10 @@ const startAgents = async (options: {
     });
   }
 
-  // Create server instance with appropriate database settings
-  const server = new AgentServer({
+  // Create server instance
+  const server = new AgentServer();
+  // Initialize server with appropriate database settings
+  await server.initialize({
     dataDir: pgliteDataDir,
     postgresUrl,
   });
@@ -614,7 +595,9 @@ const startAgents = async (options: {
       character.plugins = character.plugins || [];
 
       // make sure character has sql plugin
-      const hasSqlPlugin = character.plugins.some((plugin) => plugin.includes('plugin-sql'));
+      const hasSqlPlugin = character.plugins.some(
+        (plugin) => plugin.includes('plugin-sql') || plugin.includes('plugin-mysql')
+      );
       if (!hasSqlPlugin) {
         character.plugins.push('@elizaos/plugin-sql');
       }
@@ -686,13 +669,15 @@ const startAgents = async (options: {
 
         if (startedAgents.length === 0) {
           logger.info('No project agents started - falling back to default Eliza character');
-          await startAgent(defaultCharacter, server);
+          const elizaCharacter = getElizaCharacter();
+          await startAgent(elizaCharacter, server);
         } else {
           logger.info(`Successfully started ${startedAgents.length} agents from project`);
         }
       } else {
         logger.info('Project found but no agents defined, falling back to default Eliza character');
-        await startAgent(defaultCharacter, server);
+        const elizaCharacter = getElizaCharacter();
+        await startAgent(elizaCharacter, server);
       }
     } else if (isPlugin && pluginModule) {
       // Before starting with the plugin, prompt for any environment variables it needs
@@ -730,10 +715,12 @@ const startAgents = async (options: {
       });
       logger.info('Character started with plugin successfully');
     } else {
-      // When not in a project or plugin, load the default character with all plugins
-      const { character: defaultElizaCharacter } = await import('../characters/eliza');
-      logger.info('Using default Eliza character with all plugins');
-      await startAgent(defaultElizaCharacter, server);
+      // When not in a project or plugin, use the environment-aware character
+      const elizaCharacter = getElizaCharacter();
+      logger.info(
+        `Using default Eliza character with plugins: ${elizaCharacter.plugins.join(', ')}`
+      );
+      await startAgent(elizaCharacter, server);
     }
 
     // Display link to the client UI

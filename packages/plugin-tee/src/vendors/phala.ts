@@ -1,3 +1,4 @@
+import { type Action } from '@elizaos/core';
 import { phalaRemoteAttestationAction as remoteAttestationAction } from '../actions/remoteAttestationAction';
 import { phalaDeriveKeyProvider as deriveKeyProvider } from '../providers/deriveKeyProvider';
 import { phalaRemoteAttestationProvider as remoteAttestationProvider } from '../providers/remoteAttestationProvider';
@@ -28,7 +29,7 @@ export class PhalaVendor implements TeeVendor {
    *
    * @returns {Array} An array containing the remote attestation action.
    */
-  getActions() {
+  getActions(): Action[] {
     return [remoteAttestationAction];
   }
   /**

@@ -1,21 +1,22 @@
+import { character as elizaCharacter } from '@/src/characters/eliza';
 import {
   buildProject,
   copyTemplate as copyTemplateUtil,
   displayBanner,
-  getElizaDirectories,
+  ensureElizaDir,
   handleError,
   promptAndStorePostgresUrl,
   runBunCommand,
   setupPgLite,
 } from '@/src/utils';
 import { Command } from 'commander';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import prompts from 'prompts';
 import colors from 'yoctocolors';
 import { z } from 'zod';
-import { character as elizaCharacter } from '@/src/characters/eliza';
+import { logger } from '@elizaos/core';
 
 /**
  * This module handles creating projects, plugins, and agent characters.
@@ -205,32 +206,7 @@ export const create = new Command()
         type: projectType,
       });
 
-      // Try to find .env file by recursively checking parent directories
-      const envPath = path.join(process.cwd(), '.env');
-
-      let currentPath = envPath;
-      let depth = 0;
-      const maxDepth = 10;
-
-      let postgresUrl = null;
-
-      while (depth < maxDepth && currentPath.includes(path.sep)) {
-        if (existsSync(currentPath)) {
-          const env = readFileSync(currentPath, 'utf8');
-          const envVars = env.split('\n').filter((line) => line.trim() !== '');
-          const postgresUrlLine = envVars.find((line) => line.startsWith('POSTGRES_URL='));
-          if (postgresUrlLine) {
-            postgresUrl = postgresUrlLine.split('=')[1].trim();
-            break;
-          }
-        }
-
-        // Move up one directory
-        const currentDir = path.dirname(currentPath);
-        const parentDir = path.dirname(currentDir);
-        currentPath = path.join(parentDir, '.env');
-        depth++;
-      }
+      let postgresUrl: string | null = null;
 
       // Prompt for project/plugin name if not provided
       let projectName = name;
@@ -427,14 +403,23 @@ export const create = new Command()
 
         await createIgnoreFiles(targetDir);
 
-        const { elizaDbDir, envFilePath } = await getElizaDirectories();
+        // Define project-specific .env file path, this will be created if it doesn't exist by downstream functions.
+        const projectEnvFilePath = path.join(targetDir, '.env');
+
+        // Ensure proper directory creation in the new project
+        const dirs = await ensureElizaDir(targetDir);
+        logger.debug('Project directories set up:', dirs);
+
         if (database === 'pglite') {
-          await setupPgLite(process.env.PGLITE_DATA_DIR || elizaDbDir, envFilePath);
+          const projectPgliteDbDir = path.join(targetDir, '.elizadb');
+          // Pass the target directory to ensure everything is created in the new project
+          await setupPgLite(projectPgliteDbDir, projectEnvFilePath, targetDir);
           console.debug(
-            `Using PGLite database directory: ${process.env.PGLITE_DATA_DIR || elizaDbDir}`
+            `PGLite database will be stored in project directory: ${projectPgliteDbDir}`
           );
         } else if (database === 'postgres' && !postgresUrl) {
-          postgresUrl = await promptAndStorePostgresUrl(envFilePath);
+          // Store Postgres URL in the project's .env file.
+          postgresUrl = await promptAndStorePostgresUrl(projectEnvFilePath);
         }
 
         const srcDir = path.join(targetDir, 'src');

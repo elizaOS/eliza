@@ -1,12 +1,10 @@
-import * as os from 'node:os';
 import type { IDatabaseAdapter, UUID } from '@elizaos/core';
 import { type IAgentRuntime, type Plugin, logger } from '@elizaos/core';
 import { PgliteDatabaseAdapter } from './pglite/adapter';
 import { PGliteClientManager } from './pglite/manager';
 import { PgDatabaseAdapter } from './pg/adapter';
 import { PostgresConnectionManager } from './pg/manager';
-import path from 'node:path';
-import { stringToUuid } from '@elizaos/core';
+import { resolvePgliteDir } from './utils';
 
 /**
  * Global Singleton Instances (Package-scoped)
@@ -34,22 +32,12 @@ if (!globalSymbols[GLOBAL_SINGLETONS]) {
 const globalSingletons = globalSymbols[GLOBAL_SINGLETONS];
 
 /**
- * Helper function to expand tilde in paths
- */
-function expandTildePath(filepath: string): string {
-  if (filepath && typeof filepath === 'string' && filepath.startsWith('~')) {
-    return filepath.replace(/^~/, os.homedir());
-  }
-  return filepath;
-}
-
-/**
  * Creates a database adapter based on the provided configuration.
  * If a postgresUrl is provided in the config, a PgDatabaseAdapter is initialized using the PostgresConnectionManager.
  * If no postgresUrl is provided, a PgliteDatabaseAdapter is initialized using PGliteClientManager with the dataDir from the config.
  *
  * @param {object} config - The configuration object.
- * @param {string} [config.dataDir] - The directory where data is stored. Defaults to "./elizadb".
+ * @param {string} [config.dataDir] - The directory where data is stored. Defaults to "./.elizadb".
  * @param {string} [config.postgresUrl] - The URL for the PostgreSQL database.
  * @param {UUID} agentId - The unique identifier for the agent.
  * @returns {IDatabaseAdapter} The created database adapter.
@@ -61,9 +49,7 @@ export function createDatabaseAdapter(
   },
   agentId: UUID
 ): IDatabaseAdapter {
-  if (config.dataDir) {
-    config.dataDir = expandTildePath(config.dataDir);
-  }
+  const dataDir = resolvePgliteDir(config.dataDir);
 
   if (config.postgresUrl) {
     if (!globalSingletons.postgresConnectionManager) {
@@ -73,8 +59,6 @@ export function createDatabaseAdapter(
     }
     return new PgDatabaseAdapter(agentId, globalSingletons.postgresConnectionManager);
   }
-
-  const dataDir = config.dataDir ?? path.join(process.cwd(), '.pglite');
 
   if (!globalSingletons.pgLiteClientManager) {
     globalSingletons.pgLiteClientManager = new PGliteClientManager({ dataDir });
@@ -98,7 +82,7 @@ const sqlPlugin: Plugin = {
   description: 'SQL database adapter plugin using Drizzle ORM',
   init: async (_, runtime: IAgentRuntime) => {
     const config = {
-      dataDir: runtime.getSetting('PGLITE_DATA_DIR') ?? path.join(process.cwd(), '.pglite'),
+      dataDir: resolvePgliteDir(runtime.getSetting('PGLITE_DATA_DIR') as string | undefined),
       postgresUrl: runtime.getSetting('POSTGRES_URL'),
     };
 

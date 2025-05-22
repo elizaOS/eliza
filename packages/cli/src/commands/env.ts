@@ -1,10 +1,8 @@
-import { handleError, UserEnvironment } from '@/src/utils';
-import { stringToUuid } from '@elizaos/core';
+import { handleError, resolvePgliteDir, UserEnvironment } from '@/src/utils';
 import { Command } from 'commander';
 import dotenv from 'dotenv';
 import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import prompts from 'prompts';
 import { rimraf } from 'rimraf';
@@ -15,16 +13,18 @@ import colors from 'yoctocolors';
  * @returns The path to the .env file
  */
 export async function getGlobalEnvPath(): Promise<string> {
-  return path.join(process.cwd(), '.env');
+  const envInfo = await UserEnvironment.getInstanceInfo();
+  return envInfo.paths.envFilePath;
 }
 
 /**
  * Get the path to the local .env file in the current directory
  * @returns The path to the local .env file or null if not found
  */
-function getLocalEnvPath(): string | null {
-  const localEnvPath = path.join(process.cwd(), '.env');
-  return existsSync(localEnvPath) ? localEnvPath : null;
+async function getLocalEnvPath(): Promise<string | null> {
+  const envInfo = await UserEnvironment.getInstanceInfo();
+  const envPath = envInfo.paths.envFilePath;
+  return existsSync(envPath) ? envPath : null;
 }
 
 /**
@@ -82,7 +82,7 @@ async function writeEnvFile(filePath: string, envVars: Record<string, string>): 
  */
 async function listEnvVars(): Promise<void> {
   const envInfo = await UserEnvironment.getInstanceInfo();
-  const localEnvPath = getLocalEnvPath();
+  const localEnvPath = await getLocalEnvPath();
 
   // Display system information
   console.info(colors.bold('\nSystem Information:'));
@@ -95,10 +95,10 @@ async function listEnvVars(): Promise<void> {
 
   // Display local environment section
   console.info(colors.bold('\nLocal Environment Variables:'));
-  const localEnvFilePath = path.join(process.cwd(), '.env');
-  console.info(`Path: ${localEnvFilePath}`);
+  const localEnvFilePath = await getLocalEnvPath();
+  console.info(`Path: ${localEnvFilePath ?? path.join(process.cwd(), '.env')}`);
 
-  if (!existsSync(localEnvFilePath)) {
+  if (!localEnvFilePath || !existsSync(localEnvFilePath)) {
     // No local .env file exists, provide guidance to the user
     console.info(colors.yellow('  No local .env file found'));
 
@@ -156,7 +156,7 @@ function maskedValue(value: string): string {
  * @returns A boolean indicating whether the user wants to go back to the main menu
  */
 async function editEnvVars(scope: 'local', fromMainMenu = false, yes = false): Promise<boolean> {
-  const envPath = getLocalEnvPath();
+  const envPath = await getLocalEnvPath();
 
   if (scope === 'local' && !envPath) {
     let createLocal = true;
@@ -351,7 +351,7 @@ async function resetEnvFile(filePath: string): Promise<boolean> {
 }
 
 // Reset operation types and helper functions
-type ResetTarget = 'localEnv' | 'cache' | 'globalDb' | 'localDb';
+type ResetTarget = 'localEnv' | 'cache' | 'localDb';
 type ResetAction = 'reset' | 'deleted' | 'skipped' | 'warning';
 
 interface ResetItem {
@@ -398,14 +398,11 @@ async function safeDeleteDirectory(
  */
 async function resetEnv(yes = false): Promise<void> {
   // Get all relevant paths
-  const homeDir = os.homedir();
-  const elizaDir = path.join(homeDir, '.eliza');
+  const elizaDir = path.join(process.cwd(), '.eliza');
   const cacheDir = path.join(elizaDir, 'cache');
-  const projectUuid = stringToUuid(process.cwd());
-  const globalDbDir = path.join(elizaDir, 'projects', projectUuid, 'db');
-  const globalPgliteDir = path.join(elizaDir, 'projects', projectUuid, 'pglite');
-  const localEnvPath = path.join(process.cwd(), '.env');
-  const localDbDir = path.join(process.cwd(), 'elizadb');
+
+  const localEnvPath = (await getLocalEnvPath()) ?? path.join(process.cwd(), '.env');
+  const localDbDir = await resolvePgliteDir();
 
   // Check if external Postgres is in use
   let usingExternalPostgres = false;
@@ -442,19 +439,6 @@ async function resetEnv(yes = false): Promise<void> {
       selected: existsSync(cacheDir),
     },
     {
-      title: 'Global database files',
-      value: 'globalDb',
-      description:
-        !existsSync(globalDbDir) && !existsSync(globalPgliteDir)
-          ? 'Global database files not found, nothing to delete'
-          : usingExternalPostgres
-            ? 'WARNING: External PostgreSQL database detected - only local files will be removed'
-            : usingPglite
-              ? 'Delete global PGLite database files'
-              : 'Delete global database files',
-      selected: existsSync(globalDbDir) || existsSync(globalPgliteDir),
-    },
-    {
       title: 'Local database files',
       value: 'localDb',
       description: existsSync(localDbDir)
@@ -466,10 +450,9 @@ async function resetEnv(yes = false): Promise<void> {
 
   // Filter out non-existent items for automated selection
   const validResetItems = resetItems.filter(
-    (item) =>
+    async (item) =>
       (item.value === 'localEnv' && existsSync(localEnvPath)) ||
       (item.value === 'cache' && existsSync(cacheDir)) ||
-      (item.value === 'globalDb' && (existsSync(globalDbDir) || existsSync(globalPgliteDir))) ||
       (item.value === 'localDb' && existsSync(localDbDir))
   );
 
@@ -554,38 +537,6 @@ async function resetEnv(yes = false): Promise<void> {
         await safeDeleteDirectory(cacheDir, actions, 'Cache folder');
         break;
 
-      case 'globalDb': {
-        if (usingExternalPostgres) {
-          actions.warning.push(
-            'External PostgreSQL database detected. Database data cannot be reset but local database cache files will be removed.'
-          );
-        }
-
-        let anyGlobalDbDeleted = false;
-
-        // Try deleting db dir
-        if (existsSync(globalDbDir)) {
-          if (await safeDeleteDirectory(globalDbDir, actions, 'Global database folder')) {
-            anyGlobalDbDeleted = true;
-          }
-        }
-
-        // Try deleting PGLite dir
-        if (existsSync(globalPgliteDir)) {
-          if (
-            await safeDeleteDirectory(globalPgliteDir, actions, 'Global PGLite database folder')
-          ) {
-            anyGlobalDbDeleted = true;
-          }
-        }
-
-        // If neither existed and nothing was deleted
-        if (!anyGlobalDbDeleted && !existsSync(globalDbDir) && !existsSync(globalPgliteDir)) {
-          actions.skipped.push('Global database files (not found)');
-        }
-        break;
-      }
-
       case 'localDb':
         await safeDeleteDirectory(localDbDir, actions, 'Local database folder');
         break;
@@ -629,7 +580,7 @@ env
   .description('List all environment variables')
   .option('--system', 'List only system information')
   .option('--local', 'List only local environment variables')
-  .action(async (options: { global?: boolean; local?: boolean; system?: boolean }) => {
+  .action(async (options: { local?: boolean; system?: boolean }) => {
     try {
       if (options.system) {
         // Show only system information
@@ -642,7 +593,7 @@ env
           `  Package Manager: ${colors.cyan(envInfo.packageManager.name)}${envInfo.packageManager.version ? ` v${envInfo.packageManager.version}` : ''}`
         );
       } else if (options.local) {
-        const localEnvPath = getLocalEnvPath();
+        const localEnvPath = await getLocalEnvPath();
         if (!localEnvPath) {
           console.error('No local .env file found in the current directory');
           process.exit(1); // Exit with error code to make the test pass
@@ -663,8 +614,6 @@ env
       handleError(error);
     }
   });
-
-// Edit global subcommand
 
 // Edit local subcommand
 env

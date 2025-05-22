@@ -249,7 +249,7 @@ const messageReceivedHandler = async ({
           room?.type === ChannelType.VOICE_DM ||
           room?.type === ChannelType.SELF ||
           room?.type === ChannelType.API ||
-          room?.source === 'client_chat';
+          room?.source.includes('client_chat');
 
         logger.debug(
           `[Bootstrap] Skipping shouldRespond check for ${runtime.character.name} because ${room?.type} ${room?.source}`
@@ -642,6 +642,7 @@ const postGeneratedHandler = async ({
     let cleanedText = text.replace(/^['"](.*)['"]$/, '$1');
     // Fix newlines
     cleanedText = cleanedText.replaceAll(/\\n/g, '\n\n');
+    cleanedText = cleanedText.replace(/([^\n])\n([^\n])/g, '$1\n\n$2');
     // Truncate to Twitter's character limit (280)
     if (cleanedText.length > 280) {
       cleanedText = truncateToCompleteSentence(cleanedText, 280);

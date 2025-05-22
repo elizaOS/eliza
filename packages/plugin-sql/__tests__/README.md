@@ -9,7 +9,7 @@ The integration tests now use **PGlite** by default, which runs a PostgreSQL-com
 When the tests are executed:
 
 - PGlite initializes the database schema.
-- Database files for PGlite may be created in an `elizadb` directory at the root of the `packages/plugin-sql` package. This allows for inspection if needed but is generally handled automatically.
+- Database files for PGlite may be created in an `.elizadb` directory at the root of the `packages/plugin-sql` package. This allows for inspection if needed but is generally handled automatically.
 
 The previous dependency on `seed/config.ts` and the `TEST_DATABASE_URL` environment variable for configuring a PostgreSQL connection has been removed for the default PGlite setup.
 

@@ -22,7 +22,7 @@ describe('Environment Setup', () => {
     const srcDir = path.join(process.cwd(), 'src');
     expect(fs.existsSync(srcDir)).toBe(true);
 
-    const requiredSrcFiles = ['index.ts', 'plugin.ts', 'tests.ts'];
+    const requiredSrcFiles = ['index.ts', 'plugin.ts'];
 
     for (const file of requiredSrcFiles) {
       const filePath = path.join(srcDir, file);

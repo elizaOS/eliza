@@ -199,45 +199,9 @@ export const starterPlugin: Plugin = {
       return 'Never gonna make you cry, never gonna say goodbye, never gonna tell a lie and hurt you...';
     },
   },
-  tests: [
-    {
-      name: 'plugin_starter_test_suite',
-      tests: [
-        {
-          name: 'example_test',
-          fn: async (runtime) => {
-            logger.debug('example_test run by ', runtime.character.name);
-            // Add a proper assertion that will pass
-            if (runtime.character.name !== 'Eliza') {
-              throw new Error(
-                `Expected character name to be "Eliza" but got "${runtime.character.name}"`
-              );
-            }
-            // Verify the plugin is loaded properly
-            const service = runtime.getService('starter');
-            if (!service) {
-              throw new Error('Starter service not found');
-            }
-            // Don't return anything to match the void return type
-          },
-        },
-        {
-          name: 'should_have_hello_world_action',
-          fn: async (runtime) => {
-            // Check if the hello world action is registered
-            // Look for the action in our plugin's actions
-            // The actual action name in this plugin is "helloWorld", not "hello"
-            const actionExists = starterPlugin.actions.some((a) => a.name === 'HELLO_WORLD');
-            if (!actionExists) {
-              throw new Error('Hello world action not found in plugin');
-            }
-          },
-        },
-      ],
-    },
-  ],
   routes: [
     {
+      name: 'hello-world-route',
       path: '/helloworld',
       type: 'GET',
       handler: async (_req: any, res: any) => {

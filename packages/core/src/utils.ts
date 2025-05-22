@@ -3,6 +3,7 @@ import handlebars from 'handlebars';
 import { sha1 } from 'js-sha1';
 import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
 import pkg from 'stream-browserify';
+
 import { names, uniqueNamesGenerator } from 'unique-names-generator';
 import { z } from 'zod';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
@@ -14,9 +15,9 @@ import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 // A common setup is to copy 'node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs' to the output directory.
 pdfjsLib.GlobalWorkerOptions.workerSrc = './pdf.worker.mjs';
 
+import logger from './logger';
 import type { Content, Entity, IAgentRuntime, Memory, State, TemplateType } from './types';
 import { ModelType, UUID } from './types';
-import logger from './logger';
 
 const { PassThrough, Readable } = pkg;
 
@@ -724,52 +725,4 @@ export function stringToUuid(target: string | number): UUID {
   }
 
   return `${_uint8ArrayToHex(hashBuffer.slice(0, 4))}-${_uint8ArrayToHex(hashBuffer.slice(4, 6))}-${_uint8ToHex(hashBuffer[6] & 0x0f)}${_uint8ToHex(hashBuffer[7])}-${_uint8ToHex((hashBuffer[8] & 0x3f) | 0x80)}${_uint8ToHex(hashBuffer[9])}-${_uint8ArrayToHex(hashBuffer.slice(10, 16))}` as UUID;
-}
-
-/**
- * Gets the base URL for a provider API.
- *
- * @param {IAgentRuntime} runtime - The agent runtime instance
- * @param {string} provider - The provider name (e.g., 'redpill', 'openai')
- * @param {string} defaultBaseURL - The default base URL to use for the provider
- * @returns {string} The base URL for the provider API
- */
-
-// Placeholder function untill all LLM plugins are fixed and published
-export function getProviderBaseURL(
-  runtime: IAgentRuntime,
-  provider: string,
-  defaultBaseURL: string
-): string {
-  return defaultBaseURL;
-}
-
-/**
- * Converts a PDF file (provided as a Buffer) into raw text.
- * @param pdfBuffer The PDF file content as a Buffer.
- * @returns A Promise that resolves to the extracted text string.
- */
-export async function convertPdfToText(pdfBuffer: Buffer): Promise<string> {
-  try {
-    const uint8ArrayBuffer = new Uint8Array(pdfBuffer);
-    const loadingTask = pdfjsLib.getDocument({ data: uint8ArrayBuffer });
-    const pdfDocument = await loadingTask.promise;
-    let fullText = '';
-
-    for (let i = 1; i <= pdfDocument.numPages; i++) {
-      const page = await pdfDocument.getPage(i);
-      const textContent = await page.getTextContent();
-      // Filter for items that are TextItem and have the 'str' property
-      const pageText = textContent.items
-        .filter((item) => 'str' in item)
-        .map((item) => (item as any).str) // Cast to any to access str after filtering, or use a proper type guard
-        .join(' ');
-      fullText += pageText + (textContent.items.length > 0 ? '\n' : '');
-    }
-    return fullText.trim();
-  } catch (error) {
-    console.error('Error parsing PDF with pdfjs-dist:', error);
-    logger.error('[convertPdfToText] Error parsing PDF with pdfjs-dist:', { error });
-    throw new Error('Failed to convert PDF to text using pdfjs-dist.');
-  }
 }

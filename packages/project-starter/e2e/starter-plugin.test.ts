@@ -1,15 +1,49 @@
-import type { Content, IAgentRuntime, Memory, State, TestSuite, UUID } from '@elizaos/core';
+import { character } from '../src/index';
 import { v4 as uuidv4 } from 'uuid';
-import { character } from './index';
+
+// Define a minimal TestSuite interface that matches what's needed
+interface TestSuite {
+  name: string;
+  description: string;
+  tests: Array<{
+    name: string;
+    fn: (runtime: any) => Promise<any>;
+  }>;
+}
+
+// Define minimal interfaces for the types we need
+type UUID = `${string}-${string}-${string}-${string}-${string}`;
+
+interface Memory {
+  entityId: UUID;
+  roomId: UUID;
+  content: {
+    text: string;
+    source: string;
+    actions?: string[];
+  };
+}
+
+interface State {
+  values: Record<string, any>;
+  data: Record<string, any>;
+  text: string;
+}
+
+interface Content {
+  text: string;
+  source?: string;
+  actions?: string[];
+}
 
 export class StarterTestSuite implements TestSuite {
   name = 'starter';
-  description = 'Tests for the starter project';
+  description = 'E2E tests for the starter project';
 
   tests = [
     {
       name: 'Character configuration test',
-      fn: async (runtime: IAgentRuntime) => {
+      fn: async (runtime: any) => {
         const requiredFields = ['name', 'bio', 'plugins', 'system', 'messageExamples'];
         const missingFields = requiredFields.filter((field) => !(field in character));
 
@@ -37,7 +71,7 @@ export class StarterTestSuite implements TestSuite {
     },
     {
       name: 'Plugin initialization test',
-      fn: async (runtime: IAgentRuntime) => {
+      fn: async (runtime: any) => {
         // Test plugin initialization with empty config
         try {
           await runtime.registerPlugin({
@@ -53,7 +87,7 @@ export class StarterTestSuite implements TestSuite {
     },
     {
       name: 'Hello world action test',
-      fn: async (runtime: IAgentRuntime) => {
+      fn: async (runtime: any) => {
         const message: Memory = {
           entityId: uuidv4() as UUID,
           roomId: uuidv4() as UUID,
@@ -112,7 +146,7 @@ export class StarterTestSuite implements TestSuite {
     },
     {
       name: 'Hello world provider test',
-      fn: async (runtime: IAgentRuntime) => {
+      fn: async (runtime: any) => {
         const message: Memory = {
           entityId: uuidv4() as UUID,
           roomId: uuidv4() as UUID,
@@ -155,7 +189,7 @@ export class StarterTestSuite implements TestSuite {
     },
     {
       name: 'Starter service test',
-      fn: async (runtime: IAgentRuntime) => {
+      fn: async (runtime: any) => {
         // Test service registration and lifecycle
         try {
           const service = runtime.getService('starter');
@@ -179,5 +213,5 @@ export class StarterTestSuite implements TestSuite {
   ];
 }
 
-// Export a default instance
+// Export a default instance of the test suite for the E2E test runner
 export default new StarterTestSuite();

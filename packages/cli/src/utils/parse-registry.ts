@@ -1,8 +1,9 @@
 import { writeFileSync, mkdirSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { Octokit } from 'octokit';
 import semver from 'semver';
+import { UserEnvironment } from './user-environment';
+import os from 'node:os';
 
 /*───────────────────────────────────────────────────────────────────────────*/
 // Types
@@ -242,10 +243,10 @@ async function processRepo(npmId: string, gitRef: string): Promise<[string, Vers
 // Main
 /*───────────────────────────────────────────────────────────────────────────*/
 
-(async () => {
+async function executeParseRegistry(): Promise<void> {
   const timeoutId = setTimeout(() => {
     console.error('Registry parsing timeout: Process took longer than 20 seconds');
-    process.exit(1);
+    throw new Error('Registry parsing timeout: Process took longer than 30 seconds');
   }, 30000);
 
   const registry = (await safeFetchJSON<RawRegistry>(REGISTRY_URL)) || {};
@@ -257,25 +258,23 @@ async function processRepo(npmId: string, gitRef: string): Promise<[string, Vers
     const results = await Promise.all(tasks);
     for (const [id, info] of results) report[id] = info;
   } else {
-    for (const task of tasks) {
-      const [id, info] = await task;
-      report[id] = info;
-      await new Promise((r) => setTimeout(r, 500));
-    }
+    console.log('Please set `GH_TOKEN` or `GITHUB_TOKEN` environment variable to run this command');
+    process.exit(1);
   }
 
   /*───────────────────────────────────────────────────────────────────────*/
   // Cache to ~/.eliza/cached-registry.json
   /*───────────────────────────────────────────────────────────────────────*/
 
-  const cacheDir = join(homedir(), '.eliza');
-  const cacheFilePath = join(cacheDir, 'cached-registry.json');
+  const elizaDir = join(os.homedir(), '.eliza');
+
+  const cacheFilePath = join(elizaDir, 'cached-registry.json');
 
   try {
-    mkdirSync(cacheDir, { recursive: true });
+    mkdirSync(elizaDir, { recursive: true });
   } catch (error: any) {
     if (error.code !== 'EEXIST') {
-      console.error(`Failed to create cache directory at ${cacheDir}:`, error);
+      console.error(`Failed to create cache directory at ${elizaDir}:`, error);
       throw error;
     }
   }
@@ -288,4 +287,25 @@ async function processRepo(npmId: string, gitRef: string): Promise<[string, Vers
   writeFileSync(cacheFilePath, JSON.stringify(dataToSave, null, 2));
   console.log(`\nDone → ${cacheFilePath}`);
   clearTimeout(timeoutId);
-})();
+}
+
+export default executeParseRegistry;
+
+// This block allows the script to be run directly with `bun run`.
+// It ensures that executeParseRegistry is called when this file is the entry point.
+if (typeof Bun !== 'undefined' && Bun.main === import.meta.path) {
+  (async () => {
+    try {
+      await executeParseRegistry();
+    } catch (error) {
+      // Errors like timeout or failed directory creation are often already logged
+      // by executeParseRegistry itself. This catch block ensures the process exits
+      // with an error code if any unhandled exception occurs during direct execution.
+      // Avoid re-logging errors that executeParseRegistry specifically handles and logs.
+      if (!(error instanceof Error && error.message.includes('Registry parsing timeout'))) {
+        // console.error('An unexpected error occurred during direct execution of parse-registry.ts:', error.message);
+      } // The error from executeParseRegistry timeout is already clear.
+      process.exit(1);
+    }
+  })();
+}

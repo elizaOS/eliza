@@ -1,0 +1,76 @@
+name: Deploy CLI with Bun
+
+on:
+  push:
+    branches:
+      - 'v2-develop'
+    paths:
+      - 'packages/cli/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check for version bump
+        id: version_check
+        run: |
+          old=$(git show HEAD^:packages/cli/package.json | jq -r .version)
+          new=$(jq -r .version packages/cli/package.json)
+          echo "Old version: $old"
+          echo "New version: $new"
+          if [ "$old" != "$new" ]; then
+            echo "version_bump=true" >> $GITHUB_OUTPUT
+          else
+            echo "version_bump=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Skip if no version bump
+        if: steps.version_check.outputs.version_bump != 'true'
+        run: |
+          echo "No version bump detected in packages/cli/package.json, skipping."
+          exit 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build CLI
+        run: bun run build
+
+      - name: Configure npm auth
+        run: echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
+
+      - name: Configure Git for Lerna
+        run: |
+          git config --global user.name "${{ github.actor }}"
+          git config --global user.email "${{ github.actor }}@users.noreply.github.com"
+          # Verify the config was set correctly
+          git config --get user.name
+          git config --get user.email
+
+      - name: Ensure push auth via GH_DEPLOY_TOKEN
+        run: |
+          git remote set-url origin \
+            https://x-access-token:${{ secrets.GH_DEPLOY_TOKEN }}@github.com/${{ github.repository }}.git
+
+      - name: Publish to npm
+        run: |
+          # Set Git identity again to ensure it's available in this step
+          git config --global user.name "${{ github.actor }}"
+          git config --global user.email "${{ github.actor }}@users.noreply.github.com"
+          bun run release:beta -- --yes
+        env:
+          NPM_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_DEPLOY_TOKEN }}
+          # Add the git identity as environment variables
+          GIT_AUTHOR_NAME: '${{ github.actor }}'
+          GIT_AUTHOR_EMAIL: '${{ github.actor }}@users.noreply.github.com'
+          GIT_COMMITTER_NAME: '${{ github.actor }}'
+          GIT_COMMITTER_EMAIL: '${{ github.actor }}@users.noreply.github.com'
