@@ -323,8 +323,8 @@
         "whatwg-url": "7.1.0",
       },
     },
-    "packages/plugin-rag": {
-      "name": "@elizaos/plugin-rag",
+    "packages/plugin-knowledge": {
+      "name": "@elizaos/plugin-knowledge",
       "version": "1.0.0-beta.52",
       "dependencies": {
         "@ai-sdk/anthropic": "^1.2.11",
@@ -1092,7 +1092,7 @@
 
     "@elizaos/plugin-pdf": ["@elizaos/plugin-pdf@1.0.0-beta.53", "", { "dependencies": { "@aws-sdk/client-s3": "^3.812.0", "@aws-sdk/s3-request-presigner": "^3.812.0", "@elizaos/core": "^1.0.0-beta.52", "@types/uuid": "10.0.0", "capsolver-npm": "2.1.9", "esbuild-plugin-copy": "^2.1.1", "fluent-ffmpeg": "2.1.3", "glob": "11.0.2", "patchright": "1.52.4", "pdfjs-dist": "5.2.133", "uuid": "11.1.0", "youtube-dl-exec": "3.0.21" }, "peerDependencies": { "whatwg-url": "7.1.0" } }, "sha512-NB7Q7C63SnRhrhYi7Clkj7osdYG3oIB6OPrkeTSSJZoLlcCouCDcVuOi99ENTpKXHFSkbnDm/Csqk7qCOq3YOA=="],
 
-    "@elizaos/plugin-rag": ["@elizaos/plugin-rag@workspace:packages/plugin-rag"],
+    "@elizaos/plugin-knowledge": ["@elizaos/plugin-knowledge@workspace:packages/plugin-knowledge"],
 
     "@elizaos/plugin-solana": ["@elizaos/plugin-solana@1.0.0-beta.52", "", { "dependencies": { "@elizaos/core": "^1.0.0-beta.51", "@solana/spl-token": "0.4.13", "@solana/web3.js": "^1.98.0", "bignumber.js": "9.3.0", "bs58": "6.0.0", "vitest": "3.1.3" }, "peerDependencies": { "form-data": "4.0.2", "whatwg-url": "7.1.0" } }, "sha512-489Gz9ZBIAOqmJytiAdAbs9XugB6lg/T9eYReYf0ghwPuQ//a0Sy8r2pYWabKWPy2ELzibuxaSWInCJHrKSSkg=="],
 
@@ -6340,7 +6340,7 @@
 
     "@elizaos/plugin-pdf/uuid": ["uuid@11.1.0", "", { "bin": { "uuid": "dist/esm/bin/uuid" } }, "sha512-0/A9rDy9P7cJ+8w1c9WD9V//9Wj15Ce2MPz8Ri6032usz+NfePxx5AcN3bN+r6ZL6jEo066/yNYB3tn4pQEx+A=="],
 
-    "@elizaos/plugin-rag/typescript": ["typescript@5.8.2", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-aJn6wq13/afZp/jT9QZmwEjDqqvSGp1VT5GVg+f/t6/oVyrgXM6BY1h9BRh/O5p3PlUPAe+WuiEZOmb/49RqoQ=="],
+    "@elizaos/plugin-knowledge/typescript": ["typescript@5.8.2", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-aJn6wq13/afZp/jT9QZmwEjDqqvSGp1VT5GVg+f/t6/oVyrgXM6BY1h9BRh/O5p3PlUPAe+WuiEZOmb/49RqoQ=="],
 
     "@elizaos/plugin-solana/bs58": ["bs58@6.0.0", "", { "dependencies": { "base-x": "^5.0.0" } }, "sha512-PD0wEnEYg6ijszw/u8s+iI3H17cTymlrwkKhDhPZq+Sokl3AU4htyBFTjAeNAlCCmg0f53g6ih3jATyCKftTfw=="],
 

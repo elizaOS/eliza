@@ -48,7 +48,7 @@
   },
   "scripts": {
     "start": "elizaos start",
-    "test-with-cli": "cd ../cli && bun run build && cd ../plugin-rag && elizaos test",
+    "test-with-cli": "cd ../cli && bun run build && cd ../plugin-knowledge && elizaos test",
     "dev": "elizaos dev",
     "build": "tsup",
     "lint": "prettier --write ./src",

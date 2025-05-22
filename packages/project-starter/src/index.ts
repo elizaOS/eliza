@@ -21,7 +21,7 @@ export const character: Character = {
     '@elizaos/plugin-openai',
     '@elizaos/plugin-discord',
     '@elizaos/plugin-bootstrap',
-    '@elizaos/plugin-rag',
+    '@elizaos/plugin-knowledge',
   ],
   settings: {
     secrets: {

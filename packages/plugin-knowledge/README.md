@@ -122,7 +122,7 @@ MAX_OUTPUT_TOKENS=4096  # Default: 4096
 The plugin is built with a modular, clean architecture that follows SOLID principles:
 
 ```
-packages/plugin-rag/
+packages/plugin-knowledge/
 ├── src/
 │   ├── index.ts           # Main entry point and plugin definition
 │   ├── service.ts         # Knowledge service implementation
@@ -173,7 +173,7 @@ The document processing flow follows these steps regardless of database type:
 ### Basic Usage
 
 ```typescript
-import { KnowledgeService } from '@elizaos/plugin-rag';
+import { KnowledgeService } from '@elizaos/plugin-knowledge';
 
 // Add knowledge to an agent
 const result = await knowledgeService.addKnowledge({
