@@ -16,8 +16,7 @@ env:
 jobs:
   integration-tests:
     runs-on: ubuntu-latest
-    runs-on: ubuntu-latest
-    env:
+=    env:
       SHARP_IGNORE_GLOBAL_LIBVIPS: '1'
       npm_config_build_from_source: 'false'
     steps:

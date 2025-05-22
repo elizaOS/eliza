@@ -524,32 +524,6 @@ export class AgentRuntime implements IAgentRuntime {
     return this.adapter.getConnection();
   }
 
-  async getKnowledge(
-    message: Memory,
-    scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID }
-  ): Promise<KnowledgeItem[]> {
-    const ragService = this.getService('rag' as ServiceTypeName) as RagServiceDelegator | null;
-    if (ragService && typeof ragService.getKnowledge === 'function') {
-      return ragService.getKnowledge(message, scope);
-    }
-    this.runtimeLogger.warn(
-      '[AgentRuntime] RAG service not available or getKnowledge not implemented on it.'
-    );
-    return [];
-  }
-
-  async addKnowledge(item: KnowledgeItem, options?: any, scope?: any): Promise<void> {
-    const ragService = this.getService('rag' as ServiceTypeName) as RagServiceDelegator | null;
-    if (ragService && typeof ragService._internalAddKnowledge === 'function') {
-      await ragService._internalAddKnowledge(item, options, scope);
-      return;
-    }
-    this.runtimeLogger.error(
-      '[AgentRuntime] RAG service not available or _internalAddKnowledge not implemented on it. Cannot add knowledge.'
-    );
-    throw new Error('RAG Service not available to add knowledge.');
-  }
-
   setSetting(key: string, value: string | boolean | null | any, secret = false) {
     if (secret) {
       if (!this.character.secrets) {
@@ -1774,8 +1748,8 @@ export class AgentRuntime implements IAgentRuntime {
   async deleteRoom(roomId: UUID): Promise<void> {
     await this.adapter.deleteRoom(roomId);
   }
-  async deleteRoomsByServerId(serverId: UUID): Promise<void> {
-    await this.adapter.deleteRoomsByServerId(serverId);
+  async deleteRoomsByWorldId(worldId: UUID): Promise<void> {
+    await this.adapter.deleteRoomsByWorldId(worldId);
   }
   async updateRoom(room: Room): Promise<void> {
     await this.adapter.updateRoom(room);
@@ -1941,5 +1915,12 @@ export class AgentRuntime implements IAgentRuntime {
         throw error;
       }
     });
+  }
+  async getMemoriesByWorldId(params: {
+    worldId: UUID;
+    count?: number;
+    tableName?: string;
+  }): Promise<Memory[]> {
+    return await this.adapter.getMemoriesByWorldId(params);
   }
 }

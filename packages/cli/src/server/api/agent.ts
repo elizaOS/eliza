@@ -24,7 +24,6 @@ import {
   logger,
   messageHandlerTemplate,
   validateUuid,
-  convertPdfToText,
 } from '@elizaos/core';
 import express from 'express';
 import fs from 'node:fs';
@@ -1913,26 +1912,9 @@ export function agentRouter(
 
         try {
           // Read file content into a buffer
-<<<<<<< HEAD
-          const fileBuffer = fs.readFileSync(file.path);
-          let extractedTextForContent: string;
-          const relativePath = file.originalname;
-
-          if (file.mimetype === 'application/pdf') {
-            extractedTextForContent = await convertPdfToText(fileBuffer);
-          } else {
-            extractedTextForContent = fileBuffer.toString('utf8');
-          }
-
-          const formattedMainText = `Path: ${relativePath}\n\n${extractedTextForContent}`;
-
-          // Create knowledge item with proper metadata
-          const knowledgeId = createUniqueUuid(runtime, `knowledge-${Date.now()}`);
-=======
           const fileBuffer = await fs.promises.readFile(filePath);
 
           // Determine the file extension
->>>>>>> 31cf4c1c54da7874e9aab4e77d4022ec8f582fde
           const fileExt = file.originalname.split('.').pop()?.toLowerCase() || '';
           const filename = file.originalname;
           const title = filename.replace(`.${fileExt}`, '');
@@ -1944,11 +1926,7 @@ export function agentRouter(
           const knowledgeItem: KnowledgeItem = {
             id: knowledgeId,
             content: {
-<<<<<<< HEAD
-              text: formattedMainText,
-=======
               text: base64Content, // Always use base64 content
->>>>>>> 31cf4c1c54da7874e9aab4e77d4022ec8f582fde
             },
             metadata: {
               type: MemoryType.DOCUMENT,
@@ -1983,16 +1961,8 @@ export function agentRouter(
             type: file.mimetype,
             size: file.size,
             uploadedAt: Date.now(),
-<<<<<<< HEAD
-            preview:
-              formattedMainText.length > 0
-                ? `${formattedMainText.substring(0, 150)}${formattedMainText.length > 150 ? '...' : ''}`
-                : 'No preview available',
-          });
-=======
             status: 'success',
           };
->>>>>>> 31cf4c1c54da7874e9aab4e77d4022ec8f582fde
         } catch (fileError) {
           logger.error(`[KNOWLEDGE POST] Error processing file ${file.originalname}: ${fileError}`);
           cleanupFile(filePath); // Ensure cleanup on error too
@@ -2110,9 +2080,13 @@ export function agentRouter(
   });
 
   router.delete('/groups/:serverId', async (req, res) => {
-    const serverId = validateUuid(req.params.serverId);
+    const worldId = validateUuid(req.params.serverId);
+    if (!worldId) {
+      sendError(res, 400, 'INVALID_ID', 'Invalid serverId (worldId) format');
+      return;
+    }
     try {
-      await db.deleteRoomsByServerId(serverId);
+      await db.deleteRoomsByWorldId(worldId);
       res.status(204).send();
     } catch (error) {
       logger.error('[GROUP DELETE] Error deleting group:', error);
@@ -2121,11 +2095,16 @@ export function agentRouter(
   });
 
   router.delete('/groups/:serverId/memories', async (req, res) => {
-    const serverId = validateUuid(req.params.serverId);
+    const worldId = validateUuid(req.params.serverId);
+    if (!worldId) {
+      sendError(res, 400, 'INVALID_ID', 'Invalid serverId (worldId) format');
+      return;
+    }
     try {
-      const memories = await db.getMemoriesByServerId({ serverId });
+      // Fetch memories using the new method, assuming serverId from path is the worldId
+      const memories = await db.getMemoriesByWorldId({ worldId, tableName: 'messages' }); // Or consider making tableName more generic if needed
       for (const memory of memories) {
-        await db.deleteMemory(memory.id);
+        await db.deleteMemory(memory.id as UUID);
       }
       res.status(204).send();
     } catch (error) {
@@ -2135,7 +2114,7 @@ export function agentRouter(
   });
 
   router.delete('/groups/:serverId/memories/:memoryId', async (req, res) => {
-    const serverId = validateUuid(req.params.serverId);
+    const worldId = validateUuid(req.params.serverId);
     const memoryId = validateUuid(req.params.memoryId);
 
     try {
@@ -2149,7 +2128,7 @@ export function agentRouter(
       if (memory.roomId) {
         const rooms = await db.getRooms(memory.worldId as UUID);
         const room = rooms.find((r) => r.id === memory.roomId);
-        if (room && room.serverId !== serverId) {
+        if (room && room.serverId !== worldId) {
           sendError(res, 400, 'BAD_REQUEST', 'Memory does not belong to server');
           return;
         }

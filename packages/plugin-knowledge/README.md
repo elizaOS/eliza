@@ -1,12 +1,12 @@
-# RAG Plugin for ElizaOS
+# Knowledge Plugin for ElizaOS
 
-This plugin provides Retrieval Augmented Generation (RAG) capabilities for ElizaOS agents, allowing them to load, index, and query knowledge from various sources.
+This plugin provides Retrieval Augmented Generation (Knowledge) capabilities for ElizaOS agents, allowing them to load, index, and query knowledge from various sources.
 
 ## Quick Setup
 
 ### Basic Setup (With plugin-openai)
 
-If you already have plugin-openai configured, you don't need any additional environment variables! The RAG plugin will automatically use your OpenAI configuration.
+If you already have plugin-openai configured, you don't need any additional environment variables! The Knowledge plugin will automatically use your OpenAI configuration.
 
 1. Make sure you have plugin-openai configured with:
 
@@ -15,16 +15,16 @@ If you already have plugin-openai configured, you don't need any additional envi
    OPENAI_EMBEDDING_MODEL=text-embedding-3-small
    ```
 
-2. Add the RAG plugin to your agent's configuration
+2. Add the Knowledge plugin to your agent's configuration
 3. That's it! The plugin will work without any additional variables
 
-### Enabling Contextual RAG
+### Enabling Contextual Knowledge
 
-If you want enhanced RAG capabilities with contextual embeddings, add:
+If you want enhanced Knowledge capabilities with contextual embeddings, add:
 
 ```env
-# Enable contextual RAG
-CTX_RAG_ENABLED=true
+# Enable contextual Knowledge
+CTX_KNOWLEDGE_ENABLED=true
 
 # Required text generation settings
 TEXT_PROVIDER=openrouter  # Choose your provider: openai, anthropic, openrouter, or google
@@ -56,15 +56,15 @@ EMBEDDING_DIMENSION=1536
 
 ## Advanced Configuration
 
-### Recommended Configurations for Contextual RAG
+### Recommended Configurations for Contextual Knowledge
 
-For optimal performance with contextual RAG, we recommend these provider combinations:
+For optimal performance with contextual Knowledge, we recommend these provider combinations:
 
 **Option 1: OpenRouter with Claude/Gemini (Best for cost efficiency)**
 
 ```env
 # If using with plugin-openai, only need these additions:
-CTX_RAG_ENABLED=true
+CTX_KNOWLEDGE_ENABLED=true
 TEXT_PROVIDER=openrouter
 TEXT_MODEL=anthropic/claude-3.5-sonnet  # or google/gemini-2.5-flash-preview
 OPENROUTER_API_KEY=your-openrouter-api-key
@@ -74,7 +74,7 @@ OPENROUTER_API_KEY=your-openrouter-api-key
 
 ```env
 # If using with plugin-openai, only need these additions:
-CTX_RAG_ENABLED=true
+CTX_KNOWLEDGE_ENABLED=true
 TEXT_PROVIDER=openai
 TEXT_MODEL=gpt-4o
 ```
@@ -87,7 +87,7 @@ TEXT_EMBEDDING_MODEL=text-embedding-004
 TEXT_PROVIDER=google
 TEXT_MODEL=gemini-1.5-pro-latest
 GOOGLE_API_KEY=your-google-api-key
-CTX_RAG_ENABLED=true
+CTX_KNOWLEDGE_ENABLED=true
 ```
 
 ### Advanced Rate Limiting Options
@@ -125,7 +125,7 @@ The plugin is built with a modular, clean architecture that follows SOLID princi
 packages/plugin-rag/
 ├── src/
 │   ├── index.ts           # Main entry point and plugin definition
-│   ├── service.ts         # RAG service implementation
+│   ├── service.ts         # Knowledge service implementation
 │   ├── types.ts           # Type definitions
 │   ├── llm.ts             # LLM interactions (text generation, embeddings)
 │   ├── config.ts          # Configuration validation
@@ -138,7 +138,7 @@ packages/plugin-rag/
 
 ### Database-Specific Processing Paths
 
-The RAG plugin adapts to the database technology being used:
+The Knowledge plugin adapts to the database technology being used:
 
 1. **PostgreSQL Mode**: Uses worker threads to offload document processing from the main thread
 2. **PGLite Mode**: Uses synchronous processing in the main thread due to PGLite's single-threaded nature
@@ -157,7 +157,7 @@ The document processing flow follows these steps regardless of database type:
 
 ## Component Overview
 
-- **RagService**: Core service that manages document processing and storage
+- **KnowledgeService**: Core service that manages document processing and storage
 - **Document Processor**: Provides shared document processing utilities for both processing paths
 
 ## Features
@@ -173,10 +173,10 @@ The document processing flow follows these steps regardless of database type:
 ### Basic Usage
 
 ```typescript
-import { RagService } from '@elizaos/plugin-rag';
+import { KnowledgeService } from '@elizaos/plugin-rag';
 
 // Add knowledge to an agent
-const result = await ragService.addKnowledge({
+const result = await knowledgeService.addKnowledge({
   clientDocumentId: 'unique-id',
   content: documentContent, // Base64 string for binary files or plain text for text files
   contentType: 'application/pdf',

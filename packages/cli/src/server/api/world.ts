@@ -65,10 +65,10 @@ export function worldRouter(server?: AgentServer): express.Router {
     }
   });
 
-  router.get('/:worldId/memories/:serverId', async (req, res) => {
+  router.get('/:worldId/memories', async (req, res) => {
     try {
-      const { serverId } = req.params;
-      const memories = await db.getMemoriesByServerId({ serverId, count: 50 });
+      const worldId = validateUuid(req.params.worldId);
+      const memories = await db.getMemoriesByWorldId({ worldId, count: 50, tableName: 'messages' });
 
       res.json({
         success: true,

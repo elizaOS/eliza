@@ -2715,108 +2715,82 @@ export abstract class BaseDrizzleAdapter<
    * @returns Promise resolving when the deletion is complete
    */
   async deleteTask(id: UUID): Promise<void> {
-    await this.withRetry(async () => {
-      await this.withDatabase(async () => {
-        await this.db
-          .delete(taskTable)
-          .where(and(eq(taskTable.id, id), eq(taskTable.agentId, this.agentId)));
-      });
+    return this.withDatabase(async () => {
+      await this.db.delete(taskTable).where(eq(taskTable.id, id));
     });
   }
 
-  /**
-   * Asynchronously retrieves group chat memories from all rooms under a given server.
-   * It fetches all room IDs associated with the `serverId`, then retrieves memories
-   * from those rooms in descending order (latest to oldest), with an optional count limit.
-   *
-   * @param {Object} params - Parameters for fetching memories.
-   * @param {UUID} params.serverId - The server ID to fetch memories for.
-   * @param {number} [params.count] - The maximum number of memories to retrieve.
-   * @returns {Promise<Memory[]>} - A promise that resolves to an array of memory objects.
-   */
-  async getMemoriesByServerId(params: { serverId: UUID; count?: number }): Promise<Memory[]> {
+  async getMemoriesByWorldId(params: {
+    worldId: UUID;
+    count?: number;
+    tableName?: string;
+  }): Promise<Memory[]> {
     return this.withDatabase(async () => {
-      // Step 1: Fetch all room IDs associated with the given serverId
-      const roomIdsResult = await this.db
-        .select({ roomId: roomTable.id })
+      // First, get all rooms for the given worldId
+      const rooms = await this.db
+        .select({ id: roomTable.id })
         .from(roomTable)
-        .where(eq(roomTable.serverId, params.serverId));
+        .where(and(eq(roomTable.worldId, params.worldId), eq(roomTable.agentId, this.agentId)));
 
-      if (roomIdsResult.length === 0) return [];
+      if (rooms.length === 0) {
+        return [];
+      }
 
-      const roomIds = roomIdsResult.map((row) => row.roomId);
+      const roomIds = rooms.map((room) => room.id as UUID);
 
-      // Step 2: Fetch all memories for these rooms, ordered from latest to oldest
-      const query = this.db
-        .select({
-          memory: memoryTable,
-          embedding: embeddingTable[this.embeddingDimension],
-        })
-        .from(memoryTable)
-        .leftJoin(embeddingTable, eq(embeddingTable.memoryId, memoryTable.id))
-        .where(inArray(memoryTable.roomId, roomIds))
-        .orderBy(desc(memoryTable.createdAt));
+      const memories = await this.getMemoriesByRoomIds({
+        roomIds,
+        tableName: params.tableName || 'messages',
+        limit: params.count,
+      });
 
-      // Step 3: Apply the count limit if provided
-      const rows = params.count ? await query.limit(params.count) : await query;
-
-      return rows.map((row) => ({
-        id: row.memory.id as UUID,
-        type: row.memory.type,
-        createdAt: row.memory.createdAt,
-        content:
-          typeof row.memory.content === 'string'
-            ? JSON.parse(row.memory.content)
-            : row.memory.content,
-        entityId: row.memory.entityId as UUID,
-        agentId: row.memory.agentId as UUID,
-        roomId: row.memory.roomId as UUID,
-        unique: row.memory.unique,
-        embedding: row.embedding ?? undefined,
-      }));
+      return memories;
     });
   }
 
-  /**
-   * Asynchronously deletes all rooms associated with a specific serverId.
-   * @param {UUID} serverId - The server ID to delete rooms for.
-   * @returns {Promise<void>} A Promise that resolves when the rooms are deleted.
-   */
-  async deleteRoomsByServerId(serverId: UUID): Promise<void> {
+  async deleteRoomsByWorldId(worldId: UUID): Promise<void> {
     return this.withDatabase(async () => {
-      await this.db.transaction(async (tx) => {
-        const roomIdsResult = await tx
-          .select({ roomId: roomTable.id })
-          .from(roomTable)
-          .where(eq(roomTable.serverId, serverId));
+      const rooms = await this.db
+        .select({ id: roomTable.id })
+        .from(roomTable)
+        .where(and(eq(roomTable.worldId, worldId), eq(roomTable.agentId, this.agentId)));
 
-        if (roomIdsResult.length === 0) return;
+      if (rooms.length === 0) {
+        logger.debug(
+          `No rooms found for worldId ${worldId} and agentId ${this.agentId} to delete.`
+        );
+        return;
+      }
 
-        const roomIds = roomIdsResult.map((row) => row.roomId);
+      const roomIds = rooms.map((room) => room.id as UUID);
 
-        await tx
-          .delete(embeddingTable)
-          .where(
-            inArray(
-              embeddingTable.memoryId,
-              tx
-                .select({ id: memoryTable.id })
-                .from(memoryTable)
-                .where(inArray(memoryTable.roomId, roomIds))
-            )
+      if (roomIds.length > 0) {
+        await this.db.delete(logTable).where(inArray(logTable.roomId, roomIds));
+        logger.debug(`Deleted logs for ${roomIds.length} rooms in world ${worldId}.`);
+
+        await this.db.delete(participantTable).where(inArray(participantTable.roomId, roomIds));
+        logger.debug(`Deleted participants for ${roomIds.length} rooms in world ${worldId}.`);
+
+        const memoriesInRooms = await this.db
+          .select({ id: memoryTable.id })
+          .from(memoryTable)
+          .where(inArray(memoryTable.roomId, roomIds));
+        const memoryIdsInRooms = memoriesInRooms.map((m) => m.id as UUID);
+
+        if (memoryIdsInRooms.length > 0) {
+          await this.db
+            .delete(embeddingTable)
+            .where(inArray(embeddingTable.memoryId, memoryIdsInRooms));
+          logger.debug(
+            `Deleted embeddings for ${memoryIdsInRooms.length} memories in world ${worldId}.`
           );
-        await tx.delete(memoryTable).where(inArray(memoryTable.roomId, roomIds));
+          await this.db.delete(memoryTable).where(inArray(memoryTable.id, memoryIdsInRooms));
+          logger.debug(`Deleted ${memoryIdsInRooms.length} memories in world ${worldId}.`);
+        }
 
-        await tx.delete(participantTable).where(inArray(participantTable.roomId, roomIds));
-
-        await tx.delete(logTable).where(inArray(logTable.roomId, roomIds));
-
-        await tx.delete(roomTable).where(inArray(roomTable.id, roomIds));
-      });
-
-      logger.debug('Rooms and related logs deleted successfully for server:', {
-        serverId,
-      });
+        await this.db.delete(roomTable).where(inArray(roomTable.id, roomIds));
+        logger.debug(`Deleted ${roomIds.length} rooms for worldId ${worldId}.`);
+      }
     });
   }
 }

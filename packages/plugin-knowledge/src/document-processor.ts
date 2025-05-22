@@ -1,36 +1,36 @@
-import { Buffer } from 'node:buffer';
 import {
-  UUID,
+  IAgentRuntime,
   Memory,
   MemoryType,
+  ModelType,
+  UUID,
   logger,
   splitChunks,
-  IAgentRuntime,
-  ModelType,
 } from '@elizaos/core';
-import { extractTextFromFileBuffer, convertPdfToTextFromBuffer } from './utils';
+import { Buffer } from 'node:buffer';
 import { v4 as uuidv4 } from 'uuid';
-import { getProviderRateLimits, validateModelConfig } from './llm';
+import { getProviderRateLimits, validateModelConfig } from './config';
 import {
-  DEFAULT_CHUNK_TOKEN_SIZE,
-  DEFAULT_CHUNK_OVERLAP_TOKENS,
   DEFAULT_CHARS_PER_TOKEN,
-  getContextualizationPrompt,
-  getChunkWithContext,
-  getPromptForMimeType,
+  DEFAULT_CHUNK_OVERLAP_TOKENS,
+  DEFAULT_CHUNK_TOKEN_SIZE,
   getCachingContextualizationPrompt,
   getCachingPromptForMimeType,
+  getChunkWithContext,
+  getContextualizationPrompt,
+  getPromptForMimeType,
 } from './ctx-embeddings';
+import { convertPdfToTextFromBuffer, extractTextFromFileBuffer } from './utils';
 
-// Read contextual RAG settings from environment variables
-const ctxRagEnabled =
-  process.env.CTX_RAG_ENABLED === 'true' || process.env.CTX_RAG_ENABLED === 'True';
+// Read contextual Knowledge settings from environment variables
+const ctxKnowledgeEnabled =
+  process.env.CTX_KNOWLEDGE_ENABLED === 'true' || process.env.CTX_KNOWLEDGE_ENABLED === 'True';
 
 // Log settings at startup
-if (ctxRagEnabled) {
-  logger.info(`Document processor starting with Contextual RAG ENABLED`);
+if (ctxKnowledgeEnabled) {
+  logger.info(`Document processor starting with Contextual Knowledge ENABLED`);
 } else {
-  logger.info(`Document processor starting with Contextual RAG DISABLED`);
+  logger.info(`Document processor starting with Contextual Knowledge DISABLED`);
 }
 
 // =============================================================================
@@ -41,7 +41,7 @@ if (ctxRagEnabled) {
  * Process document fragments synchronously
  * This function:
  * 1. Splits the document text into chunks
- * 2. Enriches chunks with context if contextual RAG is enabled
+ * 2. Enriches chunks with context if contextual Knowledge is enabled
  * 3. Generates embeddings for each chunk
  * 4. Stores fragments with embeddings in the database
  *
@@ -433,7 +433,7 @@ async function generateEmbeddingsForChunks(
 // =============================================================================
 
 /**
- * Generate contextual chunks if contextual RAG is enabled
+ * Generate contextual chunks if contextual Knowledge is enabled
  */
 async function getContextualizedChunks(
   runtime: IAgentRuntime,
@@ -442,7 +442,7 @@ async function getContextualizedChunks(
   contentType: string | undefined,
   batchOriginalIndices: number[]
 ): Promise<Array<{ contextualizedText: string; index: number; success: boolean }>> {
-  if (ctxRagEnabled && fullDocumentText) {
+  if (ctxKnowledgeEnabled && fullDocumentText) {
     logger.debug(`Generating contexts for ${chunks.length} chunks`);
     return await generateContextsInBatch(
       runtime,
@@ -452,7 +452,7 @@ async function getContextualizedChunks(
       batchOriginalIndices
     );
   } else {
-    // If contextual RAG is disabled, prepare the chunks without modification
+    // If contextual Knowledge is disabled, prepare the chunks without modification
     return chunks.map((chunkText, idx) => ({
       contextualizedText: chunkText,
       index: batchOriginalIndices[idx],

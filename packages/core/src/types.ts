@@ -917,7 +917,7 @@ export interface IDatabaseAdapter {
 
   deleteRoom(roomId: UUID): Promise<void>;
 
-  deleteRoomsByServerId(serverId: UUID): Promise<void>;
+  deleteRoomsByWorldId(worldId: UUID): Promise<void>;
 
   updateRoom(room: Room): Promise<void>;
 
@@ -992,6 +992,12 @@ export interface IDatabaseAdapter {
   getTasksByName(name: string): Promise<Task[]>;
   updateTask(id: UUID, task: Partial<Task>): Promise<void>;
   deleteTask(id: UUID): Promise<void>;
+
+  getMemoriesByWorldId(params: {
+    worldId: UUID;
+    count?: number;
+    tableName?: string;
+  }): Promise<Memory[]>;
 }
 
 /**

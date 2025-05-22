@@ -1,6 +1,6 @@
 {
-  "name": "@elizaos/plugin-rag",
-  "description": "Plugin for RAG",
+  "name": "@elizaos/plugin-knowledge",
+  "description": "Plugin for Knowledge",
   "version": "1.0.0-beta.52",
   "type": "module",
   "main": "dist/index.js",

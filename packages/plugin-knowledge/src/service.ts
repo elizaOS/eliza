@@ -1,30 +1,30 @@
 import {
-  Service,
-  IAgentRuntime,
-  logger,
-  UUID,
-  Memory,
-  MemoryType,
-  KnowledgeItem,
-  ModelType,
-  createUniqueUuid,
-  splitChunks,
-  Semaphore,
-  MemoryMetadata,
-  FragmentMetadata,
   Content,
+  createUniqueUuid,
+  FragmentMetadata,
+  IAgentRuntime,
+  KnowledgeItem,
+  logger,
+  Memory,
+  MemoryMetadata,
+  MemoryType,
+  ModelType,
+  Semaphore,
+  Service,
+  splitChunks,
+  UUID,
 } from '@elizaos/core';
-import { AddKnowledgeOptions } from './types';
 import {
-  processFragmentsSynchronously,
-  extractTextFromDocument,
   createDocumentMemory,
+  extractTextFromDocument,
+  processFragmentsSynchronously,
 } from './document-processor';
+import { AddKnowledgeOptions } from './types';
 
 /**
- * RAG Service - Provides retrieval augmented generation capabilities
+ * Knowledge Service - Provides retrieval augmented generation capabilities
  */
-export class RagService extends Service {
+export class KnowledgeService extends Service {
   static serviceType = 'rag';
   capabilityDescription =
     'Provides Retrieval Augmented Generation capabilities, including knowledge upload and querying.';
@@ -32,28 +32,28 @@ export class RagService extends Service {
   private knowledgeProcessingSemaphore: Semaphore;
 
   /**
-   * Create a new RAG service
+   * Create a new Knowledge service
    * @param runtime Agent runtime
    */
   constructor(protected runtime: IAgentRuntime) {
     super(runtime);
     this.knowledgeProcessingSemaphore = new Semaphore(10); // Initialize semaphore
-    logger.info(`RagService initialized for agent: ${runtime.agentId}`);
+    logger.info(`KnowledgeService initialized for agent: ${runtime.agentId}`);
   }
 
   /**
-   * Start the RAG service
+   * Start the Knowledge service
    * @param runtime Agent runtime
-   * @returns Initialized RAG service
+   * @returns Initialized Knowledge service
    */
-  static async start(runtime: IAgentRuntime): Promise<RagService> {
-    logger.info(`Starting RAG service for agent: ${runtime.agentId}`);
-    const service = new RagService(runtime);
+  static async start(runtime: IAgentRuntime): Promise<KnowledgeService> {
+    logger.info(`Starting Knowledge service for agent: ${runtime.agentId}`);
+    const service = new KnowledgeService(runtime);
 
     // Process character knowledge AFTER service is initialized
     if (service.runtime.character?.knowledge && service.runtime.character.knowledge.length > 0) {
       logger.info(
-        `RagService: Processing ${service.runtime.character.knowledge.length} character knowledge items.`
+        `KnowledgeService: Processing ${service.runtime.character.knowledge.length} character knowledge items.`
       );
       const stringKnowledge = service.runtime.character.knowledge.filter(
         (item): item is string => typeof item === 'string'
@@ -61,25 +61,29 @@ export class RagService extends Service {
       // Run in background, don't await here to prevent blocking startup
       service.processCharacterKnowledge(stringKnowledge).catch((err) => {
         logger.error(
-          `RagService: Error processing character knowledge during startup: ${err.message}`,
+          `KnowledgeService: Error processing character knowledge during startup: ${err.message}`,
           err
         );
       });
     } else {
-      logger.info(`RagService: No character knowledge to process for agent ${runtime.agentId}.`);
+      logger.info(
+        `KnowledgeService: No character knowledge to process for agent ${runtime.agentId}.`
+      );
     }
     return service;
   }
 
   /**
-   * Stop the RAG service
+   * Stop the Knowledge service
    * @param runtime Agent runtime
    */
   static async stop(runtime: IAgentRuntime): Promise<void> {
-    logger.info(`Stopping RAG service for agent: ${runtime.agentId}`);
-    const service = runtime.getService(RagService.serviceType) as RagService | undefined;
+    logger.info(`Stopping Knowledge service for agent: ${runtime.agentId}`);
+    const service = runtime.getService(KnowledgeService.serviceType) as
+      | KnowledgeService
+      | undefined;
     if (!service) {
-      logger.warn(`RagService not found for agent ${runtime.agentId} during stop.`);
+      logger.warn(`KnowledgeService not found for agent ${runtime.agentId} during stop.`);
     }
   }
 
@@ -87,7 +91,7 @@ export class RagService extends Service {
    * Stop the service
    */
   async stop(): Promise<void> {
-    logger.info(`RAG service stopping for agent: ${this.runtime.agentId}`);
+    logger.info(`Knowledge service stopping for agent: ${this.runtime.agentId}`);
   }
 
   /**
@@ -102,7 +106,7 @@ export class RagService extends Service {
   }> {
     const agentId = this.runtime.agentId as string;
     logger.info(
-      `RagService (agent: ${agentId}) processing document for public addKnowledge: ${options.originalFilename}, type: ${options.contentType}`
+      `KnowledgeService (agent: ${agentId}) processing document for public addKnowledge: ${options.originalFilename}, type: ${options.contentType}`
     );
 
     // Check if document already exists in database using clientDocumentId as the primary key for "documents" table
@@ -169,7 +173,7 @@ export class RagService extends Service {
 
     try {
       logger.debug(
-        `RagService: Processing document ${originalFilename} (type: ${contentType}) via processDocument`
+        `KnowledgeService: Processing document ${originalFilename} (type: ${contentType}) via processDocument`
       );
 
       let fileBuffer: Buffer | null = null;
@@ -183,7 +187,7 @@ export class RagService extends Service {
           fileBuffer = Buffer.from(content, 'base64');
         } catch (e: any) {
           logger.error(
-            `RagService: Failed to convert base64 to buffer for ${originalFilename}: ${e.message}`
+            `KnowledgeService: Failed to convert base64 to buffer for ${originalFilename}: ${e.message}`
           );
           throw new Error(`Invalid base64 content for binary file ${originalFilename}`);
         }
@@ -194,7 +198,7 @@ export class RagService extends Service {
 
       if (!extractedText || extractedText.trim() === '') {
         const noTextError = new Error(
-          `RagService: No text content extracted from ${originalFilename} (type: ${contentType}).`
+          `KnowledgeService: No text content extracted from ${originalFilename} (type: ${contentType}).`
         );
         logger.warn(noTextError.message);
         throw noTextError;
@@ -222,7 +226,7 @@ export class RagService extends Service {
       await this.runtime.createMemory(memoryWithScope, 'documents');
 
       logger.debug(
-        `RagService: Stored document ${originalFilename} (Memory ID: ${memoryWithScope.id})`
+        `KnowledgeService: Stored document ${originalFilename} (Memory ID: ${memoryWithScope.id})`
       );
 
       const fragmentCount = await processFragmentsSynchronously({
@@ -237,7 +241,7 @@ export class RagService extends Service {
       });
 
       logger.info(
-        `RagService: Document ${originalFilename} processed with ${fragmentCount} fragments for agent ${agentId}`
+        `KnowledgeService: Document ${originalFilename} processed with ${fragmentCount} fragments for agent ${agentId}`
       );
 
       return {
@@ -247,7 +251,7 @@ export class RagService extends Service {
       };
     } catch (error: any) {
       logger.error(
-        `RagService: Error processing document ${originalFilename}: ${error.message}`,
+        `KnowledgeService: Error processing document ${originalFilename}: ${error.message}`,
         error.stack
       );
       throw error;
@@ -308,7 +312,7 @@ export class RagService extends Service {
   // --- Knowledge methods moved from AgentRuntime ---
 
   private async handleProcessingError(error: any, context: string) {
-    logger.error(`RagService: Error ${context}:`, error?.message || error || 'Unknown error');
+    logger.error(`KnowledgeService: Error ${context}:`, error?.message || error || 'Unknown error');
     throw error;
   }
 
@@ -323,9 +327,9 @@ export class RagService extends Service {
     message: Memory,
     scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID }
   ): Promise<KnowledgeItem[]> {
-    logger.debug('RagService: getKnowledge called for message id: ' + message.id);
+    logger.debug('KnowledgeService: getKnowledge called for message id: ' + message.id);
     if (!message?.content?.text || message?.content?.text.trim().length === 0) {
-      logger.warn('RagService: Invalid or empty message content for knowledge query.');
+      logger.warn('KnowledgeService: Invalid or empty message content for knowledge query.');
       return [];
     }
 
@@ -362,7 +366,7 @@ export class RagService extends Service {
     // Wait briefly to allow services to initialize fully
     await new Promise((resolve) => setTimeout(resolve, 1000));
     logger.info(
-      `RagService: Processing ${items.length} character knowledge items for agent ${this.runtime.agentId}`
+      `KnowledgeService: Processing ${items.length} character knowledge items for agent ${this.runtime.agentId}`
     );
 
     const processingPromises = items.map(async (item) => {
@@ -374,13 +378,13 @@ export class RagService extends Service {
 
         if (await this.checkExistingKnowledge(knowledgeId)) {
           logger.debug(
-            `RagService: Character knowledge item with ID ${knowledgeId} already exists. Skipping.`
+            `KnowledgeService: Character knowledge item with ID ${knowledgeId} already exists. Skipping.`
           );
           return;
         }
 
         logger.debug(
-          `RagService: Processing character knowledge for ${this.runtime.character?.name} - ${item.slice(0, 100)}`
+          `KnowledgeService: Processing character knowledge for ${this.runtime.character?.name} - ${item.slice(0, 100)}`
         );
 
         let metadata: MemoryMetadata = {
@@ -432,7 +436,7 @@ export class RagService extends Service {
 
     await Promise.all(processingPromises);
     logger.info(
-      `RagService: Finished processing character knowledge for agent ${this.runtime.agentId}.`
+      `KnowledgeService: Finished processing character knowledge for agent ${this.runtime.agentId}.`
     );
   }
 
@@ -458,10 +462,10 @@ export class RagService extends Service {
       entityId: scope?.entityId ?? this.runtime.agentId,
     };
 
-    logger.debug(`RagService: _internalAddKnowledge called for item ID ${item.id}`);
+    logger.debug(`KnowledgeService: _internalAddKnowledge called for item ID ${item.id}`);
 
     // For _internalAddKnowledge, we assume item.content.text is always present
-    // and it's not a binary file needing RAG plugin's special handling for extraction.
+    // and it's not a binary file needing Knowledge plugin's special handling for extraction.
     // This path is for already-textual content like character knowledge or direct text additions.
 
     const documentMemory: Memory = {
@@ -483,7 +487,7 @@ export class RagService extends Service {
     const existingDocument = await this.runtime.getMemoryById(item.id);
     if (existingDocument) {
       logger.debug(
-        `RagService: Document ${item.id} already exists in _internalAddKnowledge, updating...`
+        `KnowledgeService: Document ${item.id} already exists in _internalAddKnowledge, updating...`
       );
       await this.runtime.updateMemory({
         ...documentMemory,
@@ -507,13 +511,13 @@ export class RagService extends Service {
         fragmentsProcessed++;
       } catch (error) {
         logger.error(
-          `RagService: Error processing fragment ${fragment.id} for document ${item.id}:`,
+          `KnowledgeService: Error processing fragment ${fragment.id} for document ${item.id}:`,
           error
         );
       }
     }
     logger.debug(
-      `RagService: Processed ${fragmentsProcessed}/${fragments.length} fragments for document ${item.id}.`
+      `KnowledgeService: Processed ${fragmentsProcessed}/${fragments.length} fragments for document ${item.id}.`
     );
   }
 
@@ -574,7 +578,7 @@ export class RagService extends Service {
       await this.runtime.createMemory(fragment, 'knowledge');
     } catch (error) {
       logger.error(
-        `RagService: Error processing fragment ${fragment.id}:`,
+        `KnowledgeService: Error processing fragment ${fragment.id}:`,
         error instanceof Error ? error.message : String(error)
       );
       throw error;

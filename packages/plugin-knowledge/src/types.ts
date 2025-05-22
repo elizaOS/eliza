@@ -1,6 +1,5 @@
-import z from 'zod';
 import { UUID } from '@elizaos/core';
-import { Buffer } from 'node:buffer';
+import z from 'zod';
 
 // Schema for validating model configuration
 export const ModelConfigSchema = z.object({
@@ -47,8 +46,8 @@ export const ModelConfigSchema = z.object({
     .optional()
     .transform((val) => (val ? (typeof val === 'string' ? parseInt(val, 10) : val) : 1536)),
 
-  // Contextual RAG settings
-  CTX_RAG_ENABLED: z.boolean().default(false),
+  // Contextual Knowledge settings
+  CTX_KNOWLEDGE_ENABLED: z.boolean().default(false),
 });
 
 export type ModelConfig = z.infer<typeof ModelConfigSchema>;
@@ -79,7 +78,7 @@ export interface TextGenerationOptions {
    * When provided (along with an Anthropic model via OpenRouter), this enables prompt caching.
    * The document is cached with the provider and subsequent requests will reuse the cached document,
    * significantly reducing costs for multiple operations on the same document.
-   * Most effective with contextual retrieval for RAG applications.
+   * Most effective with contextual retrieval for Knowledge applications.
    */
   cacheDocument?: string;
 

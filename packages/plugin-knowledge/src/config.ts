@@ -8,9 +8,9 @@ import { logger } from '@elizaos/core';
  */
 export function validateModelConfig(): ModelConfig {
   try {
-    // Determine if contextual RAG is enabled
-    const ctxRagEnabled = process.env.CTX_RAG_ENABLED === 'true';
-    logger.debug(`Configuration: CTX_RAG_ENABLED=${ctxRagEnabled}`);
+    // Determine if contextual Knowledge is enabled
+    const ctxKnowledgeEnabled = process.env.CTX_KNOWLEDGE_ENABLED === 'true';
+    logger.debug(`Configuration: CTX_KNOWLEDGE_ENABLED=${ctxKnowledgeEnabled}`);
 
     // If EMBEDDING_PROVIDER is not provided, assume we're using plugin-openai
     const assumePluginOpenAI = !process.env.EMBEDDING_PROVIDER;
@@ -57,7 +57,7 @@ export function validateModelConfig(): ModelConfig {
 
       EMBEDDING_DIMENSION: embeddingDimension,
 
-      CTX_RAG_ENABLED: ctxRagEnabled,
+      CTX_KNOWLEDGE_ENABLED: ctxKnowledgeEnabled,
     });
 
     validateConfigRequirements(config, assumePluginOpenAI);
@@ -99,17 +99,17 @@ function validateConfigRequirements(config: ModelConfig, assumePluginOpenAI: boo
     }
   }
 
-  // If Contextual RAG is enabled, we need additional validations
-  if (config.CTX_RAG_ENABLED) {
-    logger.info('Contextual RAG is enabled. Validating text generation settings...');
+  // If Contextual Knowledge is enabled, we need additional validations
+  if (config.CTX_KNOWLEDGE_ENABLED) {
+    logger.info('Contextual Knowledge is enabled. Validating text generation settings...');
 
     // Text provider and model are required for CTX_RAG
     if (!config.TEXT_PROVIDER) {
-      throw new Error('TEXT_PROVIDER is required when CTX_RAG_ENABLED is true');
+      throw new Error('TEXT_PROVIDER is required when CTX_KNOWLEDGE_ENABLED is true');
     }
 
     if (!config.TEXT_MODEL) {
-      throw new Error('TEXT_MODEL is required when CTX_RAG_ENABLED is true');
+      throw new Error('TEXT_MODEL is required when CTX_KNOWLEDGE_ENABLED is true');
     }
 
     // Validate API keys based on the text provider
@@ -138,9 +138,11 @@ function validateConfigRequirements(config: ModelConfig, assumePluginOpenAI: boo
   } else {
     // Log appropriate message based on where embedding config came from
     if (assumePluginOpenAI) {
-      logger.info('Contextual RAG is disabled. Using embedding configuration from plugin-openai.');
+      logger.info(
+        'Contextual Knowledge is disabled. Using embedding configuration from plugin-openai.'
+      );
     } else {
-      logger.info('Contextual RAG is disabled. Using basic embedding-only configuration.');
+      logger.info('Contextual Knowledge is disabled. Using basic embedding-only configuration.');
     }
   }
 }
