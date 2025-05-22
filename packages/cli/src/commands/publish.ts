@@ -289,7 +289,7 @@ async function savePackageToRegistry(packageMetadata, dryRun = false) {
 
 export const publish = new Command()
   .name('publish')
-  .description('Publish a plugin or project to the registry')
+  .description('Publish a plugin to the registry)')
   .option('-r, --registry <registry>', 'target registry', 'elizaOS/registry')
   .option('-n, --npm', 'publish to npm instead of GitHub', false)
   .option('-t, --test', 'test publish process without making changes', false)
