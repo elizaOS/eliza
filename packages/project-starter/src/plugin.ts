@@ -205,6 +205,7 @@ const plugin: Plugin = {
   tests: [starterTestSuite],
   routes: [
     {
+      name: 'helloworld',
       path: '/helloworld',
       type: 'GET',
       handler: async (_req: any, res: any) => {

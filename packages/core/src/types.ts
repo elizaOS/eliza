@@ -607,7 +607,7 @@ export type Route = {
   path: string;
   filePath?: string;
   public?: boolean;
-  name: string extends { public: true } ? string : string | undefined;
+  name?: string extends { public: true } ? string : string | undefined;
   handler?: (req: any, res: any, runtime: IAgentRuntime) => Promise<void>;
 };
 
