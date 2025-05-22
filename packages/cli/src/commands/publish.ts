@@ -290,7 +290,6 @@ async function savePackageToRegistry(packageMetadata, dryRun = false) {
 export const publish = new Command()
   .name('publish')
   .description('Publish a plugin to the registry)')
-  .option('-r, --registry <registry>', 'target registry', 'elizaOS/registry')
   .option('-n, --npm', 'publish to npm instead of GitHub', false)
   .option('-t, --test', 'test publish process without making changes', false)
   .option('-d, --dry-run', 'generate registry files locally without publishing', false)
@@ -504,9 +503,8 @@ export const publish = new Command()
 
       // Update registry settings
       const settings = await getRegistrySettings();
-      settings.defaultRegistry = opts.registry;
       settings.publishConfig = {
-        registry: opts.registry,
+        registry: settings.defaultRegistry,
         username: credentials.username,
         useNpm: opts.npm,
         platform: packageJson.platform,
