@@ -1,13 +1,21 @@
 import type { AgentServer } from '@/src/server';
 import { upload } from '@/src/server/loader';
 import { convertToAudioBuffer } from '@/src/utils';
-import type { Agent, Character, Content, IAgentRuntime, Memory, UUID } from '@elizaos/core';
+import type {
+  Agent,
+  Character,
+  Content,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  UUID,
+} from '@elizaos/core';
 import {
   ChannelType,
+  EventType,
   MemoryType,
   ModelType,
   composePrompt,
-  composePromptFromState,
   createUniqueUuid,
   encryptObjectValues,
   encryptStringValue,
@@ -102,6 +110,248 @@ export function agentRouter(
 ): express.Router {
   const router = express.Router();
   const db = server?.database;
+
+  // Get all worlds
+  router.get('/worlds', async (req, res) => {
+    try {
+      // Find any active runtime to use for getting worlds
+      const runtime = Array.from(agents.values())[0];
+
+      if (!runtime) {
+        sendError(res, 404, 'NOT_FOUND', 'No active agents found to get worlds');
+        return;
+      }
+
+      const worlds = await runtime.getAllWorlds();
+
+      sendSuccess(res, { worlds });
+    } catch (error) {
+      logger.error('[WORLDS LIST] Error retrieving worlds:', error);
+      sendError(res, 500, '500', 'Error retrieving worlds', error.message);
+    }
+  });
+
+  // Helper function to create a world
+  const createWorldHelper = async (
+    runtime: IAgentRuntime,
+    req: express.Request,
+    res: express.Response
+  ) => {
+    try {
+      const { name, serverId, metadata } = req.body;
+
+      if (!name) {
+        sendError(res, 400, 'BAD_REQUEST', 'World name is required');
+        return;
+      }
+
+      // Generate a unique ID for the world
+      const worldId = createUniqueUuid(runtime, `world-${Date.now()}`);
+
+      await runtime.createWorld({
+        id: worldId,
+        name,
+        agentId: runtime.agentId,
+        serverId: serverId || `server-${Date.now()}`,
+        metadata,
+      });
+
+      const world = (await runtime.getAllWorlds()).find((w) => w.id === worldId);
+
+      sendSuccess(res, { world }, 201);
+    } catch (error) {
+      logger.error('[WORLD CREATE] Error creating world:', error);
+      sendError(res, 500, '500', 'Error creating world', error.message);
+    }
+  };
+
+  // Create new world for specific agent
+  router.post('/:agentId/worlds', async (req, res) => {
+    const agentId = validateUuid(req.params.agentId);
+    if (!agentId) {
+      sendError(res, 400, 'INVALID_ID', 'Invalid agent ID format');
+      return;
+    }
+
+    // get runtime
+    const runtime = agents.get(agentId);
+    if (!runtime) {
+      sendError(res, 404, 'NOT_FOUND', 'Agent not found');
+      return;
+    }
+
+    await createWorldHelper(runtime, req, res);
+  });
+
+  // Update world properties
+  router.patch('/:agentId/worlds/:worldId', async (req, res) => {
+    const agentId = validateUuid(req.params.agentId);
+    const worldId = validateUuid(req.params.worldId);
+
+    if (!agentId || !worldId) {
+      sendError(res, 400, 'INVALID_ID', 'Invalid agent ID or world ID format');
+      return;
+    }
+
+    // get runtime
+    const runtime = agents.get(agentId);
+    if (!runtime) {
+      sendError(res, 404, 'NOT_FOUND', 'Agent not found');
+      return;
+    }
+
+    try {
+      // Get existing world
+      const world = (await runtime.getAllWorlds()).find((w) => w.id === worldId);
+
+      if (!world) {
+        sendError(res, 404, 'NOT_FOUND', 'World not found');
+        return;
+      }
+
+      const { name, metadata } = req.body;
+
+      // Merge updates with existing world data
+      const updatedWorld = {
+        ...world,
+        name: name !== undefined ? name : world.name,
+        metadata:
+          metadata !== undefined
+            ? world.metadata
+              ? { ...world.metadata, ...metadata }
+              : metadata
+            : world.metadata,
+      };
+
+      // Update the world
+      await runtime.updateWorld(updatedWorld);
+
+      // Get the updated world to return
+      const refreshedWorld = (await runtime.getAllWorlds()).find((w) => w.id === worldId);
+
+      sendSuccess(res, { world: refreshedWorld });
+    } catch (error) {
+      logger.error('[WORLD UPDATE] Error updating world:', error);
+      sendError(res, 500, '500', 'Error updating world', error.message);
+    }
+  });
+
+  // Message handler
+  const handleAgentMessage = async (req: CustomRequest, res: express.Response) => {
+    logger.debug('[MESSAGES CREATE] Creating new message');
+    const agentId = validateUuid(req.params.agentId);
+    if (!agentId) {
+      sendError(res, 400, 'INVALID_ID', 'Invalid agent ID format');
+      return;
+    }
+
+    // get runtime
+    const runtime = agents.get(agentId);
+    if (!runtime) {
+      sendError(res, 404, 'NOT_FOUND', 'Agent not found');
+      return;
+    }
+
+    const entityId = req.body.entityId as UUID;
+    const roomId = req.body.roomId as UUID;
+    const worldId = (validateUuid(req.query.worldId as string) ||
+      ('00000000-0000-0000-0000-000000000000' as UUID)) as UUID;
+
+    const source = req.body.source;
+    const text = req.body.text.trim();
+
+    const channelType = req.body.channelType;
+    const incomingMessageVirtualId = createUniqueUuid(
+      runtime,
+      `${roomId}-${entityId}-${Date.now()}`
+    );
+
+    try {
+      await runtime.ensureConnection({
+        entityId,
+        roomId,
+        userName: req.body.userName,
+        name: req.body.name,
+        source: 'api-message',
+        type: ChannelType.API,
+        worldId,
+        worldName: 'api-message',
+      });
+
+      const content: Content = {
+        text,
+        attachments: [],
+        source,
+        inReplyTo: undefined, // Handled by response memory if needed
+        channelType: channelType || ChannelType.API,
+      };
+
+      const userMessageMemory: Memory = {
+        id: incomingMessageVirtualId, // Use a consistent ID for the incoming message
+        entityId,
+        roomId,
+        worldId,
+        agentId: runtime.agentId, // The agent this message is directed to
+        content,
+        createdAt: Date.now(),
+      };
+
+      // Define the callback for sending the HTTP response
+      const apiCallback: HandlerCallback = async (responseContent: Content) => {
+        let sentMemory: Memory | null = null;
+        if (!res.headersSent) {
+          res.status(201).json({
+            success: true,
+            data: {
+              message: responseContent,
+              messageId: userMessageMemory.id,
+              name: runtime.character.name,
+              roomId: req.body.roomId,
+              source,
+            },
+          });
+
+          // Construct Memory for the agent's HTTP response
+          sentMemory = {
+            id: createUniqueUuid(runtime, `api-response-${userMessageMemory.id}-${Date.now()}`),
+            entityId: runtime.agentId, // Agent is the sender
+            agentId: runtime.agentId,
+            content: {
+              ...responseContent,
+              text: responseContent.text || '',
+              inReplyTo: userMessageMemory.id,
+            },
+            roomId: roomId,
+            worldId,
+            createdAt: Date.now(),
+          };
+
+          await runtime.createMemory(sentMemory, 'messages');
+        }
+        return sentMemory ? [sentMemory] : [];
+      };
+
+      // Emit event for message processing
+      await runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
+        runtime,
+        message: userMessageMemory,
+        callback: apiCallback,
+        onComplete: () => {
+          if (!res.headersSent) {
+            logger.warn(
+              '[MESSAGES CREATE] API Callback was not called by a handler. Responding with 204 No Content.'
+            );
+            res.status(204).send(); // Send 204 No Content
+          }
+        },
+      });
+    } catch (error) {
+      logger.error('Error processing message:', error.message);
+      if (!res.headersSent) {
+        sendError(res, 500, 'PROCESSING_ERROR', 'Error processing message', error.message);
+      }
+    }
+  };
 
   // List all agents with minimal details
   router.get('/', async (_, res) => {
@@ -260,11 +510,12 @@ export function agentRouter(
         character.settings.secrets = encryptObjectValues(character.settings.secrets, salt);
       }
 
-      await db.ensureAgentExists(character);
+      const createdAgent = await db.ensureAgentExists(character);
 
       res.status(201).json({
         success: true,
         data: {
+          id: createdAgent.id,
           character: character,
         },
       });
@@ -821,6 +1072,135 @@ export function agentRouter(
     });
   });
 
+  // Create a new room for an agent
+  router.post('/:agentId/rooms', async (req, res) => {
+    const agentId = validateUuid(req.params.agentId);
+    if (!agentId) {
+      sendError(res, 400, 'INVALID_ID', 'Invalid agent ID format');
+      return;
+    }
+
+    // Get runtime
+    const runtime = agents.get(agentId);
+    if (!runtime) {
+      sendError(res, 404, 'NOT_FOUND', 'Agent not found');
+      return;
+    }
+
+    try {
+      // Extract data from request body
+      const { name, type = 'dm', source = 'client', worldId, metadata } = req.body;
+
+      if (!name) {
+        sendError(res, 400, 'MISSING_PARAM', 'Room name is required');
+        return;
+      }
+
+      // Generate a unique ID for the room
+      const roomId = createUniqueUuid(runtime, `room-${Date.now()}`);
+      const serverId = req.body.serverId || `server-${Date.now()}`;
+
+      // Ensure world exists or create a new one
+      let resolvedWorldId = worldId;
+      if (!resolvedWorldId) {
+        // Create a default world if none provided
+        const worldName = `World for ${name}`;
+        resolvedWorldId = createUniqueUuid(runtime, `world-${Date.now()}`);
+
+        await runtime.ensureWorldExists({
+          id: resolvedWorldId,
+          name: worldName,
+          agentId: runtime.agentId,
+          serverId: serverId,
+          metadata: metadata,
+        });
+      }
+
+      // Create the room
+      await runtime.ensureRoomExists({
+        id: roomId,
+        name: name,
+        source: source,
+        type: type,
+        channelId: roomId,
+        serverId: serverId,
+        worldId: resolvedWorldId,
+        metadata: metadata,
+      });
+
+      // Add the agent as a participant
+      await runtime.addParticipant(runtime.agentId, roomId);
+      await runtime.ensureParticipantInRoom(runtime.agentId, roomId);
+      await runtime.setParticipantUserState(roomId, runtime.agentId, 'FOLLOWED');
+
+      // Return the created room
+      res.status(201).json({
+        success: true,
+        data: {
+          id: roomId,
+          name: name,
+          agentId: agentId,
+          createdAt: Date.now(),
+          source: source,
+          type: type,
+          worldId: resolvedWorldId,
+          serverId: serverId,
+          metadata: metadata,
+        },
+      });
+    } catch (error) {
+      logger.error(`[ROOM CREATE] Error creating room for agent ${agentId}:`, error);
+      sendError(res, 500, 'CREATE_ERROR', 'Failed to create room', error.message);
+    }
+  });
+
+  // Get all rooms where an agent is a participant
+  router.get('/:agentId/rooms', async (req, res) => {
+    const agentId = validateUuid(req.params.agentId);
+    if (!agentId) {
+      sendError(res, 400, 'INVALID_ID', 'Invalid agent ID format');
+      return;
+    }
+
+    // Get runtime
+    const runtime = agents.get(agentId);
+    if (!runtime) {
+      sendError(res, 404, 'NOT_FOUND', 'Agent not found');
+      return;
+    }
+
+    try {
+      // Get all worlds for this agent
+      const worlds = await runtime.getAllWorlds();
+      const worldsMap = new Map(worlds.map((world) => [world.id, world]));
+
+      // Use getRoomsForParticipant to directly get room IDs where agent is a participant
+      const participantRoomIds = await runtime.getRoomsForParticipant(agentId);
+
+      const agentRooms = [];
+
+      // For each world, get rooms and filter by participant room IDs
+      for (const world of worlds) {
+        const worldRooms = await runtime.getRooms(world.id);
+
+        // Filter rooms where agent is a participant
+        for (const room of worldRooms) {
+          if (participantRoomIds.includes(room.id)) {
+            agentRooms.push({
+              ...room,
+              worldName: world.name,
+            });
+          }
+        }
+      }
+
+      sendSuccess(res, { rooms: agentRooms });
+    } catch (error) {
+      logger.error(`[ROOMS LIST] Error retrieving rooms for agent ${agentId}:`, error);
+      sendError(res, 500, 'RETRIEVAL_ERROR', 'Failed to retrieve agent rooms', error.message);
+    }
+  });
+
   router.delete('/:agentId/logs/:logId', async (req, res) => {
     const agentId = validateUuid(req.params.agentId);
     const logId = validateUuid(req.params.logId);
@@ -909,7 +1289,7 @@ export function agentRouter(
         };
 
         // Reuse the message endpoint logic
-        await this.post('/:agentId/messages')(messageRequest, res);
+        await handleAgentMessage(messageRequest as CustomRequest, res);
       } catch (error) {
         logger.error('[AUDIO MESSAGE] Error processing audio:', error);
         res.status(500).json({
@@ -1382,135 +1762,7 @@ export function agentRouter(
     }
   });
 
-  router.post('/:agentId/message', async (req: CustomRequest, res) => {
-    logger.debug('[MESSAGES CREATE] Creating new message');
-    const agentId = validateUuid(req.params.agentId);
-    if (!agentId) {
-      res.status(400).json({
-        success: false,
-        error: {
-          code: 'INVALID_ID',
-          message: 'Invalid agent ID format',
-        },
-      });
-      return;
-    }
-
-    // get runtime
-    const runtime = agents.get(agentId);
-    if (!runtime) {
-      res.status(404).json({
-        success: false,
-        error: {
-          code: 'NOT_FOUND',
-          message: 'Agent not found',
-        },
-      });
-      return;
-    }
-
-    const entityId = req.body.entityId;
-    const roomId = req.body.roomId;
-
-    const source = req.body.source;
-    const text = req.body.text.trim();
-
-    const channelType = req.body.channelType;
-
-    try {
-      const messageId = createUniqueUuid(runtime, Date.now().toString());
-
-      const content: Content = {
-        text,
-        attachments: [],
-        source,
-        inReplyTo: undefined,
-        channelType: channelType || ChannelType.API,
-      };
-
-      const userMessage = {
-        content,
-        entityId,
-        roomId,
-        agentId: runtime.agentId,
-      };
-
-      const memory: Memory = {
-        id: createUniqueUuid(runtime, messageId),
-        ...userMessage,
-        agentId: runtime.agentId,
-        entityId,
-        roomId,
-        content,
-        createdAt: Date.now(),
-      };
-
-      // save message
-      await runtime.createMemory(memory, 'messages');
-
-      let state = await runtime.composeState(memory);
-
-      const prompt = composePromptFromState({
-        state,
-        template: messageHandlerTemplate,
-      });
-
-      const response = await runtime.useModel(ModelType.OBJECT_LARGE, {
-        prompt,
-      });
-
-      if (!response) {
-        res.status(500).json({
-          success: false,
-          error: {
-            code: 'MODEL_ERROR',
-            message: 'No response from model',
-          },
-        });
-        return;
-      }
-
-      const responseMessage: Memory = {
-        id: createUniqueUuid(runtime, messageId),
-        ...userMessage,
-        entityId: runtime.agentId,
-        content: response,
-        createdAt: Date.now(),
-      };
-
-      const replyHandler = async (message: Content) => {
-        res.status(201).json({
-          success: true,
-          data: {
-            message,
-            messageId,
-            name: runtime.character.name,
-            roomId: req.body.roomId,
-            source,
-          },
-        });
-        return [memory];
-      };
-
-      await runtime.processActions(memory, [responseMessage], state, replyHandler);
-
-      await runtime.evaluate(memory, state);
-
-      if (!res.headersSent) {
-        res.status(202).json();
-      }
-    } catch (error) {
-      logger.error('Error processing message:', error.message);
-      res.status(500).json({
-        success: false,
-        error: {
-          code: 'PROCESSING_ERROR',
-          message: 'Error processing message',
-          details: error.message,
-        },
-      });
-    }
-  });
+  router.post('/:agentId/message', handleAgentMessage);
 
   // get all memories for an agent
   router.get('/:agentId/memories', async (req, res) => {
@@ -1698,15 +1950,11 @@ export function agentRouter(
           };
 
           // Add knowledge to agent
-          await runtime.addKnowledge(
-            knowledgeItem,
-            undefined, // Default processing options
-            {
-              roomId: undefined,
-              worldId: effectiveWorldId, // Use the ensured effectiveWorldId
-              entityId: entityId,
-            }
-          );
+          await runtime.addKnowledge(knowledgeItem, undefined, {
+            roomId: undefined,
+            worldId: runtime.agentId,
+            entityId: runtime.agentId,
+          });
 
           // Clean up temp file immediately after successful processing
           if (file.path && fs.existsSync(file.path)) {
@@ -1833,6 +2081,49 @@ export function agentRouter(
     } catch (error) {
       logger.error('[GROUP DELETE] Error deleting group:', error);
       sendError(res, 500, 'DELETE_ERROR', 'Error deleting group', error.message);
+    }
+  });
+
+  router.delete('/groups/:serverId/memories', async (req, res) => {
+    const serverId = validateUuid(req.params.serverId);
+    try {
+      const memories = await db.getMemoriesByServerId({ serverId });
+      for (const memory of memories) {
+        await db.deleteMemory(memory.id);
+      }
+      res.status(204).send();
+    } catch (error) {
+      logger.error('[GROUP MEMORIES DELETE] Error clearing memories:', error);
+      sendError(res, 500, 'DELETE_ERROR', 'Error deleting group memories', error.message);
+    }
+  });
+
+  router.delete('/groups/:serverId/memories/:memoryId', async (req, res) => {
+    const serverId = validateUuid(req.params.serverId);
+    const memoryId = validateUuid(req.params.memoryId);
+
+    try {
+      const memory = await db.getMemoryById(memoryId);
+      if (!memory) {
+        sendError(res, 404, 'NOT_FOUND', 'Memory not found');
+        return;
+      }
+
+      // Optional: verify the memory belongs to the provided serverId
+      if (memory.roomId) {
+        const rooms = await db.getRooms(memory.worldId as UUID);
+        const room = rooms.find((r) => r.id === memory.roomId);
+        if (room && room.serverId !== serverId) {
+          sendError(res, 400, 'BAD_REQUEST', 'Memory does not belong to server');
+          return;
+        }
+      }
+
+      await db.deleteMemory(memoryId);
+      res.status(204).send();
+    } catch (error) {
+      logger.error('[GROUP MEMORY DELETE] Error deleting memory:', error);
+      sendError(res, 500, 'DELETE_ERROR', 'Error deleting memory', error.message);
     }
   });
 

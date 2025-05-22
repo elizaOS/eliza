@@ -71,139 +71,38 @@ export function getInstallCommand(packageManager: string, isGlobal: boolean): st
  */
 export async function executeInstallation(
   packageName: string,
-  versionOrTag: string = '',
-  directory: string = process.cwd(),
-  options: {
-    tryNpm?: boolean;
-    tryGithub?: boolean;
-    tryMonorepo?: boolean;
-    subdirectory?: string;
-    monorepoBranch?: string;
-  } = { tryNpm: true, tryGithub: true, tryMonorepo: false }
+  versionOrTag = '',
+  directory: string = process.cwd()
 ): Promise<{ success: boolean; installedIdentifier: string | null }> {
-  // Determine which package manager to use
   const packageManager = await getPackageManager();
   const installCommand = getInstallCommand(packageManager, false);
 
   logger.info(`Attempting to install package: ${packageName} using ${packageManager}`);
 
-  // Extract and normalize the plugin name
-  let baseName = packageName;
-  let pluginName = '';
+  const finalSpecifier = packageName.startsWith('github:')
+    ? `${packageName}${versionOrTag ? `#${versionOrTag}` : ''}`
+    : versionOrTag
+      ? `${packageName}@${versionOrTag}`
+      : packageName;
+  try {
+    await execa(packageManager, [...installCommand, finalSpecifier], {
+      cwd: directory,
+      stdio: 'inherit',
+    });
+    logger.info(`Successfully installed ${finalSpecifier}.`);
 
-  // Handle organization/repo format
-  if (packageName.includes('/') && !packageName.startsWith('@')) {
-    const parts = packageName.split('/');
-    baseName = parts[parts.length - 1];
-  } else if (packageName.startsWith('@')) {
-    // Handle scoped package format
-    const parts = packageName.split('/');
-    if (parts.length > 1) {
-      baseName = parts[1];
-    }
+    const installedIdentifier = packageName.startsWith('github:')
+      ? (() => {
+          const spec = packageName.replace(/^github:/, '');
+          const [owner, repoWithRef] = spec.split('/');
+          const repo = repoWithRef.split('#')[0];
+          return `@${owner}/${repo}`;
+        })()
+      : packageName;
+
+    return { success: true, installedIdentifier };
+  } catch (error) {
+    logger.warn(`Installation failed for ${finalSpecifier}: ${error.message}`);
+    return { success: false, installedIdentifier: null };
   }
-
-  // Special case: if the package is the CLI itself or core, don't add plugin- prefix
-  const isElizaCorePackage = baseName === 'cli' || baseName === 'core';
-
-  // For regular plugins, ensure they have the plugin- prefix
-  let npmStylePackageName;
-  if (isElizaCorePackage) {
-    // Core packages like @elizaos/cli and @elizaos/core should be used as-is
-    npmStylePackageName = `@elizaos/${baseName}`;
-    pluginName = baseName; // Set pluginName for later use in the function
-  } else {
-    // Remove plugin- prefix if present and ensure proper format for plugins
-    baseName = baseName.replace(/^plugin-/, '');
-    pluginName = baseName.startsWith('plugin-') ? baseName : `plugin-${baseName}`;
-    npmStylePackageName = `@elizaos/${pluginName}`;
-  }
-
-  // 1. Try npm registry (if enabled)
-  if (options.tryNpm !== false) {
-    // Format the package name with version if provided
-    let packageWithVersion;
-
-    // Special formatting for version string - make sure we use exact version format
-    if (versionOrTag) {
-      // Check if it already starts with @ or # (tag or git ref)
-      if (versionOrTag.startsWith('@') || versionOrTag.startsWith('#')) {
-        packageWithVersion = `${npmStylePackageName}${versionOrTag}`;
-      } else {
-        // When it's a specific version like "1.0.0-beta.41", use @1.0.0-beta.41 format
-        packageWithVersion = `${npmStylePackageName}@${versionOrTag}`;
-      }
-    } else {
-      packageWithVersion = npmStylePackageName;
-    }
-
-    logger.debug(
-      `Installing ${packageWithVersion} from npm registry using ${packageManager} in ${directory}`
-    );
-
-    // Try to install from npm
-    try {
-      await execa(packageManager, [...installCommand, packageWithVersion], {
-        cwd: directory,
-        stdio: 'inherit',
-      });
-      logger.info(`Successfully installed ${npmStylePackageName} from npm registry.`);
-      return { success: true, installedIdentifier: npmStylePackageName };
-    } catch (error) {
-      logger.warn(`Failed to install from npm registry: ${npmStylePackageName}`);
-      // Continue to next installation method
-    }
-  }
-
-  // 2. Try GitHub URL installation (if enabled)
-  if (options.tryGithub !== false) {
-    // Define GitHub organizations to try, in priority order
-    const githubOrgs = ['elizaos', 'elizaos-plugins'];
-
-    // Try each GitHub organization with git+https format
-    for (const org of githubOrgs) {
-      const gitUrl = `git+https://github.com/${org}/${pluginName}.git${versionOrTag || ''}`;
-
-      logger.debug(`Installing from GitHub using git+https format: ${gitUrl}`);
-
-      try {
-        await execa(packageManager, [...installCommand, gitUrl], {
-          cwd: directory,
-          stdio: 'inherit',
-        });
-        logger.info(`Successfully installed ${pluginName} from GitHub ${org}.`);
-        // For verification, we'll use the standard npm package name structure
-        return { success: true, installedIdentifier: npmStylePackageName };
-      } catch (error) {
-        logger.warn(`Failed to install from GitHub ${org} organization: ${gitUrl}`);
-        // Continue to next organization or method
-      }
-    }
-  }
-
-  // 3. Try monorepo approach (if enabled)
-  if (options.tryMonorepo !== false) {
-    const branch = options.monorepoBranch || 'v2-develop';
-    const subdirectory = options.subdirectory || `packages/${pluginName}`;
-    const monorepoUrl = `git+https://github.com/elizaos/eliza.git#${branch}&subdirectory=${subdirectory}`;
-
-    logger.debug(`Installing from monorepo subdirectory: ${monorepoUrl}`);
-
-    try {
-      await execa(packageManager, [...installCommand, monorepoUrl], {
-        cwd: directory,
-        stdio: 'inherit',
-      });
-      logger.info(`Successfully installed ${pluginName} from monorepo.`);
-      // For verification, we'll use the standard npm package name structure
-      return { success: true, installedIdentifier: npmStylePackageName };
-    } catch (error) {
-      logger.warn(`Failed to install from monorepo: ${monorepoUrl}`);
-      // Continue to last resort
-    }
-  }
-
-  // If we reached here, all preferred methods failed.
-  logger.error('All installation methods (npm, GitHub, monorepo) failed.');
-  return { success: false, installedIdentifier: null };
 }

@@ -26,14 +26,20 @@ Below is a comprehensive reference for all ElizaOS CLI commands, including their
 
 #### `elizaos create [name]`
 
-Initialize a new project or plugin.
+Initialize a new project, plugin, or agent.
 
 - **Arguments:**
-  - `[name]`: Name for the project or plugin (optional)
+  - `[name]`: Name for the project, plugin, or agent (optional)
 - **Options:**
   - `-d, --dir <dir>`: Installation directory (default: `.`)
-  - `-y, --yes`: Skip confirmation (default: `false`)
-  - `-t, --type <type>`: Type of template to use (project or plugin)
+  - `-y, --yes`: Skip confirmation and use defaults (default: `false`)
+  - `-t, --type <type>`: Type to create: 'project', 'plugin', or 'agent' (default: 'project')
+
+**Important notes:**
+
+- Projects include a knowledge directory and a prompt for database selection (pglite or postgres)
+- Plugins are automatically prefixed with "plugin-" if the prefix is missing
+- Agents are created as JSON character definition files in the current directory
 
 ### Development
 
@@ -43,8 +49,30 @@ Start the project or plugin in development mode and rebuild on file changes.
 
 - **Options:**
   - `-c, --configure`: Reconfigure services and AI models
-  - `-char, --character <character>`: Path or URL to character file
+  - `-char, --character [paths...]`: Character file(s) to use - accepts paths or URLs
   - `-b, --build`: Build the project before starting
+  - `-p, --port <port>`: Port number to run the server on
+
+**Character Handling:**
+
+The `dev` command supports flexible character specification:
+
+```bash
+# Space-separated paths
+elizaos dev --character file1.json file2.json
+
+# Comma-separated paths
+elizaos dev --character "file1.json,file2.json"
+
+# Mixed formats with optional quotes
+elizaos dev --character "'file1.json'" "file2.json"
+
+# With or without .json extension
+elizaos dev --character assistant     # .json extension added automatically
+
+# URLs are also supported
+elizaos dev --character https://example.com/characters/assistant.json
+```
 
 ### Environment Management
 
@@ -54,14 +82,10 @@ Manage environment variables and secrets.
 
 - **Subcommands:**
   - `list`: List all environment variables
-    - Options: `--global`, `--local`
-  - `edit-global`: Edit global environment variables
-    - Options: `-y, --yes`
+    - Options: `--local`
   - `edit-local`: Edit local environment variables
     - Options: `-y, --yes`
   - `reset`: Reset all environment variables
-    - Options: `-y, --yes`
-  - `set-path <path>`: Set a custom path for the global environment file
     - Options: `-y, --yes`
   - `interactive`: Interactive environment variable management
     - Options: `-y, --yes`
@@ -76,9 +100,14 @@ Clone ElizaOS monorepo from a specific branch (defaults to v2-develop).
   - `-b, --branch <branch>`: Branch to install (default: `v2-develop`)
   - `-d, --dir <directory>`: Destination directory (default: `./eliza`)
 
+**Notes:**
+
+- The destination directory must be empty or non-existent
+- After cloning, follow the displayed instructions to install dependencies and build the project
+
 ### Plugin Management
 
-#### `elizaos plugin <subcommand>`
+#### `elizaos plugins <subcommand>`
 
 Manage an ElizaOS plugin.
 
@@ -102,26 +131,28 @@ Manage ElizaOS agents.
     - Options: `-j, --json` (output as JSON)
   - `get` (alias: `g`): Get agent details
     - Options:
-      - `-n, --name <name>` (required): Agent id, name, or index number from list
-      - `-j, --json`: Output as JSON
-      - `-o, --output <file>`: Output to file (default: {name}.json)
+      - `-n, --name <n>`: Agent id, name, or index number from list
+      - `-j, --json`: Display JSON output in terminal
+      - `-o, --output <file>`: Save agent data to file
   - `start` (alias: `s`): Start an agent
     - Options:
-      - `-n, --name <n>`: Character name to start the agent with
-      - `-j, --json <json>`: Character JSON string
+      - `-n, --name <n>`: Name of an existing agent to start
+      - `-j, --json <json>`: Character JSON configuration string
       - `--path <path>`: Local path to character JSON file
-      - `--remote-character <url>`: Remote URL to character JSON file
+      - `--remote-character <url>`: URL to remote character JSON file
   - `stop` (alias: `st`): Stop an agent
     - Options:
-      - `-n, --name <name>` (required): Agent id, name, or index number from list
+      - `-n, --name <n>`: Agent id, name, or index number from list
   - `remove` (alias: `rm`): Remove an agent
     - Options:
-      - `-n, --name <name>` (required): Agent id, name, or index number from list
+      - `-n, --name <n>`: Agent id, name, or index number from list
   - `set`: Update agent configuration
     - Options:
-      - `-n, --name <name>` (required): Agent id, name, or index number from list
+      - `-n, --name <n>`: Agent id, name, or index number from list
       - `-c, --config <json>`: Agent configuration as JSON string
       - `-f, --file <path>`: Path to agent configuration JSON file
+
+**Note:** All agent commands support interactive mode when run without key parameters.
 
 ### Publishing
 
@@ -141,23 +172,52 @@ Publish a plugin or project to the registry, GitHub, or npm.
 Start the Eliza agent with configurable plugins and services.
 
 - **Options:**
-  - `-c, --configure`: Reconfigure services and AI models
-  - `-char, --character <character>`: Path or URL to character file
+  - `-c, --configure`: Force reconfiguration of services and AI models
+  - `-char, --character [paths...]`: Character file(s) to use - accepts paths or URLs
   - `-b, --build`: Build the project before starting
-  - `-chars, --characters <paths>`: Multiple character configuration files
+  - `-p, --port <port>`: Port to listen on (default: 3000)
+
+**Character Handling:**
+
+The `start` command accepts characters in various formats:
+
+```bash
+# Multiple character files (space-separated)
+elizaos start --character file1.json file2.json
+
+# Comma-separated format
+elizaos start --character "file1.json,file2.json"
+
+# With or without quotes
+elizaos start --character "'file1.json'" "file2.json"
+
+# Extension-optional (.json added automatically if missing)
+elizaos start --character character1
+
+# URLs are supported
+elizaos start --character https://example.com/characters/assistant.json
+```
+
+If any character files fail to load, ElizaOS will:
+
+- Log errors for the failed characters
+- Continue starting with any successfully loaded characters
+- Fall back to the default Eliza character if no characters loaded successfully
 
 ### Testing
 
 #### `elizaos test`
 
-Run tests for Eliza agent plugins.
+Run tests for Eliza agent plugins and projects.
 
+- **Subcommands:**
+  - `component`: Run component tests (via Vitest)
+  - `e2e`: Run end-to-end runtime tests
+  - `all`: Run both component and e2e tests (default)
 - **Options:**
-  - `-p, --port <port>`: Port to listen on
-  - `-pl, --plugin <name>`: Name of plugin to test
-  - `-sp, --skip-plugins`: Skip plugin tests
-  - `-spt, --skip-project-tests`: Skip project tests
-  - `-sb, --skip-build`: Skip building before running tests
+  - `-p, --port <port>`: Port to listen on for e2e tests
+  - `-n, --name <n>`: Filter tests by name (matches file names or test suite names)
+  - `--skip-build`: Skip building before running tests
 
 ### Trusted Execution Environment (TEE) Management
 
@@ -167,38 +227,44 @@ Manage TEE deployments with Phala vendor.
 
 - **Subcommands:**
   - `deploy`: Deploy to TEE cloud
-    - Options: `-t, --type <type>`, `-m, --mode <mode>`, `-n, --name <name>`, `-c, --compose <compose>`, `-e, --env <env...>`, `--env-file <envFile>`, `--debug`
+    - Options: `-t, --type <type>`, `-m, --mode <mode>`, `-n, --name <n>`, `-c, --compose <compose>`, `-e, --env <env...>`, `--env-file <envFile>`, `--debug`
   - `teepods`: Query the teepods
   - `images`: Query the images
     - Options: `--teepod-id <teepodId>`
   - `upgrade`: Upgrade the TEE CLI
     - Options: `-m, --mode <mode>`, `--app-id <appId>`, `-e, --env <env...>`, `--env-file <envFile>`, `-c, --compose <compose>`
   - `build-compose`: Build a docker-compose file for Eliza Agent
-    - Options: `-i, --image <name>`, `-u, --username <name>`, `-t, --tag <tag>`, `-c, --character <path>`, `-e, --env-file <path>`, `-v, --version <version>`
+    - Options: `-i, --image <n>`, `-u, --username <n>`, `-t, --tag <tag>`, `-c, --character <path>`, `-e, --env-file <path>`, `-v, --version <version>`
   - `publish`: Publish Docker image to Docker Hub
-    - Options: `-i, --image <name>`, `-u, --username <name>`, `-t, --tag <tag>`
+    - Options: `-i, --image <n>`, `-u, --username <n>`, `-t, --tag <tag>`
 
 ### Updates
 
 #### `elizaos update`
 
-Update ElizaOS packages to the latest versions.
+Update ElizaOS CLI and project dependencies to the latest versions.
 
 - **Options:**
-  - `-c, --check`: Check for available updates without applying them
+  - `-c, --check`: Check for available updates without applying them - shows what packages would be updated
   - `-sb, --skip-build`: Skip building after updating
+  - `--cli`: Update only the global CLI installation (without updating packages)
+  - `--packages`: Update only packages (without updating the CLI)
 
-Manages environment variables in global and local scopes.
+### Environment Configuration
 
-- **`list`**: Shows variables from both scopes
-- **`edit`**: Interactively edit variables
-- **`set <key> <value>`**: Sets/updates a variable
-  - `--global` or `--local`: Specify scope
-- **`unset <key>`**: Removes a variable
-  - `--global` or `--local`: Specify scope
-- **`reset`**: Clears all variables (requires confirmation)
-  - `--global` or `--local`: Specify scope
-- **`set-path <path>`**: Sets custom path for global environment file
+#### `elizaos env`
+
+Manage environment variables and secrets.
+
+- **Subcommands:**
+  - `list`: List all environment variables
+    - Options: `--system`, `--local`
+  - `edit-local`: Edit local environment variables
+    - Options: `-y, --yes`
+  - `reset`: Reset environment variables and clean up database/cache files
+    - Options: `-y, --yes`
+  - `interactive`: Start interactive environment variable manager
+    - Options: `-y, --yes`
 
 ### Publishing
 
@@ -212,6 +278,24 @@ Publishes the current project or plugin.
 
 ## Development Guide
 
+### Developing Agents
+
+Agents are character definitions for ElizaOS bots.
+
+1. **Create a new agent character**:
+
+   ```bash
+   elizaos create my-assistant --type agent
+   ```
+
+   This creates a JSON file (my-assistant.json) with the character definition.
+
+2. **Start an agent with the character**:
+
+   ```bash
+   elizaos agent start --path my-assistant.json
+   ```
+
 ### Developing Plugins
 
 Plugins extend the functionality of ElizaOS agents by providing additional capabilities or integrations.
@@ -220,7 +304,7 @@ Plugins extend the functionality of ElizaOS agents by providing additional capab
 
    ```bash
    elizaos create my-plugin --type plugin
-   cd plugin-my-plugin
+   cd plugin-my-plugin  # Note: CLI automatically adds plugin- prefix if not present
    ```
 
 2. **Structure of a plugin**:
@@ -305,13 +389,13 @@ Plugins extend the functionality of ElizaOS agents by providing additional capab
 
    ```bash
    # Test publishing process
-   elizaos plugin publish --test
+   elizaos plugins publish --test
 
    # Publish to registry
-   elizaos plugin publish
+   elizaos plugins publish
 
    # Or publish to npm
-   elizaos plugin publish --npm
+   elizaos plugins publish --npm
    ```
 
 ### Developing Projects (Agents)

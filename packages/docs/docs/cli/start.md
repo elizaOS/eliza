@@ -18,13 +18,12 @@ elizaos start [options]
 
 ## Options
 
-| Option                           | Description                                              |
-| -------------------------------- | -------------------------------------------------------- |
-| `-c, --configure`                | Reconfigure services and AI models                       |
-| `-char, --character <character>` | Path or URL to character file to use instead of default  |
-| `-b, --build`                    | Build the project before starting                        |
-| `-chars, --characters <paths>`   | Multiple character configuration files (comma-separated) |
-| `-p, --port <port>`              | Port to listen on (default: 3000)                        |
+| Option                          | Description                                      |
+| ------------------------------- | ------------------------------------------------ |
+| `-p, --port <port>`             | Port to listen on (default: 3000)                |
+| `-c, --configure`               | Force reconfiguration of services and AI models  |
+| `-char, --character [paths...]` | Character file(s) to use - accepts paths or URLs |
+| `-b, --build`                   | Build the project before starting                |
 
 ## Production Features
 
@@ -92,10 +91,27 @@ elizaos start --configure
 elizaos start --port 8080
 ```
 
-### Starting with a custom character
+### Starting with multiple characters
 
 ```bash
-elizaos start --character path/to/character.json
+# Using the --character option with multiple paths
+elizaos start --character ./character1.json ./character2.json
+
+# You can also specify multiple paths together
+elizaos start --character character1.json character2.json character3.json
+
+# Characters can be specified without the .json extension
+elizaos start --character character1 character2
+```
+
+### Using remote character URLs
+
+```bash
+# Load characters from URLs
+elizaos start --character https://example.com/characters/assistant.json
+
+# Mix URLs and local files
+elizaos start --character https://example.com/char1.json ./local-character.json
 ```
 
 ## Building Before Starting
@@ -107,6 +123,14 @@ elizaos start --build
 ```
 
 This will compile your TypeScript files and prepare the project for execution.
+
+## Error Handling
+
+If any character files fail to load, ElizaOS will:
+
+1. Log errors for each failed character
+2. Continue starting the server with any successfully loaded characters
+3. Fall back to the default Eliza character if no characters could be loaded
 
 ## Related Commands
 

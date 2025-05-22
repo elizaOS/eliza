@@ -20,7 +20,7 @@ Respond using XML format like this:
 Your response should ONLY include the <response></response> XML block.
 </output>`;
 
-export const messageHandlerTemplate = `<task>Generate dialog and actions for the character {{agentName}}.</task>  
+export const messageHandlerTemplate = `<task>Generate dialog and actions for the character {{agentName}}.</task>
 
 <providers>
 {{providers}}

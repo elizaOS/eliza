@@ -1,7 +1,6 @@
 {
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src",
     "lib": ["ESNext"],
     "target": "ESNext",
     "module": "Preserve",
@@ -26,5 +25,5 @@
       "@elizaos/core/*": ["../core/src/*"]
     }
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "e2e/**/*.ts", "__tests__/**/*.ts"]
 }

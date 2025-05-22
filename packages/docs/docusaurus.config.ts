@@ -8,7 +8,7 @@ const config = {
   title: 'eliza',
   tagline: 'Flexible, scalable AI agents for everyone',
   favicon: 'img/favicon.ico',
-  url: 'https://docs.eliza.how',
+  url: 'https://eliza.how',
   baseUrl: '/',
   organizationName: 'elizaos',
   projectName: 'eliza',
@@ -308,6 +308,14 @@ const config = {
     ],
   ],
   themeConfig: {
+    announcementBar: {
+      id: 'llms_full_feature',
+      content:
+        '🔥 Interact with our full documentation using your favorite LLM! <a href="/llms-full.txt" target="_blank" rel="noopener noreferrer">Copy <code>llms-full.txt</code></a> to get started. ✨',
+      backgroundColor: 'var(--ifm-color-warning-light)',
+      textColor: '#1f1f1f',
+      isCloseable: true,
+    },
     prism: {
       theme: require('prism-react-renderer').themes.github,
       darkTheme: require('prism-react-renderer').themes.dracula,
@@ -406,20 +414,32 @@ const config = {
           ],
         },
         {
-          to: 'blog',
+          type: 'dropdown',
           label: 'Blog',
           position: 'left',
+          items: [
+            {
+              label: 'Main Blog',
+              to: '/blog',
+            },
+            {
+              label: 'GitHub Activity',
+              href: 'https://elizaos.github.io/',
+              target: '_blank',
+              rel: 'noopener noreferrer',
+            },
+          ],
         },
         {
-          href: '/news',
+          href: '/blog',
           position: 'right',
           className: 'header-rss-link',
           'aria-label': 'RSS Feed',
           to: '/news',
           items: [
-            { label: 'RSS (XML)', href: '/news/rss.xml', target: '_blank' },
-            { label: 'Atom', href: '/news/atom.xml', target: '_blank' },
-            { label: 'JSON Feed', href: '/news/feed.json', target: '_blank' },
+            { label: 'RSS (XML)', href: '/blog/rss.xml', target: '_blank' },
+            { label: 'Atom', href: '/blog/atom.xml', target: '_blank' },
+            { label: 'JSON Feed', href: '/blog/feed.json', target: '_blank' },
           ],
         },
         {
@@ -442,11 +462,11 @@ const config = {
             },
             {
               label: 'llms.txt',
-              href: 'https://docs.eliza.how/llms.txt',
+              href: 'https://eliza.how/llms.txt',
             },
             {
               label: 'llms-full.txt',
-              href: 'https://docs.eliza.how/llms-full.txt',
+              href: 'https://eliza.how/llms-full.txt',
             },
           ],
         },

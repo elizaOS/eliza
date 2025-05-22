@@ -6,7 +6,7 @@ export default defineConfig({
   tsconfig: './tsconfig.build.json', // Use build-specific tsconfig
   sourcemap: true,
   format: ['esm'], // Ensure you're targeting CommonJS
-  dts: false, // Skip DTS generation to avoid external import issues // Ensure you're targeting CommonJS
+  dts: true, // Skip DTS generation to avoid external import issues // Ensure you're targeting CommonJS
   external: [
     'dotenv', // Externalize dotenv to prevent bundling
     'fs', // Externalize fs to use Node.js built-in module

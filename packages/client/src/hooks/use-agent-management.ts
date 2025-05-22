@@ -53,9 +53,6 @@ export function useAgentManagement() {
 
       // Start the agent
       await startAgentMutation.mutateAsync(agentId);
-
-      // Refresh active agents list
-      queryClient.invalidateQueries({ queryKey: ['active-agents'] });
     } catch (error) {
       console.error('Failed to start agent:', error);
 
@@ -96,9 +93,6 @@ export function useAgentManagement() {
 
       // Stop the agent
       await stopAgentMutation.mutateAsync(agentId);
-
-      // Refresh active agents list
-      queryClient.invalidateQueries({ queryKey: ['active-agents'] });
 
       toast({
         title: 'Agent Stopped',

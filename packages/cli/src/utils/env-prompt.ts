@@ -127,7 +127,7 @@ const ENV_VAR_CONFIGS: Record<string, EnvVarConfig[]> = {
 };
 
 /**
- * Retrieves the absolute path to the `.eliza/.env` environment file.
+ * Retrieves the absolute path to the `.env` environment file.
  *
  * @returns A promise that resolves to the full path of the environment file.
  */
@@ -137,7 +137,7 @@ export async function getEnvFilePath(): Promise<string> {
 }
 
 /**
- * Asynchronously reads environment variables from the `.eliza/.env` file and returns them as key-value pairs.
+ * Asynchronously reads environment variables from the `.env` file and returns them as key-value pairs.
  *
  * Ignores comments and empty lines. If the file does not exist or cannot be read, returns an empty object.
  *
@@ -178,7 +178,7 @@ export async function readEnvFile(): Promise<Record<string, string>> {
 }
 
 /**
- * Asynchronously writes the provided environment variables to the `.eliza/.env` file, creating the directory if it does not exist.
+ * Asynchronously writes the provided environment variables to the `.env` file, creating the directory if it does not exist.
  *
  * @param envVars - A record of environment variable key-value pairs to write.
  */
@@ -216,7 +216,7 @@ export async function writeEnvFile(envVars: Record<string, string>): Promise<voi
  *
  * If the variable is already set in {@link process.env} and non-empty, returns its value without prompting.
  * Displays the variable's description and an optional URL for guidance. Uses masked input for secrets.
- * For optional variables, allows skipping by pressing Enter. For the `PGLITE_DATA_DIR` variable, expands a leading tilde to the user's home directory.
+ * For optional variables, allows skipping by pressing Enter. For the `PGLITE_DATA_DIR` variable, expands a leading tilde to the project directory.
  *
  * @param config - The configuration describing the environment variable to prompt for.
  * @returns The entered or existing value, or an empty string if an optional variable is skipped.
@@ -259,8 +259,7 @@ async function promptForEnvVar(config: EnvVarConfig): Promise<string | null> {
 
   // Expand tilde in paths for database directory
   if (config.key === 'PGLITE_DATA_DIR' && value && value.startsWith('~')) {
-    const envInfo = await UserEnvironment.getInstanceInfo();
-    return value.replace(/^~/, envInfo.os.homedir);
+    return value.replace(/^~/, process.cwd());
   }
 
   return value;

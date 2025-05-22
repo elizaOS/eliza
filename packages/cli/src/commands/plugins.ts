@@ -1,11 +1,6 @@
-import {
-  displayBanner,
-  getCliInstallTag,
-  handleError,
-  installPlugin,
-  logHeader,
-} from '@/src/utils';
-import { getPluginRepository } from '@/src/utils/registry/index';
+import { handleError, installPlugin, logHeader } from '@/src/utils';
+import { readCache, updatePluginRegistryCache } from '@/src/utils/plugin-discovery';
+import { normalizePluginName } from '@/src/utils/registry';
 import { logger } from '@elizaos/core';
 import { Command } from 'commander';
 import { execa } from 'execa';
@@ -107,48 +102,78 @@ export const findPluginPackageName = (
 export const plugins = new Command()
   .name('plugins')
   .description('Manage ElizaOS plugins')
-  .option('-h, --help', 'Show help for plugins command')
   .action(function () {
-    // Just show help without displaying banner
-    this.help();
+    // Show help automatically if no subcommand is specified
+    this.help({ showGlobals: false });
   });
 
 export const pluginsCommand = plugins
   .command('list')
   .aliases(['l', 'ls'])
   .description('List available plugins to install into the project')
-  .option('-t, --type <type>', 'filter by type (adapter, client, plugin)')
-  .action(async (opts) => {
+  .option('--all', 'List all plugins from the registry with detailed version info')
+  .option('--v0', 'List only v0.x compatible plugins')
+  .action(async (opts: { all?: boolean; v0?: boolean }) => {
     try {
-      // Temporarily return hardcoded plugins as an array
-      const hardcodedPlugins = [
-        '@elizaos/plugin-bootstrap',
-        '@elizaos/plugin-sql',
-        '@elizaos/plugin-twitter',
-        '@elizaos/plugin-telegram',
-        '@elizaos/plugin-discord',
-        '@elizaos/plugin-farcaster',
-        '@elizaos/plugin-redpill',
-        '@elizaos/plugin-groq',
-        '@elizaos/plugin-local-ai',
-        '@elizaos/plugin-anthropic',
-        '@elizaos/plugin-openai',
-        '@elizaos/plugin-solana',
-        '@elizaos/plugin-evm',
-        '@elizaos/plugin-pdf',
-        '@elizaos/plugin-browser',
-        '@elizaos/plugin-s3-storage',
-        '@elizaos/plugin-video-understanding',
-        '@elizaos/plugin-venice',
-      ];
+      logHeader('Listing available plugins from cached registry...');
+      const cachedRegistry = await readCache();
 
-      const availablePlugins = hardcodedPlugins
-        .filter((name) => !opts.type || name.includes(opts.type))
-        .sort();
+      if (
+        !cachedRegistry ||
+        !cachedRegistry.registry ||
+        Object.keys(cachedRegistry.registry).length === 0
+      ) {
+        logger.info('Plugin cache is empty or not found.');
+        console.log('\nPlease run "elizaos plugins update" to fetch the latest plugin registry.');
+        return;
+      }
+      let availablePluginsToDisplay: string[] = [];
+      const allPlugins = cachedRegistry ? Object.entries(cachedRegistry.registry) : [];
+      let displayTitle = 'Available v1.x plugins (from local cache)';
 
-      logHeader('Available plugins');
-      for (const pluginName of availablePlugins) {
-        console.log(`${pluginName}`);
+      if (opts.all) {
+        displayTitle = 'All plugins in local cache (detailed view)';
+        if (allPlugins.length === 0) {
+          console.log('No plugins found in the registry.');
+        }
+        allPlugins.forEach(([name, info]) => {
+          console.log(`\nPlugin: ${name}`);
+          const repoInfo = info.git?.repo || info.npm?.repo;
+          console.log(`  Repository: ${repoInfo || 'N/A'}`);
+          console.log(`  v0 Compatible: ${info.supports.v0 ? 'Yes' : 'No'}`);
+          if (info.npm?.v0 || info.git?.v0?.version) {
+            const ver = info.npm?.v0 || info.git?.v0?.version;
+            const branch = info.git?.v0?.branch;
+            console.log(`    Version: ${ver || 'N/A'}${branch ? ` (branch: ${branch})` : ''}`);
+          }
+          console.log(`  v1 Compatible: ${info.supports.v1 ? 'Yes' : 'No'}`);
+          if (info.npm?.v1 || info.git?.v1?.version) {
+            const ver = info.npm?.v1 || info.git?.v1?.version;
+            const branch = info.git?.v1?.branch;
+            console.log(`    Version: ${ver || 'N/A'}${branch ? ` (branch: ${branch})` : ''}`);
+          }
+        });
+        console.log('');
+        return;
+      } else if (opts.v0) {
+        displayTitle = 'Available v0.x plugins (from local cache)';
+        availablePluginsToDisplay = allPlugins
+          .filter(([, info]) => info.supports.v0)
+          .map(([name]) => name);
+      } else {
+        // Default to v1.x
+        availablePluginsToDisplay = allPlugins
+          .filter(([, info]) => info.supports.v1)
+          .map(([name]) => name);
+      }
+
+      logHeader(displayTitle);
+      if (availablePluginsToDisplay.length === 0) {
+        console.log('No plugins found matching the criteria in the registry.');
+      } else {
+        for (const pluginName of availablePluginsToDisplay) {
+          console.log(`${pluginName}`);
+        }
       }
       console.log('');
     } catch (error) {
@@ -159,7 +184,7 @@ export const pluginsCommand = plugins
 plugins
   .command('add')
   .alias('install')
-  .description('Add a plugins to the project')
+  .description('Add a plugin to the project')
   .argument('<plugin>', 'plugins name (e.g., "abc", "plugin-abc", "elizaos/plugin-abc")')
   .option('-n, --no-env-prompt', 'Skip prompting for environment variables')
   .option(
@@ -168,7 +193,7 @@ plugins
     'v2-develop'
   )
   .option('-T, --tag <tagname>', 'Specify a tag to install (e.g., beta)')
-  .action(async (plugin, opts) => {
+  .action(async (pluginArg, opts) => {
     const cwd = process.cwd();
     const pkgData = readPackageJson(cwd);
 
@@ -179,55 +204,109 @@ plugins
       process.exit(1);
     }
 
+    let plugin = pluginArg;
+
     try {
+      // --- Convert full GitHub HTTPS URL to shorthand ---
+      const httpsGitHubUrlRegex =
+        // eslint-disable-next-line no-useless-escape
+        /^https?:\/\/github\.com\/([a-zA-Z0-9_-]+)\/([a-zA-Z0-9_.-]+?)(?:\.git)?(?:(?:#|\/tree\/|\/commit\/)([a-zA-Z0-9_.-]+))?\/?$/;
+      const httpsMatch = plugin.match(httpsGitHubUrlRegex);
+
+      if (httpsMatch) {
+        const [, owner, repo, ref] = httpsMatch;
+        plugin = `github:${owner}/${repo}${ref ? `#${ref}` : ''}`;
+        logger.info(`Detected GitHub URL. Converted to: ${plugin}`);
+      }
+      // --- End GitHub URL conversion ---
+
       const installedPluginName = findPluginPackageName(plugin, pkgData.allDependencies);
       if (installedPluginName) {
         logger.info(`Plugin "${installedPluginName}" is already added to this project.`);
         process.exit(0);
       }
 
-      const tag = getCliInstallTag();
-      const versionTag = tag ? `@${tag}` : '@latest';
+      // --- GitHub Plugin Installation ---
+      const githubRegex =
+        /^(?:github:)?([a-zA-Z0-9_-]+)\/([a-zA-Z0-9_.-]+)(?:#([a-zA-Z0-9_.-]+))?$/;
+      const githubMatch = plugin.match(githubRegex);
 
-      const normalizedPluginName = normalizePluginNameForDisplay(plugin);
-      const npmPackageName = `@elizaos/${normalizedPluginName}`;
-      const npmPackageNameWithTag = `${npmPackageName}${versionTag}`;
+      if (githubMatch) {
+        const [, owner, repo, ref] = githubMatch;
+        const githubSpecifier = `github:${owner}/${repo}${ref ? `#${ref}` : ''}`;
+        // The plugin name for Eliza's internal purposes could be derived from the repo name.
+        // For now, we'll use the repo name, but this might need refinement
+        // to check package.json inside the repo after installation.
+        const pluginNameForPostInstall = repo;
 
-      console.info(`Attempting to install ${npmPackageNameWithTag} from npm registry...`);
+        logger.info(`Attempting to install plugin directly from GitHub: ${githubSpecifier}`);
 
-      let success = await installPlugin(npmPackageName, cwd, tag, opts.branch);
+        // For GitHub installs, opts.tag and opts.branch are superseded by the #ref in the specifier.
+        // We pass undefined for them to installPlugin, which should be updated to handle this.
+        const success = await installPlugin(githubSpecifier, cwd);
 
-      if (success) {
-        console.log(`Successfully installed ${npmPackageNameWithTag}`);
-        process.exit(0);
-      }
-
-      console.warn(
-        `Failed to install ${npmPackageNameWithTag} directly from npm. Trying registry lookup...`
-      );
-
-      const repo = await getPluginRepository(plugin);
-
-      if (!repo) {
-        console.error(`Plugin "${plugin}" not found in registry`);
-        console.info('\nYou can specify plugins in multiple formats:');
-        console.info('  - Just the name: ton');
-        console.info('  - With plugin- prefix: plugin-abc');
-        console.info('  - With organization: elizaos/plugin-abc');
-        console.info('  - Full package name: @elizaos-plugins/plugin-abc');
-        console.info('\nTry listing available plugins with:');
-        console.info('  npx elizaos project list-plugins');
-        process.exit(1);
-      }
-
-      console.info(`Installing ${repo}...`);
-      success = await installPlugin(repo, cwd, opts.tag, opts.branch);
-
-      if (success) {
-        console.log(`Successfully installed ${repo}`);
+        if (success) {
+          logger.info(
+            `Successfully installed ${pluginNameForPostInstall} from ${githubSpecifier}.`
+          );
+          // TODO: Add post-installation steps here, similar to other plugin types
+          // e.g., prompting for env vars, updating config.
+          // For now, just exit cleanly.
+          process.exit(0);
+        } else {
+          logger.error(`Failed to install plugin from ${githubSpecifier}.`);
+          process.exit(1);
+        }
       } else {
-        console.error(`Failed to install ${repo}`);
+        // --- Registry-based or fuzzy Plugin Installation ---
+        const cachedRegistry = await readCache();
+        if (!cachedRegistry || !cachedRegistry.registry) {
+          logger.error(
+            'Plugin registry cache not found. Please run "elizaos plugins update" first.'
+          );
+          process.exit(1);
+        }
+
+        const possibleNames = normalizePluginName(plugin);
+        const pluginKey = possibleNames.find((name) => cachedRegistry.registry[name]);
+
+        const targetName = pluginKey || plugin;
+        if (pluginKey) {
+          logger.info(`Found plugin in registry, installing ${pluginKey}...`);
+        } else {
+          logger.info(
+            `Plugin "${plugin}" not found directly in registry, attempting fuzzy lookup...`
+          );
+        }
+
+        const registryInstallResult = await installPlugin(targetName, cwd, opts.tag);
+
+        if (registryInstallResult) {
+          console.log(`Successfully installed ${targetName}`);
+          process.exit(0);
+        }
+
+        console.error(`Failed to install ${targetName} from registry.`);
         process.exit(1);
+      }
+    } catch (error) {
+      handleError(error);
+    }
+  });
+
+plugins
+  .command('update')
+  .alias('refresh')
+  .description('Fetch the latest plugin registry and update local cache')
+  .action(async () => {
+    try {
+      logHeader('Updating plugin registry cache...');
+      const success = await updatePluginRegistryCache();
+      if (success) {
+        logger.info('Plugin registry cache updated successfully.');
+      } else {
+        // updatePluginRegistryCache logs specific errors, so a general message here is fine.
+        logger.warn('Plugin registry cache update failed. Please check logs for more details.');
       }
     } catch (error) {
       handleError(error);

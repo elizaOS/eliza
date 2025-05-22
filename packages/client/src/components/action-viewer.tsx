@@ -14,25 +14,31 @@ enum ActionType {
   all = 'all',
   llm = 'llm',
   embedding = 'embedding',
+  transcription = 'transcription',
   image = 'image',
   other = 'other',
 }
 
 // Types
-type AgentAction = {
-  id: string;
-  type: string;
-  createdAt: number;
+type AgentLog = {
+  id?: string;
+  type?: string;
+  timestamp?: number;
+  message?: string;
+  details?: string;
+  roomId?: string;
   body?: {
     modelType?: string;
     modelKey?: string;
     params?: any;
     response?: any;
   };
+  createdAt?: number; // Some logs use createdAt instead of timestamp
+  [key: string]: any; // Allow for additional properties
 };
 
 type ActionCardProps = {
-  action: AgentAction;
+  action: AgentLog;
   onDelete?: (logId: string) => void;
 };
 
@@ -45,12 +51,16 @@ type AgentActionViewerProps = {
 function getModelUsageType(modelType: string): string {
   if (
     (modelType.includes('TEXT') || modelType.includes('OBJECT')) &&
-    !modelType.includes('EMBEDDING')
+    !modelType.includes('EMBEDDING') &&
+    !modelType.includes('TRANSCRIPTION')
   ) {
     return 'LLM';
   }
   if (modelType.includes('EMBEDDING')) {
     return 'Embedding';
+  }
+  if (modelType.includes('TRANSCRIPTION')) {
+    return 'Transcription';
   }
   if (modelType.includes('IMAGE')) {
     return 'Image';
@@ -58,29 +68,35 @@ function getModelUsageType(modelType: string): string {
   if (
     !modelType.includes('TEXT') &&
     !modelType.includes('IMAGE') &&
-    !modelType.includes('EMBEDDING')
+    !modelType.includes('EMBEDDING') &&
+    !modelType.includes('TRANSCRIPTION')
   ) {
     return 'Other';
   }
   return 'Unknown';
 }
 
-function formatDate(timestamp: number) {
+function formatDate(timestamp: number | undefined) {
+  if (!timestamp) return 'Unknown date';
   const date = new Date(timestamp);
   return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
 }
+
 function getModelIcon(modelType = '') {
   if (modelType.includes('TEXT_EMBEDDING')) return <Brain className="w-4 h-4" />;
+  if (modelType.includes('TRANSCRIPTION')) return <Bot className="w-4 h-4" />;
   if (modelType.includes('LLM')) return <Bot className="w-4 h-4" />;
   if (modelType.includes('IMAGE')) return <ImagePlusIcon className="w-4 h-4" />;
   return <Brain className="w-4 h-4" />;
 }
 
-function groupActionsByDate(actions: AgentAction[]) {
-  const groups: Record<string, AgentAction[]> = {};
+function groupActionsByDate(actions: AgentLog[]) {
+  const groups: Record<string, AgentLog[]> = {};
 
   for (const action of actions) {
-    const date = new Date(action.createdAt || 0);
+    // Use createdAt if available, fall back to timestamp
+    const timestamp = action.createdAt || action.timestamp || 0;
+    const date = new Date(timestamp);
     const dateKey = date.toLocaleDateString();
 
     if (!groups[dateKey]) {
@@ -96,6 +112,7 @@ function groupActionsByDate(actions: AgentAction[]) {
 function ActionCard({ action, onDelete }: ActionCardProps) {
   const renderActionContent = () => {
     const { body } = action;
+    const modelType = body?.modelType || '';
 
     return (
       <div className="mt-2 grid gap-2">
@@ -115,9 +132,13 @@ function ActionCard({ action, onDelete }: ActionCardProps) {
             </div>
             <div className="bg-muted/30 px-3 py-2 rounded">
               <pre className="text-xs font-mono whitespace-pre-wrap overflow-x-auto">
-                {typeof body.params === 'object'
-                  ? JSON.stringify(body.params, null, 2)
-                  : body.params}
+                {modelType.includes('TRANSCRIPTION') && Array.isArray(body.params) ? (
+                  <span className="text-xs italic text-muted-foreground">Speech input data</span>
+                ) : typeof body.params === 'object' ? (
+                  JSON.stringify(body.params, null, 2)
+                ) : (
+                  body.params
+                )}
               </pre>
             </div>
           </div>
@@ -166,7 +187,11 @@ function ActionCard({ action, onDelete }: ActionCardProps) {
           variant="ghost"
           size="icon"
           className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-50 h-7 w-7 hover:bg-muted"
-          onClick={() => onDelete(action.id)}
+          onClick={() => {
+            if (typeof action.id === 'string') {
+              onDelete(action.id);
+            }
+          }}
           title="Delete log entry"
         >
           <Trash2 className="h-4 w-4" />
@@ -184,7 +209,7 @@ function ActionCard({ action, onDelete }: ActionCardProps) {
           </Badge>
         </div>
         <Badge variant="secondary" className="text-xs group-hover:mr-8 transition-all">
-          {formatDate(action.createdAt || 0)}
+          {formatDate(action.createdAt || action.timestamp)}
         </Badge>
       </div>
 
@@ -273,7 +298,7 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
   }, [handleScroll]);
 
   // Filter actions based on selected type
-  const filteredActions = actions.filter((action: AgentAction) => {
+  const filteredActions = actions.filter((action: AgentLog) => {
     if (selectedType === ActionType.all) return true;
 
     const modelType = action.body?.modelType || '';
@@ -284,6 +309,8 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
         return usageType === 'LLM';
       case ActionType.embedding:
         return usageType === 'Embedding';
+      case ActionType.transcription:
+        return usageType === 'Transcription';
       case ActionType.image:
         return usageType === 'Image';
       case ActionType.other:
@@ -293,7 +320,7 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
     }
   });
 
-  const visibleActions = filteredActions as AgentAction[];
+  const visibleActions = filteredActions as AgentLog[];
   const hasMoreToLoad = visibleItems < filteredActions.length;
   const actionGroups = groupActionsByDate(visibleActions);
 
@@ -342,6 +369,7 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
               <SelectItem value={ActionType.all}>All Actions</SelectItem>
               <SelectItem value={ActionType.llm}>LLM Calls</SelectItem>
               <SelectItem value={ActionType.embedding}>Embeddings</SelectItem>
+              <SelectItem value={ActionType.transcription}>Transcriptions</SelectItem>
               <SelectItem value={ActionType.image}>Image Operations</SelectItem>
               <SelectItem value={ActionType.other}>Other</SelectItem>
             </SelectContent>

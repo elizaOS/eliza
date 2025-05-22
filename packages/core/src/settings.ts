@@ -117,49 +117,58 @@ export function encryptStringValue(value: string, salt: string): string {
  * @returns {string} - The decrypted string value
  */
 export function decryptStringValue(value: string, salt: string): string {
-  // Check if value is undefined or null
-  if (value === undefined || value === null) {
-    logger.debug('Attempted to decrypt undefined or null value');
-    return value; // Return the value as is (undefined or null)
-  }
+  try {
+    // Check if value is undefined or null
+    if (value === undefined || value === null) {
+      //logger.debug('Attempted to decrypt undefined or null value');
+      return value; // Return the value as is (undefined or null)
+    }
 
-  if (typeof value === 'boolean' || typeof value === 'number') {
-    logger.debug('Value is a boolean or number, returning as is');
+    if (typeof value === 'boolean' || typeof value === 'number') {
+      //logger.debug('Value is a boolean or number, returning as is');
+      return value;
+    }
+    if (typeof value !== 'string') {
+      logger.debug(`Value is not a string (type: ${typeof value}), returning as is`);
+      return value;
+    }
+
+    // Split the IV and encrypted value
+    const parts = value.split(':');
+    if (parts.length !== 2) {
+      /*
+      logger.debug(
+        `Invalid encrypted value format - expected 'iv:encrypted', returning original value`
+      );
+      */
+      return value; // Return the original value without decryption
+    }
+
+    const iv = Buffer.from(parts[0], 'hex');
+    const encrypted = parts[1];
+
+    // Verify IV length
+    if (iv.length !== 16) {
+      if (iv.length) {
+        logger.debug(`Invalid IV length (${iv.length}) - expected 16 bytes`);
+      }
+      return value; // Return the original value without decryption
+    }
+
+    // Create key from the salt
+    const key = crypto.createHash('sha256').update(salt).digest().slice(0, 32);
+
+    // Decrypt the value
+    const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
+    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+
+    return decrypted;
+  } catch (error) {
+    logger.error(`Error decrypting value: ${error}`);
+    // Return the encrypted value on error
     return value;
   }
-
-  if (typeof value !== 'string') {
-    logger.debug(`Value is not a string (type: ${typeof value}), returning as is`);
-    return value;
-  }
-
-  // Split the IV and encrypted value
-  const parts = value.split(':');
-  if (parts.length !== 2) {
-    logger.debug(
-      `Invalid encrypted value format - expected 'iv:encrypted', returning original value`
-    );
-    return value; // Return the original value without decryption
-  }
-
-  const iv = Buffer.from(parts[0], 'hex');
-  const encrypted = parts[1];
-
-  // Verify IV length
-  if (iv.length !== 16) {
-    logger.debug(`Invalid IV length (${iv.length}) - expected 16 bytes`);
-    return value; // Return the original value without decryption
-  }
-
-  // Create key from the salt
-  const key = crypto.createHash('sha256').update(salt).digest().slice(0, 32);
-
-  // Decrypt the value
-  const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
-  let decrypted = decipher.update(encrypted, 'hex', 'utf8');
-  decrypted += decipher.final('utf8');
-
-  return decrypted;
 }
 
 /**

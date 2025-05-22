@@ -7,7 +7,7 @@ import {
 import { ChatInput } from '@/components/ui/chat/chat-input';
 import { ChatMessageList } from '@/components/ui/chat/chat-message-list';
 import { USER_NAME } from '@/constants';
-import { useMessages } from '@/hooks/use-query-hooks';
+import { useDeleteAllMemories, useDeleteMemory, useMessages } from '@/hooks/use-query-hooks';
 import clientLogger from '@/lib/logger';
 import SocketIOManager from '@/lib/socketio-manager';
 import { cn, getEntityId, moment, randomUUID } from '@/lib/utils';
@@ -18,11 +18,12 @@ import { AgentStatus } from '@elizaos/core';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
 
 import { useQueryClient } from '@tanstack/react-query';
-import { ChevronRight, PanelRight, Paperclip, Send, X } from 'lucide-react';
+import { ChevronRight, PanelRight, Paperclip, Send, Trash2, X } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import AIWriter from 'react-aiwriter';
 import { AudioRecorder } from './audio-recorder';
 import CopyButton from './copy-button';
+import DeleteButton from './delete-button';
 import { Avatar, AvatarImage } from './ui/avatar';
 import { Badge } from './ui/badge';
 import ChatTtsButton from './ui/chat/chat-tts-button';
@@ -45,10 +46,12 @@ function MessageContent({
   message,
   agentId,
   shouldAnimate,
+  onDelete,
 }: {
   message: ContentWithUser;
   agentId: UUID;
   shouldAnimate: boolean;
+  onDelete: (id: string) => void;
 }) {
   return (
     <div className="flex flex-col w-full">
@@ -115,27 +118,24 @@ function MessageContent({
           <ChatBubbleTimestamp timestamp={moment(message.createdAt).format('LT')} />
         )}
       </ChatBubbleMessage>
-      {message.name !== USER_NAME && (
-        <div className="flex justify-between items-end w-full">
-          <div>
-            {message.text && !message.isLoading ? (
-              <div className="flex items-center gap-2">
-                <CopyButton text={message.text} />
-                <ChatTtsButton agentId={agentId} text={message.text} />
-              </div>
-            ) : (
-              <div />
-            )}
-          </div>
-          <div>
-            {message.text && message.actions && (
-              <Badge variant="outline" className="text-sm">
-                {message.actions}
-              </Badge>
-            )}
-          </div>
+      <div className="flex justify-between items-end w-full">
+        <div className="flex items-center gap-1">
+          {message.name !== USER_NAME && message.text && !message.isLoading && (
+            <>
+              <CopyButton text={message.text} />
+              <ChatTtsButton agentId={agentId} text={message.text} />
+            </>
+          )}
+          <DeleteButton onClick={() => onDelete(message.id as string)} />
         </div>
-      )}
+        <div>
+          {message.text && message.actions && (
+            <Badge variant="outline" className="text-sm">
+              {message.actions}
+            </Badge>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -161,6 +161,8 @@ export default function Page({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const queryClient = useQueryClient();
+  const deleteMemoryMutation = useDeleteMemory();
+  const clearMemoriesMutation = useDeleteAllMemories();
 
   const entityId = getEntityId();
   const roomId = WorldManager.generateRoomId(agentId);
@@ -432,6 +434,21 @@ export default function Page({
     }
   };
 
+  const handleDeleteMessage = (id: string) => {
+    deleteMemoryMutation.mutate({ agentId, memoryId: id });
+    queryClient.setQueryData(
+      ['messages', agentId, roomId, worldId],
+      (old: ContentWithUser[] = []) => old.filter((m) => m.id !== id)
+    );
+  };
+
+  const handleClearChat = () => {
+    if (window.confirm('Clear all messages?')) {
+      clearMemoriesMutation.mutate({ agentId, roomId });
+      queryClient.setQueryData(['messages', agentId, roomId, worldId], []);
+    }
+  };
+
   return (
     <div
       className={`flex flex-col w-full h-screen items-center ${showDetails ? 'col-span-3' : 'col-span-4'}`}
@@ -479,14 +496,19 @@ export default function Page({
             </div>
           </div>
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={toggleDetails}
-            className={cn('gap-1.5', showDetails && 'bg-secondary')}
-          >
-            <PanelRight className="size-4" />
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={handleClearChat}>
+              <Trash2 className="size-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={toggleDetails}
+              className={cn('gap-1.5', showDetails && 'bg-secondary')}
+            >
+              <PanelRight className="size-4" />
+            </Button>
+          </div>
         </div>
 
         {/* Main Chat Area - takes remaining height */}
@@ -537,6 +559,7 @@ export default function Page({
                       message={message}
                       agentId={agentId}
                       shouldAnimate={shouldAnimate}
+                      onDelete={handleDeleteMessage}
                     />
                   </ChatBubble>
                 </div>

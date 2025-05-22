@@ -134,10 +134,10 @@ Plugins extend the functionality of your agents. Use the `plugin` command for de
 
 ```bash
 # Example: Publish the plugin in the current directory (requires setup)
-elizaos plugin publish
+elizaos plugins publish
 
 # Example: Test publishing the plugin to npm
-elizaos plugin publish --npm --test
+elizaos plugins publish --npm --test
 ```
 
 ## Environment Configuration

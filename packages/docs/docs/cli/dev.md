@@ -8,7 +8,7 @@ image: /img/cli.jpg
 
 # Dev Command
 
-The `dev` command runs your ElizaOS project or plugin in development mode with auto-rebuild and restart on file changes. This is the recommended way to develop and test your implementations locally.
+The `dev` command runs your ElizaOS project or plugin in development mode with auto-rebuild and restart on file changes. It provides detailed logging and is the recommended way to develop and test your implementations locally.
 
 ## Usage
 
@@ -20,12 +20,47 @@ elizaos dev [options]
 
 ## Options
 
-| Option                           | Description                                             |
-| -------------------------------- | ------------------------------------------------------- |
-| `-p, --port <port>`              | Port number to run the server on                        |
-| `-c, --configure`                | Reconfigure services and AI models                      |
-| `-char, --character <character>` | Path or URL to character file to use instead of default |
-| `-b, --build`                    | Build the project before starting                       |
+| Option                          | Description                                           |
+| ------------------------------- | ----------------------------------------------------- |
+| `-p, --port <port>`             | Port number to run the server on                      |
+| `-c, --configure`               | Reconfigure services and AI models                    |
+| `-char, --character [paths...]` | Character file(s) to use (multiple formats supported) |
+| `-b, --build`                   | Build the project before starting                     |
+
+## Character Handling
+
+The `dev` command supports flexible character specification:
+
+- **Multiple characters** can be provided using various formats:
+
+  ```bash
+  # Space-separated
+  elizaos dev --character file1.json file2.json
+
+  # Comma-separated
+  elizaos dev --character "file1.json,file2.json"
+
+  # Comma-separated with spaces
+  elizaos dev --character "file1.json, file2.json"
+
+  # With quotes
+  elizaos dev --character "'file1.json'" "file2.json"
+  ```
+
+- **Extension-optional**: Character files can be specified with or without the `.json` extension
+
+  ```bash
+  # With extension
+  elizaos dev --character assistant.json
+
+  # Without extension (automatically adds .json)
+  elizaos dev --character assistant
+  ```
+
+- **URL support**: Character files can be loaded from URLs
+  ```bash
+  elizaos dev --character https://example.com/characters/assistant.json
+  ```
 
 ## Development Features
 
@@ -67,17 +102,29 @@ elizaos dev
 elizaos dev --port 8080
 ```
 
-### Using a Custom Character
-
-```bash
-elizaos dev --character ./characters/custom-assistant.json
-```
-
 ### Force Configuration
 
 ```bash
 elizaos dev --configure
 ```
+
+This option will request a reconfiguration of services and AI models, and save a new global config file. It's useful when you want to change model providers or other settings.
+
+### Build Before Starting
+
+```bash
+elizaos dev --build
+```
+
+This ensures that your project is fully built before starting the development server, which can prevent issues with missing files or outdated code.
+
+### Full Example with Multiple Options
+
+```bash
+elizaos dev --port 4000 --character assistant.json,chatbot.json --build --configure
+```
+
+This starts the development server on port 4000, uses two character files, builds the project first, and triggers the configuration process.
 
 ## Development Process
 

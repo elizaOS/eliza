@@ -130,6 +130,10 @@ class SocketIOManager extends EventAdapter {
     return SocketIOManager.instance;
   }
 
+  public static isConnected(): boolean {
+    return SocketIOManager.instance?.isConnected || false;
+  }
+
   /**
    * Initialize the Socket.io connection to the server
    * @param entityId The client entity ID
@@ -161,10 +165,15 @@ class SocketIOManager extends EventAdapter {
       this.isConnected = true;
       this.resolveConnect?.();
 
-      // Rejoin any active rooms after reconnection
+      this.emit('connect');
+
       this.activeRooms.forEach((roomId) => {
         this.joinRoom(roomId);
       });
+    });
+
+    this.socket.on('unauthorized', (reason: string) => {
+      this.emit('unauthorized', reason);
     });
 
     this.socket.on('messageBroadcast', (data) => {
@@ -250,6 +259,8 @@ class SocketIOManager extends EventAdapter {
       clientLogger.info(`[SocketIO] Disconnected. Reason: ${reason}`);
       this.isConnected = false;
 
+      this.emit('disconnect', reason);
+
       // Reset connect promise for next connection
       this.connectPromise = new Promise<void>((resolve) => {
         this.resolveConnect = resolve;
@@ -260,8 +271,19 @@ class SocketIOManager extends EventAdapter {
       }
     });
 
+    this.socket.on('reconnect_attempt', (attempt) => {
+      clientLogger.info('[SocketIO] Reconnect attempt', attempt);
+      this.emit('reconnect_attempt', attempt);
+    });
+
+    this.socket.on('reconnect', (attempt) => {
+      clientLogger.info(`[SocketIO] Reconnected after ${attempt} attempts`);
+      this.emit('reconnect', attempt);
+    });
+
     this.socket.on('connect_error', (error) => {
       clientLogger.error('[SocketIO] Connection error:', error);
+      this.emit('connect_error', error);
     });
   }
 
