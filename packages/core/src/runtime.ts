@@ -2560,8 +2560,13 @@ export class AgentRuntime implements IAgentRuntime {
     return await this.adapter.getRoomsForParticipants(userIds);
   }
 
+  // deprecate this one
   async getRooms(worldId: UUID): Promise<Room[]> {
-    return await this.adapter.getRooms(worldId);
+    return await this.adapter.getRoomsByWorld(worldId);
+  }
+
+  async getRoomsByWorld(worldId: UUID): Promise<Room[]> {
+    return await this.adapter.getRoomsByWorld(worldId);
   }
 
   async getParticipantUserState(
