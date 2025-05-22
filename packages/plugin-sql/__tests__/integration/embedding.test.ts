@@ -63,7 +63,7 @@ describe('Embedding Integration Tests', () => {
       await adapter.createEntity(embeddingTestEntity);
 
       // Step 4: Create test room
-      await adapter.createRoom(embeddingTestRoom);
+      await adapter.createRooms([embeddingTestRoom]);
 
       // Step 5: Add entity as participant in the room
       await adapter.addParticipant(embeddingTestEntityId, embeddingTestRoomId);
@@ -113,7 +113,7 @@ describe('Embedding Integration Tests', () => {
       // Use the first test memory with embedding
       const memory = embeddingTestMemoriesWithEmbedding[0];
 
-      console.log('Memory:', memory);
+      //console.log('Memory:', memory);
 
       // Create memory with embedding
       const memoryId = await adapter.createMemory(memory, 'memories');
