@@ -92,6 +92,13 @@ jobs:
       - name: Build packages
         run: bun run build
 
+      - name: Build web assets for Tauri (macOS)
+        run: |
+          cd packages/app
+          bun install --no-postinstall
+          bun run build
+        shell: bash
+
       - name: Install Tauri CLI
         run: |
           bun install -g @tauri-apps/cli
@@ -101,6 +108,7 @@ jobs:
         run: |
           cd packages/app
           bun run tauri build --target universal-apple-darwin --no-bundle
+        shell: bash
 
       - name: Upload Desktop build artifacts
         uses: actions/upload-artifact@v4
