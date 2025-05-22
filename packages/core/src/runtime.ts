@@ -1654,12 +1654,10 @@ export class AgentRuntime implements IAgentRuntime {
     if (!entity.agentId) {
       entity.agentId = this.agentId;
     }
-    const res = await this.createEntities([entity]);
-    if (!res.length) return null;
-    return res[0];
+    return await this.createEntities([entity]);
   }
 
-  async createEntities(entities: Entity[]): Promise<boolean[]> {
+  async createEntities(entities: Entity[]): Promise<boolean> {
     entities.forEach((e) => {
       e.agentId = this.agentId;
     });
