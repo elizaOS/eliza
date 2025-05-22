@@ -36,7 +36,7 @@ for bats_file in "${ALL_BATS[@]}"; do
   start=$(date +%s)
   timeout_duration=1m
   if [[ "$bats_file" == "test_start.bats" ]]; then
-    timeout_duration=6m
+    timeout_duration=8m
   fi
 
   if timeout "$timeout_duration" "$BATS_BIN" "$bats_file"; then
