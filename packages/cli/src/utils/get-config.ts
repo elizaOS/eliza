@@ -5,7 +5,6 @@ import path from 'node:path';
 import prompts from 'prompts';
 import { z } from 'zod';
 import { resolveEnvFile, resolvePgliteDir } from './resolve-utils';
-import { UserEnvironment } from './user-environment';
 // Database config schemas
 const postgresConfigSchema = z.object({
   type: z.literal('postgres'),
@@ -44,22 +43,16 @@ export function isValidPostgresUrl(url: string): boolean {
 /**
  * Retrieves the standard directory paths used by Eliza for configuration and database storage.
  *
- * @returns An object containing the user's home directory, the Eliza configuration directory, the Eliza database directory for the current project, and the path to the Eliza `.env` file.
+ * @returns An object containing the Eliza configuration directory, the Eliza database directory for the current project, and the path to the Eliza `.env` file.
  */
 export async function getElizaDirectories() {
-  const envInfo = await UserEnvironment.getInstanceInfo();
-  const homeDir = envInfo.os.homedir;
-
-  logger.debug('[Config] Using home directory:', homeDir);
-
-  const elizaDir = path.join(homeDir, '.eliza');
+  const elizaDir = path.join(process.cwd(), '.eliza');
   const elizaDbDir = resolvePgliteDir();
   const envFilePath = resolveEnvFile();
 
   logger.debug('[Config] Using database directory:', elizaDbDir);
 
   return {
-    homeDir,
     elizaDir,
     elizaDbDir,
     envFilePath,
@@ -91,7 +84,7 @@ async function ensureFile(filePath: string) {
 /**
  * Ensures the Eliza configuration directory exists and returns standard Eliza directory paths.
  *
- * @returns An object containing paths for the user's home directory, the Eliza configuration directory, the Eliza database directory, and the `.env` file.
+ * @returns An object containing paths for the Eliza configuration directory, the Eliza database directory, and the `.env` file.
  */
 export async function ensureElizaDir() {
   const dirs = await getElizaDirectories();

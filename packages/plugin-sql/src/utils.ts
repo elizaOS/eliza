@@ -1,17 +1,16 @@
 import dotenv from 'dotenv';
 import { existsSync } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
 /**
- * Expands a file path starting with `~` to the user's home directory.
+ * Expands a file path starting with `~` to the project directory.
  *
  * @param filepath - The path to expand.
  * @returns The expanded path.
  */
 export function expandTildePath(filepath: string): string {
   if (filepath && filepath.startsWith('~')) {
-    return path.join(os.homedir(), filepath.slice(1));
+    return path.join(process.cwd(), filepath.slice(1));
   }
   return filepath;
 }

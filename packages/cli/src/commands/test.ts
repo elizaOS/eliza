@@ -15,7 +15,6 @@ import { exec } from 'node:child_process';
 import * as fs from 'node:fs';
 import { existsSync } from 'node:fs';
 import * as net from 'node:net';
-import * as os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { pathToFileURL } from 'url';
@@ -157,13 +156,11 @@ const runE2eTests = async (options: { port?: number; name?: string; skipBuild?: 
     const projectAgents: ProjectAgent[] = [];
 
     // Set up standard paths and load .env
-    const homeDir = os.homedir();
-    const elizaDir = path.join(homeDir, '.eliza');
+    const elizaDir = path.join(process.cwd(), '.eliza');
     const elizaDbDir = resolvePgliteDir(undefined, path.join(elizaDir, '.pglite'));
     const envFilePath = resolveEnvFile();
 
     console.info('Setting up environment...');
-    console.info(`Home directory: ${homeDir}`);
     console.info(`Eliza directory: ${elizaDir}`);
     console.info(`Database directory: ${elizaDbDir}`);
     console.info(`Environment file: ${envFilePath}`);

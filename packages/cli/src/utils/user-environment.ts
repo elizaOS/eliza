@@ -244,8 +244,7 @@ export class UserEnvironment {
   }
 
   public async getPathInfo(): Promise<PathInfo> {
-    const homedir = os.homedir();
-    const elizaDir = path.join(homedir, '.eliza');
+    const elizaDir = path.join(process.cwd(), '.eliza');
     const monorepoRoot = this.findMonorepoRoot(process.cwd());
 
     logger.debug('[UserEnvironment] Detected monorepo root:', monorepoRoot || 'Not in monorepo');

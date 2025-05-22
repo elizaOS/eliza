@@ -3,7 +3,6 @@ import { Command } from 'commander';
 import dotenv from 'dotenv';
 import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import prompts from 'prompts';
 import { rimraf } from 'rimraf';
@@ -398,8 +397,7 @@ async function safeDeleteDirectory(
  */
 async function resetEnv(yes = false): Promise<void> {
   // Get all relevant paths
-  const homeDir = os.homedir();
-  const elizaDir = path.join(homeDir, '.eliza');
+  const elizaDir = path.join(process.cwd(), '.eliza');
   const cacheDir = path.join(elizaDir, 'cache');
 
   const localEnvPath = getLocalEnvPath() ?? path.join(process.cwd(), '.env');

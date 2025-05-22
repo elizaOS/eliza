@@ -7,7 +7,8 @@
 # -----------------------------------------------------------------------------
 
 setup_file() {
-  if [[ -f "$HOME/.eliza/cached-registry.json" ]]; then
+  local cache_file="$BATS_TEST_DIRNAME/../.eliza/cached-registry.json"
+  if [[ -f "$cache_file" ]]; then
     return 0
   fi
   bun run "$BATS_TEST_DIRNAME/../src/utils/parse-registry.ts"
