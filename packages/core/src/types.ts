@@ -925,7 +925,7 @@ export interface IDatabaseAdapter {
 
   getRoomsForParticipants(userIds: UUID[]): Promise<UUID[]>;
 
-  getRooms(worldId: UUID): Promise<Room[]>;
+  getRoomsByWorld(worldId: UUID): Promise<Room[]>;
 
   removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
 
@@ -1239,6 +1239,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   createEntity(entity: Entity): Promise<boolean>;
   createRoom({ id, name, source, type, channelId, serverId, worldId }: Room): Promise<UUID>;
   addParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
+  getRooms(worldId: UUID): Promise<Room[]>;
 
   /**
    * Registers a handler function responsible for sending messages to a specific source/platform.
