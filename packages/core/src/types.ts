@@ -1104,20 +1104,6 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 
   getConnection(): Promise<PGlite | PgPool>;
 
-  getKnowledge(
-    message: Memory,
-    scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID }
-  ): Promise<KnowledgeItem[]>;
-  addKnowledge(
-    item: KnowledgeItem,
-    options: {
-      targetTokens: number;
-      overlap: number;
-      modelContextSize: number;
-    },
-    scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID }
-  ): Promise<void>;
-
   getService<T extends Service>(service: ServiceTypeName | string): T | null;
 
   getAllServices(): Map<ServiceTypeName, Service>;

@@ -42,6 +42,8 @@ interface MemoryMetadata {
   description?: string;
   fileExt?: string;
   timestamp?: number;
+  contentType?: string;
+  documentId?: string;
 }
 
 export function KnowledgeManager({ agentId }: { agentId: UUID }) {
@@ -125,6 +127,8 @@ export function KnowledgeManager({ agentId }: { agentId: UUID }) {
         return <File className="h-4 w-4 text-yellow-500" />;
       case 'json':
         return <File className="h-4 w-4 text-green-500" />;
+      case 'pdf':
+        return <FileText className="h-4 w-4 text-red-500" />;
       default:
         return <FileText className="h-4 w-4 text-gray-500" />;
     }
@@ -288,6 +292,55 @@ export function KnowledgeManager({ agentId }: { agentId: UUID }) {
     );
   };
 
+  // Render the content based on its type
+  const renderDocumentContent = (memory: Memory) => {
+    const metadata = (memory.metadata as MemoryMetadata) || {};
+    const contentType = metadata.contentType;
+    const fileExt = metadata.fileExt?.toLowerCase();
+
+    // Handle PDF content specifically
+    if (contentType === 'application/pdf' || fileExt === 'pdf') {
+      // Check if content.text contains Base64 PDF data
+      if (memory.content?.text && memory.content.text.startsWith('JVBER')) {
+        // It's already Base64 encoded, we just need to add the data URL prefix
+        const pdfData = `data:application/pdf;base64,${memory.content.text}`;
+        return (
+          <div className="w-full h-full">
+            <iframe
+              src={pdfData}
+              className="w-full h-full border-0"
+              title={metadata.title || 'PDF Document'}
+            />
+          </div>
+        );
+      }
+    }
+
+    // Default text rendering for non-PDF content
+    return (
+      <pre
+        className={cn('text-sm whitespace-pre-wrap', {
+          'font-mono':
+            ((memory.content as MemoryContent)?.metadata?.fileType as string)?.includes(
+              'application/'
+            ) ||
+            ((memory.content as MemoryContent)?.metadata?.fileType as string)?.includes(
+              'text/plain'
+            ),
+          '':
+            !((memory.content as MemoryContent)?.metadata?.fileType as string)?.includes(
+              'application/'
+            ) &&
+            !((memory.content as MemoryContent)?.metadata?.fileType as string)?.includes(
+              'text/plain'
+            ),
+        })}
+      >
+        {memory.content?.text}
+      </pre>
+    );
+  };
+
   return (
     <div className="flex flex-col h-[calc(100vh-100px)] min-h-[400px] w-full">
       <div className="flex justify-between items-center mb-4 px-4 pt-4 flex-none border-b pb-3">
@@ -359,28 +412,7 @@ export function KnowledgeManager({ agentId }: { agentId: UUID }) {
           </DialogHeader>
 
           <div className="flex-1 overflow-y-auto my-4 border rounded-md p-4 bg-muted">
-            {viewingContent && (
-              <pre
-                className={cn('text-sm whitespace-pre-wrap', {
-                  'font-mono':
-                    (
-                      (viewingContent.content as MemoryContent)?.metadata?.fileType as string
-                    )?.includes('application/') ||
-                    (
-                      (viewingContent.content as MemoryContent)?.metadata?.fileType as string
-                    )?.includes('text/plain'),
-                  '':
-                    !(
-                      (viewingContent.content as MemoryContent)?.metadata?.fileType as string
-                    )?.includes('application/') &&
-                    !(
-                      (viewingContent.content as MemoryContent)?.metadata?.fileType as string
-                    )?.includes('text/plain'),
-                })}
-              >
-                {viewingContent.content?.text}
-              </pre>
-            )}
+            {viewingContent && renderDocumentContent(viewingContent)}
           </div>
 
           <DialogFooter>

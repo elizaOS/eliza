@@ -9,6 +9,7 @@ import type {
   IAgentRuntime,
   Memory,
   UUID,
+  KnowledgeItem,
 } from '@elizaos/core';
 import {
   ChannelType,
@@ -1277,7 +1278,7 @@ export function agentRouter(
       }
 
       try {
-        const audioBuffer = fs.readFileSync(audioFile.path);
+        const audioBuffer = await fs.promises.readFile(audioFile.path);
         const transcription = await runtime.useModel(ModelType.TRANSCRIPTION, audioBuffer);
 
         // Process the transcribed text as a message
@@ -1649,7 +1650,7 @@ export function agentRouter(
 
       try {
         logger.debug('[TRANSCRIPTION] Reading audio file');
-        const audioBuffer = fs.readFileSync(audioFile.path);
+        const audioBuffer = await fs.promises.readFile(audioFile.path);
 
         logger.debug('[TRANSCRIPTION] Transcribing audio');
         const transcription = await runtime.useModel(ModelType.TRANSCRIPTION, audioBuffer);
@@ -1878,48 +1879,41 @@ export function agentRouter(
     const agentId = validateUuid(req.params.agentId);
 
     if (!agentId) {
-      res.status(400).json({
-        success: false,
-        error: {
-          code: 'INVALID_ID',
-          message: 'Invalid agent ID format',
-        },
-      });
+      sendError(res, 400, 'INVALID_ID', 'Invalid agent ID format');
       return;
     }
 
     const runtime = agents.get(agentId);
 
     if (!runtime) {
-      res.status(404).json({
-        success: false,
-        error: {
-          code: 'NOT_FOUND',
-          message: 'Agent not found',
-        },
-      });
+      sendError(res, 404, 'NOT_FOUND', 'Agent not found');
       return;
     }
 
     const files = req.files as Express.Multer.File[];
 
     if (!files || files.length === 0) {
-      res.status(400).json({
-        success: false,
-        error: {
-          code: 'NO_FILES',
-          message: 'No files uploaded',
-        },
-      });
+      sendError(res, 400, 'NO_FILES', 'No files uploaded');
       return;
     }
 
     try {
-      const results = [];
+      // Process files in parallel
+      const processingPromises = files.map(async (file, index) => {
+        let knowledgeId: UUID;
+        const originalFilename = file.originalname;
+        const worldId = (req.body.worldId as UUID) || runtime.agentId;
+        const filePath = file.path;
 
-      for (const file of files) {
+        // Create a unique knowledge ID
+        knowledgeId =
+          (req.body?.documentIds && req.body.documentIds[index]) ||
+          req.body?.documentId ||
+          (createUniqueUuid(runtime, `knowledge-${originalFilename}`) as UUID);
+
         try {
           // Read file content into a buffer
+<<<<<<< HEAD
           const fileBuffer = fs.readFileSync(file.path);
           let extractedTextForContent: string;
           const relativePath = file.originalname;
@@ -1934,14 +1928,27 @@ export function agentRouter(
 
           // Create knowledge item with proper metadata
           const knowledgeId = createUniqueUuid(runtime, `knowledge-${Date.now()}`);
+=======
+          const fileBuffer = await fs.promises.readFile(filePath);
+
+          // Determine the file extension
+>>>>>>> 31cf4c1c54da7874e9aab4e77d4022ec8f582fde
           const fileExt = file.originalname.split('.').pop()?.toLowerCase() || '';
           const filename = file.originalname;
           const title = filename.replace(`.${fileExt}`, '');
 
-          const knowledgeItem = {
+          // Convert file buffer to base64 string for all file types
+          const base64Content = fileBuffer.toString('base64');
+
+          // Create knowledge item with proper metadata
+          const knowledgeItem: KnowledgeItem = {
             id: knowledgeId,
             content: {
+<<<<<<< HEAD
               text: formattedMainText,
+=======
+              text: base64Content, // Always use base64 content
+>>>>>>> 31cf4c1c54da7874e9aab4e77d4022ec8f582fde
             },
             metadata: {
               type: MemoryType.DOCUMENT,
@@ -1949,47 +1956,69 @@ export function agentRouter(
               filename: filename,
               fileExt: fileExt,
               title: title,
-              path: relativePath,
+              path: originalFilename,
               fileType: file.mimetype,
               fileSize: file.size,
               source: 'upload',
             },
           };
 
-          // Add knowledge to agent
-          await runtime.addKnowledge(knowledgeItem, undefined, {
-            roomId: undefined,
-            worldId: runtime.agentId,
-            entityId: runtime.agentId,
-          });
+          // Add knowledge to agent - wait for the complete processing
+          await runtime.addKnowledge(
+            knowledgeItem,
+            undefined, // Default options
+            {
+              worldId,
+              entityId: runtime.agentId,
+              roomId: runtime.agentId,
+            }
+          );
 
           // Clean up temp file immediately after successful processing
-          if (file.path && fs.existsSync(file.path)) {
-            fs.unlinkSync(file.path);
-          }
+          cleanupFile(filePath);
 
-          results.push({
+          return {
             id: knowledgeId,
-            filename: relativePath,
+            filename: originalFilename,
             type: file.mimetype,
             size: file.size,
             uploadedAt: Date.now(),
+<<<<<<< HEAD
             preview:
               formattedMainText.length > 0
                 ? `${formattedMainText.substring(0, 150)}${formattedMainText.length > 150 ? '...' : ''}`
                 : 'No preview available',
           });
+=======
+            status: 'success',
+          };
+>>>>>>> 31cf4c1c54da7874e9aab4e77d4022ec8f582fde
         } catch (fileError) {
           logger.error(`[KNOWLEDGE POST] Error processing file ${file.originalname}: ${fileError}`);
-          cleanupFile(file.path);
-          // Continue with other files even if one fails
-        }
-      }
+          cleanupFile(filePath); // Ensure cleanup on error too
 
-      res.json({
-        success: true,
-        data: results,
+          let status = 'error_processing';
+          let errorMessage = fileError.message;
+
+          // Check if the error is related to RAG being required for PDFs/DOCX
+          if (fileError.message && fileError.message.includes('RAG plugin is required')) {
+            status = 'error_requires_rag_plugin';
+          } else if (fileError.message && fileError.message.includes('base64')) {
+            status = 'error_encoding';
+            errorMessage = 'Error encoding file content as base64. The file may be corrupted.';
+          }
+
+          return {
+            id: knowledgeId,
+            filename: originalFilename,
+            status,
+            error: errorMessage,
+          };
+        }
       });
+
+      const results = await Promise.all(processingPromises);
+      sendSuccess(res, results);
     } catch (error) {
       logger.error(`[KNOWLEDGE POST] Error uploading knowledge: ${error}`);
 
