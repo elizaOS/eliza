@@ -12,9 +12,9 @@ import {
   loadConfig,
   loadPluginModule,
   promptForEnvVars,
-  resolveEnvFile,
   resolvePgliteDir,
   saveConfig,
+  UserEnvironment,
 } from '@/src/utils';
 import {
   AgentRuntime,
@@ -307,7 +307,7 @@ export async function startAgent(
     `Final loaded plugins (${loadedPluginsMap.size}): ${[...characterPlugins, ...plugins].map((p) => p.name).join(', ')}`
   );
 
-  function loadEnvConfig(): RuntimeSettings {
+  async function loadEnvConfig(): Promise<RuntimeSettings> {
     // Only import dotenv in Node.js environment
     let dotenv = null;
     try {
@@ -321,7 +321,8 @@ export async function startAgent(
     }
 
     // Node.js environment: load from .env file
-    const envPath = resolveEnvFile();
+    const envInfo = await UserEnvironment.getInstanceInfo();
+    const envPath = envInfo.paths.envFilePath;
     if (envPath) {
       console.log(`[elizaos] Resolved .env file from: ${envPath}`);
     } else {
@@ -380,7 +381,7 @@ export async function startAgent(
     character: encryptedChar,
     // order matters here: make sure plugins are loaded after so they can interact with tasks (degen-intel)
     plugins: [...characterPlugins, ...plugins], // Use the deduplicated list
-    settings: loadEnvConfig(),
+    settings: await loadEnvConfig(),
   });
   if (init) {
     await init(runtime);

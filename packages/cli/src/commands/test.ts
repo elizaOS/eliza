@@ -5,8 +5,8 @@ import {
   TestRunner,
   buildProject,
   promptForEnvVars,
-  resolveEnvFile,
   resolvePgliteDir,
+  UserEnvironment,
 } from '@/src/utils';
 import { type IAgentRuntime, type ProjectAgent } from '@elizaos/core';
 import { Command, Option } from 'commander';
@@ -158,7 +158,8 @@ const runE2eTests = async (options: { port?: number; name?: string; skipBuild?: 
     // Set up standard paths and load .env
     const elizaDir = path.join(process.cwd(), '.eliza');
     const elizaDbDir = await resolvePgliteDir();
-    const envFilePath = resolveEnvFile();
+    const envInfo = await UserEnvironment.getInstanceInfo();
+    const envFilePath = envInfo.paths.envFilePath;
 
     console.info('Setting up environment...');
     console.info(`Eliza directory: ${elizaDir}`);

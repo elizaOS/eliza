@@ -16,7 +16,7 @@ import prompts from 'prompts';
 import colors from 'yoctocolors';
 import { z } from 'zod';
 import { character as elizaCharacter } from '@/src/characters/eliza';
-import { resolvePgliteDir, resolveEnvFile } from '@/src/utils';
+import { resolvePgliteDir, UserEnvironment } from '@/src/utils';
 
 /**
  * This module handles creating projects, plugins, and agent characters.
@@ -206,8 +206,9 @@ export const create = new Command()
         type: projectType,
       });
 
-      // Try to find the nearest .env file for database configuration
-      const envPath = resolveEnvFile();
+      // Obtain .env file path from UserEnvironment
+      const envInfo = await UserEnvironment.getInstanceInfo();
+      const envPath = envInfo.paths.envFilePath;
       let postgresUrl: string | null = null;
 
       if (envPath) {
