@@ -46,15 +46,24 @@ export function isValidPostgresUrl(url: string): boolean {
  *
  * @returns An object containing the Eliza configuration directory, the Eliza database directory for the current project, and the path to the Eliza `.env` file.
  */
-export async function getElizaDirectories() {
+export async function getElizaDirectories(targetProjectDir?: string) {
   const userEnv = UserEnvironment.getInstance();
   const paths = await userEnv.getPathInfo();
 
-  const elizaDir = paths.elizaDir; // Correctly resolved by UserEnvironment
-  const envFilePath = paths.envFilePath; // Correctly resolved by UserEnvironment
+  // Handle the case where we're creating a new project
+  const projectRoot = targetProjectDir || paths.monorepoRoot || process.cwd();
 
-  // Construct the explicit fallback for .elizadb at the project root
-  const projectRoot = paths.monorepoRoot || process.cwd();
+  // If targetProjectDir is specified (during project creation), use it for all paths
+  const elizaDir = targetProjectDir ? path.join(targetProjectDir, '.eliza') : paths.elizaDir;
+  const envFilePath = targetProjectDir ? path.join(targetProjectDir, '.env') : paths.envFilePath;
+
+  // For debugging
+  logger.debug('Eliza directories:', {
+    elizaDir,
+    projectRoot,
+    targetProjectDir: targetProjectDir || 'none',
+  });
+
   const defaultElizaDbDir = path.join(projectRoot, '.elizadb');
 
   // Pass this default location as the fallback to resolvePgliteDir.
@@ -99,9 +108,24 @@ async function ensureFile(filePath: string) {
  *
  * @returns An object containing paths for the Eliza configuration directory, the Eliza database directory, and the `.env` file.
  */
-export async function ensureElizaDir() {
-  const dirs = await getElizaDirectories();
+export async function ensureElizaDir(targetProjectDir?: string) {
+  const dirs = await getElizaDirectories(targetProjectDir);
   await ensureDir(dirs.elizaDir);
+
+  // Also create registry-cache.json and config.json files if they don't exist
+  const registryCachePath = path.join(dirs.elizaDir, 'registry-cache.json');
+  const configPath = path.join(dirs.elizaDir, 'config.json');
+
+  if (!existsSync(registryCachePath)) {
+    await fs.writeFile(registryCachePath, JSON.stringify({}, null, 2), 'utf8');
+    logger.debug(`Created registry cache file: ${registryCachePath}`);
+  }
+
+  if (!existsSync(configPath)) {
+    await fs.writeFile(configPath, JSON.stringify({ version: '1.0.0' }, null, 2), 'utf8');
+    logger.debug(`Created config file: ${configPath}`);
+  }
+
   return dirs;
 }
 
@@ -110,8 +134,12 @@ export async function ensureElizaDir() {
  * @param elizaDbDir The directory for PGLite database
  * @param envFilePath Path to the .env file
  */
-export async function setupPgLite(dbDir: any, envPath: any): Promise<void> {
-  const dirs = await ensureElizaDir();
+export async function setupPgLite(
+  dbDir: any,
+  envPath: any,
+  targetProjectDir?: string
+): Promise<void> {
+  const dirs = await ensureElizaDir(targetProjectDir);
   const { elizaDir, elizaDbDir, envFilePath } = dirs;
 
   // Use provided parameters or defaults from dirs
