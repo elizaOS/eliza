@@ -107,7 +107,7 @@ jobs:
       - name: Build the app (macOS Desktop)
         run: |
           cd packages/app
-          bun run tauri build --target universal-apple-darwin --no-bundle
+          bun run tauri build --target universal-apple-darwin
         shell: bash
 
       - name: Upload Desktop build artifacts
