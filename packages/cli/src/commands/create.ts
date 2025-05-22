@@ -3,12 +3,11 @@ import {
   buildProject,
   copyTemplate as copyTemplateUtil,
   displayBanner,
-  getElizaDirectories,
+  ensureElizaDir,
   handleError,
   promptAndStorePostgresUrl,
   runBunCommand,
   setupPgLite,
-  UserEnvironment,
 } from '@/src/utils';
 import { Command } from 'commander';
 import { existsSync } from 'node:fs';
@@ -17,6 +16,7 @@ import path from 'node:path';
 import prompts from 'prompts';
 import colors from 'yoctocolors';
 import { z } from 'zod';
+import { logger } from '@elizaos/core';
 
 /**
  * This module handles creating projects, plugins, and agent characters.
@@ -406,12 +406,14 @@ export const create = new Command()
         // Define project-specific .env file path, this will be created if it doesn't exist by downstream functions.
         const projectEnvFilePath = path.join(targetDir, '.env');
 
-        await getElizaDirectories();
+        // Ensure proper directory creation in the new project
+        const dirs = await ensureElizaDir(targetDir);
+        logger.debug('Project directories set up:', dirs);
 
         if (database === 'pglite') {
-          const projectPgliteDbDir =
-            process.env.PGLITE_DATA_DIR ?? path.join(targetDir, '.elizadb');
-          await setupPgLite(projectPgliteDbDir, projectEnvFilePath);
+          const projectPgliteDbDir = path.join(targetDir, '.elizadb');
+          // Pass the target directory to ensure everything is created in the new project
+          await setupPgLite(projectPgliteDbDir, projectEnvFilePath, targetDir);
           console.debug(
             `PGLite database will be stored in project directory: ${projectPgliteDbDir}`
           );
