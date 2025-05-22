@@ -24,5 +24,3 @@ tauri = { version = "2.0.0", features = [] }
 tauri-plugin-opener = "2.0.0"
 tauri-plugin-shell = "2.0.0"
 once_cell = "1.19.0"
-tauri-plugin-mobile = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
-
