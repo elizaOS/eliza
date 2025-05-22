@@ -792,35 +792,10 @@ export abstract class BaseDrizzleAdapter<
   }
 
   /**
-   * Asynchronously creates a new entity in the database.
-   * @param {Entity} entity - The entity object to be created.
+   * Asynchronously creates new entities in the database.
+   * @param {Entity[]} entities - The entity objects to be created.
    * @returns {Promise<boolean>} A Promise that resolves to a boolean indicating the success of the operation.
    */
-  async createEntity(entity: Entity): Promise<boolean> {
-    return this.withDatabase(async () => {
-      try {
-        return await this.db.transaction(async (tx) => {
-          await tx.insert(entityTable).values(entity);
-
-          logger.debug('Entity created successfully:', {
-            entity,
-          });
-
-          return true;
-        });
-      } catch (error) {
-        logger.error('Error creating entity:', {
-          error: error instanceof Error ? error.message : String(error),
-          entityId: entity.id,
-          name: entity.metadata?.name,
-        });
-        // trace the error
-        logger.trace(error);
-        return false;
-      }
-    });
-  }
-
   async createEntities(entities: Entity[]): Promise<boolean> {
     return this.withDatabase(async () => {
       try {
@@ -856,9 +831,9 @@ export abstract class BaseDrizzleAdapter<
     }
 
     try {
-      const existingEntity = await this.getEntityById(entity.id);
+      const existingEntities = await this.getEntityByIds([entity.id]);
 
-      if (!existingEntity) {
+      if (!existingEntities || !existingEntities.length) {
         return await this.createEntity(entity);
       }
 
@@ -1931,7 +1906,6 @@ export abstract class BaseDrizzleAdapter<
         })
         .from(roomTable)
         .where(inArray(roomTable.id, roomIds), eq(roomTable.agentId, this.agentId));
-      if (result.length === 0) return null;
       return result;
     });
   }
@@ -1941,7 +1915,7 @@ export abstract class BaseDrizzleAdapter<
    * @param {UUID} worldId - The ID of the world to retrieve rooms from.
    * @returns {Promise<Room[]>} A Promise that resolves to an array of rooms.
    */
-  async getRooms(worldId: UUID): Promise<Room[]> {
+  async getRoomsByWorld(worldId: UUID): Promise<Room[]> {
     return this.withDatabase(async () => {
       const result = await this.db.select().from(roomTable).where(eq(roomTable.worldId, worldId));
       const rooms = result.map((room) => ({
@@ -1955,7 +1929,6 @@ export abstract class BaseDrizzleAdapter<
         type: room.type as ChannelType,
         metadata: room.metadata as RoomMetadata,
       }));
-      if (rooms.length === 0) return [];
       return rooms;
     });
   }
@@ -1979,39 +1952,6 @@ export abstract class BaseDrizzleAdapter<
    * @param {Room} room - The room object to create.
    * @returns {Promise<UUID>} A Promise that resolves to the ID of the created room.
    */
-  async createRoom({
-    id,
-    name,
-    agentId,
-    source,
-    type,
-    channelId,
-    serverId,
-    worldId,
-    metadata,
-  }: Room): Promise<UUID> {
-    if (!worldId) throw new Error('worldId is required');
-
-    return this.withDatabase(async () => {
-      const newRoomId = id || v4();
-      await this.db
-        .insert(roomTable)
-        .values({
-          id: newRoomId,
-          name,
-          agentId,
-          source,
-          type,
-          channelId,
-          serverId,
-          worldId,
-          metadata,
-        })
-        .onConflictDoNothing({ target: roomTable.id });
-      return newRoomId as UUID;
-    });
-  }
-
   async createRooms(rooms: Room[]): Promise<UUID[]> {
     return this.withDatabase(async () => {
       const roomsWithIds = rooms.map((room) => ({
@@ -2185,15 +2125,15 @@ export abstract class BaseDrizzleAdapter<
         .from(participantTable)
         .where(eq(participantTable.entityId, entityId));
 
-      const entity = await this.getEntityById(entityId);
+      const entities = await this.getEntityByIds([entityId]);
 
-      if (!entity) {
+      if (!entities || !entities.length) {
         return [];
       }
 
       return result.map((row) => ({
         id: row.id as UUID,
-        entity: entity,
+        entity: entities[0],
       }));
     });
   }
