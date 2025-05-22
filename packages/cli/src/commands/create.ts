@@ -330,7 +330,7 @@ export const create = new Command()
         console.log('Plugin initialized successfully!');
         const cdPath = options.dir === '.' ? projectName : path.relative(process.cwd(), targetDir);
         console.info(
-          `\nYour plugin is ready! Here's your development workflow:\n\n[1] Development\n   cd ${cdPath}\n   ${colors.cyan('elizaos dev')}                   # Start development with hot-reloading\n\n[2] Testing\n   ${colors.cyan('elizaos test')}                  # Run automated tests\n   ${colors.cyan('elizaos start')}                 # Test in a live agent environment\n\n[3] Publishing\n   ${colors.cyan('elizaos plugins publish --test')} # Check registry requirements\n   ${colors.cyan('elizaos plugins publish')}        # Submit to registry\n\n[?] Learn more: https://eliza.how/docs/cli/plugins`
+          `\nYour plugin is ready! Here's your development workflow:\n\n[1] Development\n   cd ${cdPath}\n   ${colors.cyan('elizaos dev')}                   # Start development with hot-reloading\n\n[2] Testing\n   ${colors.cyan('elizaos test')}                  # Run automated tests\n   ${colors.cyan('elizaos start')}                 # Test in a live agent environment\n\n[3] Publishing\n   ${colors.cyan('elizaos publish --test')}        # Check registry requirements\n   ${colors.cyan('elizaos publish')}               # Submit to registry\n\n[?] Learn more: https://eliza.how/docs/cli/plugins`
         );
         process.stdout.write(`\u001B]1337;CurrentDir=${targetDir}\u0007`);
         return;
