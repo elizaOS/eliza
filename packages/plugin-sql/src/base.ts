@@ -659,7 +659,7 @@ export abstract class BaseDrizzleAdapter<
 
   /**
    * Asynchronously retrieves an entity and its components by entity IDs.
-   * @param {UUID[]} entityIds - The unique identifier of the entity to retrieve.
+   * @param {UUID[]} entityIds - The unique identifiers of the entities to retrieve.
    * @returns {Promise<Entity[] | null>} A Promise that resolves to the entity with its components if found, null otherwise.
    */
   async getEntityByIds(entityIds: UUID[]): Promise<Entity[] | null> {
@@ -676,8 +676,8 @@ export abstract class BaseDrizzleAdapter<
       if (result.length === 0) return null;
 
       // Group components by entity
-      const entities = {};
-      const entityComponents = {};
+      const entities: Record<UUID, Entity> = {};
+      const entityComponents: Record<UUID, Entity['components']> = {};
       for (const e of result) {
         const key = e.entity.id;
         entities[key] = e.entity;
@@ -1871,8 +1871,8 @@ export abstract class BaseDrizzleAdapter<
   }
 
   /**
-   * Asynchronously retrieves a rooms from the database based on the provided parameters.
-   * @param {UUID[]} roomId - The ID of the rooms to retrieve.
+   * Asynchronously retrieves rooms from the database based on the provided parameters.
+   * @param {UUID[]} roomIds - The IDs of the rooms to retrieve.
    * @returns {Promise<Room[] | null>} A Promise that resolves to the rooms if found, null otherwise.
    */
   async getRoomsByIds(roomIds: UUID[]): Promise<Room[] | null> {
