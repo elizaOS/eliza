@@ -59,7 +59,7 @@ describe('Room Integration Tests', () => {
       });
 
       // Step 3: Create test entity
-      await adapter.createEntity(roomTestEntity);
+      await adapter.createEntities([roomTestEntity]);
     } catch (error) {
       console.error('Error in setup:', error);
       throw error;
@@ -102,12 +102,13 @@ describe('Room Integration Tests', () => {
     it('should create a room', async () => {
       const room = roomTestRooms[0];
 
-      const roomId = await adapter.createRoom(room);
-      expect(roomId).toBe(room.id);
+      const roomId = await adapter.createRooms([room]);
+      expect(roomId[0]).toBe(room.id);
 
       // Verify it exists in the database
-      const createdRoom = await adapter.getRoom(roomId);
-      expect(createdRoom).not.toBeNull();
+      const res = await adapter.getRoomsByIds([roomId[0]]);
+      expect(res?.length).toBe(1);
+      const createdRoom = res![0];
       expect(createdRoom?.name).toBe(room.name);
       expect(createdRoom?.type).toBe(room.type);
       expect(createdRoom?.source).toBe(room.source);
@@ -124,11 +125,12 @@ describe('Room Integration Tests', () => {
         worldId: roomTestWorldId,
       };
 
-      const roomId = await adapter.createRoom(minimalRoom);
+      const roomId = await adapter.createRooms([minimalRoom]);
       expect(roomId).not.toBeNull();
 
       // Verify it exists with default values where applicable
-      const createdRoom = await adapter.getRoom(roomId);
+      const res = await adapter.getRoomsByIds([roomId[0]]);
+      const createdRoom = res![0];
       expect(createdRoom).not.toBeNull();
       expect(createdRoom?.name).toBe(minimalRoom.name);
       expect(createdRoom?.metadata).toBeDefined();
@@ -137,12 +139,13 @@ describe('Room Integration Tests', () => {
     it('should get a room by ID', async () => {
       // Create a room first
       const room = roomTestRooms[0];
-      await adapter.createRoom(room);
+      await adapter.createRooms([room]);
 
       // Get the room
-      const retrievedRoom = await adapter.getRoom(room.id);
+      const res = await adapter.getRoomsByIds([room.id]);
+      expect(res).not.toBeNull();
+      const retrievedRoom = res![0];
 
-      expect(retrievedRoom).not.toBeNull();
       expect(retrievedRoom?.id).toBe(room.id);
       expect(retrievedRoom?.name).toBe(room.name);
       expect(retrievedRoom?.type).toBe(room.type);
@@ -151,14 +154,14 @@ describe('Room Integration Tests', () => {
 
     it('should return null when getting a non-existent room', async () => {
       const nonExistentId = '00000000-0000-0000-0000-000000000000' as UUID;
-      const room = await adapter.getRoom(nonExistentId);
-      expect(room).toBeNull();
+      const room = await adapter.getRoomsByIds([nonExistentId]);
+      expect(room).toStrictEqual([]);
     });
 
     it('should update a room', async () => {
       // Create a room first
       const room = roomTestRooms[0];
-      await adapter.createRoom(room);
+      await adapter.createRooms([room]);
 
       // Create a modified version
       const modifiedRoom = createModifiedRoom(room);
@@ -167,7 +170,9 @@ describe('Room Integration Tests', () => {
       await adapter.updateRoom(modifiedRoom);
 
       // Verify the update
-      const updatedRoom = await adapter.getRoom(room.id);
+      const updatedRooms = await adapter.getRoomsByIds([room.id]);
+      expect(updatedRooms?.length).toBe(1);
+      const updatedRoom = updatedRooms?.[0];
       expect(updatedRoom?.name).toBe(modifiedRoom.name);
       expect(updatedRoom?.metadata).toMatchObject(modifiedRoom.metadata as Record<string, unknown>);
     });
@@ -175,27 +180,29 @@ describe('Room Integration Tests', () => {
     it('should delete a room', async () => {
       // Create a room first
       const room = roomTestRooms[0];
-      await adapter.createRoom(room);
+      await adapter.createRooms([room]);
 
       // Verify it exists
-      const createdRoom = await adapter.getRoom(room.id);
-      expect(createdRoom).not.toBeNull();
+      const createdRooms = await adapter.getRoomsByIds([room.id]);
+      expect(createdRooms).not.toBeNull();
 
       // Delete the room
       await adapter.deleteRoom(room.id);
 
       // Verify it's gone
-      const deletedRoom = await adapter.getRoom(room.id);
-      expect(deletedRoom).toBeNull();
+      const deletedRooms = await adapter.getRoomsByIds([room.id]);
+      expect(deletedRooms).toEqual([]);
     });
 
     it('should create a room with all fields populated', async () => {
       const room = roomTestRooms[1]; // This one has channelId and serverId
 
-      const roomId = await adapter.createRoom(room);
+      const roomId = await adapter.createRooms([room]);
 
       // Verify all fields were saved correctly
-      const savedRoom = await adapter.getRoom(roomId);
+      const savedRooms = await adapter.getRoomsByIds([roomId[0]]);
+      expect(savedRooms?.length).toBe(1);
+      const savedRoom = savedRooms?.[0];
       expect(savedRoom).not.toBeNull();
       expect(savedRoom?.name).toBe(room.name);
       expect(savedRoom?.channelId).toBe(room.channelId);
@@ -207,12 +214,10 @@ describe('Room Integration Tests', () => {
   describe('Room List Operations', () => {
     it('should get all rooms for a world', async () => {
       // Create multiple rooms
-      for (const room of roomTestRooms) {
-        await adapter.createRoom(room);
-      }
+      await adapter.createRooms(roomTestRooms);
 
       // Get all rooms for the world
-      const rooms = await adapter.getRooms(roomTestWorldId);
+      const rooms = await adapter.getRoomsByWorld(roomTestWorldId);
 
       expect(rooms.length).toBe(roomTestRooms.length);
 
@@ -224,7 +229,7 @@ describe('Room Integration Tests', () => {
 
     it('should return an empty array when no rooms exist for a world', async () => {
       const nonExistentWorldId = '00000000-0000-0000-0000-000000000000' as UUID;
-      const rooms = await adapter.getRooms(nonExistentWorldId);
+      const rooms = await adapter.getRoomsByWorld(nonExistentWorldId);
       expect(rooms).toEqual([]);
     });
 
@@ -236,18 +241,38 @@ describe('Room Integration Tests', () => {
         serverId: 'different-server-id',
       };
 
-      await adapter.createRoom(room1);
-      await adapter.createRoom(room2);
+      await adapter.createRooms([room1]);
+      await adapter.createRooms([room2]);
 
       // Delete all rooms in the world
       await adapter.deleteRoomsByWorldId(roomTestWorldId);
 
       // Verify both rooms were deleted since they're in the same world
-      const deletedRoom1 = await adapter.getRoom(room1.id);
-      expect(deletedRoom1).toBeNull();
+      const deletedRoom1 = await adapter.getRoomsByIds([room1.id]);
+      expect(deletedRoom1).toEqual([]);
 
-      const deletedRoom2 = await adapter.getRoom(room2.id);
-      expect(deletedRoom2).toBeNull();
+      const deletedRoom2 = await adapter.getRoomsByIds([room2.id]);
+      expect(deletedRoom2).toEqual([]);
+    });
+
+    it('should delete rooms individually when they have different server IDs', async () => {
+      // Create rooms with specific serverId
+      const roomWithServerId = roomTestRooms[1]; // This has a serverId
+
+      // Create another room with a different serverId for comparison
+      const otherRoom = {
+        ...roomTestRooms[0],
+        serverId: 'other-server-id',
+      };
+      await adapter.createRooms([roomWithServerId, otherRoom]);
+
+      // Delete one specific room
+      await adapter.deleteRoom(roomWithServerId.id);
+
+      // Verify only the targeted room was deleted
+      const rooms = await adapter.getRoomsByIds([roomWithServerId.id, otherRoom.id]);
+      expect(rooms?.length).toBe(1);
+      expect(rooms![0].id).toEqual(otherRoom.id);
     });
   });
 
@@ -255,10 +280,10 @@ describe('Room Integration Tests', () => {
     it('should add a participant to a room', async () => {
       // Create a room first
       const room = roomTestRooms[0];
-      await adapter.createRoom(room);
+      await adapter.createRooms([room]);
 
       // Add participant
-      const added = await adapter.addParticipant(roomTestEntityId, room.id);
+      const added = await adapter.addParticipantsRoom([roomTestEntityId], room.id);
       expect(added).toBe(true);
 
       // Verify participant was added
@@ -269,7 +294,7 @@ describe('Room Integration Tests', () => {
     it('should get all participants for a room', async () => {
       // Create a room first
       const room = roomTestRooms[0];
-      await adapter.createRoom(room);
+      await adapter.createRooms([room]);
 
       // Add participant
       await adapter.addParticipant(roomTestEntityId, room.id);
@@ -284,7 +309,7 @@ describe('Room Integration Tests', () => {
     it('should get all rooms for a participant', async () => {
       // Create rooms
       for (const room of roomTestRooms) {
-        await adapter.createRoom(room);
+        await adapter.createRooms([room]);
         // Add the same participant to each room
         await adapter.addParticipant(roomTestEntityId, room.id);
       }
@@ -302,7 +327,7 @@ describe('Room Integration Tests', () => {
     it('should remove a participant from a room', async () => {
       // Create a room first
       const room = roomTestRooms[0];
-      await adapter.createRoom(room);
+      await adapter.createRooms([room]);
 
       // Add participant
       await adapter.addParticipant(roomTestEntityId, room.id);
@@ -319,7 +344,7 @@ describe('Room Integration Tests', () => {
     it('should handle participant user state', async () => {
       // Create a room first
       const room = roomTestRooms[0];
-      await adapter.createRoom(room);
+      await adapter.createRooms([room]);
 
       // Add participant
       await adapter.addParticipant(roomTestEntityId, room.id);
@@ -352,12 +377,12 @@ describe('Room Integration Tests', () => {
       const room = roomTestRooms[0];
 
       // First creation should succeed
-      const roomId1 = await adapter.createRoom(room);
-      expect(roomId1).toBe(room.id);
+      const roomId1 = await adapter.createRooms([room]);
+      expect(roomId1[0]).toBe(room.id);
 
       // Second creation with same ID should not throw
-      const roomId2 = await adapter.createRoom(room);
-      expect(roomId2).toBe(room.id);
+      const roomId2 = await adapter.createRooms([room]);
+      expect(roomId2?.length).toBe(0);
     });
 
     it('should gracefully handle deleting a non-existent room', async () => {
