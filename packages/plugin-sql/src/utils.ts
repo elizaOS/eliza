@@ -51,7 +51,7 @@ export function resolveEnvFile(startDir: string = process.cwd()): string {
  * 1. The `dir` argument if provided.
  * 2. The `PGLITE_DATA_DIR` environment variable.
  * 3. The `fallbackDir` argument if provided.
- * 4. `./.pglite` relative to the current working directory.
+ * 4. `./.elizadb` relative to the current working directory.
  *
  * @param dir - Optional directory preference.
  * @param fallbackDir - Optional fallback directory when env var is not set.
@@ -64,6 +64,6 @@ export function resolvePgliteDir(dir?: string, fallbackDir?: string): string {
   }
 
   const base =
-    dir ?? process.env.PGLITE_DATA_DIR ?? fallbackDir ?? path.join(process.cwd(), '.pglite');
+    dir ?? process.env.PGLITE_DATA_DIR ?? fallbackDir ?? path.join(process.cwd(), '.elizadb');
   return expandTildePath(base);
 }

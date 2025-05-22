@@ -37,7 +37,7 @@ const globalSingletons = globalSymbols[GLOBAL_SINGLETONS];
  * If no postgresUrl is provided, a PgliteDatabaseAdapter is initialized using PGliteClientManager with the dataDir from the config.
  *
  * @param {object} config - The configuration object.
- * @param {string} [config.dataDir] - The directory where data is stored. Defaults to "./.pglite".
+ * @param {string} [config.dataDir] - The directory where data is stored. Defaults to "./.elizadb".
  * @param {string} [config.postgresUrl] - The URL for the PostgreSQL database.
  * @param {UUID} agentId - The unique identifier for the agent.
  * @returns {IDatabaseAdapter} The created database adapter.

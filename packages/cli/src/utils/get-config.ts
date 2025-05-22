@@ -47,7 +47,7 @@ export function isValidPostgresUrl(url: string): boolean {
  */
 export async function getElizaDirectories() {
   const elizaDir = path.join(process.cwd(), '.eliza');
-  const elizaDbDir = resolvePgliteDir();
+  const elizaDbDir = await resolvePgliteDir();
   const envFilePath = resolveEnvFile();
 
   logger.debug('[Config] Using database directory:', elizaDbDir);

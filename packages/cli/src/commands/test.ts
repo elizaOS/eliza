@@ -157,7 +157,7 @@ const runE2eTests = async (options: { port?: number; name?: string; skipBuild?: 
 
     // Set up standard paths and load .env
     const elizaDir = path.join(process.cwd(), '.eliza');
-    const elizaDbDir = resolvePgliteDir(undefined, path.join(elizaDir, '.pglite'));
+    const elizaDbDir = await resolvePgliteDir();
     const envFilePath = resolveEnvFile();
 
     console.info('Setting up environment...');
@@ -205,10 +205,7 @@ const runE2eTests = async (options: { port?: number; name?: string; skipBuild?: 
 
     // Create server instance
     console.info('Creating server instance...');
-    const server = new AgentServer({
-      dataDir: elizaDbDir,
-      postgresUrl,
-    });
+    const server = new AgentServer();
     console.info('Server instance created');
 
     // Wait for database initialization
@@ -217,7 +214,10 @@ const runE2eTests = async (options: { port?: number; name?: string; skipBuild?: 
     // Initialize the server explicitly before starting
     console.info('Initializing server...');
     try {
-      await server.initialize();
+      await server.initialize({
+        dataDir: elizaDbDir,
+        postgresUrl,
+      });
       console.info('Server initialized successfully');
     } catch (initError) {
       console.error('Server initialization failed:', initError);

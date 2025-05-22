@@ -10,9 +10,10 @@ import {
   handleError,
   installPlugin,
   loadConfig,
-  loadEnvironment,
   loadPluginModule,
   promptForEnvVars,
+  resolveEnvFile,
+  resolvePgliteDir,
   saveConfig,
 } from '@/src/utils';
 import {
@@ -29,7 +30,6 @@ import { Command } from 'commander';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { resolveEnvFile, resolvePgliteDir } from '@/src/utils';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -422,17 +422,14 @@ const startAgents = async (options: {
   port?: number;
   characters?: Character[];
 }) => {
-  // Load environment variables from project .env
-  await loadEnvironment();
+  // Load existing configuration
+  const existingConfig = await loadConfig();
 
   // Configure database settings - pass reconfigure option to potentially force reconfiguration
   const postgresUrl = await configureDatabaseSettings(options.configure);
 
   // Get PGLite data directory from environment (may have been set during configuration)
-  const pgliteDataDir = resolvePgliteDir();
-
-  // Load existing configuration
-  const existingConfig = await loadConfig();
+  const pgliteDataDir = await resolvePgliteDir();
 
   // Check if we should reconfigure based on command-line option or if using default config
   const shouldConfigure = options.configure || existingConfig.isDefault;
@@ -452,8 +449,10 @@ const startAgents = async (options: {
     });
   }
 
-  // Create server instance with appropriate database settings
-  const server = new AgentServer({
+  // Create server instance
+  const server = new AgentServer();
+  // Initialize server with appropriate database settings
+  await server.initialize({
     dataDir: pgliteDataDir,
     postgresUrl,
   });

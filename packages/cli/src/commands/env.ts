@@ -401,7 +401,7 @@ async function resetEnv(yes = false): Promise<void> {
   const cacheDir = path.join(elizaDir, 'cache');
 
   const localEnvPath = getLocalEnvPath() ?? path.join(process.cwd(), '.env');
-  const localDbDir = resolvePgliteDir();
+  const localDbDir = await resolvePgliteDir();
 
   // Check if external Postgres is in use
   let usingExternalPostgres = false;
@@ -449,7 +449,7 @@ async function resetEnv(yes = false): Promise<void> {
 
   // Filter out non-existent items for automated selection
   const validResetItems = resetItems.filter(
-    (item) =>
+    async (item) =>
       (item.value === 'localEnv' && existsSync(localEnvPath)) ||
       (item.value === 'cache' && existsSync(cacheDir)) ||
       (item.value === 'localDb' && existsSync(localDbDir))
