@@ -1,7 +1,8 @@
 import dotenv from 'dotenv';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { isMonorepoContext } from '@/src/utils';
+// import { isMonorepoContext } from '@/src/utils'; // Replaced by UserEnvironment
+import { UserEnvironment } from './user-environment';
 
 /**
  * Expands a file path starting with `~` to the project directory.
@@ -9,9 +10,14 @@ import { isMonorepoContext } from '@/src/utils';
  * @param filepath - The path to expand.
  * @returns The expanded path.
  */
-export function expandTildePath(filepath: string): string {
+export function expandTildePath(
+  filepath: string,
+  projectRootForTilde: string = process.cwd()
+): string {
   if (filepath && filepath.startsWith('~')) {
-    return path.join(process.cwd(), filepath.slice(1));
+    // If ~ means project root, use projectRootForTilde. If it means OS home, os.homedir() would be used.
+    // Assuming ~ means project root in this context based on previous behavior with cwd.
+    return path.join(projectRootForTilde, filepath.slice(1));
   }
   return filepath;
 }
@@ -59,14 +65,22 @@ export function resolveEnvFile(startDir: string = process.cwd()): string {
  * @returns The resolved data directory with any tilde expanded.
  */
 export async function resolvePgliteDir(dir?: string, fallbackDir?: string): Promise<string> {
-  const isMonorepo = await isMonorepoContext();
+  const userEnv = UserEnvironment.getInstance();
+  const pathsInfo = await userEnv.getPathInfo();
+  const projectRoot = pathsInfo.monorepoRoot || process.cwd(); // Base directory should be monorepo root or cwd
 
-  const envPath = isMonorepo ? path.join(process.cwd(), '../../.env') : resolveEnvFile();
-  if (existsSync(envPath)) {
-    dotenv.config({ path: envPath });
+  // Use the envFilePath from UserEnvironment which is already correctly resolved
+  if (pathsInfo.envFilePath && existsSync(pathsInfo.envFilePath)) {
+    dotenv.config({ path: pathsInfo.envFilePath });
   }
 
-  const base =
-    dir ?? process.env.PGLITE_DATA_DIR ?? fallbackDir ?? path.join(process.cwd(), '.elizadb');
-  return expandTildePath(base);
+  // The fallbackDir passed from getElizaDirectories will be monorepoRoot + '.elizadb' or similar.
+  // If fallbackDir is not provided (e.g. direct call to resolvePgliteDir),
+  // then we construct the default path using projectRoot.
+  const defaultBaseDir = path.join(projectRoot, '.elizadb');
+
+  const base = dir ?? process.env.PGLITE_DATA_DIR ?? fallbackDir ?? defaultBaseDir;
+
+  // Pass projectRoot for tilde expansion, assuming ~ means project root.
+  return expandTildePath(base, projectRoot);
 }

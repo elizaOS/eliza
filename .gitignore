@@ -119,6 +119,8 @@ flycheck_*.el
 packages/autodoc/text_objects/*
 /env
 **pglite**
+**elizadb**
+**.eliza**
 
 # UI Test related files
 screenshots/

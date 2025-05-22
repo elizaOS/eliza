@@ -1,7 +1,8 @@
 import { logger } from '@elizaos/core';
 import dotenv from 'dotenv';
-import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
+import { UserEnvironment } from './user-environment';
+import { existsSync, promises as fs } from 'node:fs';
 import prompts from 'prompts';
 import { z } from 'zod';
 import { resolveEnvFile, resolvePgliteDir } from './resolve-utils';
@@ -46,11 +47,23 @@ export function isValidPostgresUrl(url: string): boolean {
  * @returns An object containing the Eliza configuration directory, the Eliza database directory for the current project, and the path to the Eliza `.env` file.
  */
 export async function getElizaDirectories() {
-  const elizaDir = path.join(process.cwd(), '.eliza');
-  const elizaDbDir = await resolvePgliteDir();
-  const envFilePath = resolveEnvFile();
+  const userEnv = UserEnvironment.getInstance();
+  const paths = await userEnv.getPathInfo();
 
-  logger.debug('[Config] Using database directory:', elizaDbDir);
+  const elizaDir = paths.elizaDir; // Correctly resolved by UserEnvironment
+  const envFilePath = paths.envFilePath; // Correctly resolved by UserEnvironment
+
+  // Construct the explicit fallback for .elizadb at the project root
+  const projectRoot = paths.monorepoRoot || process.cwd();
+  const defaultElizaDbDir = path.join(projectRoot, '.elizadb');
+
+  // Pass this default location as the fallback to resolvePgliteDir.
+  // resolvePgliteDir will then use it if no specific dir or PGLITE_DATA_DIR env var is set.
+  const elizaDbDir = await resolvePgliteDir(undefined, defaultElizaDbDir);
+
+  logger.debug('[Config] Eliza directory:', elizaDir);
+  logger.debug('[Config] Database directory:', elizaDbDir);
+  logger.debug('[Config] Env file path:', envFilePath);
 
   return {
     elizaDir,
@@ -203,7 +216,7 @@ export async function configureDatabaseSettings(reconfigure = false): Promise<st
 
   // Check if we already have database configuration in env
   let postgresUrl = process.env.POSTGRES_URL;
-  const pgliteDataDir = resolvePgliteDir(undefined, elizaDbDir);
+  const pgliteDataDir = await resolvePgliteDir(undefined, elizaDbDir);
 
   // Add debug logging
   logger.debug(`Configuration check - POSTGRES_URL: ${postgresUrl ? 'SET' : 'NOT SET'}`);

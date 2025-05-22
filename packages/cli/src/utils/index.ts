@@ -19,5 +19,5 @@ export * from './publisher';
 export * from './resolve-import';
 export * from './resolve-utils';
 export * from './run-bun';
-export * from './testRunner';
+export * from './test-runner';
 export * from './user-environment';
