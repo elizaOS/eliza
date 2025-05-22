@@ -157,7 +157,7 @@ import { start } from '@/src/commands/start';
 import { teeCommand as tee } from '@/src/commands/tee';
 import { test } from '@/src/commands/test';
 import { update } from '@/src/commands/update';
-import { displayBanner, loadEnvironment } from '@/src/utils';
+import { displayBanner } from '@/src/utils';
 import { logger } from '@elizaos/core';
 import { Command, Option } from 'commander';
 import fs from 'node:fs';

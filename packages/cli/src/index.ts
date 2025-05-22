@@ -13,7 +13,7 @@ import { start } from '@/src/commands/start';
 import { teeCommand as tee } from '@/src/commands/tee';
 import { test } from '@/src/commands/test';
 import { update } from '@/src/commands/update';
-import { displayBanner, loadEnvironment } from '@/src/utils';
+import { displayBanner } from '@/src/utils';
 import { logger } from '@elizaos/core';
 import { Command, Option } from 'commander';
 import fs from 'node:fs';
@@ -29,9 +29,6 @@ process.on('SIGTERM', () => process.exit(0));
  * @returns {Promise<void>}
  */
 async function main() {
-  // Load environment variables from the project .env file
-  await loadEnvironment();
-
   // For ESM modules we need to use import.meta.url instead of __dirname
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = dirname(__filename);
