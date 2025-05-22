@@ -1,8 +1,9 @@
 import { writeFileSync, mkdirSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { Octokit } from 'octokit';
 import semver from 'semver';
+import { UserEnvironment } from './user-environment';
+import os from 'node:os';
 
 /*───────────────────────────────────────────────────────────────────────────*/
 // Types
@@ -257,25 +258,23 @@ async function executeParseRegistry(): Promise<void> {
     const results = await Promise.all(tasks);
     for (const [id, info] of results) report[id] = info;
   } else {
-    for (const task of tasks) {
-      const [id, info] = await task;
-      report[id] = info;
-      await new Promise((r) => setTimeout(r, 500));
-    }
+    console.log('Please set `GH_TOKEN` or `GITHUB_TOKEN` environment variable to run this command');
+    process.exit(1);
   }
 
   /*───────────────────────────────────────────────────────────────────────*/
   // Cache to ~/.eliza/cached-registry.json
   /*───────────────────────────────────────────────────────────────────────*/
 
-  const cacheDir = join(homedir(), '.eliza');
-  const cacheFilePath = join(cacheDir, 'cached-registry.json');
+  const elizaDir = join(os.homedir(), '.eliza');
+
+  const cacheFilePath = join(elizaDir, 'cached-registry.json');
 
   try {
-    mkdirSync(cacheDir, { recursive: true });
+    mkdirSync(elizaDir, { recursive: true });
   } catch (error: any) {
     if (error.code !== 'EEXIST') {
-      console.error(`Failed to create cache directory at ${cacheDir}:`, error);
+      console.error(`Failed to create cache directory at ${elizaDir}:`, error);
       throw error;
     }
   }

@@ -25,7 +25,7 @@ setup_file() {
   export TEST_SERVER_PORT=3000
   export TEST_SERVER_URL="http://localhost:$TEST_SERVER_PORT"
   export TEST_TMP_DIR="$(mktemp -d /var/tmp/eliza-test-agent-XXXXXX)"
-  mkdir -p "$TEST_TMP_DIR/pglite"
+  mkdir -p "$TEST_TMP_DIR/elizadb"
 
   # Resolve CLI path; allow caller to override ELIZAOS_CMD.
   export ELIZAOS_CMD="${ELIZAOS_CMD:-bun run $(cd "$BATS_TEST_DIRNAME/../dist" && pwd)/index.js}"
@@ -34,7 +34,7 @@ setup_file() {
   # Launch the server under test.
   # ---------------------------------------------------------------------------
   LOG_LEVEL=debug \
-  PGLITE_DATA_DIR="$TEST_TMP_DIR/pglite" \
+  PGLITE_DATA_DIR="$TEST_TMP_DIR/elizadb" \
   $ELIZAOS_CMD start --port "$TEST_SERVER_PORT" \
     >"$TEST_TMP_DIR/server.log" 2>&1 &
   SERVER_PID=$!

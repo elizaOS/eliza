@@ -1,22 +1,14 @@
-import { join } from 'node:path';
-import { homedir } from 'node:os';
-import parseRegistry from './parse-registry';
-import { CachedRegistry } from '../types/plugins';
 import { promises as fs } from 'node:fs';
-
-const CACHE_PATH = join(homedir(), '.eliza', 'cached-registry.json');
+import os from 'node:os';
+import { join } from 'node:path';
+import { CachedRegistry } from '../types/plugins';
+import parseRegistry from './parse-registry';
 
 /** Read and parse the cached registry file */
 export async function readCache(): Promise<CachedRegistry | null> {
   try {
-    if (
-      !(await fs
-        .access(CACHE_PATH)
-        .then(() => true)
-        .catch(() => false))
-    )
-      return null;
-    const raw = await fs.readFile(CACHE_PATH, 'utf8');
+    const elizaDir = join(os.homedir(), '.eliza');
+    const raw = await fs.readFile(join(elizaDir, 'cached-registry.json'), 'utf8');
     return JSON.parse(raw) as CachedRegistry;
   } catch {
     return null;

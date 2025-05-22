@@ -7,9 +7,12 @@
 # -----------------------------------------------------------------------------
 
 setup_file() {
-  if [[ -f "$HOME/.eliza/cached-registry.json" ]]; then
+  local cache_file="$BATS_TEST_DIRNAME/../.eliza/cached-registry.json"
+  if [[ -f "$cache_file" ]]; then
+    echo "Cache file $cache_file already exists. Skipping parse-registry.ts." >&3
     return 0
   fi
+  echo "Running parse-registry.ts to generate cache..." >&3
   bun run "$BATS_TEST_DIRNAME/../src/utils/parse-registry.ts"
 }
 

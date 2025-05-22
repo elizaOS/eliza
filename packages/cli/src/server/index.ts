@@ -1,7 +1,4 @@
-import * as fs from 'node:fs';
-import * as os from 'node:os';
-import * as path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { resolvePgliteDir } from '@/src/utils';
 import {
   type Character,
   DatabaseAdapter,
@@ -12,15 +9,14 @@ import {
 import { createDatabaseAdapter } from '@elizaos/plugin-sql';
 import * as bodyParser from 'body-parser';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import express from 'express';
-import { Server as SocketIOServer } from 'socket.io';
-import { createApiRouter, setupSocketIO, createPluginRouteHandler } from './api';
+import * as fs from 'node:fs';
 import http from 'node:http';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { Server as SocketIOServer } from 'socket.io';
+import { createApiRouter, createPluginRouteHandler, setupSocketIO } from './api';
 import { apiKeyAuthMiddleware } from './authMiddleware';
-
-// Load environment variables
-dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -73,31 +69,16 @@ export class AgentServer {
   /**
    * Constructor for AgentServer class.
    *
-   * @param {ServerOptions} [options] - The options for the server.
    * @constructor
    */
-  constructor(options?: ServerOptions) {
+  constructor() {
     try {
-      logger.debug('Initializing AgentServer...');
+      logger.debug('Initializing AgentServer (constructor)...');
       this.agents = new Map();
-
-      let dataDir = options?.dataDir ?? process.env.PGLITE_DATA_DIR ?? './.pglite';
-
-      // Expand tilde in database directory path
-      dataDir = expandTildePath(dataDir);
-
-      // Use the async database adapter
-      this.database = createDatabaseAdapter(
-        {
-          dataDir,
-          postgresUrl: options?.postgresUrl,
-        },
-        '00000000-0000-0000-0000-000000000002'
-      );
-
-      // Database initialization moved to initialize() method
+      // Synchronous setup only.
+      // Database adapter creation and initialization are moved to the async initialize() method.
     } catch (error) {
-      logger.error('Failed to initialize AgentServer:', error);
+      logger.error('Failed to initialize AgentServer (constructor):', error);
       throw error;
     }
   }
@@ -110,7 +91,22 @@ export class AgentServer {
    */
   public async initialize(options?: ServerOptions): Promise<void> {
     try {
-      // Initialize the database with await
+      logger.debug('Initializing AgentServer (async operations)...');
+
+      // Resolve data directory (assuming resolvePgliteDir might be async or needs to be before DB creation)
+      const dataDir = await resolvePgliteDir(options?.dataDir);
+
+      // Create database adapter instance
+      // Assuming createDatabaseAdapter itself is synchronous and returns an adapter instance
+      this.database = createDatabaseAdapter(
+        {
+          dataDir,
+          postgresUrl: options?.postgresUrl,
+        },
+        '00000000-0000-0000-0000-000000000002' // This UUID might need to be configurable or a named constant
+      );
+
+      // Initialize the database (which is an async operation on the adapter)
       await this.database.init();
       logger.success('Database initialized successfully');
 
@@ -122,7 +118,7 @@ export class AgentServer {
 
       // Success message moved to start method
     } catch (error) {
-      logger.error('Failed to initialize:', error);
+      logger.error('Failed to initialize AgentServer (async operations):', error);
       console.trace(error);
       throw error;
     }
@@ -517,12 +513,4 @@ export class AgentServer {
       });
     }
   }
-}
-
-// Helper function to expand tilde in paths
-function expandTildePath(filepath: string): string {
-  if (filepath && typeof filepath === 'string' && filepath.startsWith('~')) {
-    return filepath.replace(/^~/, os.homedir());
-  }
-  return filepath;
 }

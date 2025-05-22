@@ -5,16 +5,16 @@ import {
   buildProject,
   configureDatabaseSettings,
   displayBanner,
-  findNearestEnvFile,
   findNextAvailablePort,
   getCliInstallTag,
   handleError,
   installPlugin,
   loadConfig,
-  loadEnvironment,
   loadPluginModule,
   promptForEnvVars,
+  resolvePgliteDir,
   saveConfig,
+  UserEnvironment,
 } from '@/src/utils';
 import {
   AgentRuntime,
@@ -307,7 +307,7 @@ export async function startAgent(
     `Final loaded plugins (${loadedPluginsMap.size}): ${[...characterPlugins, ...plugins].map((p) => p.name).join(', ')}`
   );
 
-  function loadEnvConfig(): RuntimeSettings {
+  async function loadEnvConfig(): Promise<RuntimeSettings> {
     // Only import dotenv in Node.js environment
     let dotenv = null;
     try {
@@ -321,7 +321,8 @@ export async function startAgent(
     }
 
     // Node.js environment: load from .env file
-    const envPath = findNearestEnvFile();
+    const envInfo = await UserEnvironment.getInstanceInfo();
+    const envPath = envInfo.paths.envFilePath;
     if (envPath) {
       console.log(`[elizaos] Resolved .env file from: ${envPath}`);
     } else {
@@ -380,7 +381,7 @@ export async function startAgent(
     character: encryptedChar,
     // order matters here: make sure plugins are loaded after so they can interact with tasks (degen-intel)
     plugins: [...characterPlugins, ...plugins], // Use the deduplicated list
-    settings: loadEnvConfig(),
+    settings: await loadEnvConfig(),
   });
   if (init) {
     await init(runtime);
@@ -422,17 +423,14 @@ const startAgents = async (options: {
   port?: number;
   characters?: Character[];
 }) => {
-  // Load environment variables from project .env
-  await loadEnvironment();
+  // Load existing configuration
+  const existingConfig = await loadConfig();
 
   // Configure database settings - pass reconfigure option to potentially force reconfiguration
   const postgresUrl = await configureDatabaseSettings(options.configure);
 
   // Get PGLite data directory from environment (may have been set during configuration)
-  const pgliteDataDir = process.env.PGLITE_DATA_DIR ?? path.join(process.cwd(), '.pglite');
-
-  // Load existing configuration
-  const existingConfig = await loadConfig();
+  const pgliteDataDir = await resolvePgliteDir();
 
   // Check if we should reconfigure based on command-line option or if using default config
   const shouldConfigure = options.configure || existingConfig.isDefault;
@@ -452,8 +450,10 @@ const startAgents = async (options: {
     });
   }
 
-  // Create server instance with appropriate database settings
-  const server = new AgentServer({
+  // Create server instance
+  const server = new AgentServer();
+  // Initialize server with appropriate database settings
+  await server.initialize({
     dataDir: pgliteDataDir,
     postgresUrl,
   });

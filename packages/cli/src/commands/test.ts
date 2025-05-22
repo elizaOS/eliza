@@ -1,20 +1,24 @@
 import { loadProject } from '@/src/project';
 import { AgentServer } from '@/src/server/index';
 import { jsonToCharacter, loadCharacterTryPath } from '@/src/server/loader';
-import { TestRunner, buildProject, promptForEnvVars, findNearestEnvFile } from '@/src/utils';
+import {
+  TestRunner,
+  buildProject,
+  promptForEnvVars,
+  resolvePgliteDir,
+  UserEnvironment,
+} from '@/src/utils';
 import { type IAgentRuntime, type ProjectAgent } from '@elizaos/core';
 import { Command, Option } from 'commander';
 import * as dotenv from 'dotenv';
+import { exec } from 'node:child_process';
 import * as fs from 'node:fs';
 import { existsSync } from 'node:fs';
 import * as net from 'node:net';
-import * as os from 'node:os';
 import path from 'node:path';
-import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
-import { startAgent } from './start';
 import { pathToFileURL } from 'url';
-
+import { startAgent } from './start';
 const execAsync = promisify(exec);
 
 // Helper function to check port availability
@@ -152,13 +156,12 @@ const runE2eTests = async (options: { port?: number; name?: string; skipBuild?: 
     const projectAgents: ProjectAgent[] = [];
 
     // Set up standard paths and load .env
-    const homeDir = os.homedir();
-    const elizaDir = path.join(homeDir, '.eliza');
-    const elizaDbDir = path.join(elizaDir, '.pglite');
-    const envFilePath = findNearestEnvFile() ?? path.join(process.cwd(), '.env');
+    const elizaDir = path.join(process.cwd(), '.eliza');
+    const elizaDbDir = await resolvePgliteDir();
+    const envInfo = await UserEnvironment.getInstanceInfo();
+    const envFilePath = envInfo.paths.envFilePath;
 
     console.info('Setting up environment...');
-    console.info(`Home directory: ${homeDir}`);
     console.info(`Eliza directory: ${elizaDir}`);
     console.info(`Database directory: ${elizaDbDir}`);
     console.info(`Environment file: ${envFilePath}`);
@@ -203,10 +206,7 @@ const runE2eTests = async (options: { port?: number; name?: string; skipBuild?: 
 
     // Create server instance
     console.info('Creating server instance...');
-    const server = new AgentServer({
-      dataDir: elizaDbDir,
-      postgresUrl,
-    });
+    const server = new AgentServer();
     console.info('Server instance created');
 
     // Wait for database initialization
@@ -215,7 +215,10 @@ const runE2eTests = async (options: { port?: number; name?: string; skipBuild?: 
     // Initialize the server explicitly before starting
     console.info('Initializing server...');
     try {
-      await server.initialize();
+      await server.initialize({
+        dataDir: elizaDbDir,
+        postgresUrl,
+      });
       console.info('Server initialized successfully');
     } catch (initError) {
       console.error('Server initialization failed:', initError);

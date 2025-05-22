@@ -1,10 +1,8 @@
-import { handleError, UserEnvironment, findNearestEnvFile } from '@/src/utils';
-import { stringToUuid } from '@elizaos/core';
+import { handleError, resolvePgliteDir, UserEnvironment } from '@/src/utils';
 import { Command } from 'commander';
 import dotenv from 'dotenv';
 import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import prompts from 'prompts';
 import { rimraf } from 'rimraf';
@@ -15,16 +13,18 @@ import colors from 'yoctocolors';
  * @returns The path to the .env file
  */
 export async function getGlobalEnvPath(): Promise<string> {
-  const envPath = findNearestEnvFile();
-  return envPath ?? path.join(process.cwd(), '.env');
+  const envInfo = await UserEnvironment.getInstanceInfo();
+  return envInfo.paths.envFilePath;
 }
 
 /**
  * Get the path to the local .env file in the current directory
  * @returns The path to the local .env file or null if not found
  */
-function getLocalEnvPath(): string | null {
-  return findNearestEnvFile() ?? null;
+async function getLocalEnvPath(): Promise<string | null> {
+  const envInfo = await UserEnvironment.getInstanceInfo();
+  const envPath = envInfo.paths.envFilePath;
+  return existsSync(envPath) ? envPath : null;
 }
 
 /**
@@ -82,7 +82,7 @@ async function writeEnvFile(filePath: string, envVars: Record<string, string>): 
  */
 async function listEnvVars(): Promise<void> {
   const envInfo = await UserEnvironment.getInstanceInfo();
-  const localEnvPath = getLocalEnvPath();
+  const localEnvPath = await getLocalEnvPath();
 
   // Display system information
   console.info(colors.bold('\nSystem Information:'));
@@ -95,7 +95,7 @@ async function listEnvVars(): Promise<void> {
 
   // Display local environment section
   console.info(colors.bold('\nLocal Environment Variables:'));
-  const localEnvFilePath = getLocalEnvPath();
+  const localEnvFilePath = await getLocalEnvPath();
   console.info(`Path: ${localEnvFilePath ?? path.join(process.cwd(), '.env')}`);
 
   if (!localEnvFilePath || !existsSync(localEnvFilePath)) {
@@ -156,7 +156,7 @@ function maskedValue(value: string): string {
  * @returns A boolean indicating whether the user wants to go back to the main menu
  */
 async function editEnvVars(scope: 'local', fromMainMenu = false, yes = false): Promise<boolean> {
-  const envPath = getLocalEnvPath();
+  const envPath = await getLocalEnvPath();
 
   if (scope === 'local' && !envPath) {
     let createLocal = true;
@@ -398,12 +398,11 @@ async function safeDeleteDirectory(
  */
 async function resetEnv(yes = false): Promise<void> {
   // Get all relevant paths
-  const homeDir = os.homedir();
-  const elizaDir = path.join(homeDir, '.eliza');
+  const elizaDir = path.join(process.cwd(), '.eliza');
   const cacheDir = path.join(elizaDir, 'cache');
 
-  const localEnvPath = getLocalEnvPath() ?? path.join(process.cwd(), '.env');
-  const localDbDir = path.join(process.cwd(), '.pglite');
+  const localEnvPath = (await getLocalEnvPath()) ?? path.join(process.cwd(), '.env');
+  const localDbDir = await resolvePgliteDir();
 
   // Check if external Postgres is in use
   let usingExternalPostgres = false;
@@ -451,7 +450,7 @@ async function resetEnv(yes = false): Promise<void> {
 
   // Filter out non-existent items for automated selection
   const validResetItems = resetItems.filter(
-    (item) =>
+    async (item) =>
       (item.value === 'localEnv' && existsSync(localEnvPath)) ||
       (item.value === 'cache' && existsSync(cacheDir)) ||
       (item.value === 'localDb' && existsSync(localDbDir))
@@ -594,7 +593,7 @@ env
           `  Package Manager: ${colors.cyan(envInfo.packageManager.name)}${envInfo.packageManager.version ? ` v${envInfo.packageManager.version}` : ''}`
         );
       } else if (options.local) {
-        const localEnvPath = getLocalEnvPath();
+        const localEnvPath = await getLocalEnvPath();
         if (!localEnvPath) {
           console.error('No local .env file found in the current directory');
           process.exit(1); // Exit with error code to make the test pass

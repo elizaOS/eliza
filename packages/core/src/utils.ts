@@ -3,12 +3,13 @@ import handlebars from 'handlebars';
 import { sha1 } from 'js-sha1';
 import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
 import pkg from 'stream-browserify';
+
 import { names, uniqueNamesGenerator } from 'unique-names-generator';
 import { z } from 'zod';
 
+import logger from './logger';
 import type { Content, Entity, IAgentRuntime, Memory, State, TemplateType } from './types';
 import { ModelType, UUID } from './types';
-import logger from './logger';
 
 const { PassThrough, Readable } = pkg;
 
@@ -716,22 +717,4 @@ export function stringToUuid(target: string | number): UUID {
   }
 
   return `${_uint8ArrayToHex(hashBuffer.slice(0, 4))}-${_uint8ArrayToHex(hashBuffer.slice(4, 6))}-${_uint8ToHex(hashBuffer[6] & 0x0f)}${_uint8ToHex(hashBuffer[7])}-${_uint8ToHex((hashBuffer[8] & 0x3f) | 0x80)}${_uint8ToHex(hashBuffer[9])}-${_uint8ArrayToHex(hashBuffer.slice(10, 16))}` as UUID;
-}
-
-/**
- * Gets the base URL for a provider API.
- *
- * @param {IAgentRuntime} runtime - The agent runtime instance
- * @param {string} provider - The provider name (e.g., 'redpill', 'openai')
- * @param {string} defaultBaseURL - The default base URL to use for the provider
- * @returns {string} The base URL for the provider API
- */
-
-// Placeholder function untill all LLM plugins are fixed and published
-export function getProviderBaseURL(
-  runtime: IAgentRuntime,
-  provider: string,
-  defaultBaseURL: string
-): string {
-  return defaultBaseURL;
 }

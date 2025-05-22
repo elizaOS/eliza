@@ -239,7 +239,7 @@ Configure the database adapter using environment variables or settings:
 process.env.POSTGRES_URL = 'postgresql://username:password@localhost:5432/elizaos';
 
 // For PGLite (default)
-process.env.PGLITE_DATA_DIR = './.pglite'; // Optional, defaults to './pglite'
+process.env.PGLITE_DATA_DIR = './.elizadb'; // Optional, defaults to './pglite'
 ```
 
 ### Retry Logic & Error Handling

@@ -29,13 +29,13 @@ setup() {
   export LOCAL_MEDIUM_MODEL="$LOCAL_SMALL_MODEL"
 
   # Launch server in background with the Ada character.
-  LOG_LEVEL=debug PGLITE_DATA_DIR="$TEST_TMP_DIR/pglite" \
+  LOG_LEVEL=debug PGLITE_DATA_DIR="$TEST_TMP_DIR/elizadb" \
   PORT="$TEST_SERVER_PORT" \
   $ELIZAOS_CMD start --character "$BATS_TEST_DIRNAME/test-characters/ada.json" \
     >"$TEST_TMP_DIR/server.log" 2>&1 &
   SERVER_PID=$!
 
-  # Wait until log line appears or 15 s timeout.
+  # Wait until log line appears or 15s timeout.
   for _ in $(seq 1 15); do
     grep -q "AgentServer is listening on port $TEST_SERVER_PORT" "$TEST_TMP_DIR/server.log" && break
     sleep 1
@@ -85,7 +85,7 @@ teardown() {
 # -----------------------------------------------------------------------------
 @test "custom port spin‑up works" {
   NEW_PORT=3456
-  LOG_LEVEL=debug PGLITE_DATA_DIR="$TEST_TMP_DIR/pglite2" \
+  LOG_LEVEL=debug PGLITE_DATA_DIR="$TEST_TMP_DIR/elizadb2" \
   $ELIZAOS_CMD start -p "$NEW_PORT" --character "$BATS_TEST_DIRNAME/test-characters/ada.json" \
     >"$TEST_TMP_DIR/port.log" 2>&1 &
   pid=$!
@@ -125,7 +125,7 @@ teardown() {
 # --configure flag triggers reconfiguration message in log
 # -----------------------------------------------------------------------------
 @test "configure option runs" {
-  LOG_LEVEL=debug PGLITE_DATA_DIR="$TEST_TMP_DIR/pglite3" \
+  LOG_LEVEL=debug PGLITE_DATA_DIR="$TEST_TMP_DIR/elizadb3" \
   $ELIZAOS_CMD start --configure --character "$BATS_TEST_DIRNAME/test-characters/ada.json" \
     >"$TEST_TMP_DIR/config.log" 2>&1 &
   pid=$!
@@ -139,6 +139,19 @@ teardown() {
 # send message to Ada agent and get a response
 # -----------------------------------------------------------------------------
 @test "send message to Ada agent and get a response" {
+  local model_dir="$HOME/.eliza/models"
+  local model1_name="DeepHermes-3-Llama-3-3B-Preview-q4.gguf"
+  local model2_name="bge-small-en-v1.5.Q4_K_M.gguf"
+  local model1_path="$model_dir/$model1_name"
+  local model2_path="$model_dir/$model2_name"
+
+  # Skip if models are missing AND OpenAI API key is not available
+  if ( ! [ -f "$model1_path" ] || ! [ -f "$model2_path" ] ); then
+    skip "Skipping test: Required models ('$model1_name', '$model2_name') not found in '$model_dir'"
+    # The 'skip' command exits with status 0, marking the test as skipped.
+  fi
+
+  # Tests if able to get response from Ada agent
   run $ELIZAOS_CMD agent --remote-url "http://localhost:$TEST_SERVER_PORT" list
   ELIZA_AGENT_ID=$(echo "$output" | grep 'Ada' | sed -E 's/.*│ *([0-9a-f\-]{36}) *.*/\1/')
   local payload="{\"entityId\":\"31c75add-3a49-4bb1-ad40-92c6b4c39558\",\"roomId\":\"$ELIZA_AGENT_ID\",\"source\":\"client_chat\",\"text\":\"Ada, What's your stance on AI regulation?\",\"channelType\":\"API\"}"

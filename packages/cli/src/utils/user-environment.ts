@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { logger } from '@elizaos/core';
 import { existsSync, statSync } from 'node:fs';
 import { execSync } from 'node:child_process';
-import { findNearestEnvFile } from './env-utils';
+import { resolveEnvFile } from './resolve-utils';
 
 // Types
 interface OSInfo {
@@ -244,19 +244,20 @@ export class UserEnvironment {
   }
 
   public async getPathInfo(): Promise<PathInfo> {
-    const homedir = os.homedir();
-    const elizaDir = path.join(homedir, '.eliza');
     const monorepoRoot = this.findMonorepoRoot(process.cwd());
+    const projectRootForPaths = monorepoRoot || process.cwd(); // Determine the correct root
+    const elizaDir = path.join(projectRootForPaths, '.eliza'); // Use the correct root for .eliza
+    const envFilePath = resolveEnvFile(projectRootForPaths); // Use the correct root for .env resolution
 
     logger.debug('[UserEnvironment] Detected monorepo root:', monorepoRoot || 'Not in monorepo');
 
     return {
       elizaDir,
-      envFilePath: findNearestEnvFile() ?? path.join(process.cwd(), '.env'),
+      envFilePath,
       configPath: path.join(elizaDir, 'config.json'),
       pluginsDir: path.join(elizaDir, 'plugins'),
       monorepoRoot,
-      packageJsonPath: path.join(process.cwd(), 'package.json'),
+      packageJsonPath: path.join(projectRootForPaths, 'package.json'),
     };
   }
 
