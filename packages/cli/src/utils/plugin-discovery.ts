@@ -2,20 +2,14 @@ import { join } from 'node:path';
 import parseRegistry from './parse-registry';
 import { CachedRegistry } from '../types/plugins';
 import { promises as fs } from 'node:fs';
-
-const CACHE_PATH = join(process.cwd(), '.eliza', 'cached-registry.json');
+import { UserEnvironment } from './user-environment';
 
 /** Read and parse the cached registry file */
 export async function readCache(): Promise<CachedRegistry | null> {
   try {
-    if (
-      !(await fs
-        .access(CACHE_PATH)
-        .then(() => true)
-        .catch(() => false))
-    )
-      return null;
-    const raw = await fs.readFile(CACHE_PATH, 'utf8');
+    const envInfo = await UserEnvironment.getInstanceInfo();
+    const { elizaDir } = envInfo.paths;
+    const raw = await fs.readFile(join(elizaDir, 'cached-registry.json'), 'utf8');
     return JSON.parse(raw) as CachedRegistry;
   } catch {
     return null;
