@@ -603,7 +603,7 @@ export class AgentRuntime implements IAgentRuntime {
       try {
         const room = await this.getRoom(this.agentId);
         if (!room) {
-          const room = await this.adapter.createRoom({
+          const room = await this.createRoom({
             id: this.agentId,
             name: this.character.name,
             source: 'elizaos',
@@ -618,7 +618,7 @@ export class AgentRuntime implements IAgentRuntime {
         // No need to transform agent ID
         const participants = await this.adapter.getParticipantsForRoom(this.agentId);
         if (!participants.includes(this.agentId)) {
-          const added = await this.adapter.addParticipant(this.agentId, this.agentId);
+          const added = await this.addParticipant(this.agentId, this.agentId);
           if (!added) {
             const errorMsg = `Failed to add agent ${this.agentId} as participant to its own room`;
             span.setStatus({ code: SpanStatusCode.ERROR, message: errorMsg });
@@ -702,7 +702,7 @@ export class AgentRuntime implements IAgentRuntime {
     message: Memory,
     scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID }
   ): Promise<KnowledgeItem[]> {
-    console.log('*** getKnowledge', message);
+    //console.log('*** getKnowledge', message);
     return this.startSpan('AgentRuntime.getKnowledge', async (span) => {
       // Add validation for message
       if (!message?.content?.text) {
@@ -1411,7 +1411,7 @@ export class AgentRuntime implements IAgentRuntime {
       if (!entity) {
         // Try to create the entity
         try {
-          const success = await this.adapter.createEntity({
+          const success = await this.createEntity({
             id: entityId,
             names,
             metadata: entityMetadata,
@@ -1482,7 +1482,7 @@ export class AgentRuntime implements IAgentRuntime {
         // If the normal flow fails because the entity isn't found,
         // try direct participant addition as a clean fallback
         if (error.message?.includes('not found')) {
-          const added = await this.adapter.addParticipant(entityId, roomId);
+          const added = await this.addParticipant(entityId, roomId);
           if (!added) {
             throw new Error(`Failed to add participant ${entityId} to room ${roomId}`);
           }
@@ -1529,7 +1529,7 @@ export class AgentRuntime implements IAgentRuntime {
     // Only add if not already a participant
     if (!participants.includes(entityId)) {
       // Add participant using the ID
-      const added = await this.adapter.addParticipant(entityId, roomId);
+      const added = await this.addParticipant(entityId, roomId);
 
       if (!added) {
         throw new Error(`Failed to add participant ${entityId} to room ${roomId}`);
@@ -1558,7 +1558,7 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async addParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
-    return await this.adapter.addParticipant(entityId, roomId);
+    return await this.adapter.addParticipantsRoom([entityId], roomId);
   }
 
   async addParticipantsRoom(entityIds: UUID[], roomId: UUID): Promise<boolean> {
@@ -1605,10 +1605,10 @@ export class AgentRuntime implements IAgentRuntime {
    * @throws An error if the room cannot be created.
    */
   async ensureRoomExists({ id, name, source, type, channelId, serverId, worldId, metadata }: Room) {
-    const room = await this.getRoom(id);
     if (!worldId) throw new Error('worldId is required');
+    const room = await this.getRoom(id);
     if (!room) {
-      await this.adapter.createRoom({
+      await this.createRoom({
         id,
         name,
         agentId: this.agentId,
@@ -2319,7 +2319,9 @@ export class AgentRuntime implements IAgentRuntime {
     if (!entity.agentId) {
       entity.agentId = this.agentId;
     }
-    return await this.adapter.createEntity(entity);
+    const res = await this.createEntities([entity]);
+    if (!res.length) return null;
+    return res[0];
   }
 
   async createEntities(entities: Entity[]): Promise<boolean[]> {
@@ -2536,15 +2538,19 @@ export class AgentRuntime implements IAgentRuntime {
 
   async createRoom({ id, name, source, type, channelId, serverId, worldId }: Room): Promise<UUID> {
     if (!worldId) throw new Error('worldId is required');
-    return await this.adapter.createRoom({
-      id,
-      name,
-      source,
-      type,
-      channelId,
-      serverId,
-      worldId,
-    });
+    const res = await this.adapter.createRooms([
+      {
+        id,
+        name,
+        source,
+        type,
+        channelId,
+        serverId,
+        worldId,
+      },
+    ]);
+    if (!res.length) return null;
+    return res[0];
   }
 
   async createRooms(rooms: Room[]): Promise<UUID[]> {
