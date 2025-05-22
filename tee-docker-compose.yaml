@@ -44,6 +44,7 @@ services:
       - TEE_VENDOR=${TEE_VENDOR}
     ports:
       - '3000:3000'
+      - '50000-50100:50000-50100/udp'
     depends_on:
       postgres:
         condition: service_healthy
