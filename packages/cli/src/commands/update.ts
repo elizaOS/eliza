@@ -301,17 +301,19 @@ async function updateDependencies(
 
     console.info(`Updating ${packagesNeedingUpdate.length} package(s)...`);
 
+    const isCLIBeta = latestCliVersion.includes('beta');
+    const packageTag = isCLIBeta ? 'beta' : 'latest';
+
     // Update each package to the latest CLI version
     for (const pkg of packagesNeedingUpdate) {
       try {
         console.info(`Updating ${pkg.name} to version ${latestCliVersion}...`);
         await runBunCommand(['add', `${pkg.name}@${latestCliVersion}`], cwd);
       } catch (error) {
-        console.error(`Failed to update ${pkg.name}: ${error.message}`);
-        console.info('Trying to use exact version match...');
+        console.error(`Failed to update ${pkg.name}@${latestCliVersion}: ${error.message}`);
         try {
           // If the specific version isn't available, try to find the closest version
-          await runBunCommand(['add', pkg.name], cwd);
+          await runBunCommand(['add', `${pkg.name}@${packageTag}`], cwd);
         } catch (secondError) {
           console.error(`Failed to install ${pkg.name} after retrying: ${secondError.message}`);
         }
