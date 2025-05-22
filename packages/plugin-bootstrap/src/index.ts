@@ -249,7 +249,7 @@ const messageReceivedHandler = async ({
           room?.type === ChannelType.VOICE_DM ||
           room?.type === ChannelType.SELF ||
           room?.type === ChannelType.API ||
-          room?.source === 'client_chat';
+          room?.source.includes('client_chat');
 
         logger.debug(
           `[Bootstrap] Skipping shouldRespond check for ${runtime.character.name} because ${room?.type} ${room?.source}`
