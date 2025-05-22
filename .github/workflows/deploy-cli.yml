@@ -1,0 +1,54 @@
+name: Deploy CLI with Bun
+
+on:
+  push:
+    branches:
+      - 'v2/develop'
+    paths:
+      - 'packages/cli/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check for version bump
+        id: version_check
+        run: |
+          old=$(git show HEAD^:packages/cli/package.json | jq -r .version)
+          new=$(jq -r .version packages/cli/package.json)
+          echo "Old version: $old"
+          echo "New version: $new"
+          if [ "$old" != "$new" ]; then
+            echo "version_bump=true" >> $GITHUB_OUTPUT
+          else
+            echo "version_bump=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Skip if no version bump
+        if: steps.version_check.outputs.version_bump != 'true'
+        run: |
+          echo "No version bump detected in packages/cli/package.json, skipping."
+          exit 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build CLI
+        run: bun run build
+
+      - name: Configure npm auth
+        run: echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
+
+      - name: Publish to npm
+        run: bun run release:beta
+        env:
+          NPM_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
