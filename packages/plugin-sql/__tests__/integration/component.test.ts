@@ -78,11 +78,13 @@ describe('Component Integration Tests', () => {
       } as Entity);
 
       // Create the test room
-      await adapter.createRoom({
-        ...componentTestRoom,
-        agentId: testAgentId,
-        worldId: worldId,
-      } as Room);
+      await adapter.createRooms([
+        {
+          ...componentTestRoom,
+          agentId: testAgentId,
+          worldId: worldId,
+        } as Room,
+      ]);
     } catch (error) {
       console.error('Error in setup:', error);
       throw error;
