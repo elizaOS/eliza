@@ -782,7 +782,7 @@ export abstract class BaseDrizzleAdapter<
     });
   }
 
-  async createEntities(entities: Entity[]): Promise<boolean[]> {
+  async createEntities(entities: Entity[]): Promise<boolean> {
     return this.withDatabase(async () => {
       try {
         return await this.db.transaction(async (tx) => {
@@ -1977,7 +1977,7 @@ export abstract class BaseDrizzleAdapter<
         id: room.id || v4(), // ensure each room has a unique ID
       }));
 
-      await this.db
+      const insertedRooms = await this.db
         .insert(roomTable)
         .values(roomsWithIds)
         .onConflictDoNothing({ target: roomTable.id })
