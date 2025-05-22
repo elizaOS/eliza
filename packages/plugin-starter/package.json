@@ -35,7 +35,9 @@
   "devDependencies": {
     "tsup": "8.4.0",
     "typescript": "5.8.2",
-    "prettier": "3.5.3"
+    "prettier": "3.5.3",
+    "vitest": "1.4.0",
+    "dotenv": "16.4.5"
   },
   "scripts": {
     "start": "elizaos start",
@@ -43,7 +45,9 @@
     "dev": "elizaos dev",
     "build": "tsup",
     "lint": "prettier --write ./src",
-    "test": "elizaos test",
+    "test:component": "vitest run",
+    "test:e2e": "elizaos test",
+    "test": "npm run test:component && npm run test:e2e",
     "publish": "elizaos publish",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src"

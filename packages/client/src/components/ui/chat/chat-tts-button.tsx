@@ -61,7 +61,7 @@ export default function ChatTtsButton({ agentId, text }: { agentId: string; text
     mutation.mutate();
   };
 
-  const iconClass = 'text-muted-foreground size-4';
+  const iconClass = 'text-muted-foreground size-3';
 
   return (
     <div>
