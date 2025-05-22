@@ -87,7 +87,7 @@ describe('Task Integration Tests', () => {
       });
 
       // Step 3: Create test room
-      await adapter.createRoom(testRoom);
+      await adapter.createRooms([testRoom]);
     } catch (error) {
       console.error('Error in setup:', error);
       throw error;
