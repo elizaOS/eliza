@@ -200,3 +200,64 @@ To run the pre-commit hook manually:
 ```bash
 bun run pre-commit
 ```
+
+## Tauri Application CI/CD and Signing
+
+The Eliza application, built with Tauri and located in `packages/app`, is configured for cross-platform continuous integration and deployment. This setup automates the building and releasing of the application for various operating systems.
+
+### Overview
+
+The Tauri application is designed to be built for:
+- Desktop: Linux, macOS, and Windows.
+- Mobile: Android and iOS.
+
+### CI/CD Workflows
+
+Two main GitHub Actions workflows handle the CI/CD process for the Tauri application:
+
+-   **`tauri-ci.yml`**:
+    -   Triggered on pushes to `main`, `develop`, and `v2-develop` branches.
+    -   Performs debug builds of the desktop application (Linux, macOS, Windows) to ensure code integrity and catch build issues early.
+
+-   **`tauri-release.yml`**:
+    -   Triggered when new tags (e.g., `v*`) are pushed or when a new release is created/published on GitHub.
+    -   Builds release-ready versions of the application for all supported desktop platforms (Linux AppImage & .deb, macOS .dmg, Windows .exe NSIS installer).
+    -   Builds release versions for mobile platforms (Android .apk, iOS .ipa).
+    -   Uploads all generated binaries and installers as artifacts to the corresponding GitHub Release.
+
+### Mobile Application Backend
+
+The mobile versions of the Eliza Tauri application (Android and iOS) are configured to connect to an external backend service hosted at `https://api.eliza.how`. This connection is essential for certain functionalities of the mobile app.
+
+The Content Security Policy (CSP) in `packages/app/src-tauri/tauri.conf.json` has been updated to allow `connect-src` directives to this specific domain, ensuring that the mobile app can securely communicate with its backend.
+
+### Application Signing (Important for Releases)
+
+For the `tauri-release.yml` workflow to produce *signed* and deployable mobile applications suitable for app stores or distribution, specific secrets must be configured in the GitHub repository settings (`Settings > Secrets and variables > Actions`).
+
+**Android Signing Secrets:**
+
+-   `ANDROID_KEYSTORE_BASE64`: Base64 encoded content of your Java Keystore file (`.jks` or `.keystore`).
+-   `ANDROID_KEYSTORE_ALIAS`: The alias of your key within the keystore.
+-   `ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD`: The password for the private key associated with the alias.
+-   `ANDROID_KEYSTORE_PASSWORD`: The password for the keystore file itself.
+
+> **Note**: The CI workflow currently includes a step to generate a dummy, unsigned keystore for Android if these secrets are not provided. This allows the release build to complete and produce an unsigned APK, but this APK cannot be published to app stores. For official releases, providing the actual signing credentials via these secrets is crucial.
+
+**iOS Signing Secrets:**
+
+-   `APPLE_DEVELOPMENT_CERTIFICATE_P12_BASE64`: Base64 encoded content of your Apple Distribution Certificate (`.p12` file).
+-   `APPLE_CERTIFICATE_PASSWORD`: The password used to encrypt the `.p12` certificate file.
+-   `APPLE_PROVISIONING_PROFILE_BASE64`: Base64 encoded content of your Distribution Provisioning Profile (`.mobileprovision` file).
+-   `APPLE_DEVELOPMENT_TEAM`: Your Apple Developer Team ID (e.g., `A1B2C3D4E5`).
+
+> **Note**: The CI workflow currently includes placeholder steps for setting up the Apple development environment and signing for iOS. These steps will require the above secrets to be populated. If these secrets are not provided and the signing steps are made active (by uncommenting them in the workflow), the iOS build will likely fail.
+
+### Artifacts
+
+Upon successful completion of the `tauri-release.yml` workflow (triggered by a new tag/release), all compiled application installers and mobile packages will be available as downloadable artifacts on the GitHub Releases page for that specific tag. This includes:
+-   Linux: `.AppImage` and `.deb` files.
+-   macOS: `.dmg` file.
+-   Windows: `.exe` NSIS installer.
+-   Android: `.apk` file.
+-   iOS: `.ipa` file.
