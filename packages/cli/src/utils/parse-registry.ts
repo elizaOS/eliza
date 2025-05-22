@@ -2,6 +2,7 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { Octokit } from 'octokit';
 import semver from 'semver';
+import { UserEnvironment } from './user-environment';
 
 /*───────────────────────────────────────────────────────────────────────────*/
 // Types
@@ -267,7 +268,10 @@ async function executeParseRegistry(): Promise<void> {
   // Cache to ~/.eliza/cached-registry.json
   /*───────────────────────────────────────────────────────────────────────*/
 
-  const cacheDir = join(process.cwd(), '.eliza');
+  const envInfo = await UserEnvironment.getInstanceInfo();
+  const { elizaDir } = envInfo.paths;
+
+  const cacheDir = join(elizaDir, '.eliza');
   const cacheFilePath = join(cacheDir, 'cached-registry.json');
 
   try {
