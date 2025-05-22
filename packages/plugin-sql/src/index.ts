@@ -1,10 +1,10 @@
 import type { IDatabaseAdapter, UUID } from '@elizaos/core';
-import { type IAgentRuntime, type Plugin, logger, resolvePgliteDir } from '@elizaos/core';
+import { type IAgentRuntime, type Plugin, logger } from '@elizaos/core';
 import { PgliteDatabaseAdapter } from './pglite/adapter';
 import { PGliteClientManager } from './pglite/manager';
 import { PgDatabaseAdapter } from './pg/adapter';
 import { PostgresConnectionManager } from './pg/manager';
-import { stringToUuid } from '@elizaos/core';
+import { resolvePgliteDir } from './utils';
 
 /**
  * Global Singleton Instances (Package-scoped)

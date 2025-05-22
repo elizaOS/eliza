@@ -16,7 +16,7 @@ import prompts from 'prompts';
 import colors from 'yoctocolors';
 import { z } from 'zod';
 import { character as elizaCharacter } from '@/src/characters/eliza';
-import { resolvePgliteDir, resolveEnvFile } from '@elizaos/core';
+import { resolvePgliteDir, resolveEnvFile } from '@/src/utils';
 
 /**
  * This module handles creating projects, plugins, and agent characters.

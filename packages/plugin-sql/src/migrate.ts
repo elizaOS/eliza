@@ -1,7 +1,8 @@
-import { logger, resolvePgliteDir } from '@elizaos/core';
+import { logger } from '@elizaos/core';
 import { config } from 'dotenv';
-import { PGliteClientManager } from './pglite/manager.js';
-import { PostgresConnectionManager } from './pg/manager.js';
+import { PostgresConnectionManager } from './pg/manager';
+import { PGliteClientManager } from './pglite/manager';
+import { resolvePgliteDir } from './utils';
 
 config({ path: '../../.env' });
 

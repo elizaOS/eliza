@@ -7,7 +7,6 @@ import {
   type IAgentRuntime,
   type UUID,
   logger,
-  resolvePgliteDir,
 } from '@elizaos/core';
 import { createDatabaseAdapter } from '@elizaos/plugin-sql';
 import * as bodyParser from 'body-parser';
@@ -18,9 +17,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import { createApiRouter, setupSocketIO, createPluginRouteHandler } from './api';
 import http from 'node:http';
 import { apiKeyAuthMiddleware } from './authMiddleware';
-
-// Load environment variables
-dotenv.config();
+import { resolvePgliteDir } from '@/src/utils';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 

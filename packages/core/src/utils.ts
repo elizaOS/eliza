@@ -3,16 +3,13 @@ import handlebars from 'handlebars';
 import { sha1 } from 'js-sha1';
 import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
 import pkg from 'stream-browserify';
-import os from 'node:os';
-import path from 'node:path';
-import { existsSync } from 'node:fs';
-import dotenv from 'dotenv';
+
 import { names, uniqueNamesGenerator } from 'unique-names-generator';
 import { z } from 'zod';
 
+import logger from './logger';
 import type { Content, Entity, IAgentRuntime, Memory, State, TemplateType } from './types';
 import { ModelType, UUID } from './types';
-import logger from './logger';
 
 const { PassThrough, Readable } = pkg;
 
@@ -720,88 +717,4 @@ export function stringToUuid(target: string | number): UUID {
   }
 
   return `${_uint8ArrayToHex(hashBuffer.slice(0, 4))}-${_uint8ArrayToHex(hashBuffer.slice(4, 6))}-${_uint8ToHex(hashBuffer[6] & 0x0f)}${_uint8ToHex(hashBuffer[7])}-${_uint8ToHex((hashBuffer[8] & 0x3f) | 0x80)}${_uint8ToHex(hashBuffer[9])}-${_uint8ArrayToHex(hashBuffer.slice(10, 16))}` as UUID;
-}
-
-/**
- * Expands a file path starting with `~` to the user's home directory.
- *
- * @param filepath - The path to expand.
- * @returns The expanded path.
- */
-export function expandTildePath(filepath: string): string {
-  if (filepath && filepath.startsWith('~')) {
-    return path.join(os.homedir(), filepath.slice(1));
-  }
-  return filepath;
-}
-
-/**
- * Resolves the path to the nearest `.env` file.
- *
- * If no `.env` file is found when traversing up from the starting directory,
- * a path to `.env` in the starting directory is returned.
- *
- * @param startDir - The directory to start searching from. Defaults to the
- *   current working directory.
- * @returns The resolved path to the `.env` file.
- */
-export function resolveEnvFile(startDir: string = process.cwd()): string {
-  let currentDir = startDir;
-
-  while (true) {
-    const candidate = path.join(currentDir, '.env');
-    if (existsSync(candidate)) {
-      return candidate;
-    }
-
-    const parentDir = path.dirname(currentDir);
-    if (parentDir === currentDir) {
-      break;
-    }
-    currentDir = parentDir;
-  }
-
-  return path.join(startDir, '.env');
-}
-
-/**
- * Resolves the directory used for PGlite database storage.
- *
- * Resolution order:
- * 1. The `dir` argument if provided.
- * 2. The `PGLITE_DATA_DIR` environment variable.
- * 3. The `fallbackDir` argument if provided.
- * 4. `./.pglite` relative to the current working directory.
- *
- * @param dir - Optional directory preference.
- * @param fallbackDir - Optional fallback directory when env var is not set.
- * @returns The resolved data directory with any tilde expanded.
- */
-export function resolvePgliteDir(dir?: string, fallbackDir?: string): string {
-  const envPath = resolveEnvFile();
-  if (existsSync(envPath)) {
-    dotenv.config({ path: envPath });
-  }
-
-  const base =
-    dir ?? process.env.PGLITE_DATA_DIR ?? fallbackDir ?? path.join(process.cwd(), '.pglite');
-  return expandTildePath(base);
-}
-
-/**
- * Gets the base URL for a provider API.
- *
- * @param {IAgentRuntime} runtime - The agent runtime instance
- * @param {string} provider - The provider name (e.g., 'redpill', 'openai')
- * @param {string} defaultBaseURL - The default base URL to use for the provider
- * @returns {string} The base URL for the provider API
- */
-
-// Placeholder function untill all LLM plugins are fixed and published
-export function getProviderBaseURL(
-  runtime: IAgentRuntime,
-  provider: string,
-  defaultBaseURL: string
-): string {
-  return defaultBaseURL;
 }

@@ -21,8 +21,6 @@ import {
   logger,
   RuntimeSettings,
   stringToUuid,
-  resolvePgliteDir,
-  resolveEnvFile,
   type Character,
   type IAgentRuntime,
   type Plugin,
@@ -31,6 +29,7 @@ import { Command } from 'commander';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveEnvFile, resolvePgliteDir } from '@/src/utils';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

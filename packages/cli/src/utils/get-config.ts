@@ -1,11 +1,11 @@
-import { logger, stringToUuid, resolvePgliteDir, resolveEnvFile } from '@elizaos/core';
+import { logger } from '@elizaos/core';
 import dotenv from 'dotenv';
 import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import prompts from 'prompts';
 import { z } from 'zod';
+import { resolveEnvFile, resolvePgliteDir } from './resolve-utils';
 import { UserEnvironment } from './user-environment';
-
 // Database config schemas
 const postgresConfigSchema = z.object({
   type: z.literal('postgres'),

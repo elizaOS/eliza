@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { logger } from '@elizaos/core';
 import { existsSync, statSync } from 'node:fs';
 import { execSync } from 'node:child_process';
-import { resolveEnvFile } from '@elizaos/core';
+import { resolveEnvFile } from './resolve-utils';
 
 // Types
 interface OSInfo {

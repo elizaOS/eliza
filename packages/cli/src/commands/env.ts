@@ -1,5 +1,4 @@
-import { handleError, UserEnvironment } from '@/src/utils';
-import { stringToUuid, resolvePgliteDir, resolveEnvFile } from '@elizaos/core';
+import { handleError, resolveEnvFile, resolvePgliteDir, UserEnvironment } from '@/src/utils';
 import { Command } from 'commander';
 import dotenv from 'dotenv';
 import { existsSync } from 'node:fs';
