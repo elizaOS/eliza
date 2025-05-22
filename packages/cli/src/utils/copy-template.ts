@@ -1,6 +1,7 @@
 import { promises as fs, existsSync } from 'node:fs';
 import path from 'node:path';
 import { logger } from '@elizaos/core';
+import { UserEnvironment } from './user-environment';
 
 /**
  * Copy a directory recursively
@@ -62,9 +63,24 @@ export async function copyTemplate(
 ) {
   // In development mode, use the actual packages
   let templateDir;
+  const userEnv = UserEnvironment.getInstance();
+  const pathsInfo = await userEnv.getPathInfo();
 
-  if (process.env.NODE_ENV === 'development') {
-    // Use local packages during development
+  if (process.env.NODE_ENV === 'development' && pathsInfo.monorepoRoot) {
+    // Use monorepoRoot if in development and monorepoRoot is found
+    logger.debug(
+      `Development mode: Using monorepo root at ${pathsInfo.monorepoRoot} to find templates.`
+    );
+    templateDir = path.resolve(
+      pathsInfo.monorepoRoot,
+      'packages',
+      templateType === 'project' ? 'project-starter' : 'plugin-starter'
+    );
+  } else if (process.env.NODE_ENV === 'development') {
+    // Fallback for development if monorepoRoot is not found (e.g., running CLI from a strange location)
+    logger.warn(
+      'Development mode: monorepoRoot not found. Falling back to process.cwd() for template path. This might be unreliable.'
+    );
     templateDir = path.resolve(
       process.cwd(),
       'packages',

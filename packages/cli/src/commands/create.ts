@@ -1,3 +1,4 @@
+import { character as elizaCharacter } from '@/src/characters/eliza';
 import {
   buildProject,
   copyTemplate as copyTemplateUtil,
@@ -7,16 +8,15 @@ import {
   promptAndStorePostgresUrl,
   runBunCommand,
   setupPgLite,
+  UserEnvironment,
 } from '@/src/utils';
 import { Command } from 'commander';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import prompts from 'prompts';
 import colors from 'yoctocolors';
 import { z } from 'zod';
-import { character as elizaCharacter } from '@/src/characters/eliza';
-import { resolvePgliteDir, UserEnvironment } from '@/src/utils';
 
 /**
  * This module handles creating projects, plugins, and agent characters.
@@ -206,15 +206,7 @@ export const create = new Command()
         type: projectType,
       });
 
-      // Obtain .env file path from UserEnvironment
-      const envInfo = await UserEnvironment.getInstanceInfo();
-      const envPath = envInfo.paths.envFilePath;
       let postgresUrl: string | null = null;
-
-      if (envPath) {
-        require('dotenv').config({ path: envPath });
-        postgresUrl = process.env.POSTGRES_URL || null;
-      }
 
       // Prompt for project/plugin name if not provided
       let projectName = name;
@@ -417,7 +409,8 @@ export const create = new Command()
         await getElizaDirectories();
 
         if (database === 'pglite') {
-          const projectPgliteDbDir = resolvePgliteDir(undefined, path.join(targetDir, '.elizadb'));
+          const projectPgliteDbDir =
+            process.env.PGLITE_DATA_DIR ?? path.join(targetDir, '.elizadb');
           await setupPgLite(projectPgliteDbDir, projectEnvFilePath);
           console.debug(
             `PGLite database will be stored in project directory: ${projectPgliteDbDir}`
