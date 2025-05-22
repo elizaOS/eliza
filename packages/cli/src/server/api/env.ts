@@ -1,9 +1,8 @@
+import { parseEnvFile } from '@/src/commands/env';
 import { logger } from '@elizaos/core';
 import express from 'express';
-import { parseEnvFile } from '@/src/commands/env';
-import { resolveEnvFile } from '@elizaos/core';
-import path from 'node:path';
 import { existsSync, writeFileSync } from 'fs';
+import { resolveEnvFile } from '@/src/utils';
 
 function serializeEnvObject(envObj: Record<string, string>): string {
   return Object.entries(envObj)
