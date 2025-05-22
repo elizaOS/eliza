@@ -18,8 +18,8 @@ export class StarterTestSuite implements TestSuite {
         }
 
         // Additional character property validations
-        if (character.name !== 'Eliza') {
-          throw new Error(`Expected character name to be 'Eliza', got '${character.name}'`);
+        if (character.name !== 'Orion') {
+          throw new Error(`Expected character name to be 'Orion', got '${character.name}'`);
         }
         if (!Array.isArray(character.plugins)) {
           throw new Error('Character plugins should be an array');

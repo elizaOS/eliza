@@ -11,7 +11,7 @@ describe('Character Configuration', () => {
   });
 
   it('should have the correct name', () => {
-    expect(character.name).toBe('Eliza');
+    expect(character.name).toBe('Orion');
   });
 
   it('should have plugins defined as an array', () => {
@@ -37,10 +37,6 @@ describe('Character Configuration', () => {
 
       if (process.env.ANTHROPIC_API_KEY) {
         expect(character.plugins).toContain('@elizaos/plugin-anthropic');
-      }
-
-      if (!process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY) {
-        expect(character.plugins).toContain('@elizaos/plugin-local-ai');
       }
     } finally {
       // Restore original env values

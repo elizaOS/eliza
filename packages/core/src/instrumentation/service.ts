@@ -15,7 +15,7 @@ import { ReadableSpan, SpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
 import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
 import { elizaLogger } from '../logger';
-import { IAgentRuntime, Service } from '../types';
+import { IAgentRuntime, Service, ServiceType } from '../types';
 import { IInstrumentationService, InstrumentationConfig } from './types';
 let pg: typeof import('pg');
 
@@ -318,6 +318,7 @@ class PostgresSpanProcessor implements SpanProcessor {
 }
 
 export class InstrumentationService extends Service implements IInstrumentationService {
+  static serviceType = ServiceType.INSTRUMENTATION;
   readonly name = 'INSTRUMENTATION';
   readonly capabilityDescription = 'Provides OpenTelemetry tracing and metrics capabilities.';
   public instrumentationConfig: InstrumentationConfig;

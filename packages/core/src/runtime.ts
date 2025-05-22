@@ -40,6 +40,8 @@ import type {
   RuntimeSettings,
   SendHandlerFunction,
   Service,
+  ServiceInstance,
+  ServiceTypeRegistry,
   ServiceTypeName,
   State,
   TargetInfo,
@@ -110,6 +112,7 @@ export class AgentRuntime implements IAgentRuntime {
   >();
   readonly fetch = fetch;
   services = new Map<ServiceTypeName, Service>();
+  private serviceTypes = new Map<ServiceTypeName, typeof Service>();
   models = new Map<string, ModelHandler[]>();
   routes: Route[] = [];
   private taskWorkers = new Map<string, TaskWorker>();
@@ -1196,13 +1199,40 @@ export class AgentRuntime implements IAgentRuntime {
     });
   }
 
-  getService<T extends Service>(serviceName: ServiceTypeName): T | null {
-    const serviceInstance = this.services.get(serviceName);
+  getService<T extends Service = Service>(serviceName: ServiceTypeName | string): T | null {
+    const serviceInstance = this.services.get(serviceName as ServiceTypeName);
     if (!serviceInstance) {
       this.runtimeLogger.debug(`Service ${serviceName} not found`);
       return null;
     }
     return serviceInstance as T;
+  }
+
+  /**
+   * Type-safe service getter that ensures the correct service type is returned
+   * @template T - The expected service class type
+   * @param serviceName - The service type name
+   * @returns The service instance with proper typing, or null if not found
+   */
+  getTypedService<T extends Service = Service>(serviceName: ServiceTypeName | string): T | null {
+    return this.getService<T>(serviceName);
+  }
+
+  /**
+   * Get all registered service types
+   * @returns Array of registered service type names
+   */
+  getRegisteredServiceTypes(): ServiceTypeName[] {
+    return Array.from(this.services.keys());
+  }
+
+  /**
+   * Check if a service type is registered
+   * @param serviceType - The service type to check
+   * @returns true if the service is registered
+   */
+  hasService(serviceType: ServiceTypeName | string): boolean {
+    return this.services.has(serviceType as ServiceTypeName);
   }
 
   async registerService(serviceDef: typeof Service): Promise<void> {
@@ -1214,6 +1244,9 @@ export class AgentRuntime implements IAgentRuntime {
       });
       if (!serviceType) {
         span.addEvent('service_missing_type');
+        this.runtimeLogger.warn(
+          `Service ${serviceDef.name} is missing serviceType. Please define a static serviceType property.`
+        );
         return;
       }
       this.runtimeLogger.debug(
@@ -1231,6 +1264,7 @@ export class AgentRuntime implements IAgentRuntime {
         span.addEvent('starting_service');
         const serviceInstance = await serviceDef.start(this);
         this.services.set(serviceType, serviceInstance);
+        this.serviceTypes.set(serviceType, serviceDef);
         if (typeof (serviceDef as any).registerSendHandlers === 'function') {
           (serviceDef as any).registerSendHandlers(this, serviceInstance);
         }

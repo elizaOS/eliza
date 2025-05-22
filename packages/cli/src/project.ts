@@ -133,11 +133,19 @@ function extractPlugin(module: any): Plugin {
  */
 export async function loadProject(dir: string): Promise<Project> {
   try {
+    // TODO: Get the package.json and get the main field
+    const packageJson = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
+    const main = packageJson.main;
+    if (!main) {
+      throw new Error('No main field in package.json');
+    }
+
     // Try to find the project's entry point
     const entryPoints = [
+      path.join(dir, main),
+      path.join(dir, 'dist/index.js'),
       path.join(dir, 'src/index.ts'),
       path.join(dir, 'src/index.js'),
-      path.join(dir, 'dist/index.js'),
       path.join(dir, 'index.ts'),
       path.join(dir, 'index.js'),
     ];

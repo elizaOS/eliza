@@ -12,6 +12,7 @@ export * from './runtime';
 export * from './search';
 export * from './settings';
 export * from './utils';
+export * from './service-builder';
 
 // Export instrumentation types and service
 export * from './instrumentation/types';

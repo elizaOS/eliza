@@ -256,7 +256,7 @@ async function cleanupOldMemories(runtime: AgentRuntime) {
 ```typescript
 const logging = {
   level: 'debug',
-  components: ['memory', 'rag', 'embedding'],
+  components: ['memory', 'knowledge', 'embedding'],
   format: 'json',
   destination: './logs/memory.log',
 };

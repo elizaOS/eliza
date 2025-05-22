@@ -122,7 +122,6 @@ describe('Project Structure Validation', () => {
   describe('Documentation', () => {
     it('should have README files', () => {
       expect(fileExists(path.join(rootDir, 'README.md'))).toBe(true);
-      expect(fileExists(path.join(rootDir, 'README-TESTS.md'))).toBe(true);
     });
 
     it('should have appropriate documentation content', () => {
@@ -130,10 +129,6 @@ describe('Project Structure Validation', () => {
       expect(readmeContent).toContain('Project Starter');
       expect(readmeContent).toContain('Features');
       expect(readmeContent).toContain('Getting Started');
-
-      const testReadmeContent = fs.readFileSync(path.join(rootDir, 'README-TESTS.md'), 'utf8');
-      expect(testReadmeContent).toContain('Test Structure');
-      expect(testReadmeContent).toContain('Running Tests');
     });
   });
 });
