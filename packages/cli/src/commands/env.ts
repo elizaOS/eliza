@@ -1,5 +1,5 @@
-import { handleError, UserEnvironment, findNearestEnvFile } from '@/src/utils';
-import { stringToUuid } from '@elizaos/core';
+import { handleError, UserEnvironment } from '@/src/utils';
+import { stringToUuid, resolvePgliteDir, resolveEnvFile } from '@elizaos/core';
 import { Command } from 'commander';
 import dotenv from 'dotenv';
 import { existsSync } from 'node:fs';
@@ -15,8 +15,8 @@ import colors from 'yoctocolors';
  * @returns The path to the .env file
  */
 export async function getGlobalEnvPath(): Promise<string> {
-  const envPath = findNearestEnvFile();
-  return envPath ?? path.join(process.cwd(), '.env');
+  const envPath = resolveEnvFile();
+  return envPath;
 }
 
 /**
@@ -24,7 +24,8 @@ export async function getGlobalEnvPath(): Promise<string> {
  * @returns The path to the local .env file or null if not found
  */
 function getLocalEnvPath(): string | null {
-  return findNearestEnvFile() ?? null;
+  const envPath = resolveEnvFile();
+  return existsSync(envPath) ? envPath : null;
 }
 
 /**
@@ -403,7 +404,7 @@ async function resetEnv(yes = false): Promise<void> {
   const cacheDir = path.join(elizaDir, 'cache');
 
   const localEnvPath = getLocalEnvPath() ?? path.join(process.cwd(), '.env');
-  const localDbDir = path.join(process.cwd(), '.pglite');
+  const localDbDir = resolvePgliteDir();
 
   // Check if external Postgres is in use
   let usingExternalPostgres = false;

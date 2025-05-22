@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { resolveEnvFile } from '@elizaos/core';
 
 /**
  * Recursively search upward from the starting directory for the given file.
@@ -30,5 +31,6 @@ export function findNearestFile(filename: string, startDir: string = process.cwd
  * @returns Path to the nearest .env file or null if none found
  */
 export function findNearestEnvFile(startDir: string = process.cwd()): string | null {
-  return findNearestFile('.env', startDir);
+  const envPath = resolveEnvFile(startDir);
+  return existsSync(envPath) ? envPath : null;
 }

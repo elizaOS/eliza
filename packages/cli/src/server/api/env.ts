@@ -1,7 +1,7 @@
 import { logger } from '@elizaos/core';
 import express from 'express';
 import { parseEnvFile } from '@/src/commands/env';
-import { findNearestEnvFile } from '@/src/utils';
+import { resolveEnvFile } from '@elizaos/core';
 import path from 'node:path';
 import { existsSync, writeFileSync } from 'fs';
 
@@ -12,7 +12,8 @@ function serializeEnvObject(envObj: Record<string, string>): string {
 }
 
 function getLocalEnvPath(): string | null {
-  return findNearestEnvFile();
+  const envPath = resolveEnvFile();
+  return existsSync(envPath) ? envPath : null;
 }
 
 export function envRouter(): express.Router {

@@ -1,8 +1,13 @@
 import { loadProject } from '@/src/project';
 import { AgentServer } from '@/src/server/index';
 import { jsonToCharacter, loadCharacterTryPath } from '@/src/server/loader';
-import { TestRunner, buildProject, promptForEnvVars, findNearestEnvFile } from '@/src/utils';
-import { type IAgentRuntime, type ProjectAgent } from '@elizaos/core';
+import { TestRunner, buildProject, promptForEnvVars } from '@/src/utils';
+import {
+  type IAgentRuntime,
+  type ProjectAgent,
+  resolvePgliteDir,
+  resolveEnvFile,
+} from '@elizaos/core';
 import { Command, Option } from 'commander';
 import * as dotenv from 'dotenv';
 import * as fs from 'node:fs';
@@ -154,8 +159,8 @@ const runE2eTests = async (options: { port?: number; name?: string; skipBuild?: 
     // Set up standard paths and load .env
     const homeDir = os.homedir();
     const elizaDir = path.join(homeDir, '.eliza');
-    const elizaDbDir = path.join(elizaDir, '.pglite');
-    const envFilePath = findNearestEnvFile() ?? path.join(process.cwd(), '.env');
+    const elizaDbDir = resolvePgliteDir(undefined, path.join(elizaDir, '.pglite'));
+    const envFilePath = resolveEnvFile();
 
     console.info('Setting up environment...');
     console.info(`Home directory: ${homeDir}`);

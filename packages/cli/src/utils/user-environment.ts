@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { logger } from '@elizaos/core';
 import { existsSync, statSync } from 'node:fs';
 import { execSync } from 'node:child_process';
-import { findNearestEnvFile } from './env-utils';
+import { resolveEnvFile } from '@elizaos/core';
 
 // Types
 interface OSInfo {
@@ -252,7 +252,7 @@ export class UserEnvironment {
 
     return {
       elizaDir,
-      envFilePath: findNearestEnvFile() ?? path.join(process.cwd(), '.env'),
+      envFilePath: resolveEnvFile(),
       configPath: path.join(elizaDir, 'config.json'),
       pluginsDir: path.join(elizaDir, 'plugins'),
       monorepoRoot,

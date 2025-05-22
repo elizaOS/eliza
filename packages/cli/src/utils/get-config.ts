@@ -1,8 +1,7 @@
-import { logger, stringToUuid } from '@elizaos/core';
+import { logger, stringToUuid, resolvePgliteDir, resolveEnvFile } from '@elizaos/core';
 import dotenv from 'dotenv';
 import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
-import { findNearestEnvFile } from './env-utils';
 import prompts from 'prompts';
 import { z } from 'zod';
 import { UserEnvironment } from './user-environment';
@@ -54,8 +53,8 @@ export async function getElizaDirectories() {
   logger.debug('[Config] Using home directory:', homeDir);
 
   const elizaDir = path.join(homeDir, '.eliza');
-  const elizaDbDir = path.join(process.cwd(), '.pglite');
-  const envFilePath = findNearestEnvFile() ?? path.join(process.cwd(), '.env');
+  const elizaDbDir = resolvePgliteDir();
+  const envFilePath = resolveEnvFile();
 
   logger.debug('[Config] Using database directory:', elizaDbDir);
 
@@ -211,7 +210,7 @@ export async function configureDatabaseSettings(reconfigure = false): Promise<st
 
   // Check if we already have database configuration in env
   let postgresUrl = process.env.POSTGRES_URL;
-  const pgliteDataDir = process.env.PGLITE_DATA_DIR || elizaDbDir;
+  const pgliteDataDir = resolvePgliteDir(undefined, elizaDbDir);
 
   // Add debug logging
   logger.debug(`Configuration check - POSTGRES_URL: ${postgresUrl ? 'SET' : 'NOT SET'}`);
@@ -297,9 +296,8 @@ export async function resolveConfigPaths(cwd: string, config: RawConfig) {
  * @param projectDir - Directory containing the `.env` file. Defaults to the current working directory.
  */
 export async function loadEnvironment(projectDir: string = process.cwd()): Promise<void> {
-  const envPath = findNearestEnvFile(projectDir);
-
-  if (envPath) {
+  const envPath = resolveEnvFile(projectDir);
+  if (existsSync(envPath)) {
     dotenv.config({ path: envPath });
   }
 }

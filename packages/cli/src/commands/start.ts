@@ -5,7 +5,6 @@ import {
   buildProject,
   configureDatabaseSettings,
   displayBanner,
-  findNearestEnvFile,
   findNextAvailablePort,
   getCliInstallTag,
   handleError,
@@ -22,6 +21,8 @@ import {
   logger,
   RuntimeSettings,
   stringToUuid,
+  resolvePgliteDir,
+  resolveEnvFile,
   type Character,
   type IAgentRuntime,
   type Plugin,
@@ -321,7 +322,7 @@ export async function startAgent(
     }
 
     // Node.js environment: load from .env file
-    const envPath = findNearestEnvFile();
+    const envPath = resolveEnvFile();
     if (envPath) {
       console.log(`[elizaos] Resolved .env file from: ${envPath}`);
     } else {
@@ -429,7 +430,7 @@ const startAgents = async (options: {
   const postgresUrl = await configureDatabaseSettings(options.configure);
 
   // Get PGLite data directory from environment (may have been set during configuration)
-  const pgliteDataDir = process.env.PGLITE_DATA_DIR ?? path.join(process.cwd(), '.pglite');
+  const pgliteDataDir = resolvePgliteDir();
 
   // Load existing configuration
   const existingConfig = await loadConfig();

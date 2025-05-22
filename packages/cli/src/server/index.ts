@@ -1,5 +1,4 @@
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -8,6 +7,7 @@ import {
   type IAgentRuntime,
   type UUID,
   logger,
+  resolvePgliteDir,
 } from '@elizaos/core';
 import { createDatabaseAdapter } from '@elizaos/plugin-sql';
 import * as bodyParser from 'body-parser';
@@ -81,10 +81,7 @@ export class AgentServer {
       logger.debug('Initializing AgentServer...');
       this.agents = new Map();
 
-      let dataDir = options?.dataDir ?? process.env.PGLITE_DATA_DIR ?? './.pglite';
-
-      // Expand tilde in database directory path
-      dataDir = expandTildePath(dataDir);
+      const dataDir = resolvePgliteDir(options?.dataDir);
 
       // Use the async database adapter
       this.database = createDatabaseAdapter(
@@ -517,12 +514,4 @@ export class AgentServer {
       });
     }
   }
-}
-
-// Helper function to expand tilde in paths
-function expandTildePath(filepath: string): string {
-  if (filepath && typeof filepath === 'string' && filepath.startsWith('~')) {
-    return filepath.replace(/^~/, os.homedir());
-  }
-  return filepath;
 }

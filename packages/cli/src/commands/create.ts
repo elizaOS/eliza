@@ -7,7 +7,6 @@ import {
   promptAndStorePostgresUrl,
   runBunCommand,
   setupPgLite,
-  findNearestEnvFile,
 } from '@/src/utils';
 import { Command } from 'commander';
 import { existsSync, readFileSync } from 'node:fs';
@@ -17,6 +16,7 @@ import prompts from 'prompts';
 import colors from 'yoctocolors';
 import { z } from 'zod';
 import { character as elizaCharacter } from '@/src/characters/eliza';
+import { resolvePgliteDir, resolveEnvFile } from '@elizaos/core';
 
 /**
  * This module handles creating projects, plugins, and agent characters.
@@ -207,7 +207,7 @@ export const create = new Command()
       });
 
       // Try to find the nearest .env file for database configuration
-      const envPath = findNearestEnvFile();
+      const envPath = resolveEnvFile();
       let postgresUrl: string | null = null;
 
       if (envPath) {
@@ -416,7 +416,7 @@ export const create = new Command()
         await getElizaDirectories();
 
         if (database === 'pglite') {
-          const projectPgliteDbDir = process.env.PGLITE_DATA_DIR ?? path.join(targetDir, '.pglite');
+          const projectPgliteDbDir = resolvePgliteDir(undefined, path.join(targetDir, '.pglite'));
           await setupPgLite(projectPgliteDbDir, projectEnvFilePath);
           console.debug(
             `PGLite database will be stored in project directory: ${projectPgliteDbDir}`
