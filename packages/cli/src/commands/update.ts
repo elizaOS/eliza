@@ -241,8 +241,12 @@ async function updateDependencies(
       );
     }
 
+    // Determine package tag early
+    const isCLIBeta = latestCliVersion.includes('beta');
+    const packageTag = isCLIBeta ? 'beta' : 'latest';
+
     // Display outdated packages
-    console.info(`\nElizaOS packages that can be updated to version ${latestCliVersion}:`);
+    console.info(`\nElizaOS packages that can be updated to @${packageTag}:`);
     let outdatedPackagesFound = false;
 
     for (const pkg of elizaPackages) {
@@ -255,7 +259,7 @@ async function updateDependencies(
       }
 
       if (versionCheck.needsUpdate) {
-        console.info(`  - ${pkg.name} (${pkgVersion}) → ${latestCliVersion}`);
+        console.info(`  - ${pkg.name} (${pkgVersion}) → @${packageTag}`);
         outdatedPackagesFound = true;
       }
     }
@@ -301,22 +305,13 @@ async function updateDependencies(
 
     console.info(`Updating ${packagesNeedingUpdate.length} package(s)...`);
 
-    const isCLIBeta = latestCliVersion.includes('beta');
-    const packageTag = isCLIBeta ? 'beta' : 'latest';
-
-    // Update each package to the latest CLI version
+    // Update each package using the appropriate tag instead of specific version
     for (const pkg of packagesNeedingUpdate) {
       try {
-        console.info(`Updating ${pkg.name} to version ${latestCliVersion}...`);
-        await runBunCommand(['add', `${pkg.name}@${latestCliVersion}`], cwd);
+        console.info(`Updating ${pkg.name} to @${packageTag}...`);
+        await runBunCommand(['add', `${pkg.name}@${packageTag}`], cwd);
       } catch (error) {
-        console.error(`Failed to update ${pkg.name}@${latestCliVersion}: ${error.message}`);
-        try {
-          // If the specific version isn't available, try to find the closest version
-          await runBunCommand(['add', `${pkg.name}@${packageTag}`], cwd);
-        } catch (secondError) {
-          console.error(`Failed to install ${pkg.name} after retrying: ${secondError.message}`);
-        }
+        console.error(`Failed to update ${pkg.name}@${packageTag}: ${error.message}`);
       }
     }
 
