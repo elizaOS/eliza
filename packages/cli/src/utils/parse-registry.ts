@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { Octokit } from 'octokit';
 import semver from 'semver';
 import { UserEnvironment } from './user-environment';
+import os from 'node:os';
 
 /*───────────────────────────────────────────────────────────────────────────*/
 // Types
@@ -265,8 +266,7 @@ async function executeParseRegistry(): Promise<void> {
   // Cache to ~/.eliza/cached-registry.json
   /*───────────────────────────────────────────────────────────────────────*/
 
-  const envInfo = await UserEnvironment.getInstanceInfo();
-  const { elizaDir } = envInfo.paths;
+  const elizaDir = join(os.homedir(), '.eliza');
 
   const cacheFilePath = join(elizaDir, 'cached-registry.json');
 
