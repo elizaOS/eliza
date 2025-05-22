@@ -65,7 +65,7 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
    * @param entities The entity objects to create.
    * @returns A Promise that resolves when the account creation is complete.
    */
-  abstract createEntities(entities: Entity[]): Promise<boolean[]>;
+  abstract createEntities(entities: Entity[]): Promise<boolean>;
 
   /**
    * Updates an existing entity in the database.
