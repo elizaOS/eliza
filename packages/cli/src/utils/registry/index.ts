@@ -4,11 +4,10 @@ import dotenv from 'dotenv';
 import { execa } from 'execa';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import { existsSync, promises as fs } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { REGISTRY_URL } from './constants';
 
-const ELIZA_DIR = path.join(os.homedir(), '.eliza');
+const ELIZA_DIR = path.join(process.cwd(), '.eliza');
 const REGISTRY_SETTINGS_FILE = path.join(ELIZA_DIR, 'registrysettings.json');
 const ENV_FILE = path.join(ELIZA_DIR, '.env');
 const REGISTRY_CACHE_FILE = path.join(ELIZA_DIR, 'registry-cache.json');

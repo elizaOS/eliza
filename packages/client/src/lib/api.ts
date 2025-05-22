@@ -2,8 +2,15 @@ import type { Agent, Character, UUID, Memory } from '@elizaos/core';
 
 export type AgentWithStatus = Omit<Agent, 'status'> & { status: 'active' | 'inactive' };
 
+// Interface for agent panels (public routes)
+export interface AgentPanel {
+  name: string;
+  path: string;
+}
+
 import { WorldManager } from './world-manager';
 import clientLogger from './logger';
+import { connectionStatusActions } from '../context/ConnectionContext';
 
 const API_PREFIX = '/api';
 
@@ -88,16 +95,15 @@ const fetcher = async ({
       clientLogger.error('Response:', errorText);
 
       let errorMessage = `${response.status}: ${response.statusText}`;
+      let errorObj: any = {}; // Define errorObj to ensure it's available
       try {
-        const errorObj = JSON.parse(errorText);
+        errorObj = JSON.parse(errorText);
         errorMessage = errorObj.error?.message || errorObj.message || errorMessage;
 
-        // Include the status code explicitly in the error message
         if (!errorMessage.includes(response.status.toString())) {
           errorMessage = `${response.status}: ${errorMessage}`;
         }
       } catch {
-        // If we can't parse as JSON, use the raw text
         if (errorText.includes('<!DOCTYPE html>')) {
           errorMessage = `${response.status}: Received HTML instead of JSON. API endpoint may be incorrect.`;
         } else {
@@ -105,13 +111,17 @@ const fetcher = async ({
         }
       }
 
-      // Add more context to specific HTTP status codes
-      if (response.status === 404) {
+      if (response.status === 401) {
+        const unauthorizedMessage =
+          errorObj?.error?.message ||
+          errorObj?.message ||
+          `Unauthorized: Invalid or missing X-API-KEY. Server responded with ${response.status}.`;
+        connectionStatusActions.setUnauthorized(unauthorizedMessage);
+        errorMessage = unauthorizedMessage;
+      } else if (response.status === 404) {
         errorMessage = `${errorMessage} - API endpoint not found`;
       } else if (response.status === 403) {
         errorMessage = `${errorMessage} - Access denied`;
-      } else if (response.status === 401) {
-        errorMessage = `${errorMessage} - Authentication required`;
       } else if (response.status === 429) {
         errorMessage = `${errorMessage} - Too many requests, please try again later`;
       } else if (response.status >= 500) {
@@ -119,7 +129,6 @@ const fetcher = async ({
       }
 
       const error = new Error(errorMessage);
-      // Add status code to the error object for easier checking
       (error as any).statusCode = response.status;
       throw error;
     }
@@ -206,6 +215,12 @@ interface AgentLog {
   details?: string;
   roomId?: string;
   [key: string]: any;
+}
+
+// Interface for agent panels (public routes)
+export interface AgentPanel {
+  name: string;
+  path: string;
 }
 
 /**
@@ -376,6 +391,59 @@ export const apiClient = {
     });
   },
 
+  // Get all rooms where an agent is a participant
+  getAgentRooms: (agentId: string) => {
+    return fetcher({
+      url: `/agents/${agentId}/rooms`,
+      method: 'GET',
+    });
+  },
+
+  // Get all worlds
+  getWorlds: () => {
+    return fetcher({
+      url: '/agents/worlds',
+      method: 'GET',
+    });
+  },
+
+  // Create a new world
+  createWorld: (agentId: string, params: { name: string; serverId?: string; metadata?: any }) => {
+    return fetcher({
+      url: `/agents/${agentId}/worlds`,
+      method: 'POST',
+      body: params,
+    });
+  },
+
+  // Update a world's properties
+  updateWorld: (agentId: string, worldId: string, params: { name?: string; metadata?: any }) => {
+    return fetcher({
+      url: `/agents/${agentId}/worlds/${worldId}`,
+      method: 'PATCH',
+      body: params,
+    });
+  },
+
+  // Create a room for a specific agent
+  createRoom: (
+    agentId: string,
+    params: {
+      name: string;
+      type?: string;
+      source?: string;
+      worldId?: string;
+      serverId?: string;
+      metadata?: Record<string, any>;
+    }
+  ) => {
+    return fetcher({
+      url: `/agents/${agentId}/rooms`,
+      method: 'POST',
+      body: params,
+    });
+  },
+
   getLogs: ({
     level,
     agentName,
@@ -520,6 +588,20 @@ export const apiClient = {
     });
   },
 
+  deleteGroupMemory: (serverId: string, memoryId: string) => {
+    return fetcher({
+      url: `/agents/groups/${serverId}/memories/${memoryId}`,
+      method: 'DELETE',
+    });
+  },
+
+  clearGroupChat: (serverId: string) => {
+    return fetcher({
+      url: `/agents/groups/${serverId}/memories`,
+      method: 'DELETE',
+    });
+  },
+
   getLocalEnvs: () => {
     return fetcher({
       url: `/envs/local`,
@@ -530,23 +612,6 @@ export const apiClient = {
   updateLocalEnvs: (envs: Record<string, string>) => {
     return fetcher({
       url: `/envs/local`,
-      method: 'POST',
-      body: {
-        content: envs,
-      },
-    });
-  },
-
-  getGlobalEnvs: () => {
-    return fetcher({
-      url: `/envs/global`,
-      method: 'GET',
-    });
-  },
-
-  updateGlobalEnvs: (envs: Record<string, string>) => {
-    return fetcher({
-      url: `/envs/global`,
       method: 'POST',
       body: {
         content: envs,

@@ -22,7 +22,7 @@ describe('Environment Setup', () => {
     const srcDir = path.join(process.cwd(), 'src');
     expect(fs.existsSync(srcDir)).toBe(true);
 
-    const requiredSrcFiles = ['index.ts', 'plugin.ts', 'tests.ts'];
+    const requiredSrcFiles = ['index.ts', 'plugin.ts'];
 
     for (const file of requiredSrcFiles) {
       const filePath = path.join(srcDir, file);
@@ -83,13 +83,5 @@ describe('Environment Setup', () => {
 
     const readme = fs.readFileSync(readmePath, 'utf8');
     expect(readme).toContain('# Project Starter');
-  });
-
-  it('should have a valid README-TESTS.md file with test documentation', () => {
-    const testReadmePath = path.join(process.cwd(), 'README-TESTS.md');
-    expect(fs.existsSync(testReadmePath)).toBe(true);
-
-    const testReadme = fs.readFileSync(testReadmePath, 'utf8');
-    expect(testReadme).toContain('# Project Starter Tests');
   });
 });

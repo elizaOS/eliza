@@ -2,7 +2,7 @@
 sidebar_position: 6
 title: Test Command
 description: Run and manage tests for ElizaOS projects and plugins
-keywords: [testing, unit tests, integration tests, Jest, test runner, development]
+keywords: [testing, component tests, e2e tests, Vitest, test runner, development]
 image: /img/cli.jpg
 ---
 
@@ -13,57 +13,84 @@ The `test` command allows you to run tests for your ElizaOS projects, plugins, a
 ## Usage
 
 ```bash
-elizaos test [options]
+elizaos test [options] [command]
 ```
+
+## Subcommands
+
+| Command     | Description                                |
+| ----------- | ------------------------------------------ |
+| `component` | Run component tests using Vitest           |
+| `e2e`       | Run end-to-end runtime tests               |
+| `all`       | Run both component and e2e tests (default) |
 
 ## Options
 
-| Option                       | Description                                           |
-| ---------------------------- | ----------------------------------------------------- |
-| `-p, --port <port>`          | Port to listen on for the test server                 |
-| `-pl, --plugin <name>`       | Filter tests to run only for a specific plugin        |
-| `-sp, --skip-plugins`        | Skip running tests defined within plugins             |
-| `-spt, --skip-project-tests` | Skip running project-level tests                      |
-| `-sb, --skip-build`          | Skip building the project/plugin before running tests |
+| Option              | Description                                             |
+| ------------------- | ------------------------------------------------------- |
+| `-p, --port <port>` | Server port for e2e tests                               |
+| `-n, --name <name>` | Filter tests by name (matches file names or test names) |
+| `--skip-build`      | Skip building before running tests                      |
 
 ## Test Structure
 
-ElizaOS tests are organized in three levels:
+ElizaOS tests are organized in two main categories:
 
-1. **Test Files**: Physical files containing test suites
-2. **Test Suites**: Groups of related tests with a unique name
-3. **Tests**: Individual test cases that verify specific functionality
+1. **Component Tests** (`__tests__/`): Focused on testing individual components and their integrations, run with Vitest.
+2. **End-to-End Tests** (`e2e/`): Testing full runtime behavior of agents and plugins.
 
-Tests are defined in plugins or projects using a structured format:
+### Component Tests
+
+Component tests are written using Vitest and located in the `__tests__/` directory:
 
 ```typescript
-// Example test structure from a plugin
-const tests = [
-  {
-    name: 'plugin_test_suite',
-    tests: [
-      {
-        name: 'example_test',
-        fn: async (runtime) => {
-          // Test implementation
-          if (runtime.character.name !== 'Eliza') {
-            throw new Error('Expected character name to be "Eliza"');
-          }
-        },
+// Example component test (__tests__/plugin.test.ts)
+import { describe, it, expect } from 'vitest';
+import { myPlugin } from '../src';
+
+describe('Plugin Configuration', () => {
+  it('should have correct plugin metadata', () => {
+    expect(myPlugin.name).toBe('my-plugin');
+  });
+
+  it('should include required config variables', () => {
+    expect(myPlugin.config).toHaveProperty('API_KEY');
+  });
+});
+```
+
+### End-to-End Tests
+
+E2E tests verify runtime behavior and are located in the `e2e/` directory:
+
+```typescript
+// Example e2e test (e2e/plugin.test.ts)
+export class PluginTestSuite implements TestSuite {
+  name = 'plugin_test_suite';
+  tests = [
+    {
+      name: 'example_test',
+      fn: async (runtime) => {
+        // Test implementation
+        if (runtime.character.name !== 'Eliza') {
+          throw new Error('Expected character name to be "Eliza"');
+        }
       },
-      {
-        name: 'should_have_action',
-        fn: async (runtime) => {
-          // Another test
-          const actionExists = plugin.actions.some((a) => a.name === 'EXAMPLE_ACTION');
-          if (!actionExists) {
-            throw new Error('Example action not found in plugin');
-          }
-        },
+    },
+    {
+      name: 'should_have_action',
+      fn: async (runtime) => {
+        // Another test
+        const actionExists = plugin.actions.some((a) => a.name === 'EXAMPLE_ACTION');
+        if (!actionExists) {
+          throw new Error('Example action not found in plugin');
+        }
       },
-    ],
-  },
-];
+    },
+  ],
+};
+
+export default new PluginTestSuite();
 ```
 
 ## Running Tests
@@ -76,105 +103,135 @@ Run all tests in the current project:
 # Navigate to your project
 cd my-agent-project
 
-# Run all tests
+# Run all tests (component and e2e)
 elizaos test
+
+# Run only component tests
+elizaos test component
+
+# Run only e2e tests
+elizaos test e2e
 ```
 
-### Running Specific Tests
+### Filtering Tests
 
-Filter tests by plugin or skip certain test types:
+Filter tests by name:
 
 ```bash
-# Run only tests for 'my-custom-plugin'
-elizaos test -pl my-custom-plugin
+# Run component tests with "auth" in the name or file path
+elizaos test component --name auth
 
-# Run project tests but skip all plugin tests
-elizaos test -sp
-
-# Run plugin tests but skip all project tests
-elizaos test -spt
+# Run e2e tests with "database" in the name
+elizaos test e2e --name database
 ```
 
-## Test Output
+### Skipping Build
 
-The test command produces output showing test results:
+To skip the build step when running tests:
+
+```bash
+# Run all tests without building first
+elizaos test --skip-build
+
+# Run component tests without building
+elizaos test component --skip-build
+```
+
+## Component Test Output
+
+Component tests (powered by Vitest) produce output like:
 
 ```
-PASS  Test Suite: plugin_test_suite (2 tests)
-  ✓ example_test (15ms)
-  ✓ should_have_action (3ms)
+ PASS  __tests__/plugin.test.ts (4 tests)
+   Plugin Configuration
+     ✓ should have correct plugin metadata
+     ✓ should include required config variables
+   Plugin Service
+     ✓ should start the service
+     ✓ should handle required actions
 
-FAIL  Test Suite: agent_test_suite (3 tests)
-  ✓ agent_initialization (20ms)
-  ✓ message_processing (45ms)
-  ✗ knowledge_retrieval (30ms)
-    Error: Expected 3 knowledge items but got 2
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+   Duration  1.45s
+```
 
-Test Suites: 1 failed, 1 passed, 2 total
-Tests:       1 failed, 4 passed, 5 total
-Time:        1.5s
+## E2E Test Output
+
+E2E tests produce output showing test results:
+
+```
+Running test suite: plugin_test_suite
+  Running test: example_test
+  Running test: should_have_action
+
+Test Summary: 2 passed, 0 failed, 0 skipped
 ```
 
 ## Writing Tests
 
-### Project Tests
+### Component Tests
 
-Project tests typically verify agent behavior, knowledge retrieval, and integration with plugins:
+Component tests typically verify units and their integrations:
 
 ```typescript
-// Example project test
-export default {
-  name: 'agent_behavior_tests',
-  tests: [
-    {
-      name: 'responds_to_greeting',
-      fn: async (runtime) => {
-        const agent = runtime.getAgent('assistant');
-        const response = await agent.processMessage({
-          content: { text: 'Hello' },
-          userId: 'test-user',
-        });
+// Example component test
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { myPlugin } from '../src';
 
-        if (!response.content.text.includes('hello') && !response.content.text.includes('Hi')) {
-          throw new Error('Agent did not respond to greeting properly');
-        }
-      },
-    },
-  ],
-};
+describe('Service Registration', () => {
+  const mockRuntime = {
+    registerService: vi.fn(),
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should register the service with runtime', async () => {
+    await myPlugin.init({ API_KEY: 'test-key' })(mockRuntime);
+    expect(mockRuntime.registerService).toHaveBeenCalledWith(
+      'my-service',
+      expect.objectContaining({
+        start: expect.any(Function),
+        stop: expect.any(Function),
+      })
+    );
+  });
+});
 ```
 
-### Plugin Tests
+### E2E Tests
 
-Plugin tests verify the functionality of actions, services, and providers:
+E2E tests verify the functionality in a real runtime environment:
 
 ```typescript
-// Example plugin test
-export const testSuite = {
-  name: 'discord_plugin_tests',
+// Example e2e test
+export default {
+  name: 'database_tests',
   tests: [
     {
-      name: 'registers_discord_service',
-      fn: async (runtime) => {
-        const service = runtime.getService('discord');
-        if (!service) {
-          throw new Error('Discord service not registered');
-        }
-      },
-    },
-    {
-      name: 'handles_discord_messages',
+      name: 'data_persistence',
       fn: async (runtime) => {
         // Test implementation
+        const service = runtime.getService('database');
+
+        // Create data
+        await service.insert('test', { key: 'value' });
+
+        // Verify retrieval
+        const result = await service.get('test');
+        if (result.key !== 'value') {
+          throw new Error('Data not persisted correctly');
+        }
       },
     },
   ],
 };
 ```
 
-## Test Hooks
+## Test Hooks for E2E Tests
 
-ElizaOS tests support hooks for setup and teardown:
+ElizaOS e2e tests support hooks for setup and teardown:
 
 ```typescript
 export default {
@@ -200,24 +257,25 @@ export default {
 };
 ```
 
-## Test Assertions
+## Test Utilities
 
-Tests should make assertions to verify behavior:
+ElizaOS provides test utilities to simplify writing tests:
 
 ```typescript
-test('check_knowledge_retrieval', async (runtime) => {
-  const query = 'What is our refund policy?';
-  const results = await runtime.knowledge.search(query);
+// Using test utilities for component tests
+import { createMockRuntime, createMockService } from './test-utils';
 
-  // Check count
-  if (results.length === 0) {
-    throw new Error('No knowledge results found');
-  }
+describe('Plugin Integration', () => {
+  it('should interact with other services', async () => {
+    const mockDatabaseService = createMockService('database');
+    const mockRuntime = createMockRuntime({
+      services: {
+        database: mockDatabaseService,
+      },
+    });
 
-  // Check relevance
-  if (!results[0].text.includes('refund') && !results[0].text.includes('return')) {
-    throw new Error('Knowledge results not relevant to query');
-  }
+    // Test implementation
+  });
 });
 ```
 
@@ -228,6 +286,9 @@ test('check_knowledge_retrieval', async (runtime) => {
 ```bash
 # Run all tests
 elizaos test
+
+# Run with specific options
+elizaos test --port 4000 --skip-build
 ```
 
 ### CI/CD Integration
@@ -239,27 +300,28 @@ elizaos test
 
 ## Troubleshooting
 
-### Tests not found
+### Component Tests Not Found
 
-If tests aren't being discovered:
-
-```bash
-# Check test discovery with verbose logging
-elizaos test --dry-run --verbose
-
-# Try specifying the test file directly
-elizaos test --file src/tests/main.test.ts
-```
-
-### Tests timing out
-
-For long-running tests:
+If component tests aren't being discovered:
 
 ```bash
-# Increase test timeout (not applicable)
+# Check your file naming pattern
+# Files should be in __tests__/ directory with .test.ts extension
+
+# Try running with more specific name filter
+elizaos test component --name specificTestName
 ```
 
-### TypeScript errors
+### E2E Tests Failing Due to Port Conflicts
+
+If e2e tests fail due to port conflicts:
+
+```bash
+# Specify a different port
+elizaos test e2e --port 4000
+```
+
+### TypeScript Errors
 
 If TypeScript compilation is failing:
 
@@ -267,7 +329,8 @@ If TypeScript compilation is failing:
 # Build the project first
 elizaos project build
 
-# Then run tests without recompilation (not applicable)
+# Then run tests with skip-build
+elizaos test --skip-build
 ```
 
 ## Related Commands

@@ -1,14 +1,13 @@
 {
   "name": "eliza",
   "scripts": {
-    "start": "cd ./packages/the-org && bun run start",
-    "start-cli": "cd ./packages/cli && bun run cli start",
+    "start": "turbo run start --filter=./packages/cli --log-prefix=none",
     "start:debug": "cross-env NODE_NO_WARNINGS=1 LOG_LEVEL=debug elizaos start",
     "start:app": "turbo run start --filter=./packages/app",
-    "dev": "LOG_LEVEL=debug FORCE_COLOR=0 NODE_ENV=production CI=true PGLITE_DATA_DIR=$HOME/.eliza/db DATABASE_TYPE=postgres POSTGRES_URL=postgresql://postgres:postgres@localhost:5432/eliza turbo run build --filter=./packages/core --filter=./packages/plugin-discord && LOG_LEVEL=debug FORCE_COLOR=0 NODE_ENV=production CI=true PGLITE_DATA_DIR=$HOME/.eliza/db DATABASE_TYPE=postgres POSTGRES_URL=postgresql://postgres:postgres@localhost:5432/eliza turbo run dev --filter=./packages/the-org",
+    "dev": "turbo run start --filter=./packages/cli",
     "build:docs": "turbo run build --filter=@elizaos/docs",
+    "build": "turbo run build --filter=!@elizaos/docs",
     "build:client": "turbo run build --filter=@elizaos/client",
-    "build": "turbo run build --filter=@elizaos/client && turbo run build --filter=!@elizaos/docs",
     "clean": "turbo run clean --filter=./packages/* && rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo bun.lock*",
     "build:cli": "turbo run build --filter=@elizaos/cli --no-cache",
     "build:core": "turbo run build --filter=@elizaos/core --no-cache",
@@ -24,7 +23,7 @@
     "docker:bash": "bash ./scripts/docker.sh bash",
     "docker:start": "bash ./scripts/docker.sh start",
     "docker": "bun docker:build && bun docker:run && bun docker:bash",
-    "test": "turbo run test --concurrency 20 --filter=!./packages/plugin-starter --filter=!./packages/project-starter --filter=!./packages/the-org --filter=!./packages/docs",
+    "test": "turbo run test --concurrency 20 --filter=!./packages/plugin-starter --filter=!./packages/project-starter --filter=!./packages/docs --filter=!@elizaos/plugin-sql",
     "test:client": "turbo run test --filter=./packages/client",
     "test:core": "turbo run test --filter=./packages/core",
     "test:app": "turbo run test --concurrency 20 --filter=./packages/app",
@@ -69,15 +68,15 @@
     "@anthropic-ai/sdk": "^0.39.0",
     "@babel/generator": "^7.26.10",
     "@hapi/shot": "^6.0.1",
+    "@sentry/browser": "^9.20.0",
     "@types/hapi": "^18.0.14",
-    "node-opus": "^0.3.3",
-    "opusscript": "^0.1.1",
     "vittest": "^1.0.2",
     "zod": "3.24.1"
   },
   "packageManager": "bun@1.2.5",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "plugin-specification/*"
   ],
   "module": "index.ts",
   "type": "module",

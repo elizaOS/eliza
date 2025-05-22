@@ -4,55 +4,88 @@ import type { Action, ActionExample } from './types';
 /**
  * Composes a set of example conversations based on provided actions and a specified count.
  * It randomly selects examples from the provided actions and formats them with generated names.
+ *
  * @param actionsData - An array of `Action` objects from which to draw examples.
  * @param count - The number of examples to generate.
  * @returns A string containing formatted examples of conversations.
  */
-/**
- * Compose a specified number of random action examples from the given actionsData.
- *
- * @param {Action[]} actionsData - The list of actions to generate examples from.
- * @param {number} count - The number of examples to compose.
- * @returns {string} The formatted action examples.
- */
-export const composeActionExamples = (actionsData: Action[], count: number) => {
-  const data: ActionExample[][][] = actionsData.map((action: Action) => [...action.examples]);
+export const composeActionExamples = (actionsData: Action[], count: number): string => {
+  // Handle edge cases
+  if (!actionsData.length || count <= 0) {
+    return '';
+  }
 
-  const actionExamples: ActionExample[][] = [];
-  let length = data.length;
-  for (let i = 0; i < count && length; i++) {
-    const actionId = i % length;
-    const examples = data[actionId];
-    if (examples.length) {
-      const rand = ~~(Math.random() * examples.length);
-      actionExamples[i] = examples.splice(rand, 1)[0];
-    } else {
-      i--;
-    }
+  // Create a working copy of the examples
+  const examplesCopy: ActionExample[][][] = actionsData.map((action) => [...action.examples]);
 
+  const selectedExamples: ActionExample[][] = [];
+
+  // Keep track of actions that still have examples
+  let availableActionIndices = examplesCopy
+    .map((examples, index) => (examples.length > 0 ? index : -1))
+    .filter((index) => index !== -1);
+
+  // Select examples until we reach the count or run out of examples
+  while (selectedExamples.length < count && availableActionIndices.length > 0) {
+    // Randomly select an action
+    const randomIndex = Math.floor(Math.random() * availableActionIndices.length);
+    const actionIndex = availableActionIndices[randomIndex];
+    const examples = examplesCopy[actionIndex];
+
+    // Select a random example from this action
+    const exampleIndex = Math.floor(Math.random() * examples.length);
+    selectedExamples.push(examples.splice(exampleIndex, 1)[0]);
+
+    // Remove action if it has no more examples
     if (examples.length === 0) {
-      data.splice(actionId, 1);
-      length--;
+      availableActionIndices.splice(randomIndex, 1);
     }
   }
 
-  const formattedExamples = actionExamples.map((example) => {
-    const exampleNames = Array.from({ length: 5 }, () =>
-      uniqueNamesGenerator({ dictionaries: [names] })
-    );
+  // Format the selected examples
+  return formatSelectedExamples(selectedExamples);
+};
 
-    return `\n${example
-      .map((message) => {
-        let messageString = `${message.name}: ${message.content.text}${message.content.action ? ` (action: ${message.content.action})` : ''}${message.content.actions ? ` (actions: ${message.content.actions.join(', ')})` : ''}`;
-        for (let i = 0; i < exampleNames.length; i++) {
-          messageString = messageString.replaceAll(`{{name${i + 1}}}`, exampleNames[i]);
-        }
-        return messageString;
-      })
-      .join('\n')}`;
-  });
+/**
+ * Formats selected example conversations with random names.
+ */
+const formatSelectedExamples = (examples: ActionExample[][]): string => {
+  const MAX_NAME_PLACEHOLDERS = 5;
 
-  return formattedExamples.join('\n');
+  return examples
+    .map((example) => {
+      // Generate random names for this example
+      const randomNames = Array.from({ length: MAX_NAME_PLACEHOLDERS }, () =>
+        uniqueNamesGenerator({ dictionaries: [names] })
+      );
+
+      // Format the conversation
+      const conversation = example
+        .map((message) => {
+          // Build the base message
+          let messageText = `${message.name}: ${message.content.text}`;
+
+          // Add action information if present
+          if (message.content.action) {
+            messageText += ` (action: ${message.content.action})`;
+          }
+
+          if (message.content.actions?.length) {
+            messageText += ` (actions: ${message.content.actions.join(', ')})`;
+          }
+
+          // Replace name placeholders
+          for (let i = 0; i < randomNames.length; i++) {
+            messageText = messageText.replaceAll(`{{name${i + 1}}}`, randomNames[i]);
+          }
+
+          return messageText;
+        })
+        .join('\n');
+
+      return `\n${conversation}`;
+    })
+    .join('\n');
 };
 
 /**
@@ -60,21 +93,27 @@ export const composeActionExamples = (actionsData: Action[], count: number) => {
  * @param actions - An array of `Action` objects from which to extract names.
  * @returns A comma-separated string of action names.
  */
-export function formatActionNames(actions: Action[]) {
-  return actions
-    .sort(() => 0.5 - Math.random())
-    .map((action: Action) => `${action.name}`)
+export function formatActionNames(actions: Action[]): string {
+  if (!actions?.length) return '';
+
+  // Create a shuffled copy instead of mutating the original array
+  return [...actions]
+    .sort(() => Math.random() - 0.5)
+    .map((action) => action.name)
     .join(', ');
 }
 
 /**
- * Formats the provided actions into a detailed string listing each action's name and description, separated by commas and newlines.
+ * Formats the provided actions into a detailed string listing each action's name and description.
  * @param actions - An array of `Action` objects to format.
  * @returns A detailed string of actions, including names and descriptions.
  */
-export function formatActions(actions: Action[]) {
-  return actions
-    .sort(() => 0.5 - Math.random())
-    .map((action: Action) => `${action.name}: ${action.description}`)
+export function formatActions(actions: Action[]): string {
+  if (!actions?.length) return '';
+
+  // Create a shuffled copy instead of mutating the original array
+  return [...actions]
+    .sort(() => Math.random() - 0.5)
+    .map((action) => `${action.name}: ${action.description}`)
     .join(',\n');
 }

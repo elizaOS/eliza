@@ -173,13 +173,9 @@ export function useStartAgent() {
       // Return context for potential rollback
       return { agentId };
     },
-    onSuccess: (data) => {
-      // Immediately invalidate the queries for fresh data
+    onSuccess: (data, agentId) => {
       queryClient.invalidateQueries({ queryKey: ['agents'] });
-      queryClient.invalidateQueries({ queryKey: ['active-agents'] });
-      if (data?.id) {
-        queryClient.invalidateQueries({ queryKey: ['agent', data.id] });
-      }
+      queryClient.invalidateQueries({ queryKey: ['agent', agentId] });
 
       toast({
         title: 'Agent Started',
@@ -714,6 +710,34 @@ export function useUpdateMemory() {
         description: error instanceof Error ? error.message : 'Failed to update memory',
         variant: 'destructive',
       });
+    },
+  });
+}
+
+export function useDeleteGroupMemory() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ serverId, memoryId }: { serverId: UUID; memoryId: UUID }) => {
+      await apiClient.deleteGroupMemory(serverId, memoryId);
+      return { serverId };
+    },
+    onSuccess: ({ serverId }) => {
+      queryClient.invalidateQueries({ queryKey: ['groupmessages', serverId] });
+    },
+  });
+}
+
+export function useClearGroupChat() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (serverId: UUID) => {
+      await apiClient.clearGroupChat(serverId);
+      return { serverId };
+    },
+    onSuccess: ({ serverId }) => {
+      queryClient.invalidateQueries({ queryKey: ['groupmessages', serverId] });
     },
   });
 }

@@ -1,3 +1,4 @@
+import { Content } from '@elizaos/core';
 import {
   type Action,
   type ActionExample,
@@ -35,6 +36,29 @@ Response format should be formatted in a valid JSON block like this:
 
 Your response should include the valid JSON block and nothing else.`;
 
+function getFirstAvailableField(obj: Record<string, any>, fields: string[]): string | null {
+  for (const field of fields) {
+    if (typeof obj[field] === 'string' && obj[field].trim() !== '') {
+      return obj[field];
+    }
+  }
+  return null;
+}
+
+function extractReplyContent(response: Memory, replyFieldKeys: string[]): Content | null {
+  const hasReplyAction = response.content.actions?.includes('REPLY');
+  const text = getFirstAvailableField(response.content, replyFieldKeys);
+
+  if (!hasReplyAction || !text) return null;
+
+  return {
+    ...response.content,
+    thought: response.content.thought,
+    text,
+    actions: ['REPLY'],
+  };
+}
+
 /**
  * Represents an action that allows the agent to reply to the current conversation with a generated message.
  *
@@ -64,36 +88,32 @@ export const replyAction = {
     callback: HandlerCallback,
     responses?: Memory[]
   ) => {
-    // Find all responses with REPLY action and text
-    const existingResponses = responses?.filter(
-      (response) => response.content.actions?.includes('REPLY') && response.content.message
-    );
+    const replyFieldKeys = ['message', 'text'];
 
-    // If we found any existing responses, use them and skip LLM
-    if (existingResponses && existingResponses.length > 0) {
-      for (const response of existingResponses) {
-        const responseContent = {
-          thought: response.content.thought || 'Using provided text for reply',
-          text: response.content.message as string,
-          actions: ['REPLY'],
-        };
-        await callback(responseContent);
+    const existingReplies =
+      responses
+        ?.map((r) => extractReplyContent(r, replyFieldKeys))
+        .filter((reply): reply is Content => reply !== null) ?? [];
+
+    // Check if any responses had providers associated with them
+    const allProviders = responses?.flatMap((res) => res.content?.providers ?? []) ?? [];
+
+    if (existingReplies.length > 0 && allProviders.length === 0) {
+      for (const reply of existingReplies) {
+        await callback(reply);
       }
       return;
     }
 
     // Only generate response using LLM if no suitable response was found
-    state = await runtime.composeState(message, [
-      ...(message.content.providers ?? []),
-      'RECENT_MESSAGES',
-    ]);
+    state = await runtime.composeState(message, [...(allProviders ?? []), 'RECENT_MESSAGES']);
 
     const prompt = composePromptFromState({
       state,
       template: replyTemplate,
     });
 
-    const response = await runtime.useModel(ModelType.OBJECT_SMALL, {
+    const response = await runtime.useModel(ModelType.OBJECT_LARGE, {
       prompt,
     });
 

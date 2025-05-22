@@ -74,6 +74,61 @@ export default function HomepageFeatures() {
               </Link>
             </div>
           </div>
+          <div className={styles.actionCard}>
+            <div className={styles.actionImageContainer}>
+              <img src="/img/partners.jpg" alt="Explore Partners" className={styles.actionImage} />
+            </div>
+            <h3>🤝 Explore Partners</h3>
+            <p>Discover the organizations and projects collaborating within the Eliza ecosystem.</p>
+            <div className={styles.actionLinks}>
+              <Link to="/partners" className={styles.actionLink}>
+                View Partners
+              </Link>
+              <Link to="/partners" className={styles.secondaryLink}>
+                <span className={styles.secondaryLinkIcon}>📄</span> Partner Docs
+              </Link>
+            </div>
+          </div>
+          <div className={styles.actionCard}>
+            <div className={styles.actionImageContainer}>
+              <img src="/img/videos.jpg" alt="Video Gallery" className={styles.actionImage} />
+            </div>
+            <h3>🎬 Video Gallery</h3>
+            <p>Watch demos, tutorials, and community showcases related to ElizaOS.</p>
+            <div className={styles.actionLinks}>
+              <Link to="/community/videos" className={styles.actionLink}>
+                Watch Videos
+              </Link>
+              <Link to="/community/videos" className={styles.secondaryLink}>
+                <span className={styles.secondaryLinkIcon}>▶️</span> Go to Gallery
+              </Link>
+            </div>
+          </div>
+          <div className={styles.actionCard}>
+            <div className={styles.actionImageContainer}>
+              <img src="/img/stats.png" alt="GitHub Activity" className={styles.actionImage} />
+            </div>
+            <h3>📊 GitHub Activity</h3>
+            <p>See the latest GitHub news, project statistics, and contributor leaderboards.</p>
+            <div className={styles.actionLinks}>
+              <a
+                href="https://elizaos.github.io/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.actionLink}
+              >
+                View Stats
+              </a>
+              <a
+                href="https://elizaos.github.io/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.secondaryLink}
+              >
+                <span className={styles.secondaryLinkIcon}>🏆</span> Leaderboard
+              </a>
+            </div>
+          </div>
         </div>
         <br></br>
 

@@ -1,33 +1,35 @@
+import { character as elizaCharacter } from '@/src/characters/eliza';
 import {
   buildProject,
   copyTemplate as copyTemplateUtil,
   displayBanner,
-  getElizaDirectories,
+  ensureElizaDir,
   handleError,
   promptAndStorePostgresUrl,
   runBunCommand,
   setupPgLite,
 } from '@/src/utils';
 import { Command } from 'commander';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import prompts from 'prompts';
 import colors from 'yoctocolors';
 import { z } from 'zod';
+import { logger } from '@elizaos/core';
 
 /**
- * This module handles creating both projects and plugins.
+ * This module handles creating projects, plugins, and agent characters.
  *
  * Previously, plugin creation was handled by the "plugins create" command,
  * but that has been unified with project creation in this single command.
  * Users are now prompted to select which type they want to create.
  *
  * The workflow includes:
- * 1. Asking if the user wants to create a project or plugin
- * 2. Getting the name and creating a directory
+ * 1. Asking if the user wants to create a project, plugin, or agent
+ * 2. Getting the name and creating a directory or file
  * 3. Setting up proper templates and configurations
- * 4. Installing dependencies
+ * 4. Installing dependencies (for projects/plugins)
  * 5. Automatically changing directory to the created project/plugin
  * 6. Showing the user the next steps
  */
@@ -35,7 +37,7 @@ import { z } from 'zod';
 const initOptionsSchema = z.object({
   dir: z.string().default('.'),
   yes: z.boolean().default(false),
-  type: z.enum(['project', 'plugin']).default('project'),
+  type: z.enum(['project', 'plugin', 'agent']).default('project'),
 });
 
 /**
@@ -115,22 +117,22 @@ node_modules
 }
 
 /**
- * Initialize a new project or plugin.
+ * Initialize a new project, plugin, or agent.
  *
  * @param {Object} opts - Options for initialization.
  * @param {string} opts.dir - Installation directory.
  * @param {boolean} opts.yes - Skip confirmation.
- * @param {string} opts.type - Type of template to use (project or plugin).
+ * @param {string} opts.type - Type to create (project, plugin, or agent).
  *
  * @returns {Promise<void>} Promise that resolves once the initialization process is complete.
  */
 export const create = new Command()
   .name('create')
-  .description('Initialize a new project or plugin')
+  .description('Initialize a new project, plugin, or agent')
   .option('-d, --dir <dir>', 'installation directory', '.')
   .option('-y, --yes', 'skip confirmation', false)
-  .option('-t, --type <type>', 'type of template to use (project or plugin)', 'project')
-  .argument('[name]', 'name for the project or plugin')
+  .option('-t, --type <type>', 'type to create (project, plugin, or agent)', 'project')
+  .argument('[name]', 'name for the project, plugin, or agent')
   .action(async (name, opts) => {
     // Set non-interactive mode if environment variable is set or if -y/--yes flag is present in process.argv
     if (
@@ -177,19 +179,23 @@ export const create = new Command()
                 title: 'Plugin - Can be added to the registry and installed by others',
                 value: 'plugin',
               },
+              {
+                title: 'Agent - Character definition file for an agent',
+                value: 'agent',
+              },
             ],
             initial: 0,
           });
 
           if (!type) {
-            process.exit(0);
+            return;
           }
           projectType = type;
         }
       } else {
         // Validate the provided type if -t was used
-        if (!['project', 'plugin'].includes(projectType)) {
-          console.error(`Invalid type: ${projectType}. Must be either 'project' or 'plugin'`);
+        if (!['project', 'plugin', 'agent'].includes(projectType)) {
+          console.error(`Invalid type: ${projectType}. Must be 'project', 'plugin', or 'agent'`);
           process.exit(1);
         }
       }
@@ -200,32 +206,7 @@ export const create = new Command()
         type: projectType,
       });
 
-      // Try to find .env file by recursively checking parent directories
-      const envPath = path.join(process.cwd(), '.env');
-
-      let currentPath = envPath;
-      let depth = 0;
-      const maxDepth = 10;
-
-      let postgresUrl = null;
-
-      while (depth < maxDepth && currentPath.includes(path.sep)) {
-        if (existsSync(currentPath)) {
-          const env = readFileSync(currentPath, 'utf8');
-          const envVars = env.split('\n').filter((line) => line.trim() !== '');
-          const postgresUrlLine = envVars.find((line) => line.startsWith('POSTGRES_URL='));
-          if (postgresUrlLine) {
-            postgresUrl = postgresUrlLine.split('=')[1].trim();
-            break;
-          }
-        }
-
-        // Move up one directory
-        const currentDir = path.dirname(currentPath);
-        const parentDir = path.dirname(currentDir);
-        currentPath = path.join(parentDir, '.env');
-        depth++;
-      }
+      let postgresUrl: string | null = null;
 
       // Prompt for project/plugin name if not provided
       let projectName = name;
@@ -242,7 +223,7 @@ export const create = new Command()
           });
 
           if (!nameResponse) {
-            process.exit(0);
+            return;
           }
           projectName = nameResponse;
         }
@@ -302,7 +283,8 @@ export const create = new Command()
           console.error(
             'Please choose a different name or manually remove the directory contents first.'
           );
-          process.exit(1);
+          handleError(new Error(`Directory "${projectName}" is not empty`));
+          return;
         } else {
           // Directory exists but is empty - this is fine
           console.info(
@@ -348,9 +330,44 @@ export const create = new Command()
         console.log('Plugin initialized successfully!');
         const cdPath = options.dir === '.' ? projectName : path.relative(process.cwd(), targetDir);
         console.info(
-          `\nYour plugin is ready! Here's your development workflow:\n\n[1] Development\n   cd ${cdPath}\n   ${colors.cyan('elizaos dev')}                   # Start development with hot-reloading\n\n[2] Testing\n   ${colors.cyan('elizaos test')}                  # Run automated tests\n   ${colors.cyan('elizaos start')}                 # Test in a live agent environment\n\n[3] Publishing\n   ${colors.cyan('elizaos plugin publish --test')} # Check registry requirements\n   ${colors.cyan('elizaos plugin publish')}        # Submit to registry\n\n[?] Learn more: https://eliza.how/docs/cli/plugins`
+          `\nYour plugin is ready! Here's your development workflow:\n\n[1] Development\n   cd ${cdPath}\n   ${colors.cyan('elizaos dev')}                   # Start development with hot-reloading\n\n[2] Testing\n   ${colors.cyan('elizaos test')}                  # Run automated tests\n   ${colors.cyan('elizaos start')}                 # Test in a live agent environment\n\n[3] Publishing\n   ${colors.cyan('elizaos plugins publish --test')} # Check registry requirements\n   ${colors.cyan('elizaos plugins publish')}        # Submit to registry\n\n[?] Learn more: https://eliza.how/docs/cli/plugins`
         );
         process.stdout.write(`\u001B]1337;CurrentDir=${targetDir}\u0007`);
+        return;
+      } else if (options.type === 'agent') {
+        // Agent character creation
+        let characterName = projectName || 'MyAgent';
+
+        // Start with the default Eliza character from the same source used by start.ts
+        const agentTemplate = { ...elizaCharacter };
+
+        // Update only the name property
+        agentTemplate.name = characterName;
+
+        // In messageExamples, replace "Eliza" with the new character name
+        if (agentTemplate.messageExamples) {
+          agentTemplate.messageExamples.forEach((conversation) => {
+            conversation.forEach((message) => {
+              if (message.name === 'Eliza') {
+                message.name = characterName;
+              }
+            });
+          });
+        }
+
+        // Set a simple filename - either the provided name or default
+        let filename = characterName.endsWith('.json') ? characterName : `${characterName}.json`;
+
+        // Make sure we're in the current directory
+        const fullPath = path.join(process.cwd(), filename);
+
+        // Write the character file
+        await fs.writeFile(fullPath, JSON.stringify(agentTemplate, null, 2), 'utf8');
+
+        console.log(`Agent character created successfully: ${filename}`);
+        console.info(
+          `\nYou can now use this agent with:\n  elizaos agent start --path ${filename}`
+        );
         return;
       } else {
         // Create directory if it doesn't exist
@@ -378,21 +395,31 @@ export const create = new Command()
 
         if (!database) {
           console.error('No database selected or provided');
-          process.exit(1);
+          handleError(new Error('No database selected or provided'));
+          return;
         }
 
         await copyTemplateUtil('project', targetDir, projectName);
 
         await createIgnoreFiles(targetDir);
 
-        const { elizaDbDir, envFilePath } = await getElizaDirectories();
+        // Define project-specific .env file path, this will be created if it doesn't exist by downstream functions.
+        const projectEnvFilePath = path.join(targetDir, '.env');
+
+        // Ensure proper directory creation in the new project
+        const dirs = await ensureElizaDir(targetDir);
+        logger.debug('Project directories set up:', dirs);
+
         if (database === 'pglite') {
-          await setupPgLite(process.env.PGLITE_DATA_DIR || elizaDbDir, envFilePath);
+          const projectPgliteDbDir = path.join(targetDir, '.elizadb');
+          // Pass the target directory to ensure everything is created in the new project
+          await setupPgLite(projectPgliteDbDir, projectEnvFilePath, targetDir);
           console.debug(
-            `Using PGLite database directory: ${process.env.PGLITE_DATA_DIR || elizaDbDir}`
+            `PGLite database will be stored in project directory: ${projectPgliteDbDir}`
           );
         } else if (database === 'postgres' && !postgresUrl) {
-          postgresUrl = await promptAndStorePostgresUrl(envFilePath);
+          // Store Postgres URL in the project's .env file.
+          postgresUrl = await promptAndStorePostgresUrl(projectEnvFilePath);
         }
 
         const srcDir = path.join(targetDir, 'src');
@@ -419,7 +446,6 @@ export const create = new Command()
           `\nYour project is ready! Here\'s what you can do next:\n1. \`cd ${cdPath}\` to change into your project directory\n2. Run \`elizaos start\` to start your project\n3. Visit \`http://localhost:3000\` (or your custom port) to view your project in the browser`
         );
         process.stdout.write(`\u001B]1337;CurrentDir=${targetDir}\u0007`);
-        process.exit(0);
       }
     } catch (error) {
       handleError(error);

@@ -1188,7 +1188,12 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 
   ensureRoomExists(room: Room): Promise<void>;
 
-  composeState(message: Memory, includeList?: string[], skipCache?: boolean): Promise<State>;
+  composeState(
+    message: Memory,
+    includeList?: string[],
+    onlyInclude?: boolean,
+    skipCache?: boolean
+  ): Promise<State>;
 
   /**
    * Use a model with strongly typed parameters and return values based on model type

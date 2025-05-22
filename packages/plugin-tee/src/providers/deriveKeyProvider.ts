@@ -6,6 +6,7 @@ import { toViemAccount } from '@phala/dstack-sdk/viem';
 import { toKeypair } from '@phala/dstack-sdk/solana';
 import { DeriveKeyProvider } from './base';
 import { PhalaRemoteAttestationProvider as RemoteAttestationProvider } from './remoteAttestationProvider';
+import { PrivateKeyAccount } from 'viem';
 
 /**
  * Phala TEE Cloud Provider
@@ -219,7 +220,10 @@ const phalaDeriveKeyProvider: Provider = {
         };
       }
     } catch (error) {
-      logger.error('Error in derive key provider:', error.message);
+      logger.error(
+        'Error in derive key provider:',
+        error instanceof Error ? error.message : 'Unknown error'
+      );
       return {
         data: null,
         values: {},
