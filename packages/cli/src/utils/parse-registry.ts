@@ -257,11 +257,8 @@ async function executeParseRegistry(): Promise<void> {
     const results = await Promise.all(tasks);
     for (const [id, info] of results) report[id] = info;
   } else {
-    for (const task of tasks) {
-      const [id, info] = await task;
-      report[id] = info;
-      await new Promise((r) => setTimeout(r, 500));
-    }
+    console.log('Please set `GH_TOKEN` or `GITHUB_TOKEN` environment variable to run this command');
+    process.exit(1);
   }
 
   /*───────────────────────────────────────────────────────────────────────*/
