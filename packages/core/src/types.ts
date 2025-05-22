@@ -804,9 +804,7 @@ export interface IDatabaseAdapter {
   /** Get entities for room */
   getEntitiesForRoom(roomId: UUID, includeComponents?: boolean): Promise<Entity[]>;
 
-  /** Create new entity */
-  createEntity(entity: Entity): Promise<boolean>;
-
+  /** Create new entities */
   createEntities(entities: Entity[]): Promise<boolean[]>;
 
   /** Update entity */
@@ -915,8 +913,6 @@ export interface IDatabaseAdapter {
 
   getRoomsByIds(roomIds: UUID[]): Promise<Room[] | null>;
 
-  createRoom({ id, name, source, type, channelId, serverId, worldId }: Room): Promise<UUID>;
-
   createRooms(rooms: Room[]): Promise<UUID[]>;
 
   deleteRoom(roomId: UUID): Promise<void>;
@@ -930,8 +926,6 @@ export interface IDatabaseAdapter {
   getRoomsForParticipants(userIds: UUID[]): Promise<UUID[]>;
 
   getRooms(worldId: UUID): Promise<Room[]>;
-
-  addParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
 
   removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
 
@@ -1237,6 +1231,9 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   // easy/compat wrappers
   getEntityById(entityId: UUID): Promise<Entity | null>;
   getRoom(roomId: UUID): Promise<Room | null>;
+  createEntity(entity: Entity): Promise<boolean>;
+  createRoom({ id, name, source, type, channelId, serverId, worldId }: Room): Promise<UUID>;
+  addParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
 
   /**
    * Registers a handler function responsible for sending messages to a specific source/platform.

@@ -61,12 +61,10 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
   abstract getEntitiesForRoom(roomId: UUID, includeComponents?: boolean): Promise<Entity[]>;
 
   /**
-   * Creates a new entity in the database.
-   * @param entity The entity object to create.
+   * Creates a new entities in the database.
+   * @param entities The entity objects to create.
    * @returns A Promise that resolves when the account creation is complete.
    */
-  abstract createEntity(entity: Entity): Promise<boolean>;
-
   abstract createEntities(entities: Entity[]): Promise<boolean[]>;
 
   /**
@@ -324,12 +322,10 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
   abstract getRooms(worldId: UUID): Promise<Room[]>;
 
   /**
-   * Creates a new room with an optional specified ID.
+   * Creates a new rooms with an optional specified ID.
    * @param roomId Optional UUID to assign to the new room.
-   * @returns A Promise that resolves to the UUID of the created room.
+   * @returns A Promise that resolves to the UUID of the created rooms.
    */
-  abstract createRoom({ id, source, type, channelId, serverId, worldId }: Room): Promise<UUID>;
-
   abstract createRooms(rooms: Room[]): Promise<UUID[]>;
 
   /**
@@ -368,12 +364,11 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
   abstract getRoomsForParticipants(userIds: UUID[]): Promise<UUID[]>;
 
   /**
-   * Adds a user as a participant to a specific room.
-   * @param entityId The UUID of the user to add as a participant.
+   * Adds users as a participant to a specific room.
+   * @param entityIds The UUIDs of the users to add as a participant.
    * @param roomId The UUID of the room to which the user will be added.
    * @returns A Promise that resolves to a boolean indicating success or failure.
    */
-  abstract addParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
   abstract addParticipantsRoom(entityIds: UUID[], roomId: UUID): Promise<boolean>;
 
   /**
