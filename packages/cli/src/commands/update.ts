@@ -336,6 +336,7 @@ async function updateDependencies(
     }
   } catch (error) {
     console.error(`Error updating dependencies: ${error.message}`);
+    throw error; // Rethrow the error to be handled by the caller
   }
 }
 
