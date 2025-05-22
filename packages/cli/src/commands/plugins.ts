@@ -124,7 +124,7 @@ export const pluginsCommand = plugins
         Object.keys(cachedRegistry.registry).length === 0
       ) {
         logger.info('Plugin cache is empty or not found.');
-        console.log('\nPlease run "eliza plugins update" to fetch the latest plugin registry.');
+        console.log('\nPlease run "elizaos plugins update" to fetch the latest plugin registry.');
         return;
       }
       let availablePluginsToDisplay: string[] = [];
@@ -261,7 +261,9 @@ plugins
         // --- Registry-based or fuzzy Plugin Installation ---
         const cachedRegistry = await readCache();
         if (!cachedRegistry || !cachedRegistry.registry) {
-          logger.error('Plugin registry cache not found. Please run "eliza plugins update" first.');
+          logger.error(
+            'Plugin registry cache not found. Please run "elizaos plugins update" first.'
+          );
           process.exit(1);
         }
 
