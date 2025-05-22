@@ -319,7 +319,7 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
    * @param worldId The UUID of the world to retrieve rooms for.
    * @returns A Promise that resolves to an array of Room objects.
    */
-  abstract getRooms(worldId: UUID): Promise<Room[]>;
+  abstract getRoomsByWorld(worldId: UUID): Promise<Room[]>;
 
   /**
    * Creates a new rooms with an optional specified ID.
