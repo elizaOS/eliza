@@ -131,7 +131,8 @@ export class StarterService extends Service {
   static serviceType = 'starter';
   capabilityDescription =
     'This is a starter service which is attached to the agent through the starter plugin.';
-  constructor(protected runtime: IAgentRuntime) {
+
+  constructor(runtime: IAgentRuntime) {
     super(runtime);
   }
 
