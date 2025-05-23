@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SHARP_IGNORE_GLOBAL_LIBVIPS: '1'
-      npm_config_build_from_source: 'false'
+      npm_config_build_from_source: 'true'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
