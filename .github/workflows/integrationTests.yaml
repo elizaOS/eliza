@@ -34,7 +34,7 @@ jobs:
       - name: Install required packages
         run: |
           sudo apt update
-          sudo apt -y install build-essential pkg-config libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev
+          sudo apt -y install build-essential pkg-config libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev libvips-dev
 
       - name: Install dependencies
         run: bun install
