@@ -274,26 +274,6 @@ describe('Room Integration Tests', () => {
       expect(rooms?.length).toBe(1);
       expect(rooms![0].id).toEqual(otherRoom.id);
     });
-
-    it('should delete rooms individually when they have different server IDs', async () => {
-      // Create rooms with specific serverId
-      const roomWithServerId = roomTestRooms[1]; // This has a serverId
-
-      // Create another room with a different serverId for comparison
-      const otherRoom = {
-        ...roomTestRooms[0],
-        serverId: 'other-server-id',
-      };
-      await adapter.createRooms([roomWithServerId, otherRoom]);
-
-      // Delete one specific room
-      await adapter.deleteRoom(roomWithServerId.id);
-
-      // Verify only the targeted room was deleted
-      const rooms = await adapter.getRoomsByIds([roomWithServerId.id, otherRoom.id]);
-      expect(rooms?.length).toBe(1);
-      expect(rooms![0].id).toEqual(otherRoom.id);
-    });
   });
 
   describe('Room Participants', () => {
