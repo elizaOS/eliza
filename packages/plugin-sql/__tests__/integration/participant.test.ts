@@ -56,7 +56,7 @@ describe('Participant Integration Tests', () => {
       });
 
       // Step 3: Create test entity
-      await adapter.createEntity(participantTestEntity);
+      await adapter.createEntities([participantTestEntity]);
 
       // Step 4: Create test room
       await adapter.createRooms([participantTestRoom]);

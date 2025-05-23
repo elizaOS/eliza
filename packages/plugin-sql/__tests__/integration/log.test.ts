@@ -63,10 +63,12 @@ describe('Log Integration Tests', () => {
       });
 
       // Create the test entity
-      await adapter.createEntity({
-        ...logTestEntity,
-        agentId: testAgentId,
-      } as Entity);
+      await adapter.createEntities([
+        {
+          ...logTestEntity,
+          agentId: testAgentId,
+        } as Entity,
+      ]);
 
       // Create the test room
       await adapter.createRooms([

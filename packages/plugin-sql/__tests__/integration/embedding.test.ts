@@ -60,7 +60,7 @@ describe('Embedding Integration Tests', () => {
       });
 
       // Step 3: Create test entity
-      await adapter.createEntity(embeddingTestEntity);
+      await adapter.createEntities([embeddingTestEntity]);
 
       // Step 4: Create test room
       await adapter.createRooms([embeddingTestRoom]);
