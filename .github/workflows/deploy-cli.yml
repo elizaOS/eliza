@@ -47,30 +47,13 @@ jobs:
       - name: Configure npm auth
         run: echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
 
-      - name: Configure Git for Lerna
+      - name: Publish to npm (without git push)
         run: |
+          # Set Git identity
           git config --global user.name "${{ github.actor }}"
           git config --global user.email "${{ github.actor }}@users.noreply.github.com"
-          # Verify the config was set correctly
-          git config --get user.name
-          git config --get user.email
 
-      - name: Ensure push auth via GH_DEPLOY_TOKEN
-        run: |
-          git remote set-url origin \
-            https://x-access-token:${{ secrets.GH_DEPLOY_TOKEN }}@github.com/${{ github.repository }}.git
-
-      - name: Publish to npm
-        run: |
-          # Set Git identity again to ensure it's available in this step
-          git config --global user.name "${{ github.actor }}"
-          git config --global user.email "${{ github.actor }}@users.noreply.github.com"
-          bun run release:beta -- --yes
+          # Publish without pushing to git
+          npx lerna publish prerelease --preid beta --dist-tag beta --no-private --force-publish --loglevel verbose --yes --no-push --no-git-tag-version
         env:
           NPM_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          GH_TOKEN: ${{ secrets.GH_DEPLOY_TOKEN }}
-          # Add the git identity as environment variables
-          GIT_AUTHOR_NAME: '${{ github.actor }}'
-          GIT_AUTHOR_EMAIL: '${{ github.actor }}@users.noreply.github.com'
-          GIT_COMMITTER_NAME: '${{ github.actor }}'
-          GIT_COMMITTER_EMAIL: '${{ github.actor }}@users.noreply.github.com'
