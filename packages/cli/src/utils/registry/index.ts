@@ -14,7 +14,7 @@ import { REGISTRY_URL } from './constants';
 
 const ELIZA_DIR = path.join(process.cwd(), '.eliza');
 const REGISTRY_SETTINGS_FILE = path.join(ELIZA_DIR, 'registrysettings.json');
-// Use findNearestEnvFile to match how credentials are saved, with fallback to ~/.eliza/.env
+// Use resolveEnvFile to match how credentials are saved, with fallback to ~/.eliza/.env
 const ENV_FILE = resolveEnvFile() || path.join(ELIZA_DIR, '.env');
 const REGISTRY_CACHE_FILE = path.join(ELIZA_DIR, 'registry-cache.json');
 
