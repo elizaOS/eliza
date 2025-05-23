@@ -71,24 +71,22 @@ Open the ElizaOS environment configuration file in a text editor:
 Add the following lines to the `.env` file, replacing placeholder values with your actual credentials and desired settings:
 
 ```
-# Global environment variables for Eliza
-# Use an absolute path, as '~' might not be expanded by all tools
-PGLITE_DATA_DIR=/path/to/your/home/.eliza/db
-
 # OpenAI API Key (Optional, if using OpenAI features)
 OPENAI_API_KEY=your_openai_api_key_here
 
-# Twitter Configuration
+# Twitter Configuration (Required)
 TWITTER_USERNAME=your_twitter_username
 TWITTER_PASSWORD=your_twitter_password
 TWITTER_EMAIL=your_twitter_email
-TWITTER_TARGET_USERS=user1,user2,user3  # Comma-separated list of users to interact with
-TWITTER_ENABLE_POST_GENERATION=true    # Set to false to disable automated posting
+
+# Twitter Features (Optional - enable as needed)
+TWITTER_ENABLE_POST_GENERATION=true    # Set to true to enable automated posting
+TWITTER_INTERACTION_ENABLE=true        # Set to true to enable interactions on mentions, tags, and comments on agent posts
 TWITTER_POST_INTERVAL_MIN=1            # Minimum minutes between posts
 TWITTER_POST_INTERVAL_MAX=2            # Maximum minutes between posts
 ```
 
-**Important:** Ensure you use the correct absolute path for `PGLITE_DATA_DIR`. Never commit your `.env` file containing real credentials to version control. Add `.env` to your `.gitignore` file to prevent accidental exposure.
+**Important:** The Twitter username, password, and email are required for authentication. Never commit your `.env` file containing real credentials to version control. Add `.env` to your `.gitignore` file to prevent accidental exposure.
 
 ### Step 4: Start Your Project
 
@@ -158,7 +156,28 @@ For more fine-grained control, consider adjusting the following:
 - **Post Scheduling**: Modify `TWITTER_POST_INTERVAL_MIN` and `TWITTER_POST_INTERVAL_MAX` in the `.env` file to control posting frequency.
 - **Topical Focus**: Refine the `system` prompt in `src/index.ts` to guide the agent towards specific subjects.
 - **Interaction Logic**: Update the `bio` list in `src/index.ts` to define how the agent responds and interacts.
-- **Targeted Interaction**: Change the `TWITTER_TARGET_USERS` list in the `.env` file to specify which accounts the agent should primarily interact with.
+
+### Advanced Twitter Features
+
+For enhanced Twitter functionality, you can enable additional features by adding these environment variables to your `.env` file:
+
+```
+# Advanced Twitter Features
+TWITTER_TIMELINE_ENABLE=true           # Enable timeline checking so agent can comment on timeline posts
+TWITTER_SPACES_ENABLE=true             # Enable agent participation in Twitter Spaces
+TWITTER_TIMELINE_MODE=home             # Timeline mode (home, user, etc.)
+TWITTER_TIMELINE_POLL_INTERVAL=300     # Timeline polling interval in seconds
+```
+
+**Timeline Features:**
+
+- `TWITTER_TIMELINE_ENABLE`: When set to `true`, allows the agent to monitor and interact with posts in the timeline
+- `TWITTER_TIMELINE_MODE`: Specifies which timeline to monitor (e.g., "home" for home timeline)
+- `TWITTER_TIMELINE_POLL_INTERVAL`: Controls how often (in seconds) the agent checks the timeline for new posts
+
+**Spaces Features:**
+
+- `TWITTER_SPACES_ENABLE`: When set to `true`, enables the agent to participate in Twitter Spaces conversations
 
 ### Advanced: Server Deployment with Twitter Cookies
 
