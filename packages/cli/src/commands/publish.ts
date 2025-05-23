@@ -14,7 +14,7 @@ import {
 } from '@/src/utils/registry/index';
 import { Command } from 'commander';
 import { execa } from 'execa';
-import { existsSync, promises as fs } from 'node:fs';
+import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import prompts from 'prompts';
@@ -181,10 +181,14 @@ async function updateRegistryIndex(packageMetadata, dryRun = false) {
       : path.join(process.cwd(), 'temp-registry', 'index.json');
 
     // Create registry directory if it doesn't exist in dry run
-    if (dryRun && !existsSync(path.dirname(indexPath))) {
+    try {
+      await fs.access(path.dirname(indexPath));
+    } catch {
       await fs.mkdir(path.dirname(indexPath), { recursive: true });
       // Create empty index file if it doesn't exist
-      if (!existsSync(indexPath)) {
+      try {
+        await fs.access(indexPath);
+      } catch {
         await fs.writeFile(
           indexPath,
           JSON.stringify(
@@ -356,7 +360,7 @@ async function validatePluginRequirements(cwd: string, packageJson: any): Promis
   }
 
   // Check if description is still the default generated one (warning)
-  const pluginDirName = path.basename(process.cwd());
+  const pluginDirName = path.basename(cwd);
   const expectedDefaultDesc = `ElizaOS plugin for ${pluginDirName.replace('plugin-', '')}`;
   if (
     packageJson.description === expectedDefaultDesc ||
@@ -372,11 +376,15 @@ async function validatePluginRequirements(cwd: string, packageJson: any): Promis
   const logoPath = path.join(imagesDir, 'logo.jpg');
   const bannerPath = path.join(imagesDir, 'banner.jpg');
 
-  if (!existsSync(logoPath)) {
+  try {
+    await fs.access(logoPath);
+  } catch {
     warnings.push('Missing required logo.jpg in images/ directory (400x400px, max 500KB).');
   }
 
-  if (!existsSync(bannerPath)) {
+  try {
+    await fs.access(bannerPath);
+  } catch {
     warnings.push('Missing required banner.jpg in images/ directory (1280x640px, max 1MB).');
   }
 
@@ -463,7 +471,9 @@ export const publish = new Command()
 
       // Check if this is a valid directory with package.json
       const packageJsonPath = path.join(cwd, 'package.json');
-      if (!existsSync(packageJsonPath)) {
+      try {
+        await fs.access(packageJsonPath);
+      } catch {
         console.error('No package.json found in current directory.');
         process.exit(1);
       }
@@ -525,7 +535,8 @@ export const publish = new Command()
             const mainEntry = packageJson.main;
             if (mainEntry) {
               const mainPath = path.resolve(cwd, mainEntry);
-              if (existsSync(mainPath)) {
+              try {
+                await fs.access(mainPath);
                 try {
                   // Try to import the module to see if it's a project or plugin
                   const importedModule = await import(mainPath);
@@ -547,6 +558,8 @@ export const publish = new Command()
                   console.debug(`Error importing module: ${importError}`);
                   // Continue with default type
                 }
+              } catch {
+                // File doesn't exist, skip the import attempt
               }
             }
           } catch (error) {
@@ -612,57 +625,73 @@ export const publish = new Command()
       // Replace ALL placeholders in package.json
       console.info('Updating package.json with actual values...');
 
-      // Replace npm-username with actual NPM username
-      if (packageJson.name.includes('npm-username')) {
-        packageJson.name = packageJson.name.replace('npm-username', npmUsername);
-        console.info(`Set package org: @${npmUsername}`);
-      }
+      const placeholderReplacements = {
+        // Name placeholders
+        'npm-username': {
+          check: () => packageJson.name.includes('npm-username'),
+          replace: () => {
+            packageJson.name = packageJson.name.replace('npm-username', npmUsername);
+            console.info(`Set package org: @${npmUsername}`);
+          },
+        },
+        'plugin-name': {
+          check: () => packageJson.name.includes('plugin-name'),
+          replace: () => {
+            packageJson.name = packageJson.name.replace('plugin-name', pluginDirName);
+            console.info(`Set package name: ${packageJson.name}`);
+          },
+        },
+        // Description placeholder
+        '${PLUGINDESCRIPTION}': {
+          check: () => packageJson.description === '${PLUGINDESCRIPTION}',
+          replace: () => {
+            const simpleName = pluginDirName.replace('plugin-', '');
+            packageJson.description = `ElizaOS plugin for ${simpleName}`;
+            console.info(`Set description: ${packageJson.description}`);
+          },
+        },
+        // Repository URL placeholder
+        '${REPO_URL}': {
+          check: () =>
+            packageJson.repository &&
+            (packageJson.repository.url === '${REPO_URL}' || packageJson.repository.url === ''),
+          replace: () => {
+            if (!packageJson.repository) {
+              packageJson.repository = { type: 'git', url: '' };
+            }
+            packageJson.repository.url = `github:${credentials.username}/${pluginDirName}`;
+            console.info(`Set repository: ${packageJson.repository.url}`);
+          },
+        },
+        // Author placeholder
+        '${GITHUB_USERNAME}': {
+          check: () => packageJson.author === '${GITHUB_USERNAME}',
+          replace: () => {
+            packageJson.author = credentials.username;
+            console.info(`Set author: ${packageJson.author}`);
+          },
+        },
+        // Bugs URL placeholder
+        'bugs-placeholder': {
+          check: () =>
+            packageJson.bugs &&
+            packageJson.bugs.url &&
+            packageJson.bugs.url.includes('${GITHUB_USERNAME}'),
+          replace: () => {
+            packageJson.bugs.url = packageJson.bugs.url
+              .replace('${GITHUB_USERNAME}', credentials.username)
+              .replace('${PLUGINNAME}', pluginDirName);
+            console.info(`Set bugs URL: ${packageJson.bugs.url}`);
+          },
+        },
+      };
 
-      // Replace plugin-name with actual plugin directory name
-      if (packageJson.name.includes('plugin-name')) {
-        packageJson.name = packageJson.name.replace('plugin-name', pluginDirName);
-        console.info(`Set package name: ${packageJson.name}`);
-      }
-
-      // Replace description placeholder
-      if (packageJson.description === '${PLUGINDESCRIPTION}') {
-        const simpleName = pluginDirName.replace('plugin-', '');
-        packageJson.description = `ElizaOS plugin for ${simpleName}`;
-        console.info(`Set description: ${packageJson.description}`);
-      }
-
-      // Replace repository URL placeholder
-      if (
-        packageJson.repository &&
-        (packageJson.repository.url === '${REPO_URL}' || packageJson.repository.url === '')
-      ) {
-        packageJson.repository.url = `github:${credentials.username}/${pluginDirName}`;
-        console.info(`Set repository: ${packageJson.repository.url}`);
-      } else if (!packageJson.repository) {
-        packageJson.repository = {
-          type: 'git',
-          url: `github:${credentials.username}/${pluginDirName}`,
-        };
-        console.info(`Set repository: ${packageJson.repository.url}`);
-      }
-
-      // Replace bugs URL placeholder
-      if (
-        packageJson.bugs &&
-        packageJson.bugs.url &&
-        packageJson.bugs.url.includes('${GITHUB_USERNAME}')
-      ) {
-        packageJson.bugs.url = packageJson.bugs.url
-          .replace('${GITHUB_USERNAME}', credentials.username)
-          .replace('${PLUGINNAME}', pluginDirName);
-        console.info(`Set bugs URL: ${packageJson.bugs.url}`);
-      }
-
-      // Replace author placeholder
-      if (packageJson.author === '${GITHUB_USERNAME}') {
-        packageJson.author = credentials.username;
-        console.info(`Set author: ${packageJson.author}`);
-      }
+      // Apply all placeholder replacements
+      Object.entries(placeholderReplacements).forEach(([_, replacement]) => {
+        if (replacement.check()) {
+          replacement.replace();
+        }
+      });
 
       // Extract final plugin name for use in publishing
       const finalPluginName = packageJson.name.startsWith('@')
