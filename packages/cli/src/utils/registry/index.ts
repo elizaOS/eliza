@@ -1,4 +1,9 @@
-import { getGitHubCredentials, getLocalPackages, isMonorepoContext } from '@/src/utils';
+import {
+  getGitHubCredentials,
+  getLocalPackages,
+  isMonorepoContext,
+  resolveEnvFile,
+} from '@/src/utils';
 import { logger } from '@elizaos/core';
 import dotenv from 'dotenv';
 import { execa } from 'execa';
@@ -9,7 +14,8 @@ import { REGISTRY_URL } from './constants';
 
 const ELIZA_DIR = path.join(process.cwd(), '.eliza');
 const REGISTRY_SETTINGS_FILE = path.join(ELIZA_DIR, 'registrysettings.json');
-const ENV_FILE = path.join(ELIZA_DIR, '.env');
+// Use resolveEnvFile to match how credentials are saved, with fallback to ~/.eliza/.env
+const ENV_FILE = resolveEnvFile() || path.join(ELIZA_DIR, '.env');
 const REGISTRY_CACHE_FILE = path.join(ELIZA_DIR, 'registry-cache.json');
 
 const REQUIRED_ENV_VARS = ['GITHUB_TOKEN'] as const;
@@ -98,9 +104,9 @@ export async function setEnvVar(key: string, value: string) {
 
 export async function getGitHubToken(): Promise<string | undefined> {
   try {
-    // Force reload of .env file to get the latest token
-    const envPath = ENV_FILE;
-    if (existsSync(envPath)) {
+    // Try to find the nearest .env file using the same function used for saving credentials
+    const envPath = resolveEnvFile();
+    if (envPath && existsSync(envPath)) {
       const envContent = await fs.readFile(envPath, 'utf-8');
       const env = dotenv.parse(envContent);
       return env.GITHUB_TOKEN;
@@ -696,10 +702,22 @@ export async function validateDataDir(): Promise<boolean> {
 
   let isValid = true;
 
-  if (!status.env.exists) {
+  // Check if GitHub credentials exist - using the same method as getGitHubCredentials
+  // This ensures we're checking the same place where credentials are stored
+  const envPath = resolveEnvFile();
+  if (envPath) {
+    const envContent = await fs.readFile(envPath, 'utf-8');
+    const parsedEnv = dotenv.parse(envContent);
+    if (!parsedEnv.GITHUB_TOKEN) {
+      logger.warn('GitHub token not found in environment');
+      isValid = false;
+    }
+  } else {
     logger.warn('.env file not found');
     isValid = false;
-  } else if (!status.env.hasAllKeys) {
+  }
+
+  if (!status.env.hasAllKeys) {
     logger.warn(`Missing environment variables: ${status.env.missingKeys.join(', ')}`);
     isValid = false;
   }
