@@ -429,8 +429,13 @@ const startAgents = async (options: {
   // Configure database settings - pass reconfigure option to potentially force reconfiguration
   const postgresUrl = await configureDatabaseSettings(options.configure);
 
-  // Get PGLite data directory from environment (may have been set during configuration)
-  const pgliteDataDir = await resolvePgliteDir();
+  // Ensure POSTGRES_URL is set in environment for runtime to access
+  if (postgresUrl) {
+    process.env.POSTGRES_URL = postgresUrl;
+  }
+
+  // Conditionally resolve PGLite directory only if PostgreSQL URL is not provided
+  const pgliteDataDir = postgresUrl ? undefined : await resolvePgliteDir();
 
   // Check if we should reconfigure based on command-line option or if using default config
   const shouldConfigure = options.configure || existingConfig.isDefault;
@@ -585,7 +590,6 @@ const startAgents = async (options: {
     logger.error(`Error checking for project/plugin: ${error}`);
   }
 
-  await server.initialize();
   server.start(serverPort);
 
   // If characters are provided, start the agents with the characters

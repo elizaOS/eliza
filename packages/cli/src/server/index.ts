@@ -59,6 +59,7 @@ export class AgentServer {
   public server: http.Server;
   public socketIO: SocketIOServer;
   private serverPort: number = 3000; // Add property to store current port
+  public isInitialized: boolean = false; // Flag to prevent double initialization
 
   public database: DatabaseAdapter;
   public startAgent!: (character: Character) => Promise<IAgentRuntime>;
@@ -90,6 +91,11 @@ export class AgentServer {
    * @returns {Promise<void>} A promise that resolves when initialization is complete.
    */
   public async initialize(options?: ServerOptions): Promise<void> {
+    if (this.isInitialized) {
+      logger.warn('AgentServer is already initialized, skipping initialization');
+      return;
+    }
+
     try {
       logger.debug('Initializing AgentServer (async operations)...');
 
@@ -117,6 +123,7 @@ export class AgentServer {
       await new Promise((resolve) => setTimeout(resolve, 250));
 
       // Success message moved to start method
+      this.isInitialized = true;
     } catch (error) {
       logger.error('Failed to initialize AgentServer (async operations):', error);
       console.trace(error);
