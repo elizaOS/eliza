@@ -30,7 +30,7 @@ setup() {
 
   # Launch server in background with the Ada character.
   LOG_LEVEL=debug PGLITE_DATA_DIR="$TEST_TMP_DIR/elizadb" \
-  PORT="$TEST_SERVER_PORT" \
+  SERVER_PORT="$TEST_SERVER_PORT" \
   $ELIZAOS_CMD start --character "$BATS_TEST_DIRNAME/test-characters/ada.json" \
     >"$TEST_TMP_DIR/server.log" 2>&1 &
   SERVER_PID=$!

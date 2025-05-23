@@ -482,7 +482,8 @@ const startAgents = async (options: {
   server.jsonToCharacter = jsonToCharacter;
 
   // Inside your startAgents function
-  const desiredPort = options.port || Number.parseInt(process.env.SERVER_PORT || '3000');
+  const desiredPort =
+    options.port || Number.parseInt(process.env.SERVER_PORT || process.env.PORT || '3000');
   logger.debug(`Attempting to start server on port: ${desiredPort}`);
   const serverPort = await findNextAvailablePort(desiredPort);
 
