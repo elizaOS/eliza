@@ -1,4 +1,4 @@
-import { TestSuite } from '../../core/src/types';
+import { type TestSuite } from '@elizaos/core';
 
 export class ProjectTestSuite implements TestSuite {
   name = 'project';

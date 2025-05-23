@@ -2742,3 +2742,4 @@ When analyzing this codebase:
 - Consider backwards compatibility and migration paths for any proposed changes
 - Highlight innovative technical approaches used in the system
 - When asked about implementation details, provide comprehensive technical explanations
+

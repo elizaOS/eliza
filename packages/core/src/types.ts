@@ -920,6 +920,8 @@ export interface IDatabaseAdapter {
     limit?: number;
   }): Promise<Memory[]>;
 
+  getMemoriesByServerId(params: { serverId: UUID; count?: number }): Promise<Memory[]>;
+
   getCachedEmbeddings(params: {
     query_table_name: string;
     query_threshold: number;

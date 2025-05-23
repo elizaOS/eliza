@@ -77,6 +77,16 @@ describe('Message Handler Logic', () => {
         }),
 
         getParticipantUserState: vi.fn().mockResolvedValue('ACTIVE'),
+
+        // Mock getRoom to return a room with proper type that doesn't skip shouldRespond
+        getRoom: vi.fn().mockResolvedValue({
+          id: 'test-room-id',
+          name: 'Test Room',
+          worldId: 'test-world-id',
+          serverId: 'test-server-id',
+          type: ChannelType.GROUP, // This ensures shouldSkipShouldRespond is false
+          source: 'test',
+        }),
       },
       messageOverrides: {
         content: {
