@@ -1,19 +1,26 @@
 {
-  "name": "@elizaos/plugin-starter",
-  "description": "Plugin starter for elizaOS",
+  "name": "@npm-username/plugin-name",
+  "description": "${PLUGINDESCRIPTION}",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
+  "packageType": "plugin",
+  "platform": "node",
+  "license": "UNLICENSED",
+  "author": "${GITHUB_USERNAME}",
   "keywords": [
     "plugin",
     "elizaos"
   ],
   "repository": {
     "type": "git",
-    "url": ""
+    "url": "${REPO_URL}"
+  },
+  "homepage": "https://elizaos.ai",
+  "bugs": {
+    "url": "https://github.com/${GITHUB_USERNAME}/${PLUGINNAME}/issues"
   },
   "exports": {
     "./package.json": "./package.json",
@@ -28,11 +35,13 @@
     "dist"
   ],
   "dependencies": {
-    "@elizaos/cli": "^1.0.0-beta.41",
-    "@elizaos/core": "^1.0.0-beta.41",
     "zod": "3.24.2"
   },
+  "peerDependencies": {
+    "@elizaos/core": "beta"
+  },
   "devDependencies": {
+    "@elizaos/cli": "beta",
     "tsup": "8.4.0",
     "typescript": "5.8.2",
     "prettier": "3.5.3",
@@ -41,7 +50,6 @@
   },
   "scripts": {
     "start": "elizaos start",
-    "test-with-cli": "cd ../cli && bun run build && cd ../plugin-starter && elizaos test",
     "dev": "elizaos dev",
     "build": "tsup",
     "lint": "prettier --write ./src",
@@ -58,5 +66,13 @@
   "resolutions": {
     "zod": "3.24.2"
   },
-  "gitHead": "b165ad83e5f7a21bc1edbd83374ca087e3cd6b33"
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "API_KEY": {
+        "type": "string",
+        "description": "API key for the service"
+      }
+    }
+  }
 }
