@@ -78,7 +78,7 @@ describe('Entity Integration Tests', () => {
     it('should successfully create a basic entity', async () => {
       const entity = testEntities.basicEntity;
 
-      const result = await adapter.createEntity(entity);
+      const result = await adapter.createEntities([entity]);
 
       expect(result).toBe(true);
 
@@ -95,7 +95,7 @@ describe('Entity Integration Tests', () => {
     it('should successfully create an entity with complex metadata', async () => {
       const entity = testEntities.complexEntity;
 
-      const result = await adapter.createEntity(entity);
+      const result = await adapter.createEntities([entity]);
 
       expect(result).toBe(true);
 
@@ -121,7 +121,7 @@ describe('Entity Integration Tests', () => {
         names: [],
       };
 
-      const result = await adapter.createEntity(entity);
+      const result = await adapter.createEntities([entity]);
 
       expect(result).toBe(true);
 
@@ -138,7 +138,7 @@ describe('Entity Integration Tests', () => {
         metadata: {},
       };
 
-      const result = await adapter.createEntity(entity);
+      const result = await adapter.createEntities([entity]);
 
       expect(result).toBe(true);
 
@@ -153,7 +153,7 @@ describe('Entity Integration Tests', () => {
     it('should retrieve an existing entity', async () => {
       // Create entity first
       const entity = testEntities.basicEntity;
-      await adapter.createEntity(entity);
+      await adapter.createEntities([entity]);
 
       // Retrieve entity
       const retrievedEntities = await adapter.getEntityByIds([entity.id]);
@@ -176,7 +176,7 @@ describe('Entity Integration Tests', () => {
     it('should update an existing entity', async () => {
       // Create entity first
       const entity = testEntities.entityToUpdate;
-      await adapter.createEntity(entity);
+      await adapter.createEntities([entity]);
 
       // Update entity
       const updatedEntity: Entity = {
@@ -204,7 +204,7 @@ describe('Entity Integration Tests', () => {
     it('should only update specified fields', async () => {
       // Create entity first
       const entity = testEntities.entityToUpdate;
-      await adapter.createEntity(entity);
+      await adapter.createEntities([entity]);
 
       // Update only names
       const partialUpdate: Entity = {
@@ -228,10 +228,10 @@ describe('Entity Integration Tests', () => {
     it('should handle errors when creating entity with duplicate ID', async () => {
       // First, create the entity successfully
       const entity = testEntities.basicEntity;
-      await adapter.createEntity(entity);
+      await adapter.createEntities([entity]);
 
       // Try to create the entity again with the same ID - should return false, not throw
-      expect(await adapter.createEntity(entity)).toBe(false);
+      expect(await adapter.createEntities([entity])).toBe(false);
     });
 
     it('should handle errors when creating entity with invalid data', async () => {
@@ -243,7 +243,7 @@ describe('Entity Integration Tests', () => {
       } as Entity;
 
       // This should not throw but return false
-      expect(await adapter.createEntity(invalidEntity)).toBe(false);
+      expect(await adapter.createEntities([invalidEntity])).toBe(false);
     });
   });
 });

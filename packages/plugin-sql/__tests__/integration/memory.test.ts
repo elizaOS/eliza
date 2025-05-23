@@ -62,7 +62,7 @@ describe('Memory Integration Tests', () => {
       });
 
       // Step 3: Create test entity
-      await adapter.createEntity(memoryTestEntity);
+      await adapter.createEntities([memoryTestEntity]);
 
       // Step 4: Create test room
       await adapter.createRooms([memoryTestRoom]);

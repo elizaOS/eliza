@@ -47,7 +47,7 @@ describe('World Integration Tests', () => {
       await adapter.createAgent(worldTestAgent);
 
       // Create test entity
-      await adapter.createEntity(worldTestEntity);
+      await adapter.createEntities([worldTestEntity]);
     } catch (error) {
       console.error('Error in setup:', error);
       throw error;
