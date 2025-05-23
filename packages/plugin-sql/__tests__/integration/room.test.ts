@@ -243,8 +243,7 @@ describe('Room Integration Tests', () => {
         serverId: 'different-server-id',
       };
 
-      await adapter.createRoom(room1);
-      await adapter.createRoom(room2);
+      await adapter.createRooms([room1, room2]);
 
       // Delete all rooms in the world
       await adapter.deleteRoomsByWorldId(roomTestWorldId);
