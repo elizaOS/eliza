@@ -1,7 +1,7 @@
 {
   "name": "@npm-username/plugin-name",
   "description": "${PLUGINDESCRIPTION}",
-  "version": "1.0.0-beta.73",
+  "version": "1.0.0-beta.72",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
