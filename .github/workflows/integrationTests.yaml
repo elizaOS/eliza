@@ -23,15 +23,17 @@ jobs:
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
 
+      - name: Install required packages
+        run: |
+          sudo apt update
+          sudo apt -y install build-essential pkg-config libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev
+          sudo apt -y install libvips-dev libvips42
+          sudo ldconfig
+
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '23'
-
-      - name: Install required packages
-        run: |
-          sudo apt update
-          sudo apt -y install build-essential pkg-config libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev libvips-dev
 
       - name: Install dependencies
         env:
