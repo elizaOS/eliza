@@ -244,12 +244,16 @@ const messageReceivedHandler = async ({
 
         // Skip shouldRespond check for DM and VOICE_DM channels
         const room = await runtime.getRoom(message.roomId);
+
+        console.log('room is', room);
+        console.log('message is', message);
+
         const shouldSkipShouldRespond =
           room?.type === ChannelType.DM ||
           room?.type === ChannelType.VOICE_DM ||
           room?.type === ChannelType.SELF ||
           room?.type === ChannelType.API ||
-          room?.source.includes('client_chat');
+          message.content.source?.includes('client_chat');
 
         logger.debug(
           `[Bootstrap] Skipping shouldRespond check for ${runtime.character.name} because ${room?.type} ${room?.source}`
@@ -289,6 +293,9 @@ const messageReceivedHandler = async ({
         }
 
         let responseMessages: Memory[] = [];
+
+        console.log('shouldRespond is', shouldRespond);
+        console.log('shouldSkipShouldRespond', shouldSkipShouldRespond);
 
         if (shouldRespond) {
           state = await runtime.composeState(message);
@@ -332,7 +339,10 @@ const messageReceivedHandler = async ({
             retries++;
             if (!responseContent?.thought || !responseContent?.actions) {
               logger.warn(
-                '[Bootstrap] *** Missing required fields (thought or actions), retrying... ***'
+                '[Bootstrap] *** Missing required fields (thought or actions), retrying... ***\n',
+                response,
+                parsedXml,
+                responseContent
               );
             }
           }
@@ -604,7 +614,12 @@ const postGeneratedHandler = async ({
 
     retries++;
     if (!responseContent?.thought || !responseContent?.actions) {
-      logger.warn('[Bootstrap] *** Missing required fields, retrying... ***');
+      logger.warn(
+        '[Bootstrap] *** Missing required fields, retrying... ***\n',
+        response,
+        parsedXml,
+        responseContent
+      );
     }
   }
 

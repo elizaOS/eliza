@@ -10,10 +10,10 @@ import {
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { PgInstrumentation } from '@opentelemetry/instrumentation-pg';
 import { Resource, resourceFromAttributes } from '@opentelemetry/resources';
+import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
 import { MeterProvider } from '@opentelemetry/sdk-metrics';
 import { ReadableSpan, SpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
 import { elizaLogger } from '../logger';
 import { IAgentRuntime, Service, ServiceType } from '../types';
 import { IInstrumentationService, InstrumentationConfig } from './types';
@@ -161,7 +161,7 @@ class PostgresSpanProcessor implements SpanProcessor {
     const spanData = {
       trace_id: spanContext.traceId,
       span_id: spanContext.spanId,
-      parent_span_id: span.parentSpanId || null,
+      parent_span_id: span.parentSpanContext.spanId || null,
       trace_state: spanContext.traceState?.toString() || null,
       span_name: span.name,
       span_kind: span.kind,
@@ -337,7 +337,7 @@ export class InstrumentationService extends Service implements IInstrumentationS
     };
 
     this.resource = resourceFromAttributes({
-      [SemanticResourceAttributes.SERVICE_NAME]: this.instrumentationConfig.serviceName,
+      [ATTR_SERVICE_NAME]: this.instrumentationConfig.serviceName,
     });
 
     if (this.isEnabled()) {

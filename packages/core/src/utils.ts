@@ -422,14 +422,26 @@ const jsonBlockPattern = /```json\n([\s\S]*?)\n```/;
 export function parseKeyValueXml(text: string): Record<string, any> | null {
   if (!text) return null;
 
-  // Find the main XML block (e.g., <response>...</response>)
-  const xmlBlockMatch = text.match(/<(\w+)>([\s\S]*?)<\/\1>/);
-  if (!xmlBlockMatch) {
-    logger.warn('Could not find XML block in text');
-    return null;
+  // First, try to find a specific <response> block (the one we actually want)
+  // Use a more permissive regex to handle cases where there might be multiple XML blocks
+  let xmlBlockMatch = text.match(/<response>([\s\S]*?)<\/response>/);
+  let xmlContent: string;
+
+  if (xmlBlockMatch) {
+    xmlContent = xmlBlockMatch[1];
+    logger.debug('Found response XML block');
+  } else {
+    // Fall back to finding any XML block (e.g., <response>...</response>)
+    const fallbackMatch = text.match(/<(\w+)>([\s\S]*?)<\/\1>/);
+    if (!fallbackMatch) {
+      logger.warn('Could not find XML block in text');
+      logger.debug('Text content:', text.substring(0, 200) + '...');
+      return null;
+    }
+    xmlContent = fallbackMatch[2];
+    logger.debug(`Found XML block with tag: ${fallbackMatch[1]}`);
   }
 
-  const xmlContent = xmlBlockMatch[2];
   const result: Record<string, any> = {};
 
   // Regex to find <key>value</key> patterns
@@ -466,6 +478,7 @@ export function parseKeyValueXml(text: string): Record<string, any> | null {
   // Return null if no key-value pairs were found
   if (Object.keys(result).length === 0) {
     logger.warn('No key-value pairs extracted from XML content');
+    logger.debug('XML content was:', xmlContent.substring(0, 200) + '...');
     return null;
   }
 
