@@ -834,7 +834,7 @@ export abstract class BaseDrizzleAdapter<
       const existingEntities = await this.getEntityByIds([entity.id]);
 
       if (!existingEntities || !existingEntities.length) {
-        return await this.createEntity(entity);
+        return await this.createEntities([entity]);
       }
 
       return true;
