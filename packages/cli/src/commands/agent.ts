@@ -90,13 +90,7 @@ async function resolveAgentId(idOrNameOrIndex: string, opts: OptionValues): Prom
   throw new Error(`AGENT_NOT_FOUND:${idOrNameOrIndex}`);
 }
 
-export const agent = new Command()
-  .name('agent')
-  .description('Manage ElizaOS agents')
-  .addOption(new Option('-r, --remote-url <url>', 'URL of the remote agent runtime'))
-  .addOption(
-    new Option('-p, --port <port>', 'Port to listen on').argParser((val) => Number.parseInt(val))
-  );
+export const agent = new Command().name('agent').description('Manage ElizaOS agents');
 
 /**
  * Interface representing the payload sent when starting an agent.
@@ -134,6 +128,8 @@ agent
   .alias('ls')
   .description('List available agents')
   .option('-j, --json', 'output as JSON')
+  .option('-r, --remote-url <url>', 'URL of the remote agent runtime')
+  .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
   .action(async (opts) => {
     try {
       // API Endpoint: GET /agents
@@ -171,6 +167,8 @@ agent
   .requiredOption('-n, --name <name>', 'agent id, name, or index number from list')
   .option('-j, --json', 'display agent configuration as JSON in the console')
   .option('-o, --output [file]', 'save agent config to JSON (defaults to {name}.json)')
+  .option('-r, --remote-url <url>', 'URL of the remote agent runtime')
+  .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
   .action(async (opts) => {
     try {
       const resolvedAgentId = await resolveAgentId(opts.name, opts);
@@ -230,6 +228,8 @@ agent
   .option('-j, --json <json>', 'Character JSON configuration string')
   .option('--path <path>', 'Path to local character JSON file')
   .option('--remote-character <url>', 'URL to remote character JSON file')
+  .option('-r, --remote-url <url>', 'URL of the remote agent runtime')
+  .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
   .addHelpText(
     'after',
     `
@@ -437,6 +437,8 @@ agent
   .alias('st')
   .description('Stop an agent')
   .requiredOption('-n, --name <name>', 'agent id, name, or index number from list')
+  .option('-r, --remote-url <url>', 'URL of the remote agent runtime')
+  .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
   .action(async (opts) => {
     try {
       const resolvedAgentId = await resolveAgentId(opts.name, opts);
@@ -466,6 +468,8 @@ agent
   .alias('rm')
   .description('Remove an agent')
   .requiredOption('-n, --name <name>', 'agent id, name, or index number from list')
+  .option('-r, --remote-url <url>', 'URL of the remote agent runtime')
+  .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
   .action(async (opts) => {
     try {
       const resolvedAgentId = await resolveAgentId(opts.name, opts);
@@ -500,6 +504,8 @@ agent
   .requiredOption('-n, --name <name>', 'agent id, name, or index number from list')
   .option('-c, --config <json>', 'agent configuration as JSON string')
   .option('-f, --file <path>', 'path to agent configuration JSON file')
+  .option('-r, --remote-url <url>', 'URL of the remote agent runtime')
+  .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
   .action(async (opts) => {
     try {
       const resolvedAgentId = await resolveAgentId(opts.name, opts);
