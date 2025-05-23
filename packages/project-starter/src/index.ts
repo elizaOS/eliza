@@ -5,7 +5,7 @@ import {
   type Project,
   type ProjectAgent,
 } from '@elizaos/core';
-import starterPlugin from './plugin';
+import starterPlugin from './plugin.ts';
 
 /**
  * Represents the default character (Eliza) with her specific attributes and behaviors.
