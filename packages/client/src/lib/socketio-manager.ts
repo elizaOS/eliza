@@ -15,6 +15,7 @@ export type MessageBroadcastData = {
   createdAt: number;
   source: string;
   name: string; // Required for ContentWithUser compatibility
+  attachments?: any[];
   [key: string]: any;
 };
 
@@ -334,8 +335,14 @@ class SocketIOManager extends EventAdapter {
    * @param message Message text to send
    * @param roomId Room/Agent ID to send the message to
    * @param source Source identifier (e.g., 'client_chat')
+   * @param attachments Optional media attachments
    */
-  public async sendMessage(message: string, roomId: string, source: string): Promise<void> {
+  public async sendMessage(
+    message: string,
+    roomId: string,
+    source: string,
+    attachments?: any[]
+  ): Promise<void> {
     if (!this.socket) {
       clientLogger.error('[SocketIO] Cannot send message: socket not initialized');
       return;
@@ -362,6 +369,7 @@ class SocketIOManager extends EventAdapter {
         worldId,
         messageId,
         source,
+        attachments,
       },
     });
 
@@ -374,6 +382,7 @@ class SocketIOManager extends EventAdapter {
       createdAt: Date.now(),
       source,
       name: USER_NAME, // Required for ContentWithUser compatibility
+      attachments,
     });
   }
 

@@ -552,6 +552,21 @@ export const apiClient = {
     });
   },
 
+  // Method to upload media files (images/videos) for chat
+  uploadMedia: async (
+    agentId: string,
+    file: File
+  ): Promise<{ success: boolean; data: { url: string; type: string } }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    return fetcher({
+      url: `/agents/${agentId}/upload-media`,
+      method: 'POST',
+      body: formData,
+    });
+  },
+
   getGroupMemories: (serverId: UUID) => {
     const worldId = WorldManager.getWorldId();
     return fetcher({

@@ -88,6 +88,8 @@ const getRuntime = (agents: Map<UUID, IAgentRuntime>, agentId: UUID) => {
  * @property {string} [params.knowledgeId] - Optional knowledge ID parameter
  */
 interface CustomRequest extends express.Request {
+  query: any;
+  body: any;
   file?: Express.Multer.File;
   files?: Express.Multer.File[];
   params: {
@@ -591,7 +593,7 @@ export function agentRouter(
         await server?.startAgent(updatedAgent);
       }
 
-      // check if agent got started successfully
+      // Verify agent started successfully
       const runtime = agents.get(agentId);
       const status = runtime ? 'active' : 'inactive';
 
@@ -1454,7 +1456,7 @@ export function agentRouter(
       return;
     }
 
-    const { text, roomId: rawRoomId, entityId: rawUserId } = req.body;
+    const { text, roomId: rawRoomId, entityId: rawUserId, worldId: rawWorldId } = req.body;
     if (!text) {
       res.status(400).json({
         success: false,
@@ -1482,6 +1484,7 @@ export function agentRouter(
     try {
       const roomId = createUniqueUuid(runtime, rawRoomId ?? `default-room-${agentId}`);
       const entityId = createUniqueUuid(runtime, rawUserId ?? 'Anon');
+      const worldId = rawWorldId ?? createUniqueUuid(runtime, 'direct');
 
       logger.debug('[SPEECH CONVERSATION] Ensuring connection');
       await runtime.ensureConnection({
@@ -1491,7 +1494,7 @@ export function agentRouter(
         name: req.body.name,
         source: 'direct',
         type: ChannelType.API,
-        worldId: createUniqueUuid(runtime, 'direct'),
+        worldId,
         worldName: 'Direct',
       });
 
@@ -1500,31 +1503,25 @@ export function agentRouter(
         text,
         attachments: [],
         source: 'direct',
-        inReplyTo: undefined,
+        inReplyTo: undefined, // Handled by response memory if needed
         channelType: ChannelType.API,
       };
 
-      const userMessage = {
-        content,
-        entityId,
-        roomId,
-        agentId: runtime.agentId,
-      };
-
-      const memory: Memory = {
+      const userMessageMemory: Memory = {
         id: messageId,
-        agentId: runtime.agentId,
         entityId,
         roomId,
+        worldId,
+        agentId: runtime.agentId, // The agent this message is directed to
         content,
         createdAt: Date.now(),
       };
 
       logger.debug('[SPEECH CONVERSATION] Creating memory');
-      await runtime.createMemory(memory, 'messages');
+      await runtime.createMemory(userMessageMemory, 'messages');
 
       logger.debug('[SPEECH CONVERSATION] Composing state');
-      const state = await runtime.composeState(userMessage);
+      const state = await runtime.composeState(userMessageMemory);
 
       logger.debug('[SPEECH CONVERSATION] Creating context');
       const prompt = composePrompt({
@@ -1560,18 +1557,21 @@ export function agentRouter(
       logger.debug('[SPEECH CONVERSATION] Creating response memory');
 
       const responseMessage = {
-        ...userMessage,
+        ...userMessageMemory,
         content: { text: response },
         roomId: roomId as UUID,
         agentId: runtime.agentId,
       };
 
       await runtime.createMemory(responseMessage, 'messages');
-      await runtime.evaluate(memory, state);
+      await runtime.evaluate(userMessageMemory, state);
 
-      await runtime.processActions(memory, [responseMessage as Memory], state, async () => [
-        memory,
-      ]);
+      await runtime.processActions(
+        userMessageMemory,
+        [responseMessage as Memory],
+        state,
+        async () => [userMessageMemory]
+      );
 
       logger.debug('[SPEECH CONVERSATION] Generating speech response');
 
@@ -1868,6 +1868,93 @@ export function agentRouter(
           code: 'UPDATE_ERROR',
           message: 'Failed to update memory',
           details: error.message,
+        },
+      });
+    }
+  });
+
+  // Media upload endpoint for images and videos
+  router.post('/:agentId/upload-media', upload.single('file'), async (req: CustomRequest, res) => {
+    logger.debug('[MEDIA UPLOAD] Processing media upload');
+    const agentId = validateUuid(req.params.agentId);
+
+    if (!agentId) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_ID',
+          message: 'Invalid agent ID format',
+        },
+      });
+      return;
+    }
+
+    const mediaFile = req.file;
+    if (!mediaFile) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_REQUEST',
+          message: 'No media file provided',
+        },
+      });
+      return;
+    }
+
+    // Check if it's a valid media file (image or video)
+    const validImageTypes = [
+      'image/jpeg',
+      'image/png',
+      'image/gif',
+      'image/webp',
+      'image/svg+xml',
+      'image/bmp',
+    ];
+    const validVideoTypes = [
+      'video/mp4',
+      'video/webm',
+      'video/mov',
+      'video/avi',
+      'video/mkv',
+      'video/quicktime',
+    ];
+    const allValidTypes = [...validImageTypes, ...validVideoTypes];
+
+    if (!allValidTypes.includes(mediaFile.mimetype)) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_FILE_TYPE',
+          message: 'File must be an image or video',
+        },
+      });
+      return;
+    }
+
+    try {
+      // The file is already saved by multer, we just need to return the URL
+      const fileUrl = `http://localhost:3001/media/uploads/${mediaFile.filename}`;
+      const mediaType = validImageTypes.includes(mediaFile.mimetype) ? 'image' : 'video';
+
+      logger.info(`[MEDIA UPLOAD] Successfully uploaded ${mediaType}: ${mediaFile.filename}`);
+
+      res.json({
+        success: true,
+        data: {
+          url: fileUrl,
+          type: mediaType,
+          filename: mediaFile.filename,
+          originalName: mediaFile.originalname,
+          size: mediaFile.size,
+        },
+      });
+    } catch (error) {
+      logger.error(`[MEDIA UPLOAD] Error processing upload: ${error}`);
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'UPLOAD_ERROR',
+          message: 'Failed to process media upload',
         },
       });
     }

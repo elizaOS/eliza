@@ -6,19 +6,20 @@ import {
 } from '@/components/ui/chat/chat-bubble';
 import { ChatInput } from '@/components/ui/chat/chat-input';
 import { ChatMessageList } from '@/components/ui/chat/chat-message-list';
+import { ImageContent, VideoContent } from '@/components/ui/chat/media-content';
 import { USER_NAME } from '@/constants';
 import { useDeleteAllMemories, useDeleteMemory, useMessages } from '@/hooks/use-query-hooks';
 import clientLogger from '@/lib/logger';
+import { parseMediaFromText, removeMediaUrlsFromText } from '@/lib/media-utils';
 import SocketIOManager from '@/lib/socketio-manager';
 import { cn, getEntityId, moment, randomUUID } from '@/lib/utils';
 import { WorldManager } from '@/lib/world-manager';
-import type { IAttachment } from '@/types';
-import type { Agent, Content, UUID } from '@elizaos/core';
+import type { Agent, Content, UUID, Media } from '@elizaos/core';
 import { AgentStatus } from '@elizaos/core';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
 
 import { useQueryClient } from '@tanstack/react-query';
-import { ChevronRight, PanelRight, Paperclip, Send, Trash2, X } from 'lucide-react';
+import { ChevronRight, ExternalLink, PanelRight, Paperclip, Send, Trash2, X } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import AIWriter from 'react-aiwriter';
 import { AudioRecorder } from './audio-recorder';
@@ -31,6 +32,7 @@ import { useAutoScroll } from './ui/chat/hooks/useAutoScroll';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 
 import { CHAT_SOURCE } from '@/constants';
+import { apiClient } from '@/lib/api';
 
 type ExtraContentFields = {
   name: string;
@@ -79,13 +81,45 @@ function MessageContent({
         )}
 
         <div className="py-2">
-          {message.name === USER_NAME ? (
-            message.text
-          ) : shouldAnimate ? (
-            <AIWriter>{message.text}</AIWriter>
-          ) : (
-            message.text
-          )}
+          {(() => {
+            if (!message.text) return null;
+
+            // Parse media from message text
+            const mediaInfos = parseMediaFromText(message.text);
+            const textWithoutUrls = removeMediaUrlsFromText(message.text, mediaInfos);
+
+            return (
+              <div className="space-y-3">
+                {/* Display text content if there's any remaining after removing URLs */}
+                {textWithoutUrls.trim() && (
+                  <div>
+                    {message.name === USER_NAME ? (
+                      textWithoutUrls
+                    ) : shouldAnimate ? (
+                      <AIWriter>{textWithoutUrls}</AIWriter>
+                    ) : (
+                      textWithoutUrls
+                    )}
+                  </div>
+                )}
+
+                {/* Display parsed media */}
+                {mediaInfos.length > 0 && (
+                  <div className="space-y-2">
+                    {mediaInfos.map((media, index) => (
+                      <div key={`${media.url}-${index}`}>
+                        {media.type === 'image' ? (
+                          <ImageContent url={media.url} alt="Shared image" />
+                        ) : media.type === 'video' ? (
+                          <VideoContent url={media.url} isEmbed={media.isEmbed} />
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
         {!message.text &&
           message.thought &&
@@ -99,21 +133,53 @@ function MessageContent({
             <span className="italic text-muted-foreground">{message.thought}</span>
           ))}
 
-        {message.attachments?.map((attachment: IAttachment) => (
-          <div className="flex flex-col gap-1" key={`${attachment.url}-${attachment.title}`}>
-            <img
-              alt="attachment"
-              src={attachment.url}
-              width="100%"
-              height="100%"
-              className="w-64 rounded-md"
-            />
-            <div className="flex items-center justify-between gap-4">
-              <span />
-              <span />
-            </div>
-          </div>
-        ))}
+        {message.attachments
+          ?.filter((attachment) => attachment.url && attachment.url.trim() !== '')
+          .map((attachment: Media) => {
+            // Determine if it's an image or video based on contentType or URL
+            const isImage =
+              attachment.contentType?.startsWith('image/') ||
+              /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)(\?.*)?$/i.test(attachment.url);
+            const isVideo =
+              attachment.contentType?.startsWith('video/') ||
+              /\.(mp4|webm|mov|avi|mkv|flv|wmv)(\?.*)?$/i.test(attachment.url);
+
+            if (isImage) {
+              return (
+                <ImageContent
+                  key={`${attachment.url}-${attachment.title}`}
+                  url={attachment.url}
+                  alt={attachment.title || 'Attached image'}
+                />
+              );
+            } else if (isVideo) {
+              return (
+                <VideoContent
+                  key={`${attachment.url}-${attachment.title}`}
+                  url={attachment.url}
+                  isEmbed={false}
+                />
+              );
+            } else {
+              // For other file types, show a generic attachment link
+              return (
+                <div
+                  className="flex items-center gap-2 p-2 border rounded-lg bg-muted/50"
+                  key={`${attachment.url}-${attachment.title}`}
+                >
+                  <span className="text-sm">{attachment.title || 'Attachment'}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => window.open(attachment.url, '_blank')}
+                    className="h-auto p-1"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                  </Button>
+                </div>
+              );
+            }
+          })}
         {message.text && message.createdAt && (
           <ChatBubbleTimestamp timestamp={moment(message.createdAt).format('LT')} />
         )}
@@ -272,11 +338,9 @@ export default function Page({
       // setInput(prev => prev + '');
     };
 
-    const handleMessageComplete = (data: any) => {
-      // if (data.roomId === roomId) {
-      //   setMessageProcessing(false); // REMOVE - No longer using this state
-      // }
-      // We will rely on controlMessage to re-enable input
+    const handleMessageComplete = () => {
+      // setMessageProcessing(false); // REMOVE
+      // Input will be re-enabled by a controlMessage if needed
     };
 
     // Add listener for message broadcasts
@@ -284,9 +348,7 @@ export default function Page({
     const msgHandler = socketIOManager.evtMessageBroadcast.attach((data) => [
       data as unknown as ContentWithUser,
     ]);
-    const completeHandler = socketIOManager.evtMessageComplete.attach((data) => [
-      data as unknown as any,
-    ]);
+    const completeHandler = socketIOManager.evtMessageComplete.attach(handleMessageComplete);
 
     msgHandler.attach(handleMessageBroadcasting);
     completeHandler.attach(handleMessageComplete);
@@ -370,15 +432,59 @@ export default function Page({
     }
   };
 
-  const handleSendMessage = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSendMessage = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!input || inputDisabled) return; // Use inputDisabled instead of messageProcessing
+    if ((!input && !selectedFile) || inputDisabled) return; // Allow sending if there's a file even without text
 
     const messageId = randomUUID();
+    let messageText = input;
+    let attachments: Media[] = [];
+
+    // Handle file upload if a file is selected
+    if (selectedFile) {
+      try {
+        const uploadResult = await apiClient.uploadMedia(agentId, selectedFile);
+        if (uploadResult.success) {
+          // Don't add the uploaded file URL to the message text
+          const fileUrl = uploadResult.data.url;
+
+          // Create attachment for the uploaded file
+          attachments.push({
+            id: `file-${messageId}`,
+            url: fileUrl,
+            title: selectedFile.name,
+            source: 'file_upload',
+            description: `${uploadResult.data.type} uploaded by user`,
+            text: '',
+            contentType: uploadResult.data.type,
+          });
+        }
+      } catch (error) {
+        console.error('Failed to upload file:', error);
+        // Continue with message sending even if file upload fails
+      }
+    }
+
+    // Parse media from the input text to include in message data
+    const mediaInfos = parseMediaFromText(messageText);
+
+    // Create attachments array from parsed media for model processing
+    const mediaAttachments = mediaInfos.map((media, index) => ({
+      id: `media-${messageId}-${index}`,
+      url: media.url,
+      title: media.type === 'image' ? 'Image' : 'Video',
+      source: 'user_input',
+      description: `${media.type} shared by user`,
+      text: '',
+      contentType: media.type === 'image' ? 'image' : 'video',
+    }));
+
+    // Combine file attachments and media attachments
+    const allAttachments = [...attachments, ...mediaAttachments];
 
     // Always add the user's message immediately to the UI before sending it to the server
     const userMessage: ContentWithUser = {
-      text: input,
+      text: messageText,
       name: USER_NAME,
       createdAt: Date.now(),
       senderId: entityId,
@@ -386,6 +492,7 @@ export default function Page({
       roomId: roomId,
       source: CHAT_SOURCE,
       id: messageId, // Add a unique ID for React keys and duplicate detection
+      attachments: allAttachments.length > 0 ? allAttachments : undefined,
     };
 
     console.log('[Chat] Adding user message to UI:', userMessage);
@@ -412,7 +519,12 @@ export default function Page({
     );
 
     // Send the message to the server/agent
-    socketIOManager.sendMessage(input, roomId, CHAT_SOURCE);
+    socketIOManager.sendMessage(
+      messageText,
+      roomId,
+      CHAT_SOURCE,
+      allAttachments.length > 0 ? allAttachments : undefined
+    );
 
     // setMessageProcessing(true); // REMOVE
     // Input will be disabled by a controlMessage if needed
@@ -429,7 +541,7 @@ export default function Page({
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file?.type.startsWith('image/')) {
+    if (file && (file.type.startsWith('image/') || file.type.startsWith('video/'))) {
       setSelectedFile(file);
     }
   };
@@ -586,13 +698,21 @@ export default function Page({
                     >
                       <X />
                     </Button>
-                    <img
-                      alt="Selected file"
-                      src={URL.createObjectURL(selectedFile)}
-                      height="100%"
-                      width="100%"
-                      className="aspect-square object-contain w-16"
-                    />
+                    {selectedFile.type.startsWith('image/') ? (
+                      <img
+                        alt="Selected file"
+                        src={URL.createObjectURL(selectedFile)}
+                        height="100%"
+                        width="100%"
+                        className="aspect-square object-contain w-16"
+                      />
+                    ) : selectedFile.type.startsWith('video/') ? (
+                      <video
+                        src={URL.createObjectURL(selectedFile)}
+                        className="aspect-square object-contain w-16"
+                        muted
+                      />
+                    ) : null}
                   </div>
                 </div>
               ) : null}
@@ -629,13 +749,13 @@ export default function Page({
                         type="file"
                         ref={fileInputRef}
                         onChange={handleFileChange}
-                        accept="image/*"
+                        accept="image/*,video/*"
                         className="hidden"
                       />
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="left">
-                    <p>Attach file</p>
+                    <p>Attach image or video</p>
                   </TooltipContent>
                 </Tooltip>
                 <AudioRecorder
