@@ -249,7 +249,7 @@ describe('Room Integration Tests', () => {
       await adapter.deleteRoomsByWorldId(roomTestWorldId);
 
       // Verify only the targeted room was deleted
-      const rooms = await adapter.getRoomsByIds([roomWithServerId.id, otherRoom.id]);
+      const rooms = await adapter.getRoomsByIds([room1.id, room2.id]);
       expect(rooms?.length).toBe(0);
     });
   });
