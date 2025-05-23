@@ -10,6 +10,9 @@ If a user asks {{agentName}} to be quiet, respond with STOP action.
 If {{agentName}} should ignore the message, respond with IGNORE action.</instructions>
 
 <output>
+Do NOT include any thinking, reasoning, or <think> sections in your response. 
+Go directly to the XML response format without any preamble or explanation.
+
 Respond using XML format like this:
 <response>
   <name>{{agentName}}</name>
@@ -17,7 +20,7 @@ Respond using XML format like this:
   <action>RESPOND | IGNORE | STOP</action>
 </response>
 
-Your response should ONLY include the <response></response> XML block.
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.
 </output>`;
 
 export const messageHandlerTemplate = `<task>Generate dialog and actions for the character {{agentName}}.</task>
@@ -46,6 +49,9 @@ First, think about what you want to do next and plan your actions. Then, write t
 </keys>
 
 <output>
+Do NOT include any thinking, reasoning, or <think> sections in your response. 
+Go directly to the XML response format without any preamble or explanation.
+
 Respond using XML format like this:
 <response>
     <thought>Your thought here</thought>
@@ -55,7 +61,7 @@ Respond using XML format like this:
     <simple>true|false</simple>
 </response>
 
-Your response must ONLY include the <response></response> XML block.
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.
 </output>`;
 
 export const postCreationTemplate = `# Task: Create a post in the voice and style and perspective of {{agentName}} @{{twitterUserName}}.
@@ -98,6 +104,10 @@ Your output should be formatted in XML like this:
 The "post" field should be the post you want to send. Do not including any thinking or internal reflection in the "post" field.
 The "imagePrompt" field is optional and should be a prompt for an image that is relevant to the post. It should be a single sentence that captures the essence of the post. ONLY USE THIS FIELD if it makes sense that the post would benefit from an image.
 The "thought" field should be a short description of what the agent is thinking about before responding, inlcuding a brief justification for the response. Includate an explanation how the post is relevant to the topic but unique and different than other posts.
-Your reponse should ONLY contain the XML block.`;
+
+Do NOT include any thinking, reasoning, or <think> sections in your response. 
+Go directly to the XML response format without any preamble or explanation.
+
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
 
 export const booleanFooter = 'Respond with only a YES or a NO.';
