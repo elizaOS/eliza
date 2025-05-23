@@ -86,7 +86,7 @@ describe('Entity Integration Tests', () => {
       const retrievedEntities = await adapter.getEntityByIds([entity.id]);
       expect(retrievedEntities).not.toBeNull();
       expect(retrievedEntities?.length).toBe(1);
-      if (!retrievedEntities) return;
+
       const retrievedEntity = retrievedEntities[0];
       expect(retrievedEntity?.id).toBe(entity.id);
       expect(retrievedEntity?.names).toEqual(entity.names);
@@ -129,7 +129,6 @@ describe('Entity Integration Tests', () => {
 
       const retrievedEntities = await adapter.getEntityByIds([entity.id]);
       expect(retrievedEntities).not.toBeNull();
-      if (!retrievedEntities) return;
       const retrievedEntity = retrievedEntities[0];
       expect(retrievedEntity?.names).toEqual([]);
     });
@@ -147,7 +146,6 @@ describe('Entity Integration Tests', () => {
 
       const retrievedEntities = await adapter.getEntityByIds([entity.id]);
       expect(retrievedEntities).not.toBeNull();
-      if (!retrievedEntities) return;
       const retrievedEntity = retrievedEntities[0];
       expect(retrievedEntity?.metadata).toEqual({});
     });
@@ -162,7 +160,6 @@ describe('Entity Integration Tests', () => {
       // Retrieve entity
       const retrievedEntities = await adapter.getEntityByIds([entity.id]);
       expect(retrievedEntities).not.toBeNull();
-      if (!retrievedEntities) return;
       const retrievedEntity = retrievedEntities[0];
       expect(retrievedEntity?.id).toBe(entity.id);
       expect(retrievedEntity?.names).toEqual(entity.names);
@@ -199,7 +196,6 @@ describe('Entity Integration Tests', () => {
       // Retrieve updated entity
       const retrievedEntities = await adapter.getEntityByIds([entity.id]);
       expect(retrievedEntities).not.toBeNull();
-      if (!retrievedEntities) return;
       const retrievedEntity = retrievedEntities[0];
 
       expect(retrievedEntity?.names).toEqual(updatedEntity.names);
@@ -223,7 +219,6 @@ describe('Entity Integration Tests', () => {
       // Retrieve updated entity
       const retrievedEntities = await adapter.getEntityByIds([entity.id]);
       expect(retrievedEntities).not.toBeNull();
-      if (!retrievedEntities) return;
       const retrievedEntity = retrievedEntities[0];
       expect(retrievedEntity?.names).toEqual(partialUpdate.names);
       // Metadata should remain unchanged
