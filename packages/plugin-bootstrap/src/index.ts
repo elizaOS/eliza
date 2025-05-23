@@ -359,6 +359,15 @@ const messageReceivedHandler = async ({
           if (responseContent && message.id) {
             responseContent.inReplyTo = createUniqueUuid(runtime, message.id);
 
+            // Automatically determine if response is simple based on providers and actions
+            // Simple = REPLY action with no providers used
+            const isSimple =
+              responseContent.actions?.length === 1 &&
+              responseContent.actions[0].toUpperCase() === 'REPLY' &&
+              (!responseContent.providers || responseContent.providers.length === 0);
+
+            responseContent.simple = isSimple;
+
             const responseMesssage = {
               id: asUUID(v4()),
               entityId: runtime.agentId,
@@ -381,14 +390,7 @@ const messageReceivedHandler = async ({
             state = await runtime.composeState(message, responseContent?.providers || []);
           }
 
-          if (
-            responseContent &&
-            responseContent.simple &&
-            responseContent.text &&
-            (responseContent.actions?.length === 0 ||
-              (responseContent.actions?.length === 1 &&
-                responseContent.actions[0].toUpperCase() === 'REPLY'))
-          ) {
+          if (responseContent && responseContent.simple && responseContent.text) {
             await callback(responseContent);
           } else {
             await runtime.processActions(message, responseMessages, state, callback);
