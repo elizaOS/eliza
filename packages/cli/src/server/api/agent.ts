@@ -1,5 +1,5 @@
 import type { AgentServer } from '@/src/server';
-import { upload } from '@/src/server/loader';
+import { upload } from '@/src/server/upload';
 import { convertToAudioBuffer } from '@/src/utils';
 import type {
   Agent,
@@ -1933,7 +1933,7 @@ export function agentRouter(
 
     try {
       // The file is already saved by multer, we just need to return the URL
-      const fileUrl = `http://localhost:3001/media/uploads/${mediaFile.filename}`;
+      const fileUrl = `http://localhost:${req.get('host')?.split(':')[1] || '3000'}/media/uploads/${agentId}/${mediaFile.filename}`;
       const mediaType = validImageTypes.includes(mediaFile.mimetype) ? 'image' : 'video';
 
       logger.info(`[MEDIA UPLOAD] Successfully uploaded ${mediaType}: ${mediaFile.filename}`);
