@@ -435,12 +435,14 @@ export class AgentRuntime implements IAgentRuntime {
         let agentEntity = await this.getEntityById(this.agentId);
         if (!agentEntity) {
           span.addEvent('creating_agent_entity');
-          const created = await this.adapter.createEntity({
-            id: this.agentId,
-            names: [this.character.name],
-            metadata: {},
-            agentId: existingAgent.id,
-          });
+          const created = await this.adapter.createEntities([
+            {
+              id: this.agentId,
+              names: [this.character.name],
+              metadata: {},
+              agentId: existingAgent.id,
+            },
+          ]);
           if (!created) {
             const errorMsg = `Failed to create entity for agent ${this.agentId}`;
             span.setStatus({ code: SpanStatusCode.ERROR, message: errorMsg });
