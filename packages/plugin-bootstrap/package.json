@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-bootstrap",
-  "version": "1.0.0-beta.73",
+  "version": "1.0.0-beta.74",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -26,7 +26,7 @@
     "tsup.config.ts"
   ],
   "dependencies": {
-    "@elizaos/core": "^1.0.0-beta.73"
+    "@elizaos/core": "^1.0.0-beta.74"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",
@@ -52,5 +52,5 @@
   "publishConfig": {
     "access": "public"
   },
-  "gitHead": "6c367b48e9948cb4f91e0a072448f8db46a28a8e"
+  "gitHead": "ae9bf70c95127fb5399f626912a17b9db15eaacb"
 }
