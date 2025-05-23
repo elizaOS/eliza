@@ -34,6 +34,8 @@ jobs:
           sudo apt -y install build-essential pkg-config libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev libvips-dev
 
       - name: Install dependencies
+        env:
+          SHARP_IGNORE_GLOBAL_LIBVIPS: '1'
         run: bun install
 
       - name: Build packages
