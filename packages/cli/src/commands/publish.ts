@@ -287,6 +287,127 @@ async function savePackageToRegistry(packageMetadata, dryRun = false) {
   }
 }
 
+/**
+ * Get or prompt for NPM username and ensure authentication
+ */
+async function getNpmUsername(): Promise<string> {
+  console.info(
+    'NPM authentication required for registry compliance (package name must match potential NPM package).'
+  );
+
+  try {
+    // Check if already logged in
+    const { stdout } = await execa('npm', ['whoami']);
+    const currentUser = stdout.trim();
+    console.info(`Found existing NPM login: ${currentUser}`);
+
+    // Ask if they want to use this account or login with a different one
+    const { useExisting } = await prompts({
+      type: 'confirm',
+      name: 'useExisting',
+      message: `Use NPM account "${currentUser}" for package naming?`,
+      initial: true,
+    });
+
+    if (useExisting) {
+      return currentUser;
+    } else {
+      // They want to use a different account, prompt for login
+      console.info('Please login with your desired NPM account...');
+      await execa('npm', ['login'], { stdio: 'inherit' });
+
+      // Get the new username after login
+      const { stdout: newStdout } = await execa('npm', ['whoami']);
+      const newUser = newStdout.trim();
+      console.info(`Logged in as: ${newUser}`);
+      return newUser;
+    }
+  } catch (error) {
+    // Not logged in, prompt for login
+    console.info('Not logged into NPM. Please login to continue...');
+    try {
+      await execa('npm', ['login'], { stdio: 'inherit' });
+
+      // Get username after successful login
+      const { stdout } = await execa('npm', ['whoami']);
+      const username = stdout.trim();
+      console.info(`Successfully logged in as: ${username}`);
+      return username;
+    } catch (loginError) {
+      console.error('NPM login failed. Registry compliance requires a valid NPM account.');
+      process.exit(1);
+    }
+  }
+}
+
+/**
+ * Validate plugin requirements
+ */
+async function validatePluginRequirements(cwd: string, packageJson: any): Promise<void> {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  // Check plugin naming convention (this is still a hard error)
+  const packageName = packageJson.name.split('/').pop() || packageJson.name;
+  if (!packageName.startsWith('plugin-')) {
+    errors.push(
+      'Plugin name must start with "plugin-". Please update your package name and try again.'
+    );
+  }
+
+  // Check if description is still the default generated one (warning)
+  const pluginDirName = path.basename(process.cwd());
+  const expectedDefaultDesc = `ElizaOS plugin for ${pluginDirName.replace('plugin-', '')}`;
+  if (
+    packageJson.description === expectedDefaultDesc ||
+    packageJson.description === '${PLUGINDESCRIPTION}'
+  ) {
+    warnings.push(
+      'Description appears to be the default generated description. Consider writing a custom description.'
+    );
+  }
+
+  // Check for required images (warnings)
+  const imagesDir = path.join(cwd, 'images');
+  const logoPath = path.join(imagesDir, 'logo.jpg');
+  const bannerPath = path.join(imagesDir, 'banner.jpg');
+
+  if (!existsSync(logoPath)) {
+    warnings.push('Missing required logo.jpg in images/ directory (400x400px, max 500KB).');
+  }
+
+  if (!existsSync(bannerPath)) {
+    warnings.push('Missing required banner.jpg in images/ directory (1280x640px, max 1MB).');
+  }
+
+  // Handle hard errors (must be fixed)
+  if (errors.length > 0) {
+    console.error('Plugin validation failed:');
+    errors.forEach((error) => console.error(`  - ${error}`));
+    console.error('\nPlease fix these issues and try publishing again.');
+    process.exit(1);
+  }
+
+  // Handle warnings (can be bypassed)
+  if (warnings.length > 0) {
+    console.warn('Plugin validation warnings:');
+    warnings.forEach((warning) => console.warn(`  - ${warning}`));
+    console.warn('\nYour plugin may get rejected if you submit without addressing these issues.');
+
+    const { proceed } = await prompts({
+      type: 'confirm',
+      name: 'proceed',
+      message: 'Do you wish to continue anyway?',
+      initial: false,
+    });
+
+    if (!proceed) {
+      console.info('Publishing cancelled. Please address the warnings and try again.');
+      process.exit(0);
+    }
+  }
+}
+
 export const publish = new Command()
   .name('publish')
   .description('Publish a plugin to the registry)')
@@ -303,6 +424,15 @@ export const publish = new Command()
 
       // Check for CLI updates
       const cliVersion = await checkCliVersion();
+
+      // Get the plugin directory name (should be plugin-*)
+      const pluginDirName = path.basename(process.cwd());
+
+      // Validate we're in a plugin directory
+      if (!pluginDirName.startsWith('plugin-')) {
+        console.error('This command must be run from a plugin directory (plugin-*)');
+        process.exit(1);
+      }
 
       // Validate data directory and settings
       const isValid = await validateDataDir();
@@ -475,31 +605,75 @@ export const publish = new Command()
         credentials = newCredentials;
       }
 
-      // Ensure repository URL is in the correct format for GitHub
-      if (!opts.npm) {
-        // Only if we're publishing to GitHub
-        // Extract the package name without scope
-        const packageName = packageJson.name.replace(/^@elizaos\//, '');
+      // Get NPM username for registry compliance
+      const npmUsername = await getNpmUsername();
+      console.info(`Using NPM username: ${npmUsername}`);
 
-        if (!packageJson.repository) {
-          // If repository field doesn't exist, create it
-          packageJson.repository = {
-            type: 'git',
-            url: `github:${credentials.username}/${packageName}`,
-          };
-          console.info(`Set repository URL to: ${packageJson.repository.url}`);
-        } else if (
-          !packageJson.repository.url ||
-          !packageJson.repository.url.includes(credentials.username)
-        ) {
-          // Update repository URL to include the correct username
-          packageJson.repository.url = `github:${credentials.username}/${packageName}`;
-          console.info(`Updated repository URL to: ${packageJson.repository.url}`);
-        }
+      // Replace ALL placeholders in package.json
+      console.info('Updating package.json with actual values...');
 
-        // Save updated package.json
-        await fs.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2), 'utf-8');
+      // Replace npm-username with actual NPM username
+      if (packageJson.name.includes('npm-username')) {
+        packageJson.name = packageJson.name.replace('npm-username', npmUsername);
+        console.info(`Set package org: @${npmUsername}`);
       }
+
+      // Replace plugin-name with actual plugin directory name
+      if (packageJson.name.includes('plugin-name')) {
+        packageJson.name = packageJson.name.replace('plugin-name', pluginDirName);
+        console.info(`Set package name: ${packageJson.name}`);
+      }
+
+      // Replace description placeholder
+      if (packageJson.description === '${PLUGINDESCRIPTION}') {
+        const simpleName = pluginDirName.replace('plugin-', '');
+        packageJson.description = `ElizaOS plugin for ${simpleName}`;
+        console.info(`Set description: ${packageJson.description}`);
+      }
+
+      // Replace repository URL placeholder
+      if (
+        packageJson.repository &&
+        (packageJson.repository.url === '${REPO_URL}' || packageJson.repository.url === '')
+      ) {
+        packageJson.repository.url = `github:${credentials.username}/${pluginDirName}`;
+        console.info(`Set repository: ${packageJson.repository.url}`);
+      } else if (!packageJson.repository) {
+        packageJson.repository = {
+          type: 'git',
+          url: `github:${credentials.username}/${pluginDirName}`,
+        };
+        console.info(`Set repository: ${packageJson.repository.url}`);
+      }
+
+      // Replace bugs URL placeholder
+      if (
+        packageJson.bugs &&
+        packageJson.bugs.url &&
+        packageJson.bugs.url.includes('${GITHUB_USERNAME}')
+      ) {
+        packageJson.bugs.url = packageJson.bugs.url
+          .replace('${GITHUB_USERNAME}', credentials.username)
+          .replace('${PLUGINNAME}', pluginDirName);
+        console.info(`Set bugs URL: ${packageJson.bugs.url}`);
+      }
+
+      // Replace author placeholder
+      if (packageJson.author === '${GITHUB_USERNAME}') {
+        packageJson.author = credentials.username;
+        console.info(`Set author: ${packageJson.author}`);
+      }
+
+      // Extract final plugin name for use in publishing
+      const finalPluginName = packageJson.name.startsWith('@')
+        ? packageJson.name.split('/')[1]
+        : packageJson.name;
+
+      // Save updated package.json
+      await fs.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2), 'utf-8');
+
+      // Validate plugin requirements
+      await validatePluginRequirements(cwd, packageJson);
 
       // Update registry settings
       const settings = await getRegistrySettings();
@@ -527,7 +701,7 @@ export const publish = new Command()
 
       // Handle dry run mode (create local registry files)
       if (opts.dryRun) {
-        console.info(`Running dry run for ${detectedType} registry publication...`);
+        console.info(`Running dry run for plugin registry publication...`);
 
         // Save package to local registry
         const success = await savePackageToRegistry(packageMetadata, true);
@@ -546,7 +720,7 @@ export const publish = new Command()
       }
 
       if (opts.test) {
-        console.info(`Running ${detectedType} publish tests...`);
+        console.info(`Running plugin publish tests...`);
 
         if (opts.npm) {
           console.info('\nTesting npm publishing:');
@@ -584,23 +758,24 @@ export const publish = new Command()
         return;
       }
 
-      // Handle actual publishing
-
       // Variable to store PR URL if one is created during GitHub publishing
       let publishResult: boolean | { success: boolean; prUrl?: string } = false;
       let registryPrUrl: string = null;
 
       // Handle npm publishing
       if (opts.npm) {
-        console.info(`Publishing ${detectedType} to npm...`);
+        console.info(`Publishing plugin to npm...`);
 
-        // Check if logged in to npm
-        try {
-          await execa('npm', ['whoami'], { stdio: 'inherit' });
-        } catch (error) {
-          console.error("Not logged in to npm. Please run 'npm login' first.");
-          process.exit(1);
+        // Update npmPackage field if it's a placeholder or not set
+        if (!packageJson.npmPackage || packageJson.npmPackage === '${NPM_PACKAGE}') {
+          packageJson.npmPackage = packageJson.name;
+          console.info(`Set npmPackage to: ${packageJson.npmPackage}`);
+
+          // Save updated package.json
+          await fs.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2), 'utf-8');
         }
+
+        console.info(`Publishing as npm user: ${npmUsername}`);
 
         // Build the package
         console.info('Building package...');
@@ -630,11 +805,11 @@ export const publish = new Command()
         }
 
         console.log(
-          `Successfully published ${detectedType} ${packageJson.name}@${packageJson.version} to GitHub`
+          `Successfully published plugin ${packageJson.name}@${packageJson.version} to GitHub`
         );
 
         // Add GitHub repo info to metadata
-        packageMetadata.githubRepo = `${credentials.username}/${packageJson.name}`;
+        packageMetadata.githubRepo = `${credentials.username}/${finalPluginName}`;
 
         // Store PR URL if returned from publishToGitHub
         if (typeof publishResult === 'object' && publishResult.prUrl) {
@@ -643,8 +818,8 @@ export const publish = new Command()
         }
       }
 
-      // Handle registry publication - only for plugins, not for projects
-      if (!opts.skipRegistry && detectedType === 'plugin') {
+      // Handle registry publication
+      if (!opts.skipRegistry) {
         console.info('Publishing to registry...');
 
         if (userIsMaintainer) {
@@ -653,8 +828,6 @@ export const publish = new Command()
             console.info('Registry PR was created during GitHub publishing process.');
           } else {
             // For npm publishing, we need to use the npm-specific publishing flow
-            // In a future version, this should be refactored to use publishToGitHub
-            // with npm-specific options instead of duplicating PR creation logic
             console.warn('NPM publishing currently does not update the registry.');
             console.info('To include this package in the registry:');
             console.info('1. Fork the registry repository at https://github.com/elizaos/registry');
@@ -669,37 +842,14 @@ export const publish = new Command()
           console.info('2. Add your package metadata');
           console.info('3. Submit a pull request to the main repository');
         }
-      } else if (detectedType === 'project') {
-        console.info('Skipping registry publication for projects');
-      } else if (opts.skipRegistry) {
+      } else {
         console.info('Skipping registry publication as requested with --skip-registry flag');
       }
 
-      console.log(
-        `Successfully published ${detectedType} ${packageJson.name}@${packageJson.version}`
-      );
+      console.log(`Successfully published plugin ${packageJson.name}@${packageJson.version}`);
 
-      // Add a tailored next steps message based on package type
-      if (detectedType === 'plugin') {
-        console.log('\nYour plugin is now available at:');
-        console.log(
-          `https://github.com/${credentials.username}/${packageJson.name.replace(/^@elizaos\//, '')}`
-        );
-
-        if (!opts.skipRegistry) {
-          console.log('\nAfter your registry PR is merged, users will be able to install it with:');
-          console.log(`elizaos plugins add ${packageJson.name}`);
-        }
-      } else {
-        console.log('\nYour project is now available at:');
-        console.log(
-          `https://github.com/${credentials.username}/${packageJson.name.replace(/^@elizaos\//, '')}`
-        );
-        console.log('\nUsers can clone and use your project with:');
-        console.log(
-          `git clone https://github.com/${credentials.username}/${packageJson.name.replace(/^@elizaos\//, '')}`
-        );
-      }
+      console.log('\nYour plugin is now available at:');
+      console.log(`https://github.com/${credentials.username}/${finalPluginName}`);
     } catch (error) {
       handleError(error);
     }
