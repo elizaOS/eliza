@@ -1,30 +1,22 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { bootstrapPlugin } from '../src/index';
 import {
+  ActionEventPayload,
+  ChannelType,
+  Content,
+  EntityPayload,
+  EvaluatorEventPayload,
   EventType,
+  HandlerCallback,
   IAgentRuntime,
   Memory,
-  ModelType,
-  UUID,
   MessagePayload,
-  Content,
+  ModelType,
   State,
-  EntityPayload,
-  WorldPayload,
-  InvokePayload,
-  ActionEventPayload,
-  EvaluatorEventPayload,
-  ChannelType,
-  HandlerCallback,
+  UUID,
 } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
-import {
-  createMockMemory,
-  createMockRuntime,
-  createMockState,
-  MockRuntime,
-  setupActionTest,
-} from './test-utils';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { bootstrapPlugin } from '../src/index';
+import { MockRuntime, setupActionTest } from './test-utils';
 
 // Helper to create unique mock IDs
 const createMockId = () => uuidv4() as UUID;
@@ -71,8 +63,17 @@ describe('Message Handler Logic', () => {
             recentMessages: 'User: Test message',
           },
           data: {
-            room: { id: 'test-room-id', type: 'group' },
+            room: { id: 'test-room-id', type: ChannelType.GROUP },
           },
+        }),
+
+        getRoom: vi.fn().mockResolvedValue({
+          id: 'test-room-id',
+          name: 'Test Room',
+          type: ChannelType.GROUP,
+          worldId: 'test-world-id',
+          serverId: 'test-server-id',
+          source: 'test',
         }),
 
         getParticipantUserState: vi.fn().mockResolvedValue('ACTIVE'),

@@ -1,4 +1,6 @@
 import { defineConfig } from 'tsup';
+import { copy } from 'esbuild-plugin-copy';
+import path from 'path';
 
 export default defineConfig({
   clean: true,
@@ -25,4 +27,14 @@ const require = createRequire(import.meta.url);
       '@/src': './src',
     };
   },
+  esbuildPlugins: [
+    copy({
+      assets: {
+        from: [
+          path.resolve(__dirname, '../../node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs'),
+        ],
+        to: [path.resolve(__dirname, 'dist')],
+      },
+    }),
+  ],
 });

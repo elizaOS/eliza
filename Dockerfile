@@ -6,6 +6,7 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     build-essential \
     curl \
+    ffmpeg \
     g++ \
     git \
     make \
@@ -33,6 +34,7 @@ WORKDIR /app
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     curl \
+    ffmpeg \
     git \
     python3 \
     unzip && \
@@ -53,5 +55,6 @@ COPY --from=builder /app/scripts ./scripts
 ENV NODE_ENV=production
 
 EXPOSE 3000
+EXPOSE 50000-50100/udp
 
 CMD ["bun", "run", "start"]

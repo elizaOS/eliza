@@ -1140,7 +1140,6 @@ export const bootstrapPlugin: Plugin = {
   providers: [
     providers.evaluatorsProvider,
     providers.anxietyProvider,
-    providers.knowledgeProvider,
     providers.timeProvider,
     providers.entitiesProvider,
     providers.relationshipsProvider,

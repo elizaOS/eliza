@@ -1,4 +1,4 @@
-import { character as defaultCharacter } from '@/src/characters/eliza';
+import { character as defaultCharacter, getElizaCharacter } from '@/src/characters/eliza';
 import { AgentServer } from '@/src/server/index';
 import { jsonToCharacter, loadCharacterTryPath } from '@/src/server/loader';
 import {
@@ -669,13 +669,15 @@ const startAgents = async (options: {
 
         if (startedAgents.length === 0) {
           logger.info('No project agents started - falling back to default Eliza character');
-          await startAgent(defaultCharacter, server);
+          const elizaCharacter = getElizaCharacter();
+          await startAgent(elizaCharacter, server);
         } else {
           logger.info(`Successfully started ${startedAgents.length} agents from project`);
         }
       } else {
         logger.info('Project found but no agents defined, falling back to default Eliza character');
-        await startAgent(defaultCharacter, server);
+        const elizaCharacter = getElizaCharacter();
+        await startAgent(elizaCharacter, server);
       }
     } else if (isPlugin && pluginModule) {
       // Before starting with the plugin, prompt for any environment variables it needs
@@ -713,10 +715,12 @@ const startAgents = async (options: {
       });
       logger.info('Character started with plugin successfully');
     } else {
-      // When not in a project or plugin, load the default character with all plugins
-      const { character: defaultElizaCharacter } = await import('../characters/eliza');
-      logger.info('Using default Eliza character with all plugins');
-      await startAgent(defaultElizaCharacter, server);
+      // When not in a project or plugin, use the environment-aware character
+      const elizaCharacter = getElizaCharacter();
+      logger.info(
+        `Using default Eliza character with plugins: ${elizaCharacter.plugins.join(', ')}`
+      );
+      await startAgent(elizaCharacter, server);
     }
 
     // Display link to the client UI

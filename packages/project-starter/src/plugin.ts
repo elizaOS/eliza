@@ -203,6 +203,7 @@ const plugin: Plugin = {
   },
   routes: [
     {
+      name: 'helloworld',
       path: '/helloworld',
       type: 'GET',
       handler: async (_req: any, res: any) => {

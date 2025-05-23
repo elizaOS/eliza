@@ -102,7 +102,74 @@ export const ModelType = {
   OBJECT_LARGE: 'OBJECT_LARGE',
 } as const;
 
-export type ServiceTypeName = (typeof ServiceType)[keyof typeof ServiceType];
+/**
+ * Core service type registry that can be extended by plugins via module augmentation.
+ * Plugins can extend this interface to add their own service types:
+ *
+ * @example
+ * ```typescript
+ * declare module '@elizaos/core' {
+ *   interface ServiceTypeRegistry {
+ *     MY_CUSTOM_SERVICE: 'my_custom_service';
+ *   }
+ * }
+ * ```
+ */
+export interface ServiceTypeRegistry {
+  TRANSCRIPTION: 'transcription';
+  VIDEO: 'video';
+  BROWSER: 'browser';
+  PDF: 'pdf';
+  REMOTE_FILES: 'aws_s3';
+  WEB_SEARCH: 'web_search';
+  EMAIL: 'email';
+  TEE: 'tee';
+  TASK: 'task';
+  INSTRUMENTATION: 'instrumentation';
+}
+
+/**
+ * Type for service names that includes both core services and any plugin-registered services
+ */
+export type ServiceTypeName = ServiceTypeRegistry[keyof ServiceTypeRegistry];
+
+/**
+ * Helper type to extract service type values from the registry
+ */
+export type ServiceTypeValue<K extends keyof ServiceTypeRegistry> = ServiceTypeRegistry[K];
+
+/**
+ * Helper type to check if a service type exists in the registry
+ */
+export type IsValidServiceType<T extends string> = T extends ServiceTypeName ? true : false;
+
+/**
+ * Type-safe service class definition
+ */
+export type TypedServiceClass<T extends ServiceTypeName> = {
+  new (runtime?: IAgentRuntime): Service;
+  serviceType: T;
+  start(runtime: IAgentRuntime): Promise<Service>;
+};
+
+/**
+ * Map of service type names to their implementation classes
+ */
+export interface ServiceClassMap {
+  // Core services will be added here, plugins extend via module augmentation
+}
+
+/**
+ * Helper to infer service instance type from service type name
+ */
+export type ServiceInstance<T extends ServiceTypeName> = T extends keyof ServiceClassMap
+  ? InstanceType<ServiceClassMap[T]>
+  : Service;
+
+/**
+ * Runtime service registry type
+ */
+export type ServiceRegistry<T extends ServiceTypeName = ServiceTypeName> = Map<T, Service>;
 
 /**
  * Enumerates the recognized types of services that can be registered and used by the agent runtime.
@@ -123,7 +190,7 @@ export const ServiceType = {
   TEE: 'tee',
   TASK: 'task',
   INSTRUMENTATION: 'instrumentation',
-} as const;
+} as const satisfies ServiceTypeRegistry;
 
 /**
  * Represents the current state or context of a conversation or agent interaction.
@@ -607,7 +674,7 @@ export type Route = {
   path: string;
   filePath?: string;
   public?: boolean;
-  name: string extends { public: true } ? string : string | undefined;
+  name?: string extends { public: true } ? string : string | undefined;
   handler?: (req: any, res: any, runtime: IAgentRuntime) => Promise<void>;
 };
 
@@ -917,7 +984,7 @@ export interface IDatabaseAdapter {
 
   deleteRoom(roomId: UUID): Promise<void>;
 
-  deleteRoomsByServerId(serverId: UUID): Promise<void>;
+  deleteRoomsByWorldId(worldId: UUID): Promise<void>;
 
   updateRoom(room: Room): Promise<void>;
 
@@ -992,6 +1059,12 @@ export interface IDatabaseAdapter {
   getTasksByName(name: string): Promise<Task[]>;
   updateTask(id: UUID, task: Partial<Task>): Promise<void>;
   deleteTask(id: UUID): Promise<void>;
+
+  getMemoriesByWorldId(params: {
+    worldId: UUID;
+    count?: number;
+    tableName?: string;
+  }): Promise<Memory[]>;
 }
 
 /**
@@ -1103,20 +1176,6 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   initialize(): Promise<void>;
 
   getConnection(): Promise<PGlite | PgPool>;
-
-  getKnowledge(
-    message: Memory,
-    scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID }
-  ): Promise<KnowledgeItem[]>;
-  addKnowledge(
-    item: KnowledgeItem,
-    options: {
-      targetTokens: number;
-      overlap: number;
-      modelContextSize: number;
-    },
-    scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID }
-  ): Promise<void>;
 
   getService<T extends Service>(service: ServiceTypeName | string): T | null;
 

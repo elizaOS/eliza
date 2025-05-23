@@ -6,6 +6,14 @@ import pkg from 'stream-browserify';
 
 import { names, uniqueNamesGenerator } from 'unique-names-generator';
 import { z } from 'zod';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
+
+// Explicitly set the workerSrc.
+// This tells pdf.js where to load its worker script from.
+// Your application's build process (e.g., for packages/cli) must ensure that
+// 'pdf.worker.mjs' is available at a path relative to the main script or application root.
+// A common setup is to copy 'node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs' to the output directory.
+pdfjsLib.GlobalWorkerOptions.workerSrc = './pdf.worker.mjs';
 
 import logger from './logger';
 import type { Content, Entity, IAgentRuntime, Memory, State, TemplateType } from './types';

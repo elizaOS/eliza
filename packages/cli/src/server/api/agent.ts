@@ -9,6 +9,7 @@ import type {
   IAgentRuntime,
   Memory,
   UUID,
+  KnowledgeItem,
 } from '@elizaos/core';
 import {
   ChannelType,
@@ -1276,7 +1277,7 @@ export function agentRouter(
       }
 
       try {
-        const audioBuffer = fs.readFileSync(audioFile.path);
+        const audioBuffer = await fs.promises.readFile(audioFile.path);
         const transcription = await runtime.useModel(ModelType.TRANSCRIPTION, audioBuffer);
 
         // Process the transcribed text as a message
@@ -1648,7 +1649,7 @@ export function agentRouter(
 
       try {
         logger.debug('[TRANSCRIPTION] Reading audio file');
-        const audioBuffer = fs.readFileSync(audioFile.path);
+        const audioBuffer = await fs.promises.readFile(audioFile.path);
 
         logger.debug('[TRANSCRIPTION] Transcribing audio');
         const transcription = await runtime.useModel(ModelType.TRANSCRIPTION, audioBuffer);
@@ -1877,64 +1878,55 @@ export function agentRouter(
     const agentId = validateUuid(req.params.agentId);
 
     if (!agentId) {
-      res.status(400).json({
-        success: false,
-        error: {
-          code: 'INVALID_ID',
-          message: 'Invalid agent ID format',
-        },
-      });
+      sendError(res, 400, 'INVALID_ID', 'Invalid agent ID format');
       return;
     }
 
     const runtime = agents.get(agentId);
 
     if (!runtime) {
-      res.status(404).json({
-        success: false,
-        error: {
-          code: 'NOT_FOUND',
-          message: 'Agent not found',
-        },
-      });
+      sendError(res, 404, 'NOT_FOUND', 'Agent not found');
       return;
     }
 
     const files = req.files as Express.Multer.File[];
 
     if (!files || files.length === 0) {
-      res.status(400).json({
-        success: false,
-        error: {
-          code: 'NO_FILES',
-          message: 'No files uploaded',
-        },
-      });
+      sendError(res, 400, 'NO_FILES', 'No files uploaded');
       return;
     }
 
     try {
-      const results = [];
+      // Process files in parallel
+      const processingPromises = files.map(async (file, index) => {
+        let knowledgeId: UUID;
+        const originalFilename = file.originalname;
+        const worldId = (req.body.worldId as UUID) || runtime.agentId;
+        const filePath = file.path;
 
-      for (const file of files) {
+        // Create a unique knowledge ID
+        knowledgeId =
+          (req.body?.documentIds && req.body.documentIds[index]) ||
+          req.body?.documentId ||
+          (createUniqueUuid(runtime, `knowledge-${originalFilename}`) as UUID);
+
         try {
-          // Read file content
-          const content = fs.readFileSync(file.path, 'utf8');
+          // Read file content into a buffer
+          const fileBuffer = await fs.promises.readFile(filePath);
 
-          // Format the content with Path: prefix like in the devRel/index.ts example
-          const relativePath = file.originalname;
-          const formattedContent = `Path: ${relativePath}\n\n${content}`;
-
-          // Create knowledge item with proper metadata
-          const knowledgeId = createUniqueUuid(runtime, `knowledge-${Date.now()}`);
+          // Determine the file extension
           const fileExt = file.originalname.split('.').pop()?.toLowerCase() || '';
           const filename = file.originalname;
           const title = filename.replace(`.${fileExt}`, '');
 
-          const knowledgeItem = {
+          // Convert file buffer to base64 string for all file types
+          const base64Content = fileBuffer.toString('base64');
+
+          // Create knowledge item with proper metadata
+          const knowledgeItem: KnowledgeItem = {
             id: knowledgeId,
             content: {
-              text: formattedContent,
+              text: base64Content, // Always use base64 content
             },
             metadata: {
               type: MemoryType.DOCUMENT,
@@ -1942,47 +1934,61 @@ export function agentRouter(
               filename: filename,
               fileExt: fileExt,
               title: title,
-              path: relativePath,
+              path: originalFilename,
               fileType: file.mimetype,
               fileSize: file.size,
               source: 'upload',
             },
           };
 
-          // Add knowledge to agent
-          await runtime.addKnowledge(knowledgeItem, undefined, {
-            roomId: undefined,
-            worldId: runtime.agentId,
-            entityId: runtime.agentId,
-          });
+          // Add knowledge to agent - wait for the complete processing
+          await runtime.addKnowledge(
+            knowledgeItem,
+            undefined, // Default options
+            {
+              worldId,
+              entityId: runtime.agentId,
+              roomId: runtime.agentId,
+            }
+          );
 
           // Clean up temp file immediately after successful processing
-          if (file.path && fs.existsSync(file.path)) {
-            fs.unlinkSync(file.path);
-          }
+          cleanupFile(filePath);
 
-          results.push({
+          return {
             id: knowledgeId,
-            filename: relativePath,
+            filename: originalFilename,
             type: file.mimetype,
             size: file.size,
             uploadedAt: Date.now(),
-            preview:
-              formattedContent.length > 0
-                ? `${formattedContent.substring(0, 150)}${formattedContent.length > 150 ? '...' : ''}`
-                : 'No preview available',
-          });
+            status: 'success',
+          };
         } catch (fileError) {
           logger.error(`[KNOWLEDGE POST] Error processing file ${file.originalname}: ${fileError}`);
-          cleanupFile(file.path);
-          // Continue with other files even if one fails
-        }
-      }
+          cleanupFile(filePath); // Ensure cleanup on error too
 
-      res.json({
-        success: true,
-        data: results,
+          let status = 'error_processing';
+          let errorMessage = fileError.message;
+
+          // Check if the error is related to RAG being required for PDFs/DOCX
+          if (fileError.message && fileError.message.includes('RAG plugin is required')) {
+            status = 'error_requires_rag_plugin';
+          } else if (fileError.message && fileError.message.includes('base64')) {
+            status = 'error_encoding';
+            errorMessage = 'Error encoding file content as base64. The file may be corrupted.';
+          }
+
+          return {
+            id: knowledgeId,
+            filename: originalFilename,
+            status,
+            error: errorMessage,
+          };
+        }
       });
+
+      const results = await Promise.all(processingPromises);
+      sendSuccess(res, results);
     } catch (error) {
       logger.error(`[KNOWLEDGE POST] Error uploading knowledge: ${error}`);
 
@@ -2074,9 +2080,13 @@ export function agentRouter(
   });
 
   router.delete('/groups/:serverId', async (req, res) => {
-    const serverId = validateUuid(req.params.serverId);
+    const worldId = validateUuid(req.params.serverId);
+    if (!worldId) {
+      sendError(res, 400, 'INVALID_ID', 'Invalid serverId (worldId) format');
+      return;
+    }
     try {
-      await db.deleteRoomsByServerId(serverId);
+      await db.deleteRoomsByWorldId(worldId);
       res.status(204).send();
     } catch (error) {
       logger.error('[GROUP DELETE] Error deleting group:', error);
@@ -2085,11 +2095,16 @@ export function agentRouter(
   });
 
   router.delete('/groups/:serverId/memories', async (req, res) => {
-    const serverId = validateUuid(req.params.serverId);
+    const worldId = validateUuid(req.params.serverId);
+    if (!worldId) {
+      sendError(res, 400, 'INVALID_ID', 'Invalid serverId (worldId) format');
+      return;
+    }
     try {
-      const memories = await db.getMemoriesByServerId({ serverId });
+      // Fetch memories using the new method, assuming serverId from path is the worldId
+      const memories = await db.getMemoriesByWorldId({ worldId, tableName: 'messages' }); // Or consider making tableName more generic if needed
       for (const memory of memories) {
-        await db.deleteMemory(memory.id);
+        await db.deleteMemory(memory.id as UUID);
       }
       res.status(204).send();
     } catch (error) {
@@ -2099,7 +2114,7 @@ export function agentRouter(
   });
 
   router.delete('/groups/:serverId/memories/:memoryId', async (req, res) => {
-    const serverId = validateUuid(req.params.serverId);
+    const worldId = validateUuid(req.params.serverId);
     const memoryId = validateUuid(req.params.memoryId);
 
     try {
@@ -2113,7 +2128,7 @@ export function agentRouter(
       if (memory.roomId) {
         const rooms = await db.getRoomsByWorld(memory.worldId as UUID);
         const room = rooms.find((r) => r.id === memory.roomId);
-        if (room && room.serverId !== serverId) {
+        if (room && room.serverId !== worldId) {
           sendError(res, 400, 'BAD_REQUEST', 'Memory does not belong to server');
           return;
         }

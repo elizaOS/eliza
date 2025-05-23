@@ -6,7 +6,6 @@ import {
   ServiceType,
   type IAgentRuntime,
   type Memory,
-  type ServiceTypeName,
   type State,
   type Task,
 } from '@elizaos/core';
@@ -36,7 +35,7 @@ import {
 export class TaskService extends Service {
   private timer: NodeJS.Timeout | null = null;
   private readonly TICK_INTERVAL = 1000; // Check every second
-  static serviceType: ServiceTypeName = ServiceType.TASK;
+  static serviceType = ServiceType.TASK;
   capabilityDescription = 'The agent is able to schedule and execute tasks';
 
   /**
