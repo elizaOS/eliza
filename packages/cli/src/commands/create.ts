@@ -259,13 +259,24 @@ export const create = new Command()
         process.exit(1);
       }
 
-      // For plugin initialization, add the plugin- prefix if needed
-      if (options.type === 'plugin' && !projectName.startsWith('plugin-')) {
-        const prefixedName = `plugin-${projectName}`;
-        console.info(
-          `Note: Using "${prefixedName}" as the directory name to match package naming convention`
-        );
-        projectName = prefixedName;
+      // For plugin initialization, ensure plugin- prefix and validate format
+      if (options.type === 'plugin') {
+        if (!projectName.startsWith('plugin-')) {
+          const prefixedName = `plugin-${projectName}`;
+          console.info(
+            `Note: Using "${prefixedName}" as the directory name to match plugin naming convention`
+          );
+          projectName = prefixedName;
+        }
+
+        // Validate plugin name format: plugin-[alphanumeric]
+        const pluginNameRegex = /^plugin-[a-z0-9]+(-[a-z0-9]+)*$/;
+        if (!pluginNameRegex.test(projectName)) {
+          console.error(colors.red(`Error: Invalid plugin name "${projectName}".`));
+          console.error('Plugin names must follow the format: plugin-[alphanumeric]');
+          console.error('Examples: plugin-test, plugin-my-service, plugin-ai-tools');
+          process.exit(1);
+        }
       }
 
       const targetDir = path.join(options.dir === '.' ? process.cwd() : options.dir, projectName);
