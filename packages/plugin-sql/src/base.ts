@@ -721,8 +721,10 @@ export abstract class BaseDrizzleAdapter<
         const key = e.entity.id;
         entities[key] = e.entity;
         if (entityComponents[key] === undefined) entityComponents[key] = [];
-        if (e.components?.length) {
-          entityComponents[key] = [...entityComponents[key], ...e.components];
+        if (e.components) {
+          // Handle both single component and array of components
+          const componentsArray = Array.isArray(e.components) ? e.components : [e.components];
+          entityComponents[key] = [...entityComponents[key], ...componentsArray];
         }
       }
       for (const k of Object.keys(entityComponents)) {
@@ -1905,8 +1907,22 @@ export abstract class BaseDrizzleAdapter<
           metadata: roomTable.metadata, // Added metadata
         })
         .from(roomTable)
-        .where(inArray(roomTable.id, roomIds), eq(roomTable.agentId, this.agentId));
-      return result;
+        .where(and(inArray(roomTable.id, roomIds), eq(roomTable.agentId, this.agentId)));
+
+      // Map the result to properly typed Room objects
+      const rooms = result.map((room) => ({
+        ...room,
+        id: room.id as UUID,
+        name: room.name ?? undefined,
+        agentId: room.agentId as UUID,
+        serverId: room.serverId as UUID,
+        worldId: room.worldId as UUID,
+        channelId: room.channelId as UUID,
+        type: room.type as ChannelType,
+        metadata: room.metadata as RoomMetadata,
+      }));
+
+      return rooms;
     });
   }
 
@@ -1962,8 +1978,8 @@ export abstract class BaseDrizzleAdapter<
       const insertedRooms = await this.db
         .insert(roomTable)
         .values(roomsWithIds)
-        .onConflictDoNothing({ target: roomTable.id })
-        .returning({ id: roomTable.id });
+        .onConflictDoNothing()
+        .returning();
       const insertedIds = insertedRooms.map((r) => r.id as UUID);
       return insertedIds;
     });
