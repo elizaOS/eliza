@@ -107,9 +107,8 @@ describe('Room Integration Tests', () => {
 
       // Verify it exists in the database
       const res = await adapter.getRoomsByIds([roomId[0]]);
-      //expect(res).not.toBeNull();
       expect(res?.length).toBe(1);
-      const createdRoom = res[0];
+      const createdRoom = res![0];
       expect(createdRoom?.name).toBe(room.name);
       expect(createdRoom?.type).toBe(room.type);
       expect(createdRoom?.source).toBe(room.source);
@@ -131,7 +130,7 @@ describe('Room Integration Tests', () => {
 
       // Verify it exists with default values where applicable
       const res = await adapter.getRoomsByIds([roomId[0]]);
-      const createdRoom = res[0];
+      const createdRoom = res![0];
       expect(createdRoom).not.toBeNull();
       expect(createdRoom?.name).toBe(minimalRoom.name);
       expect(createdRoom?.metadata).toBeDefined();
@@ -145,7 +144,7 @@ describe('Room Integration Tests', () => {
       // Get the room
       const res = await adapter.getRoomsByIds([room.id]);
       expect(res).not.toBeNull();
-      const retrievedRoom = res[0];
+      const retrievedRoom = res![0];
 
       expect(retrievedRoom?.id).toBe(room.id);
       expect(retrievedRoom?.name).toBe(room.name);
@@ -192,7 +191,6 @@ describe('Room Integration Tests', () => {
 
       // Verify it's gone
       const deletedRooms = await adapter.getRoomsByIds([room.id]);
-      //expect(deletedRooms).toBeNull();
       expect(deletedRooms).toEqual([]);
     });
 
@@ -243,14 +241,38 @@ describe('Room Integration Tests', () => {
         serverId: 'different-server-id',
       };
 
-      await adapter.createRooms([room1, room2]);
+      await adapter.createRooms([room1]);
+      await adapter.createRooms([room2]);
 
       // Delete all rooms in the world
       await adapter.deleteRoomsByWorldId(roomTestWorldId);
 
+      // Verify both rooms were deleted since they're in the same world
+      const deletedRoom1 = await adapter.getRoomsByIds([room1.id]);
+      expect(deletedRoom1).toEqual([]);
+
+      const deletedRoom2 = await adapter.getRoomsByIds([room2.id]);
+      expect(deletedRoom2).toEqual([]);
+    });
+
+    it('should delete rooms individually when they have different server IDs', async () => {
+      // Create rooms with specific serverId
+      const roomWithServerId = roomTestRooms[1]; // This has a serverId
+
+      // Create another room with a different serverId for comparison
+      const otherRoom = {
+        ...roomTestRooms[0],
+        serverId: 'other-server-id',
+      };
+      await adapter.createRooms([roomWithServerId, otherRoom]);
+
+      // Delete one specific room
+      await adapter.deleteRoom(roomWithServerId.id);
+
       // Verify only the targeted room was deleted
-      const rooms = await adapter.getRoomsByIds([room1.id, room2.id]);
-      expect(rooms?.length).toBe(0);
+      const rooms = await adapter.getRoomsByIds([roomWithServerId.id, otherRoom.id]);
+      expect(rooms?.length).toBe(1);
+      expect(rooms![0].id).toEqual(otherRoom.id);
     });
   });
 
@@ -361,7 +383,6 @@ describe('Room Integration Tests', () => {
       // Second creation with same ID should not throw
       const roomId2 = await adapter.createRooms([room]);
       expect(roomId2?.length).toBe(0);
-      //expect(roomId2[0]).toBe(room.id);
     });
 
     it('should gracefully handle deleting a non-existent room', async () => {
