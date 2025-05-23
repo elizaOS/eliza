@@ -1730,6 +1730,11 @@ export class AgentRuntime implements IAgentRuntime {
   }): Promise<Memory[]> {
     return await this.adapter.getMemoriesByRoomIds(params);
   }
+
+  async getMemoriesByServerId(params: { serverId: UUID; count?: number }): Promise<Memory[]> {
+    return await this.adapter.getMemoriesByServerId(params);
+  }
+
   async getCachedEmbeddings(params: {
     query_table_name: string;
     query_threshold: number;
