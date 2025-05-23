@@ -86,6 +86,7 @@ describe('Entity Integration Tests', () => {
       const retrievedEntities = await adapter.getEntityByIds([entity.id]);
       expect(retrievedEntities).not.toBeNull();
       expect(retrievedEntities?.length).toBe(1);
+
       const retrievedEntity = retrievedEntities[0];
       expect(retrievedEntity?.id).toBe(entity.id);
       expect(retrievedEntity?.names).toEqual(entity.names);
@@ -102,6 +103,7 @@ describe('Entity Integration Tests', () => {
       // Verify the entity was created with complex metadata
       const retrievedEntities = await adapter.getEntityByIds([entity.id]);
       expect(retrievedEntities).not.toBeNull();
+      if (!retrievedEntities) return;
       const retrievedEntity = retrievedEntities[0];
       expect(retrievedEntity?.metadata).toEqual(entity.metadata);
 

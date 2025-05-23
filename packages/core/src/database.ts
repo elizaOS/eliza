@@ -157,6 +157,18 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
   abstract getMemoriesByIds(memoryIds: UUID[], tableName?: string): Promise<Memory[]>;
 
   /**
+   * Retrieves group chat memories from all rooms under a given server.
+   * It fetches all room IDs associated with the `serverId`, then retrieves memories
+   * from those rooms in descending order (latest to oldest), with an optional count limit.
+   *
+   * @param params - An object containing:
+   *   - serverId: The server ID to fetch memories for.
+   *   - count: (Optional) The maximum number of memories to retrieve.
+   * @returns A promise that resolves to an array of Memory objects.
+   */
+  abstract getMemoriesByServerId(params: { serverId: UUID; count?: number }): Promise<Memory[]>;
+
+  /**
    * Retrieves cached embeddings based on the specified query parameters.
    * @param params An object containing parameters for the embedding retrieval.
    * @returns A Promise that resolves to an array of objects containing embeddings and levenshtein scores.
