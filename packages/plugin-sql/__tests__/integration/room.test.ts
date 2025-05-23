@@ -228,29 +228,26 @@ describe('Room Integration Tests', () => {
       expect(rooms).toEqual([]);
     });
 
-    it('should delete rooms by server ID', async () => {
-      // Create rooms with specific serverId
-      const serverIdToDelete = 'test-server-id';
-      const roomWithServerId = roomTestRooms[1]; // This has a serverId
-
-      await adapter.createRoom(roomWithServerId);
-
-      // Create another room with a different serverId for comparison
-      const otherRoom = {
-        ...roomTestRooms[0],
-        serverId: 'other-server-id',
+    it('should delete rooms by world ID', async () => {
+      // Create multiple rooms in the same world
+      const room1 = roomTestRooms[0];
+      const room2 = {
+        ...roomTestRooms[1],
+        serverId: 'different-server-id',
       };
-      await adapter.createRoom(otherRoom);
 
-      // Delete rooms by serverId
+      await adapter.createRoom(room1);
+      await adapter.createRoom(room2);
+
+      // Delete all rooms in the world
       await adapter.deleteRoomsByWorldId(roomTestWorldId);
 
-      // Verify only the targeted room was deleted
-      const deletedRoom = await adapter.getRoom(roomWithServerId.id);
-      expect(deletedRoom).toBeNull();
+      // Verify both rooms were deleted since they're in the same world
+      const deletedRoom1 = await adapter.getRoom(room1.id);
+      expect(deletedRoom1).toBeNull();
 
-      const remainingRoom = await adapter.getRoom(otherRoom.id);
-      expect(remainingRoom).not.toBeNull();
+      const deletedRoom2 = await adapter.getRoom(room2.id);
+      expect(deletedRoom2).toBeNull();
     });
   });
 
