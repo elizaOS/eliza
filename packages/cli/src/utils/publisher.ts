@@ -10,6 +10,7 @@ import {
   forkExists,
   forkRepository,
   getFileContent,
+  getGitHubCredentials,
   updateFile,
   ensureDirectory,
   createGitHubRepository,
@@ -123,13 +124,14 @@ export async function testPublishToGitHub(
   username: string
 ): Promise<boolean> {
   try {
-    // Check GitHub token
-    const token = await getGitHubToken();
-    if (!token) {
-      logger.error('GitHub token not found');
+    // Get GitHub credentials using getGitHubCredentials which will prompt if needed
+    const credentials = await getGitHubCredentials();
+    if (!credentials) {
+      logger.error('Failed to get GitHub credentials');
       return false;
     }
-    logger.info('✓ GitHub token found');
+    const token = credentials.token;
+    logger.info('✓ GitHub credentials found');
 
     // Validate token permissions
     const response = await fetch('https://api.github.com/user', {
@@ -174,7 +176,7 @@ export async function testPublishToGitHub(
     }
 
     // Test branch creation
-    const branchName = `test-${packageJson.name.replace(/^@elizaos\//, '')}-${packageJson.version}`;
+    const branchName = `test-${packageJson.name.replace(/^@[^/]+\//, '')}-${packageJson.version}`;
     const hasBranch = await branchExists(token, username, registryRepo, branchName);
     logger.info(hasBranch ? '✓ Test branch exists' : '✓ Can create branch');
 
@@ -189,7 +191,7 @@ export async function testPublishToGitHub(
     }
 
     // Test file update permissions - try a test file in the test directory
-    const simpleName = packageJson.name.replace(/^@elizaos\//, '').replace(/[^a-zA-Z0-9-]/g, '-');
+    const simpleName = packageJson.name.replace(/^@[^/]+\//, '').replace(/[^a-zA-Z0-9-]/g, '-');
     // Change the path to try "test-files" directory rather than root
     const testPath = `test-files/${simpleName}-test.json`;
     logger.info(`Attempting to create test file: ${testPath} in branch: ${branchName}`);
@@ -275,11 +277,13 @@ export async function publishToGitHub(
   skipRegistry = false,
   isTest = false
 ): Promise<boolean | { success: boolean; prUrl?: string }> {
-  const token = await getGitHubToken();
-  if (!token) {
-    logger.error('GitHub token not found. Please set it using the login command.');
+  // Get GitHub credentials using getGitHubCredentials which will prompt if needed
+  const credentials = await getGitHubCredentials();
+  if (!credentials) {
+    logger.error('Failed to get GitHub credentials');
     return false;
   }
+  const token = credentials.token;
 
   // Validate required package type
   if (!packageJson.packageType) {
@@ -307,7 +311,7 @@ export async function publishToGitHub(
 
   // First, create the repository and push code to GitHub
   if (!isTest) {
-    const repoName = packageJson.name.replace(/^@elizaos\//, '');
+    const repoName = packageJson.name.replace(/^@[^/]+\//, '');
     const description = packageJson.description || `ElizaOS ${packageJson.packageType}`;
 
     // Set the appropriate topic based on package type - only one topic, no mixing
@@ -392,7 +396,7 @@ export async function publishToGitHub(
 
   // Create version branch - use the package type without default
   const entityType = packageJson.packageType;
-  const packageNameWithoutScope = packageJson.name.replace(/^@elizaos\//, '');
+  const packageNameWithoutScope = packageJson.name.replace(/^@[^/]+\//, '');
 
   // Fix branch naming to avoid double "plugin-" prefix
   let branchName: string;
@@ -418,7 +422,7 @@ export async function publishToGitHub(
   }
 
   // Update package metadata
-  const packageName = packageJson.name.replace(/^@elizaos\//, '');
+  const packageName = packageJson.name.replace(/^@[^/]+\//, '');
   const packagePath = `packages/${packageName}.json`;
   const existingContent = await getFileContent(token, registryOwner, registryRepo, packagePath);
 

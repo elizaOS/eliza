@@ -259,13 +259,24 @@ export const create = new Command()
         process.exit(1);
       }
 
-      // For plugin initialization, add the plugin- prefix if needed
-      if (options.type === 'plugin' && !projectName.startsWith('plugin-')) {
-        const prefixedName = `plugin-${projectName}`;
-        console.info(
-          `Note: Using "${prefixedName}" as the directory name to match package naming convention`
-        );
-        projectName = prefixedName;
+      // For plugin initialization, ensure plugin- prefix and validate format
+      if (options.type === 'plugin') {
+        if (!projectName.startsWith('plugin-')) {
+          const prefixedName = `plugin-${projectName}`;
+          console.info(
+            `Note: Using "${prefixedName}" as the directory name to match plugin naming convention`
+          );
+          projectName = prefixedName;
+        }
+
+        // Validate plugin name format: plugin-[alphanumeric]
+        const pluginNameRegex = /^plugin-[a-z0-9]+(-[a-z0-9]+)*$/;
+        if (!pluginNameRegex.test(projectName)) {
+          console.error(colors.red(`Error: Invalid plugin name "${projectName}".`));
+          console.error('Plugin names must follow the format: plugin-[alphanumeric]');
+          console.error('Examples: plugin-test, plugin-my-service, plugin-ai-tools');
+          process.exit(1);
+        }
       }
 
       const targetDir = path.join(options.dir === '.' ? process.cwd() : options.dir, projectName);
@@ -330,7 +341,7 @@ export const create = new Command()
         console.log('Plugin initialized successfully!');
         const cdPath = options.dir === '.' ? projectName : path.relative(process.cwd(), targetDir);
         console.info(
-          `\nYour plugin is ready! Here's your development workflow:\n\n[1] Development\n   cd ${cdPath}\n   ${colors.cyan('elizaos dev')}                   # Start development with hot-reloading\n\n[2] Testing\n   ${colors.cyan('elizaos test')}                  # Run automated tests\n   ${colors.cyan('elizaos start')}                 # Test in a live agent environment\n\n[3] Publishing\n   ${colors.cyan('elizaos plugins publish --test')} # Check registry requirements\n   ${colors.cyan('elizaos plugins publish')}        # Submit to registry\n\n[?] Learn more: https://eliza.how/docs/cli/plugins`
+          `\nYour plugin is ready! Here's your development workflow:\n\n[1] Development\n   cd ${cdPath}\n   ${colors.cyan('elizaos dev')}                   # Start development with hot-reloading\n\n[2] Testing\n   ${colors.cyan('elizaos test')}                  # Run automated tests\n   ${colors.cyan('elizaos start')}                 # Test in a live agent environment\n\n[3] Publishing\n   ${colors.cyan('elizaos publish --test')}        # Check registry requirements\n   ${colors.cyan('elizaos publish')}               # Submit to registry\n\n[?] Learn more: https://eliza.how/docs/cli/plugins`
         );
         process.stdout.write(`\u001B]1337;CurrentDir=${targetDir}\u0007`);
         return;

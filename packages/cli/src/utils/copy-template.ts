@@ -97,45 +97,29 @@ export async function copyTemplate(
 
   logger.info(`Copying ${templateType} template from ${templateDir} to ${targetDir}`);
 
-  // Copy template files
+  // Copy template files as-is
   await copyDir(templateDir, targetDir);
 
-  // Update package.json with new name and dependency versions
+  // Update package.json with dependency versions only (leave placeholders intact)
   const packageJsonPath = path.join(targetDir, 'package.json');
 
   try {
-    // get the package.json of this package
+    // Get the CLI package version for dependency updates
     const cliPackageJsonPath = path.resolve(
       path.dirname(require.resolve('@elizaos/cli/package.json')),
       'package.json'
     );
 
     const cliPackageJson = JSON.parse(await fs.readFile(cliPackageJsonPath, 'utf8'));
-
-    // get the version of this package
     const cliPackageVersion = cliPackageJson.version;
 
     const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8'));
 
-    // Set project name
-    packageJson.name = name;
-
-    // Set a standard initial version
-    packageJson.version = '0.1.0';
-
-    // Use a dedicated field for ElizaOS package type to avoid collision with Node.js module type
-    packageJson.packageType = templateType;
-
-    // Ensure the module type is set to 'module' for ES modules
-    if (!packageJson.type) {
-      packageJson.type = 'module';
-    }
-
-    // Process dependencies - set all @elizaos/* packages to use cliPackageVersion
+    // Only update dependency versions - leave everything else unchanged
     if (packageJson.dependencies) {
       for (const depName of Object.keys(packageJson.dependencies)) {
         if (depName.startsWith('@elizaos/')) {
-          logger.info(`Setting ${depName} to use latest version dynamically`);
+          logger.info(`Setting ${depName} to use version ${cliPackageVersion}`);
           packageJson.dependencies[depName] = cliPackageVersion.includes('beta')
             ? 'beta'
             : 'latest';
@@ -143,7 +127,6 @@ export async function copyTemplate(
       }
     }
 
-    // Process devDependencies if they exist
     if (packageJson.devDependencies) {
       for (const depName of Object.keys(packageJson.devDependencies)) {
         if (depName.startsWith('@elizaos/')) {
@@ -155,202 +138,9 @@ export async function copyTemplate(
       }
     }
 
-    // Create or update repository URL with the GitHub format
-    // Extract the name without scope for the repository URL
-    const nameWithoutScope = name.replace('@elizaos/', '');
-
-    // Get the GitHub username from environment if available, or use a default
-    const githubUsername = process.env.GITHUB_USERNAME || 'elizaos';
-
-    // Always create/update repository field with proper URL format
-    packageJson.repository = {
-      type: 'git',
-      url: `github:${githubUsername}/${nameWithoutScope}`,
-    };
-
-    if (templateType === 'plugin') {
-      // Add platform if missing
-      if (!packageJson.platform) {
-        packageJson.platform = 'universal';
-      }
-
-      // Add agentConfig if missing
-      if (!packageJson.agentConfig) {
-        packageJson.agentConfig = {
-          pluginType: 'elizaos:plugin:1.0.0',
-          pluginParameters: {
-            API_KEY: {
-              type: 'string',
-              description: 'API key for the service',
-            },
-          },
-        };
-      }
-
-      // Create images directory with README
-      const imagesDir = path.join(targetDir, 'images');
-      if (!existsSync(imagesDir)) {
-        await fs.mkdir(imagesDir, { recursive: true });
-
-        // Create README.md in the images directory
-        const readmePath = path.join(imagesDir, 'README.md');
-        await fs.writeFile(
-          readmePath,
-          `# Required Images for ElizaOS Plugins
-
-Please add the following required images to this directory:
-
-## logo.jpg
-- **Size**: 400x400px square
-- **Max size**: 500KB
-- **Purpose**: Main logo for your plugin displayed in the registry and UI
-
-## banner.jpg
-- **Size**: 1280x640px (2:1 aspect ratio)
-- **Max size**: 1MB
-- **Purpose**: Banner image for your plugin displayed in the registry
-
-## Guidelines
-- Use clear, high-resolution images
-- Keep file sizes optimized
-- Follow the ElizaOS brand guidelines 
-- Include alt text in your documentation for accessibility
-
-These files are required for registry submission. Your plugin submission will not be accepted without these images.`
-        );
-      }
-
-      // Update main README.md with better guidance
-      const readmePath = path.join(targetDir, 'README.md');
-      await fs.writeFile(
-        readmePath,
-        `# ElizaOS Plugin
-
-This is an ElizaOS plugin built with the official plugin starter template.
-
-## Development
-
-\`\`\`bash
-# Start development with hot-reloading
-npm run dev
-
-# Build the plugin
-npm run build
-
-# Test the plugin
-npm run test
-\`\`\`
-
-## Publishing
-
-Before publishing your plugin to the ElizaOS registry, ensure you meet these requirements:
-
-1. **GitHub Repository**
-   - Create a public GitHub repository for this plugin
-   - Add the 'elizaos-plugins' topic to the repository
-   - Use 'main' as the default branch
-
-2. **Required Assets**
-   - Add images to the \`images/\` directory:
-     - \`logo.jpg\` (400x400px square, <500KB)
-     - \`banner.jpg\` (1280x640px, <1MB)
-
-3. **Publishing Process**
-   \`\`\`bash
-   # Check if your plugin meets all registry requirements
-   npx elizaos publish --test
-   
-   # Publish to the registry
-   npx elizaos publish
-   \`\`\`
-
-After publishing, your plugin will be submitted as a pull request to the ElizaOS registry for review.
-
-## Configuration
-
-The \`agentConfig\` section in \`package.json\` defines the parameters your plugin requires:
-
-\`\`\`json
-"agentConfig": {
-  "pluginType": "elizaos:plugin:1.0.0",
-  "pluginParameters": {
-    "API_KEY": {
-      "type": "string",
-      "description": "API key for the service"
-    }
-  }
-}
-\`\`\`
-
-Customize this section to match your plugin's requirements.
-
-## Documentation
-
-Provide clear documentation about:
-- What your plugin does
-- How to use it
-- Required API keys or credentials
-- Example usage
-`
-      );
-
-      // Update the index.ts file to use the plugin name from package.json
-      try {
-        const indexTsPath = path.join(targetDir, 'src', 'index.ts');
-        let indexTsContent = await fs.readFile(indexTsPath, 'utf8');
-
-        // Extract the plugin name without scope for use in the plugin definition
-        const pluginNameWithoutScope = name.replace('@elizaos/', '');
-        const description = packageJson.description || 'ElizaOS Plugin';
-
-        // Replace hardcoded plugin name in the starterPlugin export
-        indexTsContent = indexTsContent.replace(
-          /name: 'plugin-starter',/g,
-          `name: '${pluginNameWithoutScope}',`
-        );
-
-        // Replace the description if present
-        indexTsContent = indexTsContent.replace(
-          /description: 'Plugin starter for elizaOS',/g,
-          `description: '${description}',`
-        );
-
-        await fs.writeFile(indexTsPath, indexTsContent);
-        logger.success(`Updated plugin name in index.ts to ${pluginNameWithoutScope}`);
-      } catch (error) {
-        logger.error(`Error updating index.ts: ${error}`);
-      }
-    } else if (templateType === 'project') {
-      // Add agentConfig for projects if missing
-      if (!packageJson.agentConfig) {
-        packageJson.agentConfig = {
-          pluginType: 'elizaos:project:1.0.0',
-          projectConfig: {
-            name: name,
-            description: packageJson.description || 'An ElizaOS Project',
-          },
-        };
-      }
-
-      // Add repository configuration for projects
-      if (!packageJson.repository) {
-        // Get the GitHub username from environment if available, or use a default
-        const githubUsername = process.env.GITHUB_USERNAME || 'elizaos';
-
-        // Extract the project name without scope for the repository URL
-        const projectNameWithoutScope = name.replace('@elizaos/', '');
-
-        // Set the repository URL
-        packageJson.repository = {
-          type: 'git',
-          url: `github:${githubUsername}/${projectNameWithoutScope}`,
-        };
-      }
-    }
-
-    // Write the updated package.json
+    // Write the updated package.json (only dependency versions changed)
     await fs.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2));
-    logger.success('Updated package.json with project name and latest dependencies');
+    logger.success('Updated package.json with latest dependency versions');
   } catch (error) {
     logger.error(`Error updating package.json: ${error}`);
   }
