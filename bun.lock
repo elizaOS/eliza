@@ -81,7 +81,7 @@
     },
     "packages/cli": {
       "name": "@elizaos/cli",
-      "version": "1.0.0-beta.71",
+      "version": "1.0.0-beta.72",
       "bin": {
         "elizaos": "./dist/index.js",
       },
