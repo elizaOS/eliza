@@ -865,14 +865,14 @@ export interface IDatabaseAdapter {
 
   ensureEmbeddingDimension(dimension: number): Promise<void>;
 
-  /** Get entity by ID */
-  getEntityById(entityId: UUID): Promise<Entity | null>;
+  /** Get entity by IDs */
+  getEntityByIds(entityIds: UUID[]): Promise<Entity[] | null>;
 
   /** Get entities for room */
   getEntitiesForRoom(roomId: UUID, includeComponents?: boolean): Promise<Entity[]>;
 
-  /** Create new entity */
-  createEntity(entity: Entity): Promise<boolean>;
+  /** Create new entities */
+  createEntities(entities: Entity[]): Promise<boolean>;
 
   /** Update entity */
   updateEntity(entity: Entity): Promise<void>;
@@ -919,6 +919,8 @@ export interface IDatabaseAdapter {
     roomIds: UUID[];
     limit?: number;
   }): Promise<Memory[]>;
+
+  getMemoriesByServerId(params: { serverId: UUID; count?: number }): Promise<Memory[]>;
 
   getCachedEmbeddings(params: {
     query_table_name: string;
@@ -978,9 +980,9 @@ export interface IDatabaseAdapter {
 
   updateWorld(world: World): Promise<void>;
 
-  getRoom(roomId: UUID): Promise<Room | null>;
+  getRoomsByIds(roomIds: UUID[]): Promise<Room[] | null>;
 
-  createRoom({ id, name, source, type, channelId, serverId, worldId }: Room): Promise<UUID>;
+  createRooms(rooms: Room[]): Promise<UUID[]>;
 
   deleteRoom(roomId: UUID): Promise<void>;
 
@@ -992,15 +994,15 @@ export interface IDatabaseAdapter {
 
   getRoomsForParticipants(userIds: UUID[]): Promise<UUID[]>;
 
-  getRooms(worldId: UUID): Promise<Room[]>;
-
-  addParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
+  getRoomsByWorld(worldId: UUID): Promise<Room[]>;
 
   removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
 
   getParticipantsForEntity(entityId: UUID): Promise<Participant[]>;
 
   getParticipantsForRoom(roomId: UUID): Promise<UUID[]>;
+
+  addParticipantsRoom(entityIds: UUID[], roomId: UUID): Promise<boolean>;
 
   getParticipantUserState(roomId: UUID, entityId: UUID): Promise<'FOLLOWED' | 'MUTED' | null>;
 
@@ -1291,6 +1293,14 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   stop(): Promise<void>;
 
   addEmbeddingToMemory(memory: Memory): Promise<Memory>;
+
+  // easy/compat wrappers
+  getEntityById(entityId: UUID): Promise<Entity | null>;
+  getRoom(roomId: UUID): Promise<Room | null>;
+  createEntity(entity: Entity): Promise<boolean>;
+  createRoom({ id, name, source, type, channelId, serverId, worldId }: Room): Promise<UUID>;
+  addParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
+  getRooms(worldId: UUID): Promise<Room[]>;
 
   /**
    * Registers a handler function responsible for sending messages to a specific source/platform.

@@ -432,10 +432,13 @@ export class AgentRuntime implements IAgentRuntime {
           span.setStatus({ code: SpanStatusCode.ERROR, message: errorMsg });
           throw new Error(errorMsg);
         }
-        let agentEntity = await this.adapter.getEntityById(this.agentId);
+
+        // No need to transform agent's own ID
+        let agentEntity = await this.getEntityById(this.agentId);
+
         if (!agentEntity) {
           span.addEvent('creating_agent_entity');
-          const created = await this.adapter.createEntity({
+          const created = await this.createEntity({
             id: this.agentId,
             names: [this.character.name],
             metadata: {},
@@ -446,7 +449,8 @@ export class AgentRuntime implements IAgentRuntime {
             span.setStatus({ code: SpanStatusCode.ERROR, message: errorMsg });
             throw new Error(errorMsg);
           }
-          agentEntity = await this.adapter.getEntityById(this.agentId);
+
+          agentEntity = await this.getEntityById(this.agentId);
           if (!agentEntity) throw new Error(`Agent entity not found for ${this.agentId}`);
 
           this.logger.debug(
@@ -474,9 +478,9 @@ export class AgentRuntime implements IAgentRuntime {
         throw error;
       }
       try {
-        const room = await this.adapter.getRoom(this.agentId);
+        const room = await this.getRoom(this.agentId);
         if (!room) {
-          await this.adapter.createRoom({
+          const room = await this.createRoom({
             id: this.agentId,
             name: this.character.name,
             source: 'elizaos',
@@ -489,7 +493,7 @@ export class AgentRuntime implements IAgentRuntime {
         span.addEvent('adding_agent_as_participant');
         const participants = await this.adapter.getParticipantsForRoom(this.agentId);
         if (!participants.includes(this.agentId)) {
-          const added = await this.adapter.addParticipant(this.agentId, this.agentId);
+          const added = await this.addParticipant(this.agentId, this.agentId);
           if (!added) {
             const errorMsg = `Failed to add agent ${this.agentId} as participant to its own room`;
             span.setStatus({ code: SpanStatusCode.ERROR, message: errorMsg });
@@ -897,10 +901,12 @@ export class AgentRuntime implements IAgentRuntime {
       },
     };
     try {
-      const entity = await this.adapter.getEntityById(entityId);
+      // First check if the entity exists
+      const entity = await this.getEntityById(entityId);
+
       if (!entity) {
         try {
-          const success = await this.adapter.createEntity({
+          const success = await this.createEntity({
             id: entityId,
             names,
             metadata: entityMetadata,
@@ -957,7 +963,7 @@ export class AgentRuntime implements IAgentRuntime {
         await this.ensureParticipantInRoom(entityId, roomId);
       } catch (error: any) {
         if (error.message?.includes('not found')) {
-          const added = await this.adapter.addParticipant(entityId, roomId);
+          const added = await this.addParticipant(entityId, roomId);
           if (!added) {
             throw new Error(`Failed to add participant ${entityId} to room ${roomId}`);
           }
@@ -978,7 +984,11 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async ensureParticipantInRoom(entityId: UUID, roomId: UUID) {
-    const entity = await this.adapter.getEntityById(entityId);
+    // Make sure entity exists in database before adding as participant
+    const entity = await this.getEntityById(entityId);
+
+    // If entity is not found but it's not the agent itself, we might still want to proceed
+    // This can happen when an entity exists in the database but isn't associated with this agent
     if (!entity && entityId !== this.agentId) {
       this.logger.warn(
         `Entity ${entityId} not directly accessible to agent ${this.agentId}. Will attempt to add as participant anyway.`
@@ -990,7 +1000,9 @@ export class AgentRuntime implements IAgentRuntime {
     }
     const participants = await this.adapter.getParticipantsForRoom(roomId);
     if (!participants.includes(entityId)) {
-      const added = await this.adapter.addParticipant(entityId, roomId);
+      // Add participant using the ID
+      const added = await this.addParticipant(entityId, roomId);
+
       if (!added) {
         throw new Error(`Failed to add participant ${entityId} to room ${roomId}`);
       }
@@ -1015,9 +1027,16 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async addParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
-    return await this.adapter.addParticipant(entityId, roomId);
+    return await this.adapter.addParticipantsRoom([entityId], roomId);
   }
 
+  async addParticipantsRoom(entityIds: UUID[], roomId: UUID): Promise<boolean> {
+    return await this.adapter.addParticipantsRoom(entityIds, roomId);
+  }
+
+  /**
+   * Ensure the existence of a world.
+   */
   async ensureWorldExists({ id, name, serverId, metadata }: World) {
     const world = await this.getWorld(id);
     if (!world) {
@@ -1039,10 +1058,10 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async ensureRoomExists({ id, name, source, type, channelId, serverId, worldId, metadata }: Room) {
-    const room = await this.adapter.getRoom(id);
     if (!worldId) throw new Error('worldId is required');
+    const room = await this.getRoom(id);
     if (!room) {
-      await this.adapter.createRoom({
+      await this.createRoom({
         id,
         name,
         agentId: this.agentId,
@@ -1620,7 +1639,13 @@ export class AgentRuntime implements IAgentRuntime {
     return await this.adapter.ensureAgentExists(agent);
   }
   async getEntityById(entityId: UUID): Promise<Entity | null> {
-    return await this.adapter.getEntityById(entityId);
+    const entities = await this.adapter.getEntityByIds([entityId]);
+    if (!entities?.length) return null;
+    return entities[0];
+  }
+
+  async getEntityByIds(entityIds: UUID[]): Promise<Entity[] | null> {
+    return await this.adapter.getEntityByIds(entityIds);
   }
   async getEntitiesForRoom(roomId: UUID, includeComponents?: boolean): Promise<Entity[]> {
     return await this.adapter.getEntitiesForRoom(roomId, includeComponents);
@@ -1629,8 +1654,16 @@ export class AgentRuntime implements IAgentRuntime {
     if (!entity.agentId) {
       entity.agentId = this.agentId;
     }
-    return await this.adapter.createEntity(entity);
+    return await this.createEntities([entity]);
   }
+
+  async createEntities(entities: Entity[]): Promise<boolean> {
+    entities.forEach((e) => {
+      e.agentId = this.agentId;
+    });
+    return await this.adapter.createEntities(entities);
+  }
+
   async updateEntity(entity: Entity): Promise<void> {
     await this.adapter.updateEntity(entity);
   }
@@ -1697,6 +1730,11 @@ export class AgentRuntime implements IAgentRuntime {
   }): Promise<Memory[]> {
     return await this.adapter.getMemoriesByRoomIds(params);
   }
+
+  async getMemoriesByServerId(params: { serverId: UUID; count?: number }): Promise<Memory[]> {
+    return await this.adapter.getMemoriesByServerId(params);
+  }
+
   async getCachedEmbeddings(params: {
     query_table_name: string;
     query_threshold: number;
@@ -1787,20 +1825,35 @@ export class AgentRuntime implements IAgentRuntime {
     await this.adapter.updateWorld(world);
   }
   async getRoom(roomId: UUID): Promise<Room | null> {
-    return await this.adapter.getRoom(roomId);
+    const rooms = await this.adapter.getRoomsByIds([roomId]);
+    if (!rooms?.length) return null;
+    return rooms[0];
+  }
+
+  async getRoomsByIds(roomIds: UUID[]): Promise<Room[] | null> {
+    return await this.adapter.getRoomsByIds(roomIds);
   }
   async createRoom({ id, name, source, type, channelId, serverId, worldId }: Room): Promise<UUID> {
     if (!worldId) throw new Error('worldId is required');
-    return await this.adapter.createRoom({
-      id,
-      name,
-      source,
-      type,
-      channelId,
-      serverId,
-      worldId,
-    });
+    const res = await this.adapter.createRooms([
+      {
+        id,
+        name,
+        source,
+        type,
+        channelId,
+        serverId,
+        worldId,
+      },
+    ]);
+    if (!res.length) return null;
+    return res[0];
   }
+
+  async createRooms(rooms: Room[]): Promise<UUID[]> {
+    return await this.adapter.createRooms(rooms);
+  }
+
   async deleteRoom(roomId: UUID): Promise<void> {
     await this.adapter.deleteRoom(roomId);
   }
@@ -1816,8 +1869,14 @@ export class AgentRuntime implements IAgentRuntime {
   async getRoomsForParticipants(userIds: UUID[]): Promise<UUID[]> {
     return await this.adapter.getRoomsForParticipants(userIds);
   }
+
+  // deprecate this one
   async getRooms(worldId: UUID): Promise<Room[]> {
-    return await this.adapter.getRooms(worldId);
+    return await this.adapter.getRoomsByWorld(worldId);
+  }
+
+  async getRoomsByWorld(worldId: UUID): Promise<Room[]> {
+    return await this.adapter.getRoomsByWorld(worldId);
   }
   async getParticipantUserState(
     roomId: UUID,

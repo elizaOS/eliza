@@ -78,13 +78,16 @@ describe('Entity Integration Tests', () => {
     it('should successfully create a basic entity', async () => {
       const entity = testEntities.basicEntity;
 
-      const result = await adapter.createEntity(entity);
+      const result = await adapter.createEntities([entity]);
 
       expect(result).toBe(true);
 
       // Verify the entity was created in the database
-      const retrievedEntity = await adapter.getEntityById(entity.id);
-      expect(retrievedEntity).not.toBeNull();
+      const retrievedEntities = await adapter.getEntityByIds([entity.id]);
+      expect(retrievedEntities).not.toBeNull();
+      expect(retrievedEntities?.length).toBe(1);
+      if (!retrievedEntities) return;
+      const retrievedEntity = retrievedEntities[0];
       expect(retrievedEntity?.id).toBe(entity.id);
       expect(retrievedEntity?.names).toEqual(entity.names);
       expect(retrievedEntity?.metadata).toEqual(entity.metadata);
@@ -93,13 +96,15 @@ describe('Entity Integration Tests', () => {
     it('should successfully create an entity with complex metadata', async () => {
       const entity = testEntities.complexEntity;
 
-      const result = await adapter.createEntity(entity);
+      const result = await adapter.createEntities([entity]);
 
       expect(result).toBe(true);
 
       // Verify the entity was created with complex metadata
-      const retrievedEntity = await adapter.getEntityById(entity.id);
-      expect(retrievedEntity).not.toBeNull();
+      const retrievedEntities = await adapter.getEntityByIds([entity.id]);
+      expect(retrievedEntities).not.toBeNull();
+      if (!retrievedEntities) return;
+      const retrievedEntity = retrievedEntities[0];
       expect(retrievedEntity?.metadata).toEqual(entity.metadata);
 
       // Verify nested objects in metadata
@@ -118,12 +123,14 @@ describe('Entity Integration Tests', () => {
         names: [],
       };
 
-      const result = await adapter.createEntity(entity);
+      const result = await adapter.createEntities([entity]);
 
       expect(result).toBe(true);
 
-      const retrievedEntity = await adapter.getEntityById(entity.id);
-      expect(retrievedEntity).not.toBeNull();
+      const retrievedEntities = await adapter.getEntityByIds([entity.id]);
+      expect(retrievedEntities).not.toBeNull();
+      if (!retrievedEntities) return;
+      const retrievedEntity = retrievedEntities[0];
       expect(retrievedEntity?.names).toEqual([]);
     });
 
@@ -134,12 +141,14 @@ describe('Entity Integration Tests', () => {
         metadata: {},
       };
 
-      const result = await adapter.createEntity(entity);
+      const result = await adapter.createEntities([entity]);
 
       expect(result).toBe(true);
 
-      const retrievedEntity = await adapter.getEntityById(entity.id);
-      expect(retrievedEntity).not.toBeNull();
+      const retrievedEntities = await adapter.getEntityByIds([entity.id]);
+      expect(retrievedEntities).not.toBeNull();
+      if (!retrievedEntities) return;
+      const retrievedEntity = retrievedEntities[0];
       expect(retrievedEntity?.metadata).toEqual({});
     });
   });
@@ -148,12 +157,13 @@ describe('Entity Integration Tests', () => {
     it('should retrieve an existing entity', async () => {
       // Create entity first
       const entity = testEntities.basicEntity;
-      await adapter.createEntity(entity);
+      await adapter.createEntities([entity]);
 
       // Retrieve entity
-      const retrievedEntity = await adapter.getEntityById(entity.id);
-
-      expect(retrievedEntity).not.toBeNull();
+      const retrievedEntities = await adapter.getEntityByIds([entity.id]);
+      expect(retrievedEntities).not.toBeNull();
+      if (!retrievedEntities) return;
+      const retrievedEntity = retrievedEntities[0];
       expect(retrievedEntity?.id).toBe(entity.id);
       expect(retrievedEntity?.names).toEqual(entity.names);
       expect(retrievedEntity?.metadata).toEqual(entity.metadata);
@@ -161,7 +171,7 @@ describe('Entity Integration Tests', () => {
 
     it('should return null for non-existent entity id', async () => {
       const nonExistentId = vi.fn().mockReturnValue(crypto.randomUUID())();
-      const result = await adapter.getEntityById(nonExistentId as UUID);
+      const result = await adapter.getEntityByIds([nonExistentId as UUID]);
 
       expect(result).toBeNull();
     });
@@ -171,7 +181,7 @@ describe('Entity Integration Tests', () => {
     it('should update an existing entity', async () => {
       // Create entity first
       const entity = testEntities.entityToUpdate;
-      await adapter.createEntity(entity);
+      await adapter.createEntities([entity]);
 
       // Update entity
       const updatedEntity: Entity = {
@@ -187,9 +197,11 @@ describe('Entity Integration Tests', () => {
       await adapter.updateEntity(updatedEntity);
 
       // Retrieve updated entity
-      const retrievedEntity = await adapter.getEntityById(entity.id);
+      const retrievedEntities = await adapter.getEntityByIds([entity.id]);
+      expect(retrievedEntities).not.toBeNull();
+      if (!retrievedEntities) return;
+      const retrievedEntity = retrievedEntities[0];
 
-      expect(retrievedEntity).not.toBeNull();
       expect(retrievedEntity?.names).toEqual(updatedEntity.names);
       expect(retrievedEntity?.metadata).toEqual(updatedEntity.metadata);
       expect(retrievedEntity?.metadata?.version).toBe(2);
@@ -198,7 +210,7 @@ describe('Entity Integration Tests', () => {
     it('should only update specified fields', async () => {
       // Create entity first
       const entity = testEntities.entityToUpdate;
-      await adapter.createEntity(entity);
+      await adapter.createEntities([entity]);
 
       // Update only names
       const partialUpdate: Entity = {
@@ -209,9 +221,10 @@ describe('Entity Integration Tests', () => {
       await adapter.updateEntity(partialUpdate);
 
       // Retrieve updated entity
-      const retrievedEntity = await adapter.getEntityById(entity.id);
-
-      expect(retrievedEntity).not.toBeNull();
+      const retrievedEntities = await adapter.getEntityByIds([entity.id]);
+      expect(retrievedEntities).not.toBeNull();
+      if (!retrievedEntities) return;
+      const retrievedEntity = retrievedEntities[0];
       expect(retrievedEntity?.names).toEqual(partialUpdate.names);
       // Metadata should remain unchanged
       expect(retrievedEntity?.metadata).toEqual(entity.metadata);
@@ -222,10 +235,10 @@ describe('Entity Integration Tests', () => {
     it('should handle errors when creating entity with duplicate ID', async () => {
       // First, create the entity successfully
       const entity = testEntities.basicEntity;
-      await adapter.createEntity(entity);
+      await adapter.createEntities([entity]);
 
       // Try to create the entity again with the same ID - should return false, not throw
-      expect(await adapter.createEntity(entity)).toBe(false);
+      expect(await adapter.createEntities([entity])).toBe(false);
     });
 
     it('should handle errors when creating entity with invalid data', async () => {
@@ -237,7 +250,7 @@ describe('Entity Integration Tests', () => {
       } as Entity;
 
       // This should not throw but return false
-      expect(await adapter.createEntity(invalidEntity)).toBe(false);
+      expect(await adapter.createEntities([invalidEntity])).toBe(false);
     });
   });
 });

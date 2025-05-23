@@ -697,11 +697,11 @@ export abstract class BaseDrizzleAdapter<
   }
 
   /**
-   * Asynchronously retrieves an entity and its components by entity ID.
-   * @param {UUID} entityId - The unique identifier of the entity to retrieve.
-   * @returns {Promise<Entity | null>} A Promise that resolves to the entity with its components if found, null otherwise.
+   * Asynchronously retrieves an entity and its components by entity IDs.
+   * @param {UUID[]} entityIds - The unique identifiers of the entities to retrieve.
+   * @returns {Promise<Entity[] | null>} A Promise that resolves to the entity with its components if found, null otherwise.
    */
-  async getEntityById(entityId: UUID): Promise<Entity | null> {
+  async getEntityByIds(entityIds: UUID[]): Promise<Entity[] | null> {
     return this.withDatabase(async () => {
       const result = await this.db
         .select({
@@ -710,23 +710,28 @@ export abstract class BaseDrizzleAdapter<
         })
         .from(entityTable)
         .leftJoin(componentTable, eq(componentTable.entityId, entityTable.id))
-        .where(eq(entityTable.id, entityId))
-        .limit(1);
+        .where(inArray(entityTable.id, entityIds));
 
       if (result.length === 0) return null;
 
       // Group components by entity
-      const entity = result[0].entity;
+      const entities: Record<UUID, Entity> = {};
+      const entityComponents: Record<UUID, Entity['components']> = {};
+      for (const e of result) {
+        const key = e.entity.id;
+        entities[key] = e.entity;
+        if (entityComponents[key] === undefined) entityComponents[key] = [];
+        if (e.components) {
+          // Handle both single component and array of components
+          const componentsArray = Array.isArray(e.components) ? e.components : [e.components];
+          entityComponents[key] = [...entityComponents[key], ...componentsArray];
+        }
+      }
+      for (const k of Object.keys(entityComponents)) {
+        entities[k].components = entityComponents[k];
+      }
 
-      const components = result.map((r) => r.components).filter((c): c is Component => c !== null);
-
-      return {
-        ...entity,
-        id: entity.id as UUID,
-        agentId: entity.agentId as UUID,
-        metadata: entity.metadata as { [key: string]: any },
-        components,
-      };
+      return Object.values(entities);
     });
   }
 
@@ -789,27 +794,25 @@ export abstract class BaseDrizzleAdapter<
   }
 
   /**
-   * Asynchronously creates a new entity in the database.
-   * @param {Entity} entity - The entity object to be created.
+   * Asynchronously creates new entities in the database.
+   * @param {Entity[]} entities - The entity objects to be created.
    * @returns {Promise<boolean>} A Promise that resolves to a boolean indicating the success of the operation.
    */
-  async createEntity(entity: Entity): Promise<boolean> {
+  async createEntities(entities: Entity[]): Promise<boolean> {
     return this.withDatabase(async () => {
       try {
         return await this.db.transaction(async (tx) => {
-          await tx.insert(entityTable).values(entity);
+          await tx.insert(entityTable).values(entities);
 
-          logger.debug('Entity created successfully:', {
-            entity,
-          });
+          logger.debug(entities.length, 'Entities created successfully');
 
           return true;
         });
       } catch (error) {
         logger.error('Error creating entity:', {
           error: error instanceof Error ? error.message : String(error),
-          entityId: entity.id,
-          name: entity.metadata?.name,
+          entityId: entities[0].id,
+          name: entities[0].metadata?.name,
         });
         // trace the error
         logger.trace(error);
@@ -830,10 +833,10 @@ export abstract class BaseDrizzleAdapter<
     }
 
     try {
-      const existingEntity = await this.getEntityById(entity.id);
+      const existingEntities = await this.getEntityByIds([entity.id]);
 
-      if (!existingEntity) {
-        return await this.createEntity(entity);
+      if (!existingEntities || !existingEntities.length) {
+        return await this.createEntities([entity]);
       }
 
       return true;
@@ -1885,11 +1888,11 @@ export abstract class BaseDrizzleAdapter<
   }
 
   /**
-   * Asynchronously retrieves a room from the database based on the provided parameters.
-   * @param {UUID} roomId - The ID of the room to retrieve.
-   * @returns {Promise<Room | null>} A Promise that resolves to the room if found, null otherwise.
+   * Asynchronously retrieves rooms from the database based on the provided parameters.
+   * @param {UUID[]} roomIds - The IDs of the rooms to retrieve.
+   * @returns {Promise<Room[] | null>} A Promise that resolves to the rooms if found, null otherwise.
    */
-  async getRoom(roomId: UUID): Promise<Room | null> {
+  async getRoomsByIds(roomIds: UUID[]): Promise<Room[] | null> {
     return this.withDatabase(async () => {
       const result = await this.db
         .select({
@@ -1904,22 +1907,22 @@ export abstract class BaseDrizzleAdapter<
           metadata: roomTable.metadata, // Added metadata
         })
         .from(roomTable)
-        .where(and(eq(roomTable.id, roomId), eq(roomTable.agentId, this.agentId)))
-        .limit(1);
-      if (result.length === 0) return null;
+        .where(and(inArray(roomTable.id, roomIds), eq(roomTable.agentId, this.agentId)));
 
-      const room = result[0];
-      return {
+      // Map the result to properly typed Room objects
+      const rooms = result.map((room) => ({
         ...room,
         id: room.id as UUID,
-        name: room.name ?? undefined, // Corrected to handle null
+        name: room.name ?? undefined,
         agentId: room.agentId as UUID,
         serverId: room.serverId as UUID,
         worldId: room.worldId as UUID,
         channelId: room.channelId as UUID,
         type: room.type as ChannelType,
-        metadata: room.metadata as RoomMetadata, // Added metadata
-      };
+        metadata: room.metadata as RoomMetadata,
+      }));
+
+      return rooms;
     });
   }
 
@@ -1928,7 +1931,7 @@ export abstract class BaseDrizzleAdapter<
    * @param {UUID} worldId - The ID of the world to retrieve rooms from.
    * @returns {Promise<Room[]>} A Promise that resolves to an array of rooms.
    */
-  async getRooms(worldId: UUID): Promise<Room[]> {
+  async getRoomsByWorld(worldId: UUID): Promise<Room[]> {
     return this.withDatabase(async () => {
       const result = await this.db.select().from(roomTable).where(eq(roomTable.worldId, worldId));
       const rooms = result.map((room) => ({
@@ -1942,7 +1945,6 @@ export abstract class BaseDrizzleAdapter<
         type: room.type as ChannelType,
         metadata: room.metadata as RoomMetadata,
       }));
-      if (rooms.length === 0) return [];
       return rooms;
     });
   }
@@ -1966,36 +1968,20 @@ export abstract class BaseDrizzleAdapter<
    * @param {Room} room - The room object to create.
    * @returns {Promise<UUID>} A Promise that resolves to the ID of the created room.
    */
-  async createRoom({
-    id,
-    name,
-    agentId,
-    source,
-    type,
-    channelId,
-    serverId,
-    worldId,
-    metadata,
-  }: Room): Promise<UUID> {
-    if (!worldId) throw new Error('worldId is required');
-
+  async createRooms(rooms: Room[]): Promise<UUID[]> {
     return this.withDatabase(async () => {
-      const newRoomId = id || v4();
-      await this.db
+      const roomsWithIds = rooms.map((room) => ({
+        ...room,
+        id: room.id || v4(), // ensure each room has a unique ID
+      }));
+
+      const insertedRooms = await this.db
         .insert(roomTable)
-        .values({
-          id: newRoomId,
-          name,
-          agentId,
-          source,
-          type,
-          channelId,
-          serverId,
-          worldId,
-          metadata,
-        })
-        .onConflictDoNothing({ target: roomTable.id });
-      return newRoomId as UUID;
+        .values(roomsWithIds)
+        .onConflictDoNothing()
+        .returning();
+      const insertedIds = insertedRooms.map((r) => r.id as UUID);
+      return insertedIds;
     });
   }
 
@@ -2079,6 +2065,29 @@ export abstract class BaseDrizzleAdapter<
     });
   }
 
+  async addParticipantsRoom(entityIds: UUID[], roomId: UUID): Promise<boolean> {
+    return this.withDatabase(async () => {
+      try {
+        const values = entityIds.map((id) => ({
+          entityId: id,
+          roomId,
+          agentId: this.agentId,
+        }));
+        await this.db.insert(participantTable).values(values).onConflictDoNothing().execute();
+        logger.debug(entityIds.length, 'Entities linked successfully');
+        return true;
+      } catch (error) {
+        logger.error('Error adding participants', {
+          error: error instanceof Error ? error.message : String(error),
+          entityIdSample: entityIds[0],
+          roomId,
+          agentId: this.agentId,
+        });
+        return false;
+      }
+    });
+  }
+
   /**
    * Asynchronously removes a participant from a room in the database based on the provided parameters.
    * @param {UUID} entityId - The ID of the entity to remove from the room.
@@ -2132,15 +2141,15 @@ export abstract class BaseDrizzleAdapter<
         .from(participantTable)
         .where(eq(participantTable.entityId, entityId));
 
-      const entity = await this.getEntityById(entityId);
+      const entities = await this.getEntityByIds([entityId]);
 
-      if (!entity) {
+      if (!entities || !entities.length) {
         return [];
       }
 
       return result.map((row) => ({
         id: row.id as UUID,
-        entity: entity,
+        entity: entities[0],
       }));
     });
   }

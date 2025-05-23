@@ -1,4 +1,4 @@
-import { validateUuid } from '@elizaos/core';
+import { UUID, validateUuid } from '@elizaos/core';
 import { logger } from '@elizaos/core';
 import express from 'express';
 import type { AgentServer } from '..';
@@ -16,7 +16,7 @@ export function worldRouter(server?: AgentServer): express.Router {
   router.get('/:worldId/rooms', async (req, res) => {
     const worldId = validateUuid(req.params.worldId);
     try {
-      const rooms = await db.getRooms(worldId);
+      const rooms = await db.getRoomsByWorld(worldId);
 
       const roomDetails = await Promise.all(
         rooms.map(async (roomData) => {

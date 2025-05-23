@@ -62,10 +62,10 @@ describe('Memory Integration Tests', () => {
       });
 
       // Step 3: Create test entity
-      await adapter.createEntity(memoryTestEntity);
+      await adapter.createEntities([memoryTestEntity]);
 
       // Step 4: Create test room
-      await adapter.createRoom(memoryTestRoom);
+      await adapter.createRooms([memoryTestRoom]);
 
       // Step 5: Add entity as participant in the room
       await adapter.addParticipant(memoryTestEntityId, memoryTestRoomId);
@@ -532,14 +532,16 @@ describe('Memory Integration Tests', () => {
       });
 
       // Create the second room
-      await adapter.createRoom({
-        id: secondRoomId,
-        name: 'Memory Test Room 2',
-        agentId: memoryTestAgentId,
-        source: 'test',
-        type: ChannelType.GROUP,
-        worldId: secondWorldId,
-      });
+      await adapter.createRooms([
+        {
+          id: secondRoomId,
+          name: 'Memory Test Room 2',
+          agentId: memoryTestAgentId,
+          source: 'test',
+          type: ChannelType.GROUP,
+          worldId: secondWorldId,
+        },
+      ]);
 
       // Create memories in first room
       for (const memory of memoryTestMemories.slice(0, 2)) {

@@ -50,10 +50,10 @@ describe('Relationship Integration Tests', () => {
       await adapter.createAgent(relationshipTestAgent);
 
       // Step 2: Create test source entity
-      await adapter.createEntity(relationshipTestSourceEntity);
+      await adapter.createEntities([relationshipTestSourceEntity]);
 
       // Step 3: Create test target entity
-      await adapter.createEntity(relationshipTestTargetEntity);
+      await adapter.createEntities([relationshipTestTargetEntity]);
     } catch (error) {
       console.error('Error in setup:', error);
       throw error;

@@ -63,16 +63,20 @@ describe('Log Integration Tests', () => {
       });
 
       // Create the test entity
-      await adapter.createEntity({
-        ...logTestEntity,
-        agentId: testAgentId,
-      } as Entity);
+      await adapter.createEntities([
+        {
+          ...logTestEntity,
+          agentId: testAgentId,
+        } as Entity,
+      ]);
 
       // Create the test room
-      await adapter.createRoom({
-        ...logTestRoom,
-        agentId: testAgentId,
-      } as Room);
+      await adapter.createRooms([
+        {
+          ...logTestRoom,
+          agentId: testAgentId,
+        } as Room,
+      ]);
     } catch (error) {
       console.error('Error in setup:', error);
       throw error;

@@ -56,10 +56,10 @@ describe('Participant Integration Tests', () => {
       });
 
       // Step 3: Create test entity
-      await adapter.createEntity(participantTestEntity);
+      await adapter.createEntities([participantTestEntity]);
 
       // Step 4: Create test room
-      await adapter.createRoom(participantTestRoom);
+      await adapter.createRooms([participantTestRoom]);
     } catch (error) {
       console.error('Error in setup:', error);
       throw error;
@@ -99,7 +99,10 @@ describe('Participant Integration Tests', () => {
 
   describe('Participant CRUD Operations', () => {
     it('should add a participant to a room', async () => {
-      const result = await adapter.addParticipant(participantTestEntityId, participantTestRoomId);
+      const result = await adapter.addParticipantsRoom(
+        [participantTestEntityId],
+        participantTestRoomId
+      );
 
       expect(result).toBe(true);
 
@@ -110,10 +113,13 @@ describe('Participant Integration Tests', () => {
 
     it('should allow adding a participant multiple times to a room', async () => {
       // First add
-      await adapter.addParticipant(participantTestEntityId, participantTestRoomId);
+      await adapter.addParticipantsRoom([participantTestEntityId], participantTestRoomId);
 
       // Second add shouldn't cause errors
-      const result = await adapter.addParticipant(participantTestEntityId, participantTestRoomId);
+      const result = await adapter.addParticipantsRoom(
+        [participantTestEntityId],
+        participantTestRoomId
+      );
       expect(result).toBe(true);
 
       // Verify participant exists in the list
@@ -126,7 +132,7 @@ describe('Participant Integration Tests', () => {
 
     it('should remove a participant from a room', async () => {
       // First add the participant
-      await adapter.addParticipant(participantTestEntityId, participantTestRoomId);
+      await adapter.addParticipantsRoom([participantTestEntityId], participantTestRoomId);
 
       // Then remove
       const result = await adapter.removeParticipant(
@@ -148,7 +154,7 @@ describe('Participant Integration Tests', () => {
 
     it('should get participants for an entity', async () => {
       // Add the participant to the room
-      await adapter.addParticipant(participantTestEntityId, participantTestRoomId);
+      await adapter.addParticipantsRoom([participantTestEntityId], participantTestRoomId);
 
       // Get participants for the entity
       const participants = await adapter.getParticipantsForEntity(participantTestEntityId);
@@ -159,7 +165,7 @@ describe('Participant Integration Tests', () => {
 
     it('should get rooms for a participant', async () => {
       // Add the participant to the room
-      await adapter.addParticipant(participantTestEntityId, participantTestRoomId);
+      await adapter.addParticipantsRoom([participantTestEntityId], participantTestRoomId);
 
       // Get rooms for the participant
       const rooms = await adapter.getRoomsForParticipant(participantTestEntityId);
@@ -169,7 +175,7 @@ describe('Participant Integration Tests', () => {
 
     it('should get rooms for multiple participants', async () => {
       // Add the participant to the room
-      await adapter.addParticipant(participantTestEntityId, participantTestRoomId);
+      await adapter.addParticipantsRoom([participantTestEntityId], participantTestRoomId);
 
       // Get rooms for the participants
       const rooms = await adapter.getRoomsForParticipants([participantTestEntityId]);
@@ -181,7 +187,7 @@ describe('Participant Integration Tests', () => {
   describe('Participant State Management', () => {
     it('should set FOLLOWED state and get it correctly', async () => {
       // Add the participant
-      await adapter.addParticipant(participantTestEntityId, participantTestRoomId);
+      await adapter.addParticipantsRoom([participantTestEntityId], participantTestRoomId);
 
       // Set state to FOLLOWED
       await adapter.setParticipantUserState(
@@ -200,7 +206,7 @@ describe('Participant Integration Tests', () => {
 
     it('should set MUTED state and get it correctly', async () => {
       // Add the participant
-      await adapter.addParticipant(participantTestEntityId, participantTestRoomId);
+      await adapter.addParticipantsRoom([participantTestEntityId], participantTestRoomId);
 
       // Set state to MUTED
       await adapter.setParticipantUserState(
@@ -219,7 +225,7 @@ describe('Participant Integration Tests', () => {
 
     it('should update participant state from FOLLOWED to MUTED', async () => {
       // Add the participant
-      await adapter.addParticipant(participantTestEntityId, participantTestRoomId);
+      await adapter.addParticipantsRoom([participantTestEntityId], participantTestRoomId);
 
       // Set initial state
       await adapter.setParticipantUserState(
@@ -249,7 +255,7 @@ describe('Participant Integration Tests', () => {
 
     it('should update participant state from MUTED to FOLLOWED', async () => {
       // Add the participant
-      await adapter.addParticipant(participantTestEntityId, participantTestRoomId);
+      await adapter.addParticipantsRoom([participantTestEntityId], participantTestRoomId);
 
       // Set initial state
       await adapter.setParticipantUserState(
@@ -285,7 +291,7 @@ describe('Participant Integration Tests', () => {
 
     it('should clear participant user state by setting to null', async () => {
       // Add the participant
-      await adapter.addParticipant(participantTestEntityId, participantTestRoomId);
+      await adapter.addParticipantsRoom([participantTestEntityId], participantTestRoomId);
 
       // Set state
       await adapter.setParticipantUserState(
@@ -311,8 +317,8 @@ describe('Participant Integration Tests', () => {
 
     it('should handle setting state when participant was added multiple times', async () => {
       // Add the participant twice (which creates duplicate entries)
-      await adapter.addParticipant(participantTestEntityId, participantTestRoomId);
-      await adapter.addParticipant(participantTestEntityId, participantTestRoomId);
+      await adapter.addParticipantsRoom([participantTestEntityId], participantTestRoomId);
+      await adapter.addParticipantsRoom([participantTestEntityId], participantTestRoomId);
 
       // Set state to FOLLOWED
       await adapter.setParticipantUserState(

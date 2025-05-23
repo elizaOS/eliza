@@ -53,19 +53,19 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
 
   /**
    * Retrieves an account by its ID.
-   * @param entityId The UUID of the user account to retrieve.
+   * @param entityIds The UUIDs of the user account to retrieve.
    * @returns A Promise that resolves to the Entity object or null if not found.
    */
-  abstract getEntityById(entityId: UUID): Promise<Entity | null>;
+  abstract getEntityByIds(entityIds: UUID[]): Promise<Entity[] | null>;
 
   abstract getEntitiesForRoom(roomId: UUID, includeComponents?: boolean): Promise<Entity[]>;
 
   /**
-   * Creates a new entity in the database.
-   * @param entity The entity object to create.
+   * Creates a new entities in the database.
+   * @param entities The entity objects to create.
    * @returns A Promise that resolves when the account creation is complete.
    */
-  abstract createEntity(entity: Entity): Promise<boolean>;
+  abstract createEntities(entities: Entity[]): Promise<boolean>;
 
   /**
    * Updates an existing entity in the database.
@@ -155,6 +155,18 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
    * @returns Promise resolving to array of Memory objects
    */
   abstract getMemoriesByIds(memoryIds: UUID[], tableName?: string): Promise<Memory[]>;
+
+  /**
+   * Retrieves group chat memories from all rooms under a given server.
+   * It fetches all room IDs associated with the `serverId`, then retrieves memories
+   * from those rooms in descending order (latest to oldest), with an optional count limit.
+   *
+   * @param params - An object containing:
+   *   - serverId: The server ID to fetch memories for.
+   *   - count: (Optional) The maximum number of memories to retrieve.
+   * @returns A promise that resolves to an array of Memory objects.
+   */
+  abstract getMemoriesByServerId(params: { serverId: UUID; count?: number }): Promise<Memory[]>;
 
   /**
    * Retrieves cached embeddings based on the specified query parameters.
@@ -312,21 +324,21 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
    * @param roomId The UUID of the room to retrieve.
    * @returns A Promise that resolves to the room ID or null if not found.
    */
-  abstract getRoom(roomId: UUID): Promise<Room | null>;
+  abstract getRoomsByIds(roomIds: UUID[]): Promise<Room[] | null>;
 
   /**
    * Retrieves all rooms for a given world.
    * @param worldId The UUID of the world to retrieve rooms for.
    * @returns A Promise that resolves to an array of Room objects.
    */
-  abstract getRooms(worldId: UUID): Promise<Room[]>;
+  abstract getRoomsByWorld(worldId: UUID): Promise<Room[]>;
 
   /**
-   * Creates a new room with an optional specified ID.
+   * Creates a new rooms with an optional specified ID.
    * @param roomId Optional UUID to assign to the new room.
-   * @returns A Promise that resolves to the UUID of the created room.
+   * @returns A Promise that resolves to the UUID of the created rooms.
    */
-  abstract createRoom({ id, source, type, channelId, serverId, worldId }: Room): Promise<UUID>;
+  abstract createRooms(rooms: Room[]): Promise<UUID[]>;
 
   /**
    * Updates a specific room in the database.
@@ -357,12 +369,12 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
   abstract getRoomsForParticipants(userIds: UUID[]): Promise<UUID[]>;
 
   /**
-   * Adds a user as a participant to a specific room.
-   * @param entityId The UUID of the user to add as a participant.
+   * Adds users as a participant to a specific room.
+   * @param entityIds The UUIDs of the users to add as a participant.
    * @param roomId The UUID of the room to which the user will be added.
    * @returns A Promise that resolves to a boolean indicating success or failure.
    */
-  abstract addParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
+  abstract addParticipantsRoom(entityIds: UUID[], roomId: UUID): Promise<boolean>;
 
   /**
    * Removes a user as a participant from a specific room.
