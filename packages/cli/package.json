@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/cli",
-  "version": "1.0.0-beta.72",
+  "version": "1.0.0-beta.73",
   "description": "elizaOS CLI - Manage your AI agents and plugins",
   "publishConfig": {
     "access": "public",
@@ -74,7 +74,7 @@
   "gitHead": "6c367b48e9948cb4f91e0a072448f8db46a28a8e",
   "dependencies": {
     "@electric-sql/pglite": "^0.2.17",
-    "@elizaos/core": "^1.0.0-beta.71",
+    "@elizaos/core": "^1.0.0-beta.73",
     "@elizaos/plugin-local-ai": "^1.0.0-beta",
     "@elizaos/plugin-sql": "^1.0.0-beta.71",
     "bun": "^1.2.13",
