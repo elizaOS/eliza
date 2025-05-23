@@ -54,8 +54,9 @@ const mockDatabaseAdapter: IDatabaseAdapter = {
   db: {},
   init: vi.fn().mockResolvedValue(undefined),
   close: vi.fn().mockResolvedValue(undefined),
-  getEntityById: vi.fn().mockResolvedValue(null),
-  createEntity: vi.fn().mockResolvedValue(true),
+  getConnection: vi.fn().mockResolvedValue({}),
+  getEntityByIds: vi.fn().mockResolvedValue([]),
+  createEntities: vi.fn().mockResolvedValue(true),
   getMemories: vi.fn().mockResolvedValue([]),
   getMemoryById: vi.fn().mockResolvedValue(null),
   getMemoriesByRoomIds: vi.fn().mockResolvedValue([]),
@@ -63,16 +64,16 @@ const mockDatabaseAdapter: IDatabaseAdapter = {
   getCachedEmbeddings: vi.fn().mockResolvedValue([]),
   log: vi.fn().mockResolvedValue(undefined),
   searchMemories: vi.fn().mockResolvedValue([]),
-  createMemory: vi.fn().mockResolvedValue(stringToUuid(uuidv4())), // Return a mock UUID
+  createMemory: vi.fn().mockResolvedValue(stringToUuid(uuidv4())),
   deleteMemory: vi.fn().mockResolvedValue(undefined),
   deleteAllMemories: vi.fn().mockResolvedValue(undefined),
   countMemories: vi.fn().mockResolvedValue(0),
-  getRoom: vi.fn().mockResolvedValue(null),
-  createRoom: vi.fn().mockResolvedValue(stringToUuid(uuidv4())), // Return a mock UUID
+  getRoomsByIds: vi.fn().mockResolvedValue([]),
+  createRooms: vi.fn().mockResolvedValue([stringToUuid(uuidv4())]),
   deleteRoom: vi.fn().mockResolvedValue(undefined),
   getRoomsForParticipant: vi.fn().mockResolvedValue([]),
   getRoomsForParticipants: vi.fn().mockResolvedValue([]),
-  addParticipant: vi.fn().mockResolvedValue(true),
+  addParticipantsRoom: vi.fn().mockResolvedValue(true),
   removeParticipant: vi.fn().mockResolvedValue(true),
   getParticipantsForEntity: vi.fn().mockResolvedValue([]),
   getParticipantsForRoom: vi.fn().mockResolvedValue([]),
@@ -95,25 +96,27 @@ const mockDatabaseAdapter: IDatabaseAdapter = {
   createComponent: vi.fn().mockResolvedValue(true),
   updateComponent: vi.fn().mockResolvedValue(undefined),
   deleteComponent: vi.fn().mockResolvedValue(undefined),
-  createWorld: vi.fn().mockResolvedValue(stringToUuid(uuidv4())), // Return a mock UUID
+  createWorld: vi.fn().mockResolvedValue(stringToUuid(uuidv4())),
   getWorld: vi.fn().mockResolvedValue(null),
   getAllWorlds: vi.fn().mockResolvedValue([]),
   updateWorld: vi.fn().mockResolvedValue(undefined),
   updateRoom: vi.fn().mockResolvedValue(undefined),
-  getRooms: vi.fn().mockResolvedValue([]),
+  getRoomsByWorld: vi.fn().mockResolvedValue([]),
   updateRelationship: vi.fn().mockResolvedValue(undefined),
   getCache: vi.fn().mockResolvedValue(undefined),
   setCache: vi.fn().mockResolvedValue(true),
   deleteCache: vi.fn().mockResolvedValue(true),
-  createTask: vi.fn().mockResolvedValue(stringToUuid(uuidv4())), // Return a mock UUID
+  createTask: vi.fn().mockResolvedValue(stringToUuid(uuidv4())),
   getTasks: vi.fn().mockResolvedValue([]),
   getTask: vi.fn().mockResolvedValue(null),
   getTasksByName: vi.fn().mockResolvedValue([]),
   updateTask: vi.fn().mockResolvedValue(undefined),
   deleteTask: vi.fn().mockResolvedValue(undefined),
-  updateMemory: vi.fn().mockResolvedValue(true), // Added missing method from previous example
-  getLogs: vi.fn().mockResolvedValue([]), // Added missing method from previous example
-  deleteLog: vi.fn().mockResolvedValue(undefined), // Added missing method from previous example
+  updateMemory: vi.fn().mockResolvedValue(true),
+  getLogs: vi.fn().mockResolvedValue([]),
+  deleteLog: vi.fn().mockResolvedValue(undefined),
+  removeWorld: vi.fn().mockResolvedValue(undefined),
+  deleteRoomsByServerId: vi.fn().mockResolvedValue(undefined),
 };
 
 // Mock action creator (matches your example)
@@ -263,12 +266,14 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         updatedAt: Date.now(),
         enabled: true,
       }); // Add required Agent fields
-      vi.mocked(mockDatabaseAdapter.getEntityById).mockResolvedValue({
-        id: agentId,
-        agentId: agentId,
-        names: [mockCharacter.name],
-      });
-      vi.mocked(mockDatabaseAdapter.getRoom).mockResolvedValue(null);
+      vi.mocked(mockDatabaseAdapter.getEntityByIds).mockResolvedValue([
+        {
+          id: agentId,
+          agentId: agentId,
+          names: [mockCharacter.name],
+        },
+      ]);
+      vi.mocked(mockDatabaseAdapter.getRoomsByIds).mockResolvedValue([]);
       vi.mocked(mockDatabaseAdapter.getParticipantsForRoom).mockResolvedValue([]);
 
       await runtime.initialize(); // Initialize to process registrations
@@ -289,12 +294,14 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         updatedAt: Date.now(),
         enabled: true,
       });
-      vi.mocked(mockDatabaseAdapter.getEntityById).mockResolvedValue({
-        id: agentId,
-        agentId: agentId,
-        names: [mockCharacter.name],
-      });
-      vi.mocked(mockDatabaseAdapter.getRoom).mockResolvedValue(null);
+      vi.mocked(mockDatabaseAdapter.getEntityByIds).mockResolvedValue([
+        {
+          id: agentId,
+          agentId: agentId,
+          names: [mockCharacter.name],
+        },
+      ]);
+      vi.mocked(mockDatabaseAdapter.getRoomsByIds).mockResolvedValue([]);
       vi.mocked(mockDatabaseAdapter.getParticipantsForRoom).mockResolvedValue([]);
       // mockDatabaseAdapter.getAgent is NOT called by initialize anymore after ensureAgentExists returns the agent
     });
@@ -305,10 +312,10 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       expect(mockDatabaseAdapter.init).toHaveBeenCalledTimes(1);
       expect(mockDatabaseAdapter.ensureAgentExists).toHaveBeenCalledWith(mockCharacter);
       // expect(mockDatabaseAdapter.getAgent).toHaveBeenCalledWith(agentId); // This is no longer called
-      expect(mockDatabaseAdapter.getEntityById).toHaveBeenCalledWith(agentId);
-      expect(mockDatabaseAdapter.getRoom).toHaveBeenCalledWith(agentId);
-      expect(mockDatabaseAdapter.createRoom).toHaveBeenCalled();
-      expect(mockDatabaseAdapter.addParticipant).toHaveBeenCalledWith(agentId, agentId);
+      expect(mockDatabaseAdapter.getEntityByIds).toHaveBeenCalledWith([agentId]);
+      expect(mockDatabaseAdapter.getRoomsByIds).toHaveBeenCalledWith([agentId]);
+      expect(mockDatabaseAdapter.createRooms).toHaveBeenCalled();
+      expect(mockDatabaseAdapter.addParticipantsRoom).toHaveBeenCalledWith([agentId], agentId);
     });
 
     it('should throw if adapter is not available during initialize', async () => {
@@ -386,7 +393,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       const modelHandler = vi.fn().mockResolvedValue({ result: 'success' });
       const modelType = ModelType.TEXT_LARGE;
 
-      runtime.registerModel(modelType, modelHandler);
+      runtime.registerModel(modelType, modelHandler, 'test-provider');
 
       const params = { prompt: 'test prompt', someOption: true };
       const result = await runtime.useModel(modelType, params);
@@ -473,12 +480,11 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
 
   // --- Adapter Passthrough Tests ---
   describe('Adapter Passthrough', () => {
-    // Keep these simple, just verify the call is forwarded
-    it('createEntity should call adapter.createEntity', async () => {
+    it('createEntity should call adapter.createEntities', async () => {
       const entityData = { id: stringToUuid(uuidv4()), agentId: agentId, names: ['Test Entity'] };
       await runtime.createEntity(entityData);
-      expect(mockDatabaseAdapter.createEntity).toHaveBeenCalledTimes(1);
-      expect(mockDatabaseAdapter.createEntity).toHaveBeenCalledWith(entityData);
+      expect(mockDatabaseAdapter.createEntities).toHaveBeenCalledTimes(1);
+      expect(mockDatabaseAdapter.createEntities).toHaveBeenCalledWith([entityData]);
     });
 
     it('getMemoryById should call adapter.getMemoryById', async () => {
