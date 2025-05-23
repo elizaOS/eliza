@@ -2111,7 +2111,7 @@ export function agentRouter(
 
       // Optional: verify the memory belongs to the provided serverId
       if (memory.roomId) {
-        const rooms = await db.getRooms(memory.worldId as UUID);
+        const rooms = await db.getRoomsByWorld(memory.worldId as UUID);
         const room = rooms.find((r) => r.id === memory.roomId);
         if (room && room.serverId !== serverId) {
           sendError(res, 400, 'BAD_REQUEST', 'Memory does not belong to server');
