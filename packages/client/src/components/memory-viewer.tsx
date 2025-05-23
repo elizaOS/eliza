@@ -2,6 +2,7 @@ import type { UUID } from '@elizaos/core';
 import { Database, LoaderIcon, MailCheck, MessageSquareShare, Pencil } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAgentMemories, useDeleteMemory } from '../hooks/use-query-hooks';
+import MemoryGraph from './memory-graph';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
@@ -48,6 +49,8 @@ export function AgentMemoryViewer({ agentId, agentName }: { agentId: UUID; agent
   const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
   const [visibleItems, setVisibleItems] = useState(ITEMS_PER_PAGE);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [viewMode, setViewMode] = useState<'list' | 'graph'>('list');
+  const [selectedMemory, setSelectedMemory] = useState<Memory | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   console.log({ agentName, agentId });
@@ -62,7 +65,11 @@ export function AgentMemoryViewer({ agentId, agentName }: { agentId: UUID; agent
           ? undefined
           : undefined;
 
-  const { data: memories = [], isLoading, error } = useAgentMemories(agentId, tableName);
+  const {
+    data: memories = [],
+    isLoading,
+    error,
+  } = useAgentMemories(agentId, tableName, undefined, viewMode === 'graph');
   const { mutate: deleteMemory } = useDeleteMemory();
 
   // Handle scroll to implement infinite loading
@@ -349,8 +356,20 @@ export function AgentMemoryViewer({ agentId, agentName }: { agentId: UUID; agent
               {filteredMemories.length} memories
             </Badge>
           )}
+          {viewMode === 'graph' && selectedMemory && (
+            <span className="ml-4 text-sm text-muted-foreground line-clamp-1">
+              {(selectedMemory.content as any)?.text || selectedMemory.id}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setViewMode(viewMode === 'list' ? 'graph' : 'list')}
+          >
+            {viewMode === 'list' ? 'Graph' : 'List'}
+          </Button>
           <Select
             value={selectedType}
             onValueChange={(value) => setSelectedType(value as MemoryType)}
@@ -374,6 +393,8 @@ export function AgentMemoryViewer({ agentId, agentName }: { agentId: UUID; agent
       >
         {filteredMemories.length === 0 ? (
           <EmptyState />
+        ) : viewMode === 'graph' ? (
+          <MemoryGraph memories={filteredMemories} onSelect={setSelectedMemory} />
         ) : (
           <div className="space-y-4">
             {/* Group messages by date */}
