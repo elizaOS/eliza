@@ -160,6 +160,8 @@ export class StarterService extends Service {
 const plugin: Plugin = {
   name: 'starter',
   description: 'A starter plugin for Eliza',
+  // Set lowest priority so real models take precedence
+  priority: -1000,
   config: {
     EXAMPLE_PLUGIN_VARIABLE: process.env.EXAMPLE_PLUGIN_VARIABLE,
   },
