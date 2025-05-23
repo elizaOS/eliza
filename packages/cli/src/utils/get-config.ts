@@ -22,23 +22,137 @@ const pgliteConfigSchema = z.object({
 });
 
 /**
+ * Default sample environment variables written to new .env files.
+ */
+const SAMPLE_ENV_TEMPLATE = `
+# Logging Configuration (supported: fatal, error, warn, info, debug, trace | default: info)
+LOG_LEVEL=
+
+SENTRY_LOGGING=true
+SENTRY_DSN=
+SENTRY_ENVIRONMENT=
+SENTRY_TRACES_SAMPLE_RATE=
+SENTRY_SEND_DEFAULT_PII=
+
+# OpenAI Configuration
+OPENAI_API_KEY=
+
+# Anthropic Configuration
+ANTHROPIC_API_KEY=
+
+# Cloudflare AI
+CLOUDFLARE_GW_ENABLED= # Enable Cloudflare AI Gateway
+CLOUDFLARE_AI_ACCOUNT_ID= # Account ID
+CLOUDFLARE_AI_GATEWAY_ID= # Gateway ID
+
+# Fill these out if you want to use Discord
+DISCORD_APPLICATION_ID=
+DISCORD_API_TOKEN=
+
+# Fill these out if you want to use Postgres
+POSTGRES_URL=
+
+# Fill these out if you want to use Telegram
+TELEGRAM_BOT_TOKEN=
+
+# Fill these out if you want to use Twitter
+TWITTER_USERNAME=
+TWITTER_PASSWORD=
+TWITTER_EMAIL=
+TWITTER_ENABLE_POST_GENERATION=
+TWITTER_INTERACTION_ENABLE=
+TWITTER_TIMELINE_ENABLE=
+TWITTER_SPACES_ENABLE=
+TWITTER_TIMELINE_MODE=
+TWITTER_TIMELINE_POLL_INTERVAL=
+
+# Fill these out if you want to use EVM
+EVM_PRIVATE_KEY=
+EVM_CHAINS=mainnet,sepolia,base,arbitrum,polygon
+EVM_PROVIDER_URL=
+
+# Fill these out if you want to use Solana
+SOLANA_PUBLIC_KEY=
+SOLANA_PRIVATE_KEY=
+BIRDEYE_API_KEY=
+
+# Local AI Configuration
+USE_LOCAL_AI=
+USE_STUDIOLM_TEXT_MODELS=
+USE_OLLAMA_TEXT_MODELS=
+
+# Ollama Configuration
+OLLAMA_API_ENDPOINT=
+OLLAMA_MODEL=
+USE_OLLAMA_EMBEDDING=
+OLLAMA_EMBEDDING_MODEL=
+OLLAMA_SMALL_MODEL=
+OLLAMA_MEDIUM_MODEL=
+OLLAMA_LARGE_MODEL=
+
+# StudioLM Configuration
+STUDIOLM_SERVER_URL=
+STUDIOLM_SMALL_MODEL=
+STUDIOLM_MEDIUM_MODEL=
+STUDIOLM_EMBEDDING_MODEL=
+
+# Settings for The Org
+
+COMMUNITY_MANAGER_DISCORD_APPLICATION_ID=
+COMMUNITY_MANAGER_DISCORD_API_TOKEN=
+
+SOCIAL_MEDIA_MANAGER_DISCORD_APPLICATION_ID=
+SOCIAL_MEDIA_MANAGER_DISCORD_API_TOKEN=
+
+LIAISON_DISCORD_APPLICATION_ID=
+LIAISON_DISCORD_API_TOKEN=
+
+PROJECT_MANAGER_DISCORD_APPLICATION_ID=
+PROJECT_MANAGER_DISCORD_API_TOKEN=
+
+DEV_REL_DISCORD_APPLICATION_ID=
+DEV_REL_DISCORD_API_TOKEN=
+DEVREL_IMPORT_KNOWLEDGE=true
+
+INVESTMENT_MANAGER_DISCORD_APPLICATION_ID=
+INVESTMENT_MANAGER_DISCORD_API_TOKEN=
+
+# Settings for Investment Manager plugins
+BIRDEYE_API_KEY=
+JUPITER_API_KEY=
+HELIUS_API_KEY=
+COINMARKETCAP_API_KEY=
+ZEROEX_API_KEY=
+COINGECKO_API_KEY=
+`;
+
+/**
  * Validates a Postgres URL format
  * @param url The URL to validate
  * @returns True if the URL appears valid
  */
 export function isValidPostgresUrl(url: string): boolean {
-  if (!url) return false;
+  if (!url || typeof url !== 'string') return false;
 
-  // Basic pattern: postgresql://user:password@host:port/dbname
-  const basicPattern = /^postgresql:\/\/[^:]+:[^@]+@[^:]+:\d+\/\w+$/;
+  try {
+    // More robust validation using URL constructor
+    const parsedUrl = new URL(url);
+    return (
+      parsedUrl.protocol === 'postgresql:' &&
+      parsedUrl.hostname &&
+      parsedUrl.pathname &&
+      parsedUrl.pathname !== '/'
+    );
+  } catch {
+    // Fallback to regex patterns for edge cases
+    const patterns = [
+      /^postgresql:\/\/[^:]+:[^@]+@[^:]+:\d+\/\w+$/,
+      /^postgresql:\/\/[^:]+:[^@]+@[^\/]+\/[^?]+(\?.*)?$/,
+      /^postgresql:\/\/.*@.*:\d+\/.*$/,
+    ];
 
-  // More permissive pattern (allows missing password, different formats)
-  const permissivePattern = /^postgresql:\/\/.*@.*:\d+\/.*$/;
-
-  // Cloud pattern: allows for URLs with query parameters like sslmode=require
-  const cloudPattern = /^postgresql:\/\/[^:]+:[^@]+@[^\/]+\/[^?]+(\?.*)?$/;
-
-  return basicPattern.test(url) || cloudPattern.test(url) || permissivePattern.test(url);
+    return patterns.some((pattern) => pattern.test(url));
+  }
 }
 
 /**
@@ -50,35 +164,20 @@ export async function getElizaDirectories(targetProjectDir?: string) {
   const userEnv = UserEnvironment.getInstance();
   const paths = await userEnv.getPathInfo();
 
-  // Handle the case where we're creating a new project
   const projectRoot = targetProjectDir || paths.monorepoRoot || process.cwd();
+  const elizaDir = targetProjectDir ? path.resolve(targetProjectDir, '.eliza') : paths.elizaDir;
+  const envFilePath = targetProjectDir ? path.resolve(targetProjectDir, '.env') : paths.envFilePath;
 
-  // If targetProjectDir is specified (during project creation), use it for all paths
-  const elizaDir = targetProjectDir ? path.join(targetProjectDir, '.eliza') : paths.elizaDir;
-  const envFilePath = targetProjectDir ? path.join(targetProjectDir, '.env') : paths.envFilePath;
-
-  // For debugging
   logger.debug('Eliza directories:', {
     elizaDir,
     projectRoot,
     targetProjectDir: targetProjectDir || 'none',
   });
 
-  const defaultElizaDbDir = path.join(projectRoot, '.elizadb');
-
-  // Pass this default location as the fallback to resolvePgliteDir.
-  // resolvePgliteDir will then use it if no specific dir or PGLITE_DATA_DIR env var is set.
+  const defaultElizaDbDir = path.resolve(projectRoot, '.elizadb');
   const elizaDbDir = await resolvePgliteDir(undefined, defaultElizaDbDir);
 
-  logger.debug('[Config] Eliza directory:', elizaDir);
-  logger.debug('[Config] Database directory:', elizaDbDir);
-  logger.debug('[Config] Env file path:', envFilePath);
-
-  return {
-    elizaDir,
-    elizaDbDir,
-    envFilePath,
-  };
+  return { elizaDir, elizaDbDir, envFilePath };
 }
 
 /**
@@ -93,13 +192,37 @@ async function ensureDir(dirPath: string) {
 }
 
 /**
- * Generic function to ensure a file exists
- * @param filePath Path to the file
+ * Sets up the .env file by creating it if it doesn't exist or populating it with examples if it's empty
+ * @param envFilePath Path to the .env file
  */
-async function ensureFile(filePath: string) {
-  if (!existsSync(filePath)) {
-    await fs.writeFile(filePath, '', { encoding: 'utf8' });
-    logger.info(`Created file: ${filePath}`);
+export async function setupEnvFile(envFilePath: string): Promise<void> {
+  try {
+    // Check if .env file exists
+    const envExists = existsSync(envFilePath);
+
+    if (!envExists) {
+      // Create the file with sample template
+      await fs.writeFile(envFilePath, SAMPLE_ENV_TEMPLATE, 'utf8');
+      logger.info(`[Config] Created .env file with example variables at: ${envFilePath}`);
+    } else {
+      // File exists, check if it's empty
+      const content = await fs.readFile(envFilePath, 'utf8');
+      const trimmedContent = content.trim();
+
+      if (trimmedContent === '') {
+        // File is empty, write the sample template
+        await fs.writeFile(envFilePath, SAMPLE_ENV_TEMPLATE, 'utf8');
+        logger.info(`[Config] Populated empty .env file with example variables at: ${envFilePath}`);
+      } else {
+        logger.debug(`[Config] .env file already exists and has content at: ${envFilePath}`);
+      }
+    }
+  } catch (error) {
+    logger.error('Error setting up .env file:', {
+      error: error instanceof Error ? error.message : String(error),
+      envFilePath,
+    });
+    throw error;
   }
 }
 
@@ -135,8 +258,8 @@ export async function ensureElizaDir(targetProjectDir?: string) {
  * @param envFilePath Path to the .env file
  */
 export async function setupPgLite(
-  dbDir: any,
-  envPath: any,
+  dbDir: string | undefined,
+  envPath: string | undefined,
   targetProjectDir?: string
 ): Promise<void> {
   const dirs = await ensureElizaDir(targetProjectDir);
@@ -150,10 +273,6 @@ export async function setupPgLite(
     // Ensure the PGLite database directory exists
     await ensureDir(targetDbDir);
     logger.debug('[PGLite] Created database directory:', targetDbDir);
-
-    // Ensure .env file exists
-    await ensureFile(targetEnvPath);
-    logger.debug('[PGLite] Ensured .env file exists:', targetEnvPath);
 
     // Store PGLITE_DATA_DIR in the environment file
     await fs.writeFile(targetEnvPath, `PGLITE_DATA_DIR=${targetDbDir}\n`, { flag: 'a' });
@@ -181,18 +300,23 @@ export async function storePostgresUrl(url: string, envFilePath: string): Promis
   if (!url) return;
 
   try {
-    // Ensure .env file exists
-    await ensureFile(envFilePath);
+    // Read existing content first to avoid duplicates
+    let content = '';
+    if (existsSync(envFilePath)) {
+      content = await fs.readFile(envFilePath, 'utf8');
+    }
 
-    // Store the URL in the .env file
-    await fs.writeFile(envFilePath, `POSTGRES_URL=${url}\n`, { flag: 'a' });
+    // Remove existing POSTGRES_URL line if present
+    const lines = content.split('\n').filter((line) => !line.startsWith('POSTGRES_URL='));
+    lines.push(`POSTGRES_URL=${url}`);
 
-    // Also set in process.env for the current session
+    await fs.writeFile(envFilePath, lines.join('\n'), 'utf8');
     process.env.POSTGRES_URL = url;
 
     logger.success('Postgres URL saved to configuration');
   } catch (error) {
-    logger.warn('Error saving database configuration:', error);
+    logger.error('Error saving database configuration:', error);
+    throw error; // Re-throw to handle upstream
   }
 }
 
@@ -239,8 +363,8 @@ export async function promptAndStorePostgresUrl(envFilePath: string): Promise<st
 export async function configureDatabaseSettings(reconfigure = false): Promise<string | null> {
   // Set up directories and env file
   const { elizaDbDir, envFilePath } = await ensureElizaDir();
-  await ensureFile(envFilePath);
-  await loadEnvironment(elizaDbDir);
+  await setupEnvFile(envFilePath);
+  await loadEnvironment(path.dirname(envFilePath));
 
   // Check if we already have database configuration in env
   let postgresUrl = process.env.POSTGRES_URL;
@@ -311,17 +435,22 @@ export type Config = z.infer<typeof configSchema>;
 
 /**
  * Resolves the paths in the given configuration based on the provided current working directory (cwd).
- * @param {string} cwd - The current working directory.bun run b
+ * @param {string} cwd - The current working directory.
  * @param {RawConfig} config - The raw configuration object.
- * @returns {Promise<ResolvedConfig>} The resolved configuration object with updated paths.
+ * @returns {Promise<Config>} The resolved configuration object with updated paths.
  */
 export async function resolveConfigPaths(cwd: string, config: RawConfig) {
-  return configSchema.parse({
-    ...config,
-    resolvedPaths: {
-      knowledge: path.resolve(cwd, config.paths.knowledge),
-    },
-  });
+  try {
+    return configSchema.parse({
+      ...config,
+      resolvedPaths: {
+        knowledge: path.resolve(cwd, config.paths.knowledge),
+      },
+    });
+  } catch (error) {
+    logger.error('Failed to resolve config paths:', error);
+    throw new Error('Invalid configuration: failed to resolve paths');
+  }
 }
 
 /**
