@@ -243,7 +243,7 @@ describe('Room Integration Tests', () => {
       await adapter.createRoom(otherRoom);
 
       // Delete rooms by serverId
-      await adapter.deleteRoomsByServerId(serverIdToDelete as UUID);
+      await adapter.deleteRoomsByWorldId(roomTestWorldId);
 
       // Verify only the targeted room was deleted
       const deletedRoom = await adapter.getRoom(roomWithServerId.id);
