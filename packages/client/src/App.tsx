@@ -97,7 +97,7 @@ function AppContent() {
                 <div className="flex w-full justify-center">
                   <div className="w-full md:max-w-4xl">
                     <div className="flex items-center justify-between mb-4">
-                      <h2 className="text-2xl font-bold">System Logs</h2>
+                      <h2 className="text-2xl p-4 font-bold">System Logs</h2>
                     </div>
                     <AgentLogViewer />
                   </div>
