@@ -245,9 +245,11 @@ export class UserEnvironment {
 
   public async getPathInfo(): Promise<PathInfo> {
     const monorepoRoot = this.findMonorepoRoot(process.cwd());
-    const projectRootForPaths = monorepoRoot || process.cwd(); // Determine the correct root
-    const elizaDir = path.join(projectRootForPaths, '.eliza'); // Use the correct root for .eliza
-    const envFilePath = resolveEnvFile(projectRootForPaths); // Use the correct root for .env resolution
+    const projectRootForPaths = monorepoRoot || process.cwd();
+    const elizaDir = path.join(projectRootForPaths, '.eliza');
+
+    // Resolve .env from current working directory up to monorepo root (if any), or only cwd if not in monorepo
+    const envFilePath = resolveEnvFile(process.cwd(), monorepoRoot ?? undefined);
 
     logger.debug('[UserEnvironment] Detected monorepo root:', monorepoRoot || 'Not in monorepo');
 

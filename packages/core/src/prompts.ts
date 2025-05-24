@@ -36,16 +36,24 @@ These are the available valid actions:
 
 <instructions>
 Write a thought and plan for {{agentName}} and decide what actions to take. Also include the providers that {{agentName}} will use to have the right context for responding and acting, if any.
+
+IMPORTANT PROVIDER SELECTION RULES:
+- If the message mentions images, photos, pictures, attachments, or visual content, OR if you see "(Attachments:" in the conversation, you MUST include "ATTACHMENTS" in your providers list
+- If the message asks about or references specific people, include "ENTITIES" in your providers list  
+- If the message asks about relationships or connections between people, include "RELATIONSHIPS" in your providers list
+- If the message asks about facts or specific information, include "FACTS" in your providers list
+- If the message asks about the environment or world context, include "WORLD" in your providers list
+- If you need external knowledge, information, or context beyond the current conversation to provide a helpful response, include "KNOWLEDGE" in your providers list
+
 First, think about what you want to do next and plan your actions. Then, write the next message and include the actions you plan to take.
 </instructions>
 
 <keys>
 "thought" should be a short description of what the agent is thinking about and planning.
 "actions" should be a comma-separated list of the actions {{agentName}} plans to take based on the thought (if none, use IGNORE, if simply responding with text, use REPLY)
-"providers" should be an optional comma-separated list of the providers that {{agentName}} will use to have the right context for responding and acting
+"providers" should be a comma-separated list of the providers that {{agentName}} will use to have the right context for responding and acting (NEVER use "IGNORE" as a provider - use specific provider names like ATTACHMENTS, ENTITIES, FACTS, KNOWLEDGE, etc.)
 "evaluators" should be an optional comma-separated list of the evaluators that {{agentName}} will use to evaluate the conversation after responding
 "text" should be the text of the next message for {{agentName}} which they will send to the conversation.
-"simple" should be true if the message is a simple response and false if it is a more complex response that requires planning, knowledge or more context to handle or reply to.
 </keys>
 
 <output>
@@ -58,7 +66,6 @@ Respond using XML format like this:
     <actions>ACTION1,ACTION2</actions>
     <providers>PROVIDER1,PROVIDER2</providers>
     <text>Your response text here</text>
-    <simple>true|false</simple>
 </response>
 
 IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.

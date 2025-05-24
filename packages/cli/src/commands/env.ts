@@ -22,9 +22,8 @@ export async function getGlobalEnvPath(): Promise<string> {
  * @returns The path to the local .env file or null if not found
  */
 async function getLocalEnvPath(): Promise<string | null> {
-  const envInfo = await UserEnvironment.getInstanceInfo();
-  const envPath = envInfo.paths.envFilePath;
-  return existsSync(envPath) ? envPath : null;
+  const localEnvPath = path.join(process.cwd(), '.env');
+  return existsSync(localEnvPath) ? localEnvPath : null;
 }
 
 /**
