@@ -1729,6 +1729,7 @@ export function agentRouter(
         ? Number.parseInt(req.query.before as string, 10)
         : Date.now();
       const _worldId = req.query.worldId as string;
+      const includeEmbedding = req.query.includeEmbedding === 'true';
 
       const memories = await runtime.getMemories({
         tableName: 'messages',
@@ -1737,12 +1738,12 @@ export function agentRouter(
         end: before,
       });
 
-      const cleanMemories = memories.map((memory) => {
-        return {
-          ...memory,
-          embedding: undefined,
-        };
-      });
+      const cleanMemories = includeEmbedding
+        ? memories
+        : memories.map((memory) => ({
+            ...memory,
+            embedding: undefined,
+          }));
 
       res.json({
         success: true,
@@ -1794,18 +1795,19 @@ export function agentRouter(
 
     // Get tableName from query params, default to "messages"
     const tableName = (req.query.tableName as string) || 'messages';
+    const includeEmbedding = req.query.includeEmbedding === 'true';
 
     const memories = await runtime.getMemories({
       agentId,
       tableName,
     });
 
-    const cleanMemories = memories.map((memory) => {
-      return {
-        ...memory,
-        embedding: undefined,
-      };
-    });
+    const cleanMemories = includeEmbedding
+      ? memories
+      : memories.map((memory) => ({
+          ...memory,
+          embedding: undefined,
+        }));
 
     res.json({
       success: true,

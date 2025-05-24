@@ -500,12 +500,18 @@ export const apiClient = {
   },
 
   // Method to get all memories for an agent, optionally filtered by room
-  getAgentMemories: (agentId: UUID, roomId?: UUID, tableName?: string) => {
+  getAgentMemories: (
+    agentId: UUID,
+    roomId?: UUID,
+    tableName?: string,
+    includeEmbedding = false
+  ) => {
     const params = new URLSearchParams();
     if (tableName) params.append('tableName', tableName);
+    if (includeEmbedding) params.append('includeEmbedding', 'true');
 
     const url = roomId
-      ? `/agents/${agentId}/rooms/${roomId}/memories`
+      ? `/agents/${agentId}/rooms/${roomId}/memories?${params.toString()}`
       : `/agents/${agentId}/memories${params.toString() ? `?${params.toString()}` : ''}`;
 
     return fetcher({

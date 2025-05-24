@@ -573,15 +573,20 @@ export function useDeleteLog() {
 /**
  * Fetches memories for a specific agent, optionally filtered by room
  */
-export function useAgentMemories(agentId: UUID, tableName?: string, roomId?: UUID) {
+export function useAgentMemories(
+  agentId: UUID,
+  tableName?: string,
+  roomId?: UUID,
+  includeEmbedding = false
+) {
   const queryKey = roomId
-    ? ['agents', agentId, 'rooms', roomId, 'memories', tableName]
-    : ['agents', agentId, 'memories', tableName];
+    ? ['agents', agentId, 'rooms', roomId, 'memories', tableName, includeEmbedding]
+    : ['agents', agentId, 'memories', tableName, includeEmbedding];
 
   return useQuery({
     queryKey,
     queryFn: async () => {
-      const result = await apiClient.getAgentMemories(agentId, roomId, tableName);
+      const result = await apiClient.getAgentMemories(agentId, roomId, tableName, includeEmbedding);
       return result.data || [];
     },
     staleTime: 1000,

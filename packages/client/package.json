@@ -63,6 +63,7 @@
     "socket.io-client": "^4.8.1",
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",
+    "react-force-graph": "^1.51.0",
     "vite-plugin-compression": "^0.5.1",
     "vite-plugin-node-polyfills": "^0.23.0"
   },

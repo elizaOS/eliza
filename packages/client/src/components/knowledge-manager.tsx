@@ -2,6 +2,7 @@ import type { UUID } from '@elizaos/core';
 import { Book, Clock, File, FileText, LoaderIcon, Trash2, Upload } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAgentMemories, useDeleteMemory } from '../hooks/use-query-hooks';
+import MemoryGraph from './memory-graph';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Card, CardFooter, CardHeader } from './ui/card';
@@ -51,6 +52,8 @@ export function KnowledgeManager({ agentId }: { agentId: UUID }) {
   const [isUploading, setIsUploading] = useState(false);
   const [visibleItems, setVisibleItems] = useState(ITEMS_PER_PAGE);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [viewMode, setViewMode] = useState<'list' | 'graph'>('list');
+  const [selectedMemory, setSelectedMemory] = useState<Memory | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
@@ -59,7 +62,11 @@ export function KnowledgeManager({ agentId }: { agentId: UUID }) {
   // Use 'documents' table for knowledge
   const tableName = 'documents';
 
-  const { data: memories = [], isLoading, error } = useAgentMemories(agentId, tableName);
+  const {
+    data: memories = [],
+    isLoading,
+    error,
+  } = useAgentMemories(agentId, tableName, undefined, viewMode === 'graph');
   const { mutate: deleteMemory } = useDeleteMemory();
 
   // Handle scroll to implement infinite loading
@@ -346,6 +353,11 @@ export function KnowledgeManager({ agentId }: { agentId: UUID }) {
       <div className="flex justify-between items-center mb-4 px-4 pt-4 flex-none border-b pb-3">
         <div className="flex items-center gap-2">
           <h3 className="text-lg font-medium">Knowledge Library</h3>
+          {viewMode === 'graph' && selectedMemory && (
+            <span className="ml-4 text-sm text-muted-foreground line-clamp-1">
+              {(selectedMemory.metadata as any)?.title || selectedMemory.id}
+            </span>
+          )}
           <Button
             variant="ghost"
             size="icon"
@@ -356,6 +368,13 @@ export function KnowledgeManager({ agentId }: { agentId: UUID }) {
           >
             <Upload className="h-4 w-4" />
             <span className="sr-only">{isUploading ? 'Uploading...' : 'Upload Documents'}</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setViewMode(viewMode === 'list' ? 'graph' : 'list')}
+          >
+            {viewMode === 'list' ? 'Graph' : 'List'}
           </Button>
           <input
             type="file"
@@ -374,6 +393,8 @@ export function KnowledgeManager({ agentId }: { agentId: UUID }) {
       >
         {memories.length === 0 ? (
           <EmptyState />
+        ) : viewMode === 'graph' ? (
+          <MemoryGraph memories={visibleMemories} onSelect={setSelectedMemory} />
         ) : (
           <div className="flex flex-col gap-4 w-full mx-auto">
             {visibleMemories.map((memory: Memory, index: number) => (
