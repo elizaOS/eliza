@@ -312,6 +312,19 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
     }
   }, [isLive, useWebSocket]);
 
+  // Update WebSocket filters when selectedAgentName or selectedLevel changes
+  useEffect(() => {
+    if (useWebSocket && isLive) {
+      const socketManager = SocketIOManager.getInstance();
+      socketManager
+        .updateLogStreamFilters({
+          agentName: selectedAgentName,
+          level: selectedLevel,
+        })
+        .catch(console.error);
+    }
+  }, [selectedAgentName, selectedLevel, useWebSocket, isLive]);
+
   // Combine API logs and WebSocket logs
   const apiLogs = logResponse?.logs || [];
   const combinedLogs = useWebSocket && isLive ? wsLogs : apiLogs;

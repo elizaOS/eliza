@@ -444,6 +444,27 @@ class SocketIOManager extends EventAdapter {
   }
 
   /**
+   * Update log stream filters
+   */
+  public async updateLogStreamFilters(filters: {
+    agentName?: string;
+    level?: string;
+  }): Promise<void> {
+    if (!this.socket) {
+      clientLogger.error('[SocketIO] Cannot update log filters: socket not initialized');
+      return;
+    }
+
+    // Wait for connection if needed
+    if (!this.isConnected) {
+      await this.connectPromise;
+    }
+
+    this.socket.emit('update_log_filters', filters);
+    clientLogger.info('[SocketIO] Updated log stream filters:', filters);
+  }
+
+  /**
    * Check if subscribed to log streaming
    */
   public isLogStreamSubscribed(): boolean {
