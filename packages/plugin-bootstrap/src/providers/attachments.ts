@@ -1,4 +1,4 @@
-import type { IAgentRuntime, Memory, Provider } from '@elizaos/core';
+import type { IAgentRuntime, Media, Memory, Provider } from '@elizaos/core';
 import { addHeader } from '@elizaos/core';
 
 /**
@@ -25,7 +25,8 @@ export const attachmentsProvider: Provider = {
   dynamic: true,
   get: async (runtime: IAgentRuntime, message: Memory) => {
     // Start with any attachments in the current message
-    let allAttachments = message.content.attachments || [];
+    const currentMessageAttachments = message.content.attachments || [];
+    let allAttachments = [...currentMessageAttachments];
 
     const { roomId } = message;
     const conversationLength = runtime.getConversationLength();
@@ -36,6 +37,7 @@ export const attachmentsProvider: Provider = {
       unique: false,
       tableName: 'messages',
     });
+
     // Process attachments from recent messages
     if (recentMessagesData && Array.isArray(recentMessagesData)) {
       const lastMessageWithAttachment = recentMessagesData.find(
@@ -46,17 +48,36 @@ export const attachmentsProvider: Provider = {
         const lastMessageTime = lastMessageWithAttachment?.createdAt ?? Date.now();
         const oneHourBeforeLastMessage = lastMessageTime - 60 * 60 * 1000; // 1 hour before last message
 
-        allAttachments = recentMessagesData.reverse().flatMap((msg) => {
+        // Create a map of current message attachments by ID for quick lookup
+        const currentAttachmentsMap = new Map(
+          currentMessageAttachments.map((att) => [att.id, att])
+        );
+
+        // Process recent messages and merge attachments
+        const recentAttachments = recentMessagesData.reverse().flatMap((msg) => {
           const msgTime = msg.createdAt ?? Date.now();
           const isWithinTime = msgTime >= oneHourBeforeLastMessage;
           const attachments = msg.content.attachments || [];
-          if (!isWithinTime) {
-            for (const attachment of attachments) {
-              attachment.text = '[Hidden]';
-            }
-          }
-          return attachments;
+
+          return attachments
+            .map((attachment) => {
+              // If this attachment ID exists in current message with rich data, skip it
+              if (currentAttachmentsMap.has(attachment.id)) {
+                return null;
+              }
+
+              // For older attachments, hide the text
+              if (!isWithinTime) {
+                return { ...attachment, text: '[Hidden]' };
+              }
+
+              return attachment;
+            })
+            .filter((att): att is Media => att !== null); // Type guard to ensure Media[]
         });
+
+        // Combine current message attachments (with rich data) and recent attachments
+        allAttachments = [...currentMessageAttachments, ...recentAttachments];
       }
     }
 

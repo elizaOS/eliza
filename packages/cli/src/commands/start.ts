@@ -1,4 +1,4 @@
-import { character as defaultCharacter, getElizaCharacter } from '@/src/characters/eliza';
+import { getElizaCharacter } from '@/src/characters/eliza';
 import { AgentServer } from '@/src/server/index';
 import { jsonToCharacter, loadCharacterTryPath } from '@/src/server/loader';
 import {
@@ -384,7 +384,7 @@ export async function startAgent(
     settings: await loadEnvConfig(),
   });
   if (init) {
-    await init(runtime);
+    init(runtime);
   }
 
   // start services/plugins/process knowledge

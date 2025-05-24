@@ -115,6 +115,12 @@ export async function copyTemplate(
 
     const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8'));
 
+    // Remove private field from template package.json since templates should be usable by users
+    if (packageJson.private) {
+      delete packageJson.private;
+      logger.info('Removed private field from template package.json');
+    }
+
     // Only update dependency versions - leave everything else unchanged
     if (packageJson.dependencies) {
       for (const depName of Object.keys(packageJson.dependencies)) {

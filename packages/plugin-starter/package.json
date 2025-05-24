@@ -1,8 +1,9 @@
 {
   "name": "@npm-username/plugin-name",
   "description": "${PLUGINDESCRIPTION}",
-  "version": "0.1.0",
+  "version": "1.0.0-beta.74",
   "type": "module",
+  "private": true,
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -42,11 +43,11 @@
   },
   "devDependencies": {
     "@elizaos/cli": "beta",
+    "dotenv": "16.4.5",
+    "prettier": "3.5.3",
     "tsup": "8.4.0",
     "typescript": "5.8.2",
-    "prettier": "3.5.3",
-    "vitest": "1.4.0",
-    "dotenv": "16.4.5"
+    "vitest": "1.4.0"
   },
   "scripts": {
     "start": "elizaos start",
@@ -74,5 +75,6 @@
         "description": "API key for the service"
       }
     }
-  }
+  },
+  "gitHead": "d5bd5c43bfebeb7ac02f9e029f924cb6cd5c2ec7"
 }
