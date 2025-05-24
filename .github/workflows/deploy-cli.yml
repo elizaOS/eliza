@@ -3,8 +3,8 @@ name: Deploy CLI with Bun
 on:
   workflow_dispatch:
     inputs:
-      release_type:
-        description: 'Release type'
+      release_tag:
+        description: 'Release tag for publishing'
         required: true
         default: 'beta'
         type: choice
@@ -40,7 +40,7 @@ jobs:
         run: echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
 
       - name: Publish CLI
-        run: bun run release:${{ github.event.inputs.release_type }}
+        run: npx lerna publish prerelease --preid ${{ github.event.inputs.release_tag }} --dist-tag ${{ github.event.inputs.release_tag }} --no-private --force-publish --yes
         env:
           NPM_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           GH_TOKEN: ${{ secrets.GH_PAT }}
