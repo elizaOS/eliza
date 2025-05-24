@@ -130,38 +130,6 @@ export abstract class BaseDrizzleAdapter<
   }
 
   /**
-   * Asynchronously ensures that an agent exists by checking if an agent with the same name already exists in the system.
-   * If the agent does not exist, it will be created with the provided data.
-   *
-   * @param {Partial<Agent>} agent - The partial data of the agent to ensure its existence.
-   * @returns {Promise<void>} - A promise that resolves when the agent is successfully ensured.
-   * @throws {Error} - If the agent name is not provided or if there is an issue creating the agent.
-   */
-  async ensureAgentExists(agent: Partial<Agent>): Promise<Agent> {
-    if (!agent.name) {
-      throw new Error('Agent name is required');
-    }
-
-    const agents = await this.getAgents();
-
-    const existingAgentId = agents.find((a) => a.name === agent.name)?.id;
-
-    if (existingAgentId) {
-      const existingAgent = (await this.getAgent(existingAgentId)) as Agent;
-      return existingAgent;
-    }
-
-    const newAgent: Agent = {
-      ...agent,
-      id: stringToUuid(agent.name),
-    } as Agent;
-
-    await this.createAgent(newAgent);
-
-    return newAgent;
-  }
-
-  /**
    * Asynchronously ensures that the given embedding dimension is valid for the agent.
    *
    * @param {number} dimension - The dimension to ensure for the embedding.
