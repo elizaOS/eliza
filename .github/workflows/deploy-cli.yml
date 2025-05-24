@@ -1,0 +1,46 @@
+name: Deploy CLI with Bun
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag for publishing'
+        required: true
+        default: 'beta'
+        type: choice
+        options:
+          - beta
+          - alpha
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}
+          fetch-depth: 2
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "${{ github.actor }}"
+          git config --global user.email "${{ github.actor }}@users.noreply.github.com"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build CLI
+        run: bun run build
+
+      - name: Configure npm auth
+        run: echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
+
+      - name: Publish CLI
+        run: npx lerna publish prerelease --preid ${{ github.event.inputs.release_tag }} --dist-tag ${{ github.event.inputs.release_tag }} --no-private --force-publish --yes
+        env:
+          NPM_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}

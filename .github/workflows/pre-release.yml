@@ -1,0 +1,73 @@
+name: Pre-Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: 'Type of release (prerelease, prepatch, patch, minor, preminor, major)'
+        required: true
+        default: 'prerelease'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '23'
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Configure Git
+        run: |
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+
+      - name: 'Setup npm for npmjs'
+        run: |
+          npm config set registry https://registry.npmjs.org/
+          echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
+
+      - name: Install Protobuf Compiler
+        run: sudo apt-get install -y protobuf-compiler
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build packages
+        run: bun run build && bun run build:docs
+
+      - name: Tag and Publish Packages
+        id: tag_publish
+        run: |
+          RELEASE_TYPE=${{ github.event_name == 'push' && 'prerelease' || github.event.inputs.release_type }}
+          npx lerna version $RELEASE_TYPE --conventional-commits --yes --no-private --force-publish
+          npx lerna publish from-git --yes --dist-tag next
+
+      - name: Get Version Tag
+        id: get_tag
+        run: echo "TAG=$(git describe --tags --abbrev=0)" >> $GITHUB_OUTPUT
+
+      - name: Generate Release Body
+        id: release_body
+        run: |
+          if [ -f CHANGELOG.md ]; then
+            echo "body=$(cat CHANGELOG.md)" >> $GITHUB_OUTPUT
+          else
+            echo "body=No changelog provided for this release." >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+        with:
+          tag_name: ${{ steps.get_tag.outputs.TAG }}
+          release_name: Release
+          body_path: CHANGELOG.md
+          draft: false
+          prerelease: ${{ github.event_name == 'push' }}

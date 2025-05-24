@@ -1,0 +1,65 @@
+name: Release
+
+on:
+  release:
+    types: [created]
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '23'
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Configure Git
+        run: |
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+
+      - name: 'Setup npm for npmjs'
+        run: |
+          npm config set registry https://registry.npmjs.org/
+          echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
+
+      - name: Install Protobuf Compiler
+        run: sudo apt-get install -y protobuf-compiler
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Check format
+        run: bun run format:check
+
+      - name: Run lint
+        run: bun run lint
+
+      - name: Build packages
+        run: bun run build && bun run build:docs
+
+      - name: Publish Packages
+        id: publish
+        run: |
+          # Get the latest release tag
+          LATEST_TAG=$(git describe --tags `git rev-list --tags --max-count=1`)
+
+          # Force clean the working directory and reset any changes
+          echo "Cleaning working directory and resetting any changes"
+          git clean -fd
+          git reset --hard HEAD
+
+          # Force checkout the latest tag
+          echo "Checking out latest tag: $LATEST_TAG"
+          git checkout -b temp-publish-branch $LATEST_TAG
+
+          echo "Publishing version: $LATEST_TAG"
+          npx lerna publish from-package --yes --dist-tag latest
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
