@@ -1,0 +1,133 @@
+name: Publish Packages
+
+on:
+  release:
+    types: [created]
+  push:
+    branches:
+      - v2-develop
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: 'Release type'
+        required: true
+        default: 'release'
+        type: choice
+        options:
+          - release
+          - release:alpha
+          - release:beta
+      dry_run:
+        description: 'Dry run (do not publish)'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '23'
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Configure Git
+        run: |
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+
+      - name: 'Setup npm for npmjs'
+        run: |
+          npm config set registry https://registry.npmjs.org/
+          echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
+
+      - name: Install Protobuf Compiler
+        run: sudo apt-get install -y protobuf-compiler
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Check format
+        run: bun run format:check
+
+      - name: Run lint
+        run: bun run lint
+
+      - name: Build packages
+        run: bun run build && bun run build:docs
+
+      - name: Determine release strategy
+        id: release_strategy
+        run: |
+          # Determine release type based on trigger
+          if [ "${{ github.event_name }}" = "release" ]; then
+            RELEASE_TYPE="release"
+            echo "Triggered by GitHub release"
+          elif [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref_name }}" = "v2-develop" ]; then
+            RELEASE_TYPE="release:alpha"
+            echo "Triggered by push to v2-develop, using alpha prerelease"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            RELEASE_TYPE="${{ github.event.inputs.release_type }}"
+            echo "Manual trigger with release type: $RELEASE_TYPE"
+          else
+            echo "Unknown trigger, defaulting to release"
+            RELEASE_TYPE="release"
+          fi
+          
+          echo "release_type=$RELEASE_TYPE" >> $GITHUB_OUTPUT
+          echo "dry_run=${{ github.event.inputs.dry_run || 'false' }}" >> $GITHUB_OUTPUT
+
+      - name: Publish Packages (Release)
+        if: steps.release_strategy.outputs.release_type == 'release' && github.event_name == 'release' && steps.release_strategy.outputs.dry_run == 'false'
+        run: |
+          # Get the latest release tag
+          LATEST_TAG=$(git describe --tags `git rev-list --tags --max-count=1`)
+          
+          # Force clean the working directory and reset any changes
+          echo "Cleaning working directory and resetting any changes"
+          git clean -fd
+          git reset --hard HEAD
+          
+          # Force checkout the latest tag
+          echo "Checking out latest tag: $LATEST_TAG"
+          git checkout -b temp-publish-branch $LATEST_TAG
+          
+          echo "Publishing version: $LATEST_TAG"
+          npx lerna publish from-package --yes --dist-tag latest
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish Packages (Prerelease/Manual)
+        if: (steps.release_strategy.outputs.release_type != 'release' || github.event_name != 'release') && steps.release_strategy.outputs.dry_run == 'false'
+        run: |
+          RELEASE_TYPE="${{ steps.release_strategy.outputs.release_type }}"
+          echo "Running: bun run $RELEASE_TYPE"
+          
+          if [ "$RELEASE_TYPE" = "release:alpha" ]; then
+            echo "Publishing alpha prerelease..."
+            bun run release:alpha
+          elif [ "$RELEASE_TYPE" = "release:beta" ]; then
+            echo "Publishing beta prerelease..."
+            bun run release:beta
+          elif [ "$RELEASE_TYPE" = "release" ]; then
+            echo "Publishing stable release..."
+            bun run release
+          else
+            echo "Unknown release type: $RELEASE_TYPE"
+            exit 1
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Dry Run
+        if: steps.release_strategy.outputs.dry_run == 'true'
+        run: |
+          RELEASE_TYPE="${{ steps.release_strategy.outputs.release_type }}"
+          echo "DRY RUN: Would run 'bun run $RELEASE_TYPE'"
+          echo "Build and lint completed successfully"
