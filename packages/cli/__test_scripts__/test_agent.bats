@@ -56,7 +56,7 @@ setup_file() {
 
   # Pre‑load three reference character files.
   for c in ada max shaw; do
-    $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" start \
+    $ELIZAOS_CMD agent start --remote-url "$TEST_SERVER_URL" \
       --path "$BATS_TEST_DIRNAME/test-characters/$c.json"
   done
   sleep 1  # give them a moment to register
@@ -80,13 +80,13 @@ teardown_file() {
 }
 
 @test "agent list returns agents" {
-  run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" list
+  run $ELIZAOS_CMD agent list --remote-url "$TEST_SERVER_URL"
   [ "$status" -eq 0 ]
   [[ "$output" =~ (Ada|Max|Shaw) ]]
 }
 
 @test "agent list works with JSON flag" {
-  run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" list --json
+  run $ELIZAOS_CMD agent list --remote-url "$TEST_SERVER_URL" --json
   [ "$status" -eq 0 ]
   [[ "$output" == *"["* ]] && [[ "$output" == *"{"* ]]
   [[ "$output" =~ ("name"|"Name") ]]
@@ -96,13 +96,13 @@ teardown_file() {
 # agent get
 # -----------------------------------------------------------------------------
 @test "agent get shows details with name parameter" {
-  run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" get -n Ada
+  run $ELIZAOS_CMD agent get --remote-url "$TEST_SERVER_URL" -n Ada
   [ "$status" -eq 0 ]
   [[ "$output" == *"Ada"* ]]
 }
 
 @test "agent get with JSON flag shows character definition" {
-  run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" get -n Ada --json
+  run $ELIZAOS_CMD agent get --remote-url "$TEST_SERVER_URL" -n Ada --json
   [ "$status" -eq 0 ]
   [[ "$output" =~ ("name"|"Name") ]] && [[ "$output" == *"Ada"* ]]
 }
@@ -110,7 +110,7 @@ teardown_file() {
 @test "agent get with output flag saves to file" {
   OUTPUT_FILE="$TEST_TMP_DIR/output_ada.json"
   rm -f "$OUTPUT_FILE"
-  run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" get -n Ada --output "$OUTPUT_FILE"
+  run $ELIZAOS_CMD agent get --remote-url "$TEST_SERVER_URL" -n Ada --output "$OUTPUT_FILE"
   [ "$status" -eq 0 ]
   [ -f "$OUTPUT_FILE" ]
   [[ "$(cat "$OUTPUT_FILE")" == *"Ada"* ]]
@@ -120,7 +120,7 @@ teardown_file() {
 # agent start
 # -----------------------------------------------------------------------------
 @test "agent start loads character from file" {
-  run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" start --path "$BATS_TEST_DIRNAME/test-characters/ada.json"
+  run $ELIZAOS_CMD agent start --remote-url "$TEST_SERVER_URL" --path "$BATS_TEST_DIRNAME/test-characters/ada.json"
   if [ "$status" -eq 0 ]; then
     [[ "$output" =~ (started successfully|created) ]]
   else
@@ -129,12 +129,12 @@ teardown_file() {
 }
 
 @test "agent start works with name parameter" {
-  run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" start -n Ada
+  run $ELIZAOS_CMD agent start --remote-url "$TEST_SERVER_URL" -n Ada
   [ "$status" -eq 0 ] || [[ "$output" =~ already ]]
 }
 
 @test "agent start handles non-existent agent fails" {
-  run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" start -n "NonExistent_$$"
+  run $ELIZAOS_CMD agent start --remote-url "$TEST_SERVER_URL" -n "NonExistent_$$"
   [ "$status" -ne 0 ] || [[ "$output" =~ (No character configuration provided|not found|No agent found|error) ]]
 }
 
@@ -142,8 +142,8 @@ teardown_file() {
 # agent stop
 # -----------------------------------------------------------------------------
 @test "agent stop works after start" {
-  $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" start -n Ada || true
-  run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" stop -n Ada
+  $ELIZAOS_CMD agent start --remote-url "$TEST_SERVER_URL" -n Ada || true
+  run $ELIZAOS_CMD agent stop --remote-url "$TEST_SERVER_URL" -n Ada
   if [ "$status" -eq 0 ]; then
     [[ "$output" =~ (stopped|Stopped) ]]
   else
@@ -161,7 +161,7 @@ teardown_file() {
   "system": "Updated system prompt for testing"
 }
 EOF
-  run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" set -n Ada -f "$CONFIG_FILE"
+  run $ELIZAOS_CMD agent set --remote-url "$TEST_SERVER_URL" -n Ada -f "$CONFIG_FILE"
   [ "$status" -eq 0 ]
   [[ "$output" =~ (updated|Updated) ]]
 }
@@ -170,9 +170,9 @@ EOF
 # Full lifecycle
 # -----------------------------------------------------------------------------
 @test "agent full lifecycle management" {
-  run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" start -n Ada
+  run $ELIZAOS_CMD agent start --remote-url "$TEST_SERVER_URL" -n Ada
   [ "$status" -eq 0 ] || [[ "$output" =~ already ]]
 
-  run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" stop -n Ada
+  run $ELIZAOS_CMD agent stop --remote-url "$TEST_SERVER_URL" -n Ada
   [ "$status" -eq 0 ] || [[ "$output" =~ "not running" ]]
 }

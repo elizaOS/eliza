@@ -42,15 +42,14 @@ export function handleError(error: unknown) {
 }
 
 export async function checkServer(opts: OptionValues) {
-  const red = '\x1b[38;5;196m';
-  const r = '\x1b[0m';
   try {
-    await fetch(`${getAgentRuntimeUrl(opts)}/api/ping`);
+    const response = await fetch(`${getAgentRuntimeUrl(opts)}/api/agents`);
+    if (!response.ok) {
+      throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
+    }
     logger.success('ElizaOS server is running');
   } catch (error) {
-    logger.error(
-      `${red}Unable to connect to ElizaOS server, likely not running or not accessible!${r}`
-    );
+    logger.error('Unable to connect to ElizaOS server, likely not running or not accessible!');
     process.exit(1);
   }
 }

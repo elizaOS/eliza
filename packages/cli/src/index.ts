@@ -50,9 +50,7 @@ async function main() {
 
   // Add global options but hide them from global help
   // They will still be passed to all commands for backward compatibility
-  program.addOption(
-    new Option('-r, --remote-url <url>', 'URL of the remote agent runtime').hideHelp()
-  );
+  // Note: Removed --remote-url global option as it conflicts with subcommand options
 
   // Create a stop command for testing purposes
   const stopCommand = new Command('stop')
