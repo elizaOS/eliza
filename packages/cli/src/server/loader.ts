@@ -306,28 +306,3 @@ export async function loadCharacters(charactersArg: string): Promise<Character[]
 
   return loadedCharacters;
 }
-
-/**
- * Configuration for multer disk storage.
- *
- * @type {multer.diskStorage}
- * @property {Function} destination - Callback function to determine the destination directory for file uploads
- * @property {Function} filename - Callback function to generate a unique filename for uploaded files
- */
-export const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    const uploadDir = path.join(process.cwd(), 'data', 'uploads');
-    // Create the directory if it doesn't exist
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
-  },
-  filename: (_req, file, cb) => {
-    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    cb(null, `${uniqueSuffix}-${file.originalname}`);
-  },
-});
-
-// some people have more memory than disk.io
-export const upload = multer({ storage /*: multer.memoryStorage() */ });

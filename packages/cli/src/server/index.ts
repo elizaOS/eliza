@@ -169,16 +169,74 @@ export class AgentServer {
         );
       }
 
-      const uploadsPath = path.join(process.cwd(), '/data/uploads');
-      const generatedPath = path.join(process.cwd(), '/generatedImages');
-      fs.mkdirSync(uploadsPath, { recursive: true });
-      fs.mkdirSync(generatedPath, { recursive: true });
+      const uploadsBasePath = path.join(process.cwd(), 'data/uploads');
+      const generatedBasePath = path.join(process.cwd(), 'data/generated');
+      fs.mkdirSync(uploadsBasePath, { recursive: true });
+      fs.mkdirSync(generatedBasePath, { recursive: true });
 
-      this.app.use('/media/uploads', express.static(uploadsPath));
-      this.app.use('/media/generated', express.static(generatedPath));
+      // Agent-specific media serving - only serve files from agent-specific directories
+      this.app.get('/media/uploads/:agentId/:filename', (req, res) => {
+        const agentId = req.params.agentId;
+        const filename = req.params.filename;
+
+        // Validate agent ID format (UUID)
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!uuidRegex.test(agentId)) {
+          return res.status(400).json({ error: 'Invalid agent ID format' });
+        }
+
+        // Sanitize filename to prevent directory traversal
+        const sanitizedFilename = path.basename(filename);
+        const agentUploadsPath = path.join(uploadsBasePath, agentId);
+        const filePath = path.join(agentUploadsPath, sanitizedFilename);
+
+        // Ensure the file is within the agent's directory
+        if (!filePath.startsWith(agentUploadsPath)) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
+
+        res.sendFile(filePath, (err) => {
+          if (err) {
+            res.status(404).json({ error: 'File not found' });
+          }
+        });
+      });
+
+      this.app.get('/media/generated/:agentId/:filename', (req, res) => {
+        const agentId = req.params.agentId;
+        const filename = req.params.filename;
+
+        // Validate agent ID format (UUID)
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!uuidRegex.test(agentId)) {
+          return res.status(400).json({ error: 'Invalid agent ID format' });
+        }
+
+        // Sanitize filename to prevent directory traversal
+        const sanitizedFilename = path.basename(filename);
+        const agentGeneratedPath = path.join(generatedBasePath, agentId);
+        const filePath = path.join(agentGeneratedPath, sanitizedFilename);
+
+        // Ensure the file is within the agent's directory
+        if (!filePath.startsWith(agentGeneratedPath)) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
+
+        res.sendFile(filePath, (err) => {
+          if (err) {
+            res.status(404).json({ error: 'File not found' });
+          }
+        });
+      });
+
+      // Block direct access to uploads without agent ID for security
+      this.app.get('/media/uploads/*', (req, res) => {
+        res
+          .status(403)
+          .json({ error: 'Direct access to uploads is not allowed. Use agent-specific URLs.' });
+      });
 
       // Add specific middleware to handle portal assets
-      // This needs to be before the static middleware
       this.app.use((req, res, next) => {
         // Automatically detect and handle static assets based on file extension
         const ext = path.extname(req.path).toLowerCase();
@@ -225,6 +283,7 @@ export class AgentServer {
 
       // Serve static assets from the client dist path
       const clientPath = path.join(__dirname, '..', 'dist');
+      this.app.use(express.static(clientPath, staticOptions));
 
       // *** NEW: Mount the plugin route handler BEFORE static serving ***
       const pluginRouteHandler = createPluginRouteHandler(this.agents);
@@ -254,9 +313,6 @@ export class AgentServer {
         }
       );
 
-      // *** Mount client static serving AFTER plugin routes and /api ***
-      this.app.use('/', express.static(clientPath, staticOptions));
-
       // Add a catch-all route for API 404s
       this.app.use('/api/*', (req, res) => {
         // worms are going to hitting it all the time, use a reverse proxy if you need this type of logging
@@ -273,12 +329,7 @@ export class AgentServer {
       // Main fallback for the SPA - must be registered after all other routes
       // For Express 4, we need to use the correct method for fallback routes
       // @ts-ignore - Express 4 type definitions are incorrect for .all()
-      this.app.all('*' /* Removed check for /api here, should be caught earlier */, (req, res) => {
-        // Skip media routes handled by static middleware earlier
-        if (req.path.startsWith('/media')) {
-          return res.status(404).send('Not found');
-        }
-
+      this.app.all('*', (req, res) => {
         // For JavaScript requests that weren't handled by static middleware,
         // return a JavaScript response instead of HTML
         if (
@@ -291,7 +342,7 @@ export class AgentServer {
         }
 
         // For all other routes, serve the SPA's index.html
-        res.sendFile(path.join(clientPath, 'index.html'));
+        res.sendFile(path.join(__dirname, '..', 'dist', 'index.html'));
       });
 
       // Create HTTP server for Socket.io
