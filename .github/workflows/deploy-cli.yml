@@ -1,11 +1,16 @@
 name: Deploy CLI with Bun
 
 on:
-  push:
-    branches:
-      - 'v2-develop'
-    paths:
-      - 'packages/cli/**'
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: 'Release type'
+        required: true
+        default: 'beta'
+        type: choice
+        options:
+          - beta
+          - alpha
 
 jobs:
   deploy:
@@ -14,26 +19,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          token: ${{ secrets.GH_PAT }}
           fetch-depth: 2
 
-      - name: Check for version bump
-        id: version_check
+      - name: Configure Git
         run: |
-          old=$(git show HEAD^:packages/cli/package.json | jq -r .version)
-          new=$(jq -r .version packages/cli/package.json)
-          echo "Old version: $old"
-          echo "New version: $new"
-          if [ "$old" != "$new" ]; then
-            echo "version_bump=true" >> $GITHUB_OUTPUT
-          else
-            echo "version_bump=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Skip if no version bump
-        if: steps.version_check.outputs.version_bump != 'true'
-        run: |
-          echo "No version bump detected in packages/cli/package.json, skipping."
-          exit 0
+          git config --global user.name "${{ github.actor }}"
+          git config --global user.email "${{ github.actor }}@users.noreply.github.com"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -47,13 +39,8 @@ jobs:
       - name: Configure npm auth
         run: echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
 
-      - name: Publish to npm (without git push)
-        run: |
-          # Set Git identity
-          git config --global user.name "${{ github.actor }}"
-          git config --global user.email "${{ github.actor }}@users.noreply.github.com"
-
-          # Publish without pushing to git
-          npx lerna publish prerelease --preid beta --dist-tag beta --no-private --force-publish --yes
+      - name: Publish CLI
+        run: bun run release:${{ github.event.inputs.release_type }}
         env:
           NPM_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
