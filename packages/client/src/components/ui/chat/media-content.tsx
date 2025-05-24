@@ -26,8 +26,8 @@ export function ImageContent({ url, alt = 'Image', className }: ImageContentProp
 
   if (hasError) {
     return (
-      <div className={cn('flex items-center gap-2 p-3 border rounded-lg bg-muted/50', className)}>
-        <span className="text-sm text-muted-foreground">Failed to load image</span>
+      <div className={cn('flex items-center gap-2 p-3 border rounded-lg', className)}>
+        <span className="text-sm">Failed to load image</span>
         <Button
           variant="ghost"
           size="sm"
