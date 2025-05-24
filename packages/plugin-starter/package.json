@@ -2,7 +2,6 @@
   "name": "@npm-username/plugin-name",
   "description": "${PLUGINDESCRIPTION}",
   "version": "1.0.0-beta.74",
-  "private": true,
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
