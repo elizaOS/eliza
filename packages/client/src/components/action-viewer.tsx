@@ -1,10 +1,11 @@
 import type { UUID } from '@elizaos/core';
-import { Bot, Brain, ImagePlusIcon, Trash2, LoaderIcon } from 'lucide-react';
+import { Bot, Brain, ImagePlusIcon, Trash2, LoaderIcon, ChevronRight } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAgentActions, useDeleteLog } from '../hooks/use-query-hooks';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
 
 // Constants
 const ITEMS_PER_PAGE = 10;
@@ -32,6 +33,8 @@ type AgentLog = {
     modelKey?: string;
     params?: any;
     response?: any;
+    state?: any;
+    responses?: any;
   };
   createdAt?: number; // Some logs use createdAt instead of timestamp
   [key: string]: any; // Allow for additional properties
@@ -164,6 +167,21 @@ function ActionCard({ action, onDelete }: ActionCardProps) {
               )}
             </div>
           </div>
+        )}
+
+        {/* State */}
+        {body?.state && (
+          <Collapsible className="mb-1">
+            <CollapsibleTrigger className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors group">
+              <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]:rotate-90" />
+              State
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pl-5 pt-1">
+              <pre className="text-xs font-mono whitespace-pre-wrap overflow-x-auto bg-muted/30 p-2 rounded">
+                {JSON.stringify(body.state, null, 2)}
+              </pre>
+            </CollapsibleContent>
+          </Collapsible>
         )}
 
         {/* Usage Id */}
@@ -407,3 +425,5 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
     </div>
   );
 }
+
+export { ActionCard };
