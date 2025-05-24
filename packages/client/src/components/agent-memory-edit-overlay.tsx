@@ -289,7 +289,7 @@ export default function MemoryEditOverlay({
                   className={`text-xs px-2 py-1 rounded-full ${
                     memory.entityId === agentId
                       ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
-                      : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'
+                      : 'bg-white-100 text-white dark:bg-white-800 dark:text-white'
                   }`}
                 >
                   {memory.entityId === agentId ? 'Agent Message' : 'User Message'}

@@ -6,7 +6,7 @@ import AgentCreator from './components/agent-creator';
 import { AppSidebar } from './components/app-sidebar';
 import { ConnectionErrorBanner } from './components/connection-error-banner';
 import EnvSettings from './components/env-settings';
-import { LogViewer } from './components/log-viewer';
+import { AgentLogViewer } from './components/agent-log-viewer';
 import OnboardingTour from './components/onboarding-tour';
 import { Toaster } from './components/ui/toaster';
 import { TooltipProvider } from './components/ui/tooltip';
@@ -96,7 +96,10 @@ function AppContent() {
               element={
                 <div className="flex w-full justify-center">
                   <div className="w-full md:max-w-4xl">
-                    <LogViewer />
+                    <div className="flex items-center justify-between mb-4">
+                      <h2 className="text-2xl font-bold">System Logs</h2>
+                    </div>
+                    <AgentLogViewer />
                   </div>
                 </div>
               }
@@ -128,7 +131,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <div
-        className="dark antialiased"
+        className="dark antialiased font-sans"
         style={{
           colorScheme: 'dark',
         }}
