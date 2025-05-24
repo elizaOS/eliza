@@ -14,8 +14,8 @@ import { parseMediaFromText, removeMediaUrlsFromText } from '@/lib/media-utils';
 import SocketIOManager from '@/lib/socketio-manager';
 import { cn, getEntityId, moment, randomUUID } from '@/lib/utils';
 import { WorldManager } from '@/lib/world-manager';
-import type { Agent, Content, UUID, Media } from '@elizaos/core';
-import { AgentStatus } from '@elizaos/core';
+import type { Agent, Content, Media, UUID } from '@elizaos/core';
+import { AgentStatus, ContentType } from '@elizaos/core';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
 
 import { useQueryClient } from '@tanstack/react-query';
@@ -301,7 +301,6 @@ export default function Page({
             messageToAdd.actions = data.actions; // Keep the IGNORE action marker
             clientLogger.debug('[Chat] Handling IGNORE action, modifying message', messageToAdd);
           }
-          // --- End modification ---
 
           // Check if this message (potentially modified) is already in the list (avoid duplicates)
           const isDuplicate = old.some(
@@ -440,9 +439,10 @@ export default function Page({
     let messageText = input;
     let attachments: Media[] = [];
 
-    // Handle file upload if a file is selected
+    // Handle file upload if a file is selected - MUST complete before sending message
     if (selectedFile) {
       try {
+        console.log('[Chat] Uploading file before sending message...');
         const uploadResult = await apiClient.uploadMedia(agentId, selectedFile);
         if (uploadResult.success) {
           // Don't add the uploaded file URL to the message text
@@ -454,14 +454,19 @@ export default function Page({
             url: fileUrl,
             title: selectedFile.name,
             source: 'file_upload',
-            description: `${uploadResult.data.type} uploaded by user`,
+            description: `${selectedFile.type} uploaded by user`,
             text: '',
-            contentType: uploadResult.data.type,
+            contentType: getContentTypeFromMimeType(selectedFile.type), // Use original file MIME type
           });
+        } else {
+          console.error('Upload failed:', uploadResult);
+          // Don't send message if upload fails
+          return;
         }
       } catch (error) {
         console.error('Failed to upload file:', error);
-        // Continue with message sending even if file upload fails
+        // Don't send message if upload fails
+        return;
       }
     }
 
@@ -476,11 +481,28 @@ export default function Page({
       source: 'user_input',
       description: `${media.type} shared by user`,
       text: '',
-      contentType: media.type === 'image' ? 'image' : 'video',
+      contentType: media.type === 'image' ? ContentType.IMAGE : ContentType.VIDEO,
     }));
 
     // Combine file attachments and media attachments
     const allAttachments = [...attachments, ...mediaAttachments];
+
+    // If there's no text but there are attachments, provide a default message
+    if (!messageText.trim() && allAttachments.length > 0) {
+      const fileTypes = allAttachments.map((a) => {
+        if (a.contentType === ContentType.IMAGE) {
+          return 'image';
+        } else if (a.contentType === ContentType.VIDEO) {
+          return 'video';
+        } else if (a.contentType === ContentType.AUDIO) {
+          return 'audio';
+        } else {
+          return 'file';
+        }
+      });
+      const uniqueTypes = [...new Set(fileTypes)];
+      messageText = `Shared ${uniqueTypes.join(' and ')}${allAttachments.length > 1 ? 's' : ''}`;
+    }
 
     // Always add the user's message immediately to the UI before sending it to the server
     const userMessage: ContentWithUser = {
@@ -559,6 +581,20 @@ export default function Page({
       clearMemoriesMutation.mutate({ agentId, roomId });
       queryClient.setQueryData(['messages', agentId, roomId, worldId], []);
     }
+  };
+
+  // Helper function to map MIME type to ContentType enum
+  const getContentTypeFromMimeType = (mimeType: string): ContentType | undefined => {
+    if (mimeType.startsWith('image/')) {
+      return ContentType.IMAGE;
+    } else if (mimeType.startsWith('video/')) {
+      return ContentType.VIDEO;
+    } else if (mimeType.startsWith('audio/')) {
+      return ContentType.AUDIO;
+    } else if (mimeType.includes('pdf') || mimeType.includes('document')) {
+      return ContentType.DOCUMENT;
+    }
+    return undefined;
   };
 
   return (

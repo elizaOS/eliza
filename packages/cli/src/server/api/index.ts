@@ -105,6 +105,7 @@ async function processSocketMessage(
       content: {
         text: payload.message,
         source: `${source}:${payload.senderName}`,
+        attachments: payload.attachments || undefined,
       },
       metadata: {
         entityName: payload.senderName,

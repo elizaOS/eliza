@@ -159,40 +159,45 @@ export async function processAttachments(
       const processedAttachment: Media = { ...attachment };
 
       // Only process images that don't already have descriptions
-      if (attachment.contentType?.includes(ContentType.IMAGE) && !attachment.description) {
+      if (attachment.contentType === ContentType.IMAGE && !attachment.description) {
         logger.debug(`[Bootstrap] Generating description for image: ${attachment.url}`);
 
-        const response = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
-          prompt: imageDescriptionTemplate,
-          imageUrl: attachment.url,
-        });
+        try {
+          const response = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
+            prompt: imageDescriptionTemplate,
+            imageUrl: attachment.url,
+          });
 
-        logger.debug(`[Bootstrap] Image description response:`, response);
+          if (typeof response === 'string') {
+            // Parse XML response
+            const parsedXml = parseKeyValueXml(response);
 
-        if (typeof response === 'string') {
-          // Parse XML response
-          const parsedXml = parseKeyValueXml(response);
+            if (parsedXml?.description && parsedXml?.text) {
+              processedAttachment.description = parsedXml.description;
+              processedAttachment.title = parsedXml.title || 'Image';
+              processedAttachment.text = parsedXml.text;
 
-          if (parsedXml?.description && parsedXml?.text) {
-            processedAttachment.description = parsedXml.description;
-            processedAttachment.title = parsedXml.title || 'Image';
-            processedAttachment.text = parsedXml.text;
+              logger.debug(
+                `[Bootstrap] Generated description: ${processedAttachment.description?.substring(0, 100)}...`
+              );
+            } else {
+              logger.warn(`[Bootstrap] Failed to parse XML response for image description`);
+            }
+          } else if (response && typeof response === 'object' && 'description' in response) {
+            // Handle object responses for backwards compatibility
+            processedAttachment.description = response.description;
+            processedAttachment.title = response.title || 'Image';
+            processedAttachment.text = response.description;
 
             logger.debug(
               `[Bootstrap] Generated description: ${processedAttachment.description?.substring(0, 100)}...`
             );
           } else {
-            logger.warn(`[Bootstrap] Failed to parse XML response for image description`);
+            logger.warn(`[Bootstrap] Unexpected response format for image description`);
           }
-        } else if (response && typeof response === 'object' && 'description' in response) {
-          // Handle object responses for backwards compatibility
-          processedAttachment.description = response.description;
-          processedAttachment.title = response.title || 'Image';
-          processedAttachment.text = response.description;
-
-          logger.debug(
-            `[Bootstrap] Generated description: ${processedAttachment.description?.substring(0, 100)}...`
-          );
+        } catch (error) {
+          logger.error(`[Bootstrap] Error generating image description:`, error);
+          // Continue processing without description
         }
       }
 
@@ -1002,9 +1007,7 @@ const handleServerSync = async ({
     onComplete?.();
   } catch (error) {
     logger.error(
-      `Error processing standardized server data: ${
-        error instanceof Error ? error.message : String(error)
-      }`
+      `Error processing standardized server data: ${error instanceof Error ? error.message : String(error)}`
     );
   }
 };
