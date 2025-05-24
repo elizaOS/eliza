@@ -487,7 +487,7 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
           <div
             className={`w-2 h-2 rounded-full mr-2 ${isLive ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}
           />
-          Live {isLive && useWebSocket && '⚡'}
+          Live
         </Button>
       </div>
 
@@ -557,9 +557,7 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
           {isLive && (
             <>
               <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>
-                Live updates enabled {useWebSocket ? '(WebSocket streaming)' : '(API polling)'}
-              </span>
+              <span>Live updates enabled {useWebSocket ? '(streaming)' : '(polling)'}</span>
             </>
           )}
         </div>
