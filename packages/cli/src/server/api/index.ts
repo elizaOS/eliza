@@ -728,6 +728,11 @@ export function createApiRouter(
         requestedAgentId,
         filteredCount: filtered.length,
         totalLogs: recentLogs.length,
+        sampleLogAgentNames: recentLogs.slice(0, 5).map((log) => log.agentName),
+        uniqueAgentNamesInLogs: [...new Set(recentLogs.map((log) => log.agentName))].filter(
+          Boolean
+        ),
+        agentNameMatches: recentLogs.filter((log) => log.agentName === requestedAgentName).length,
       });
 
       res.json({

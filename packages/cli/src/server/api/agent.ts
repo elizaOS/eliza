@@ -365,6 +365,7 @@ export function agentRouter(
         .map((agent: Agent) => ({
           id: agent.id,
           name: agent.name,
+          characterName: agent.name, // Since Agent extends Character, agent.name is the character name
           bio: agent.bio[0] ?? '',
           status: runtimes.includes(agent.id) ? 'active' : 'inactive',
         }))
