@@ -1,5 +1,7 @@
+'use client';
+
 import { useState } from 'react';
-import { Play, Volume2, FileText, ExternalLink, AlertCircle } from 'lucide-react';
+import { Play, Volume2, FileText, ExternalLink, AlertCircle, Download } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface MediaContentProps {
@@ -25,7 +27,9 @@ const getYouTubeId = (url: string): string | null => {
 };
 
 const getSpotifyId = (url: string): { type: string; id: string } | null => {
-  const match = url.match(/spotify\.com\/(track|album|playlist|episode|show)\/([a-zA-Z0-9]+)/);
+  const match = url.match(
+    /spotify\.com\/(track|album|playlist|episode|show)\/([a-zA-Z0-9]+)(?:\?.*)?/
+  );
   if (match) {
     return { type: match[1], id: match[2] };
   }
@@ -73,12 +77,12 @@ export default function MediaContent({
   if (youtubeId) {
     return (
       <div
-        className={cn('relative rounded-lg overflow-hidden bg-gray-100', className)}
+        className={cn('relative rounded-lg overflow-hidden bg-muted', className)}
         style={{ maxWidth, maxHeight }}
       >
         {isLoading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
-            <div className="flex items-center space-x-2 text-gray-500">
+          <div className="absolute inset-0 flex items-center justify-center bg-muted">
+            <div className="flex items-center space-x-2 text-muted-foreground">
               <Play className="w-6 h-6" />
               <span>Loading video...</span>
             </div>
@@ -103,12 +107,12 @@ export default function MediaContent({
     const height = spotifyData.type === 'track' ? 152 : spotifyData.type === 'episode' ? 232 : 352;
     return (
       <div
-        className={cn('relative rounded-lg overflow-hidden bg-gray-100', className)}
+        className={cn('relative rounded-lg overflow-hidden bg-muted', className)}
         style={{ maxWidth }}
       >
         {isLoading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
-            <div className="flex items-center space-x-2 text-gray-500">
+          <div className="absolute inset-0 flex items-center justify-center bg-muted">
+            <div className="flex items-center space-x-2 text-muted-foreground">
               <Volume2 className="w-6 h-6" />
               <span>Loading Spotify content...</span>
             </div>
@@ -133,16 +137,16 @@ export default function MediaContent({
   if (isImageUrl(url)) {
     return (
       <div
-        className={cn('relative rounded-lg overflow-hidden bg-gray-100', className)}
+        className={cn('relative rounded-lg overflow-hidden bg-muted', className)}
         style={{ maxWidth, maxHeight }}
       >
         {isLoading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
-            <div className="animate-pulse w-full h-32 bg-gray-200 rounded" />
+          <div className="absolute inset-0 flex items-center justify-center bg-muted">
+            <div className="animate-pulse w-full h-32 bg-muted-foreground/20 rounded" />
           </div>
         )}
         {hasError ? (
-          <div className="flex items-center justify-center p-4 text-gray-500">
+          <div className="flex items-center justify-center p-4 text-muted-foreground">
             <AlertCircle className="w-6 h-6 mr-2" />
             <span>Failed to load image</span>
           </div>
@@ -166,11 +170,11 @@ export default function MediaContent({
   if (isVideoUrl(url)) {
     return (
       <div
-        className={cn('relative rounded-lg overflow-hidden bg-gray-100', className)}
+        className={cn('relative rounded-lg overflow-hidden bg-muted', className)}
         style={{ maxWidth, maxHeight }}
       >
         {hasError ? (
-          <div className="flex items-center justify-center p-4 text-gray-500">
+          <div className="flex items-center justify-center p-4 text-muted-foreground">
             <AlertCircle className="w-6 h-6 mr-2" />
             <span>Failed to load video</span>
           </div>
@@ -194,16 +198,13 @@ export default function MediaContent({
   // Direct Audio
   if (isAudioUrl(url)) {
     return (
-      <div
-        className={cn('relative rounded-lg bg-gray-50 border p-4', className)}
-        style={{ maxWidth }}
-      >
+      <div className={cn('relative rounded-lg bg-card border p-4', className)} style={{ maxWidth }}>
         <div className="flex items-center space-x-3 mb-3">
-          <Volume2 className="w-5 h-5 text-gray-600" />
-          <span className="text-sm font-medium text-gray-700">{title || 'Audio File'}</span>
+          <Volume2 className="w-5 h-5 text-muted-foreground" />
+          <span className="text-sm font-medium">{title || 'Audio File'}</span>
         </div>
         {hasError ? (
-          <div className="flex items-center text-gray-500">
+          <div className="flex items-center text-muted-foreground">
             <AlertCircle className="w-4 h-4 mr-2" />
             <span className="text-sm">Failed to load audio</span>
           </div>
@@ -228,20 +229,20 @@ export default function MediaContent({
   if (isPdfUrl(url)) {
     return (
       <div
-        className={cn('relative rounded-lg overflow-hidden bg-gray-100 border', className)}
+        className={cn('relative rounded-lg overflow-hidden bg-card border', className)}
         style={{ maxWidth }}
       >
-        <div className="flex items-center justify-between p-3 bg-gray-50 border-b">
+        <div className="flex items-center justify-between p-3 bg-muted/50 border-b">
           <div className="flex items-center space-x-2">
-            <FileText className="w-5 h-5 text-gray-600" />
-            <span className="text-sm font-medium text-gray-700">{title || 'PDF Document'}</span>
+            <FileText className="w-5 h-5 text-muted-foreground" />
+            <span className="text-sm font-medium">{title || 'PDF Document'}</span>
           </div>
           <div className="flex items-center space-x-2">
             <a
               href={`https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center space-x-1 text-blue-600 hover:text-blue-800 text-sm"
+              className="flex items-center space-x-1 text-primary hover:text-primary/80 text-sm"
             >
               <ExternalLink className="w-4 h-4" />
               <span>View</span>
@@ -249,16 +250,9 @@ export default function MediaContent({
             <a
               href={url}
               download
-              className="flex items-center space-x-1 text-green-600 hover:text-green-800 text-sm"
+              className="flex items-center space-x-1 text-primary hover:text-primary/80 text-sm"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                />
-              </svg>
+              <Download className="w-4 h-4" />
               <span>Download</span>
             </a>
           </div>
@@ -267,7 +261,7 @@ export default function MediaContent({
         {/* Try multiple PDF viewing methods */}
         <div className="relative" style={{ height: Math.min(maxHeight, 500) }}>
           {hasError ? (
-            <div className="flex flex-col items-center justify-center p-8 text-gray-500 h-full">
+            <div className="flex flex-col items-center justify-center p-8 text-muted-foreground h-full">
               <AlertCircle className="w-8 h-8 mb-2" />
               <span className="text-center mb-4">PDF preview not available</span>
               <div className="flex space-x-2">
@@ -275,7 +269,7 @@ export default function MediaContent({
                   href={`https://docs.google.com/viewer?url=${encodeURIComponent(url)}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-3 py-2 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
+                  className="px-3 py-2 bg-primary text-primary-foreground rounded text-sm hover:bg-primary/90"
                 >
                   Open in Google Viewer
                 </a>
@@ -283,7 +277,7 @@ export default function MediaContent({
                   href={url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-3 py-2 bg-gray-500 text-white rounded text-sm hover:bg-gray-600"
+                  className="px-3 py-2 bg-secondary text-secondary-foreground rounded text-sm hover:bg-secondary/90"
                 >
                   Open Original
                 </a>
@@ -292,8 +286,8 @@ export default function MediaContent({
           ) : (
             <>
               {isLoading && (
-                <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
-                  <div className="flex items-center space-x-2 text-gray-500">
+                <div className="absolute inset-0 flex items-center justify-center bg-muted">
+                  <div className="flex items-center space-x-2 text-muted-foreground">
                     <FileText className="w-6 h-6" />
                     <span>Loading PDF...</span>
                   </div>
@@ -329,7 +323,7 @@ export default function MediaContent({
         </div>
 
         {/* PDF Info Footer */}
-        <div className="p-2 bg-gray-50 border-t text-xs text-gray-500">
+        <div className="p-2 bg-muted/50 border-t text-xs text-muted-foreground">
           <span>PDF Document • Click "View" or "Download" if preview doesn't load</span>
         </div>
       </div>
@@ -339,18 +333,20 @@ export default function MediaContent({
   // Other Documents
   if (isDocumentUrl(url)) {
     return (
-      <div className={cn('rounded-lg bg-gray-50 border p-4', className)} style={{ maxWidth }}>
+      <div className={cn('rounded-lg bg-card border p-4', className)} style={{ maxWidth }}>
         <div className="flex items-center space-x-3">
-          <FileText className="w-8 h-8 text-gray-600" />
+          <FileText className="w-8 h-8 text-muted-foreground" />
           <div className="flex-1">
-            <p className="text-sm font-medium text-gray-700">{title || 'Document'}</p>
-            <p className="text-xs text-gray-500">{url.split('.').pop()?.toUpperCase()} file</p>
+            <p className="text-sm font-medium">{title || 'Document'}</p>
+            <p className="text-xs text-muted-foreground">
+              {url.split('.').pop()?.toUpperCase()} file
+            </p>
           </div>
           <a
             href={url}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center space-x-1 text-blue-600 hover:text-blue-800 text-sm font-medium"
+            className="flex items-center space-x-1 text-primary hover:text-primary/80 text-sm font-medium"
           >
             <ExternalLink className="w-4 h-4" />
             <span>Open</span>
@@ -362,18 +358,18 @@ export default function MediaContent({
 
   // Fallback for unknown URLs
   return (
-    <div className={cn('rounded-lg bg-gray-50 border p-4', className)} style={{ maxWidth }}>
+    <div className={cn('rounded-lg bg-card border p-4', className)} style={{ maxWidth }}>
       <div className="flex items-center space-x-3">
-        <ExternalLink className="w-8 h-8 text-gray-600" />
+        <ExternalLink className="w-8 h-8 text-muted-foreground" />
         <div className="flex-1">
-          <p className="text-sm font-medium text-gray-700">{title || 'External Link'}</p>
-          <p className="text-xs text-gray-500 truncate">{url}</p>
+          <p className="text-sm font-medium">{title || 'External Link'}</p>
+          <p className="text-xs text-muted-foreground truncate">{url}</p>
         </div>
         <a
           href={url}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center space-x-1 text-blue-600 hover:text-blue-800 text-sm font-medium"
+          className="flex items-center space-x-1 text-primary hover:text-primary/80 text-sm font-medium"
         >
           <ExternalLink className="w-4 h-4" />
           <span>Open</span>
