@@ -3,6 +3,7 @@
   "description": "${PLUGINDESCRIPTION}",
   "version": "1.0.0-beta.74",
   "type": "module",
+  "private": true,
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
