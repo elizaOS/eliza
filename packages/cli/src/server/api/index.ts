@@ -23,6 +23,7 @@ import { agentRouter } from './agent';
 import { envRouter } from './env';
 import { teeRouter } from './tee';
 import { worldRouter } from './world';
+import { SocketIORouter } from '../socketio';
 
 // Custom levels from @elizaos/core logger
 const LOG_LEVELS = {
@@ -257,13 +258,13 @@ async function processSocketMessage(
  * @param server HTTP Server instance
  * @param agents Map of agent runtimes
  */
+// Global reference to SocketIO router for log streaming
+let socketIORouter: SocketIORouter | null = null;
+
 export function setupSocketIO(
   server: http.Server,
   agents: Map<UUID, IAgentRuntime>
 ): SocketIOServer {
-  // Map to track which agents are in which rooms
-  const roomParticipants: Map<string, Set<UUID>> = new Map();
-
   const io = new SocketIOServer(server, {
     cors: {
       origin: '*',
@@ -271,7 +272,18 @@ export function setupSocketIO(
     },
   });
 
-  // Handle socket connections
+  // Setup the new SocketIO router
+  socketIORouter = new SocketIORouter(agents);
+  socketIORouter.setupListeners(io);
+
+  // Setup log streaming integration
+  setupLogStreaming(io, socketIORouter);
+
+  // Fallback to old behavior for compatibility
+  // Map to track which agents are in which rooms
+  const roomParticipants: Map<string, Set<UUID>> = new Map();
+
+  // Handle socket connections with existing logic as fallback
   io.on('connection', (socket) => {
     const { agentId, roomId } = socket.handshake.query as { agentId: string; roomId: string };
 
@@ -342,6 +354,44 @@ export function setupSocketIO(
   });
 
   return io;
+}
+
+// Setup log streaming integration with the logger
+function setupLogStreaming(io: SocketIOServer, router: SocketIORouter) {
+  // Access the logger's destination to hook into log events
+  const loggerInstance = logger as any;
+  const destination = loggerInstance[Symbol.for('pino-destination')];
+
+  if (destination && typeof destination.write === 'function') {
+    // Store original write method
+    const originalWrite = destination.write.bind(destination);
+
+    // Override write method to broadcast logs via WebSocket
+    destination.write = function (data: string | any) {
+      // Call original write first
+      originalWrite(data);
+
+      // Parse and broadcast log entry
+      try {
+        let logEntry;
+        if (typeof data === 'string') {
+          logEntry = JSON.parse(data);
+        } else {
+          logEntry = data;
+        }
+
+        // Add timestamp if not present
+        if (!logEntry.time) {
+          logEntry.time = Date.now();
+        }
+
+        // Broadcast to WebSocket clients
+        router.broadcastLog(io, logEntry);
+      } catch (error) {
+        // Ignore JSON parse errors for non-log data
+      }
+    };
+  }
 }
 
 // Extracted function to handle plugin routes
