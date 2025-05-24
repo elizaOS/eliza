@@ -26,6 +26,8 @@ import {
   type UUID,
   type WorldPayload,
   PluginEvents,
+  imageDescriptionTemplate,
+  ContentType,
 } from '@elizaos/core';
 import { v4 } from 'uuid';
 
@@ -130,6 +132,84 @@ export async function fetchMediaData(attachments: Media[]): Promise<MediaData[]>
       throw new Error(`File not found: ${attachment.url}. Make sure the path is correct.`);
     })
   );
+}
+
+/**
+ * Processes attachments by generating descriptions for supported media types.
+ * Currently supports image description generation.
+ *
+ * @param {Media[]} attachments - Array of attachments to process
+ * @param {IAgentRuntime} runtime - The agent runtime for accessing AI models
+ * @returns {Promise<Media[]>} - Returns a new array of processed attachments with added description, title, and text properties
+ */
+export async function processAttachments(
+  attachments: Media[],
+  runtime: IAgentRuntime
+): Promise<Media[]> {
+  if (!attachments || attachments.length === 0) {
+    return [];
+  }
+  logger.debug(`[Bootstrap] Processing ${attachments.length} attachment(s)`);
+
+  const processedAttachments: Media[] = [];
+
+  for (const attachment of attachments) {
+    try {
+      // Start with the original attachment
+      const processedAttachment: Media = { ...attachment };
+
+      // Only process images that don't already have descriptions
+      if (attachment.contentType === ContentType.IMAGE && !attachment.description) {
+        logger.debug(`[Bootstrap] Generating description for image: ${attachment.url}`);
+
+        try {
+          const response = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
+            prompt: imageDescriptionTemplate,
+            imageUrl: attachment.url,
+          });
+
+          if (typeof response === 'string') {
+            // Parse XML response
+            const parsedXml = parseKeyValueXml(response);
+
+            if (parsedXml?.description && parsedXml?.text) {
+              processedAttachment.description = parsedXml.description;
+              processedAttachment.title = parsedXml.title || 'Image';
+              processedAttachment.text = parsedXml.text;
+
+              logger.debug(
+                `[Bootstrap] Generated description: ${processedAttachment.description?.substring(0, 100)}...`
+              );
+            } else {
+              logger.warn(`[Bootstrap] Failed to parse XML response for image description`);
+            }
+          } else if (response && typeof response === 'object' && 'description' in response) {
+            // Handle object responses for backwards compatibility
+            processedAttachment.description = response.description;
+            processedAttachment.title = response.title || 'Image';
+            processedAttachment.text = response.description;
+
+            logger.debug(
+              `[Bootstrap] Generated description: ${processedAttachment.description?.substring(0, 100)}...`
+            );
+          } else {
+            logger.warn(`[Bootstrap] Unexpected response format for image description`);
+          }
+        } catch (error) {
+          logger.error(`[Bootstrap] Error generating image description:`, error);
+          // Continue processing without description
+        }
+      }
+
+      processedAttachments.push(processedAttachment);
+    } catch (error) {
+      logger.error(`[Bootstrap] Failed to process attachment ${attachment.url}:`, error);
+      // Add the original attachment if processing fails
+      processedAttachments.push(attachment);
+    }
+  }
+
+  return processedAttachments;
 }
 
 /**
@@ -259,6 +339,13 @@ const messageReceivedHandler = async ({
           `[Bootstrap] Skipping shouldRespond check for ${runtime.character.name} because ${room?.type} ${room?.source}`
         );
 
+        if (message.content.attachments && message.content.attachments.length > 0) {
+          message.content.attachments = await processAttachments(
+            message.content.attachments,
+            runtime
+          );
+        }
+
         let shouldRespond = true;
 
         // Handle shouldRespond
@@ -359,6 +446,15 @@ const messageReceivedHandler = async ({
           if (responseContent && message.id) {
             responseContent.inReplyTo = createUniqueUuid(runtime, message.id);
 
+            // Automatically determine if response is simple based on providers and actions
+            // Simple = REPLY action with no providers used
+            const isSimple =
+              responseContent.actions?.length === 1 &&
+              responseContent.actions[0].toUpperCase() === 'REPLY' &&
+              (!responseContent.providers || responseContent.providers.length === 0);
+
+            responseContent.simple = isSimple;
+
             const responseMesssage = {
               id: asUUID(v4()),
               entityId: runtime.agentId,
@@ -381,14 +477,7 @@ const messageReceivedHandler = async ({
             state = await runtime.composeState(message, responseContent?.providers || []);
           }
 
-          if (
-            responseContent &&
-            responseContent.simple &&
-            responseContent.text &&
-            (responseContent.actions?.length === 0 ||
-              (responseContent.actions?.length === 1 &&
-                responseContent.actions[0].toUpperCase() === 'REPLY'))
-          ) {
+          if (responseContent && responseContent.simple && responseContent.text) {
             await callback(responseContent);
           } else {
             await runtime.processActions(message, responseMessages, state, callback);
@@ -918,9 +1007,7 @@ const handleServerSync = async ({
     onComplete?.();
   } catch (error) {
     logger.error(
-      `Error processing standardized server data: ${
-        error instanceof Error ? error.message : String(error)
-      }`
+      `Error processing standardized server data: ${error instanceof Error ? error.message : String(error)}`
     );
   }
 };

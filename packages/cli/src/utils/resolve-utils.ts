@@ -23,32 +23,36 @@ export function expandTildePath(
 }
 
 /**
- * Resolves the path to the nearest `.env` file.
+ * Resolves the path to the `.env` file, searching only within the start directory or
+ * optionally up to a boundary directory (e.g., a monorepo root).
  *
- * If no `.env` file is found when traversing up from the starting directory,
- * a path to `.env` in the starting directory is returned.
- *
- * @param startDir - The directory to start searching from. Defaults to the
- *   current working directory.
- * @returns The resolved path to the `.env` file.
+ * @param startDir - Directory to begin the lookup (default: current working directory).
+ * @param boundaryDir - Optional directory at which to stop searching upward.
+ * @returns The path to the found `.env` file, or a path to `.env` in startDir if none found.
  */
-export function resolveEnvFile(startDir: string = process.cwd()): string {
-  let currentDir = startDir;
-
+export function resolveEnvFile(startDir: string = process.cwd(), boundaryDir?: string): string {
+  const root = path.resolve(startDir);
+  const stopAt = boundaryDir ? path.resolve(boundaryDir) : undefined;
+  // If no boundary provided, only consider .env in the start directory
+  if (!stopAt) {
+    return path.join(root, '.env');
+  }
+  let current = root;
   while (true) {
-    const candidate = path.join(currentDir, '.env');
+    const candidate = path.join(current, '.env');
     if (existsSync(candidate)) {
       return candidate;
     }
-
-    const parentDir = path.dirname(currentDir);
-    if (parentDir === currentDir) {
+    if (stopAt && current === stopAt) {
       break;
     }
-    currentDir = parentDir;
+    const parent = path.dirname(current);
+    if (parent === current) {
+      break;
+    }
+    current = parent;
   }
-
-  return path.join(startDir, '.env');
+  return path.join(root, '.env');
 }
 
 /**

@@ -605,20 +605,28 @@ export type Media = {
   url: string;
 
   /** Media title */
-  title: string;
+  title?: string;
 
   /** Media source */
-  source: string;
+  source?: string;
 
   /** Media description */
-  description: string;
+  description?: string;
 
   /** Text content */
-  text: string;
+  text?: string;
 
   /** Content type */
-  contentType?: string;
+  contentType?: ContentType;
 };
+
+export enum ContentType {
+  IMAGE = 'image',
+  VIDEO = 'video',
+  AUDIO = 'audio',
+  DOCUMENT = 'document',
+  LINK = 'link',
+}
 
 export enum ChannelType {
   SELF = 'SELF', // Messages to self
