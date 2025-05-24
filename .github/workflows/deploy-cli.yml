@@ -54,6 +54,6 @@ jobs:
           git config --global user.email "${{ github.actor }}@users.noreply.github.com"
 
           # Publish without pushing to git
-          npx lerna publish prerelease --preid beta --dist-tag beta --no-private --force-publish --loglevel verbose --yes --no-push --no-git-tag-version --ignore-changes="packages/create-eliza/**" --ignore-changes="packages/plugin-starter/**"
+          npx lerna publish prerelease --preid beta --dist-tag beta --no-private --force-publish --loglevel verbose --yes --no-push --no-git-tag-version
         env:
           NPM_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
