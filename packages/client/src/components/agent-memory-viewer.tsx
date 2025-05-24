@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
-import MemoryEditOverlay from './memory-edit-overlay';
+import MemoryEditOverlay from './agent-memory-edit-overlay';
 
 // Number of items to load per batch
 const ITEMS_PER_PAGE = 15;

@@ -1,13 +1,13 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Activity, Book, Database, Terminal, Columns3 } from 'lucide-react';
-import { AgentActionViewer } from './action-viewer';
-import { LogViewer } from './log-viewer';
-import { AgentMemoryViewer } from './memory-viewer';
-import { KnowledgeManager } from './knowledge-manager';
+import { AgentLogViewer } from './agent-log-viewer';
+import { AgentMemoryViewer } from './agent-memory-viewer';
+import { KnowledgeManager } from './agent-knowledge-manager';
 import type { UUID } from '@elizaos/core';
 import { useAgentPanels, type AgentPanel } from '@/hooks/use-query-hooks';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, JSX } from 'react';
 import { Skeleton } from './ui/skeleton';
+import { AgentActionViewer } from './agent-action-viewer';
 
 type AgentSidebarProps = {
   agentId: UUID;
@@ -71,7 +71,7 @@ export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
         {detailsTab === 'actions' && <AgentActionViewer agentId={agentId} />}
       </TabsContent>
       <TabsContent value="logs" className="overflow-y-auto flex-1">
-        {detailsTab === 'logs' && <LogViewer agentName={agentName} level="all" hideTitle />}
+        {detailsTab === 'logs' && <AgentLogViewer agentName={agentName} level="all" hideTitle />}
       </TabsContent>
       <TabsContent value="memories" className="overflow-y-auto flex-1">
         {detailsTab === 'memories' && <AgentMemoryViewer agentId={agentId} agentName={agentName} />}
