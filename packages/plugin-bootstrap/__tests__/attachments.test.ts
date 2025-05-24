@@ -60,7 +60,9 @@ describe('processAttachments', () => {
     expect(result[0].id).toBe('image-1');
     expect(result[0].title).toBe('Beautiful Sunset');
     expect(result[0].description).toBe('A stunning sunset over the ocean with vibrant colors');
-    expect(result[0].text).toBe('A stunning sunset over the ocean with vibrant colors');
+    expect(result[0].text).toBe(
+      'This image captures a breathtaking sunset scene over a calm ocean. The sky is painted with brilliant hues of orange, pink, and purple as the sun dips below the horizon. Gentle waves lap at the shore, creating a peaceful and serene atmosphere.'
+    );
 
     expect(mockRuntime.useModel).toHaveBeenCalledWith(ModelType.IMAGE_DESCRIPTION, {
       prompt: expect.stringContaining('Analyze the provided image'),

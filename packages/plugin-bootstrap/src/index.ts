@@ -173,10 +173,10 @@ export async function processAttachments(
           // Parse XML response
           const parsedXml = parseKeyValueXml(response);
 
-          if (parsedXml?.description) {
+          if (parsedXml?.description && parsedXml?.text) {
             processedAttachment.description = parsedXml.description;
             processedAttachment.title = parsedXml.title || 'Image';
-            processedAttachment.text = parsedXml.description;
+            processedAttachment.text = parsedXml.text;
 
             logger.debug(
               `[Bootstrap] Generated description: ${processedAttachment.description?.substring(0, 100)}...`
