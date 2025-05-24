@@ -8,10 +8,12 @@ import type { DefaultEventsMap } from 'socket.io/dist/typed-events';
 export class SocketIORouter {
   private agents: Map<UUID, IAgentRuntime>;
   private connections: Map<string, UUID>;
+  private logStreamConnections: Map<string, { agentName?: string; level?: string }>;
 
   constructor(agents: Map<UUID, IAgentRuntime>) {
     this.agents = agents;
     this.connections = new Map();
+    this.logStreamConnections = new Map();
     logger.info(`[SocketIO] Router initialized with ${this.agents.size} agents`);
   }
 
@@ -59,6 +61,11 @@ export class SocketIORouter {
     socket.on('message', (data) => {
       this.handleGenericMessage(socket, data);
     });
+
+    // Handle log streaming events
+    socket.on('subscribe_logs', () => this.handleLogSubscription(socket));
+    socket.on('unsubscribe_logs', () => this.handleLogUnsubscription(socket));
+    socket.on('update_log_filters', (filters) => this.handleLogFilterUpdate(socket, filters));
 
     // Handle other events
     socket.on('disconnect', () => this.handleDisconnect(socket));
@@ -410,11 +417,82 @@ export class SocketIORouter {
     });
   }
 
+  private handleLogSubscription(socket: Socket) {
+    this.logStreamConnections.set(socket.id, {});
+    logger.info(`[SocketIO] Client ${socket.id} subscribed to log stream`);
+    socket.emit('log_subscription_confirmed', {
+      subscribed: true,
+      message: 'Successfully subscribed to log stream',
+    });
+  }
+
+  private handleLogUnsubscription(socket: Socket) {
+    this.logStreamConnections.delete(socket.id);
+    logger.info(`[SocketIO] Client ${socket.id} unsubscribed from log stream`);
+    socket.emit('log_subscription_confirmed', {
+      subscribed: false,
+      message: 'Successfully unsubscribed from log stream',
+    });
+  }
+
+  private handleLogFilterUpdate(socket: Socket, filters: { agentName?: string; level?: string }) {
+    const existingFilters = this.logStreamConnections.get(socket.id);
+    if (existingFilters !== undefined) {
+      this.logStreamConnections.set(socket.id, { ...existingFilters, ...filters });
+      logger.info(`[SocketIO] Updated log filters for client ${socket.id}:`, filters);
+      socket.emit('log_filters_updated', {
+        success: true,
+        filters: this.logStreamConnections.get(socket.id),
+      });
+    } else {
+      logger.warn(
+        `[SocketIO] Cannot update filters for client ${socket.id}: not subscribed to log stream`
+      );
+      socket.emit('log_filters_updated', {
+        success: false,
+        error: 'Not subscribed to log stream',
+      });
+    }
+  }
+
+  public broadcastLog(io: SocketIOServer, logEntry: any) {
+    if (this.logStreamConnections.size === 0) return;
+
+    const logData = {
+      type: 'log_entry',
+      payload: logEntry,
+    };
+
+    this.logStreamConnections.forEach((filters, socketId) => {
+      const socket = io.sockets.sockets.get(socketId);
+      if (socket) {
+        // Apply server-side filtering if filters are set
+        let shouldBroadcast = true;
+
+        if (filters.agentName && filters.agentName !== 'all') {
+          shouldBroadcast = shouldBroadcast && logEntry.agentName === filters.agentName;
+        }
+
+        if (filters.level && filters.level !== 'all') {
+          shouldBroadcast = shouldBroadcast && logEntry.level === filters.level;
+        }
+
+        if (shouldBroadcast) {
+          socket.emit('log_stream', logData);
+        }
+      }
+    });
+  }
+
   private handleDisconnect(socket: Socket) {
     const agentId = this.connections.get(socket.id);
-    if (!agentId) return;
-
     this.connections.delete(socket.id);
-    logger.info(`[SocketIO] Agent ${agentId} disconnected.`);
+    this.logStreamConnections.delete(socket.id);
+
+    if (agentId) {
+      logger.info(`[SocketIO] Agent ${agentId} disconnected.`);
+    } else {
+      logger.info(`[SocketIO] Client ${socket.id} disconnected.`);
+    }
   }
 }

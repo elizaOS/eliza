@@ -1,5 +1,5 @@
 import { Database, LoaderIcon, Search, Clock, Trash2, Filter, RefreshCw, Plus } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,6 +13,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { useAgents } from '../hooks/use-query-hooks';
 import { apiClient } from '../lib/api';
+import SocketIOManager, { type LogStreamData } from '../lib/socketio-manager';
 
 // Types
 interface LogEntry {
@@ -233,6 +234,8 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
   const [timeRange, setTimeRange] = useState('7 days');
   const [isLive, setIsLive] = useState(true);
   const [isClearing, setIsClearing] = useState(false);
+  const [wsLogs, setWsLogs] = useState<LogEntry[]>([]);
+  const [useWebSocket, setUseWebSocket] = useState(false);
   const queryClient = useQueryClient();
 
   // Use real hooks from the existing codebase
@@ -248,13 +251,84 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
         level: selectedLevel === 'all' ? '' : selectedLevel,
         agentName: selectedAgentName === 'all' ? undefined : selectedAgentName,
       }),
-    refetchInterval: isLive ? 2000 : false,
+    refetchInterval: isLive && !useWebSocket ? 2000 : false,
     staleTime: 1000,
   });
 
   const { data: agents } = useAgents();
 
-  const logs = logResponse?.logs || [];
+  // WebSocket log streaming integration
+  const handleLogStream = useCallback(
+    (logEntry: LogStreamData) => {
+      // Filter logs based on current filters
+      const shouldInclude =
+        (selectedLevel === 'all' ||
+          getLevelName(logEntry.level).toLowerCase() === selectedLevel.toLowerCase()) &&
+        (selectedAgentName === 'all' || logEntry.agentName === selectedAgentName);
+
+      if (shouldInclude) {
+        setWsLogs((prev) => {
+          const newLogs = [logEntry, ...prev].slice(0, 1000); // Keep last 1000 logs
+          return newLogs;
+        });
+      }
+    },
+    [selectedLevel, selectedAgentName]
+  );
+
+  // Setup WebSocket event listeners
+  useEffect(() => {
+    if (isLive && useWebSocket) {
+      const socketManager = SocketIOManager.getInstance();
+
+      // Subscribe to log stream
+      socketManager.subscribeToLogStream().catch(console.error);
+
+      // Listen for log events
+      socketManager.on('logStream', handleLogStream);
+
+      return () => {
+        socketManager.off('logStream', handleLogStream);
+        socketManager.unsubscribeFromLogStream().catch(console.error);
+      };
+    }
+  }, [isLive, useWebSocket, handleLogStream]);
+
+  // Toggle WebSocket usage when live mode changes
+  useEffect(() => {
+    if (isLive && !useWebSocket) {
+      // When enabling live mode, try to start WebSocket. Fallback to polling if WebSocket fails
+      const socketManager = SocketIOManager.getInstance();
+      if (SocketIOManager.isConnected()) {
+        setUseWebSocket(true);
+      } else {
+        // WebSocket not available, continue with API polling
+        console.log('WebSocket not available, continuing with API polling');
+      }
+    } else if (!isLive && useWebSocket) {
+      // When disabling live mode, stop WebSocket and clear WebSocket logs
+      setUseWebSocket(false);
+      setWsLogs([]);
+    }
+  }, [isLive, useWebSocket]);
+
+  // Update WebSocket filters when selectedAgentName or selectedLevel changes
+  useEffect(() => {
+    if (useWebSocket && isLive) {
+      const socketManager = SocketIOManager.getInstance();
+      socketManager
+        .updateLogStreamFilters({
+          agentName: selectedAgentName,
+          level: selectedLevel,
+        })
+        .catch(console.error);
+    }
+  }, [selectedAgentName, selectedLevel, useWebSocket, isLive]);
+
+  // Combine API logs and WebSocket logs
+  const apiLogs = logResponse?.logs || [];
+  const combinedLogs = useWebSocket && isLive ? wsLogs : apiLogs;
+  const logs = combinedLogs;
   const levels = logResponse?.levels || [];
   const agentNames = agents?.data?.agents?.map((agent) => agent.name) || [];
 
@@ -292,6 +366,11 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
         setIsClearing(true);
         await apiClient.deleteLogs();
         queryClient.invalidateQueries({ queryKey: ['logs'] });
+
+        // Also clear WebSocket logs if in WebSocket mode
+        if (useWebSocket) {
+          setWsLogs([]);
+        }
       } catch (error) {
         console.error('Failed to clear logs:', error);
       } finally {
@@ -301,7 +380,11 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
   };
 
   const handleRefresh = () => {
-    if (refetch) {
+    if (useWebSocket && isLive) {
+      // In WebSocket mode, clear current logs and let them re-populate
+      setWsLogs([]);
+    } else if (refetch) {
+      // In API mode, refetch from server
       refetch();
     }
   };
@@ -406,6 +489,13 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
           size="sm"
           onClick={() => setIsLive(!isLive)}
           className="h-9 px-3"
+          title={
+            isLive
+              ? useWebSocket
+                ? 'Live mode (WebSocket)'
+                : 'Live mode (Polling)'
+              : 'Live mode disabled'
+          }
         >
           <div
             className={`w-2 h-2 rounded-full mr-2 ${isLive ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}
@@ -480,7 +570,7 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
           {isLive && (
             <>
               <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Live updates enabled</span>
+              <span>Live updates enabled {useWebSocket ? '(streaming)' : '(polling)'}</span>
             </>
           )}
         </div>

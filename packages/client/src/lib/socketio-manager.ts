@@ -32,6 +32,17 @@ export type ControlMessageData = {
   [key: string]: any;
 };
 
+// Define type for log stream messages
+export type LogStreamData = {
+  level: number;
+  time: number;
+  msg: string;
+  agentId?: string;
+  agentName?: string;
+  roomId?: string;
+  [key: string]: string | number | boolean | null | undefined;
+};
+
 // A simple class that provides EventEmitter-like interface using Evt internally
 class EventAdapter {
   private events: Record<string, Evt<any>> = {};
@@ -41,6 +52,7 @@ class EventAdapter {
     this.events.messageBroadcast = Evt.create<MessageBroadcastData>();
     this.events.messageComplete = Evt.create<MessageCompleteData>();
     this.events.controlMessage = Evt.create<ControlMessageData>();
+    this.events.logStream = Evt.create<LogStreamData>();
   }
 
   on(eventName: string, listener: (...args: any[]) => void) {
@@ -106,6 +118,7 @@ class SocketIOManager extends EventAdapter {
   private activeRooms: Set<string> = new Set();
   private entityId: string | null = null;
   private agentIds: string[] | null = null;
+  private logStreamSubscribed: boolean = false;
 
   // Public accessor for EVT instances (for advanced usage)
   public get evtMessageBroadcast() {
@@ -118,6 +131,10 @@ class SocketIOManager extends EventAdapter {
 
   public get evtControlMessage() {
     return this._getEvt('controlMessage') as Evt<ControlMessageData>;
+  }
+
+  public get evtLogStream() {
+    return this._getEvt('logStream') as Evt<LogStreamData>;
   }
 
   private constructor() {
@@ -286,6 +303,19 @@ class SocketIOManager extends EventAdapter {
       clientLogger.error('[SocketIO] Connection error:', error);
       this.emit('connect_error', error);
     });
+
+    // Handle log stream events
+    this.socket.on('log_stream', (data) => {
+      clientLogger.debug('[SocketIO] Log stream data received:', data);
+      if (data.type === 'log_entry' && data.payload) {
+        this.emit('logStream', data.payload);
+      }
+    });
+
+    this.socket.on('log_subscription_confirmed', (data) => {
+      clientLogger.info('[SocketIO] Log subscription confirmed:', data);
+      this.logStreamSubscribed = data.subscribed;
+    });
   }
 
   /**
@@ -387,6 +417,70 @@ class SocketIOManager extends EventAdapter {
   }
 
   /**
+   * Subscribe to log streaming
+   */
+  public async subscribeToLogStream(): Promise<void> {
+    if (!this.socket) {
+      clientLogger.error('[SocketIO] Cannot subscribe to logs: socket not initialized');
+      return;
+    }
+
+    // Wait for connection if needed
+    if (!this.isConnected) {
+      await this.connectPromise;
+    }
+
+    this.socket.emit('subscribe_logs');
+    clientLogger.info('[SocketIO] Subscribed to log stream');
+  }
+
+  /**
+   * Unsubscribe from log streaming
+   */
+  public async unsubscribeFromLogStream(): Promise<void> {
+    if (!this.socket) {
+      clientLogger.error('[SocketIO] Cannot unsubscribe from logs: socket not initialized');
+      return;
+    }
+
+    // Wait for connection if needed
+    if (!this.isConnected) {
+      await this.connectPromise;
+    }
+
+    this.socket.emit('unsubscribe_logs');
+    clientLogger.info('[SocketIO] Unsubscribed from log stream');
+  }
+
+  /**
+   * Update log stream filters
+   */
+  public async updateLogStreamFilters(filters: {
+    agentName?: string;
+    level?: string;
+  }): Promise<void> {
+    if (!this.socket) {
+      clientLogger.error('[SocketIO] Cannot update log filters: socket not initialized');
+      return;
+    }
+
+    // Wait for connection if needed
+    if (!this.isConnected) {
+      await this.connectPromise;
+    }
+
+    this.socket.emit('update_log_filters', filters);
+    clientLogger.info('[SocketIO] Updated log stream filters:', filters);
+  }
+
+  /**
+   * Check if subscribed to log streaming
+   */
+  public isLogStreamSubscribed(): boolean {
+    return this.logStreamSubscribed;
+  }
+
+  /**
    * Disconnect from the server
    */
   public disconnect(): void {
@@ -395,6 +489,7 @@ class SocketIOManager extends EventAdapter {
       this.socket = null;
       this.isConnected = false;
       this.activeRooms.clear();
+      this.logStreamSubscribed = false;
       clientLogger.info('[SocketIO] Disconnected from server');
     }
   }
