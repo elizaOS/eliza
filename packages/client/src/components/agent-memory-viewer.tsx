@@ -381,7 +381,7 @@ export function AgentMemoryViewer({ agentId, agentName }: AgentMemoryViewerProps
           <h3 className="text-lg font-medium">Memories</h3>
           {!isLoading && (
             <span className="ml-2 text-xs px-2 py-1 rounded bg-muted text-muted-foreground">
-              {filteredMemories.length} memories
+              {filteredMemories.length}
             </span>
           )}
         </div>

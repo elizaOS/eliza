@@ -645,7 +645,7 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
           <h3 className="text-lg font-medium">Agent Actions</h3>
           {!isLoading && (
             <span className="ml-2 text-xs px-2 py-1 rounded bg-muted text-muted-foreground">
-              {filteredActions.length} actions
+              {filteredActions.length}
             </span>
           )}
         </div>
