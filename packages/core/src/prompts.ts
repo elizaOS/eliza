@@ -118,3 +118,28 @@ Go directly to the XML response format without any preamble or explanation.
 IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
 
 export const booleanFooter = 'Respond with only a YES or a NO.';
+
+export const imageDescriptionTemplate = `<task>Analyze the provided image and generate a comprehensive description with multiple levels of detail.</task>
+
+<instructions>
+Carefully examine the image and provide:
+1. A concise, descriptive title that captures the main subject or scene
+2. A brief summary description (1-2 sentences) highlighting the key elements
+3. An extensive, detailed description that covers all visible elements, composition, lighting, colors, mood, and any other relevant details
+
+Be objective and descriptive. Focus on what you can actually see in the image rather than making assumptions about context or meaning.
+</instructions>
+
+<output>
+Do NOT include any thinking, reasoning, or <think> sections in your response. 
+Go directly to the XML response format without any preamble or explanation.
+
+Respond using XML format like this:
+<response>
+  <title>A concise, descriptive title for the image</title>
+  <description>A brief 1-2 sentence summary of the key elements in the image</description>
+  <text>An extensive, detailed description covering all visible elements, composition, lighting, colors, mood, setting, objects, people, activities, and any other relevant details you can observe in the image</text>
+</response>
+
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.
+</output>`;

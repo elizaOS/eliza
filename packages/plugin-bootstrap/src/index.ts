@@ -26,6 +26,8 @@ import {
   type UUID,
   type WorldPayload,
   PluginEvents,
+  imageDescriptionTemplate,
+  ContentType,
 } from '@elizaos/core';
 import { v4 } from 'uuid';
 
@@ -130,6 +132,79 @@ export async function fetchMediaData(attachments: Media[]): Promise<MediaData[]>
       throw new Error(`File not found: ${attachment.url}. Make sure the path is correct.`);
     })
   );
+}
+
+/**
+ * Processes attachments by generating descriptions for supported media types.
+ * Currently supports image description generation.
+ *
+ * @param {Media[]} attachments - Array of attachments to process
+ * @param {IAgentRuntime} runtime - The agent runtime for accessing AI models
+ * @returns {Promise<Media[]>} - Returns a new array of processed attachments with added description, title, and text properties
+ */
+export async function processAttachments(
+  attachments: Media[],
+  runtime: IAgentRuntime
+): Promise<Media[]> {
+  if (!attachments || attachments.length === 0) {
+    return [];
+  }
+  logger.debug(`[Bootstrap] Processing ${attachments.length} attachment(s)`);
+
+  const processedAttachments: Media[] = [];
+
+  for (const attachment of attachments) {
+    try {
+      // Start with the original attachment
+      const processedAttachment: Media = { ...attachment };
+
+      // Only process images that don't already have descriptions
+      if (attachment.contentType?.includes(ContentType.IMAGE) && !attachment.description) {
+        logger.debug(`[Bootstrap] Generating description for image: ${attachment.url}`);
+
+        const response = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
+          prompt: imageDescriptionTemplate,
+          imageUrl: attachment.url,
+        });
+
+        logger.debug(`[Bootstrap] Image description response:`, response);
+
+        if (typeof response === 'string') {
+          // Parse XML response
+          const parsedXml = parseKeyValueXml(response);
+
+          if (parsedXml?.description && parsedXml?.text) {
+            processedAttachment.description = parsedXml.description;
+            processedAttachment.title = parsedXml.title || 'Image';
+            processedAttachment.text = parsedXml.text;
+
+            logger.debug(
+              `[Bootstrap] Generated description: ${processedAttachment.description?.substring(0, 100)}...`
+            );
+          } else {
+            logger.warn(`[Bootstrap] Failed to parse XML response for image description`);
+          }
+        } else if (response && typeof response === 'object' && 'description' in response) {
+          // Handle object responses for backwards compatibility
+          processedAttachment.description = response.description;
+          processedAttachment.title = response.title || 'Image';
+          processedAttachment.text = response.description;
+
+          logger.debug(
+            `[Bootstrap] Generated description: ${processedAttachment.description?.substring(0, 100)}...`
+          );
+        }
+      }
+
+      processedAttachments.push(processedAttachment);
+    } catch (error) {
+      logger.error(`[Bootstrap] Failed to process attachment ${attachment.url}:`, error);
+      // Add the original attachment if processing fails
+      processedAttachments.push(attachment);
+    }
+  }
+
+  return processedAttachments;
 }
 
 /**
@@ -258,6 +333,13 @@ const messageReceivedHandler = async ({
         logger.debug(
           `[Bootstrap] Skipping shouldRespond check for ${runtime.character.name} because ${room?.type} ${room?.source}`
         );
+
+        if (message.content.attachments && message.content.attachments.length > 0) {
+          message.content.attachments = await processAttachments(
+            message.content.attachments,
+            runtime
+          );
+        }
 
         let shouldRespond = true;
 
