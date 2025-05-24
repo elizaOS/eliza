@@ -58,7 +58,7 @@ For a more detailed guide, check out our [Quickstart Guide](./quickstart.md) to 
 ### Prerequisites
 
 - [Python 2.7+](https://www.python.org/downloads/)
-- [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
+- [Node.js 20+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
 - [pnpm](https://pnpm.io/installation)
 
 > **Note for Windows Users:** [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual) is required.

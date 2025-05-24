@@ -13,7 +13,7 @@ This guide provides instructions for installing and running the Eliza chatbot us
    ```bash
    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.1/install.sh | bash
    source ~/.bashrc
-   nvm install v23.3.0
+   nvm install v20
    ```
 
 2. **Install Build Essentials** (Optional):

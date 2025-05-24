@@ -57,7 +57,7 @@ For detailed instructions on each path, including configuration options and exte
 
 ### Prerequisites
 
-- [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
+- [Node.js 20+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
 - Git for version control
 - For Windows Users: [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual) is required
 

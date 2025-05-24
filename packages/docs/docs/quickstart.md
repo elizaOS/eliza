@@ -11,7 +11,7 @@ image: /img/eliza_banner.jpg
 
 ## Prerequisites
 
-- [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
+- [Node.js 20+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
 - Git for version control
 - For Windows Users: [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual) is required
 
@@ -169,8 +169,8 @@ elizaos plugins publish --platform node
 
 ### Node Version
 
-- Use Node.js 23.3.0+ (`node -v` to check)
-- Try using NVM: `nvm use 23`
+- Use Node.js 20.0.0+ (`node -v` to check)
+- Try using NVM: `nvm use 20`
 
 ### Installation Problems
 

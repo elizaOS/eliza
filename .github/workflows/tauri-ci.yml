@@ -36,7 +36,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '23'
+          node-version: '20'
 
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
@@ -64,6 +64,8 @@ jobs:
           # Install WebView2 Bootstrapper (Edge Chromium)
           Invoke-WebRequest -Uri https://go.microsoft.com/fwlink/p/?LinkId=2124703 -OutFile ./MicrosoftEdgeWebview2Setup.exe
           Start-Process -FilePath ./MicrosoftEdgeWebview2Setup.exe -ArgumentList "/silent", "/install" -Wait
+          # Install NSIS for bundling the Windows installer
+          choco install nsis -y
           # Add any other Windows-specific dependencies here if known (e.g., C++ Build Tools if not pre-installed on runners)
           # For now, focus on WebView2. We might need to install Visual Studio Build Tools
           #choco install visualstudio2019buildtools --package-parameters "--add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --add Microsoft.VisualStudio.Component.Windows10SDK" -y

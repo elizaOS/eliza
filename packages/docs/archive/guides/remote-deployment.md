@@ -109,8 +109,8 @@ export NVM_DIR="$HOME/.nvm"
 Install the correct version of Node.js using nvm.
 
 ```bash
-nvm install v23.3.0
-nvm use v23.3.0
+nvm install v20
+nvm use v20
 ```
 
 Install bun globally and verify the installation:

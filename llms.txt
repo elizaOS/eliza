@@ -2300,7 +2300,7 @@ If you have a Nvidia GPU you can enable CUDA support. First ensure CUDA Toolkit,
 Eliza-starter is a lightweight version for simpler setups, while the main eliza repository includes all advanced features and a web client.
 
 ### How do I fix build/installation issues?
-Use Node v23.3.0, run `pnpm clean`, then `pnpm install --no-frozen-lockfile`, followed by `pnpm build`. If issues persist, checkout the latest stable tag.
+Use Node v20.0.0, run `pnpm clean`, then `pnpm install --no-frozen-lockfile`, followed by `pnpm build`. If issues persist, checkout the latest stable tag.
 
 ### What are the minimum system requirements?
 8GB RAM recommended for build process. For deployment, a t2.large instance on AWS with 20GB storage running Ubuntu is the minimum tested configuration.
@@ -2464,7 +2464,7 @@ COINGECKO_API_KEY=
     }
   },
   "engines": {
-    "node": "23.3.0"
+    "node": ">=20"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
@@ -2572,7 +2572,7 @@ COINGECKO_API_KEY=
 ### Prerequisites
 
 - [Python 2.7+](https://www.python.org/downloads/)
-- [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
+- [Node.js 20+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
 - [bun](https://bun.sh)
 
 > **Note for Windows Users:** [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual) is required.

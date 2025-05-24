@@ -51,7 +51,7 @@ Note: It's recommended for devs to keep working with v1, v2 will be mostly backw
 
 ### What are the system requirements for running Eliza?
 
-- Node.js version 23+ (specifically 23.3.0 is recommended)
+- Node.js version 20+ (specifically 20.0.0 is recommended)
 - pnpm package manager
 - At least 2GB RAM
 - For Windows users: WSL2 (Windows Subsystem for Linux)
@@ -66,7 +66,7 @@ Note: It's recommended for devs to keep working with v1, v2 will be mostly backw
 
 If you encounter build failures or dependency errors:
 
-1. Ensure you're using Node.js v23.3.0: `nvm install 23.3.0 && nvm use 23.3.0`
+1. Ensure you're using Node.js v20.0.0: `nvm install 20 && nvm use 20`
 2. Clean your environment: `pnpm clean`
 3. Install dependencies: `pnpm install --no-frozen-lockfile`
 4. Rebuild: `pnpm build`

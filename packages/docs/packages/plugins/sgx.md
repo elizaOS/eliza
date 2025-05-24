@@ -84,8 +84,8 @@ cd /root/eliza/
 apt update
 apt install -y build-essential
 apt install -y curl
-curl -fsSL https://deb.nodesource.com/setup_23.x | bash -
-apt install -y nodejs=23.3.0-1nodesource1
+curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+apt install -y nodejs=20.0.0-1nodesource1
 npm install -g bun
 
 # Build Eliza

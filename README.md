@@ -47,7 +47,7 @@
 ### Prerequisites
 
 - [Python 2.7+](https://www.python.org/downloads/)
-- [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
+- [Node.js 20+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
 - [bun](https://bun.sh/docs/installation)
 
 > **Note for Windows Users:** [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual) is required.
@@ -63,9 +63,9 @@ bun i && bun run build && bun start
 
 ### Manually Start Eliza (Only recommended if you know what you are doing)
 
-#### Prerequisites
+-#### Prerequisites
 
-- **Node.js** (v18+ recommended)
+- **Node.js** (v20+ recommended)
 - **bun** (for CLI and dependencies)
 - **bats** (shell test runner, install globally via npm or bun)
 - **git** (for project/plugin tests)
@@ -224,6 +224,7 @@ Two main GitHub Actions workflows handle the CI/CD process for the Tauri applica
 - **`tauri-release.yml`**:
   - Triggered when new tags (e.g., `v*`) are pushed or when a new release is created/published on GitHub.
   - Builds release-ready versions of the application for all supported desktop platforms (Linux AppImage & .deb, macOS .dmg, Windows .exe NSIS installer).
+    Windows bundling relies on the [NSIS](https://nsis.sourceforge.io/) tool, which the workflow installs via `choco install nsis`.
   - Builds release versions for mobile platforms (Android .apk, iOS .ipa).
   - Uploads all generated binaries and installers as artifacts to the corresponding GitHub Release.
 

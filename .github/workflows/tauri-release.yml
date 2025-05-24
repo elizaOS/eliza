@@ -60,7 +60,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '23'
+          node-version: '20'
 
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
@@ -142,7 +142,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '23'
+          node-version: '20'
 
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
@@ -164,6 +164,7 @@ jobs:
         run: |
           Invoke-WebRequest -Uri https://go.microsoft.com/fwlink/p/?LinkId=2124703 -OutFile ./MicrosoftEdgeWebview2Setup.exe
           Start-Process -FilePath ./MicrosoftEdgeWebview2Setup.exe -ArgumentList "/silent", "/install" -Wait
+          choco install nsis -y
         shell: pwsh
 
       - name: Create .npmrc to skip postinstall scripts
@@ -221,7 +222,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '23'
+          node-version: '20'
 
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
@@ -305,7 +306,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '23'
+          node-version: '20'
 
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
@@ -412,7 +413,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '23'
+          node-version: '20'
 
       - name: Install Bun
         uses: oven-sh/setup-bun@v2

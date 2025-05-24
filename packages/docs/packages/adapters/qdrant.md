@@ -15,7 +15,7 @@ A vector database adapter for ElizaOS that provides efficient similarity search 
 ## Prerequisites
 
 - Qdrant server (self-hosted or cloud)
-- Node.js 23 or later
+- Node.js 20 or later
 - ElizaOS installation
 
 ## Installation

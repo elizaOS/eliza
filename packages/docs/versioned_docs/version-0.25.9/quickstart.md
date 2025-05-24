@@ -8,7 +8,7 @@ sidebar_position: 2
 
 Before getting started with Eliza, ensure you have:
 
-- [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm) (using [nvm](https://github.com/nvm-sh/nvm?tab=readme-ov-file#installing-and-updating) is recommended)
+- [Node.js 20+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm) (using [nvm](https://github.com/nvm-sh/nvm?tab=readme-ov-file#installing-and-updating) is recommended)
 - [pnpm 9+](https://pnpm.io/installation)
 - Git for version control
 - A code editor ([VS Code](https://code.visualstudio.com/), [Cursor](https://cursor.com/) or [VSCodium](https://vscodium.com) recommended)
@@ -93,7 +93,7 @@ brew update
 
 #### Node.js Issues
 
-- Ensure Node.js 23.3.0 is installed
+- Ensure Node.js 20.0.0 is installed
 - Use `node -v` to check version
 - Consider using [nvm](https://github.com/nvm-sh/nvm) to manage Node versions
 - Use `--skip-nvm` for system Node
@@ -118,7 +118,7 @@ scripts: {
 pnpm may be bundled with a different node version, ignoring nvm. If this is the case, try:
 
 ```bash
-pnpm env use --global 23.3.0
+pnpm env use --global 20
 ```
 
 #### Docker issues
@@ -332,7 +332,7 @@ Eliza-starter is a lightweight version for simpler setups, while the main eliza 
 
 ### How do I fix build/installation issues?
 
-Use Node v23.3.0, run `pnpm clean`, then `pnpm install --no-frozen-lockfile`, followed by `pnpm build`. If issues persist, checkout the latest stable tag.
+Use Node v20.0.0, run `pnpm clean`, then `pnpm install --no-frozen-lockfile`, followed by `pnpm build`. If issues persist, checkout the latest stable tag.
 
 ### What are the minimum system requirements?
 
