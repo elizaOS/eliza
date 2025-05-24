@@ -24,6 +24,7 @@ import {
   getSalt,
   logger,
   messageHandlerTemplate,
+  stringToUuid,
   validateUuid,
 } from '@elizaos/core';
 import express from 'express';
@@ -461,14 +462,8 @@ export function agentRouter(
                   }
                   return false;
                 };
-
-                if (r.isMultipart) {
-                  logger.debug(`Executing multipart handler for plugin route: ${r.path}`);
-                  if (executeHandler()) return;
-                } else {
-                  logger.debug(`Executing non-multipart handler for plugin route: ${r.path}`);
-                  if (executeHandler()) return;
-                }
+                logger.debug(`Executing handler for plugin route: ${r.path}`);
+                if (executeHandler()) return;
               }
             }
           }
@@ -519,12 +514,26 @@ export function agentRouter(
         character.settings.secrets = encryptObjectValues(character.settings.secrets, salt);
       }
 
-      const createdAgent = await db.ensureAgentExists(character);
+      const ensureAgentExists = async (character: Character) => {
+        const agentId = stringToUuid(character.name);
+        let agent = await db.getAgent(agentId);
+        if (!agent) {
+          await db.createAgent({ ...character, id: agentId });
+          agent = await db.getAgent(agentId);
+        }
+        return agent;
+      };
+
+      const newAgent = await ensureAgentExists(character);
+
+      if (!newAgent) {
+        throw new Error(`Failed to create agent ${character.name}`);
+      }
 
       res.status(201).json({
         success: true,
         data: {
-          id: createdAgent.id,
+          id: newAgent.id,
           character: character,
         },
       });
@@ -1741,7 +1750,10 @@ export function agentRouter(
       return;
     }
     try {
-      await db.deleteRoomsByWorldId(worldId);
+      const rooms = await db.getRoomsByWorld(worldId);
+      for (const room of rooms) {
+        await db.deleteRoom(room.id);
+      }
       res.status(204).send();
     } catch (error) {
       logger.error('[GROUP DELETE] Error deleting group:', error);
