@@ -62,7 +62,7 @@ teardown() {
 # Basic agent check
 # -----------------------------------------------------------------------------
 @test "start and list shows Ada agent running" {
-  run $ELIZAOS_CMD agent --remote-url "http://localhost:$TEST_SERVER_PORT" list
+  run $ELIZAOS_CMD agent list --remote-url "http://localhost:$TEST_SERVER_PORT"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Ada"* ]]
 }
@@ -71,7 +71,7 @@ teardown() {
 # Call single agent endpoint (204/200 ok is fine)
 # -----------------------------------------------------------------------------
 @test "agent endpoint responds" {
-  run $ELIZAOS_CMD agent --remote-url "http://localhost:$TEST_SERVER_PORT" list
+  run $ELIZAOS_CMD agent list --remote-url "http://localhost:$TEST_SERVER_PORT"
   [ "$status" -eq 0 ]
   agent_id=$(grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' <<<"$output" | head -1)
   [ -n "$agent_id" ]
@@ -152,7 +152,7 @@ teardown() {
   fi
 
   # Tests if able to get response from Ada agent
-  run $ELIZAOS_CMD agent --remote-url "http://localhost:$TEST_SERVER_PORT" list
+  run $ELIZAOS_CMD agent list --remote-url "http://localhost:$TEST_SERVER_PORT"
   ELIZA_AGENT_ID=$(echo "$output" | grep 'Ada' | sed -E 's/.*│ *([0-9a-f\-]{36}) *.*/\1/')
   local payload="{\"entityId\":\"31c75add-3a49-4bb1-ad40-92c6b4c39558\",\"roomId\":\"$ELIZA_AGENT_ID\",\"source\":\"client_chat\",\"text\":\"Ada, What's your stance on AI regulation?\",\"channelType\":\"API\"}"
   run curl -s -X POST -H "Content-Type: application/json" -d "$payload" "http://localhost:$TEST_SERVER_PORT/api/agents/$ELIZA_AGENT_ID/message"
