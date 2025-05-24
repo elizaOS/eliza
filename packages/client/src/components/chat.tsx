@@ -86,6 +86,12 @@ function MessageContent({
 
             // Parse media from message text
             const mediaInfos = parseMediaFromText(message.text);
+            // Get URLs from attachments to avoid duplicates
+            const attachmentUrls = new Set(
+              message.attachments?.map((att) => att.url).filter(Boolean) || []
+            );
+            // Filter out media that's already in attachments
+            const uniqueMediaInfos = mediaInfos.filter((media) => !attachmentUrls.has(media.url));
             const textWithoutUrls = removeMediaUrlsFromText(message.text, mediaInfos);
 
             return (
@@ -103,10 +109,10 @@ function MessageContent({
                   </div>
                 )}
 
-                {/* Display parsed media */}
-                {mediaInfos.length > 0 && (
+                {/* Display parsed media only if not already in attachments */}
+                {uniqueMediaInfos.length > 0 && (
                   <div className="space-y-2">
-                    {mediaInfos.map((media, index) => (
+                    {uniqueMediaInfos.map((media, index) => (
                       <div key={`${media.url}-${index}`}>
                         {media.type === 'image' ? (
                           <ImageContent url={media.url} alt="Shared image" />
