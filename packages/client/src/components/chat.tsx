@@ -6,7 +6,7 @@ import {
 } from '@/components/ui/chat/chat-bubble';
 import { ChatInput } from '@/components/ui/chat/chat-input';
 import { ChatMessageList } from '@/components/ui/chat/chat-message-list';
-import { ImageContent, VideoContent } from '@/components/ui/chat/media-content';
+import MediaContent from '@/components/media-content';
 import { USER_NAME } from '@/constants';
 import { useDeleteAllMemories, useDeleteMemory, useMessages } from '@/hooks/use-query-hooks';
 import clientLogger from '@/lib/logger';
@@ -114,11 +114,10 @@ function MessageContent({
                   <div className="space-y-2">
                     {uniqueMediaInfos.map((media, index) => (
                       <div key={`${media.url}-${index}`}>
-                        {media.type === 'image' ? (
-                          <ImageContent url={media.url} alt="Shared image" />
-                        ) : media.type === 'video' ? (
-                          <VideoContent url={media.url} isEmbed={media.isEmbed} />
-                        ) : null}
+                        <MediaContent
+                          url={media.url}
+                          title={media.type === 'image' ? 'Shared image' : 'Shared video'}
+                        />
                       </div>
                     ))}
                   </div>
@@ -141,51 +140,13 @@ function MessageContent({
 
         {message.attachments
           ?.filter((attachment) => attachment.url && attachment.url.trim() !== '')
-          .map((attachment: Media) => {
-            // Determine if it's an image or video based on contentType or URL
-            const isImage =
-              attachment.contentType?.startsWith('image/') ||
-              /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)(\?.*)?$/i.test(attachment.url);
-            const isVideo =
-              attachment.contentType?.startsWith('video/') ||
-              /\.(mp4|webm|mov|avi|mkv|flv|wmv)(\?.*)?$/i.test(attachment.url);
-
-            if (isImage) {
-              return (
-                <ImageContent
-                  key={`${attachment.url}-${attachment.title}`}
-                  url={attachment.url}
-                  alt={attachment.title || 'Attached image'}
-                />
-              );
-            } else if (isVideo) {
-              return (
-                <VideoContent
-                  key={`${attachment.url}-${attachment.title}`}
-                  url={attachment.url}
-                  isEmbed={false}
-                />
-              );
-            } else {
-              // For other file types, show a generic attachment link
-              return (
-                <div
-                  className="flex items-center gap-2 p-2 border rounded-lg bg-muted/50"
-                  key={`${attachment.url}-${attachment.title}`}
-                >
-                  <span className="text-sm">{attachment.title || 'Attachment'}</span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => window.open(attachment.url, '_blank')}
-                    className="h-auto p-1"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                  </Button>
-                </div>
-              );
-            }
-          })}
+          .map((attachment: Media) => (
+            <MediaContent
+              key={`${attachment.url}-${attachment.title}`}
+              url={attachment.url}
+              title={attachment.title || 'Attachment'}
+            />
+          ))}
         {message.text && message.createdAt && (
           <ChatBubbleTimestamp timestamp={moment(message.createdAt).format('LT')} />
         )}
