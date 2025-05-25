@@ -1,13 +1,12 @@
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Activity, Book, Database, Terminal, Columns3 } from 'lucide-react';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useAgentPanels, type AgentPanel } from '@/hooks/use-query-hooks';
+import type { UUID } from '@elizaos/core';
+import { Activity, Columns3, Database, Terminal } from 'lucide-react';
+import { JSX, useMemo, useState } from 'react';
+import { AgentActionViewer } from './agent-action-viewer';
 import { AgentLogViewer } from './agent-log-viewer';
 import { AgentMemoryViewer } from './agent-memory-viewer';
-import { KnowledgeManager } from './agent-knowledge-manager';
-import type { UUID } from '@elizaos/core';
-import { useAgentPanels, type AgentPanel } from '@/hooks/use-query-hooks';
-import { useState, useMemo, JSX } from 'react';
 import { Skeleton } from './ui/skeleton';
-import { AgentActionViewer } from './agent-action-viewer';
 
 type AgentSidebarProps = {
   agentId: UUID;
@@ -29,7 +28,6 @@ export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
     const fixedTabs: { value: FixedTabValue; label: string; icon: JSX.Element }[] = [
       { value: 'actions', label: 'Actions', icon: <Activity className="h-4 w-4" /> },
       { value: 'memories', label: 'Memories', icon: <Database className="h-4 w-4" /> },
-      { value: 'knowledge', label: 'Knowledge', icon: <Book className="h-4 w-4" /> },
       { value: 'logs', label: 'Logs', icon: <Terminal className="h-4 w-4" /> },
     ];
 
@@ -47,10 +45,10 @@ export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
       defaultValue="actions"
       value={detailsTab}
       onValueChange={(v) => setDetailsTab(v as TabValue)}
-      className="flex flex-col h-full"
+      className="flex flex-col h-full w-full"
     >
-      <div className="border-b px-4 py-2">
-        <TabsList className={`flex justify-evenly`}>
+      <div className="border-b px-4 py-2 flex-shrink-0">
+        <TabsList className={`flex justify-evenly w-full`}>
           {isLoadingPanels && (
             <>
               {[...Array(2)].map((_, i) => (
@@ -67,34 +65,20 @@ export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
         </TabsList>
       </div>
 
-      <TabsContent value="actions" className="overflow-y-auto flex-1">
-        {detailsTab === 'actions' && <AgentActionViewer agentId={agentId} />}
-      </TabsContent>
-      <TabsContent value="logs" className="overflow-y-auto flex-1">
-        {detailsTab === 'logs' && <AgentLogViewer agentName={agentName} level="all" hideTitle />}
-      </TabsContent>
-      <TabsContent value="memories" className="overflow-y-auto flex-1">
-        {detailsTab === 'memories' && <AgentMemoryViewer agentId={agentId} agentName={agentName} />}
-      </TabsContent>
-      <TabsContent value="knowledge" className="h-full overflow-hidden flex-1">
-        {detailsTab === 'knowledge' && <KnowledgeManager agentId={agentId} />}
-      </TabsContent>
+      {detailsTab === 'actions' && <AgentActionViewer agentId={agentId} />}
+      {detailsTab === 'logs' && <AgentLogViewer agentName={agentName} level="all" />}
+      {detailsTab === 'memories' && <AgentMemoryViewer agentId={agentId} agentName={agentName} />}
 
-      {agentPanels.map((panel: AgentPanel) => (
-        <TabsContent
-          key={panel.name}
-          value={panel.name}
-          className="h-full overflow-hidden flex-1 flex flex-col"
-        >
-          {detailsTab === panel.name && (
+      {agentPanels.map(
+        (panel: AgentPanel) =>
+          detailsTab === panel.name && (
             <iframe
               src={`${panel.path}?agentId=${agentId}`}
               title={panel.name}
               className="w-full h-full border-0 flex-1"
             />
-          )}
-        </TabsContent>
-      ))}
+          )
+      )}
     </Tabs>
   );
 }

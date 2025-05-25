@@ -67,7 +67,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@babel/generator": "^7.26.10",
-    "@elizaos/plugin-discord": "^1.0.0-beta.53",
+    "@elizaos/plugin-discord": "^1.0.0-beta",
     "@hapi/shot": "^6.0.1",
     "@sentry/browser": "^9.20.0",
     "@types/hapi": "^18.0.14",

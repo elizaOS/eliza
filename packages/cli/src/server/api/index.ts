@@ -658,7 +658,7 @@ export function createApiRouter(
   router.use('/tee', teeRouter(agents));
 
   // Add the plugin routes middleware AFTER specific routers
-  router.all('*', createPluginRouteHandler(agents));
+  router.use(createPluginRouteHandler(agents));
 
   router.get('/stop', (_req, res) => {
     server?.stop(); // Use optional chaining in case server is undefined

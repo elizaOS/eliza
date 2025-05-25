@@ -1,24 +1,20 @@
 import type { UUID } from '@elizaos/core';
-import { Database, LoaderIcon, Pencil, Search, Brain, User, Bot, Clock, Copy } from 'lucide-react';
+import { Database, LoaderIcon, MailCheck, MessageSquareShare, Pencil } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useAgentMemories, useDeleteMemory } from '@/hooks/use-query-hooks';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
+import { useAgentMemories, useDeleteMemory } from '../hooks/use-query-hooks';
+import MemoryGraph from './memory-graph';
+import { Badge } from './ui/badge';
+import { Button } from './ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+
+import type { Memory } from '@elizaos/core';
 import MemoryEditOverlay from './agent-memory-edit-overlay';
 
 // Number of items to load per batch
-const ITEMS_PER_PAGE = 15;
+const ITEMS_PER_PAGE = 10;
 
 interface MemoryContent {
-  thought?: boolean | string;
+  thought?: boolean;
   channelType?: string;
   source?: string;
   text?: string;
@@ -30,11 +26,11 @@ interface MemoryContent {
     description?: string;
   };
 }
-
+// Add type for message content structure based on API response
 interface ChatMemoryContent extends MemoryContent {
   text?: string;
   actions?: string[];
-  thought?: boolean | string;
+  thought?: boolean;
   inReplyTo?: string;
   providers?: string[];
   channelType?: string;
@@ -48,87 +44,58 @@ enum MemoryType {
   facts = 'facts',
 }
 
-interface AgentMemoryViewerProps {
-  agentId: UUID;
-  agentName: string;
-}
-
-export function AgentMemoryViewer({ agentId, agentName }: AgentMemoryViewerProps) {
+export function AgentMemoryViewer({ agentId, agentName }: { agentId: UUID; agentName: string }) {
   const [selectedType, setSelectedType] = useState<MemoryType>(MemoryType.all);
-  const [searchQuery, setSearchQuery] = useState('');
   const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
   const [visibleItems, setVisibleItems] = useState(ITEMS_PER_PAGE);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [viewMode, setViewMode] = useState<'list' | 'graph'>('list');
+  const [selectedMemory, setSelectedMemory] = useState<Memory | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Determine table name based on selected type
+  console.log({ agentName, agentId });
+
+  // Determine if we need to use the 'documents' table for knowledge
   const tableName =
     selectedType === MemoryType.facts
       ? 'facts'
       : selectedType === MemoryType.messagesSent || selectedType === MemoryType.messagesReceived
         ? 'messages'
-        : undefined;
+        : selectedType === MemoryType.all
+          ? undefined
+          : undefined;
 
-  const { data: memories = [], isLoading, error } = useAgentMemories(agentId, tableName);
+  const {
+    data: memories = [],
+    isLoading,
+    error,
+  } = useAgentMemories(agentId, tableName, undefined, viewMode === 'graph');
   const { mutate: deleteMemory } = useDeleteMemory();
 
-  // Filter and search memories
-  const filteredMemories = memories.filter((memory: Memory) => {
-    // Type filter
-    if (selectedType !== MemoryType.all) {
-      const content = memory.content as ChatMemoryContent;
-
-      if (selectedType === MemoryType.thoughts && !content?.thought) return false;
-      if (selectedType === MemoryType.messagesSent && memory.entityId !== memory.agentId)
-        return false;
-      if (selectedType === MemoryType.messagesReceived && memory.entityId === memory.agentId)
-        return false;
-    }
-
-    // Search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      const content = memory.content as ChatMemoryContent;
-      const searchableText = [
-        content?.text,
-        content?.thought,
-        memory.id,
-        memory.metadata?.entityName,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-
-      return searchableText.includes(query);
-    }
-
-    return true;
-  });
-
-  // Handle scroll for infinite loading
+  // Handle scroll to implement infinite loading
   const handleScroll = useCallback(() => {
     if (!scrollContainerRef.current || loadingMore || visibleItems >= filteredMemories.length) {
       return;
     }
 
     const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
-    const scrolledToBottom = scrollTop + clientHeight >= scrollHeight - 200;
+    const scrolledToBottom = scrollTop + clientHeight >= scrollHeight - 100; // 100px buffer
 
     if (scrolledToBottom) {
       setLoadingMore(true);
+      // Add a small delay to simulate loading and prevent too rapid updates
       setTimeout(() => {
         setVisibleItems((prev) => Math.min(prev + ITEMS_PER_PAGE, filteredMemories.length));
         setLoadingMore(false);
-      }, 500);
+      }, 300);
     }
-  }, [loadingMore, visibleItems, filteredMemories.length]);
-
-  // Reset visible items when filter changes
+  }, [loadingMore, visibleItems]);
+  // Reset visible items when filter changes or new data loads
   useEffect(() => {
     setVisibleItems(ITEMS_PER_PAGE);
-  }, [selectedType, searchQuery]);
+  }, []);
 
-  // Set up scroll listener
+  // Set up scroll event listener
   useEffect(() => {
     const scrollContainer = scrollContainerRef.current;
     if (scrollContainer) {
@@ -137,41 +104,37 @@ export function AgentMemoryViewer({ agentId, agentName }: AgentMemoryViewerProps
     }
   }, [handleScroll]);
 
+  if (isLoading && (!memories || memories.length === 0)) {
+    return <div className="flex items-center justify-center h-40">Loading memories...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-40 text-destructive p-4">
+        Error loading agent memories
+      </div>
+    );
+  }
+
   const formatDate = (timestamp: number) => {
     const date = new Date(timestamp);
-    const now = new Date();
-    const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
+    return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+  };
 
-    if (diffInHours < 24) {
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    } else if (diffInHours < 168) {
-      // 7 days
-      return date.toLocaleDateString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
-    } else {
-      return date.toLocaleDateString([], {
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
+  const getMemoryIcon = (memory: Memory, content: MemoryContent) => {
+    if (memory.entityId === memory.agentId) return <MessageSquareShare className="w-4 h-4" />;
+    if (memory.entityId !== memory.agentId) return <MailCheck className="w-4 h-4" />;
+    if (content?.thought) return <LoaderIcon className="w-4 h-4" />;
+    return <Database className="w-4 h-4" />;
+  };
+
+  const handleDelete = (memoryId: string) => {
+    if (memoryId && window.confirm('Are you sure you want to delete this memory entry?')) {
+      deleteMemory({ agentId, memoryId });
     }
   };
 
-  const getMemoryIcon = (memory: Memory, content: ChatMemoryContent) => {
-    if (content?.thought) return Brain;
-    if (memory.entityId === memory.agentId) return Bot;
-    return User;
-  };
-
-  const copyToClipboard = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch (error) {
-      console.error('Failed to copy:', error);
-    }
-  };
-
-  // Group messages by date
+  // Group messages by date for better organization
   const groupMessagesByDate = (messages: Memory[]) => {
     const groups: Record<string, Memory[]> = {};
 
@@ -188,183 +151,195 @@ export function AgentMemoryViewer({ agentId, agentName }: AgentMemoryViewerProps
     return groups;
   };
 
+  // Filter memories based on selected type
+  const filteredMemories = memories.filter((memory: Memory) => {
+    if (selectedType === MemoryType.all) {
+      return true;
+    }
+
+    const content = memory.content as ChatMemoryContent;
+
+    if (selectedType === MemoryType.thoughts) {
+      return content?.thought !== undefined;
+    }
+
+    if (selectedType === MemoryType.messagesSent) {
+      return memory.entityId === memory.agentId;
+    }
+
+    if (selectedType === MemoryType.messagesReceived) {
+      return memory.entityId !== memory.agentId;
+    }
+
+    return true;
+  });
+
+  // Get visible subset for infinite scrolling
   const visibleMemories = filteredMemories.slice(0, visibleItems);
   const hasMoreToLoad = visibleItems < filteredMemories.length;
+
   const messageGroups = groupMessagesByDate(visibleMemories);
 
-  // Loading state
-  if (isLoading && memories.length === 0) {
-    return (
-      <div className="flex flex-col h-[calc(100vh-100px)] min-h-[400px] w-full">
-        <div className="flex items-center justify-center flex-1">
-          <div className="flex flex-col items-center gap-4">
-            <LoaderIcon className="h-8 w-8 animate-spin text-muted-foreground" />
-            <div className="text-center">
-              <h3 className="font-medium">Loading Memories</h3>
-              <p className="text-sm text-muted-foreground">
-                Fetching agent conversation history...
-              </p>
-            </div>
-          </div>
+  // Internal components for better organization
+  const LoadingIndicator = () => (
+    <div className="flex justify-center p-4">
+      {loadingMore ? (
+        <div className="flex items-center gap-2">
+          <LoaderIcon className="h-4 w-4 animate-spin" />
+          <span className="text-sm text-muted-foreground">Loading more...</span>
         </div>
-      </div>
-    );
-  }
-
-  // Error state
-  if (error) {
-    return (
-      <div className="flex flex-col h-[calc(100vh-100px)] min-h-[400px] w-full">
-        <div className="flex items-center justify-center flex-1">
-          <div className="text-center">
-            <Database className="h-12 w-12 text-destructive mx-auto mb-4" />
-            <h3 className="font-medium text-destructive">Failed to Load Memories</h3>
-            <p className="text-sm text-muted-foreground">
-              There was an error loading the agent memories.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Empty state
-  const EmptyState = () => (
-    <div className="flex flex-col items-center justify-center flex-1 text-center p-8">
-      <Database className="h-16 w-16 text-muted-foreground/30 mb-4" />
-      <h3 className="text-lg font-medium mb-2">No Memories Found</h3>
-      <p className="text-muted-foreground max-w-md mb-4">
-        {searchQuery
-          ? `No memories match "${searchQuery}". Try adjusting your search or filter.`
-          : "This agent hasn't created any memories yet. Memories will appear here as the agent interacts."}
-      </p>
-      {searchQuery && (
-        <Button variant="outline" onClick={() => setSearchQuery('')}>
-          Clear Search
+      ) : (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setVisibleItems((prev) => prev + ITEMS_PER_PAGE)}
+          className="text-xs"
+        >
+          Show more
         </Button>
       )}
     </div>
   );
 
-  // Memory card component
-  const MemoryCard = ({ memory, index }: { memory: Memory; index: number }) => {
+  const EmptyState = () => (
+    <div className="text-muted-foreground text-center p-12 flex flex-col items-center gap-3 border-2 border-dashed rounded-lg mt-8">
+      <Database className="h-12 w-12 text-muted-foreground opacity-20" />
+      <h3 className="text-lg font-medium">No Memories</h3>
+      <p className="max-w-md text-sm">
+        Messages will appear here once the agent begins communicating.
+      </p>
+    </div>
+  );
+
+  const MemoryCard = ({
+    memory,
+    index,
+    agentName,
+  }: {
+    memory: Memory;
+    index: number;
+    agentName: string;
+  }) => {
     const content = memory.content as ChatMemoryContent;
-    const IconComponent = getMemoryIcon(memory, content);
-    const entityName = memory.metadata?.entityName || agentName;
-    const isAgent = memory.entityId === memory.agentId;
+    const hasThought = content?.thought;
+    const timestamp = formatDate(memory.createdAt || 0);
+
+    // Get entity name with improved logic
+    const entityName = (memory.metadata as any)?.entityName
+      ? (memory.metadata as any)?.entityName
+      : agentName;
+
+    console.log(entityName, memory.id, agentName);
 
     return (
-      <div className="border rounded-lg p-4 bg-card hover:bg-accent/5 transition-colors group">
-        {/* Header */}
-        <div className="flex items-start justify-between mb-3">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-md bg-muted">
-              <IconComponent className="h-4 w-4" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-medium text-sm">{entityName}</span>
-                <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">
-                  {content?.thought ? 'Thought' : isAgent ? 'Agent' : 'User'}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
-                <Clock className="h-3 w-3" />
-                <span>{formatDate(memory.createdAt || 0)}</span>
-                {memory.id && (
-                  <>
-                    <span>•</span>
-                    <code className="text-[10px] bg-muted px-1 rounded">{memory.id.slice(-8)}</code>
-                  </>
-                )}
-              </div>
-            </div>
+      <div
+        key={memory.id || index}
+        className="border rounded-md p-3 mb-3 bg-card hover:bg-accent/10 transition-colors relative group p-4"
+      >
+        {/* Action buttons */}
+        {memory.id && (
+          <div className="absolute top-2 right-2 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                setEditingMemory(memory);
+              }}
+              title="Edit memory"
+              className="h-7 w-7 hover:bg-muted"
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+
+        {/* Memory header - Author and timestamp */}
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium flex items-center gap-1.5">
+              {getMemoryIcon(memory, content)}
+              <span className="font-semibold">{entityName}</span>
+            </span>
+            {content?.actions && content.actions.length > 0 && (
+              <Badge variant="outline" className="text-xs">
+                {content.actions.join(', ')}
+              </Badge>
+            )}
+            {content.source && (
+              <Badge variant="outline" className="text-xs">
+                {content.source}
+              </Badge>
+            )}
           </div>
 
-          {/* Action buttons */}
-          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            {content?.text && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => copyToClipboard(content.text || '')}
-                className="h-8 w-8 p-0"
-                title="Copy text"
-              >
-                <Copy className="h-3 w-3" />
-              </Button>
-            )}
-            {memory.id && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setEditingMemory(memory)}
-                className="h-8 w-8 p-0"
-                title="Edit memory"
-              >
-                <Pencil className="h-3 w-3" />
-              </Button>
-            )}
-          </div>
+          <Badge variant="secondary" className="text-xs group-hover:mr-8 transition-all">
+            {timestamp}
+          </Badge>
         </div>
 
-        {/* Content */}
-        <div className="space-y-3">
-          {/* Main text */}
-          {content?.text && (
-            <div className="bg-muted/50 rounded-md p-3">
-              <p className="text-sm leading-relaxed whitespace-pre-wrap">{content.text}</p>
-            </div>
-          )}
+        {/* Message content */}
+        {content?.text && (
+          <div className="bg-muted/30 px-3 py-2 rounded mb-2">
+            <p className="text-sm whitespace-pre-wrap">{content.text}</p>
+          </div>
+        )}
 
-          {/* Thought process */}
-          {content?.thought && (
-            <div className="border-l-2 border-muted pl-3">
-              <div className="flex items-center gap-2 mb-1">
-                <Brain className="h-3 w-3 text-muted-foreground" />
-                <span className="text-xs font-medium text-muted-foreground">Thought Process</span>
-              </div>
-              <p className="text-xs text-muted-foreground italic leading-relaxed">
-                {String(content.thought)}
-              </p>
+        {/* Thought content */}
+        {hasThought && (
+          <div className="border-t pt-2 mt-2">
+            <div className="flex items-center gap-1.5 mb-1">
+              <LoaderIcon className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-xs font-medium text-muted-foreground">Thought Process</span>
             </div>
-          )}
+            <div className="bg-muted/20 px-3 py-2 rounded text-muted-foreground">
+              <p className="text-xs italic whitespace-pre-wrap">{content.thought}</p>
+            </div>
+          </div>
+        )}
 
-          {/* Tags */}
-          {(content?.actions || content?.providers || content?.source) && (
-            <div className="flex flex-wrap gap-1">
-              {content.actions?.map((action) => (
-                <span
-                  key={action}
-                  className="text-xs px-2 py-1 bg-muted rounded text-muted-foreground"
-                >
-                  {action}
-                </span>
-              ))}
-              {content.providers?.map((provider) => (
-                <span
-                  key={provider}
-                  className="text-xs px-2 py-1 bg-muted rounded text-muted-foreground"
-                >
+        {/* Show providers if available */}
+        {content?.providers && content.providers.length > 0 && (
+          <div className="mt-2">
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className="text-xs font-medium text-muted-foreground">Providers</span>
+            </div>
+            <div className="flex flex-wrap gap-1 p-2 bg-muted/20 rounded text-muted-foreground">
+              {content.providers.map((provider) => (
+                <Badge key={provider} variant="outline" className="text-[10px] bg-muted/40">
                   {provider}
-                </span>
+                </Badge>
               ))}
-              {content.source && (
-                <span className="text-xs px-2 py-1 bg-muted rounded text-muted-foreground">
-                  {content.source}
-                </span>
-              )}
+            </div>
+          </div>
+        )}
+
+        {/* Memory metadata */}
+        <div className="mt-2 grid gap-2">
+          {memory.id && (
+            <div className="text-xs bg-muted/40 px-2 py-1 rounded flex items-center">
+              <span className="font-semibold text-muted-foreground mr-1">ID:</span>
+              <code className="text-[11px] font-mono">{memory.id}</code>
             </div>
           )}
 
-          {/* Metadata (simplified) */}
+          {content?.inReplyTo && (
+            <div className="text-xs bg-muted/40 px-2 py-1 rounded flex items-center">
+              <span className="font-semibold text-muted-foreground mr-1">In Reply To:</span>
+              <code className="text-[11px] font-mono">{content.inReplyTo}</code>
+            </div>
+          )}
+
           {memory.metadata && Object.keys(memory.metadata).length > 0 && (
             <details className="text-xs">
-              <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-                View metadata
+              <summary className="cursor-pointer font-semibold text-muted-foreground hover:text-foreground">
+                Metadata
               </summary>
-              <div className="mt-2 p-2 bg-muted/30 rounded text-[10px] font-mono overflow-x-auto">
-                <pre>{JSON.stringify(memory.metadata, null, 2)}</pre>
+              <div className="bg-muted/30 px-2 py-1 rounded mt-1 max-h-32 overflow-y-auto">
+                <pre className="text-[11px] font-mono">
+                  {JSON.stringify(memory.metadata, null, 2)}
+                </pre>
               </div>
             </details>
           )}
@@ -374,32 +349,44 @@ export function AgentMemoryViewer({ agentId, agentName }: AgentMemoryViewerProps
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-100px)] min-h-[400px] w-full">
-      {/* Header */}
+    <div className="flex flex-col h-full w-full p-4">
       <div className="flex justify-between items-center mb-4 px-4 pt-4 flex-none border-b pb-3">
         <div className="flex items-center gap-2">
           <h3 className="text-lg font-medium">Memories</h3>
           {!isLoading && (
-            <span className="ml-2 text-xs px-2 py-1 rounded bg-muted text-muted-foreground">
-              {filteredMemories.length}
+            <Badge variant="secondary" className="ml-2">
+              {filteredMemories.length} memories
+            </Badge>
+          )}
+          {viewMode === 'graph' && selectedMemory && (
+            <span className="ml-4 text-sm text-muted-foreground line-clamp-1">
+              {(selectedMemory.content as any)?.text || selectedMemory.id}
             </span>
           )}
         </div>
         <div className="flex items-center gap-2">
-          {/* Search */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search memories..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 w-64"
-            />
-          </div>
-          {/* Filter */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setViewMode(viewMode === 'list' ? 'graph' : 'list')}
+          >
+            {viewMode === 'list' ? 'Graph' : 'List'}
+          </Button>
           <Select
             value={selectedType}
-            onValueChange={(value) => setSelectedType(value as MemoryType)}
+            onValueChange={(value) => {
+              const newType = value as MemoryType;
+              setSelectedType(newType);
+              // Automatically switch to graph view if "Facts" is selected,
+              // otherwise, switch to list view as a sensible default for other types.
+              if (newType === MemoryType.facts) {
+                setViewMode('graph');
+              } else if (viewMode === 'graph' && newType !== MemoryType.all) {
+                // If currently in graph mode and changing to something other than "All" (which can be graphed)
+                // switch back to list view for a better default experience for messages/thoughts.
+                setViewMode('list');
+              }
+            }}
           >
             <SelectTrigger className="w-40">
               <SelectValue placeholder="Filter memories" />
@@ -414,52 +401,48 @@ export function AgentMemoryViewer({ agentId, agentName }: AgentMemoryViewerProps
           </Select>
         </div>
       </div>
-
-      {/* Content */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 pb-4">
+      <div ref={scrollContainerRef} className="h-full w-full">
         {filteredMemories.length === 0 ? (
           <EmptyState />
+        ) : viewMode === 'graph' ? (
+          <div className="flex h-full gap-4">
+            <div className="flex-1">
+              <MemoryGraph memories={filteredMemories} onSelect={setSelectedMemory} />
+            </div>
+            {selectedMemory && (
+              <div className="w-96 border-l pl-4 overflow-y-auto">
+                <h4 className="font-medium mb-3">Selected Memory</h4>
+                <MemoryCard memory={selectedMemory} index={0} agentName={agentName} />
+              </div>
+            )}
+          </div>
         ) : (
           <div className="space-y-4">
+            {/* Group messages by date */}
             {Object.entries(messageGroups).map(([date, messages]) => (
-              <div key={date} className="space-y-3">
-                <div className="flex items-center gap-3 py-2">
-                  <Separator className="flex-1" />
-                  <span className="text-sm font-medium text-muted-foreground px-2">{date}</span>
-                  <Separator className="flex-1" />
+              <div key={date} className="mb-4">
+                <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm mb-2 pb-1 pt-2">
+                  <Badge variant="outline" className="text-xs">
+                    {date}
+                  </Badge>
                 </div>
-                <div className="space-y-3">
-                  {messages.map((memory, index) => (
-                    <MemoryCard key={memory.id || index} memory={memory} index={index} />
+                <div className="space-y-1">
+                  {messages.map((memory: Memory, index: number) => (
+                    <MemoryCard
+                      key={memory.id || index}
+                      memory={memory}
+                      index={index}
+                      agentName={agentName}
+                    />
                   ))}
                 </div>
               </div>
             ))}
-
-            {/* Load more */}
-            {hasMoreToLoad && (
-              <div className="flex justify-center py-6">
-                {loadingMore ? (
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <LoaderIcon className="h-4 w-4 animate-spin" />
-                    <span className="text-sm">Loading more memories...</span>
-                  </div>
-                ) : (
-                  <Button
-                    variant="outline"
-                    onClick={() => setVisibleItems((prev) => prev + ITEMS_PER_PAGE)}
-                    className="px-8"
-                  >
-                    Load More
-                  </Button>
-                )}
-              </div>
-            )}
+            {hasMoreToLoad && <LoadingIndicator />}
           </div>
         )}
       </div>
 
-      {/* Edit overlay */}
       {editingMemory && (
         <MemoryEditOverlay
           isOpen={!!editingMemory}

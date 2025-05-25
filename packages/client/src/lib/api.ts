@@ -552,9 +552,40 @@ export const apiClient = {
     }
 
     return fetcher({
-      url: `/agents/${agentId}/memories/upload-knowledge`,
+      url: `/agents/${agentId}/plugins/knowledge/upload`,
       method: 'POST',
       body: formData,
+    });
+  },
+
+  // New plugin-specific knowledge methods
+  getKnowledgeDocuments: (
+    agentId: string,
+    options?: { limit?: number; before?: number; includeEmbedding?: boolean }
+  ) => {
+    const params = new URLSearchParams();
+    if (options?.limit) params.append('limit', options.limit.toString());
+    if (options?.before) params.append('before', options.before.toString());
+    if (options?.includeEmbedding) params.append('includeEmbedding', 'true');
+
+    return fetcher({
+      url: `/agents/${agentId}/plugins/knowledge/documents${params.toString() ? `?${params.toString()}` : ''}`,
+      method: 'GET',
+    });
+  },
+
+  deleteKnowledgeDocument: (agentId: string, knowledgeId: string) => {
+    return fetcher({
+      url: `/agents/${agentId}/plugins/knowledge/documents/${knowledgeId}`,
+      method: 'DELETE',
+    });
+  },
+
+  // Legacy method for backward compatibility - now uses plugin endpoint
+  deleteMemory: (params: { agentId: string; memoryId: string }) => {
+    return fetcher({
+      url: `/agents/${params.agentId}/plugins/knowledge/documents/${params.memoryId}`,
+      method: 'DELETE',
     });
   },
 

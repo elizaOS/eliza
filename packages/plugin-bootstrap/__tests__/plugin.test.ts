@@ -171,8 +171,15 @@ describe('Bootstrap Plugin', () => {
       throw new Error('Registration failed');
     });
 
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
     // Should not throw error during initialization
     await expect(mockInit({}, mockRuntime as unknown as IAgentRuntime)).resolves.not.toThrow();
+
+    // Ensure console.error was called (as the mockInit is expected to log errors)
+    expect(consoleErrorSpy).toHaveBeenCalled();
+
+    consoleErrorSpy.mockRestore();
   });
 });
 

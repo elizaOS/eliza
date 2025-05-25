@@ -15,6 +15,7 @@ const baseCharacter: Character = {
     '@elizaos/plugin-twitter',
     '@elizaos/plugin-telegram',
     '@elizaos/plugin-bootstrap',
+    '@elizaos/plugin-knowledge',
   ],
   secrets: {},
   system:
@@ -209,6 +210,7 @@ export function getElizaCharacter(): Character {
     ...(process.env.TWITTER_USERNAME ? ['@elizaos/plugin-twitter'] : []),
     ...(process.env.TELEGRAM_BOT_TOKEN ? ['@elizaos/plugin-telegram'] : []),
     ...(!process.env.IGNORE_BOOTSTRAP ? ['@elizaos/plugin-bootstrap'] : []),
+    '@elizaos/plugin-knowledge',
   ];
 
   return {

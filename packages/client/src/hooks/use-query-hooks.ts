@@ -587,7 +587,19 @@ export function useAgentMemories(
     queryKey,
     queryFn: async () => {
       const result = await apiClient.getAgentMemories(agentId, roomId, tableName, includeEmbedding);
-      return result.data || [];
+      console.log('Agent memories result:', {
+        agentId,
+        tableName,
+        includeEmbedding,
+        result,
+        dataLength: result.data?.memories?.length || result.data?.length,
+        firstMemory: result.data?.memories?.[0] || result.data?.[0],
+        hasEmbeddings: (result.data?.memories || result.data || []).some(
+          (m: any) => m.embedding?.length > 0
+        ),
+      });
+      // Handle both response formats
+      return result.data?.memories || result.data || [];
     },
     staleTime: 1000,
     refetchInterval: 10 * 1000,

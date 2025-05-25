@@ -27,7 +27,7 @@
   ],
   "dependencies": {
     "@electric-sql/pglite": "^0.2.17",
-    "@elizaos/core": "^1.0.0-beta.74",
+    "@elizaos/core": "^1.0.0-beta",
     "@types/pg": "8.11.10",
     "drizzle-kit": "^0.30.4",
     "drizzle-orm": "^0.39.1",

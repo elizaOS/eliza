@@ -77,16 +77,6 @@ describe('Message Handler Logic', () => {
         }),
 
         getParticipantUserState: vi.fn().mockResolvedValue('ACTIVE'),
-
-        // Mock getRoom to return a room with proper type that doesn't skip shouldRespond
-        getRoom: vi.fn().mockResolvedValue({
-          id: 'test-room-id',
-          name: 'Test Room',
-          worldId: 'test-world-id',
-          serverId: 'test-server-id',
-          type: ChannelType.GROUP, // This ensures shouldSkipShouldRespond is false
-          source: 'test',
-        }),
       },
       messageOverrides: {
         content: {
@@ -208,28 +198,50 @@ describe('Message Handler Logic', () => {
     // Get the MESSAGE_RECEIVED handler
     const messageHandler = bootstrapPlugin.events?.[EventType.MESSAGE_RECEIVED]?.[0];
     expect(messageHandler).toBeDefined();
+    if (!messageHandler) return; // Guard clause if handler is not found
 
     // Mock emitEvent to handle errors without throwing
     mockRuntime.emitEvent = vi.fn().mockResolvedValue(undefined);
-    mockRuntime.useModel = vi.fn().mockImplementation(() => {
-      // Return a rejected Promise instead of throwing directly
-      return Promise.reject(new Error('Test error in useModel'));
+    mockRuntime.useModel = vi.fn().mockImplementation((modelType, params) => {
+      // Specifically throw an error for the shouldRespondTemplate
+      if (params?.prompt?.includes('should respond template')) {
+        return Promise.reject(new Error('Test error in useModel for shouldRespond'));
+      }
+      // Provide a default successful response for other useModel calls
+      if (modelType === ModelType.TEXT_SMALL) {
+        return Promise.resolve(JSON.stringify({ action: 'RESPOND', providers: [], reasoning: '' }));
+      }
+      if (modelType === ModelType.TEXT_LARGE) {
+        return Promise.resolve(
+          JSON.stringify({
+            thought: 'Default thought',
+            actions: ['REPLY'],
+            content: 'Default content',
+          })
+        );
+      }
+      return Promise.resolve({});
     });
 
-    // This will fail or succeed depending on how the event handler handles errors
-    await messageHandler?.({
-      runtime: mockRuntime as unknown as IAgentRuntime,
-      message: mockMessage as Memory,
-      callback: mockCallback,
-      source: 'test',
-    } as MessagePayload);
+    try {
+      await messageHandler({
+        runtime: mockRuntime as unknown as IAgentRuntime,
+        message: mockMessage as Memory,
+        callback: mockCallback,
+        source: 'test',
+      } as MessagePayload);
+    } catch (e) {
+      // Log for debugging, but the assertion below is the important part.
+      // The handler itself ideally shouldn't throw if its internal try/catch works.
+      console.log('messageHandler threw an error directly in test:', e);
+    }
 
     // Should emit run-ended event with error
     expect(mockRuntime.emitEvent).toHaveBeenCalledWith(
       EventType.RUN_ENDED,
       expect.objectContaining({
-        status: expect.any(String),
-        error: expect.any(String),
+        status: 'error', // Expect 'error' status
+        error: 'Test error in useModel for shouldRespond', // Expect specific error message
       })
     );
   });

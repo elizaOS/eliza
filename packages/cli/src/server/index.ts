@@ -9,7 +9,7 @@ import {
 import { createDatabaseAdapter } from '@elizaos/plugin-sql';
 import * as bodyParser from 'body-parser';
 import cors from 'cors';
-import express from 'express';
+import express, { Request, Response } from 'express';
 import * as fs from 'node:fs';
 import http from 'node:http';
 import * as path from 'node:path';
@@ -175,66 +175,68 @@ export class AgentServer {
       fs.mkdirSync(generatedBasePath, { recursive: true });
 
       // Agent-specific media serving - only serve files from agent-specific directories
-      this.app.get('/media/uploads/:agentId/:filename', (req, res) => {
-        const agentId = req.params.agentId;
-        const filename = req.params.filename;
+      this.app.get(
+        '/media/uploads/:agentId/:filename',
+        // @ts-expect-error - WTF?????
 
-        // Validate agent ID format (UUID)
-        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        if (!uuidRegex.test(agentId)) {
-          return res.status(400).json({ error: 'Invalid agent ID format' });
-        }
+        (req: Request, res: Response) => {
+          const agentId = req.params.agentId;
+          const filename = req.params.filename;
 
-        // Sanitize filename to prevent directory traversal
-        const sanitizedFilename = path.basename(filename);
-        const agentUploadsPath = path.join(uploadsBasePath, agentId);
-        const filePath = path.join(agentUploadsPath, sanitizedFilename);
-
-        // Ensure the file is within the agent's directory
-        if (!filePath.startsWith(agentUploadsPath)) {
-          return res.status(403).json({ error: 'Access denied' });
-        }
-
-        res.sendFile(filePath, (err) => {
-          if (err) {
-            res.status(404).json({ error: 'File not found' });
+          // Validate agent ID format (UUID)
+          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          if (!uuidRegex.test(agentId)) {
+            return res.status(400).json({ error: 'Invalid agent ID format' });
           }
-        });
-      });
 
-      this.app.get('/media/generated/:agentId/:filename', (req, res) => {
-        const agentId = req.params.agentId;
-        const filename = req.params.filename;
+          // Sanitize filename to prevent directory traversal
+          const sanitizedFilename = path.basename(filename);
+          const agentUploadsPath = path.join(uploadsBasePath, agentId);
+          const filePath = path.join(agentUploadsPath, sanitizedFilename);
 
-        // Validate agent ID format (UUID)
-        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        if (!uuidRegex.test(agentId)) {
-          return res.status(400).json({ error: 'Invalid agent ID format' });
-        }
-
-        // Sanitize filename to prevent directory traversal
-        const sanitizedFilename = path.basename(filename);
-        const agentGeneratedPath = path.join(generatedBasePath, agentId);
-        const filePath = path.join(agentGeneratedPath, sanitizedFilename);
-
-        // Ensure the file is within the agent's directory
-        if (!filePath.startsWith(agentGeneratedPath)) {
-          return res.status(403).json({ error: 'Access denied' });
-        }
-
-        res.sendFile(filePath, (err) => {
-          if (err) {
-            res.status(404).json({ error: 'File not found' });
+          // Ensure the file is within the agent's directory
+          if (!filePath.startsWith(agentUploadsPath)) {
+            return res.status(403).json({ error: 'Access denied' });
           }
-        });
-      });
 
-      // Block direct access to uploads without agent ID for security
-      this.app.get('/media/uploads/*', (req, res) => {
-        res
-          .status(403)
-          .json({ error: 'Direct access to uploads is not allowed. Use agent-specific URLs.' });
-      });
+          res.sendFile(filePath, (err) => {
+            if (err) {
+              res.status(404).json({ error: 'File not found' });
+            }
+          });
+        }
+      );
+
+      this.app.get(
+        '/media/generated/:agentId/:filename',
+        // @ts-expect-error - WTF?????
+        (req: Request, res: Response) => {
+          const agentId = req.params.agentId;
+          const filename = req.params.filename;
+
+          // Validate agent ID format (UUID)
+          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          if (!uuidRegex.test(agentId)) {
+            return res.status(400).json({ error: 'Invalid agent ID format' });
+          }
+
+          // Sanitize filename to prevent directory traversal
+          const sanitizedFilename = path.basename(filename);
+          const agentGeneratedPath = path.join(generatedBasePath, agentId);
+          const filePath = path.join(agentGeneratedPath, sanitizedFilename);
+
+          // Ensure the file is within the agent's directory
+          if (!filePath.startsWith(agentGeneratedPath)) {
+            return res.status(403).json({ error: 'Access denied' });
+          }
+
+          res.sendFile(filePath, (err) => {
+            if (err) {
+              res.status(404).json({ error: 'File not found' });
+            }
+          });
+        }
+      );
 
       // Add specific middleware to handle portal assets
       this.app.use((req, res, next) => {
@@ -314,36 +316,43 @@ export class AgentServer {
       );
 
       // Add a catch-all route for API 404s
-      this.app.use('/api/*', (req, res) => {
-        // worms are going to hitting it all the time, use a reverse proxy if you need this type of logging
-        //logger.warn(`API 404: ${req.method} ${req.path}`);
-        res.status(404).json({
-          success: false,
-          error: {
-            message: 'API endpoint not found',
-            code: 404,
-          },
-        });
+      this.app.use((req, res, next) => {
+        // Check if this is an API route that wasn't handled
+        if (req.path.startsWith('/api/')) {
+          // worms are going to hitting it all the time, use a reverse proxy if you need this type of logging
+          //logger.warn(`API 404: ${req.method} ${req.path}`);
+          res.status(404).json({
+            success: false,
+            error: {
+              message: 'API endpoint not found',
+              code: 404,
+            },
+          });
+        } else {
+          // Not an API route, continue to next middleware
+          next();
+        }
       });
 
       // Main fallback for the SPA - must be registered after all other routes
-      // For Express 4, we need to use the correct method for fallback routes
-      // @ts-ignore - Express 4 type definitions are incorrect for .all()
-      this.app.all('*', (req, res) => {
-        // For JavaScript requests that weren't handled by static middleware,
-        // return a JavaScript response instead of HTML
-        if (
-          req.path.endsWith('.js') ||
-          req.path.includes('.js?') ||
-          req.path.match(/\/[a-zA-Z0-9_-]+-[A-Za-z0-9]{8}\.js/)
-        ) {
-          res.setHeader('Content-Type', 'application/javascript');
-          return res.status(404).send(`// JavaScript module not found: ${req.path}`);
-        }
+      // Use a final middleware that handles all unmatched routes
+      (this.app as any).use(
+        (req: express.Request, res: express.Response, next: express.NextFunction) => {
+          // For JavaScript requests that weren't handled by static middleware,
+          // return a JavaScript response instead of HTML
+          if (
+            req.path.endsWith('.js') ||
+            req.path.includes('.js?') ||
+            req.path.match(/\/[a-zA-Z0-9_-]+-[A-Za-z0-9]{8}\.js/)
+          ) {
+            res.setHeader('Content-Type', 'application/javascript');
+            return res.status(404).send(`// JavaScript module not found: ${req.path}`);
+          }
 
-        // For all other routes, serve the SPA's index.html
-        res.sendFile(path.join(__dirname, '..', 'dist', 'index.html'));
-      });
+          // For all other routes, serve the SPA's index.html
+          res.sendFile(path.join(__dirname, '..', 'dist', 'index.html'));
+        }
+      );
 
       // Create HTTP server for Socket.io
       this.server = http.createServer(this.app);
@@ -399,35 +408,35 @@ export class AgentServer {
       logger.debug(
         `Registering ${runtime.routes.length} custom routes for agent ${runtime.character.name} (${runtime.agentId})`
       );
-      for (const route of runtime.routes) {
-        const routePath = route.path;
-        try {
-          switch (route.type) {
-            case 'STATIC':
-              this.app.get(routePath, (req, res) => route.handler(req, res, runtime));
-              break;
-            case 'GET':
-              this.app.get(routePath, (req, res) => route.handler(req, res, runtime));
-              break;
-            case 'POST':
-              this.app.post(routePath, (req, res) => route.handler(req, res, runtime));
-              break;
-            case 'PUT':
-              this.app.put(routePath, (req, res) => route.handler(req, res, runtime));
-              break;
-            case 'DELETE':
-              this.app.delete(routePath, (req, res) => route.handler(req, res, runtime));
-              break;
-            default:
-              logger.error(`Unknown route type: ${route.type} for path ${routePath}`);
-              continue;
-          }
-          logger.debug(`Registered ${route.type} route: ${routePath}`);
-        } catch (error) {
-          logger.error(`Failed to register route ${route.type} ${routePath}:`, error);
-          throw error;
-        }
-      }
+      // for (const route of runtime.routes) { // Routes are now handled by createPluginRouteHandler
+      //   const routePath = route.path;
+      //   try {
+      //     switch (route.type) {
+      //       case 'STATIC':
+      //         this.app.get(routePath, (req, res) => route.handler(req, res, runtime));
+      //         break;
+      //       case 'GET':
+      //         this.app.get(routePath, (req, res) => route.handler(req, res, runtime));
+      //         break;
+      //       case 'POST':
+      //         this.app.post(routePath, (req, res) => route.handler(req, res, runtime));
+      //         break;
+      //       case 'PUT':
+      //         this.app.put(routePath, (req, res) => route.handler(req, res, runtime));
+      //         break;
+      //       case 'DELETE':
+      //         this.app.delete(routePath, (req, res) => route.handler(req, res, runtime));
+      //         break;
+      //       default:
+      //         logger.error(`Unknown route type: ${route.type} for path ${routePath}`);
+      //         continue;
+      //     }
+      //     logger.debug(`Registered ${route.type} route: ${routePath}`);
+      //   } catch (error) {
+      //     logger.error(`Failed to register route ${route.type} ${routePath}:`, error);
+      //     throw error;
+      //   }
+      // }
 
       logger.success(
         `Successfully registered agent ${runtime.character.name} (${runtime.agentId})`

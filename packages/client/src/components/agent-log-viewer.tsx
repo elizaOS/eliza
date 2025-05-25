@@ -392,7 +392,7 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
   // Loading state
   if (isLoading && logs.length === 0) {
     return (
-      <div className="flex flex-col h-[calc(100vh-100px)] min-h-[400px] w-full">
+      <div className="flex flex-col h-full w-full p-4">
         <LoadingIndicator />
       </div>
     );
@@ -401,7 +401,7 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
   // Error state
   if (error) {
     return (
-      <div className="flex flex-col h-[calc(100vh-100px)] min-h-[400px] w-full">
+      <div className="flex flex-col h-full w-full p-4">
         <div className="flex items-center justify-center flex-1">
           <div className="text-center">
             <Database className="h-12 w-12 text-destructive mx-auto mb-4" />
@@ -416,7 +416,7 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-100px)] min-h-[400px] w-full">
+    <div className="flex flex-col h-full w-full p-4">
       {/* Header Controls */}
       <div className="flex items-center gap-3 mb-6 px-4 pt-4 flex-none">
         {/* Filter dropdown */}

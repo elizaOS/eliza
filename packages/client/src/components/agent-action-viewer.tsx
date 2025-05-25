@@ -606,7 +606,7 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
   // Loading state
   if (isLoading && actions.length === 0) {
     return (
-      <div className="flex flex-col h-[calc(100vh-100px)] min-h-[400px] w-full">
+      <div className="flex flex-col h-full w-full p-4">
         <div className="flex items-center justify-center flex-1">
           <div className="flex flex-col items-center gap-4">
             <LoaderIcon className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -623,7 +623,7 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
   // Error state
   if (error) {
     return (
-      <div className="flex flex-col h-[calc(100vh-100px)] min-h-[400px] w-full">
+      <div className="flex flex-col h-full w-full p-4">
         <div className="flex items-center justify-center flex-1">
           <div className="text-center">
             <Database className="h-12 w-12 text-destructive mx-auto mb-4" />
@@ -638,7 +638,7 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-100px)] min-h-[400px] w-full">
+    <div className="flex flex-col h-full w-full p-4">
       {/* Header */}
       <div className="flex justify-between items-center mb-4 px-4 pt-4 flex-none border-b pb-3">
         <div className="flex items-center gap-2">
@@ -681,7 +681,7 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
       </div>
 
       {/* Content */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 pb-4">
+      <div ref={scrollContainerRef} className="h-full w-full">
         {filteredActions.length === 0 ? (
           <EmptyState selectedType={selectedType} searchQuery={searchQuery} />
         ) : (
