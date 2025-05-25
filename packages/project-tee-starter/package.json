@@ -37,6 +37,8 @@
     "@elizaos/core": "1.0.0-beta.75",
     "@elizaos/plugin-sql": "1.0.0-beta.75",
     "@phala/dstack-sdk": "0.1.11",
+    "@solana/web3.js": "1.98.2",
+    "viem": "2.30.1",
     "zod": "3.24.2"
   },
   "devDependencies": {
