@@ -440,10 +440,7 @@ export default function Page({
               return {
                 id: `file-${messageId}-${fileData.id}`,
                 url: uploadResult.data.url,
-                title: fileData.file.name,
                 source: 'file_upload',
-                description: `${fileData.file.type} uploaded by user`,
-                text: '',
                 contentType: getContentTypeFromMimeType(fileData.file.type),
               };
             } else {
@@ -474,10 +471,7 @@ export default function Page({
     const mediaAttachments = mediaInfos.map((media, index) => ({
       id: `media-${messageId}-${index}`,
       url: media.url,
-      title: media.type === 'image' ? 'Image' : 'Video',
       source: 'user_input',
-      description: `${media.type} shared by user`,
-      text: '',
       contentType: media.type === 'image' ? ContentType.IMAGE : ContentType.VIDEO,
     }));
 
