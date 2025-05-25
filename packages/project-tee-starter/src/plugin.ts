@@ -99,29 +99,6 @@ const teeStarterPlugin: Plugin = {
       throw error;
     }
   },
-  models: {
-    [ModelType.TEXT_SMALL]: async (
-      _runtime,
-      { prompt, stopSequences = [] }: GenerateTextParams
-    ) => {
-      logger.info(`[TEXT_SMALL MODEL] Received prompt for Mr. TEE: ${prompt.substring(0, 50)}...`);
-      return 'I pity the fool who expects a long answer from a small model! Keep it brief, maggot!';
-    },
-    [ModelType.TEXT_LARGE]: async (
-      _runtime,
-      {
-        prompt,
-        stopSequences = [],
-        maxTokens = 8192,
-        temperature = 0.7,
-        frequencyPenalty = 0.7,
-        presencePenalty = 0.7,
-      }: GenerateTextParams
-    ) => {
-      logger.info(`[TEXT_LARGE MODEL] Received prompt for Mr. TEE: ${prompt.substring(0, 50)}...`);
-      return "Alright, you want the full briefing, eh? Listen up! This is the TEXT_LARGE model speaking for Mr. TEE! I pity the fool who tries to interrupt me when I'm explaining complex TEE concepts! Now, what was the question, recruit?";
-    },
-  },
   routes: [
     {
       name: 'mr-tee-status-route',
