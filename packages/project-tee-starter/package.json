@@ -1,0 +1,73 @@
+{
+  "name": "@elizaos/project-tee-starter",
+  "description": "Project starter for elizaOS with TEE capabilities",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "keywords": [
+    "project",
+    "elizaos",
+    "tee"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "github:elizaos/project-tee-starter"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "assets",
+    "Dockerfile",
+    "docker-compose.yaml",
+    "GUIDE.md"
+  ],
+  "dependencies": {
+    "@elizaos/cli": "1.0.0-beta.75",
+    "@elizaos/core": "1.0.0-beta.75",
+    "@elizaos/plugin-sql": "1.0.0-beta.75",
+    "@phala/dstack-sdk": "0.1.11",
+    "zod": "3.24.2"
+  },
+  "devDependencies": {
+    "tsup": "8.4.0",
+    "prettier": "3.5.3",
+    "vitest": "2.1.5",
+    "@vitest/coverage-v8": "2.1.5"
+  },
+  "scripts": {
+    "start": "elizaos start",
+    "dev": "elizaos dev",
+    "build": "tsup",
+    "lint": "prettier --write ./src ./__tests__",
+    "test:component": "vitest run",
+    "test:e2e": "elizaos test",
+    "test": "npm run test:component && npm run test:e2e",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
+    "format": "prettier --write ./src ./__tests__",
+    "format:check": "prettier --check ./src ./__tests__"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "gitHead": "b165ad83e5f7a21bc1edbd83374ca087e3cd6b33",
+  "packageType": "project",
+  "agentConfig": {
+    "pluginType": "elizaos:project:1.0.0",
+    "projectConfig": {
+      "name": "project-tee-starter",
+      "description": "Mr. TEE: Project starter for elizaOS with TEE capabilities"
+    }
+  }
+}
