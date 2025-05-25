@@ -77,6 +77,7 @@
     "@elizaos/core": "^1.0.0-beta",
     "@elizaos/plugin-local-ai": "^1.0.0-beta",
     "@elizaos/plugin-sql": "^1.0.0-beta",
+    "@elizaos/plugin-openai": "^1.0.0-beta",
     "@noble/curves": "^1.6.0",
     "@types/express": "^5.0.2",
     "bun": "^1.2.13",
