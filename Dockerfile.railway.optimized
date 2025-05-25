@@ -1,0 +1,80 @@
+# Stage 1: Builder
+FROM node:23.3.0-slim AS builder
+
+# Install build dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    g++ \
+    git \
+    make \
+    python3 \
+    unzip && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install bun and turbo
+RUN npm install -g bun@1.2.5 turbo@2.3.3
+
+# Create python symlink
+RUN ln -s /usr/bin/python3 /usr/bin/python
+
+WORKDIR /app
+
+# Copy package files
+COPY package.json turbo.json tsconfig.json lerna.json renovate.json .npmrc ./
+COPY scripts ./scripts
+COPY packages ./packages
+
+# Install dependencies and build
+RUN bun install --no-cache
+RUN bun run build
+
+# Stage 2: Runtime
+FROM node:23.3.0-slim
+
+# Install only runtime dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    curl \
+    ffmpeg \
+    git \
+    python3 \
+    unzip && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install bun and turbo (runtime)
+RUN npm install -g bun@1.2.5 turbo@2.3.3
+
+# Create python symlink
+RUN ln -s /usr/bin/python3 /usr/bin/python
+
+WORKDIR /app
+
+# Copy built application from builder stage
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/turbo.json ./
+COPY --from=builder /app/tsconfig.json ./
+COPY --from=builder /app/lerna.json ./
+COPY --from=builder /app/renovate.json ./
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/packages ./packages
+COPY --from=builder /app/scripts ./scripts
+
+# Install elizaos CLI globally
+RUN npm install -g @elizaos/cli
+
+# Set environment
+ENV NODE_ENV=production
+ENV PORT=3000
+
+# Expose port
+EXPOSE 3000
+
+# Change to project-starter directory
+WORKDIR /app/packages/project-starter
+
+# Start command
+CMD ["sh", "-c", "LOG_LEVEL=debug elizaos start"] 

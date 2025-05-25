@@ -1,0 +1,90 @@
+# Ignore all other Docker files (not Railway-specific)
+Dockerfile
+Dockerfile.docs
+Dockerfile.railway.optimized
+
+# Ignore Docker Compose files
+docker-compose.yaml
+docker-compose-docs.yaml
+tee-docker-compose.yaml
+
+# Ignore development and testing files
+.env.local
+.env.development
+.env.test
+*.log
+logs/
+tmp/
+temp/
+
+# Ignore documentation and markdown files (except README)
+*.md
+!README.md
+docs/
+documentation/
+
+# Ignore test files and directories
+test/
+tests/
+__tests__/
+*.test.js
+*.test.ts
+*.spec.js
+*.spec.ts
+coverage/
+.nyc_output/
+
+# Ignore development tools and configs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Ignore OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Ignore git files
+.git/
+.gitignore
+.gitattributes
+
+# Ignore npm/yarn/pnpm files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Ignore build artifacts that aren't needed for Railway
+dist/
+build/
+out/
+.next/
+.nuxt/
+.cache/
+
+# Ignore package manager lock files (Railway will generate its own)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Ignore local environment files
+.env.local
+.env.*.local
+
+# Ignore editor and IDE files
+*.sublime-project
+*.sublime-workspace
+.vscode/
+.idea/
+
+# Ignore backup files
+*.bak
+*.backup
+*.old 

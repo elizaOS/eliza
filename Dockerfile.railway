@@ -1,0 +1,82 @@
+# Use Node.js 23.3.0 slim image as base
+FROM node:23.3.0-slim AS base
+
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    curl \
+    ffmpeg \
+    git \
+    python3 \
+    build-essential \
+    g++ \
+    make \
+    unzip && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install bun globally
+RUN npm install -g bun@1.2.5 turbo@2.3.3
+
+# Create python symlink
+RUN ln -s /usr/bin/python3 /usr/bin/python
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package.json turbo.json tsconfig.json lerna.json renovate.json .npmrc ./
+COPY scripts ./scripts
+COPY packages ./packages
+
+# Install dependencies
+RUN bun install --no-cache
+
+# Build the project
+RUN bun run build
+
+# Declare build arguments for environment variables
+ARG OPENAI_API_KEY
+ARG OPENROUTER_API_KEY
+ARG EMBEDDING_PROVIDER
+ARG TEXT_EMBEDDING_MODEL
+ARG EMBEDDING_DIMENSION
+ARG TEXT_PROVIDER
+ARG TEXT_MODEL
+ARG CTX_KNOWLEDGE_ENABLED
+ARG LOAD_DOCS_ON_STARTUP
+ARG POSTGRES_URL
+ARG DISCORD_APPLICATION_ID
+ARG DISCORD_API_TOKEN
+ARG ANTHROPIC_API_KEY
+ARG LOG_LEVEL
+
+# Set environment variables
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV OPENAI_API_KEY=$OPENAI_API_KEY
+ENV OPENROUTER_API_KEY=$OPENROUTER_API_KEY
+ENV EMBEDDING_PROVIDER=$EMBEDDING_PROVIDER
+ENV TEXT_EMBEDDING_MODEL=$TEXT_EMBEDDING_MODEL
+ENV EMBEDDING_DIMENSION=$EMBEDDING_DIMENSION
+ENV TEXT_PROVIDER=$TEXT_PROVIDER
+ENV TEXT_MODEL=$TEXT_MODEL
+ENV CTX_KNOWLEDGE_ENABLED=$CTX_KNOWLEDGE_ENABLED
+ENV LOAD_DOCS_ON_STARTUP=$LOAD_DOCS_ON_STARTUP
+ENV POSTGRES_URL=$POSTGRES_URL
+ENV DISCORD_APPLICATION_ID=$DISCORD_APPLICATION_ID
+ENV DISCORD_API_TOKEN=$DISCORD_API_TOKEN
+ENV ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
+ENV LOG_LEVEL=$LOG_LEVEL
+
+# Expose port
+EXPOSE 3000
+
+# Change to project-starter directory and run elizaos
+WORKDIR /app/packages/project-starter
+
+# Install elizaos CLI globally to ensure it's available
+RUN npm install -g @elizaos/cli
+
+# Start command
+CMD ["sh", "-c", "LOG_LEVEL=${LOG_LEVEL:-debug} elizaos start"]
