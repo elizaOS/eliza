@@ -55,10 +55,8 @@ export class StarterService extends Service {
     logger.log('ECDSA Key Derived Successfully!');
     logger.log('ECDSA Keypair:', ecdsaKeypair.address);
     logger.log('ED25519 Keypair:', ed25519Keypair.publicKey);
-    logger.log(
-      'Sign message w/ ECDSA keypair: Hello world!, Signature: ',
-      ecdsaKeypair.signMessage({ message: 'Hello, world!' })
-    );
+    const signature = await ecdsaKeypair.signMessage({ message: 'Hello, world!' });
+    logger.log('Sign message w/ ECDSA keypair: Hello world!, Signature: ', signature);
     return service;
   }
 
