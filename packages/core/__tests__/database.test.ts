@@ -1,4 +1,4 @@
-import { expect } from 'vitest';
+import { describe, expect, beforeEach, it } from 'vitest';
 import { DatabaseAdapter } from '../src/database';
 import type {
   Agent,
