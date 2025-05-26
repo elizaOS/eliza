@@ -642,7 +642,7 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
       {/* Header */}
       <div className="flex justify-between items-center mb-4 px-4 pt-4 flex-none border-b pb-3">
         <div className="flex items-center gap-2">
-          <h3 className="text-lg font-medium">Agent Actions</h3>
+          <h3 className="text-lg font-medium"> Actions</h3>
           {!isLoading && (
             <span className="ml-2 text-xs px-2 py-1 rounded bg-muted text-muted-foreground">
               {filteredActions.length}
@@ -681,7 +681,7 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
       </div>
 
       {/* Content */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 pb-4">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4">
         {filteredActions.length === 0 ? (
           <EmptyState selectedType={selectedType} searchQuery={searchQuery} />
         ) : (

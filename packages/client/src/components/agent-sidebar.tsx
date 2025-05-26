@@ -1,20 +1,19 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Activity, Book, Database, Terminal, Columns3 } from 'lucide-react';
+import { useAgentPanels, type AgentPanel } from '@/hooks/use-query-hooks';
+import type { UUID } from '@elizaos/core';
+import { Activity, Columns3, Database, Terminal } from 'lucide-react';
+import { JSX, useMemo, useState } from 'react';
+import { AgentActionViewer } from './agent-action-viewer';
 import { AgentLogViewer } from './agent-log-viewer';
 import { AgentMemoryViewer } from './agent-memory-viewer';
-import { KnowledgeManager } from './agent-knowledge-manager';
-import type { UUID } from '@elizaos/core';
-import { useAgentPanels, type AgentPanel } from '@/hooks/use-query-hooks';
-import { useState, useMemo, JSX } from 'react';
 import { Skeleton } from './ui/skeleton';
-import { AgentActionViewer } from './agent-action-viewer';
 
 type AgentSidebarProps = {
   agentId: UUID;
   agentName: string;
 };
 
-type FixedTabValue = 'actions' | 'logs' | 'memories' | 'knowledge';
+type FixedTabValue = 'actions' | 'logs' | 'memories';
 type TabValue = FixedTabValue | string;
 
 export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
@@ -29,7 +28,6 @@ export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
     const fixedTabs: { value: FixedTabValue; label: string; icon: JSX.Element }[] = [
       { value: 'actions', label: 'Actions', icon: <Activity className="h-4 w-4" /> },
       { value: 'memories', label: 'Memories', icon: <Database className="h-4 w-4" /> },
-      { value: 'knowledge', label: 'Knowledge', icon: <Book className="h-4 w-4" /> },
       { value: 'logs', label: 'Logs', icon: <Terminal className="h-4 w-4" /> },
     ];
 
@@ -71,15 +69,11 @@ export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
         {detailsTab === 'actions' && <AgentActionViewer agentId={agentId} />}
       </TabsContent>
       <TabsContent value="logs" className="overflow-y-auto flex-1">
-        {detailsTab === 'logs' && <AgentLogViewer agentName={agentName} level="all" hideTitle />}
+        {detailsTab === 'logs' && <AgentLogViewer agentName={agentName} level="all" />}
       </TabsContent>
       <TabsContent value="memories" className="overflow-y-auto flex-1">
         {detailsTab === 'memories' && <AgentMemoryViewer agentId={agentId} agentName={agentName} />}
       </TabsContent>
-      <TabsContent value="knowledge" className="h-full overflow-hidden flex-1">
-        {detailsTab === 'knowledge' && <KnowledgeManager agentId={agentId} />}
-      </TabsContent>
-
       {agentPanels.map((panel: AgentPanel) => (
         <TabsContent
           key={panel.name}

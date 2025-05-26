@@ -109,6 +109,11 @@ const sidebars: SidebarsConfig = {
           id: 'core/worlds',
           label: 'Worlds',
         },
+        {
+          type: 'doc',
+          id: 'core/testing',
+          label: 'Testing',
+        },
       ],
     },
     {

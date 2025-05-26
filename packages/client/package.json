@@ -7,7 +7,7 @@
   "scripts": {
     "extract-version": "bash ./version.sh",
     "start:client": "bun run extract-version && vite",
-    "dev:client": "bun run extract-version && vite",
+    "dev:client": "bun run extract-version && node --max-old-space-size=4096 node_modules/.bin/vite",
     "build": "bun run extract-version && vite build",
     "preview": "vite preview",
     "lint": "prettier --write ./src",
@@ -55,6 +55,8 @@
     "react": "^19.1.0",
     "react-aiwriter": "^1.0.0",
     "react-dom": "^19.1.0",
+    "react-force-graph": "^1.47.6",
+    "react-force-graph-2d": "^1.27.1",
     "react-joyride": "^2.9.3",
     "react-resizable-panels": "^2.1.7",
     "react-router": "^7.3.0",

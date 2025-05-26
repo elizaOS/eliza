@@ -684,6 +684,7 @@ export type Route = {
   public?: boolean;
   name?: string extends { public: true } ? string : string | undefined;
   handler?: (req: any, res: any, runtime: IAgentRuntime) => Promise<void>;
+  isMultipart?: boolean; // Indicates if the route expects multipart/form-data (file uploads)
 };
 
 /**

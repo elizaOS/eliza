@@ -522,7 +522,7 @@ describe('Unmute Room Action', () => {
     ) => {
       try {
         // This call will fail with our mocked error
-        await runtime.setParticipantUserState(message.roomId, runtime.agentId, 'ACTIVE');
+        await runtime.setParticipantUserState(message.roomId, runtime.agentId, null);
 
         // Won't reach this point
         await callback({
@@ -643,7 +643,7 @@ describe('Unfollow Room Action', () => {
     ) => {
       try {
         // This call will fail with our mocked error
-        await runtime.setParticipantUserState(message.roomId, runtime.agentId, 'ACTIVE');
+        await runtime.setParticipantUserState(message.roomId, runtime.agentId, null);
 
         // Won't reach this point
         await callback({

@@ -573,16 +573,33 @@ export function useDeleteLog() {
 /**
  * Fetches memories for a specific agent, optionally filtered by room
  */
-export function useAgentMemories(agentId: UUID, tableName?: string, roomId?: UUID) {
+export function useAgentMemories(
+  agentId: UUID,
+  tableName?: string,
+  roomId?: UUID,
+  includeEmbedding = false
+) {
   const queryKey = roomId
-    ? ['agents', agentId, 'rooms', roomId, 'memories', tableName]
-    : ['agents', agentId, 'memories', tableName];
+    ? ['agents', agentId, 'rooms', roomId, 'memories', tableName, includeEmbedding]
+    : ['agents', agentId, 'memories', tableName, includeEmbedding];
 
   return useQuery({
     queryKey,
     queryFn: async () => {
-      const result = await apiClient.getAgentMemories(agentId, roomId, tableName);
-      return result.data || [];
+      const result = await apiClient.getAgentMemories(agentId, roomId, tableName, includeEmbedding);
+      console.log('Agent memories result:', {
+        agentId,
+        tableName,
+        includeEmbedding,
+        result,
+        dataLength: result.data?.memories?.length || result.data?.length,
+        firstMemory: result.data?.memories?.[0] || result.data?.[0],
+        hasEmbeddings: (result.data?.memories || result.data || []).some(
+          (m: any) => m.embedding?.length > 0
+        ),
+      });
+      // Handle both response formats
+      return result.data?.memories || result.data || [];
     },
     staleTime: 1000,
     refetchInterval: 10 * 1000,

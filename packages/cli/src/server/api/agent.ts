@@ -9,7 +9,6 @@ import type {
   IAgentRuntime,
   Memory,
   UUID,
-  KnowledgeItem,
 } from '@elizaos/core';
 import {
   ChannelType,
@@ -85,7 +84,6 @@ const getRuntime = (agents: Map<UUID, IAgentRuntime>, agentId: UUID) => {
  * @property {Express.Multer.File[]} [files] - Optional property representing multiple files uploaded with the request
  * @property {Object} params - Object representing parameters included in the request
  * @property {string} params.agentId - The unique identifier for the agent associated with the request
- * @property {string} [params.knowledgeId] - Optional knowledge ID parameter
  */
 interface CustomRequest extends express.Request {
   query: any;
@@ -94,14 +92,13 @@ interface CustomRequest extends express.Request {
   files?: Express.Multer.File[];
   params: {
     agentId: string;
-    knowledgeId?: string;
   };
 }
 
 /**
  * Creates and configures an Express router for managing agents and their related resources.
  *
- * The returned router provides RESTful endpoints for agent lifecycle management (creation, update, start, stop, deletion), memory and log operations, audio processing (transcription and speech synthesis), message handling, knowledge uploads, and group chat management. It integrates with agent runtimes and optionally an {@link AgentServer} instance for database operations.
+ * The returned router provides RESTful endpoints for agent lifecycle management (creation, update, start, stop, deletion), memory and log operations, audio processing (transcription and speech synthesis), message handling, and group chat management. It integrates with agent runtimes and optionally an {@link AgentServer} instance for database operations.
  *
  * @param agents - Map of agent UUIDs to their runtime instances.
  * @param server - Optional server instance providing database and agent management utilities.
@@ -385,81 +382,129 @@ export function agentRouter(
     }
   });
 
-  router.all('/:agentId/plugins/:pluginName/*', async (req, res, next) => {
-    const agentId = req.params.agentId as UUID;
-    if (!agentId) {
-      logger.debug('[AGENT PLUGINS MIDDLEWARE] Params required');
-      res.status(400).json({
-        success: false,
-        error: {
-          code: 'INVALID_ID',
-          message: 'Invalid agent ID format',
-        },
-      });
-      return;
-    }
-
-    try {
-      let runtime: IAgentRuntime | undefined;
-      if (validateUuid(agentId)) {
-        runtime = agents.get(agentId);
-      }
-      // if runtime is null, look for runtime with the same name
-      if (!runtime) {
-        runtime = Array.from(agents.values()).find((r) => r.character.name === agentId);
-      }
-      if (!runtime) {
-        logger.debug('[AGENT PLUGINS MIDDLEWARE] Agent not found');
-        res.status(404).json({
+  // Plugin middleware - handles all plugin routes
+  router.use(
+    '/:agentId/plugins/:pluginName',
+    upload.array('files', 12),
+    async (req: any, res, next) => {
+      const agentId = req.params.agentId as UUID;
+      if (!agentId) {
+        logger.debug('[AGENT PLUGINS MIDDLEWARE] Params required');
+        res.status(400).json({
           success: false,
           error: {
-            code: 'NOT_FOUND',
-            message: 'Agent not found',
+            code: 'INVALID_ID',
+            message: 'Invalid agent ID format',
           },
         });
         return;
       }
-      // short circuit
-      if (!runtime.plugins?.length) next();
 
-      let path = req.path.substr(1 + agentId.length + 9 + req.params.pluginName.length);
+      try {
+        let runtime: IAgentRuntime | undefined;
+        if (validateUuid(agentId)) {
+          runtime = agents.get(agentId);
+        }
+        // if runtime is null, look for runtime with the same name
+        if (!runtime) {
+          runtime = Array.from(agents.values()).find((r) => r.character.name === agentId);
+        }
+        if (!runtime) {
+          logger.debug('[AGENT PLUGINS MIDDLEWARE] Agent not found');
+          res.status(404).json({
+            success: false,
+            error: {
+              code: 'NOT_FOUND',
+              message: 'Agent not found',
+            },
+          });
+          return;
+        }
+        // short circuit
+        if (!runtime.plugins?.length) {
+          next();
+          return;
+        }
 
-      // Check each plugin
-      for (const plugin of runtime.plugins) {
-        if (!plugin.name) continue;
-        if (plugin.routes && plugin.name === req.params.pluginName) {
-          for (const r of plugin.routes) {
-            if (r.type === req.method) {
-              // r.path can contain /*
-              if (r.path.match(/\*/)) {
-                // hacky af
-                if (path.match(r.path.replace('*', ''))) {
-                  r.handler(req, res, runtime);
-                  return;
-                }
-              } else {
-                if (path === r.path) {
-                  r.handler(req, res, runtime);
-                  return;
+        // Get the path after the plugin name
+        const baseUrl = req.baseUrl; // e.g., /:agentId/plugins/:pluginName
+        const fullPath = req.path; // The path after the baseUrl
+        let path = fullPath;
+
+        // Ensure path starts with /
+        if (!path.startsWith('/')) {
+          path = '/' + path;
+        }
+
+        // Check each plugin
+        for (const plugin of runtime.plugins) {
+          if (!plugin.name) continue;
+          if (plugin.routes && plugin.name === req.params.pluginName) {
+            for (const r of plugin.routes) {
+              if (r.type === req.method) {
+                // Path matching logic remains the same
+                // ... (wildcard and exact path matching) ...
+
+                // Original handler call (simplified for brevity):
+                // if (matched_condition) {
+                //   r.handler(req, res, runtime);
+                //   return;
+                // }
+
+                // New logic with potential Multer application:
+                const executeHandler = () => {
+                  // The actual path matching happens here before calling the handler
+                  if (r.path.match(/\*/)) {
+                    // Wildcard route like /assets/*
+                    if (path.match(r.path.replace('*', ''))) {
+                      logger.debug(`Calling wildcard plugin route: ${r.path} for ${path}`);
+                      r.handler(req, res, runtime);
+                      return true; // Handled
+                    }
+                  } else {
+                    // Exact match or parameterized (let Express handle params for non-wildcard)
+                    if (path === r.path) {
+                      // Exact match
+                      logger.debug(`Calling exact match plugin route: ${r.path} for ${path}`);
+                      r.handler(req, res, runtime);
+                      return true; // Handled
+                    }
+                    // For parameterized routes, rely on Express to have populated req.params if this middleware is reached AFTER direct registration
+                    // However, if direct registration is removed, this part needs its own path-to-regexp matching
+                    // For now, assuming direct registration was the primary path for parameterized routes and this is a fallback or for simple routes.
+                    // More robust matching might be needed if plugins heavily use complex parameterized routes without direct registration.
+                  }
+                  return false; // Not handled by this specific route object r
+                };
+
+                if (r.isMultipart) {
+                  // This specific CLI route handler for plugins doesn't easily support adding Multer per-route from plugin def.
+                  // The `upload.array` was moved to be at the start of this middleware for all plugin routes.
+                  // If a route isMultipart, Multer has already run. req.files should be populated.
+                  logger.debug(`Executing multipart handler for plugin route: ${r.path}`);
+                  if (executeHandler()) return;
+                } else {
+                  logger.debug(`Executing non-multipart handler for plugin route: ${r.path}`);
+                  if (executeHandler()) return;
                 }
               }
             }
           }
         }
+        next(); // Only call next if no route in this plugin matched
+      } catch (error) {
+        logger.error('[AGENT PLUGINS MIDDLEWARE] Error agent middleware:', error);
+        res.status(500).json({
+          success: false,
+          error: {
+            code: 500,
+            message: 'Error getting agent',
+            details: error.message,
+          },
+        });
       }
-      next();
-    } catch (error) {
-      logger.error('[AGENT PLUGINS MIDDLEWARE] Error agent middleware:', error);
-      res.status(500).json({
-        success: false,
-        error: {
-          code: 500,
-          message: 'Error getting agent',
-          details: error.message,
-        },
-      });
     }
-  });
+  );
 
   // Get specific agent details
   router.get('/:agentId', async (req, res) => {
@@ -878,96 +923,6 @@ export function agentRouter(
         },
       });
     }
-  });
-
-  router.delete('/:agentId/memories/all/:roomId/', async (req, res) => {
-    try {
-      const agentId = validateUuid(req.params.agentId);
-      const roomId = validateUuid(req.params.roomId);
-
-      if (!agentId) {
-        res.status(400).json({
-          success: false,
-          error: {
-            code: 'INVALID_ID',
-            message: 'Invalid agent ID',
-          },
-        });
-        return;
-      }
-
-      if (!roomId) {
-        res.status(400).json({
-          success: false,
-          error: {
-            code: 'INVALID_ID',
-            message: 'Invalid room ID',
-          },
-        });
-        return;
-      }
-
-      const runtime = agents.get(agentId);
-      if (!runtime) {
-        res.status(404).json({
-          success: false,
-          error: {
-            code: 'NOT_FOUND',
-            message: 'Agent not found',
-          },
-        });
-        return;
-      }
-
-      await runtime.deleteAllMemories(roomId, 'messages');
-      await runtime.deleteAllMemories(roomId, 'knowledge');
-      await runtime.deleteAllMemories(roomId, 'documents');
-
-      res.status(204).send();
-    } catch (e) {
-      logger.error('[DELETE ALL MEMORIES] Error deleting all memories:', e);
-      res.status(500).json({
-        success: false,
-        error: {
-          code: 'DELETE_ERROR',
-          message: 'Error deleting all memories',
-          details: e instanceof Error ? e.message : String(e),
-        },
-      });
-    }
-  });
-
-  // Delete Memory
-  router.delete('/:agentId/memories/:memoryId', async (req, res) => {
-    const agentId = validateUuid(req.params.agentId);
-    const memoryId = validateUuid(req.params.memoryId);
-
-    if (!agentId || !memoryId) {
-      res.status(400).json({
-        success: false,
-        error: {
-          code: 'INVALID_ID',
-          message: 'Invalid agent ID or memory ID format',
-        },
-      });
-      return;
-    }
-
-    const runtime = agents.get(agentId);
-    if (!runtime) {
-      res.status(404).json({
-        success: false,
-        error: {
-          code: 'NOT_FOUND',
-          message: 'Agent not found',
-        },
-      });
-      return;
-    }
-
-    await runtime.deleteMemory(memoryId);
-
-    res.status(204).send();
   });
 
   // Get Agent Panels (public GET routes)
@@ -1730,26 +1685,26 @@ export function agentRouter(
         ? Number.parseInt(req.query.before as string, 10)
         : Date.now();
       const _worldId = req.query.worldId as string;
+      const includeEmbedding = req.query.includeEmbedding === 'true';
+      const tableName = (req.query.tableName as string) || 'messages';
 
       const memories = await runtime.getMemories({
-        tableName: 'messages',
+        tableName,
         roomId,
         count: limit,
         end: before,
       });
 
-      const cleanMemories = memories.map((memory) => {
-        return {
-          ...memory,
-          embedding: undefined,
-        };
-      });
+      const cleanMemories = includeEmbedding
+        ? memories
+        : memories.map((memory) => ({
+            ...memory,
+            embedding: undefined,
+          }));
 
       res.json({
         success: true,
-        data: {
-          memories: cleanMemories,
-        },
+        data: { memories: cleanMemories },
       });
     } catch (error) {
       logger.error('[MEMORIES GET] Error retrieving memories for room:', error);
@@ -1795,22 +1750,23 @@ export function agentRouter(
 
     // Get tableName from query params, default to "messages"
     const tableName = (req.query.tableName as string) || 'messages';
+    const includeEmbedding = req.query.includeEmbedding === 'true';
 
     const memories = await runtime.getMemories({
       agentId,
       tableName,
     });
 
-    const cleanMemories = memories.map((memory) => {
-      return {
-        ...memory,
-        embedding: undefined,
-      };
-    });
+    const cleanMemories = includeEmbedding
+      ? memories
+      : memories.map((memory) => ({
+          ...memory,
+          embedding: undefined,
+        }));
 
     res.json({
       success: true,
-      data: cleanMemories,
+      data: { memories: cleanMemories },
     });
   });
 
@@ -1961,139 +1917,6 @@ export function agentRouter(
     }
   });
 
-  // Knowledge management routes
-  router.post('/:agentId/memories/upload-knowledge', upload.array('files'), async (req, res) => {
-    const agentId = validateUuid(req.params.agentId);
-
-    if (!agentId) {
-      sendError(res, 400, 'INVALID_ID', 'Invalid agent ID format');
-      return;
-    }
-
-    const runtime = agents.get(agentId);
-
-    if (!runtime) {
-      sendError(res, 404, 'NOT_FOUND', 'Agent not found');
-      return;
-    }
-
-    const files = req.files as Express.Multer.File[];
-
-    if (!files || files.length === 0) {
-      sendError(res, 400, 'NO_FILES', 'No files uploaded');
-      return;
-    }
-
-    try {
-      // Process files in parallel
-      const processingPromises = files.map(async (file, index) => {
-        let knowledgeId: UUID;
-        const originalFilename = file.originalname;
-        const worldId = (req.body.worldId as UUID) || runtime.agentId;
-        const filePath = file.path;
-
-        // Create a unique knowledge ID
-        knowledgeId =
-          (req.body?.documentIds && req.body.documentIds[index]) ||
-          req.body?.documentId ||
-          (createUniqueUuid(runtime, `knowledge-${originalFilename}`) as UUID);
-
-        try {
-          // Read file content into a buffer
-          const fileBuffer = await fs.promises.readFile(filePath);
-
-          // Determine the file extension
-          const fileExt = file.originalname.split('.').pop()?.toLowerCase() || '';
-          const filename = file.originalname;
-          const title = filename.replace(`.${fileExt}`, '');
-
-          // Convert file buffer to base64 string for all file types
-          const base64Content = fileBuffer.toString('base64');
-
-          // Create knowledge item with proper metadata
-          const knowledgeItem: KnowledgeItem = {
-            id: knowledgeId,
-            content: {
-              text: base64Content, // Always use base64 content
-            },
-            metadata: {
-              type: MemoryType.DOCUMENT,
-              timestamp: Date.now(),
-              filename: filename,
-              fileExt: fileExt,
-              title: title,
-              path: originalFilename,
-              fileType: file.mimetype,
-              fileSize: file.size,
-              source: 'upload',
-            },
-          };
-
-          // Add knowledge to agent - wait for the complete processing
-          await runtime.addKnowledge(
-            knowledgeItem,
-            undefined, // Default options
-            {
-              worldId,
-              entityId: runtime.agentId,
-              roomId: runtime.agentId,
-            }
-          );
-
-          // Clean up temp file immediately after successful processing
-          cleanupFile(filePath);
-
-          return {
-            id: knowledgeId,
-            filename: originalFilename,
-            type: file.mimetype,
-            size: file.size,
-            uploadedAt: Date.now(),
-            status: 'success',
-          };
-        } catch (fileError) {
-          logger.error(`[KNOWLEDGE POST] Error processing file ${file.originalname}: ${fileError}`);
-          cleanupFile(filePath); // Ensure cleanup on error too
-
-          let status = 'error_processing';
-          let errorMessage = fileError.message;
-
-          // Check if the error is related to RAG being required for PDFs/DOCX
-          if (fileError.message && fileError.message.includes('RAG plugin is required')) {
-            status = 'error_requires_rag_plugin';
-          } else if (fileError.message && fileError.message.includes('base64')) {
-            status = 'error_encoding';
-            errorMessage = 'Error encoding file content as base64. The file may be corrupted.';
-          }
-
-          return {
-            id: knowledgeId,
-            filename: originalFilename,
-            status,
-            error: errorMessage,
-          };
-        }
-      });
-
-      const results = await Promise.all(processingPromises);
-      sendSuccess(res, results);
-    } catch (error) {
-      logger.error(`[KNOWLEDGE POST] Error uploading knowledge: ${error}`);
-
-      // Clean up any remaining files
-      cleanupFiles(files);
-
-      res.status(500).json({
-        success: false,
-        error: {
-          code: 500,
-          message: 'Failed to upload knowledge',
-          details: error.message,
-        },
-      });
-    }
-  });
-
   router.post('/groups/:serverId', async (req, res) => {
     const serverId = validateUuid(req.params.serverId);
     const { name, worldId, source, metadata, agentIds = [] } = req.body;
@@ -2201,32 +2024,60 @@ export function agentRouter(
     }
   });
 
-  router.delete('/groups/:serverId/memories/:memoryId', async (req, res) => {
-    const worldId = validateUuid(req.params.serverId);
-    const memoryId = validateUuid(req.params.memoryId);
-
+  router.delete('/:agentId/memories/all/:roomId', async (req, res) => {
     try {
-      const memory = await db.getMemoryById(memoryId);
-      if (!memory) {
-        sendError(res, 404, 'NOT_FOUND', 'Memory not found');
+      const agentId = validateUuid(req.params.agentId);
+      const roomId = validateUuid(req.params.roomId);
+
+      if (!agentId) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'INVALID_ID',
+            message: 'Invalid agent ID',
+          },
+        });
         return;
       }
 
-      // Optional: verify the memory belongs to the provided serverId
-      if (memory.roomId) {
-        const rooms = await db.getRoomsByWorld(memory.worldId as UUID);
-        const room = rooms.find((r) => r.id === memory.roomId);
-        if (room && room.serverId !== worldId) {
-          sendError(res, 400, 'BAD_REQUEST', 'Memory does not belong to server');
-          return;
-        }
+      if (!roomId) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'INVALID_ID',
+            message: 'Invalid room ID',
+          },
+        });
+        return;
       }
 
-      await db.deleteMemory(memoryId);
+      const runtime = agents.get(agentId);
+      if (!runtime) {
+        res.status(404).json({
+          success: false,
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Agent not found',
+          },
+        });
+        return;
+      }
+
+      await runtime.deleteAllMemories(roomId, 'messages');
+      await runtime.deleteAllMemories(roomId, 'knowledge');
+      await runtime.deleteAllMemories(roomId, 'documents');
+
       res.status(204).send();
-    } catch (error) {
-      logger.error('[GROUP MEMORY DELETE] Error deleting memory:', error);
-      sendError(res, 500, 'DELETE_ERROR', 'Error deleting memory', error.message);
+    } catch (e) {
+      logger.error('[DELETE ALL MEMORIES] Error deleting all memories:', e);
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'DELETE_ERROR',
+          message: 'Error deleting all memories',
+          details: e instanceof Error ? e.message : String(e),
+        },
+      });
     }
   });
 

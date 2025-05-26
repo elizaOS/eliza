@@ -31,16 +31,16 @@ import {
 } from '@elizaos/core';
 import { v4 } from 'uuid';
 
-import * as actions from './actions';
-import * as evaluators from './evaluators';
-import * as providers from './providers';
+import * as actions from './actions/index.ts';
+import * as evaluators from './evaluators/index.ts';
+import * as providers from './providers/index.ts';
 
-import { ScenarioService } from './services/scenario';
-import { TaskService } from './services/task';
+import { ScenarioService } from './services/scenario.ts';
+import { TaskService } from './services/task.ts';
 
-export * from './actions';
-export * from './evaluators';
-export * from './providers';
+export * from './actions/index.ts';
+export * from './evaluators/index.ts';
+export * from './providers/index.ts';
 
 /**
  * Represents media data containing a buffer of data and the media type.

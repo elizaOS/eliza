@@ -26,7 +26,7 @@
     "tsup.config.ts"
   ],
   "dependencies": {
-    "@elizaos/core": "^1.0.0-beta.74"
+    "@elizaos/core": "^1.0.0-beta"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",
@@ -42,7 +42,7 @@
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
-    "test": "vitest run",
+    "test": "elizaos test",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
   },
