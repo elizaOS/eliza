@@ -26,7 +26,7 @@
     "tsup.config.ts"
   ],
   "dependencies": {
-    "@elizaos/core": "^1.0.0-beta"
+    "@elizaos/core": "^1.0.0-beta.75"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",

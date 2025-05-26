@@ -74,9 +74,9 @@
   "gitHead": "d5bd5c43bfebeb7ac02f9e029f924cb6cd5c2ec7",
   "dependencies": {
     "@electric-sql/pglite": "^0.2.17",
-    "@elizaos/core": "^1.0.0-beta",
+    "@elizaos/core": "^1.0.0-beta.75",
     "@elizaos/plugin-local-ai": "^1.0.0-beta",
-    "@elizaos/plugin-sql": "^1.0.0-beta",
+    "@elizaos/plugin-sql": "^1.0.0-beta.75",
     "@noble/curves": "^1.6.0",
     "@types/express": "^5.0.2",
     "bun": "^1.2.13",
