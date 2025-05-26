@@ -8,8 +8,10 @@ import {
 } from '@elizaos/core';
 import { z } from 'zod';
 import { type DeriveKeyResponse, TappdClient } from '@phala/dstack-sdk';
-import { toViemAccount } from '@phala/dstack-sdk/viem';
-import { toKeypair } from '@phala/dstack-sdk/solana';
+import { type PrivateKeyAccount, privateKeyToAccount } from 'viem/accounts';
+import { keccak256 } from 'viem';
+import { Keypair } from '@solana/web3.js';
+import crypto from 'node:crypto';
 
 // Create a custom TEE Client to make calls to the TEE through the Dstack SDK.
 
@@ -46,12 +48,23 @@ export class StarterService extends Service {
   static async start(runtime: IAgentRuntime) {
     logger.info("*** Starting Mr. TEE's custom service (StarterService) ***");
     const service = new StarterService(runtime);
-    logger.log('Deriving ECDSA Key in TEE...');
+
     const deriveKeyResponse: DeriveKeyResponse = await service.teeClient.deriveKey(
       service.secretSalt
     );
-    const ecdsaKeypair = toViemAccount(deriveKeyResponse);
-    const ed25519Keypair = toKeypair(deriveKeyResponse);
+
+    // ECDSA Key
+    const hex = keccak256(deriveKeyResponse.asUint8Array());
+    const ecdsaKeypair: PrivateKeyAccount = privateKeyToAccount(hex);
+
+    // ED25519 Key
+    const uint8ArrayDerivedKey = deriveKeyResponse.asUint8Array();
+    const hash = crypto.createHash('sha256');
+    hash.update(uint8ArrayDerivedKey);
+    const seed = hash.digest();
+    const seedArray = new Uint8Array(seed);
+    const ed25519Keypair = Keypair.fromSeed(seedArray.slice(0, 32));
+
     logger.log('ECDSA Key Derived Successfully!');
     logger.log('ECDSA Keypair:', ecdsaKeypair.address);
     logger.log('ED25519 Keypair:', ed25519Keypair.publicKey);
