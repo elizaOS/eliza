@@ -1,5 +1,17 @@
 import type { Memory, UUID } from '@elizaos/core';
-import { Database, LoaderIcon, Pencil, Search, Brain, User, Bot, Clock, Copy } from 'lucide-react';
+import {
+  Database,
+  LoaderIcon,
+  Pencil,
+  Search,
+  Brain,
+  User,
+  Bot,
+  Clock,
+  Copy,
+  BarChart3,
+  List,
+} from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAgentMemories } from '@/hooks/use-query-hooks';
 import { Button } from '@/components/ui/button';
@@ -13,6 +25,7 @@ import {
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import MemoryEditOverlay from './agent-memory-edit-overlay';
+import MemoryGraph from './memory-graph';
 
 // Number of items to load per batch
 const ITEMS_PER_PAGE = 15;
@@ -59,6 +72,7 @@ export function AgentMemoryViewer({ agentId, agentName }: AgentMemoryViewerProps
   const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
   const [visibleItems, setVisibleItems] = useState(ITEMS_PER_PAGE);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [viewMode, setViewMode] = useState<'list' | 'graph'>('list');
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Determine table name based on selected type
@@ -380,6 +394,25 @@ export function AgentMemoryViewer({ agentId, agentName }: AgentMemoryViewerProps
           )}
         </div>
         <div className="flex items-center gap-2">
+          {/* View Mode Toggle */}
+          <Button
+            variant={viewMode === 'graph' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setViewMode(viewMode === 'list' ? 'graph' : 'list')}
+            className="h-8 px-3"
+          >
+            {viewMode === 'graph' ? (
+              <>
+                <List className="h-4 w-4 mr-1" />
+                List View
+              </>
+            ) : (
+              <>
+                <BarChart3 className="h-4 w-4 mr-1" />
+                Graph View
+              </>
+            )}
+          </Button>
           {/* Search */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -410,8 +443,15 @@ export function AgentMemoryViewer({ agentId, agentName }: AgentMemoryViewerProps
       </div>
 
       {/* Content */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 pb-4">
-        {filteredMemories.length === 0 ? (
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4">
+        {viewMode === 'graph' ? (
+          <div className="h-full">
+            <MemoryGraph
+              memories={filteredMemories}
+              onSelect={(memory) => setEditingMemory(memory)}
+            />
+          </div>
+        ) : filteredMemories.length === 0 ? (
           <EmptyState />
         ) : (
           <div className="space-y-4">

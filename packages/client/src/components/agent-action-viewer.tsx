@@ -681,7 +681,7 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
       </div>
 
       {/* Content */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 pb-4">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4">
         {filteredActions.length === 0 ? (
           <EmptyState selectedType={selectedType} searchQuery={searchQuery} />
         ) : (

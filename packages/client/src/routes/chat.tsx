@@ -1,6 +1,6 @@
 import { useAgent } from '@/hooks/use-query-hooks';
 import { WorldManager } from '@/lib/world-manager';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useParams } from 'react-router';
 
 import Chat from '@/components/chat';
@@ -52,10 +52,7 @@ export default function AgentRoute() {
       </ResizablePanel>
       <ResizableHandle />
       {showDetails && (
-        <ResizablePanel
-          defaultSize={35}
-          className="border rounded-lg bg-background flex flex-col h-[96vh]"
-        >
+        <ResizablePanel defaultSize={35} className="bg-background flex flex-col h-full">
           <AgentSidebar agentId={agentId} agentName={agent?.name || ''} />
         </ResizablePanel>
       )}
