@@ -249,6 +249,11 @@ export default function Page({
       // Check if the message is from the current user or from the agent
       const isCurrentUser = data.senderId === entityId;
 
+      if (!isCurrentUser) {
+        console.log('[Chat] Agent message received, re-enabling input');
+        setInputDisabled(false);
+      }
+
       // Build a proper ContentWithUser object that matches what the messages query expects
       const newMessage: ContentWithUser = {
         ...data,
@@ -319,8 +324,7 @@ export default function Page({
     };
 
     const handleMessageComplete = () => {
-      // setMessageProcessing(false); // REMOVE
-      // Input will be re-enabled by a controlMessage if needed
+      setInputDisabled(false);
     };
 
     // Add listener for message broadcasts
@@ -540,6 +544,7 @@ export default function Page({
       CHAT_SOURCE,
       allAttachments.length > 0 ? allAttachments : undefined
     );
+    setInputDisabled(true);
 
     // Clear files and input after successful send
     setSelectedFiles([]);
@@ -748,6 +753,21 @@ export default function Page({
           {/* Chat Input */}
           <div className="px-4 pb-4 mt-auto flex-shrink-0">
             {/* Keep input at bottom */}
+            {inputDisabled && (
+              <div className="px-2 pb-2 text-sm text-muted-foreground flex items-center gap-2">
+                <div className="flex gap-1">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:0ms]"></div>
+                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:150ms]"></div>
+                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:300ms]"></div>
+                </div>
+                <span>{agentData.name} is thinking</span>
+                <div className="flex">
+                  <span className="animate-pulse [animation-delay:0ms]">.</span>
+                  <span className="animate-pulse [animation-delay:200ms]">.</span>
+                  <span className="animate-pulse [animation-delay:400ms]">.</span>
+                </div>
+              </div>
+            )}
             <form
               ref={formRef}
               onSubmit={handleSendMessage}
