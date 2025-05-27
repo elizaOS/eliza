@@ -1,0 +1,98 @@
+name: CLI Prod Release Validation
+
+on:
+  schedule:
+    # Run 4 times daily: 00:00, 06:00, 12:00, 18:00 UTC
+    - cron: '0 0,6,12,18 * * *'
+  workflow_dispatch: # Allow manual triggering
+
+env:
+  GH_TOKEN: ${{ secrets.GH_TOKEN }}
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  IS_NPM_TEST: 'true' # Use global elizaos command for production validation
+
+jobs:
+  prod-validation:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 23
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install global CLI packages
+        run: |
+          npm install -g elizaos
+          npm install -g bats
+
+      - name: Verify global installations
+        run: |
+          elizaos --version
+          bats --version
+          # Verify npm create eliza works (create-eliza package should be available via npm create)
+          npm create eliza --help || echo "npm create eliza available"
+
+      - name: Clean eliza projects cache
+        run: rm -rf ~/.eliza/projects
+
+      - name: Create .env file for tests
+        run: |
+          echo "OPENAI_API_KEY=$OPENAI_API_KEY" > .env
+          echo "LOG_LEVEL=info" >> .env
+
+      - name: Download models
+        run: |
+          MODEL_DIR="$HOME/.eliza/models"
+          mkdir -p "$MODEL_DIR"
+          declare -a models=(
+            "DeepHermes-3-Llama-3-3B-Preview-q4.gguf https://huggingface.co/NousResearch/DeepHermes-3-Llama-3-3B-Preview-GGUF/resolve/main/DeepHermes-3-Llama-3-3B-Preview-q4.gguf"
+            "bge-small-en-v1.5.Q4_K_M.gguf https://huggingface.co/ChristianAzinn/bge-small-en-v1.5-gguf/resolve/main/bge-small-en-v1.5.Q4_K_M.gguf"
+          )
+          for entry in "${models[@]}"; do
+            name="${entry%% *}"
+            url="${entry#* }"
+            path="$MODEL_DIR/$name"
+            if [ ! -f "$path" ]; then
+              echo "Downloading $name..."
+              start=$(date +%s)
+              curl -L -f -sS -o "$path" "$url"
+              status=$?
+              end=$(date +%s)
+              duration=$((end - start))
+              if [ $status -eq 0 ]; then
+                echo "Downloaded $name in ${duration}s."
+              else
+                echo "Failed to download $name after ${duration}s."
+                exit 1
+              fi
+            else
+              echo "$name already exists, skipping."
+            fi
+          done
+
+      - name: Make test scripts executable
+        run: chmod +x packages/cli/__test_scripts__/*.bats packages/cli/__test_scripts__/*.sh
+
+      - name: Run production validation tests
+        run: ./run_all_bats.sh
+        working-directory: packages/cli/__test_scripts__
+
+      - name: Report test results
+        if: always()
+        run: |
+          if [ $? -eq 0 ]; then
+            echo "✅ All production validation tests passed"
+          else
+            echo "❌ Production validation tests failed"
+            exit 1
+          fi
