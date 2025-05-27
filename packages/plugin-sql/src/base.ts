@@ -1972,6 +1972,7 @@ export abstract class BaseDrizzleAdapter<
     return this.withDatabase(async () => {
       const roomsWithIds = rooms.map((room) => ({
         ...room,
+        agentId: this.agentId,
         id: room.id || v4(), // ensure each room has a unique ID
       }));
 
@@ -2005,6 +2006,7 @@ export abstract class BaseDrizzleAdapter<
    * @returns {Promise<UUID[]>} A Promise that resolves to an array of room IDs.
    */
   async getRoomsForParticipant(entityId: UUID): Promise<UUID[]> {
+    console.log('getRoomsForParticipant', entityId);
     return this.withDatabase(async () => {
       const result = await this.db
         .select({ roomId: participantTable.roomId })
