@@ -4,20 +4,20 @@ import { ModelType } from '../src/types';
 
 describe('prompt utilities', () => {
   it('composePrompt inserts state values', () => {
-    const spy = vi.spyOn(utils, 'composeRandomUser').mockImplementation((t) => t);
+    //const spy = vi.spyOn(utils, 'composeRandomUser').mockImplementation((t) => t);
     const out = utils.composePrompt({ state: { a: 'x' }, template: 'Hello {{a}}' });
     expect(out).toBe('Hello x');
-    spy.mockRestore();
+    //spy.mockRestore();
   });
 
   it('composePromptFromState flattens state values', () => {
-    const spy = vi.spyOn(utils, 'composeRandomUser').mockImplementation((t) => t);
+    //const spy = vi.spyOn(utils, 'composeRandomUser').mockImplementation((t) => t);
     const out = utils.composePromptFromState({
       state: { values: { b: 'y' }, c: 'z' },
       template: '{{b}} {{c}}',
     });
     expect(out).toBe('y z');
-    spy.mockRestore();
+    //spy.mockRestore();
   });
 
   it('formatPosts formats conversation text', () => {

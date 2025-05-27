@@ -991,7 +991,7 @@ class Tokenizer {
  * BM25 Options Interface.
  * Extends TokenizerOptions and adds BM25 specific parameters.
  */
-export interface BM25Options extends TokenizerOptions {
+interface BM25Options extends TokenizerOptions {
   /**
    * Term frequency saturation parameter (k1). Controls how quickly term frequency
    * saturates. Higher values mean TF contributes more significantly even for high counts.
@@ -1015,7 +1015,7 @@ export interface BM25Options extends TokenizerOptions {
 /**
  * Represents a search result item.
  */
-export interface SearchResult {
+interface SearchResult {
   /** The index of the matching document in the original document array. */
   index: number;
   /** The BM25 relevance score for the document. Higher scores indicate better relevance. */

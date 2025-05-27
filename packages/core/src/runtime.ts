@@ -151,7 +151,6 @@ export class AgentRuntime implements IAgentRuntime {
     // Create the logger with appropriate level - only show debug logs when explicitly configured
     this.logger = logger.child({
       agentName: this.character?.name,
-      agentId: this.agentId,
       level: logLevel === 'debug' ? 'debug' : 'error',
     });
 
@@ -351,7 +350,7 @@ export class AgentRuntime implements IAgentRuntime {
       if (plugin.providers) {
         span.addEvent('registering_providers');
         for (const provider of plugin.providers) {
-          this.registerContextProvider(provider);
+          this.registerProvider(provider);
         }
       }
       if (plugin.models) {
@@ -728,10 +727,6 @@ export class AgentRuntime implements IAgentRuntime {
 
   registerEvaluator(evaluator: Evaluator) {
     this.evaluators.push(evaluator);
-  }
-
-  registerContextProvider(provider: Provider) {
-    this.providers.push(provider);
   }
 
   async processActions(
@@ -1564,19 +1559,14 @@ export class AgentRuntime implements IAgentRuntime {
         // Log response as event
         span.addEvent('model_response', { response: JSON.stringify(response, safeReplacer()) }); // Log processed response
 
-        // Log timing (keep debug log if useful)
+        // Log timing / response (keep debug log if useful)
         this.logger.debug(
-          `[useModel] ${modelKey} completed in ${Number(elapsedTime.toFixed(2)).toLocaleString()}ms`
-        );
-
-        // Log response (keep debug log if useful)
-        this.logger.debug(
-          `[useModel] ${modelKey} output:`,
+          `[useModel] ${modelKey} output (took ${Number(elapsedTime.toFixed(2)).toLocaleString()}ms):`,
           Array.isArray(response)
             ? `${JSON.stringify(response.slice(0, 5))}...${JSON.stringify(response.slice(-5))} (${
                 response.length
               } items)`
-            : JSON.stringify(response)
+            : JSON.stringify(response, safeReplacer(), 2).replace(/\\n/g, '\n')
         );
         this.adapter.log({
           entityId: this.agentId,
@@ -1852,10 +1842,6 @@ export class AgentRuntime implements IAgentRuntime {
     limit?: number;
   }): Promise<Memory[]> {
     return await this.adapter.getMemoriesByRoomIds(params);
-  }
-
-  async getMemoriesByServerId(params: { serverId: UUID; count?: number }): Promise<Memory[]> {
-    return await this.adapter.getMemoriesByServerId(params);
   }
 
   async getCachedEmbeddings(params: {

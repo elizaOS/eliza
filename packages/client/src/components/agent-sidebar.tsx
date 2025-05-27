@@ -1,4 +1,4 @@
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAgentPanels, type AgentPanel } from '@/hooks/use-query-hooks';
 import type { UUID } from '@elizaos/core';
 import { Activity, Columns3, Database, Terminal } from 'lucide-react';
@@ -13,7 +13,7 @@ type AgentSidebarProps = {
   agentName: string;
 };
 
-type FixedTabValue = 'actions' | 'logs' | 'memories' | 'knowledge';
+type FixedTabValue = 'actions' | 'logs' | 'memories';
 type TabValue = FixedTabValue | string;
 
 export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
@@ -45,10 +45,10 @@ export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
       defaultValue="actions"
       value={detailsTab}
       onValueChange={(v) => setDetailsTab(v as TabValue)}
-      className="flex flex-col h-full w-full"
+      className="flex flex-col h-full"
     >
-      <div className="border-b px-4 py-2 flex-shrink-0">
-        <TabsList className={`flex justify-evenly w-full`}>
+      <div className="border-b px-4 py-2">
+        <TabsList className={`flex justify-evenly`}>
           {isLoadingPanels && (
             <>
               {[...Array(2)].map((_, i) => (
@@ -65,20 +65,30 @@ export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
         </TabsList>
       </div>
 
-      {detailsTab === 'actions' && <AgentActionViewer agentId={agentId} />}
-      {detailsTab === 'logs' && <AgentLogViewer agentName={agentName} level="all" />}
-      {detailsTab === 'memories' && <AgentMemoryViewer agentId={agentId} agentName={agentName} />}
-
-      {agentPanels.map(
-        (panel: AgentPanel) =>
-          detailsTab === panel.name && (
+      <TabsContent value="actions" className="overflow-y-auto flex-1">
+        {detailsTab === 'actions' && <AgentActionViewer agentId={agentId} />}
+      </TabsContent>
+      <TabsContent value="logs" className="overflow-y-auto flex-1">
+        {detailsTab === 'logs' && <AgentLogViewer agentName={agentName} level="all" />}
+      </TabsContent>
+      <TabsContent value="memories" className="overflow-y-auto flex-1">
+        {detailsTab === 'memories' && <AgentMemoryViewer agentId={agentId} agentName={agentName} />}
+      </TabsContent>
+      {agentPanels.map((panel: AgentPanel) => (
+        <TabsContent
+          key={panel.name}
+          value={panel.name}
+          className="h-full overflow-hidden flex-1 flex flex-col"
+        >
+          {detailsTab === panel.name && (
             <iframe
               src={`${panel.path}?agentId=${agentId}`}
               title={panel.name}
               className="w-full h-full border-0 flex-1"
             />
-          )
-      )}
+          )}
+        </TabsContent>
+      ))}
     </Tabs>
   );
 }

@@ -6,10 +6,10 @@ import type { IAgentRuntime, ServiceTypeName } from './types';
  * with automatic type inference
  */
 export class ServiceBuilder<TService extends Service = Service> {
-  private serviceType: ServiceTypeName | string;
-  private startFn: (runtime: IAgentRuntime) => Promise<TService>;
-  private stopFn?: () => Promise<void>;
-  private description: string;
+  protected serviceType: ServiceTypeName | string;
+  protected startFn: (runtime: IAgentRuntime) => Promise<TService>;
+  protected stopFn?: () => Promise<void>;
+  protected description: string;
 
   constructor(serviceType: ServiceTypeName | string) {
     this.serviceType = serviceType;

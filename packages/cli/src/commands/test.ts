@@ -19,6 +19,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { pathToFileURL } from 'url';
 import { startAgent } from './start';
+import { getElizaCharacter } from '../characters/eliza';
 const execAsync = promisify(exec);
 
 // Helper function to check port availability
@@ -419,7 +420,7 @@ const runE2eTests = async (options: { port?: number; name?: string; skipBuild?: 
           console.info('Using default Eliza character as test agent');
           try {
             // Import the default character (same approach as start.ts)
-            const { character: defaultElizaCharacter } = await import('../characters/eliza');
+            const defaultElizaCharacter = getElizaCharacter();
 
             // Create the list of plugins for testing - exact same approach as start.ts
             const pluginsToTest = [project.pluginModule];
