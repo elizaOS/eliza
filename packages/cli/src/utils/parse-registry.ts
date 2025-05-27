@@ -4,6 +4,8 @@ import { Octokit } from 'octokit';
 import semver from 'semver';
 import { UserEnvironment } from './user-environment';
 import os from 'node:os';
+import dotenv from 'dotenv';
+import { existsSync } from 'node:fs';
 
 /*───────────────────────────────────────────────────────────────────────────*/
 // Types
@@ -16,9 +18,6 @@ import { RawRegistry, VersionInfo } from '../types/plugins';
 /*───────────────────────────────────────────────────────────────────────────*/
 
 import { REGISTRY_URL } from './registry/constants';
-const GH_TOKEN = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
-const octokit = new Octokit({ auth: GH_TOKEN || undefined });
-const hasAuth = Boolean(GH_TOKEN);
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const nodeFetch = globalThis.fetch ? undefined : require('node-fetch');
@@ -43,7 +42,7 @@ function parseGitRef(gitRef: string): { owner: string; repo: string } | null {
   return { owner, repo };
 }
 
-async function getGitHubBranches(owner: string, repo: string) {
+async function getGitHubBranches(owner: string, repo: string, octokit: Octokit) {
   try {
     const { data } = await octokit.rest.repos.listBranches({ owner, repo });
     return data.map((b) => b.name);
@@ -55,7 +54,8 @@ async function getGitHubBranches(owner: string, repo: string) {
 async function fetchPackageJSON(
   owner: string,
   repo: string,
-  ref: string
+  ref: string,
+  octokit: Octokit
 ): Promise<{ version: string; coreRange?: string } | null> {
   try {
     const { data } = await octokit.rest.repos.getContent({
@@ -74,7 +74,7 @@ async function fetchPackageJSON(
   }
 }
 
-async function getLatestGitTags(owner: string, repo: string) {
+async function getLatestGitTags(owner: string, repo: string, octokit: Octokit) {
   try {
     const { data } = await octokit.rest.repos.listTags({ owner, repo, per_page: 100 });
     const versions = data.map((t) => semver.clean(t.name)).filter(Boolean) as string[];
@@ -118,7 +118,11 @@ function guessNpmName(jsName: string): string {
 // Core per-repo inspector (fully concurrent within a plugin)
 /*───────────────────────────────────────────────────────────────────────────*/
 
-async function processRepo(npmId: string, gitRef: string): Promise<[string, VersionInfo]> {
+async function processRepo(
+  npmId: string,
+  gitRef: string,
+  octokit: Octokit
+): Promise<[string, VersionInfo]> {
   const parsed = parseGitRef(gitRef);
   if (!parsed) {
     console.warn(`⚠️  Skipping ${npmId}: unsupported git ref → ${gitRef}`);
@@ -133,15 +137,15 @@ async function processRepo(npmId: string, gitRef: string): Promise<[string, Vers
   const { owner, repo } = parsed;
 
   // Kick off remote calls ---------------------------------------------------
-  const branchesPromise = getGitHubBranches(owner, repo);
-  const tagsPromise = getLatestGitTags(owner, repo);
+  const branchesPromise = getGitHubBranches(owner, repo, octokit);
+  const tagsPromise = getLatestGitTags(owner, repo, octokit);
   const npmPromise = inspectNpm(guessNpmName(npmId));
 
   // Support detection via package.json across relevant branches -------------
   const branches = await branchesPromise;
   const branchCandidates = ['main', 'master', '0.x', '1.x'].filter((b) => branches.includes(b));
 
-  const pkgPromises = branchCandidates.map((br) => fetchPackageJSON(owner, repo, br));
+  const pkgPromises = branchCandidates.map((br) => fetchPackageJSON(owner, repo, br, octokit));
   const pkgResults = await Promise.allSettled(pkgPromises);
 
   const pkgs = [];
@@ -244,6 +248,14 @@ async function processRepo(npmId: string, gitRef: string): Promise<[string, Vers
 /*───────────────────────────────────────────────────────────────────────────*/
 
 async function executeParseRegistry(): Promise<void> {
+  // Load environment variables first
+  await loadEnvironment();
+
+  // Initialize GitHub client with loaded environment variables
+  const GH_TOKEN = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
+  const octokit = new Octokit({ auth: GH_TOKEN || undefined });
+  const hasAuth = Boolean(GH_TOKEN);
+
   const timeoutId = setTimeout(() => {
     console.error('Registry parsing timeout: Process took longer than 20 seconds');
     throw new Error('Registry parsing timeout: Process took longer than 30 seconds');
@@ -252,7 +264,9 @@ async function executeParseRegistry(): Promise<void> {
   const registry = (await safeFetchJSON<RawRegistry>(REGISTRY_URL)) || {};
   const report: Record<string, VersionInfo> = {};
 
-  const tasks = Object.entries(registry).map(([npmId, gitRef]) => processRepo(npmId, gitRef));
+  const tasks = Object.entries(registry).map(([npmId, gitRef]) =>
+    processRepo(npmId, gitRef, octokit)
+  );
 
   if (hasAuth) {
     const results = await Promise.all(tasks);
@@ -308,4 +322,21 @@ if (typeof Bun !== 'undefined' && Bun.main === import.meta.path) {
       process.exit(1);
     }
   })();
+}
+
+// Load environment variables from .env file using the same logic as other CLI commands
+async function loadEnvironment() {
+  try {
+    const envInfo = await UserEnvironment.getInstanceInfo();
+    const envPath = envInfo.paths.envFilePath;
+    if (envPath && existsSync(envPath)) {
+      dotenv.config({ path: envPath });
+    } else {
+      // Fallback to default .env in current directory
+      dotenv.config();
+    }
+  } catch (error) {
+    // Fallback to default .env loading
+    dotenv.config();
+  }
 }

@@ -418,8 +418,8 @@ async function validatePluginRequirements(cwd: string, packageJson: any): Promis
 
 export const publish = new Command()
   .name('publish')
-  .description('Publish a plugin to the registry')
-  .option('-n, --npm', 'publish to npm instead of GitHub', false)
+  .description('Publish a plugin to npm, GitHub, and the registry')
+  .option('-n, --npm', 'publish to npm only (skip GitHub and registry)', false)
   .option('-t, --test', 'test publish process without making changes', false)
   .option('-d, --dry-run', 'generate registry files locally without publishing', false)
   .option('-sr, --skip-registry', 'skip publishing to the registry', false)
@@ -791,35 +791,36 @@ export const publish = new Command()
       let publishResult: boolean | { success: boolean; prUrl?: string } = false;
       let registryPrUrl: string = null;
 
-      // Handle npm publishing
-      if (opts.npm) {
-        console.info(`Publishing plugin to npm...`);
+      // Step 1: Publish to npm (always, unless we add a --skip-npm flag later)
+      console.info(`Publishing plugin to npm...`);
 
-        // Update npmPackage field if it's a placeholder or not set
-        if (!packageJson.npmPackage || packageJson.npmPackage === '${NPM_PACKAGE}') {
-          packageJson.npmPackage = packageJson.name;
-          console.info(`Set npmPackage to: ${packageJson.npmPackage}`);
+      // Update npmPackage field if it's a placeholder or not set
+      if (!packageJson.npmPackage || packageJson.npmPackage === '${NPM_PACKAGE}') {
+        packageJson.npmPackage = packageJson.name;
+        console.info(`Set npmPackage to: ${packageJson.npmPackage}`);
 
-          // Save updated package.json
-          await fs.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2), 'utf-8');
-        }
+        // Save updated package.json
+        await fs.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2), 'utf-8');
+      }
 
-        console.info(`Publishing as npm user: ${npmUsername}`);
+      console.info(`Publishing as npm user: ${npmUsername}`);
 
-        // Build the package
-        console.info('Building package...');
-        await execa('npm', ['run', 'build'], { cwd, stdio: 'inherit' });
+      // Build the package
+      console.info('Building package...');
+      await execa('npm', ['run', 'build'], { cwd, stdio: 'inherit' });
 
-        // Publish to npm
-        console.info('Publishing to npm...');
-        await execa('npm', ['publish'], { cwd, stdio: 'inherit' });
+      // Publish to npm with --ignore-scripts to prevent recursion
+      console.info('Publishing to npm...');
+      await execa('npm', ['publish', '--ignore-scripts'], { cwd, stdio: 'inherit' });
 
-        console.log(`Successfully published ${packageJson.name}@${packageJson.version} to npm`);
+      console.log(`✓ Successfully published ${packageJson.name}@${packageJson.version} to npm`);
 
-        // Add npm package info to metadata
-        packageMetadata.npmPackage = packageJson.name;
-      } else {
-        // Handle GitHub publishing
+      // Add npm package info to metadata
+      packageMetadata.npmPackage = packageJson.name;
+
+      // Step 2: Publish to GitHub and registry (unless --npm flag is used for npm-only)
+      if (!opts.npm) {
+        console.info('Publishing to GitHub and registry...');
         publishResult = await publishToGitHub(
           cwd,
           packageJson,
@@ -834,7 +835,7 @@ export const publish = new Command()
         }
 
         console.log(
-          `Successfully published plugin ${packageJson.name}@${packageJson.version} to GitHub`
+          `✓ Successfully published plugin ${packageJson.name}@${packageJson.version} to GitHub`
         );
 
         // Add GitHub repo info to metadata
@@ -843,7 +844,7 @@ export const publish = new Command()
         // Store PR URL if returned from publishToGitHub
         if (typeof publishResult === 'object' && publishResult.prUrl) {
           registryPrUrl = publishResult.prUrl;
-          console.log(`Registry pull request created: ${registryPrUrl}`);
+          console.log(`✓ Registry pull request created: ${registryPrUrl}`);
         }
       }
 
@@ -879,6 +880,15 @@ export const publish = new Command()
 
       console.log('\nYour plugin is now available at:');
       console.log(`https://github.com/${credentials.username}/${finalPluginName}`);
+
+      console.log('\n📝 Important: For future updates to your plugin:');
+      console.log('   Use standard npm and git workflows, not the ElizaOS CLI:');
+      console.log('   1. Make your changes and test locally');
+      console.log('   2. Update version: npm version patch|minor|major');
+      console.log('   3. Publish to npm: npm publish');
+      console.log('   4. Push to GitHub: git push origin main && git push --tags');
+      console.log('\n   The ElizaOS registry will automatically sync with npm updates.');
+      console.log('   Only use "elizaos publish" for initial publishing of new plugins.');
     } catch (error) {
       handleError(error);
     }
