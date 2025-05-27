@@ -43,6 +43,11 @@ jobs:
       - name: Build packages
         run: bun run build
 
+      - name: Install cli now that it's built
+        env:
+          SHARP_IGNORE_GLOBAL_LIBVIPS: '1'
+        run: bun install
+
       - name: Check for API key
         run: |
           if [ -z "$OPENAI_API_KEY" ]; then
