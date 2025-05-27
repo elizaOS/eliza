@@ -214,7 +214,7 @@ describe('processAttachments', () => {
     expect(result[0]).toEqual(attachments[0]); // First image unchanged due to error
     expect(result[1].description).toBe('Description of second image');
     expect(logger.error).toHaveBeenCalledWith(
-      '[Bootstrap] Failed to process attachment https://example.com/image1.jpg:',
+      '[Bootstrap] Error generating image description:',
       expect.any(Error)
     );
   });
