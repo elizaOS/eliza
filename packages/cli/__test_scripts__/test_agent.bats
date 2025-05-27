@@ -33,21 +33,42 @@ setup_file() {
   # ---------------------------------------------------------------------------
   # Launch the server under test.
   # ---------------------------------------------------------------------------
+  echo "[DEBUG] Starting ElizaOS server on port $TEST_SERVER_PORT" >&2
+  echo "[DEBUG] Server command: $ELIZAOS_CMD start --port $TEST_SERVER_PORT" >&2
+  echo "[DEBUG] PGLite data dir: $TEST_TMP_DIR/elizadb" >&2
+  echo "[DEBUG] Server log file: $TEST_TMP_DIR/server.log" >&2
+  
   LOG_LEVEL=debug \
   PGLITE_DATA_DIR="$TEST_TMP_DIR/elizadb" \
   $ELIZAOS_CMD start --port "$TEST_SERVER_PORT" \
     >"$TEST_TMP_DIR/server.log" 2>&1 &
   SERVER_PID=$!
+  echo "[DEBUG] Server PID: $SERVER_PID" >&2
 
-  # Poll until the REST endpoint comes up (max 15 s).
-  for i in $(seq 1 15); do
-    if curl -sf "$TEST_SERVER_URL/api/agents" >/dev/null; then
+  # Poll until the REST endpoint comes up (max 30 s with more verbose logging).
+  echo "[DEBUG] Polling for server readiness at $TEST_SERVER_URL/api/agents" >&2
+  for i in $(seq 1 30); do
+    echo "[DEBUG] Attempt $i/30: checking server health..." >&2
+    if curl -sf "$TEST_SERVER_URL/api/agents" >/dev/null 2>&1; then
+      echo "[DEBUG] Server is ready!" >&2
       break
     fi
+    if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+      echo "[ERROR] Server process died during startup" >&2
+      echo "--- SERVER LOG ---" >&2
+      cat "$TEST_TMP_DIR/server.log" >&2
+      echo "------------------" >&2
+      exit 1
+    fi
+    echo "[DEBUG] Server not ready yet, waiting 1s..." >&2
     sleep 1
   done
-  if ! kill -0 "$SERVER_PID" 2>/dev/null || ! curl -sf "$TEST_SERVER_URL/api/agents" >/dev/null; then
+  
+  if ! kill -0 "$SERVER_PID" 2>/dev/null || ! curl -sf "$TEST_SERVER_URL/api/agents" >/dev/null 2>&1; then
     echo "[ERROR] ElizaOS server did not come up within timeout" >&2
+    echo "[DEBUG] Server PID check: $(kill -0 "$SERVER_PID" 2>/dev/null && echo "alive" || echo "dead")" >&2
+    echo "[DEBUG] Final curl test result:" >&2
+    curl -v "$TEST_SERVER_URL/api/agents" 2>&1 || true
     echo "--- SERVER LOG ---" >&2
     cat "$TEST_TMP_DIR/server.log" >&2
     echo "------------------" >&2
@@ -55,11 +76,23 @@ setup_file() {
   fi
 
   # Pre‑load three reference character files.
+  echo "[DEBUG] Pre-loading reference characters..." >&2
   for c in ada max shaw; do
-    $ELIZAOS_CMD agent start --remote-url "$TEST_SERVER_URL" \
-      --path "$BATS_TEST_DIRNAME/test-characters/$c.json"
+    echo "[DEBUG] Loading character: $c" >&2
+    echo "[DEBUG] Character file: $BATS_TEST_DIRNAME/test-characters/$c.json" >&2
+    echo "[DEBUG] Command: $ELIZAOS_CMD agent start --remote-url $TEST_SERVER_URL --path $BATS_TEST_DIRNAME/test-characters/$c.json" >&2
+    
+    if ! $ELIZAOS_CMD agent start --remote-url "$TEST_SERVER_URL" \
+      --path "$BATS_TEST_DIRNAME/test-characters/$c.json"; then
+      echo "[ERROR] Failed to load character $c" >&2
+      echo "--- SERVER LOG (last 50 lines) ---" >&2
+      tail -50 "$TEST_TMP_DIR/server.log" >&2
+      echo "----------------------------------" >&2
+      exit 1
+    fi
+    echo "[DEBUG] Successfully loaded character: $c" >&2
   done
-  sleep 1  # give them a moment to register
+  sleep 2  # give them a moment to register
 }
 
 teardown_file() {
