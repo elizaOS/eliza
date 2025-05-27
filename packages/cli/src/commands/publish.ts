@@ -418,7 +418,7 @@ async function validatePluginRequirements(cwd: string, packageJson: any): Promis
 
 export const publish = new Command()
   .name('publish')
-  .description('Publish a plugin to the registry)')
+  .description('Publish a plugin to the registry')
   .option('-n, --npm', 'publish to npm instead of GitHub', false)
   .option('-t, --test', 'test publish process without making changes', false)
   .option('-d, --dry-run', 'generate registry files locally without publishing', false)
