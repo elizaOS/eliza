@@ -94,7 +94,7 @@ export { getWavHeader, prependWavHeader };
  * @param  tpl  Handlebars template source
  * @return      Transformed template
  */
-export function upgradeDoubleToTriple(tpl) {
+function upgradeDoubleToTriple(tpl) {
   return tpl.replace(
     // ────────╮ negative-LB: not already "{{{"
     //          │   {{     ─ opening braces
@@ -238,7 +238,7 @@ export const addHeader = (header: string, body: string) => {
  * // "Hello, John! Meet Alice and Bob."
  * const result = composeRandomUser(template, length);
  */
-export const composeRandomUser = (template: string, length: number) => {
+const composeRandomUser = (template: string, length: number) => {
   const exampleNames = Array.from({ length }, () =>
     uniqueNamesGenerator({ dictionaries: [names] })
   );
@@ -544,12 +544,16 @@ export const normalizeJsonString = (str: string) => {
   return str;
 };
 
+// why is this here? maybe types.ts is more appropriate
+// and shouldn't the name include x/twitter
+/*
 export type ActionResponse = {
   like: boolean;
   retweet: boolean;
   quote?: boolean;
   reply?: boolean;
 };
+*/
 
 /**
  * Truncate text to fit within the character limit, ensuring it ends at a complete sentence.

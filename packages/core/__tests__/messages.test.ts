@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, test, vi } from 'vitest';
+import { beforeAll, describe, expect, test, vi, it } from 'vitest';
 import { formatEntities, getEntityDetails } from '../src/entities';
 import { formatMessages, formatTimestamp } from '../src/utils';
 import type {
