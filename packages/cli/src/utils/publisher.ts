@@ -389,6 +389,9 @@ export async function publishToGitHub(
   // Update package metadata
   const packageName = packageJson.name.replace(/^@[^/]+\//, '');
 
+  // Use the actual npm package name from package.json (not @elizaos-plugins/ prefix)
+  const registryPackageName = packageJson.name;
+
   if (!isTest) {
     // Update index.json with simple mapping: npm package name -> github repo
     try {
@@ -396,9 +399,6 @@ export async function publishToGitHub(
       if (indexContent) {
         // Simple mapping: npm package name -> github repo
         const githubRepo = `github:${username}/${packageName}`;
-
-        // Use @elizaos-plugins/ prefix for the registry entry
-        const registryPackageName = `@elizaos-plugins/${packageName}`;
 
         // Check if entry already exists by parsing the JSON
         const index = JSON.parse(indexContent);
@@ -487,10 +487,10 @@ export async function publishToGitHub(
       token,
       registryOwner,
       registryRepo,
-      `Add @elizaos-plugins/${packageName} to registry`,
-      `This PR adds @elizaos-plugins/${packageName} to the registry.
+      `Add ${registryPackageName} to registry`,
+      `This PR adds ${registryPackageName} to the registry.
 
-- Package name: @elizaos-plugins/${packageName}
+- Package name: ${registryPackageName}
 - GitHub repository: github:${username}/${packageName}
 - Version: ${packageJson.version}
 - Description: ${packageJson.description || 'No description provided'}
@@ -516,10 +516,8 @@ Submitted by: @${username}`,
     logger.info('Test successful - all checks passed');
     logger.info('Would create:');
     logger.info(`- Branch: ${branchName}`);
-    logger.info(
-      `- Registry entry: @elizaos-plugins/${packageName} -> github:${username}/${packageName}`
-    );
-    logger.info(`- Pull request: Add @elizaos-plugins/${packageName} to registry`);
+    logger.info(`- Registry entry: ${registryPackageName} -> github:${username}/${packageName}`);
+    logger.info(`- Pull request: Add ${registryPackageName} to registry`);
   }
 
   return true;
