@@ -530,7 +530,7 @@ describe('create command', () => {
     it('should handle custom directory option correctly', async () => {
       const actionFn = getActionFn();
       const projectName = 'testproject';
-      const customDirRelative = 'custom/output';
+      const customDirRelative = 'test/resources/output';
       const customDirAbsolute = resolvePath(tempDir, customDirRelative);
       await mkdir(customDirAbsolute, { recursive: true });
       const expectedFinalProjectPath = resolvePath(customDirAbsolute, projectName);

@@ -133,7 +133,7 @@ describe('setup-monorepo command', () => {
 
       const repo = 'elizaOS/eliza';
       const branch = 'main';
-      const destinationDir = '/custom/path';
+      const destinationDir = '/test/resources/path';
 
       await execa('git', ['clone', '-b', branch, `https://github.com/${repo}`, destinationDir], {
         stdio: 'inherit',
@@ -141,7 +141,7 @@ describe('setup-monorepo command', () => {
 
       expect(execa).toHaveBeenCalledWith(
         'git',
-        ['clone', '-b', 'main', 'https://github.com/elizaOS/eliza', '/custom/path'],
+        ['clone', '-b', 'main', 'https://github.com/elizaOS/eliza', '/test/resources/path'],
         { stdio: 'inherit' }
       );
     });

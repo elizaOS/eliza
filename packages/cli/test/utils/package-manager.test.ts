@@ -214,7 +214,7 @@ describe('package-manager', () => {
 
     it('should install package in specified directory', async () => {
       mockExeca.mockResolvedValue({});
-      const customDir = '/custom/directory';
+      const customDir = '/test/resources/directory';
 
       await executeInstallation('lodash', '', customDir);
 
