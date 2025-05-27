@@ -2,7 +2,6 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { logger } from '@elizaos/core';
 import { execa } from 'execa';
-import semver from 'semver';
 import {
   branchExists,
   createBranch,
@@ -31,40 +30,6 @@ interface PackageJson {
   platform?: 'node' | 'browser' | 'universal';
   packageType?: 'plugin' | 'project';
   type?: string; // 'module' or 'commonjs' for Node.js module format
-}
-
-// Renamed from PluginMetadata to RegistryMetadata for clarity
-interface RegistryMetadata {
-  name: string;
-  description: string;
-  repository: {
-    type: 'git' | 'npm';
-    url: string;
-  };
-  maintainers: Array<{
-    name: string;
-    github: string;
-  }>;
-  categories: string[];
-  tags: string[];
-  versions: Array<{
-    version: string;
-    gitBranch?: string;
-    gitTag?: string;
-    npmVersion?: string;
-    runtimeVersion: string;
-    releaseDate: string;
-    deprecated?: boolean;
-  }>;
-  latestStable: string | null;
-  latestVersion: string;
-  npm?: {
-    name: string;
-    url: string;
-  };
-  platform?: 'node' | 'browser' | 'universal';
-  type: 'plugin' | 'project';
-  installable?: boolean;
 }
 
 // This interface isn't used but we'll keep it for future reference
@@ -423,221 +388,98 @@ export async function publishToGitHub(
 
   // Update package metadata
   const packageName = packageJson.name.replace(/^@[^/]+\//, '');
-  const packagePath = `packages/${packageName}.json`;
-  const existingContent = await getFileContent(token, registryOwner, registryRepo, packagePath);
 
-  let metadata: RegistryMetadata;
-  const currentDate = new Date().toISOString();
-  const repositoryUrl = packageJson.repository?.url || `github:${username}/${packageName}`;
-
-  if (existingContent) {
-    try {
-      metadata = JSON.parse(existingContent);
-
-      if (metadata.versions.some((v) => v.version === packageJson.version)) {
-        logger.error(`Version ${packageJson.version} already exists in registry.`);
-        return false;
-      }
-
-      // Add new version information
-      metadata.versions.push({
-        version: packageJson.version,
-        gitBranch: packageJson.version,
-        gitTag: `v${packageJson.version}`,
-        runtimeVersion: cliVersion,
-        releaseDate: currentDate,
-        deprecated: false,
-      });
-
-      metadata.latestVersion = packageJson.version;
-
-      // Update latestStable if this is a stable release
-      if (
-        !semver.prerelease(packageJson.version) &&
-        (!metadata.latestStable || semver.gt(packageJson.version, metadata.latestStable))
-      ) {
-        metadata.latestStable = packageJson.version;
-      }
-
-      // Update type if specified
-      if (packageJson.packageType) {
-        metadata.type = packageJson.packageType;
-        // Projects are not installable in agents
-        metadata.installable = packageJson.packageType === 'plugin';
-      }
-
-      // Add appropriate tag based on type if it doesn't already exist
-      if (
-        metadata.type === 'plugin' &&
-        Array.isArray(metadata.tags) &&
-        !metadata.tags.includes('plugin')
-      ) {
-        metadata.tags.push('plugin');
-      } else if (
-        metadata.type === 'project' &&
-        Array.isArray(metadata.tags) &&
-        !metadata.tags.includes('project')
-      ) {
-        metadata.tags.push('project');
-      }
-
-      // Update platform if specified
-      if (packageJson.platform) {
-        metadata.platform = packageJson.platform;
-      }
-
-      // Update tags and categories if changed
-      if (packageJson.keywords?.length) {
-        metadata.tags = packageJson.keywords;
-
-        // Re-add type tag if it was lost in the update
-        if (metadata.type === 'plugin' && !metadata.tags.includes('plugin')) {
-          metadata.tags.push('plugin');
-        } else if (metadata.type === 'project' && !metadata.tags.includes('project')) {
-          metadata.tags.push('project');
-        }
-      }
-
-      if (packageJson.categories?.length) {
-        metadata.categories = packageJson.categories;
-      }
-    } catch (error) {
-      logger.error(`Error parsing existing metadata: ${error.message}`);
-      logger.info('Creating new metadata');
-      metadata = null;
-    }
-  }
-
-  if (!metadata) {
-    // Create new metadata in V2 format
-    metadata = {
-      name: packageJson.name,
-      description: packageJson.description || '',
-      repository: {
-        type: repositoryUrl.startsWith('npm:') ? 'npm' : 'git',
-        url: repositoryUrl,
-      },
-      maintainers: [
-        {
-          name: username,
-          github: username,
-        },
-      ],
-      categories: packageJson.categories || [],
-      tags: packageJson.keywords || [],
-      versions: [
-        {
-          version: packageJson.version,
-          gitBranch: packageJson.version,
-          gitTag: `v${packageJson.version}`,
-          runtimeVersion: cliVersion,
-          releaseDate: currentDate,
-          deprecated: false,
-        },
-      ],
-      latestStable: semver.prerelease(packageJson.version) ? null : packageJson.version,
-      latestVersion: packageJson.version,
-      type: packageJson.packageType,
-      installable: packageJson.packageType === 'plugin', // Only plugins are installable
-    };
-
-    // Add appropriate type tag if it doesn't already exist
-    if (metadata.type === 'plugin' && !metadata.tags.includes('plugin')) {
-      metadata.tags.push('plugin');
-    } else if (metadata.type === 'project' && !metadata.tags.includes('project')) {
-      metadata.tags.push('project');
-    }
-
-    // Add platform if specified
-    if (packageJson.platform) {
-      metadata.platform = packageJson.platform;
-    }
-  }
+  // Use the actual npm package name from package.json (not @elizaos-plugins/ prefix)
+  const registryPackageName = packageJson.name;
 
   if (!isTest) {
-    // Update package file
-    const updated = await updateFile(
-      token,
-      username,
-      registryRepo,
-      packagePath,
-      JSON.stringify(metadata, null, 2),
-      `Update ${packageJson.name} to version ${packageJson.version}`,
-      branchName
-    );
-
-    if (!updated) {
-      logger.error('Failed to update package metadata.');
-      return false;
-    }
-
-    // Update index.json for V2 registry
+    // Update index.json with simple mapping: npm package name -> github repo
     try {
       const indexContent = await getFileContent(token, username, registryRepo, 'index.json');
       if (indexContent) {
+        // Simple mapping: npm package name -> github repo
+        const githubRepo = `github:${username}/${packageName}`;
+
+        // Check if entry already exists by parsing the JSON
         const index = JSON.parse(indexContent);
-        const isNew = !index.__v2?.packages?.[packageJson.name];
-
-        // Ensure v2 structure exists
-        if (!index.__v2) {
-          index.__v2 = {
-            version: '2.0.0',
-            packages: {},
-            categories: {},
-            types: {
-              plugin: [],
-              project: [],
-            },
-          };
+        if (index[registryPackageName]) {
+          logger.warn(`Package ${registryPackageName} already exists in registry`);
+          return false;
         }
 
-        // Ensure types collection exists
-        if (!index.__v2.types) {
-          index.__v2.types = {
-            plugin: [],
-            project: [],
-          };
-        }
+        logger.info(`Adding registry entry: ${registryPackageName} -> ${githubRepo}`);
 
-        // Update package entry
-        index.__v2.packages[packageJson.name] = packagePath;
+        // Find the correct alphabetical position to insert the new entry
+        const lines = indexContent.split('\n');
+        const newEntry = `    "${registryPackageName}": "${githubRepo}",`;
 
-        // Add to the correct type array based on actual package type
-        const type = packageJson.packageType;
-        if (!index.__v2.types[type]) {
-          index.__v2.types[type] = [];
-        }
-        if (!index.__v2.types[type].includes(packageJson.name)) {
-          index.__v2.types[type].push(packageJson.name);
-        }
+        // Find the correct insertion point alphabetically
+        let insertIndex = -1;
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i].trim();
 
-        // Update categories
-        metadata.categories.forEach((category) => {
-          if (!index.__v2.categories[category]) {
-            index.__v2.categories[category] = [];
+          // Skip empty lines and opening brace
+          if (!line || line === '{') continue;
+
+          // If we hit the closing brace, insert before it
+          if (line === '}') {
+            insertIndex = i;
+            break;
           }
-          if (!index.__v2.categories[category].includes(packageJson.name)) {
-            index.__v2.categories[category].push(packageJson.name);
-          }
-        });
 
-        // Update index.json
+          // Check if this is a package entry line
+          const match = line.match(/^\s*"(@[^"]+)"/);
+          if (match) {
+            const existingPackage = match[1];
+            // If our package should come before this one alphabetically
+            if (registryPackageName < existingPackage) {
+              insertIndex = i;
+              break;
+            }
+          }
+        }
+
+        // If we didn't find a position, insert before the closing brace
+        if (insertIndex === -1) {
+          for (let i = lines.length - 1; i >= 0; i--) {
+            if (lines[i].trim() === '}') {
+              insertIndex = i;
+              break;
+            }
+          }
+        }
+
+        if (insertIndex === -1) {
+          logger.error('Could not find insertion point in index.json');
+          return false;
+        }
+
+        // Insert the new entry at the correct alphabetical position
+        lines.splice(insertIndex, 0, newEntry);
+        const updatedContent = lines.join('\n');
+
+        // Update index.json with minimal change - preserve original structure
         const indexUpdated = await updateFile(
           token,
           username,
           registryRepo,
           'index.json',
-          JSON.stringify(index, null, 2),
-          `${isNew ? 'Add' : 'Update'} ${packageJson.name} in registry index`,
+          updatedContent,
+          `Add ${registryPackageName} to registry`,
           branchName
         );
 
         if (!indexUpdated) {
-          logger.warn('Failed to update registry index.');
+          logger.error('Failed to update registry index.');
+          return false;
         }
+      } else {
+        logger.error('Could not fetch index.json from registry');
+        return false;
       }
     } catch (error) {
-      logger.warn(`Failed to update index.json: ${error.message}`);
+      logger.error(`Failed to update index.json: ${error.message}`);
+      return false;
     }
 
     // Create pull request
@@ -645,19 +487,13 @@ export async function publishToGitHub(
       token,
       registryOwner,
       registryRepo,
-      `Add ${packageJson.name} v${packageJson.version} to registry`,
-      `This PR adds ${packageJson.name} version ${packageJson.version} to the registry.
+      `Add ${registryPackageName} to registry`,
+      `This PR adds ${registryPackageName} to the registry.
 
-- Type: ${packageJson.packageType || 'plugin'}
-- Installable: ${(packageJson.packageType || 'plugin') === 'plugin' ? 'Yes' : 'No - Project type'}
-- Package name: ${packageJson.name}
+- Package name: ${registryPackageName}
+- GitHub repository: github:${username}/${packageName}
 - Version: ${packageJson.version}
-- Runtime version: ${cliVersion}
 - Description: ${packageJson.description || 'No description provided'}
-- Repository: ${metadata.repository.url}
-- Platform: ${metadata.platform || 'not specified'}
-- Categories: ${metadata.categories.join(', ') || 'none'}
-- Tags: ${metadata.tags.join(', ') || 'none'}
 
 Submitted by: @${username}`,
       `${username}:${branchName}`,
@@ -680,11 +516,8 @@ Submitted by: @${username}`,
     logger.info('Test successful - all checks passed');
     logger.info('Would create:');
     logger.info(`- Branch: ${branchName}`);
-    logger.info(`- Package file: ${packagePath}`);
-    logger.info(
-      `- Type: ${packageJson.packageType || 'plugin'} (${(packageJson.packageType || 'plugin') === 'plugin' ? 'installable' : 'not installable'})`
-    );
-    logger.info(`- Pull request: Add ${packageJson.name}@${packageJson.version} to registry`);
+    logger.info(`- Registry entry: ${registryPackageName} -> github:${username}/${packageName}`);
+    logger.info(`- Pull request: Add ${registryPackageName} to registry`);
   }
 
   return true;

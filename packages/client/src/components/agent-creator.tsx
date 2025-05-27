@@ -19,7 +19,7 @@ const defaultCharacter: Partial<Agent> = getTemplateById('none')?.template || {
   bio: [] as string[],
   topics: [] as string[],
   adjectives: [] as string[],
-  plugins: ['@elizaos/plugin-sql', '@elizaos/plugin-openai'],
+  plugins: ['@elizaos/plugin-sql', '@elizaos/plugin-openai', '@elizaos/plugin-bootstrap'],
   settings: { secrets: {} },
 };
 

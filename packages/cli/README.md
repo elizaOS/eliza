@@ -158,12 +158,34 @@ Manage ElizaOS agents.
 
 #### `elizaos publish`
 
-Publish a plugin or project to the registry, GitHub, or npm.
+Publish a plugin or project to npm, GitHub, and the registry.
 
 - **Options:**
   - `-t, --test`: Run publish tests without actually publishing
-  - `-n, --npm`: Publish to npm
+  - `-n, --npm`: Publish to npm only (skip GitHub and registry)
   - `-s, --skip-registry`: Skip publishing to the registry
+  - `-d, --dry-run`: Generate registry files locally without publishing
+
+**Default behavior:**
+
+- Publishes to npm
+- Creates/updates GitHub repository
+- Submits to ElizaOS registry
+
+**npm-only mode:**
+
+- Use `--npm` flag to publish only to npm
+- Skips GitHub repository creation and registry submission
+
+**Important for continuous development:**
+
+After initial publishing with `elizaos publish`, use standard npm and git workflows for updates:
+
+- `npm version patch|minor|major` to update version
+- `npm publish` to publish to npm
+- `git push origin main && git push --tags` to update GitHub
+
+The ElizaOS registry automatically syncs with npm updates.
 
 ### Agent/Server Management
 
@@ -265,16 +287,6 @@ Manage environment variables and secrets.
     - Options: `-y, --yes`
   - `interactive`: Start interactive environment variable manager
     - Options: `-y, --yes`
-
-### Publishing
-
-#### `elizaos publish`
-
-Publishes the current project or plugin.
-
-- **Options:**
-  - `--dry-run`: Test run without publishing
-  - `--registry <repo>`: Specify target registry (default: 'elizaOS/registry')
 
 ## Development Guide
 
@@ -380,22 +392,47 @@ Plugins extend the functionality of ElizaOS agents by providing additional capab
 5. **Test your plugin**:
 
    ```bash
-   bun run test
+   # Run tests during development
+   npm run test
    # Or with the CLI directly:
-   elizaos test --plugin
+   elizaos test
+
+   # Test specific components
+   elizaos test component
+
+   # Test end-to-end functionality
+   elizaos test e2e
    ```
 
 6. **Publish your plugin**:
 
    ```bash
+   # Login to npm first
+   npm login
+
+   # Test your plugin thoroughly
+   elizaos test
+
    # Test publishing process
-   elizaos plugins publish --test
+   elizaos publish --test
 
-   # Publish to registry
-   elizaos plugins publish
+   # Publish to npm + GitHub + registry (recommended)
+   elizaos publish
+   ```
 
-   # Or publish to npm
-   elizaos plugins publish --npm
+7. **Continuous development workflow**:
+
+   ```bash
+   # Make changes to your plugin
+   npm run dev  # Test locally
+
+   # Test your changes
+   elizaos test
+
+   # Update version and publish updates
+   npm version patch  # or minor/major
+   npm publish
+   git push origin main && git push --tags
    ```
 
 ### Developing Projects (Agents)
@@ -472,10 +509,32 @@ Projects contain agent configurations and code for building agent-based applicat
    ```
 
 7. **Test your project**:
+
    ```bash
-   bun run test
-   # Or with the CLI directly:
+   # Run all tests
    elizaos test
+
+   # Run component tests only
+   elizaos test component
+
+   # Run e2e tests only
+   elizaos test e2e
+
+   # Test with specific options
+   elizaos test --port 4000 --name specific-test
+   ```
+
+8. **Development workflow**:
+
+   ```bash
+   # Make changes to your project
+   elizaos dev  # Development mode with hot-reload
+
+   # Test your changes
+   elizaos test
+
+   # Build and start in production mode
+   elizaos start
    ```
 
 ## Contributing

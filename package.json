@@ -1,5 +1,11 @@
 {
   "name": "eliza",
+  "version": "1.0.0-beta.69",
+  "module": "index.ts",
+  "type": "module",
+  "engines": {
+    "node": "23.3.0"
+  },
   "scripts": {
     "start": "turbo run start --filter=./packages/cli --log-prefix=none",
     "start:debug": "cross-env NODE_NO_WARNINGS=1 LOG_LEVEL=debug elizaos start",
@@ -29,73 +35,31 @@
     "test:app": "turbo run test --concurrency 20 --filter=./packages/app",
     "prepare": "husky"
   },
-  "devDependencies": {
-    "@types/bun": "latest",
-    "@types/node": "^22.15.3",
-    "@types/uuid": "^9.0.8",
-    "@vitest/eslint-plugin": "1.0.1",
-    "bun": "^1.2.13",
-    "concurrently": "9.1.0",
-    "cross-env": "7.0.3",
-    "husky": "^9.1.7",
-    "lerna": "8.1.4",
-    "lint-staged": "^15.5.0",
-    "sharp": "0.33.5",
-    "tsup": "8.4.0",
-    "turbo": "^2.4.4",
-    "typedoc": "0.27.9",
-    "typescript": "^5.8.2",
-    "vite": "5.4.12",
-    "vitest": "3.0.5"
-  },
-  "bun": {
-    "overrides": {
-      "cookie": "0.7.0",
-      "bs58": "5.0.0",
-      "secp256k1": "5.0.1",
-      "minipass": "7.1.2",
-      "form-data": "4.0.2",
-      "eslint": "9.22.0",
-      "react": "19.0.0",
-      "react-dom": "19.0.0",
-      "got": "12.6.1"
-    }
-  },
-  "engines": {
-    "node": "23.3.0"
-  },
-  "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
-    "@babel/generator": "^7.26.10",
-    "@elizaos/plugin-discord": "^1.0.0-beta",
-    "@hapi/shot": "^6.0.1",
-    "@sentry/browser": "^9.20.0",
-    "@types/hapi": "^18.0.14",
-    "vittest": "^1.0.2",
-    "zod": "3.24.1"
-  },
   "packageManager": "bun@1.2.5",
   "workspaces": [
     "packages/*",
     "plugin-specification/*"
   ],
-  "module": "index.ts",
-  "type": "module",
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^22.15.3",
+    "@types/uuid": "^10.0.0",
+    "bun": "^1.2.13",
+    "husky": "^9.1.7",
+    "lerna": "8.1.4",
+    "tsup": "8.5.0",
+    "turbo": "^2.4.4",
+    "typescript": "^5.8.2",
+    "vitest": "3.1.4"
+  },
   "resolutions": {
-    "@nrwl/devkit": "19.8.13",
-    "@nrwl/tao": "19.8.13",
-    "zod": "3.24.1",
-    "eslint": "9.22.0",
-    "react": "19.0.0",
-    "react-dom": "19.0.0",
-    "vitest": "3.0.5",
-    "@metaplex-foundation/umi": "0.9.2",
+    "@nrwl/devkit": "19.8.4",
+    "@nrwl/tao": "19.8.4",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "@types/react": "19.1.5",
     "typedoc-plugin-markdown": "4.2.10",
-    "buffer": "6.0.3",
-    "@solana/spl-token": "0.4.9",
-    "solana-bankrun": "0.3.1",
-    "got": "12.6.1",
-    "form-data": "4.0.2"
+    "typedoc": "0.27.9"
   },
   "trustedDependencies": [
     "@swc/core",
@@ -107,8 +71,6 @@
     "husky",
     "node-llama-cpp",
     "protobufjs",
-    "sharp",
     "utf-8-validate"
-  ],
-  "version": "0.1.0"
+  ]
 }

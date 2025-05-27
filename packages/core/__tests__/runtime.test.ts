@@ -209,6 +209,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
     it('should register a simple plugin', async () => {
       const mockPlugin: Plugin = { name: 'TestPlugin', description: 'A test plugin' };
       await runtime.registerPlugin(mockPlugin);
+      console.log('runtime.plugins', runtime.plugins);
       // Check if the plugin is added to the internal list
       expect(runtime.plugins.some((p) => p.name === 'TestPlugin')).toBe(true);
     });

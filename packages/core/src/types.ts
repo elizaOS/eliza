@@ -728,6 +728,8 @@ export interface Plugin {
   routes?: Route[];
   tests?: TestSuite[];
 
+  dependencies?: string[]; // Names of plugins this plugin depends on
+
   priority?: number;
 }
 
@@ -928,8 +930,6 @@ export interface IDatabaseAdapter {
     roomIds: UUID[];
     limit?: number;
   }): Promise<Memory[]>;
-
-  getMemoriesByServerId(params: { serverId: UUID; count?: number }): Promise<Memory[]>;
 
   getCachedEmbeddings(params: {
     query_table_name: string;

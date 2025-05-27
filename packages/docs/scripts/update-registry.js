@@ -2,8 +2,11 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 
-const REGISTRY_URL =
-  'https://raw.githubusercontent.com/elizaos-plugins/registry/refs/heads/main/index.json';
+// Registry configuration - centralized for maintainability
+const REGISTRY_ORG = 'elizaos-plugins';
+const REGISTRY_REPO = 'registry';
+const REGISTRY_URL = `https://raw.githubusercontent.com/${REGISTRY_ORG}/${REGISTRY_REPO}/refs/heads/main/index.json`;
+
 const OUTPUT_FILE = path.join(__dirname, '../src/data/registry-users.tsx');
 const DESCRIPTIONS_FILE = path.join(__dirname, '../src/data/plugin-descriptions.json');
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN; // Optional GitHub token for higher rate limits
