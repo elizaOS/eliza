@@ -109,7 +109,7 @@ If you don't have the CLI installed globally, you'll see instructions to install
 ```console
 The CLI update is only available for globally installed CLI.
 To update a local installation, use your package manager manually.
-For global installation, run: npm install -g @elizaos/cli@beta
+For global installation, run: npm install -g @elizaos/cli
 ```
 
 ### Update Only Project Dependencies

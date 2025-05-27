@@ -46,15 +46,13 @@ The new CLI tool introduces a streamlined workflow for plugin development withou
 4. **Run**: `elizaos start` - Run the plugin with a default agent
 5. **Publish**: `elizaos publish` - Share your plugin with others
 
-> Note: at time of publishing, use `npm create eliza@beta` until main version is uploaded
-
 ### Creating a New Plugin
 
 You can create a new ElizaOS plugin using the CLI:
 
 ```bash
 # Using npm
-npm create eliza@beta
+npm create eliza
 
 # Or using npx
 npx create-eliza

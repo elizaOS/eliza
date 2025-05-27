@@ -66,7 +66,7 @@ elizaos plugins add google-ai --no-env-prompt
 elizaos plugins add custom-plugin --branch feature/new-api
 
 # Add a specific version/tag of a plugin from npm
-elizaos plugins add elevenlabs --tag beta
+elizaos plugins add elevenlabs --tag latest
 
 # Install a plugin directly from GitHub (HTTPS URL)
 elizaos plugins add https://github.com/owner/my-plugin

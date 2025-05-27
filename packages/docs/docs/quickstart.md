@@ -25,7 +25,7 @@ import TabItem from '@theme/TabItem';
 
 ```bash
 # Install globally
-npm install -g @elizaos/cli@beta
+npm install -g @elizaos/cli
 # Start ElizaOS
 elizaos start
 ```
@@ -35,7 +35,7 @@ elizaos start
 
 ```bash
 # Use directly with npx
-npx @elizaos/cli@beta start
+npx @elizaos/cli start
 ```
 
   </TabItem>

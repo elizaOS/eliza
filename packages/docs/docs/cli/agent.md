@@ -18,7 +18,7 @@ These options can be used with any `agent` subcommand:
 
 ## Usage
 
-Install the CLI first (`npm install -g @elizaos/cli@beta`)
+Install the CLI first (`npm install -g @elizaos/cli`)
 
 ```bash
 elizaos agent <action> [options]

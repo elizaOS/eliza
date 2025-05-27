@@ -2006,7 +2006,7 @@ Complete changelog:
 * Add RedPill API Support by @HashWarlock in https://github.com/ai16z/eliza/pull/198
 * Fix Discord Voice and DMs by @lalalune in https://github.com/ai16z/eliza/pull/203
 * Shaw fix characters paths, .ts requirement and missings args by @lalalune in https://github.com/ai16z/eliza/pull/204
-* Implement grok beta by @MeDott29 in https://github.com/ai16z/eliza/pull/216
+* Implement grok by @MeDott29 in https://github.com/ai16z/eliza/pull/216
 * add the template overrides by @lalalune in https://github.com/ai16z/eliza/pull/207
 * lazy load llama by @lalalune in https://github.com/ai16z/eliza/pull/220
 * Abstracts Eliza into a Package to enble publishing onto NPM along with plugin system by @ponderingdemocritus in https://github.com/ai16z/eliza/pull/214

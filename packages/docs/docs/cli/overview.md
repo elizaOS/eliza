@@ -15,7 +15,7 @@ The ElizaOS Command Line Interface (CLI) provides a comprehensive set of tools t
 Install the ElizaOS CLI globally using npm:
 
 ```bash
-npm install -g @elizaos/cli@beta
+npm install -g @elizaos/cli
 ```
 
 Or use it directly with npx:
@@ -88,7 +88,7 @@ For a complete guide to getting started with ElizaOS, see the [Quickstart Guide]
 
 ## Quick Start
 
-> Note: This assumes you installed the CLI tool (`npm install -g @elizaos/cli@beta`)
+> Note: This assumes you installed the CLI tool (`npm install -g @elizaos/cli`)
 
 ### Creating a new project
 
