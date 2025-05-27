@@ -2153,11 +2153,14 @@ export function createMessageMemory(params: {
  * @template ConfigType The configuration type for this service
  * @template ResultType The result type returned by the service operations
  */
-export interface TypedService<ConfigType = unknown, ResultType = unknown> extends Service {
+export interface TypedService<
+  ConfigType extends { [key: string]: any } = { [key: string]: any },
+  ResultType = unknown,
+> extends Service {
   /**
    * The configuration for this service instance
    */
-  config: ConfigType;
+  config?: ConfigType;
 
   /**
    * Process an input with this service
