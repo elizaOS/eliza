@@ -15,7 +15,7 @@ import { RawRegistry, VersionInfo } from '../types/plugins';
 // Constants & helpers
 /*───────────────────────────────────────────────────────────────────────────*/
 
-const REGISTRY_URL = 'https://github.com/elizaos-plugins/registry/raw/main/index.json';
+import { REGISTRY_URL } from './registry/constants';
 const GH_TOKEN = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
 const octokit = new Octokit({ auth: GH_TOKEN || undefined });
 const hasAuth = Boolean(GH_TOKEN);

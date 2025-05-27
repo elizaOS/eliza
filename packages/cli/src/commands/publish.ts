@@ -12,6 +12,7 @@ import {
   saveRegistrySettings,
   validateDataDir,
 } from '@/src/utils/registry/index';
+import { REGISTRY_REPO, REGISTRY_GITHUB_URL } from '@/src/utils/registry/constants';
 import { Command } from 'commander';
 import { execa } from 'execa';
 import { promises as fs } from 'node:fs';
@@ -22,7 +23,6 @@ import prompts from 'prompts';
 import { performCliUpdate } from './update';
 
 // Registry integration constants
-const REGISTRY_REPO = 'elizaos/registry';
 const REGISTRY_PACKAGES_PATH = 'packages';
 const LOCAL_REGISTRY_PATH = 'packages/registry';
 
@@ -859,7 +859,7 @@ export const publish = new Command()
             // For npm publishing, we need to use the npm-specific publishing flow
             console.warn('NPM publishing currently does not update the registry.');
             console.info('To include this package in the registry:');
-            console.info('1. Fork the registry repository at https://github.com/elizaos/registry');
+            console.info(`1. Fork the registry repository at ${REGISTRY_GITHUB_URL}`);
             console.info('2. Add your package metadata');
             console.info('3. Submit a pull request to the main repository');
           }
@@ -867,7 +867,7 @@ export const publish = new Command()
           // For non-maintainers, just show a message about how to request inclusion
           console.info("Package published, but you're not a maintainer of this package.");
           console.info('To include this package in the registry, please:');
-          console.info('1. Fork the registry repository at https://github.com/elizaos/registry');
+          console.info(`1. Fork the registry repository at ${REGISTRY_GITHUB_URL}`);
           console.info('2. Add your package metadata');
           console.info('3. Submit a pull request to the main repository');
         }
