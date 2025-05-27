@@ -43,7 +43,7 @@ jobs:
       - name: Create .env file for tests
         run: |
           echo "OPENAI_API_KEY=$OPENAI_API_KEY" > .env
-          echo "TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN" > .env
+          echo "TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN" >> .env
           echo "LOG_LEVEL=info" >> .env
 
       - name: Build packages
