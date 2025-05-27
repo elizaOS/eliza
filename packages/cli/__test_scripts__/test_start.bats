@@ -23,8 +23,8 @@ setup() {
 
   # Use the dist build that sits next to the tests unless caller overrides.
   # Source common utilities
-source "$BATS_TEST_DIRNAME/common.sh"
-setup_elizaos_cmd
+  source "$BATS_TEST_DIRNAME/common.sh"
+  setup_elizaos_cmd
 
   # Make PORT + model envs explicit.
   export LOCAL_SMALL_MODEL="DeepHermes-3-Llama-3-3B-Preview-q4.gguf"

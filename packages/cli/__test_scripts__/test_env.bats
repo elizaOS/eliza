@@ -12,8 +12,8 @@ setup() {
   cd "$TEST_TMP_DIR"
 
   # Source common utilities
-source "$BATS_TEST_DIRNAME/common.sh"
-setup_elizaos_cmd
+  source "$BATS_TEST_DIRNAME/common.sh"
+  setup_elizaos_cmd
 }
 
 teardown() {

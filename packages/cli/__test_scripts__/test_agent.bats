@@ -29,8 +29,8 @@ setup_file() {
 
   # Resolve CLI path; allow caller to override ELIZAOS_CMD.
   # Source common utilities
-source "$BATS_TEST_DIRNAME/common.sh"
-setup_elizaos_cmd
+  source "$BATS_TEST_DIRNAME/common.sh"
+  setup_elizaos_cmd
 
   # ---------------------------------------------------------------------------
   # Launch the server under test.

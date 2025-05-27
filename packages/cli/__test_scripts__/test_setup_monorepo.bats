@@ -13,8 +13,8 @@ setup() {
 
   # Resolve CLI path (allow override via ELIZAOS_CMD env).
   # Source common utilities
-source "$BATS_TEST_DIRNAME/common.sh"
-setup_elizaos_cmd
+  source "$BATS_TEST_DIRNAME/common.sh"
+  setup_elizaos_cmd
 
   # ---------------------------------------------------------------------------
   # Fake git implementation that records its argv and creates a dummy repo.

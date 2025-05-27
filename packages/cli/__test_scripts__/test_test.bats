@@ -12,8 +12,8 @@ setup() {
 
   # Point to the built CLI bundle unless caller overrides.
   # Source common utilities
-source "$BATS_TEST_DIRNAME/common.sh"
-setup_elizaos_cmd
+  source "$BATS_TEST_DIRNAME/common.sh"
+  setup_elizaos_cmd
 }
 
 teardown() {

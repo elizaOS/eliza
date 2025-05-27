@@ -21,8 +21,8 @@ setup() {
 
   # Resolve the CLI entry point we exercise in this suite.
   # Source common utilities
-source "$BATS_TEST_DIRNAME/common.sh"
-setup_elizaos_cmd
+  source "$BATS_TEST_DIRNAME/common.sh"
+  setup_elizaos_cmd
 
   cd "$TEST_TMP_DIR"
 
