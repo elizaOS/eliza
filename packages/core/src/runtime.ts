@@ -119,6 +119,11 @@ export class AgentRuntime implements IAgentRuntime {
   private sendHandlers = new Map<string, SendHandlerFunction>();
   private eventHandlers: Map<string, ((data: any) => void)[]> = new Map();
 
+  // A map of all plugins available to the runtime, keyed by name, for dependency resolution.
+  private allAvailablePlugins = new Map<string, Plugin>();
+  // The initial list of plugins specified by the character configuration.
+  private characterPlugins: Plugin[] = [];
+
   public logger;
   private settings: RuntimeSettings;
   private servicesInitQueue = new Set<typeof Service>();
@@ -134,6 +139,7 @@ export class AgentRuntime implements IAgentRuntime {
     adapter?: IDatabaseAdapter;
     settings?: RuntimeSettings;
     events?: { [key: string]: ((params: any) => void)[] };
+    allAvailablePlugins?: Plugin[];
   }) {
     this.agentId =
       opts.character?.id ??
@@ -156,8 +162,18 @@ export class AgentRuntime implements IAgentRuntime {
     }
     this.fetch = (opts.fetch as typeof fetch) ?? this.fetch;
     this.settings = opts.settings ?? environmentSettings;
-    const plugins = opts?.plugins ?? [];
-    this.plugins = plugins;
+
+    this.plugins = []; // Initialize plugins as an empty array
+    this.characterPlugins = opts?.plugins ?? []; // Store the original character plugins
+
+    if (opts.allAvailablePlugins) {
+      for (const plugin of opts.allAvailablePlugins) {
+        if (plugin?.name) {
+          this.allAvailablePlugins.set(plugin.name, plugin);
+        }
+      }
+    }
+
     if (process.env.INSTRUMENTATION_ENABLED === 'true') {
       try {
         this.instrumentationService = new InstrumentationService({
@@ -260,16 +276,30 @@ export class AgentRuntime implements IAgentRuntime {
         'plugin.name': plugin?.name || 'unknown',
         'agent.id': this.agentId,
       });
-      if (!plugin) {
-        span.setStatus({ code: SpanStatusCode.ERROR, message: 'Plugin is undefined' });
-        this.logger.error('*** registerPlugin plugin is undefined');
-        throw new Error('*** registerPlugin plugin is undefined');
+      if (!plugin?.name) {
+        // Ensure plugin and plugin.name are defined
+        const errorMsg = 'Plugin or plugin name is undefined';
+        span.setStatus({ code: SpanStatusCode.ERROR, message: errorMsg });
+        this.logger.error(`*** registerPlugin: ${errorMsg}`);
+        throw new Error(`*** registerPlugin: ${errorMsg}`);
       }
-      if (!this.plugins.some((p) => p.name === plugin.name)) {
-        (this.plugins as Plugin[]).push(plugin);
-        span.addEvent('plugin_added_to_array');
-        this.logger.debug(`Success: Plugin ${plugin.name} registered successfully`);
+
+      // Check if a plugin with the same name is already registered.
+      if (this.plugins.some((p) => p.name === plugin.name)) {
+        this.logger.warn(
+          `${this.character.name}(${this.agentId}) - Plugin ${plugin.name} is already registered. Skipping re-registration.`
+        );
+        span.addEvent('plugin_already_registered_skipped');
+        return; // Do not proceed further
       }
+
+      // Add the plugin to the runtime's list of active plugins
+      (this.plugins as Plugin[]).push(plugin);
+      span.addEvent('plugin_added_to_active_list');
+      this.logger.debug(
+        `Success: Plugin ${plugin.name} added to active plugins for ${this.character.name}(${this.agentId}).`
+      );
+
       if (plugin.init) {
         try {
           span.addEvent('initializing_plugin');
@@ -362,6 +392,88 @@ export class AgentRuntime implements IAgentRuntime {
     });
   }
 
+  private async resolvePluginDependencies(characterPlugins: Plugin[]): Promise<Plugin[]> {
+    const resolvedPlugins = new Map<string, Plugin>();
+    const visited = new Set<string>();
+    const recursionStack = new Set<string>();
+    const finalPluginList: Plugin[] = [];
+
+    // First, add all character-specified plugins to resolvedPlugins to prioritize them.
+    for (const plugin of characterPlugins) {
+      if (plugin?.name) {
+        resolvedPlugins.set(plugin.name, plugin);
+      }
+    }
+
+    const resolve = async (pluginName: string) => {
+      if (recursionStack.has(pluginName)) {
+        this.logger.error(
+          `Circular dependency detected: ${Array.from(recursionStack).join(' -> ')} -> ${pluginName}`
+        );
+        throw new Error(`Circular dependency detected involving plugin: ${pluginName}`);
+      }
+      if (visited.has(pluginName)) {
+        return;
+      }
+
+      visited.add(pluginName);
+      recursionStack.add(pluginName);
+
+      let plugin = resolvedPlugins.get(pluginName); // Check if it's a character-specified plugin first
+      if (!plugin) {
+        plugin = this.allAvailablePlugins.get(pluginName); // Fallback to allAvailablePlugins
+      }
+
+      if (!plugin) {
+        this.logger.warn(
+          `Dependency plugin "${pluginName}" not found in allAvailablePlugins. Skipping.`
+        );
+        recursionStack.delete(pluginName);
+        return; // Or throw an error if strict dependency checking is required
+      }
+
+      if (plugin.dependencies) {
+        for (const depName of plugin.dependencies) {
+          await resolve(depName);
+        }
+      }
+
+      recursionStack.delete(pluginName);
+      // Add to final list only if it hasn't been added. This ensures correct order for dependencies.
+      if (!finalPluginList.find((p) => p.name === pluginName)) {
+        finalPluginList.push(plugin);
+        // Ensure the resolvedPlugins map contains the instance we are actually going to use.
+        // This is important if a dependency was loaded from allAvailablePlugins but was also a character plugin.
+        // The character plugin (already in resolvedPlugins) should be the one used.
+        if (!resolvedPlugins.has(pluginName)) {
+          resolvedPlugins.set(pluginName, plugin);
+        }
+      }
+    };
+
+    // Resolve dependencies for all character-specified plugins.
+    for (const plugin of characterPlugins) {
+      if (plugin?.name) {
+        await resolve(plugin.name);
+      }
+    }
+
+    // The finalPluginList is now topologically sorted.
+    // We also need to ensure that any plugin in characterPlugins that was *not* a dependency of another characterPlugin
+    // is also included, maintaining its original instance.
+    const finalSet = new Map<string, Plugin>();
+    finalPluginList.forEach((p) => finalSet.set(p.name, resolvedPlugins.get(p.name)!));
+    characterPlugins.forEach((p) => {
+      if (p?.name && !finalSet.has(p.name)) {
+        // This handles cases where a character plugin has no dependencies and wasn't pulled in as one.
+        // It should be added to the end, or merged based on priority if that's a requirement (not implemented here).
+        finalSet.set(p.name, p);
+      }
+    });
+
+    return Array.from(finalSet.values());
+  }
+
   getAllServices(): Map<ServiceTypeName, Service> {
     return this.services;
   }
@@ -397,12 +509,23 @@ export class AgentRuntime implements IAgentRuntime {
         return;
       }
       span.addEvent('initialization_started');
-      const registeredPluginNames = new Set<string>();
+      const registeredPluginNames = new Set<string>(); // This can be removed if registerPlugin handles duplicates
       const pluginRegistrationPromises = [];
-      const initialPlugins = [...this.plugins];
-      for (const plugin of initialPlugins) {
-        if (plugin && !registeredPluginNames.has(plugin.name)) {
-          registeredPluginNames.add(plugin.name);
+
+      // Resolve plugin dependencies and get the final list of plugins to load
+      const pluginsToLoad = await this.resolvePluginDependencies(this.characterPlugins);
+      // (this.plugins as Plugin[]) = pluginsToLoad; // This line is removed. this.plugins will be built by registerPlugin calls.
+      span.setAttributes({ 'plugins.resolved_count': pluginsToLoad.length });
+
+      for (const plugin of pluginsToLoad) {
+        // Iterate over the resolved list
+        // The check for registeredPluginNames can be removed if registerPlugin handles its own idempotency by name.
+        // if (plugin && !registeredPluginNames.has(plugin.name)) {
+        //   registeredPluginNames.add(plugin.name);
+        //   pluginRegistrationPromises.push(this.registerPlugin(plugin));
+        // }
+        if (plugin) {
+          // Ensure plugin is not null/undefined
           pluginRegistrationPromises.push(this.registerPlugin(plugin));
         }
       }
