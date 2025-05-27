@@ -331,9 +331,11 @@ validate_package_json() {
 # -----------------------------------------------------------------------------
 @test "publish --help shows usage" {
   run $ELIZAOS_CMD publish --help
+  echo "Status: $status"
+  echo "Output: $output"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Usage: elizaos publish"* ]]
-  [[ "$output" == *"Publish a plugin to the registry"* ]]
+  [[ "$output" == *"Publish a plugin to npm, GitHub, and the registry"* ]]
   [[ "$output" == *"--npm"* ]]
   [[ "$output" == *"--test"* ]]
   [[ "$output" == *"--dry-run"* ]]
