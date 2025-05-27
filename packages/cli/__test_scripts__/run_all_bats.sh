@@ -4,6 +4,9 @@
 
 set -e
 
+# Set IS_NPM_TEST based on environment or default to false for local builds
+export IS_NPM_TEST="${IS_NPM_TEST:-false}"
+
 BATS_BIN="$(command -v bats || true)"
 
 if [ -z "$BATS_BIN" ]; then
