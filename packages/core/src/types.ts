@@ -728,6 +728,8 @@ export interface Plugin {
   routes?: Route[];
   tests?: TestSuite[];
 
+  dependencies?: string[]; // Names of plugins this plugin depends on
+
   priority?: number;
 }
 

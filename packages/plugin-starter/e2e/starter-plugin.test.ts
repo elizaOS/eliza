@@ -1,5 +1,5 @@
-import { starterPlugin } from '../src/index';
-import { Content as CoreContent, HandlerCallback } from '@elizaos/core';
+import { starterPlugin } from '../dist/index.js';
+import { type Content, type HandlerCallback } from '@elizaos/core';
 
 // Define a minimal TestSuite interface that matches what's needed
 interface TestSuite {
@@ -30,17 +30,11 @@ interface State {
   text: string;
 }
 
-interface Content {
-  text: string;
-  source?: string;
-  actions?: string[];
-}
+export const StarterPluginTestSuite: TestSuite = {
+  name: 'plugin_starter_test_suite',
+  description: 'E2E tests for the starter plugin',
 
-export class StarterPluginTestSuite implements TestSuite {
-  name = 'plugin_starter_test_suite';
-  description = 'E2E tests for the starter plugin';
-
-  tests = [
+  tests: [
     {
       name: 'example_test',
       fn: async (runtime) => {
@@ -97,7 +91,7 @@ export class StarterPluginTestSuite implements TestSuite {
         }
 
         // Create a callback that meets the HandlerCallback interface
-        const callback: HandlerCallback = async (response: CoreContent) => {
+        const callback: HandlerCallback = async (response: Content) => {
           if (response.text && response.actions?.includes('HELLO_WORLD')) {
             responseReceived = true;
           }
@@ -170,8 +164,8 @@ export class StarterPluginTestSuite implements TestSuite {
         await service.stop();
       },
     },
-  ];
-}
+  ],
+};
 
 // Export a default instance of the test suite for the E2E test runner
-export default new StarterPluginTestSuite();
+export default StarterPluginTestSuite;
