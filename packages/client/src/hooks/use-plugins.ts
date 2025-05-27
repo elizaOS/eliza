@@ -1,5 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 
+// Registry configuration - centralized for maintainability
+const REGISTRY_ORG = 'elizaos-plugins';
+const REGISTRY_REPO = 'registry';
+const REGISTRY_URL = `https://raw.githubusercontent.com/${REGISTRY_ORG}/${REGISTRY_REPO}/refs/heads/main/index.json`;
+
 /**
  * Function to fetch plugins data from the registry API.
  * @returns {Object} A promise representing the result of the fetch request
@@ -9,9 +14,7 @@ export function usePlugins() {
     queryKey: ['plugins'],
     queryFn: async () => {
       // TODO: Temp disabled!
-      // const response = await fetch(
-      //   'https://raw.githubusercontent.com/elizaos/registry/refs/heads/main/index.json'
-      // );
+      // const response = await fetch(REGISTRY_URL);
       // return response.json();
 
       // Temporarily return hardcoded plugins as an array

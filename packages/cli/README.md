@@ -274,7 +274,7 @@ Publishes the current project or plugin.
 
 - **Options:**
   - `--dry-run`: Test run without publishing
-  - `--registry <repo>`: Specify target registry (default: 'elizaOS/registry')
+  - `--registry <repo>`: Specify target registry (default: 'elizaos-plugins/registry')
 
 ## Development Guide
 

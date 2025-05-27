@@ -15,7 +15,7 @@ on:
       registry:
         description: 'Target registry'
         required: false
-        default: 'elizaos/registry'
+        default: 'elizaos-plugins/registry'
         type: string
 
 jobs:
