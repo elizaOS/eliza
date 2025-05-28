@@ -1,11 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { teeStarterPlugin } from '../src/plugin';
+import teeStarterPlugin from '../src/plugin';
 
 describe('Plugin Configuration', () => {
   it('should not have custom configuration (relies on character settings)', () => {
-    // Our simplified plugin doesn't define custom config
-    expect(teeStarterPlugin.config).toBeUndefined();
-    expect(teeStarterPlugin.init).toBeUndefined();
+    // Our plugin has config properties for TEE_MODE and WALLET_SECRET_SALT
+    expect(teeStarterPlugin.config).toBeDefined();
+    expect(teeStarterPlugin.config?.TEE_MODE).toBe(process.env.TEE_MODE);
+    expect(teeStarterPlugin.config?.WALLET_SECRET_SALT).toBe(process.env.WALLET_SECRET_SALT);
+    expect(teeStarterPlugin.init).toBeDefined();
   });
 
   it('should have correct plugin metadata', () => {
@@ -17,10 +19,13 @@ describe('Plugin Configuration', () => {
   });
 
   it('should be a minimal plugin focused on character definition', () => {
-    // Verify all arrays are empty
+    // Verify arrays exist but are empty (except routes and events)
     expect(teeStarterPlugin.actions).toEqual([]);
     expect(teeStarterPlugin.providers).toEqual([]);
-    expect(teeStarterPlugin.evaluators).toEqual([]);
+    expect(teeStarterPlugin.evaluators).toBeUndefined();
     expect(teeStarterPlugin.services).toEqual([]);
+    expect(teeStarterPlugin.routes).toBeDefined();
+    expect(teeStarterPlugin.routes?.length).toBeGreaterThan(0);
+    expect(teeStarterPlugin.events).toBeDefined();
   });
 });

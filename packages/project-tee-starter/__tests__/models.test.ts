@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { teeStarterPlugin } from '../src/plugin';
+import teeStarterPlugin from '../src/plugin';
 
 describe('Plugin Models', () => {
   it('should not have custom models (using plugin-tee and other plugins for model handling)', () => {
@@ -15,7 +15,8 @@ describe('Plugin Models', () => {
       "Mr. TEE's starter plugin - using plugin-tee for attestation"
     );
 
-    // Models are provided by other plugins in the character configuration
-    // like @elizaos/plugin-openai
+    // Model functionality comes from character plugins
+    expect(teeStarterPlugin.actions).toEqual([]);
+    expect(teeStarterPlugin.providers).toEqual([]);
   });
 });
