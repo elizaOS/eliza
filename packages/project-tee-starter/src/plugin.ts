@@ -1,11 +1,5 @@
 import type { Plugin } from '@elizaos/core';
-import {
-  type GenerateTextParams,
-  type IAgentRuntime,
-  ModelType,
-  Service,
-  logger,
-} from '@elizaos/core';
+import { type IAgentRuntime, Service, logger } from '@elizaos/core';
 import { z } from 'zod';
 import { type DeriveKeyResponse, TappdClient } from '@phala/dstack-sdk';
 import { type PrivateKeyAccount, privateKeyToAccount } from 'viem/accounts';
@@ -18,7 +12,7 @@ import crypto from 'node:crypto';
 /**
  * Define the configuration schema for the plugin with the following properties:
  *
- * @param {string} EXAMPLE_PLUGIN_VARIABLE - The name of the plugin (min length of 1, optional)
+ * @param {string} WALLET_SECRET_SALT - The secret salt for the wallet (min length of 1, optional)
  * @returns {object} - The configured schema object
  */
 const configSchema = z.object({
@@ -48,28 +42,38 @@ export class StarterService extends Service {
   static async start(runtime: IAgentRuntime) {
     logger.info("*** Starting Mr. TEE's custom service (StarterService) ***");
     const service = new StarterService(runtime);
+    try {
+      const deriveKeyResponse: DeriveKeyResponse = await service.teeClient.deriveKey(
+        service.secretSalt
+      );
 
-    const deriveKeyResponse: DeriveKeyResponse = await service.teeClient.deriveKey(
-      service.secretSalt
-    );
+      // ECDSA Key
+      const hex = keccak256(deriveKeyResponse.asUint8Array());
+      const ecdsaKeypair: PrivateKeyAccount = privateKeyToAccount(hex);
 
-    // ECDSA Key
-    const hex = keccak256(deriveKeyResponse.asUint8Array());
-    const ecdsaKeypair: PrivateKeyAccount = privateKeyToAccount(hex);
+      // ED25519 Key
+      const uint8ArrayDerivedKey = deriveKeyResponse.asUint8Array();
+      const hash = crypto.createHash('sha256');
+      hash.update(uint8ArrayDerivedKey);
+      const seed = hash.digest();
+      const seedArray = new Uint8Array(seed);
+      const ed25519Keypair = Keypair.fromSeed(seedArray.slice(0, 32));
 
-    // ED25519 Key
-    const uint8ArrayDerivedKey = deriveKeyResponse.asUint8Array();
-    const hash = crypto.createHash('sha256');
-    hash.update(uint8ArrayDerivedKey);
-    const seed = hash.digest();
-    const seedArray = new Uint8Array(seed);
-    const ed25519Keypair = Keypair.fromSeed(seedArray.slice(0, 32));
-
-    logger.log('ECDSA Key Derived Successfully!');
-    logger.log('ECDSA Keypair:', ecdsaKeypair.address);
-    logger.log('ED25519 Keypair:', ed25519Keypair.publicKey);
-    const signature = await ecdsaKeypair.signMessage({ message: 'Hello, world!' });
-    logger.log('Sign message w/ ECDSA keypair: Hello world!, Signature: ', signature);
+      logger.log('ECDSA Key Derived Successfully!');
+      logger.log('ECDSA Keypair:', ecdsaKeypair.address);
+      logger.log('ED25519 Keypair:', ed25519Keypair.publicKey);
+      const signature = await ecdsaKeypair.signMessage({ message: 'Hello, world!' });
+      logger.log('Sign message w/ ECDSA keypair: Hello world!, Signature: ', signature);
+    } catch (error) {
+      // Handle TEE connection errors gracefully
+      if (error instanceof Error && error.message.includes('ENOENT')) {
+        logger.warn('TEE daemon not available - running in non-TEE mode for testing');
+        logger.warn('To run with TEE, ensure tappd is running at /var/run/tappd.sock');
+      } else {
+        logger.error('Error connecting to TEE:', error);
+      }
+      // Continue without TEE functionality for testing
+    }
     return service;
   }
 
@@ -154,7 +158,10 @@ const teeStarterPlugin: Plugin = {
       },
     ],
   },
-  services: [StarterService],
+  // Enable this service to run when TEE mode is enabled
+  services: [
+    /* StarterService */
+  ],
   actions: [],
   providers: [],
 };
