@@ -3,11 +3,11 @@ import { displayBanner as showBanner } from '@/src/utils';
 import { Command } from 'commander';
 import { execa } from 'execa';
 import { existsSync, readFileSync } from 'node:fs';
-import fs from 'node:fs/promises';
-import path, { dirname } from 'node:path';
+import { promises as fs } from 'node:fs';
+import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import prompts from 'prompts';
-import semver from 'semver';
+import * as semver from 'semver';
 import {
   isGlobalInstallation,
   isRunningViaNpx,
@@ -15,12 +15,18 @@ import {
   executeInstallation,
 } from '@/src/utils';
 import { logger } from '@elizaos/core';
+import {
+  detectDirectoryType,
+  getDirectoryTypeDescription,
+  isValidForUpdates,
+  type DirectoryInfo,
+} from '../utils/directory-detection';
 
 // Function to get the package version
 function getVersion(): string {
   // For ESM modules we need to use import.meta.url instead of __dirname
   const __filename = fileURLToPath(import.meta.url);
-  const __dirname = dirname(__filename);
+  const __dirname = path.dirname(__filename);
 
   // Find package.json relative to the current file
   const packageJsonPath = path.resolve(__dirname, '../package.json');
@@ -336,29 +342,6 @@ async function updateDependencies(
 }
 
 /**
- * Check if the current directory is likely a plugin directory
- */
-function checkIfPluginDir(dir: string): boolean {
-  const packageJsonPath = path.join(dir, 'package.json');
-  if (!existsSync(packageJsonPath)) {
-    return false;
-  }
-
-  try {
-    const packageJsonContent = readFileSync(packageJsonPath, 'utf8');
-    const packageJson = JSON.parse(packageJsonContent);
-    if (packageJson.name?.startsWith('@elizaos/plugin-')) {
-      return true;
-    }
-
-    const keywords = packageJson.keywords || [];
-    return keywords.includes('elizaos-plugin');
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Updates the CLI to the latest version based on the most recently published version
  * @returns {Promise<boolean>} Whether the update was successful
  */
@@ -507,9 +490,70 @@ export const update = new Command()
       if (updatePackages) {
         const cwd = process.cwd();
 
-        // Determine if we're in a project or plugin directory
-        const isPlugin = checkIfPluginDir(cwd);
-        console.info(`Detected ${isPlugin ? 'plugin' : 'project'} directory`);
+        // Detect directory type using comprehensive detection
+        const directoryInfo = detectDirectoryType(cwd);
+        const directoryDescription = getDirectoryTypeDescription(directoryInfo);
+
+        console.info(`Detected ${directoryDescription}`);
+
+        // Check if this directory is suitable for updates
+        if (!isValidForUpdates(directoryInfo)) {
+          switch (directoryInfo.type) {
+            case 'empty':
+              console.info('This appears to be an empty directory.');
+              console.info('To create a new ElizaOS project or plugin, use:');
+              console.info(
+                '  elizaos create <project-name>                    # Create a new project'
+              );
+              console.info(
+                '  elizaos create -t plugin <plugin-name>          # Create a new plugin'
+              );
+              return;
+
+            case 'non-elizaos-project':
+              console.info(
+                "This directory contains a project, but it doesn't appear to be an ElizaOS project."
+              );
+              if (directoryInfo.packageName) {
+                console.info(`Found package: ${directoryInfo.packageName}`);
+              }
+              console.info('ElizaOS update only works in ElizaOS projects and plugins.');
+              console.info('To create a new ElizaOS project, use: elizaos create <project-name>');
+              return;
+
+            case 'invalid':
+              console.error('Cannot update packages in this directory.');
+              if (!directoryInfo.hasPackageJson) {
+                console.info(
+                  "No package.json found. This doesn't appear to be a valid project directory."
+                );
+                console.info('To create a new ElizaOS project, use: elizaos create <project-name>');
+              } else {
+                console.info('The package.json file appears to be invalid or unreadable.');
+              }
+              return;
+
+            default:
+              console.error(`Unexpected directory type: ${directoryInfo.type}`);
+              return;
+          }
+        }
+
+        // If we get here, it's a valid ElizaOS project or plugin
+        const isPlugin = directoryInfo.type === 'elizaos-plugin';
+
+        if (directoryInfo.elizaPackageCount === 0) {
+          console.info('No ElizaOS packages found in this project.');
+          console.info(
+            "This might be a new project that hasn't installed ElizaOS dependencies yet."
+          );
+          console.info('Consider adding ElizaOS packages first, such as: bun add @elizaos/core');
+          return;
+        }
+
+        console.info(
+          `Found ${directoryInfo.elizaPackageCount} ElizaOS package(s) to check for updates`
+        );
 
         // Always call updateDependencies, passing the check flag to determine if it's a dry run
         await updateDependencies(cwd, isPlugin, options.check || false, options.skipBuild || false);
