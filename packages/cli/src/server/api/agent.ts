@@ -2039,12 +2039,20 @@ export function agentRouter(
             `[MEDIA UPLOAD] Uploading ${currentFileSizeMB.toFixed(2)}MB to Catbox with ${timeoutMs / 1000}s timeout`
           );
 
-          const response = await axios.post('https://catbox.moe/user/api.php', form, {
-            headers: form.getHeaders(),
+          // Next.js proxy URL for Catbox.moe
+          const catboxApiUrl = 'https://vercel-api-psi.vercel.app/api/catbox';
+
+          const requestConfig: any = {
             timeout: timeoutMs,
             maxContentLength: Infinity,
             maxBodyLength: Infinity,
-          });
+          };
+
+          const response = await axios.post(
+            `${catboxApiUrl}?timeout=${timeoutMs}`,
+            form,
+            requestConfig
+          );
 
           const catboxUrl = response.data.trim();
 
