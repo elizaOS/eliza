@@ -27,6 +27,9 @@ import {
 import express from 'express';
 import fs from 'node:fs';
 
+// Cache for compiled regular expressions to improve performance
+const regexCache = new Map<string, RegExp>();
+
 // Utility functions for response handling
 const sendError = (
   res: express.Response,
@@ -465,7 +468,12 @@ export function agentRouter(
                     // Parameterized route like /documents/:knowledgeId
                     // Convert Express-style route to regex pattern
                     const regexPattern = r.path.replace(/:([^/]+)/g, '([^/]+)');
-                    const regex = new RegExp(`^${regexPattern}$`);
+
+                    // Use cached regex or create and cache a new one
+                    if (!regexCache.has(r.path)) {
+                      regexCache.set(r.path, new RegExp(`^${regexPattern}$`));
+                    }
+                    const regex = regexCache.get(r.path)!;
 
                     if (regex.test(path)) {
                       logger.debug(`Calling parameterized plugin route: ${r.path} for ${path}`);
