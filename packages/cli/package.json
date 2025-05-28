@@ -82,6 +82,7 @@
     "@elizaos/plugin-sql": "^1.0.0-beta",
     "@noble/curves": "^1.6.0",
     "@types/express": "^5.0.2",
+    "@types/multer": "^1.4.12",
     "bun": "^1.2.13",
     "chokidar": "^4.0.3",
     "execa": "^7.0.0",
