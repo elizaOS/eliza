@@ -10,6 +10,16 @@ export interface DirectoryInfo {
   elizaPackageCount: number;
 }
 
+interface PackageJson {
+  name?: string;
+  keywords?: string[];
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+  eliza?: {
+    type?: string;
+  };
+}
+
 /**
  * Detects the type of directory and provides comprehensive information about it
  * @param dir The directory path to analyze
@@ -53,7 +63,7 @@ export function detectDirectoryType(dir: string): DirectoryInfo {
   }
 
   // Parse package.json
-  let packageJson: any;
+  let packageJson: PackageJson;
   try {
     const packageJsonContent = fs.readFileSync(packageJsonPath, 'utf8');
     packageJson = JSON.parse(packageJsonContent);
@@ -98,20 +108,15 @@ export function detectDirectoryType(dir: string): DirectoryInfo {
 /**
  * Checks if a package.json indicates an ElizaOS plugin
  */
-function isElizaOSPlugin(packageJson: any): boolean {
-  // Check explicit type declaration
-  if (packageJson.eliza?.type === 'plugin') {
+function isElizaOSPlugin(packageJson: PackageJson): boolean {
+  // Check keywords (primary detection method)
+  const keywords = packageJson.keywords || [];
+  if (keywords.includes('plugin')) {
     return true;
   }
 
   // Check package name patterns
   if (packageJson.name?.startsWith('@elizaos/plugin-') || packageJson.name?.includes('plugin-')) {
-    return true;
-  }
-
-  // Check keywords
-  const keywords = packageJson.keywords || [];
-  if (keywords.includes('elizaos-plugin') || keywords.includes('eliza-plugin')) {
     return true;
   }
 
@@ -121,20 +126,10 @@ function isElizaOSPlugin(packageJson: any): boolean {
 /**
  * Checks if a package.json and directory structure indicates an ElizaOS project
  */
-function isElizaOSProject(packageJson: any, dir: string): boolean {
-  // Check explicit type declaration
-  if (packageJson.eliza?.type === 'project') {
-    return true;
-  }
-
-  // Check package name patterns
-  if (packageJson.name?.includes('project-') || packageJson.name?.includes('-org')) {
-    return true;
-  }
-
-  // Check keywords
+function isElizaOSProject(packageJson: PackageJson, dir: string): boolean {
+  // Check keywords (primary detection method)
   const keywords = packageJson.keywords || [];
-  if (keywords.includes('elizaos-project') || keywords.includes('eliza-project')) {
+  if (keywords.includes('project')) {
     return true;
   }
 
