@@ -1,0 +1,21 @@
+import { describe, it, expect } from 'vitest';
+import { teeStarterPlugin } from '../src/plugin';
+
+describe('Plugin Models', () => {
+  it('should not have custom models (using plugin-tee and other plugins for model handling)', () => {
+    // Our simplified plugin doesn't define custom models
+    // Model handling is done by other plugins (openai, etc.)
+    expect(teeStarterPlugin.models).toBeUndefined();
+  });
+
+  it('should rely on other plugins for model functionality', () => {
+    // Verify the plugin is configured correctly
+    expect(teeStarterPlugin.name).toBe('mr-tee-starter-plugin');
+    expect(teeStarterPlugin.description).toBe(
+      "Mr. TEE's starter plugin - using plugin-tee for attestation"
+    );
+
+    // Models are provided by other plugins in the character configuration
+    // like @elizaos/plugin-openai
+  });
+});

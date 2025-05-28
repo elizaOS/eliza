@@ -10,7 +10,7 @@ import { execa } from 'execa';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
-import { REGISTRY_URL } from './constants';
+import { REGISTRY_URL, REGISTRY_REPO, RAW_REGISTRY_URL } from './constants';
 
 const ELIZA_DIR = path.join(process.cwd(), '.eliza');
 const REGISTRY_SETTINGS_FILE = path.join(ELIZA_DIR, 'registrysettings.json');
@@ -62,7 +62,7 @@ export async function getRegistrySettings(): Promise<RegistrySettings> {
   } catch (error) {
     // Return default settings if file doesn't exist
     return {
-      defaultRegistry: 'elizaos/registry',
+      defaultRegistry: REGISTRY_REPO,
     };
   }
 }
@@ -193,10 +193,6 @@ const DEFAULT_REGISTRY: Record<string, string> = {
   '@elizaos/plugin-telegram': 'elizaos/plugin-telegram',
   '@elizaos/plugin-twitter': 'elizaos/plugin-twitter',
 };
-
-// Add a new constant for the raw GitHub URL
-const RAW_REGISTRY_URL =
-  'https://raw.githubusercontent.com/elizaOS/registry/refs/heads/main/index.json';
 
 /**
  * Saves the registry index to the cache file
@@ -694,7 +690,7 @@ export async function initializeDataDir(): Promise<void> {
     await fs.access(REGISTRY_SETTINGS_FILE);
   } catch {
     await saveRegistrySettings({
-      defaultRegistry: 'elizaos/registry',
+      defaultRegistry: REGISTRY_REPO,
     });
   }
 }
