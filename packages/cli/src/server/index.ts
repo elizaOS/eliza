@@ -7,7 +7,6 @@ import {
   logger,
   type UUID,
 } from '@elizaos/core';
-import { createDatabaseAdapter } from '@elizaos/plugin-sql';
 import * as bodyParser from 'body-parser';
 import cors from 'cors';
 import express, { Request, Response } from 'express';
@@ -25,6 +24,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { and, desc, eq, lt } from 'drizzle-orm';
 import { drizzle, type PgliteDatabase } from 'drizzle-orm/pglite';
 import { v4 as uuidv4 } from 'uuid';
+import internalMessageBus from './bus';
 import * as centralSchema from './database/schema/central';
 import type {
   CentralMessageChannel,
@@ -32,8 +32,6 @@ import type {
   CentralRootMessage,
   MessageServiceStructure,
 } from './types';
-import { sql } from 'drizzle-orm';
-import internalMessageBus from './bus';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -117,9 +115,7 @@ export class AgentServer {
     try {
       logger.debug('Initializing AgentServer (async operations)...');
 
-      const centralDbPath = options?.dataDir
-        ? path.join(options.dataDir, 'eliza-central.db')
-        : 'data/eliza-central.db';
+      const centralDbPath = './eliza-central.db';
       logger.info(`[INIT] Central DB path: ${centralDbPath}`);
       fs.mkdirSync(path.dirname(centralDbPath), { recursive: true });
 
@@ -137,15 +133,6 @@ export class AgentServer {
 
       const agentDataDir = await resolvePgliteDir(options?.dataDir);
       logger.info(`[INIT] Agent Data Dir for SQL plugin: ${agentDataDir}`);
-      this.database = createDatabaseAdapter(
-        {
-          dataDir: agentDataDir,
-          postgresUrl: options?.postgresUrl,
-        },
-        '00000000-0000-0000-0000-000000000002'
-      ) as DatabaseAdapter;
-      console.log('database is', this.database);
-      await this.database.init();
       logger.success('Agent-specific database initialized successfully');
 
       await this.initializeServer(options);
@@ -628,16 +615,6 @@ export class AgentServer {
           }
         }
 
-        // Close agent's perspective DB
-        if (this.database) {
-          try {
-            await this.database.close();
-            logger.info('Agent perspective database closed.');
-          } catch (error) {
-            logger.error('Error closing agent perspective database:', error);
-          }
-        }
-
         // Close server
         this.server.close(() => {
           logger.success('Server closed successfully');
@@ -668,7 +645,6 @@ export class AgentServer {
   public async stop(): Promise<void> {
     if (this.server) {
       this.server.close(() => {
-        this.database.close();
         logger.success('Server stopped');
       });
     }
