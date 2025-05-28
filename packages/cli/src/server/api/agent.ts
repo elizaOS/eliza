@@ -118,6 +118,40 @@ export function agentRouter(
   const router = express.Router();
   const db = server?.database;
 
+  // Helper function to extract filename from Catbox URLs
+  const extractFilenameFromCatboxUrl = (url: string): string | null => {
+    try {
+      // Handle various Catbox URL formats:
+      // https://files.catbox.moe/abc123.jpg
+      // https://catbox.moe/abc123.jpg
+      // abc123.jpg (just the filename)
+      const patterns = [
+        /https?:\/\/files\.catbox\.moe\/([^\/\?]+)/,
+        /https?:\/\/catbox\.moe\/([^\/\?]+)/,
+        /^([a-zA-Z0-9_\-\.]+\.[a-zA-Z0-9]+)$/,
+      ];
+
+      for (const pattern of patterns) {
+        const match = url.match(pattern);
+        if (match && match[1]) {
+          return match[1];
+        }
+      }
+
+      // Fallback: try to extract from the end of any URL
+      const parts = url.split('/');
+      const lastPart = parts[parts.length - 1];
+      if (lastPart && lastPart.includes('.')) {
+        return lastPart.split('?')[0]; // Remove query parameters if any
+      }
+
+      return null;
+    } catch (error) {
+      logger.error('[FILENAME EXTRACT] Error extracting filename from URL:', error);
+      return null;
+    }
+  };
+
   // Get all worlds
   router.get('/worlds', async (req, res) => {
     try {
@@ -2039,7 +2073,7 @@ export function agentRouter(
             `[MEDIA UPLOAD] Uploading ${currentFileSizeMB.toFixed(2)}MB to Catbox with ${timeoutMs / 1000}s timeout`
           );
 
-          // Next.js proxy URL for Catbox.moe
+          // Next.js proxy URL for Catbox.moe upload
           const catboxApiUrl = 'https://vercel-api-psi.vercel.app/api/catbox';
 
           const requestConfig: any = {
@@ -2056,9 +2090,20 @@ export function agentRouter(
 
           const catboxUrl = response.data.trim();
 
-          if (!catboxUrl || !catboxUrl.startsWith('https://files.catbox.moe/')) {
-            throw new Error('Invalid response from Catbox.moe');
+          if (!catboxUrl) {
+            throw new Error('Invalid response from Catbox Proxy API');
           }
+
+          // Extract filename from catbox URL to create our proxy URL
+          // This masks the direct catbox URL behind our API
+          const filename = extractFilenameFromCatboxUrl(catboxUrl);
+          if (!filename) {
+            throw new Error('Could not extract filename from Catbox URL');
+          }
+
+          // Create proxy URL that routes through our bidirectional proxy
+          // Users will access: /api/catbox/filename.ext instead of https://files.catbox.moe/filename.ext
+          const proxyUrl = `${catboxApiUrl}/${filename}`;
 
           // Get file size before cleanup
           const finalFileSize = fs.statSync(processedFilePath).size;
@@ -2069,12 +2114,12 @@ export function agentRouter(
             cleanupFile(processedFilePath);
           }
 
-          logger.info(`[MEDIA UPLOAD] Successfully uploaded image to Catbox: ${catboxUrl}`);
+          logger.info(`[MEDIA UPLOAD] Serving via proxy URL: ${proxyUrl}`);
 
           res.json({
             success: true,
             data: {
-              url: catboxUrl,
+              url: proxyUrl, // Return proxy URL instead of direct catbox URL
               type: 'image',
               filename: mediaFile.filename,
               originalName: mediaFile.originalname,
