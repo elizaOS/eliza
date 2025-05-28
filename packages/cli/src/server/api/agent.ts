@@ -106,10 +106,10 @@ interface CustomRequest extends express.Request {
  */
 export function agentRouter(
   agents: Map<UUID, IAgentRuntime>,
-  server?: AgentServer
+  serverInstance?: AgentServer
 ): express.Router {
   const router = express.Router();
-  const db = server?.database;
+  const db = serverInstance?.database;
 
   // Get all worlds
   router.get('/worlds', async (req, res) => {
@@ -236,119 +236,97 @@ export function agentRouter(
     }
   });
 
-  // Message handler
+  // Message handler for POST /:agentId/message - REFACTORED for Option A (Central Ingestion)
   const handleAgentMessage = async (req: CustomRequest, res: express.Response) => {
-    logger.debug('[MESSAGES CREATE] Creating new message');
-    const agentId = validateUuid(req.params.agentId);
-    if (!agentId) {
-      sendError(res, 400, 'INVALID_ID', 'Invalid agent ID format');
-      return;
-    }
-
-    // get runtime
-    const runtime = agents.get(agentId);
-    if (!runtime) {
-      sendError(res, 404, 'NOT_FOUND', 'Agent not found');
-      return;
-    }
-
-    const entityId = req.body.entityId as UUID;
-    const roomId = req.body.roomId as UUID;
-    const worldId = (validateUuid(req.query.worldId as string) ||
-      ('00000000-0000-0000-0000-000000000000' as UUID)) as UUID;
-
-    const source = req.body.source;
-    const text = req.body.text.trim();
-
-    const channelType = req.body.channelType;
-    const incomingMessageVirtualId = createUniqueUuid(
-      runtime,
-      `${roomId}-${entityId}-${Date.now()}`
+    logger.debug(
+      '[AGENT DIRECT MESSAGE API] Received message for agent, routing via central store'
     );
+    const targetAgentId = validateUuid(req.params.agentId); // Agent this message is primarily for
+    if (!targetAgentId) {
+      sendError(res, 400, 'INVALID_ID', 'Invalid target agent ID format');
+      return;
+    }
+
+    if (!serverInstance) {
+      sendError(res, 500, 'SERVER_ERROR', 'Central server instance not available');
+      return;
+    }
+
+    const agentRuntime = agents.get(targetAgentId);
+    if (!agentRuntime) {
+      sendError(res, 404, 'NOT_FOUND', 'Target agent runtime not found');
+      return;
+    }
+
+    const {
+      channelId, // GLOBAL central channel ID
+      serverId, // GLOBAL central server ID
+      entityId, // GLOBAL ID of the sender of this message
+      text,
+      userName, // Sender's display name
+      name, // Sender's alternative name
+      source, // Original source platform/type
+      messageId, // Optional: client-provided ID for their original message
+      attachments, // TODO: How to handle attachments to central store?
+    } = req.body;
+
+    const cleanedText = text?.trim();
+
+    if (!validateUuid(channelId)) {
+      sendError(res, 400, 'BAD_REQUEST', 'Missing or invalid global channelId in request body');
+      return;
+    }
+    if (!validateUuid(serverId)) {
+      sendError(res, 400, 'BAD_REQUEST', 'Missing or invalid global serverId in request body');
+      return;
+    }
+    if (!validateUuid(entityId)) {
+      sendError(res, 400, 'BAD_REQUEST', 'Missing or invalid entityId (sender) in request body');
+      return;
+    }
+    if (!cleanedText) {
+      sendError(res, 400, 'BAD_REQUEST', 'Missing text in request body');
+      return;
+    }
 
     try {
-      await runtime.ensureConnection({
-        entityId,
-        roomId,
-        userName: req.body.userName,
-        name: req.body.name,
-        source: 'api-message',
-        type: ChannelType.API,
-        worldId,
-        worldName: 'api-message',
-      });
-
-      const content: Content = {
-        text,
-        attachments: [],
-        source,
-        inReplyTo: undefined, // Handled by response memory if needed
-        channelType: channelType || ChannelType.API,
-      };
-
-      const userMessageMemory: Memory = {
-        id: incomingMessageVirtualId, // Use a consistent ID for the incoming message
-        entityId,
-        roomId,
-        worldId,
-        agentId: runtime.agentId, // The agent this message is directed to
-        content,
-        createdAt: Date.now(),
-      };
-
-      // Define the callback for sending the HTTP response
-      const apiCallback: HandlerCallback = async (responseContent: Content) => {
-        let sentMemory: Memory | null = null;
-        if (!res.headersSent) {
-          res.status(201).json({
-            success: true,
-            data: {
-              message: responseContent,
-              messageId: userMessageMemory.id,
-              name: runtime.character.name,
-              roomId: req.body.roomId,
-              source,
-            },
-          });
-
-          // Construct Memory for the agent's HTTP response
-          sentMemory = {
-            id: createUniqueUuid(runtime, `api-response-${userMessageMemory.id}-${Date.now()}`),
-            entityId: runtime.agentId, // Agent is the sender
-            agentId: runtime.agentId,
-            content: {
-              ...responseContent,
-              text: responseContent.text || '',
-              inReplyTo: userMessageMemory.id,
-            },
-            roomId: roomId,
-            worldId,
-            createdAt: Date.now(),
-          };
-
-          await runtime.createMemory(sentMemory, 'messages');
-        }
-        return sentMemory ? [sentMemory] : [];
-      };
-
-      // Emit event for message processing
-      await runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
-        runtime,
-        message: userMessageMemory,
-        callback: apiCallback,
-        onComplete: () => {
-          if (!res.headersSent) {
-            logger.warn(
-              '[MESSAGES CREATE] API Callback was not called by a handler. Responding with 204 No Content.'
-            );
-            res.status(204).send(); // Send 204 No Content
-          }
+      const messagePayload = {
+        channelId: channelId as UUID,
+        authorId: entityId as UUID, // The message is authored by this entityId in the central store
+        content: cleanedText,
+        rawMessage: req.body, // Store the original request body as raw_message
+        sourceType: source || 'direct_agent_api',
+        sourceId: messageId, // Optional: original message ID from client
+        metadata: {
+          targetAgentId: targetAgentId, // Good to log which agent this was specifically addressed to via API
+          senderDisplayName: userName || name || `User-${entityId.substring(0, 8)}`,
+          // TODO: Add attachment metadata if attachments are processed and stored centrally
         },
-      });
-    } catch (error) {
-      logger.error('Error processing message:', error.message);
+        // inReplyToRootMessageId can be added if req.body includes it
+      };
+
+      // Use AgentServer's method to create the message in the CENTRAL DB
+      // This method internally should also publish to internalMessageBus
+      const createdCentralMessage = await serverInstance.createCentralMessage(messagePayload);
+
+      sendSuccess(
+        res,
+        {
+          message: `Message submitted to central store and published to message bus. Target agent ${targetAgentId} will process it.`,
+          messageId: createdCentralMessage.id,
+          targetAgentId: targetAgentId,
+          submittedChannelId: channelId,
+        },
+        202
+      ); // 202 Accepted, as processing by agent is async
+    } catch (error: any) {
+      logger.error(
+        '[AGENT DIRECT MESSAGE API] Error processing direct message centrally:',
+        error.message,
+        error.stack
+      );
       if (!res.headersSent) {
-        sendError(res, 500, 'PROCESSING_ERROR', 'Error processing message', error.message);
+        sendError(res, 500, 'PROCESSING_ERROR', 'Error processing direct message', error.message);
       }
     }
   };
@@ -540,10 +518,10 @@ export function agentRouter(
 
       if (characterJson) {
         logger.debug('[AGENT CREATE] Parsing character from JSON');
-        character = await server?.jsonToCharacter(characterJson);
+        character = await serverInstance?.jsonToCharacter(characterJson);
       } else if (characterPath) {
         logger.debug(`[AGENT CREATE] Loading character from path: ${characterPath}`);
-        character = await server?.loadCharacterTryPath(characterPath);
+        character = await serverInstance?.loadCharacterTryPath(characterPath);
       } else {
         throw new Error('No character configuration provided');
       }
@@ -634,9 +612,9 @@ export function agentRouter(
       const isActive = !!agents.get(agentId);
       if (isActive) {
         // stop existing runtime
-        server?.unregisterAgent(agentId);
+        serverInstance?.unregisterAgent(agentId);
         // start new runtime
-        await server?.startAgent(updatedAgent);
+        await serverInstance?.startAgent(updatedAgent);
       }
 
       // Verify agent started successfully
@@ -689,7 +667,7 @@ export function agentRouter(
     }
 
     // stop existing runtime
-    server?.unregisterAgent(agentId);
+    serverInstance?.unregisterAgent(agentId);
 
     // Log success
     logger.debug(`[AGENT STOP] Successfully stopped agent: ${runtime.character.name} (${agentId})`);
@@ -750,7 +728,7 @@ export function agentRouter(
       }
 
       // Start the agent
-      await server?.startAgent(agent);
+      await serverInstance?.startAgent(agent);
 
       // Verify agent started successfully
       const runtime = agents.get(agentId);
@@ -843,7 +821,7 @@ export function agentRouter(
         if (runtime) {
           logger.debug(`[AGENT DELETE] Agent ${agentId} is running, unregistering from server`);
           try {
-            server?.unregisterAgent(agentId);
+            serverInstance?.unregisterAgent(agentId);
             logger.debug(`[AGENT DELETE] Agent ${agentId} unregistered successfully`);
           } catch (stopError) {
             logger.error(`[AGENT DELETE] Error stopping agent ${agentId}:`, stopError);

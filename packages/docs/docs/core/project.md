@@ -83,7 +83,7 @@ Each agent in your project requires a character definition that controls its per
 
 ```typescript
 {
-  name: "agent_name", // Character's display name
+  name: "agentName", // Character's display name
   plugins: ["@elizaos/plugin-discord"], // Example plugins
   settings: {
     // Configuration settings

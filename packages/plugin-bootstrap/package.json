@@ -26,7 +26,13 @@
     "tsup.config.ts"
   ],
   "dependencies": {
-    "@elizaos/core": "^1.0.0-beta.76"
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-anthropic": "^1.0.0-beta.52",
+    "@elizaos/plugin-discord": "^1.0.0-beta.55",
+    "@elizaos/plugin-knowledge": "^1.0.0-beta.73",
+    "@elizaos/plugin-openai": "^1.0.0-beta.72",
+    "@elizaos/plugin-sql": "workspace:*",
+    "@elizaos/plugin-telegram": "^1.0.0-beta.53"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",

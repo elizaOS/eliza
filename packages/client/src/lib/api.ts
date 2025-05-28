@@ -1,31 +1,67 @@
-import type { Agent, Character, UUID, Memory } from '@elizaos/core';
-
-export type AgentWithStatus = Omit<Agent, 'status'> & { status: 'active' | 'inactive' };
-
-// Interface for agent panels (public routes)
-export interface AgentPanel {
-  name: string;
-  path: string;
-}
-
-import { WorldManager } from './world-manager';
+import type { Agent, Character, UUID, Memory as CoreMemory, Room as CoreRoom } from '@elizaos/core';
 import clientLogger from './logger';
 import { connectionStatusActions } from '../context/ConnectionContext';
+import {
+  ServerMessage,
+  MessageServer,
+  MessageChannel,
+  AgentWithStatus,
+  AgentPanel,
+} from '../types';
 
-const API_PREFIX = '/api';
-
-// Key for storing the API key in localStorage, now a function
-const getLocalStorageApiKey = () => `eliza-api-key-${window.location.origin}`;
+// Interface for Memory from @elizaos/core, potentially extended for client needs
+interface ClientMemory extends CoreMemory {
+  // any client-specific extensions to Memory if needed
+}
 
 /**
- * A function that handles fetching data from a specified URL with various options.
- *
- * @param url - The URL to fetch data from.
- * @param method - The HTTP method to use for the request. Defaults to "GET" if not provided.
- * @param body - The data to be sent in the request body. Can be either an object or FormData.
- * @param headers - The headers to include in the request.
- * @returns A Promise that resolves to the response data based on the Content-Type of the response.
+ * Represents a log entry with specific properties.
+ * @typedef {Object} LogEntry
+ * @property {number} level - The level of the log entry.
+ * @property {number} time - The time the log entry was created.
+ * @property {string} msg - The message of the log entry.
+ * @property {string | number | boolean | null | undefined} [key] - Additional key-value pairs for the log entry.
  */
+interface LogEntry {
+  level: number;
+  time: number;
+  msg: string;
+  [key: string]: string | number | boolean | null | undefined;
+}
+
+interface LogResponse {
+  logs: LogEntry[];
+  count: number;
+  total: number;
+  level: string;
+  levels: string[];
+}
+
+type AgentLog = {
+  id?: string;
+  type?: string;
+  timestamp?: number;
+  message?: string;
+  details?: string;
+  roomId?: string;
+  body?: {
+    modelType?: string;
+    modelKey?: string;
+    params?: any;
+    response?: any;
+    usage?: {
+      prompt_tokens?: number;
+      completion_tokens?: number;
+      total_tokens?: number;
+    };
+  };
+  createdAt?: number;
+  [key: string]: any;
+};
+
+const API_PREFIX = '/api';
+const getLocalStorageApiKey = () => `eliza-api-key-${window.location.origin}`;
+
 const fetcher = async ({
   url,
   method,
@@ -37,69 +73,59 @@ const fetcher = async ({
   body?: object | FormData;
   headers?: HeadersInit;
 }) => {
-  // Ensure URL starts with a slash if it's a relative path
   const normalizedUrl = API_PREFIX + (url.startsWith('/') ? url : `/${url}`);
-
   clientLogger.info('API Request:', method || 'GET', normalizedUrl);
-
-  // --- BEGIN Add API Key Header ---
   const storageKey = getLocalStorageApiKey();
   const apiKey = localStorage.getItem(storageKey);
-  const baseHeaders = headers
-    ? { ...headers } // Clone if headers are provided
+  const baseHeaders: HeadersInit = headers
+    ? { ...headers }
     : {
         Accept: 'application/json',
         'Content-Type': 'application/json',
       };
-
   if (apiKey) {
     (baseHeaders as Record<string, string>)['X-API-KEY'] = apiKey;
   }
-  // --- END Add API Key Header ---
-
   const options: RequestInit = {
     method: method ?? 'GET',
-    headers: baseHeaders, // Use the modified headers
-    // Add timeout signal for DELETE operations to prevent hanging
-    signal: method === 'DELETE' ? AbortSignal.timeout(30000) : undefined,
+    headers: baseHeaders,
+    signal: method === 'DELETE' || method === 'POST' ? AbortSignal.timeout(30000) : undefined,
   };
-
   if (method === 'POST' || method === 'PUT' || method === 'PATCH') {
     if (body instanceof FormData) {
+      // Let browser set Content-Type for FormData
       if (options.headers && typeof options.headers === 'object') {
-        // Create new headers object without Content-Type
-        options.headers = Object.fromEntries(
-          Object.entries(options.headers as Record<string, string>).filter(
-            ([key]) => key !== 'Content-Type'
-          )
-        );
+        delete (options.headers as Record<string, string>)['Content-Type'];
       }
       options.body = body;
     } else {
       options.body = JSON.stringify(body);
     }
   }
-
   try {
     const response = await fetch(normalizedUrl, options);
     const contentType = response.headers.get('Content-Type');
 
+    if (response.status === 204) {
+      // No Content
+      return { success: true, data: null }; // Or just return undefined/null based on expected behavior
+    }
+
     if (contentType?.startsWith('audio/')) {
       return await response.blob();
     }
-
     if (!response.ok) {
       const errorText = await response.text();
-
-      clientLogger.error('API Error:', response.status, response.statusText);
+      clientLogger.error('API Error:', response.status, response.statusText, {
+        url: normalizedUrl,
+        options,
+      });
       clientLogger.error('Response:', errorText);
-
       let errorMessage = `${response.status}: ${response.statusText}`;
-      let errorObj: any = {}; // Define errorObj to ensure it's available
+      let errorObj: any = {};
       try {
         errorObj = JSON.parse(errorText);
         errorMessage = errorObj.error?.message || errorObj.message || errorMessage;
-
         if (!errorMessage.includes(response.status.toString())) {
           errorMessage = `${response.status}: ${errorMessage}`;
         }
@@ -110,7 +136,6 @@ const fetcher = async ({
           errorMessage = errorText ? `${response.status}: ${errorText}` : errorMessage;
         }
       }
-
       if (response.status === 401) {
         const unauthorizedMessage =
           errorObj?.error?.message ||
@@ -127,13 +152,11 @@ const fetcher = async ({
       } else if (response.status >= 500) {
         errorMessage = `${errorMessage} - Server error, please check server logs`;
       }
-
       const error = new Error(errorMessage);
       (error as any).statusCode = response.status;
+      (error as any).responseBody = errorObj; // Attach parsed error body if available
       throw error;
     }
-
-    // For successful responses, try to parse as JSON
     if (contentType?.includes('application/json')) {
       try {
         const jsonData = await response.json();
@@ -145,28 +168,27 @@ const fetcher = async ({
           'Response text:',
           text.substring(0, 500) + (text.length > 500 ? '...' : '')
         );
-
         throw new Error('Failed to parse JSON response');
       }
     } else {
-      // For non-JSON responses, return text
-      const textResponse = await response.text();
-      return textResponse;
+      // For non-JSON, non-audio responses, return text (e.g. plain text, HTML if error wasn't caught)
+      return await response.text();
     }
   } catch (error) {
-    // Enhanced error handling with more specific messages
     if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
       clientLogger.error('Network Error:', error);
+      connectionStatusActions.setOfflineStatus(true); // Inform UI about network issue
       throw new Error(
-        'NetworkError: Unable to connect to the server. Please check if the server is running.'
+        'NetworkError: Unable to connect to the server. Please check if the server is running and your internet connection.'
       );
     } else if (error instanceof Error && error.name === 'AbortError') {
       clientLogger.error('Request Timeout:', error);
       throw new Error('RequestTimeout: The request took too long to complete.');
     } else if (error instanceof DOMException && error.name === 'NetworkError') {
-      clientLogger.error('Cross-Origin Error:', error);
+      clientLogger.error('Cross-Origin Error or Network Issue:', error);
+      connectionStatusActions.setOfflineStatus(true);
       throw new Error(
-        'NetworkError: Cross-origin request failed. Please check server CORS settings.'
+        'NetworkError: A network issue occurred. This could be a CORS problem or a general network failure.'
       );
     } else {
       clientLogger.error('Fetch error:', error);
@@ -175,505 +197,222 @@ const fetcher = async ({
   }
 };
 
-// Add these interfaces near the top with other types
-/**
- * Interface representing a log entry.
- * @property {number} level - The log level.
- * @property {number} time - The timestamp of the log entry.
- * @property {string} msg - The log message.
- * @property {string | number | boolean | null | undefined} [key] - Additional properties for the log entry.
- */
-interface LogEntry {
-  level: number;
-  time: number;
-  msg: string;
-  [key: string]: string | number | boolean | null | undefined;
-}
-
-/**
- * Interface representing a log response.
- * @typedef {Object} LogResponse
- * @property {LogEntry[]} logs - Array of log entries.
- * @property {number} count - Number of log entries in the response.
- * @property {number} total - Total number of log entries available.
- * @property {string} level - Log level of the response.
- * @property {string[]} levels - Array of available log levels.
- */
-interface LogResponse {
-  logs: LogEntry[];
-  count: number;
-  total: number;
-  level: string;
-  levels: string[];
-}
-
-interface AgentLog {
-  id?: string;
-  type?: string;
-  timestamp?: number;
-  message?: string;
-  details?: string;
-  roomId?: string;
-  [key: string]: any;
-}
-
-// Interface for agent panels (public routes)
-export interface AgentPanel {
-  name: string;
-  path: string;
-}
-
-/**
- * Library for interacting with the API to perform various actions related to agents, messages, rooms, logs, etc.
- * @type {{
- * 	apiClient: {
- * 		sendMessage: (agentId: string, message: string, selectedFile?: File | null, roomId?: UUID) => Promise<any>;
- * 		getAgents: () => Promise<any>;
- * 		getAgent: (agentId: string) => Promise<{ data: Agent }>;
- * 		tts: (agentId: string, text: string) => Promise<any>;
- * 		whisper: (agentId: string, audioBlob: Blob) => Promise<any>;
- * 		sendAudioMessage: (agentId: string, audioBlob: Blob, options?: { roomId?: string; entityId?: string; userName?: string; name?: string; }) => Promise<any>;
- * 		speechConversation: (agentId: string, text: string, options?: { roomId?: string; entityId?: string; userName?: string; name?: string; }) => Promise<any>;
- * 		deleteAgent: (agentId: string) => Promise<{ success: boolean }>;
- * 		updateAgent: (agentId: string, agent: Agent) => Promise<any>;
- * 		createAgent: (params: { characterPath?: string; characterJson?: Character; }) => Promise<any>;
- * 		startAgent: (agentId: UUID) => Promise<any>;
- * 		stopAgent: (agentId: string) => Promise<any>;
- * 		getMemories: (agentId: string, roomId: string, options?: { limit?: number; before?: number; }) => Promise<any>;
- * 		getRooms: (agentId: string) => Promise<any>;
- * 		createRoom: (agentId: string, roomName: string) => Promise<any>;
- * 		getRoom: (agentId: string, roomId: string) => Promise<any>;
- * 		updateRoom: (agentId: string, roomId: string, updates: { name?: string; worldId?: string; }) => Promise<any>;
- * 		deleteRoom: (agentId: string, roomId: string) => Promise<any>;
- * 		getLogs: (level: string) => Promise<LogResponse>;
- * 		getAgentLogs: (agentId: string, options?: { roomId?: UUID; type?: string; count?: number; offset?: number }) => Promise<{ success: boolean; data: AgentLog[] }>;
- * 		deleteLog: (agentId: string, logId: string) => Promise<void>;
- * 		getAgentMemories: (agentId: UUID, roomId?: UUID, tableName?: string) => Promise<any>;
- * 		deleteAgentMemory: (agentId: UUID, memoryId: string) => Promise<any>;
- *    deleteAllAgentMemories: (agentId: UUID, roomId: UUID) => Promise<any>;
- * 		updateAgentMemory: (agentId: UUID, memoryId: string, memoryData: Partial<Memory>) => Promise<any>;
- * 	}
- * }}
- */
 export const apiClient = {
-  // Get list of agents with minimal details
-  getAgents: (): Promise<{ data: { agents: Partial<Agent>[] } }> => fetcher({ url: '/agents' }),
-  // Get full agent details
-  getAgent: (agentId: string): Promise<{ data: Agent }> => fetcher({ url: `/agents/${agentId}` }),
+  // Agent specific
+  getAgents: (): Promise<{ data: { agents: Partial<AgentWithStatus>[] } }> =>
+    fetcher({ url: '/agents' }),
+  getAgent: (agentId: string): Promise<{ data: AgentWithStatus }> =>
+    fetcher({ url: `/agents/${agentId}` }),
+  deleteAgent: (agentId: string): Promise<{ success: boolean }> =>
+    fetcher({ url: `/agents/${agentId}`, method: 'DELETE' }),
+  updateAgent: (agentId: string, agentData: Partial<Agent>) =>
+    fetcher({ url: `/agents/${agentId}`, method: 'PATCH', body: agentData }),
+  createAgent: (params: { characterPath?: string; characterJson?: Character }) =>
+    fetcher({ url: '/agents/', method: 'POST', body: params }),
+  startAgent: (agentId: UUID): Promise<{ data: { id: UUID; name: string; status: string } }> =>
+    fetcher({ url: `/agents/${agentId}`, method: 'POST', body: { start: true } }),
+  stopAgent: (agentId: string): Promise<{ data: { message: string } }> =>
+    fetcher({ url: `/agents/${agentId}`, method: 'PUT' }),
+  getAgentPanels: (agentId: string): Promise<{ success: boolean; data: AgentPanel[] }> =>
+    fetcher({ url: `/agents/${agentId}/panels`, method: 'GET' }),
+
+  // Agent-perspective rooms and memories
+  getAgentPerspectiveRooms: (agentId: string): Promise<{ data: { rooms: CoreRoom[] } }> =>
+    fetcher({ url: `/agents/${agentId}/rooms` }),
+  getRawAgentMemoriesForRoom: (
+    agentId: UUID,
+    agentPerspectiveRoomId: UUID,
+    tableName = 'messages',
+    options?: { limit?: number; before?: number; includeEmbedding?: boolean }
+  ): Promise<{ data: { memories: CoreMemory[] } }> => {
+    const queryParams = new URLSearchParams({ tableName });
+    if (options?.limit) queryParams.append('limit', String(options.limit));
+    if (options?.before) queryParams.append('before', String(options.before));
+    if (options?.includeEmbedding) queryParams.append('includeEmbedding', 'true');
+    return fetcher({
+      url: `/agents/${agentId}/rooms/${agentPerspectiveRoomId}/memories?${queryParams.toString()}`,
+    });
+  },
+  deleteAgentPerspectiveMemory: (agentId: UUID, memoryId: string) =>
+    fetcher({ url: `/agents/${agentId}/memories/${memoryId}`, method: 'DELETE' }),
+  deleteAllAgentPerspectiveMemories: (agentId: UUID, agentPerspectiveRoomId: UUID) =>
+    fetcher({ url: `/agents/${agentId}/memories/all/${agentPerspectiveRoomId}`, method: 'DELETE' }),
+  updateAgentPerspectiveMemory: (
+    agentId: UUID,
+    memoryId: string,
+    memoryData: Partial<CoreMemory>
+  ) =>
+    fetcher({ url: `/agents/${agentId}/memories/${memoryId}`, method: 'PATCH', body: memoryData }),
+
+  // Central Message System Endpoints
+  getCentralServers: (): Promise<{ data: { servers: MessageServer[] } }> =>
+    fetcher({ url: '/central-messages/central-servers' }),
+  getCentralChannelsForServer: (
+    serverId: UUID
+  ): Promise<{ data: { channels: MessageChannel[] } }> =>
+    fetcher({ url: `/central-messages/central-servers/${serverId}/channels` }),
+  getCentralChannelMessages: (
+    channelId: UUID,
+    options?: {
+      limit?: number;
+      before?: number;
+    }
+  ): Promise<{ data: { messages: ServerMessage[] } }> => {
+    const queryParams = new URLSearchParams();
+    if (options?.limit) queryParams.append('limit', String(options.limit));
+    if (options?.before) queryParams.append('before', String(options.before));
+    return fetcher({
+      url: `/central-messages/central-channels/${channelId}/messages?${queryParams.toString()}`,
+    });
+  },
+  postMessageToCentralChannel: (
+    channelId: UUID,
+    payload: {
+      author_id: UUID;
+      content: string;
+      server_id: UUID;
+      in_reply_to_message_id?: UUID;
+      raw_message?: any;
+      metadata?: any;
+      source_type?: string;
+    }
+  ): Promise<{ success: boolean; data: ServerMessage }> =>
+    fetcher({
+      url: `/central-messages/central-channels/${channelId}/messages`,
+      method: 'POST',
+      body: payload,
+    }),
+  getOrCreateDmChannel: (
+    targetCentralUserId: UUID,
+    currentUserId: UUID
+  ): Promise<{ success: boolean; data: MessageChannel }> =>
+    fetcher({
+      url: `/central-messages/dm-channel?targetUserId=${targetCentralUserId}&currentUserId=${currentUserId}`,
+    }),
+  createCentralGroupChat: (payload: {
+    name: string;
+    participantCentralUserIds: UUID[];
+    type?: string;
+    serverId?: UUID;
+    metadata?: any;
+  }): Promise<{ data: MessageChannel }> =>
+    fetcher({ url: '/central-messages/central-channels', method: 'POST', body: payload }),
+
+  // Ping, TTS, Transcription, Media Upload, Knowledge (agent-specific or global services)
   ping: (): Promise<{ pong: boolean; timestamp: number }> => fetcher({ url: '/ping' }),
-  testEndpoint: (endpoint: string): Promise<any> => fetcher({ url: endpoint }),
-  tts: (agentId: string, text: string) =>
+  ttsStream: (agentId: string, text: string): Promise<Blob> =>
     fetcher({
       url: `/agents/${agentId}/speech/generate`,
       method: 'POST',
-      body: {
-        text,
-      },
+      body: { text },
       headers: {
         'Content-Type': 'application/json',
         Accept: 'audio/*',
-        'Transfer-Encoding': 'chunked',
       },
     }),
-  whisper: async (agentId: string, audioBlob: Blob) => {
+  transcribeAudio: async (
+    agentId: string,
+    audioBlob: Blob
+  ): Promise<{ success: boolean; data: { text: string } }> => {
     const formData = new FormData();
     formData.append('file', audioBlob, 'recording.wav');
-    return fetcher({
-      url: `/agents/${agentId}/transcriptions`,
-      method: 'POST',
-      body: formData,
-    });
+    return fetcher({ url: `/agents/${agentId}/transcriptions`, method: 'POST', body: formData });
   },
-  sendAudioMessage: async (
+  uploadAgentMedia: async (
     agentId: string,
-    audioBlob: Blob,
-    options?: {
-      roomId?: string;
-      entityId?: string;
-      userName?: string;
-      name?: string;
-    }
-  ) => {
+    file: File
+  ): Promise<{ success: boolean; data: { url: string; type: string } }> => {
     const formData = new FormData();
-    formData.append('file', audioBlob, 'recording.wav');
-
-    // Add optional parameters if provided
-    if (options) {
-      for (const [key, value] of Object.entries(options)) {
-        if (value) formData.append(key, value);
-      }
-    }
-
-    return fetcher({
-      url: `/agents/${agentId}/audio-messages`,
-      method: 'POST',
-      body: formData,
-    });
+    formData.append('file', file);
+    return fetcher({ url: `/agents/${agentId}/upload-media`, method: 'POST', body: formData });
   },
-  speechConversation: async (
-    agentId: string,
-    text: string,
-    options?: {
-      roomId?: string;
-      entityId?: string;
-      userName?: string;
-      name?: string;
-    }
-  ) => {
-    return fetcher({
-      url: `/agents/${agentId}/speech/conversation`,
-      method: 'POST',
-      body: {
-        text,
-        ...options,
-      },
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'audio/mpeg',
-        'Transfer-Encoding': 'chunked',
-      },
-    });
-  },
-  deleteAgent: (agentId: string): Promise<{ success: boolean }> =>
-    fetcher({ url: `/agents/${agentId}`, method: 'DELETE' }),
-  updateAgent: async (agentId: string, agent: Agent) => {
-    return fetcher({
-      url: `/agents/${agentId}`,
-      method: 'PATCH',
-      body: agent,
-    });
-  },
-  createAgent: (params: { characterPath?: string; characterJson?: Character }) =>
-    fetcher({
-      url: '/agents/',
-      method: 'POST',
-      body: params,
-    }),
-  startAgent: (agentId: UUID) =>
-    fetcher({
-      url: `/agents/${agentId}`,
-      method: 'POST',
-      body: { start: true },
-    }),
-  stopAgent: (agentId: string) => {
-    return fetcher({
-      url: `/agents/${agentId}`,
-      method: 'PUT',
-    });
-  },
-
-  // Get memories for a specific room
-  getMemories: (agentId: string, roomId: string, options?: { limit?: number; before?: number }) => {
-    const worldId = WorldManager.getWorldId();
-    const params: Record<string, string | number> = { worldId };
-
-    if (options?.limit) {
-      params.limit = options.limit;
-    }
-
-    if (options?.before) {
-      params.end = options.before;
-    }
-
-    return fetcher({
-      url: `/agents/${agentId}/rooms/${roomId}/memories`,
-      method: 'GET',
-      body: params,
-    });
-  },
-
-  // get all rooms in the world
-  getRooms: () => {
-    const worldId = WorldManager.getWorldId();
-    return fetcher({
-      url: `/world/${worldId}/rooms`,
-      method: 'GET',
-    });
-  },
-
-  // Get all rooms where an agent is a participant
-  getAgentRooms: (agentId: string) => {
-    return fetcher({
-      url: `/agents/${agentId}/rooms`,
-      method: 'GET',
-    });
-  },
-
-  // Get all worlds
-  getWorlds: () => {
-    return fetcher({
-      url: '/agents/worlds',
-      method: 'GET',
-    });
-  },
-
-  // Create a new world
-  createWorld: (agentId: string, params: { name: string; serverId?: string; metadata?: any }) => {
-    return fetcher({
-      url: `/agents/${agentId}/worlds`,
-      method: 'POST',
-      body: params,
-    });
-  },
-
-  // Update a world's properties
-  updateWorld: (agentId: string, worldId: string, params: { name?: string; metadata?: any }) => {
-    return fetcher({
-      url: `/agents/${agentId}/worlds/${worldId}`,
-      method: 'PATCH',
-      body: params,
-    });
-  },
-
-  // Create a room for a specific agent
-  createRoom: (
-    agentId: string,
-    params: {
-      name: string;
-      type?: string;
-      source?: string;
-      worldId?: string;
-      serverId?: string;
-      metadata?: Record<string, any>;
-    }
-  ) => {
-    return fetcher({
-      url: `/agents/${agentId}/rooms`,
-      method: 'POST',
-      body: params,
-    });
-  },
-
-  getLogs: ({
-    level,
-    agentName,
-    agentId,
-  }: {
-    level?: string;
-    agentName?: string;
-    agentId?: string;
-  }): Promise<LogResponse> => {
-    const params = new URLSearchParams();
-
-    if (level) params.append('level', level);
-    if (agentName) params.append('agentName', agentName);
-    if (agentId) params.append('agentId', agentId);
-
-    const url = `/logs${params.toString() ? `?${params.toString()}` : ''}`;
-    return fetcher({
-      url,
-      method: 'GET',
-    });
-  },
-
-  // Method to clear logs
-  deleteLogs: (): Promise<{ status: string; message: string }> => {
-    return fetcher({
-      url: '/logs',
-      method: 'DELETE',
-    });
-  },
-
-  // Agent Log/Action endpoints
-  getAgentLogs: (
-    agentId: string,
-    options?: { roomId?: UUID; type?: string; count?: number; offset?: number }
-  ): Promise<{ success: boolean; data: AgentLog[] }> => {
-    const params = new URLSearchParams();
-
-    if (options?.roomId) params.append('roomId', options.roomId);
-    if (options?.type) params.append('type', options.type);
-    if (options?.count) params.append('count', options.count.toString());
-    if (options?.offset) params.append('offset', options.offset.toString());
-
-    return fetcher({
-      url: `/agents/${agentId}/logs${params.toString() ? `?${params.toString()}` : ''}`,
-      method: 'GET',
-    });
-  },
-
-  deleteLog: (agentId: string, logId: string): Promise<void> => {
-    return fetcher({
-      url: `/agents/${agentId}/logs/${logId}`,
-      method: 'DELETE',
-    });
-  },
-
-  // Method to get all memories for an agent, optionally filtered by room
-  getAgentMemories: (
-    agentId: UUID,
-    roomId?: UUID,
-    tableName?: string,
-    includeEmbedding = false
-  ) => {
-    const params = new URLSearchParams();
-    if (tableName) params.append('tableName', tableName);
-    if (includeEmbedding) params.append('includeEmbedding', 'true');
-
-    const url = roomId
-      ? `/agents/${agentId}/rooms/${roomId}/memories?${params.toString()}`
-      : `/agents/${agentId}/memories${params.toString() ? `?${params.toString()}` : ''}`;
-
-    return fetcher({
-      url,
-      method: 'GET',
-    });
-  },
-
-  // Method to delete a specific memory for an agent
-  deleteAgentMemory: (agentId: UUID, memoryId: string) => {
-    return fetcher({
-      url: `/agents/${agentId}/memories/${memoryId}`,
-      method: 'DELETE',
-    });
-  },
-
-  deleteAllAgentMemories: (agentId: UUID, roomId: UUID) => {
-    return fetcher({
-      url: `/agents/${agentId}/memories/all/${roomId}`,
-      method: 'DELETE',
-    });
-  },
-
-  updateAgentMemory: (agentId: UUID, memoryId: string, memoryData: Partial<Memory>) => {
-    return fetcher({
-      url: `/agents/${agentId}/memories/${memoryId}`,
-      method: 'PATCH',
-      body: memoryData,
-    });
-  },
-
-  // Method to upload knowledge for an agent
-  uploadKnowledge: async (agentId: string, files: File[]): Promise<any> => {
+  uploadKnowledgeDocuments: async (agentId: string, files: File[]): Promise<any> => {
     const formData = new FormData();
-
-    for (const file of files) {
-      formData.append('files', file);
-    }
-
+    for (const file of files) formData.append('files', file);
     return fetcher({
       url: `/agents/${agentId}/plugins/knowledge/upload`,
       method: 'POST',
       body: formData,
     });
   },
-
-  // New plugin-specific knowledge methods
   getKnowledgeDocuments: (
     agentId: string,
-    options?: { limit?: number; before?: number; includeEmbedding?: boolean }
-  ) => {
-    const params = new URLSearchParams();
-    if (options?.limit) params.append('limit', options.limit.toString());
-    if (options?.before) params.append('before', options.before.toString());
-    if (options?.includeEmbedding) params.append('includeEmbedding', 'true');
-
-    return fetcher({
-      url: `/agents/${agentId}/plugins/knowledge/documents${params.toString() ? `?${params.toString()}` : ''}`,
-      method: 'GET',
-    });
-  },
-
-  deleteKnowledgeDocument: (agentId: string, knowledgeId: string) => {
-    return fetcher({
+    _options?: { limit?: number; before?: number; includeEmbedding?: boolean }
+  ): Promise<any> => fetcher({ url: `/agents/${agentId}/plugins/knowledge/documents` }),
+  deleteKnowledgeDocument: (agentId: string, knowledgeId: string): Promise<void> =>
+    fetcher({
       url: `/agents/${agentId}/plugins/knowledge/documents/${knowledgeId}`,
       method: 'DELETE',
-    });
-  },
+    }),
 
-  // Legacy method for backward compatibility - now uses plugin endpoint
-  deleteMemory: (params: { agentId: string; memoryId: string }) => {
-    return fetcher({
-      url: `/agents/${params.agentId}/plugins/knowledge/documents/${params.memoryId}`,
-      method: 'DELETE',
-    });
+  // Logs
+  getGlobalLogs: (
+    params: { level?: string; agentName?: string; agentId?: string } = {}
+  ): Promise<LogResponse> => {
+    const queryParams = new URLSearchParams();
+    if (params.level) queryParams.append('level', params.level);
+    if (params.agentName) queryParams.append('agentName', params.agentName);
+    if (params.agentId) queryParams.append('agentId', params.agentId);
+    return fetcher({ url: `/logs${queryParams.toString() ? `?${queryParams.toString()}` : ''}` });
   },
-
-  // Method to upload media files (images/videos) for chat
-  uploadMedia: async (
+  deleteGlobalLogs: (): Promise<{ status: string; message: string }> =>
+    fetcher({ url: '/logs', method: 'DELETE' }),
+  getAgentLogs: (
     agentId: string,
-    file: File
-  ): Promise<{ success: boolean; data: { url: string; type: string } }> => {
-    const formData = new FormData();
-    formData.append('file', file);
-
+    options?: {
+      roomId?: UUID;
+      type?: string;
+      count?: number;
+      offset?: number;
+    }
+  ): Promise<{ success: boolean; data: AgentLog[] }> => {
+    const queryParams = new URLSearchParams();
+    if (options?.roomId) queryParams.append('roomId', options.roomId);
+    if (options?.type) queryParams.append('type', options.type);
+    if (options?.count) queryParams.append('count', String(options.count));
+    if (options?.offset) queryParams.append('offset', String(options.offset));
     return fetcher({
-      url: `/agents/${agentId}/upload-media`,
-      method: 'POST',
-      body: formData,
+      url: `/agents/${agentId}/logs${queryParams.toString() ? `?${queryParams.toString()}` : ''}`,
     });
   },
+  deleteAgentLog: (agentId: string, logId: string): Promise<void> =>
+    fetcher({ url: `/agents/${agentId}/logs/${logId}`, method: 'DELETE' }),
 
-  getGroupMemories: (serverId: UUID) => {
-    const worldId = WorldManager.getWorldId();
-    return fetcher({
-      url: `/world/${worldId}/memories/${serverId}`,
-      method: 'GET',
-    });
-  },
+  // ENV vars
+  getLocalEnvs: (): Promise<{ success: boolean; data: Record<string, string> }> =>
+    fetcher({ url: `/envs/local` }),
+  updateLocalEnvs: (envs: Record<string, string>): Promise<{ success: boolean; message: string }> =>
+    fetcher({ url: `/envs/local`, method: 'POST', body: { content: envs } }),
 
-  createGroupChat: (
-    agentIds: string[],
-    roomName: string,
-    serverId: string,
-    source: string,
-    metadata?: any
-  ) => {
-    const worldId = WorldManager.getWorldId();
-    return fetcher({
-      url: `/agents/groups/${serverId}`,
-      method: 'POST',
-      body: {
-        agentIds,
-        name: roomName,
-        worldId,
-        source,
-        metadata,
-      },
-    });
-  },
+  testEndpoint: (endpoint: string): Promise<any> => fetcher({ url: endpoint }),
 
-  deleteGroupChat: (serverId: string) => {
-    return fetcher({
-      url: `/agents/groups/${serverId}`,
+  // PLACEHOLDER - Implement actual backend and uncomment
+  deleteCentralChannelMessage: async (channelId: UUID, messageId: UUID): Promise<void> => {
+    await fetcher({
+      url: `/central-messages/central-channels/${channelId}/messages/${messageId}`,
       method: 'DELETE',
     });
   },
 
-  deleteGroupMemory: (serverId: string, memoryId: string) => {
-    return fetcher({
-      url: `/agents/groups/${serverId}/memories/${memoryId}`,
+  // PLACEHOLDER - Implement actual backend and uncomment
+  clearCentralChannelMessages: async (channelId: UUID): Promise<void> => {
+    await fetcher({
+      url: `/central-messages/central-channels/${channelId}/messages`,
       method: 'DELETE',
     });
   },
 
-  clearGroupChat: (serverId: string) => {
-    return fetcher({
-      url: `/agents/groups/${serverId}/memories`,
-      method: 'DELETE',
-    });
-  },
+  createCentralGroupChannel: (payload: {
+    /* ... */
+  }): Promise<{ success: boolean; data: MessageChannel }> =>
+    fetcher({ url: '/central-messages/central-channels', method: 'POST', body: payload }),
 
-  getLocalEnvs: () => {
-    return fetcher({
-      url: `/envs/local`,
-      method: 'GET',
-    });
-  },
+  getCentralChannelDetails: (
+    channelId: UUID
+  ): Promise<{ success: boolean; data: MessageChannel | null }> =>
+    fetcher({ url: `/central-messages/central-channels/${channelId}/details` }),
 
-  updateLocalEnvs: (envs: Record<string, string>) => {
-    return fetcher({
-      url: `/envs/local`,
-      method: 'POST',
-      body: {
-        content: envs,
-      },
-    });
-  },
-
-  // Agent Panels (public GET routes)
-  getAgentPanels: (agentId: string): Promise<{ success: boolean; data: AgentPanel[] }> => {
-    console.log('getAgentPanels', agentId);
-    return fetcher({ url: `/agents/${agentId}/panels`, method: 'GET' });
+  getCentralChannelParticipants: (channelId: UUID): Promise<{ success: boolean; data: UUID[] }> => {
+    return fetcher({ url: `/central-messages/central-channels/${channelId}/participants` });
   },
 };

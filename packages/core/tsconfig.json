@@ -4,8 +4,8 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "typeRoots": ["./node_modules/@types"],
-    "declaration": true,
-    "declarationMap": true,
+    "declaration": false,
+    "declarationMap": false,
     "sourceMap": true
   },
   "include": ["src/**/*"]

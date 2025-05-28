@@ -41,9 +41,9 @@ export class TaskService extends Service {
   /**
    * Start the TaskService with the given runtime.
    * @param {IAgentRuntime} runtime - The runtime for the TaskService.
-   * @returns {Promise<TaskService>} A promise that resolves with the TaskService instance.
+   * @returns {Promise<Service>} A promise that resolves with the TaskService instance.
    */
-  static async start(runtime: IAgentRuntime): Promise<TaskService> {
+  static async start(runtime: IAgentRuntime): Promise<Service> {
     const service = new TaskService(runtime);
     await service.startTimer();
     // await service.createTestTasks();

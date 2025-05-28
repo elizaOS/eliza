@@ -1,0 +1,243 @@
+import {
+  ChannelType,
+  EventType,
+  Service,
+  createUniqueUuid,
+  logger,
+  type Content,
+  type IAgentRuntime,
+  type Memory,
+  type Plugin,
+  type UUID,
+} from '@elizaos/core';
+import internalMessageBus from '../bus'; // Import the bus
+
+// This interface defines the structure of messages coming from the central server
+export interface MessageService {
+  id: UUID; // root_message.id
+  channel_id: UUID;
+  server_id: UUID;
+  author_id: UUID; // UUID of a central user identity
+  author_display_name?: string; // Display name from central user identity
+  content: string;
+  raw_message?: any;
+  source_id?: string; // original platform message ID
+  source_type?: string;
+  in_reply_to_message_id?: UUID;
+  created_at: number;
+  metadata?: any;
+}
+
+export class MessageBusService extends Service {
+  static serviceType = 'message-bus-service';
+  capabilityDescription =
+    'Manages connection and message synchronization with the central message server.';
+
+  private boundHandleIncomingCentralMessage: (message: MessageService) => Promise<void>;
+
+  constructor(runtime: IAgentRuntime) {
+    super(runtime);
+    this.boundHandleIncomingCentralMessage = this.handleIncomingCentralMessage.bind(this);
+    this.connectToMessageBus();
+  }
+
+  private connectToMessageBus() {
+    logger.info(
+      `[${this.runtime.character.name}] MessageBusService: Subscribing to internal message bus for 'new_message' events.`
+    );
+    internalMessageBus.on('new_message', this.boundHandleIncomingCentralMessage);
+  }
+
+  public async handleIncomingCentralMessage(message: MessageService) {
+    logger.info(
+      `[${this.runtime.character.name}] MessageBusService: Received message from central bus`,
+      { messageId: message.id }
+    );
+
+    try {
+      if (
+        createUniqueUuid(this.runtime, message.author_id) === this.runtime.agentId &&
+        message.source_type !== 'eliza_gui' // Allow messages from GUI even if authorId maps to agent (e.g., agent talking to itself via GUI)
+      ) {
+        logger.debug(
+          `[${this.runtime.character.name}] MessageBusService: Skipping own message or non-GUI message from central bus potentially sent by self.`
+        );
+        return;
+      }
+
+      const agentWorldId = createUniqueUuid(this.runtime, message.server_id);
+      const agentRoomId = createUniqueUuid(this.runtime, message.channel_id);
+      const agentAuthorEntityId = createUniqueUuid(this.runtime, message.author_id);
+
+      await this.runtime.ensureWorldExists({
+        id: agentWorldId,
+        name: message.metadata?.serverName || `Server ${message.server_id.substring(0, 8)}`,
+        agentId: this.runtime.agentId,
+        serverId: message.server_id,
+        metadata: {
+          ...(message.metadata?.serverMetadata || {}),
+        },
+      });
+
+      await this.runtime.ensureRoomExists({
+        id: agentRoomId,
+        name: message.metadata?.channelName || `Channel ${message.channel_id.substring(0, 8)}`,
+        agentId: this.runtime.agentId,
+        worldId: agentWorldId,
+        channelId: message.channel_id,
+        serverId: message.server_id,
+        source: message.source_type || 'central-bus',
+        type: message.metadata?.channelType || ChannelType.GROUP,
+        metadata: {
+          ...(message.metadata?.channelMetadata || {}),
+        },
+      });
+
+      const authorEntity = await this.runtime.getEntityById(agentAuthorEntityId);
+      if (!authorEntity) {
+        await this.runtime.createEntity({
+          id: agentAuthorEntityId,
+          names: [message.author_display_name || `User-${message.author_id.substring(0, 8)}`],
+          agentId: this.runtime.agentId,
+          metadata: {
+            author_id: message.author_id,
+            source: message.source_type,
+          },
+        });
+      }
+
+      const messageContent: Content = {
+        text: message.content,
+        source: message.source_type || 'central-bus',
+        attachments: message.metadata?.attachments, // Assuming attachments are passed in metadata
+        inReplyTo: message.in_reply_to_message_id
+          ? createUniqueUuid(this.runtime, message.in_reply_to_message_id)
+          : undefined,
+      };
+
+      const agentMemory: Memory = {
+        id: createUniqueUuid(this.runtime, message.id),
+        entityId: agentAuthorEntityId,
+        agentId: this.runtime.agentId,
+        roomId: agentRoomId,
+        worldId: agentWorldId,
+        content: messageContent,
+        createdAt: message.created_at,
+        metadata: {
+          type: 'message',
+          source: message.source_type || 'central-bus',
+          sourceId: message.id,
+          raw: message.raw_message,
+        },
+      };
+
+      const callbackForCentralBus = async (responseContent: Content): Promise<Memory[]> => {
+        logger.info(
+          `[${this.runtime.character.name}] Agent generated response for central message. Preparing to send back to bus.`
+        );
+        await this.sendAgentResponseToBus(
+          agentRoomId,
+          agentWorldId,
+          responseContent,
+          agentMemory.id
+        );
+        // The core runtime/bootstrap plugin will handle creating the agent's own memory of its response.
+        // So, we return an empty array here as this callback's primary job is to ferry the response externally.
+        return [];
+      };
+
+      await this.runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
+        runtime: this.runtime,
+        message: agentMemory,
+        callback: callbackForCentralBus,
+      });
+    } catch (error) {
+      logger.error(
+        `[${this.runtime.character.name}] MessageBusService: Error processing incoming central message:`,
+        error
+      );
+    }
+  }
+
+  private async sendAgentResponseToBus(
+    agentRoomId: UUID,
+    agentWorldId: UUID,
+    content: Content,
+    inReplyToAgentMemoryId?: UUID
+  ) {
+    try {
+      const room = await this.runtime.getRoom(agentRoomId);
+      const world = await this.runtime.getWorld(agentWorldId);
+
+      const channelId = room?.channelId as UUID;
+      const serverId = world?.serverId as UUID;
+
+      if (!channelId || !serverId) {
+        logger.error(
+          `[${this.runtime.character.name}] MessageBusService: Cannot map agent room/world to central IDs for response. AgentRoomID: ${agentRoomId}, AgentWorldID: ${agentWorldId}. Room or World object missing, or channelId/serverId not found on them.`
+        );
+        return;
+      }
+
+      let centralInReplyToRootMessageId: UUID | undefined = undefined;
+      if (inReplyToAgentMemoryId) {
+        const originalAgentMemory = await this.runtime.getMemoryById(inReplyToAgentMemoryId);
+        if (originalAgentMemory?.metadata?.sourceId) {
+          centralInReplyToRootMessageId = originalAgentMemory.metadata.sourceId as UUID;
+        }
+      }
+
+      const payloadToCentralServer = {
+        channel_id: channelId,
+        server_id: serverId,
+        author_id: this.runtime.agentId, // This needs careful consideration: is it the agent's core ID or a specific central identity for the agent?
+        content: content.text,
+        in_reply_to_message_id: centralInReplyToRootMessageId,
+        source_type: 'agent_response',
+        raw_message: { text: content.text, thought: content.thought, actions: content.actions },
+        metadata: {
+          agent_id: this.runtime.agentId,
+          agentName: this.runtime.character.name,
+          attachments: content.attachments,
+        },
+      };
+
+      logger.info(
+        `[${this.runtime.character.name}] MessageBusService: Sending payload to central server API endpoint (/api/messages/submit):`,
+        payloadToCentralServer
+      );
+
+      // Actual fetch to the central server API
+      const serverApiUrl =
+        process.env.CENTRAL_MESSAGE_SERVER_URL || 'http://localhost:3000/api/messages/submit';
+      const response = await fetch(serverApiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' /* TODO: Add Auth if needed */ },
+        body: JSON.stringify(payloadToCentralServer),
+      });
+
+      if (!response.ok) {
+        logger.error(
+          `[${this.runtime.character.name}] MessageBusService: Error sending response to central server: ${response.status} ${await response.text()}`
+        );
+      }
+    } catch (error) {
+      logger.error(
+        `[${this.runtime.character.name}] MessageBusService: Error sending agent response to bus:`,
+        error
+      );
+    }
+  }
+
+  async stop(): Promise<void> {
+    logger.info(`[${this.runtime.character.name}] MessageBusService stopping...`);
+    internalMessageBus.off('new_message', this.boundHandleIncomingCentralMessage);
+  }
+}
+
+// Minimal plugin definition to register the service
+export const messageBusConnectorPlugin: Plugin = {
+  name: 'internal-message-bus-connector',
+  description: 'Internal service to connect agent to the central message bus.',
+  services: [MessageBusService],
+};

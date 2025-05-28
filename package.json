@@ -7,7 +7,7 @@
     "node": "23.3.0"
   },
   "scripts": {
-    "start": "turbo run start --filter=./packages/spartan --log-prefix=none",
+    "start": "turbo run start --filter=./packages/cli --log-prefix=none",
     "start:debug": "cross-env NODE_NO_WARNINGS=1 LOG_LEVEL=debug elizaos start",
     "start:app": "turbo run start --filter=./packages/app",
     "dev": "turbo run start --filter=./packages/cli",

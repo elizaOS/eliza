@@ -1,10 +1,11 @@
 import { resolvePgliteDir } from '@/src/utils';
 import {
+  ChannelType,
   type Character,
   DatabaseAdapter,
   type IAgentRuntime,
-  type UUID,
   logger,
+  type UUID,
 } from '@elizaos/core';
 import { createDatabaseAdapter } from '@elizaos/plugin-sql';
 import * as bodyParser from 'body-parser';
@@ -17,6 +18,22 @@ import { fileURLToPath } from 'node:url';
 import { Server as SocketIOServer } from 'socket.io';
 import { createApiRouter, createPluginRouteHandler, setupSocketIO } from './api';
 import { apiKeyAuthMiddleware } from './authMiddleware';
+import { messageBusConnectorPlugin } from './services/message';
+
+// Central DB Imports
+import { PGlite } from '@electric-sql/pglite';
+import { and, desc, eq, lt } from 'drizzle-orm';
+import { drizzle, type PgliteDatabase } from 'drizzle-orm/pglite';
+import { v4 as uuidv4 } from 'uuid';
+import * as centralSchema from './database/schema/central';
+import type {
+  CentralMessageChannel,
+  CentralMessageServer,
+  CentralRootMessage,
+  MessageServiceStructure,
+} from './types';
+import { sql } from 'drizzle-orm';
+import internalMessageBus from './bus';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -61,7 +78,10 @@ export class AgentServer {
   private serverPort: number = 3000; // Add property to store current port
   public isInitialized: boolean = false; // Flag to prevent double initialization
 
-  public database: DatabaseAdapter;
+  public database!: DatabaseAdapter;
+  public centralPgliteDB!: PGlite;
+  public centralDrizzleDB!: PgliteDatabase<typeof centralSchema>;
+
   public startAgent!: (character: Character) => Promise<IAgentRuntime>;
   public stopAgent!: (runtime: IAgentRuntime) => void;
   public loadCharacterTryPath!: (characterPath: string) => Promise<Character>;
@@ -76,8 +96,6 @@ export class AgentServer {
     try {
       logger.debug('Initializing AgentServer (constructor)...');
       this.agents = new Map();
-      // Synchronous setup only.
-      // Database adapter creation and initialization are moved to the async initialize() method.
     } catch (error) {
       logger.error('Failed to initialize AgentServer (constructor):', error);
       throw error;
@@ -99,34 +117,121 @@ export class AgentServer {
     try {
       logger.debug('Initializing AgentServer (async operations)...');
 
-      // Resolve data directory (assuming resolvePgliteDir might be async or needs to be before DB creation)
-      const dataDir = await resolvePgliteDir(options?.dataDir);
+      const centralDbPath = options?.dataDir
+        ? path.join(options.dataDir, 'eliza-central.db')
+        : 'data/eliza-central.db';
+      logger.info(`[INIT] Central DB path: ${centralDbPath}`);
+      fs.mkdirSync(path.dirname(centralDbPath), { recursive: true });
 
-      // Create database adapter instance
-      // Assuming createDatabaseAdapter itself is synchronous and returns an adapter instance
+      this.centralPgliteDB = new PGlite(centralDbPath);
+      await this.centralPgliteDB.waitReady;
+      logger.info(`Central PGlite database instance created at ${centralDbPath}`);
+
+      this.centralDrizzleDB = drizzle(this.centralPgliteDB, {
+        schema: centralSchema,
+        logger: false,
+      });
+      logger.success('Central PGlite Drizzle ORM instance created with pglite driver.');
+
+      await this.applyCentralMigrations();
+
+      const agentDataDir = await resolvePgliteDir(options?.dataDir);
+      logger.info(`[INIT] Agent Data Dir for SQL plugin: ${agentDataDir}`);
       this.database = createDatabaseAdapter(
         {
-          dataDir,
+          dataDir: agentDataDir,
           postgresUrl: options?.postgresUrl,
         },
-        '00000000-0000-0000-0000-000000000002' // This UUID might need to be configurable or a named constant
-      );
-
-      // Initialize the database (which is an async operation on the adapter)
+        '00000000-0000-0000-0000-000000000002'
+      ) as DatabaseAdapter;
+      console.log('database is', this.database);
       await this.database.init();
-      logger.success('Database initialized successfully');
+      logger.success('Agent-specific database initialized successfully');
 
-      // Only continue with server initialization after database is ready
       await this.initializeServer(options);
-
-      // wait 250 ms
       await new Promise((resolve) => setTimeout(resolve, 250));
-
-      // Success message moved to start method
       this.isInitialized = true;
     } catch (error) {
       logger.error('Failed to initialize AgentServer (async operations):', error);
       console.trace(error);
+      throw error;
+    }
+  }
+
+  private async applyCentralMigrations(): Promise<void> {
+    logger.info('[Migrations] Applying central database migrations...');
+    const possiblePath1 = path.resolve(process.cwd(), 'src/server/database/migrations/central');
+    const possiblePath2 = path.resolve(
+      process.cwd(),
+      'packages/cli/src/server/database/migrations/central'
+    );
+
+    let migrationsDir = possiblePath1;
+    if (!fs.existsSync(migrationsDir)) {
+      migrationsDir = possiblePath2;
+    }
+    logger.info(`[Migrations] Using migrations directory: ${migrationsDir}`);
+
+    try {
+      if (!fs.existsSync(migrationsDir)) {
+        logger.warn(
+          `[Migrations] Central migrations directory not found at tried paths. Attempting fallback table creation.`
+        );
+        await this.createCentralTablesIfNotExists();
+        return;
+      }
+
+      const migrationFiles = fs
+        .readdirSync(migrationsDir)
+        .filter((file) => file.endsWith('.sql'))
+        .sort();
+      if (migrationFiles.length === 0) {
+        logger.info(
+          '[Migrations] No central migration SQL files found. Assuming schema is up to date or tables will be created via fallback.'
+        );
+        await this.createCentralTablesIfNotExists();
+        return;
+      }
+
+      for (const file of migrationFiles) {
+        const filePath = path.join(migrationsDir, file);
+        const migrationSQL = fs.readFileSync(filePath, 'utf8');
+        logger.info(`[Migrations] Applying central migration: ${file}`);
+        await this.centralPgliteDB.exec(migrationSQL);
+        logger.info(`[Migrations] Successfully applied central migration: ${file}`);
+      }
+      logger.success('[Migrations] Central database migrations applied successfully.');
+    } catch (error: any) {
+      logger.error('[Migrations] Error applying central database migrations:', {
+        message: error.message,
+        stack: error.stack,
+        originalError: error,
+      });
+      throw new Error(`Failed to apply central database migrations: ${error.message}`);
+    }
+  }
+
+  private async createCentralTablesIfNotExists(): Promise<void> {
+    logger.warn(
+      '[FallbackDB] Attempting to create central tables directly (using Postgres-like DDL)...'
+    );
+    const createStatements = [
+      `CREATE TABLE IF NOT EXISTS servers ( id TEXT PRIMARY KEY, name TEXT NOT NULL, source_type TEXT NOT NULL, source_id TEXT, metadata JSONB, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL, updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL );`,
+      `CREATE TABLE IF NOT EXISTS channels ( id TEXT PRIMARY KEY, server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE, name TEXT NOT NULL, type TEXT NOT NULL, source_type TEXT, source_id TEXT, topic TEXT, metadata JSONB, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL, updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL );`,
+      `CREATE TABLE IF NOT EXISTS messages ( id TEXT PRIMARY KEY, channel_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE, author_id TEXT NOT NULL, content TEXT NOT NULL, raw_message JSONB, in_reply_to_root_message_id TEXT REFERENCES messages(id) ON DELETE SET NULL, source_type TEXT, source_id TEXT, metadata JSONB, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL, updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL );`,
+      `CREATE TABLE IF NOT EXISTS channel_participants ( channel_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE, user_id TEXT NOT NULL, PRIMARY KEY (channel_id, user_id) );`,
+    ];
+    try {
+      for (const statement of createStatements) {
+        await this.centralPgliteDB.exec(statement);
+      }
+      logger.info('[FallbackDB] Central tables checked/created successfully.');
+    } catch (error: any) {
+      logger.error('[FallbackDB] Error creating central tables directly:', {
+        message: error.message,
+        stack: error.stack,
+        originalError: error,
+      });
       throw error;
     }
   }
@@ -177,28 +282,20 @@ export class AgentServer {
       // Agent-specific media serving - only serve files from agent-specific directories
       this.app.get(
         '/media/uploads/:agentId/:filename',
-        // @ts-expect-error - WTF?????
-
-        (req: Request, res: Response) => {
-          const agentId = req.params.agentId;
-          const filename = req.params.filename;
-
-          // Validate agent ID format (UUID)
+        // @ts-expect-error - this is a valid express route
+        (req: express.Request, res: express.Response) => {
+          const agentId = req.params.agentId as string;
+          const filename = req.params.filename as string;
           const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
           if (!uuidRegex.test(agentId)) {
             return res.status(400).json({ error: 'Invalid agent ID format' });
           }
-
-          // Sanitize filename to prevent directory traversal
           const sanitizedFilename = path.basename(filename);
           const agentUploadsPath = path.join(uploadsBasePath, agentId);
           const filePath = path.join(agentUploadsPath, sanitizedFilename);
-
-          // Ensure the file is within the agent's directory
           if (!filePath.startsWith(agentUploadsPath)) {
             return res.status(403).json({ error: 'Access denied' });
           }
-
           res.sendFile(filePath, (err) => {
             if (err) {
               res.status(404).json({ error: 'File not found' });
@@ -209,27 +306,20 @@ export class AgentServer {
 
       this.app.get(
         '/media/generated/:agentId/:filename',
-        // @ts-expect-error - WTF?????
-        (req: Request, res: Response) => {
+        // @ts-expect-error - this is a valid express route
+        (req: express.Request<{ agentId: string; filename: string }>, res: express.Response) => {
           const agentId = req.params.agentId;
           const filename = req.params.filename;
-
-          // Validate agent ID format (UUID)
           const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
           if (!uuidRegex.test(agentId)) {
             return res.status(400).json({ error: 'Invalid agent ID format' });
           }
-
-          // Sanitize filename to prevent directory traversal
           const sanitizedFilename = path.basename(filename);
           const agentGeneratedPath = path.join(generatedBasePath, agentId);
           const filePath = path.join(agentGeneratedPath, sanitizedFilename);
-
-          // Ensure the file is within the agent's directory
           if (!filePath.startsWith(agentGeneratedPath)) {
             return res.status(403).json({ error: 'Access denied' });
           }
-
           res.sendFile(filePath, (err) => {
             if (err) {
               res.status(404).json({ error: 'File not found' });
@@ -303,7 +393,7 @@ export class AgentServer {
           next();
         },
         apiRouter,
-        (err, req, res, next) => {
+        (err: any, req: Request, res: Response, next: express.NextFunction) => {
           logger.error(`API error: ${req.method} ${req.path}`, err);
           res.status(500).json({
             success: false,
@@ -357,10 +447,10 @@ export class AgentServer {
       // Create HTTP server for Socket.io
       this.server = http.createServer(this.app);
 
-      // Initialize Socket.io
-      this.socketIO = setupSocketIO(this.server, this.agents);
+      // Initialize Socket.io, passing the AgentServer instance
+      this.socketIO = setupSocketIO(this.server, this.agents, this);
 
-      logger.success('AgentServer initialization complete');
+      logger.success('AgentServer HTTP server and Socket.IO initialized');
     } catch (error) {
       logger.error('Failed to complete server initialization:', error);
       throw error;
@@ -374,7 +464,7 @@ export class AgentServer {
    * @throws {Error} if the runtime is null/undefined, if agentId is missing, if character configuration is missing,
    * or if there are any errors during registration.
    */
-  public registerAgent(runtime: IAgentRuntime) {
+  public async registerAgent(runtime: IAgentRuntime) {
     try {
       if (!runtime) {
         throw new Error('Attempted to register null/undefined runtime');
@@ -386,9 +476,26 @@ export class AgentServer {
         throw new Error('Runtime missing character configuration');
       }
 
-      // Register the agent
       this.agents.set(runtime.agentId, runtime);
       logger.debug(`Agent ${runtime.character.name} (${runtime.agentId}) added to agents map`);
+
+      // Auto-register the MessageBusConnector plugin
+      try {
+        if (messageBusConnectorPlugin) {
+          await runtime.registerPlugin(messageBusConnectorPlugin);
+          logger.info(
+            `[AgentServer] Automatically registered MessageBusConnector for agent ${runtime.character.name}`
+          );
+        } else {
+          logger.error(`[AgentServer] CRITICAL: MessageBusConnector plugin definition not found.`);
+        }
+      } catch (e) {
+        logger.error(
+          `[AgentServer] CRITICAL: Failed to register MessageBusConnector for agent ${runtime.character.name}`,
+          e
+        );
+        // Decide if this is a fatal error for the agent.
+      }
 
       // Register TEE plugin if present
       const teePlugin = runtime.plugins.find((p) => p.name === 'phala-tee-plugin');
@@ -404,42 +511,8 @@ export class AgentServer {
         }
       }
 
-      // Register routes
-      logger.debug(
-        `Registering ${runtime.routes.length} custom routes for agent ${runtime.character.name} (${runtime.agentId})`
-      );
-      // for (const route of runtime.routes) { // Routes are now handled by createPluginRouteHandler
-      //   const routePath = route.path;
-      //   try {
-      //     switch (route.type) {
-      //       case 'STATIC':
-      //         this.app.get(routePath, (req, res) => route.handler(req, res, runtime));
-      //         break;
-      //       case 'GET':
-      //         this.app.get(routePath, (req, res) => route.handler(req, res, runtime));
-      //         break;
-      //       case 'POST':
-      //         this.app.post(routePath, (req, res) => route.handler(req, res, runtime));
-      //         break;
-      //       case 'PUT':
-      //         this.app.put(routePath, (req, res) => route.handler(req, res, runtime));
-      //         break;
-      //       case 'DELETE':
-      //         this.app.delete(routePath, (req, res) => route.handler(req, res, runtime));
-      //         break;
-      //       default:
-      //         logger.error(`Unknown route type: ${route.type} for path ${routePath}`);
-      //         continue;
-      //     }
-      //     logger.debug(`Registered ${route.type} route: ${routePath}`);
-      //   } catch (error) {
-      //     logger.error(`Failed to register route ${route.type} ${routePath}:`, error);
-      //     throw error;
-      //   }
-      // }
-
       logger.success(
-        `Successfully registered agent ${runtime.character.name} (${runtime.agentId})`
+        `Successfully registered agent ${runtime.character.name} (${runtime.agentId}) with core services.`
       );
     } catch (error) {
       logger.error('Failed to register agent:', error);
@@ -538,10 +611,30 @@ export class AgentServer {
         logger.debug('Stopping all agents...');
         for (const [id, agent] of this.agents.entries()) {
           try {
-            agent.stop();
+            await agent.stop();
             logger.debug(`Stopped agent ${id}`);
           } catch (error) {
             logger.error(`Error stopping agent ${id}:`, error);
+          }
+        }
+
+        // Close central PGlite DB
+        if (this.centralPgliteDB) {
+          try {
+            await this.centralPgliteDB.close();
+            logger.info('Central PGlite database closed.');
+          } catch (error) {
+            logger.error('Error closing central PGlite database:', error);
+          }
+        }
+
+        // Close agent's perspective DB
+        if (this.database) {
+          try {
+            await this.database.close();
+            logger.info('Agent perspective database closed.');
+          } catch (error) {
+            logger.error('Error closing agent perspective database:', error);
           }
         }
 
@@ -572,12 +665,238 @@ export class AgentServer {
    * Stops the server if it is running. Closes the server connection,
    * stops the database connection, and logs a success message.
    */
-  public async stop() {
+  public async stop(): Promise<void> {
     if (this.server) {
       this.server.close(() => {
         this.database.close();
         logger.success('Server stopped');
       });
     }
+  }
+
+  // Central DB Data Access Methods
+  async createCentralServer(
+    data: Omit<CentralMessageServer, 'id' | 'createdAt' | 'updatedAt'>
+  ): Promise<CentralMessageServer> {
+    const newId = uuidv4() as UUID;
+    const now = new Date();
+    const serverToInsert = {
+      ...data,
+      id: newId,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const result = await this.centralDrizzleDB
+      .insert(centralSchema.messageServerTable)
+      .values(serverToInsert)
+      .returning();
+    return result[0] as CentralMessageServer;
+  }
+
+  async getCentralServers(): Promise<CentralMessageServer[]> {
+    const results = await this.centralDrizzleDB.select().from(centralSchema.messageServerTable);
+    return results as CentralMessageServer[];
+  }
+
+  async createCentralChannel(
+    data: Omit<CentralMessageChannel, 'id' | 'createdAt' | 'updatedAt'>,
+    participantIds?: UUID[]
+  ): Promise<CentralMessageChannel> {
+    const newId = uuidv4() as UUID;
+    const now = new Date();
+    const channelToInsert = {
+      ...data,
+      id: newId,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const result = await this.centralDrizzleDB
+      .insert(centralSchema.channelTable)
+      .values(channelToInsert)
+      .returning();
+
+    const newChannel = result[0] as CentralMessageChannel;
+
+    if (participantIds && participantIds.length > 0) {
+      await this.addParticipantsToCentralChannel(newChannel.id, participantIds);
+    }
+    return newChannel;
+  }
+
+  async addParticipantsToCentralChannel(channelId: UUID, userIds: UUID[]): Promise<void> {
+    if (!userIds || userIds.length === 0) return;
+    const participantValues = userIds.map((userId) => ({
+      channelId: channelId,
+      userId: userId,
+    }));
+    await this.centralDrizzleDB
+      .insert(centralSchema.channelParticipantsTable)
+      .values(participantValues)
+      .onConflictDoNothing(); // Avoid errors if a participant is already in the channel
+    logger.info(
+      `[AgentServer] Added ${userIds.length} participants to central channel ${channelId}`
+    );
+  }
+
+  async getCentralChannelsForServer(serverId: UUID): Promise<CentralMessageChannel[]> {
+    const results = await this.centralDrizzleDB
+      .select()
+      .from(centralSchema.channelTable)
+      .where(eq(centralSchema.channelTable.messageServerId, serverId));
+    return results as CentralMessageChannel[];
+  }
+
+  async getCentralChannelDetails(channelId: UUID): Promise<CentralMessageChannel | null> {
+    const results = await this.centralDrizzleDB
+      .select()
+      .from(centralSchema.channelTable)
+      .where(eq(centralSchema.channelTable.id, channelId))
+      .limit(1);
+    return results.length > 0 ? (results[0] as CentralMessageChannel) : null;
+  }
+
+  async getCentralChannelParticipants(channelId: UUID): Promise<UUID[]> {
+    const results = await this.centralDrizzleDB
+      .select({
+        userId: centralSchema.channelParticipantsTable.userId,
+      })
+      .from(centralSchema.channelParticipantsTable)
+      .where(eq(centralSchema.channelParticipantsTable.channelId, channelId));
+
+    return results.map((r) => r.userId as UUID);
+  }
+
+  async deleteCentralMessage(messageId: UUID): Promise<void> {
+    await this.centralDrizzleDB
+      .delete(centralSchema.centralRootMessageTable)
+      .where(eq(centralSchema.centralRootMessageTable.id, messageId));
+    logger.info(`[AgentServer] Deleted central message: ${messageId}`);
+  }
+
+  async clearCentralChannelMessages(channelId: UUID): Promise<void> {
+    await this.centralDrizzleDB
+      .delete(centralSchema.centralRootMessageTable)
+      .where(eq(centralSchema.centralRootMessageTable.channelId, channelId));
+    logger.info(`[AgentServer] Cleared all messages for central channel: ${channelId}`);
+  }
+
+  async findOrCreateCentralDmChannel(
+    user1Id: UUID,
+    user2Id: UUID,
+    messageServerId: UUID
+  ): Promise<CentralMessageChannel> {
+    const ids = [user1Id, user2Id].sort();
+    const dmChannelName = `DM-${ids[0]}-${ids[1]}`;
+
+    let channels = await this.centralDrizzleDB
+      .select()
+      .from(centralSchema.channelTable)
+      .where(
+        and(
+          eq(centralSchema.channelTable.type, ChannelType.DM),
+          eq(centralSchema.channelTable.name, dmChannelName),
+          eq(centralSchema.channelTable.messageServerId, messageServerId)
+        )
+      )
+      .limit(1);
+
+    if (channels.length > 0) {
+      return channels[0] as CentralMessageChannel;
+    }
+
+    const newChannelId = uuidv4() as UUID;
+    const now = new Date();
+    const newDmChannelData = {
+      id: newChannelId,
+      messageServerId: messageServerId,
+      name: dmChannelName,
+      type: ChannelType.DM,
+      createdAt: now,
+      updatedAt: now,
+      metadata: { user1: ids[0], user2: ids[1] },
+    };
+    const createdResults = await this.centralDrizzleDB
+      .insert(centralSchema.channelTable)
+      .values(newDmChannelData)
+      .returning();
+    // TODO: Add participants to a central channel participant table if you have one
+    return createdResults[0] as CentralMessageChannel;
+  }
+
+  async createCentralMessage(
+    data: Omit<CentralRootMessage, 'id' | 'createdAt' | 'updatedAt'>
+  ): Promise<CentralRootMessage> {
+    const newId = uuidv4() as UUID;
+    const now = new Date();
+    const messageToInsert = {
+      ...data,
+      id: newId,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const result = await this.centralDrizzleDB
+      .insert(centralSchema.centralRootMessageTable)
+      .values(messageToInsert)
+      .returning();
+    const createdMessage = result[0] as CentralRootMessage;
+
+    // Get the channel details to find the server ID
+    const channel = await this.getCentralChannelDetails(createdMessage.channelId);
+    if (channel) {
+      // Emit to internal message bus for agent consumption
+      const messageForBus: MessageServiceStructure = {
+        id: createdMessage.id,
+        channel_id: createdMessage.channelId,
+        server_id: channel.messageServerId,
+        author_id: createdMessage.authorId,
+        content: createdMessage.content,
+        raw_message: createdMessage.rawMessage,
+        source_id: createdMessage.sourceId,
+        source_type: createdMessage.sourceType,
+        in_reply_to_message_id: createdMessage.inReplyToRootMessageId,
+        created_at: createdMessage.createdAt.getTime(),
+        metadata: createdMessage.metadata,
+      };
+
+      internalMessageBus.emit('new_message', messageForBus);
+      logger.info(`[AgentServer] Published message ${createdMessage.id} to internal message bus`);
+    }
+
+    return createdMessage;
+  }
+
+  async getCentralMessagesForChannel(
+    channelId: UUID,
+    limit: number = 50,
+    beforeTimestamp?: Date
+  ): Promise<CentralRootMessage[]> {
+    let query = this.centralDrizzleDB
+      .select()
+      .from(centralSchema.centralRootMessageTable)
+      .where(
+        and(
+          eq(centralSchema.centralRootMessageTable.channelId, channelId),
+          beforeTimestamp
+            ? lt(centralSchema.centralRootMessageTable.createdAt, beforeTimestamp)
+            : undefined
+        )
+      )
+      .orderBy(desc(centralSchema.centralRootMessageTable.createdAt))
+      .limit(limit);
+
+    return (await query) as CentralRootMessage[];
+  }
+
+  // Optional: Method to remove a participant
+  async removeParticipantFromCentralChannel(channelId: UUID, userId: UUID): Promise<void> {
+    await this.centralDrizzleDB
+      .delete(centralSchema.channelParticipantsTable)
+      .where(
+        and(
+          eq(centralSchema.channelParticipantsTable.channelId, channelId),
+          eq(centralSchema.channelParticipantsTable.userId, userId)
+        )
+      );
+    logger.info(`[AgentServer] Removed participant ${userId} from central channel ${channelId}`);
   }
 }

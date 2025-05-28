@@ -116,8 +116,6 @@ const mockDatabaseAdapter: IDatabaseAdapter = {
   getLogs: vi.fn().mockResolvedValue([]),
   deleteLog: vi.fn().mockResolvedValue(undefined),
   removeWorld: vi.fn().mockResolvedValue(undefined),
-  deleteRoomsByServerId: vi.fn().mockResolvedValue(undefined),
-  getMemoriesByServerId: vi.fn().mockResolvedValue([]),
 };
 
 // Mock action creator (matches your example)

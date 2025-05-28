@@ -11,7 +11,7 @@ CREATE TABLE "agents" (
 	"name" text NOT NULL,
 	"username" text,
 	"system" text DEFAULT '',
-	"bio" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"bio" jsonb DEFAULT '[]'::jsonb,
 	"message_examples" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"post_examples" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"topics" jsonb DEFAULT '[]'::jsonb NOT NULL,

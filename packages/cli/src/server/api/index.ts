@@ -18,22 +18,31 @@ import crypto from 'node:crypto';
 import http from 'node:http';
 import { match, MatchFunction } from 'path-to-regexp';
 import { Server as SocketIOServer } from 'socket.io';
-import type { AgentServer } from '..';
+import type { AgentServer } from '../index';
 import { agentRouter } from './agent';
 import { envRouter } from './env';
 import { teeRouter } from './tee';
 import { worldRouter } from './world';
+import { MessagesRouter } from './messages';
 import { SocketIORouter } from '../socketio';
 
 // Custom levels from @elizaos/core logger
 const LOG_LEVELS = {
-  ...Logger.levels.values,
+  fatal: 60,
+  error: 50,
+  warn: 40,
+  info: 30,
+  log: 29,
+  progress: 28,
+  success: 27,
+  debug: 20,
+  trace: 10,
 } as const;
 
 /**
  * Defines a type `LogLevel` as the keys of the `LOG_LEVELS` object.
  */
-type LogLevel = keyof typeof LOG_LEVELS;
+type LogLevel = keyof typeof LOG_LEVELS | 'all';
 
 /**
  * Represents a log entry with specific properties.
@@ -260,11 +269,12 @@ async function processSocketMessage(
  * @param agents Map of agent runtimes
  */
 // Global reference to SocketIO router for log streaming
-let socketIORouter: SocketIORouter | null = null;
+// let socketIORouter: SocketIORouter | null = null; // This can be removed if router is managed within setupSocketIO scope correctly
 
 export function setupSocketIO(
   server: http.Server,
-  agents: Map<UUID, IAgentRuntime>
+  agents: Map<UUID, IAgentRuntime>,
+  serverInstance: AgentServer
 ): SocketIOServer {
   const io = new SocketIOServer(server, {
     cors: {
@@ -273,86 +283,14 @@ export function setupSocketIO(
     },
   });
 
-  // Setup the new SocketIO router
-  socketIORouter = new SocketIORouter(agents);
-  socketIORouter.setupListeners(io);
+  const centralSocketRouter = new SocketIORouter(agents, serverInstance);
+  centralSocketRouter.setupListeners(io);
 
-  // Setup log streaming integration
-  setupLogStreaming(io, socketIORouter);
+  setupLogStreaming(io, centralSocketRouter);
 
-  // Fallback to old behavior for compatibility
-  // Map to track which agents are in which rooms
-  const roomParticipants: Map<string, Set<UUID>> = new Map();
-
-  // Handle socket connections with existing logic as fallback
-  io.on('connection', (socket) => {
-    const { agentId, roomId } = socket.handshake.query as { agentId: string; roomId: string };
-
-    logger.debug('Socket connected', { agentId, roomId, socketId: socket.id });
-
-    // Join the specified room
-    if (roomId) {
-      socket.join(roomId);
-      logger.debug(`Socket ${socket.id} joined room ${roomId}`);
-    }
-
-    // Handle messages from clients
-    socket.on('message', async (messageData) => {
-      logger.debug('Socket message received', { messageData, socketId: socket.id });
-
-      if (messageData.type === SOCKET_MESSAGE_TYPE.SEND_MESSAGE) {
-        const payload = messageData.payload;
-        const socketRoomId = payload.roomId;
-        const senderId = payload.senderId;
-
-        // Get all agents associated with this room (using roomParticipants map)
-        const agentsInRoom = roomParticipants.get(socketRoomId) || new Set([socketRoomId as UUID]);
-
-        for (const agentId of agentsInRoom) {
-          const agentRuntime = agents.get(agentId);
-
-          if (!agentRuntime) {
-            logger.warn(`Agent runtime not found for ${agentId} in room ${socketRoomId}`);
-            continue;
-          }
-
-          // Extract tracer if instrumentation is available
-          const concreteRuntime = agentRuntime as AgentRuntime;
-          const tracer =
-            concreteRuntime.instrumentationService?.isEnabled?.() && concreteRuntime.tracer
-              ? concreteRuntime.tracer
-              : undefined;
-
-          // Call the unified processing function
-          await processSocketMessage(agentRuntime, payload, socket.id, socketRoomId, io, tracer);
-        }
-      } else if (messageData.type === SOCKET_MESSAGE_TYPE.ROOM_JOINING) {
-        const payload = messageData.payload;
-        const roomId = payload.roomId;
-        const agentIds = payload.agentIds;
-
-        roomParticipants.set(roomId, new Set());
-
-        agentIds?.forEach((agentId: UUID) => {
-          if (agents.has(agentId as UUID)) {
-            // Add agent to room participants
-            roomParticipants.get(roomId)!.add(agentId as UUID);
-            logger.debug(`Agent ${agentId} joined room ${roomId}`);
-          }
-        });
-        logger.debug('roomParticipants', roomParticipants);
-
-        logger.debug(`Client ${socket.id} joining room ${roomId}`);
-      }
-    });
-
-    // Handle disconnections
-    socket.on('disconnect', () => {
-      logger.debug('Socket disconnected', { socketId: socket.id });
-      // Note: We're not removing agents from rooms on disconnect
-      // as they should remain participants even when not connected
-    });
-  });
+  // Old direct-to-agent processing path via sockets is now fully handled by SocketIORouter
+  // which routes messages through the central message store and internal bus.
+  // The old code block is removed.
 
   return io;
 }
@@ -606,7 +544,7 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
  */
 export function createApiRouter(
   agents: Map<UUID, IAgentRuntime>,
-  server?: AgentServer
+  serverInstance?: AgentServer // AgentServer is already serverInstance here
 ): express.Router {
   const router = express.Router();
 
@@ -652,16 +590,17 @@ export function createApiRouter(
   });
 
   // Mount specific sub-routers FIRST
-  router.use('/agents', agentRouter(agents, server));
-  router.use('/world', worldRouter(server));
+  router.use('/agents', agentRouter(agents, serverInstance));
+  router.use('/world', worldRouter(serverInstance));
   router.use('/envs', envRouter());
   router.use('/tee', teeRouter(agents));
+  router.use('/messages', MessagesRouter(serverInstance));
 
   // Add the plugin routes middleware AFTER specific routers
   router.use(createPluginRouteHandler(agents));
 
   router.get('/stop', (_req, res) => {
-    server?.stop(); // Use optional chaining in case server is undefined
+    serverInstance?.stop(); // Use optional chaining in case server is undefined
     logger.log(
       {
         apiRoute: '/stop',

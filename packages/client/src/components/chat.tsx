@@ -8,14 +8,24 @@ import {
 import { ChatInput } from '@/components/ui/chat/chat-input';
 import { ChatMessageList } from '@/components/ui/chat/chat-message-list';
 import { USER_NAME } from '@/constants';
-import { useDeleteAllMemories, useDeleteMemory, useMessages } from '@/hooks/use-query-hooks';
+import {
+  useCentralChannelMessages,
+  useDeleteCentralChannelMessage,
+  useClearCentralChannelMessages,
+  useAgent,
+  type UiMessage,
+} from '@/hooks/use-query-hooks';
 import clientLogger from '@/lib/logger';
 import { parseMediaFromText, removeMediaUrlsFromText } from '@/lib/media-utils';
 import SocketIOManager from '@/lib/socketio-manager';
 import { cn, getEntityId, moment, randomUUID } from '@/lib/utils';
-import { WorldManager } from '@/lib/world-manager';
-import type { Agent, Content, Media, UUID } from '@elizaos/core';
-import { AgentStatus, ContentType } from '@elizaos/core';
+import type { Agent, Content, Media, UUID, Room } from '@elizaos/core';
+import {
+  AgentStatus,
+  ContentType as CoreContentType,
+  ChannelType as CoreChannelType,
+  validateUuid,
+} from '@elizaos/core';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
 
 import { useQueryClient } from '@tanstack/react-query';
@@ -42,6 +52,13 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { CHAT_SOURCE } from '@/constants';
 import { apiClient } from '@/lib/api';
 import { Avatar, AvatarImage } from '@/components/ui/avatar';
+import type {
+  MessageCompleteData,
+  ControlMessageData,
+  MessageBroadcastData,
+} from '@/lib/socketio-manager';
+import { useToast } from '@/hooks/use-toast';
+import { useParams, useSearchParams } from 'react-router-dom';
 
 type ExtraContentFields = {
   name: string;
@@ -63,23 +80,25 @@ const MemoizedMessageContent = React.memo(MessageContent);
 
 function MessageContent({
   message,
-  agentId,
+  agentForTts,
   shouldAnimate,
   onDelete,
 }: {
-  message: ContentWithUser;
-  agentId: UUID;
+  message: UiMessage;
+  agentForTts: Agent | Partial<Agent> | null;
   shouldAnimate: boolean;
   onDelete: (id: string) => void;
 }) {
+  const isUser = !message.isAgent;
+
   return (
     <div className="flex flex-col w-full">
       <ChatBubbleMessage
         isLoading={message.isLoading}
-        {...(message.name === USER_NAME ? { variant: 'sent' } : {})}
+        {...(isUser ? { variant: 'sent' } : {})}
         {...(!message.text ? { className: 'bg-transparent' } : {})}
       >
-        {message.name !== USER_NAME && (
+        {!isUser && (
           <div className="w-full">
             {message.text && message.thought && (
               <Collapsible className="mb-1">
@@ -116,7 +135,7 @@ function MessageContent({
                 {/* Display text content if there's any remaining after removing URLs */}
                 {textWithoutUrls.trim() && (
                   <div>
-                    {message.name === USER_NAME ? (
+                    {isUser ? (
                       textWithoutUrls
                     ) : shouldAnimate ? (
                       <AIWriter>{textWithoutUrls}</AIWriter>
@@ -142,7 +161,7 @@ function MessageContent({
         </div>
         {!message.text &&
           message.thought &&
-          (message.name === USER_NAME ? (
+          (isUser ? (
             message.thought
           ) : shouldAnimate ? (
             <AIWriter>
@@ -167,10 +186,10 @@ function MessageContent({
       </ChatBubbleMessage>
       <div className="flex justify-between items-end w-full">
         <div className="flex items-center gap-1">
-          {message.name !== USER_NAME && message.text && !message.isLoading && (
+          {!isUser && message.text && !message.isLoading && agentForTts?.id && (
             <>
               <CopyButton text={message.text} />
-              <ChatTtsButton agentId={agentId} text={message.text} />
+              <ChatTtsButton agentId={agentForTts.id} text={message.text} />
             </>
           )}
           <DeleteButton onClick={() => onDelete(message.id as string)} />
@@ -178,7 +197,7 @@ function MessageContent({
         <div>
           {message.text && message.actions && (
             <Badge variant="outline" className="text-sm">
-              {message.actions}
+              {Array.isArray(message.actions) ? message.actions.join(', ') : message.actions}
             </Badge>
           )}
         </div>
@@ -187,19 +206,34 @@ function MessageContent({
   );
 }
 
-export default function Page({
-  agentId,
-  worldId,
-  agentData,
-  showDetails,
-  toggleDetails,
-}: {
-  agentId: UUID;
-  worldId: UUID;
-  agentData: Agent;
-  showDetails: boolean;
-  toggleDetails: () => void;
-}) {
+export default function DMPage() {
+  const { channelId: channelIdFromPath } = useParams<{ channelId: string }>();
+  const [searchParams] = useSearchParams();
+  const agentIdFromQuery = searchParams.get('agentId');
+  const serverIdFromQuery = searchParams.get('serverId');
+
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const currentClientEntityId = getEntityId();
+
+  // Use resolved IDs for hooks
+  const channelId = channelIdFromPath ? validateUuid(channelIdFromPath) : undefined;
+  const targetAgentId = agentIdFromQuery ? validateUuid(agentIdFromQuery) : undefined;
+  const serverId = serverIdFromQuery ? validateUuid(serverIdFromQuery) : undefined;
+
+  const { data: agentDataWrapper, isLoading: isLoadingAgentData } = useAgent(targetAgentId, {
+    enabled: !!targetAgentId,
+  });
+  const targetAgentData = agentDataWrapper?.data;
+
+  const {
+    data: messages = [],
+    isLoading: isLoadingMessages,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useCentralChannelMessages(channelId, serverId);
+
   const [selectedFiles, setSelectedFiles] = useState<UploadingFile[]>([]);
   const [input, setInput] = useState('');
   const [inputDisabled, setInputDisabled] = useState<boolean>(false);
@@ -207,451 +241,356 @@ export default function Page({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
-  const queryClient = useQueryClient();
-  const deleteMemoryMutation = useDeleteMemory();
-  const clearMemoriesMutation = useDeleteAllMemories();
 
-  const entityId = getEntityId();
-  const roomId = WorldManager.generateRoomId(agentId);
-
-  const { data: messages = [] } = useMessages(agentId, roomId);
+  const { mutate: deleteMessageCentral } = useDeleteCentralChannelMessage();
+  const { mutate: clearMessagesCentral } = useClearCentralChannelMessages();
 
   const socketIOManager = SocketIOManager.getInstance();
-
   const animatedMessageIdRef = useRef<string | null>(null);
 
+  // Show details state (assuming passed from a layout or managed differently for DMs)
+  // For simplicity, let's assume it's not a feature of this direct DM page for now.
+  const [showDetails, setShowDetails] = useState(false);
+  const toggleDetails = () => setShowDetails((prev) => !prev);
+
   useEffect(() => {
-    // Initialize Socket.io connection once with our entity ID
-    socketIOManager.initialize(entityId, [agentId]);
+    if (!channelId || !currentClientEntityId) return;
+    socketIOManager.initialize(currentClientEntityId);
+    socketIOManager.joinRoom(channelId);
+    clientLogger.info(`[DMPage] Joined DM channel ${channelId} as user ${currentClientEntityId}`);
 
-    // Join the room for this agent
-    socketIOManager.joinRoom(roomId);
+    const handleMessageBroadcasting = (data: MessageBroadcastData) => {
+      if (data.roomId !== channelId) return;
+      const isCurrentUser = data.senderId === currentClientEntityId;
+      const isTargetAgent = data.senderId === targetAgentId;
+      if (!isCurrentUser && isTargetAgent) setInputDisabled(false);
 
-    console.log(`[Chat] Joined room ${roomId} with entityId ${entityId}`);
-
-    const handleMessageBroadcasting = (data: ContentWithUser) => {
-      console.log('[Chat] Received message broadcast:', data);
-
-      // Skip messages that don't have required content
-      if (!data) {
-        console.warn('[Chat] Received empty or invalid message data:', data);
-        return;
+      queryClient.setQueryData<UiMessage[]>(['messages', channelId], (old = []) => {
+        const messageExists = old.some((m) => m.id === data.id);
+        if (messageExists) return old;
+        const newUiMsg: UiMessage = {
+          id: data.id || randomUUID(),
+          text: data.text,
+          name: data.senderName,
+          senderId: data.senderId as UUID,
+          isAgent: isTargetAgent, // In a DM, non-user message is from the targetAgent
+          createdAt: data.createdAt,
+          channelId: data.roomId as UUID,
+          serverId: data.serverId as UUID | undefined,
+          source: data.source,
+          attachments: data.attachments,
+          thought: data.thought,
+          actions: data.actions,
+          isLoading: false,
+        };
+        const newMessages = [...old, newUiMsg].sort((a, b) => a.createdAt - b.createdAt);
+        if (isTargetAgent && newUiMsg.id) animatedMessageIdRef.current = newUiMsg.id;
+        else animatedMessageIdRef.current = null;
+        return newMessages;
+      });
+    };
+    const handleMessageComplete = (data: MessageCompleteData) => {
+      if (data.roomId === channelId) setInputDisabled(false);
+    };
+    const handleControlMessage = (data: ControlMessageData) => {
+      if (data.roomId === channelId) {
+        if (data.action === 'disable_input') setInputDisabled(true);
+        else if (data.action === 'enable_input') setInputDisabled(false);
       }
-
-      // Skip messages not for this room
-      if (data.roomId !== roomId) {
-        console.log(
-          `[Chat] Ignoring message for different room: ${data.roomId}, we're in ${roomId}`
-        );
-        return;
-      }
-
-      // Check if the message is from the current user or from the agent
-      const isCurrentUser = data.senderId === entityId;
-
-      if (!isCurrentUser) {
-        console.log('[Chat] Agent message received, re-enabling input');
-        setInputDisabled(false);
-      }
-
-      // Build a proper ContentWithUser object that matches what the messages query expects
-      const newMessage: ContentWithUser = {
-        ...data,
-        // Set the correct name based on who sent the message
-        name: isCurrentUser ? USER_NAME : (data.senderName as string),
-        createdAt: data.createdAt || Date.now(),
-        senderId: entityId,
-        senderName: USER_NAME,
-        roomId: roomId,
-        source: CHAT_SOURCE,
-        id: data.id, // Add a unique ID for React keys and duplicate detection
-      };
-
-      console.log(`[Chat] Adding new message to UI from ${newMessage.name}:`, newMessage);
-
-      // Update the message list without triggering a re-render cascade
-      queryClient.setQueryData(
-        ['messages', agentId, roomId, worldId],
-        (old: ContentWithUser[] = []) => {
-          console.log('[Chat] Current messages:', old?.length || 0);
-
-          // --- Start modification for IGNORE case ---
-          let messageToAdd = { ...newMessage }; // Copy the received message data
-          const isIgnore = messageToAdd.actions?.includes('IGNORE');
-
-          if (isIgnore) {
-            // Customize text for ignored messages
-            messageToAdd.text = ``;
-            // Ensure thought is preserved, actions array might also be useful
-            messageToAdd.thought = data.thought; // Make sure thought from data is used
-            messageToAdd.actions = data.actions; // Keep the IGNORE action marker
-            clientLogger.debug('[Chat] Handling IGNORE action, modifying message', messageToAdd);
-          }
-
-          // Check if this message (potentially modified) is already in the list (avoid duplicates)
-          const isDuplicate = old.some(
-            (msg) =>
-              // Use a combination of sender, text/thought, and time to detect duplicates
-              msg.senderId === messageToAdd.senderId &&
-              (msg.text === messageToAdd.text ||
-                (!msg.text && !messageToAdd.text && msg.thought === messageToAdd.thought)) &&
-              Math.abs((msg.createdAt || 0) - (messageToAdd.createdAt || 0)) < 5000 // Within 5 seconds
-          );
-
-          if (isDuplicate) {
-            console.log('[Chat] Skipping duplicate message');
-            return old;
-          }
-
-          // Set animation ID based on the potentially modified messageToAdd
-          if (messageToAdd.id) {
-            const newMessageId =
-              typeof messageToAdd.id === 'string' ? messageToAdd.id : String(messageToAdd.id);
-            // Only animate non-user messages
-            if (messageToAdd.senderId !== entityId) {
-              animatedMessageIdRef.current = newMessageId;
-            } else {
-              animatedMessageIdRef.current = null; // Don't animate user messages
-            }
-          }
-
-          return [...old, messageToAdd]; // Add the potentially modified message
-        }
-      );
-
-      // Remove the redundant state update that was causing render loops
-      // setInput(prev => prev + '');
     };
 
-    const handleMessageComplete = () => {
-      setInputDisabled(false);
-    };
-
-    // Add listener for message broadcasts
-    console.log('[Chat] Adding messageBroadcast listener');
-    const msgHandler = socketIOManager.evtMessageBroadcast.attach((data) => [
-      data as unknown as ContentWithUser,
-    ]);
-    const completeHandler = socketIOManager.evtMessageComplete.attach(handleMessageComplete);
-
-    msgHandler.attach(handleMessageBroadcasting);
-    completeHandler.attach(handleMessageComplete);
+    const msgSub = socketIOManager.evtMessageBroadcast.attach(
+      (d: MessageBroadcastData) => d.roomId === channelId,
+      handleMessageBroadcasting
+    );
+    const completeSub = socketIOManager.evtMessageComplete.attach(
+      (d: MessageCompleteData) => d.roomId === channelId,
+      handleMessageComplete
+    );
+    const controlSub = socketIOManager.evtControlMessage.attach(
+      (d: ControlMessageData) => d.roomId === channelId,
+      handleControlMessage
+    );
 
     return () => {
-      // When leaving this chat, leave the room but don't disconnect
-      console.log(`[Chat] Leaving room ${roomId}`);
-      socketIOManager.leaveRoom(roomId);
-      msgHandler.detach();
-      completeHandler.detach();
+      if (channelId) socketIOManager.leaveRoom(channelId);
+      msgSub?.detach();
+      completeSub?.detach();
+      controlSub?.detach();
     };
-  }, [roomId, agentId, entityId, queryClient, socketIOManager]);
-
-  // Handle control messages
-  useEffect(() => {
-    // Function to handle control messages (enable/disable input)
-    const handleControlMessage = (data: any) => {
-      // Extract action and roomId with type safety
-      const { action, roomId: messageRoomId } = data || {};
-      const isInputControl = action === 'enable_input' || action === 'disable_input';
-
-      // Check if this is a valid input control message for this room
-      if (isInputControl && messageRoomId === roomId) {
-        clientLogger.info(`[Chat] Received control message: ${action} for room ${messageRoomId}`);
-
-        if (action === 'disable_input') {
-          setInputDisabled(true);
-          // setMessageProcessing(true); // REMOVE
-        } else if (action === 'enable_input') {
-          setInputDisabled(false);
-          // setMessageProcessing(false); // REMOVE
-        }
-      }
-    };
-
-    // Subscribe to control messages
-    socketIOManager.on('controlMessage', handleControlMessage);
-
-    // Cleanup subscription on unmount
-    return () => {
-      socketIOManager.off('controlMessage', handleControlMessage);
-    };
-  }, [roomId]);
-
-  // Use a stable ID for refs to avoid excessive updates
-  const scrollRefId = useRef(`scroll-${Math.random().toString(36).substring(2, 9)}`).current;
+  }, [channelId, currentClientEntityId, queryClient, socketIOManager, targetAgentId]);
 
   const { scrollRef, isAtBottom, scrollToBottom, disableAutoScroll } = useAutoScroll({
     smooth: true,
   });
-
-  // Use a ref to track the previous message count to avoid excessive scrolling
   const prevMessageCountRef = useRef(0);
-
-  // Update scroll without creating a circular dependency
   const safeScrollToBottom = useCallback(() => {
-    // Add a small delay to avoid render loops
     setTimeout(() => {
       scrollToBottom();
     }, 0);
-  }, []);
+  }, [scrollToBottom]);
 
   useEffect(() => {
-    // Only scroll if the message count has changed
     if (messages.length !== prevMessageCountRef.current) {
-      console.log(`[Chat][${scrollRefId}] Messages updated, scrolling to bottom`);
       safeScrollToBottom();
       prevMessageCountRef.current = messages.length;
     }
-  }, [messages.length, safeScrollToBottom, scrollRefId]);
-
+  }, [messages.length, safeScrollToBottom]);
   useEffect(() => {
     safeScrollToBottom();
   }, [safeScrollToBottom]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
-      if (e.nativeEvent.isComposing) return;
       handleSendMessage(e as unknown as React.FormEvent<HTMLFormElement>);
     }
   };
 
+  const getContentTypeFromMimeType = (mimeType: string): CoreContentType | undefined => {
+    if (mimeType.startsWith('image/')) return CoreContentType.IMAGE;
+    if (mimeType.startsWith('video/')) return CoreContentType.VIDEO;
+    if (mimeType.startsWith('audio/')) return CoreContentType.AUDIO;
+    if (mimeType.includes('pdf') || mimeType.includes('document')) return CoreContentType.DOCUMENT;
+    return undefined;
+  };
+
   const handleSendMessage = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if ((!input && selectedFiles.length === 0) || inputDisabled) return;
+    if (
+      (!input.trim() && selectedFiles.length === 0) ||
+      inputDisabled ||
+      !channelId ||
+      !serverId ||
+      !currentClientEntityId ||
+      !targetAgentData?.id
+    )
+      return;
 
-    const messageId = randomUUID();
-    let messageText = input;
-    let attachments: Media[] = [];
+    setInputDisabled(true);
+    const tempMessageId = randomUUID() as UUID;
+    let messageText = input.trim();
+    let uiAttachments: Media[] = [];
 
-    // Handle file uploads if files are selected
-    if (selectedFiles.length > 0) {
-      try {
-        console.log('[Chat] Uploading files before sending message...');
-
-        // Set uploading state for all files
-        setSelectedFiles((prev) => prev.map((f) => ({ ...f, isUploading: true })));
-
-        // Upload all files concurrently
-        const uploadPromises = selectedFiles.map(async (fileData) => {
-          try {
-            const uploadResult = await apiClient.uploadMedia(agentId, fileData.file);
-            if (uploadResult.success) {
-              return {
-                id: `file-${messageId}-${fileData.id}`,
-                url: uploadResult.data.url,
-                title: fileData.file.name,
-                source: 'file_upload',
-                description: `${fileData.file.type} uploaded by user`,
-                text: '',
-                contentType: getContentTypeFromMimeType(fileData.file.type),
-              };
-            } else {
-              throw new Error(`Upload failed for ${fileData.file.name}`);
-            }
-          } catch (error) {
-            console.error(`Failed to upload ${fileData.file.name}:`, error);
-            throw error;
-          }
-        });
-
-        const uploadResults = await Promise.all(uploadPromises);
-        attachments = uploadResults;
-      } catch (error) {
-        console.error('Failed to upload files:', error);
-        // Reset uploading state on error
-        setSelectedFiles((prev) =>
-          prev.map((f) => ({ ...f, isUploading: false, error: 'Upload failed' }))
-        );
-        return;
-      }
-    }
-
-    // Parse media from the input text to include in message data
-    const mediaInfos = parseMediaFromText(messageText);
-
-    // Create attachments array from parsed media for model processing
-    const mediaAttachments = mediaInfos.map((media, index) => ({
-      id: `media-${messageId}-${index}`,
-      url: media.url,
-      title: media.type === 'image' ? 'Image' : 'Video',
-      source: 'user_input',
-      description: `${media.type} shared by user`,
-      text: '',
-      contentType: media.type === 'image' ? ContentType.IMAGE : ContentType.VIDEO,
-    }));
-
-    // Combine file attachments and media attachments
-    const allAttachments = [...attachments, ...mediaAttachments];
-
-    // If there's no text but there are attachments, provide a default message
-    if (!messageText.trim() && allAttachments.length > 0) {
-      const fileTypes = allAttachments.map((a) => {
-        if (a.contentType === ContentType.IMAGE) {
-          return 'image';
-        } else if (a.contentType === ContentType.VIDEO) {
-          return 'video';
-        } else if (a.contentType === ContentType.AUDIO) {
-          return 'audio';
-        } else {
-          return 'file';
-        }
-      });
-      const uniqueTypes = [...new Set(fileTypes)];
-      messageText = `Shared ${uniqueTypes.join(' and ')}${allAttachments.length > 1 ? 's' : ''}`;
-    }
-
-    // Always add the user's message immediately to the UI before sending it to the server
-    const userMessage: ContentWithUser = {
+    const optimisticUiMessage: UiMessage = {
+      id: tempMessageId,
       text: messageText,
       name: USER_NAME,
       createdAt: Date.now(),
-      senderId: entityId,
-      senderName: USER_NAME,
-      roomId: roomId,
+      senderId: currentClientEntityId,
+      isAgent: false,
+      isLoading: true,
+      channelId: channelId,
+      serverId: serverId,
       source: CHAT_SOURCE,
-      id: messageId, // Add a unique ID for React keys and duplicate detection
-      attachments: allAttachments.length > 0 ? allAttachments : undefined,
+      attachments: selectedFiles
+        .map((sf) => ({
+          id: sf.id,
+          url: URL.createObjectURL(sf.file),
+          title: sf.file.name,
+          contentType: getContentTypeFromMimeType(sf.file.type),
+        }))
+        .filter((att) => att.contentType !== undefined) as Media[],
     };
 
-    console.log('[Chat] Adding user message to UI:', userMessage);
-
-    // Update the local message list first for immediate feedback
-    queryClient.setQueryData(
-      ['messages', agentId, roomId, worldId],
-      (old: ContentWithUser[] = []) => {
-        // Check if exact same message exists already to prevent duplicates
-        const exists = old.some(
-          (msg) =>
-            msg.text === userMessage.text &&
-            msg.name === USER_NAME &&
-            Math.abs((msg.createdAt || 0) - userMessage.createdAt) < 1000
-        );
-
-        if (exists) {
-          console.log('[Chat] Skipping duplicate user message');
-          return old;
-        }
-
-        return [...old, userMessage];
-      }
-    );
-
-    // Send the message to the server/agent
-    socketIOManager.sendMessage(
-      messageText,
-      roomId,
-      CHAT_SOURCE,
-      allAttachments.length > 0 ? allAttachments : undefined
-    );
-    setInputDisabled(true);
-
-    // Clear files and input after successful send
-    setSelectedFiles([]);
+    if (messageText || selectedFiles.length > 0) {
+      queryClient.setQueryData<UiMessage[]>(['messages', channelId], (old = []) => [
+        ...old,
+        optimisticUiMessage,
+      ]);
+    }
+    safeScrollToBottom();
+    const currentInputVal = input;
     setInput('');
     formRef.current?.reset();
+
+    try {
+      if (selectedFiles.length > 0) {
+        const currentUploads = selectedFiles.map((sf) => ({ ...sf, isUploading: true }));
+        setSelectedFiles(currentUploads.map((f) => ({ ...f, isUploading: true })));
+
+        const uploadPromises = currentUploads.map(async (fileData) => {
+          try {
+            const uploadResult = await apiClient.uploadAgentMedia(
+              targetAgentData.id!,
+              fileData.file
+            );
+            if (uploadResult.success) {
+              return {
+                id: fileData.id,
+                url: uploadResult.data.url,
+                title: fileData.file.name,
+                source: 'file_upload',
+                contentType: getContentTypeFromMimeType(fileData.file.type),
+              } as Media;
+            } else {
+              throw new Error(`Upload failed for ${fileData.file.name}`);
+            }
+          } catch (uploadError) {
+            clientLogger.error(`Failed to upload ${fileData.file.name}:`, uploadError);
+            setSelectedFiles((prev) =>
+              prev.map((f) =>
+                f.id === fileData.id ? { ...f, isUploading: false, error: 'Upload failed' } : f
+              )
+            );
+            throw uploadError;
+          }
+        });
+        uiAttachments = await Promise.all(uploadPromises);
+        setSelectedFiles((prev) => prev.filter((f) => !uiAttachments.find((up) => up.id === f.id)));
+        if (!messageText && uiAttachments.length > 0) {
+          messageText = `Shared ${uiAttachments.length} file(s).`;
+        }
+      }
+
+      const mediaInfosFromText = parseMediaFromText(messageText || currentInputVal);
+      const textMediaAttachments: Media[] = mediaInfosFromText.map(
+        (media: ParsedMediaInfo, index: number): Media => ({
+          id: `media-${tempMessageId}-${index}`,
+          url: media.url,
+          title: media.type === 'image' ? 'Image' : 'Video',
+          source: 'user_input_url',
+          contentType: media.type === 'image' ? CoreContentType.IMAGE : CoreContentType.VIDEO,
+        })
+      );
+
+      const finalAttachments = [...uiAttachments, ...textMediaAttachments];
+      const finalText =
+        messageText ||
+        (finalAttachments.length > 0 ? `Shared ${finalAttachments.length} item(s)` : '') ||
+        currentInputVal;
+
+      if (!finalText && finalAttachments.length === 0) {
+        clientLogger.warn('Attempted to send an empty message.');
+        setInputDisabled(false);
+        queryClient.setQueryData<UiMessage[]>(['messages', channelId], (old = []) =>
+          old.filter((m) => m.id !== tempMessageId)
+        );
+        return;
+      }
+
+      const response = await apiClient.postMessageToCentralChannel(channelId, {
+        author_id: currentClientEntityId,
+        content: finalText,
+        server_id: serverId,
+        metadata: {
+          attachments: finalAttachments.length > 0 ? finalAttachments : undefined,
+          user_display_name: USER_NAME,
+        },
+        source_type: CHAT_SOURCE,
+      });
+
+      queryClient.setQueryData<UiMessage[]>(['messages', channelId], (old = []) =>
+        old.map((m) => {
+          if (m.id === tempMessageId) {
+            const serverResponseData = response.data;
+            const isAgentResp = serverResponseData.authorId === targetAgentId;
+            return {
+              id: serverResponseData.id,
+              text: serverResponseData.content,
+              name: isAgentResp
+                ? targetAgentData?.name || serverResponseData.metadata?.agentName || 'Agent'
+                : USER_NAME,
+              senderId: serverResponseData.authorId,
+              isAgent: isAgentResp,
+              createdAt: serverResponseData.createdAt,
+              attachments: serverResponseData.metadata?.attachments as Media[] | undefined,
+              thought: isAgentResp ? serverResponseData.metadata?.thought : undefined,
+              actions: isAgentResp
+                ? (serverResponseData.metadata?.actions as string[] | undefined)
+                : undefined,
+              channelId: serverResponseData.channelId,
+              serverId: serverResponseData.metadata?.serverId || serverId,
+              source: serverResponseData.sourceType,
+              isLoading: false,
+            } as UiMessage;
+          }
+          return m;
+        })
+      );
+    } catch (error) {
+      clientLogger.error('Error sending message or uploading files:', error);
+      toast({
+        title: 'Error Sending Message',
+        description: error instanceof Error ? error.message : 'Could not send message.',
+        variant: 'destructive',
+      });
+      queryClient.setQueryData<UiMessage[]>(['messages', channelId], (old = []) =>
+        old.map((m) =>
+          m.id === tempMessageId
+            ? { ...m, isLoading: false, text: `${m.text || 'Attachment'} (Failed to send)` }
+            : m
+        )
+      );
+    } finally {
+      setInputDisabled(false);
+      setSelectedFiles((prev) => prev.filter((f) => f.isUploading));
+      formRef.current?.reset();
+      inputRef.current?.focus();
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    const validFiles = files.filter(
-      (file) =>
-        file.type.startsWith('image/') ||
-        file.type.startsWith('video/') ||
-        file.type.startsWith('application/') ||
-        file.type.startsWith('text/') ||
-        file.type === 'application/pdf' ||
-        file.type === 'application/msword' ||
-        file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-        file.type === 'application/vnd.ms-excel' ||
-        file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
-        file.type === 'application/vnd.ms-powerpoint' ||
-        file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
-    );
-
-    // Filter out files that are already selected (check by name, size, and lastModified)
-    const uniqueFiles = validFiles.filter((newFile) => {
-      return !selectedFiles.some(
-        (existingFile) =>
-          existingFile.file.name === newFile.name &&
-          existingFile.file.size === newFile.size &&
-          existingFile.file.lastModified === newFile.lastModified
-      );
-    });
-
-    const newFiles: UploadingFile[] = uniqueFiles.map((file) => ({
+    const newUploadingFiles: UploadingFile[] = files.map((file) => ({
       file,
       id: randomUUID(),
       isUploading: false,
     }));
-
-    setSelectedFiles((prev) => [...prev, ...newFiles]);
-
-    // Reset the input so the same files can be selected again
-    if (e.target) {
-      e.target.value = '';
-    }
+    setSelectedFiles((prev) => {
+      const combined = [...prev, ...newUploadingFiles];
+      return Array.from(
+        new Map(combined.map((f) => [`${f.file.name}-${f.file.size}`, f])).values()
+      );
+    });
+    if (e.target) e.target.value = '';
   };
 
   const removeFile = (fileId: string) => {
     setSelectedFiles((prev) => prev.filter((f) => f.id !== fileId));
   };
 
-  useEffect(() => {
-    if (inputRef.current) {
-      inputRef.current.focus();
-    }
-  }, []);
-
-  const handleDeleteMessage = (id: string) => {
-    deleteMemoryMutation.mutate({ agentId, memoryId: id });
-    queryClient.setQueryData(
-      ['messages', agentId, roomId, worldId],
-      (old: ContentWithUser[] = []) => old.filter((m) => m.id !== id)
-    );
+  const handleDeleteMessage = (messageId: string) => {
+    if (!channelId) return;
+    deleteMessageCentral({ channelId, messageId: messageId as UUID });
   };
 
   const handleClearChat = () => {
-    if (window.confirm('Clear all messages?')) {
-      clearMemoriesMutation.mutate({ agentId, roomId });
-      queryClient.setQueryData(['messages', agentId, roomId, worldId], []);
+    if (!channelId) return;
+    if (window.confirm('Clear all messages in this chat?')) {
+      clearMessagesCentral(channelId);
     }
   };
 
-  // Helper function to map MIME type to ContentType enum
-  const getContentTypeFromMimeType = (mimeType: string): ContentType | undefined => {
-    if (mimeType.startsWith('image/')) {
-      return ContentType.IMAGE;
-    } else if (mimeType.startsWith('video/')) {
-      return ContentType.VIDEO;
-    } else if (mimeType.startsWith('audio/')) {
-      return ContentType.AUDIO;
-    } else if (mimeType.includes('pdf') || mimeType.includes('document')) {
-      return ContentType.DOCUMENT;
-    }
-    return undefined;
-  };
+  if (isLoadingAgentData || (!targetAgentData && targetAgentId)) {
+    return (
+      <div className="flex flex-1 justify-center items-center">
+        <p>Loading agent details...</p>
+      </div>
+    );
+  }
+  if (!channelId || !serverId || !targetAgentData) {
+    return (
+      <div className="flex flex-1 justify-center items-center">
+        <p>Loading chat context...</p>
+      </div>
+    );
+  }
 
   return (
     <div
       className={`flex flex-col w-full h-screen items-center ${showDetails ? 'col-span-3' : 'col-span-4'}`}
     >
-      {/* Wrapper to constrain width and manage vertical layout */}
       <div className="flex flex-col w-full md:max-w-4xl h-full p-4">
-        {/* Agent Header */}
         <div className="flex items-center justify-between mb-4 p-3 bg-card rounded-lg border">
           <div className="flex items-center gap-3">
             <Avatar className="size-10 border rounded-full">
-              <AvatarImage
-                src={
-                  agentData?.settings?.avatar ? agentData?.settings?.avatar : '/elizaos-icon.png'
-                }
-              />
+              <AvatarImage src={targetAgentData?.settings?.avatar || '/elizaos-icon.png'} />
             </Avatar>
             <div className="flex flex-col">
               <div className="flex items-center gap-2">
-                <h2 className="font-semibold text-lg">{agentData?.name || 'Agent'}</h2>
-                {agentData?.status === AgentStatus.ACTIVE ? (
+                <h2 className="font-semibold text-lg">{targetAgentData?.name || 'Agent'}</h2>
+                {targetAgentData?.status === AgentStatus.ACTIVE ? (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <div className="size-2.5 rounded-full bg-green-500 ring-2 ring-green-500/20 animate-pulse" />
@@ -671,50 +610,61 @@ export default function Page({
                   </Tooltip>
                 )}
               </div>
-              {agentData?.bio && (
+              {targetAgentData?.bio && (
                 <p className="text-sm text-muted-foreground line-clamp-1">
-                  {Array.isArray(agentData.bio) ? agentData.bio[0] : agentData.bio}
+                  {Array.isArray(targetAgentData.bio)
+                    ? targetAgentData.bio[0]
+                    : targetAgentData.bio}
                 </p>
               )}
             </div>
           </div>
-
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={handleClearChat}>
-              <Trash2 className="size-4" />
-            </Button>
             <Button
               variant="outline"
               size="sm"
-              onClick={toggleDetails}
-              className={cn('gap-1.5', showDetails && 'bg-secondary')}
+              onClick={handleClearChat}
+              disabled={!messages || messages.length === 0}
             >
-              <PanelRight className="size-4" />
+              <Trash2 className="size-4" />
             </Button>
+            {/* <Button variant="outline" size="sm" onClick={toggleDetails} className={cn('gap-1.5', showDetails && 'bg-secondary')}>
+              <PanelRight className="size-4" />
+            </Button> */}
           </div>
         </div>
 
-        {/* Main Chat Area - takes remaining height */}
         <div
           className={cn('flex flex-col transition-all duration-300 w-full grow overflow-hidden ')}
         >
-          {/* Chat Messages */}
           <ChatMessageList
             scrollRef={scrollRef}
             isAtBottom={isAtBottom}
             scrollToBottom={safeScrollToBottom}
             disableAutoScroll={disableAutoScroll}
-            className="flex-grow scrollbar-hide overflow-y-auto" // Ensure scrolling within this list
+            className="flex-grow scrollbar-hide overflow-y-auto"
+            onScrollUp={fetchNextPage}
+            isLoadingMore={isFetchingNextPage}
           >
-            {messages.map((message: ContentWithUser, index: number) => {
-              const isUser = message.name === USER_NAME;
+            {isLoadingMessages && messages.length === 0 && (
+              <div className="flex flex-1 justify-center items-center">
+                <p>Loading messages...</p>
+              </div>
+            )}
+            {!isLoadingMessages && messages.length === 0 && (
+              <div className="flex flex-1 justify-center items-center">
+                <p>No messages yet. Start the conversation!</p>
+              </div>
+            )}
+            {messages.map((message: UiMessage, index: number) => {
+              const isUser = !message.isAgent;
               const shouldAnimate =
                 index === messages.length - 1 &&
-                message.name !== USER_NAME &&
+                message.isAgent &&
                 message.id === animatedMessageIdRef.current;
               return (
                 <div
-                  key={`${message.id as string}-${message.createdAt}`}
+                  key={`${message.id}-${message.createdAt}`}
                   className={cn(
                     'flex flex-col gap-1 p-1',
                     isUser ? 'justify-end' : 'justify-start'
@@ -727,22 +677,15 @@ export default function Page({
                     {!isUser && (
                       <Avatar className="size-8 border rounded-full select-none mb-2">
                         <AvatarImage
-                          src={
-                            isUser
-                              ? '/user-icon.png'
-                              : agentData?.settings?.avatar
-                                ? agentData?.settings?.avatar
-                                : '/elizaos-icon.png'
-                          }
+                          src={targetAgentData?.settings?.avatar || '/elizaos-icon.png'}
                         />
                       </Avatar>
                     )}
-
                     <MemoizedMessageContent
                       message={message}
-                      agentId={agentId}
+                      agentForTts={targetAgentData}
                       shouldAnimate={shouldAnimate}
-                      onDelete={handleDeleteMessage}
+                      onDelete={() => handleDeleteMessage(message.id as string)}
                     />
                   </ChatBubble>
                 </div>
@@ -750,9 +693,7 @@ export default function Page({
             })}
           </ChatMessageList>
 
-          {/* Chat Input */}
           <div className="px-4 pb-4 mt-auto flex-shrink-0">
-            {/* Keep input at bottom */}
             {inputDisabled && (
               <div className="px-2 pb-2 text-sm text-muted-foreground flex items-center gap-2">
                 <div className="flex gap-1">
@@ -760,7 +701,7 @@ export default function Page({
                   <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:150ms]"></div>
                   <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:300ms]"></div>
                 </div>
-                <span>{agentData.name} is thinking</span>
+                <span>{targetAgentData.name} is thinking</span>
                 <div className="flex">
                   <span className="animate-pulse [animation-delay:0ms]">.</span>
                   <span className="animate-pulse [animation-delay:200ms]">.</span>
@@ -829,7 +770,7 @@ export default function Page({
                 onChange={({ target }) => setInput(target.value)}
                 placeholder={
                   inputDisabled
-                    ? 'Input disabled while agent is processing...'
+                    ? `${targetAgentData.name} is thinking...`
                     : 'Type your message here...'
                 }
                 className="min-h-12 resize-none rounded-md bg-card border-0 p-3 shadow-none focus-visible:ring-0"
@@ -843,9 +784,7 @@ export default function Page({
                         variant="ghost"
                         size="icon"
                         onClick={() => {
-                          if (fileInputRef.current) {
-                            fileInputRef.current.click();
-                          }
+                          if (fileInputRef.current) fileInputRef.current.click();
                         }}
                       >
                         <Paperclip className="size-4" />
@@ -862,13 +801,15 @@ export default function Page({
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="left">
-                    <p>Attach files (images, videos, documents)</p>
+                    <p>Attach files</p>
                   </TooltipContent>
                 </Tooltip>
-                <AudioRecorder
-                  agentId={agentId}
-                  onChange={(newInput: string) => setInput(newInput)}
-                />
+                {targetAgentData?.id && (
+                  <AudioRecorder
+                    agentId={targetAgentData.id}
+                    onChange={(newInput: string) => setInput(newInput)}
+                  />
+                )}
                 <Button
                   disabled={inputDisabled || selectedFiles.some((f) => f.isUploading)}
                   type="submit"
@@ -890,7 +831,6 @@ export default function Page({
           </div>
         </div>
       </div>
-      {/* End of width constraining wrapper */}
     </div>
   );
 }
