@@ -14,6 +14,7 @@ interface TestStats {
   passed: number;
   failed: number;
   skipped: number;
+  hasTests: boolean;
 }
 
 interface TestOptions {
@@ -37,6 +38,7 @@ export class TestRunner {
       passed: 0,
       failed: 0,
       skipped: 0,
+      hasTests: false,
     };
 
     // Check if this is a direct plugin test (the agent was created specifically for testing a plugin)
@@ -91,6 +93,7 @@ export class TestRunner {
 
     for (const test of suite.tests) {
       this.stats.total++;
+      this.stats.hasTests = true; // Mark that we found and are running tests
 
       try {
         logger.info(`  Running test: ${test.name}`);
@@ -141,21 +144,22 @@ export class TestRunner {
   }
 
   /**
-   * Runs plugin tests
+   * Runs plugin tests (only when in a plugin directory)
    */
   private async runPluginTests(options: TestOptions) {
-    if (options.skipPlugins && !this.isDirectPluginTest) {
+    // Skip plugin tests if we're not in a plugin directory
+    if (options.skipPlugins) {
       return;
     }
 
-    // If this is a direct plugin test, we have a more friendly message
+    // Only run plugin tests when we're actually in a plugin directory
     if (this.isDirectPluginTest) {
       logger.info('\nRunning plugin tests...');
 
       // When directly testing a plugin, we test only that plugin
       const plugin = this.projectAgent?.plugins?.[0] as Plugin;
       if (!plugin || !plugin.tests) {
-        logger.warn(`No tests found for this plugin (${plugin?.name || 'unknown plugin'})`);
+        logger.info(`No tests found for this plugin (${plugin?.name || 'unknown plugin'})`);
         logger.info(
           "To add tests to your plugin, include a 'tests' property with an array of test suites."
         );
@@ -207,56 +211,8 @@ export const myPlugin = {
         await this.runTestSuite(suite);
       }
     } else {
-      // Standard plugin test running for a project - excluding other plugins loaded by the agent
-      logger.info('\nRunning project plugin tests...');
-
-      // Get the plugins directly from the projectAgent, not from runtime
-      // This ensures we only run tests for plugins explicitly defined in the project
-      const plugins = this.projectAgent?.plugins || [];
-
-      if (plugins.length === 0) {
-        logger.info('No plugins defined directly in project to test');
-        return;
-      }
-
-      logger.info(`Found ${plugins.length} plugins defined in project`);
-
-      for (const plugin of plugins) {
-        try {
-          if (!plugin) {
-            continue;
-          }
-
-          logger.info(`Testing plugin: ${plugin.name || 'unnamed plugin'}`);
-
-          const pluginTests = plugin.tests;
-          if (!pluginTests) {
-            logger.info(`No tests found for plugin: ${plugin.name || 'unnamed plugin'}`);
-            continue;
-          }
-
-          // Handle both single suite and array of suites
-          const testSuites = Array.isArray(pluginTests) ? pluginTests : [pluginTests];
-
-          for (const suite of testSuites) {
-            if (!suite) {
-              continue;
-            }
-
-            // Apply filter if specified
-            if (!this.matchesFilter(suite.name, options.filter)) {
-              logger.info(`Skipping test suite "${suite.name}" (doesn't match filter)`);
-              this.stats.skipped++;
-              continue;
-            }
-
-            await this.runTestSuite(suite);
-          }
-        } catch (error) {
-          logger.error(`Error running tests for plugin ${plugin.name}:`, error);
-          this.stats.failed++;
-        }
-      }
+      // This should not happen in the new logic since we properly scope tests by directory type
+      logger.debug('Plugin tests were requested but this is not a direct plugin test');
     }
   }
 
@@ -403,9 +359,13 @@ export const myPlugin = {
     await this.runE2eTests(options);
 
     // Log summary
-    logger.info(
-      `\nTest Summary: ${this.stats.passed} passed, ${this.stats.failed} failed, ${this.stats.skipped} skipped`
-    );
+    if (!this.stats.hasTests) {
+      logger.info('\nNo test files found, exiting with code 0');
+    } else {
+      logger.info(
+        `\nTest Summary: ${this.stats.passed} passed, ${this.stats.failed} failed, ${this.stats.skipped} skipped`
+      );
+    }
 
     return this.stats;
   }
