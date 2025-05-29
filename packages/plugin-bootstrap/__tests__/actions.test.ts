@@ -23,6 +23,7 @@ import {
   ChannelType,
   HandlerCallback,
   EventType,
+  getUserServerRole,
 } from '@elizaos/core';
 import {
   createMockRuntime,
@@ -31,6 +32,15 @@ import {
   MockRuntime,
   setupActionTest,
 } from './test-utils';
+
+// Mock the getUserServerRole function from @elizaos/core
+vi.mock('@elizaos/core', async () => {
+  const actual = await vi.importActual('@elizaos/core');
+  return {
+    ...actual,
+    getUserServerRole: vi.fn(),
+  };
+});
 
 // Spy on commonly used methods for logging
 beforeEach(() => {
@@ -878,12 +888,17 @@ describe('Choice Action (Extended)', () => {
       },
     ]);
 
-    // Need to mock both user role and getParticipantUserState
-    mockRuntime.getUserServerRole = vi.fn().mockResolvedValue('ADMIN');
-    mockRuntime.getParticipantUserState = vi.fn().mockResolvedValue('ACTIVE');
+    // Mock the imported getUserServerRole function to return ADMIN
+    vi.mocked(getUserServerRole).mockResolvedValue('ADMIN' as any);
 
-    // Add validation spy to see how it's being called
-    const validateSpy = vi.spyOn(choiceAction, 'validate');
+    // Ensure the state has the correct room structure with serverId
+    mockState.data!.room = {
+      id: 'test-room-id',
+      name: 'Test Room',
+      worldId: 'test-world-id',
+      serverId: 'test-server-id',
+      type: 'group',
+    };
 
     const isValid = await choiceAction.validate(
       mockRuntime as IAgentRuntime,
@@ -891,16 +906,13 @@ describe('Choice Action (Extended)', () => {
       mockState as State
     );
 
-    // Check how validate was called
-    console.log('Validation spy calls:', validateSpy.mock.calls);
-    console.log('Validation result:', isValid);
-
-    // If the validation always returns false in the actual implementation, adjust expectation
-    expect(isValid).toBe(false); // Changed from true to match actual behavior
+    // With proper ADMIN role and tasks with options, this should now return true
+    expect(isValid).toBe(true);
     expect(mockRuntime.getTasks).toHaveBeenCalledWith({
       roomId: mockMessage.roomId,
       tags: ['AWAITING_CHOICE'],
     });
+    expect(getUserServerRole).toHaveBeenCalled();
   });
 
   it('should not validate choice action for non-admin users', async () => {
@@ -914,8 +926,17 @@ describe('Choice Action (Extended)', () => {
       },
     ]);
 
-    // Set user role to USER, which shouldn't have permission
-    mockRuntime.getUserServerRole = vi.fn().mockResolvedValue('USER');
+    // Mock the imported getUserServerRole function to return NONE
+    vi.mocked(getUserServerRole).mockResolvedValue('NONE' as any);
+
+    // Ensure the state has the correct room structure with serverId
+    mockState.data!.room = {
+      id: 'test-room-id',
+      name: 'Test Room',
+      worldId: 'test-world-id',
+      serverId: 'test-server-id',
+      type: 'group',
+    };
 
     const isValid = await choiceAction.validate(
       mockRuntime as IAgentRuntime,
@@ -924,6 +945,7 @@ describe('Choice Action (Extended)', () => {
     );
 
     expect(isValid).toBe(false);
+    expect(getUserServerRole).toHaveBeenCalled();
   });
 
   it('should handle multiple tasks awaiting choice', async () => {

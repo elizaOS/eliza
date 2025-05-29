@@ -1,5 +1,5 @@
 import type { TestSuite, IAgentRuntime } from '@elizaos/core';
-import { mrTeeCharacter } from '../src/character';
+import { character } from '../dist/index.js';
 
 export class MrTeeProjectTestSuite implements TestSuite {
   name = 'mr-tee-project';
@@ -13,9 +13,9 @@ export class MrTeeProjectTestSuite implements TestSuite {
           if (!runtime.character) {
             throw new Error('Character not loaded in runtime');
           }
-          if (runtime.character.name !== mrTeeCharacter.name) {
+          if (runtime.character.name !== character.name) {
             throw new Error(
-              `Expected character name to be ${mrTeeCharacter.name}, got ${runtime.character.name}`
+              `Expected character name to be ${character.name}, got ${runtime.character.name}`
             );
           }
           if (!runtime.character.system?.includes('Mr. TEE')) {

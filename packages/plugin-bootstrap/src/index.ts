@@ -1258,6 +1258,7 @@ export const bootstrapPlugin: Plugin = {
     providers.worldProvider,
   ],
   services: [TaskService, ScenarioService],
+  tests: [],
 };
 
 export default bootstrapPlugin;

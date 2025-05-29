@@ -1,5 +1,4 @@
-import { character } from '../src/index';
-import { v4 as uuidv4 } from 'uuid';
+import { character } from '../dist/index.js';
 
 // Define a minimal TestSuite interface that matches what's needed
 interface TestSuite {
