@@ -78,12 +78,14 @@ function processFilterName(name?: string): string | undefined {
 /**
  * Run component tests using Vitest
  */
-async function runComponentTests(options: { name?: string; skipBuild?: boolean }) {
+async function runComponentTests(
+  options: { name?: string; skipBuild?: boolean },
+  projectInfo: DirectoryInfo
+) {
   // Build the project or plugin first unless skip-build is specified
   if (!options.skipBuild) {
     try {
       const cwd = process.cwd();
-      const projectInfo = getProjectType();
       const isPlugin = projectInfo.type === 'elizaos-plugin';
       console.info(`Building ${isPlugin ? 'plugin' : 'project'}...`);
       await buildProject(cwd, isPlugin);
@@ -134,12 +136,14 @@ async function runComponentTests(options: { name?: string; skipBuild?: boolean }
 /**
  * Function that runs the end-to-end tests.
  */
-const runE2eTests = async (options: { port?: number; name?: string; skipBuild?: boolean }) => {
+const runE2eTests = async (
+  options: { port?: number; name?: string; skipBuild?: boolean },
+  projectInfo: DirectoryInfo
+) => {
   // Build the project or plugin first unless skip-build is specified
   if (!options.skipBuild) {
     try {
       const cwd = process.cwd();
-      const projectInfo = getProjectType();
       const isPlugin = projectInfo.type === 'elizaos-plugin';
       console.info(`Building ${isPlugin ? 'plugin' : 'project'}...`);
       await buildProject(cwd, isPlugin);
@@ -510,7 +514,7 @@ const runE2eTests = async (options: { port?: number; name?: string; skipBuild?: 
             const testRunner = new TestRunner(runtime, projectAgent);
 
             // Determine what types of tests to run based on directory type
-            const currentDirInfo = getProjectType();
+            const currentDirInfo = projectInfo;
 
             // Process filter name consistently
             const processedFilter = processFilterName(options.name);
@@ -598,11 +602,12 @@ const runE2eTests = async (options: { port?: number; name?: string; skipBuild?: 
  */
 async function runAllTests(options: { port?: number; name?: string; skipBuild?: boolean }) {
   // Run component tests first
-  const componentResult = await runComponentTests(options);
+  const projectInfo = getProjectType();
+  const componentResult = await runComponentTests(options, projectInfo);
 
   // Run e2e tests with the same processed filter name
   // Skip the second build since we already built for component tests
-  const e2eResult = await runE2eTests({ ...options, skipBuild: true });
+  const e2eResult = await runE2eTests({ ...options, skipBuild: true }, projectInfo);
 
   // Return combined result
   return { failed: componentResult.failed || e2eResult.failed };
@@ -628,7 +633,8 @@ test
     console.info('Command options:', options);
 
     try {
-      const result = await runComponentTests(options);
+      const projectInfo = getProjectType();
+      const result = await runComponentTests(options, projectInfo);
       process.exit(result.failed ? 1 : 0);
     } catch (error) {
       console.error('Error running component tests:', error);
@@ -651,7 +657,8 @@ test
     console.info('Command options:', options);
 
     try {
-      const result = await runE2eTests(options);
+      const projectInfo = getProjectType();
+      const result = await runE2eTests(options, projectInfo);
       process.exit(result.failed ? 1 : 0);
     } catch (error) {
       console.error('Error running e2e tests:', error);
@@ -674,6 +681,7 @@ test
     console.info('Command options:', options);
 
     try {
+      const projectInfo = getProjectType();
       const result = await runAllTests(options);
       process.exit(result.failed ? 1 : 0);
     } catch (error) {

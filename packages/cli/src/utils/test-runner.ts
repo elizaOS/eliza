@@ -91,9 +91,12 @@ export class TestRunner {
   private async runTestSuite(suite: TestSuite) {
     logger.info(`\nRunning test suite: ${suite.name}`);
 
+    if (suite.tests.length > 0) {
+      this.stats.hasTests = true; // Mark that we found tests
+    }
+
     for (const test of suite.tests) {
       this.stats.total++;
-      this.stats.hasTests = true; // Mark that we found and are running tests
 
       try {
         logger.info(`  Running test: ${test.name}`);
@@ -212,7 +215,7 @@ export const myPlugin = {
       }
     } else {
       // This should not happen in the new logic since we properly scope tests by directory type
-      logger.debug('Plugin tests were requested but this is not a direct plugin test');
+      logger.info('Plugin tests were requested but this is not a direct plugin test');
     }
   }
 
