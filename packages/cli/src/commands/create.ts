@@ -6,6 +6,8 @@ import {
   ensureElizaDir,
   handleError,
   promptAndStorePostgresUrl,
+  promptAndStoreOpenAIKey,
+  promptAndStoreClaudeKey,
   runBunCommand,
   setupPgLite,
 } from '@/src/utils';
@@ -54,6 +56,171 @@ async function getLocalAvailableDatabases(): Promise<string[]> {
     // "sqlite",
     // "supabase"
   ];
+}
+
+/**
+ * Gets available AI models for selection during project creation.
+ *
+ * @returns {Array} Array of available AI model options
+ */
+function getAvailableAIModels() {
+  return [
+    {
+      title: 'Local AI (free to use, no API key required)',
+      value: 'local',
+      description:
+        'Use local AI models without external API requirements. Will download a 4GB model to run locally - recommended if you have good RAM and internet connection.',
+    },
+    {
+      title: 'OpenAI (ChatGPT)',
+      value: 'openai',
+      description: 'Use OpenAI models like GPT-4',
+    },
+    {
+      title: 'Claude (Anthropic)',
+      value: 'claude',
+      description: 'Use Anthropic Claude models',
+    },
+  ];
+}
+
+/**
+ * Sets up AI model configuration in the project's .env file based on user selection.
+ *
+ * @param {string} aiModel - The selected AI model ('local', 'openai', or 'claude')
+ * @param {string} envFilePath - Path to the project's .env file
+ * @param {boolean} isNonInteractive - Whether running in non-interactive mode
+ * @returns {Promise<void>}
+ */
+async function setupAIModelConfig(
+  aiModel: string,
+  envFilePath: string,
+  isNonInteractive = false
+): Promise<void> {
+  try {
+    switch (aiModel) {
+      case 'local': {
+        // For local AI, just add a comment to the .env file
+        let envContent = '';
+        if (existsSync(envFilePath)) {
+          envContent = await fs.readFile(envFilePath, 'utf8');
+        }
+
+        if (envContent && !envContent.endsWith('\n')) {
+          envContent += '\n';
+        }
+
+        envContent += '\n# AI Model Configuration\n';
+        envContent += '# Using Local AI - no additional API keys required\n';
+        envContent += '# The system will automatically use local AI models\n';
+
+        await fs.writeFile(envFilePath, envContent, 'utf8');
+        console.info('✅ Local AI configuration added to .env file');
+        break;
+      }
+
+      case 'openai': {
+        if (isNonInteractive) {
+          // In non-interactive mode, just add placeholder
+          let content = '';
+          if (existsSync(envFilePath)) {
+            content = await fs.readFile(envFilePath, 'utf8');
+          }
+
+          if (content && !content.endsWith('\n')) {
+            content += '\n';
+          }
+
+          content += '\n# AI Model Configuration\n';
+          content += '# OpenAI Configuration\n';
+          content += 'OPENAI_API_KEY=your_openai_api_key_here\n';
+          content += '# Get your API key from: https://platform.openai.com/api-keys\n';
+
+          await fs.writeFile(envFilePath, content, 'utf8');
+          console.info('✅ OpenAI placeholder configuration added to .env file');
+        } else {
+          // Check if OpenAI API key already exists in environment
+          if (process.env.OPENAI_API_KEY) {
+            console.info('✅ OpenAI API key found in environment variables, skipping prompt');
+
+            // Still add a comment to the .env file for reference
+            let content = '';
+            if (existsSync(envFilePath)) {
+              content = await fs.readFile(envFilePath, 'utf8');
+            }
+
+            if (content && !content.endsWith('\n')) {
+              content += '\n';
+            }
+
+            content += '\n# AI Model Configuration\n';
+            content += '# OpenAI Configuration (using existing environment variable)\n';
+            content += '# OPENAI_API_KEY is already set in your environment\n';
+
+            await fs.writeFile(envFilePath, content, 'utf8');
+          } else {
+            // Interactive mode - prompt for API key
+            await promptAndStoreOpenAIKey(envFilePath);
+          }
+        }
+        break;
+      }
+
+      case 'claude': {
+        if (isNonInteractive) {
+          // In non-interactive mode, just add placeholder
+          let content = '';
+          if (existsSync(envFilePath)) {
+            content = await fs.readFile(envFilePath, 'utf8');
+          }
+
+          if (content && !content.endsWith('\n')) {
+            content += '\n';
+          }
+
+          content += '\n# AI Model Configuration\n';
+          content += '# Anthropic Claude Configuration\n';
+          content += 'ANTHROPIC_API_KEY=your_anthropic_api_key_here\n';
+          content += '# Get your API key from: https://console.anthropic.com/\n';
+
+          await fs.writeFile(envFilePath, content, 'utf8');
+          console.info('✅ Claude placeholder configuration added to .env file');
+        } else {
+          // Check if Claude API key already exists in environment
+          if (process.env.ANTHROPIC_API_KEY) {
+            console.info('✅ Claude API key found in environment variables, skipping prompt');
+
+            // Still add a comment to the .env file for reference
+            let content = '';
+            if (existsSync(envFilePath)) {
+              content = await fs.readFile(envFilePath, 'utf8');
+            }
+
+            if (content && !content.endsWith('\n')) {
+              content += '\n';
+            }
+
+            content += '\n# AI Model Configuration\n';
+            content += '# Anthropic Claude Configuration (using existing environment variable)\n';
+            content += '# ANTHROPIC_API_KEY is already set in your environment\n';
+
+            await fs.writeFile(envFilePath, content, 'utf8');
+          } else {
+            // Interactive mode - prompt for API key
+            await promptAndStoreClaudeKey(envFilePath);
+          }
+        }
+        break;
+      }
+
+      default:
+        console.warn(`Unknown AI model: ${aiModel}, skipping configuration`);
+        return;
+    }
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`Failed to set up AI model configuration: ${errorMessage}`);
+  }
 }
 
 /**
@@ -296,12 +463,9 @@ export const create = new Command()
           );
           handleError(new Error(`Directory "${projectName}" is not empty`));
           return;
-        } else {
-          // Directory exists but is empty - this is fine
-          console.info(
-            `Note: Directory "${projectName}" already exists but is empty. Continuing...`
-          );
         }
+        // Directory exists but is empty - this is fine
+        console.info(`Note: Directory "${projectName}" already exists but is empty. Continuing...`);
       }
 
       if (options.type === 'plugin') {
@@ -345,9 +509,11 @@ export const create = new Command()
         );
         process.stdout.write(`\u001B]1337;CurrentDir=${targetDir}\u0007`);
         return;
-      } else if (options.type === 'agent') {
+      }
+
+      if (options.type === 'agent') {
         // Agent character creation
-        let characterName = projectName || 'MyAgent';
+        const characterName = projectName || 'MyAgent';
 
         // Start with the default Eliza character from the same source used by start.ts
         const agentTemplate = { ...elizaCharacter };
@@ -357,17 +523,17 @@ export const create = new Command()
 
         // In messageExamples, replace "Eliza" with the new character name
         if (agentTemplate.messageExamples) {
-          agentTemplate.messageExamples.forEach((conversation) => {
-            conversation.forEach((message) => {
+          for (const conversation of agentTemplate.messageExamples) {
+            for (const message of conversation) {
               if (message.name === 'Eliza') {
                 message.name = characterName;
               }
-            });
-          });
+            }
+          }
         }
 
         // Set a simple filename - either the provided name or default
-        let filename = characterName.endsWith('.json') ? characterName : `${characterName}.json`;
+        const filename = characterName.endsWith('.json') ? characterName : `${characterName}.json`;
 
         // Make sure we're in the current directory
         const fullPath = path.join(process.cwd(), filename);
@@ -380,84 +546,105 @@ export const create = new Command()
           `\nYou can now use this agent with:\n  elizaos agent start --path ${filename}`
         );
         return;
-      } else {
-        // Create directory if it doesn't exist
-        if (!existsSync(targetDir)) {
-          await fs.mkdir(targetDir, { recursive: true });
-        }
-
-        const availableDatabases = await getLocalAvailableDatabases();
-        let database;
-        if (options.yes) {
-          database = 'pglite';
-          console.info(`Using default database: ${database}`);
-        } else {
-          const response = await prompts({
-            type: 'select',
-            name: 'database',
-            message: 'Select your database:',
-            choices: availableDatabases
-              .sort((a, b) => a.localeCompare(b))
-              .map((db) => ({ title: db, value: db })),
-            initial: availableDatabases.indexOf('pglite'),
-          });
-          database = response.database;
-        }
-
-        if (!database) {
-          console.error('No database selected or provided');
-          handleError(new Error('No database selected or provided'));
-          return;
-        }
-
-        await copyTemplateUtil('project', targetDir, projectName);
-
-        await createIgnoreFiles(targetDir);
-
-        // Define project-specific .env file path, this will be created if it doesn't exist by downstream functions.
-        const projectEnvFilePath = path.join(targetDir, '.env');
-
-        // Ensure proper directory creation in the new project
-        const dirs = await ensureElizaDir(targetDir);
-        logger.debug('Project directories set up:', dirs);
-
-        if (database === 'pglite') {
-          const projectPgliteDbDir = path.join(targetDir, '.elizadb');
-          // Pass the target directory to ensure everything is created in the new project
-          await setupPgLite(projectPgliteDbDir, projectEnvFilePath, targetDir);
-          console.debug(
-            `PGLite database will be stored in project directory: ${projectPgliteDbDir}`
-          );
-        } else if (database === 'postgres' && !postgresUrl) {
-          // Store Postgres URL in the project's .env file.
-          postgresUrl = await promptAndStorePostgresUrl(projectEnvFilePath);
-        }
-
-        const srcDir = path.join(targetDir, 'src');
-        if (!existsSync(srcDir)) {
-          await fs.mkdir(srcDir);
-        }
-
-        await fs.mkdir(path.join(targetDir, 'knowledge'), { recursive: true });
-        await installDependencies(targetDir);
-
-        // Skip building in test environments to avoid tsup dependency issues
-        if (
-          process.env.ELIZA_NONINTERACTIVE === '1' ||
-          process.env.ELIZA_NONINTERACTIVE === 'true'
-        ) {
-          console.log('Skipping build in non-interactive mode');
-        } else {
-          await buildProject(targetDir);
-        }
-
-        console.log('Project initialized successfully!');
-        const cdPath = options.dir === '.' ? projectName : path.relative(process.cwd(), targetDir);
-        console.info(
-          `\nYour project is ready! Here\'s what you can do next:\n1. \`cd ${cdPath}\` to change into your project directory\n2. Run \`elizaos start\` to start your project\n3. Visit \`http://localhost:3000\` (or your custom port) to view your project in the browser`
-        );
-        process.stdout.write(`\u001B]1337;CurrentDir=${targetDir}\u0007`);
       }
+
+      // Create directory if it doesn't exist
+      if (!existsSync(targetDir)) {
+        await fs.mkdir(targetDir, { recursive: true });
+      }
+
+      const availableDatabases = await getLocalAvailableDatabases();
+      let database: string;
+      if (options.yes) {
+        database = 'pglite';
+        console.info(`Using default database: ${database}`);
+      } else {
+        const response = await prompts({
+          type: 'select',
+          name: 'database',
+          message: 'Select your database:',
+          choices: availableDatabases
+            .sort((a, b) => a.localeCompare(b))
+            .map((db) => ({ title: db, value: db })),
+          initial: availableDatabases.indexOf('pglite'),
+        });
+        database = response.database;
+      }
+
+      if (!database) {
+        console.error('No database selected or provided');
+        handleError(new Error('No database selected or provided'));
+        return;
+      }
+
+      // AI Model Selection
+      const availableAIModels = getAvailableAIModels();
+      let aiModel: string;
+      if (options.yes) {
+        aiModel = 'local';
+        console.info(`Using default AI model: ${aiModel}`);
+      } else {
+        const response = await prompts({
+          type: 'select',
+          name: 'aiModel',
+          message: 'Select your AI model:',
+          choices: availableAIModels,
+          initial: 0, // Default to local
+        });
+        aiModel = response.aiModel;
+      }
+
+      if (!aiModel) {
+        console.error('No AI model selected or provided');
+        handleError(new Error('No AI model selected or provided'));
+        return;
+      }
+
+      await copyTemplateUtil('project', targetDir, projectName);
+
+      await createIgnoreFiles(targetDir);
+
+      // Define project-specific .env file path, this will be created if it doesn't exist by downstream functions.
+      const projectEnvFilePath = path.join(targetDir, '.env');
+
+      // Ensure proper directory creation in the new project
+      const dirs = await ensureElizaDir(targetDir);
+      logger.debug('Project directories set up:', dirs);
+
+      if (database === 'pglite') {
+        const projectPgliteDbDir = path.join(targetDir, '.elizadb');
+        // Pass the target directory to ensure everything is created in the new project
+        await setupPgLite(projectPgliteDbDir, projectEnvFilePath, targetDir);
+        console.debug(`PGLite database will be stored in project directory: ${projectPgliteDbDir}`);
+      } else if (database === 'postgres' && !postgresUrl) {
+        // Store Postgres URL in the project's .env file.
+        postgresUrl = await promptAndStorePostgresUrl(projectEnvFilePath);
+      }
+
+      // Setup AI model configuration
+      await setupAIModelConfig(aiModel, projectEnvFilePath, options.yes);
+
+      const srcDir = path.join(targetDir, 'src');
+      if (!existsSync(srcDir)) {
+        await fs.mkdir(srcDir);
+      }
+
+      await fs.mkdir(path.join(targetDir, 'knowledge'), { recursive: true });
+      await installDependencies(targetDir);
+
+      // Skip building in test environments to avoid tsup dependency issues
+      if (process.env.ELIZA_NONINTERACTIVE === '1' || process.env.ELIZA_NONINTERACTIVE === 'true') {
+        console.log('Skipping build in non-interactive mode');
+      } else {
+        await buildProject(targetDir);
+      }
+
+      console.log('Project initialized successfully!');
+      const cdPath = options.dir === '.' ? projectName : path.relative(process.cwd(), targetDir);
+      console.info(
+        `\nYour project is ready! Here\'s what you can do next:\n1. \`cd ${cdPath}\` to change into your project directory\n2. Run \`elizaos start\` to start your project\n3. Visit \`http://localhost:3000\` (or your custom port) to view your project in the browser`
+      );
+      process.stdout.write(`\u001B]1337;CurrentDir=${targetDir}\u0007`);
     } catch (error) {
       handleError(error);
     }
