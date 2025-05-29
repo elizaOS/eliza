@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { teeStarterPlugin } from '../src/plugin';
+import teeStarterPlugin from '../src/plugin';
+import { mrTeeCharacter } from '../src/character';
 
 describe('Error Handling', () => {
   describe('Plugin Error Handling', () => {
@@ -20,11 +21,10 @@ describe('Error Handling', () => {
   });
 
   describe('Character Error Handling', () => {
-    it('should handle missing character configuration', async () => {
-      // Import the character to ensure it's properly configured
-      const { mrTeeCharacter } = await import('../src/character');
+    it('should have valid character configuration', () => {
       expect(mrTeeCharacter).toBeDefined();
       expect(mrTeeCharacter.name).toBe('Mr. TEE');
+      expect(mrTeeCharacter.plugins).toContain('@elizaos/plugin-tee');
     });
   });
 });

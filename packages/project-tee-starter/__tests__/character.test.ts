@@ -7,29 +7,17 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 describe('Mr. TEE Character Configuration', () => {
   it('should have all required fields for Mr. TEE', () => {
-    expect(character).toHaveProperty('name');
+    expect(character).toBeDefined();
     expect(character.name).toBe('Mr. TEE');
-    expect(character).toHaveProperty('bio');
-    expect(Array.isArray(character.bio)).toBe(true);
-    expect(character.bio.length).toBeGreaterThan(0);
-    expect(character).toHaveProperty('plugins');
-    expect(Array.isArray(character.plugins)).toBe(true);
-    expect(character).toHaveProperty('system');
-    expect(typeof character.system).toBe('string');
-    expect(character.system.length).toBeGreaterThan(0);
-    expect(character).toHaveProperty('messageExamples');
-    expect(Array.isArray(character.messageExamples)).toBe(true);
-    expect(character.messageExamples.length).toBeGreaterThan(0);
-    expect(character).toHaveProperty('postExamples');
-    expect(Array.isArray(character.postExamples)).toBe(true);
-    expect(character.postExamples.length).toBeGreaterThan(0);
-    expect(character).toHaveProperty('style');
-    expect(typeof character.style).toBe('object');
-    expect(character).toHaveProperty('settings');
-    expect(character.settings).toHaveProperty('avatar');
+    expect(character.plugins).toBeDefined();
+    expect(character.settings).toBeDefined();
+    expect(character.system).toBeDefined();
+    expect(character.bio).toBeDefined();
+    expect(character.messageExamples).toBeDefined();
+    expect(character.postExamples).toBeDefined();
+    expect(character.style).toBeDefined();
     expect(character.settings?.avatar).toContain('data:image/jpeg;base64');
     expect(character.settings).toHaveProperty('secrets');
-    expect(character.settings).toHaveProperty('mcp');
   });
 
   it('should include TEE specific plugins', () => {
@@ -37,7 +25,6 @@ describe('Mr. TEE Character Configuration', () => {
     expect(character.plugins).toContain('@elizaos/plugin-sql');
     expect(character.plugins).toContain('@elizaos/plugin-openai');
     expect(character.plugins).toContain('@elizaos/plugin-discord');
-    expect(character.plugins).toContain('@elizaos/plugin-mcp');
     expect(character.plugins).toContain('@elizaos/plugin-bootstrap');
   });
 

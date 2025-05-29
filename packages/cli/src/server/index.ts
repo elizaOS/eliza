@@ -32,6 +32,7 @@ import type {
   CentralRootMessage,
   MessageServiceStructure,
 } from './types';
+import { createDatabaseAdapter } from '@elizaos/plugin-sql';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -133,6 +134,15 @@ export class AgentServer {
 
       const agentDataDir = await resolvePgliteDir(options?.dataDir);
       logger.info(`[INIT] Agent Data Dir for SQL plugin: ${agentDataDir}`);
+      this.database = createDatabaseAdapter(
+        {
+          dataDir: agentDataDir,
+          postgresUrl: options?.postgresUrl,
+        },
+        '00000000-0000-0000-0000-000000000002'
+      ) as DatabaseAdapter;
+      console.log('database is', this.database);
+      await this.database.init();
       logger.success('Agent-specific database initialized successfully');
 
       await this.initializeServer(options);
