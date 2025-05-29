@@ -100,22 +100,7 @@ async function setupAIModelConfig(
   try {
     switch (aiModel) {
       case 'local': {
-        // For local AI, just add a comment to the .env file
-        let envContent = '';
-        if (existsSync(envFilePath)) {
-          envContent = await fs.readFile(envFilePath, 'utf8');
-        }
-
-        if (envContent && !envContent.endsWith('\n')) {
-          envContent += '\n';
-        }
-
-        envContent += '\n# AI Model Configuration\n';
-        envContent += '# Using Local AI - no additional API keys required\n';
-        envContent += '# The system will automatically use local AI models\n';
-
-        await fs.writeFile(envFilePath, envContent, 'utf8');
-        console.info('✅ Local AI configuration added to .env file');
+        console.info('✅ Using Local AI - no additional configuration needed');
         break;
       }
 
