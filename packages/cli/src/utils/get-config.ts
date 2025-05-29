@@ -82,7 +82,7 @@ STUDIOLM_EMBEDDING_MODEL=
 # If you fill out POSTGRES_URL, the agent will connect to your postgres instance instead of using the local path
 
 # You can override the pglite data directory
-# PGLITE_DATA_DIR=/Users/UserName/eliza/packages/.pglite/
+PGLITE_DATA_DIR=
 
 # Fill this out if you want to use Postgres
 POSTGRES_URL=
@@ -345,11 +345,12 @@ export async function setupPgLite(
     await ensureDir(targetDbDir);
     logger.debug('[PGLite] Created database directory:', targetDbDir);
 
-    // Store PGLITE_DATA_DIR in the environment file
-    await fs.writeFile(targetEnvPath, `PGLITE_DATA_DIR=${targetDbDir}\n`, { flag: 'a' });
-
-    // Also set in process.env for the current session
+    // Set PGLITE_DATA_DIR in process.env before setting up the env file
+    // This way it will be properly integrated into the template
     process.env.PGLITE_DATA_DIR = targetDbDir;
+
+    // Now set up the .env file with the full template, including the PGLITE_DATA_DIR value
+    await setupEnvFile(targetEnvPath);
 
     logger.success('PGLite configuration saved');
   } catch (error) {
