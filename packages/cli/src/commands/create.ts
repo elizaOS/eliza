@@ -69,7 +69,7 @@ function getAvailableAIModels() {
       title: 'Local AI (free to use, no API key required)',
       value: 'local',
       description:
-        'Use local AI models without external API requirements. Will download a 4GB model to run locally - recommended if you have good RAM and internet connection.',
+        'Use local AI models without external API requirements. Will download model to run locally - recommended if you have good internet connection.',
     },
     {
       title: 'OpenAI (ChatGPT)',
