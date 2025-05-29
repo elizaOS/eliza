@@ -19,16 +19,7 @@ import { AgentStatus, ContentType } from '@elizaos/core';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
 
 import { useQueryClient } from '@tanstack/react-query';
-import {
-  ChevronRight,
-  PanelRight,
-  Paperclip,
-  Send,
-  Trash2,
-  X,
-  Loader2,
-  FileText,
-} from 'lucide-react';
+import { ChevronRight, PanelRight, Send, Trash2, X, Loader2, FileText, Image } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import AIWriter from 'react-aiwriter';
 import { AudioRecorder } from './audio-recorder';
@@ -549,18 +540,17 @@ export default function Page({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     const validFiles = files.filter(
-      (file) =>
-        file.type.startsWith('image/') ||
-        file.type.startsWith('video/') ||
-        file.type.startsWith('application/') ||
-        file.type.startsWith('text/') ||
-        file.type === 'application/pdf' ||
-        file.type === 'application/msword' ||
-        file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-        file.type === 'application/vnd.ms-excel' ||
-        file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
-        file.type === 'application/vnd.ms-powerpoint' ||
-        file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+      (file) => file.type.startsWith('image/')
+      // file.type.startsWith('video/') ||
+      // file.type.startsWith('application/') ||
+      // file.type.startsWith('text/') ||
+      // file.type === 'application/pdf' ||
+      // file.type === 'application/msword' ||
+      // file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+      // file.type === 'application/vnd.ms-excel' ||
+      // file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+      // file.type === 'application/vnd.ms-powerpoint' ||
+      // file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
     );
 
     // Filter out files that are already selected (check by name, size, and lastModified)
@@ -842,21 +832,21 @@ export default function Page({
                           }
                         }}
                       >
-                        <Paperclip className="size-4" />
-                        <span className="sr-only">Attach file</span>
+                        <Image className="size-4" />
+                        <span className="sr-only">Attach image for description</span>
                       </Button>
                       <input
                         type="file"
                         ref={fileInputRef}
                         onChange={handleFileChange}
-                        accept="image/*,video/*,.pdf,.doc,.docx,.txt,.rtf,.xls,.xlsx,.ppt,.pptx,.csv"
+                        accept="image/*"
                         multiple
                         className="hidden"
                       />
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="left">
-                    <p>Attach files (images, videos, documents)</p>
+                    <p>Attach an image for the AI to describe</p>
                   </TooltipContent>
                 </Tooltip>
                 <AudioRecorder
