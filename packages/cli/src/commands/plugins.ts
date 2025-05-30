@@ -1,6 +1,7 @@
 import { handleError, installPlugin, logHeader } from '@/src/utils';
-import { readCache, updatePluginRegistryCache } from '@/src/utils/plugin-discovery';
+import { fetchPluginRegistry } from '@/src/utils/plugin-discovery';
 import { normalizePluginName } from '@/src/utils/registry';
+import { detectDirectoryType, getDirectoryTypeDescription } from '@/src/utils/directory-detection';
 import { logger } from '@elizaos/core';
 import { Command } from 'commander';
 import { execa } from 'execa';
@@ -8,35 +9,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 // --- Helper Functions ---
-
-/** Reads and parses package.json, returning dependencies. */
-export const readPackageJson = (
-  cwd: string
-): {
-  dependencies: Record<string, string>;
-  devDependencies: Record<string, string>;
-  allDependencies: Record<string, string>;
-} | null => {
-  const packageJsonPath = path.join(cwd, 'package.json');
-  if (!fs.existsSync(packageJsonPath)) {
-    return null;
-  }
-  try {
-    const packageJsonContent = fs.readFileSync(packageJsonPath, 'utf-8');
-    const packageJson = JSON.parse(packageJsonContent);
-    const dependencies = packageJson.dependencies || {};
-    const devDependencies = packageJson.devDependencies || {};
-    const allDependencies = { ...dependencies, ...devDependencies };
-    return { dependencies, devDependencies, allDependencies };
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      logger.warn(`Could not parse package.json: ${error.message}`);
-    } else {
-      logger.warn(`Error reading package.json: ${error.message}`); // More generic warning
-    }
-    return null; // Indicate failure to read/parse
-  }
-};
 
 /**
  * Normalizes a plugins input string to a standard format, typically 'plugin-name'.
@@ -97,6 +69,31 @@ export const findPluginPackageName = (
   return null; // Not found
 };
 
+/** Helper function to get dependencies from package.json using directory detection */
+const getDependenciesFromDirectory = (cwd: string): Record<string, string> | null => {
+  const directoryInfo = detectDirectoryType(cwd);
+
+  if (!directoryInfo.hasPackageJson) {
+    return null;
+  }
+
+  try {
+    const packageJsonPath = path.join(cwd, 'package.json');
+    const packageJsonContent = fs.readFileSync(packageJsonPath, 'utf-8');
+    const packageJson = JSON.parse(packageJsonContent);
+    const dependencies = packageJson.dependencies || {};
+    const devDependencies = packageJson.devDependencies || {};
+    return { ...dependencies, ...devDependencies };
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      logger.warn(`Could not parse package.json: ${error.message}`);
+    } else {
+      logger.warn(`Error reading package.json: ${error.message}`);
+    }
+    return null;
+  }
+};
+
 // --- End Helper Functions ---
 
 export const plugins = new Command()
@@ -115,8 +112,7 @@ export const pluginsCommand = plugins
   .option('--v0', 'List only v0.x compatible plugins')
   .action(async (opts: { all?: boolean; v0?: boolean }) => {
     try {
-      logHeader('Listing available plugins from cached registry...');
-      const cachedRegistry = await readCache();
+      const cachedRegistry = await fetchPluginRegistry();
 
       if (
         !cachedRegistry ||
@@ -129,7 +125,7 @@ export const pluginsCommand = plugins
       }
       let availablePluginsToDisplay: string[] = [];
       const allPlugins = cachedRegistry ? Object.entries(cachedRegistry.registry) : [];
-      let displayTitle = 'Available v1.x plugins (from local cache)';
+      let displayTitle = 'Available v1.x plugins';
 
       if (opts.all) {
         displayTitle = 'All plugins in local cache (detailed view)';
@@ -156,7 +152,7 @@ export const pluginsCommand = plugins
         console.log('');
         return;
       } else if (opts.v0) {
-        displayTitle = 'Available v0.x plugins (from local cache)';
+        displayTitle = 'Available v0.x plugins';
         availablePluginsToDisplay = allPlugins
           .filter(([, info]) => info.supports.v0)
           .map(([name]) => name);
@@ -195,12 +191,18 @@ plugins
   .option('-T, --tag <tagname>', 'Specify a tag to install (e.g., beta)')
   .action(async (pluginArg, opts) => {
     const cwd = process.cwd();
-    const pkgData = readPackageJson(cwd);
+    const directoryInfo = detectDirectoryType(cwd);
 
-    if (!pkgData) {
+    if (!directoryInfo.hasPackageJson) {
       logger.error(
-        'Command must be run inside an Eliza project directory (no package.json found).'
+        `Command must be run inside an ElizaOS project directory. This directory is: ${getDirectoryTypeDescription(directoryInfo)}`
       );
+      process.exit(1);
+    }
+
+    const allDependencies = getDependenciesFromDirectory(cwd);
+    if (!allDependencies) {
+      logger.error('Could not read dependencies from package.json');
       process.exit(1);
     }
 
@@ -216,11 +218,10 @@ plugins
       if (httpsMatch) {
         const [, owner, repo, ref] = httpsMatch;
         plugin = `github:${owner}/${repo}${ref ? `#${ref}` : ''}`;
-        logger.info(`Detected GitHub URL. Converted to: ${plugin}`);
       }
       // --- End GitHub URL conversion ---
 
-      const installedPluginName = findPluginPackageName(plugin, pkgData.allDependencies);
+      const installedPluginName = findPluginPackageName(plugin, allDependencies);
       if (installedPluginName) {
         logger.info(`Plugin "${installedPluginName}" is already added to this project.`);
         process.exit(0);
@@ -238,8 +239,6 @@ plugins
         // For now, we'll use the repo name, but this might need refinement
         // to check package.json inside the repo after installation.
         const pluginNameForPostInstall = repo;
-
-        logger.info(`Attempting to install plugin directly from GitHub: ${githubSpecifier}`);
 
         // For GitHub installs, opts.tag and opts.branch are superseded by the #ref in the specifier.
         // We pass undefined for them to installPlugin, which should be updated to handle this.
@@ -259,7 +258,7 @@ plugins
         }
       } else {
         // --- Registry-based or fuzzy Plugin Installation ---
-        const cachedRegistry = await readCache();
+        const cachedRegistry = await fetchPluginRegistry();
         if (!cachedRegistry || !cachedRegistry.registry) {
           logger.error(
             'Plugin registry cache not found. Please run "elizaos plugins update" first.'
@@ -271,13 +270,6 @@ plugins
         const pluginKey = possibleNames.find((name) => cachedRegistry.registry[name]);
 
         const targetName = pluginKey || plugin;
-        if (pluginKey) {
-          logger.info(`Found plugin in registry, installing ${pluginKey}...`);
-        } else {
-          logger.info(
-            `Plugin "${plugin}" not found directly in registry, attempting fuzzy lookup...`
-          );
-        }
 
         const registryInstallResult = await installPlugin(targetName, cwd, opts.tag);
 
@@ -295,39 +287,28 @@ plugins
   });
 
 plugins
-  .command('update')
-  .alias('refresh')
-  .description('Fetch the latest plugin registry and update local cache')
-  .action(async () => {
-    try {
-      logHeader('Updating plugin registry cache...');
-      const success = await updatePluginRegistryCache();
-      if (success) {
-        logger.info('Plugin registry cache updated successfully.');
-      } else {
-        // updatePluginRegistryCache logs specific errors, so a general message here is fine.
-        logger.warn('Plugin registry cache update failed. Please check logs for more details.');
-      }
-    } catch (error) {
-      handleError(error);
-    }
-  });
-
-plugins
   .command('installed-plugins')
   .description('List plugins found in the project dependencies')
   .action(async () => {
     try {
       const cwd = process.cwd();
-      const pkgData = readPackageJson(cwd);
+      const directoryInfo = detectDirectoryType(cwd);
 
-      if (!pkgData) {
-        console.error('Could not read or parse package.json.');
-        console.info('Please run this command from the root of an Eliza project.');
+      if (!directoryInfo.hasPackageJson) {
+        console.error(
+          `Could not read or parse package.json. This directory is: ${getDirectoryTypeDescription(directoryInfo)}`
+        );
+        console.info('Please run this command from the root of an ElizaOS project.');
         process.exit(1);
       }
 
-      const pluginNames = Object.keys(pkgData.allDependencies).filter((depName) => {
+      const allDependencies = getDependenciesFromDirectory(cwd);
+      if (!allDependencies) {
+        console.error('Could not read dependencies from package.json.');
+        process.exit(1);
+      }
+
+      const pluginNames = Object.keys(allDependencies).filter((depName) => {
         return /^(@elizaos(-plugins)?\/)?plugin-.+/.test(depName);
       });
 
@@ -358,16 +339,24 @@ plugins
   .action(async (plugin, _opts) => {
     try {
       const cwd = process.cwd();
+      const directoryInfo = detectDirectoryType(cwd);
 
-      const pkgData = readPackageJson(cwd);
-      if (!pkgData) {
+      if (!directoryInfo.hasPackageJson) {
         console.error(
-          'Could not read or parse package.json. Cannot determine which package to remove.'
+          `Could not read or parse package.json. This directory is: ${getDirectoryTypeDescription(directoryInfo)}`
         );
         process.exit(1);
       }
 
-      const packageNameToRemove = findPluginPackageName(plugin, pkgData.allDependencies);
+      const allDependencies = getDependenciesFromDirectory(cwd);
+      if (!allDependencies) {
+        console.error(
+          'Could not read dependencies from package.json. Cannot determine which package to remove.'
+        );
+        process.exit(1);
+      }
+
+      const packageNameToRemove = findPluginPackageName(plugin, allDependencies);
 
       if (!packageNameToRemove) {
         logger.warn(`Plugin matching "${plugin}" not found in project dependencies.`);
@@ -403,7 +392,6 @@ plugins
 
       const pluginDir = path.join(cwd, dirNameToRemove);
       if (fs.existsSync(pluginDir)) {
-        console.info(`Removing plugins directory ${pluginDir}...`);
         try {
           fs.rmSync(pluginDir, { recursive: true, force: true });
         } catch (rmError) {
@@ -412,7 +400,6 @@ plugins
       } else {
         const nonPrefixedDir = path.join(cwd, baseName);
         if (fs.existsSync(nonPrefixedDir)) {
-          console.info(`Removing non-standard plugins directory ${nonPrefixedDir}...`);
           try {
             fs.rmSync(nonPrefixedDir, { recursive: true, force: true });
           } catch (rmError) {

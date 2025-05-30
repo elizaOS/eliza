@@ -1,188 +1,249 @@
 ---
 sidebar_position: 2
 title: Create Command
-description: Create new ElizaOS projects and plugins with an interactive setup process
+description: Initialize a new project, plugin, or agent with an interactive setup process
 keywords: [create, project, plugin, setup, scaffolding, initialization, configuration]
 image: /img/cli.jpg
 ---
 
 # Create Command
 
-The `create` command scaffolds new ElizaOS projects or plugins with an interactive setup process.
+Initialize a new project, plugin, or agent.
 
 ## Usage
 
-You can use this command in two equivalent ways:
-
 ```bash
-# Using npm create
-npm create eliza [options] [name]
+# Interactive mode (recommended)
+elizaos create
 
-# Using npx directly
-npx elizaos create [options] [name]
+# With specific options
+elizaos create [options] [name]
 ```
-
-Both commands are functionally identical and support the same options.
 
 ## Getting Help
 
-Due to how npm handles flags, there are several ways to get help:
-
 ```bash
-# Recommended way to view detailed help
-npx elizaos create --help
-
-# Quick help overview with npm create
-npm create eliza help
-
-# The standard --help flag with npm doesn't work as expected
-# as npm intercepts it and shows npm's own help
+# View detailed help
+elizaos create --help
 ```
 
 ## Options
 
-| Option              | Description                                     |
-| ------------------- | ----------------------------------------------- |
-| `-d, --dir <dir>`   | Installation directory (default: `.`)           |
-| `-y, --yes`         | Skip confirmation (default: `false`)            |
-| `-t, --type <type>` | Type of template to use (`project` or `plugin`) |
-| `[name]`            | Name for the project or plugin (optional)       |
+| Option              | Description                                               |
+| ------------------- | --------------------------------------------------------- |
+| `-d, --dir <dir>`   | Installation directory (default: `.`)                     |
+| `-y, --yes`         | Skip confirmation and use defaults (default: `false`)     |
+| `-t, --type <type>` | Type of template to use (`project`, `plugin`, or `agent`) |
+| `[name]`            | Name for the project, plugin, or agent (optional)         |
 
-## Directory Handling
+## Interactive Process
 
-When using npm create, the tool intelligently detects paths and directory names:
+When you run `elizaos create` without options, it launches an interactive wizard:
+
+1. **What would you like to name your project?** - Enter your project name
+2. **Select your database:** - Choose between:
+   - `pglite` (local, file-based database)
+   - `postgres` (requires connection details)
+
+## Default Values (with -y flag)
+
+When using the `-y` flag to skip prompts:
+
+- **Default name**: `myproject`
+- **Default type**: `project`
+- **Default database**: `pglite`
+
+## Examples
+
+### Interactive Creation (Recommended)
 
 ```bash
-# All these commands create a project in the specified directory:
-
-# With -d flag (explicit)
-npm create eliza -d ./my-dir
-
-# With path-like arguments (auto-detected)
-npm create eliza ./my-dir
-
-# With regular directory names (also auto-detected)
-npm create eliza my-project-dir
-
-# With plugin type and directory
-npm create eliza plugin ./plugins-dir/my-plugin
-npm create eliza plugin my-plugin-dir
+# Start interactive wizard
+elizaos create
 ```
 
-The CLI automatically treats arguments as directory paths unless they are recognized keywords like "plugin" or "project".
+This will prompt you for:
+
+- Project name
+- Database selection (pglite or postgres)
+
+### Quick Creation with Defaults
+
+```bash
+# Create project with defaults (name: "myproject", database: pglite)
+elizaos create -y
+```
+
+### Specify Project Name
+
+```bash
+# Create project with custom name, interactive database selection
+elizaos create my-awesome-project
+
+# Create project with custom name and skip prompts
+elizaos create my-awesome-project -y
+```
+
+### Create Different Types
+
+```bash
+# Create a plugin interactively
+elizaos create -t plugin
+
+# Create a plugin with defaults
+elizaos create -t plugin -y
+
+# Create an agent character file
+elizaos create -t agent my-character-name
+```
+
+### Custom Directory
+
+```bash
+# Create in specific directory
+elizaos create -d ./my-projects/new-agent
+
+# Create plugin in specific directory
+elizaos create -t plugin -d ./plugins/my-plugin
+```
 
 ## Project Types
 
-### Project
+### Project (Default)
 
-Creates a standard ElizaOS project with agent configuration and knowledge setup.
+Creates a complete ElizaOS project with:
 
-```bash
-# Using npm create
-npm create eliza -t project
+- Agent configuration and character files
+- Knowledge directory for RAG
+- Database setup (PGLite or Postgres)
+- Test structure
+- Build configuration
 
-# Using npx
-npx elizaos create -t project
-```
-
-Project structure:
+**Default structure:**
 
 ```
-my-agent-project/
-├── knowledge/          # Knowledge files for RAG
-├── src/                # Source code directory
+myproject/
+├── src/
+│   └── index.ts          # Main character definition
+├── knowledge/            # Knowledge files for RAG
+├── __tests__/           # Component tests
+├── e2e/                 # End-to-end tests
+├── .elizadb/           # PGLite database (if selected)
 ├── package.json
-└── other configuration files
+└── tsconfig.json
 ```
 
 ### Plugin
 
-Creates a plugin that extends ElizaOS functionality.
+Creates a plugin that extends ElizaOS functionality:
 
 ```bash
-# Using npm create
-npm create eliza -t plugin
-
-# Using npx
-npx elizaos create -t plugin
-
-# Shorthand syntax - only with npm create
-npm create eliza plugin my-plugin-name
+elizaos create -t plugin my-plugin
 ```
 
-Plugin structure:
+**Plugin structure:**
 
 ```
-my-plugin/
-├── src/                # Plugin source code
+plugin-my-plugin/         # Note: "plugin-" prefix added automatically
+├── src/
+│   └── index.ts         # Plugin implementation
+├── images/              # Logo and banner for registry
 ├── package.json
-└── other configuration files
+└── tsconfig.json
 ```
 
-## Interactive Process
+### Agent
 
-The command launches an interactive wizard when run without all options:
-
-1. **Project Type**: Select between project or plugin
-2. **Project Name**: Enter a name for your project/plugin
-3. **Database Selection**: Choose database (PGLite or Postgres)
-4. **Database Configuration**: Configure Postgres if selected
-
-## Examples
-
-### Creating a basic project
+Creates a standalone agent character definition file:
 
 ```bash
-# Using npm create
-npm create eliza
-
-# Using npx
-npx elizaos create
-# Then follow the interactive prompts
+elizaos create -t agent my-character
 ```
 
-### Creating a plugin
+This creates a single `.json` file with character configuration.
+
+## After Creation
+
+The CLI will automatically:
+
+1. **Install dependencies** using bun
+2. **Build the project** (for projects and plugins)
+3. **Show next steps**:
+   ```bash
+   cd myproject
+   elizaos start
+   # Visit http://localhost:3000
+   ```
+
+## Database Selection
+
+### PGLite (Recommended for beginners)
+
+- Local file-based database
+- No setup required
+- Data stored in `.elizadb/` directory
+
+### Postgres
+
+- Requires existing Postgres database
+- Prompts for connection details during setup
+- Better for production deployments
+
+## Troubleshooting
+
+### Creation Failures
 
 ```bash
-# Using npm create
-npm create eliza -t plugin
-# Or with shorthand syntax
-npm create eliza plugin my-plugin-name
+# Check if you can write to the target directory
+touch test-file && rm test-file
 
-# Using npx
-npx elizaos create -t plugin
-# Then follow the interactive prompts
+# If permission denied, change ownership or use different directory
+elizaos create -d ~/my-projects/new-project
 ```
 
-### Specifying a directory
+### Dependency Installation Issues
 
 ```bash
-# Using npm create (standard flag format)
-npm create eliza -d ./my-projects/new-agent
+# If bun install fails, try manual installation
+cd myproject
+bun install
 
-# Using npm create (path auto-detection)
-npm create eliza ./my-projects/new-agent
-
-# Using npm create with plugin type
-npm create eliza plugin ./my-projects/my-plugin
-
-# Using npx
-npx elizaos create --dir ./my-projects/new-agent
+# For network issues, clear cache and retry
+bun pm cache rm
+bun install
 ```
 
-### Skipping confirmation prompts
+### Database Connection Problems
+
+**PGLite Issues:**
+
+- Ensure sufficient disk space in target directory
+- Check write permissions for `.elizadb/` directory
+
+**Postgres Issues:**
+
+- Verify database server is running
+- Test connection with provided credentials
+- Ensure database exists and user has proper permissions
+
+### Build Failures
 
 ```bash
-# Using npm create
-npm create eliza -y
+# Check for TypeScript errors
+bun run build
 
-# Using npx
-npx elizaos create --yes
+# If build fails, check dependencies
+bun install
+bun run build
 ```
 
-## Next Steps
+### Template Not Found
 
-After creation, see the [Getting Started](../quickstart.md) for next steps.
+```bash
+# Verify template type is correct
+elizaos create -t project    # Valid: project, plugin, agent
+elizaos create -t invalid    # Invalid template type
+```
 
 ## Related Commands
 

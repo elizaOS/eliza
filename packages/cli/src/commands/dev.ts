@@ -1,4 +1,5 @@
 import { buildProject, handleError, isMonorepoContext, UserEnvironment } from '@/src/utils';
+import { detectDirectoryType, getDirectoryTypeDescription } from '@/src/utils/directory-detection';
 import { Command, Option } from 'commander';
 import chokidar from 'chokidar';
 import type { ChildProcess } from 'node:child_process';
@@ -43,15 +44,6 @@ async function startServer(args: string[] = []): Promise<void> {
 
   console.info('Starting server...');
 
-  // Debug info about environment
-  console.debug('Environment:', {
-    execPath: process.execPath,
-    scriptPath: process.argv[1],
-    cwd: process.cwd(),
-    args: args,
-    env: process.env.NODE_ENV || 'development',
-  });
-
   // We'll use the same executable that's currently running, with 'start' command
   const nodeExecutable = process.execPath;
   const scriptPath = process.argv[1]; // Current script path
@@ -61,11 +53,6 @@ async function startServer(args: string[] = []): Promise<void> {
     stdio: 'inherit',
     detached: false, // We want to keep control of this process
     env: { ...process.env, FORCE_COLOR: '1' }, // Ensure color output in CI
-  });
-
-  logger.debug('Started server process with:', {
-    cmd: nodeExecutable,
-    args: [scriptPath, 'start', ...args],
   });
 
   // Handle process exit events
@@ -90,105 +77,16 @@ async function startServer(args: string[] = []): Promise<void> {
 }
 
 /**
- * Determines whether the current working directory represents a project or a plugin.
- *
- * Examines `package.json` fields, naming conventions, keywords, and source exports to heuristically identify if the directory is an Eliza project or plugin.
- *
- * @returns An object indicating whether the directory is a project (`isProject`) or a plugin (`isPlugin`).
- */
-async function determineProjectType(): Promise<{ isProject: boolean; isPlugin: boolean }> {
-  const cwd = process.cwd();
-  const packageJsonPath = path.join(cwd, 'package.json');
-  const isMonorepo = await isMonorepoContext();
-
-  logger.info(`Running in directory: ${cwd}`);
-  logger.info(`Detected Eliza monorepo context: ${isMonorepo}`);
-
-  let isProject = false;
-  let isPlugin = false;
-
-  if (fs.existsSync(packageJsonPath)) {
-    try {
-      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-
-      // Log package info for debugging
-      console.info(`Package name: ${packageJson.name}`);
-      console.info(
-        `Package type check: ${JSON.stringify({
-          'eliza.type': packageJson.eliza?.type,
-          'name.includes(plugin)': packageJson.name?.includes('plugin-'),
-          keywords: packageJson.keywords,
-        })}`
-      );
-
-      // Explicitly exclude the CLI package itself
-      if (packageJson.name === '@elizaos/cli') {
-        return { isProject: false, isPlugin: false };
-      }
-
-      // More specific check for plugins - must have one of these explicit indicators
-      if (
-        packageJson.eliza?.type === 'plugin' ||
-        packageJson.name?.includes('plugin-') ||
-        (packageJson.keywords &&
-          Array.isArray(packageJson.keywords) &&
-          packageJson.keywords.some((k: string) => k === 'elizaos-plugin' || k === 'eliza-plugin'))
-      ) {
-        isPlugin = true;
-        console.info('Identified as a plugin package');
-      }
-
-      // More specific check for projects
-      if (
-        packageJson.eliza?.type === 'project' ||
-        (packageJson.name &&
-          (packageJson.name.includes('project-') || packageJson.name.includes('-org'))) ||
-        (packageJson.keywords &&
-          Array.isArray(packageJson.keywords) &&
-          packageJson.keywords.some(
-            (k: string) => k === 'elizaos-project' || k === 'eliza-project'
-          ))
-      ) {
-        isProject = true;
-        console.info('Identified as a project package');
-      }
-
-      // If still not identified, check if it has src/index.ts with a Project export
-      if (!isProject && !isPlugin) {
-        const indexPath = path.join(cwd, 'src', 'index.ts');
-        if (fs.existsSync(indexPath)) {
-          const indexContent = fs.readFileSync(indexPath, 'utf-8');
-          if (
-            indexContent.includes('export const project') ||
-            (indexContent.includes('export default') && indexContent.includes('Project'))
-          ) {
-            isProject = true;
-            console.info('Identified as a project by src/index.ts export');
-          }
-        }
-      }
-    } catch (error) {
-      console.warn(`Error parsing package.json: ${error}`);
-    }
-  }
-
-  return { isProject, isPlugin };
-}
-
-/**
  * Sets up file watching for the given directory
  */
 async function watchDirectory(dir: string, onChange: () => void): Promise<void> {
   try {
     // Get the absolute path of the directory
     const absoluteDir = path.resolve(dir);
-    console.info(`Setting up file watching for directory: ${absoluteDir}`);
 
     // Use a simpler approach - watch the src directory directly
     const srcDir = path.join(absoluteDir, 'src');
     const dirToWatch = fs.existsSync(srcDir) ? srcDir : absoluteDir;
-
-    console.info(`Actually watching directory: ${dirToWatch}`);
 
     // Define watch options with fewer exclusions to ensure we catch all changes
     const watchOptions = {
@@ -200,9 +98,6 @@ async function watchDirectory(dir: string, onChange: () => void): Promise<void> 
       usePolling: false, // Only use polling if necessary
       interval: 1000, // Poll every second
     };
-
-    // Log file extensions we're watching
-    console.info('Will watch files with extensions: .ts, .js, .tsx, .jsx');
 
     // Create a more direct and simple watcher pattern
     const watcher = chokidar.watch(dirToWatch, {
@@ -252,20 +147,14 @@ async function watchDirectory(dir: string, onChange: () => void): Promise<void> 
       const watchedPaths = watcher.getWatched();
       const pathsCount = Object.keys(watchedPaths).length;
 
-      console.info(`Chokidar is watching ${pathsCount} directories`);
       if (pathsCount === 0) {
         console.warn('No directories are being watched! File watching may not be working.');
 
         // Try an alternative approach with explicit file patterns
-        console.info('Attempting to set up alternative file watching...');
         watcher.add(`${dirToWatch}/**/*.{ts,js,tsx,jsx}`);
-      } else {
-        console.info(
-          `Top-level watched directories: ${Object.keys(watchedPaths).slice(0, 5).join(', ')}${Object.keys(watchedPaths).length > 5 ? '...' : ''}`
-        );
       }
 
-      console.log(`File watching initialized in: ${dirToWatch}`);
+      console.log(`✓ Watching for file changes in ${path.relative(process.cwd(), dirToWatch)}`);
     });
 
     // Set up file change handler
@@ -275,7 +164,7 @@ async function watchDirectory(dir: string, onChange: () => void): Promise<void> 
         return;
       }
 
-      console.info(`File event: ${event} - ${filePath}`);
+      console.info(`File changed: ${path.relative(dirToWatch, filePath)}`);
 
       // Debounce the onChange handler to avoid multiple rapid rebuilds
       if (debounceTimer) {
@@ -283,7 +172,6 @@ async function watchDirectory(dir: string, onChange: () => void): Promise<void> 
       }
 
       debounceTimer = setTimeout(() => {
-        console.info(`Triggering rebuild for file change: ${filePath}`);
         onChange();
         debounceTimer = null;
       }, 300);
@@ -298,11 +186,8 @@ async function watchDirectory(dir: string, onChange: () => void): Promise<void> 
     process.on('SIGINT', () => {
       watcher.close().then(() => process.exit(0));
     });
-
-    console.log(`Watching for file changes in ${dirToWatch}`);
   } catch (error: any) {
     console.error(`Error setting up file watcher: ${error.message}`);
-    console.error(error.stack);
   }
 }
 
@@ -323,7 +208,17 @@ export const dev = new Command()
   .action(async (options) => {
     try {
       const cwd = process.cwd();
-      const { isProject, isPlugin } = await determineProjectType();
+      const directoryInfo = detectDirectoryType(cwd);
+
+      // Determine if this is a project or plugin based on directory detection
+      const isProject = directoryInfo.type === 'elizaos-project';
+      const isPlugin = directoryInfo.type === 'elizaos-plugin';
+
+      if (isProject) {
+        console.info('Identified as an ElizaOS project package');
+      } else if (isPlugin) {
+        console.info('Identified as an ElizaOS plugin package');
+      }
 
       // Prepare CLI arguments for the start command
       const cliArgs: string[] = [];
@@ -331,13 +226,11 @@ export const dev = new Command()
       // Pass through port option
       if (options.port) {
         cliArgs.push('--port', options.port.toString());
-        console.debug(`Using port: ${options.port}`);
       }
 
       // Pass through configure option
       if (options.configure) {
         cliArgs.push('--configure');
-        console.debug('Using configure option');
       }
 
       // Handle characters - pass through to start command
@@ -347,13 +240,11 @@ export const dev = new Command()
         } else {
           cliArgs.push('--character', options.character);
         }
-        console.debug(`Using character(s): ${options.character}`);
       }
 
       // Pass through build option
       if (options.build) {
         cliArgs.push('--build');
-        console.debug('Using build option');
       }
 
       // Function to rebuild and restart the server
@@ -362,7 +253,7 @@ export const dev = new Command()
           // Ensure the server is stopped first
           await stopServer();
 
-          console.info('Rebuilding project after file change...');
+          console.info('Rebuilding...');
 
           const isMonorepo = await isMonorepoContext();
 
@@ -387,10 +278,8 @@ export const dev = new Command()
                 },
               ];
 
-              console.info('Building core monorepo packages...');
               for (const pkg of corePackages) {
                 try {
-                  console.info(`Building ${pkg.name}...`);
                   await buildProject(pkg.path, pkg.isPlugin);
                 } catch (buildError) {
                   console.error(`Error building ${pkg.name}: ${buildError.message}`);
@@ -403,10 +292,9 @@ export const dev = new Command()
           }
 
           // Build the current project/plugin
-          console.info(`Building current package: ${cwd}`);
           await buildProject(cwd, isPlugin);
 
-          console.log('Rebuild successful, restarting server...');
+          console.log('✓ Rebuild successful, restarting...');
 
           // Start the server with the args
           await startServer(cliArgs);
@@ -422,7 +310,7 @@ export const dev = new Command()
 
       if (!isProject && !isPlugin) {
         console.warn(
-          'Not in a recognized project or plugin directory. Running in standalone mode.'
+          `Not in a recognized ElizaOS project or plugin directory. Current directory is: ${getDirectoryTypeDescription(directoryInfo)}. Running in standalone mode.`
         );
       } else {
         console.info(`Running in ${isProject ? 'project' : 'plugin'} mode`);
@@ -447,8 +335,6 @@ export const dev = new Command()
 
         console.log('Dev mode is active! The server will restart when files change.');
         console.log('Press Ctrl+C to exit');
-      } else {
-        console.debug('Running in standalone mode without file watching.');
       }
     } catch (error) {
       handleError(error);

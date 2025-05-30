@@ -35,15 +35,15 @@ class PostgresSpanProcessor implements SpanProcessor {
       pg = require('pg'); // CommonJS require to avoid bundlers evaluating it during build
     } catch (err) {
       elizaLogger.error(
-        "❌ Failed to dynamically require 'pg'. Are you running in a non-Node environment?"
+        "[X] Failed to dynamically require 'pg'. Are you running in a non-Node environment?"
       );
       return;
     }
-    elizaLogger.info(`🔄 Initializing PostgreSQL Span Processor with provided URL.`);
+    elizaLogger.info(`[🔄] Initializing PostgreSQL Span Processor with provided URL.`);
 
     if (!connectionString) {
       elizaLogger.error(
-        `❌ Cannot initialize PostgreSQL Span Processor: Connection string is empty.`
+        `[X] Cannot initialize PostgreSQL Span Processor: Connection string is empty.`
       );
       return;
     }
@@ -53,16 +53,16 @@ class PostgresSpanProcessor implements SpanProcessor {
         connectionString: connectionString,
       });
 
-      elizaLogger.info(`🔄 Connecting to PostgreSQL...`);
+      elizaLogger.info(`[🔄] Connecting to PostgreSQL...`);
       this.pgClient.connect((err) => {
         if (err) {
-          elizaLogger.error(`❌ Failed to connect to PostgreSQL in constructor: ${err}`);
+          elizaLogger.error(`[X] Failed to connect to PostgreSQL in constructor: ${err}`);
           this.pgClient = null;
           return;
         }
 
         this.isConnected = true;
-        elizaLogger.info(`✅ Connected to PostgreSQL database`);
+        elizaLogger.info(`[✓] Connected to PostgreSQL database`);
 
         const createTableQuery = `
                     CREATE TABLE IF NOT EXISTS traces (
@@ -93,12 +93,12 @@ class PostgresSpanProcessor implements SpanProcessor {
 
         this.pgClient.query(createTableQuery, (err, result) => {
           if (err) {
-            elizaLogger.error(`❌ Failed to create traces table: ${err}`);
+            elizaLogger.error(`[X] Failed to create traces table: ${err}`);
             return;
           }
 
           this.isInitialized = true;
-          elizaLogger.info(`✅ Traces table created or verified.`);
+          elizaLogger.info(`[✓] Traces table created or verified.`);
 
           const testQuery = `
                         INSERT INTO traces (
@@ -113,15 +113,15 @@ class PostgresSpanProcessor implements SpanProcessor {
 
           this.pgClient.query(testQuery, (err, result) => {
             if (err) {
-              elizaLogger.error(`❌ Failed to insert test record: ${err}`);
+              elizaLogger.error(`[X] Failed to insert test record: ${err}`);
             } else {
-              elizaLogger.info(`✅ Test record inserted or verified.`);
+              elizaLogger.info(`[✓] Test record inserted or verified.`);
             }
           });
         });
       });
     } catch (error) {
-      elizaLogger.error(`❌ Failed to initialize PostgreSQL client: ${error}`);
+      elizaLogger.error(`[X] Failed to initialize PostgreSQL client: ${error}`);
       if (error instanceof Error && error.stack) {
         elizaLogger.error(`Stack trace: ${error.stack}`);
       }
@@ -130,18 +130,18 @@ class PostgresSpanProcessor implements SpanProcessor {
   }
 
   onStart(span: ReadableSpan): void {
-    elizaLogger.debug('🟢 Span started:', span.name);
+    elizaLogger.debug('[🟢] Span started:', span.name);
   }
 
   onEnd(span: ReadableSpan): void {
     if (!this.pgClient || !this.isConnected || !this.isInitialized) {
       elizaLogger.warn(
-        `⚠️ Cannot record span ${span.name} - PostgreSQL processor is not fully initialized (Connected: ${this.isConnected}, Initialized: ${this.isInitialized})`
+        `[!] Cannot record span ${span.name} - PostgreSQL processor is not fully initialized (Connected: ${this.isConnected}, Initialized: ${this.isInitialized})`
       );
       return;
     }
 
-    elizaLogger.debug(`🔄 Processing span: ${span.name}`);
+    elizaLogger.debug(`[🔄] Processing span: ${span.name}`);
 
     const spanContext = span.spanContext();
 
@@ -192,14 +192,14 @@ class PostgresSpanProcessor implements SpanProcessor {
       room_id: safeTrim(attributes['room.id']) || safeTrim(attributes.roomId) || 'unknown',
     };
 
-    elizaLogger.debug(`🔄 Inserting span into PostgreSQL: ${span.name}`);
+    elizaLogger.debug(`[🔄] Inserting span into PostgreSQL: ${span.name}`);
     this.insertTrace(spanData);
   }
 
   private async insertTrace(spanData: any): Promise<void> {
     if (!this.pgClient || !this.isConnected) return;
 
-    elizaLogger.debug(`🔄 Begin insertTrace for span: ${spanData.span_name}`);
+    elizaLogger.debug(`[🔄] Begin insertTrace for span: ${spanData.span_name}`);
 
     const tableName = 'traces';
 
@@ -260,11 +260,11 @@ class PostgresSpanProcessor implements SpanProcessor {
 
       if (result.rows && result.rows.length > 0) {
         const id = result.rows[0].id;
-        elizaLogger.info(`✅ Span inserted with ID ${id}: ${spanData.span_name}`);
+        elizaLogger.info(`[✓] Span inserted with ID ${id}: ${spanData.span_name}`);
       } else if (result.rowCount > 0) {
-        elizaLogger.info(`✅ Span inserted (rowCount=${result.rowCount}): ${spanData.span_name}`);
+        elizaLogger.info(`[✓] Span inserted (rowCount=${result.rowCount}): ${spanData.span_name}`);
       } else {
-        elizaLogger.warn(`⚠️ No row inserted for span (likely conflict): ${spanData.span_name}`);
+        elizaLogger.warn(`[!] No row inserted for span (likely conflict): ${spanData.span_name}`);
       }
 
       try {
@@ -275,15 +275,15 @@ class PostgresSpanProcessor implements SpanProcessor {
         ]);
 
         if (verifyResult.rows.length > 0) {
-          elizaLogger.info(`✅ Verified span in database with ID ${verifyResult.rows[0].id}`);
+          elizaLogger.info(`[✓] Verified span in database with ID ${verifyResult.rows[0].id}`);
         } else {
-          elizaLogger.warn(`⚠️ Verification failed: Span not found in database after insert`);
+          elizaLogger.warn(`[!] Verification failed: Span not found in database after insert`);
         }
       } catch (verifyError) {
-        elizaLogger.error(`❌ Error verifying span insertion: ${verifyError}`);
+        elizaLogger.error(`[X] Error verifying span insertion: ${verifyError}`);
       }
     } catch (error) {
-      elizaLogger.error(`❌ Error inserting span into PostgreSQL DB:`, error);
+      elizaLogger.error(`[X] Error inserting span into PostgreSQL DB:`, error);
 
       if (error instanceof Error) {
         elizaLogger.error(`Error message: ${error.message}`);
@@ -343,10 +343,10 @@ export class InstrumentationService extends Service implements IInstrumentationS
     if (this.isEnabled()) {
       this.initializeProviders();
       elizaLogger.info(
-        `📊 Instrumentation Service configured as enabled for '${this.instrumentationConfig.serviceName}'.`
+        `[📊] Instrumentation Service configured as enabled for '${this.instrumentationConfig.serviceName}'.`
       );
     } else {
-      elizaLogger.info('📊 Instrumentation Service configured as disabled.');
+      elizaLogger.info('[📊] Instrumentation Service configured as disabled.');
     }
   }
 
@@ -378,7 +378,7 @@ export class InstrumentationService extends Service implements IInstrumentationS
     const spanProcessors: SpanProcessor[] = [];
     if (postgresSpanProcessorInstance) {
       spanProcessors.push(postgresSpanProcessorInstance);
-      elizaLogger.info('📊 PostgreSQL span processor will be added.');
+      elizaLogger.info('[📊] PostgreSQL span processor will be added.');
     }
 
     this.tracerProvider = new NodeTracerProvider({
@@ -398,9 +398,9 @@ export class InstrumentationService extends Service implements IInstrumentationS
           }),
         ],
       });
-      elizaLogger.info('✅ Successfully registered OpenTelemetry instrumentations (pg).');
+      elizaLogger.info('[✓] Successfully registered OpenTelemetry instrumentations (pg).');
     } catch (e) {
-      elizaLogger.error('❌ Failed to register instrumentations:', e);
+      elizaLogger.error('[X] Failed to register instrumentations:', e);
     }
 
     this.meterProvider = new MeterProvider({ resource: this.resource });
@@ -428,7 +428,7 @@ export class InstrumentationService extends Service implements IInstrumentationS
     if (!this.isEnabled() || this.isShutdown) {
       return;
     }
-    elizaLogger.debug('📊 Flushing OpenTelemetry providers...');
+    elizaLogger.debug('[📊] Flushing OpenTelemetry providers...');
     try {
       const results = await Promise.allSettled([
         this.tracerProvider?.forceFlush(),
@@ -440,7 +440,7 @@ export class InstrumentationService extends Service implements IInstrumentationS
           elizaLogger.error(`Error flushing OpenTelemetry ${provider} provider:`, result.reason);
         }
       });
-      elizaLogger.debug('📊 OpenTelemetry providers flush attempt complete.');
+      elizaLogger.debug('[📊] OpenTelemetry providers flush attempt complete.');
     } catch (error) {
       elizaLogger.error('Unexpected error during instrumentation flush: ', error);
     }
@@ -451,7 +451,7 @@ export class InstrumentationService extends Service implements IInstrumentationS
       return;
     }
     this.isShutdown = true;
-    elizaLogger.info('📊 Shutting down Instrumentation Service...');
+    elizaLogger.info('[📊] Shutting down Instrumentation Service...');
     try {
       const results = await Promise.allSettled([
         this.tracerProvider?.shutdown(),
@@ -466,7 +466,7 @@ export class InstrumentationService extends Service implements IInstrumentationS
           );
         }
       });
-      elizaLogger.info('📊 Instrumentation Service shutdown attempt complete.');
+      elizaLogger.info('[📊] Instrumentation Service shutdown attempt complete.');
     } catch (error) {
       elizaLogger.error('Unexpected error during instrumentation shutdown: ', error);
     }
