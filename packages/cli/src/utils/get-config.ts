@@ -239,7 +239,7 @@ export async function getElizaDirectories(targetProjectDir?: string) {
 async function ensureDir(dirPath: string) {
   if (!existsSync(dirPath)) {
     await fs.mkdir(dirPath, { recursive: true });
-    logger.info(`Created directory: ${dirPath}`);
+    logger.debug(`Created directory: ${dirPath}`);
   }
 }
 

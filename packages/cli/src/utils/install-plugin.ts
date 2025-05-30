@@ -48,7 +48,7 @@ async function verifyPluginImport(repository: string, context: string): Promise<
   const loadedModule = await loadPluginModule(repository);
 
   if (loadedModule) {
-    logger.info(`Successfully verified plugin ${repository} ${context} after installation.`);
+    logger.debug(`Successfully verified plugin ${repository} ${context} after installation.`);
     return true;
   } else {
     // The loadPluginModule function already logs detailed errors
@@ -71,7 +71,7 @@ async function attemptInstallation(
   directory: string,
   context: string
 ): Promise<boolean> {
-  logger.info(`Attempting to install plugin ${context}...`);
+  logger.debug(`Attempting to install plugin ${context}...`);
 
   try {
     // Use centralized installation function which now returns success status and identifier
@@ -93,7 +93,7 @@ async function attemptInstallation(
       );
       return true;
     }
-    logger.info(
+    logger.debug(
       `Installation successful for ${installResult.installedIdentifier}, verifying import...`
     );
     return await verifyPluginImport(installResult.installedIdentifier, context);
@@ -118,7 +118,7 @@ export async function installPlugin(
   cwd: string,
   versionSpecifier?: string
 ): Promise<boolean> {
-  logger.info(`Installing plugin: ${packageName}`);
+  logger.debug(`Installing plugin: ${packageName}`);
 
   const cliDir = getCliDirectory();
 

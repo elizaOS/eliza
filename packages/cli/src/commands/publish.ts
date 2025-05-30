@@ -83,15 +83,12 @@ async function checkCliVersion() {
 
     // Compare versions
     if (latestVersion && latestVersion !== currentVersion) {
-      console.warn(
-        `You are using CLI version ${currentVersion}, but the latest version is ${latestVersion} (published ${new Date(timeData[latestVersion]).toLocaleDateString()})`
-      );
-      console.info(`Run 'elizaos update' to update to the latest version`);
+      console.warn(`CLI update available: ${currentVersion} → ${latestVersion}`);
 
       const { update } = await prompts({
         type: 'confirm',
         name: 'update',
-        message: 'Would you like to update now before proceeding?',
+        message: 'Update CLI before publishing?',
         initial: false,
       });
 
@@ -400,7 +397,7 @@ async function validatePluginRequirements(cwd: string, packageJson: any): Promis
   if (warnings.length > 0) {
     console.warn('Plugin validation warnings:');
     warnings.forEach((warning) => console.warn(`  - ${warning}`));
-    console.warn('\nYour plugin may get rejected if you submit without addressing these issues.');
+    console.warn('Your plugin may get rejected if you submit without addressing these issues.');
 
     const { proceed } = await prompts({
       type: 'confirm',
@@ -555,7 +552,6 @@ export const publish = new Command()
                     console.info('Detected plugin based on exports');
                   }
                 } catch (importError) {
-                  console.debug(`Error importing module: ${importError}`);
                   // Continue with default type
                 }
               } catch {
@@ -563,7 +559,6 @@ export const publish = new Command()
               }
             }
           } catch (error) {
-            console.debug(`Error during type detection: ${error}`);
             // Continue with default type
           }
         }
@@ -605,8 +600,7 @@ export const publish = new Command()
       // Get or prompt for GitHub credentials
       let credentials = await getGitHubCredentials();
       if (!credentials) {
-        console.info('\nGitHub credentials required for publishing.');
-        console.info('Please enter your GitHub credentials:\n');
+        console.info('GitHub credentials required for publishing.');
 
         await new Promise((resolve) => setTimeout(resolve, 10));
 

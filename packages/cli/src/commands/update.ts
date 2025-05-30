@@ -1,5 +1,5 @@
 import { buildProject, handleError, runBunCommand } from '@/src/utils';
-import { displayBanner as showBanner } from '@/src/utils';
+import { displayBanner } from '@/src/utils';
 import { Command } from 'commander';
 import { execa } from 'execa';
 import { existsSync, readFileSync } from 'node:fs';
@@ -158,7 +158,7 @@ async function updateDependencies(
 
   // Get the current CLI version (for informational purposes)
   const currentCliVersion = getVersion();
-  console.info(`Current CLI version: ${currentCliVersion}`);
+  // Don't log current CLI version since it's already shown in banner
 
   try {
     // Find the latest published version by timestamp
@@ -187,7 +187,9 @@ async function updateDependencies(
       console.info(
         `Could not determine latest version, using current CLI version: ${latestCliVersion}`
       );
-    } else {
+    }
+    // Only show latest version if it's different from current
+    else if (latestCliVersion !== currentCliVersion) {
       console.info(`Latest available CLI version: ${latestCliVersion}`);
     }
 
@@ -241,7 +243,9 @@ async function updateDependencies(
       // Update the list to only include non-workspace packages
       elizaPackages.length = 0;
       elizaPackages.push(...packagesToUpdate);
-    } else {
+    }
+    // Only show package list if there are many packages or in debug mode
+    else if (elizaPackages.length > 5) {
       console.info(
         `Found ${elizaPackages.length} ElizaOS packages: ${elizaPackages.map((p) => p.name).join(', ')}`
       );
@@ -309,12 +313,13 @@ async function updateDependencies(
       return;
     }
 
-    console.info(`Updating ${packagesNeedingUpdate.length} package(s)...`);
+    // Don't show number of packages being updated - the bun output shows this
+    // console.info(`Updating ${packagesNeedingUpdate.length} package(s)...`);
 
     // Update each package using the appropriate tag instead of specific version
     for (const pkg of packagesNeedingUpdate) {
       try {
-        console.info(`Updating ${pkg.name} to @${packageTag}...`);
+        // Don't log each individual update - bun output shows this
         await runBunCommand(['add', `${pkg.name}@${packageTag}`], cwd);
       } catch (error) {
         console.error(`Failed to update ${pkg.name}@${packageTag}: ${error.message}`);
@@ -324,14 +329,14 @@ async function updateDependencies(
     console.log('Dependencies updated successfully');
 
     // Run install to ensure all dependencies are properly installed
-    console.info('Installing updated dependencies...');
+    // Don't announce installing - bun output shows this
     await runBunCommand(['install'], cwd);
 
     // Build the project/plugin with updated dependencies
     if (!skipBuild) {
-      console.info(`Building ${isPlugin ? 'plugin' : 'project'}...`);
+      // Don't announce building - build output shows this
       await buildProject(cwd, isPlugin);
-      console.info(`Build completed successfully`);
+      // Don't announce build completion - build output shows this
     } else {
       console.info('Skipping build phase as requested with --skip-build flag');
     }
@@ -372,7 +377,6 @@ export async function performCliUpdate(): Promise<boolean> {
 
     // If we couldn't determine the latest version or already at latest, exit
     if (!latestVersion || currentVersion === latestVersion) {
-      await showBanner();
       console.info('ElizaOS CLI is already up to date!');
       return true;
     }
@@ -380,24 +384,24 @@ export async function performCliUpdate(): Promise<boolean> {
     console.info(`Updating ElizaOS CLI from ${currentVersion} to ${latestVersion}...`);
 
     // Install the specified version globally - use specific version instead of tag
-    logger.info(`Updating Eliza CLI to version: ${latestVersion}`);
+    logger.debug(`Updating Eliza CLI to version: ${latestVersion}`);
     try {
       // Use direct npm install command for global installation
       try {
         // First try with beta tag which is more reliable
         const { stdout, stderr } = await execa('npm', ['install', '-g', '@elizaos/cli@beta']);
-        logger.info(`Successfully updated Eliza CLI to latest version`);
+        logger.debug(`Successfully updated Eliza CLI to latest version`);
         logger.info('Please restart your terminal for the changes to take effect.');
       } catch (npmError) {
         // If beta tag fails, try with specific version
         try {
-          logger.info(`Beta installation failed, trying specific version: ${latestVersion}`);
+          logger.debug(`Beta installation failed, trying specific version: ${latestVersion}`);
           const { stdout, stderr } = await execa('npm', [
             'install',
             '-g',
             `@elizaos/cli@${latestVersion}`,
           ]);
-          logger.info(`Successfully updated Eliza CLI to version ${latestVersion}`);
+          logger.debug(`Successfully updated Eliza CLI to version ${latestVersion}`);
           logger.info('Please restart your terminal for the changes to take effect.');
         } catch (versionError) {
           throw new Error(
@@ -411,7 +415,6 @@ export async function performCliUpdate(): Promise<boolean> {
       process.exit(1);
     }
 
-    await showBanner();
     console.info('ElizaOS CLI has been successfully updated!');
     return true;
   } catch (error) {
@@ -430,7 +433,7 @@ export const update = new Command()
   .option('--packages', 'Update only packages (without updating the CLI)')
   .hook('preAction', async () => {
     try {
-      await showBanner();
+      await displayBanner();
     } catch (error) {
       // Silently continue if banner display fails
       logger.debug('Banner display failed, continuing with update');
@@ -494,7 +497,8 @@ export const update = new Command()
         const directoryInfo = detectDirectoryType(cwd);
         const directoryDescription = getDirectoryTypeDescription(directoryInfo);
 
-        console.info(`Detected ${directoryDescription}`);
+        // Only show directory detection in debug mode
+        logger.debug(`Detected ${directoryDescription}`);
 
         // Check if this directory is suitable for updates
         if (!isValidForUpdates(directoryInfo)) {

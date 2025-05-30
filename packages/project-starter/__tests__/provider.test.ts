@@ -22,22 +22,35 @@ afterAll(() => {
 
 // Helper function to document test results
 function documentTestResult(testName: string, result: any, error: Error | null = null) {
-  logger.info(`TEST: ${testName}`);
+  // Clean, useful test documentation for developers
+  logger.info(`✓ Testing: ${testName}`);
+
+  if (error) {
+    logger.error(`✗ Error: ${error.message}`);
+    if (error.stack) {
+      logger.error(`Stack: ${error.stack}`);
+    }
+    return;
+  }
+
   if (result) {
     if (typeof result === 'string') {
-      logger.info(`RESULT: ${result.substring(0, 100)}${result.length > 100 ? '...' : ''}`);
-    } else {
-      try {
-        logger.info(`RESULT: ${JSON.stringify(result, null, 2).substring(0, 200)}...`);
-      } catch (e) {
-        logger.info(`RESULT: [Complex object that couldn't be stringified]`);
+      if (result.trim() && result.length > 0) {
+        const preview = result.length > 60 ? `${result.substring(0, 60)}...` : result;
+        logger.info(`  → ${preview}`);
       }
-    }
-  }
-  if (error) {
-    logger.error(`ERROR: ${error.message}`);
-    if (error.stack) {
-      logger.error(`STACK: ${error.stack}`);
+    } else if (typeof result === 'object') {
+      try {
+        // Show key information in a clean format
+        const keys = Object.keys(result);
+        if (keys.length > 0) {
+          const preview = keys.slice(0, 3).join(', ');
+          const more = keys.length > 3 ? ` +${keys.length - 3} more` : '';
+          logger.info(`  → {${preview}${more}}`);
+        }
+      } catch (e) {
+        logger.info(`  → [Complex object]`);
+      }
     }
   }
 }
@@ -55,49 +68,39 @@ function createRealRuntime(): IAgentRuntime {
     models: plugin.models,
     db: {
       get: async (key: string) => {
-        logger.info(`DB Get: ${key}`);
         return null;
       },
       set: async (key: string, value: any) => {
-        logger.info(`DB Set: ${key} = ${JSON.stringify(value)}`);
         return true;
       },
       delete: async (key: string) => {
-        logger.info(`DB Delete: ${key}`);
         return true;
       },
       getKeys: async (pattern: string) => {
-        logger.info(`DB GetKeys: ${pattern}`);
         return [];
       },
     },
     memory: {
       add: async (memory: any) => {
-        logger.info(`Memory Add: ${JSON.stringify(memory).substring(0, 100)}`);
+        // Memory operations for testing
       },
       get: async (id: string) => {
-        logger.info(`Memory Get: ${id}`);
         return null;
       },
       getByEntityId: async (entityId: string) => {
-        logger.info(`Memory GetByEntityId: ${entityId}`);
         return [];
       },
       getLatest: async (entityId: string) => {
-        logger.info(`Memory GetLatest: ${entityId}`);
         return null;
       },
       getRecentMessages: async (options: any) => {
-        logger.info(`Memory GetRecentMessages: ${JSON.stringify(options)}`);
         return [];
       },
       search: async (query: string) => {
-        logger.info(`Memory Search: ${query}`);
         return [];
       },
     },
     getService: (serviceType: string) => {
-      logger.info(`GetService: ${serviceType}`);
       return null;
     },
   } as unknown as IAgentRuntime;
@@ -119,6 +122,7 @@ function createRealMemory(): Memory {
       actions: [],
     },
     metadata: {
+      type: 'custom',
       sessionId: uuidv4(),
       conversationId: uuidv4(),
     },
@@ -183,8 +187,8 @@ describe('Provider Tests', () => {
           text: 'Current state context',
         } as State;
 
-        let result = null;
-        let error = null;
+        let result: any = null;
+        let error: Error | null = null;
 
         try {
           logger.info('Calling provider.get with real implementation');
@@ -196,15 +200,15 @@ describe('Provider Tests', () => {
           expect(result).toHaveProperty('data');
 
           // Look for potential issues in the result
-          if (!result.text || result.text.length === 0) {
+          if (result && (!result.text || result.text.length === 0)) {
             logger.warn('Provider returned empty text');
           }
 
-          if (Object.keys(result.values).length === 0) {
+          if (result && Object.keys(result.values).length === 0) {
             logger.warn('Provider returned empty values object');
           }
 
-          if (Object.keys(result.data).length === 0) {
+          if (result && Object.keys(result.data).length === 0) {
             logger.warn('Provider returned empty data object');
           }
         } catch (e) {
@@ -231,8 +235,8 @@ describe('Provider Tests', () => {
           text: '',
         } as State;
 
-        let result = null;
-        let error = null;
+        let result: any = null;
+        let error: Error | null = null;
 
         try {
           logger.info('Calling provider.get with invalid memory object');

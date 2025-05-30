@@ -17,14 +17,11 @@ import path from 'node:path';
 async function cloneRepository(repo: string, branch: string, destination: string): Promise<void> {
   try {
     const repoUrl = `https://github.com/${repo}`;
-    console.info(`Cloning ${repoUrl} (branch: ${branch}) to ${destination}...`);
 
     // Clone specific branch using execa
     await execa('git', ['clone', '-b', branch, repoUrl, destination], {
       stdio: 'inherit',
     });
-
-    console.log('Repository cloned successfully');
   } catch (error) {
     // Special handling for likely branch errors
     if (error.message && error.message.includes('exit code 128')) {

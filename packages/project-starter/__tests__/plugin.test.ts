@@ -21,22 +21,35 @@ afterAll(() => {
 
 // Helper function to document test results
 function documentTestResult(testName: string, result: any, error: Error | null = null) {
-  logger.info(`TEST: ${testName}`);
+  // Clean, useful test documentation for developers
+  logger.info(`✓ Testing: ${testName}`);
+
+  if (error) {
+    logger.error(`✗ Error: ${error.message}`);
+    if (error.stack) {
+      logger.error(`Stack: ${error.stack}`);
+    }
+    return;
+  }
+
   if (result) {
     if (typeof result === 'string') {
-      logger.info(`RESULT: ${result.substring(0, 100)}${result.length > 100 ? '...' : ''}`);
-    } else {
-      try {
-        logger.info(`RESULT: ${JSON.stringify(result, null, 2).substring(0, 200)}...`);
-      } catch (e) {
-        logger.info(`RESULT: [Complex object that couldn't be stringified]`);
+      if (result.trim() && result.length > 0) {
+        const preview = result.length > 60 ? `${result.substring(0, 60)}...` : result;
+        logger.info(`  → ${preview}`);
       }
-    }
-  }
-  if (error) {
-    logger.error(`ERROR: ${error.message}`);
-    if (error.stack) {
-      logger.error(`STACK: ${error.stack}`);
+    } else if (typeof result === 'object') {
+      try {
+        // Show key information in a clean format
+        const keys = Object.keys(result);
+        if (keys.length > 0) {
+          const preview = keys.slice(0, 3).join(', ');
+          const more = keys.length > 3 ? ` +${keys.length - 3} more` : '';
+          logger.info(`  → {${preview}${more}}`);
+        }
+      } catch (e) {
+        logger.info(`  → [Complex object]`);
+      }
     }
   }
 }
@@ -74,19 +87,14 @@ function createRealRuntime() {
       getKeys: async (pattern: string) => [],
     },
     getService: (serviceType: string) => {
-      // Log the service request for debugging
-      logger.debug(`Requesting service: ${serviceType}`);
-
       // Get from cache or create new
       if (!services.has(serviceType)) {
-        logger.debug(`Creating new service: ${serviceType}`);
         services.set(serviceType, createService(serviceType));
       }
 
       return services.get(serviceType);
     },
     registerService: (serviceType: string, service: any) => {
-      logger.debug(`Registering service: ${serviceType}`);
       services.set(serviceType, service);
     },
   };
@@ -109,7 +117,7 @@ describe('Plugin Configuration', () => {
     expect(plugin.config).toHaveProperty('EXAMPLE_PLUGIN_VARIABLE');
 
     documentTestResult('Plugin config check', {
-      hasExampleVariable: 'EXAMPLE_PLUGIN_VARIABLE' in plugin.config,
+      hasExampleVariable: plugin.config ? 'EXAMPLE_PLUGIN_VARIABLE' in plugin.config : false,
       configKeys: Object.keys(plugin.config || {}),
     });
   });
@@ -123,7 +131,7 @@ describe('Plugin Configuration', () => {
       // Initialize with config - using real runtime
       const runtime = createRealRuntime();
 
-      let error = null;
+      let error: Error | null = null;
       try {
         await plugin.init?.({ EXAMPLE_PLUGIN_VARIABLE: 'test-value' }, runtime as any);
         expect(true).toBe(true); // If we got here, init succeeded
@@ -149,7 +157,7 @@ describe('Plugin Configuration', () => {
     // Test with empty string (less than min length 1)
     if (plugin.init) {
       const runtime = createRealRuntime();
-      let error = null;
+      let error: Error | null = null;
 
       try {
         await plugin.init({ EXAMPLE_PLUGIN_VARIABLE: '' }, runtime as any);
@@ -165,7 +173,7 @@ describe('Plugin Configuration', () => {
         'Plugin invalid config',
         {
           errorThrown: !!error,
-          errorMessage: error?.message,
+          errorMessage: error?.message || 'No error message',
         },
         error
       );
@@ -235,10 +243,10 @@ describe('StarterService', () => {
   it('should start the service', async () => {
     const runtime = createRealRuntime();
     let startResult;
-    let error = null;
+    let error: Error | null = null;
 
     try {
-      logger.info('Starting StarterService');
+      logger.info('Using OpenAI for TEXT_SMALL model');
       startResult = await StarterService.start(runtime as any);
 
       expect(startResult).toBeDefined();
@@ -268,14 +276,14 @@ describe('StarterService', () => {
     const result1 = await StarterService.start(runtime as any);
     expect(result1).toBeTruthy();
 
-    let startupError: Error | unknown = null;
+    let startupError: Error | null = null;
 
     try {
       // Second registration should fail
       await StarterService.start(runtime as any);
       expect(true).toBe(false); // Should not reach here
     } catch (e) {
-      startupError = e;
+      startupError = e as Error;
       expect(e).toBeTruthy();
     }
 
@@ -283,15 +291,15 @@ describe('StarterService', () => {
       'StarterService double start',
       {
         errorThrown: !!startupError,
-        errorMessage: startupError instanceof Error ? startupError.message : String(startupError),
+        errorMessage: startupError?.message || 'No error message',
       },
-      startupError instanceof Error ? startupError : null
+      startupError
     );
   });
 
   it('should stop the service', async () => {
     const runtime = createRealRuntime();
-    let error = null;
+    let error: Error | null = null;
 
     try {
       // Register a real service first
@@ -324,7 +332,7 @@ describe('StarterService', () => {
     const runtime = createRealRuntime();
     // Don't register a service, so getService will return null
 
-    let error: Error | unknown = null;
+    let error: Error | null = null;
 
     try {
       // We'll patch the getService function to ensure it returns null
@@ -335,16 +343,11 @@ describe('StarterService', () => {
       // Should not reach here
       expect(true).toBe(false);
     } catch (e) {
-      error = e;
+      error = e as Error;
       // This is expected - verify it's the right error
       expect(error).toBeTruthy();
       if (error instanceof Error) {
         expect(error.message).toContain('Starter service not found');
-      }
-    } finally {
-      // Restore original getService function if needed
-      if ('getService' in runtime && typeof runtime.getService !== 'function') {
-        delete runtime.getService;
       }
     }
 
@@ -352,9 +355,9 @@ describe('StarterService', () => {
       'StarterService non-existent stop',
       {
         errorThrown: !!error,
-        errorMessage: error instanceof Error ? error.message : String(error),
+        errorMessage: error?.message || 'No error message',
       },
-      error instanceof Error ? error : null
+      error
     );
   });
 
