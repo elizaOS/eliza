@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import plugin from '../src/plugin';
 import { z } from 'zod';
+import { createMockRuntime } from './utils/core-test-utils';
 
 // Mock logger
 vi.mock('@elizaos/core', async () => {
@@ -17,17 +18,6 @@ vi.mock('@elizaos/core', async () => {
 
 // Access the plugin's init function
 const initPlugin = plugin.init;
-
-// Create a simple mock runtime for testing
-const createMockRuntime = () =>
-  ({
-    character: { name: 'Test' },
-    getSetting: () => null,
-    models: {},
-    db: { get: async () => null, set: async () => true },
-    memory: { add: async () => {}, get: async () => null },
-    getService: () => null,
-  }) as any;
 
 describe('Plugin Configuration Schema', () => {
   // Create a backup of the original env values
