@@ -1,10 +1,9 @@
 import { SpanStatusCode, context, trace, type Context, type Span } from '@opentelemetry/api';
 import { v4 as uuidv4 } from 'uuid';
 import { createUniqueUuid } from './entities';
-import { decryptSecret, getSalt } from './settings';
-import { safeReplacer } from './utils';
+import { decryptSecret, getSalt, safeReplacer } from './index';
 import { InstrumentationService } from './instrumentation/service';
-import logger from './logger';
+import { createLogger } from './logger';
 import {
   ChannelType,
   ModelType,
@@ -150,9 +149,8 @@ export class AgentRuntime implements IAgentRuntime {
     const logLevel = process.env.LOG_LEVEL || 'info';
 
     // Create the logger with appropriate level - only show debug logs when explicitly configured
-    this.logger = logger.child({
+    this.logger = createLogger({
       agentName: this.character?.name,
-      level: logLevel === 'debug' ? 'debug' : 'error',
     });
 
     this.logger.debug(`[AgentRuntime] Process working directory: ${process.cwd()}`);
@@ -843,6 +841,7 @@ export class AgentRuntime implements IAgentRuntime {
                 });
                 actionSpan.setStatus({ code: SpanStatusCode.OK });
               } catch (handlerError: any) {
+                console.error('action error', handlerError);
                 const handlerErrorMessage =
                   handlerError instanceof Error ? handlerError.message : String(handlerError);
                 actionSpan.recordException(handlerError as Error);
@@ -1156,101 +1155,42 @@ export class AgentRuntime implements IAgentRuntime {
   /**
    * Ensure the existence of a world.
    */
-  async ensureWorldExists({ id, name, serverId, metadata, agentId }: World) {
-    const existingWorld = await this.getWorld(id);
-    if (!existingWorld) {
-      this.logger.debug('Creating agent-perspective world:', {
-        agentPerspectiveWorldId: id,
-        worldName: name,
-        originalServerId: serverId,
-        targetAgentId: agentId || this.agentId,
+  async ensureWorldExists({ id, name, serverId, metadata }: World) {
+    const world = await this.getWorld(id);
+    if (!world) {
+      this.logger.debug('Creating world:', {
+        id,
+        name,
+        serverId,
+        agentId: this.agentId,
       });
       await this.adapter.createWorld({
-        id, // agent-perspective worldId
+        id,
         name,
-        agentId: agentId || this.agentId,
-        serverId: serverId,
+        agentId: this.agentId,
+        serverId: serverId || 'default',
         metadata,
       });
-      this.logger.debug(
-        `Agent-perspective world ${id} for actual server ${serverId} created successfully.`
-      );
-    } else if (
-      existingWorld.serverId !== serverId ||
-      (name && existingWorld.name !== name) ||
-      (metadata && JSON.stringify(existingWorld.metadata) !== JSON.stringify(metadata))
-    ) {
-      this.logger.debug(
-        `Updating existing agent-perspective world ${id}. Original serverId: ${existingWorld.serverId} -> ${serverId}. Name: ${existingWorld.name} -> ${name}.`
-      );
-      await this.adapter.updateWorld({
-        ...existingWorld,
-        name: name || existingWorld.name,
-        serverId: serverId,
-        agentId: agentId || existingWorld.agentId,
-        metadata: metadata ? { ...existingWorld.metadata, ...metadata } : existingWorld.metadata,
-      });
+      this.logger.debug(`World ${id} created successfully.`);
     }
   }
 
   async ensureRoomExists({ id, name, source, type, channelId, serverId, worldId, metadata }: Room) {
-    // id here is the agent-perspective roomId, derived by the caller (MessageBusService)
-    // channelId is the original central/platform channel ID
-    // serverId is the original central/platform server ID
-    // worldId is the agent-perspective worldId this room should be linked to
-    if (!worldId) throw new Error('worldId (agent-perspective) is required for ensureRoomExists');
-
-    const existingRoom = await this.getRoom(id);
-    if (!existingRoom) {
-      this.logger.debug('Creating agent-perspective room:', {
-        agentPerspectiveRoomId: id,
-        roomName: name,
-        originalChannelId: channelId,
-        originalServerId: serverId,
-        linksToAgentPerspectiveWorldId: worldId,
-        forAgentId: this.agentId,
+    if (!worldId) throw new Error('worldId is required');
+    const room = await this.getRoom(id);
+    if (!room) {
+      await this.createRoom({
+        id,
+        name,
+        agentId: this.agentId,
+        source,
+        type,
+        channelId,
+        serverId,
+        worldId,
+        metadata,
       });
-      // createRooms expects an array
-      await this.adapter.createRooms([
-        {
-          id, // agent-perspective roomId
-          name,
-          agentId: this.agentId, // Agent owning this perspective of the room
-          source,
-          type,
-          channelId: channelId, // Store the original central/platform channel ID here
-          serverId: serverId, // Store the original central/platform server ID here
-          worldId: worldId, // Link to agent-perspective worldId
-          metadata,
-        },
-      ]);
-      this.logger.debug(
-        `Agent-perspective room ${id} for actual channel ${channelId} created successfully.`
-      );
-    } else if (
-      existingRoom.channelId !== channelId ||
-      existingRoom.serverId !== serverId ||
-      existingRoom.worldId !== worldId ||
-      (name && existingRoom.name !== name) ||
-      (source && existingRoom.source !== source) ||
-      (type && existingRoom.type !== type) ||
-      (metadata && JSON.stringify(existingRoom.metadata) !== JSON.stringify(metadata))
-    ) {
-      this.logger.debug(
-        `Updating existing agent-perspective room ${id}. Original channelId: ${existingRoom.channelId} -> ${channelId}. Original serverId: ${existingRoom.serverId} -> ${serverId}. Name: ${existingRoom.name} -> ${name}.`
-      );
-      await this.adapter.updateRoom({
-        ...existingRoom, // Start with existing values
-        id, // Ensure ID is explicitly set for the update
-        name: name || existingRoom.name,
-        channelId: channelId, // Ensure original central/platform channel ID is stored/updated
-        serverId: serverId, // Ensure original central/platform server ID is stored/updated
-        worldId: worldId, // Ensure it's linked to the correct agent-perspective world
-        source: source || existingRoom.source,
-        type: type || existingRoom.type,
-        agentId: existingRoom.agentId || this.agentId, // Preserve or set agentId
-        metadata: metadata ? { ...existingRoom.metadata, ...metadata } : existingRoom.metadata, // Merge metadata
-      });
+      this.logger.debug(`Room ${id} created successfully.`);
     }
   }
 
@@ -1328,6 +1268,7 @@ export class AgentRuntime implements IAgentRuntime {
                 providerName: provider.name,
               };
             } catch (error: any) {
+              console.error('provider error', provider.name, error);
               const duration = Date.now() - start;
               const errorMessage = error instanceof Error ? error.message : String(error);
               providerSpan.recordException(error as Error);
@@ -1586,8 +1527,8 @@ export class AgentRuntime implements IAgentRuntime {
 
       // Log input parameters (keep debug log if useful)
       this.logger.debug(
-        `[useModel] ${modelKey} input:`,
-        JSON.stringify(params, safeReplacer(), 2).replace(/\\n/g, '\n')
+        `[useModel] ${modelKey} input: ` +
+          JSON.stringify(params, safeReplacer(), 2).replace(/\\n/g, '\n')
       );
       let paramsWithRuntime: any;
       if (
@@ -1873,7 +1814,7 @@ export class AgentRuntime implements IAgentRuntime {
         text: memoryText,
       });
     } catch (error: any) {
-      logger.error('Failed to generate embedding:', error);
+      this.logger.error('Failed to generate embedding:', error);
       memory.embedding = await this.useModel(ModelType.TEXT_EMBEDDING, null);
     }
     return memory;
