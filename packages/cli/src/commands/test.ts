@@ -8,6 +8,7 @@ import {
   resolvePgliteDir,
   UserEnvironment,
 } from '@/src/utils';
+import { detectDirectoryType, type DirectoryInfo } from '@/src/utils/directory-detection';
 import { type IAgentRuntime, type ProjectAgent } from '@elizaos/core';
 import { Command, Option } from 'commander';
 import * as dotenv from 'dotenv';
@@ -38,15 +39,10 @@ async function checkPortAvailable(port: number): Promise<boolean> {
 }
 
 /**
- * Check if the current directory is likely a plugin directory
+ * Determines the project type using comprehensive directory detection
  */
-function checkIfLikelyPluginDir(dir: string): boolean {
-  // Simple check based on common file patterns
-  return (
-    dir.includes('plugin') ||
-    existsSync(path.join(dir, 'src/plugins.ts')) ||
-    (existsSync(path.join(dir, 'src/index.ts')) && !existsSync(path.join(dir, 'src/agent.ts')))
-  );
+function getProjectType(): DirectoryInfo {
+  return detectDirectoryType(process.cwd());
 }
 
 /**
@@ -82,12 +78,15 @@ function processFilterName(name?: string): string | undefined {
 /**
  * Run component tests using Vitest
  */
-async function runComponentTests(options: { name?: string; skipBuild?: boolean }) {
+async function runComponentTests(
+  options: { name?: string; skipBuild?: boolean },
+  projectInfo: DirectoryInfo
+) {
   // Build the project or plugin first unless skip-build is specified
   if (!options.skipBuild) {
     try {
       const cwd = process.cwd();
-      const isPlugin = checkIfLikelyPluginDir(cwd);
+      const isPlugin = projectInfo.type === 'elizaos-plugin';
       console.info(`Building ${isPlugin ? 'plugin' : 'project'}...`);
       await buildProject(cwd, isPlugin);
       console.info(`Build completed successfully`);
@@ -102,7 +101,7 @@ async function runComponentTests(options: { name?: string; skipBuild?: boolean }
   try {
     // Use safer approach to avoid command injection
     const execa = await import('execa');
-    const args = ['run', 'vitest', 'run'];
+    const args = ['run', 'vitest', 'run', '--passWithNoTests'];
 
     // Add filter if specified
     if (options.name) {
@@ -137,12 +136,15 @@ async function runComponentTests(options: { name?: string; skipBuild?: boolean }
 /**
  * Function that runs the end-to-end tests.
  */
-const runE2eTests = async (options: { port?: number; name?: string; skipBuild?: boolean }) => {
+const runE2eTests = async (
+  options: { port?: number; name?: string; skipBuild?: boolean },
+  projectInfo: DirectoryInfo
+) => {
   // Build the project or plugin first unless skip-build is specified
   if (!options.skipBuild) {
     try {
       const cwd = process.cwd();
-      const isPlugin = checkIfLikelyPluginDir(cwd);
+      const isPlugin = projectInfo.type === 'elizaos-plugin';
       console.info(`Building ${isPlugin ? 'plugin' : 'project'}...`);
       await buildProject(cwd, isPlugin);
       console.info(`Build completed successfully`);
@@ -497,6 +499,7 @@ const runE2eTests = async (options: { port?: number; name?: string; skipBuild?: 
 
         // Run tests for each agent
         let totalFailed = 0;
+        let anyTestsFound = false;
         try {
           for (let i = 0; i < runtimes.length; i++) {
             const runtime = runtimes[i];
@@ -510,23 +513,29 @@ const runE2eTests = async (options: { port?: number; name?: string; skipBuild?: 
 
             const testRunner = new TestRunner(runtime, projectAgent);
 
-            // When in a plugin directory, we're testing only the current plugin
-            // so we set skipPlugins to true to skip other loaded plugins (like OpenAI)
-            // but we allow the current plugin's tests to run via isDirectPluginTest detection
-            const skipPlugins = project.isPlugin;
+            // Determine what types of tests to run based on directory type
+            const currentDirInfo = projectInfo;
 
             // Process filter name consistently
             const processedFilter = processFilterName(options.name);
 
             const results = await testRunner.runTests({
-              filter: processedFilter, // Use processed name for filtering
-              skipPlugins: skipPlugins,
-              skipProjectTests: false,
+              filter: processedFilter,
+              // Only run plugin tests if we're actually in a plugin directory
+              skipPlugins: currentDirInfo.type !== 'elizaos-plugin',
+              // Only run project tests if we're actually in a project directory
+              skipProjectTests: currentDirInfo.type !== 'elizaos-project',
+              skipE2eTests: false, // Always allow E2E tests
             });
             totalFailed += results.failed;
+            if (results.hasTests) {
+              anyTestsFound = true;
+            }
           }
 
-          return { failed: totalFailed > 0 };
+          // Return success (false) if no tests were found, or if tests ran but none failed
+          // This aligns with standard testing tools like vitest/jest behavior
+          return { failed: anyTestsFound ? totalFailed > 0 : false };
         } catch (error) {
           console.error('Error running tests:', error);
           if (error instanceof Error) {
@@ -593,11 +602,12 @@ const runE2eTests = async (options: { port?: number; name?: string; skipBuild?: 
  */
 async function runAllTests(options: { port?: number; name?: string; skipBuild?: boolean }) {
   // Run component tests first
-  const componentResult = await runComponentTests(options);
+  const projectInfo = getProjectType();
+  const componentResult = await runComponentTests(options, projectInfo);
 
   // Run e2e tests with the same processed filter name
   // Skip the second build since we already built for component tests
-  const e2eResult = await runE2eTests({ ...options, skipBuild: true });
+  const e2eResult = await runE2eTests({ ...options, skipBuild: true }, projectInfo);
 
   // Return combined result
   return { failed: componentResult.failed || e2eResult.failed };
@@ -623,7 +633,8 @@ test
     console.info('Command options:', options);
 
     try {
-      const result = await runComponentTests(options);
+      const projectInfo = getProjectType();
+      const result = await runComponentTests(options, projectInfo);
       process.exit(result.failed ? 1 : 0);
     } catch (error) {
       console.error('Error running component tests:', error);
@@ -646,7 +657,8 @@ test
     console.info('Command options:', options);
 
     try {
-      const result = await runE2eTests(options);
+      const projectInfo = getProjectType();
+      const result = await runE2eTests(options, projectInfo);
       process.exit(result.failed ? 1 : 0);
     } catch (error) {
       console.error('Error running e2e tests:', error);
@@ -669,6 +681,7 @@ test
     console.info('Command options:', options);
 
     try {
+      const projectInfo = getProjectType();
       const result = await runAllTests(options);
       process.exit(result.failed ? 1 : 0);
     } catch (error) {
