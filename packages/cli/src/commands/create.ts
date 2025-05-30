@@ -123,29 +123,8 @@ async function setupAIModelConfig(
           await fs.writeFile(envFilePath, content, 'utf8');
           console.info('[√] OpenAI placeholder configuration added to .env file');
         } else {
-          // Check if OpenAI API key already exists in environment
-          if (process.env.OPENAI_API_KEY) {
-            console.info('[√] OpenAI API key found in environment variables, skipping prompt');
-
-            // Still add a comment to the .env file for reference
-            let content = '';
-            if (existsSync(envFilePath)) {
-              content = await fs.readFile(envFilePath, 'utf8');
-            }
-
-            if (content && !content.endsWith('\n')) {
-              content += '\n';
-            }
-
-            content += '\n# AI Model Configuration\n';
-            content += '# OpenAI Configuration (using existing environment variable)\n';
-            content += '# OPENAI_API_KEY is already set in your environment\n';
-
-            await fs.writeFile(envFilePath, content, 'utf8');
-          } else {
-            // Interactive mode - prompt for API key
-            await promptAndStoreOpenAIKey(envFilePath);
-          }
+          // Interactive mode - prompt for OpenAI API key
+          await promptAndStoreOpenAIKey(envFilePath);
         }
         break;
       }
@@ -170,29 +149,8 @@ async function setupAIModelConfig(
           await fs.writeFile(envFilePath, content, 'utf8');
           console.info('[√] Anthropic API placeholder configuration added to .env file');
         } else {
-          // Check if Anthropic API key already exists in environment
-          if (process.env.ANTHROPIC_API_KEY) {
-            console.info('[√] Anthropic API key found in environment variables, skipping prompt');
-
-            // Still add a comment to the .env file for reference
-            let content = '';
-            if (existsSync(envFilePath)) {
-              content = await fs.readFile(envFilePath, 'utf8');
-            }
-
-            if (content && !content.endsWith('\n')) {
-              content += '\n';
-            }
-
-            content += '\n# AI Model Configuration\n';
-            content += '# Anthropic API Configuration (using existing environment variable)\n';
-            content += '# ANTHROPIC_API_KEY is already set in your environment\n';
-
-            await fs.writeFile(envFilePath, content, 'utf8');
-          } else {
-            // Interactive mode - prompt for API key
-            await promptAndStoreAnthropicKey(envFilePath);
-          }
+          // Interactive mode - prompt for Anthropic API key
+          await promptAndStoreAnthropicKey(envFilePath);
         }
         break;
       }
