@@ -487,14 +487,12 @@ const messageReceivedHandler = async ({
               }
             }
           }
-          const evaluationResults: Content[] = [];
           await runtime.evaluate(
             message,
             state,
             shouldRespond,
             async (memory: Content) => {
-              evaluationResults.push(memory);
-              return evaluationResults;
+              return [];
             },
             responseMessages
           );
