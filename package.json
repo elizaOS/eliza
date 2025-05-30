@@ -40,9 +40,6 @@
     "packages/*",
     "plugin-specification/*"
   ],
-  "dependencies": {
-    "@elizaos/plugin-livekit": "workspace:*"
-  },
   "devDependencies": {
     "@types/bun": "latest",
     "@types/node": "^22.15.3",
