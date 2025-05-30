@@ -345,12 +345,12 @@ export async function setupPgLite(
     await ensureDir(targetDbDir);
     logger.debug('[PGLite] Created database directory:', targetDbDir);
 
-    // Set PGLITE_DATA_DIR in process.env before setting up the env file
-    // This way it will be properly integrated into the template
-    process.env.PGLITE_DATA_DIR = targetDbDir;
-
-    // Now set up the .env file with the full template, including the PGLITE_DATA_DIR value
+    // Set up the .env file with the full template first
     await setupEnvFile(targetEnvPath);
+
+    // Then ensure PGLITE_DATA_DIR is properly set in the .env file
+    // This handles both new and existing .env files
+    await storePgliteDataDir(targetDbDir, targetEnvPath);
 
     logger.success('PGLite configuration saved');
   } catch (error) {
@@ -393,6 +393,40 @@ export async function storePostgresUrl(url: string, envFilePath: string): Promis
     logger.success('Postgres URL saved to configuration');
   } catch (error) {
     logger.error('Error saving database configuration:', error);
+    throw error; // Re-throw to handle upstream
+  }
+}
+
+/**
+ * Stores the provided PGLite data directory in the specified `.env` file, replacing any existing entry.
+ *
+ * Updates the `PGLITE_DATA_DIR` environment variable in both the file and the current process.
+ *
+ * @param dataDir - The PGLite data directory path to store.
+ * @param envFilePath - Path to the `.env` file where the directory should be saved.
+ *
+ * @throws {Error} If reading from or writing to the `.env` file fails.
+ */
+export async function storePgliteDataDir(dataDir: string, envFilePath: string): Promise<void> {
+  if (!dataDir) return;
+
+  try {
+    // Read existing content first to avoid duplicates
+    let content = '';
+    if (existsSync(envFilePath)) {
+      content = await fs.readFile(envFilePath, 'utf8');
+    }
+
+    // Remove existing PGLITE_DATA_DIR line if present
+    const lines = content.split('\n').filter((line) => !line.startsWith('PGLITE_DATA_DIR='));
+    lines.push(`PGLITE_DATA_DIR=${dataDir}`);
+
+    await fs.writeFile(envFilePath, lines.join('\n'), 'utf8');
+    process.env.PGLITE_DATA_DIR = dataDir;
+
+    logger.success('PGLite data directory saved to configuration');
+  } catch (error) {
+    logger.error('Error saving PGLite configuration:', error);
     throw error; // Re-throw to handle upstream
   }
 }
