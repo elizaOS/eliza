@@ -35,7 +35,7 @@
     "test:app": "turbo run test --concurrency 20 --filter=./packages/app",
     "prepare": "husky"
   },
-  "packageManager": "bun@1.2.14",
+  "packageManager": "bun@1.2.15",
   "workspaces": [
     "packages/*",
     "plugin-specification/*"
