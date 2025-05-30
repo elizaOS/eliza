@@ -257,20 +257,34 @@ Run tests for Eliza agent plugins and projects.
 
 #### `elizaos tee phala <subcommand>`
 
-Manage TEE deployments with Phala vendor.
+Manage TEE deployments with Phala. The CLI provides both native ElizaOS commands and integration with the official [Phala Cloud CLI](https://docs.phala.network/phala-cloud/references/tee-cloud-cli).
 
-- **Subcommands:**
-  - `deploy`: Deploy to TEE cloud
-    - Options: `-t, --type <type>`, `-m, --mode <mode>`, `-n, --name <n>`, `-c, --compose <compose>`, `-e, --env <env...>`, `--env-file <envFile>`, `--debug`
-  - `teepods`: Query the teepods
-  - `images`: Query the images
-    - Options: `--teepod-id <teepodId>`
-  - `upgrade`: Upgrade the TEE CLI
-    - Options: `-m, --mode <mode>`, `--app-id <appId>`, `-e, --env <env...>`, `--env-file <envFile>`, `-c, --compose <compose>`
-  - `build-compose`: Build a docker-compose file for Eliza Agent
-    - Options: `-i, --image <n>`, `-u, --username <n>`, `-t, --tag <tag>`, `-c, --character <path>`, `-e, --env-file <path>`, `-v, --version <version>`
-  - `publish`: Publish Docker image to Docker Hub
-    - Options: `-i, --image <n>`, `-u, --username <n>`, `-t, --tag <tag>`
+##### Official Phala Cloud CLI Integration
+
+The official [Phala Cloud CLI](https://www.npmjs.com/package/phala) is integrated as:
+
+```bash
+elizaos tee phala <any-phala-command>
+```
+
+This provides access to all Phala Cloud CLI commands including:
+
+- **Examples:**
+  - `elizaos tee phala help` - Show Phala CLI help
+  - `elizaos tee phala auth login <api-key>` - Authenticate with Phala Cloud
+  - `elizaos tee phala auth status` - Check authentication status
+  - `elizaos tee phala cvms list` - List all CVMs
+  - `elizaos tee phala cvms create --name my-app --compose ./docker-compose.yml` - Create a new CVM
+  - `elizaos tee phala cvms get <app-id>` - Get CVM details
+  - `elizaos tee phala cvms start <app-id>` - Start a CVM
+  - `elizaos tee phala cvms stop <app-id>` - Stop a CVM
+  - `elizaos tee phala cvms delete <app-id>` - Delete a CVM
+  - `elizaos tee phala docker build --image my-app --tag v1.0.0` - Build Docker image
+  - `elizaos tee phala docker push --image my-app --tag v1.0.0` - Push to Docker Hub
+  - `elizaos tee phala simulator start` - Start TEE simulator
+  - `elizaos tee phala simulator stop` - Stop TEE simulator
+
+All arguments are passed directly to the official Phala CLI. For complete documentation, run `npx phala help`.
 
 ### Updates
 
