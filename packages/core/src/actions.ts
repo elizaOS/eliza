@@ -15,8 +15,20 @@ export const composeActionExamples = (actionsData: Action[], count: number): str
     return '';
   }
 
+  // Filter out actions without examples
+  const actionsWithExamples = actionsData.filter(
+    (action) => action.examples && Array.isArray(action.examples) && action.examples.length > 0
+  );
+
+  // If no actions have examples, return empty string
+  if (!actionsWithExamples.length) {
+    return '';
+  }
+
   // Create a working copy of the examples
-  const examplesCopy: ActionExample[][][] = actionsData.map((action) => [...action.examples]);
+  const examplesCopy: ActionExample[][][] = actionsWithExamples.map((action) => [
+    ...action.examples,
+  ]);
 
   const selectedExamples: ActionExample[][] = [];
 
