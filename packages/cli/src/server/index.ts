@@ -7,7 +7,7 @@ import {
   logger,
   type UUID,
 } from '@elizaos/core';
-import * as bodyParser from 'body-parser';
+import bodyParser from 'body-parser';
 import cors from 'cors';
 import express, { Request, Response } from 'express';
 import * as fs from 'node:fs';
@@ -27,8 +27,8 @@ import { v4 as uuidv4 } from 'uuid';
 import internalMessageBus from './bus';
 import * as centralSchema from './database/schema/central';
 import type {
-  CentralMessageChannel,
-  CentralMessageServer,
+  MessageChannel,
+  MessageServer,
   CentralRootMessage,
   MessageServiceStructure,
 } from './types';
@@ -662,8 +662,8 @@ export class AgentServer {
 
   // Central DB Data Access Methods
   async createCentralServer(
-    data: Omit<CentralMessageServer, 'id' | 'createdAt' | 'updatedAt'>
-  ): Promise<CentralMessageServer> {
+    data: Omit<MessageServer, 'id' | 'createdAt' | 'updatedAt'>
+  ): Promise<MessageServer> {
     const newId = uuidv4() as UUID;
     const now = new Date();
     const serverToInsert = {
@@ -676,18 +676,18 @@ export class AgentServer {
       .insert(centralSchema.messageServerTable)
       .values(serverToInsert)
       .returning();
-    return result[0] as CentralMessageServer;
+    return result[0] as MessageServer;
   }
 
-  async getCentralServers(): Promise<CentralMessageServer[]> {
+  async getCentralServers(): Promise<MessageServer[]> {
     const results = await this.centralDrizzleDB.select().from(centralSchema.messageServerTable);
-    return results as CentralMessageServer[];
+    return results as MessageServer[];
   }
 
   async createCentralChannel(
-    data: Omit<CentralMessageChannel, 'id' | 'createdAt' | 'updatedAt'>,
+    data: Omit<MessageChannel, 'id' | 'createdAt' | 'updatedAt'>,
     participantIds?: UUID[]
-  ): Promise<CentralMessageChannel> {
+  ): Promise<MessageChannel> {
     const newId = uuidv4() as UUID;
     const now = new Date();
     const channelToInsert = {
@@ -701,7 +701,7 @@ export class AgentServer {
       .values(channelToInsert)
       .returning();
 
-    const newChannel = result[0] as CentralMessageChannel;
+    const newChannel = result[0] as MessageChannel;
 
     if (participantIds && participantIds.length > 0) {
       await this.addParticipantsToCentralChannel(newChannel.id, participantIds);
@@ -724,21 +724,21 @@ export class AgentServer {
     );
   }
 
-  async getCentralChannelsForServer(serverId: UUID): Promise<CentralMessageChannel[]> {
+  async getCentralChannelsForServer(serverId: UUID): Promise<MessageChannel[]> {
     const results = await this.centralDrizzleDB
       .select()
       .from(centralSchema.channelTable)
       .where(eq(centralSchema.channelTable.messageServerId, serverId));
-    return results as CentralMessageChannel[];
+    return results as MessageChannel[];
   }
 
-  async getCentralChannelDetails(channelId: UUID): Promise<CentralMessageChannel | null> {
+  async getCentralChannelDetails(channelId: UUID): Promise<MessageChannel | null> {
     const results = await this.centralDrizzleDB
       .select()
       .from(centralSchema.channelTable)
       .where(eq(centralSchema.channelTable.id, channelId))
       .limit(1);
-    return results.length > 0 ? (results[0] as CentralMessageChannel) : null;
+    return results.length > 0 ? (results[0] as MessageChannel) : null;
   }
 
   async getCentralChannelParticipants(channelId: UUID): Promise<UUID[]> {
@@ -752,7 +752,7 @@ export class AgentServer {
     return results.map((r) => r.userId as UUID);
   }
 
-  async deleteCentralMessage(messageId: UUID): Promise<void> {
+  async deleteMessage(messageId: UUID): Promise<void> {
     await this.centralDrizzleDB
       .delete(centralSchema.centralRootMessageTable)
       .where(eq(centralSchema.centralRootMessageTable.id, messageId));
@@ -770,7 +770,7 @@ export class AgentServer {
     user1Id: UUID,
     user2Id: UUID,
     messageServerId: UUID
-  ): Promise<CentralMessageChannel> {
+  ): Promise<MessageChannel> {
     const ids = [user1Id, user2Id].sort();
     const dmChannelName = `DM-${ids[0]}-${ids[1]}`;
 
@@ -787,7 +787,7 @@ export class AgentServer {
       .limit(1);
 
     if (channels.length > 0) {
-      return channels[0] as CentralMessageChannel;
+      return channels[0] as MessageChannel;
     }
 
     const newChannelId = uuidv4() as UUID;
@@ -801,15 +801,16 @@ export class AgentServer {
       updatedAt: now,
       metadata: { user1: ids[0], user2: ids[1] },
     };
+
     const createdResults = await this.centralDrizzleDB
       .insert(centralSchema.channelTable)
       .values(newDmChannelData)
       .returning();
     // TODO: Add participants to a central channel participant table if you have one
-    return createdResults[0] as CentralMessageChannel;
+    return createdResults[0] as MessageChannel;
   }
 
-  async createCentralMessage(
+  async createMessage(
     data: Omit<CentralRootMessage, 'id' | 'createdAt' | 'updatedAt'>
   ): Promise<CentralRootMessage> {
     const newId = uuidv4() as UUID;
@@ -851,7 +852,7 @@ export class AgentServer {
     return createdMessage;
   }
 
-  async getCentralMessagesForChannel(
+  async getMessagesForChannel(
     channelId: UUID,
     limit: number = 50,
     beforeTimestamp?: Date

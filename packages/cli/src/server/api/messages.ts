@@ -47,7 +47,7 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
         metadata,
       };
       // Use AgentServer's method to create the message in the CENTRAL DB
-      const createdMessage = await serverInstance.createCentralMessage(newRootMessageData);
+      const createdMessage = await serverInstance.createMessage(newRootMessageData);
 
       // Emit to SocketIO for real-time GUI updates
       if (serverInstance.socketIO) {
@@ -99,7 +99,7 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
           : undefined,
         metadata: messagePayload.metadata,
       };
-      const createdRootMessage = await serverInstance.createCentralMessage(messageToCreate);
+      const createdRootMessage = await serverInstance.createMessage(messageToCreate);
 
       // Prepare message for the internal bus (for agents to consume)
       const messageForBus: MessageService = {
@@ -185,7 +185,7 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
         sourceType: source_type || 'eliza_gui',
       };
 
-      const createdRootMessage = await serverInstance.createCentralMessage(newRootMessageData);
+      const createdRootMessage = await serverInstance.createMessage(newRootMessageData);
 
       const messageForBus: MessageService = {
         id: createdRootMessage.id!,
@@ -245,11 +245,7 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
     }
 
     try {
-      const messages = await serverInstance.getCentralMessagesForChannel(
-        channelId,
-        limit,
-        beforeDate
-      );
+      const messages = await serverInstance.getMessagesForChannel(channelId, limit, beforeDate);
       // Transform to MessageService structure if GUI expects timestamps as numbers, or align types
       const messagesForGui = messages.map((msg) => ({
         ...msg,
@@ -278,6 +274,32 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
     }
   });
 
+  // POST /api/messages/servers - Create a new central server
+  // @ts-expect-error - this is a valid express route
+  router.post('/servers', async (req, res) => {
+    const { name, sourceType, sourceId, metadata } = req.body;
+
+    if (!name || !sourceType) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: name, sourceType',
+      });
+    }
+
+    try {
+      const server = await serverInstance.createCentralServer({
+        name,
+        sourceType,
+        sourceId,
+        metadata,
+      });
+      res.status(201).json({ success: true, data: { server } });
+    } catch (error) {
+      logger.error('[Central Messages Router /servers] Error creating server:', error);
+      res.status(500).json({ success: false, error: 'Failed to create server' });
+    }
+  });
+
   // GET /api/central-servers/:serverId/channels
   // @ts-expect-error - this is a valid express route
   router.get('/central-servers/:serverId/channels', async (req, res) => {
@@ -297,14 +319,55 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
     }
   });
 
+  // POST /api/messages/channels - Create a new central channel
+  // @ts-expect-error - this is a valid express route
+  router.post('/channels', async (req, res) => {
+    const { messageServerId, name, type, sourceType, sourceId, topic, metadata } = req.body;
+
+    if (!messageServerId || !name || !type) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: messageServerId, name, type',
+      });
+    }
+
+    if (!validateUuid(messageServerId)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid messageServerId format',
+      });
+    }
+
+    try {
+      const channel = await serverInstance.createCentralChannel({
+        messageServerId: messageServerId as UUID,
+        name,
+        type,
+        sourceType,
+        sourceId,
+        topic,
+        metadata,
+      });
+      res.status(201).json({ success: true, data: { channel } });
+    } catch (error) {
+      logger.error('[Central Messages Router /channels] Error creating channel:', error);
+      res.status(500).json({ success: false, error: 'Failed to create channel' });
+    }
+  });
+
   // GET /api/dm-channel?targetUserId=<target_user_id>
   // @ts-expect-error - this is a valid express route
   router.get('/dm-channel', async (req, res) => {
     const targetUserId = validateUuid(req.query.targetUserId as string);
     const currentUserId = validateUuid(req.query.currentUserId as string);
-    const dmServerId =
-      validateUuid(req.query.dmServerId as string) ||
-      ('00000000-0000-0000-0000-000000000001' as UUID); // Default DM server context
+    // Ensure dmServerId is always a valid UUID, even if not provided or invalid in query
+    let dmServerId = validateUuid(req.query.dmServerId as string);
+    if (!dmServerId) {
+      // Fallback: Use a predefined default DM server ID or fetch/create one
+      // For simplicity, using a hardcoded default. In a real app, you might query for a default server.
+      dmServerId = '00000000-0000-0000-0000-000000000001' as UUID;
+      // OR: const defaultServer = await serverInstance.getDefaultDmServer(); dmServerId = defaultServer.id;
+    }
 
     if (!targetUserId || !currentUserId) {
       return res
@@ -333,7 +396,7 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
     }
   });
 
-  // POST /api/central-messages/central-channels (for creating group channels)
+  // POST /api/messages/central-channels (for creating group channels)
   // @ts-expect-error - this is a valid express route
   router.post('/central-channels', async (req, res) => {
     const {
@@ -438,7 +501,7 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
       return res.status(400).json({ success: false, error: 'Invalid channelId or messageId' });
     }
     try {
-      await serverInstance.deleteCentralMessage(messageId);
+      await serverInstance.deleteMessage(messageId);
       // Also, emit an event via SocketIO to inform clients about the deletion
       if (serverInstance.socketIO) {
         serverInstance.socketIO.to(channelId).emit('messageDeleted', {

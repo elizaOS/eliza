@@ -1,5 +1,5 @@
 {
-  "id": "1785b8e8-756f-4f0a-b8c5-bf8691004ee7",
+  "id": "327f7a6a-2e61-4e4c-9604-242dc5fd42d4",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -52,15 +52,13 @@
           "name": "system",
           "type": "text",
           "primaryKey": false,
-          "notNull": false,
-          "default": "''"
+          "default": ""
         },
         "bio": {
           "name": "bio",
           "type": "jsonb",
           "primaryKey": false,
-          "notNull": false,
-          "default": "'[]'::jsonb"
+          "default": "[]::jsonb"
         },
         "message_examples": {
           "name": "message_examples",

@@ -1,6 +1,6 @@
 import type { UUID, ChannelType } from '@elizaos/core';
 
-export interface CentralMessageServer {
+export interface MessageServer {
   id: UUID; // global serverId
   name: string;
   sourceType: string; // e.g., 'eliza_native', 'discord_guild'
@@ -10,9 +10,9 @@ export interface CentralMessageServer {
   updatedAt: Date;
 }
 
-export interface CentralMessageChannel {
+export interface MessageChannel {
   id: UUID; // global channelId
-  messageServerId: UUID; // FK to CentralMessageServer.id
+  messageServerId: UUID; // FK to MessageServer.id
   name: string;
   type: ChannelType; // Use the enum from @elizaos/core
   sourceType?: string;
@@ -25,7 +25,7 @@ export interface CentralMessageChannel {
 
 export interface CentralRootMessage {
   id: UUID;
-  channelId: UUID; // FK to CentralMessageChannel.id
+  channelId: UUID; // FK to MessageChannel.id
   authorId: UUID; // Identifier for the author (could be an agent's runtime.agentId or a dedicated central user ID)
   content: string;
   rawMessage?: any;
@@ -40,8 +40,8 @@ export interface CentralRootMessage {
 // This is what goes on the internal bus and often what APIs might return for a "full" message
 export interface MessageServiceStructure {
   id: UUID; // CentralRootMessage.id
-  channel_id: UUID; // CentralMessageChannel.id
-  server_id: UUID; // CentralMessageServer.id
+  channel_id: UUID; // MessageChannel.id
+  server_id: UUID; // MessageServer.id
   author_id: UUID;
   author_display_name?: string;
   content: string;

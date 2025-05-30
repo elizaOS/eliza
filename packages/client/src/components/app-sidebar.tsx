@@ -100,7 +100,7 @@ const AgentRow = ({
   active: boolean;
 }) => (
   <SidebarMenuItem className="h-16">
-    <NavLink to={`/dm/${agent.id}`}>
+    <NavLink to={`/chat/${agent.id}`}>
       <SidebarMenuButton isActive={active} className="px-4 py-2 my-2 h-full rounded-md">
         <div className="flex items-center gap-2">
           <div className="relative w-8 h-8 rounded-full bg-gray-600">
@@ -148,7 +148,7 @@ const AgentListSection = ({
         key={a?.id}
         agent={a as Agent}
         isOnline={isOnline}
-        active={activePath.includes(`/dm/${String(a?.id)}`)}
+        active={activePath.includes(`/chat/${String(a?.id)}`)}
       />
     ))}
   </SidebarSection>
@@ -168,6 +168,16 @@ const GroupChannelListSection = ({
 
   return (
     <SidebarSection title="Groups" className={className}>
+      <div className="flex justify-end px-2 mb-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => navigate('/group/new')}
+          className="text-xs"
+        >
+          <Plus className="h-3 w-3 mr-1" /> New Group
+        </Button>
+      </div>
       {isLoadingServers &&
         Array.from({ length: 3 }).map((_, i) => (
           <SidebarMenuItem key={`skel-server-${i}`}>
@@ -314,7 +324,7 @@ export function AppSidebar() {
   // const [isGroupPanelOpen, setGroupPanelOpen] = useState(false); // GroupPanel logic needs rethink
   const handleCreateGroupChannel = () => {
     clientLogger.info('Create Group Channel clicked - needs UI for creating central channel.');
-    navigate('/groups/create'); // Example navigation, implement this route
+    navigate('/group/new'); // Example navigation, implement this route
   };
 
   const agentLoadError = agentsError

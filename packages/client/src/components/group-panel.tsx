@@ -205,7 +205,7 @@ export default function GroupPanel({ onClose, agents, groupId }: GroupPanel) {
                 console.error('Failed to create group', error);
               } finally {
                 setCreating(false);
-                navigate(`/room/${serverId}`);
+                navigate(`/group/${serverId}`);
                 onClose();
                 queryClient.invalidateQueries({ queryKey: ['rooms'] });
               }

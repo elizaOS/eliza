@@ -16,7 +16,7 @@ import {
   type UiMessage,
 } from '@/hooks/use-query-hooks';
 import clientLogger from '@/lib/logger';
-import { parseMediaFromText, removeMediaUrlsFromText } from '@/lib/media-utils';
+import { parseMediaFromText, removeMediaUrlsFromText, type MediaInfo } from '@/lib/media-utils';
 import SocketIOManager from '@/lib/socketio-manager';
 import { cn, getEntityId, moment, randomUUID } from '@/lib/utils';
 import type { Agent, Content, Media, UUID, Room } from '@elizaos/core';
@@ -207,7 +207,10 @@ function MessageContent({
 }
 
 export default function DMPage() {
-  const { channelId: channelIdFromPath } = useParams<{ channelId: string }>();
+  const { channelId: channelIdFromPath, agentId: agentIdFromPath } = useParams<{
+    channelId?: string;
+    agentId?: string;
+  }>();
   const [searchParams] = useSearchParams();
   const agentIdFromQuery = searchParams.get('agentId');
   const serverIdFromQuery = searchParams.get('serverId');
@@ -216,9 +219,14 @@ export default function DMPage() {
   const queryClient = useQueryClient();
   const currentClientEntityId = getEntityId();
 
+  // Determine if we're in agent mode (URL: /chat/agentId) or channel mode (URL: /chat/channelId?agentId=X&serverId=Y)
+  const isAgentMode = !agentIdFromQuery && agentIdFromPath; // agentId in path, no query params
+  const targetAgentId = isAgentMode
+    ? validateUuid(agentIdFromPath) || undefined
+    : validateUuid(agentIdFromQuery) || undefined;
+
   // Use resolved IDs for hooks
   const channelId = channelIdFromPath ? validateUuid(channelIdFromPath) : undefined;
-  const targetAgentId = agentIdFromQuery ? validateUuid(agentIdFromQuery) : undefined;
   const serverId = serverIdFromQuery ? validateUuid(serverIdFromQuery) : undefined;
 
   const { data: agentDataWrapper, isLoading: isLoadingAgentData } = useAgent(targetAgentId, {
@@ -226,13 +234,84 @@ export default function DMPage() {
   });
   const targetAgentData = agentDataWrapper?.data;
 
+  // Auto-create DM channel for agent mode
+  const [dmChannelData, setDmChannelData] = useState<{ channelId: UUID; serverId: UUID } | null>(
+    null
+  );
+  const [isCreatingDM, setIsCreatingDM] = useState(false);
+
+  useEffect(() => {
+    if (isAgentMode && targetAgentId && !dmChannelData && !isCreatingDM) {
+      setIsCreatingDM(true);
+      // Create DM channel automatically
+      const createDMChannel = async () => {
+        try {
+          // First, get or create a server
+          const serversResponse = await fetch('/api/messages/central-servers');
+          const serversData = await serversResponse.json();
+
+          let serverId;
+          if (serversData.success && serversData.data.servers.length > 0) {
+            serverId = serversData.data.servers[0].id;
+          } else {
+            // Create a default server
+            const createServerResponse = await fetch('/api/messages/servers', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                name: 'Default Chat Server',
+                sourceType: 'eliza_gui',
+              }),
+            });
+            const serverResult = await createServerResponse.json();
+            if (serverResult.success) {
+              serverId = serverResult.data.server.id;
+            } else {
+              throw new Error('Failed to create server');
+            }
+          }
+
+          // Create DM channel
+          const dmResponse = await fetch(
+            `/api/messages/dm-channel?targetUserId=${targetAgentId}&currentUserId=${currentClientEntityId}&dmServerId=${serverId}`
+          );
+          const dmData = await dmResponse.json();
+
+          if (dmData.success) {
+            setDmChannelData({
+              channelId: dmData.data.id,
+              serverId: serverId,
+            });
+          } else {
+            throw new Error('Failed to create DM channel');
+          }
+        } catch (error) {
+          console.error('Error creating DM channel:', error);
+          toast({
+            title: 'Error',
+            description: 'Failed to create chat channel',
+            variant: 'destructive',
+          });
+        } finally {
+          setIsCreatingDM(false);
+        }
+      };
+
+      createDMChannel();
+    }
+  }, [isAgentMode, targetAgentId, dmChannelData, isCreatingDM, currentClientEntityId, toast]);
+
+  // Determine final IDs to use
+  const finalChannelId = isAgentMode ? dmChannelData?.channelId : channelId;
+  const finalServerId = isAgentMode ? dmChannelData?.serverId : serverId;
+
   const {
     data: messages = [],
     isLoading: isLoadingMessages,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
-  } = useCentralChannelMessages(channelId, serverId);
+  } = useCentralChannelMessages(finalChannelId || undefined, finalServerId || undefined);
 
   const [selectedFiles, setSelectedFiles] = useState<UploadingFile[]>([]);
   const [input, setInput] = useState('');
@@ -254,26 +333,32 @@ export default function DMPage() {
   const toggleDetails = () => setShowDetails((prev) => !prev);
 
   useEffect(() => {
-    if (!channelId || !currentClientEntityId) return;
+    if (!finalChannelId || !currentClientEntityId) return;
     socketIOManager.initialize(currentClientEntityId);
-    socketIOManager.joinRoom(channelId);
-    clientLogger.info(`[DMPage] Joined DM channel ${channelId} as user ${currentClientEntityId}`);
+    socketIOManager.joinRoom(finalChannelId);
+    clientLogger.info(
+      `[DMPage] Joined DM channel ${finalChannelId} as user ${currentClientEntityId}`
+    );
 
     const handleMessageBroadcasting = (data: MessageBroadcastData) => {
-      if (data.roomId !== channelId) return;
+      clientLogger.info('[DMPage] Received raw messageBroadcast data:', JSON.stringify(data));
+      if (data.roomId !== finalChannelId) return;
       const isCurrentUser = data.senderId === currentClientEntityId;
       const isTargetAgent = data.senderId === targetAgentId;
       if (!isCurrentUser && isTargetAgent) setInputDisabled(false);
 
-      queryClient.setQueryData<UiMessage[]>(['messages', channelId], (old = []) => {
+      queryClient.setQueryData<UiMessage[]>(['messages', finalChannelId], (old = []) => {
         const messageExists = old.some((m) => m.id === data.id);
-        if (messageExists) return old;
+        if (messageExists) {
+          clientLogger.info('[DMPage] Message already exists, skipping:', data.id);
+          return old;
+        }
         const newUiMsg: UiMessage = {
           id: data.id || randomUUID(),
           text: data.text,
           name: data.senderName,
           senderId: data.senderId as UUID,
-          isAgent: isTargetAgent, // In a DM, non-user message is from the targetAgent
+          isAgent: isTargetAgent,
           createdAt: data.createdAt,
           channelId: data.roomId as UUID,
           serverId: data.serverId as UUID | undefined,
@@ -283,42 +368,47 @@ export default function DMPage() {
           actions: data.actions,
           isLoading: false,
         };
+        clientLogger.info('[DMPage] Adding new UiMessage:', JSON.stringify(newUiMsg));
         const newMessages = [...old, newUiMsg].sort((a, b) => a.createdAt - b.createdAt);
+        clientLogger.info(
+          '[DMPage] Messages after sort:',
+          newMessages.map((m) => ({ id: m.id, time: m.createdAt, text: m.text?.substring(0, 15) }))
+        );
         if (isTargetAgent && newUiMsg.id) animatedMessageIdRef.current = newUiMsg.id;
         else animatedMessageIdRef.current = null;
         return newMessages;
       });
     };
     const handleMessageComplete = (data: MessageCompleteData) => {
-      if (data.roomId === channelId) setInputDisabled(false);
+      if (data.roomId === finalChannelId) setInputDisabled(false);
     };
     const handleControlMessage = (data: ControlMessageData) => {
-      if (data.roomId === channelId) {
+      if (data.roomId === finalChannelId) {
         if (data.action === 'disable_input') setInputDisabled(true);
         else if (data.action === 'enable_input') setInputDisabled(false);
       }
     };
 
     const msgSub = socketIOManager.evtMessageBroadcast.attach(
-      (d: MessageBroadcastData) => d.roomId === channelId,
+      (d: MessageBroadcastData) => d.roomId === finalChannelId,
       handleMessageBroadcasting
     );
     const completeSub = socketIOManager.evtMessageComplete.attach(
-      (d: MessageCompleteData) => d.roomId === channelId,
+      (d: MessageCompleteData) => d.roomId === finalChannelId,
       handleMessageComplete
     );
     const controlSub = socketIOManager.evtControlMessage.attach(
-      (d: ControlMessageData) => d.roomId === channelId,
+      (d: ControlMessageData) => d.roomId === finalChannelId,
       handleControlMessage
     );
 
     return () => {
-      if (channelId) socketIOManager.leaveRoom(channelId);
+      if (finalChannelId) socketIOManager.leaveRoom(finalChannelId);
       msgSub?.detach();
       completeSub?.detach();
       controlSub?.detach();
     };
-  }, [channelId, currentClientEntityId, queryClient, socketIOManager, targetAgentId]);
+  }, [finalChannelId, currentClientEntityId, queryClient, socketIOManager, targetAgentId]);
 
   const { scrollRef, isAtBottom, scrollToBottom, disableAutoScroll } = useAutoScroll({
     smooth: true,
@@ -360,8 +450,8 @@ export default function DMPage() {
     if (
       (!input.trim() && selectedFiles.length === 0) ||
       inputDisabled ||
-      !channelId ||
-      !serverId ||
+      !finalChannelId ||
+      !finalServerId ||
       !currentClientEntityId ||
       !targetAgentData?.id
     )
@@ -380,8 +470,8 @@ export default function DMPage() {
       senderId: currentClientEntityId,
       isAgent: false,
       isLoading: true,
-      channelId: channelId,
-      serverId: serverId,
+      channelId: finalChannelId,
+      serverId: finalServerId,
       source: CHAT_SOURCE,
       attachments: selectedFiles
         .map((sf) => ({
@@ -394,7 +484,7 @@ export default function DMPage() {
     };
 
     if (messageText || selectedFiles.length > 0) {
-      queryClient.setQueryData<UiMessage[]>(['messages', channelId], (old = []) => [
+      queryClient.setQueryData<UiMessage[]>(['messages', finalChannelId], (old = []) => [
         ...old,
         optimisticUiMessage,
       ]);
@@ -445,7 +535,7 @@ export default function DMPage() {
 
       const mediaInfosFromText = parseMediaFromText(messageText || currentInputVal);
       const textMediaAttachments: Media[] = mediaInfosFromText.map(
-        (media: ParsedMediaInfo, index: number): Media => ({
+        (media: MediaInfo, index: number): Media => ({
           id: `media-${tempMessageId}-${index}`,
           url: media.url,
           title: media.type === 'image' ? 'Image' : 'Video',
@@ -463,16 +553,16 @@ export default function DMPage() {
       if (!finalText && finalAttachments.length === 0) {
         clientLogger.warn('Attempted to send an empty message.');
         setInputDisabled(false);
-        queryClient.setQueryData<UiMessage[]>(['messages', channelId], (old = []) =>
+        queryClient.setQueryData<UiMessage[]>(['messages', finalChannelId], (old = []) =>
           old.filter((m) => m.id !== tempMessageId)
         );
         return;
       }
 
-      const response = await apiClient.postMessageToCentralChannel(channelId, {
+      const response = await apiClient.postMessageToCentralChannel(finalChannelId, {
         author_id: currentClientEntityId,
         content: finalText,
-        server_id: serverId,
+        server_id: finalServerId,
         metadata: {
           attachments: finalAttachments.length > 0 ? finalAttachments : undefined,
           user_display_name: USER_NAME,
@@ -480,7 +570,7 @@ export default function DMPage() {
         source_type: CHAT_SOURCE,
       });
 
-      queryClient.setQueryData<UiMessage[]>(['messages', channelId], (old = []) =>
+      queryClient.setQueryData<UiMessage[]>(['messages', finalChannelId], (old = []) =>
         old.map((m) => {
           if (m.id === tempMessageId) {
             const serverResponseData = response.data;
@@ -500,7 +590,7 @@ export default function DMPage() {
                 ? (serverResponseData.metadata?.actions as string[] | undefined)
                 : undefined,
               channelId: serverResponseData.channelId,
-              serverId: serverResponseData.metadata?.serverId || serverId,
+              serverId: serverResponseData.metadata?.serverId || finalServerId,
               source: serverResponseData.sourceType,
               isLoading: false,
             } as UiMessage;
@@ -515,7 +605,7 @@ export default function DMPage() {
         description: error instanceof Error ? error.message : 'Could not send message.',
         variant: 'destructive',
       });
-      queryClient.setQueryData<UiMessage[]>(['messages', channelId], (old = []) =>
+      queryClient.setQueryData<UiMessage[]>(['messages', finalChannelId], (old = []) =>
         old.map((m) =>
           m.id === tempMessageId
             ? { ...m, isLoading: false, text: `${m.text || 'Attachment'} (Failed to send)` }
@@ -551,14 +641,14 @@ export default function DMPage() {
   };
 
   const handleDeleteMessage = (messageId: string) => {
-    if (!channelId) return;
-    deleteMessageCentral({ channelId, messageId: messageId as UUID });
+    if (!finalChannelId) return;
+    deleteMessageCentral({ channelId: finalChannelId, messageId: messageId as UUID });
   };
 
   const handleClearChat = () => {
-    if (!channelId) return;
+    if (!finalChannelId) return;
     if (window.confirm('Clear all messages in this chat?')) {
-      clearMessagesCentral(channelId);
+      clearMessagesCentral(finalChannelId);
     }
   };
 
@@ -569,7 +659,7 @@ export default function DMPage() {
       </div>
     );
   }
-  if (!channelId || !serverId || !targetAgentData) {
+  if (!finalChannelId || !finalServerId || !targetAgentData) {
     return (
       <div className="flex flex-1 justify-center items-center">
         <p>Loading chat context...</p>
@@ -640,11 +730,9 @@ export default function DMPage() {
           <ChatMessageList
             scrollRef={scrollRef}
             isAtBottom={isAtBottom}
-            scrollToBottom={safeScrollToBottom}
+            scrollToBottom={scrollToBottom}
             disableAutoScroll={disableAutoScroll}
-            className="flex-grow scrollbar-hide overflow-y-auto"
-            onScrollUp={fetchNextPage}
-            isLoadingMore={isFetchingNextPage}
+            className="flex-1 w-full"
           >
             {isLoadingMessages && messages.length === 0 && (
               <div className="flex flex-1 justify-center items-center">

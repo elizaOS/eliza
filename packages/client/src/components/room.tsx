@@ -25,7 +25,7 @@ import {
 } from '@elizaos/core';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
 import { useQueryClient } from '@tanstack/react-query';
-import { ChevronRight, Edit, Paperclip, Send, X, Trash2 } from 'lucide-react';
+import { ChevronRight, Edit, Paperclip, Send, X, Trash2, Loader2, FileText } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import AIWriter from 'react-aiwriter';
 import clientLogger from '../lib/logger';
@@ -43,11 +43,7 @@ import type {
 } from '@/lib/socketio-manager';
 import { useToast } from '@/hooks/use-toast';
 import { apiClient } from '@/lib/api';
-import {
-  parseMediaFromText,
-  removeMediaUrlsFromText,
-  type ParsedMediaInfo,
-} from '@/lib/media-utils';
+import { parseMediaFromText, removeMediaUrlsFromText, type MediaInfo } from '@/lib/media-utils';
 
 interface UploadingFile {
   file: File;
@@ -55,12 +51,6 @@ interface UploadingFile {
   isUploading: boolean;
   uploadProgress?: number;
   error?: string;
-}
-
-// Local definition for ParsedMediaInfo
-interface ParsedMediaInfo {
-  url: string;
-  type: 'image' | 'video' | 'unknown';
 }
 
 const MemoizedMessageContent = React.memo(MessageContent);
@@ -236,27 +226,34 @@ export default function GroupChatPage({
     );
 
     const handleMessageBroadcasting = (data: MessageBroadcastData) => {
-      clientLogger.info('[GroupChatPage] Received message broadcast:', data);
+      clientLogger.info(
+        '[GroupChatPage] Received raw messageBroadcast data:',
+        JSON.stringify(data)
+      );
+      clientLogger.info(
+        `[GroupChatPage] Current channelId: ${channelId}, data.roomId: ${data.roomId}`
+      );
       if (data.roomId !== channelId) {
         clientLogger.info(`[GroupChatPage] Ignoring message for different channel: ${data.roomId}`);
         return;
       }
       const isCurrentUser = data.senderId === currentClientEntityId;
-      // Determine if sender is an agent based on presence in allAgents list
       const isAgentSender = allAgents.some((a) => a.id === data.senderId);
 
       if (isAgentSender && !isCurrentUser) {
-        // Message from an agent, not self
         setInputDisabled(false);
       }
       queryClient.setQueryData<UiMessage[]>(['messages', channelId], (old = []) => {
         const messageExists = old.some((m) => m.id === data.id);
-        if (messageExists) return old;
+        if (messageExists) {
+          clientLogger.info('[GroupChatPage] Message already exists, skipping:', data.id);
+          return old;
+        }
 
         const newUiMsg: UiMessage = {
           id: data.id || randomUUID(),
           text: data.text,
-          name: data.senderName, // This is display name from server
+          name: data.senderName,
           senderId: data.senderId as UUID,
           isAgent: isAgentSender,
           createdAt: data.createdAt,
@@ -268,7 +265,12 @@ export default function GroupChatPage({
           actions: data.actions,
           isLoading: false,
         };
+        clientLogger.info('[GroupChatPage] Adding new UiMessage:', JSON.stringify(newUiMsg));
         const newMessages = [...old, newUiMsg].sort((a, b) => a.createdAt - b.createdAt);
+        clientLogger.info(
+          '[GroupChatPage] Messages after sort:',
+          newMessages.map((m) => ({ id: m.id, time: m.createdAt, text: m.text?.substring(0, 15) }))
+        );
         if (isAgentSender && newUiMsg.id && !isCurrentUser) {
           animatedMessageIdRef.current = newUiMsg.id;
         } else {
@@ -435,11 +437,9 @@ export default function GroupChatPage({
         }
       }
 
-      const mediaInfosFromText: ParsedMediaInfo[] = parseMediaFromText(
-        messageText || currentInputVal
-      );
+      const mediaInfosFromText: MediaInfo[] = parseMediaFromText(messageText || currentInputVal);
       const textMediaAttachments: Media[] = mediaInfosFromText.map(
-        (media: ParsedMediaInfo, index: number): Media => ({
+        (media: MediaInfo, index: number): Media => ({
           id: `media-${tempMessageId}-${index}`,
           url: media.url,
           title: media.type === 'image' ? 'Image' : 'Video',

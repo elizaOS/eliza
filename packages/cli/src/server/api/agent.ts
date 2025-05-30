@@ -26,6 +26,10 @@ import {
 } from '@elizaos/core';
 import express from 'express';
 import fs from 'node:fs';
+import type { File as MulterFile } from 'multer';
+
+// Cache for compiled regular expressions to improve performance
+const regexCache = new Map<string, RegExp>();
 
 // Utility functions for response handling
 const sendError = (
@@ -62,7 +66,7 @@ const cleanupFile = (filePath: string) => {
   }
 };
 
-const cleanupFiles = (files: Express.Multer.File[]) => {
+const cleanupFiles = (files: MulterFile[]) => {
   if (files) {
     files.forEach((file) => cleanupFile(file.path));
   }
@@ -80,16 +84,16 @@ const getRuntime = (agents: Map<UUID, IAgentRuntime>, agentId: UUID) => {
  * Interface representing a custom request object that extends the express.Request interface.
  * @interface CustomRequest
  * @extends express.Request
- * @property {Express.Multer.File} [file] - Optional property representing a file uploaded with the request
- * @property {Express.Multer.File[]} [files] - Optional property representing multiple files uploaded with the request
+ * @property {MulterFile} [file] - Optional property representing a file uploaded with the request
+ * @property {MulterFile[]} [files] - Optional property representing multiple files uploaded with the request
  * @property {Object} params - Object representing parameters included in the request
  * @property {string} params.agentId - The unique identifier for the agent associated with the request
  */
 interface CustomRequest extends express.Request {
   query: any;
   body: any;
-  file?: Express.Multer.File;
-  files?: Express.Multer.File[];
+  file?: MulterFile;
+  files?: MulterFile[];
   params: {
     agentId: string;
   };
@@ -307,13 +311,13 @@ export function agentRouter(
 
       // Use AgentServer's method to create the message in the CENTRAL DB
       // This method internally should also publish to internalMessageBus
-      const createdCentralMessage = await serverInstance.createCentralMessage(messagePayload);
+      const createdMessage = await serverInstance.createMessage(messagePayload);
 
       sendSuccess(
         res,
         {
           message: `Message submitted to central store and published to message bus. Target agent ${targetAgentId} will process it.`,
-          messageId: createdCentralMessage.id,
+          messageId: createdMessage.id,
           targetAgentId: targetAgentId,
           submittedChannelId: channelId,
         },
@@ -439,18 +443,52 @@ export function agentRouter(
                       r.handler(req, res, runtime);
                       return true; // Handled
                     }
+                  } else if (r.path.includes(':')) {
+                    // Parameterized route like /documents/:knowledgeId
+                    // Convert Express-style route to regex pattern
+                    const regexPattern = r.path.replace(/:([^/]+)/g, '([^/]+)');
+
+                    // Use cached regex or create and cache a new one
+                    if (!regexCache.has(r.path)) {
+                      regexCache.set(r.path, new RegExp(`^${regexPattern}$`));
+                    }
+                    const regex = regexCache.get(r.path)!;
+
+                    if (regex.test(path)) {
+                      logger.debug(`Calling parameterized plugin route: ${r.path} for ${path}`);
+
+                      // Extract parameter names from route pattern
+                      const paramNames = [];
+                      let match;
+                      const paramRegex = /:([^/]+)/g;
+                      while ((match = paramRegex.exec(r.path)) !== null) {
+                        paramNames.push(match[1]);
+                      }
+
+                      // Extract parameter values from actual path
+                      const valueMatches = path.match(regex);
+                      if (valueMatches && valueMatches.length > 1) {
+                        // Initialize req.params if it doesn't exist
+                        if (!req.params) {
+                          req.params = {};
+                        }
+
+                        // Populate req.params with extracted values
+                        for (let i = 0; i < paramNames.length; i++) {
+                          req.params[paramNames[i]] = valueMatches[i + 1];
+                        }
+                      }
+
+                      r.handler(req, res, runtime);
+                      return true; // Handled
+                    }
                   } else {
-                    // Exact match or parameterized (let Express handle params for non-wildcard)
+                    // Exact match
                     if (path === r.path) {
-                      // Exact match
                       logger.debug(`Calling exact match plugin route: ${r.path} for ${path}`);
                       r.handler(req, res, runtime);
                       return true; // Handled
                     }
-                    // For parameterized routes, rely on Express to have populated req.params if this middleware is reached AFTER direct registration
-                    // However, if direct registration is removed, this part needs its own path-to-regexp matching
-                    // For now, assuming direct registration was the primary path for parameterized routes and this is a fallback or for simple routes.
-                    // More robust matching might be needed if plugins heavily use complex parameterized routes without direct registration.
                   }
                   return false; // Not handled by this specific route object r
                 };

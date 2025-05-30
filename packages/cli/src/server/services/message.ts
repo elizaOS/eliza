@@ -13,7 +13,7 @@ import {
 import internalMessageBus from '../bus'; // Import the bus
 
 // This interface defines the structure of messages coming from the central server
-export interface MessageService {
+export interface MessageServiceMessage {
   id: UUID; // root_message.id
   channel_id: UUID;
   server_id: UUID;
@@ -33,22 +33,33 @@ export class MessageBusService extends Service {
   capabilityDescription =
     'Manages connection and message synchronization with the central message server.';
 
-  private boundHandleIncomingCentralMessage: (message: MessageService) => Promise<void>;
+  private boundHandleIncomingMessage: (message: MessageServiceMessage) => Promise<void>;
 
   constructor(runtime: IAgentRuntime) {
     super(runtime);
-    this.boundHandleIncomingCentralMessage = this.handleIncomingCentralMessage.bind(this);
+    this.boundHandleIncomingMessage = this.handleIncomingMessage.bind(this);
     this.connectToMessageBus();
+  }
+
+  static async start(runtime: IAgentRuntime): Promise<Service> {
+    const service = new MessageBusService(runtime);
+    await service.connectToMessageBus();
+    return service;
+  }
+
+  static async stop(runtime: IAgentRuntime): Promise<void> {
+    const service = new MessageBusService(runtime);
+    await service.stop();
   }
 
   private connectToMessageBus() {
     logger.info(
       `[${this.runtime.character.name}] MessageBusService: Subscribing to internal message bus for 'new_message' events.`
     );
-    internalMessageBus.on('new_message', this.boundHandleIncomingCentralMessage);
+    internalMessageBus.on('new_message', this.boundHandleIncomingMessage);
   }
 
-  public async handleIncomingCentralMessage(message: MessageService) {
+  public async handleIncomingMessage(message: MessageServiceMessage) {
     logger.info(
       `[${this.runtime.character.name}] MessageBusService: Received message from central bus`,
       { messageId: message.id }
@@ -69,29 +80,51 @@ export class MessageBusService extends Service {
       const agentRoomId = createUniqueUuid(this.runtime, message.channel_id);
       const agentAuthorEntityId = createUniqueUuid(this.runtime, message.author_id);
 
-      await this.runtime.ensureWorldExists({
-        id: agentWorldId,
-        name: message.metadata?.serverName || `Server ${message.server_id.substring(0, 8)}`,
-        agentId: this.runtime.agentId,
-        serverId: message.server_id,
-        metadata: {
-          ...(message.metadata?.serverMetadata || {}),
-        },
-      });
+      try {
+        await this.runtime.ensureWorldExists({
+          id: agentWorldId,
+          name: message.metadata?.serverName || `Server ${message.server_id.substring(0, 8)}`,
+          agentId: this.runtime.agentId,
+          serverId: message.server_id,
+          metadata: {
+            ...(message.metadata?.serverMetadata || {}),
+          },
+        });
+      } catch (error) {
+        // Handle duplicate key constraint for worlds - this can happen with race conditions
+        if (error.message && error.message.includes('worlds_pkey')) {
+          logger.debug(
+            `[${this.runtime.character.name}] MessageBusService: World ${agentWorldId} already exists, continuing with message processing`
+          );
+        } else {
+          throw error; // Re-throw if it's a different error
+        }
+      }
 
-      await this.runtime.ensureRoomExists({
-        id: agentRoomId,
-        name: message.metadata?.channelName || `Channel ${message.channel_id.substring(0, 8)}`,
-        agentId: this.runtime.agentId,
-        worldId: agentWorldId,
-        channelId: message.channel_id,
-        serverId: message.server_id,
-        source: message.source_type || 'central-bus',
-        type: message.metadata?.channelType || ChannelType.GROUP,
-        metadata: {
-          ...(message.metadata?.channelMetadata || {}),
-        },
-      });
+      try {
+        await this.runtime.ensureRoomExists({
+          id: agentRoomId,
+          name: message.metadata?.channelName || `Channel ${message.channel_id.substring(0, 8)}`,
+          agentId: this.runtime.agentId,
+          worldId: agentWorldId,
+          channelId: message.channel_id,
+          serverId: message.server_id,
+          source: message.source_type || 'central-bus',
+          type: message.metadata?.channelType || ChannelType.GROUP,
+          metadata: {
+            ...(message.metadata?.channelMetadata || {}),
+          },
+        });
+      } catch (error) {
+        // Handle duplicate key constraint for rooms - this can happen with race conditions
+        if (error.message && error.message.includes('rooms_pkey')) {
+          logger.debug(
+            `[${this.runtime.character.name}] MessageBusService: Room ${agentRoomId} already exists, continuing with message processing`
+          );
+        } else {
+          throw error; // Re-throw if it's a different error
+        }
+      }
 
       const authorEntity = await this.runtime.getEntityById(agentAuthorEntityId);
       if (!authorEntity) {
@@ -231,7 +264,7 @@ export class MessageBusService extends Service {
 
   async stop(): Promise<void> {
     logger.info(`[${this.runtime.character.name}] MessageBusService stopping...`);
-    internalMessageBus.off('new_message', this.boundHandleIncomingCentralMessage);
+    internalMessageBus.off('new_message', this.boundHandleIncomingMessage);
   }
 }
 

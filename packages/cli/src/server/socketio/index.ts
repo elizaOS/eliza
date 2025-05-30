@@ -186,7 +186,7 @@ export class SocketIORouter {
         sourceType: source || 'socketio_client', // Default source if not provided
       };
 
-      const createdRootMessage = await this.serverInstance.createCentralMessage(newRootMessageData);
+      const createdRootMessage = await this.serverInstance.createMessage(newRootMessageData);
 
       const messageForSioBroadcast: MessageService = {
         id: createdRootMessage.id!,

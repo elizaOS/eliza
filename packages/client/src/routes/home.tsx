@@ -55,7 +55,7 @@ export default function Home() {
       const dmChannelData = await apiClient.getOrCreateDmChannel(agent.id, currentClientEntityId);
       if (dmChannelData.success && dmChannelData.data) {
         navigate(
-          `/dm/${dmChannelData.data.id}?agentId=${agent.id}&serverId=${dmChannelData.data.messageServerId}`
+          `/chat/${dmChannelData.data.id}?agentId=${agent.id}&serverId=${dmChannelData.data.messageServerId}`
         );
       } else {
         console.error('Failed to get/create DM channel for agent: ', agent.name);
@@ -66,7 +66,7 @@ export default function Home() {
   };
 
   const handleCreateGroup = () => {
-    navigate('/groups/create');
+    navigate('/group/new');
   };
 
   return (

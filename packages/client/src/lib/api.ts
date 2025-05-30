@@ -246,11 +246,18 @@ export const apiClient = {
 
   // Central Message System Endpoints
   getCentralServers: (): Promise<{ data: { servers: MessageServer[] } }> =>
-    fetcher({ url: '/central-messages/central-servers' }),
+    fetcher({ url: '/messages/central-servers' }),
+  createCentralServer: (payload: {
+    name: string;
+    sourceType: string;
+    sourceId?: string;
+    metadata?: any;
+  }): Promise<{ data: { server: MessageServer } }> =>
+    fetcher({ url: '/messages/servers', method: 'POST', body: payload }),
   getCentralChannelsForServer: (
     serverId: UUID
   ): Promise<{ data: { channels: MessageChannel[] } }> =>
-    fetcher({ url: `/central-messages/central-servers/${serverId}/channels` }),
+    fetcher({ url: `/messages/central-servers/${serverId}/channels` }),
   getCentralChannelMessages: (
     channelId: UUID,
     options?: {
@@ -262,7 +269,7 @@ export const apiClient = {
     if (options?.limit) queryParams.append('limit', String(options.limit));
     if (options?.before) queryParams.append('before', String(options.before));
     return fetcher({
-      url: `/central-messages/central-channels/${channelId}/messages?${queryParams.toString()}`,
+      url: `/messages/central-channels/${channelId}/messages?${queryParams.toString()}`,
     });
   },
   postMessageToCentralChannel: (
@@ -278,7 +285,7 @@ export const apiClient = {
     }
   ): Promise<{ success: boolean; data: ServerMessage }> =>
     fetcher({
-      url: `/central-messages/central-channels/${channelId}/messages`,
+      url: `/messages/central-channels/${channelId}/messages`,
       method: 'POST',
       body: payload,
     }),
@@ -287,16 +294,16 @@ export const apiClient = {
     currentUserId: UUID
   ): Promise<{ success: boolean; data: MessageChannel }> =>
     fetcher({
-      url: `/central-messages/dm-channel?targetUserId=${targetCentralUserId}&currentUserId=${currentUserId}`,
+      url: `/messages/dm-channel?targetUserId=${targetCentralUserId}&currentUserId=${currentUserId}`,
     }),
   createCentralGroupChat: (payload: {
     name: string;
     participantCentralUserIds: UUID[];
     type?: string;
-    serverId?: UUID;
+    server_id?: UUID;
     metadata?: any;
   }): Promise<{ data: MessageChannel }> =>
-    fetcher({ url: '/central-messages/central-channels', method: 'POST', body: payload }),
+    fetcher({ url: '/messages/central-channels', method: 'POST', body: payload }),
 
   // Ping, TTS, Transcription, Media Upload, Knowledge (agent-specific or global services)
   ping: (): Promise<{ pong: boolean; timestamp: number }> => fetcher({ url: '/ping' }),
@@ -389,7 +396,7 @@ export const apiClient = {
   // PLACEHOLDER - Implement actual backend and uncomment
   deleteCentralChannelMessage: async (channelId: UUID, messageId: UUID): Promise<void> => {
     await fetcher({
-      url: `/central-messages/central-channels/${channelId}/messages/${messageId}`,
+      url: `/messages/central-channels/${channelId}/messages/${messageId}`,
       method: 'DELETE',
     });
   },
@@ -397,7 +404,7 @@ export const apiClient = {
   // PLACEHOLDER - Implement actual backend and uncomment
   clearCentralChannelMessages: async (channelId: UUID): Promise<void> => {
     await fetcher({
-      url: `/central-messages/central-channels/${channelId}/messages`,
+      url: `/messages/central-channels/${channelId}/messages`,
       method: 'DELETE',
     });
   },
@@ -405,14 +412,14 @@ export const apiClient = {
   createCentralGroupChannel: (payload: {
     /* ... */
   }): Promise<{ success: boolean; data: MessageChannel }> =>
-    fetcher({ url: '/central-messages/central-channels', method: 'POST', body: payload }),
+    fetcher({ url: '/messages/central-channels', method: 'POST', body: payload }),
 
   getCentralChannelDetails: (
     channelId: UUID
   ): Promise<{ success: boolean; data: MessageChannel | null }> =>
-    fetcher({ url: `/central-messages/central-channels/${channelId}/details` }),
+    fetcher({ url: `/messages/central-channels/${channelId}/details` }),
 
   getCentralChannelParticipants: (channelId: UUID): Promise<{ success: boolean; data: UUID[] }> => {
-    return fetcher({ url: `/central-messages/central-channels/${channelId}/participants` });
+    return fetcher({ url: `/messages/central-channels/${channelId}/participants` });
   },
 };

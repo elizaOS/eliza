@@ -11,7 +11,7 @@ import {
 } from '@elizaos/core';
 import type { Tracer } from '@opentelemetry/api';
 import { SpanStatusCode } from '@opentelemetry/api';
-import * as bodyParser from 'body-parser';
+import bodyParser from 'body-parser';
 import cors from 'cors';
 import express from 'express';
 import crypto from 'node:crypto';
