@@ -8,197 +8,327 @@ image: /img/cli.jpg
 
 # Agent Command
 
-The `agent` command allows you to manage, configure, and interact with ElizaOS agents. Use this command to list, get information, start, stop, and update your agents.
-
-## Global Options
-
-These options can be used with any `agent` subcommand:
-
-- `-r, --remote-url <url>`: Specify the URL of the remote agent runtime. Overrides the `AGENT_RUNTIME_URL` environment variable.
+Manage ElizaOS agents.
 
 ## Usage
 
-Install the CLI first (`npm install -g @elizaos/cli`)
-
 ```bash
-elizaos agent <action> [options]
+elizaos agent [options] [command]
 ```
 
-## Actions
+## Subcommands
 
-| Action         | Description                                     |
-| -------------- | ----------------------------------------------- |
-| `list`, `ls`   | List available agents                           |
-| `get`, `g`     | Get detailed information about a specific agent |
-| `start`, `s`   | Start an agent using a character definition     |
-| `stop`, `st`   | Stop a running agent                            |
-| `remove`, `rm` | Remove an agent                                 |
-| `set`          | Update agent configuration                      |
+| Subcommand | Aliases | Description                             | Required Options                                                   | Additional Options                                                    |
+| ---------- | ------- | --------------------------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------------- |
+| `list`     | `ls`    | List available agents                   |                                                                    | `-j, --json`, `-r, --remote-url <url>`, `-p, --port <port>`           |
+| `get`      | `g`     | Get agent details                       | `-n, --name <name>`                                                | `-j, --json`, `-o, --output [file]`, `-r, --remote-url`, `-p, --port` |
+| `start`    | `s`     | Start an agent with a character profile | One of: `-n, --name`, `-j, --json`, `--path`, `--remote-character` | `-r, --remote-url <url>`, `-p, --port <port>`                         |
+| `stop`     | `st`    | Stop an agent                           | `-n, --name <name>`                                                | `-r, --remote-url <url>`, `-p, --port <port>`                         |
+| `remove`   | `rm`    | Remove an agent                         | `-n, --name <name>`                                                | `-r, --remote-url <url>`, `-p, --port <port>`                         |
+| `set`      |         | Update agent configuration              | `-n, --name <name>` AND one of: `-c, --config` OR `-f, --file`     | `-r, --remote-url <url>`, `-p, --port <port>`                         |
 
-## Options
+## Options Reference
 
-The available options vary by action:
+### Common Options (All Subcommands)
 
-| Option                     | Action(s)                   | Description                                | Required |
-| -------------------------- | --------------------------- | ------------------------------------------ | -------- |
-| `-n, --name <name>`        | `get`,`stop`,`remove`,`set` | Agent id, name, or index number from list  | No\*     |
-| `-n, --name <name>`        | `start`                     | Name of an existing agent to start         | No\*     |
-| `-j, --json`               | `list`, `get`               | Display output as JSON in terminal         | No       |
-| `-j, --json <json>`        | `start`                     | Character JSON configuration string        | No\*     |
-| `--path <path>`            | `start`                     | Local path to character JSON file          | No\*     |
-| `--remote-character <url>` | `start`                     | URL to remote character JSON file          | No\*     |
-| `-o, --output <file>`      | `get`                       | Save agent data to file without displaying | No       |
-| `-c, --config <json>`      | `set`                       | Agent configuration as JSON string         | No\*     |
-| `-f, --file <path>`        | `set`                       | Path to agent configuration JSON file      | No\*     |
+- `-r, --remote-url <url>`: URL of the remote agent runtime
+- `-p, --port <port>`: Port to listen on
 
-_\*At least one of the starred options is required for the respective command, or an interactive menu will be displayed._
+### List Specific Options
 
-## Usage Examples
+- `-j, --json`: Output as JSON
 
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
+### Get Specific Options
 
-<Tabs>
-<TabItem value="list" label="List & Get Agents">
+- `-n, --name <name>`: Agent id, name, or index number from list (required)
+- `-j, --json`: Display agent configuration as JSON in the console
+- `-o, --output [file]`: Save agent config to JSON (defaults to {name}.json)
 
-```console
-# List all agents with their status
+### Start Specific Options
+
+- `-n, --name <name>`: Name of an existing agent to start
+- `-j, --json <json>`: Character JSON configuration string
+- `--path <path>`: Path to local character JSON file
+- `--remote-character <url>`: URL to remote character JSON file
+
+### Stop/Remove Specific Options
+
+- `-n, --name <name>`: Agent id, name, or index number from list (required)
+
+### Set Specific Options
+
+- `-n, --name <name>`: Agent id, name, or index number from list (required)
+- `-c, --config <json>`: Agent configuration as JSON string
+- `-f, --file <path>`: Path to agent configuration JSON file
+
+## Examples
+
+### Listing Agents
+
+```bash
+# List all available agents
 elizaos agent list
 
-# List in JSON format
+# Using alias
+elizaos agent ls
+
+# List agents in JSON format
 elizaos agent list --json
 
-# Get detailed information about an agent
-elizaos agent get --name customer-support
+# List agents from remote runtime
+elizaos agent list --remote-url http://server:3000
 
-# Display agent configuration as JSON in terminal
-elizaos agent get --name customer-support --json
-
-# Save agent configuration to file without displaying in terminal
-elizaos agent get --name customer-support --output ./my-agent.json
-
-# Get agent with interactive selection (no parameters)
-elizaos agent get
+# List agents on specific port
+elizaos agent list --port 4000
 ```
 
-</TabItem>
-<TabItem value="start" label="Start & Stop Agents">
+### Getting Agent Details
 
 ```bash
-# Start an existing agent by name
-elizaos agent start --name customer-support
+# Get agent details by name
+elizaos agent get --name eliza
 
-# Start from local JSON file (will create agent if it doesn't exist)
-elizaos agent start --path ./agents/my-agent.json
+# Get agent by ID
+elizaos agent get --name agent_123456
 
-# Start from a JSON string
-elizaos agent start --json '{"name":"QuickAgent","system":"You are a test agent"}'
+# Get agent by index from list
+elizaos agent get --name 0
 
-# Start from remote URL
-elizaos agent start --remote-character https://example.com/agents/my-agent.json
+# Display configuration as JSON in console
+elizaos agent get --name eliza --json
 
-# Start agent with interactive selection (no parameters)
-elizaos agent start
+# Save agent configuration to file
+elizaos agent get --name eliza --output
 
-# Stop a running agent
-elizaos agent stop --name customer-support
+# Save to specific file
+elizaos agent get --name eliza --output ./my-agent.json
 
-# Stop agent with interactive selection
-elizaos agent stop
+# Using alias
+elizaos agent g --name eliza
 ```
 
-</TabItem>
-<TabItem value="config" label="Update & Remove Agents">
+### Starting Agents
 
 ```bash
-# Update agent configuration using JSON string
-elizaos agent set --name customer-support --config '{"llm": {"model": "gpt-4-turbo"}}'
+# Start existing agent by name
+elizaos agent start --name eliza
 
-# Update configuration from file
-elizaos agent set --name customer-support --file ./updated-config.json
+# Start with local character file
+elizaos agent start --path ./characters/eliza.json
 
-# Update agent with interactive selection and editor
-elizaos agent set
+# Start with JSON configuration string
+elizaos agent start --json '{"name":"eliza","system":"You are a helpful assistant"}'
 
-# Remove an agent
-elizaos agent remove --name old-agent
+# Start from remote character file
+elizaos agent start --remote-character https://example.com/characters/eliza.json
 
-# Remove agent with interactive selection
-elizaos agent remove
+# Using alias
+elizaos agent s --name eliza
+
+# Start on specific port
+elizaos agent start --path ./eliza.json --port 4000
 ```
 
-</TabItem>
-</Tabs>
+**Required Configuration:**
+You must provide one of these options: `--name`, `--path`, `--json`, or `--remote-character`
 
-## Interactive Mode
+### Stopping Agents
 
-When you run any of the agent commands without specifying key parameters, ElizaOS will display an interactive menu to help you select the appropriate agent or options:
+```bash
+# Stop agent by name
+elizaos agent stop --name eliza
 
-- `elizaos agent get` - Lists available agents for selection
-- `elizaos agent start` - Shows available character files or agents to start
-- `elizaos agent stop` - Lists running agents for selection
-- `elizaos agent remove` - Lists available agents for selection
-- `elizaos agent set` - Provides an interactive configuration experience
+# Stop agent by ID
+elizaos agent stop --name agent_123456
 
-This makes it easier to manage your agents without needing to remember all command parameters.
+# Stop agent by index
+elizaos agent stop --name 0
 
-## Agent Configuration
+# Using alias
+elizaos agent st --name eliza
 
-ElizaOS agents are configured through a combination of:
+# Stop agent on remote runtime
+elizaos agent stop --name eliza --remote-url http://server:3000
+```
 
-- Agent definition file
-- Knowledge files
-- Runtime configuration options
+### Removing Agents
 
-A typical agent definition looks like:
+```bash
+# Remove agent by name
+elizaos agent remove --name pmairca
+
+# Remove agent by ID
+elizaos agent remove --name agent_123456
+
+# Using alias
+elizaos agent rm --name pmairca
+
+# Remove from remote runtime
+elizaos agent remove --name pmairca --remote-url http://server:3000
+```
+
+### Updating Agent Configuration
+
+```bash
+# Update with JSON string
+elizaos agent set --name eliza --config '{"system":"Updated prompt"}'
+
+# Update from configuration file
+elizaos agent set --name eliza --file ./updated-config.json
+
+# Update agent on remote runtime
+elizaos agent set --name pmairca --config '{"model":"gpt-4"}' --remote-url http://server:3000
+
+# Update agent on specific port
+elizaos agent set --name eliza --file ./config.json --port 4000
+```
+
+## Character File Structure
+
+When using `--path` or `--remote-character`, the character file should follow this structure:
 
 ```json
 {
-  "name": "Customer Support Bot",
-  "system": "You are a friendly and knowledgeable customer support agent.",
-  "bio": ["Resolve customer issues efficiently", "Provide accurate information"],
+  "name": "eliza",
+  "system": "You are a friendly and knowledgeable AI assistant named Eliza.",
+  "bio": ["Helpful and engaging conversationalist", "Knowledgeable about a wide range of topics"],
   "plugins": ["@elizaos/plugin-openai", "@elizaos/plugin-discord"],
-  "llm": {
-    "provider": "openai",
-    "model": "gpt-4",
-    "temperature": 0.7
-  },
-  "knowledge": ["./knowledge/shared/company-info.md", "./knowledge/customer-support/faq.md"],
+  "modelProvider": "openai",
   "settings": {
     "voice": {
       "model": "en_US-female-medium"
     }
-  }
+  },
+  "knowledge": ["./knowledge/general-info.md", "./knowledge/conversation-patterns.md"]
 }
 ```
 
-## Agent Lifecycle
+## Agent Identification
 
-The agent command manages the full lifecycle of agents:
+Agents can be identified using:
 
-1. **Creation** - Create an agent from a character file using `elizaos create -t agent` or `elizaos agent start --path`
-2. **Starting** - Start an agent's runtime using `elizaos agent start`
-3. **Configuration** - View or modify an agent using `elizaos agent get` and `elizaos agent set`
-4. **Stopping** - Stop a running agent with `elizaos agent stop`
-5. **Removal** - Remove an agent with `elizaos agent remove`
+1. **Agent Name**: Human-readable name (e.g., "eliza", "pmairca")
+2. **Agent ID**: System-generated ID (e.g., "agent_123456")
+3. **List Index**: Position in `elizaos agent list` output (e.g., "0", "1", "2")
 
-## FAQ
+## Interactive Mode
 
-### How do I fix "Agent not found" errors?
+All agent commands support interactive mode when run without required parameters:
 
-Check available agents using `elizaos agent list` and try using the agent ID directly with `elizaos agent get --name agent_123456`.
+```bash
+# Interactive agent selection
+elizaos agent get
+elizaos agent start
+elizaos agent stop
+elizaos agent remove
+elizaos agent set
+```
 
-### What should I do if I encounter configuration errors?
+## Remote Runtime Configuration
 
-Validate your JSON syntax using a proper JSON validator and check the structure against the expected schema in the agent configuration example.
+By default, agent commands connect to `http://localhost:3000`. Override with:
 
-### How do I resolve connection issues with the agent runtime?
+### Environment Variable
 
-First check if the runtime is running with `elizaos start`. If using a different address than the default (http://localhost:3000), set the AGENT_RUNTIME_URL environment variable: `AGENT_RUNTIME_URL=http://my-server:3000 elizaos agent list`.
+```bash
+export AGENT_RUNTIME_URL=http://your-server:3000
+elizaos agent list
+```
+
+### Command Line Option
+
+```bash
+elizaos agent list --remote-url http://your-server:3000
+```
+
+### Custom Port
+
+```bash
+elizaos agent list --port 4000
+```
+
+## Agent Lifecycle Workflow
+
+### 1. Create Agent Character
+
+```bash
+# Create character file
+elizaos create -t agent eliza
+
+# Or create project with character
+elizaos create -t project my-project
+```
+
+### 2. Start Agent Runtime
+
+```bash
+# Start the agent runtime server
+elizaos start
+```
+
+### 3. Manage Agents
+
+```bash
+# List available agents
+elizaos agent list
+
+# Start an agent
+elizaos agent start --path ./eliza.json
+
+# Check agent status
+elizaos agent get --name eliza
+
+# Update configuration
+elizaos agent set --name eliza --config '{"system":"Updated prompt"}'
+
+# Stop agent
+elizaos agent stop --name eliza
+
+# Remove when no longer needed
+elizaos agent remove --name eliza
+```
+
+## Troubleshooting
+
+### Connection Issues
+
+```bash
+# Check if runtime is running
+elizaos agent list
+
+# If connection fails, start runtime first
+elizaos start
+
+# For custom URLs/ports
+elizaos agent list --remote-url http://your-server:3000
+```
+
+### Agent Not Found
+
+```bash
+# List all agents to see available options
+elizaos agent list
+
+# Try using agent ID instead of name
+elizaos agent get --name agent_123456
+
+# Try using list index
+elizaos agent get --name 0
+```
+
+### Configuration Errors
+
+- Validate JSON syntax in character files and config strings
+- Ensure all required fields are present in character definitions
+- Check file paths are correct and accessible
 
 ## Related Commands
 
 - [`create`](./create.md): Create a new agent character file
-- [`start`](./start.md): Start your project with agents
-- [`dev`](./dev.md): Run your project in development mode
-- [`env`](./env.md): Configure environment variables
+- [`start`](./start.md): Start the agent runtime server
+- [`dev`](./dev.md): Run in development mode with hot-reload
+- [`env`](./env.md): Configure environment variables for agents
+
+```
+
+```

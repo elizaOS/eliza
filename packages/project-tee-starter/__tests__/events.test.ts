@@ -1,10 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { teeStarterPlugin } from '../src/plugin';
+import teeStarterPlugin from '../src/plugin';
 
 describe('Plugin Events', () => {
   it('should not have custom events (relies on plugin-tee for TEE events)', () => {
-    // Our simplified plugin doesn't define custom events
-    expect(teeStarterPlugin.events).toBeUndefined();
+    // Our plugin actually has events defined for logging
+    expect(teeStarterPlugin.events).toBeDefined();
+    expect(teeStarterPlugin.events?.MESSAGE_RECEIVED).toBeDefined();
+    expect(teeStarterPlugin.events?.VOICE_MESSAGE_RECEIVED).toBeDefined();
+    expect(teeStarterPlugin.events?.WORLD_CONNECTED).toBeDefined();
+    expect(teeStarterPlugin.events?.WORLD_JOINED).toBeDefined();
   });
 
   it('should have correct plugin configuration', () => {

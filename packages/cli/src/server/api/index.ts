@@ -24,6 +24,8 @@ import { envRouter } from './env';
 import { teeRouter } from './tee';
 import { worldRouter } from './world';
 import { SocketIORouter } from '../socketio';
+import fs from 'fs';
+import path from 'path';
 
 // Custom levels from @elizaos/core logger
 const LOG_LEVELS = {
@@ -48,6 +50,147 @@ interface LogEntry {
   time: number;
   msg: string;
   [key: string]: string | number | boolean | null | undefined;
+}
+
+/**
+ * Processes attachments to convert localhost URLs to base64 data URIs
+ * @param attachments - Array of attachment objects
+ * @param agentId - The agent ID for logging purposes
+ * @returns Promise<any[]> - Processed attachments with base64 data URIs
+ */
+async function processAttachments(attachments: any[], agentId?: string): Promise<any[]> {
+  if (!attachments || attachments.length === 0) {
+    return attachments;
+  }
+
+  logger.info(`[SOCKET] Processing ${attachments.length} attachment(s)`);
+  logger.info(`[SOCKET] Current working directory: ${process.cwd()}`);
+  logger.info(`[SOCKET] Raw attachments:`, JSON.stringify(attachments, null, 2));
+
+  return Promise.all(
+    attachments.map(async (attachment: any) => {
+      // Skip if not a localhost URL
+      if (!attachment.url || !attachment.url.includes('localhost')) {
+        return attachment;
+      }
+
+      logger.info(`[SOCKET] Converting localhost URL to base64: ${attachment.url}`);
+
+      try {
+        // Extract file path from URL
+        // URL format: http://localhost:3000/media/uploads/{agentId}/{filename}
+        const urlParts = attachment.url.split('/');
+        const uploadsIndex = urlParts.indexOf('uploads');
+
+        if (uploadsIndex === -1 || uploadsIndex >= urlParts.length - 2) {
+          logger.warn(`[SOCKET] Invalid URL format: ${attachment.url}`);
+          return attachment;
+        }
+
+        const agentIdFromUrl = urlParts[uploadsIndex + 1];
+        const filename = urlParts[uploadsIndex + 2];
+
+        // Try multiple possible paths based on where the server might be running from
+        const possiblePaths = [
+          path.join(process.cwd(), 'data', 'uploads', agentIdFromUrl, filename),
+          path.join(process.cwd(), 'uploads', agentIdFromUrl, filename),
+          path.join(
+            process.cwd(),
+            'packages',
+            'project-starter',
+            'data',
+            'uploads',
+            agentIdFromUrl,
+            filename
+          ),
+        ];
+
+        let filePath = null;
+        for (const testPath of possiblePaths) {
+          if (fs.existsSync(testPath)) {
+            filePath = testPath;
+            break;
+          }
+        }
+
+        if (!filePath) {
+          logger.warn(`[SOCKET] File not found in any of the expected paths`);
+          logger.warn(`[SOCKET] Tried paths:`, possiblePaths);
+          return attachment;
+        }
+
+        logger.info(`[SOCKET] Reading file from: ${filePath}`);
+
+        const fileBuffer = fs.readFileSync(filePath);
+        const base64Data = fileBuffer.toString('base64');
+
+        // Determine MIME type from file extension or content
+        let mimeType = attachment.contentType || 'application/octet-stream';
+
+        // If contentType is generic or missing, try to determine from file extension
+        if (
+          !attachment.contentType ||
+          attachment.contentType === 'image' ||
+          attachment.contentType === 'application/octet-stream'
+        ) {
+          const ext = path.extname(filename).toLowerCase();
+          const mimeTypes: { [key: string]: string } = {
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.png': 'image/png',
+            '.gif': 'image/gif',
+            '.webp': 'image/webp',
+            '.svg': 'image/svg+xml',
+            '.bmp': 'image/bmp',
+            '.ico': 'image/x-icon',
+            '.tiff': 'image/tiff',
+            '.tif': 'image/tiff',
+          };
+
+          if (mimeTypes[ext]) {
+            mimeType = mimeTypes[ext];
+          } else {
+            // Try to detect from file content (magic bytes)
+            if (fileBuffer.length >= 4) {
+              const header = fileBuffer.toString('hex', 0, 4).toUpperCase();
+
+              if (header.startsWith('FFD8FF')) {
+                mimeType = 'image/jpeg';
+              } else if (header === '89504E47') {
+                mimeType = 'image/png';
+              } else if (header === '47494638') {
+                mimeType = 'image/gif';
+              } else if (header.startsWith('424D')) {
+                mimeType = 'image/bmp';
+              } else if (
+                fileBuffer.toString('utf8', 0, 5) === '<?xml' ||
+                fileBuffer.toString('utf8', 0, 4) === '<svg'
+              ) {
+                mimeType = 'image/svg+xml';
+              }
+            }
+          }
+        }
+
+        const dataUri = `data:${mimeType};base64,${base64Data}`;
+
+        logger.info(`[SOCKET] Successfully converted to base64 data URI`);
+        logger.info(`[SOCKET] File size: ${fileBuffer.length} bytes`);
+        logger.info(`[SOCKET] MIME type: ${mimeType}`);
+        logger.info(`[SOCKET] Base64 preview: ${base64Data.substring(0, 50)}...`);
+
+        return {
+          ...attachment,
+          url: dataUri,
+          originalUrl: attachment.url,
+          detectedMimeType: mimeType,
+        };
+      } catch (error) {
+        logger.error(`[SOCKET] Error converting localhost URL to base64:`, error);
+        return attachment;
+      }
+    })
+  );
 }
 
 /**
@@ -97,6 +240,12 @@ async function processSocketMessage(
     // Create unique message ID
     const messageId = crypto.randomUUID() as UUID;
 
+    // Process attachments to convert localhost URLs to base64
+    let processedAttachments = payload.attachments;
+    if (payload.attachments && payload.attachments.length > 0) {
+      processedAttachments = await processAttachments(payload.attachments, agentId);
+    }
+
     // Create message object for the agent
     const newMessage = {
       id: messageId,
@@ -106,7 +255,7 @@ async function processSocketMessage(
       content: {
         text: payload.message,
         source: `${source}:${payload.senderName}`,
-        attachments: payload.attachments || undefined,
+        attachments: processedAttachments || undefined,
       },
       metadata: {
         entityName: payload.senderName,
@@ -154,7 +303,7 @@ async function processSocketMessage(
         io.to(socketRoomId).emit('messageBroadcast', broadcastData);
         io.emit('messageBroadcast', broadcastData);
 
-        // Save agent's response as memory
+        // Save agent's response as memory with provider information
         const memory = {
           id: crypto.randomUUID() as UUID,
           entityId: runtime.agentId,
@@ -164,11 +313,17 @@ async function processSocketMessage(
             inReplyTo: messageId,
             channelType: ChannelType.DM,
             source: `${source}:agent`,
+            ...(content.providers &&
+              content.providers.length > 0 && {
+                providers: content.providers,
+              }),
           },
           roomId: uniqueRoomId,
           createdAt: Date.now(),
         };
-        logger.debug('Memory object for response:', { memoryId: memory.id });
+        logger.debug('Memory object for response:', {
+          providers: content.providers || [],
+        });
         await runtime.createMemory(memory, 'messages');
         return [content];
       } catch (error) {

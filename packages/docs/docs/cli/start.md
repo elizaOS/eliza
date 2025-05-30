@@ -8,7 +8,7 @@ image: /img/cli.jpg
 
 # Start Command
 
-The `start` command launches an ElizaOS project or agent in production mode. It initializes the agent runtime, loads plugins, connects to services, and starts handling interactions.
+Start the Eliza agent with configurable plugins and services.
 
 ## Usage
 
@@ -18,12 +18,102 @@ elizaos start [options]
 
 ## Options
 
-| Option                          | Description                                      |
-| ------------------------------- | ------------------------------------------------ |
-| `-p, --port <port>`             | Port to listen on (default: 3000)                |
-| `-c, --configure`               | Force reconfiguration of services and AI models  |
-| `-char, --character [paths...]` | Character file(s) to use - accepts paths or URLs |
-| `-b, --build`                   | Build the project before starting                |
+| Option                          | Description                                                                    |
+| ------------------------------- | ------------------------------------------------------------------------------ |
+| `-c, --configure`               | Force reconfiguration of services and AI models (bypasses saved configuration) |
+| `-char, --character [paths...]` | Character file(s) to use - accepts paths or URLs                               |
+| `-b, --build`                   | Build the project before starting                                              |
+| `-p, --port <port>`             | Port to listen on (default: 3000)                                              |
+
+## Examples
+
+### Basic Usage
+
+```bash
+# Start with default configuration
+elizaos start
+
+# Start on custom port
+elizaos start --port 8080
+
+# Build project before starting
+elizaos start --build
+
+# Force reconfiguration
+elizaos start --configure
+```
+
+### Character Configuration
+
+```bash
+# Start with single character file
+elizaos start --character ./character.json
+
+# Start with multiple character files
+elizaos start --character ./char1.json ./char2.json
+
+# Mix local files and URLs
+elizaos start --character ./local.json https://example.com/remote.json
+
+# Character files without .json extension
+elizaos start --character assistant support-bot
+
+# Comma-separated format also works
+elizaos start --character "char1.json,char2.json"
+```
+
+### Advanced Configurations
+
+```bash
+# Build and configure before starting
+elizaos start --build --configure
+
+# Start with specific character on custom port
+elizaos start --character ./my-bot.json --port 4000
+
+# Complete setup for production deployment
+elizaos start --character ./production-bot.json --port 3000 --build
+```
+
+## Character File Formats
+
+The `--character` option supports various input formats:
+
+### Local Files
+
+```bash
+# Absolute paths
+elizaos start --character /path/to/character.json
+
+# Relative paths
+elizaos start --character ./characters/bot.json
+
+# Without .json extension (auto-added)
+elizaos start --character my-character
+```
+
+### Remote URLs
+
+```bash
+# Direct HTTPS URLs
+elizaos start --character https://example.com/characters/assistant.json
+
+# Multiple remote characters
+elizaos start --character https://site1.com/bot1.json https://site2.com/bot2.json
+```
+
+### Multiple Characters
+
+```bash
+# Space-separated
+elizaos start --character char1.json char2.json char3.json
+
+# Comma-separated
+elizaos start --character "char1.json,char2.json,char3.json"
+
+# Mixed formats
+elizaos start --character ./local.json https://remote.com/char.json assistant
+```
 
 ## Production Features
 
@@ -35,104 +125,238 @@ When you run `start`, ElizaOS provides production-ready features:
 4. **Error Recovery**: Automatic recovery from transient errors
 5. **Resource Management**: Efficient resource allocation and cleanup
 
-## What Happens During Startup
+## Startup Process
 
 When you run the `start` command, ElizaOS:
 
-1. Detects whether you're in a project or plugin directory
-2. Loads and validates the configuration
-3. Initializes the database system
-4. Loads required plugins
-5. Starts any configured services
-6. Processes knowledge files if present
-7. Starts the HTTP API server
-8. Initializes agent runtimes
-9. Begins listening for messages and events
-
-For development features and hot reloading, see the [Dev Command](./dev.md).
+1. **Project Detection**: Detects whether you're in a project or plugin directory
+2. **Configuration Loading**: Loads and validates the configuration
+3. **Database Initialization**: Initializes the database system
+4. **Plugin Loading**: Loads required plugins
+5. **Service Startup**: Starts any configured services
+6. **Knowledge Processing**: Processes knowledge files if present
+7. **API Server**: Starts the HTTP API server
+8. **Agent Runtime**: Initializes agent runtimes
+9. **Event Listening**: Begins listening for messages and events
 
 ## Project Detection
 
-ElizaOS automatically detects projects in the current directory by looking for:
+ElizaOS automatically detects the type of directory you're in and adjusts its behavior accordingly:
 
-1. A `package.json` with an `eliza.type` field set to `project`
-2. A main entry point that exports a project configuration with agents
-3. Other project indicators in the package metadata
+- **ElizaOS Projects**: Loads project configuration and starts defined agents
+- **ElizaOS Plugins**: Runs in plugin test mode with the default character
+- **Other Directories**: Uses the default Eliza character
 
-## Environment Variables
+## Configuration Management
 
-The `start` command will look for an `.env` file in the project directory and load environment variables from it. You can also set environment variables directly:
+### Default Configuration
 
-```bash
-# Set environment variables directly
-OPENAI_API_KEY=your-api-key elizaos start
-```
+- Uses saved configuration from previous runs
+- Loads environment variables from `.env` file
+- Applies project-specific settings
 
-For detailed information about environment configuration, see the [Environment Command](./env.md).
-
-## Examples
-
-### Basic startup
+### Force Reconfiguration
 
 ```bash
-cd my-agent-project
-elizaos start
-```
-
-### Starting with configuration
-
-```bash
+# Bypass saved configuration and reconfigure all services
 elizaos start --configure
 ```
 
-### Starting with a custom port
+This is useful when:
+
+- You've changed API keys or service credentials
+- You want to select different AI models
+- Service configurations have changed
+- Troubleshooting configuration issues
+
+## Environment Variables
+
+The `start` command automatically loads environment variables:
+
+### From .env File
 
 ```bash
-elizaos start --port 8080
+# ElizaOS looks for .env in the project directory
+cd my-project
+elizaos start  # Loads from ./my-project/.env
 ```
 
-### Starting with multiple characters
+### Direct Environment Variables
 
 ```bash
-# Using the --character option with multiple paths
-elizaos start --character ./character1.json ./character2.json
+# Set variables directly
+OPENAI_API_KEY=your-key elizaos start
 
-# You can also specify multiple paths together
-elizaos start --character character1.json character2.json character3.json
-
-# Characters can be specified without the .json extension
-elizaos start --character character1 character2
+# Multiple variables
+OPENAI_API_KEY=key1 DISCORD_TOKEN=token1 elizaos start
 ```
-
-### Using remote character URLs
-
-```bash
-# Load characters from URLs
-elizaos start --character https://example.com/characters/assistant.json
-
-# Mix URLs and local files
-elizaos start --character https://example.com/char1.json ./local-character.json
-```
-
-## Building Before Starting
-
-To build your project before starting it:
-
-```bash
-elizaos start --build
-```
-
-This will compile your TypeScript files and prepare the project for execution.
 
 ## Error Handling
 
-If any character files fail to load, ElizaOS will:
+### Character Loading Errors
 
-1. Log errors for each failed character
-2. Continue starting the server with any successfully loaded characters
-3. Fall back to the default Eliza character if no characters could be loaded
+If character files fail to load, ElizaOS will:
+
+1. **Log Errors**: Display detailed error messages for each failed character
+2. **Continue Starting**: Use any successfully loaded characters
+3. **Fallback**: Use the default Eliza character if no characters load successfully
+
+### Service Connection Errors
+
+- Automatic retry for transient connection issues
+- Graceful degradation when optional services are unavailable
+- Error logging with recovery suggestions
+
+## Port Management
+
+### Default Port
+
+- Default: `3000`
+- Automatically detects if port is in use
+- Suggests alternative ports if default is unavailable
+
+### Custom Port
+
+```bash
+# Specify custom port
+elizaos start --port 8080
+
+# Check if port is available first
+netstat -an | grep :8080
+elizaos start --port 8080
+```
+
+## Build Process
+
+### Automatic Building
+
+```bash
+# Build before starting (recommended for production)
+elizaos start --build
+```
+
+### When to Use --build
+
+- **First deployment**: Ensure all TypeScript is compiled
+- **After code changes**: Refresh compiled output
+- **Production deployment**: Guarantee latest build
+- **Troubleshooting**: Eliminate build-related issues
+
+## Troubleshooting
+
+### Startup Failures
+
+```bash
+# Check if another instance is running
+ps aux | grep elizaos
+pkill -f elizaos
+
+# Clear any conflicting processes
+elizaos stop
+elizaos start
+```
+
+### Port Conflicts
+
+```bash
+# Check what's using the port
+lsof -i :3000
+
+# Use different port
+elizaos start --port 3001
+
+# Or stop conflicting service
+sudo kill -9 $(lsof -ti:3000)
+elizaos start
+```
+
+### Character Loading Issues
+
+```bash
+# Verify character file exists and is valid JSON
+cat ./character.json | jq .
+
+# Test with absolute path
+elizaos start --character /full/path/to/character.json
+
+# Start without character to use default
+elizaos start
+```
+
+### Configuration Problems
+
+```bash
+# Force reconfiguration to fix corrupted settings
+elizaos start --configure
+
+# Check environment variables
+elizaos env list
+
+# Reset environment if needed
+elizaos env reset
+elizaos start --configure
+```
+
+### Build Failures
+
+```bash
+# Clean build and retry
+elizaos start --build
+
+# Check for TypeScript errors
+bun run build
+
+# Install dependencies if missing
+bun install
+elizaos start --build
+```
+
+### Service Connection Issues
+
+```bash
+# Check internet connectivity
+ping google.com
+
+# Verify API keys are set
+elizaos env list
+
+# Test with minimal configuration
+elizaos start --configure
+```
+
+## Production Deployment
+
+### Best Practices
+
+```bash
+# Complete production startup
+elizaos start --build --character ./production-bot.json --port 3000
+
+# With environment file
+cp .env.production .env
+elizaos start --build
+
+# Background process (Linux/macOS)
+nohup elizaos start --build > elizaos.log 2>&1 &
+```
+
+### Health Checks
+
+```bash
+# Verify service is running
+curl http://localhost:3000/health
+
+# Check process status
+ps aux | grep elizaos
+
+# Monitor logs
+tail -f elizaos.log
+```
 
 ## Related Commands
 
+- [`create`](./create.md): Create a new project to start
 - [`dev`](./dev.md): Run in development mode with hot reloading
+- [`agent`](./agent.md): Manage individual agents
 - [`env`](./env.md): Configure environment variables
+- [`stop`](./stop.md): Stop running agents

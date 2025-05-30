@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: ['src/index.ts'],
+  entry: ['src/index.ts', 'e2e/**/*.test.ts'],
   outDir: 'dist',
   tsconfig: './tsconfig.build.json', // Use build-specific tsconfig
   sourcemap: true,

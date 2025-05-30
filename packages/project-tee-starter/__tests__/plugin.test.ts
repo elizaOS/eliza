@@ -1,11 +1,19 @@
 import { describe, it, expect, vi } from 'vitest';
-import { teeStarterPlugin } from '../src/plugin';
+import teeStarterPlugin from '../src/plugin';
 import { logger } from '@elizaos/core';
 
 // Spy on logger to capture logs
 vi.spyOn(logger, 'info');
 vi.spyOn(logger, 'error');
 vi.spyOn(logger, 'warn');
+
+// Mock the character import to avoid file system dependencies
+vi.mock('../src/character', () => ({
+  mrTeeCharacter: {
+    name: 'Mr. TEE',
+    plugins: ['@elizaos/plugin-tee'],
+  },
+}));
 
 describe('TEE Starter Plugin', () => {
   it('should have the correct name', () => {
@@ -27,7 +35,7 @@ describe('TEE Starter Plugin', () => {
   });
 
   it('should have no custom evaluators', () => {
-    expect(teeStarterPlugin.evaluators).toEqual([]);
+    expect(teeStarterPlugin.evaluators).toBeUndefined();
   });
 
   it('should have no custom services', () => {

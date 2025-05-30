@@ -26,30 +26,29 @@ elizaos [command]
 
 ## Available Commands
 
-| Command                     | Description                                            |
-| --------------------------- | ------------------------------------------------------ |
-| [`create`](./create.md)     | Create new projects, plugins, or agents                |
-| [`start`](./start.md)       | Start an ElizaOS project or agent                      |
-| [`dev`](./dev.md)           | Run a project in development mode with hot reloading   |
-| [`agent`](./agent.md)       | Manage agent configurations and state                  |
-| [`env`](./env.md)           | Configure environment variables and API keys           |
-| [`publish`](./publish.md)   | Publish packages to npm registry                       |
-| [`update`](./update.md)     | Update ElizaOS components                              |
-| [`update-cli`](./update.md) | Update the ElizaOS CLI itself                          |
-| [`test`](./test.md)         | Run tests for your project                             |
-| [`tee`](./test.md)          | Manage TEE (Trusted Execution Environment) deployments |
+| Command                                 | Description                                                                                                    |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| [`create`](./create.md)                 | Initialize a new project, plugin, or agent                                                                     |
+| [`setup-monorepo`](./setup-monorepo.md) | Clone ElizaOS monorepo from a specific branch (defaults to v2-develop)                                         |
+| [`plugins`](./plugins.md)               | Manage ElizaOS plugins                                                                                         |
+| [`agent`](./agent.md)                   | Manage ElizaOS agents                                                                                          |
+| [`tee`](./tee.md)                       | Manage TEE deployments                                                                                         |
+| [`start`](./start.md)                   | Start the Eliza agent with configurable plugins and services                                                   |
+| [`update`](./update.md)                 | Update ElizaOS CLI and project dependencies                                                                    |
+| [`test`](./test.md)                     | Run tests for Eliza agent projects and plugins                                                                 |
+| [`env`](./env.md)                       | Manage environment variables and secrets                                                                       |
+| [`dev`](./dev.md)                       | Start the project or plugin in development mode with auto-rebuild, detailed logging, and file change detection |
+| [`publish`](./publish.md)               | Publish a plugin to the registry                                                                               |
+| [`stop`](./stop.md)                     | Stop all running ElizaOS agents running locally                                                                |
 
 ## Global Options
 
-These options apply to most commands:
+These options apply to all commands:
 
-| Option            | Description                   |
-| ----------------- | ----------------------------- |
-| `--help`, `-h`    | Display help information      |
-| `--version`, `-v` | Display version information   |
-| `--debug`         | Enable debug logging          |
-| `--quiet`         | Suppress non-essential output |
-| `--json`          | Output results in JSON format |
+| Option            | Description                 |
+| ----------------- | --------------------------- |
+| `--help`, `-h`    | Display help information    |
+| `--version`, `-v` | Display version information |
 
 ## Project Structure
 
@@ -57,7 +56,18 @@ For detailed information about project and plugin structure, see the [Quickstart
 
 ## Environment Configuration
 
-For detailed information about environment configuration, see the [Environment Command](./env.md) documentation.
+Configure your API keys and environment variables with the `env` command:
+
+```bash
+# Edit local environment variables interactively
+elizaos env edit-local
+
+# List all environment variables
+elizaos env list
+
+# Interactive environment manager
+elizaos env interactive
+```
 
 ## Development vs Production
 
@@ -78,17 +88,6 @@ ElizaOS supports two main modes of operation:
 ## Quick Start
 
 For a complete guide to getting started with ElizaOS, see the [Quickstart Guide](../quickstart.md).
-
-## Related Documentation
-
-- [Quickstart Guide](../quickstart.md): Complete workflow guide
-- [Environment Configuration](./env.md): Managing environment variables
-
----
-
-## Quick Start
-
-> Note: This assumes you installed the CLI tool (`npm install -g @elizaos/cli`)
 
 ### Creating a new project
 
@@ -130,24 +129,25 @@ ElizaOS organizes work into projects, which can contain one or more agents along
 
 ## Working with Plugins
 
-Plugins extend the functionality of your agents. Use the `plugin` command for development tasks like publishing your own plugins.
+Plugins extend the functionality of your agents. Use the `plugins` command for managing plugins and `publish` for publishing your own:
 
 ```bash
-# Example: Publish the plugin in the current directory (requires setup)
-elizaos plugins publish
+# List available plugins
+elizaos plugins list
 
-# Example: Test publishing the plugin to npm
-elizaos plugins publish --npm --test
+# Add a plugin to your project
+elizaos plugins add @elizaos/plugin-discord
+
+# Publish your plugin (from plugin directory)
+elizaos publish
+
+# Test publishing without making changes
+elizaos publish --test
 ```
 
-## Environment Configuration
+## Related Documentation
 
-Configure your API keys and environment variables with the `env` command:
+- [Quickstart Guide](../quickstart.md): Complete workflow guide
+- [Environment Configuration](./env.md): Managing environment variables
 
-```bash
-# Set OpenAI API key
-elizaos env set OPENAI_API_KEY your-api-key
-
-# List all environment variables
-elizaos env list
-```
+---

@@ -122,14 +122,23 @@ elizaos plugins add @elizaos/plugin-discord
 
 ### Working with Character Files
 
-You can import or export character files using the CLI:
+You can work with character files using the agent commands:
 
 ```bash
-# Export character to a JSON file
-elizaos character export --output my-character.json
+# Create a new character file
+elizaos create -t agent my-character
 
-# Import character from a JSON file
-elizaos character import --file my-character.json
+# Start an agent with a character file
+elizaos agent start --path ./my-character.json
+
+# Get agent details and save to file
+elizaos agent get --name eliza --output my-exported-character.json
+
+# Start agent with JSON configuration directly
+elizaos agent start --json '{"name":"Eliza","system":"You are a helpful assistant","bio":["Helpful AI assistant"],...}'
+
+# Load character from remote URL
+elizaos agent start --remote-character https://example.com/characters/assistant.json
 ```
 
 This is particularly useful for those migrating from v1 who are used to working with standalone character files.
@@ -149,18 +158,18 @@ Develop your plugin following the structure in your generated project:
 # Test your plugin
 elizaos start
 # Publish your plugin when ready
-elizaos plugins publish
+elizaos publish
 ```
 
 ### Publishing options:
 
 ```bash
 # Test publish without making changes
-elizaos plugins publish --test
-# Publish to npm
-elizaos plugins publish --npm
-# Specify platform compatibility
-elizaos plugins publish --platform node
+elizaos publish --test
+# Publish to npm instead of GitHub
+elizaos publish --npm
+# Generate files locally without publishing
+elizaos publish --dry-run
 ```
 
 ---

@@ -75,11 +75,7 @@ export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
         {detailsTab === 'memories' && <AgentMemoryViewer agentId={agentId} agentName={agentName} />}
       </TabsContent>
       {agentPanels.map((panel: AgentPanel) => (
-        <TabsContent
-          key={panel.name}
-          value={panel.name}
-          className="h-full overflow-hidden flex-1 flex flex-col"
-        >
+        <TabsContent key={panel.name} value={panel.name} className="overflow-y-auto flex-1">
           {detailsTab === panel.name && (
             <iframe
               src={`${panel.path}?agentId=${agentId}`}

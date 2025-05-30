@@ -8,7 +8,7 @@ image: /img/cli.jpg
 
 # Environment Command
 
-The `env` command helps you manage environment variables and API keys for your ElizaOS projects. It provides a secure and convenient way to set, view, and manage sensitive configuration.
+Manage environment variables and secrets.
 
 ## Usage
 
@@ -18,138 +18,124 @@ elizaos env [command] [options]
 
 ## Subcommands
 
-| Subcommand    | Description                                                   | Options               |
-| ------------- | ------------------------------------------------------------- | --------------------- |
-| `list`        | List all environment variables                                | `--system`, `--local` |
-| `edit-local`  | Edit local environment variables                              | `-y, --yes`           |
-| `reset`       | Reset environment variables and clean up database/cache files | `-y, --yes`           |
-| `interactive` | Start interactive environment variable manager                | `-y, --yes`           |
+| Subcommand    | Description                                                                           | Options               |
+| ------------- | ------------------------------------------------------------------------------------- | --------------------- |
+| `list`        | List all environment variables                                                        | `--system`, `--local` |
+| `edit-local`  | Edit local environment variables                                                      | `-y, --yes`           |
+| `reset`       | Reset environment variables and clean up database/cache files (interactive selection) | `-y, --yes`           |
+| `interactive` | Interactive environment variable management                                           | `-y, --yes`           |
 
-## Environment Levels
+## Options
 
-ElizaOS maintains two levels of environment variables:
+### List Command Options
 
-1. **Local variables** - Stored in `.env` in your current project directory
+| Option     | Description                           |
+| ---------- | ------------------------------------- |
+| `--system` | List only system information          |
+| `--local`  | List only local environment variables |
 
-## Interactive Mode
+### General Options
 
-The interactive mode provides a user-friendly way to manage environment variables:
+| Option      | Description                   |
+| ----------- | ----------------------------- |
+| `-y, --yes` | Automatically confirm prompts |
 
-```bash
-elizaos env interactive
-```
+## Examples
 
-This opens a menu with options to:
-
-- List environment variables
-- Edit global environment variables
-- Edit local environment variables
-- Set custom global environment path
-- Reset environment variables
-
-## Managing Environment Variables
-
-### Listing Variables
-
-View all configured environment variables:
+### Viewing Environment Variables
 
 ```bash
+# List all variables (system info + local .env)
 elizaos env list
+
+# Show only system information
+elizaos env list --system
+
+# Show only local environment variables
+elizaos env list --local
 ```
 
-This will display:
+Example output:
 
-- System information (OS, architecture, CLI version, etc.)
-- Local environment variables from `./.env` in your current directory
+```
+System Information:
+  Platform: darwin (24.3.0)
+  Architecture: arm64
+  CLI Version: 1.0.0-beta.51
+  Package Manager: bun v1.2.5
 
-If no local `.env` file exists, the command will display a warning and instructions for creating one. This helps you quickly see if your project is missing required configuration.
+Local Environment Variables:
+Path: /current/directory/.env
+  OPENAI_API_KEY: sk-1234...5678
+  MODEL_PROVIDER: openai
+  PORT: 8080
+  LOG_LEVEL: debug
+```
 
-You can also filter the output:
+### Managing Local Environment Variables
 
 ```bash
-elizaos env list --system  # Show only system information
-elizaos env list --global  # Show only global environment variables
-elizaos env list --local   # Show only local environment variables
+# Edit local environment variables interactively
+elizaos env edit-local
+
+# Edit with automatic confirmation of prompts
+elizaos env edit-local --yes
 ```
 
-### Editing Global Variables
+The edit-local command allows you to:
 
-Edit the global environment variables interactively:
-
-```bash
-
-```
-
-This provides an interactive interface to:
-
-- View existing global variables
+- View existing local variables
 - Add new variables
 - Edit existing variables
 - Delete variables
 
-### Editing Local Variables
-
-Edit the local environment variables in the current project:
+### Interactive Management
 
 ```bash
-elizaos env edit-local
+# Start interactive environment manager
+elizaos env interactive
+
+# Interactive mode with automatic confirmations
+elizaos env interactive --yes
 ```
 
-If no local `.env` file exists, you will be prompted to create one. The editor will then allow you to add new variables to the created file.
+Interactive mode provides a menu with options to:
 
-### Setting Custom Environment Path
+- List environment variables
+- Edit local environment variables
+- Reset environment variables
 
-Set a custom location for the global environment file:
-
-```bash
-
-```
-
-If the specified path is a directory, the command will use `/path/to/custom/location/.env`.
-
-The command supports tilde expansion, so you can use paths like `~/eliza-config/.env`. Non-existent directories will be created if you confirm.
-
-This setting affects where global environment variables are stored and loaded from in all ElizaOS commands.
-
-### Resetting Environment Variables and Data
-
-Reset environment variables and optionally delete database and cache files:
+### Resetting Environment and Data
 
 ```bash
+# Interactive reset with item selection
 elizaos env reset
-```
 
-This command provides an interactive selection interface where you can choose which items to reset:
-
-- **Local environment variables** - Clears values in local `.env` file while preserving keys
-- **Cache folder** - Deletes the cache folder
-- **Global database files** - Deletes global database files (including PGLite data)
-- **Local database files** - Deletes local database files
-
-The command intelligently detects:
-
-- Missing files/folders (skipped automatically)
-- External PostgreSQL usage (warns that only local files will be removed)
-- PGLite configuration (ensures the correct folders are removed)
-
-After selecting items, you'll be shown a summary and asked for confirmation before proceeding.
-
-Use the `-y, --yes` flag to automatically reset all valid items without prompts:
-
-```bash
+# Automatic reset with default selections
 elizaos env reset --yes
 ```
 
-With `--yes`, the command will:
+The reset command allows you to selectively reset:
 
-1. Select only items that exist and can be reset
-2. Show a list of what will be reset
-3. Perform the reset without additional confirmation
-4. Display a detailed summary of actions taken
+- **Local environment variables** - Clears values in local `.env` file while preserving keys
+- **Cache folder** - Deletes the cache folder (`~/.eliza/cache`)
+- **Local database files** - Deletes local database files (PGLite data directory)
 
-## Key Variables
+## Environment File Structure
 
-ElizaOS commonly uses these environment variables:
+ElizaOS uses local environment variables stored in `.env` files in your project directory:
+
+- **Local variables** - Stored in `./.env` in your current project directory
+
+### Missing .env File Handling
+
+If no local `.env` file exists:
+
+- Commands will detect this and offer to create one
+- The `list` command will show helpful guidance
+- The `edit-local` command will prompt to create a new file
+
+## Common Environment Variables
 
 | Variable             | Description                                  |
 | -------------------- | -------------------------------------------- |
@@ -163,97 +149,71 @@ ElizaOS commonly uses these environment variables:
 | `LOG_LEVEL`          | Logging verbosity (debug, info, warn, error) |
 | `PORT`               | HTTP API port number                         |
 
-## Security Best Practices
+## Database Configuration Detection
 
-1. **Never commit .env files** to version control
-2. **Use separate environments** for development, testing, and production
-3. **Set up global variables** for commonly used API keys
-4. **Regularly rotate API keys** for security
+The reset command intelligently detects your database configuration:
 
-## Examples
+- **External PostgreSQL** - Warns that only local files will be removed
+- **PGLite** - Ensures the correct local database directories are removed
+- **Missing configuration** - Skips database-related reset operations
 
-### Viewing Environment Variables
+## Security Features
 
-```bash
-# List all variables
-elizaos env list
-```
+- **Value masking** - Sensitive values (API keys, tokens) are automatically masked in output
+- **Local-only storage** - Environment variables are stored locally in your project
+- **No global secrets** - Prevents accidental exposure across projects
 
-Output example:
+## Troubleshooting
 
-```
-System Information:
-  Platform: darwin (24.3.0)
-  Architecture: arm64
-  CLI Version: 1.0.0
-  Package Manager: bun v1.2.5
-
-  OPENAI_API_KEY: sk-1234...5678
-  MODEL_PROVIDER: openai
-
-Local environment variables (.env):
-  PORT: 8080
-  LOG_LEVEL: debug
-```
-
-If the `.env` file is missing:
-
-```
-Local Environment Variables:
-Path: /current/directory/.env
-  No local .env file found
-  ✖ Missing .env file. Create one in your project directory to set local environment variables.
-```
-
-### Setting Custom Environment Path
+### Missing .env File
 
 ```bash
-# Set a custom path for global environment variables
-```
+# Check if .env file exists
+ls -la .env
 
-### Interactive Editing
+# Create .env file from example
+cp .env.example .env
 
-```bash
-# Start interactive mode
-elizaos env interactive
-
-# Edit only global variables
-
-# Edit only local variables
+# Edit the new file
 elizaos env edit-local
 ```
 
-### Resetting Environment
+### Permission Issues
 
 ```bash
-# Interactive reset with selection
+# Check file permissions
+ls -la .env
+
+# Fix permissions if needed
+chmod 600 .env
+```
+
+### Database Reset Issues
+
+```bash
+# Check what exists before reset
+elizaos env list
+
+# Reset only specific items
 elizaos env reset
 
-# Reset with default selections
+# Force reset with defaults
 elizaos env reset --yes
 ```
 
-Example reset output:
+### Environment Not Loading
 
-```
-The following items will be reset:
-  • Local environment variables
-  • Cache folder
+```bash
+# Verify environment file exists and has content
+cat .env
 
-Reset Summary:
-  Values Cleared:
-    • Local environment variables
-  Deleted:
-    • Cache folder
-  Skipped:
-    • Global database files (not found)
-    • Local database files (not found)
-
-Environment reset complete
+# Check for syntax errors in .env file
+elizaos env list --local
 ```
 
 ## Related Commands
 
 - [`start`](./start.md): Start your project with the configured environment
 - [`dev`](./dev.md): Run in development mode with the configured environment
+- [`test`](./test.md): Run tests with environment configuration
 - [`create`](./create.md): Create a new project with initial environment setup
