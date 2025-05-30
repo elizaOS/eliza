@@ -544,9 +544,7 @@ export class AgentRuntime implements IAgentRuntime {
       try {
         await this.adapter.init();
         span.addEvent('adapter_initialized');
-        const existingAgent = await this.adapter.ensureAgentExists(
-          this.character as Partial<Agent>
-        );
+        const existingAgent = await this.ensureAgentExists(this.character as Partial<Agent>);
         span.addEvent('agent_exists_verified');
         if (!existingAgent) {
           const errorMsg = `Agent ${this.character.name} does not exist in database after ensureAgentExists call`;
@@ -1750,7 +1748,45 @@ export class AgentRuntime implements IAgentRuntime {
     return await this.adapter.deleteAgent(agentId);
   }
   async ensureAgentExists(agent: Partial<Agent>): Promise<Agent> {
-    return await this.adapter.ensureAgentExists(agent);
+    if (!agent.name) {
+      throw new Error('Agent name is required');
+    }
+
+    const agents = await this.adapter.getAgents();
+    const existingAgentId = agents.find((a) => a.name === agent.name)?.id;
+
+    if (existingAgentId) {
+      // Update the agent on restart with the latest character configuration
+      const updatedAgent = {
+        ...agent,
+        id: existingAgentId,
+        updatedAt: Date.now(),
+      };
+
+      await this.adapter.updateAgent(existingAgentId, updatedAgent);
+      const existingAgent = await this.adapter.getAgent(existingAgentId);
+
+      if (!existingAgent) {
+        throw new Error(`Failed to retrieve agent after update: ${existingAgentId}`);
+      }
+
+      this.logger.debug(`Updated existing agent ${agent.name} on restart`);
+      return existingAgent;
+    }
+
+    // Create new agent if it doesn't exist
+    const newAgent: Agent = {
+      ...agent,
+      id: stringToUuid(agent.name),
+    } as Agent;
+
+    const created = await this.adapter.createAgent(newAgent);
+    if (!created) {
+      throw new Error(`Failed to create agent: ${agent.name}`);
+    }
+
+    this.logger.debug(`Created new agent ${agent.name}`);
+    return newAgent;
   }
   async getEntityById(entityId: UUID): Promise<Entity | null> {
     const entities = await this.adapter.getEntityByIds([entityId]);
