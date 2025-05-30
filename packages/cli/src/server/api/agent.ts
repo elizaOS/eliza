@@ -353,7 +353,7 @@ export function agentRouter(
             },
           });
 
-          // Construct Memory for the agent's HTTP response
+          // Construct Memory for the agent's HTTP response with provider information
           sentMemory = {
             id: createUniqueUuid(runtime, `api-response-${userMessageMemory.id}-${Date.now()}`),
             entityId: runtime.agentId, // Agent is the sender
@@ -362,12 +362,26 @@ export function agentRouter(
               ...responseContent,
               text: responseContent.text || '',
               inReplyTo: userMessageMemory.id,
+              // Include provider information if providers were used
+              ...(responseContent.providers &&
+                responseContent.providers.length > 0 && {
+                  providerInfo: {
+                    providers: responseContent.providers,
+                    providersUsed: responseContent.providers.length,
+                    timestamp: Date.now(),
+                  },
+                }),
             },
             roomId: roomId,
             worldId,
             createdAt: Date.now(),
           };
 
+          logger.debug('Response content sent via HTTP API:', {
+            hasText: !!responseContent.text,
+            hasProviders: !!(responseContent.providers && responseContent.providers.length > 0),
+            providersUsed: responseContent.providers?.length || 0,
+          });
           await runtime.createMemory(sentMemory, 'messages');
         }
         return sentMemory ? [sentMemory] : [];
