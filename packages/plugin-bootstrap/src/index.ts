@@ -470,6 +470,11 @@ const messageReceivedHandler = async ({
           }
 
           if (responseContent && responseContent.simple && responseContent.text) {
+            // Log provider usage for simple responses
+            if (responseContent.providers && responseContent.providers.length > 0) {
+              logger.debug('[Bootstrap] Simple response used providers', responseContent.providers);
+            }
+
             // without actions there can't be more than one message
             await callback(responseContent);
           } else {
@@ -482,6 +487,19 @@ const messageReceivedHandler = async ({
               }
             );
             if (responseMessages.length) {
+              // Log provider usage for complex responses
+              for (const responseMessage of responseMessages) {
+                if (
+                  responseMessage.content.providers &&
+                  responseMessage.content.providers.length > 0
+                ) {
+                  logger.debug(
+                    '[Bootstrap] Complex response used providers',
+                    responseMessage.content.providers
+                  );
+                }
+              }
+
               for (const memory of responseMessages) {
                 await callback(memory.content);
               }

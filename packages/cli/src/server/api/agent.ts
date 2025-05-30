@@ -30,7 +30,6 @@ import path from 'node:path';
 import FormData from 'form-data';
 import axios from 'axios';
 import sharp from 'sharp';
-import type { File } from 'multer';
 
 // Cache for compiled regular expressions to improve performance
 const regexCache = new Map<string, RegExp>();
@@ -353,7 +352,7 @@ export function agentRouter(
             },
           });
 
-          // Construct Memory for the agent's HTTP response
+          // Construct Memory for the agent's HTTP response with provider information
           sentMemory = {
             id: createUniqueUuid(runtime, `api-response-${userMessageMemory.id}-${Date.now()}`),
             entityId: runtime.agentId, // Agent is the sender
@@ -362,11 +361,17 @@ export function agentRouter(
               ...responseContent,
               text: responseContent.text || '',
               inReplyTo: userMessageMemory.id,
+              ...(responseContent.providers &&
+                responseContent.providers.length > 0 && {
+                  providers: responseContent.providers,
+                }),
             },
             roomId: roomId,
             worldId,
             createdAt: Date.now(),
           };
+
+          logger.debug('Response content sent via HTTP API:', responseContent.providers);
 
           await runtime.createMemory(sentMemory, 'messages');
         }

@@ -303,7 +303,7 @@ async function processSocketMessage(
         io.to(socketRoomId).emit('messageBroadcast', broadcastData);
         io.emit('messageBroadcast', broadcastData);
 
-        // Save agent's response as memory
+        // Save agent's response as memory with provider information
         const memory = {
           id: crypto.randomUUID() as UUID,
           entityId: runtime.agentId,
@@ -313,11 +313,17 @@ async function processSocketMessage(
             inReplyTo: messageId,
             channelType: ChannelType.DM,
             source: `${source}:agent`,
+            ...(content.providers &&
+              content.providers.length > 0 && {
+                providers: content.providers,
+              }),
           },
           roomId: uniqueRoomId,
           createdAt: Date.now(),
         };
-        logger.debug('Memory object for response:', { memoryId: memory.id });
+        logger.debug('Memory object for response:', {
+          providers: content.providers || [],
+        });
         await runtime.createMemory(memory, 'messages');
         return [content];
       } catch (error) {
