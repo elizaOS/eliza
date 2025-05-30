@@ -12,6 +12,7 @@ import {
   saveRegistrySettings,
   validateDataDir,
 } from '@/src/utils/registry/index';
+import { detectDirectoryType, getDirectoryTypeDescription } from '@/src/utils/directory-detection';
 import { REGISTRY_REPO, REGISTRY_GITHUB_URL } from '@/src/utils/registry/constants';
 import { Command } from 'commander';
 import { execa } from 'execa';
@@ -83,15 +84,12 @@ async function checkCliVersion() {
 
     // Compare versions
     if (latestVersion && latestVersion !== currentVersion) {
-      console.warn(
-        `You are using CLI version ${currentVersion}, but the latest version is ${latestVersion} (published ${new Date(timeData[latestVersion]).toLocaleDateString()})`
-      );
-      console.info(`Run 'elizaos update' to update to the latest version`);
+      console.warn(`CLI update available: ${currentVersion} → ${latestVersion}`);
 
       const { update } = await prompts({
         type: 'confirm',
         name: 'update',
-        message: 'Would you like to update now before proceeding?',
+        message: 'Update CLI before publishing?',
         initial: false,
       });
 
@@ -400,7 +398,7 @@ async function validatePluginRequirements(cwd: string, packageJson: any): Promis
   if (warnings.length > 0) {
     console.warn('Plugin validation warnings:');
     warnings.forEach((warning) => console.warn(`  - ${warning}`));
-    console.warn('\nYour plugin may get rejected if you submit without addressing these issues.');
+    console.warn('Your plugin may get rejected if you submit without addressing these issues.');
 
     const { proceed } = await prompts({
       type: 'confirm',
@@ -429,6 +427,17 @@ export const publish = new Command()
   .action(async (opts) => {
     try {
       const cwd = process.cwd();
+
+      // Use standardized directory detection
+      const directoryInfo = detectDirectoryType(cwd);
+
+      // Validate that we're in a valid directory with package.json
+      if (!directoryInfo.hasPackageJson) {
+        console.error(
+          `No package.json found in current directory. This directory is: ${getDirectoryTypeDescription(directoryInfo)}`
+        );
+        process.exit(1);
+      }
 
       // Check for CLI updates
       const cliVersion = await checkCliVersion();
@@ -469,16 +478,8 @@ export const publish = new Command()
         }
       }
 
-      // Check if this is a valid directory with package.json
-      const packageJsonPath = path.join(cwd, 'package.json');
-      try {
-        await fs.access(packageJsonPath);
-      } catch {
-        console.error('No package.json found in current directory.');
-        process.exit(1);
-      }
-
       // Read package.json
+      const packageJsonPath = path.join(cwd, 'package.json');
       const packageJsonContent = await fs.readFile(packageJsonPath, 'utf-8');
       const packageJson = JSON.parse(packageJsonContent);
 
@@ -487,85 +488,35 @@ export const publish = new Command()
         process.exit(1);
       }
 
-      // Auto-detect whether this is a plugin or project
-      let detectedType = 'plugin'; // Default to plugin
+      // Use standardized directory detection for type determination
+      let detectedType: string;
 
-      // Check if this is a plugin or project based on package.json
-      if (packageJson.agentConfig?.pluginType) {
-        // Check if explicitly defined in the agentConfig section
-        const pluginType = packageJson.agentConfig.pluginType.toLowerCase();
-        if (pluginType.includes('plugin')) {
-          detectedType = 'plugin';
-          console.info('Detected Eliza plugin in current directory');
-        } else if (pluginType.includes('project')) {
+      if (directoryInfo.type === 'elizaos-plugin') {
+        detectedType = 'plugin';
+        console.info('Detected ElizaOS plugin using standardized directory detection');
+      } else if (directoryInfo.type === 'elizaos-project') {
+        detectedType = 'project';
+        console.info('Detected ElizaOS project using standardized directory detection');
+      } else {
+        // Fallback for backwards compatibility - check package.json fields
+        detectedType = 'plugin'; // Default to plugin
+
+        if (packageJson.agentConfig?.pluginType) {
+          const pluginType = packageJson.agentConfig.pluginType.toLowerCase();
+          if (pluginType.includes('project')) {
+            detectedType = 'project';
+            console.info('Detected project from package.json agentConfig.pluginType');
+          }
+        } else if (packageJson.eliza?.type === 'project') {
           detectedType = 'project';
-          console.info('Detected Eliza project in current directory');
-        }
-      } else if (packageJson.eliza?.type) {
-        // For backward compatibility, also check eliza.type
-        if (packageJson.eliza.type === 'plugin') {
-          detectedType = 'plugin';
-          console.info('Detected Eliza plugin in current directory (legacy format)');
-        } else if (packageJson.eliza.type === 'project') {
-          detectedType = 'project';
-          console.info('Detected Eliza project in current directory (legacy format)');
-        }
-      } else if (packageJson.packageType) {
-        // Check packageType field
-        if (packageJson.packageType === 'plugin') {
-          detectedType = 'plugin';
-          console.info('Detected Eliza plugin based on packageType field');
+          console.info('Detected project from package.json eliza.type (legacy format)');
         } else if (packageJson.packageType === 'project') {
           detectedType = 'project';
-          console.info('Detected Eliza project based on packageType field');
-        }
-      } else {
-        // Use heuristics to detect the type
-        // Check if name contains plugin
-        if (packageJson.name.includes('plugin-')) {
-          detectedType = 'plugin';
-          console.info('Detected plugin based on package name');
-        } else if (packageJson.description?.toLowerCase().includes('project')) {
-          detectedType = 'project';
-          console.info('Detected project based on package description');
+          console.info('Detected project from package.json packageType field');
         } else {
-          // Additional heuristics from start.ts
-          try {
-            // If the package has a main entry, check if it exports a Project
-            const mainEntry = packageJson.main;
-            if (mainEntry) {
-              const mainPath = path.resolve(cwd, mainEntry);
-              try {
-                await fs.access(mainPath);
-                try {
-                  // Try to import the module to see if it's a project or plugin
-                  const importedModule = await import(mainPath);
-
-                  // Check for project indicators (agents array or agent property)
-                  if (importedModule.default?.agents || importedModule.default?.agent) {
-                    detectedType = 'project';
-                    console.info('Detected project based on exports');
-                  }
-                  // Check for plugin indicators
-                  else if (
-                    importedModule.default?.name &&
-                    typeof importedModule.default?.init === 'function'
-                  ) {
-                    detectedType = 'plugin';
-                    console.info('Detected plugin based on exports');
-                  }
-                } catch (importError) {
-                  console.debug(`Error importing module: ${importError}`);
-                  // Continue with default type
-                }
-              } catch {
-                // File doesn't exist, skip the import attempt
-              }
-            }
-          } catch (error) {
-            console.debug(`Error during type detection: ${error}`);
-            // Continue with default type
-          }
+          console.info(
+            `Defaulting to plugin type. Directory detected as: ${getDirectoryTypeDescription(directoryInfo)}`
+          );
         }
       }
 
@@ -605,8 +556,7 @@ export const publish = new Command()
       // Get or prompt for GitHub credentials
       let credentials = await getGitHubCredentials();
       if (!credentials) {
-        console.info('\nGitHub credentials required for publishing.');
-        console.info('Please enter your GitHub credentials:\n');
+        console.info('GitHub credentials required for publishing.');
 
         await new Promise((resolve) => setTimeout(resolve, 10));
 

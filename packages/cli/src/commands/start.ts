@@ -30,6 +30,7 @@ import { Command } from 'commander';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { detectDirectoryType, getDirectoryTypeDescription } from '@/src/utils/directory-detection';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -465,7 +466,7 @@ const startAgents = async (options: {
 
   // Set up server properties
   server.startAgent = async (character) => {
-    logger.info(`Starting agent for character ${character.name}`);
+    logger.debug(`Starting agent for character ${character.name}`);
     const runtime = await startAgent(character, server);
     logger.success(`Agent ${character.name} has been successfully started!`);
     // Add direct console log for higher visibility
@@ -473,7 +474,7 @@ const startAgents = async (options: {
     return runtime;
   };
   server.stopAgent = (runtime: IAgentRuntime) => {
-    logger.info(`Stopping agent ${runtime.character.name}`);
+    logger.debug(`Stopping agent ${runtime.character.name}`);
     stopAgent(runtime, server);
     // Add direct console log for higher visibility
     console.log(`\x1b[32m[√] Agent ${runtime.character.name} stopped successfully!\x1b[0m`);
@@ -500,58 +501,48 @@ const startAgents = async (options: {
 
   const currentDir = process.cwd();
   try {
-    // Check if we're in a project with a package.json
-    const packageJsonPath = path.join(process.cwd(), 'package.json');
+    // Use standardized directory detection
+    const directoryInfo = detectDirectoryType(currentDir);
 
-    if (fs.existsSync(packageJsonPath)) {
-      // Read and parse package.json to check if it's a project or plugin
+    // Determine if this is a project or plugin
+    isProject = directoryInfo.type === 'elizaos-project';
+    isPlugin = directoryInfo.type === 'elizaos-plugin';
+
+    if (isProject) {
+      logger.debug('Found ElizaOS project using standardized directory detection');
+    } else if (isPlugin) {
+      logger.debug('Found ElizaOS plugin using standardized directory detection');
+    }
+
+    // If we found a plugin or project, try to load it
+    if ((isProject || isPlugin) && directoryInfo.hasPackageJson) {
+      const packageJsonPath = path.join(currentDir, 'package.json');
       const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-
-      // Check if this is a plugin (package.json contains 'eliza' section with type='plugin')
-      if (packageJson.eliza?.type && packageJson.eliza.type === 'plugin') {
-        isPlugin = true;
-        logger.info('Found Eliza plugin in current directory');
-      }
-
-      // Check if this is a project (package.json contains 'eliza' section with type='project')
-      if (packageJson.eliza?.type && packageJson.eliza.type === 'project') {
-        isProject = true;
-        logger.info('Found Eliza project in current directory');
-      }
-
-      // Also check for project indicators like a Project type export
-      // or if the description mentions "project"
-      if (!isProject && !isPlugin) {
-        if (packageJson.description?.toLowerCase().includes('project')) {
-          isProject = true;
-          logger.info('Found project by description in package.json');
-        }
-      }
 
       // If we found a main entry in package.json, try to load it
       const mainEntry = packageJson.main;
       if (mainEntry) {
-        const mainPath = path.resolve(process.cwd(), mainEntry);
+        const mainPath = path.resolve(currentDir, mainEntry);
 
         if (fs.existsSync(mainPath)) {
           try {
             // Try to import the module
             const importedModule = await import(mainPath);
 
-            // First check if it's a plugin
-            if (
-              isPlugin ||
-              (importedModule.default &&
+            if (isPlugin) {
+              // Look for plugin object
+              if (
+                importedModule.default &&
                 typeof importedModule.default === 'object' &&
                 importedModule.default.name &&
-                typeof importedModule.default.init === 'function')
-            ) {
-              isPlugin = true;
-              pluginModule = importedModule.default;
-              logger.info(`Loaded plugin: ${pluginModule?.name || 'unnamed'}`);
-
-              if (!pluginModule) {
-                logger.warn('Plugin loaded but no default export found, looking for other exports');
+                typeof importedModule.default.init === 'function'
+              ) {
+                pluginModule = importedModule.default;
+                logger.debug(`Loaded plugin: ${pluginModule?.name || 'unnamed'}`);
+              } else {
+                logger.warn(
+                  'Plugin detected but no valid plugin export found, looking for other exports'
+                );
 
                 // Try to find any exported plugin object
                 for (const key in importedModule) {
@@ -562,21 +553,21 @@ const startAgents = async (options: {
                     typeof importedModule[key].init === 'function'
                   ) {
                     pluginModule = importedModule[key];
-                    logger.info(`Found plugin export under key: ${key}`);
+                    logger.debug(`Found plugin export under key: ${key}`);
                     break;
                   }
                 }
               }
-            }
-            // Then check if it's a project
-            else if (
-              isProject ||
-              (importedModule.default &&
+            } else if (isProject) {
+              // Look for project object
+              if (
+                importedModule.default &&
                 typeof importedModule.default === 'object' &&
-                importedModule.default.agents)
-            ) {
-              isProject = true;
-              projectModule = importedModule;
+                importedModule.default.agents
+              ) {
+                projectModule = importedModule;
+                logger.debug('Loaded project module');
+              }
             }
           } catch (importError) {
             logger.error(`Error importing module: ${importError}`);
@@ -646,7 +637,7 @@ const startAgents = async (options: {
           : [];
 
       if (agents.length > 0) {
-        logger.info(`Found ${agents.length} agents in project`);
+        logger.debug(`Found ${agents.length} agents in project`);
 
         // Prompt for environment variables for all plugins in the project
         try {
@@ -658,7 +649,7 @@ const startAgents = async (options: {
         const startedAgents = [];
         const results = await Promise.allSettled(
           agents.map(async (agent) => {
-            logger.info(`Starting agent: ${agent.character.name}`);
+            logger.debug(`Starting agent: ${agent.character.name}`);
             const runtime = await startAgent(
               agent.character,
               server,
@@ -694,7 +685,7 @@ const startAgents = async (options: {
       }
 
       // Load the default character with all its default plugins, then add the test plugin
-      logger.info(
+      logger.debug(
         `Starting default Eliza character with plugin: ${pluginModule.name || 'unnamed plugin'}`
       );
 
@@ -705,10 +696,10 @@ const startAgents = async (options: {
       // We're using our test plugin plus all the plugins from the default character
       const pluginsToLoad = [pluginModule];
 
-      logger.info(
+      logger.debug(
         `Using default character with plugins: ${defaultElizaCharacter.plugins.join(', ')}`
       );
-      logger.info(
+      logger.debug(
         "Plugin test mode: Using default character's plugins plus the plugin being tested"
       );
 
@@ -717,11 +708,11 @@ const startAgents = async (options: {
       await startAgent(defaultElizaCharacter, server, undefined, pluginsToLoad, {
         isPluginTestMode: true,
       });
-      logger.info('Character started with plugin successfully');
+      logger.debug('Character started with plugin successfully');
     } else {
       // When not in a project or plugin, use the environment-aware character
       const elizaCharacter = getElizaCharacter();
-      logger.info(
+      logger.debug(
         `Using default Eliza character with plugins: ${elizaCharacter.plugins.join(', ')}`
       );
       await startAgent(elizaCharacter, server);
@@ -803,7 +794,7 @@ export const start = new Command()
         // Load each character path
         for (const path of characterPaths) {
           try {
-            logger.info(`Loading character from ${path}`);
+            logger.debug(`Loading character from ${path}`);
             // Try with the exact path first
             let characterData;
             try {
@@ -811,7 +802,7 @@ export const start = new Command()
             } catch (error) {
               // If that fails and there's no extension, try adding .json
               if (!path.includes('.')) {
-                logger.info(`Trying with .json extension: ${path}.json`);
+                logger.debug(`Trying with .json extension: ${path}.json`);
                 characterData = await loadCharacterTryPath(`${path}.json`);
               } else {
                 throw error;

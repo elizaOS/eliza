@@ -13,7 +13,7 @@ import { start } from '@/src/commands/start';
 import { teeCommand as tee } from '@/src/commands/tee';
 import { test } from '@/src/commands/test';
 import { update } from '@/src/commands/update';
-import { displayBanner } from '@/src/utils';
+import { displayBanner, getVersion, checkAndShowUpdateNotification } from '@/src/utils';
 import { logger } from '@elizaos/core';
 import { Command, Option } from 'commander';
 import fs from 'node:fs';
@@ -42,6 +42,22 @@ async function main() {
   } else {
     const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
     version = packageJson.version;
+  }
+
+  // Check for built-in flags that exit early (before preAction hook runs)
+  const args = process.argv.slice(2);
+  const isVersionFlag = args.includes('-v') || args.includes('--version');
+  const isHelpFlag =
+    args.includes('-h') || args.includes('--help') || (args.length === 1 && args[0] === 'help');
+  const isUpdateCommand = args.includes('update');
+  const willShowBanner = args.length === 0;
+
+  // Show update notification for all commands except:
+  // - when banner will show (it handles its own notification)
+  // - when running update command
+  if (!willShowBanner && !isUpdateCommand) {
+    const currentVersion = getVersion();
+    await checkAndShowUpdateNotification(currentVersion);
   }
 
   const program = new Command()
@@ -87,9 +103,9 @@ async function main() {
     .addCommand(publish)
     .addCommand(stopCommand);
 
-  // if no args are passed, display the banner
+  // if no args are passed, display the banner (it will handle its own update check)
   if (process.argv.length === 2) {
-    await displayBanner();
+    await displayBanner(false); // Let banner handle update check and show enhanced notification
   }
 
   await program.parseAsync();

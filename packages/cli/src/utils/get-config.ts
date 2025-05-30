@@ -82,7 +82,7 @@ STUDIOLM_EMBEDDING_MODEL=
 # If you fill out POSTGRES_URL, the agent will connect to your postgres instance instead of using the local path
 
 # You can override the pglite data directory
-# PGLITE_DATA_DIR=/Users/UserName/eliza/packages/.pglite/
+PGLITE_DATA_DIR=
 
 # Fill this out if you want to use Postgres
 POSTGRES_URL=
@@ -239,7 +239,7 @@ export async function getElizaDirectories(targetProjectDir?: string) {
 async function ensureDir(dirPath: string) {
   if (!existsSync(dirPath)) {
     await fs.mkdir(dirPath, { recursive: true });
-    logger.info(`Created directory: ${dirPath}`);
+    logger.debug(`Created directory: ${dirPath}`);
   }
 }
 
@@ -345,11 +345,12 @@ export async function setupPgLite(
     await ensureDir(targetDbDir);
     logger.debug('[PGLite] Created database directory:', targetDbDir);
 
-    // Store PGLITE_DATA_DIR in the environment file
-    await fs.writeFile(targetEnvPath, `PGLITE_DATA_DIR=${targetDbDir}\n`, { flag: 'a' });
+    // Set up the .env file with the full template first
+    await setupEnvFile(targetEnvPath);
 
-    // Also set in process.env for the current session
-    process.env.PGLITE_DATA_DIR = targetDbDir;
+    // Then ensure PGLITE_DATA_DIR is properly set in the .env file
+    // This handles both new and existing .env files
+    await storePgliteDataDir(targetDbDir, targetEnvPath);
 
     logger.success('PGLite configuration saved');
   } catch (error) {
@@ -392,6 +393,40 @@ export async function storePostgresUrl(url: string, envFilePath: string): Promis
     logger.success('Postgres URL saved to configuration');
   } catch (error) {
     logger.error('Error saving database configuration:', error);
+    throw error; // Re-throw to handle upstream
+  }
+}
+
+/**
+ * Stores the provided PGLite data directory in the specified `.env` file, replacing any existing entry.
+ *
+ * Updates the `PGLITE_DATA_DIR` environment variable in both the file and the current process.
+ *
+ * @param dataDir - The PGLite data directory path to store.
+ * @param envFilePath - Path to the `.env` file where the directory should be saved.
+ *
+ * @throws {Error} If reading from or writing to the `.env` file fails.
+ */
+export async function storePgliteDataDir(dataDir: string, envFilePath: string): Promise<void> {
+  if (!dataDir) return;
+
+  try {
+    // Read existing content first to avoid duplicates
+    let content = '';
+    if (existsSync(envFilePath)) {
+      content = await fs.readFile(envFilePath, 'utf8');
+    }
+
+    // Remove existing PGLITE_DATA_DIR line if present
+    const lines = content.split('\n').filter((line) => !line.startsWith('PGLITE_DATA_DIR='));
+    lines.push(`PGLITE_DATA_DIR=${dataDir}`);
+
+    await fs.writeFile(envFilePath, lines.join('\n'), 'utf8');
+    process.env.PGLITE_DATA_DIR = dataDir;
+
+    logger.success('PGLite data directory saved to configuration');
+  } catch (error) {
+    logger.error('Error saving PGLite configuration:', error);
     throw error; // Re-throw to handle upstream
   }
 }

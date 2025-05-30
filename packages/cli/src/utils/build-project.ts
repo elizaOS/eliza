@@ -39,7 +39,7 @@ export async function buildProject(cwd: string, isPlugin = false) {
   // Check if we're in a monorepo
   const inMonorepo = await isMonorepoContext();
   if (inMonorepo) {
-    logger.info('Detected monorepo structure, skipping install');
+    logger.debug('Detected monorepo structure, skipping install');
   }
 
   try {
@@ -47,13 +47,13 @@ export async function buildProject(cwd: string, isPlugin = false) {
     const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
     if (packageJson.scripts?.build) {
       // Package has a build script, use it
-      logger.info('Using build script from package.json');
+      logger.debug('Using build script from package.json');
 
       try {
         // Try with bun first
         logger.debug('Attempting to build with bun...');
         await runBunCommand(['run', 'build'], cwd);
-        logger.success(`${isPlugin ? 'Plugin' : 'Project'} built successfully`);
+        logger.info(`Build completed successfully`);
         return;
       } catch (bunError) {
         logger.debug(`Bun build failed, falling back to npm: ${bunError}`);
@@ -62,7 +62,7 @@ export async function buildProject(cwd: string, isPlugin = false) {
           // Fall back to npm if bun fails
           logger.debug('Attempting to build with npm...');
           await execa('npm', ['run', 'build'], { cwd, stdio: 'inherit' });
-          logger.success(`${isPlugin ? 'Plugin' : 'Project'} built successfully`);
+          logger.info(`Build completed successfully`);
           return;
         } catch (npmError) {
           logger.debug(`npm build failed: ${npmError}`);
@@ -80,7 +80,7 @@ export async function buildProject(cwd: string, isPlugin = false) {
       try {
         logger.debug('Found tsconfig.json, attempting to build with tsc...');
         await execa('npx', ['tsc', '--build'], { cwd, stdio: 'inherit' });
-        logger.success(`${isPlugin ? 'Plugin' : 'Project'} built successfully`);
+        logger.info(`Build completed successfully`);
         return;
       } catch (tscError) {
         logger.debug(`tsc build failed: ${tscError}`);

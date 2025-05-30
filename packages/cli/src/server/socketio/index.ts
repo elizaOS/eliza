@@ -14,17 +14,17 @@ export class SocketIORouter {
     this.agents = agents;
     this.connections = new Map();
     this.logStreamConnections = new Map();
-    logger.info(`[SocketIO] Router initialized with ${this.agents.size} agents`);
+    logger.debug(`[SocketIO] Router initialized with ${this.agents.size} agents`);
   }
 
   setupListeners(io: SocketIOServer) {
-    logger.info(`[SocketIO] Setting up Socket.IO event listeners`);
+    logger.debug(`[SocketIO] Setting up Socket.IO event listeners`);
 
     // Log registered message types for debugging
     const messageTypes = Object.keys(SOCKET_MESSAGE_TYPE).map(
       (key) => `${key}: ${SOCKET_MESSAGE_TYPE[key as keyof typeof SOCKET_MESSAGE_TYPE]}`
     );
-    logger.info(`[SocketIO] Registered message types: ${messageTypes.join(', ')}`);
+    logger.debug(`[SocketIO] Registered message types: ${messageTypes.join(', ')}`);
 
     io.on('connection', (socket: Socket) => {
       this.handleNewConnection(socket, io);
@@ -32,22 +32,22 @@ export class SocketIORouter {
   }
 
   private handleNewConnection(socket: Socket, io: SocketIOServer) {
-    logger.info(`[SocketIO] New connection: ${socket.id}`);
+    logger.debug(`[SocketIO] New connection: ${socket.id}`);
 
     // Log registered rooms for debugging
     const rooms = io.sockets.adapter.rooms;
-    logger.info(`[SocketIO] Current rooms: ${Array.from(rooms.keys()).join(', ')}`);
+    logger.debug(`[SocketIO] Current rooms: ${Array.from(rooms.keys()).join(', ')}`);
 
     // Set up direct event handlers
     socket.on(String(SOCKET_MESSAGE_TYPE.ROOM_JOINING), (payload) => {
-      logger.info(`[SocketIO] Room joining event received: ${JSON.stringify(payload)}`);
+      logger.debug(`[SocketIO] Room joining event received: ${JSON.stringify(payload)}`);
       this.handleRoomJoining(socket, payload);
     });
 
     socket.on(String(SOCKET_MESSAGE_TYPE.SEND_MESSAGE), (payload) => {
       const messagePreview =
         payload.message?.substring(0, 50) + (payload.message?.length > 50 ? '...' : '');
-      logger.info(
+      logger.debug(
         `[SocketIO] Message event received: ${JSON.stringify({
           senderId: payload.senderId,
           roomId: payload.roomId,
@@ -76,7 +76,7 @@ export class SocketIORouter {
     if (process.env.NODE_ENV === 'development') {
       // Log all events for debugging
       socket.onAny((event, ...args) => {
-        logger.info(`[SocketIO] Received event '${event}' with args: ${JSON.stringify(args)}`);
+        logger.debug(`[SocketIO] Received event '${event}' with args: ${JSON.stringify(args)}`);
       });
     }
 
@@ -88,7 +88,7 @@ export class SocketIORouter {
   }
 
   private handleGenericMessage(socket: Socket, data: any) {
-    logger.info(`[SocketIO] Generic 'message' event received: ${JSON.stringify(data)}`);
+    logger.debug(`[SocketIO] Generic 'message' event received: ${JSON.stringify(data)}`);
 
     try {
       if (!(data && typeof data === 'object' && 'type' in data && 'payload' in data)) {
@@ -100,12 +100,12 @@ export class SocketIORouter {
 
       switch (type) {
         case SOCKET_MESSAGE_TYPE.ROOM_JOINING:
-          logger.info(`[SocketIO] Handling room joining via 'message' event`);
+          logger.debug(`[SocketIO] Handling room joining via 'message' event`);
           this.handleRoomJoining(socket, payload);
           break;
 
         case SOCKET_MESSAGE_TYPE.SEND_MESSAGE:
-          logger.info(`[SocketIO] Handling message sending via 'message' event`);
+          logger.debug(`[SocketIO] Handling message sending via 'message' event`);
           this.handleBroadcastMessage(socket, payload);
           break;
 
@@ -132,12 +132,12 @@ export class SocketIORouter {
     socket.join(roomId);
 
     // Log connection state for debugging
-    logger.info(
+    logger.debug(
       `[SocketIO] Current connections: ${Array.from(this.connections.entries())
         .map(([socketId, agId]) => `${socketId} -> ${agId}`)
         .join(', ')}`
     );
-    logger.info(`[SocketIO] Available agents: ${Array.from(this.agents.keys()).join(', ')}`);
+    logger.debug(`[SocketIO] Available agents: ${Array.from(this.agents.keys()).join(', ')}`);
 
     const successMessage = `Agent ${agentUuid} joined room ${roomId}.`;
     const responsePayload = {
@@ -153,13 +153,13 @@ export class SocketIORouter {
     });
     socket.emit('room_joined', responsePayload);
 
-    logger.info(`[SocketIO] ${successMessage}`);
+    logger.debug(`[SocketIO] ${successMessage}`);
   }
 
   private async handleBroadcastMessage(socket: Socket, payload: any) {
     const { senderId, senderName, message, roomId, worldId, source } = payload;
 
-    logger.info(`[SocketIO] Processing message in room ${roomId} from ${senderName || senderId}`);
+    logger.debug(`[SocketIO] Processing message in room ${roomId} from ${senderName || senderId}`);
 
     if (!roomId) {
       this.sendErrorResponse(socket, `roomId is required`);
@@ -168,7 +168,7 @@ export class SocketIORouter {
 
     try {
       const socketsInRoom = await socket.to(roomId).fetchSockets();
-      logger.info(`[SocketIO] Found ${socketsInRoom.length} sockets in room ${roomId}`);
+      logger.debug(`[SocketIO] Found ${socketsInRoom.length} sockets in room ${roomId}`);
 
       if (socketsInRoom.length === 0) {
         this.sendErrorResponse(socket, `No agents found in room ${roomId}`);
@@ -223,7 +223,7 @@ export class SocketIORouter {
 
     for (const clientSocket of socketsInRoom) {
       const agentId = this.connections.get(clientSocket.id);
-      logger.info(
+      logger.debug(
         `[SocketIO] Processing message for agent ${agentId} in socket ${clientSocket.id}`
       );
 
@@ -234,7 +234,7 @@ export class SocketIORouter {
 
       const senderUuid = validateUuid(senderId);
       if (agentId === senderUuid) {
-        logger.info(`[SocketIO] Skipping sender's own socket ${clientSocket.id}`);
+        logger.debug(`[SocketIO] Skipping sender's own socket ${clientSocket.id}`);
         continue;
       }
 
@@ -264,7 +264,7 @@ export class SocketIORouter {
   ) {
     const { senderId, senderName, agentId, message, roomId, worldId, source } = data;
 
-    logger.info(`[SocketIO] Creating new message for agent ${agentId}`);
+    logger.debug(`[SocketIO] Creating new message for agent ${agentId}`);
 
     // Find the appropriate runtime
     const runtime = this.agents.get(agentId) || this.agents.get(senderId as UUID);
@@ -286,7 +286,7 @@ export class SocketIORouter {
 
       // Ensure connection for entity
       try {
-        logger.info(
+        logger.debug(
           `[SocketIO] Ensuring connection for entity ${entityId} in room ${uniqueRoomId}`
         );
         await runtime.ensureConnection({
@@ -298,7 +298,7 @@ export class SocketIORouter {
           type: ChannelType.API,
           worldId: (worldId as UUID) || createUniqueUuid(runtime, 'client-chat'),
         });
-        logger.info(`[SocketIO] Connection ensured successfully`);
+        logger.debug(`[SocketIO] Connection ensured successfully`);
       } catch (error) {
         logger.error(`[SocketIO] Error in ensureConnection: ${error.message}`);
       }
@@ -330,7 +330,7 @@ export class SocketIORouter {
     });
 
     if (!existingRelationship && entityId !== runtime.agentId) {
-      logger.info(
+      logger.debug(
         `[SocketIO] Creating new relationship between ${entityId} and ${runtime.agentId}`
       );
       await runtime.createRelationship({
@@ -342,7 +342,7 @@ export class SocketIORouter {
           channel: 'socketio',
         },
       });
-      logger.info(`[SocketIO] Relationship created successfully`);
+      logger.debug(`[SocketIO] Relationship created successfully`);
     }
   }
 
@@ -378,16 +378,16 @@ export class SocketIORouter {
       createdAt: Date.now(),
     };
 
-    logger.info(`[SocketIO] Adding embedding to memory for message ${memory.id}`);
+    logger.debug(`[SocketIO] Adding embedding to memory for message ${memory.id}`);
     await runtime.addEmbeddingToMemory(memory);
 
-    logger.info(`[SocketIO] Creating memory for message ${memory.id}`);
+    logger.debug(`[SocketIO] Creating memory for message ${memory.id}`);
     await runtime.createMemory(memory, 'messages');
-    logger.info(`[SocketIO] Created memory successfully`);
+    logger.debug(`[SocketIO] Created memory successfully`);
   }
 
   private broadcastMessageToRoom(socket: Socket, roomId: string, payload: any) {
-    logger.info(`[SocketIO] Broadcasting message to room ${roomId}`);
+    logger.debug(`[SocketIO] Broadcasting message to room ${roomId}`);
 
     // Send using both formats for compatibility
     socket.to(roomId).emit(String(SOCKET_MESSAGE_TYPE.SEND_MESSAGE), payload);
@@ -406,7 +406,7 @@ export class SocketIORouter {
       },
     });
 
-    logger.info(`[SocketIO] Broadcasted message from ${payload.senderId} to Room ${roomId}`);
+    logger.debug(`[SocketIO] Broadcasted message from ${payload.senderId} to Room ${roomId}`);
   }
 
   private sendErrorResponse(socket: Socket, errorMessage: string) {
@@ -419,7 +419,7 @@ export class SocketIORouter {
 
   private handleLogSubscription(socket: Socket) {
     this.logStreamConnections.set(socket.id, {});
-    logger.info(`[SocketIO] Client ${socket.id} subscribed to log stream`);
+    logger.debug(`[SocketIO] Client ${socket.id} subscribed to log stream`);
     socket.emit('log_subscription_confirmed', {
       subscribed: true,
       message: 'Successfully subscribed to log stream',
@@ -428,7 +428,7 @@ export class SocketIORouter {
 
   private handleLogUnsubscription(socket: Socket) {
     this.logStreamConnections.delete(socket.id);
-    logger.info(`[SocketIO] Client ${socket.id} unsubscribed from log stream`);
+    logger.debug(`[SocketIO] Client ${socket.id} unsubscribed from log stream`);
     socket.emit('log_subscription_confirmed', {
       subscribed: false,
       message: 'Successfully unsubscribed from log stream',
@@ -439,7 +439,7 @@ export class SocketIORouter {
     const existingFilters = this.logStreamConnections.get(socket.id);
     if (existingFilters !== undefined) {
       this.logStreamConnections.set(socket.id, { ...existingFilters, ...filters });
-      logger.info(`[SocketIO] Updated log filters for client ${socket.id}:`, filters);
+      logger.debug(`[SocketIO] Updated log filters for client ${socket.id}:`, filters);
       socket.emit('log_filters_updated', {
         success: true,
         filters: this.logStreamConnections.get(socket.id),
@@ -490,9 +490,9 @@ export class SocketIORouter {
     this.logStreamConnections.delete(socket.id);
 
     if (agentId) {
-      logger.info(`[SocketIO] Agent ${agentId} disconnected.`);
+      logger.debug(`[SocketIO] Agent ${agentId} disconnected.`);
     } else {
-      logger.info(`[SocketIO] Client ${socket.id} disconnected.`);
+      logger.debug(`[SocketIO] Client ${socket.id} disconnected.`);
     }
   }
 }
