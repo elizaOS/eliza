@@ -3,7 +3,9 @@ import { CachedRegistry } from '../types/plugins';
 
 export async function fetchPluginRegistry(): Promise<CachedRegistry | null> {
   try {
-    const resp = await fetch('https://vercel-api-psi.vercel.app/api/plugins/registry');
+    const resp = await fetch(
+      'https://raw.githubusercontent.com/elizaos-plugins/registry/refs/heads/main/generated-registry.json'
+    );
     if (!resp.ok) {
       logger.error(`Failed to fetch plugin registry: ${resp.statusText}`);
       throw new Error(`Failed to fetch registry: ${resp.statusText}`);
