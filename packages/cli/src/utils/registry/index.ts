@@ -10,7 +10,7 @@ import { execa } from 'execa';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
-import { REGISTRY_URL, REGISTRY_REPO, RAW_REGISTRY_URL } from './constants';
+import { REGISTRY_ORG, REGISTRY_REPO, REGISTRY_URL, RAW_REGISTRY_URL } from './constants';
 
 const ELIZA_DIR = path.join(process.cwd(), '.eliza');
 const REGISTRY_SETTINGS_FILE = path.join(ELIZA_DIR, 'registrysettings.json');
@@ -166,6 +166,20 @@ export async function setGitHubToken(token: string) {
 
 const agent = process.env.https_proxy ? new HttpsProxyAgent(process.env.https_proxy) : undefined;
 
+/**
+ * Normalizes a package name by removing scope prefixes
+ * @param packageName The package name to normalize
+ * @returns The normalized package name without scope prefix
+ */
+function normalizePackageName(packageName: string): string {
+  if (packageName.startsWith(`@${REGISTRY_ORG}/`)) {
+    return packageName.replace(`@${REGISTRY_ORG}/`, '');
+  } else if (packageName.startsWith('@elizaos/')) {
+    return packageName.replace(/^@elizaos\//, '');
+  }
+  return packageName;
+}
+
 interface PluginMetadata {
   name: string;
   description: string;
@@ -181,17 +195,32 @@ interface PluginMetadata {
 
 // Default registry data for offline use or when GitHub is unavailable
 const DEFAULT_REGISTRY: Record<string, string> = {
-  '@elizaos/plugin-anthropic': 'elizaos/plugin-anthropic',
-  '@elizaos/plugin-discord': 'elizaos/plugin-discord',
-  '@elizaos/plugin-elevenlabs': 'elizaos/plugin-elevenlabs',
-  '@elizaos/plugin-local-ai': 'elizaos/plugin-local-ai',
-  '@elizaos/plugin-openai': 'elizaos/plugin-openai',
-  '@elizaos/plugin-solana': 'elizaos/plugin-solana',
-  '@elizaos/plugin-sql': 'elizaos/plugin-sql',
-  '@elizaos/plugin-starter': 'elizaos/plugin-starter',
-  '@elizaos/plugin-tee': 'elizaos/plugin-tee',
-  '@elizaos/plugin-telegram': 'elizaos/plugin-telegram',
-  '@elizaos/plugin-twitter': 'elizaos/plugin-twitter',
+  '@elizaos-plugins/plugin-anthropic': 'github:elizaos-plugins/plugin-anthropic',
+  '@elizaos-plugins/plugin-bootstrap': 'github:elizaos-plugins/plugin-bootstrap',
+  '@elizaos-plugins/plugin-browser': 'github:elizaos-plugins/plugin-browser',
+  '@elizaos-plugins/plugin-discord': 'github:elizaos-plugins/plugin-discord',
+  '@elizaos-plugins/plugin-elevenlabs': 'github:elizaos-plugins/plugin-elevenlabs',
+  '@elizaos-plugins/plugin-evm': 'github:elizaos-plugins/plugin-evm',
+  '@elizaos-plugins/plugin-farcaster': 'github:elizaos-plugins/plugin-farcaster',
+  '@elizaos-plugins/plugin-groq': 'github:elizaos-plugins/plugin-groq',
+  '@elizaos-plugins/plugin-local-ai': 'github:elizaos-plugins/plugin-local-ai',
+  '@elizaos-plugins/plugin-mcp': 'github:elizaos-plugins/plugin-mcp',
+  '@elizaos-plugins/plugin-messari-ai-toolkit': 'github:messari/plugin-messari-ai-toolkit',
+  '@elizaos-plugins/plugin-morpheus': 'github:bowtiedbluefin/plugin-morpheus',
+  '@elizaos-plugins/plugin-node': 'github:elizaos-plugins/plugin-node',
+  '@elizaos-plugins/plugin-ollama': 'github:elizaos-plugins/plugin-ollama',
+  '@elizaos-plugins/plugin-openai': 'github:elizaos-plugins/plugin-openai',
+  '@elizaos-plugins/plugin-pdf': 'github:elizaos-plugins/plugin-pdf',
+  '@elizaos-plugins/plugin-redpill': 'github:elizaos-plugins/plugin-redpill',
+  '@elizaos-plugins/plugin-solana': 'github:elizaos-plugins/plugin-solana',
+  '@elizaos-plugins/plugin-sql': 'github:elizaos-plugins/plugin-sql',
+  '@elizaos-plugins/plugin-storage-s3': 'github:elizaos-plugins/plugin-storage-s3',
+  '@elizaos-plugins/plugin-tee': 'github:elizaos-plugins/plugin-tee',
+  '@elizaos-plugins/plugin-telegram': 'github:elizaos-plugins/plugin-telegram',
+  '@elizaos-plugins/plugin-twitter': 'github:elizaos-plugins/plugin-twitter',
+  '@elizaos-plugins/plugin-venice': 'github:elizaos-plugins/plugin-venice',
+  '@elizaos-plugins/plugin-video-understanding':
+    'github:elizaos-plugins/plugin-video-understanding',
 };
 
 /**
@@ -266,8 +295,8 @@ export async function getLocalRegistryIndex(): Promise<Record<string, string>> {
         if (pkgName.includes('plugin-')) {
           // Use the package name as both key and value
           // Format as expected by the registry: orgrepo/packagename
-          const repoName = pkgName.replace('@elizaos/', '');
-          localRegistry[pkgName] = `elizaos/${repoName}`;
+          const repoName = normalizePackageName(pkgName);
+          localRegistry[pkgName] = `${REGISTRY_ORG}/${repoName}`;
         }
       }
 
@@ -395,7 +424,7 @@ export async function getPluginRepository(pluginName: string): Promise<string | 
     // Direct GitHub shorthand (github:org/repo) - NO AUTH REQUIRED
     if (!pluginName.includes(':') && !pluginName.startsWith('@')) {
       const baseName = pluginName.replace(/^plugin-/, '');
-      return `@elizaos/plugin-${baseName}`;
+      return `@${REGISTRY_ORG}/plugin-${baseName}`;
     }
 
     return null;
@@ -454,7 +483,7 @@ export async function getPluginMetadata(pluginName: string): Promise<PluginMetad
   }
 
   const [owner, repo] = settings.defaultRegistry.split('/');
-  const normalizedName = pluginName.replace(/^@elizaos\//, '');
+  const normalizedName = normalizePackageName(pluginName);
   const url = `https://api.github.com/repos/${owner}/${repo}/contents/packages/${normalizedName}.json`;
 
   try {
@@ -553,8 +582,8 @@ export async function getPackageDetails(packageName: string): Promise<{
   maintainer: string;
 } | null> {
   try {
-    // Normalize the package name (remove @elizaos/ prefix if present)
-    const normalizedName = packageName.replace(/^@elizaos\//, '');
+    // Normalize the package name (remove prefix if present)
+    const normalizedName = normalizePackageName(packageName);
 
     // Get package details from registry
     const packageUrl = `${REGISTRY_URL.replace('index.json', '')}packages/${normalizedName}.json`;
