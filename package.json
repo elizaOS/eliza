@@ -43,7 +43,7 @@
     "@types/bun": "latest",
     "@types/node": "^22.15.3",
     "@types/uuid": "^10.0.0",
-    "bun": "^1.2.13",
+    "bun": "^1.2.15",
     "husky": "^9.1.7",
     "lerna": "8.1.4",
     "tsup": "8.5.0",

@@ -134,8 +134,8 @@ elizaos plugins publish
 git clone git@github.com:elizaOS/eliza.git
 cd eliza
 
-# We are currently on the v2-develop branch
-git checkout v2-develop
+# We are currently on the main branch
+git checkout main
 
 # Install dependencies and build
 bun install

@@ -21,7 +21,7 @@ elizaos plugins [options] [command]
 | Subcommand          | Aliases   | Description                                             | Arguments                                                                 | Options                                                                                         |
 | ------------------- | --------- | ------------------------------------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | `list`              | `l`       | List available plugins to install into the project      |                                                                           | `--all` (detailed version info), `--v0` (v0.x compatible only)                                  |
-| `add`               | `install` | Add a plugin to the project                             | `<plugin>` (plugins name e.g., "abc", "plugin-abc", "elizaos/plugin-abc") | `-n, --no-env-prompt`, `-b, --branch <branchName>` (default: v2-develop), `-T, --tag <tagname>` |
+| `add`               | `install` | Add a plugin to the project                             | `<plugin>` (plugins name e.g., "abc", "plugin-abc", "elizaos/plugin-abc") | `-n, --no-env-prompt`, `-b, --branch <branchName>` (default: main), `-T, --tag <tagname>` |
 | `update`            | `refresh` | Fetch the latest plugin registry and update local cache |                                                                           |                                                                                                 |
 | `installed-plugins` |           | List plugins found in the project dependencies          |                                                                           |                                                                                                 |
 | `remove`            | `delete`  | Remove a plugins from the project                       | `<plugin>` (plugins name e.g., "abc", "plugin-abc", "elizaos/plugin-abc") |                                                                                                 |
@@ -151,7 +151,7 @@ elizaos plugins add github:user/my-plugin#feature-branch
 elizaos plugins add plugin-name --tag beta
 
 # Development branch (for monorepo)
-elizaos plugins add plugin-name --branch v2-develop
+elizaos plugins add plugin-name --branch main
 ```
 
 ## Plugin Development Workflow

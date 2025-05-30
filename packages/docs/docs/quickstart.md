@@ -47,7 +47,7 @@ git clone git@github.com:elizaOS/eliza.git
 cd eliza
 
 # Switch to development branch
-git checkout v2-develop
+git checkout main
 
 # Install dependencies
 bun install
