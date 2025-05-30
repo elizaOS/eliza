@@ -216,7 +216,6 @@ plugins
       if (httpsMatch) {
         const [, owner, repo, ref] = httpsMatch;
         plugin = `github:${owner}/${repo}${ref ? `#${ref}` : ''}`;
-        logger.info(`Detected GitHub URL. Converted to: ${plugin}`);
       }
       // --- End GitHub URL conversion ---
 
@@ -238,8 +237,6 @@ plugins
         // For now, we'll use the repo name, but this might need refinement
         // to check package.json inside the repo after installation.
         const pluginNameForPostInstall = repo;
-
-        logger.info(`Attempting to install plugin directly from GitHub: ${githubSpecifier}`);
 
         // For GitHub installs, opts.tag and opts.branch are superseded by the #ref in the specifier.
         // We pass undefined for them to installPlugin, which should be updated to handle this.
@@ -271,13 +268,6 @@ plugins
         const pluginKey = possibleNames.find((name) => cachedRegistry.registry[name]);
 
         const targetName = pluginKey || plugin;
-        if (pluginKey) {
-          logger.info(`Found plugin in registry, installing ${pluginKey}...`);
-        } else {
-          logger.info(
-            `Plugin "${plugin}" not found directly in registry, attempting fuzzy lookup...`
-          );
-        }
 
         const registryInstallResult = await installPlugin(targetName, cwd, opts.tag);
 
@@ -384,7 +374,6 @@ plugins
 
       const pluginDir = path.join(cwd, dirNameToRemove);
       if (fs.existsSync(pluginDir)) {
-        console.info(`Removing plugins directory ${pluginDir}...`);
         try {
           fs.rmSync(pluginDir, { recursive: true, force: true });
         } catch (rmError) {
@@ -393,7 +382,6 @@ plugins
       } else {
         const nonPrefixedDir = path.join(cwd, baseName);
         if (fs.existsSync(nonPrefixedDir)) {
-          console.info(`Removing non-standard plugins directory ${nonPrefixedDir}...`);
           try {
             fs.rmSync(nonPrefixedDir, { recursive: true, force: true });
           } catch (rmError) {

@@ -77,7 +77,7 @@ export async function executeInstallation(
   const packageManager = await getPackageManager();
   const installCommand = getInstallCommand(packageManager, false);
 
-  logger.info(`Attempting to install package: ${packageName} using ${packageManager}`);
+  logger.debug(`Attempting to install package: ${packageName} using ${packageManager}`);
 
   const finalSpecifier = packageName.startsWith('github:')
     ? `${packageName}${versionOrTag ? `#${versionOrTag}` : ''}`
@@ -89,7 +89,7 @@ export async function executeInstallation(
       cwd: directory,
       stdio: 'inherit',
     });
-    logger.info(`Successfully installed ${finalSpecifier}.`);
+    logger.debug(`Successfully installed ${finalSpecifier}.`);
 
     const installedIdentifier = packageName.startsWith('github:')
       ? (() => {
