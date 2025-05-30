@@ -18,6 +18,17 @@ vi.mock('@elizaos/core', async () => {
 // Access the plugin's init function
 const initPlugin = plugin.init;
 
+// Create a simple mock runtime for testing
+const createMockRuntime = () =>
+  ({
+    character: { name: 'Test' },
+    getSetting: () => null,
+    models: {},
+    db: { get: async () => null, set: async () => true },
+    memory: { add: async () => {}, get: async () => null },
+    getService: () => null,
+  }) as any;
+
 describe('Plugin Configuration Schema', () => {
   // Create a backup of the original env values
   const originalEnv = { ...process.env };
@@ -41,7 +52,7 @@ describe('Plugin Configuration Schema', () => {
     if (initPlugin) {
       let error = null;
       try {
-        await initPlugin(validConfig);
+        await initPlugin(validConfig, createMockRuntime());
       } catch (e) {
         error = e;
       }
@@ -55,7 +66,7 @@ describe('Plugin Configuration Schema', () => {
     if (initPlugin) {
       let error = null;
       try {
-        await initPlugin(emptyConfig);
+        await initPlugin(emptyConfig, createMockRuntime());
       } catch (e) {
         error = e;
       }
@@ -72,7 +83,7 @@ describe('Plugin Configuration Schema', () => {
     if (initPlugin) {
       let error = null;
       try {
-        await initPlugin(configWithExtra);
+        await initPlugin(configWithExtra, createMockRuntime());
       } catch (e) {
         error = e;
       }
@@ -88,7 +99,7 @@ describe('Plugin Configuration Schema', () => {
     if (initPlugin) {
       let error = null;
       try {
-        await initPlugin(invalidConfig);
+        await initPlugin(invalidConfig, createMockRuntime());
       } catch (e) {
         error = e;
       }
@@ -106,7 +117,7 @@ describe('Plugin Configuration Schema', () => {
       delete process.env.EXAMPLE_PLUGIN_VARIABLE;
 
       // Initialize with config
-      await initPlugin(testConfig);
+      await initPlugin(testConfig, createMockRuntime());
 
       // Verify environment variable was set
       expect(process.env.EXAMPLE_PLUGIN_VARIABLE).toBe('test-value');
@@ -118,11 +129,11 @@ describe('Plugin Configuration Schema', () => {
     process.env.EXAMPLE_PLUGIN_VARIABLE = 'pre-existing-value';
 
     const testConfig = {
-      EXAMPLE_PLUGIN_VARIABLE: undefined,
+      // Omit the variable to test that existing env vars aren't overridden
     };
 
     if (initPlugin) {
-      await initPlugin(testConfig);
+      await initPlugin(testConfig, createMockRuntime());
 
       // Verify environment variable was not changed
       expect(process.env.EXAMPLE_PLUGIN_VARIABLE).toBe('pre-existing-value');

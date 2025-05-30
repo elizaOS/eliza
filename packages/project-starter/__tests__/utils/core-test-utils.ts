@@ -121,22 +121,35 @@ export const createMockRuntime = (): IAgentRuntime => {
  * Documents test results for logging and debugging
  */
 export const documentTestResult = (testName: string, result: any, error: Error | null = null) => {
-  logger.info(`TEST: ${testName}`);
+  // Clean, useful test documentation for developers
+  logger.info(`✓ Testing: ${testName}`);
+
+  if (error) {
+    logger.error(`✗ Error: ${error.message}`);
+    if (error.stack) {
+      logger.error(`Stack: ${error.stack}`);
+    }
+    return;
+  }
+
   if (result) {
     if (typeof result === 'string') {
-      logger.info(`RESULT: ${result.substring(0, 100)}${result.length > 100 ? '...' : ''}`);
-    } else {
-      try {
-        logger.info(`RESULT: ${JSON.stringify(result, null, 2).substring(0, 200)}...`);
-      } catch (e) {
-        logger.info(`RESULT: [Complex object that couldn't be stringified]`);
+      if (result.trim() && result.length > 0) {
+        const preview = result.length > 60 ? `${result.substring(0, 60)}...` : result;
+        logger.info(`  → ${preview}`);
       }
-    }
-  }
-  if (error) {
-    logger.error(`ERROR: ${error.message}`);
-    if (error.stack) {
-      logger.error(`STACK: ${error.stack}`);
+    } else if (typeof result === 'object') {
+      try {
+        // Show key information in a clean format
+        const keys = Object.keys(result);
+        if (keys.length > 0) {
+          const preview = keys.slice(0, 3).join(', ');
+          const more = keys.length > 3 ? ` +${keys.length - 3} more` : '';
+          logger.info(`  → {${preview}${more}}`);
+        }
+      } catch (e) {
+        logger.info(`  → [Complex object]`);
+      }
     }
   }
 };
