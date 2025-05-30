@@ -11,30 +11,45 @@ export const phalaCliCommand = new Command('phala')
   .allowUnknownOption()
   .helpOption(false)
   .action(async (options, command) => {
-    // Get all arguments after 'cloud'
+    // Get all arguments after 'phala'
     const args = command.args;
 
     try {
-      // Spawn the phala CLI with the provided arguments
-      const phalaProcess = spawn('npx', ['phala', ...args], {
+      elizaLogger.info('Running Phala CLI command:', ['phala', ...args].join(' '));
+
+      // Use npx with --yes flag to auto-install without prompting
+      const phalaProcess = spawn('npx', ['--yes', 'phala', ...args], {
         stdio: 'inherit',
         shell: true,
       });
 
       phalaProcess.on('error', (error) => {
         elizaLogger.error('Failed to execute Phala CLI:', error);
-        console.error('Error: Failed to execute Phala CLI. Make sure you have npx installed.');
+
+        if (error.message.includes('ENOENT')) {
+          elizaLogger.error('\n❌ Error: npx not found. Please install Node.js and npm:');
+          elizaLogger.error('   Visit https://nodejs.org or use a version manager like nvm');
+          elizaLogger.error(
+            '   curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash'
+          );
+        } else {
+          elizaLogger.error('\n❌ Error: Failed to execute Phala CLI');
+          elizaLogger.error('   Try running directly: npx phala', args.join(' '));
+        }
         process.exit(1);
       });
 
       phalaProcess.on('exit', (code) => {
+        if (code !== 0) {
+          elizaLogger.warn(`Phala CLI exited with code: ${code}`);
+        }
         process.exit(code || 0);
       });
     } catch (error) {
       elizaLogger.error('Error running Phala CLI:', error);
-      console.error(
-        'Error: Failed to run Phala CLI. Try running Phala CLI directly with `npx phala`'
-      );
+      elizaLogger.error('\n❌ Error: Failed to run Phala CLI');
+      elizaLogger.error('   Try running Phala CLI directly with: npx phala', args.join(' '));
+      elizaLogger.error('   Or visit https://www.npmjs.com/package/phala for more information');
       process.exit(1);
     }
   })
@@ -44,6 +59,7 @@ export const phalaCliCommand = new Command('phala')
   .on('--help', () => {
     console.log('');
     console.log('This command wraps the official Phala Cloud CLI.');
+    console.log('The Phala CLI will be automatically downloaded if not already installed.');
     console.log('All arguments are passed directly to the Phala CLI.');
     console.log('');
     console.log('Examples:');

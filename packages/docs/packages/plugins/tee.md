@@ -25,7 +25,7 @@ The plugin requires the following environment variables:
 ```env
 TEE_MODE=LOCAL|DOCKER|PRODUCTION
 WALLET_SECRET_SALT=your_secret_salt  # Required for single agent deployments
-DSTACK_SIMULATOR_ENDPOINT=your-endpoint-url  # Optional, for simulator purposes
+TEE_VENDOR=phala # Phala Cloud supported only currently
 ```
 
 ## Usage
@@ -78,16 +78,59 @@ const attestation = await provider.generateAttestation('your-report-data');
 
 ## Development
 
-### Building
+### Requirements
+
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed
+- [Phala Cloud Account](https://cloud.phala.network) [Generate API Key](https://docs.phala.network/phala-cloud/phala-cloud-user-guides/advanced-deployment-options/start-from-cloud-cli#generate-a-phala-cloud-api-key)
+
+### Create a TEE Project Starter
 
 ```bash
-npm run build
+elizaos create tee-agent --tee
 ```
 
-### Testing
+### Authenticate Your Phala Cloud Account
 
 ```bash
-npm run test
+# cd into directory and authenticate your Phala Cloud API Key
+cd tee-agent
+elizaos tee phala auth login
+```
+
+### Build and Publish Docker Image
+
+```bash
+# Log into Docker and ensure docker is running
+elizaos tee phala docker build
+
+# Publish the Docker image you built
+elizaos tee phala docker push
+```
+
+### Generate Docker Compose File
+
+```bash
+# Generate a Docker Compose file or update the image in the existing docker compose file
+elizaos tee phala docker generate --template eliza
+```
+
+### Deploy to Phala Cloud
+
+```bash
+# Create and deploy a CVM
+elizaos tee phala cvms create --name elizaos -c <docker-compose-file> -e <path-to-env>
+```
+
+### Upgrade Agent in Phala Cloud
+
+```bash
+elizaos tee phala cvms upgrade -c <docker-compose-file> -e <path-to-env-(optional)>
+```
+
+### Get Agent's Remote Attestation Report
+
+```bash
+elizaos tee phala cvms attestation <app-id>
 ```
 
 ## Local Development
@@ -95,9 +138,10 @@ npm run test
 To get a TEE simulator for local testing, use the following commands:
 
 ```bash
-docker pull phalanetwork/tappd-simulator:latest
-# by default the simulator is available in localhost:8090
-docker run --rm -p 8090:8090 phalanetwork/tappd-simulator:latest
+# Start the simulator
+elizaos tee phala simulator start
+# Run your docker compose file
+docker compose up
 ```
 
 ## Dependencies
@@ -109,11 +153,19 @@ docker run --rm -p 8090:8090 phalanetwork/tappd-simulator:latest
 
 ## API Reference
 
+### Actions
+
+- `phalaRemoteAttestationAction`: Action to generate a remote attestation report on the processed message and upload the attestation report to https://proof.t16z.com
+
 ### Providers
 
 - `deriveKeyProvider`: Manages secure key derivation within TEE
 - `remoteAttestationProvider`: Handles generation of remote attestation quotes
 - `walletProvider`: Manages wallet interactions with TEE-derived keys
+
+### Services
+
+- `TEEService`: Service to use the key generation functions to generate keys for EVM or Solana based blockchains
 
 ### Types
 
@@ -196,25 +248,24 @@ Contributions are welcome! Please see the CONTRIBUTING.md file for more informat
 
 This plugin integrates with and builds upon several key technologies:
 
-- [Phala Network](https://phala.network/): Confidential smart contract platform
-- [@phala/dstack-sdk](https://www.npmjs.com/package/@phala/dstack-sdk): Core TEE functionality
+- [Phala Cloud](https://cloud.phala.network/): TEE Cloud Hosting Platform built by Phala Network
+- [@phala/dstack-sdk](https://www.npmjs.com/package/@phala/dstack-sdk): dstack SDK for key generation and remote attestation function calls
 - [@solana/web3.js](https://www.npmjs.com/package/@solana/web3.js): Solana blockchain interaction
 - [viem](https://www.npmjs.com/package/viem): Ethereum interaction library
-- [Intel SGX](https://www.intel.com/content/www/us/en/developer/tools/software-guard-extensions/overview.html): Trusted Execution Environment technology
+- [Dstack Deep Wiki](https://deepwiki.com/Dstack-TEE/dstack): dstack is a developer-friendly platform designed to simplify the deployment of containerized applications into Trusted Execution Environments (TEEs)
 
 Special thanks to:
 
 - The Phala Network team for their TEE infrastructure
-- The Intel SGX team for TEE technology
-- The dStack SDK maintainers
+- The Intel SGX/TDX team for TEE technology
+- The dstack SDK maintainers
 - The Eliza community for their contributions and feedback
 
 For more information about TEE capabilities:
 
 - [Phala Documentation](https://docs.phala.network/)
-- [Intel SGX Documentation](https://www.intel.com/content/www/us/en/developer/tools/software-guard-extensions/documentation.html)
-- [TEE Security Best Practices](https://docs.phala.network/developers/phat-contract/security-notes)
-- [dStack SDK Reference](https://docs.phala.network/developers/dstack-sdk)
+- [Phala Cloud Production Ready](https://docs.phala.network/phala-cloud/be-production-ready)
+- [dstack SDK Reference](https://docs.phala.network/developers/dstack-sdk)
 
 ## License
 

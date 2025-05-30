@@ -257,34 +257,209 @@ Run tests for Eliza agent plugins and projects.
 
 #### `elizaos tee phala <subcommand>`
 
-Manage TEE deployments with Phala. The CLI provides both native ElizaOS commands and integration with the official [Phala Cloud CLI](https://docs.phala.network/phala-cloud/references/tee-cloud-cli).
+Manage TEE deployments using the official [Phala Cloud CLI](https://docs.phala.network/phala-cloud/references/tee-cloud-cli). This integration provides seamless access to Phala's decentralized TEE cloud infrastructure directly through the ElizaOS CLI.
 
-##### Official Phala Cloud CLI Integration
-
-The official [Phala Cloud CLI](https://www.npmjs.com/package/phala) is integrated as:
+All Phala Cloud CLI commands are passed through transparently, allowing you to use the full functionality of Phala's TEE platform.
 
 ```bash
-elizaos tee phala <any-phala-command>
+elizaos tee phala <command> [options]
 ```
 
-This provides access to all Phala Cloud CLI commands including:
+##### Main Commands
 
-- **Examples:**
-  - `elizaos tee phala help` - Show Phala CLI help
-  - `elizaos tee phala auth login <api-key>` - Authenticate with Phala Cloud
-  - `elizaos tee phala auth status` - Check authentication status
-  - `elizaos tee phala cvms list` - List all CVMs
-  - `elizaos tee phala cvms create --name my-app --compose ./docker-compose.yml` - Create a new CVM
-  - `elizaos tee phala cvms get <app-id>` - Get CVM details
-  - `elizaos tee phala cvms start <app-id>` - Start a CVM
-  - `elizaos tee phala cvms stop <app-id>` - Stop a CVM
-  - `elizaos tee phala cvms delete <app-id>` - Delete a CVM
-  - `elizaos tee phala docker build --image my-app --tag v1.0.0` - Build Docker image
-  - `elizaos tee phala docker push --image my-app --tag v1.0.0` - Push to Docker Hub
-  - `elizaos tee phala simulator start` - Start TEE simulator
-  - `elizaos tee phala simulator stop` - Stop TEE simulator
+- **`elizaos tee phala help`** - Display help for all commands
+- **`elizaos tee phala join` (alias: `free`)** - Join Phala Cloud! Get an account and deploy a CVM for FREE
+- **`elizaos tee phala demo`** - Launch demo applications on Phala Cloud (Jupyter Notebook, HTTPBin)
 
-All arguments are passed directly to the official Phala CLI. For complete documentation, run `npx phala help`.
+##### Authentication Commands (`elizaos tee phala auth`)
+
+- **`elizaos tee phala auth login [api-key]`** - Set the API key for authentication
+
+  - Store your Phala Cloud API key securely for subsequent operations
+  - Get your API key from [Phala Cloud Dashboard](https://cloud.phala.network)
+
+- **`elizaos tee phala auth logout`** - Remove the stored API key
+
+- **`elizaos tee phala auth status`** - Check authentication status
+  - Displays whether you're logged in and which account is active
+
+##### Cloud Virtual Machine Management (`elizaos tee phala cvms`)
+
+- **`elizaos tee phala cvms list` (alias: `ls`)** - List all CVMs
+
+  - Options:
+    - `-j, --json` - Output in JSON format
+
+- **`elizaos tee phala cvms create`** - Create a new CVM
+
+  - Options:
+    - `-n, --name <name>` - Name of the CVM
+    - `-c, --compose <compose>` - Path to Docker Compose file
+    - `--vcpu <vcpu>` - Number of vCPUs (default: 2)
+    - `--memory <memory>` - Memory in MB (default: 4096)
+    - `--disk-size <diskSize>` - Disk size in GB (default: 40)
+    - `--teepod-id <teepodId>` - TEEPod ID to use (will prompt if not provided)
+    - `--image <image>` - Version of dstack image to use (will prompt if not provided)
+    - `-e, --env-file <envFile>` - Path to environment file
+    - `--skip-env` - Skip environment variable prompt (default: false)
+    - `--debug` - Enable debug mode (default: false)
+
+- **`elizaos tee phala cvms get [app-id]`** - Get details of a CVM
+
+  - Options:
+    - `-j, --json` - Output in JSON format
+
+- **`elizaos tee phala cvms start [app-id]`** - Start a stopped CVM
+
+  - Interactive selection if app-id not provided
+
+- **`elizaos tee phala cvms stop [app-id]`** - Stop a running CVM
+
+  - Interactive selection if app-id not provided
+
+- **`elizaos tee phala cvms restart [app-id]`** - Restart a CVM
+
+  - Interactive selection if app-id not provided
+
+- **`elizaos tee phala cvms delete [app-id]`** - Delete a CVM
+
+  - Options:
+    - `-f, --force` - Skip confirmation prompt
+
+- **`elizaos tee phala cvms upgrade [app-id]`** - Upgrade a CVM to a new version
+
+  - Options:
+    - `-c, --compose <compose>` - Path to new Docker Compose file
+    - `--env-file <envFile>` - Path to environment file
+    - `--debug` - Enable debug mode
+
+- **`elizaos tee phala cvms resize [app-id]`** - Resize resources for a CVM
+
+  - Options:
+    - `-v, --vcpu <vcpu>` - Number of virtual CPUs
+    - `-m, --memory <memory>` - Memory size in MB
+    - `-d, --disk-size <diskSize>` - Disk size in GB
+    - `-r, --allow-restart <allowRestart>` - Allow restart of the CVM if needed
+    - `-y, --yes` - Automatically confirm the resize operation
+
+- **`elizaos tee phala cvms attestation [app-id]`** - Get attestation information for a CVM
+  - Provides cryptographic proof that your application is running in a secure TEE
+  - Interactive selection if app-id not provided
+
+##### Docker Management (`elizaos tee phala docker`)
+
+- **`elizaos tee phala docker login`** - Login to Docker Hub
+
+  - Configure Docker Hub credentials for pushing images
+
+- **`elizaos tee phala docker build`** - Build a Docker image
+
+  - Options:
+    - `--image <image>` - Docker image name
+    - `--tag <tag>` - Tag for the Docker image
+
+- **`elizaos tee phala docker push`** - Push a Docker image to Docker Hub
+
+  - Options:
+    - `--image <image>` - Docker image name
+    - `--tag <tag>` - Tag to push
+
+- **`elizaos tee phala docker generate`** - Generate a Docker Compose file
+  - Options:
+    - `-i, --image <imageName>` - Docker image name to use in the compose file
+    - `-e, --env-file <envFile>` - Path to environment variables file
+    - `-o, --output <output>` - Output path for generated docker-compose.yml
+    - `--template <template>` - Template to use for the generated docker-compose.yml
+
+##### TEE Simulator (`elizaos tee phala simulator`)
+
+- **`elizaos tee phala simulator start`** - Start the TEE simulator
+
+  - Options:
+    - `-i, --image <image>` - Simulator image to use
+    - `-p, --port <port>` - Simulator port (default: 8090) (default: "8090")
+    - `-t, --type <type>` - Simulator type (docker, native) (default: "docker")
+
+- **`elizaos tee phala simulator stop`** - Stop the TEE simulator
+  - Stops the running TEE simulator container
+
+##### Getting Started
+
+1. **Sign up for Phala Cloud**:
+
+   ```bash
+   elizaos tee phala free
+   # Or visit https://cloud.phala.network to create an account
+   ```
+
+2. **Authenticate**:
+
+   ```bash
+   elizaos tee phala auth login <your-api-key>
+   elizaos tee phala auth status
+   ```
+
+3. **Deploy your first Eliza Agent**:
+
+   ```bash
+   # Create a TEE project starter template
+   elizaos create tee-agent --tee
+
+   # cd into directory and authenticate your Phala Cloud API Key
+   cd tee-agent
+   elizaos tee phala auth login
+
+   # Log into Docker and ensure docker is running
+   elizaos tee phala docker build
+
+   # Publish the Docker image you built
+   elizaos tee phala docker push
+
+   # Generate a Docker Compose file or update the image in the existing docker compose file
+   elizaos tee phala docker generate --template eliza
+
+   # Create and deploy a CVM
+   elizaos tee phala cvms create --name elizaos -c <docker-compose file> -e <path to .env>
+
+   # Check deployment status
+   elizaos tee phala cvms list
+
+   # Upgrade existing deployment
+   elizaos tee phala cvms upgrade -c <docker-compose file> -e <path to .env (optional)>
+   ```
+
+4. **Verify TEE attestation**:
+
+   ```bash
+   elizaos tee phala cvms attestation <app-id>
+   ```
+
+##### Private Registry Support
+
+For private Docker images, set these environment variables before deployment and add them to your docker-compose file:
+
+**DockerHub**:
+
+- `DSTACK_DOCKER_USERNAME` - Your DockerHub username
+- `DSTACK_DOCKER_PASSWORD` - Your DockerHub password or access token
+- `DSTACK_DOCKER_REGISTRY` - Registry URL (optional, defaults to DockerHub)
+
+**AWS ECR**:
+
+- `DSTACK_AWS_ACCESS_KEY_ID` - AWS access key
+- `DSTACK_AWS_SECRET_ACCESS_KEY` - AWS secret key
+- `DSTACK_AWS_REGION` - AWS region
+- `DSTACK_AWS_ECR_REGISTRY` - Full ECR registry URL
+
+##### Additional Resources
+
+- **Command Help**: `elizaos tee phala help` or `elizaos tee phala <command> --help`
+- **Official Documentation**: [Phala Cloud Docs](https://docs.phala.network/phala-cloud)
+- **Dashboard**: [Phala Cloud Dashboard](https://cloud.phala.network)
+- **NPM Package**: [phala on npm](https://www.npmjs.com/package/phala)
+- **Support**: [Phala Network Discord](https://discord.gg/phala-network)
+
+All commands support the full range of options available in the official Phala CLI. For the most current command reference, run `npx phala help`.
 
 ### Updates
 
