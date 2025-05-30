@@ -48,6 +48,12 @@ export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
       className="flex flex-col h-full"
     >
       <TabsList className="flex">
+        {allTabs.map((tab) => (
+          <TabsTrigger key={tab.value} value={tab.value} className="flex items-center gap-1.5">
+            {tab.icon}
+            <span>{tab.label}</span>
+          </TabsTrigger>
+        ))}
         {isLoadingPanels && (
           <>
             {[...Array(2)].map((_, i) => (
@@ -55,12 +61,6 @@ export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
             ))}
           </>
         )}
-        {allTabs.map((tab) => (
-          <TabsTrigger key={tab.value} value={tab.value} className="flex items-center gap-1.5">
-            {tab.icon}
-            <span>{tab.label}</span>
-          </TabsTrigger>
-        ))}
       </TabsList>
 
       <TabsContent value="actions" className="overflow-y-auto flex-1">
