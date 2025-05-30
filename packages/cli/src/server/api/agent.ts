@@ -30,7 +30,6 @@ import path from 'node:path';
 import FormData from 'form-data';
 import axios from 'axios';
 import sharp from 'sharp';
-import type { File } from 'multer';
 
 // Cache for compiled regular expressions to improve performance
 const regexCache = new Map<string, RegExp>();
