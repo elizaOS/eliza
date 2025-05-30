@@ -40,7 +40,6 @@ async function updatePackageJson(packagePath, cliVersion, isPluginStarter = fals
 
   // Set repository URL for templates
   if (packageData.repository) {
-    console.log('Setting repository URL for template');
     packageData.repository.url = '';
   }
 

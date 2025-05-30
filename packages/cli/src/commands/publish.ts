@@ -83,15 +83,12 @@ async function checkCliVersion() {
 
     // Compare versions
     if (latestVersion && latestVersion !== currentVersion) {
-      console.warn(
-        `You are using CLI version ${currentVersion}, but the latest version is ${latestVersion} (published ${new Date(timeData[latestVersion]).toLocaleDateString()})`
-      );
-      console.info(`Run 'elizaos update' to update to the latest version`);
+      console.warn(`CLI update available: ${currentVersion} → ${latestVersion}`);
 
       const { update } = await prompts({
         type: 'confirm',
         name: 'update',
-        message: 'Would you like to update now before proceeding?',
+        message: 'Update CLI before publishing?',
         initial: false,
       });
 
@@ -400,7 +397,7 @@ async function validatePluginRequirements(cwd: string, packageJson: any): Promis
   if (warnings.length > 0) {
     console.warn('Plugin validation warnings:');
     warnings.forEach((warning) => console.warn(`  - ${warning}`));
-    console.warn('\nYour plugin may get rejected if you submit without addressing these issues.');
+    console.warn('Your plugin may get rejected if you submit without addressing these issues.');
 
     const { proceed } = await prompts({
       type: 'confirm',
@@ -555,7 +552,6 @@ export const publish = new Command()
                     console.info('Detected plugin based on exports');
                   }
                 } catch (importError) {
-                  console.debug(`Error importing module: ${importError}`);
                   // Continue with default type
                 }
               } catch {
@@ -563,7 +559,6 @@ export const publish = new Command()
               }
             }
           } catch (error) {
-            console.debug(`Error during type detection: ${error}`);
             // Continue with default type
           }
         }
@@ -605,8 +600,7 @@ export const publish = new Command()
       // Get or prompt for GitHub credentials
       let credentials = await getGitHubCredentials();
       if (!credentials) {
-        console.info('\nGitHub credentials required for publishing.');
-        console.info('Please enter your GitHub credentials:\n');
+        console.info('GitHub credentials required for publishing.');
 
         await new Promise((resolve) => setTimeout(resolve, 10));
 
@@ -737,7 +731,7 @@ export const publish = new Command()
 
         if (success) {
           console.log(
-            `Dry run successful: Registry metadata generated for ${packageJson.name}@${packageJson.version}`
+            `[√] Dry run successful: Registry metadata generated for ${packageJson.name}@${packageJson.version}`
           );
           console.info(`Files created in ${LOCAL_REGISTRY_PATH}`);
         } else {
@@ -813,7 +807,7 @@ export const publish = new Command()
       console.info('Publishing to npm...');
       await execa('npm', ['publish', '--ignore-scripts'], { cwd, stdio: 'inherit' });
 
-      console.log(`✓ Successfully published ${packageJson.name}@${packageJson.version} to npm`);
+      console.log(`[√] Successfully published ${packageJson.name}@${packageJson.version} to npm`);
 
       // Add npm package info to metadata
       packageMetadata.npmPackage = packageJson.name;
@@ -835,7 +829,7 @@ export const publish = new Command()
         }
 
         console.log(
-          `✓ Successfully published plugin ${packageJson.name}@${packageJson.version} to GitHub`
+          `[√] Successfully published plugin ${packageJson.name}@${packageJson.version} to GitHub`
         );
 
         // Add GitHub repo info to metadata
@@ -844,7 +838,7 @@ export const publish = new Command()
         // Store PR URL if returned from publishToGitHub
         if (typeof publishResult === 'object' && publishResult.prUrl) {
           registryPrUrl = publishResult.prUrl;
-          console.log(`✓ Registry pull request created: ${registryPrUrl}`);
+          console.log(`[√] Registry pull request created: ${registryPrUrl}`);
         }
       }
 
@@ -881,7 +875,7 @@ export const publish = new Command()
       console.log('\nYour plugin is now available at:');
       console.log(`https://github.com/${credentials.username}/${finalPluginName}`);
 
-      console.log('\n📝 Important: For future updates to your plugin:');
+      console.log('\n[📝] Important: For future updates to your plugin:');
       console.log('   Use standard npm and git workflows, not the ElizaOS CLI:');
       console.log('   1. Make your changes and test locally');
       console.log('   2. Update version: npm version patch|minor|major');

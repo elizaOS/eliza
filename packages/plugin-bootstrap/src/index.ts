@@ -240,8 +240,6 @@ const messageReceivedHandler = async ({
       throw new Error('Agent responses map not found');
     }
 
-    console.log('agentResponses is', agentResponses);
-
     // Set this as the latest response ID for this agent+room
     agentResponses.set(message.roomId, responseId);
 
@@ -260,8 +258,6 @@ const messageReceivedHandler = async ({
       status: 'started',
       source: 'messageHandler',
     });
-
-    console.log('runId is', runId);
 
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutId = setTimeout(async () => {
@@ -282,10 +278,7 @@ const messageReceivedHandler = async ({
       }, timeoutDuration);
     });
 
-    console.log('message is', message);
-
     const processingPromise = (async () => {
-      console.log('processingPromise');
       try {
         if (message.entityId === runtime.agentId) {
           logger.debug(`[Bootstrap] Skipping message from self (${runtime.agentId})`);
@@ -318,26 +311,20 @@ const messageReceivedHandler = async ({
 
         let state = await runtime.composeState(
           message,
-          ['ANXIETY', 'SHOULD_RESPOND', 'ENTITIES', 'CHARACTER', 'RECENT_MESSAGES'],
+          ['ANXIETY', 'SHOULD_RESPOND', 'ENTITIES', 'CHARACTER', 'RECENT_MESSAGES', 'ACTIONS'],
           true
         );
 
         // Skip shouldRespond check for DM and VOICE_DM channels
         const room = await runtime.getRoom(message.roomId);
 
-        console.log('room is', room);
-        console.log('message is', message);
-
         const shouldSkipShouldRespond =
           room?.type === ChannelType.DM ||
           room?.type === ChannelType.VOICE_DM ||
           room?.type === ChannelType.SELF ||
           room?.type === ChannelType.API ||
-          message.content.source?.includes('client_chat');
-
-        logger.debug(
-          `[Bootstrap] Skipping shouldRespond check for ${runtime.character.name} because ${room?.type} ${room?.source}`
-        );
+          message.content.source?.includes('client_chat') ||
+          message.content.source?.includes('livekit');
 
         if (message.content.attachments && message.content.attachments.length > 0) {
           message.content.attachments = await processAttachments(
@@ -376,6 +363,9 @@ const messageReceivedHandler = async ({
 
           shouldRespond = responseObject?.action && responseObject.action === 'RESPOND';
         } else {
+          logger.debug(
+            `[Bootstrap] Skipping shouldRespond check for ${runtime.character.name} because ${room?.type} ${room?.source}`
+          );
           shouldRespond = true;
         }
 
@@ -385,7 +375,10 @@ const messageReceivedHandler = async ({
         console.log('shouldSkipShouldRespond', shouldSkipShouldRespond);
 
         if (shouldRespond) {
-          state = await runtime.composeState(message);
+          state = await runtime.composeState(message, ['ACTIONS']);
+          if (!state.values.actionNames) {
+            logger.warn('actionNames data missing from state, even though it was requested');
+          }
 
           const prompt = composePromptFromState({
             state,
@@ -478,11 +471,50 @@ const messageReceivedHandler = async ({
           }
 
           if (responseContent && responseContent.simple && responseContent.text) {
+            // Log provider usage for simple responses
+            if (responseContent.providers && responseContent.providers.length > 0) {
+              logger.debug('[Bootstrap] Simple response used providers', responseContent.providers);
+            }
+
+            // without actions there can't be more than one message
             await callback(responseContent);
           } else {
-            await runtime.processActions(message, responseMessages, state, callback);
+            await runtime.processActions(
+              message,
+              responseMessages,
+              state,
+              async (memory: Content) => {
+                return [];
+              }
+            );
+            if (responseMessages.length) {
+              // Log provider usage for complex responses
+              for (const responseMessage of responseMessages) {
+                if (
+                  responseMessage.content.providers &&
+                  responseMessage.content.providers.length > 0
+                ) {
+                  logger.debug(
+                    '[Bootstrap] Complex response used providers',
+                    responseMessage.content.providers
+                  );
+                }
+              }
+
+              for (const memory of responseMessages) {
+                await callback(memory.content);
+              }
+            }
           }
-          await runtime.evaluate(message, state, shouldRespond, callback, responseMessages);
+          await runtime.evaluate(
+            message,
+            state,
+            shouldRespond,
+            async (memory: Content) => {
+              return [];
+            },
+            responseMessages
+          );
         } else {
           // Handle the case where the agent decided not to respond
           logger.debug('[Bootstrap] Agent decided not to respond (shouldRespond is false).');
@@ -567,9 +599,6 @@ const messageReceivedHandler = async ({
         });
       }
     })();
-
-    console.log('processingPromise is', processingPromise);
-    console.log('timeoutPromise is', timeoutPromise);
 
     await Promise.race([processingPromise, timeoutPromise]);
   } finally {

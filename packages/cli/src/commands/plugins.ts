@@ -1,5 +1,5 @@
 import { handleError, installPlugin, logHeader } from '@/src/utils';
-import { readCache, updatePluginRegistryCache } from '@/src/utils/plugin-discovery';
+import { fetchPluginRegistry } from '@/src/utils/plugin-discovery';
 import { normalizePluginName } from '@/src/utils/registry';
 import { logger } from '@elizaos/core';
 import { Command } from 'commander';
@@ -115,8 +115,8 @@ export const pluginsCommand = plugins
   .option('--v0', 'List only v0.x compatible plugins')
   .action(async (opts: { all?: boolean; v0?: boolean }) => {
     try {
-      logHeader('Listing available plugins from cached registry...');
-      const cachedRegistry = await readCache();
+      logHeader('Listing available plugins from registry...');
+      const cachedRegistry = await fetchPluginRegistry();
 
       if (
         !cachedRegistry ||
@@ -129,7 +129,7 @@ export const pluginsCommand = plugins
       }
       let availablePluginsToDisplay: string[] = [];
       const allPlugins = cachedRegistry ? Object.entries(cachedRegistry.registry) : [];
-      let displayTitle = 'Available v1.x plugins (from local cache)';
+      let displayTitle = 'Available v1.x plugins';
 
       if (opts.all) {
         displayTitle = 'All plugins in local cache (detailed view)';
@@ -156,7 +156,7 @@ export const pluginsCommand = plugins
         console.log('');
         return;
       } else if (opts.v0) {
-        displayTitle = 'Available v0.x plugins (from local cache)';
+        displayTitle = 'Available v0.x plugins';
         availablePluginsToDisplay = allPlugins
           .filter(([, info]) => info.supports.v0)
           .map(([name]) => name);
@@ -216,7 +216,6 @@ plugins
       if (httpsMatch) {
         const [, owner, repo, ref] = httpsMatch;
         plugin = `github:${owner}/${repo}${ref ? `#${ref}` : ''}`;
-        logger.info(`Detected GitHub URL. Converted to: ${plugin}`);
       }
       // --- End GitHub URL conversion ---
 
@@ -239,8 +238,6 @@ plugins
         // to check package.json inside the repo after installation.
         const pluginNameForPostInstall = repo;
 
-        logger.info(`Attempting to install plugin directly from GitHub: ${githubSpecifier}`);
-
         // For GitHub installs, opts.tag and opts.branch are superseded by the #ref in the specifier.
         // We pass undefined for them to installPlugin, which should be updated to handle this.
         const success = await installPlugin(githubSpecifier, cwd);
@@ -259,7 +256,7 @@ plugins
         }
       } else {
         // --- Registry-based or fuzzy Plugin Installation ---
-        const cachedRegistry = await readCache();
+        const cachedRegistry = await fetchPluginRegistry();
         if (!cachedRegistry || !cachedRegistry.registry) {
           logger.error(
             'Plugin registry cache not found. Please run "elizaos plugins update" first.'
@@ -271,13 +268,6 @@ plugins
         const pluginKey = possibleNames.find((name) => cachedRegistry.registry[name]);
 
         const targetName = pluginKey || plugin;
-        if (pluginKey) {
-          logger.info(`Found plugin in registry, installing ${pluginKey}...`);
-        } else {
-          logger.info(
-            `Plugin "${plugin}" not found directly in registry, attempting fuzzy lookup...`
-          );
-        }
 
         const registryInstallResult = await installPlugin(targetName, cwd, opts.tag);
 
@@ -288,25 +278,6 @@ plugins
 
         console.error(`Failed to install ${targetName} from registry.`);
         process.exit(1);
-      }
-    } catch (error) {
-      handleError(error);
-    }
-  });
-
-plugins
-  .command('update')
-  .alias('refresh')
-  .description('Fetch the latest plugin registry and update local cache')
-  .action(async () => {
-    try {
-      logHeader('Updating plugin registry cache...');
-      const success = await updatePluginRegistryCache();
-      if (success) {
-        logger.info('Plugin registry cache updated successfully.');
-      } else {
-        // updatePluginRegistryCache logs specific errors, so a general message here is fine.
-        logger.warn('Plugin registry cache update failed. Please check logs for more details.');
       }
     } catch (error) {
       handleError(error);
@@ -403,7 +374,6 @@ plugins
 
       const pluginDir = path.join(cwd, dirNameToRemove);
       if (fs.existsSync(pluginDir)) {
-        console.info(`Removing plugins directory ${pluginDir}...`);
         try {
           fs.rmSync(pluginDir, { recursive: true, force: true });
         } catch (rmError) {
@@ -412,7 +382,6 @@ plugins
       } else {
         const nonPrefixedDir = path.join(cwd, baseName);
         if (fs.existsSync(nonPrefixedDir)) {
-          console.info(`Removing non-standard plugins directory ${nonPrefixedDir}...`);
           try {
             fs.rmSync(nonPrefixedDir, { recursive: true, force: true });
           } catch (rmError) {
