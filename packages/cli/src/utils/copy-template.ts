@@ -158,7 +158,7 @@ export async function copyTemplate(
  * Copy client dist files to the CLI package dist directory
  */
 export async function copyClientDist() {
-  logger.info('Copying client dist files to CLI package');
+  logger.debug('Copying client dist files to CLI package');
 
   const srcClientDist = path.resolve(process.cwd(), '../client/dist');
   const destClientDist = path.resolve(process.cwd(), './dist');
