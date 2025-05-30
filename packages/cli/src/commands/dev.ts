@@ -1,4 +1,5 @@
 import { buildProject, handleError, isMonorepoContext, UserEnvironment } from '@/src/utils';
+import { detectDirectoryType, getDirectoryTypeDescription } from '@/src/utils/directory-detection';
 import { Command, Option } from 'commander';
 import chokidar from 'chokidar';
 import type { ChildProcess } from 'node:child_process';
@@ -73,79 +74,6 @@ async function startServer(args: string[] = []): Promise<void> {
     console.error(`Server process error: ${err.message}`);
     serverProcess = null;
   });
-}
-
-/**
- * Determines whether the current working directory represents a project or a plugin.
- *
- * Examines `package.json` fields, naming conventions, keywords, and source exports to heuristically identify if the directory is an Eliza project or plugin.
- *
- * @returns An object indicating whether the directory is a project (`isProject`) or a plugin (`isPlugin`).
- */
-async function determineProjectType(): Promise<{ isProject: boolean; isPlugin: boolean }> {
-  const cwd = process.cwd();
-  const packageJsonPath = path.join(cwd, 'package.json');
-  const isMonorepo = await isMonorepoContext();
-
-  let isProject = false;
-  let isPlugin = false;
-
-  if (fs.existsSync(packageJsonPath)) {
-    try {
-      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-
-      // Explicitly exclude the CLI package itself
-      if (packageJson.name === '@elizaos/cli') {
-        return { isProject: false, isPlugin: false };
-      }
-
-      // More specific check for plugins - must have one of these explicit indicators
-      if (
-        packageJson.eliza?.type === 'plugin' ||
-        packageJson.name?.includes('plugin-') ||
-        (packageJson.keywords &&
-          Array.isArray(packageJson.keywords) &&
-          packageJson.keywords.some((k: string) => k === 'elizaos-plugin' || k === 'eliza-plugin'))
-      ) {
-        isPlugin = true;
-        console.info('Identified as a plugin package');
-      }
-
-      // More specific check for projects
-      if (
-        packageJson.eliza?.type === 'project' ||
-        (packageJson.name &&
-          (packageJson.name.includes('project-') || packageJson.name.includes('-org'))) ||
-        (packageJson.keywords &&
-          Array.isArray(packageJson.keywords) &&
-          packageJson.keywords.some(
-            (k: string) => k === 'elizaos-project' || k === 'eliza-project'
-          ))
-      ) {
-        isProject = true;
-        console.info('Identified as a project package');
-      }
-
-      // If still not identified, check if it has src/index.ts with a Project export
-      if (!isProject && !isPlugin) {
-        const indexPath = path.join(cwd, 'src', 'index.ts');
-        if (fs.existsSync(indexPath)) {
-          const indexContent = fs.readFileSync(indexPath, 'utf-8');
-          if (
-            indexContent.includes('export const project') ||
-            (indexContent.includes('export default') && indexContent.includes('Project'))
-          ) {
-            isProject = true;
-            console.info('Identified as a project by src/index.ts export');
-          }
-        }
-      }
-    } catch (error) {
-      console.warn(`Error parsing package.json: ${error}`);
-    }
-  }
-
-  return { isProject, isPlugin };
 }
 
 /**
@@ -280,7 +208,17 @@ export const dev = new Command()
   .action(async (options) => {
     try {
       const cwd = process.cwd();
-      const { isProject, isPlugin } = await determineProjectType();
+      const directoryInfo = detectDirectoryType(cwd);
+
+      // Determine if this is a project or plugin based on directory detection
+      const isProject = directoryInfo.type === 'elizaos-project';
+      const isPlugin = directoryInfo.type === 'elizaos-plugin';
+
+      if (isProject) {
+        console.info('Identified as an ElizaOS project package');
+      } else if (isPlugin) {
+        console.info('Identified as an ElizaOS plugin package');
+      }
 
       // Prepare CLI arguments for the start command
       const cliArgs: string[] = [];
@@ -372,7 +310,7 @@ export const dev = new Command()
 
       if (!isProject && !isPlugin) {
         console.warn(
-          'Not in a recognized project or plugin directory. Running in standalone mode.'
+          `Not in a recognized ElizaOS project or plugin directory. Current directory is: ${getDirectoryTypeDescription(directoryInfo)}. Running in standalone mode.`
         );
       } else {
         console.info(`Running in ${isProject ? 'project' : 'plugin'} mode`);
