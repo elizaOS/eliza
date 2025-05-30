@@ -1,5 +1,5 @@
 import { buildProject, handleError, runBunCommand } from '@/src/utils';
-import { displayBanner as showBanner } from '@/src/utils';
+import { displayBanner } from '@/src/utils';
 import { Command } from 'commander';
 import { execa } from 'execa';
 import { existsSync, readFileSync } from 'node:fs';
@@ -372,7 +372,7 @@ export async function performCliUpdate(): Promise<boolean> {
 
     // If we couldn't determine the latest version or already at latest, exit
     if (!latestVersion || currentVersion === latestVersion) {
-      await showBanner();
+      await displayBanner();
       console.info('ElizaOS CLI is already up to date!');
       return true;
     }
@@ -411,7 +411,7 @@ export async function performCliUpdate(): Promise<boolean> {
       process.exit(1);
     }
 
-    await showBanner();
+    await displayBanner();
     console.info('ElizaOS CLI has been successfully updated!');
     return true;
   } catch (error) {
@@ -430,7 +430,7 @@ export const update = new Command()
   .option('--packages', 'Update only packages (without updating the CLI)')
   .hook('preAction', async () => {
     try {
-      await showBanner();
+      await displayBanner();
     } catch (error) {
       // Silently continue if banner display fails
       logger.debug('Banner display failed, continuing with update');
