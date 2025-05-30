@@ -737,7 +737,7 @@ export const publish = new Command()
 
         if (success) {
           console.log(
-            `Dry run successful: Registry metadata generated for ${packageJson.name}@${packageJson.version}`
+            `[√] Dry run successful: Registry metadata generated for ${packageJson.name}@${packageJson.version}`
           );
           console.info(`Files created in ${LOCAL_REGISTRY_PATH}`);
         } else {
@@ -813,7 +813,7 @@ export const publish = new Command()
       console.info('Publishing to npm...');
       await execa('npm', ['publish', '--ignore-scripts'], { cwd, stdio: 'inherit' });
 
-      console.log(`✓ Successfully published ${packageJson.name}@${packageJson.version} to npm`);
+      console.log(`[√] Successfully published ${packageJson.name}@${packageJson.version} to npm`);
 
       // Add npm package info to metadata
       packageMetadata.npmPackage = packageJson.name;
@@ -835,7 +835,7 @@ export const publish = new Command()
         }
 
         console.log(
-          `✓ Successfully published plugin ${packageJson.name}@${packageJson.version} to GitHub`
+          `[√] Successfully published plugin ${packageJson.name}@${packageJson.version} to GitHub`
         );
 
         // Add GitHub repo info to metadata
@@ -844,7 +844,7 @@ export const publish = new Command()
         // Store PR URL if returned from publishToGitHub
         if (typeof publishResult === 'object' && publishResult.prUrl) {
           registryPrUrl = publishResult.prUrl;
-          console.log(`✓ Registry pull request created: ${registryPrUrl}`);
+          console.log(`[√] Registry pull request created: ${registryPrUrl}`);
         }
       }
 
@@ -881,7 +881,7 @@ export const publish = new Command()
       console.log('\nYour plugin is now available at:');
       console.log(`https://github.com/${credentials.username}/${finalPluginName}`);
 
-      console.log('\n📝 Important: For future updates to your plugin:');
+      console.log('\n[📝] Important: For future updates to your plugin:');
       console.log('   Use standard npm and git workflows, not the ElizaOS CLI:');
       console.log('   1. Make your changes and test locally');
       console.log('   2. Update version: npm version patch|minor|major');

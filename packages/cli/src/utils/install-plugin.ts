@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { loadPluginModule } from './load-plugin';
 import { executeInstallation } from './package-manager';
-import { readCache } from './plugin-discovery';
-import { getLocalRegistryIndex, normalizePluginName } from './registry';
+import { fetchPluginRegistry } from './plugin-discovery';
+import { normalizePluginName } from './registry';
 
 /**
  * Get the CLI's installation directory when running globally
@@ -137,8 +137,7 @@ export async function installPlugin(
     return await attemptInstallation(spec, '', cwd, ':');
   }
 
-  const cache = await readCache();
-  const registry = await getLocalRegistryIndex();
+  const cache = await fetchPluginRegistry();
   const possible = normalizePluginName(packageName);
 
   let key: string | null = null;

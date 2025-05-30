@@ -24,7 +24,7 @@ This allows you to override global settings for specific characters when needed.
 ```bash
 # API Keys for Model Providers
 OPENAI_API_KEY=sk-*               # OpenAI API key
-ANTHROPIC_API_KEY=your-key        # Anthropic/Claude API key
+ANTHROPIC_API_KEY=your-key        # Anthropic API key
 GOOGLE_GENERATIVE_AI_API_KEY=     # Gemini API key
 GROQ_API_KEY=gsk-*                # Groq API key
 
