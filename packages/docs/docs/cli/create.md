@@ -46,6 +46,7 @@ npm create eliza help
 | `-d, --dir <dir>`   | Installation directory (default: `.`)           |
 | `-y, --yes`         | Skip confirmation (default: `false`)            |
 | `-t, --type <type>` | Type of template to use (`project` or `plugin`) |
+| `--tee`             | create a TEE starter project (default: `false`) |
 | `[name]`            | Name for the project or plugin (optional)       |
 
 ## Directory Handling
