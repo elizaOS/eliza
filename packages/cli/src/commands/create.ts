@@ -7,7 +7,7 @@ import {
   handleError,
   promptAndStorePostgresUrl,
   promptAndStoreOpenAIKey,
-  promptAndStoreClaudeKey,
+  promptAndStoreAnthropicKey,
   runBunCommand,
   setupPgLite,
 } from '@/src/utils';
@@ -77,7 +77,7 @@ function getAvailableAIModels() {
       description: 'Use OpenAI models like GPT-4',
     },
     {
-      title: 'Claude (Anthropic)',
+      title: 'Anthropic (Claude)',
       value: 'claude',
       description: 'Use Anthropic Claude models',
     },
@@ -100,7 +100,7 @@ async function setupAIModelConfig(
   try {
     switch (aiModel) {
       case 'local': {
-        console.info('✅ Using Local AI - no additional configuration needed');
+        console.info('[√] Using Local AI - no additional configuration needed');
         break;
       }
 
@@ -122,11 +122,11 @@ async function setupAIModelConfig(
           content += '# Get your API key from: https://platform.openai.com/api-keys\n';
 
           await fs.writeFile(envFilePath, content, 'utf8');
-          console.info('✅ OpenAI placeholder configuration added to .env file');
+          console.info('[√] OpenAI placeholder configuration added to .env file');
         } else {
           // Check if OpenAI API key already exists in environment
           if (process.env.OPENAI_API_KEY) {
-            console.info('✅ OpenAI API key found in environment variables, skipping prompt');
+            console.info('[√] OpenAI API key found in environment variables, skipping prompt');
 
             // Still add a comment to the .env file for reference
             let content = '';
@@ -164,16 +164,16 @@ async function setupAIModelConfig(
           }
 
           content += '\n# AI Model Configuration\n';
-          content += '# Anthropic Claude Configuration\n';
+          content += '# Anthropic API Configuration\n';
           content += 'ANTHROPIC_API_KEY=your_anthropic_api_key_here\n';
           content += '# Get your API key from: https://console.anthropic.com/\n';
 
           await fs.writeFile(envFilePath, content, 'utf8');
-          console.info('✅ Claude placeholder configuration added to .env file');
+          console.info('[√] Anthropic API placeholder configuration added to .env file');
         } else {
-          // Check if Claude API key already exists in environment
+          // Check if Anthropic API key already exists in environment
           if (process.env.ANTHROPIC_API_KEY) {
-            console.info('✅ Claude API key found in environment variables, skipping prompt');
+            console.info('[√] Anthropic API key found in environment variables, skipping prompt');
 
             // Still add a comment to the .env file for reference
             let content = '';
@@ -186,13 +186,13 @@ async function setupAIModelConfig(
             }
 
             content += '\n# AI Model Configuration\n';
-            content += '# Anthropic Claude Configuration (using existing environment variable)\n';
+            content += '# Anthropic API Configuration (using existing environment variable)\n';
             content += '# ANTHROPIC_API_KEY is already set in your environment\n';
 
             await fs.writeFile(envFilePath, content, 'utf8');
           } else {
             // Interactive mode - prompt for API key
-            await promptAndStoreClaudeKey(envFilePath);
+            await promptAndStoreAnthropicKey(envFilePath);
           }
         }
         break;

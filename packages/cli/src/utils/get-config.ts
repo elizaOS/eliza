@@ -476,11 +476,11 @@ export async function storeOpenAIKey(key: string, envFilePath: string): Promise<
 }
 
 /**
- * Stores Claude API key in the .env file
- * @param key The Claude API key to store
+ * Stores Anthropic API key in the .env file
+ * @param key The Anthropic API key to store
  * @param envFilePath Path to the .env file
  */
-export async function storeClaudeKey(key: string, envFilePath: string): Promise<void> {
+export async function storeAnthropicKey(key: string, envFilePath: string): Promise<void> {
   if (!key) return;
 
   try {
@@ -497,9 +497,9 @@ export async function storeClaudeKey(key: string, envFilePath: string): Promise<
     await fs.writeFile(envFilePath, lines.join('\n'), 'utf8');
     process.env.ANTHROPIC_API_KEY = key;
 
-    logger.success('Claude API key saved to configuration');
+    logger.success('Anthropic API key saved to configuration');
   } catch (error) {
-    logger.error('Error saving Claude API key:', error);
+    logger.error('Error saving Anthropic API key:', error);
     throw error;
   }
 }
@@ -528,7 +528,7 @@ export async function promptAndStoreOpenAIKey(envFilePath: string): Promise<stri
   // Check if the API key format is valid and warn if not
   const isValid = isValidOpenAIKey(response.openaiKey);
   if (!isValid) {
-    logger.warn('⚠️  Invalid API key format detected. Expected format: sk-...');
+    logger.warn('[!] Invalid API key format detected. Expected format: sk-...');
     logger.warn('   You can get your API key from: https://platform.openai.com/api-keys');
     logger.warn('   The key has been saved but may not work correctly.');
   }
@@ -540,38 +540,38 @@ export async function promptAndStoreOpenAIKey(envFilePath: string): Promise<stri
 }
 
 /**
- * Prompts the user for a Claude API key, validates it, and stores it
+ * Prompts the user for an Anthropic API key, validates it, and stores it
  * @param envFilePath Path to the .env file
- * @returns The configured Claude API key or null if user cancels
+ * @returns The configured Anthropic API key or null if user cancels
  */
-export async function promptAndStoreClaudeKey(envFilePath: string): Promise<string | null> {
+export async function promptAndStoreAnthropicKey(envFilePath: string): Promise<string | null> {
   const response = await prompts({
     type: 'password',
-    name: 'claudeKey',
-    message: 'Enter your Claude API key:',
+    name: 'anthropicKey',
+    message: 'Enter your Anthropic API key:',
     validate: (value) => {
-      if (value.trim() === '') return 'Claude API key cannot be empty';
+      if (value.trim() === '') return 'Anthropic API key cannot be empty';
       return true; // Always return true to allow continuation
     },
   });
 
   // Handle user cancellation (Ctrl+C)
-  if (!response.claudeKey) {
+  if (!response.anthropicKey) {
     return null;
   }
 
   // Check if the API key format is valid and warn if not
-  const isValid = isValidAnthropicKey(response.claudeKey);
+  const isValid = isValidAnthropicKey(response.anthropicKey);
   if (!isValid) {
-    logger.warn('⚠️  Invalid API key format detected. Expected format: sk-ant-...');
+    logger.warn('[!] Invalid API key format detected. Expected format: sk-ant-...');
     logger.warn('   You can get your API key from: https://console.anthropic.com/');
     logger.warn('   The key has been saved but may not work correctly.');
   }
 
   // Store the key in the .env file (even if invalid)
-  await storeClaudeKey(response.claudeKey, envFilePath);
+  await storeAnthropicKey(response.anthropicKey, envFilePath);
 
-  return response.claudeKey;
+  return response.anthropicKey;
 }
 
 /**

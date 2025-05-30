@@ -60,17 +60,17 @@ export async function testPublishToNpm(cwd: string): Promise<boolean> {
   try {
     // Check if logged in to npm
     await execa('npm', ['whoami']);
-    logger.info('✓ Logged in to npm');
+    logger.info('[✓] Logged in to npm');
 
     // Test build
     logger.info('Testing build...');
     await execa('npm', ['run', 'build', '--dry-run'], { cwd });
-    logger.info('✓ Build test successful');
+    logger.info('[✓] Build test successful');
 
     // Test publish access
     const pkgJson = JSON.parse(await fs.readFile(path.join(cwd, 'package.json'), 'utf-8'));
     await execa('npm', ['access', 'ls-packages'], { cwd });
-    logger.info('✓ Have publish permissions');
+    logger.info('[✓] Have publish permissions');
 
     return true;
   } catch (error) {
@@ -96,7 +96,7 @@ export async function testPublishToGitHub(
       return false;
     }
     const token = credentials.token;
-    logger.info('✓ GitHub credentials found');
+    logger.info('[✓] GitHub credentials found');
 
     // Validate token permissions
     const response = await fetch('https://api.github.com/user', {
@@ -106,11 +106,11 @@ export async function testPublishToGitHub(
       logger.error('Invalid GitHub token or insufficient permissions');
       return false;
     }
-    logger.info('✓ GitHub token is valid');
+    logger.info('[✓] GitHub token is valid');
 
     // For projects, we only need to check GitHub token validity
     if (packageJson.packageType === 'project') {
-      logger.info('✓ Project validation complete - GitHub token is valid');
+      logger.info('[✓] Project validation complete - GitHub token is valid');
       return true;
     }
 
@@ -125,7 +125,7 @@ export async function testPublishToGitHub(
 
     // Check fork permissions and create fork if needed
     const hasFork = await forkExists(token, registryOwner, registryRepo, username);
-    logger.info(hasFork ? '✓ Fork exists' : '✓ Can create fork');
+    logger.info(hasFork ? '[✓] Fork exists' : '[✓] Can create fork');
 
     if (!hasFork) {
       logger.info('Creating fork...');
@@ -134,7 +134,7 @@ export async function testPublishToGitHub(
         logger.error('Failed to create fork');
         return false;
       }
-      logger.info('✓ Fork created');
+      logger.info('[✓] Fork created');
 
       // Wait a moment for GitHub to complete the fork
       await new Promise((resolve) => setTimeout(resolve, 3000));
@@ -143,7 +143,7 @@ export async function testPublishToGitHub(
     // Test branch creation
     const branchName = `test-${packageJson.name.replace(/^@[^/]+\//, '')}-${packageJson.version}`;
     const hasBranch = await branchExists(token, username, registryRepo, branchName);
-    logger.info(hasBranch ? '✓ Test branch exists' : '✓ Can create branch');
+    logger.info(hasBranch ? '[✓] Test branch exists' : '[✓] Can create branch');
 
     if (!hasBranch) {
       logger.info('Creating branch...');
@@ -152,7 +152,7 @@ export async function testPublishToGitHub(
         logger.error('Failed to create branch');
         return false;
       }
-      logger.info('✓ Branch created');
+      logger.info('[✓] Branch created');
     }
 
     // Test file update permissions - try a test file in the test directory
@@ -186,7 +186,7 @@ export async function testPublishToGitHub(
       logger.error('Cannot update files in repository');
       return false;
     }
-    logger.info('✓ Can create and update files');
+    logger.info('[✓] Can create and update files');
 
     return true;
   } catch (error) {

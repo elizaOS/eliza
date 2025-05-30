@@ -24,7 +24,7 @@ async function cloneRepository(repo: string, branch: string, destination: string
   } catch (error) {
     // Special handling for likely branch errors
     if (error.message && error.message.includes('exit code 128')) {
-      console.error(`\n❌ Branch '${branch}' doesn't exist in the ElizaOS repository.`);
+      console.error(`\n[X] Branch '${branch}' doesn't exist in the ElizaOS repository.`);
       console.error(`Please specify a valid branch name. Common branches include:`);
       console.error(`  • main - The main branch`);
       console.error(`  • v2-develop - The development branch (default)`);

@@ -104,12 +104,12 @@ async function listEnvVars(): Promise<void> {
     // Check if .env.example exists and suggest copying it as a starting point
     const exampleEnvPath = path.join(process.cwd(), '.env.example');
     if (existsSync(exampleEnvPath)) {
-      console.info(colors.red('  ✖ Missing .env file. Create one with:'));
+      console.info(colors.red('  [X] Missing .env file. Create one with:'));
       console.info(`     ${colors.bold(colors.green('cp .env.example .env'))}`);
     } else {
       console.info(
         colors.red(
-          '  ✖ Missing .env file. Create one in your project directory to set local environment variables.'
+          '  [X] Missing .env file. Create one in your project directory to set local environment variables.'
         )
       );
     }

@@ -87,7 +87,7 @@ async function getLatestGitTags(owner: string, repo: string, octokit: Octokit) {
       v1: latestV1 || null,
     };
   } catch (error) {
-    console.warn(`⚠️  Failed to fetch tags for ${owner}/${repo}:`, error.message);
+    console.warn(`[!] Failed to fetch tags for ${owner}/${repo}:`, error.message);
     return {
       repo: `${owner}/${repo}`,
       v0: null,
@@ -125,7 +125,7 @@ async function processRepo(
 ): Promise<[string, VersionInfo]> {
   const parsed = parseGitRef(gitRef);
   if (!parsed) {
-    console.warn(`⚠️  Skipping ${npmId}: unsupported git ref → ${gitRef}`);
+    console.warn(`[!] Skipping ${npmId}: unsupported git ref → ${gitRef}`);
     return [
       npmId,
       {

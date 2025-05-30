@@ -96,10 +96,10 @@ export class TestRunner {
         logger.info(`  Running test: ${test.name}`);
         await test.fn(this.runtime);
         this.stats.passed++;
-        logger.success(`  ✓ ${test.name}`);
+        logger.success(`  [✓] ${test.name}`);
       } catch (error) {
         this.stats.failed++;
-        logger.error(`  ✗ ${test.name}`);
+        logger.error(`  [X] ${test.name}`);
         logger.error(`    ${error.message}`);
       }
     }
