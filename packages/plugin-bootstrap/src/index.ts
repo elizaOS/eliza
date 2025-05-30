@@ -323,7 +323,8 @@ const messageReceivedHandler = async ({
           room?.type === ChannelType.VOICE_DM ||
           room?.type === ChannelType.SELF ||
           room?.type === ChannelType.API ||
-          message.content.source?.includes('client_chat');
+          message.content.source?.includes('client_chat') ||
+          message.content.source?.includes('livekit');
 
         if (message.content.attachments && message.content.attachments.length > 0) {
           message.content.attachments = await processAttachments(
