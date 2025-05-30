@@ -1,6 +1,8 @@
 import { type Pool as PgPool } from 'pg';
 import { PGlite } from '@electric-sql/pglite';
 
+// Don't import Service from core, define our own v2 Service
+
 /**
  * Type definition for a Universally Unique Identifier (UUID) using a specific format.
  * @typedef {`${string}-${string}-${string}-${string}-${string}`} UUID
@@ -645,41 +647,6 @@ export enum ChannelType {
   API = 'API', // @deprecated - Use DM or GROUP instead
 }
 
-/**
- * Client instance
- */
-export abstract class Service {
-  /** Runtime instance */
-  protected runtime!: IAgentRuntime;
-
-  constructor(runtime?: IAgentRuntime) {
-    if (runtime) {
-      this.runtime = runtime;
-    }
-  }
-
-  abstract stop(): Promise<void>;
-
-  /** Service type */
-  static serviceType: string;
-
-  /** Service name */
-  abstract capabilityDescription: string;
-
-  /** Service configuration */
-  config?: { [key: string]: any };
-
-  /** Start service connection */
-  static async start(_runtime: IAgentRuntime): Promise<Service> {
-    throw new Error('Not implemented');
-  }
-
-  /** Stop service connection */
-  static async stop(_runtime: IAgentRuntime): Promise<unknown> {
-    throw new Error('Not implemented');
-  }
-}
-
 export type Route = {
   type: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'STATIC';
   path: string;
@@ -693,7 +660,6 @@ export type Route = {
 /**
  * Plugin for extending agent functionality
  */
-
 export type PluginEvents = {
   [K in keyof EventPayloadMap]?: EventHandler<K>[];
 } & {
@@ -2444,4 +2410,39 @@ export interface ControlMessage {
 
   /** Room ID to ensure signal is directed to the correct chat window */
   roomId: UUID;
+}
+
+/**
+ * Client instance
+ */
+export abstract class Service {
+  /** Runtime instance */
+  protected runtime!: IAgentRuntime;
+
+  constructor(runtime?: IAgentRuntime) {
+    if (runtime) {
+      this.runtime = runtime;
+    }
+  }
+
+  abstract stop(): Promise<void>;
+
+  /** Service type */
+  static serviceType: string;
+
+  /** Service name */
+  abstract capabilityDescription: string;
+
+  /** Service configuration */
+  config?: { [key: string]: any };
+
+  /** Start service connection */
+  static async start(_runtime: IAgentRuntime): Promise<Service> {
+    throw new Error('Not implemented');
+  }
+
+  /** Stop service connection */
+  static async stop(_runtime: IAgentRuntime): Promise<unknown> {
+    throw new Error('Not implemented');
+  }
 }

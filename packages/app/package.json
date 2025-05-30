@@ -17,7 +17,7 @@
     "lint": "prettier --write ./src"
   },
   "dependencies": {
-    "@elizaos/cli": "^1.0.0-beta",
+    "@elizaos/cli": "workspace:*",
     "@tauri-apps/api": "^2.3.0",
     "@tauri-apps/plugin-opener": "^2",
     "@tauri-apps/plugin-shell": "^2",
