@@ -220,9 +220,9 @@ If your agent fails to start on the first attempt:
 
 Once you have your agent running, explore:
 
-- 🤖 [Understand Agents](./core/agents.md)
-- ⚡ [Add Custom Actions](./core/actions.md)
-- 🧠 [Configure Knowledge](./core/knowledge.md)
-- 🔌 [Add Services](./core/services.md)
+- [Understand Agents](./core/agents.md)
+- [Add Custom Actions](./core/actions.md)
+- [Configure Knowledge](./core/knowledge.md)
+- [Add Services](./core/services.md)
 
 Join the [Discord community](https://discord.gg/elizaOS) for support and to share what you're building!
