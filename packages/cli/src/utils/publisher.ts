@@ -56,6 +56,14 @@ interface PublishTestResult {
   };
 }
 
+/**
+ * Tests whether the current environment is ready to publish an npm package from the specified directory.
+ *
+ * Performs checks for npm login status, build success, and publish permissions in the given directory.
+ *
+ * @param cwd - The directory containing the npm package to test.
+ * @returns `true` if all checks pass; otherwise, `false`.
+ */
 export async function testPublishToNpm(cwd: string): Promise<boolean> {
   try {
     // Check if logged in to npm
@@ -83,6 +91,16 @@ export async function testPublishToNpm(cwd: string): Promise<boolean> {
   }
 }
 
+/**
+ * Tests whether the current user has the necessary GitHub credentials and permissions to publish a package and update the registry.
+ *
+ * For projects, verifies that a valid GitHub token is available. For plugins, additionally checks the ability to fork the registry repository, create a branch, and update files within that branch.
+ *
+ * @param cwd - The working directory of the package.
+ * @param packageJson - The parsed package.json metadata for the package.
+ * @param username - The GitHub username to use for repository operations.
+ * @returns `true` if all required GitHub permissions and operations succeed; otherwise, `false`.
+ */
 export async function testPublishToGitHub(
   cwd: string,
   packageJson: PackageJson,

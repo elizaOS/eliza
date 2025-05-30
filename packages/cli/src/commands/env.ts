@@ -75,9 +75,9 @@ async function writeEnvFile(filePath: string, envVars: Record<string, string>): 
 }
 
 /**
- * Displays system information and lists environment variables from the project's `.env` file.
+ * Displays system information and lists local environment variables, masking sensitive values.
  *
- * Prints platform, architecture, CLI version, and package manager details, followed by environment variables with sensitive values masked. Indicates if no variables are set and provides a link to the web UI for editing.
+ * Prints details about the current platform, architecture, CLI version, and package manager. Shows environment variables from the project's `.env` file, masking sensitive values, or provides guidance if the file is missing. Includes a link to the web UI for editing variables.
  */
 async function listEnvVars(): Promise<void> {
   const envInfo = await UserEnvironment.getInstanceInfo();

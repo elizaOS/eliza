@@ -363,9 +363,14 @@ export async function setupPgLite(
 }
 
 /**
- * Stores Postgres URL in the .env file
- * @param url The Postgres URL to store
- * @param envFilePath Path to the .env file
+ * Stores the provided Postgres connection URL in the specified `.env` file, replacing any existing entry.
+ *
+ * Updates the `POSTGRES_URL` environment variable in both the file and the current process.
+ *
+ * @param url - The Postgres connection URL to store.
+ * @param envFilePath - Path to the `.env` file where the URL should be saved.
+ *
+ * @throws {Error} If reading from or writing to the `.env` file fails.
  */
 export async function storePostgresUrl(url: string, envFilePath: string): Promise<void> {
   if (!url) return;

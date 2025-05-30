@@ -43,10 +43,9 @@ const initOptionsSchema = z.object({
 });
 
 /**
- * Local implementation of getAvailableDatabases that doesn't require GitHub credentials.
- * This is used during project creation to avoid prompting for credentials.
+ * Returns a list of available databases for project initialization without requiring external API calls.
  *
- * @returns {Promise<string[]>} Array of available databases
+ * @returns A promise that resolves to an array of supported database names.
  */
 async function getLocalAvailableDatabases(): Promise<string[]> {
   // Hard-coded list of available databases to avoid GitHub API calls
