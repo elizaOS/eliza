@@ -1,7 +1,7 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAgentPanels, type AgentPanel } from '@/hooks/use-query-hooks';
 import type { UUID } from '@elizaos/core';
-import { Activity, Columns3, Database, Terminal } from 'lucide-react';
+import { Columns3, Database, Eye, Code } from 'lucide-react';
 import { JSX, useMemo, useState } from 'react';
 import { AgentActionViewer } from './agent-action-viewer';
 import { AgentLogViewer } from './agent-log-viewer';
@@ -26,9 +26,9 @@ export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
 
   const allTabs: { value: TabValue; label: string; icon: JSX.Element }[] = useMemo(() => {
     const fixedTabs: { value: FixedTabValue; label: string; icon: JSX.Element }[] = [
-      { value: 'actions', label: 'Actions', icon: <Activity className="h-4 w-4" /> },
+      { value: 'actions', label: 'Actions', icon: <Eye className="h-4 w-4" /> },
       { value: 'memories', label: 'Memories', icon: <Database className="h-4 w-4" /> },
-      { value: 'logs', label: 'Logs', icon: <Terminal className="h-4 w-4" /> },
+      { value: 'logs', label: 'Logs', icon: <Code className="h-4 w-4" /> },
     ];
 
     const dynamicTabs = agentPanels.map((panel: AgentPanel) => ({
@@ -44,26 +44,24 @@ export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
     <Tabs
       defaultValue="actions"
       value={detailsTab}
-      onValueChange={(v) => setDetailsTab(v as TabValue)}
+      onValueChange={(v: TabValue) => setDetailsTab(v)}
       className="flex flex-col h-full"
     >
-      <div className="border-b px-4 py-2">
-        <TabsList className={`flex justify-evenly`}>
-          {isLoadingPanels && (
-            <>
-              {[...Array(2)].map((_, i) => (
-                <Skeleton key={`skel-tab-${i}`} className="h-9 w-full rounded-md" />
-              ))}
-            </>
-          )}
-          {allTabs.map((tab) => (
-            <TabsTrigger key={tab.value} value={tab.value} className="flex items-center gap-1.5">
-              {tab.icon}
-              <span>{tab.label}</span>
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </div>
+      <TabsList className="flex">
+        {allTabs.map((tab) => (
+          <TabsTrigger key={tab.value} value={tab.value} className="flex items-center gap-1.5">
+            {tab.icon}
+            <span>{tab.label}</span>
+          </TabsTrigger>
+        ))}
+        {isLoadingPanels && (
+          <>
+            {[...Array(2)].map((_, i) => (
+              <Skeleton key={`skel-tab-${i}`} className="h-9 w-full rounded-md" />
+            ))}
+          </>
+        )}
+      </TabsList>
 
       <TabsContent value="actions" className="overflow-y-auto flex-1">
         {detailsTab === 'actions' && <AgentActionViewer agentId={agentId} />}
