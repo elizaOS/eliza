@@ -1,6 +1,7 @@
 import { handleError, installPlugin, logHeader } from '@/src/utils';
 import { fetchPluginRegistry } from '@/src/utils/plugin-discovery';
 import { normalizePluginName } from '@/src/utils/registry';
+import { detectDirectoryType, getDirectoryTypeDescription } from '@/src/utils/directory-detection';
 import { logger } from '@elizaos/core';
 import { Command } from 'commander';
 import { execa } from 'execa';
@@ -8,35 +9,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 // --- Helper Functions ---
-
-/** Reads and parses package.json, returning dependencies. */
-export const readPackageJson = (
-  cwd: string
-): {
-  dependencies: Record<string, string>;
-  devDependencies: Record<string, string>;
-  allDependencies: Record<string, string>;
-} | null => {
-  const packageJsonPath = path.join(cwd, 'package.json');
-  if (!fs.existsSync(packageJsonPath)) {
-    return null;
-  }
-  try {
-    const packageJsonContent = fs.readFileSync(packageJsonPath, 'utf-8');
-    const packageJson = JSON.parse(packageJsonContent);
-    const dependencies = packageJson.dependencies || {};
-    const devDependencies = packageJson.devDependencies || {};
-    const allDependencies = { ...dependencies, ...devDependencies };
-    return { dependencies, devDependencies, allDependencies };
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      logger.warn(`Could not parse package.json: ${error.message}`);
-    } else {
-      logger.warn(`Error reading package.json: ${error.message}`); // More generic warning
-    }
-    return null; // Indicate failure to read/parse
-  }
-};
 
 /**
  * Normalizes a plugins input string to a standard format, typically 'plugin-name'.
@@ -95,6 +67,31 @@ export const findPluginPackageName = (
   }
 
   return null; // Not found
+};
+
+/** Helper function to get dependencies from package.json using directory detection */
+const getDependenciesFromDirectory = (cwd: string): Record<string, string> | null => {
+  const directoryInfo = detectDirectoryType(cwd);
+
+  if (!directoryInfo.hasPackageJson) {
+    return null;
+  }
+
+  try {
+    const packageJsonPath = path.join(cwd, 'package.json');
+    const packageJsonContent = fs.readFileSync(packageJsonPath, 'utf-8');
+    const packageJson = JSON.parse(packageJsonContent);
+    const dependencies = packageJson.dependencies || {};
+    const devDependencies = packageJson.devDependencies || {};
+    return { ...dependencies, ...devDependencies };
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      logger.warn(`Could not parse package.json: ${error.message}`);
+    } else {
+      logger.warn(`Error reading package.json: ${error.message}`);
+    }
+    return null;
+  }
 };
 
 // --- End Helper Functions ---
@@ -194,12 +191,18 @@ plugins
   .option('-T, --tag <tagname>', 'Specify a tag to install (e.g., beta)')
   .action(async (pluginArg, opts) => {
     const cwd = process.cwd();
-    const pkgData = readPackageJson(cwd);
+    const directoryInfo = detectDirectoryType(cwd);
 
-    if (!pkgData) {
+    if (!directoryInfo.hasPackageJson) {
       logger.error(
-        'Command must be run inside an Eliza project directory (no package.json found).'
+        `Command must be run inside an ElizaOS project directory. This directory is: ${getDirectoryTypeDescription(directoryInfo)}`
       );
+      process.exit(1);
+    }
+
+    const allDependencies = getDependenciesFromDirectory(cwd);
+    if (!allDependencies) {
+      logger.error('Could not read dependencies from package.json');
       process.exit(1);
     }
 
@@ -218,7 +221,7 @@ plugins
       }
       // --- End GitHub URL conversion ---
 
-      const installedPluginName = findPluginPackageName(plugin, pkgData.allDependencies);
+      const installedPluginName = findPluginPackageName(plugin, allDependencies);
       if (installedPluginName) {
         logger.info(`Plugin "${installedPluginName}" is already added to this project.`);
         process.exit(0);
@@ -289,15 +292,23 @@ plugins
   .action(async () => {
     try {
       const cwd = process.cwd();
-      const pkgData = readPackageJson(cwd);
+      const directoryInfo = detectDirectoryType(cwd);
 
-      if (!pkgData) {
-        console.error('Could not read or parse package.json.');
-        console.info('Please run this command from the root of an Eliza project.');
+      if (!directoryInfo.hasPackageJson) {
+        console.error(
+          `Could not read or parse package.json. This directory is: ${getDirectoryTypeDescription(directoryInfo)}`
+        );
+        console.info('Please run this command from the root of an ElizaOS project.');
         process.exit(1);
       }
 
-      const pluginNames = Object.keys(pkgData.allDependencies).filter((depName) => {
+      const allDependencies = getDependenciesFromDirectory(cwd);
+      if (!allDependencies) {
+        console.error('Could not read dependencies from package.json.');
+        process.exit(1);
+      }
+
+      const pluginNames = Object.keys(allDependencies).filter((depName) => {
         return /^(@elizaos(-plugins)?\/)?plugin-.+/.test(depName);
       });
 
@@ -328,16 +339,24 @@ plugins
   .action(async (plugin, _opts) => {
     try {
       const cwd = process.cwd();
+      const directoryInfo = detectDirectoryType(cwd);
 
-      const pkgData = readPackageJson(cwd);
-      if (!pkgData) {
+      if (!directoryInfo.hasPackageJson) {
         console.error(
-          'Could not read or parse package.json. Cannot determine which package to remove.'
+          `Could not read or parse package.json. This directory is: ${getDirectoryTypeDescription(directoryInfo)}`
         );
         process.exit(1);
       }
 
-      const packageNameToRemove = findPluginPackageName(plugin, pkgData.allDependencies);
+      const allDependencies = getDependenciesFromDirectory(cwd);
+      if (!allDependencies) {
+        console.error(
+          'Could not read dependencies from package.json. Cannot determine which package to remove.'
+        );
+        process.exit(1);
+      }
+
+      const packageNameToRemove = findPluginPackageName(plugin, allDependencies);
 
       if (!packageNameToRemove) {
         logger.warn(`Plugin matching "${plugin}" not found in project dependencies.`);

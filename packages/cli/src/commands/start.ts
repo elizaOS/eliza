@@ -30,6 +30,7 @@ import { Command } from 'commander';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { detectDirectoryType, getDirectoryTypeDescription } from '@/src/utils/directory-detection';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -500,58 +501,48 @@ const startAgents = async (options: {
 
   const currentDir = process.cwd();
   try {
-    // Check if we're in a project with a package.json
-    const packageJsonPath = path.join(process.cwd(), 'package.json');
+    // Use standardized directory detection
+    const directoryInfo = detectDirectoryType(currentDir);
 
-    if (fs.existsSync(packageJsonPath)) {
-      // Read and parse package.json to check if it's a project or plugin
+    // Determine if this is a project or plugin
+    isProject = directoryInfo.type === 'elizaos-project';
+    isPlugin = directoryInfo.type === 'elizaos-plugin';
+
+    if (isProject) {
+      logger.debug('Found ElizaOS project using standardized directory detection');
+    } else if (isPlugin) {
+      logger.debug('Found ElizaOS plugin using standardized directory detection');
+    }
+
+    // If we found a plugin or project, try to load it
+    if ((isProject || isPlugin) && directoryInfo.hasPackageJson) {
+      const packageJsonPath = path.join(currentDir, 'package.json');
       const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-
-      // Check if this is a plugin (package.json contains 'eliza' section with type='plugin')
-      if (packageJson.eliza?.type && packageJson.eliza.type === 'plugin') {
-        isPlugin = true;
-        logger.debug('Found Eliza plugin in current directory');
-      }
-
-      // Check if this is a project (package.json contains 'eliza' section with type='project')
-      if (packageJson.eliza?.type && packageJson.eliza.type === 'project') {
-        isProject = true;
-        logger.debug('Found Eliza project in current directory');
-      }
-
-      // Also check for project indicators like a Project type export
-      // or if the description mentions "project"
-      if (!isProject && !isPlugin) {
-        if (packageJson.description?.toLowerCase().includes('project')) {
-          isProject = true;
-          logger.debug('Found project by description in package.json');
-        }
-      }
 
       // If we found a main entry in package.json, try to load it
       const mainEntry = packageJson.main;
       if (mainEntry) {
-        const mainPath = path.resolve(process.cwd(), mainEntry);
+        const mainPath = path.resolve(currentDir, mainEntry);
 
         if (fs.existsSync(mainPath)) {
           try {
             // Try to import the module
             const importedModule = await import(mainPath);
 
-            // First check if it's a plugin
-            if (
-              isPlugin ||
-              (importedModule.default &&
+            if (isPlugin) {
+              // Look for plugin object
+              if (
+                importedModule.default &&
                 typeof importedModule.default === 'object' &&
                 importedModule.default.name &&
-                typeof importedModule.default.init === 'function')
-            ) {
-              isPlugin = true;
-              pluginModule = importedModule.default;
-              logger.debug(`Loaded plugin: ${pluginModule?.name || 'unnamed'}`);
-
-              if (!pluginModule) {
-                logger.warn('Plugin loaded but no default export found, looking for other exports');
+                typeof importedModule.default.init === 'function'
+              ) {
+                pluginModule = importedModule.default;
+                logger.debug(`Loaded plugin: ${pluginModule?.name || 'unnamed'}`);
+              } else {
+                logger.warn(
+                  'Plugin detected but no valid plugin export found, looking for other exports'
+                );
 
                 // Try to find any exported plugin object
                 for (const key in importedModule) {
@@ -567,16 +558,16 @@ const startAgents = async (options: {
                   }
                 }
               }
-            }
-            // Then check if it's a project
-            else if (
-              isProject ||
-              (importedModule.default &&
+            } else if (isProject) {
+              // Look for project object
+              if (
+                importedModule.default &&
                 typeof importedModule.default === 'object' &&
-                importedModule.default.agents)
-            ) {
-              isProject = true;
-              projectModule = importedModule;
+                importedModule.default.agents
+              ) {
+                projectModule = importedModule;
+                logger.debug('Loaded project module');
+              }
             }
           } catch (importError) {
             logger.error(`Error importing module: ${importError}`);
