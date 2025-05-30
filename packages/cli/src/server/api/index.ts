@@ -321,9 +321,7 @@ async function processSocketMessage(
           roomId: uniqueRoomId,
           createdAt: Date.now(),
         };
-        logger.debug('Memory object for response:', {
-          providers: content.providers || [],
-        });
+        logger.debug('Memory object for response:', memory);
         await runtime.createMemory(memory, 'messages');
         return [content];
       } catch (error) {
