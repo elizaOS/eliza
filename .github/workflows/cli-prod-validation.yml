@@ -32,7 +32,7 @@ jobs:
 
       - name: Install global CLI packages
         run: |
-          npm install -g @elizaos/cli@beta
+          npm install -g @elizaos/cli
           npm install -g bats
 
       - name: Verify global installations

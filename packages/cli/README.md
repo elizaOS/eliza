@@ -5,7 +5,7 @@ The ElizaOS CLI provides a comprehensive set of commands to manage your ElizaOS 
 ## Installation
 
 ```bash
-bun install -g @elizaos/cli@beta
+bun install -g @elizaos/cli
 ```
 
 ### Alternative usage with npx
@@ -13,7 +13,7 @@ bun install -g @elizaos/cli@beta
 You can also run the CLI directly without installation using npx:
 
 ```bash
-npx @elizaos/cli@beta [command]
+npx @elizaos/cli [command]
 ```
 
 This is useful for trying out commands without installing the CLI globally.
@@ -92,10 +92,10 @@ Manage environment variables and secrets.
 
 #### `elizaos setup-monorepo`
 
-Clone ElizaOS monorepo from a specific branch (defaults to v2-develop).
+Clone ElizaOS monorepo from a specific branch (defaults to main).
 
 - **Options:**
-  - `-b, --branch <branch>`: Branch to install (default: `v2-develop`)
+  - `-b, --branch <branch>`: Branch to install (default: `main`)
   - `-d, --dir <directory>`: Destination directory (default: `./eliza`)
 
 **Notes:**

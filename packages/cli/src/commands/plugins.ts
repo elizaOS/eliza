@@ -186,7 +186,7 @@ plugins
   .option(
     '-b, --branch <branchName>',
     'Branch to install from when using monorepo source',
-    'v2-develop'
+    'main'
   )
   .option('-T, --tag <tagname>', 'Specify a tag to install (e.g., beta)')
   .action(async (pluginArg, opts) => {

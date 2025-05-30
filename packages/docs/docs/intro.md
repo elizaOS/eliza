@@ -30,7 +30,7 @@ Eliza is a powerful multi-agent simulation framework designed to create, deploy,
 
 ## Key Features
 
-New in the Eliza v2 beta!
+New in Eliza v2!
 
 | CLI Tool                          | Native GUI                        |
 | --------------------------------- | --------------------------------- |
@@ -74,9 +74,9 @@ import TabItem from '@theme/TabItem';
 npm install -g bun
 
 # Install the CLI globally
-npm install -g @elizaos/cli@beta # will be simpler after beta
+npm install -g @elizaos/cli
 # or install via bun
-bun install -g @elizaos/cli@beta
+bun install -g @elizaos/cli
 
 # From a folder to install a project
 elizaos create
@@ -91,7 +91,7 @@ Then visit https://localhost:3000 to interact with your agent through a web inte
 
 ```bash
 # Create a new project through interactive setup
-elizaos create # will be simpler after beta
+elizaos create
 
 # Navigate to your project directory
 cd my-project-name
@@ -134,8 +134,8 @@ elizaos plugins publish
 git clone git@github.com:elizaOS/eliza.git
 cd eliza
 
-# We are currently on the v2-develop branch
-git checkout v2-develop
+# We are currently on the main branch
+git checkout main
 
 # Install dependencies and build
 bun install

@@ -6,9 +6,10 @@ on:
       release_tag:
         description: 'Release tag for publishing'
         required: true
-        default: 'beta'
+        default: 'latest'
         type: choice
         options:
+          - latest
           - beta
           - alpha
 
@@ -40,7 +41,12 @@ jobs:
         run: echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
 
       - name: Publish CLI
-        run: npx lerna publish prerelease --preid ${{ github.event.inputs.release_tag }} --dist-tag ${{ github.event.inputs.release_tag }} --no-private --force-publish --yes
+        run: |
+          if [ "${{ github.event.inputs.release_tag }}" = "latest" ]; then
+            npx lerna publish --no-private --force-publish --yes
+          else
+            npx lerna publish prerelease --preid ${{ github.event.inputs.release_tag }} --dist-tag ${{ github.event.inputs.release_tag }} --no-private --force-publish --yes
+          fi
         env:
           NPM_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           GH_TOKEN: ${{ secrets.GH_PAT }}

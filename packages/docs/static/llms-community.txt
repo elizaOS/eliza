@@ -1057,7 +1057,7 @@ V2 swaps static files for dynamic personas—agents learn from your crowd in rea
 New CLI and plugin manager slashes setup time. Instead of cloning the github repo, changing to the correct branch, rebuilding, etc, it's just one command to create a new project:
 
 ```bash
-npm create eliza@beta
+npm create eliza
 ```
 
 <details>
@@ -3998,7 +3998,7 @@ The new CLI tool introduces a streamlined workflow for plugin development withou
 4. **Run**: `elizaos start` - Run the plugin with a default agent
 5. **Publish**: `elizaos publish` - Share your plugin with others
 
-> Note: at time of publishing, use `npm create eliza@beta` until main version is uploaded
+> Note: at time of publishing, use `npm create eliza` until main version is uploaded
 
 ### Creating a New Plugin
 
@@ -4006,7 +4006,7 @@ You can create a new ElizaOS plugin using the CLI:
 
 ```bash
 # Using npm
-npm create eliza@beta
+npm create eliza
 
 # Or using npx
 npx create-eliza
@@ -4631,10 +4631,10 @@ You can create a new ElizaOS project using:
 
 ```bash
 # Using npm
-npm create eliza@beta
+npm create eliza
 
 # Or using npx
-npx @elizaos/cli@beta create
+npx @elizaos/cli create
 ```
 
 The CLI will guide you through the setup process, including:
@@ -6626,9 +6626,9 @@ import TabItem from '@theme/TabItem';
 npm install -g bun
 
 # Install the CLI globally
-npm install -g @elizaos/cli@beta # will be simpler after beta
+npm install -g @elizaos/cli
 # or install via bun
-bun install -g @elizaos/cli@beta
+bun install -g @elizaos/cli
 
 # From a folder to install a project
 elizaos create
@@ -6686,8 +6686,8 @@ elizaos plugins publish
 git clone git@github.com:elizaOS/eliza.git
 cd eliza
 
-# We are currently on the v2-develop branch
-git checkout v2-develop
+# We are currently on the main branch
+git checkout main
 
 # Install dependencies and build
 bun install
@@ -6748,7 +6748,7 @@ import TabItem from '@theme/TabItem';
 
 ```bash
 # Install globally
-npm install -g @elizaos/cli@beta
+npm install -g @elizaos/cli
 # Start ElizaOS
 elizaos start
 ```
@@ -6758,7 +6758,7 @@ elizaos start
 
 ```bash
 # Use directly with npx
-npx @elizaos/cli@beta start
+npx @elizaos/cli start
 ```
 
   </TabItem>
@@ -6770,7 +6770,7 @@ git clone git@github.com:elizaOS/eliza.git
 cd eliza
 
 # Switch to development branch
-git checkout v2-develop
+git checkout main
 
 # Install dependencies
 bun install
