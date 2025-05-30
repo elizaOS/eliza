@@ -58,11 +58,9 @@ async function getLocalAvailableDatabases(): Promise<string[]> {
 }
 
 /**
- * Returns the list of AI model options available for selection during project creation.
+ * Gets available AI models for selection during project creation.
  *
- * Each option includes a title, value, and description for user prompts.
- *
- * @returns An array of AI model option objects for use in selection prompts.
+ * @returns {Array} Array of available AI model options
  */
 function getAvailableAIModels() {
   return [
@@ -86,16 +84,12 @@ function getAvailableAIModels() {
 }
 
 /**
- * Configures the selected AI model in the project's .env file.
+ * Sets up AI model configuration in the project's .env file based on user selection.
  *
- * For 'local', no changes are made. For 'openai' and 'claude', adds placeholder API key entries in non-interactive mode, or prompts for and stores the API key in interactive mode. If the relevant API key is already set in the environment, a comment is added to the .env file for reference.
- *
- * @param aiModel - The selected AI model ('local', 'openai', or 'claude').
- * @param envFilePath - Path to the project's .env file.
- * @param isNonInteractive - Whether to run in non-interactive mode.
- *
- * @remark
- * If an unknown AI model is provided, configuration is skipped with a warning.
+ * @param {string} aiModel - The selected AI model ('local', 'openai', or 'claude')
+ * @param {string} envFilePath - Path to the project's .env file
+ * @param {boolean} isNonInteractive - Whether running in non-interactive mode
+ * @returns {Promise<void>}
  */
 async function setupAIModelConfig(
   aiModel: string,

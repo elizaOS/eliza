@@ -49,10 +49,10 @@ export class JSDocValidator {
     const codeWithFixedComment = code.replace(originalComment, fixedComment);
 
     if (this.isValidTypeScript(codeWithFixedComment)) {
-      console.log(`✓ JSDoc comment in ${fileName} was fixed using regex patterns`);
+      console.log(`[✓] JSDoc comment in ${fileName} was fixed using regex patterns`);
       return fixedComment;
     }
-    console.log(`❌JSDoc comment in ${fileName} regex patterns failed, making AI call for help`);
+    console.log(`[❌] JSDoc comment in ${fileName} regex patterns failed, making AI call for help`);
 
     // If still invalid, try regenerating with AI
     try {
@@ -60,7 +60,7 @@ export class JSDocValidator {
       const codeWithRegeneratedComment = code.replace(originalComment, regeneratedComment);
 
       if (this.isValidTypeScript(codeWithRegeneratedComment)) {
-        console.log(`✓ JSDoc comment in ${fileName} was regenerated using AI`);
+        console.log(`[✓] JSDoc comment in ${fileName} was regenerated using AI`);
         return regeneratedComment;
       }
     } catch (error) {
@@ -68,7 +68,7 @@ export class JSDocValidator {
     }
 
     // Instead of throwing, log the issue and return original
-    console.warn(`⚠️ HUMAN INTERVENTION NEEDED - Invalid JSDoc in ${fileName}`);
+    console.warn(`[⚠️] HUMAN INTERVENTION NEEDED - Invalid JSDoc in ${fileName}`);
     console.warn('Original comment:', originalComment);
     return originalComment;
   }

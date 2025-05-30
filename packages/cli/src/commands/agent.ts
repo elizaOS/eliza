@@ -389,7 +389,7 @@ Required configuration:
       const agentName = result.name || result?.character?.name || 'unknown';
 
       // Only display one success message (no need for duplicates)
-      console.log(`\x1b[32m✓ Agent ${agentName} started successfully!\x1b[0m`);
+      console.log(`\x1b[32m[✓] Agent ${agentName} started successfully!\x1b[0m`);
     } catch (error) {
       // Check for agent not found error or any other error
       if (error instanceof Error) {

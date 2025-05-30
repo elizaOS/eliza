@@ -397,10 +397,8 @@ export async function storePostgresUrl(url: string, envFilePath: string): Promis
 }
 
 /**
- * Prompts the user to enter a Postgres connection URL, validates its format, and stores it in the specified `.env` file.
- *
- * @param envFilePath - Path to the `.env` file where the Postgres URL will be stored.
- * @returns The entered Postgres URL if provided and stored, or `null` if the user cancels the prompt.
+ * Prompts the user for a Postgres URL, validates it, and stores it
+ * @returns The configured Postgres URL or null if user cancels
  */
 export async function promptAndStorePostgresUrl(envFilePath: string): Promise<string | null> {
   const response = await prompts({
@@ -430,10 +428,9 @@ export async function promptAndStorePostgresUrl(envFilePath: string): Promise<st
 }
 
 /**
- * Checks whether a string is a valid OpenAI API key format.
- *
- * @param key - The API key to check.
- * @returns True if the key starts with 'sk-' and is at least 20 characters long; otherwise, false.
+ * Validates an OpenAI API key format
+ * @param key The API key to validate
+ * @returns True if the key appears valid
  */
 export function isValidOpenAIKey(key: string): boolean {
   if (!key || typeof key !== 'string') return false;
@@ -443,10 +440,9 @@ export function isValidOpenAIKey(key: string): boolean {
 }
 
 /**
- * Checks whether a string is a valid Anthropic API key.
- *
- * @param key - The API key to validate.
- * @returns True if the key starts with 'sk-ant-' and is at least 20 characters long.
+ * Validates an Anthropic API key format
+ * @param key The API key to validate
+ * @returns True if the key appears valid
  */
 export function isValidAnthropicKey(key: string): boolean {
   if (!key || typeof key !== 'string') return false;
@@ -456,14 +452,9 @@ export function isValidAnthropicKey(key: string): boolean {
 }
 
 /**
- * Saves the provided OpenAI API key to the specified `.env` file, replacing any existing entry.
- *
- * Updates the `OPENAI_API_KEY` environment variable in both the file and the current process.
- *
- * @param key - The OpenAI API key to store.
- * @param envFilePath - Path to the `.env` file where the key will be saved.
- *
- * @throws {Error} If writing to the `.env` file fails.
+ * Stores OpenAI API key in the .env file
+ * @param key The OpenAI API key to store
+ * @param envFilePath Path to the .env file
  */
 export async function storeOpenAIKey(key: string, envFilePath: string): Promise<void> {
   if (!key) return;
@@ -490,14 +481,9 @@ export async function storeOpenAIKey(key: string, envFilePath: string): Promise<
 }
 
 /**
- * Saves the Anthropic API key to the specified `.env` file, replacing any existing entry.
- *
- * Also updates the `ANTHROPIC_API_KEY` value in the current process environment.
- *
- * @param key - The Anthropic API key to store.
- * @param envFilePath - Path to the `.env` file where the key will be saved.
- *
- * @throws {Error} If writing to the `.env` file fails.
+ * Stores Anthropic API key in the .env file
+ * @param key The Anthropic API key to store
+ * @param envFilePath Path to the .env file
  */
 export async function storeAnthropicKey(key: string, envFilePath: string): Promise<void> {
   if (!key) return;
@@ -524,12 +510,9 @@ export async function storeAnthropicKey(key: string, envFilePath: string): Promi
 }
 
 /**
- * Prompts the user to enter an OpenAI API key, validates its format, and stores it in the specified `.env` file.
- *
- * The function warns if the entered key does not match the expected format but saves it regardless. Returns the entered key, or `null` if the user cancels the prompt.
- *
- * @param envFilePath - Path to the `.env` file where the key will be stored.
- * @returns The entered OpenAI API key, or `null` if the prompt is cancelled.
+ * Prompts the user for an OpenAI API key, validates it, and stores it
+ * @param envFilePath Path to the .env file
+ * @returns The configured OpenAI API key or null if user cancels
  */
 export async function promptAndStoreOpenAIKey(envFilePath: string): Promise<string | null> {
   const response = await prompts({
@@ -562,12 +545,9 @@ export async function promptAndStoreOpenAIKey(envFilePath: string): Promise<stri
 }
 
 /**
- * Prompts the user to enter an Anthropic API key, validates its format, and stores it in the specified `.env` file.
- *
- * If the entered key does not match the expected format, a warning is displayed, but the key is still saved.
- *
- * @param envFilePath - Path to the `.env` file where the API key will be stored.
- * @returns The entered Anthropic API key, or `null` if the user cancels the prompt.
+ * Prompts the user for an Anthropic API key, validates it, and stores it
+ * @param envFilePath Path to the .env file
+ * @returns The configured Anthropic API key or null if user cancels
  */
 export async function promptAndStoreAnthropicKey(envFilePath: string): Promise<string | null> {
   const response = await prompts({
