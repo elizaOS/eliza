@@ -115,7 +115,6 @@ Configure plugin settings in your character definition:
   "settings": {
     "example": {
       "enableFeatureX": true
-      // Plugin-specific configuration
     }
   }
 }

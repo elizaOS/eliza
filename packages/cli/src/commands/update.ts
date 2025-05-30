@@ -66,7 +66,7 @@ function isWorkspaceVersion(versionString: string): boolean {
  * @returns Whether the version is a special tag
  */
 function isSpecialVersionTag(version: string): boolean {
-  const specialTags = ['beta', 'latest', 'next', 'canary', 'rc', 'dev', 'nightly', 'alpha'];
+  const specialTags = ['latest', 'next', 'canary', 'rc', 'dev', 'nightly', 'alpha'];
   return specialTags.includes(version);
 }
 
@@ -381,35 +381,27 @@ export async function performCliUpdate(): Promise<boolean> {
     // Install the specified version globally - use specific version instead of tag
     logger.info(`Updating Eliza CLI to version: ${latestVersion}`);
     try {
-      // Use direct npm install command for global installation
+      // Try to install latest version
+      const { stdout, stderr } = await execa('npm', ['install', '-g', '@elizaos/cli']);
+      logger.info(`Successfully updated Eliza CLI to latest version`);
+      logger.info('Please restart your terminal for the changes to take effect.');
+    } catch (npmError) {
+      // If latest tag fails, try with specific version
       try {
-        // Install latest stable version
-        const { stdout, stderr } = await execa('npm', ['install', '-g', '@elizaos/cli']);
-        logger.info(`Successfully updated Eliza CLI to latest version`);
+        logger.info(`Latest installation failed, trying specific version: ${latestVersion}`);
+        const { stdout, stderr } = await execa('npm', [
+          'install',
+          '-g',
+          `@elizaos/cli@${latestVersion}`,
+        ]);
+        logger.info(`Successfully updated Eliza CLI to version ${latestVersion}`);
         logger.info('Please restart your terminal for the changes to take effect.');
-      } catch (npmError) {
-        // If latest tag fails, try with specific version
-        try {
-          logger.info(`Latest installation failed, trying specific version: ${latestVersion}`);
-          const { stdout, stderr } = await execa('npm', [
-            'install',
-            '-g',
-            `@elizaos/cli@${latestVersion}`,
-          ]);
-          logger.info(`Successfully updated Eliza CLI to version ${latestVersion}`);
-          logger.info('Please restart your terminal for the changes to take effect.');
-        } catch (versionError) {
-          throw new Error(
-            `Installation of @elizaos/cli version ${latestVersion} failed. Try manually with: npm install -g @elizaos/cli`
-          );
-        }
+      } catch (versionError) {
+        throw new Error(
+          `Installation of @elizaos/cli version ${latestVersion} failed. Try manually with: npm install -g @elizaos/cli`
+        );
       }
-    } catch (error) {
-      logger.error('Failed to update Eliza CLI:', error.message);
-      logger.info('You can try manually with: npm install -g @elizaos/cli');
-      process.exit(1);
     }
-
     await showBanner();
     console.info('ElizaOS CLI has been successfully updated!');
     return true;

@@ -61,7 +61,7 @@ Example output:
 System Information:
   Platform: darwin (24.3.0)
   Architecture: arm64
-  CLI Version: 1.0.0-beta.51
+  CLI Version: 1.0.0
   Package Manager: bun v1.2.5
 
 Local Environment Variables:
