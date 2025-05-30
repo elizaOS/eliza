@@ -1,7 +1,7 @@
 {
   "name": "@npm-username/plugin-name",
   "description": "${PLUGINDESCRIPTION}",
-  "version": "1.0.0-beta.74",
+  "version": "1.0.0",
   "type": "module",
   "private": true,
   "main": "dist/index.js",
@@ -36,13 +36,12 @@
     "dist"
   ],
   "dependencies": {
+    "@elizaos/core": "^1.0.0",
     "zod": "3.24.2"
   },
-  "peerDependencies": {
-    "@elizaos/core": "beta"
-  },
+  "peerDependencies": {},
   "devDependencies": {
-    "@elizaos/cli": "beta",
+    "@elizaos/cli": "^1.0.0",
     "dotenv": "16.4.5",
     "prettier": "3.5.3",
     "tsup": "8.4.0",

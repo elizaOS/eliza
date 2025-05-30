@@ -103,7 +103,7 @@ export async function copyTemplate(
     );
   }
 
-  logger.info(`Copying ${templateType} template from ${templateDir} to ${targetDir}`);
+  logger.debug(`Copying ${templateType} template from ${templateDir} to ${targetDir}`);
 
   // Copy template files as-is
   await copyDir(templateDir, targetDir);
@@ -126,7 +126,7 @@ export async function copyTemplate(
     // Remove private field from template package.json since templates should be usable by users
     if (packageJson.private) {
       delete packageJson.private;
-      logger.info('Removed private field from template package.json');
+      logger.debug('Removed private field from template package.json');
     }
 
     // Only update dependency versions - leave everything else unchanged
@@ -134,9 +134,7 @@ export async function copyTemplate(
       for (const depName of Object.keys(packageJson.dependencies)) {
         if (depName.startsWith('@elizaos/')) {
           logger.info(`Setting ${depName} to use version ${cliPackageVersion}`);
-          packageJson.dependencies[depName] = cliPackageVersion.includes('beta')
-            ? 'beta'
-            : 'latest';
+          packageJson.dependencies[depName] = 'latest';
         }
       }
     }
@@ -145,28 +143,26 @@ export async function copyTemplate(
       for (const depName of Object.keys(packageJson.devDependencies)) {
         if (depName.startsWith('@elizaos/')) {
           logger.info(`Setting dev dependency ${depName} to use version ${cliPackageVersion}`);
-          packageJson.devDependencies[depName] = cliPackageVersion.includes('beta')
-            ? 'beta'
-            : 'latest';
+          packageJson.devDependencies[depName] = 'latest';
         }
       }
     }
 
     // Write the updated package.json (only dependency versions changed)
     await fs.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2));
-    logger.success('Updated package.json with latest dependency versions');
+    logger.debug('Updated package.json with latest dependency versions');
   } catch (error) {
     logger.error(`Error updating package.json: ${error}`);
   }
 
-  logger.success(`${templateType} template copied successfully`);
+  logger.debug(`${templateType} template copied successfully`);
 }
 
 /**
  * Copy client dist files to the CLI package dist directory
  */
 export async function copyClientDist() {
-  logger.info('Copying client dist files to CLI package');
+  logger.debug('Copying client dist files to CLI package');
 
   const srcClientDist = path.resolve(process.cwd(), '../client/dist');
   const destClientDist = path.resolve(process.cwd(), './dist');

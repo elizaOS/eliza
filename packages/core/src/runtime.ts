@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { createUniqueUuid } from './entities';
 import { decryptSecret, getSalt, safeReplacer } from './index';
 import { InstrumentationService } from './instrumentation/service';
-import logger from './logger';
+import { createLogger } from './logger';
 import {
   ChannelType,
   ModelType,
@@ -149,9 +149,8 @@ export class AgentRuntime implements IAgentRuntime {
     const logLevel = process.env.LOG_LEVEL || 'info';
 
     // Create the logger with appropriate level - only show debug logs when explicitly configured
-    this.logger = logger.child({
+    this.logger = createLogger({
       agentName: this.character?.name,
-      level: logLevel === 'debug' ? 'debug' : 'error',
     });
 
     this.logger.debug(`[AgentRuntime] Process working directory: ${process.cwd()}`);
@@ -545,9 +544,7 @@ export class AgentRuntime implements IAgentRuntime {
       try {
         await this.adapter.init();
         span.addEvent('adapter_initialized');
-        const existingAgent = await this.adapter.ensureAgentExists(
-          this.character as Partial<Agent>
-        );
+        const existingAgent = await this.ensureAgentExists(this.character as Partial<Agent>);
         span.addEvent('agent_exists_verified');
         if (!existingAgent) {
           const errorMsg = `Agent ${this.character.name} does not exist in database after ensureAgentExists call`;
@@ -842,6 +839,7 @@ export class AgentRuntime implements IAgentRuntime {
                 });
                 actionSpan.setStatus({ code: SpanStatusCode.OK });
               } catch (handlerError: any) {
+                console.error('action error', handlerError);
                 const handlerErrorMessage =
                   handlerError instanceof Error ? handlerError.message : String(handlerError);
                 actionSpan.recordException(handlerError as Error);
@@ -1268,6 +1266,7 @@ export class AgentRuntime implements IAgentRuntime {
                 providerName: provider.name,
               };
             } catch (error: any) {
+              console.error('provider error', provider.name, error);
               const duration = Date.now() - start;
               const errorMessage = error instanceof Error ? error.message : String(error);
               providerSpan.recordException(error as Error);
@@ -1526,8 +1525,8 @@ export class AgentRuntime implements IAgentRuntime {
 
       // Log input parameters (keep debug log if useful)
       this.logger.debug(
-        `[useModel] ${modelKey} input:`,
-        JSON.stringify(params, safeReplacer(), 2).replace(/\\n/g, '\n')
+        `[useModel] ${modelKey} input: ` +
+          JSON.stringify(params, safeReplacer(), 2).replace(/\\n/g, '\n')
       );
       let paramsWithRuntime: any;
       if (
@@ -1749,7 +1748,45 @@ export class AgentRuntime implements IAgentRuntime {
     return await this.adapter.deleteAgent(agentId);
   }
   async ensureAgentExists(agent: Partial<Agent>): Promise<Agent> {
-    return await this.adapter.ensureAgentExists(agent);
+    if (!agent.name) {
+      throw new Error('Agent name is required');
+    }
+
+    const agents = await this.adapter.getAgents();
+    const existingAgentId = agents.find((a) => a.name === agent.name)?.id;
+
+    if (existingAgentId) {
+      // Update the agent on restart with the latest character configuration
+      const updatedAgent = {
+        ...agent,
+        id: existingAgentId,
+        updatedAt: Date.now(),
+      };
+
+      await this.adapter.updateAgent(existingAgentId, updatedAgent);
+      const existingAgent = await this.adapter.getAgent(existingAgentId);
+
+      if (!existingAgent) {
+        throw new Error(`Failed to retrieve agent after update: ${existingAgentId}`);
+      }
+
+      this.logger.debug(`Updated existing agent ${agent.name} on restart`);
+      return existingAgent;
+    }
+
+    // Create new agent if it doesn't exist
+    const newAgent: Agent = {
+      ...agent,
+      id: stringToUuid(agent.name),
+    } as Agent;
+
+    const created = await this.adapter.createAgent(newAgent);
+    if (!created) {
+      throw new Error(`Failed to create agent: ${agent.name}`);
+    }
+
+    this.logger.debug(`Created new agent ${agent.name}`);
+    return newAgent;
   }
   async getEntityById(entityId: UUID): Promise<Entity | null> {
     const entities = await this.adapter.getEntityByIds([entityId]);
@@ -1813,7 +1850,7 @@ export class AgentRuntime implements IAgentRuntime {
         text: memoryText,
       });
     } catch (error: any) {
-      logger.error('Failed to generate embedding:', error);
+      this.logger.error('Failed to generate embedding:', error);
       memory.embedding = await this.useModel(ModelType.TEXT_EMBEDDING, null);
     }
     return memory;

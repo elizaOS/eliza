@@ -1,13 +1,13 @@
 ---
-title: 'Dev School V2 Session 1: Introduction to ElizaOS v1.0.0-beta'
-description: 'A comprehensive introduction to ElizaOS v1.0.0-beta (V2), covering basic usage, project creation, plugin development, and codebase contribution.'
+title: 'Dev School V2 Session 1: Introduction to ElizaOS v1.0.0'
+description: 'A comprehensive introduction to ElizaOS v1.0.0 (V2), covering basic usage, project creation, plugin development, and codebase contribution.'
 date: 2025-03-25
 authors: [team]
 keywords:
   [dev school, v2, tutorial, introduction, development, beta, plugin development, project creation]
 ---
 
-# Eliza OS v1.0.0-beta (V2) Introduction
+# Eliza OS v1.0.0 (V2) Introduction
 
 <div className="responsive-iframe">
   <iframe
@@ -23,7 +23,7 @@ keywords:
 
 ## Overview
 
-[2:10-45:18] The presentation introduces Eliza OS v1.0.0-beta (also referred to as V2), which represents a complete overhaul of the system compared to the previous version. The speaker explains that the previous version was essentially a research project that tested hypotheses, while this new version addresses many missing pieces and improves the overall developer and user experience.
+[2:10-45:18] The presentation introduces Eliza OS v1.0.0 (also referred to as V2), which represents a complete overhaul of the system compared to the previous version. The speaker explains that the previous version was essentially a research project that tested hypotheses, while this new version addresses many missing pieces and improves the overall developer and user experience.
 
 ## Four User Perspectives Covered
 
@@ -38,7 +38,7 @@ keywords:
 
 [247:12-359:82] The simplest way to get started is using the CLI:
 
-- Command: `npx elizos-cli@beta start` (or without @beta in future releases)
+- Command: `npx elizos-cli start`
 - This starts the system and launches a dashboard where users can create and interact with agents
 - Creating a new agent is done through a simple interface where you can define personality, interests, and tone
 
@@ -46,7 +46,7 @@ keywords:
 
 [599:54-702:92] For those wanting to build applications or customized agents:
 
-- Command: `npm create eliza@beta`
+- Command: `npm create eliza`
 - Choose between PG Light (local) or Postgres database
 - Creates a project structure with source files, data folder, and test plugin
 - Character files are now TypeScript instead of JSON for better error handling and dynamic loading
@@ -55,7 +55,7 @@ keywords:
 
 [1078:32-1130:48] For plugin developers:
 
-- Same initial command: `npm create eliza@beta`
+- Same initial command: `npm create eliza`
 - Select "plugin" instead of "project"
 - Creates a plugin structure with actions, providers, and services
 - Plugins can be published to the registry with `npx elizos publish`
@@ -65,7 +65,7 @@ keywords:
 [1286:66-1353:00] For contributors:
 
 - Clone the repository: `git clone https://github.com/eliza-/eliza`
-- Checkout the v2-develop branch: `git checkout v2-develop`
+- Checkout the main branch: `git checkout main`
 - Use `bun install` instead of npm install for workspace management
 - Codebase organized into sections: app, CLI, client, core, etc.
 

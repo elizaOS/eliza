@@ -1,13 +1,13 @@
 import { buildProject, handleError, runBunCommand } from '@/src/utils';
-import { displayBanner as showBanner } from '@/src/utils';
+import { displayBanner } from '@/src/utils';
 import { Command } from 'commander';
 import { execa } from 'execa';
 import { existsSync, readFileSync } from 'node:fs';
-import fs from 'node:fs/promises';
-import path, { dirname } from 'node:path';
+import { promises as fs } from 'node:fs';
+import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import prompts from 'prompts';
-import semver from 'semver';
+import * as semver from 'semver';
 import {
   isGlobalInstallation,
   isRunningViaNpx,
@@ -15,12 +15,18 @@ import {
   executeInstallation,
 } from '@/src/utils';
 import { logger } from '@elizaos/core';
+import {
+  detectDirectoryType,
+  getDirectoryTypeDescription,
+  isValidForUpdates,
+  type DirectoryInfo,
+} from '../utils/directory-detection';
 
 // Function to get the package version
 function getVersion(): string {
   // For ESM modules we need to use import.meta.url instead of __dirname
   const __filename = fileURLToPath(import.meta.url);
-  const __dirname = dirname(__filename);
+  const __dirname = path.dirname(__filename);
 
   // Find package.json relative to the current file
   const packageJsonPath = path.resolve(__dirname, '../package.json');
@@ -60,7 +66,7 @@ function isWorkspaceVersion(versionString: string): boolean {
  * @returns Whether the version is a special tag
  */
 function isSpecialVersionTag(version: string): boolean {
-  const specialTags = ['beta', 'latest', 'next', 'canary', 'rc', 'dev', 'nightly', 'alpha'];
+  const specialTags = ['latest', 'next', 'canary', 'rc', 'dev', 'nightly', 'alpha'];
   return specialTags.includes(version);
 }
 
@@ -152,7 +158,7 @@ async function updateDependencies(
 
   // Get the current CLI version (for informational purposes)
   const currentCliVersion = getVersion();
-  console.info(`Current CLI version: ${currentCliVersion}`);
+  // Don't log current CLI version since it's already shown in banner
 
   try {
     // Find the latest published version by timestamp
@@ -181,7 +187,9 @@ async function updateDependencies(
       console.info(
         `Could not determine latest version, using current CLI version: ${latestCliVersion}`
       );
-    } else {
+    }
+    // Only show latest version if it's different from current
+    else if (latestCliVersion !== currentCliVersion) {
       console.info(`Latest available CLI version: ${latestCliVersion}`);
     }
 
@@ -235,15 +243,16 @@ async function updateDependencies(
       // Update the list to only include non-workspace packages
       elizaPackages.length = 0;
       elizaPackages.push(...packagesToUpdate);
-    } else {
+    }
+    // Only show package list if there are many packages or in debug mode
+    else if (elizaPackages.length > 5) {
       console.info(
         `Found ${elizaPackages.length} ElizaOS packages: ${elizaPackages.map((p) => p.name).join(', ')}`
       );
     }
 
-    // Determine package tag early
-    const isCLIBeta = latestCliVersion.includes('beta');
-    const packageTag = isCLIBeta ? 'beta' : 'latest';
+    // Use latest tag for stable v1.0.0 release
+    const packageTag = 'latest';
 
     // Display outdated packages
     console.info(`\nElizaOS packages that can be updated to @${packageTag}:`);
@@ -303,12 +312,13 @@ async function updateDependencies(
       return;
     }
 
-    console.info(`Updating ${packagesNeedingUpdate.length} package(s)...`);
+    // Don't show number of packages being updated - the bun output shows this
+    // console.info(`Updating ${packagesNeedingUpdate.length} package(s)...`);
 
     // Update each package using the appropriate tag instead of specific version
     for (const pkg of packagesNeedingUpdate) {
       try {
-        console.info(`Updating ${pkg.name} to @${packageTag}...`);
+        // Don't log each individual update - bun output shows this
         await runBunCommand(['add', `${pkg.name}@${packageTag}`], cwd);
       } catch (error) {
         console.error(`Failed to update ${pkg.name}@${packageTag}: ${error.message}`);
@@ -318,43 +328,20 @@ async function updateDependencies(
     console.log('Dependencies updated successfully');
 
     // Run install to ensure all dependencies are properly installed
-    console.info('Installing updated dependencies...');
+    // Don't announce installing - bun output shows this
     await runBunCommand(['install'], cwd);
 
     // Build the project/plugin with updated dependencies
     if (!skipBuild) {
-      console.info(`Building ${isPlugin ? 'plugin' : 'project'}...`);
+      // Don't announce building - build output shows this
       await buildProject(cwd, isPlugin);
-      console.info(`Build completed successfully`);
+      // Don't announce build completion - build output shows this
     } else {
       console.info('Skipping build phase as requested with --skip-build flag');
     }
   } catch (error) {
     console.error(`Error updating dependencies: ${error.message}`);
     throw error; // Rethrow the error to be handled by the caller
-  }
-}
-
-/**
- * Check if the current directory is likely a plugin directory
- */
-function checkIfPluginDir(dir: string): boolean {
-  const packageJsonPath = path.join(dir, 'package.json');
-  if (!existsSync(packageJsonPath)) {
-    return false;
-  }
-
-  try {
-    const packageJsonContent = readFileSync(packageJsonPath, 'utf8');
-    const packageJson = JSON.parse(packageJsonContent);
-    if (packageJson.name?.startsWith('@elizaos/plugin-')) {
-      return true;
-    }
-
-    const keywords = packageJson.keywords || [];
-    return keywords.includes('elizaos-plugin');
-  } catch {
-    return false;
   }
 }
 
@@ -389,7 +376,6 @@ export async function performCliUpdate(): Promise<boolean> {
 
     // If we couldn't determine the latest version or already at latest, exit
     if (!latestVersion || currentVersion === latestVersion) {
-      await showBanner();
       console.info('ElizaOS CLI is already up to date!');
       return true;
     }
@@ -397,38 +383,30 @@ export async function performCliUpdate(): Promise<boolean> {
     console.info(`Updating ElizaOS CLI from ${currentVersion} to ${latestVersion}...`);
 
     // Install the specified version globally - use specific version instead of tag
-    logger.info(`Updating Eliza CLI to version: ${latestVersion}`);
+    logger.debug(`Updating Eliza CLI to version: ${latestVersion}`);
     try {
-      // Use direct npm install command for global installation
+      // Try to install latest version
+      const { stdout, stderr } = await execa('npm', ['install', '-g', '@elizaos/cli']);
+      logger.info(`Successfully updated Eliza CLI to latest version`);
+      logger.info('Please restart your terminal for the changes to take effect.');
+    } catch (npmError) {
+      // If latest tag fails, try with specific version
       try {
-        // First try with beta tag which is more reliable
-        const { stdout, stderr } = await execa('npm', ['install', '-g', '@elizaos/cli@beta']);
-        logger.info(`Successfully updated Eliza CLI to latest version`);
+        logger.info(`Latest installation failed, trying specific version: ${latestVersion}`);
+        const { stdout, stderr } = await execa('npm', [
+          'install',
+          '-g',
+          `@elizaos/cli@${latestVersion}`,
+        ]);
+        logger.info(`Successfully updated Eliza CLI to version ${latestVersion}`);
         logger.info('Please restart your terminal for the changes to take effect.');
-      } catch (npmError) {
-        // If beta tag fails, try with specific version
-        try {
-          logger.info(`Beta installation failed, trying specific version: ${latestVersion}`);
-          const { stdout, stderr } = await execa('npm', [
-            'install',
-            '-g',
-            `@elizaos/cli@${latestVersion}`,
-          ]);
-          logger.info(`Successfully updated Eliza CLI to version ${latestVersion}`);
-          logger.info('Please restart your terminal for the changes to take effect.');
-        } catch (versionError) {
-          throw new Error(
-            `Installation of @elizaos/cli version ${latestVersion} failed. Try manually with: npm install -g @elizaos/cli@beta`
-          );
-        }
+      } catch (versionError) {
+        throw new Error(
+          `Installation of @elizaos/cli version ${latestVersion} failed. Try manually with: npm install -g @elizaos/cli`
+        );
       }
-    } catch (error) {
-      logger.error('Failed to update Eliza CLI:', error.message);
-      logger.info('You can try manually with: npm install -g @elizaos/cli@beta');
-      process.exit(1);
     }
 
-    await showBanner();
     console.info('ElizaOS CLI has been successfully updated!');
     return true;
   } catch (error) {
@@ -447,7 +425,7 @@ export const update = new Command()
   .option('--packages', 'Update only packages (without updating the CLI)')
   .hook('preAction', async () => {
     try {
-      await showBanner();
+      await displayBanner();
     } catch (error) {
       // Silently continue if banner display fails
       logger.debug('Banner display failed, continuing with update');
@@ -476,13 +454,13 @@ export const update = new Command()
         // Check if we're running via npx/bunx
         if ((await isRunningViaNpx()) || (await isRunningViaBunx())) {
           console.warn('CLI update is not available when running via npx or bunx.');
-          console.info('To install the latest version, run: npm install -g @elizaos/cli@beta');
+          console.info('To install the latest version, run: npm install -g @elizaos/cli');
         }
         // Check if globally installed
         else if (!(await isGlobalInstallation())) {
           console.warn('The CLI update is only available for globally installed CLI.');
           console.info('To update a local installation, use your package manager manually.');
-          console.info('For global installation, run: npm install -g @elizaos/cli@beta');
+          console.info('For global installation, run: npm install -g @elizaos/cli');
         }
         // Run CLI update
         else {
@@ -507,9 +485,71 @@ export const update = new Command()
       if (updatePackages) {
         const cwd = process.cwd();
 
-        // Determine if we're in a project or plugin directory
-        const isPlugin = checkIfPluginDir(cwd);
-        console.info(`Detected ${isPlugin ? 'plugin' : 'project'} directory`);
+        // Detect directory type using comprehensive detection
+        const directoryInfo = detectDirectoryType(cwd);
+        const directoryDescription = getDirectoryTypeDescription(directoryInfo);
+
+        // Only show directory detection in debug mode
+        logger.debug(`Detected ${directoryDescription}`);
+
+        // Check if this directory is suitable for updates
+        if (!isValidForUpdates(directoryInfo)) {
+          switch (directoryInfo.type) {
+            case 'empty':
+              console.info('This appears to be an empty directory.');
+              console.info('To create a new ElizaOS project or plugin, use:');
+              console.info(
+                '  elizaos create <project-name>                    # Create a new project'
+              );
+              console.info(
+                '  elizaos create -t plugin <plugin-name>          # Create a new plugin'
+              );
+              return;
+
+            case 'non-elizaos-project':
+              console.info(
+                "This directory contains a project, but it doesn't appear to be an ElizaOS project."
+              );
+              if (directoryInfo.packageName) {
+                console.info(`Found package: ${directoryInfo.packageName}`);
+              }
+              console.info('ElizaOS update only works in ElizaOS projects and plugins.');
+              console.info('To create a new ElizaOS project, use: elizaos create <project-name>');
+              return;
+
+            case 'invalid':
+              console.error('Cannot update packages in this directory.');
+              if (!directoryInfo.hasPackageJson) {
+                console.info(
+                  "No package.json found. This doesn't appear to be a valid project directory."
+                );
+                console.info('To create a new ElizaOS project, use: elizaos create <project-name>');
+              } else {
+                console.info('The package.json file appears to be invalid or unreadable.');
+              }
+              return;
+
+            default:
+              console.error(`Unexpected directory type: ${directoryInfo.type}`);
+              return;
+          }
+        }
+
+        // If we get here, it's a valid ElizaOS project or plugin
+        const isPlugin = directoryInfo.type === 'elizaos-plugin';
+
+        if (directoryInfo.elizaPackageCount === 0) {
+          console.info('No ElizaOS packages found in this project.');
+          console.info(
+            "This might be a new project that hasn't installed ElizaOS dependencies yet."
+          );
+          console.info('Consider adding ElizaOS packages first, such as: bun add @elizaos/core');
+          return;
+        }
+
+        console.info(
+          `Found ${directoryInfo.elizaPackageCount} ElizaOS package(s) to check for updates`
+        );
 
         // Always call updateDependencies, passing the check flag to determine if it's a dry run
         await updateDependencies(cwd, isPlugin, options.check || false, options.skipBuild || false);

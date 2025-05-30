@@ -83,7 +83,7 @@ The ElizaOS CLI provides several commands to manage plugins. To install the CLI:
 :::tip
 
 ```bash
-npm install -g @elizaos/cli@beta
+npm install -g @elizaos/cli
 ```
 
 :::
@@ -108,8 +108,8 @@ elizaos plugins remove <plugin-name>
 - `elizaos plugins installed-plugins`: Lists plugins found in your project's dependencies.
 - `elizaos plugins add <plugin>` (alias: `install`): Adds a plugin to your project. Options:
   - `--no-env-prompt`: Skip prompting for environment variables.
-  - `--branch <branchName>`: Specify a branch to install from when using a monorepo source (default: `v2-develop`).
-  - `-T, --tag <tagname>`: Specify a package tag to install (e.g., `beta`, `latest`).
+  - `--branch <branchName>`: Specify a branch to install from when using a monorepo source (default: `main`).
+  - `-T, --tag <tagname>`: Specify a package tag to install (e.g., `latest`).
 - `elizaos plugins remove <plugin>` (aliases: `delete`, `del`, `rm`): Removes a plugin from your project and cleans up files.
 
 ### Publishing Plugins

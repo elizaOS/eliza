@@ -50,6 +50,9 @@ export interface Content {
   /** Array of media attachments */
   attachments?: Media[];
 
+  /** room type */
+  channelType?: string;
+
   /**
    * Additional dynamic properties
    * Use specific properties above instead of this when possible
@@ -871,8 +874,6 @@ export interface IDatabaseAdapter {
   updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean>;
 
   deleteAgent(agentId: UUID): Promise<boolean>;
-
-  ensureAgentExists(agent: Partial<Agent>): Promise<Agent>;
 
   ensureEmbeddingDimension(dimension: number): Promise<void>;
 

@@ -1,27 +1,18 @@
-import { promises as fs } from 'node:fs';
-import os from 'node:os';
-import { join } from 'node:path';
+import { logger } from '@elizaos/core';
 import { CachedRegistry } from '../types/plugins';
-import parseRegistry from './parse-registry';
 
-/** Read and parse the cached registry file */
-export async function readCache(): Promise<CachedRegistry | null> {
+export async function fetchPluginRegistry(): Promise<CachedRegistry | null> {
   try {
-    const elizaDir = join(os.homedir(), '.eliza');
-    const raw = await fs.readFile(join(elizaDir, 'cached-registry.json'), 'utf8');
-    return JSON.parse(raw) as CachedRegistry;
+    const resp = await fetch(
+      'https://raw.githubusercontent.com/elizaos-plugins/registry/refs/heads/main/generated-registry.json'
+    );
+    if (!resp.ok) {
+      logger.error(`Failed to fetch plugin registry: ${resp.statusText}`);
+      throw new Error(`Failed to fetch registry: ${resp.statusText}`);
+    }
+    const raw = await resp.json();
+    return raw as CachedRegistry;
   } catch {
     return null;
-  }
-}
-
-/** Run the parse-registry script to refresh the cache */
-export async function updatePluginRegistryCache(): Promise<boolean> {
-  try {
-    await parseRegistry();
-    return true;
-  } catch (error) {
-    console.error('Failed to update plugin registry cache:', error);
-    return false;
   }
 }

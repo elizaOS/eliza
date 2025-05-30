@@ -26,6 +26,10 @@ import {
 } from '@elizaos/core';
 import express from 'express';
 import fs from 'node:fs';
+import path from 'node:path';
+import FormData from 'form-data';
+import axios from 'axios';
+import sharp from 'sharp';
 
 // Cache for compiled regular expressions to improve performance
 const regexCache = new Map<string, RegExp>();
@@ -65,7 +69,7 @@ const cleanupFile = (filePath: string) => {
   }
 };
 
-const cleanupFiles = (files: Express.Multer.File[]) => {
+const cleanupFiles = (files: any[]) => {
   if (files) {
     files.forEach((file) => cleanupFile(file.path));
   }
@@ -113,6 +117,40 @@ export function agentRouter(
 ): express.Router {
   const router = express.Router();
   const db = server?.database;
+
+  // Helper function to extract filename from Catbox URLs
+  const extractFilenameFromCatboxUrl = (url: string): string | null => {
+    try {
+      // Handle various Catbox URL formats:
+      // https://files.catbox.moe/abc123.jpg
+      // https://catbox.moe/abc123.jpg
+      // abc123.jpg (just the filename)
+      const patterns = [
+        /https?:\/\/files\.catbox\.moe\/([^\/\?]+)/,
+        /https?:\/\/catbox\.moe\/([^\/\?]+)/,
+        /^([a-zA-Z0-9_\-\.]+\.[a-zA-Z0-9]+)$/,
+      ];
+
+      for (const pattern of patterns) {
+        const match = url.match(pattern);
+        if (match && match[1]) {
+          return match[1];
+        }
+      }
+
+      // Fallback: try to extract from the end of any URL
+      const parts = url.split('/');
+      const lastPart = parts[parts.length - 1];
+      if (lastPart && lastPart.includes('.')) {
+        return lastPart.split('?')[0]; // Remove query parameters if any
+      }
+
+      return null;
+    } catch (error) {
+      logger.error('[FILENAME EXTRACT] Error extracting filename from URL:', error);
+      return null;
+    }
+  };
 
   // Get all worlds
   router.get('/worlds', async (req, res) => {
@@ -314,7 +352,7 @@ export function agentRouter(
             },
           });
 
-          // Construct Memory for the agent's HTTP response
+          // Construct Memory for the agent's HTTP response with provider information
           sentMemory = {
             id: createUniqueUuid(runtime, `api-response-${userMessageMemory.id}-${Date.now()}`),
             entityId: runtime.agentId, // Agent is the sender
@@ -323,11 +361,17 @@ export function agentRouter(
               ...responseContent,
               text: responseContent.text || '',
               inReplyTo: userMessageMemory.id,
+              ...(responseContent.providers &&
+                responseContent.providers.length > 0 && {
+                  providers: responseContent.providers,
+                }),
             },
             roomId: roomId,
             worldId,
             createdAt: Date.now(),
           };
+
+          logger.debug('Response content sent via HTTP API:', responseContent.providers);
 
           await runtime.createMemory(sentMemory, 'messages');
         }
@@ -1926,24 +1970,219 @@ export function agentRouter(
     }
 
     try {
-      // The file is already saved by multer, we just need to return the URL
-      const fileUrl = `http://localhost:${req.get('host')?.split(':')[1] || '3000'}/media/uploads/${agentId}/${mediaFile.filename}`;
-      const mediaType = validImageTypes.includes(mediaFile.mimetype) ? 'image' : 'video';
+      const isImage = validImageTypes.includes(mediaFile.mimetype);
 
-      logger.info(`[MEDIA UPLOAD] Successfully uploaded ${mediaType}: ${mediaFile.filename}`);
+      if (isImage) {
+        // Upload image to Catbox.moe with compression and timeout handling
+        logger.debug('[MEDIA UPLOAD] Processing image for Catbox.moe upload');
 
-      res.json({
-        success: true,
-        data: {
-          url: fileUrl,
-          type: mediaType,
-          filename: mediaFile.filename,
-          originalName: mediaFile.originalname,
-          size: mediaFile.size,
-        },
-      });
+        // Check file size
+        const fileSizeInMB = mediaFile.size / (1024 * 1024);
+        const MAX_SIZE_MB = 180; // Leave some buffer under 200MB limit
+        const COMPRESSION_THRESHOLD_MB = 1; // Compress files larger than 1MB
+
+        let processedFilePath = mediaFile.path;
+        let shouldCompress = fileSizeInMB > COMPRESSION_THRESHOLD_MB;
+
+        // Compress image if it's too large
+        if (shouldCompress) {
+          logger.debug(`[MEDIA UPLOAD] Image size: ${fileSizeInMB.toFixed(2)}MB, compressing...`);
+
+          const compressedPath = path.join(
+            path.dirname(mediaFile.path),
+            `compressed_${mediaFile.filename}`
+          );
+
+          try {
+            let quality = 85;
+            let width = null;
+
+            // Determine compression strategy based on file size
+            if (fileSizeInMB > 50) {
+              quality = 60;
+              width = 1920; // Max width for very large images
+            } else if (fileSizeInMB > 20) {
+              quality = 70;
+              width = 2560;
+            } else if (fileSizeInMB > 10) {
+              quality = 80;
+            } else if (fileSizeInMB > 5) {
+              quality = 85;
+            } else {
+              quality = 90; // Light compression for smaller files
+            }
+
+            const sharpInstance = sharp(mediaFile.path);
+
+            if (width) {
+              sharpInstance.resize(width, null, {
+                withoutEnlargement: true,
+                fit: 'inside',
+              });
+            }
+
+            // Convert to JPEG for better compression (except for PNG with transparency)
+            if (mediaFile.mimetype === 'image/png') {
+              // Check if PNG has transparency
+              const metadata = await sharpInstance.metadata();
+              if (metadata.channels === 4 || metadata.hasAlpha) {
+                // Keep as PNG but compress
+                await sharpInstance.png({ quality }).toFile(compressedPath);
+              } else {
+                // Convert to JPEG for better compression
+                await sharpInstance.jpeg({ quality }).toFile(compressedPath);
+              }
+            } else {
+              // For JPEG and other formats
+              await sharpInstance.jpeg({ quality }).toFile(compressedPath);
+            }
+
+            // Check compressed file size
+            const compressedStats = fs.statSync(compressedPath);
+            const compressedSizeMB = compressedStats.size / (1024 * 1024);
+
+            logger.debug(
+              `[MEDIA UPLOAD] Compressed from ${fileSizeInMB.toFixed(2)}MB to ${compressedSizeMB.toFixed(2)}MB`
+            );
+
+            if (compressedSizeMB < MAX_SIZE_MB) {
+              processedFilePath = compressedPath;
+            } else {
+              logger.warn(
+                `[MEDIA UPLOAD] Even after compression, file is ${compressedSizeMB.toFixed(2)}MB, using fallback`
+              );
+              // Clean up compressed file and use fallback
+              cleanupFile(compressedPath);
+              throw new Error('File too large even after compression');
+            }
+          } catch (compressionError) {
+            logger.error('[MEDIA UPLOAD] Compression failed:', compressionError);
+            // If compression fails and file is too large, use fallback
+            if (fileSizeInMB > MAX_SIZE_MB) {
+              throw new Error('File too large and compression failed');
+            }
+            // Otherwise, try uploading original file
+          }
+        }
+
+        // Upload to Catbox.moe
+        try {
+          const form = new FormData();
+          form.append('reqtype', 'fileupload');
+          form.append('fileToUpload', fs.createReadStream(processedFilePath));
+
+          // Set timeout based on file size (minimum 30s, up to 3 minutes for large files)
+          const currentFileSizeMB = fs.statSync(processedFilePath).size / (1024 * 1024);
+          const timeoutMs = Math.max(30000, Math.min(180000, currentFileSizeMB * 2000)); // 2 seconds per MB
+
+          logger.debug(
+            `[MEDIA UPLOAD] Uploading ${currentFileSizeMB.toFixed(2)}MB to Catbox with ${timeoutMs / 1000}s timeout`
+          );
+
+          // Next.js proxy URL for Catbox.moe upload
+          const catboxApiUrl = 'https://vercel-api-psi.vercel.app/api/catbox';
+
+          const requestConfig: any = {
+            timeout: timeoutMs,
+            maxContentLength: Infinity,
+            maxBodyLength: Infinity,
+          };
+
+          const response = await axios.post(
+            `${catboxApiUrl}?timeout=${timeoutMs}`,
+            form,
+            requestConfig
+          );
+
+          const catboxUrl = response.data.trim();
+
+          if (!catboxUrl) {
+            throw new Error('Invalid response from Catbox Proxy API');
+          }
+
+          // Extract filename from catbox URL to create our proxy URL
+          // This masks the direct catbox URL behind our API
+          const filename = extractFilenameFromCatboxUrl(catboxUrl);
+          if (!filename) {
+            throw new Error('Could not extract filename from Catbox URL');
+          }
+
+          // Create proxy URL that routes through our bidirectional proxy
+          // Users will access: /api/catbox/filename.ext instead of https://files.catbox.moe/filename.ext
+          const proxyUrl = `${catboxApiUrl}/${filename}`;
+
+          // Get file size before cleanup
+          const finalFileSize = fs.statSync(processedFilePath).size;
+
+          // Clean up temporary files
+          cleanupFile(mediaFile.path);
+          if (processedFilePath !== mediaFile.path) {
+            cleanupFile(processedFilePath);
+          }
+
+          logger.info(`[MEDIA UPLOAD] Serving via proxy URL: ${proxyUrl}`);
+
+          res.json({
+            success: true,
+            data: {
+              url: proxyUrl, // Return proxy URL instead of direct catbox URL
+              type: 'image',
+              filename: mediaFile.filename,
+              originalName: mediaFile.originalname,
+              size: finalFileSize,
+              compressed: shouldCompress,
+            },
+          });
+        } catch (uploadError) {
+          logger.error('[MEDIA UPLOAD] Catbox upload failed:', uploadError.message);
+
+          // Clean up temporary files
+          if (processedFilePath !== mediaFile.path) {
+            cleanupFile(processedFilePath);
+          }
+
+          // Fallback to local storage
+          logger.debug('[MEDIA UPLOAD] Falling back to local storage');
+          const fileUrl = `http://localhost:${req.get('host')?.split(':')[1] || '3000'}/media/uploads/${agentId}/${mediaFile.filename}`;
+
+          logger.info(`[MEDIA UPLOAD] Using local storage fallback: ${mediaFile.filename}`);
+
+          res.json({
+            success: true,
+            data: {
+              url: fileUrl,
+              type: 'image',
+              filename: mediaFile.filename,
+              originalName: mediaFile.originalname,
+              size: mediaFile.size,
+              fallback: true,
+            },
+          });
+        }
+      } else {
+        // For non-image files (videos), use the existing local upload logic
+        const fileUrl = `http://localhost:${req.get('host')?.split(':')[1] || '3000'}/media/uploads/${agentId}/${mediaFile.filename}`;
+        const mediaType = 'video';
+
+        logger.info(`[MEDIA UPLOAD] Successfully uploaded ${mediaType}: ${mediaFile.filename}`);
+
+        res.json({
+          success: true,
+          data: {
+            url: fileUrl,
+            type: mediaType,
+            filename: mediaFile.filename,
+            originalName: mediaFile.originalname,
+            size: mediaFile.size,
+          },
+        });
+      }
     } catch (error) {
-      logger.error(`[MEDIA UPLOAD] Error processing upload: ${error}`);
+      logger.error(`[MEDIA UPLOAD] Error processing upload: ${error.message}`);
+
+      // Clean up the temporary file in case of error
+      cleanupFile(mediaFile.path);
+
       res.status(500).json({
         success: false,
         error: {

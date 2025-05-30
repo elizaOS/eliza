@@ -28,6 +28,7 @@ import {
   PluginEvents,
   imageDescriptionTemplate,
   ContentType,
+  Room,
 } from '@elizaos/core';
 import { v4 } from 'uuid';
 
@@ -213,6 +214,57 @@ export async function processAttachments(
 }
 
 /**
+ * Determines whether to skip the shouldRespond logic based on room type and message source.
+ * Supports both default values and runtime-configurable overrides via env settings.
+ */
+export function shouldBypassShouldRespond(
+  runtime: IAgentRuntime,
+  room?: Room,
+  source?: string
+): boolean {
+  if (!room) return false;
+
+  function normalizeEnvList(value: unknown): string[] {
+    if (!value || typeof value !== 'string') return [];
+
+    const cleaned = value.trim().replace(/^\[|\]$/g, '');
+    return cleaned
+      .split(',')
+      .map((v) => v.trim())
+      .filter(Boolean);
+  }
+
+  const defaultBypassTypes = [
+    ChannelType.DM,
+    ChannelType.VOICE_DM,
+    ChannelType.SELF,
+    ChannelType.API,
+  ];
+
+  const defaultBypassSources = ['client_chat'];
+
+  const bypassTypesSetting = normalizeEnvList(runtime.getSetting('SHOULD_RESPOND_BYPASS_TYPES'));
+  const bypassSourcesSetting = normalizeEnvList(
+    runtime.getSetting('SHOULD_RESPOND_BYPASS_SOURCES')
+  );
+
+  const bypassTypes = new Set(
+    [...defaultBypassTypes.map((t) => t.toString()), ...bypassTypesSetting].map((s: string) =>
+      s.trim().toLowerCase()
+    )
+  );
+
+  const bypassSources = [...defaultBypassSources, ...bypassSourcesSetting].map((s: string) =>
+    s.trim().toLowerCase()
+  );
+
+  const roomType = room.type?.toString().toLowerCase();
+  const sourceStr = source?.toLowerCase() || '';
+
+  return bypassTypes.has(roomType) || bypassSources.some((pattern) => sourceStr.includes(pattern));
+}
+
+/**
  * Handles incoming messages and generates responses based on the provided runtime and message information.
  *
  * @param {MessageReceivedHandlerParams} params - The parameters needed for message handling, including runtime, message, and callback.
@@ -227,6 +279,7 @@ const messageReceivedHandler = async ({
   // Set up timeout monitoring
   const timeoutDuration = 60 * 60 * 1000; // 1 hour
   let timeoutId: NodeJS.Timeout | undefined = undefined;
+
   try {
     logger.info(`[Bootstrap] Message received from ${message.entityId} in room ${message.roomId}`);
     // Generate a new response ID
@@ -239,8 +292,6 @@ const messageReceivedHandler = async ({
     if (!agentResponses) {
       throw new Error('Agent responses map not found');
     }
-
-    console.log('agentResponses is', agentResponses);
 
     // Set this as the latest response ID for this agent+room
     agentResponses.set(message.roomId, responseId);
@@ -261,8 +312,6 @@ const messageReceivedHandler = async ({
       source: 'messageHandler',
     });
 
-    console.log('runId is', runId);
-
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutId = setTimeout(async () => {
         await runtime.emitEvent(EventType.RUN_TIMEOUT, {
@@ -282,10 +331,7 @@ const messageReceivedHandler = async ({
       }, timeoutDuration);
     });
 
-    console.log('message is', message);
-
     const processingPromise = (async () => {
-      console.log('processingPromise');
       try {
         if (message.entityId === runtime.agentId) {
           logger.debug(`[Bootstrap] Skipping message from self (${runtime.agentId})`);
@@ -318,25 +364,17 @@ const messageReceivedHandler = async ({
 
         let state = await runtime.composeState(
           message,
-          ['ANXIETY', 'SHOULD_RESPOND', 'ENTITIES', 'CHARACTER', 'RECENT_MESSAGES'],
+          ['ANXIETY', 'SHOULD_RESPOND', 'ENTITIES', 'CHARACTER', 'RECENT_MESSAGES', 'ACTIONS'],
           true
         );
 
         // Skip shouldRespond check for DM and VOICE_DM channels
         const room = await runtime.getRoom(message.roomId);
 
-        console.log('room is', room);
-        console.log('message is', message);
-
-        const shouldSkipShouldRespond =
-          room?.type === ChannelType.DM ||
-          room?.type === ChannelType.VOICE_DM ||
-          room?.type === ChannelType.SELF ||
-          room?.type === ChannelType.API ||
-          message.content.source?.includes('client_chat');
-
-        logger.debug(
-          `[Bootstrap] Skipping shouldRespond check for ${runtime.character.name} because ${room?.type} ${room?.source}`
+        const shouldSkipShouldRespond = shouldBypassShouldRespond(
+          runtime,
+          room ?? undefined,
+          message.content.source
         );
 
         if (message.content.attachments && message.content.attachments.length > 0) {
@@ -376,6 +414,9 @@ const messageReceivedHandler = async ({
 
           shouldRespond = responseObject?.action && responseObject.action === 'RESPOND';
         } else {
+          logger.debug(
+            `[Bootstrap] Skipping shouldRespond check for ${runtime.character.name} because ${room?.type} ${room?.source}`
+          );
           shouldRespond = true;
         }
 
@@ -385,7 +426,10 @@ const messageReceivedHandler = async ({
         console.log('shouldSkipShouldRespond', shouldSkipShouldRespond);
 
         if (shouldRespond) {
-          state = await runtime.composeState(message);
+          state = await runtime.composeState(message, ['ACTIONS']);
+          if (!state.values.actionNames) {
+            logger.warn('actionNames data missing from state, even though it was requested');
+          }
 
           const prompt = composePromptFromState({
             state,
@@ -478,11 +522,50 @@ const messageReceivedHandler = async ({
           }
 
           if (responseContent && responseContent.simple && responseContent.text) {
+            // Log provider usage for simple responses
+            if (responseContent.providers && responseContent.providers.length > 0) {
+              logger.debug('[Bootstrap] Simple response used providers', responseContent.providers);
+            }
+
+            // without actions there can't be more than one message
             await callback(responseContent);
           } else {
-            await runtime.processActions(message, responseMessages, state, callback);
+            await runtime.processActions(
+              message,
+              responseMessages,
+              state,
+              async (memory: Content) => {
+                return [];
+              }
+            );
+            if (responseMessages.length) {
+              // Log provider usage for complex responses
+              for (const responseMessage of responseMessages) {
+                if (
+                  responseMessage.content.providers &&
+                  responseMessage.content.providers.length > 0
+                ) {
+                  logger.debug(
+                    '[Bootstrap] Complex response used providers',
+                    responseMessage.content.providers
+                  );
+                }
+              }
+
+              for (const memory of responseMessages) {
+                await callback(memory.content);
+              }
+            }
           }
-          await runtime.evaluate(message, state, shouldRespond, callback, responseMessages);
+          await runtime.evaluate(
+            message,
+            state,
+            shouldRespond,
+            async (memory: Content) => {
+              return [];
+            },
+            responseMessages
+          );
         } else {
           // Handle the case where the agent decided not to respond
           logger.debug('[Bootstrap] Agent decided not to respond (shouldRespond is false).');
@@ -567,9 +650,6 @@ const messageReceivedHandler = async ({
         });
       }
     })();
-
-    console.log('processingPromise is', processingPromise);
-    console.log('timeoutPromise is', timeoutPromise);
 
     await Promise.race([processingPromise, timeoutPromise]);
   } finally {

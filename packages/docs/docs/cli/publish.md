@@ -1,36 +1,94 @@
 ---
 sidebar_position: 10
 title: Publish Command
-description: Package and publish your ElizaOS plugins or projects to npm, GitHub, and the registry. By default, it publishes to all three destinations. You can use the `--npm` flag to publish to npm only.
+description: Publish a plugin to npm, GitHub, and the registry
 keywords: [CLI, publish, registry, npm, GitHub, packages, distribution]
 image: /img/cli.jpg
 ---
 
 # Publish Command
 
-The `publish` command allows you to package and publish your ElizaOS plugins or projects. By default, it publishes to npm, GitHub, and the ElizaOS registry in one command. You can use the `--npm` flag to publish to npm only.
+Publish a plugin to the registry.
 
 ## Usage
 
 ```bash
-# Publish to npm + GitHub + registry (default)
-elizaos publish
-
-# Publish to npm only
-elizaos publish --npm
+elizaos publish [options]
 ```
 
 ## Options
 
-| Option                      | Description                                               |
-| --------------------------- | --------------------------------------------------------- |
-| `-t, --test`                | Run publish tests without actually publishing             |
-| `-n, --npm`                 | Publish to npm only (skip GitHub and registry)            |
-| `-s, --skip-registry`       | Skip publishing to the registry                           |
-| `-p, --platform <platform>` | Specify platform compatibility (node, browser, universal) |
-| `--dry-run`                 | Generate registry files locally without publishing        |
-| `--no-banner`               | Skip display of startup banner                            |
-| `--debug`                   | Enable debug logging                                      |
+| Option                 | Description                                        |
+| ---------------------- | -------------------------------------------------- |
+| `-n, --npm`            | Publish to npm instead of GitHub                   |
+| `-t, --test`           | Test publish process without making changes        |
+| `-d, --dry-run`        | Generate registry files locally without publishing |
+| `-sr, --skip-registry` | Skip publishing to the registry                    |
+
+## Examples
+
+### Basic Publishing
+
+```bash
+# Navigate to your plugin directory
+cd my-plugin
+
+# Publish to GitHub and registry (default)
+elizaos publish
+
+# Publish to npm instead of GitHub
+elizaos publish --npm
+```
+
+### Testing and Validation
+
+```bash
+# Test the publish process without making changes
+elizaos publish --test
+
+# Generate registry files locally without publishing
+elizaos publish --dry-run
+
+# Publish but skip registry submission
+elizaos publish --skip-registry
+```
+
+### Combined Options
+
+```bash
+# Test npm publishing
+elizaos publish --test --npm
+
+# Test publishing while skipping registry
+elizaos publish --test --skip-registry
+```
+
+## Publishing Modes
+
+### Default: GitHub + Registry Publishing
+
+```bash
+elizaos publish
+```
+
+This mode:
+
+- Publishes your package to npm
+- Creates/updates a GitHub repository for source code access
+- Submits your plugin to the ElizaOS registry for discoverability
+
+### npm Publishing
+
+```bash
+elizaos publish --npm
+```
+
+This mode:
+
+- Publishes only to npm
+- Skips GitHub repository creation
+- Skips registry submission
+- Useful for private packages or when you want to manage GitHub separately
 
 ## Authentication Requirements
 
@@ -48,8 +106,8 @@ npm login
 
 GitHub authentication is required for repository creation and registry submission. You can set your GitHub token in one of two ways:
 
-1. Set the `GITHUB_TOKEN` environment variable.
-2. When prompted, enter your GitHub Personal Access Token (PAT).
+1. Set the `GITHUB_TOKEN` environment variable
+2. When prompted, enter your GitHub Personal Access Token (PAT)
 
 Your GitHub PAT should have these scopes:
 
@@ -57,295 +115,288 @@ Your GitHub PAT should have these scopes:
 - `read:org` (for organization access)
 - `workflow` (for workflow access)
 
-## Publishing Process
+## Plugin Requirements
 
-When you run the `publish` command, ElizaOS will:
+Before publishing, ensure your plugin meets these requirements:
 
-1. Check the CLI version and prompt for updates if needed.
-2. Detect if your package is a plugin or project.
-3. Validate the package structure and configuration against requirements (see below).
-4. Get npm and GitHub credentials.
-5. Build the package (e.g., run `npm run build`).
-6. Publish to npm.
-7. Publish to GitHub (unless `--npm` flag is used).
-8. For plugins, create a Pull Request to add it to the ElizaOS registry (unless `--npm` or `--skip-registry` flags are used).
-
-### Project Type Detection
-
-ElizaOS automatically detects if your package is a plugin or project based on `package.json` conventions (e.g., name containing `plugin-`).
-
-## Platform Compatibility
-
-You can specify the platform compatibility of your package in `package.json`:
+### Package.json Configuration
 
 ```json
 {
-  "platform": "universal"
-}
-```
-
-## Publishing Modes
-
-### Default: Complete Publishing (npm + GitHub + registry)
-
-```bash
-# Publish to all destinations
-elizaos publish
-```
-
-This is the recommended approach as it:
-
-- Publishes your package to npm for easy installation
-- Creates/updates a GitHub repository for source code access
-- Submits your plugin to the ElizaOS registry for discoverability
-
-### npm Only Publishing
-
-```bash
-# Publish to npm only
-elizaos publish --npm
-```
-
-This mode:
-
-- Publishes only to npm
-- Skips GitHub repository creation
-- Skips registry submission
-- Useful for private packages or when you want to manage GitHub separately
-
-## Testing Before Publishing
-
-### Test Mode
-
-Run validations without actually publishing:
-
-```bash
-elizaos publish --test
-```
-
-This checks requirements, credentials, and the build process.
-
-### Dry Run
-
-Generate registry metadata files locally without submitting:
-
-```bash
-elizaos publish --dry-run
-```
-
-## Registry Integration (for Plugins)
-
-When publishing plugins with the default command, ElizaOS automatically creates a Pull Request to add your plugin to the official registry, making it discoverable via `elizaos plugins list`.
-
-To skip registry submission while still publishing to npm and GitHub:
-
-```bash
-elizaos publish --skip-registry
-```
-
-## Plugin Development and Publishing Workflow
-
-### 1. Create a Plugin
-
-```bash
-elizaos create -t plugin my-awesome-plugin
-cd my-awesome-plugin
-```
-
-### 2. Develop and Test
-
-```bash
-# Install dependencies
-bun install
-
-# Develop your plugin (edit src/, etc.)
-elizaos dev
-
-# Test your plugin thoroughly
-elizaos test
-
-# Test specific components if needed
-elizaos test component  # Component tests only
-elizaos test e2e       # End-to-end tests only
-```
-
-### 3. Meet Registry Requirements
-
-Before publishing, ensure your plugin meets all requirements:
-
-#### Registry Requirements Checklist
-
-| Name                      | Requirement                                                       | Validation                         |
-| ------------------------- | ----------------------------------------------------------------- | ---------------------------------- |
-| **Name**                  | Must include 'plugin-' (e.g., '@elizaos/plugin-example')          | Auto-checked                       |
-| **GitHub Repository**     | URL must use `github:` format (e.g., `github:username/repo-name`) | Auto-checked & can be auto-fixed   |
-| **Repository Visibility** | Repository must be public                                         | Manual check                       |
-| **Repository Topics**     | Should have 'elizaos-plugins' in topics                           | Manual check                       |
-| **Images Directory**      | Must have an `images/` directory                                  | Auto-checked & can be auto-created |
-| **Logo Image**            | `images/logo.jpg` - 400x400px square logo (max 500KB)             | Auto-checked                       |
-| **Banner Image**          | `images/banner.jpg` - 1280x640px banner image (max 1MB)           | Auto-checked                       |
-| **Agent Configuration**   | Must include `agentConfig` in package.json                        | Auto-checked & can be auto-fixed   |
-| **Description**           | Meaningful description in package.json (10+ chars)                | Auto-checked & prompted            |
-| **Directory Structure**   | Standard plugin directory structure                               | Auto-checked                       |
-
-The `elizaos publish --test` command will check these requirements and guide you through fixes.
-
-### 4. Test Publishing Process
-
-```bash
-elizaos publish --test
-```
-
-Address any issues reported by the test run.
-
-### 5. Publish Your Plugin
-
-```bash
-# Login to npm first
-npm login
-
-# Final test run before publishing
-elizaos test
-
-# Publish to npm + GitHub + registry (recommended)
-elizaos publish
-
-# Or publish to npm only (if you want to manage GitHub separately)
-elizaos publish --npm
-```
-
-After submission to the registry via Pull Request, your plugin will be reviewed by the ElizaOS team.
-
-## Plugin Configuration (`package.json`)
-
-Key fields in your plugin's `package.json`:
-
-```json
-{
-  "name": "@elizaos/plugin-example",
-  "description": "Description of your plugin (10+ chars)",
-  "version": "0.1.0",
+  "name": "@npm-username/plugin-name",
+  "description": "${PLUGINDESCRIPTION}",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "packageType": "plugin",
+  "platform": "node",
+  "license": "UNLICENSED",
+  "author": "${GITHUB_USERNAME}",
+  "keywords": ["plugin", "elizaos"],
   "repository": {
     "type": "git",
-    "url": "github:your-username/plugin-example" // Use github: prefix
+    "url": "${REPO_URL}"
+  },
+  "homepage": "https://elizaos.ai",
+  "bugs": {
+    "url": "https://github.com/${GITHUB_USERNAME}/${PLUGINNAME}/issues"
   },
   "agentConfig": {
-    // Required for registry
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {
       "API_KEY": {
         "type": "string",
         "description": "API key for the service"
       }
-      // Add other required parameters
     }
   },
-  "keywords": ["elizaos-plugins", "other", "tags"],
-  "maintainers": ["your-username"]
-  // ... other standard package.json fields
+  "publishConfig": {
+    "access": "public"
+  }
 }
 ```
 
-The `agentConfig` section defines parameters your plugin requires, prompting users during installation.
+### Required Files and Directories
 
-## GitHub Repository Requirements
+| Requirement          | Description                                       | Validation   |
+| -------------------- | ------------------------------------------------- | ------------ |
+| **Plugin Name**      | Must include 'plugin-' (e.g., `plugin-example`)   | Auto-checked |
+| **Images Directory** | Must have an `images/` directory                  | Auto-created |
+| **Logo Image**       | `images/logo.jpg` - 400x400px square (max 500KB)  | Auto-checked |
+| **Banner Image**     | `images/banner.jpg` - 1280x640px banner (max 1MB) | Auto-checked |
+| **Agent Config**     | Must include `agentConfig` in package.json        | Auto-fixed   |
+| **Description**      | Meaningful description (10+ characters)           | Prompted     |
+| **Repository URL**   | Must use `github:` format                         | Auto-fixed   |
 
-For publishing to GitHub and registry submission:
+### Registry Publishing Criteria
 
-1. Repository must be **public**.
-2. Include `elizaos-plugins` in the repository **topics**.
-3. Have a detailed `README.md`.
-4. Include a license file.
+Before submitting your plugin to the registry, review the detailed publishing criteria and requirements at the [ElizaOS Plugin Registry Pull Request Template](https://github.com/elizaos-plugins/registry/blob/main/.github/pull_request_template.md). This template contains comprehensive guidelines for plugin submission and acceptance.
 
-## Images Requirements
+## Publishing Process
 
-Place the following in an `images/` directory in your plugin's root:
+When you run the `publish` command, ElizaOS will:
 
-- `logo.jpg`: 400x400px square logo (max 500KB)
-- `banner.jpg`: 1280x640px banner image (max 1MB)
+1. **Check CLI version** and prompt for updates if needed
+2. **Validate plugin structure** and requirements
+3. **Update package.json** with actual values (replacing placeholders)
+4. **Get authentication credentials** for npm and GitHub
+5. **Build the package** (run `npm run build`)
+6. **Publish to npm** with `npm publish --ignore-scripts`
+7. **Create GitHub repository** (unless `--npm` flag is used)
+8. **Submit to registry** (unless `--npm` or `--skip-registry` flags are used)
 
-These are used in the ElizaOS registry and UI.
+## Package.json Placeholder Replacement
 
-## Examples
+The publish command automatically replaces placeholders in your package.json:
 
-### Complete Publishing (Recommended)
+| Placeholder            | Replaced With              | Example                          |
+| ---------------------- | -------------------------- | -------------------------------- |
+| `npm-username`         | Your npm username          | `@username/plugin-example`       |
+| `plugin-name`          | Your plugin directory name | `plugin-example`                 |
+| `${PLUGINDESCRIPTION}` | Auto-generated description | `ElizaOS plugin for example`     |
+| `${REPO_URL}`          | GitHub repository URL      | `github:username/plugin-example` |
+| `${GITHUB_USERNAME}`   | Your GitHub username       | `username`                       |
+
+## Registry Integration
+
+### Automatic Registry Submission
+
+When publishing with the default command, ElizaOS automatically:
+
+- Creates a Pull Request to add your plugin to the official registry
+- Makes your plugin discoverable via `elizaos plugins list`
+- Provides metadata for the plugin marketplace
+
+### Registry Requirements
+
+To be accepted into the registry, your plugin must have:
+
+- **Public repository** with `elizaos-plugins` topic
+- **Required images** (logo.jpg and banner.jpg)
+- **Proper naming** convention (plugin-\*)
+- **Agent configuration** in package.json
+- **Meaningful description** (not default generated text)
+
+## Development Workflow
+
+### 1. Create and Develop Plugin
 
 ```bash
-cd my-plugin
-npm login
-elizaos publish
+# Create new plugin
+elizaos create -t plugin my-awesome-plugin
+cd my-awesome-plugin
+
+# Install dependencies
+bun install
+
+# Develop your plugin
+elizaos dev
+
+# Test thoroughly
+elizaos test
 ```
 
-This publishes to npm, creates a GitHub repository, and submits to the registry.
-
-### npm Only Publishing
+### 2. Prepare for Publishing
 
 ```bash
-cd my-package
+# Test the publish process
+elizaos publish --test
+
+# Check requirements
+ls images/  # Should contain logo.jpg and banner.jpg
+cat package.json  # Verify all fields are correct
+```
+
+### 3. Publish Plugin
+
+```bash
+# Login to npm
 npm login
+
+# Publish to GitHub + registry (recommended)
+elizaos publish
+
+# Or publish to npm only
 elizaos publish --npm
 ```
 
-This publishes only to npm, useful for private packages or when managing GitHub separately.
+## Testing Before Publishing
 
-### Testing the Publishing Process
+### Test Mode
 
 ```bash
 elizaos publish --test
 ```
 
-## Continuous Development
+Test mode validates:
 
-**Important**: The `elizaos publish` command is designed for initial publishing. After your plugin is published, use standard npm and git workflows for updates.
+- Package structure and naming
+- Required files and directories
+- npm and GitHub authentication
+- Build process without publishing
 
-### Standard Update Workflow
+### Dry Run Mode
 
-1. **Make changes to your plugin**
-2. **Test your changes thoroughly**:
-   ```bash
-   elizaos test  # Run all tests to ensure quality
-   ```
-3. **Update version using npm**:
-   ```bash
-   npm version patch  # or minor/major
-   ```
-4. **Publish to npm**:
-   ```bash
-   npm publish
-   ```
-5. **Push to GitHub**:
-   ```bash
-   git push origin main
-   git push --tags
-   ```
+```bash
+elizaos publish --dry-run
+```
+
+Dry run mode:
+
+- Generates registry metadata files locally
+- Creates files in `packages/registry/` directory
+- Shows what would be submitted to registry
+- Does not publish or create PRs
+
+## Post-Publishing Updates
+
+**Important**: The `elizaos publish` command is designed for **initial plugin publishing only**. After your plugin is published to the registry, all continuous maintenance and updates should be managed through standard GitHub and npm workflows.
+
+### Standard Update Process
+
+```bash
+# 1. Make changes and test
+elizaos test
+
+# 2. Update version
+npm version patch  # or minor/major
+
+# 3. Publish to npm
+npm publish
+
+# 4. Push to GitHub
+git push origin main
+git push --tags
+```
 
 ### Why Use Standard Workflows?
 
 - **Direct updates**: `npm publish` directly updates your package on npm
 - **Version control**: Standard git workflows maintain proper version history
-- **Tool compatibility**: Works with all standard development tools and CI/CD pipelines
+- **Tool compatibility**: Works with all standard development tools and CI/CD
 - **Registry sync**: The ElizaOS registry automatically syncs with npm updates
 
-The `elizaos publish` command should only be used for:
+**Only use `elizaos publish` for:**
 
-- Initial plugin publishing
-- Setting up the initial GitHub repository
-- Initial registry submission
+- Initial plugin publishing and registry submission
+- Setting up the initial GitHub repository structure
+
+**Use standard npm/GitHub workflows for:**
+
+- Version updates and bug fixes
+- Feature additions and improvements
+- All ongoing maintenance and development
 
 ## Troubleshooting
 
 ### Authentication Issues
 
-- **npm**: Run `npm login` before publishing.
-- **GitHub**: Check your `GITHUB_TOKEN` environment variable or re-enter your PAT when prompted. Ensure the PAT has the correct scopes (`repo`, `read:org`, `workflow`).
+```bash
+# npm login problems
+npm logout
+npm login
+
+# GitHub token issues
+# Set environment variable:
+export GITHUB_TOKEN=your_token_here
+
+# Or re-enter when prompted
+elizaos publish
+```
 
 ### Package Validation Failures
 
-- Carefully check the output of `elizaos publish --test`.
-- Ensure `package.json` is correct (name format, description, repository URL, `agentConfig`).
-- Verify image dimensions and file sizes.
-- Make sure the GitHub repository is public and has the `elizaos-plugins` topic.
+```bash
+# Check package structure
+elizaos publish --test
 
-### Recursion Issues
+# Common issues:
+# - Plugin name must start with "plugin-"
+# - Missing images/logo.jpg (400x400px, max 500KB)
+# - Missing images/banner.jpg (1280x640px, max 1MB)
+# - Repository URL format (use github:username/repo)
+```
 
-If you encounter issues with the publish command running multiple times, this is typically resolved by the CLI's built-in recursion prevention. The CLI uses `npm publish --ignore-scripts` to prevent the npm publish script from triggering the ElizaOS publish command again.
+### Build Failures
+
+```bash
+# Check build process
+npm run build
+
+# Install missing dependencies
+bun install
+
+# Check TypeScript errors
+bun i && bun run build
+```
+
+### Registry Submission Issues
+
+```bash
+# Test registry generation
+elizaos publish --dry-run
+
+# Check generated files
+ls packages/registry/
+
+# Skip registry if having issues
+elizaos publish --skip-registry
+```
+
+### CLI Version Issues
+
+```bash
+# Update CLI before publishing
+elizaos update
+
+# Check current version
+elizaos --version
+```
+
+## Related Commands
+
+- [`create`](./create.md): Create a new plugin to publish
+- [`plugins`](./plugins.md): Manage and discover published plugins
+- [`test`](./test.md): Test your plugin before publishing
+- [`env`](./env.md): Configure environment variables for publishing

@@ -57,7 +57,7 @@ function HomepageHeader() {
                   <code>
                     <span className={styles.comment}># Uses node 23+</span>
                     <br />
-                    <span className={styles.prompt}>$</span> npm install -g @elizaos/cli@beta
+                    <span className={styles.prompt}>$</span> npm install -g @elizaos/cli
                     <br />
                     <span className={styles.prompt}>$</span> elizaos create
                     <br />
