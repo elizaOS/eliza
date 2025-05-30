@@ -62,11 +62,31 @@
 
 > **Untuk pengguna Windows, anda perlu ada Subsistem Windows untuk Linux:** [WSL 2](https://learn.microsoft.com/de-de/windows/wsl/install-manual).
 
-### Guna Versi Permulaan (Disyorkan)
+### Mulakan Eliza Secara Manual (Hanya disyorkan untuk pemalam atau pembangunan platform)
 
-```bash
-git clone https://github.com/elizaos/eliza-starter.git
+#### Lihat keluaran terkini 
 
+```bash 
+# Klon repositori
+git clone https://github.com/elizaos/eliza.git
+
+# Projek ini berulang dengan pantas, jadi kami mengesyorkan anda menyemak keluaran terkini
+git checkout $(git describe --tags --abbrev=0)
+
+# Jika perkara di atas tidak menyemak keluaran terkini, ini sepatutnya berfungsi:
+# git checkout $(git describe --tags `git rev-list --tags --max-count=1`)
+ ```
+
+Jika anda mahukan fail aksara contoh juga, jalankan ini: 
+```bash 
+# Muat turun submodule aksara daripada repo aksara kemas kini submodule git --init
+```
+#### Edit fail .env Salin .env.example ke .env dan isikan nilai yang sesuai. 
+
+```
 cp .env.example .env
 
-pnpm i && pnpm start
+```
+Nota: .env adalah pilihan. Jika anda merancang untuk menjalankan berbilang ejen yang berbeza, anda boleh menyampaikan rahsia melalui watak JSON
+
+
