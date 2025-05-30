@@ -46,7 +46,7 @@
     "prettier": "3.5.3",
     "tsup": "8.4.0",
     "typescript": "5.8.2",
-    "vitest": "1.4.0"
+    "vitest": "1.6.1"
   },
   "scripts": {
     "start": "elizaos start",
