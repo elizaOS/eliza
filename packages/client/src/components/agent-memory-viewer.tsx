@@ -258,8 +258,10 @@ export function AgentMemoryViewer({ agentId, agentName }: AgentMemoryViewerProps
   const MemoryCard = ({ memory }: { memory: Memory }) => {
     const content = memory.content as ChatMemoryContent;
     const IconComponent = getMemoryIcon(memory, content);
-    const entityName = memory.metadata?.source || agentName;
     const isAgent = memory.entityId === memory.agentId;
+    const entityName = isAgent
+      ? memory.metadata?.source || agentName
+      : memory.metadata?.source || 'User';
 
     return (
       <div className="border rounded-lg p-4 bg-card hover:bg-accent/5 transition-colors group">
@@ -345,6 +347,7 @@ export function AgentMemoryViewer({ agentId, agentName }: AgentMemoryViewerProps
                 <span
                   key={action}
                   className="text-xs px-2 py-1 bg-muted rounded text-muted-foreground"
+                  title="Action"
                 >
                   {action}
                 </span>
@@ -353,6 +356,7 @@ export function AgentMemoryViewer({ agentId, agentName }: AgentMemoryViewerProps
                 <span
                   key={provider}
                   className="text-xs px-2 py-1 bg-muted rounded text-muted-foreground"
+                  title="Provider"
                 >
                   {provider}
                 </span>
