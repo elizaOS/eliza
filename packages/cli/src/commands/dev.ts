@@ -101,8 +101,8 @@ async function determineProjectType(): Promise<{ isProject: boolean; isPlugin: b
   const packageJsonPath = path.join(cwd, 'package.json');
   const isMonorepo = await isMonorepoContext();
 
-  logger.info(`Running in directory: ${cwd}`);
-  logger.info(`Detected Eliza monorepo context: ${isMonorepo}`);
+  logger.debug(`Running in directory: ${cwd}`);
+  logger.debug(`Detected Eliza monorepo context: ${isMonorepo}`);
 
   let isProject = false;
   let isPlugin = false;
@@ -112,8 +112,8 @@ async function determineProjectType(): Promise<{ isProject: boolean; isPlugin: b
       const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
 
       // Log package info for debugging
-      console.info(`Package name: ${packageJson.name}`);
-      console.info(
+      logger.debug(`Package name: ${packageJson.name}`);
+      logger.debug(
         `Package type check: ${JSON.stringify({
           'eliza.type': packageJson.eliza?.type,
           'name.includes(plugin)': packageJson.name?.includes('plugin-'),
