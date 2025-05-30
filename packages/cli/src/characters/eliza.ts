@@ -15,7 +15,6 @@ const baseCharacter: Character = {
     '@elizaos/plugin-twitter',
     '@elizaos/plugin-telegram',
     '@elizaos/plugin-bootstrap',
-    '@elizaos/plugin-knowledge',
   ],
   secrets: {},
   system:
@@ -202,7 +201,7 @@ export function getElizaCharacter(): Character {
   const plugins = [
     '@elizaos/plugin-sql',
     ...(process.env.ANTHROPIC_API_KEY ? ['@elizaos/plugin-anthropic'] : []),
-    ...(process.env.OPENAI_API_KEY ? ['@elizaos/plugin-openai'] : []),
+    ...(process.env.OPENAI_API_KEY ? ['@elizaos/plugin-openai', '@elizaos/plugin-knowledge'] : []),
     ...(!process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY
       ? ['@elizaos/plugin-local-ai']
       : []),
@@ -210,7 +209,6 @@ export function getElizaCharacter(): Character {
     ...(process.env.TWITTER_USERNAME ? ['@elizaos/plugin-twitter'] : []),
     ...(process.env.TELEGRAM_BOT_TOKEN ? ['@elizaos/plugin-telegram'] : []),
     ...(!process.env.IGNORE_BOOTSTRAP ? ['@elizaos/plugin-bootstrap'] : []),
-    '@elizaos/plugin-knowledge',
   ];
 
   return {
