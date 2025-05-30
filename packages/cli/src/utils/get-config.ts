@@ -363,9 +363,14 @@ export async function setupPgLite(
 }
 
 /**
- * Stores Postgres URL in the .env file
- * @param url The Postgres URL to store
- * @param envFilePath Path to the .env file
+ * Stores the provided Postgres connection URL in the specified `.env` file, replacing any existing entry.
+ *
+ * Updates the `POSTGRES_URL` environment variable in both the file and the current process.
+ *
+ * @param url - The Postgres connection URL to store.
+ * @param envFilePath - Path to the `.env` file where the URL should be saved.
+ *
+ * @throws {Error} If reading from or writing to the `.env` file fails.
  */
 export async function storePostgresUrl(url: string, envFilePath: string): Promise<void> {
   if (!url) return;
@@ -392,12 +397,10 @@ export async function storePostgresUrl(url: string, envFilePath: string): Promis
 }
 
 /**
- * Prompts the user for a Postgres URL, validates it, and stores it
- * @returns The configured Postgres URL or null if user skips
- */
-/**
- * Prompts the user for a Postgres URL, validates it, and stores it
- * @returns The configured Postgres URL or null if user cancels
+ * Prompts the user to enter a Postgres connection URL, validates its format, and stores it in the specified `.env` file.
+ *
+ * @param envFilePath - Path to the `.env` file where the Postgres URL will be stored.
+ * @returns The entered Postgres URL if provided and stored, or `null` if the user cancels the prompt.
  */
 export async function promptAndStorePostgresUrl(envFilePath: string): Promise<string | null> {
   const response = await prompts({
@@ -409,7 +412,7 @@ export async function promptAndStorePostgresUrl(envFilePath: string): Promise<st
 
       const isValid = isValidPostgresUrl(value);
       if (!isValid) {
-        return `Invalid URL format. Expected: postgresql://user:password@host:port/dbname.`;
+        return 'Invalid URL format. Expected: postgresql://user:password@host:port/dbname.';
       }
       return true;
     },
@@ -424,6 +427,176 @@ export async function promptAndStorePostgresUrl(envFilePath: string): Promise<st
   await storePostgresUrl(response.postgresUrl, envFilePath);
 
   return response.postgresUrl;
+}
+
+/**
+ * Checks whether a string is a valid OpenAI API key format.
+ *
+ * @param key - The API key to check.
+ * @returns True if the key starts with 'sk-' and is at least 20 characters long; otherwise, false.
+ */
+export function isValidOpenAIKey(key: string): boolean {
+  if (!key || typeof key !== 'string') return false;
+
+  // OpenAI API keys typically start with 'sk-' and are 51 characters long
+  return key.startsWith('sk-') && key.length >= 20;
+}
+
+/**
+ * Checks whether a string is a valid Anthropic API key.
+ *
+ * @param key - The API key to validate.
+ * @returns True if the key starts with 'sk-ant-' and is at least 20 characters long.
+ */
+export function isValidAnthropicKey(key: string): boolean {
+  if (!key || typeof key !== 'string') return false;
+
+  // Anthropic API keys typically start with 'sk-ant-'
+  return key.startsWith('sk-ant-') && key.length >= 20;
+}
+
+/**
+ * Saves the provided OpenAI API key to the specified `.env` file, replacing any existing entry.
+ *
+ * Updates the `OPENAI_API_KEY` environment variable in both the file and the current process.
+ *
+ * @param key - The OpenAI API key to store.
+ * @param envFilePath - Path to the `.env` file where the key will be saved.
+ *
+ * @throws {Error} If writing to the `.env` file fails.
+ */
+export async function storeOpenAIKey(key: string, envFilePath: string): Promise<void> {
+  if (!key) return;
+
+  try {
+    // Read existing content first to avoid duplicates
+    let content = '';
+    if (existsSync(envFilePath)) {
+      content = await fs.readFile(envFilePath, 'utf8');
+    }
+
+    // Remove existing OPENAI_API_KEY line if present
+    const lines = content.split('\n').filter((line) => !line.startsWith('OPENAI_API_KEY='));
+    lines.push(`OPENAI_API_KEY=${key}`);
+
+    await fs.writeFile(envFilePath, lines.join('\n'), 'utf8');
+    process.env.OPENAI_API_KEY = key;
+
+    logger.success('OpenAI API key saved to configuration');
+  } catch (error) {
+    logger.error('Error saving OpenAI API key:', error);
+    throw error;
+  }
+}
+
+/**
+ * Saves the Anthropic API key to the specified `.env` file, replacing any existing entry.
+ *
+ * Also updates the `ANTHROPIC_API_KEY` value in the current process environment.
+ *
+ * @param key - The Anthropic API key to store.
+ * @param envFilePath - Path to the `.env` file where the key will be saved.
+ *
+ * @throws {Error} If writing to the `.env` file fails.
+ */
+export async function storeAnthropicKey(key: string, envFilePath: string): Promise<void> {
+  if (!key) return;
+
+  try {
+    // Read existing content first to avoid duplicates
+    let content = '';
+    if (existsSync(envFilePath)) {
+      content = await fs.readFile(envFilePath, 'utf8');
+    }
+
+    // Remove existing ANTHROPIC_API_KEY line if present
+    const lines = content.split('\n').filter((line) => !line.startsWith('ANTHROPIC_API_KEY='));
+    lines.push(`ANTHROPIC_API_KEY=${key}`);
+
+    await fs.writeFile(envFilePath, lines.join('\n'), 'utf8');
+    process.env.ANTHROPIC_API_KEY = key;
+
+    logger.success('Anthropic API key saved to configuration');
+  } catch (error) {
+    logger.error('Error saving Anthropic API key:', error);
+    throw error;
+  }
+}
+
+/**
+ * Prompts the user to enter an OpenAI API key, validates its format, and stores it in the specified `.env` file.
+ *
+ * The function warns if the entered key does not match the expected format but saves it regardless. Returns the entered key, or `null` if the user cancels the prompt.
+ *
+ * @param envFilePath - Path to the `.env` file where the key will be stored.
+ * @returns The entered OpenAI API key, or `null` if the prompt is cancelled.
+ */
+export async function promptAndStoreOpenAIKey(envFilePath: string): Promise<string | null> {
+  const response = await prompts({
+    type: 'password',
+    name: 'openaiKey',
+    message: 'Enter your OpenAI API key:',
+    validate: (value) => {
+      if (value.trim() === '') return 'OpenAI API key cannot be empty';
+      return true; // Always return true to allow continuation
+    },
+  });
+
+  // Handle user cancellation (Ctrl+C)
+  if (!response.openaiKey) {
+    return null;
+  }
+
+  // Check if the API key format is valid and warn if not
+  const isValid = isValidOpenAIKey(response.openaiKey);
+  if (!isValid) {
+    logger.warn('[!] Invalid API key format detected. Expected format: sk-...');
+    logger.warn('   You can get your API key from: https://platform.openai.com/api-keys');
+    logger.warn('   The key has been saved but may not work correctly.');
+  }
+
+  // Store the key in the .env file (even if invalid)
+  await storeOpenAIKey(response.openaiKey, envFilePath);
+
+  return response.openaiKey;
+}
+
+/**
+ * Prompts the user to enter an Anthropic API key, validates its format, and stores it in the specified `.env` file.
+ *
+ * If the entered key does not match the expected format, a warning is displayed, but the key is still saved.
+ *
+ * @param envFilePath - Path to the `.env` file where the API key will be stored.
+ * @returns The entered Anthropic API key, or `null` if the user cancels the prompt.
+ */
+export async function promptAndStoreAnthropicKey(envFilePath: string): Promise<string | null> {
+  const response = await prompts({
+    type: 'password',
+    name: 'anthropicKey',
+    message: 'Enter your Anthropic API key:',
+    validate: (value) => {
+      if (value.trim() === '') return 'Anthropic API key cannot be empty';
+      return true; // Always return true to allow continuation
+    },
+  });
+
+  // Handle user cancellation (Ctrl+C)
+  if (!response.anthropicKey) {
+    return null;
+  }
+
+  // Check if the API key format is valid and warn if not
+  const isValid = isValidAnthropicKey(response.anthropicKey);
+  if (!isValid) {
+    logger.warn('[!] Invalid API key format detected. Expected format: sk-ant-...');
+    logger.warn('   You can get your API key from: https://console.anthropic.com/');
+    logger.warn('   The key has been saved but may not work correctly.');
+  }
+
+  // Store the key in the .env file (even if invalid)
+  await storeAnthropicKey(response.anthropicKey, envFilePath);
+
+  return response.anthropicKey;
 }
 
 /**

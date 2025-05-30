@@ -75,9 +75,9 @@ async function writeEnvFile(filePath: string, envVars: Record<string, string>): 
 }
 
 /**
- * Displays system information and lists environment variables from the project's `.env` file.
+ * Displays system information and lists local environment variables, masking sensitive values.
  *
- * Prints platform, architecture, CLI version, and package manager details, followed by environment variables with sensitive values masked. Indicates if no variables are set and provides a link to the web UI for editing.
+ * Prints details about the current platform, architecture, CLI version, and package manager. Shows environment variables from the project's `.env` file, masking sensitive values, or provides guidance if the file is missing. Includes a link to the web UI for editing variables.
  */
 async function listEnvVars(): Promise<void> {
   const envInfo = await UserEnvironment.getInstanceInfo();
@@ -104,12 +104,12 @@ async function listEnvVars(): Promise<void> {
     // Check if .env.example exists and suggest copying it as a starting point
     const exampleEnvPath = path.join(process.cwd(), '.env.example');
     if (existsSync(exampleEnvPath)) {
-      console.info(colors.red('  ✖ Missing .env file. Create one with:'));
+      console.info(colors.red('  [X] Missing .env file. Create one with:'));
       console.info(`     ${colors.bold(colors.green('cp .env.example .env'))}`);
     } else {
       console.info(
         colors.red(
-          '  ✖ Missing .env file. Create one in your project directory to set local environment variables.'
+          '  [X] Missing .env file. Create one in your project directory to set local environment variables.'
         )
       );
     }
