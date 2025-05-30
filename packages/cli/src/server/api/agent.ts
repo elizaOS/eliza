@@ -361,14 +361,9 @@ export function agentRouter(
               ...responseContent,
               text: responseContent.text || '',
               inReplyTo: userMessageMemory.id,
-              // Include provider information if providers were used
               ...(responseContent.providers &&
                 responseContent.providers.length > 0 && {
-                  providerInfo: {
-                    providers: responseContent.providers,
-                    providersUsed: responseContent.providers.length,
-                    timestamp: Date.now(),
-                  },
+                  providers: responseContent.providers,
                 }),
             },
             roomId: roomId,
@@ -376,11 +371,8 @@ export function agentRouter(
             createdAt: Date.now(),
           };
 
-          logger.debug('Response content sent via HTTP API:', {
-            hasText: !!responseContent.text,
-            hasProviders: !!(responseContent.providers && responseContent.providers.length > 0),
-            providersUsed: responseContent.providers?.length || 0,
-          });
+          logger.debug('Response content sent via HTTP API:', responseContent.providers);
+
           await runtime.createMemory(sentMemory, 'messages');
         }
         return sentMemory ? [sentMemory] : [];

@@ -313,23 +313,16 @@ async function processSocketMessage(
             inReplyTo: messageId,
             channelType: ChannelType.DM,
             source: `${source}:agent`,
-            // Include provider information if providers were used
             ...(content.providers &&
               content.providers.length > 0 && {
-                providerInfo: {
-                  providers: content.providers,
-                  providersUsed: content.providers.length,
-                  timestamp: Date.now(),
-                },
+                providers: content.providers,
               }),
           },
           roomId: uniqueRoomId,
           createdAt: Date.now(),
         };
         logger.debug('Memory object for response:', {
-          memoryId: memory.id,
-          hasProviders: !!(content.providers && content.providers.length > 0),
-          providersUsed: content.providers?.length || 0,
+          providers: content.providers || [],
         });
         await runtime.createMemory(memory, 'messages');
         return [content];

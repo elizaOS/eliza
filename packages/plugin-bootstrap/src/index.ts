@@ -472,12 +472,7 @@ const messageReceivedHandler = async ({
           if (responseContent && responseContent.simple && responseContent.text) {
             // Log provider usage for simple responses
             if (responseContent.providers && responseContent.providers.length > 0) {
-              logger.debug('[Bootstrap] Simple response used providers', {
-                providers: responseContent.providers,
-                providersUsed: responseContent.providers.length,
-                messageId: message.id,
-                roomId: message.roomId,
-              });
+              logger.debug('[Bootstrap] Simple response used providers', responseContent.providers);
             }
 
             // without actions there can't be more than one message
@@ -498,12 +493,10 @@ const messageReceivedHandler = async ({
                   responseMessage.content.providers &&
                   responseMessage.content.providers.length > 0
                 ) {
-                  logger.debug('[Bootstrap] Complex response used providers', {
-                    providers: responseMessage.content.providers,
-                    providersUsed: responseMessage.content.providers.length,
-                    messageId: responseMessage.id,
-                    roomId: message.roomId,
-                  });
+                  logger.debug(
+                    '[Bootstrap] Complex response used providers',
+                    responseMessage.content.providers
+                  );
                 }
               }
 
