@@ -317,7 +317,6 @@ export const create = new Command()
         if (initialOptions.yes) {
           // Default to project if -y is used and -t is omitted
           projectType = 'project';
-          console.info(`Using default type: ${projectType}`);
         } else {
           // Prompt the user if -y is not used
           const { type } = await prompts({
