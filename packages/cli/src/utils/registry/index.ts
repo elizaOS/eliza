@@ -166,6 +166,20 @@ export async function setGitHubToken(token: string) {
 
 const agent = process.env.https_proxy ? new HttpsProxyAgent(process.env.https_proxy) : undefined;
 
+/**
+ * Normalizes a package name by removing scope prefixes
+ * @param packageName The package name to normalize
+ * @returns The normalized package name without scope prefix
+ */
+function normalizePackageName(packageName: string): string {
+  if (packageName.startsWith(`@${REGISTRY_ORG}/`)) {
+    return packageName.replace(`@${REGISTRY_ORG}/`, '');
+  } else if (packageName.startsWith('@elizaos/')) {
+    return packageName.replace(/^@elizaos\//, '');
+  }
+  return packageName;
+}
+
 interface PluginMetadata {
   name: string;
   description: string;
@@ -281,7 +295,7 @@ export async function getLocalRegistryIndex(): Promise<Record<string, string>> {
         if (pkgName.includes('plugin-')) {
           // Use the package name as both key and value
           // Format as expected by the registry: orgrepo/packagename
-          const repoName = pkgName.replace('@elizaos/', '');
+          const repoName = normalizePackageName(pkgName);
           localRegistry[pkgName] = `${REGISTRY_ORG}/${repoName}`;
         }
       }
@@ -410,7 +424,7 @@ export async function getPluginRepository(pluginName: string): Promise<string | 
     // Direct GitHub shorthand (github:org/repo) - NO AUTH REQUIRED
     if (!pluginName.includes(':') && !pluginName.startsWith('@')) {
       const baseName = pluginName.replace(/^plugin-/, '');
-      return `@elizaos/plugin-${baseName}`;
+      return `@${REGISTRY_ORG}/plugin-${baseName}`;
     }
 
     return null;
@@ -469,7 +483,7 @@ export async function getPluginMetadata(pluginName: string): Promise<PluginMetad
   }
 
   const [owner, repo] = settings.defaultRegistry.split('/');
-  const normalizedName = pluginName.replace(/^@elizaos\//, '');
+  const normalizedName = normalizePackageName(pluginName);
   const url = `https://api.github.com/repos/${owner}/${repo}/contents/packages/${normalizedName}.json`;
 
   try {
@@ -568,8 +582,8 @@ export async function getPackageDetails(packageName: string): Promise<{
   maintainer: string;
 } | null> {
   try {
-    // Normalize the package name (remove @elizaos/ prefix if present)
-    const normalizedName = packageName.replace(/^@elizaos\//, '');
+    // Normalize the package name (remove prefix if present)
+    const normalizedName = normalizePackageName(packageName);
 
     // Get package details from registry
     const packageUrl = `${REGISTRY_URL.replace('index.json', '')}packages/${normalizedName}.json`;
