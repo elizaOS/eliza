@@ -1,4 +1,5 @@
-import { logger, stringToUuid } from './index';
+import { logger } from './logger';
+import { stringToUuid } from './utils';
 import { composePrompt, parseJSONObjectFromText } from './utils';
 import {
   type Entity,

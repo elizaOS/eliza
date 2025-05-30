@@ -1,5 +1,7 @@
-// Export core types first (default exports)
+// Export everything from types
 export * from './types';
+
+// Then all other exports
 export * from './actions';
 export * from './database';
 export * from './entities';
@@ -7,10 +9,8 @@ export * from './logger';
 export * from './prompts';
 export * from './roles';
 export * from './runtime';
-export * from './search';
+// really shouldn't be exported
+//export * from './search';
 export * from './settings';
 export * from './utils';
 export * from './services';
-
-// Export specs namespace for version selection
-export * from './specs';

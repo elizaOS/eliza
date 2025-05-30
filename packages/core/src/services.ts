@@ -1,4 +1,4 @@
-import { Service } from './index';
+import { Service } from './types';
 import type { IAgentRuntime, ServiceTypeName } from './types';
 
 /**
