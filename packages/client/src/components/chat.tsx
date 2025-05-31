@@ -741,10 +741,10 @@ export default function Page({
             {/* Keep input at bottom */}
             {inputDisabled && (
               <div className="px-2 pb-2 text-sm text-muted-foreground flex items-center gap-2">
-                <div className="flex gap-1">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:0ms]"></div>
-                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:150ms]"></div>
-                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:300ms]"></div>
+                <div className="flex gap-0.5 items-center justify-center">
+                  <span className="w-[6px] h-[6px] bg-white rounded-full animate-bounce [animation-delay:0s]" />
+                  <span className="w-[6px] h-[6px] bg-white rounded-full animate-bounce [animation-delay:0.2s]" />
+                  <span className="w-[6px] h-[6px] bg-white rounded-full animate-bounce [animation-delay:0.4s]" />
                 </div>
                 <span>{agentData.name} is thinking</span>
                 <div className="flex">
