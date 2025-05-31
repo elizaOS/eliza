@@ -74,6 +74,11 @@ async function main() {
         dest: path.resolve(TEMPLATES_DIR, 'project-starter'),
       },
       {
+        name: 'project-tee-starter',
+        src: path.resolve(ROOT_DIR, 'packages/project-tee-starter'),
+        dest: path.resolve(TEMPLATES_DIR, 'project-tee-starter'),
+      },
+      {
         name: 'plugin-starter',
         src: path.resolve(ROOT_DIR, 'packages/plugin-starter'),
         dest: path.resolve(TEMPLATES_DIR, 'plugin-starter'),

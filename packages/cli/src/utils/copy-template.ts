@@ -54,44 +54,52 @@ export async function copyDir(src: string, dest: string, exclude: string[] = [])
 }
 
 /**
+ * Map template types to actual package names
+ */
+function getPackageName(templateType: string): string {
+  switch (templateType) {
+    case 'project-tee-starter':
+      return 'project-tee-starter';
+    case 'plugin':
+      return 'plugin-starter';
+    case 'project':
+    case 'project-starter':
+    default:
+      return 'project-starter';
+  }
+}
+
+/**
  * Copy a project or plugin template to target directory
  */
 export async function copyTemplate(
-  templateType: 'project' | 'plugin',
+  templateType: 'project-starter' | 'project-tee-starter' | 'plugin',
   targetDir: string,
   name: string
 ) {
-  // In development mode, use the actual packages
-  let templateDir;
+  const packageName = getPackageName(templateType);
   const userEnv = UserEnvironment.getInstance();
   const pathsInfo = await userEnv.getPathInfo();
 
+  let templateDir: string;
   if (process.env.NODE_ENV === 'development' && pathsInfo.monorepoRoot) {
     // Use monorepoRoot if in development and monorepoRoot is found
     logger.debug(
       `Development mode: Using monorepo root at ${pathsInfo.monorepoRoot} to find templates.`
     );
-    templateDir = path.resolve(
-      pathsInfo.monorepoRoot,
-      'packages',
-      templateType === 'project' ? 'project-starter' : 'plugin-starter'
-    );
+    templateDir = path.resolve(pathsInfo.monorepoRoot, 'packages', packageName);
   } else if (process.env.NODE_ENV === 'development') {
     // Fallback for development if monorepoRoot is not found (e.g., running CLI from a strange location)
     logger.warn(
       'Development mode: monorepoRoot not found. Falling back to process.cwd() for template path. This might be unreliable.'
     );
-    templateDir = path.resolve(
-      process.cwd(),
-      'packages',
-      templateType === 'project' ? 'project-starter' : 'plugin-starter'
-    );
+    templateDir = path.resolve(process.cwd(), 'packages', packageName);
   } else {
     // In production, use the templates directory from the CLI package
     templateDir = path.resolve(
       path.dirname(require.resolve('@elizaos/cli/package.json')),
       'templates',
-      templateType === 'project' ? 'project-starter' : 'plugin-starter'
+      packageName
     );
   }
 
