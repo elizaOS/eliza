@@ -91,6 +91,12 @@ const getRuntime = (agents: Map<UUID, IAgentRuntime>, agentId: UUID) => {
  * @property {Express.Multer.File[]} [files] - Optional property representing multiple files uploaded with the request
  * @property {Object} params - Object representing parameters included in the request
  * @property {string} params.agentId - The unique identifier for the agent associated with the request
+ * @property {string} params.roomId - The unique identifier for the room associated with the request
+ * @property {string} params.logId - The unique identifier for the log associated with the request
+ * @property {string} params.worldId - The unique identifier for the world associated with the request
+ * @property {string} params.memoryId - The unique identifier for the memory associated with the request
+ * @property {string} params.messageId - The unique identifier for the message associated with the request
+ * @property {string} params.filename - The filename associated with the request
  */
 interface CustomRequest extends express.Request {
   query: any;
@@ -99,6 +105,12 @@ interface CustomRequest extends express.Request {
   files?: Express.Multer.File[];
   params: {
     agentId: string;
+    roomId?: string;
+    logId?: string;
+    worldId?: string;
+    memoryId?: string;
+    messageId?: string;
+    filename?: string;
   };
 }
 
@@ -363,8 +375,8 @@ export function agentRouter(
               inReplyTo: userMessageMemory.id,
               ...(responseContent.providers &&
                 responseContent.providers.length > 0 && {
-                  providers: responseContent.providers,
-                }),
+                providers: responseContent.providers,
+              }),
             },
             roomId: roomId,
             worldId,
@@ -1241,6 +1253,47 @@ export function agentRouter(
     }
   });
 
+  // Get room details
+  router.get('/:agentId/rooms/:roomId', async (req: CustomRequest, res: express.Response) => {
+    const agentId = validateUuid(req.params.agentId);
+    const roomId = validateUuid(req.params.roomId);
+
+    if (!agentId || !roomId) {
+      sendError(res, 400, 'INVALID_ID', 'Invalid agent ID or room ID format');
+      return;
+    }
+
+    // Get runtime
+    const runtime = agents.get(agentId);
+    if (!runtime) {
+      sendError(res, 404, 'NOT_FOUND', 'Agent not found');
+      return;
+    }
+
+    try {
+      const room = await runtime.getRoom(roomId);
+      if (!room) {
+        sendError(res, 404, 'NOT_FOUND', 'Room not found');
+        return;
+      }
+
+      // Optionally, enrich room data with world name if needed
+      // This depends on whether getRoom returns worldId and if you want to include worldName
+      let worldName = 'N/A';
+      if (room.worldId) {
+        const world = await runtime.getWorld(room.worldId);
+        if (world) {
+          worldName = world.name;
+        }
+      }
+
+      sendSuccess(res, { ...room, worldName });
+    } catch (error) {
+      logger.error(`[ROOM DETAILS] Error retrieving room ${roomId} for agent ${agentId}:`, error);
+      sendError(res, 500, 'RETRIEVAL_ERROR', 'Failed to retrieve room details', error.message);
+    }
+  });
+
   router.delete('/:agentId/logs/:logId', async (req, res) => {
     const agentId = validateUuid(req.params.agentId);
     const logId = validateUuid(req.params.logId);
@@ -1779,9 +1832,9 @@ export function agentRouter(
       const cleanMemories = includeEmbedding
         ? memories
         : memories.map((memory) => ({
-            ...memory,
-            embedding: undefined,
-          }));
+          ...memory,
+          embedding: undefined,
+        }));
 
       res.json({
         success: true,
@@ -1841,9 +1894,9 @@ export function agentRouter(
     const cleanMemories = includeEmbedding
       ? memories
       : memories.map((memory) => ({
-          ...memory,
-          embedding: undefined,
-        }));
+        ...memory,
+        embedding: undefined,
+      }));
 
     res.json({
       success: true,
