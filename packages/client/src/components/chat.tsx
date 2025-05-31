@@ -218,6 +218,8 @@ export default function Page({
     // Join the room for this agent
     socketIOManager.joinRoom(roomId);
 
+    setInputDisabled(false);
+
     console.log(`[Chat] Joined room ${roomId} with entityId ${entityId}`);
 
     const handleMessageBroadcasting = (data: ContentWithUser) => {
@@ -817,7 +819,7 @@ export default function Page({
                     : 'Type your message here...'
                 }
                 className="min-h-12 resize-none rounded-md bg-card border-0 p-3 shadow-none focus-visible:ring-0"
-                disabled={inputDisabled}
+                disabled={inputDisabled || agentData.status === 'inactive'}
               />
               <div className="flex items-center p-3 pt-0">
                 <Tooltip>
@@ -854,7 +856,7 @@ export default function Page({
                   onChange={(newInput: string) => setInput(newInput)}
                 />
                 <Button
-                  disabled={inputDisabled || selectedFiles.some((f) => f.isUploading)}
+                  disabled={inputDisabled || agentData.status === 'inactive' || selectedFiles.some((f) => f.isUploading)}
                   type="submit"
                   size="sm"
                   className="ml-auto gap-1.5 h-[30px]"
