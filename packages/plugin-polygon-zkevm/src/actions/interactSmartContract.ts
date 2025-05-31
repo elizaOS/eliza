@@ -35,63 +35,41 @@ export const interactSmartContractAction: Action = {
     'Interacts with a smart contract by calling a state-changing method on Polygon zkEVM.',
 
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
-    const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY') || process.env.ALCHEMY_API_KEY;
-    const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL') || process.env.ZKEVM_RPC_URL;
+    const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
+    const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL');
 
     if (!alchemyApiKey && !zkevmRpcUrl) {
-      logger.error('[interactSmartContractAction] ALCHEMY_API_KEY or ZKEVM_RPC_URL is required');
       return false;
     }
 
-    // Check if the message content indicates a smart contract interaction request
     const content = message.content?.text?.toLowerCase() || '';
 
-    // Keywords that indicate smart contract interaction
+    // Contract interaction keywords
     const contractKeywords = [
-      'call',
-      'invoke',
-      'execute',
-      'interact',
-      'contract',
-      'method',
-      'function',
-      'abi',
-      'transfer',
-      'mint',
-      'approve',
-      'swap',
-      'deposit',
-      'withdraw',
-      'burn',
-      'send transaction',
-      'call method',
-      'execute method',
+      'call contract',
+      'interact with contract',
+      'contract call',
+      'invoke contract',
+      'execute contract',
+      'send to contract',
       'contract interaction',
       'smart contract',
       'call function',
-      'invoke function',
-      'execute function',
+      'contract function',
+      'method call',
+      'function call',
+      'contract method',
+      'abi call',
     ];
 
     // Check for contract address pattern (0x followed by 40 hex characters)
     const contractAddressPattern = /0x[a-fA-F0-9]{40}/;
     const hasContractAddress = contractAddressPattern.test(content);
 
-    // Check for ABI pattern
-    const hasABI = content.includes('abi') && (content.includes('[') || content.includes('{'));
+    // Must contain contract interaction keywords OR have contract address pattern
+    const hasKeywords = contractKeywords.some((keyword) => content.includes(keyword));
 
-    // Check for method/function names
-    const hasMethodCall = contractKeywords.some((keyword) => content.includes(keyword));
-
-    // Must have at least a contract address and method call, or explicit contract interaction keywords
-    return (
-      (hasContractAddress && hasMethodCall) ||
-      hasABI ||
-      content.includes('call the') ||
-      content.includes('execute the') ||
-      content.includes('invoke the') ||
-      content.includes('interact with contract')
-    );
+    return hasKeywords || hasContractAddress;
   },
 
   handler: async (
@@ -103,9 +81,9 @@ export const interactSmartContractAction: Action = {
   ): Promise<Content> => {
     logger.info('[interactSmartContractAction] Handler called!');
 
-    const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY') || process.env.ALCHEMY_API_KEY;
-    const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL') || process.env.ZKEVM_RPC_URL;
-    const privateKey = runtime.getSetting('PRIVATE_KEY') || process.env.PRIVATE_KEY;
+    const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
+    const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL');
+    const privateKey = runtime.getSetting('PRIVATE_KEY');
 
     if (!privateKey) {
       const errorMessage = 'PRIVATE_KEY is required for contract interaction.';

@@ -11,6 +11,7 @@ import {
 } from '@elizaos/core';
 import { getTransactionDetailsTemplate } from '../templates';
 import { JsonRpcProvider } from 'ethers';
+import { callLLMWithTimeout } from '../utils/llmHelpers';
 
 /**
  * Get transaction details and receipt action for Polygon zkEVM
@@ -51,39 +52,67 @@ export const getTransactionDetailsAction: Action = {
     try {
       logger.info('🔍 Handling GET_TRANSACTION_DETAILS action');
 
-      // Extract transaction hash from message
-      const text = message.content.text;
-      const hashMatch = text.match(/0x[a-fA-F0-9]{64}/);
+      const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
+      const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL');
 
-      if (!hashMatch) {
+      if (!alchemyApiKey && !zkevmRpcUrl) {
+        const errorMessage = 'ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.';
+        logger.error(`[getTransactionDetailsAction] Configuration error: ${errorMessage}`);
         const errorContent: Content = {
-          text: '❌ Please provide a valid transaction hash (0x followed by 64 hexadecimal characters) to get transaction details.',
+          text: errorMessage,
           actions: ['GET_TRANSACTION_DETAILS'],
-          source: message.content.source,
+          data: { error: errorMessage },
         };
-        await callback(errorContent);
-        return errorContent;
+
+        if (callback) {
+          await callback(errorContent);
+        }
+        throw new Error(errorMessage);
       }
 
-      const txHash = hashMatch[0];
+      let hashInput: any | null = null;
+
+      // Extract transaction hash using LLM with OBJECT_LARGE model
+      try {
+        hashInput = await callLLMWithTimeout<{ transactionHash: string; error?: string }>(
+          runtime,
+          state,
+          getTransactionDetailsTemplate,
+          'getTransactionDetailsAction'
+        );
+
+        if (hashInput?.error) {
+          logger.error('[getTransactionDetailsAction] LLM returned an error:', hashInput?.error);
+          throw new Error(hashInput?.error);
+        }
+
+        if (!hashInput?.transactionHash || typeof hashInput.transactionHash !== 'string') {
+          throw new Error('Invalid transaction hash received from LLM.');
+        }
+      } catch (error) {
+        logger.error(
+          '[getTransactionDetailsAction] OBJECT_LARGE model failed',
+          error instanceof Error ? error : undefined
+        );
+        throw new Error(
+          `[getTransactionDetailsAction] Failed to extract transaction hash from input: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+
+      const txHash = hashInput.transactionHash;
       logger.info(`📋 Getting transaction details for hash: ${txHash}`);
 
       // Setup provider - prefer Alchemy, fallback to RPC
       let provider: JsonRpcProvider;
       let methodUsed: 'alchemy' | 'rpc' = 'rpc';
-      const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
+      const zkevmAlchemyUrl =
+        runtime.getSetting('ZKEVM_ALCHEMY_URL') || 'https://polygonzkevm-mainnet.g.alchemy.com/v2';
 
       if (alchemyApiKey) {
-        provider = new JsonRpcProvider(
-          `${runtime.getSetting('ZKEVM_ALCHEMY_URL') || 'https://polygonzkevm-mainnet.g.alchemy.com/v2'}/${alchemyApiKey}`
-        );
+        provider = new JsonRpcProvider(`${zkevmAlchemyUrl}/${alchemyApiKey}`);
         methodUsed = 'alchemy';
         logger.info('🔗 Using Alchemy API for transaction details');
       } else {
-        const zkevmRpcUrl =
-          runtime.getSetting('ZKEVM_RPC_URL') ||
-          runtime.getSetting('ZKEVM_RPC_URL') ||
-          'https://zkevm-rpc.com';
         provider = new JsonRpcProvider(zkevmRpcUrl);
         logger.info('🔗 Using direct RPC for transaction details');
       }
@@ -128,11 +157,7 @@ export const getTransactionDetailsAction: Action = {
       if (!transactionData && !receiptData && methodUsed === 'alchemy') {
         logger.info('🔄 Attempting fallback to direct RPC...');
         try {
-          const fallbackRpcUrl =
-            runtime.getSetting('ZKEVM_RPC_URL') ||
-            runtime.getSetting('ZKEVM_RPC_URL') ||
-            'https://zkevm-rpc.com';
-          const fallbackProvider = new JsonRpcProvider(fallbackRpcUrl);
+          const fallbackProvider = new JsonRpcProvider(zkevmRpcUrl || 'https://zkevm-rpc.com');
 
           if (!transactionData) {
             transactionData = await fallbackProvider.getTransaction(txHash);
@@ -158,10 +183,12 @@ export const getTransactionDetailsAction: Action = {
         const errorContent: Content = {
           text: errorMessage,
           actions: ['GET_TRANSACTION_DETAILS'],
-          source: message.content.source,
+          data: { error: errorMessage },
         };
 
-        await callback(errorContent);
+        if (callback) {
+          await callback(errorContent);
+        }
         return errorContent;
       }
 
@@ -254,11 +281,12 @@ export const getTransactionDetailsAction: Action = {
       const responseContent: Content = {
         text: responseText,
         actions: ['GET_TRANSACTION_DETAILS'],
-        source: message.content.source,
         data: combinedData,
       };
 
-      await callback(responseContent);
+      if (callback) {
+        await callback(responseContent);
+      }
       return responseContent;
     } catch (error) {
       logger.error('❌ Error in GET_TRANSACTION_DETAILS action:', error);
@@ -266,10 +294,12 @@ export const getTransactionDetailsAction: Action = {
       const errorContent: Content = {
         text: `❌ Error getting transaction details: ${error instanceof Error ? error.message : 'Unknown error'}`,
         actions: ['GET_TRANSACTION_DETAILS'],
-        source: message.content.source,
+        data: { error: error instanceof Error ? error.message : 'Unknown error' },
       };
 
-      await callback(errorContent);
+      if (callback) {
+        await callback(errorContent);
+      }
       return errorContent;
     }
   },

@@ -11,6 +11,7 @@ import {
 } from '@elizaos/core';
 import { getLogsTemplate } from '../templates';
 import { JsonRpcProvider } from 'ethers';
+import { callLLMWithTimeout } from '../utils/llmHelpers';
 
 /**
  * Get logs action for Polygon zkEVM
@@ -42,66 +43,106 @@ export const getLogsAction: Action = {
     try {
       logger.info('Handling GET_LOGS_ZKEVM action');
 
-      const text = message.content.text;
+      const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
+      const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL');
+
+      if (!alchemyApiKey && !zkevmRpcUrl) {
+        const errorMessage = 'ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.';
+        logger.error(`[getLogsAction] Configuration error: ${errorMessage}`);
+        const errorContent: Content = {
+          text: errorMessage,
+          actions: ['GET_LOGS_ZKEVM'],
+          data: { error: errorMessage },
+        };
+
+        if (callback) {
+          await callback(errorContent);
+        }
+        throw new Error(errorMessage);
+      }
+
+      let logsInput: any | null = null;
+
+      // Extract logs parameters using LLM with OBJECT_LARGE model
+      try {
+        logsInput = await callLLMWithTimeout<{
+          address?: string;
+          fromBlock?: string | number;
+          toBlock?: string | number;
+          topics?: string[];
+          error?: string;
+        }>(runtime, state, getLogsTemplate, 'getLogsAction');
+
+        if (logsInput?.error) {
+          logger.error('[getLogsAction] LLM returned an error:', logsInput?.error);
+          throw new Error(logsInput?.error);
+        }
+      } catch (error) {
+        logger.error(
+          '[getLogsAction] OBJECT_LARGE model failed',
+          error instanceof Error ? error : undefined
+        );
+        throw new Error(
+          `[getLogsAction] Failed to extract logs parameters from input: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
 
       // Setup provider - prefer Alchemy, fallback to RPC
       let provider: JsonRpcProvider;
-      const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
+      const zkevmAlchemyUrl =
+        runtime.getSetting('ZKEVM_ALCHEMY_URL') || 'https://polygonzkevm-mainnet.g.alchemy.com/v2';
 
       if (alchemyApiKey) {
-        provider = new JsonRpcProvider(
-          `${runtime.getSetting('ZKEVM_ALCHEMY_URL') || 'https://polygonzkevm-mainnet.g.alchemy.com/v2'}/${alchemyApiKey}`
-        );
+        provider = new JsonRpcProvider(`${zkevmAlchemyUrl}/${alchemyApiKey}`);
       } else {
-        const zkevmRpcUrl =
-          runtime.getSetting('ZKEVM_RPC_URL') ||
-          runtime.getSetting('ZKEVM_RPC_URL') ||
-          'https://zkevm-rpc.com';
         provider = new JsonRpcProvider(zkevmRpcUrl);
       }
 
       // Build filter object
       const filter: any = {};
 
-      // Extract address if provided
-      const addressMatch = text.match(/0x[a-fA-F0-9]{40}/);
-      if (addressMatch) {
-        filter.address = addressMatch[0];
+      // Use LLM-extracted address if available
+      if (logsInput?.address) {
+        filter.address = logsInput.address;
       }
 
-      // Extract block range if provided
-      const fromBlockMatch = text.match(/from\s+block\s+(\d+|latest|earliest)/i);
-      const toBlockMatch = text.match(/to\s+block\s+(\d+|latest|earliest)/i);
-
-      // Check for specific block number patterns like "for the block 22627906" or "block 22627906"
-      const specificBlockMatch = text.match(/(?:for\s+(?:the\s+)?block|block)\s+(\d+)/i);
-
-      if (specificBlockMatch) {
-        // User wants logs for a specific block
-        const blockNumber = parseInt(specificBlockMatch[1]);
-        filter.fromBlock = `0x${blockNumber.toString(16)}`; // Convert to hex format
-        filter.toBlock = `0x${blockNumber.toString(16)}`;
-      } else if (fromBlockMatch) {
-        filter.fromBlock =
-          fromBlockMatch[1] === 'latest' || fromBlockMatch[1] === 'earliest'
-            ? fromBlockMatch[1]
-            : `0x${parseInt(fromBlockMatch[1]).toString(16)}`;
+      // Use LLM-extracted block range if available
+      if (logsInput?.fromBlock !== undefined) {
+        if (
+          typeof logsInput.fromBlock === 'string' &&
+          ['latest', 'earliest', 'pending'].includes(logsInput.fromBlock)
+        ) {
+          filter.fromBlock = logsInput.fromBlock;
+        } else {
+          const blockNum = Number(logsInput.fromBlock);
+          filter.fromBlock = `0x${blockNum.toString(16)}`;
+        }
       } else {
         // Default to recent blocks to avoid overwhelming response
         filter.fromBlock = 'latest';
       }
 
-      if (toBlockMatch && !specificBlockMatch) {
-        filter.toBlock =
-          toBlockMatch[1] === 'latest' || toBlockMatch[1] === 'earliest'
-            ? toBlockMatch[1]
-            : `0x${parseInt(toBlockMatch[1]).toString(16)}`;
-      } else if (!specificBlockMatch) {
+      if (logsInput?.toBlock !== undefined) {
+        if (
+          typeof logsInput.toBlock === 'string' &&
+          ['latest', 'earliest', 'pending'].includes(logsInput.toBlock)
+        ) {
+          filter.toBlock = logsInput.toBlock;
+        } else {
+          const blockNum = Number(logsInput.toBlock);
+          filter.toBlock = `0x${blockNum.toString(16)}`;
+        }
+      } else {
         filter.toBlock = 'latest';
       }
 
-      // If no specific address and no specific block, limit the scope to avoid overwhelming results
-      if (!filter.address && !specificBlockMatch) {
+      // Add topics if provided
+      if (logsInput?.topics && Array.isArray(logsInput.topics) && logsInput.topics.length > 0) {
+        filter.topics = logsInput.topics;
+      }
+
+      // If no specific address and using latest blocks, limit the scope to avoid overwhelming results
+      if (!filter.address && filter.fromBlock === 'latest' && filter.toBlock === 'latest') {
         const currentBlock = await provider.getBlockNumber();
         filter.fromBlock = `0x${Math.max(0, currentBlock - 100).toString(16)}`; // Last 100 blocks
         filter.toBlock = `0x${currentBlock.toString(16)}`;
@@ -150,10 +191,16 @@ export const getLogsAction: Action = {
       const responseContent: Content = {
         text: responseText,
         actions: ['GET_LOGS_ZKEVM'],
-        source: message.content.source,
+        data: {
+          filter,
+          logs: logs.slice(0, 10), // Include first 10 logs in data
+          totalLogs: logs.length,
+        },
       };
 
-      await callback(responseContent);
+      if (callback) {
+        await callback(responseContent);
+      }
       return responseContent;
     } catch (error) {
       logger.error('Error in GET_LOGS_ZKEVM action:', error);
@@ -161,10 +208,12 @@ export const getLogsAction: Action = {
       const errorContent: Content = {
         text: `Error getting logs: ${error instanceof Error ? error.message : 'Unknown error'}`,
         actions: ['GET_LOGS_ZKEVM'],
-        source: message.content.source,
+        data: { error: error instanceof Error ? error.message : 'Unknown error' },
       };
 
-      await callback(errorContent);
+      if (callback) {
+        await callback(errorContent);
+      }
       return errorContent;
     }
   },

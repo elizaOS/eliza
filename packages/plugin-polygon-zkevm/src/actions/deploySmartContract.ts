@@ -29,52 +29,14 @@ export const deploySmartContractAction: Action = {
     'Deploys a smart contract to Polygon zkEVM using bytecode and optional constructor arguments.',
 
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
-    const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY') || process.env.ALCHEMY_API_KEY;
-    const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL') || process.env.ZKEVM_RPC_URL;
+    const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
+    const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL');
 
-    // If no API configuration is available, don't try to handle
     if (!alchemyApiKey && !zkevmRpcUrl) {
-      logger.debug('[deploySmartContractAction] No API keys available');
       return false;
     }
 
-    const content = message.content?.text?.toLowerCase() || '';
-
-    // Deployment-related keywords
-    const deploymentKeywords = [
-      'deploy',
-      'deployment',
-      'contract',
-      'smart contract',
-      'bytecode',
-      'create',
-      'publish',
-      'zkevm',
-      'polygon',
-    ];
-
-    // Check if message contains relevant keywords
-    const hasDeploymentKeyword = deploymentKeywords.some((keyword) =>
-      content.includes(keyword.toLowerCase())
-    );
-
-    // Also check for specific patterns
-    const hasDeploymentPattern =
-      /deploy.*contract|create.*contract|publish.*contract|smart.*contract|contract.*deploy|bytecode.*0x|0x.*deploy/i.test(
-        content
-      );
-
-    // Check for bytecode pattern (common bytecode starts)
-    const hasBytecode = /0x[0-9a-fA-F]{8,}/i.test(content);
-
-    // Should handle if it mentions deployment terms, contracts, or contains bytecode
-    const shouldHandle = hasDeploymentKeyword || hasDeploymentPattern || hasBytecode;
-
-    if (shouldHandle) {
-      logger.debug('[deploySmartContractAction] Validation passed for message:', content);
-    }
-
-    return shouldHandle;
+    return true;
   },
 
   handler: async (
@@ -86,9 +48,9 @@ export const deploySmartContractAction: Action = {
   ): Promise<Content> => {
     logger.info('[deploySmartContractAction] Handler called!');
 
-    const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY') || process.env.ALCHEMY_API_KEY;
-    const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL') || process.env.ZKEVM_RPC_URL;
-    const privateKey = runtime.getSetting('PRIVATE_KEY') || process.env.PRIVATE_KEY;
+    const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
+    const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL');
+    const privateKey = runtime.getSetting('PRIVATE_KEY');
 
     if (!privateKey) {
       const errorMessage = 'PRIVATE_KEY is required for contract deployment.';
@@ -96,7 +58,6 @@ export const deploySmartContractAction: Action = {
       const errorContent: Content = {
         text: errorMessage,
         actions: ['DEPLOY_SMART_CONTRACT'],
-        source: message.content.source,
         data: { error: errorMessage },
       };
 
@@ -112,7 +73,6 @@ export const deploySmartContractAction: Action = {
       const errorContent: Content = {
         text: errorMessage,
         actions: ['DEPLOY_SMART_CONTRACT'],
-        source: message.content.source,
         data: { error: errorMessage },
       };
 
@@ -128,39 +88,10 @@ export const deploySmartContractAction: Action = {
     let methodUsed: 'alchemy' | 'rpc' | null = null;
     let errorMessages: string[] = [];
 
-    // First, try to extract bytecode directly from the message (more reliable)
-    const messageText = message.content?.text || '';
-    const bytecodeMatch = messageText.match(/0x[0-9a-fA-F]{8,}/);
-
-    if (!bytecodeMatch) {
-      const errorMessage =
-        'No valid bytecode found in message. Please provide bytecode starting with 0x.';
-      logger.error(`[deploySmartContractAction] ${errorMessage}`);
-      const errorContent: Content = {
-        text: errorMessage,
-        actions: ['DEPLOY_SMART_CONTRACT'],
-        source: message.content.source,
-        data: { error: errorMessage },
-      };
-
-      if (callback) {
-        await callback(errorContent);
-      }
-      throw new Error(errorMessage);
-    }
-
-    // Set the bytecode from direct extraction
-    deploymentParams = {
-      bytecode: bytecodeMatch[0],
-    };
-
-    logger.info(
-      `[deploySmartContractAction] Extracted bytecode: ${deploymentParams.bytecode.substring(0, 50)}...`
-    );
-
-    // Try to extract additional parameters using LLM (optional, fallback if it fails)
+    // Extract deployment parameters using LLM with OBJECT_LARGE model
     try {
-      const llmParams = await callLLMWithTimeout<{
+      deploymentParams = await callLLMWithTimeout<{
+        bytecode: string;
         constructorArgs?: any[];
         gasLimit?: string | number;
         gasPrice?: string;
@@ -170,17 +101,27 @@ export const deploySmartContractAction: Action = {
         error?: string;
       }>(runtime, state, deploySmartContractTemplate, 'deploySmartContractAction');
 
-      // Merge LLM params with direct extraction, but keep the bytecode from direct extraction
-      if (llmParams && !llmParams.error) {
-        deploymentParams = {
-          ...llmParams,
-          bytecode: deploymentParams.bytecode, // Always keep the directly extracted bytecode
-        };
-        logger.info('[deploySmartContractAction] Enhanced parameters with LLM extraction');
+      if (deploymentParams?.error) {
+        logger.error('[deploySmartContractAction] LLM returned an error:', deploymentParams?.error);
+        throw new Error(deploymentParams?.error);
       }
+
+      if (!deploymentParams?.bytecode) {
+        throw new Error(
+          'No valid bytecode extracted from input. Please provide bytecode starting with 0x.'
+        );
+      }
+
+      logger.info(
+        `[deploySmartContractAction] Extracted bytecode: ${deploymentParams.bytecode.substring(0, 50)}...`
+      );
     } catch (error) {
-      logger.debug(
-        '[deploySmartContractAction] LLM parameter extraction failed, using direct extraction only'
+      logger.error(
+        '[deploySmartContractAction] OBJECT_LARGE model failed',
+        error instanceof Error ? error : undefined
+      );
+      throw new Error(
+        `[deploySmartContractAction] Failed to extract deployment parameters from input: ${error instanceof Error ? error.message : String(error)}`
       );
     }
 
@@ -195,7 +136,6 @@ export const deploySmartContractAction: Action = {
       const errorContent: Content = {
         text: errorMessage,
         actions: ['DEPLOY_SMART_CONTRACT'],
-        source: message.content.source,
         data: { error: errorMessage },
       };
 
@@ -328,7 +268,6 @@ export const deploySmartContractAction: Action = {
 
 The contract is now live and ready for interaction! 🚀`,
         actions: ['DEPLOY_SMART_CONTRACT'],
-        source: message.content.source,
         data: {
           contractAddress,
           transactionHash,
@@ -363,7 +302,6 @@ Please check your bytecode and configuration, then try again.`;
       const errorContent: Content = {
         text: errorMessage,
         actions: ['DEPLOY_SMART_CONTRACT'],
-        source: message.content.source,
         data: { error: errorMessage, errors: errorMessages, deploymentParams },
       };
 

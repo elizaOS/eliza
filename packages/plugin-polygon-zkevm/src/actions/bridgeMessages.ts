@@ -58,61 +58,34 @@ export const bridgeMessagesAction: Action = {
     'Sends arbitrary calldata messages between Ethereum and Polygon zkEVM using the bridge contract.',
 
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
-    const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY') || process.env.ALCHEMY_API_KEY;
-    const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL') || process.env.ZKEVM_RPC_URL;
+    const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
+    const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL');
 
     if (!alchemyApiKey && !zkevmRpcUrl) {
-      logger.error('[bridgeMessagesAction] Either ALCHEMY_API_KEY or ZKEVM_RPC_URL is required');
       return false;
     }
 
-    // Check if the message content indicates a message bridging request
     const content = message.content?.text?.toLowerCase() || '';
-    logger.info(`[bridgeMessagesAction] Validating message: "${content}"`);
 
-    // Keywords that indicate message bridging operations
-    const messageKeywords = [
-      'bridge calldata',
-      'send calldata',
+    // Keywords that indicate bridge message operations
+    const bridgeMessageKeywords = [
       'bridge message',
+      'send message',
       'cross chain message',
-      'bridge data',
-      'send data',
-      'cross chain call',
+      'l1 message',
+      'l2 message',
       'message bridge',
-      'calldata',
-      'bridge to ethereum',
-      'bridge to polygon',
-      'bridge to zkevm',
-      'send to ethereum',
-      'send to polygon',
-      'send to zkevm',
-      'message passing',
-      'bridge contract call',
-      'send contract call',
+      'relay message',
+      'message relay',
+      'cross layer',
+      'claim message',
+      'verify message',
+      'bridge data',
+      'message proof',
     ];
 
-    // Check for hex calldata pattern (0x followed by hex characters)
-    const calldataPattern = /0x[a-fA-F0-9]{8,}/;
-    const hasCalldata = calldataPattern.test(content);
-
-    // Must contain message bridging keywords OR have calldata pattern
-    const hasKeywords = messageKeywords.some((keyword) => content.includes(keyword));
-    const matches = hasKeywords || hasCalldata;
-
-    logger.info(
-      `[bridgeMessagesAction] Keyword match: ${hasKeywords}, Calldata pattern: ${hasCalldata}, Final result: ${matches}`
-    );
-
-    if (matches) {
-      logger.info('[bridgeMessagesAction] Validation passed!');
-    } else {
-      logger.info(
-        '[bridgeMessagesAction] Validation failed - no matching keywords or calldata found'
-      );
-    }
-
-    return matches;
+    // Must contain bridge message-related keywords
+    return bridgeMessageKeywords.some((keyword) => content.includes(keyword));
   },
 
   handler: async (
@@ -124,9 +97,9 @@ export const bridgeMessagesAction: Action = {
   ): Promise<Content> => {
     logger.info('[bridgeMessagesAction] Handler called!');
 
-    const privateKey = runtime.getSetting('PRIVATE_KEY') || process.env.PRIVATE_KEY;
-    const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY') || process.env.ALCHEMY_API_KEY;
-    const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL') || process.env.ZKEVM_RPC_URL;
+    const privateKey = runtime.getSetting('PRIVATE_KEY');
+    const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
+    const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL');
 
     if (!privateKey) {
       const errorMessage = 'PRIVATE_KEY is required for bridging messages.';

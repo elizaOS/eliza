@@ -160,29 +160,9 @@ export const estimateTransactionFeeAction: Action = {
 
         // Validate that we got at least a 'to' address
         if (!transactionInput?.to) {
-          logger.warn(
-            '[estimateTransactionFeeAction] LLM did not extract a "to" address, trying fallback extraction...'
+          throw new Error(
+            'Could not extract transaction parameters. Please specify at least a recipient address.'
           );
-
-          // Fallback: try to extract address and value from the message text
-          const messageText = message.content.text || '';
-          const addressMatch = messageText.match(/0x[a-fA-F0-9]{40}/);
-          const valueMatch = messageText.match(/(\d+(?:\.\d+)?)\s*ETH/i);
-
-          if (addressMatch) {
-            transactionInput = {
-              to: addressMatch[0],
-              value: valueMatch ? valueMatch[1] : undefined,
-            };
-            logger.info(
-              '[estimateTransactionFeeAction] Fallback extraction successful:',
-              transactionInput
-            );
-          } else {
-            throw new Error(
-              'Could not extract transaction parameters. Please specify at least a recipient address.'
-            );
-          }
         }
       } catch (error) {
         logger.error(
