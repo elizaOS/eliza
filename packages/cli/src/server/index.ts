@@ -325,6 +325,41 @@ export class AgentServer {
         }
       );
 
+      // Channel-specific media serving
+      this.app.get(
+        '/media/uploads/channels/:channelId/:filename',
+        (req: express.Request<{ channelId: string; filename: string }>, res: express.Response) => {
+          const channelId = req.params.channelId as string;
+          const filename = req.params.filename as string;
+          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+          if (!uuidRegex.test(channelId)) {
+            res.status(400).json({ error: 'Invalid channel ID format' });
+            return;
+          }
+
+          const sanitizedFilename = path.basename(filename);
+          const channelUploadsPath = path.join(uploadsBasePath, 'channels', channelId);
+          const filePath = path.join(channelUploadsPath, sanitizedFilename);
+
+          if (!filePath.startsWith(channelUploadsPath)) {
+            res.status(403).json({ error: 'Access denied' });
+            return;
+          }
+
+          res.sendFile(filePath, (err) => {
+            if (err) {
+              logger.warn(`[STATIC] Channel media file not found: ${filePath}`, err);
+              if (!res.headersSent) {
+                res.status(404).json({ error: 'File not found' });
+              }
+            } else {
+              logger.debug(`[STATIC] Served channel media file: ${filePath}`);
+            }
+          });
+        }
+      );
+
       // Add specific middleware to handle portal assets
       this.app.use((req, res, next) => {
         // Automatically detect and handle static assets based on file extension
@@ -682,6 +717,25 @@ export class AgentServer {
   async getCentralServers(): Promise<MessageServer[]> {
     const results = await this.centralDrizzleDB.select().from(centralSchema.messageServerTable);
     return results as MessageServer[];
+  }
+
+  async getCentralServerById(serverId: UUID): Promise<MessageServer | null> {
+    const results = await this.centralDrizzleDB
+      .select()
+      .from(centralSchema.messageServerTable)
+      .where(eq(centralSchema.messageServerTable.id, serverId))
+      .limit(1);
+    return results.length > 0 ? (results[0] as MessageServer) : null;
+  }
+
+  async getCentralServerBySourceType(sourceType: string): Promise<MessageServer | null> {
+    const results = await this.centralDrizzleDB
+      .select()
+      .from(centralSchema.messageServerTable)
+      .where(eq(centralSchema.messageServerTable.sourceType, sourceType))
+      .orderBy(centralSchema.messageServerTable.createdAt) // Get the oldest one if multiple
+      .limit(1);
+    return results.length > 0 ? (results[0] as MessageServer) : null;
   }
 
   async createCentralChannel(

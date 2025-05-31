@@ -469,18 +469,18 @@ const startAgents = async (options: {
 
   // Set up server properties
   server.startAgent = async (character) => {
-    logger.info(`Starting agent for character ${character.name}`);
+    logger.debug(`Starting agent for character ${character.name}`);
     const runtime = await startAgent(character, server);
     logger.success(`Agent ${character.name} has been successfully started!`);
     // Add direct console log for higher visibility
-    console.log(`\x1b[32m✓ Agent ${character.name} started successfully!\x1b[0m`);
+    console.log(`\x1b[32m[√] Agent ${character.name} started successfully!\x1b[0m`);
     return runtime;
   };
   server.stopAgent = (runtime: IAgentRuntime) => {
-    logger.info(`Stopping agent ${runtime.character.name}`);
+    logger.debug(`Stopping agent ${runtime.character.name}`);
     stopAgent(runtime, server);
     // Add direct console log for higher visibility
-    console.log(`\x1b[32m✓ Agent ${runtime.character.name} stopped successfully!\x1b[0m`);
+    console.log(`\x1b[32m[√] Agent ${runtime.character.name} stopped successfully!\x1b[0m`);
   };
   server.loadCharacterTryPath = loadCharacterTryPath;
   server.jsonToCharacter = jsonToCharacter;
@@ -514,13 +514,13 @@ const startAgents = async (options: {
       // Check if this is a plugin (package.json contains 'eliza' section with type='plugin')
       if (packageJson.eliza?.type && packageJson.eliza.type === 'plugin') {
         isPlugin = true;
-        logger.info('Found Eliza plugin in current directory');
+        logger.debug('Found Eliza plugin in current directory');
       }
 
       // Check if this is a project (package.json contains 'eliza' section with type='project')
       if (packageJson.eliza?.type && packageJson.eliza.type === 'project') {
         isProject = true;
-        logger.info('Found Eliza project in current directory');
+        logger.debug('Found Eliza project in current directory');
       }
 
       // Also check for project indicators like a Project type export
@@ -528,7 +528,7 @@ const startAgents = async (options: {
       if (!isProject && !isPlugin) {
         if (packageJson.description?.toLowerCase().includes('project')) {
           isProject = true;
-          logger.info('Found project by description in package.json');
+          logger.debug('Found project by description in package.json');
         }
       }
 
@@ -552,7 +552,7 @@ const startAgents = async (options: {
             ) {
               isPlugin = true;
               pluginModule = importedModule.default;
-              logger.info(`Loaded plugin: ${pluginModule?.name || 'unnamed'}`);
+              logger.debug(`Loaded plugin: ${pluginModule?.name || 'unnamed'}`);
 
               if (!pluginModule) {
                 logger.warn('Plugin loaded but no default export found, looking for other exports');
@@ -566,7 +566,7 @@ const startAgents = async (options: {
                     typeof importedModule[key].init === 'function'
                   ) {
                     pluginModule = importedModule[key];
-                    logger.info(`Found plugin export under key: ${key}`);
+                    logger.debug(`Found plugin export under key: ${key}`);
                     break;
                   }
                 }
@@ -650,7 +650,7 @@ const startAgents = async (options: {
           : [];
 
       if (agents.length > 0) {
-        logger.info(`Found ${agents.length} agents in project`);
+        logger.debug(`Found ${agents.length} agents in project`);
 
         // Prompt for environment variables for all plugins in the project
         try {
@@ -662,7 +662,7 @@ const startAgents = async (options: {
         const startedAgents = [];
         const results = await Promise.allSettled(
           agents.map(async (agent) => {
-            logger.info(`Starting agent: ${agent.character.name}`);
+            logger.debug(`Starting agent: ${agent.character.name}`);
             const runtime = await startAgent(
               agent.character,
               server,
@@ -698,7 +698,7 @@ const startAgents = async (options: {
       }
 
       // Load the default character with all its default plugins, then add the test plugin
-      logger.info(
+      logger.debug(
         `Starting default Eliza character with plugin: ${pluginModule.name || 'unnamed plugin'}`
       );
 
@@ -709,10 +709,10 @@ const startAgents = async (options: {
       // We're using our test plugin plus all the plugins from the default character
       const pluginsToLoad = [pluginModule];
 
-      logger.info(
+      logger.debug(
         `Using default character with plugins: ${defaultElizaCharacter.plugins.join(', ')}`
       );
-      logger.info(
+      logger.debug(
         "Plugin test mode: Using default character's plugins plus the plugin being tested"
       );
 
@@ -721,11 +721,11 @@ const startAgents = async (options: {
       await startAgent(defaultElizaCharacter, server, undefined, pluginsToLoad, {
         isPluginTestMode: true,
       });
-      logger.info('Character started with plugin successfully');
+      logger.debug('Character started with plugin successfully');
     } else {
       // When not in a project or plugin, use the environment-aware character
       const elizaCharacter = getElizaCharacter();
-      logger.info(
+      logger.debug(
         `Using default Eliza character with plugins: ${elizaCharacter.plugins.join(', ')}`
       );
       await startAgent(elizaCharacter, server);
@@ -807,7 +807,7 @@ export const start = new Command()
         // Load each character path
         for (const path of characterPaths) {
           try {
-            logger.info(`Loading character from ${path}`);
+            logger.debug(`Loading character from ${path}`);
             // Try with the exact path first
             let characterData;
             try {
@@ -815,7 +815,7 @@ export const start = new Command()
             } catch (error) {
               // If that fails and there's no extension, try adding .json
               if (!path.includes('.')) {
-                logger.info(`Trying with .json extension: ${path}.json`);
+                logger.debug(`Trying with .json extension: ${path}.json`);
                 characterData = await loadCharacterTryPath(`${path}.json`);
               } else {
                 throw error;

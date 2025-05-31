@@ -3,6 +3,19 @@ import express from 'express';
 import internalMessageBus from '../bus'; // Import the bus
 import type { AgentServer } from '../index'; // To access db and internal bus
 import type { MessageServiceStructure as MessageService } from '../types'; // Renamed to avoid conflict if MessageService class exists
+import { channelUpload } from '../upload'; // Import channelUpload
+import type { File as MulterFile } from 'multer';
+
+const DEFAULT_DM_SERVER_ID = '00000000-0000-0000-0000-000000000001' as UUID;
+const DEFAULT_DM_SERVER_NAME = 'Eliza DM Server';
+const DEFAULT_DM_SERVER_SOURCE_TYPE = 'eliza_system_dm';
+
+interface ChannelUploadRequest extends express.Request {
+  file?: MulterFile;
+  params: {
+    channelId: string;
+  };
+}
 
 export function MessagesRouter(serverInstance: AgentServer): express.Router {
   const router = express.Router();
@@ -356,42 +369,80 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
   });
 
   // GET /api/dm-channel?targetUserId=<target_user_id>
-  // @ts-expect-error - this is a valid express route
+  // @ts-expect-error - this is a valid express route // REMOVE IF NO LONGER NEEDED OR CONFIRM VALIDITY
   router.get('/dm-channel', async (req, res) => {
     const targetUserId = validateUuid(req.query.targetUserId as string);
     const currentUserId = validateUuid(req.query.currentUserId as string);
-    // Ensure dmServerId is always a valid UUID, even if not provided or invalid in query
-    let dmServerId = validateUuid(req.query.dmServerId as string);
-    if (!dmServerId) {
-      // Fallback: Use a predefined default DM server ID or fetch/create one
-      // For simplicity, using a hardcoded default. In a real app, you might query for a default server.
-      dmServerId = '00000000-0000-0000-0000-000000000001' as UUID;
-      // OR: const defaultServer = await serverInstance.getDefaultDmServer(); dmServerId = defaultServer.id;
-    }
+    let providedDmServerId = validateUuid(req.query.dmServerId as string);
 
     if (!targetUserId || !currentUserId) {
-      return res
-        .status(400)
-        .json({ success: false, error: 'Missing targetUserId or currentUserId' });
+      res.status(400).json({ success: false, error: 'Missing targetUserId or currentUserId' });
+      return;
     }
     if (targetUserId === currentUserId) {
-      return res
-        .status(400)
-        .json({ success: false, error: 'Cannot create DM channel with oneself' });
+      res.status(400).json({ success: false, error: 'Cannot create DM channel with oneself' });
+      return;
     }
 
+    let dmServerIdToUse: UUID;
+
     try {
+      if (providedDmServerId) {
+        // Check if the provided server ID exists
+        const existingServer = await serverInstance.getCentralServerById(providedDmServerId); // Assumes AgentServer has getCentralServerById
+        if (existingServer) {
+          dmServerIdToUse = providedDmServerId;
+        } else {
+          logger.warn(
+            `Provided dmServerId ${providedDmServerId} not found, using default DM server logic.`
+          );
+          // Fall through to default server logic if provided ID is invalid
+        }
+      }
+
+      // If no valid providedDmServerId, use/create the default DM server
+      if (!dmServerIdToUse) {
+        // 1. Try to find by the well-known DEFAULT_DM_SERVER_ID first
+        let defaultDmServer = await serverInstance.getCentralServerById(DEFAULT_DM_SERVER_ID);
+
+        // 2. If not found by ID, try to find by sourceType (in case ID changed or wasn't used on creation)
+        if (!defaultDmServer) {
+          defaultDmServer = await serverInstance.getCentralServerBySourceType(
+            DEFAULT_DM_SERVER_SOURCE_TYPE
+          );
+        }
+
+        // 3. If still not found, create it.
+        if (!defaultDmServer) {
+          logger.info(
+            `No default DM server found by ID or sourceType, creating one with name '${DEFAULT_DM_SERVER_NAME}'...`
+          );
+          // Note: We let the DB generate the ID for this new server.
+          // If we wanted to ensure DEFAULT_DM_SERVER_ID is used, we'd need a more complex get-or-create-with-specific-id method.
+          defaultDmServer = await serverInstance.createCentralServer({
+            name: DEFAULT_DM_SERVER_NAME,
+            sourceType: DEFAULT_DM_SERVER_SOURCE_TYPE,
+          });
+          // If this is the very first DM server, and we want it to have the well-known ID,
+          // an alternative would be to update its ID after creation if the DB allows,
+          // or ensure the first created DM server is tagged/named distinctively if ID must be DB-generated.
+          // For now, we'll use the ID it gets upon creation.
+        }
+        dmServerIdToUse = defaultDmServer.id;
+      }
+
       const channel = await serverInstance.findOrCreateCentralDmChannel(
         currentUserId,
         targetUserId,
-        dmServerId
+        dmServerIdToUse! // dmServerIdToUse will be set by this point
       );
       res.json({ success: true, data: channel });
-    } catch (error) {
-      logger.error(
-        `[Central Messages Router /dm-channel] Error finding/creating DM channel:`,
-        error
-      );
+    } catch (error: any) {
+      logger.error(`[Central Messages Router /dm-channel] Error finding/creating DM channel:`, {
+        message: error.message,
+        stack: error.stack,
+        originalError: error,
+      });
       res.status(500).json({ success: false, error: 'Failed to find or create DM channel' });
     }
   });
@@ -542,6 +593,75 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
       res.status(500).json({ success: false, error: 'Failed to clear messages' });
     }
   });
+
+  // NEW Endpoint for uploading media to a specific channel
+  router.post(
+    '/channels/:channelId/upload-media',
+    channelUpload.single('file'),
+    async (req: ChannelUploadRequest, res) => {
+      const channelId = validateUuid(req.params.channelId);
+      if (!channelId) {
+        res.status(400).json({ success: false, error: 'Invalid channelId format' });
+        return;
+      }
+
+      const mediaFile = req.file;
+      if (!mediaFile) {
+        res.status(400).json({ success: false, error: 'No media file provided' });
+        return;
+      }
+
+      // Basic validation (can be expanded)
+      const validMimeTypes = [
+        'image/jpeg',
+        'image/png',
+        'image/gif',
+        'image/webp',
+        'video/mp4',
+        'video/webm',
+        'audio/mpeg',
+        'audio/wav',
+        'audio/ogg',
+        'application/pdf',
+        'text/plain',
+      ];
+
+      if (!validMimeTypes.includes(mediaFile.mimetype)) {
+        // fs.unlinkSync(mediaFile.path); // Clean up multer's temp file if invalid
+        res.status(400).json({ success: false, error: `Invalid file type: ${mediaFile.mimetype}` });
+        return;
+      }
+
+      try {
+        // Construct file URL based on where channelUpload saves files
+        // e.g., /media/uploads/channels/:channelId/:filename
+        // This requires a static serving route for /media/uploads/channels too.
+        const fileUrl = `/media/uploads/channels/${channelId}/${mediaFile.filename}`;
+
+        logger.info(
+          `[MessagesRouter /upload-media] File uploaded for channel ${channelId}: ${mediaFile.filename}. URL: ${fileUrl}`
+        );
+
+        res.json({
+          success: true,
+          data: {
+            url: fileUrl, // Relative URL, client prepends server origin
+            type: mediaFile.mimetype, // More specific type from multer
+            filename: mediaFile.filename,
+            originalName: mediaFile.originalname,
+            size: mediaFile.size,
+          },
+        });
+      } catch (error: any) {
+        logger.error(
+          `[MessagesRouter /upload-media] Error processing upload for channel ${channelId}: ${error.message}`,
+          error
+        );
+        // fs.unlinkSync(mediaFile.path); // Attempt cleanup on error
+        res.status(500).json({ success: false, error: 'Failed to process media upload' });
+      }
+    }
+  );
 
   return router;
 }

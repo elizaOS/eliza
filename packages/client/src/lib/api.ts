@@ -422,4 +422,20 @@ export const apiClient = {
   getCentralChannelParticipants: (channelId: UUID): Promise<{ success: boolean; data: UUID[] }> => {
     return fetcher({ url: `/messages/central-channels/${channelId}/participants` });
   },
+
+  uploadChannelMedia: async (
+    channelId: UUID,
+    file: File
+  ): Promise<{
+    success: boolean;
+    data: { url: string; type: string; filename: string; originalName: string; size: number };
+  }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return fetcher({
+      url: `/messages/channels/${channelId}/upload-media`,
+      method: 'POST',
+      body: formData,
+    });
+  },
 };

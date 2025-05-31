@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import plugin from '../src/plugin';
 import { z } from 'zod';
+import { createMockRuntime } from './utils/core-test-utils';
 
 // Mock logger
 vi.mock('@elizaos/core', async () => {
@@ -41,7 +42,7 @@ describe('Plugin Configuration Schema', () => {
     if (initPlugin) {
       let error = null;
       try {
-        await initPlugin(validConfig);
+        await initPlugin(validConfig, createMockRuntime());
       } catch (e) {
         error = e;
       }
@@ -55,7 +56,7 @@ describe('Plugin Configuration Schema', () => {
     if (initPlugin) {
       let error = null;
       try {
-        await initPlugin(emptyConfig);
+        await initPlugin(emptyConfig, createMockRuntime());
       } catch (e) {
         error = e;
       }
@@ -72,7 +73,7 @@ describe('Plugin Configuration Schema', () => {
     if (initPlugin) {
       let error = null;
       try {
-        await initPlugin(configWithExtra);
+        await initPlugin(configWithExtra, createMockRuntime());
       } catch (e) {
         error = e;
       }
@@ -88,7 +89,7 @@ describe('Plugin Configuration Schema', () => {
     if (initPlugin) {
       let error = null;
       try {
-        await initPlugin(invalidConfig);
+        await initPlugin(invalidConfig, createMockRuntime());
       } catch (e) {
         error = e;
       }
@@ -106,7 +107,7 @@ describe('Plugin Configuration Schema', () => {
       delete process.env.EXAMPLE_PLUGIN_VARIABLE;
 
       // Initialize with config
-      await initPlugin(testConfig);
+      await initPlugin(testConfig, createMockRuntime());
 
       // Verify environment variable was set
       expect(process.env.EXAMPLE_PLUGIN_VARIABLE).toBe('test-value');
@@ -118,11 +119,11 @@ describe('Plugin Configuration Schema', () => {
     process.env.EXAMPLE_PLUGIN_VARIABLE = 'pre-existing-value';
 
     const testConfig = {
-      EXAMPLE_PLUGIN_VARIABLE: undefined,
+      // Omit the variable to test that existing env vars aren't overridden
     };
 
     if (initPlugin) {
-      await initPlugin(testConfig);
+      await initPlugin(testConfig, createMockRuntime());
 
       // Verify environment variable was not changed
       expect(process.env.EXAMPLE_PLUGIN_VARIABLE).toBe('pre-existing-value');

@@ -42,7 +42,7 @@ export class SocketIORouter {
     logger.info(`[SocketIO] New connection: ${socket.id}`);
 
     socket.on(String(SOCKET_MESSAGE_TYPE.ROOM_JOINING), (payload) => {
-      logger.info(`[SocketIO] Room joining event received: ${JSON.stringify(payload)}`);
+      logger.debug(`[SocketIO] Room joining event received directly: ${JSON.stringify(payload)}`);
       this.handleRoomJoining(socket, payload);
     });
 
@@ -50,13 +50,13 @@ export class SocketIORouter {
       const messagePreview =
         payload.message?.substring(0, 50) + (payload.message?.length > 50 ? '...' : '');
       logger.info(
-        `[SocketIO] SEND_MESSAGE event received: ${JSON.stringify({
+        `[SocketIO] SEND_MESSAGE event received directly: ${JSON.stringify({
           senderId: payload.senderId,
           roomId: payload.roomId,
           messagePreview,
         })}`
       );
-      this.handleBroadcastMessage(socket, payload);
+      this.handleCentralMessageSubmission(socket, payload);
     });
 
     socket.on('message', (data) => {
@@ -103,10 +103,12 @@ export class SocketIORouter {
           break;
         case SOCKET_MESSAGE_TYPE.SEND_MESSAGE:
           logger.info(`[SocketIO ${socket.id}] Handling message sending via 'message' event`);
-          this.handleBroadcastMessage(socket, payload);
+          this.handleCentralMessageSubmission(socket, payload);
           break;
         default:
-          logger.warn(`[SocketIO ${socket.id}] Unknown message type received: ${type}`);
+          logger.warn(
+            `[SocketIO ${socket.id}] Unknown message type received in 'message' event: ${type}`
+          );
           break;
       }
     } catch (error: any) {
@@ -118,53 +120,39 @@ export class SocketIORouter {
   }
 
   private handleRoomJoining(socket: Socket, payload: any) {
-    const { roomId, agentId } = payload; // agentId here is for client-side reference, not message authoring
-    // roomId is the channel_id the client wants to join
-
+    const { roomId, agentId } = payload;
     if (!roomId) {
-      // agentId might not be strictly necessary for just joining a socket.io room
       this.sendErrorResponse(socket, `roomId (channel_id) is required for joining.`);
       return;
     }
-
-    // If agentId is provided, validate it and store connection if needed for other purposes
     if (agentId) {
       const agentUuid = validateUuid(agentId);
-      if (!agentUuid) {
-        this.sendErrorResponse(socket, `Invalid agentId format provided for room joining.`);
-        // Optionally, still let them join the room if agentId is only for client-side ref
-      } else {
+      if (agentUuid) {
         this.connections.set(socket.id, agentUuid);
         logger.info(`[SocketIO] Socket ${socket.id} associated with agent ${agentUuid}`);
       }
     }
-
     socket.join(roomId);
     logger.info(`[SocketIO] Socket ${socket.id} joined Socket.IO room: ${roomId}`);
-
     const successMessage = `Socket ${socket.id} successfully joined room ${roomId}.`;
     const responsePayload = {
       message: successMessage,
       roomId,
-      ...(agentId && { agentId: validateUuid(agentId) || agentId }), // Include agentId if provided and valid
+      ...(agentId && { agentId: validateUuid(agentId) || agentId }),
     };
-
-    socket.emit('message', { type: 'room_joined', payload: responsePayload });
     socket.emit('room_joined', responsePayload);
     logger.info(`[SocketIO] ${successMessage}`);
   }
 
-  private async handleBroadcastMessage(socket: Socket, payload: any) {
-    const { senderId, senderName, message, roomId, worldId, source, metadata } = payload;
-    // roomId: central channel_id
-    // worldId: central server_id
-    // senderId: central author_id (e.g., GUI user's central ID or an agent's central ID if agent is sending via socket)
+  private async handleCentralMessageSubmission(socket: Socket, payload: any) {
+    const { senderId, senderName, message, roomId, worldId, source, metadata, attachments } =
+      payload;
 
     logger.info(
-      `[SocketIO ${socket.id}] Received message for central submission: room ${roomId} from ${senderName || senderId}`
+      `[SocketIO ${socket.id}] Received SEND_MESSAGE for central submission: room ${roomId} from ${senderName || senderId}`
     );
 
-    if (!roomId || !worldId || !senderId || !message) {
+    if (!validateUuid(roomId) || !validateUuid(worldId) || !validateUuid(senderId) || !message) {
       this.sendErrorResponse(
         socket,
         `For SEND_MESSAGE: roomId (channel_id), worldId (server_id), senderId (author_id), and message are required.`
@@ -181,54 +169,38 @@ export class SocketIORouter {
         metadata: {
           ...(metadata || {}),
           user_display_name: senderName,
-          socket_id: socket.id, // For tracing or specific socket handling if needed
+          socket_id: socket.id,
+          worldId: worldId as UUID,
+          attachments,
         },
-        sourceType: source || 'socketio_client', // Default source if not provided
+        sourceType: source || 'socketio_client',
       };
 
       const createdRootMessage = await this.serverInstance.createMessage(newRootMessageData);
 
-      const messageForSioBroadcast: MessageService = {
-        id: createdRootMessage.id!,
-        channel_id: createdRootMessage.channelId,
-        server_id: worldId as UUID,
-        author_id: createdRootMessage.authorId,
-        author_display_name: senderName || `User-${createdRootMessage.authorId.substring(0, 8)}`,
-        content: createdRootMessage.content,
-        created_at: new Date(createdRootMessage.createdAt).getTime(),
-        source_type: createdRootMessage.sourceType,
-        raw_message: createdRootMessage.rawMessage,
-        metadata: createdRootMessage.metadata,
-      };
-
-      this.serverInstance.socketIO.to(roomId).emit('messageBroadcast', messageForSioBroadcast);
-
       logger.info(
-        `[SocketIO ${socket.id}] Message from ${senderId} submitted to central store (ID: ${createdRootMessage.id}) and broadcasted to room ${roomId}.`
+        `[SocketIO ${socket.id}] Message from ${senderId} (msgId: ${payload.messageId || 'N/A'}) submitted to central store (central ID: ${createdRootMessage.id}). It will be processed by agents and broadcasted upon their reply.`
       );
 
-      socket.emit('message', {
-        type: 'message_sent_ack',
-        payload: {
-          status: 'success',
-          messageId: createdRootMessage.id,
-          roomId,
-        },
+      socket.emit('messageAck', {
+        clientMessageId: payload.messageId,
+        centralMessageId: createdRootMessage.id,
+        status: 'received_by_server_and_processing',
+        roomId,
       });
     } catch (error: any) {
       logger.error(
-        `[SocketIO ${socket.id}] Error processing central submission for broadcast: ${error.message}`,
+        `[SocketIO ${socket.id}] Error during central submission for message: ${error.message}`,
         error
       );
-      this.sendErrorResponse(socket, `[SocketIO] Error processing message: ${error.message}`);
+      this.sendErrorResponse(socket, `[SocketIO] Error processing your message: ${error.message}`);
     }
   }
 
   private sendErrorResponse(socket: Socket, errorMessage: string) {
     logger.error(`[SocketIO ${socket.id}] Sending error to client: ${errorMessage}`);
-    socket.emit('message', {
-      type: 'error',
-      payload: { error: errorMessage },
+    socket.emit('messageError', {
+      error: errorMessage,
     });
   }
 
@@ -279,7 +251,11 @@ export class SocketIORouter {
           shouldBroadcast = shouldBroadcast && logEntry.agentName === filters.agentName;
         }
         if (filters.level && filters.level !== 'all') {
-          shouldBroadcast = shouldBroadcast && logEntry.level === filters.level; // Assuming logEntry.level is string or comparable
+          const numericLevel =
+            typeof filters.level === 'string'
+              ? logger.levels.values[filters.level.toLowerCase()] || 70
+              : filters.level;
+          shouldBroadcast = shouldBroadcast && logEntry.level >= numericLevel;
         }
         if (shouldBroadcast) {
           socket.emit('log_stream', logData);

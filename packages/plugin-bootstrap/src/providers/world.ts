@@ -18,7 +18,7 @@ export const worldProvider: Provider = {
 
   get: async (runtime: IAgentRuntime, message: Memory) => {
     try {
-      logger.debug('🌐 World provider activated for roomId:', message.roomId);
+      logger.debug('[🌐] World provider activated for roomId:', message.roomId);
 
       // Get the current room from the message
       const currentRoom = await runtime.getRoom(message.roomId);
@@ -35,7 +35,7 @@ export const worldProvider: Provider = {
         };
       }
 
-      logger.debug(`🌐 World provider: Found room "${currentRoom.name}" (${currentRoom.type})`);
+      logger.debug(`[🌐] World provider: Found room "${currentRoom.name}" (${currentRoom.type})`);
 
       // Get the world for the current room
       const worldId = currentRoom.worldId;
@@ -66,16 +66,18 @@ export const worldProvider: Provider = {
         };
       }
 
-      logger.debug(`🌐 World provider: Found world "${world.name}" (ID: ${world.id})`);
+      logger.debug(`[🌐] World provider: Found world "${world.name}" (ID: ${world.id})`);
 
       // Get all rooms in the current world
       const worldRooms = await runtime.getRooms(worldId);
-      logger.debug(`🌐 World provider: Found ${worldRooms.length} rooms in world "${world.name}"`);
+      logger.debug(
+        `[🌐] World provider: Found ${worldRooms.length} rooms in world "${world.name}"`
+      );
 
       // Get participants for the current room
       const participants = await runtime.getParticipantsForRoom(message.roomId);
       logger.debug(
-        `🌐 World provider: Found ${participants.length} participants in room "${currentRoom.name}"`
+        `[🌐] World provider: Found ${participants.length} participants in room "${currentRoom.name}"`
       );
 
       // Format rooms by type
@@ -181,7 +183,7 @@ export const worldProvider: Provider = {
       // Use addHeader like in entitiesProvider
       const formattedText = addHeader('# World Information', worldInfoText);
 
-      logger.debug('🌐 World provider completed successfully');
+      logger.debug('[🌐] World provider completed successfully');
 
       return {
         data,

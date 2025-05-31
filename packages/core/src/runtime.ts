@@ -4,7 +4,7 @@ import { createUniqueUuid } from './entities';
 import { decryptSecret, getSalt } from './settings';
 import { safeReplacer } from './utils';
 import { InstrumentationService } from './instrumentation/service';
-import logger from './logger';
+import { createLogger } from './logger';
 import {
   ChannelType,
   ModelType,
@@ -150,9 +150,8 @@ export class AgentRuntime implements IAgentRuntime {
     const logLevel = process.env.LOG_LEVEL || 'info';
 
     // Create the logger with appropriate level - only show debug logs when explicitly configured
-    this.logger = logger.child({
+    this.logger = createLogger({
       agentName: this.character?.name,
-      level: logLevel === 'debug' ? 'debug' : 'error',
     });
 
     this.logger.debug(`[AgentRuntime] Process working directory: ${process.cwd()}`);
@@ -843,6 +842,7 @@ export class AgentRuntime implements IAgentRuntime {
                 });
                 actionSpan.setStatus({ code: SpanStatusCode.OK });
               } catch (handlerError: any) {
+                console.error('action error', handlerError);
                 const handlerErrorMessage =
                   handlerError instanceof Error ? handlerError.message : String(handlerError);
                 actionSpan.recordException(handlerError as Error);
@@ -1328,6 +1328,7 @@ export class AgentRuntime implements IAgentRuntime {
                 providerName: provider.name,
               };
             } catch (error: any) {
+              console.error('provider error', provider.name, error);
               const duration = Date.now() - start;
               const errorMessage = error instanceof Error ? error.message : String(error);
               providerSpan.recordException(error as Error);
@@ -1586,8 +1587,8 @@ export class AgentRuntime implements IAgentRuntime {
 
       // Log input parameters (keep debug log if useful)
       this.logger.debug(
-        `[useModel] ${modelKey} input:`,
-        JSON.stringify(params, safeReplacer(), 2).replace(/\\n/g, '\n')
+        `[useModel] ${modelKey} input: ` +
+          JSON.stringify(params, safeReplacer(), 2).replace(/\\n/g, '\n')
       );
       let paramsWithRuntime: any;
       if (
@@ -1873,7 +1874,7 @@ export class AgentRuntime implements IAgentRuntime {
         text: memoryText,
       });
     } catch (error: any) {
-      logger.error('Failed to generate embedding:', error);
+      this.logger.error('Failed to generate embedding:', error);
       memory.embedding = await this.useModel(ModelType.TEXT_EMBEDDING, null);
     }
     return memory;

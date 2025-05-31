@@ -1,4 +1,4 @@
-import { Database, LoaderIcon, Search, Clock, Trash2, Filter, RefreshCw, Plus } from 'lucide-react';
+import { Database, LoaderIcon, Search, Clock, Trash2, Filter, RefreshCw } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -298,7 +298,6 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
   useEffect(() => {
     if (isLive && !useWebSocket) {
       // When enabling live mode, try to start WebSocket. Fallback to polling if WebSocket fails
-      const socketManager = SocketIOManager.getInstance();
       if (SocketIOManager.isConnected()) {
         setUseWebSocket(true);
       } else {

@@ -32,12 +32,13 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   ChevronRight,
   PanelRight,
-  Paperclip,
   Send,
   Trash2,
   X,
   Loader2,
   FileText,
+  Image,
+  Paperclip,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import AIWriter from 'react-aiwriter';
@@ -460,8 +461,16 @@ export default function DMPage() {
     setInputDisabled(true);
     const tempMessageId = randomUUID() as UUID;
     let messageText = input.trim();
-    let uiAttachments: Media[] = [];
+    let processedUiAttachments: Media[] = []; // To hold attachments prepared for optimistic update and API
 
+    // Store current input and clear UI immediately
+    const currentInputVal = input;
+    setInput('');
+    const currentSelectedFiles = [...selectedFiles]; // Copy for processing
+    setSelectedFiles([]); // Clear selected files from UI
+    formRef.current?.reset();
+
+    // 1. Optimistically display user message with local file URLs (if any)
     const optimisticUiMessage: UiMessage = {
       id: tempMessageId,
       text: messageText,
@@ -469,46 +478,43 @@ export default function DMPage() {
       createdAt: Date.now(),
       senderId: currentClientEntityId,
       isAgent: false,
-      isLoading: true,
+      isLoading: true, // Will be true until server ACK or agent response
       channelId: finalChannelId,
       serverId: finalServerId,
       source: CHAT_SOURCE,
-      attachments: selectedFiles
+      attachments: currentSelectedFiles // Use local file objects for immediate display
         .map((sf) => ({
           id: sf.id,
-          url: URL.createObjectURL(sf.file),
+          url: URL.createObjectURL(sf.file), // Temporary local URL for display
           title: sf.file.name,
           contentType: getContentTypeFromMimeType(sf.file.type),
+          isUploading: true, // Indicate this is still pending proper upload
         }))
         .filter((att) => att.contentType !== undefined) as Media[],
     };
 
-    if (messageText || selectedFiles.length > 0) {
+    if (messageText || currentSelectedFiles.length > 0) {
       queryClient.setQueryData<UiMessage[]>(['messages', finalChannelId], (old = []) => [
         ...old,
         optimisticUiMessage,
       ]);
     }
     safeScrollToBottom();
-    const currentInputVal = input;
-    setInput('');
-    formRef.current?.reset();
 
     try {
-      if (selectedFiles.length > 0) {
-        const currentUploads = selectedFiles.map((sf) => ({ ...sf, isUploading: true }));
-        setSelectedFiles(currentUploads.map((f) => ({ ...f, isUploading: true })));
-
-        const uploadPromises = currentUploads.map(async (fileData) => {
+      // 2. Handle actual file uploads
+      if (currentSelectedFiles.length > 0) {
+        const uploadPromises = currentSelectedFiles.map(async (fileData) => {
           try {
+            // Update this specific file's state in UI if you have per-file loading indicators
             const uploadResult = await apiClient.uploadAgentMedia(
-              targetAgentData.id!,
+              targetAgentData.id!, // Assuming DM, so targetAgentData.id is uploader context
               fileData.file
             );
             if (uploadResult.success) {
               return {
-                id: fileData.id,
-                url: uploadResult.data.url,
+                id: fileData.id, // Keep original temp ID for now
+                url: uploadResult.data.url, // This will be the server URL (e.g., /media/uploads/...)
                 title: fileData.file.name,
                 source: 'file_upload',
                 contentType: getContentTypeFromMimeType(fileData.file.type),
@@ -518,40 +524,81 @@ export default function DMPage() {
             }
           } catch (uploadError) {
             clientLogger.error(`Failed to upload ${fileData.file.name}:`, uploadError);
-            setSelectedFiles((prev) =>
-              prev.map((f) =>
-                f.id === fileData.id ? { ...f, isUploading: false, error: 'Upload failed' } : f
-              )
-            );
-            throw uploadError;
+            // Update optimistic message to show failure for this attachment if possible
+            // Or show a toast notification for the specific file failure.
+            toast({ title: `Upload Failed: ${fileData.file.name}`, variant: 'destructive' });
+            return {
+              // Return a structure indicating failure or skip this attachment
+              id: fileData.id,
+              title: fileData.file.name,
+              error: 'Upload failed',
+            } as Partial<Media> & { error: string };
           }
         });
-        uiAttachments = await Promise.all(uploadPromises);
-        setSelectedFiles((prev) => prev.filter((f) => !uiAttachments.find((up) => up.id === f.id)));
-        if (!messageText && uiAttachments.length > 0) {
-          messageText = `Shared ${uiAttachments.length} file(s).`;
+        const settledUploads = await Promise.allSettled(uploadPromises);
+
+        processedUiAttachments = settledUploads
+          .filter(
+            (result) =>
+              result.status === 'fulfilled' && result.value && !(result.value as any).error
+          )
+          .map((result) => (result as PromiseFulfilledResult<Media>).value);
+
+        const failedUploads = settledUploads.filter(
+          (result) =>
+            result.status === 'rejected' ||
+            (result.status === 'fulfilled' && (result.value as any).error)
+        );
+
+        if (failedUploads.length > 0) {
+          // Handle display of failed uploads or remove them from optimistic message
+          queryClient.setQueryData<UiMessage[]>(['messages', finalChannelId], (old = []) =>
+            old.map((m) => {
+              if (m.id === tempMessageId) {
+                return {
+                  ...m,
+                  attachments: m.attachments?.filter(
+                    (att) =>
+                      !failedUploads.some((fu) => {
+                        const failedAtt = fu.status === 'fulfilled' ? fu.value : null;
+                        return failedAtt && (failedAtt as any).id === att.id;
+                      })
+                  ),
+                };
+              }
+              return m;
+            })
+          );
+        }
+        // If no text was initially present, but files were uploaded, create a summary text.
+        if (!messageText.trim() && processedUiAttachments.length > 0) {
+          messageText = `Shared ${processedUiAttachments.length} file(s).`;
         }
       }
 
-      const mediaInfosFromText = parseMediaFromText(messageText || currentInputVal);
+      // 3. Parse media URLs from text input
+      const mediaInfosFromText = parseMediaFromText(currentInputVal); // Use original input for URL parsing
       const textMediaAttachments: Media[] = mediaInfosFromText.map(
         (media: MediaInfo, index: number): Media => ({
-          id: `media-${tempMessageId}-${index}`,
+          id: `textmedia-${tempMessageId}-${index}`,
           url: media.url,
-          title: media.type === 'image' ? 'Image' : 'Video',
+          title: media.type === 'image' ? 'Image' : media.type === 'video' ? 'Video' : 'Media Link',
           source: 'user_input_url',
-          contentType: media.type === 'image' ? CoreContentType.IMAGE : CoreContentType.VIDEO,
+          contentType:
+            media.type === 'image'
+              ? CoreContentType.IMAGE
+              : media.type === 'video'
+                ? CoreContentType.VIDEO
+                : undefined,
         })
       );
 
-      const finalAttachments = [...uiAttachments, ...textMediaAttachments];
-      const finalText =
-        messageText ||
-        (finalAttachments.length > 0 ? `Shared ${finalAttachments.length} item(s)` : '') ||
-        currentInputVal;
+      const finalAttachments = [...processedUiAttachments, ...textMediaAttachments];
+      const finalTextContent =
+        messageText || (finalAttachments.length > 0 ? `Shared content.` : '');
 
-      if (!finalText && finalAttachments.length === 0) {
-        clientLogger.warn('Attempted to send an empty message.');
+      if (!finalTextContent.trim() && finalAttachments.length === 0) {
+        clientLogger.warn('Attempted to send an empty message after processing.');
         setInputDisabled(false);
         queryClient.setQueryData<UiMessage[]>(['messages', finalChannelId], (old = []) =>
           old.filter((m) => m.id !== tempMessageId)
@@ -559,41 +606,32 @@ export default function DMPage() {
         return;
       }
 
-      const response = await apiClient.postMessageToCentralChannel(finalChannelId, {
-        author_id: currentClientEntityId,
-        content: finalText,
-        server_id: finalServerId,
+      // 4. Send the final message payload to the server
+      const response = await apiClient.postMessageToCentralChannel(finalChannelId!, {
+        author_id: currentClientEntityId!,
+        content: finalTextContent,
+        server_id: finalServerId!,
         metadata: {
           attachments: finalAttachments.length > 0 ? finalAttachments : undefined,
           user_display_name: USER_NAME,
         },
         source_type: CHAT_SOURCE,
+        // clientTempId: tempMessageId, // Optional: send tempId for server to ACK with it
       });
 
+      // 5. Update the optimistic message with server data, or remove if post failed severely
       queryClient.setQueryData<UiMessage[]>(['messages', finalChannelId], (old = []) =>
         old.map((m) => {
           if (m.id === tempMessageId) {
-            const serverResponseData = response.data;
-            const isAgentResp = serverResponseData.authorId === targetAgentId;
+            const serverMsg = response.data; // This is MessageServiceStructure like
             return {
-              id: serverResponseData.id,
-              text: serverResponseData.content,
-              name: isAgentResp
-                ? targetAgentData?.name || serverResponseData.metadata?.agentName || 'Agent'
-                : USER_NAME,
-              senderId: serverResponseData.authorId,
-              isAgent: isAgentResp,
-              createdAt: serverResponseData.createdAt,
-              attachments: serverResponseData.metadata?.attachments as Media[] | undefined,
-              thought: isAgentResp ? serverResponseData.metadata?.thought : undefined,
-              actions: isAgentResp
-                ? (serverResponseData.metadata?.actions as string[] | undefined)
-                : undefined,
-              channelId: serverResponseData.channelId,
-              serverId: serverResponseData.metadata?.serverId || finalServerId,
-              source: serverResponseData.sourceType,
+              ...optimisticUiMessage,
+              id: serverMsg.id,
+              text: serverMsg.content,
+              attachments: (serverMsg.metadata?.attachments as Media[]) || [],
               isLoading: false,
-            } as UiMessage;
+              createdAt: serverMsg.createdAt, // Corrected from created_at
+            };
           }
           return m;
         })
@@ -608,32 +646,57 @@ export default function DMPage() {
       queryClient.setQueryData<UiMessage[]>(['messages', finalChannelId], (old = []) =>
         old.map((m) =>
           m.id === tempMessageId
-            ? { ...m, isLoading: false, text: `${m.text || 'Attachment'} (Failed to send)` }
+            ? { ...m, isLoading: false, text: `${m.text || 'Attachment(s)'} (Failed to send)` }
             : m
         )
       );
     } finally {
       setInputDisabled(false);
-      setSelectedFiles((prev) => prev.filter((f) => f.isUploading));
-      formRef.current?.reset();
+      // selectedFiles should be empty now if all uploads were attempted
       inputRef.current?.focus();
     }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    const newUploadingFiles: UploadingFile[] = files.map((file) => ({
+    // Prioritizing the more robust filtering from the second part of the conflict
+    const validFiles = files.filter(
+      (file) =>
+        file.type.startsWith('image/') ||
+        file.type.startsWith('video/') ||
+        file.type.startsWith('audio/') || // Added audio
+        file.type === 'application/pdf' ||
+        file.type === 'application/msword' ||
+        file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+        file.type === 'application/vnd.ms-excel' ||
+        file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+        file.type === 'application/vnd.ms-powerpoint' ||
+        file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
+        file.type.startsWith('text/')
+    );
+
+    const uniqueFiles = validFiles.filter((newFile) => {
+      return !selectedFiles.some(
+        (existingFile) =>
+          existingFile.file.name === newFile.name &&
+          existingFile.file.size === newFile.size &&
+          existingFile.file.lastModified === newFile.lastModified
+      );
+    });
+
+    const newUploadingFiles: UploadingFile[] = uniqueFiles.map((file) => ({
       file,
       id: randomUUID(),
-      isUploading: false,
+      isUploading: false, // Start as not uploading
     }));
+
     setSelectedFiles((prev) => {
       const combined = [...prev, ...newUploadingFiles];
       return Array.from(
         new Map(combined.map((f) => [`${f.file.name}-${f.file.size}`, f])).values()
       );
     });
-    if (e.target) e.target.value = '';
+    if (e.target) e.target.value = ''; // Clear file input
   };
 
   const removeFile = (fileId: string) => {
@@ -882,7 +945,7 @@ export default function DMPage() {
                         type="file"
                         ref={fileInputRef}
                         onChange={handleFileChange}
-                        accept="image/*,video/*,.pdf,.doc,.docx,.txt,.rtf,.xls,.xlsx,.ppt,.pptx,.csv"
+                        accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt,.rtf,..."
                         multiple
                         className="hidden"
                       />

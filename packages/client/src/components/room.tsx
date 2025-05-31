@@ -389,29 +389,15 @@ export default function GroupChatPage({
     try {
       if (selectedFiles.length > 0) {
         const currentUploads = selectedFiles.map((sf) => ({ ...sf, isUploading: true }));
-        // Update state for UI to show loading spinners for these files
         setSelectedFiles(currentUploads.map((f) => ({ ...f, isUploading: true })));
 
         const uploadPromises = currentUploads.map(async (fileData) => {
           try {
-            // For group chats, uploads might be generic or associated with the current user, not a specific agent.
-            // This might need a general media upload endpoint if not tied to an agent.
-            // Assuming a primary agent for the group for now, or this needs adjustment.
-            const primaryAgentInGroup =
-              roomParticipantAgents.find((agent) => agent.status === CoreAgentStatus.ACTIVE) ||
-              roomParticipantAgents[0];
-            const agentIdForUpload =
-              primaryAgentInGroup?.id ||
-              allAgents.find((a) => a.status === CoreAgentStatus.ACTIVE)?.id; // Fallback to any active agent
-
-            if (!agentIdForUpload) {
-              throw new Error('No active agent available in group for media upload context.');
-            }
-
-            const uploadResult = await apiClient.uploadAgentMedia(agentIdForUpload, fileData.file);
+            // USE THE NEW CHANNEL UPLOAD ENDPOINT
+            const uploadResult = await apiClient.uploadChannelMedia(channelId, fileData.file);
             if (uploadResult.success) {
               return {
-                id: fileData.id, // Use the UploadingFile id
+                id: fileData.id,
                 url: uploadResult.data.url,
                 title: fileData.file.name,
                 source: 'file_upload',
@@ -427,11 +413,42 @@ export default function GroupChatPage({
                 f.id === fileData.id ? { ...f, isUploading: false, error: 'Upload failed' } : f
               )
             );
-            throw uploadError;
+            throw uploadError; // Re-throw to be caught by Promise.allSettled
           }
         });
-        uiAttachments = await Promise.all(uploadPromises);
-        setSelectedFiles((prev) => prev.filter((f) => !uiAttachments.find((up) => up.id === f.id))); // Remove successfully uploaded files
+        // Use Promise.allSettled to handle individual failures
+        const settledUploads = await Promise.allSettled(uploadPromises);
+
+        uiAttachments = settledUploads
+          .filter(
+            (result) =>
+              result.status === 'fulfilled' && result.value && !(result.value as any).error
+          )
+          .map((result) => (result as PromiseFulfilledResult<Media>).value);
+
+        const failedUploads = settledUploads.filter(
+          (result) =>
+            result.status === 'rejected' ||
+            (result.status === 'fulfilled' && (result.value as any).error)
+        );
+
+        if (failedUploads.length > 0) {
+          toast({
+            title: 'Some files failed to upload',
+            description: failedUploads
+              .map((f) =>
+                f.status === 'rejected'
+                  ? f.reason?.message
+                  : (f.value as any)?.title || 'Unknown file'
+              )
+              .join(', '),
+            variant: 'destructive',
+          });
+        }
+
+        // Remove all initially selected files (attempted for upload)
+        setSelectedFiles([]);
+
         if (!messageText && uiAttachments.length > 0) {
           messageText = `Shared ${uiAttachments.length} file(s).`;
         }

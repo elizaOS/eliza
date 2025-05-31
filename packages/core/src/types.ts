@@ -50,6 +50,9 @@ export interface Content {
   /** Array of media attachments */
   attachments?: Media[];
 
+  /** room type */
+  channelType?: string;
+
   /**
    * Additional dynamic properties
    * Use specific properties above instead of this when possible
