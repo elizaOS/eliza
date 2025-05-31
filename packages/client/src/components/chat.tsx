@@ -218,6 +218,8 @@ export default function Page({
     // Join the room for this agent
     socketIOManager.joinRoom(roomId);
 
+    setInputDisabled(false);
+
     console.log(`[Chat] Joined room ${roomId} with entityId ${entityId}`);
 
     const handleMessageBroadcasting = (data: ContentWithUser) => {
@@ -739,10 +741,10 @@ export default function Page({
             {/* Keep input at bottom */}
             {inputDisabled && (
               <div className="px-2 pb-2 text-sm text-muted-foreground flex items-center gap-2">
-                <div className="flex gap-1">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:0ms]"></div>
-                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:150ms]"></div>
-                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:300ms]"></div>
+                <div className="flex gap-0.5 items-center justify-center">
+                  <span className="w-[6px] h-[6px] bg-white rounded-full animate-bounce [animation-delay:0s]" />
+                  <span className="w-[6px] h-[6px] bg-white rounded-full animate-bounce [animation-delay:0.2s]" />
+                  <span className="w-[6px] h-[6px] bg-white rounded-full animate-bounce [animation-delay:0.4s]" />
                 </div>
                 <span>{agentData.name} is thinking</span>
                 <div className="flex">
@@ -817,7 +819,7 @@ export default function Page({
                     : 'Type your message here...'
                 }
                 className="min-h-12 resize-none rounded-md bg-card border-0 p-3 shadow-none focus-visible:ring-0"
-                disabled={inputDisabled}
+                disabled={inputDisabled || agentData.status === 'inactive'}
               />
               <div className="flex items-center p-3 pt-0">
                 <Tooltip>
@@ -854,7 +856,7 @@ export default function Page({
                   onChange={(newInput: string) => setInput(newInput)}
                 />
                 <Button
-                  disabled={inputDisabled || selectedFiles.some((f) => f.isUploading)}
+                  disabled={inputDisabled || agentData.status === 'inactive' || selectedFiles.some((f) => f.isUploading)}
                   type="submit"
                   size="sm"
                   className="ml-auto gap-1.5 h-[30px]"
