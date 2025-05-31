@@ -856,7 +856,11 @@ export default function Page({
                   onChange={(newInput: string) => setInput(newInput)}
                 />
                 <Button
-                  disabled={inputDisabled || agentData.status === 'inactive' || selectedFiles.some((f) => f.isUploading)}
+                  disabled={
+                    inputDisabled ||
+                    agentData.status === 'inactive' ||
+                    selectedFiles.some((f) => f.isUploading)
+                  }
                   type="submit"
                   size="sm"
                   className="ml-auto gap-1.5 h-[30px]"

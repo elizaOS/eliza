@@ -18,10 +18,10 @@ elizaos setup-monorepo [options]
 
 ## Options
 
-| Option                  | Description           | Default      |
-| ----------------------- | --------------------- | ------------ |
-| `-b, --branch <branch>` | Branch to clone       | `main` |
-| `-d, --dir <directory>` | Destination directory | `./eliza`    |
+| Option                  | Description           | Default   |
+| ----------------------- | --------------------- | --------- |
+| `-b, --branch <branch>` | Branch to clone       | `main`    |
+| `-d, --dir <directory>` | Destination directory | `./eliza` |
 
 ## How It Works
 

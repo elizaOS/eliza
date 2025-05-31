@@ -183,11 +183,7 @@ plugins
   .description('Add a plugin to the project')
   .argument('<plugin>', 'plugins name (e.g., "abc", "plugin-abc", "elizaos/plugin-abc")')
   .option('-n, --no-env-prompt', 'Skip prompting for environment variables')
-  .option(
-    '-b, --branch <branchName>',
-    'Branch to install from when using monorepo source',
-    'main'
-  )
+  .option('-b, --branch <branchName>', 'Branch to install from when using monorepo source', 'main')
   .option('-T, --tag <tagname>', 'Specify a tag to install (e.g., beta)')
   .action(async (pluginArg, opts) => {
     const cwd = process.cwd();
