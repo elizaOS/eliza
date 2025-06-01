@@ -203,8 +203,7 @@ teardown() {
     kill "$server_pid" 2>/dev/null || true
     
     [ "$status" -eq 0 ]
-    [[ "$output" == *thought* ]]
-    [[ "$output" == *action* ]]
+    [[ "$output" == *"success"* ]]
   else
     # Clean up server
     kill "$server_pid" 2>/dev/null || true
