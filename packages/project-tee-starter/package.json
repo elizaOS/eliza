@@ -33,8 +33,8 @@
     "GUIDE.md"
   ],
   "dependencies": {
-    "@elizaos/cli": "1.0.0",
-    "@elizaos/core": "1.0.0",
+    "@elizaos/cli": "^1.0.0",
+    "@elizaos/core": "^1.0.0",
     "@elizaos/plugin-redpill": "^1.0.0",
     "@elizaos/plugin-sql": "1.0.0",
     "@phala/dstack-sdk": "0.1.11",
