@@ -1,6 +1,4 @@
-import { Buffer } from 'buffer';
-import { Readable } from 'stream-browserify';
-import type { Entity, IAgentRuntime, Memory, State, TemplateType } from './types';
+import type { Entity, Memory, State, TemplateType } from './types';
 
 import { UUID } from './types';
 
@@ -9,19 +7,19 @@ import type { IAgentRuntime as CoreIAgentRuntime } from '../../types';
 
 import {
   addHeader as coreAddHeader,
+  composePrompt as coreComposePrompt,
+  composePromptFromState as coreComposePromptFromState,
   formatMessages as coreFormatMessages,
   formatPosts as coreFormatPosts,
   formatTimestamp as coreFormatTimestamp,
-  stringToUuid as coreStringToUuid,
-  validateUuid as coreValidateUuid,
-  truncateToCompleteSentence as coreTruncateToCompleteSentence,
-  parseKeyValueXml as coreParseKeyValueXml,
-  parseJSONObjectFromText as coreParseJSONObjectFromText,
   parseBooleanFromText as coreParseBooleanFromText,
+  parseJSONObjectFromText as coreParseJSONObjectFromText,
+  parseKeyValueXml as coreParseKeyValueXml,
   safeReplacer as coreSafeReplacer,
+  stringToUuid as coreStringToUuid,
   trimTokens as coreTrimTokens,
-  composePrompt as coreComposePrompt,
-  composePromptFromState as coreComposePromptFromState,
+  truncateToCompleteSentence as coreTruncateToCompleteSentence,
+  validateUuid as coreValidateUuid,
 } from '../../utils';
 
 // Text Utils

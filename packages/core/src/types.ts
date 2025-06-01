@@ -50,6 +50,9 @@ export interface Content {
   /** Array of media attachments */
   attachments?: Media[];
 
+  /** room type */
+  channelType?: string;
+
   /**
    * Additional dynamic properties
    * Use specific properties above instead of this when possible
@@ -569,10 +572,7 @@ export type World = {
   };
 };
 
-export type RoomMetadata = {
-  // No sourceChannelId needed here, Room.channelId IS the source/central channel ID
-  [key: string]: unknown;
-};
+export type RoomMetadata = Record<string, unknown>;
 
 export type Room = {
   id: UUID;
