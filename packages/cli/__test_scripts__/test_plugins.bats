@@ -52,7 +52,7 @@ create_test_project() {
 @test "plugins list shows available plugins" {
   run $ELIZAOS_CMD plugins list
   [ "$status" -eq 0 ]
-  [[ "$output" == *"available plugins"* ]]
+  [[ "$output" == *"Available v1.x plugins"* ]]
   [[ "$output" =~ plugin-openai ]] && [[ "$output" =~ plugin-ollama ]]
 }
 
@@ -60,7 +60,7 @@ create_test_project() {
   for alias in l ls; do
     run $ELIZAOS_CMD plugins "$alias"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Available"* && "$output" == *"plugins"* ]]
+    [[ "$output" == *"Available v1.x plugins"* && "$output" == *"plugins"* ]]
   done
 }
 
