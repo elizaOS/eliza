@@ -1,101 +1,70 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { logger } from '@elizaos/core';
-import { drizzle } from 'drizzle-orm/node-postgres';
-import { migrate } from 'drizzle-orm/node-postgres/migrator';
-import pkg, { type Pool as PgPool } from 'pg';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import { migrate } from 'drizzle-orm/postgres-js/migrator';
+import postgres, { type Sql } from 'postgres';
 import type { IDatabaseClientManager } from '../types';
 
-const { Pool } = pkg;
-
 /**
- * Manages connections to a PostgreSQL database using a connection pool.
- * Implements IDatabaseClientManager interface.
+ * Manages connections to a PostgreSQL database using postgres.js.
+ * Implements IDatabaseClientManager interface for a postgres.js client.
  */
-
-export class PostgresConnectionManager implements IDatabaseClientManager<PgPool> {
-  private pool: PgPool;
+export class PostgresConnectionManager implements IDatabaseClientManager<Sql<{}>> {
+  private pgClient: Sql<{}>;
   private isShuttingDown = false;
-  private readonly connectionTimeout: number = 5000;
+  private readonly connectionTimeout: number = 5000; // in ms
+  private readonly pgConnectionString: string;
 
   /**
-   * Constructor for creating a connection pool.
+   * Constructor for creating a postgres.js client.
    * @param {string} connectionString - The connection string used to connect to the database.
    */
   constructor(connectionString: string) {
-    const defaultConfig = {
+    this.pgConnectionString = connectionString;
+
+    // Standard options for postgres.js
+    // max: number of connections in the pool
+    // idle_timeout: seconds before an idle connection is closed
+    // connect_timeout: seconds before a connection attempt times out
+    this.pgClient = postgres(this.pgConnectionString, {
       max: 20,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: this.connectionTimeout,
-    };
-
-    this.pool = new Pool({
-      ...defaultConfig,
-      connectionString,
+      idle_timeout: 30, // seconds
+      connect_timeout: this.connectionTimeout / 1000, // seconds
+      onnotice: (notice) => logger.debug('Postgres Notice:', notice),
     });
 
-    this.pool.on('error', (err) => {
-      logger.error('Unexpected pool error', err);
-      this.handlePoolError(err);
-    });
-
-    this.setupPoolErrorHandling();
-    this.testConnection();
+    this.setupSignalHandlers();
+    // No immediate testConnection here, as postgres.js connects lazily.
+    // We can add an explicit initialization step if needed, or test on first use.
+    logger.info('PostgresConnectionManager initialized with postgres.js');
   }
 
-  /**
-   * Handles a pool error by attempting to reconnect the pool.
-   *
-   * @param {Error} error The error that occurred in the pool.
-   * @throws {Error} If failed to reconnect the pool.
-   */
-  private async handlePoolError(error: Error) {
-    logger.error('Pool error occurred, attempting to reconnect', {
-      error: error.message,
-    });
-
-    try {
-      await this.pool.end();
-
-      this.pool = new Pool({
-        ...this.pool.options,
-        connectionTimeoutMillis: this.connectionTimeout,
-      });
-
-      await this.testConnection();
-      logger.success('Pool reconnection successful');
-    } catch (reconnectError) {
-      logger.error('Failed to reconnect pool', {
-        error: reconnectError instanceof Error ? reconnectError.message : String(reconnectError),
-      });
-      throw reconnectError;
-    }
-  }
+  // The complex handlePoolError might not be directly applicable
+  // as postgres.js manages its pool differently.
+  // We rely on its internal resilience and the onerror callback for now.
 
   /**
-   * Asynchronously tests the database connection by executing a query to get the current timestamp.
-   *
+   * Asynchronously tests the database connection by executing a simple query.
    * @returns {Promise<boolean>} - A Promise that resolves to true if the database connection test is successful.
    */
   async testConnection(): Promise<boolean> {
-    let client: pkg.PoolClient | null = null;
     try {
-      client = await this.pool.connect();
-      const result = await client.query('SELECT NOW()');
-      logger.success('Database connection test successful:', result.rows[0]);
+      const result = await this.pgClient`SELECT NOW()`;
+      logger.success('Database connection test successful with postgres.js:', result[0]);
       return true;
     } catch (error) {
-      logger.error('Database connection test failed:', error);
-      throw new Error(`Failed to connect to database: ${(error as Error).message}`);
-    } finally {
-      if (client) client.release();
+      logger.error('Database connection test failed with postgres.js:', error);
+      throw new Error(
+        `Failed to connect to database with postgres.js: ${(error as Error).message}`
+      );
     }
   }
 
   /**
    * Sets up event listeners to handle pool cleanup on SIGINT, SIGTERM, and beforeExit events.
    */
-  private setupPoolErrorHandling() {
+  private setupSignalHandlers() {
     process.on('SIGINT', async () => {
       await this.cleanup();
       process.exit(0);
@@ -112,56 +81,48 @@ export class PostgresConnectionManager implements IDatabaseClientManager<PgPool>
   }
 
   /**
-   * Get the connection pool.
-   * @returns {PgPool} The connection pool
-   * @throws {Error} If the connection manager is shutting down or an error occurs when trying to get the connection from the pool
+   * Get the postgres.js client instance.
+   * @returns {Sql<{}>} The postgres.js client instance.
+   * @throws {Error} If the connection manager is shutting down.
    */
-  public getConnection(): PgPool {
+  public getConnection(): Sql<{}> {
     if (this.isShuttingDown) {
       throw new Error('Connection manager is shutting down');
     }
-
-    try {
-      return this.pool;
-    } catch (error) {
-      logger.error('Failed to get connection from pool:', error);
-      throw error;
-    }
+    return this.pgClient;
   }
 
   /**
-   * Asynchronously acquires a database client from the connection pool.
-   *
-   * @returns {Promise<pkg.PoolClient>} A Promise that resolves with the acquired database client.
-   * @throws {Error} If an error occurs while acquiring the database client.
+   * getClient is not typically needed with postgres.js as the main client instance is used.
+   * This method can be removed or adapted if specific single-connection operations are required
+   * outside of Drizzle's transaction/query management.
+   * For now, it will also return the main client.
    */
-  public async getClient(): Promise<pkg.PoolClient> {
-    try {
-      return await this.pool.connect();
-    } catch (error) {
-      logger.error('Failed to acquire a database client:', error);
-      throw error;
+  public async getClient(): Promise<Sql<{}>> {
+    if (this.isShuttingDown) {
+      throw new Error('Connection manager is shutting down');
     }
+    // postgres.js manages connections from its internal pool transparently.
+    return this.pgClient;
   }
 
   /**
-   * Initializes the PostgreSQL connection manager by testing the connection and logging the result.
-   *
-   * @returns {Promise<void>} A Promise that resolves once the manager is successfully initialized
-   * @throws {Error} If there is an error initializing the connection manager
+   * Initializes the PostgreSQL connection manager by testing the connection.
+   * @returns {Promise<void>} A Promise that resolves once the manager is successfully initialized.
+   * @throws {Error} If there is an error initializing the connection manager.
    */
   public async initialize(): Promise<void> {
     try {
       await this.testConnection();
-      logger.debug('PostgreSQL connection manager initialized successfully');
+      logger.debug('PostgreSQL connection manager (postgres.js) initialized successfully');
     } catch (error) {
-      logger.error('Failed to initialize connection manager:', error);
+      logger.error('Failed to initialize connection manager (postgres.js):', error);
       throw error;
     }
   }
 
   /**
-   * Asynchronously close the current process by executing a cleanup function.
+   * Closes the postgres.js client connection.
    * @returns A promise that resolves once the cleanup is complete.
    */
   public async close(): Promise<void> {
@@ -169,43 +130,47 @@ export class PostgresConnectionManager implements IDatabaseClientManager<PgPool>
   }
 
   /**
-   * Cleans up and closes the database pool.
-   * @returns {Promise<void>} A Promise that resolves when the database pool is closed.
+   * Cleans up and closes the postgres.js client.
+   * @returns {Promise<void>} A Promise that resolves when the client has ended.
    */
   async cleanup(): Promise<void> {
+    if (this.isShuttingDown) {
+      return;
+    }
+    this.isShuttingDown = true;
     try {
-      await this.pool.end();
-      logger.info('Database pool closed');
+      await this.pgClient.end({ timeout: 5 }); // 5 seconds timeout for graceful shutdown
+      logger.info('postgres.js client connections closed');
     } catch (error) {
-      logger.error('Error closing database pool:', error);
+      logger.error('Error closing postgres.js client:', error);
     }
   }
 
   /**
-   * Asynchronously runs database migrations using the Drizzle library.
-   *
-   * Drizzle will first check if the migrations are already applied.
-   * If there is a diff between database schema and migrations, it will apply the migrations.
-   * If they are already applied, it will skip them.
-   *
+   * Asynchronously runs database migrations using Drizzle ORM with the postgres.js client.
    * @returns {Promise<void>} A Promise that resolves once the migrations are completed successfully.
    */
   async runMigrations(): Promise<void> {
     try {
-      const db = drizzle(this.pool);
+      // Drizzle needs the postgres.js client instance directly
+      const db = drizzle(this.pgClient);
 
       const packageJsonUrl = await import.meta.resolve('@elizaos/plugin-sql/package.json');
       const packageJsonPath = fileURLToPath(packageJsonUrl);
       const packageRoot = path.dirname(packageJsonPath);
       const migrationsPath = path.resolve(packageRoot, 'drizzle/migrations');
-      logger.debug(`Resolved migrations path (pg) using import.meta.resolve: ${migrationsPath}`);
+      logger.debug(
+        `Resolved migrations path (pg with postgres.js) using import.meta.resolve: ${migrationsPath}`
+      );
 
       await migrate(db, {
         migrationsFolder: migrationsPath,
-        migrationsSchema: 'public',
+        migrationsSchema: 'public', // Or your specific migrations schema
       });
+      logger.success('Database migrations completed successfully with postgres.js');
     } catch (error) {
-      logger.error('Failed to run database migrations (pg):', error);
+      logger.error('Failed to run database migrations (pg with postgres.js):', error);
+      // Consider re-throwing or handling more specifically if migrations are critical for startup
     }
   }
 }

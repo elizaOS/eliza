@@ -1286,8 +1286,12 @@ export abstract class BaseDrizzleAdapter<
                     LIMIT ${opts.query_match_count}
                 `);
 
-        return results.rows
-          .map((row) => ({
+        // Handle different result shapes from .execute() based on the driver
+        const actualRows = 'rows' in results ? results.rows : results;
+
+        return actualRows
+          .map((row: any) => ({
+            // Add type any for row temporarily if TS complains about implicit any
             embedding: Array.isArray(row.embedding)
               ? row.embedding
               : typeof row.embedding === 'string'
@@ -1295,7 +1299,7 @@ export abstract class BaseDrizzleAdapter<
                 : [],
             levenshtein_score: Number(row.levenshtein_score),
           }))
-          .filter((row) => Array.isArray(row.embedding));
+          .filter((row: any) => Array.isArray(row.embedding));
       } catch (error) {
         logger.error('Error in getCachedEmbeddings:', {
           error: error instanceof Error ? error.message : String(error),

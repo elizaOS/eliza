@@ -1,15 +1,15 @@
 import { type UUID, logger } from '@elizaos/core';
-import { type NodePgDatabase, drizzle } from 'drizzle-orm/node-postgres';
+import { type PostgresJsDatabase, drizzle } from 'drizzle-orm/postgres-js';
+import { type Sql } from 'postgres';
 import { BaseDrizzleAdapter } from '../base';
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from '../schema/embedding';
 import type { PostgresConnectionManager } from './manager';
-import { type Pool as PgPool } from 'pg';
 
 /**
- * Adapter class for interacting with a PostgreSQL database.
- * Extends BaseDrizzleAdapter<NodePgDatabase>.
+ * Adapter class for interacting with a PostgreSQL database using postgres.js.
+ * Extends BaseDrizzleAdapter<PostgresJsDatabase>.
  */
-export class PgDatabaseAdapter extends BaseDrizzleAdapter<NodePgDatabase> {
+export class PgDatabaseAdapter extends BaseDrizzleAdapter<PostgresJsDatabase> {
   protected embeddingDimension: EmbeddingDimensionColumn = DIMENSION_MAP[384];
 
   /**
@@ -22,11 +22,10 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter<NodePgDatabase> {
     private manager: PostgresConnectionManager
   ) {
     super(agentId);
-    this.manager = manager;
   }
 
   /**
-   * Executes the provided operation with a database connection.
+   * Executes the provided operation with a database connection from postgres.js.
    *
    * @template T
    * @param {() => Promise<T>} operation - The operation to be executed with the database connection.
@@ -34,14 +33,13 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter<NodePgDatabase> {
    */
   protected async withDatabase<T>(operation: () => Promise<T>): Promise<T> {
     return await this.withRetry(async () => {
-      const client = await this.manager.getClient();
+      const pgJsClient = this.manager.getConnection();
       try {
-        const db = drizzle(client);
+        const db = drizzle(pgJsClient);
         this.db = db;
 
         return await operation();
       } finally {
-        client.release();
       }
     });
   }
@@ -55,9 +53,9 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter<NodePgDatabase> {
   async init(): Promise<void> {
     try {
       await this.manager.runMigrations();
-      logger.debug('PgDatabaseAdapter initialized successfully');
+      logger.debug('PgDatabaseAdapter (postgres.js) initialized successfully');
     } catch (error) {
-      logger.error('Failed to initialize PgDatabaseAdapter:', error);
+      logger.error('Failed to initialize PgDatabaseAdapter (postgres.js):', error);
       throw error;
     }
   }
@@ -72,11 +70,11 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter<NodePgDatabase> {
   }
 
   /**
-   * Asynchronously retrieves the connection from the manager.
+   * Asynchronously retrieves the postgres.js client instance from the manager.
    *
-   * @returns {Promise<PgPool>} A Promise that resolves with the connection.
+   * @returns {Promise<Sql<{}>>} A Promise that resolves with the postgres.js client instance.
    */
-  async getConnection() {
+  async getConnection(): Promise<Sql<{}>> {
     return this.manager.getConnection();
   }
 }

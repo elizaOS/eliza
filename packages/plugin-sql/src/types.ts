@@ -1,10 +1,10 @@
-import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import type { PgliteDatabase } from 'drizzle-orm/pglite';
 
 /**
- * Represents a type that can be either a NodePgDatabase or a PgliteDatabase.
+ * Represents a type that can be either a PostgresJsDatabase or a PgliteDatabase.
  */
-export type DrizzleDatabase = NodePgDatabase | PgliteDatabase;
+export type DrizzleDatabase = PostgresJsDatabase | PgliteDatabase;
 
 /**
  * Interface for managing a database client.
