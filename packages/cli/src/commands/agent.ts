@@ -287,13 +287,26 @@ Required configuration:
 
         let characterName = null;
 
-        async function createCharacter(payload) {
+        async function createCharacter(payload: any) {
           const response = await fetch(baseUrl, {
             method: 'POST',
             headers,
             body: JSON.stringify(payload),
           });
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            logger.error(`Server returned ${response.status}: ${errorText}`);
+            return null;
+          }
+          
           const data = await response.json();
+          
+          if (!data?.data?.character?.name) {
+            logger.error(`Unexpected response format:`, data);
+            return null;
+          }
+          
           return data.data.character.name;
         }
 
@@ -307,6 +320,9 @@ Required configuration:
             const fileContent = fs.readFileSync(filePath, 'utf8');
             payload.characterJson = JSON.parse(fileContent);
             characterName = await createCharacter(payload);
+            if (!characterName) {
+              logger.error('Failed to create character from file. Check server logs for details.');
+            }
           } catch (error) {
             console.error('Error reading or parsing local JSON file:', error);
             throw new Error(`Failed to read or parse local JSON file: ${error.message}`);
@@ -318,6 +334,9 @@ Required configuration:
           try {
             payload.characterJson = JSON.parse(options.json);
             characterName = await createCharacter(payload);
+            if (!characterName) {
+              logger.error('Failed to create character from JSON. Check server logs for details.');
+            }
           } catch (error) {
             console.error('Error parsing JSON string:', error);
             throw new Error(`Failed to parse JSON string: ${error.message}`);
@@ -334,6 +353,9 @@ Required configuration:
           }
           payload.characterPath = options.remoteCharacter;
           characterName = await createCharacter(payload);
+          if (!characterName) {
+            logger.error('Failed to create character from remote URL. Check server logs for details.');
+          }
         }
 
         if (options.name) {
