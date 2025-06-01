@@ -2,10 +2,6 @@ import { type Pool as PgPool } from 'pg';
 import { PGlite } from '@electric-sql/pglite';
 
 /**
- * Type definition for a Universally Unique Identifier (UUID) using a specific format.
- * @typedef {`${string}-${string}-${string}-${string}-${string}`} UUID
- */
-/**
  * Defines a custom type UUID representing a universally unique identifier
  */
 export type UUID = `${string}-${string}-${string}-${string}-${string}`;
@@ -1060,8 +1056,6 @@ export interface IDatabaseAdapter {
    */
   getRelationships(params: { entityId: UUID; tags?: string[] }): Promise<Relationship[]>;
 
-  ensureEmbeddingDimension(dimension: number): Promise<void>;
-
   getCache<T>(key: string): Promise<T | undefined>;
   setCache<T>(key: string, value: T): Promise<boolean>;
   deleteCache(key: string): Promise<boolean>;
@@ -1331,9 +1325,6 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 }
 
 /**
- * Interface for settings object with key-value pairs.
- */
-/**
  * Interface representing settings with string key-value pairs.
  */
 export interface RuntimeSettings {
@@ -1428,18 +1419,6 @@ export type GenerateTextParams = {
   /** Optional. A list of sequences at which the model will stop generating further tokens. */
   stopSequences?: string[];
 };
-
-/**
- * Parameters for tokenizing text, i.e., converting a string into a sequence of numerical tokens.
- * This is a common preprocessing step for many language models.
- * This structure is used with `AgentRuntime.useModel` when the `modelType` is `ModelType.TEXT_TOKENIZER_ENCODE`.
- */
-export interface TokenizeTextParams {
-  /** The input string to be tokenized. */
-  prompt: string;
-  /** The model type to use for tokenization, which determines the tokenizer algorithm and vocabulary. */
-  modelType: ModelTypeName;
-}
 
 /**
  * Parameters for detokenizing text, i.e., converting a sequence of numerical tokens back into a string.
@@ -1748,16 +1727,6 @@ export interface TokenizeTextParams extends BaseModelParams {
 }
 
 /**
- * Parameters for text detokenization models
- */
-export interface DetokenizeTextParams extends BaseModelParams {
-  /** The tokens to convert back to text */
-  tokens: number[];
-  /** The model type to use for detokenization */
-  modelType: ModelTypeName;
-}
-
-/**
  * Parameters for image generation models
  */
 export interface ImageGenerationParams extends BaseModelParams {
@@ -2060,13 +2029,6 @@ export interface ModelEventPayload extends EventPayload {
   };
 }
 
-/**
- * Represents the parameters for a message received handler.
- * @typedef {Object} MessageReceivedHandlerParams
- * @property {IAgentRuntime} runtime - The agent runtime associated with the message.
- * @property {Memory} message - The message received.
- * @property {HandlerCallback} callback - The callback function to be executed after handling the message.
- */
 export type MessageReceivedHandlerParams = {
   runtime: IAgentRuntime;
   message: Memory;
