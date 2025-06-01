@@ -656,7 +656,7 @@ export function agentRouter(
         success: false,
         error: {
           code: 'CREATE_ERROR',
-          message: 'Error creating agent',
+          message: error instanceof Error ? error.message : 'Error creating agent',
           details: error.message,
         },
       });
