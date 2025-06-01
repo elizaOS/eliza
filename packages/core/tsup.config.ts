@@ -1,17 +1,14 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: [
-    'src/index.ts',
-    'src/specs/v1/index.ts',
-    'src/specs/v2/index.ts'
-  ],
+  entry: ['src/index.ts', 'src/specs/v1/index.ts', 'src/specs/v2/index.ts'],
   outDir: 'dist',
   clean: true,
   format: ['esm'],
   target: 'node18',
   dts: true,
   tsconfig: './tsconfig.build.json', // Use build-specific tsconfig
+  ignoreWatch: ['**/__tests__/**', '**/test_resources/**'],
   external: [
     'dotenv',
     'fs',
@@ -38,14 +35,4 @@ export default defineConfig({
     '@opentelemetry/sdk-trace-node',
   ],
   sourcemap: false,
-  onSuccess: async () => {
-    // Remove test directories from dist
-    const { execSync } = await import('child_process');
-    try {
-      execSync('find dist -name "__tests__" -type d -exec rm -rf {} + 2>/dev/null || true', { stdio: 'ignore' });
-      execSync('find dist -name "test_resources" -type d -exec rm -rf {} + 2>/dev/null || true', { stdio: 'ignore' });
-    } catch (error) {
-      // Ignore errors if directories don't exist
-    }
-  },
 });
