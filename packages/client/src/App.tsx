@@ -20,8 +20,9 @@ import Chat from './routes/chat';
 import AgentCreatorRoute from './routes/createAgent';
 import Home from './routes/home';
 import NotFound from './routes/not-found';
-import Room from './routes/room';
+import GroupChannel from './routes/group';
 import Settings from './routes/settings';
+import CreateGroupPage from './routes/group-new';
 
 // Create a query client with optimized settings
 const queryClient = new QueryClient({
@@ -88,6 +89,7 @@ function AppContent() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="chat/:agentId" element={<Chat />} />
+            <Route path="group/new" element={<CreateGroupPage />} />
             <Route path="settings/:agentId" element={<Settings />} />
             <Route path="agents/new" element={<AgentCreatorRoute />} />
             <Route path="/create" element={<AgentCreator />} />
@@ -104,7 +106,7 @@ function AppContent() {
                 </div>
               }
             />
-            <Route path="room/:serverId" element={<Room />} />
+            <Route path="group/:channelId" element={<GroupChannel />} />
             <Route
               path="settings/"
               element={

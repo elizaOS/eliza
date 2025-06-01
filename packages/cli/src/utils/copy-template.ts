@@ -73,7 +73,7 @@ function getPackageName(templateType: string): string {
  * Copy a project or plugin template to target directory
  */
 export async function copyTemplate(
-  templateType: 'project-starter' | 'project-tee-starter' | 'plugin',
+  templateType: 'project' | 'project-starter' | 'project-tee-starter' | 'plugin',
   targetDir: string,
   name: string
 ) {

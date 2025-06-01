@@ -154,6 +154,7 @@ const runE2eTests = async (
     }
   }
 
+  let server: AgentServer | undefined;
   try {
     const runtimes: IAgentRuntime[] = [];
     const projectAgents: ProjectAgent[] = [];
@@ -209,7 +210,7 @@ const runE2eTests = async (
 
     // Create server instance
     console.info('Creating server instance...');
-    const server = new AgentServer();
+    server = new AgentServer();
     console.info('Server instance created');
 
     // Wait for database initialization
@@ -373,16 +374,23 @@ const runE2eTests = async (
             throw loadError; // Rethrow the original error
           }
         } else {
-          console.error('Tests cannot run without a valid project or plugin. Exiting.');
+          // Throw the original loadError to be caught by the outer try-catch,
+          // which will then ensure server.stop() is called.
+          console.error('Tests cannot run without a valid project or plugin.');
           if (loadError instanceof Error) {
-            // If the error is specifically about not finding a project
-            if (loadError.message.includes('Could not find project entry point')) {
-              console.error('No Eliza project or plugin found in current directory.');
-              console.error('Tests can only run in a valid Eliza project or plugin directory.');
+            if (
+              loadError.message.includes('Could not find project entry point') ||
+              loadError.message.includes('No main field')
+            ) {
+              console.error(
+                'No Eliza project or plugin found in current directory, or package.json is missing a "main" field.'
+              );
+              console.error(
+                'Tests can only run in a valid Eliza project or plugin directory with a valid package.json.'
+              );
             }
-            console.error('Error details:', loadError.message);
           }
-          process.exit(1);
+          throw loadError; // Propagate error
         }
       }
 
@@ -500,53 +508,41 @@ const runE2eTests = async (
         // Run tests for each agent
         let totalFailed = 0;
         let anyTestsFound = false;
-        try {
-          for (let i = 0; i < runtimes.length; i++) {
-            const runtime = runtimes[i];
-            const projectAgent = projectAgents[i];
+        for (let i = 0; i < runtimes.length; i++) {
+          const runtime = runtimes[i];
+          const projectAgent = projectAgents[i];
 
-            if (project.isPlugin) {
-              console.debug(`Running tests for plugin: ${project.pluginModule?.name}`);
-            } else {
-              console.debug(`Running tests for agent: ${runtime.character.name}`);
-            }
-
-            const testRunner = new TestRunner(runtime, projectAgent);
-
-            // Determine what types of tests to run based on directory type
-            const currentDirInfo = projectInfo;
-
-            // Process filter name consistently
-            const processedFilter = processFilterName(options.name);
-
-            const results = await testRunner.runTests({
-              filter: processedFilter,
-              // Only run plugin tests if we're actually in a plugin directory
-              skipPlugins: currentDirInfo.type !== 'elizaos-plugin',
-              // Only run project tests if we're actually in a project directory
-              skipProjectTests: currentDirInfo.type !== 'elizaos-project',
-              skipE2eTests: false, // Always allow E2E tests
-            });
-            totalFailed += results.failed;
-            if (results.hasTests) {
-              anyTestsFound = true;
-            }
+          if (project.isPlugin) {
+            console.debug(`Running tests for plugin: ${project.pluginModule?.name}`);
+          } else {
+            console.debug(`Running tests for agent: ${runtime.character.name}`);
           }
 
-          // Return success (false) if no tests were found, or if tests ran but none failed
-          // This aligns with standard testing tools like vitest/jest behavior
-          return { failed: anyTestsFound ? totalFailed > 0 : false };
-        } catch (error) {
-          console.error('Error running tests:', error);
-          if (error instanceof Error) {
-            console.error('Error details:', error.message);
-            console.error('Stack trace:', error.stack);
+          const testRunner = new TestRunner(runtime, projectAgent);
+
+          // Determine what types of tests to run based on directory type
+          const currentDirInfo = projectInfo;
+
+          // Process filter name consistently
+          const processedFilter = processFilterName(options.name);
+
+          const results = await testRunner.runTests({
+            filter: processedFilter,
+            // Only run plugin tests if we're actually in a plugin directory
+            skipPlugins: currentDirInfo.type !== 'elizaos-plugin',
+            // Only run project tests if we're actually in a project directory
+            skipProjectTests: currentDirInfo.type !== 'elizaos-project',
+            skipE2eTests: false, // Always allow E2E tests
+          });
+          totalFailed += results.failed;
+          if (results.hasTests) {
+            anyTestsFound = true;
           }
-          throw error;
-        } finally {
-          // Clean up - ensure server is always stopped
-          await server.stop();
         }
+
+        // Return success (false) if no tests were found, or if tests ran but none failed
+        // This aligns with standard testing tools like vitest/jest behavior
+        return { failed: anyTestsFound ? totalFailed > 0 : false };
       } catch (error) {
         console.error('Error in runE2eTests:', error);
         if (error instanceof Error) {

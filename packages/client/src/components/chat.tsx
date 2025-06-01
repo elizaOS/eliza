@@ -8,18 +8,37 @@ import {
 import { ChatInput } from '@/components/ui/chat/chat-input';
 import { ChatMessageList } from '@/components/ui/chat/chat-message-list';
 import { USER_NAME } from '@/constants';
-import { useDeleteAllMemories, useDeleteMemory, useMessages } from '@/hooks/use-query-hooks';
+import {
+  useCentralChannelMessages,
+  useDeleteCentralChannelMessage,
+  useClearCentralChannelMessages,
+  useAgent,
+  type UiMessage,
+} from '@/hooks/use-query-hooks';
 import clientLogger from '@/lib/logger';
-import { parseMediaFromText, removeMediaUrlsFromText } from '@/lib/media-utils';
+import { parseMediaFromText, removeMediaUrlsFromText, type MediaInfo } from '@/lib/media-utils';
 import SocketIOManager from '@/lib/socketio-manager';
 import { cn, getEntityId, moment, randomUUID } from '@/lib/utils';
-import { WorldManager } from '@/lib/world-manager';
 import type { Agent, Content, Media, UUID } from '@elizaos/core';
-import { AgentStatus, ContentType } from '@elizaos/core';
+import {
+  AgentStatus,
+  ContentType as CoreContentType,
+  ChannelType as CoreChannelType,
+  validateUuid,
+} from '@elizaos/core';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
 
-import { useQueryClient } from '@tanstack/react-query';
-import { ChevronRight, PanelRight, Send, Trash2, X, Loader2, FileText, Image } from 'lucide-react';
+import {
+  ChevronRight,
+  PanelRight,
+  Send,
+  Trash2,
+  X,
+  Loader2,
+  FileText,
+  Image,
+  Paperclip,
+} from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import AIWriter from 'react-aiwriter';
 import { AudioRecorder } from './audio-recorder';
@@ -33,6 +52,13 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { CHAT_SOURCE } from '@/constants';
 import { apiClient } from '@/lib/api';
 import { Avatar, AvatarImage } from '@/components/ui/avatar';
+import type {
+  MessageCompleteData,
+  ControlMessageData,
+  MessageBroadcastData,
+} from '@/lib/socketio-manager';
+import { useToast } from '@/hooks/use-toast';
+import { useParams, useSearchParams } from 'react-router-dom';
 
 type ExtraContentFields = {
   name: string;
@@ -54,23 +80,25 @@ const MemoizedMessageContent = React.memo(MessageContent);
 
 function MessageContent({
   message,
-  agentId,
+  agentForTts,
   shouldAnimate,
   onDelete,
 }: {
-  message: ContentWithUser;
-  agentId: UUID;
+  message: UiMessage;
+  agentForTts: Agent | Partial<Agent> | null;
   shouldAnimate: boolean;
   onDelete: (id: string) => void;
 }) {
+  const isUser = !message.isAgent;
+
   return (
     <div className="flex flex-col w-full">
       <ChatBubbleMessage
         isLoading={message.isLoading}
-        {...(message.name === USER_NAME ? { variant: 'sent' } : {})}
+        {...(isUser ? { variant: 'sent' } : {})}
         {...(!message.text ? { className: 'bg-transparent' } : {})}
       >
-        {message.name !== USER_NAME && (
+        {!isUser && (
           <div className="w-full">
             {message.text && message.thought && (
               <Collapsible className="mb-1">
@@ -107,7 +135,7 @@ function MessageContent({
                 {/* Display text content if there's any remaining after removing URLs */}
                 {textWithoutUrls.trim() && (
                   <div>
-                    {message.name === USER_NAME ? (
+                    {isUser ? (
                       textWithoutUrls
                     ) : shouldAnimate ? (
                       <AIWriter>{textWithoutUrls}</AIWriter>
@@ -133,7 +161,7 @@ function MessageContent({
         </div>
         {!message.text &&
           message.thought &&
-          (message.name === USER_NAME ? (
+          (isUser ? (
             message.thought
           ) : shouldAnimate ? (
             <AIWriter>
@@ -152,16 +180,16 @@ function MessageContent({
               title={attachment.title || 'Attachment'}
             />
           ))}
-        {message.text && message.createdAt && (
+        {message.text && message.createdAt && !isNaN(message.createdAt) && (
           <ChatBubbleTimestamp timestamp={moment(message.createdAt).format('LT')} />
         )}
       </ChatBubbleMessage>
       <div className="flex justify-between items-end w-full">
         <div className="flex items-center gap-1">
-          {message.name !== USER_NAME && message.text && !message.isLoading && (
+          {!isUser && message.text && !message.isLoading && agentForTts?.id && (
             <>
               <CopyButton text={message.text} />
-              <ChatTtsButton agentId={agentId} text={message.text} />
+              <ChatTtsButton agentId={agentForTts.id} text={message.text} />
             </>
           )}
           <DeleteButton onClick={() => onDelete(message.id as string)} />
@@ -169,7 +197,7 @@ function MessageContent({
         <div>
           {message.text && message.actions && (
             <Badge variant="outline" className="text-sm">
-              {message.actions}
+              {Array.isArray(message.actions) ? message.actions.join(', ') : message.actions}
             </Badge>
           )}
         </div>
@@ -178,19 +206,93 @@ function MessageContent({
   );
 }
 
-export default function Page({
-  agentId,
-  worldId,
-  agentData,
-  showDetails,
-  toggleDetails,
-}: {
-  agentId: UUID;
-  worldId: UUID;
-  agentData: Agent;
-  showDetails: boolean;
-  toggleDetails: () => void;
-}) {
+export default function DMPage() {
+  const { channelId: channelIdFromPath, agentId: agentIdFromPath } = useParams<{
+    channelId?: string;
+    agentId?: string;
+  }>();
+  const [searchParams] = useSearchParams();
+  const agentIdFromQuery = searchParams.get('agentId');
+  const serverIdFromQuery = searchParams.get('serverId');
+
+  const { toast } = useToast();
+  const currentClientEntityId = getEntityId();
+
+  // Determine if we're in agent mode (URL: /chat/agentId) or channel mode (URL: /chat/channelId?agentId=X&serverId=Y)
+  const isAgentMode = !agentIdFromQuery && agentIdFromPath; // agentId in path, no query params
+  const targetAgentId = isAgentMode
+    ? validateUuid(agentIdFromPath) || undefined
+    : validateUuid(agentIdFromQuery) || undefined;
+
+  // Use resolved IDs for hooks
+  const channelId = channelIdFromPath ? validateUuid(channelIdFromPath) : undefined;
+  const serverId = serverIdFromQuery ? validateUuid(serverIdFromQuery) : undefined;
+
+  const { data: agentDataWrapper, isLoading: isLoadingAgentData } = useAgent(targetAgentId, {
+    enabled: !!targetAgentId,
+  });
+  const targetAgentData = agentDataWrapper?.data;
+
+  // Auto-create DM channel for agent mode
+  const [dmChannelData, setDmChannelData] = useState<{ channelId: UUID; serverId: UUID } | null>(
+    null
+  );
+  const [isCreatingDM, setIsCreatingDM] = useState(false);
+
+  useEffect(() => {
+    if (isAgentMode && targetAgentId && !dmChannelData && !isCreatingDM) {
+      setIsCreatingDM(true);
+      // Create DM channel automatically
+      const createDMChannel = async () => {
+        try {
+          // Always use the default server (ID "0")
+          const serverId = '0' as UUID;
+
+          // Create DM channel
+          const dmResponse = await fetch(
+            `/api/messages/dm-channel?targetUserId=${targetAgentId}&currentUserId=${currentClientEntityId}&dmServerId=${serverId}`
+          );
+          const dmData = await dmResponse.json();
+
+          if (dmData.success) {
+            setDmChannelData({
+              channelId: dmData.data.id,
+              serverId: serverId,
+            });
+          } else {
+            throw new Error('Failed to create DM channel');
+          }
+        } catch (error) {
+          console.error('Error creating DM channel:', error);
+          toast({
+            title: 'Error',
+            description: 'Failed to create chat channel',
+            variant: 'destructive',
+          });
+        } finally {
+          setIsCreatingDM(false);
+        }
+      };
+
+      createDMChannel();
+    }
+  }, [isAgentMode, targetAgentId, dmChannelData, isCreatingDM, currentClientEntityId, toast]);
+
+  // Determine final IDs to use
+  const finalChannelId = isAgentMode ? dmChannelData?.channelId : channelId;
+  const finalServerId = isAgentMode ? dmChannelData?.serverId : serverId;
+
+  const {
+    data: messages = [],
+    isLoading: isLoadingMessages,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    addMessage,
+    updateMessage,
+    removeMessage,
+  } = useCentralChannelMessages(finalChannelId || undefined, finalServerId || undefined);
+
   const [selectedFiles, setSelectedFiles] = useState<UploadingFile[]>([]);
   const [input, setInput] = useState('');
   const [inputDisabled, setInputDisabled] = useState<boolean>(false);
@@ -198,364 +300,332 @@ export default function Page({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
-  const queryClient = useQueryClient();
-  const deleteMemoryMutation = useDeleteMemory();
-  const clearMemoriesMutation = useDeleteAllMemories();
 
-  const entityId = getEntityId();
-  const roomId = WorldManager.generateRoomId(agentId);
-
-  const { data: messages = [] } = useMessages(agentId, roomId);
+  const { mutate: deleteMessageCentral } = useDeleteCentralChannelMessage();
+  const { mutate: clearMessagesCentral } = useClearCentralChannelMessages();
 
   const socketIOManager = SocketIOManager.getInstance();
-
   const animatedMessageIdRef = useRef<string | null>(null);
 
+  // Show details state (assuming passed from a layout or managed differently for DMs)
+  // For simplicity, let's assume it's not a feature of this direct DM page for now.
+  const [showDetails, setShowDetails] = useState(false);
+  const toggleDetails = () => setShowDetails((prev) => !prev);
+
   useEffect(() => {
-    // Initialize Socket.io connection once with our entity ID
-    socketIOManager.initialize(entityId, [agentId]);
+    if (!finalChannelId || !currentClientEntityId) return;
+    socketIOManager.initialize(currentClientEntityId);
+    socketIOManager.joinChannel(finalChannelId);
+    clientLogger.info(
+      `[DMPage] Joined DM channel ${finalChannelId} as user ${currentClientEntityId}`
+    );
 
-    // Join the room for this agent
-    socketIOManager.joinRoom(roomId);
+    const handleMessageBroadcasting = (data: MessageBroadcastData) => {
+      clientLogger.info('[DMPage] Received raw messageBroadcast data:', JSON.stringify(data));
+      const msgChannelId = data.channelId || data.roomId;
+      if (msgChannelId !== finalChannelId) return;
+      const isCurrentUser = data.senderId === currentClientEntityId;
+      const isTargetAgent = data.senderId === targetAgentId;
+      if (!isCurrentUser && isTargetAgent) setInputDisabled(false);
 
-    setInputDisabled(false);
+      // Check if this is a message we sent (by checking for clientMessageId)
+      const clientMessageId = (data as any).clientMessageId;
+      if (clientMessageId && isCurrentUser) {
+        // Update the optimistic message with the server version
+        updateMessage(clientMessageId, {
+          id: data.id || randomUUID(),
+          isLoading: false,
+          createdAt: typeof data.createdAt === 'number' ? data.createdAt : Date.parse(data.createdAt),
+          text: data.text, // Update text in case it was modified server-side
+          attachments: data.attachments, // Update attachments with server URLs
+        });
+      } else {
+        // Add new message from server
+        const newUiMsg: UiMessage = {
+          id: data.id || randomUUID(),
+          text: data.text,
+          name: data.senderName,
+          senderId: data.senderId as UUID,
+          isAgent: isTargetAgent,
+          createdAt: typeof data.createdAt === 'number' ? data.createdAt : Date.parse(data.createdAt),
+          channelId: (data.channelId || data.roomId) as UUID,
+          serverId: data.serverId as UUID | undefined,
+          source: data.source,
+          attachments: data.attachments,
+          thought: data.thought,
+          actions: data.actions,
+          isLoading: false,
+        };
+        clientLogger.info('[DMPage] Adding new UiMessage:', JSON.stringify(newUiMsg));
+        addMessage(newUiMsg);
 
-    console.log(`[Chat] Joined room ${roomId} with entityId ${entityId}`);
-
-    const handleMessageBroadcasting = (data: ContentWithUser) => {
-      console.log('[Chat] Received message broadcast:', data);
-
-      // Skip messages that don't have required content
-      if (!data) {
-        console.warn('[Chat] Received empty or invalid message data:', data);
-        return;
+        if (isTargetAgent && newUiMsg.id) animatedMessageIdRef.current = newUiMsg.id;
+        else animatedMessageIdRef.current = null;
       }
-
-      // Skip messages not for this room
-      if (data.roomId !== roomId) {
-        console.log(
-          `[Chat] Ignoring message for different room: ${data.roomId}, we're in ${roomId}`
-        );
-        return;
+    };
+    const handleMessageComplete = (data: MessageCompleteData) => {
+      const completeChannelId = data.channelId || data.roomId;
+      if (completeChannelId === finalChannelId) setInputDisabled(false);
+    };
+    const handleControlMessage = (data: ControlMessageData) => {
+      const ctrlChannelId = data.channelId || data.roomId;
+      if (ctrlChannelId === finalChannelId) {
+        if (data.action === 'disable_input') setInputDisabled(true);
+        else if (data.action === 'enable_input') setInputDisabled(false);
       }
-
-      // Check if the message is from the current user or from the agent
-      const isCurrentUser = data.senderId === entityId;
-
-      if (!isCurrentUser) {
-        console.log('[Chat] Agent message received, re-enabling input');
-        setInputDisabled(false);
-      }
-
-      // Build a proper ContentWithUser object that matches what the messages query expects
-      const newMessage: ContentWithUser = {
-        ...data,
-        // Set the correct name based on who sent the message
-        name: isCurrentUser ? USER_NAME : (data.senderName as string),
-        createdAt: data.createdAt || Date.now(),
-        senderId: entityId,
-        senderName: USER_NAME,
-        roomId: roomId,
-        source: CHAT_SOURCE,
-        id: data.id, // Add a unique ID for React keys and duplicate detection
-      };
-
-      console.log(`[Chat] Adding new message to UI from ${newMessage.name}:`, newMessage);
-
-      // Update the message list without triggering a re-render cascade
-      queryClient.setQueryData(
-        ['messages', agentId, roomId, worldId],
-        (old: ContentWithUser[] = []) => {
-          console.log('[Chat] Current messages:', old?.length || 0);
-
-          // --- Start modification for IGNORE case ---
-          let messageToAdd = { ...newMessage }; // Copy the received message data
-          const isIgnore = messageToAdd.actions?.includes('IGNORE');
-
-          if (isIgnore) {
-            // Customize text for ignored messages
-            messageToAdd.text = ``;
-            // Ensure thought is preserved, actions array might also be useful
-            messageToAdd.thought = data.thought; // Make sure thought from data is used
-            messageToAdd.actions = data.actions; // Keep the IGNORE action marker
-            clientLogger.debug('[Chat] Handling IGNORE action, modifying message', messageToAdd);
-          }
-
-          // Check if this message (potentially modified) is already in the list (avoid duplicates)
-          const isDuplicate = old.some(
-            (msg) =>
-              // Use a combination of sender, text/thought, and time to detect duplicates
-              msg.senderId === messageToAdd.senderId &&
-              (msg.text === messageToAdd.text ||
-                (!msg.text && !messageToAdd.text && msg.thought === messageToAdd.thought)) &&
-              Math.abs((msg.createdAt || 0) - (messageToAdd.createdAt || 0)) < 5000 // Within 5 seconds
-          );
-
-          if (isDuplicate) {
-            console.log('[Chat] Skipping duplicate message');
-            return old;
-          }
-
-          // Set animation ID based on the potentially modified messageToAdd
-          if (messageToAdd.id) {
-            const newMessageId =
-              typeof messageToAdd.id === 'string' ? messageToAdd.id : String(messageToAdd.id);
-            // Only animate non-user messages
-            if (messageToAdd.senderId !== entityId) {
-              animatedMessageIdRef.current = newMessageId;
-            } else {
-              animatedMessageIdRef.current = null; // Don't animate user messages
-            }
-          }
-
-          return [...old, messageToAdd]; // Add the potentially modified message
-        }
-      );
-
-      // Remove the redundant state update that was causing render loops
-      // setInput(prev => prev + '');
     };
 
-    const handleMessageComplete = () => {
-      setInputDisabled(false);
-    };
-
-    // Add listener for message broadcasts
-    console.log('[Chat] Adding messageBroadcast listener');
-    const msgHandler = socketIOManager.evtMessageBroadcast.attach((data) => [
-      data as unknown as ContentWithUser,
-    ]);
-    const completeHandler = socketIOManager.evtMessageComplete.attach(handleMessageComplete);
-
-    msgHandler.attach(handleMessageBroadcasting);
-    completeHandler.attach(handleMessageComplete);
+    const msgSub = socketIOManager.evtMessageBroadcast.attach(
+      (d: MessageBroadcastData) => (d.channelId || d.roomId) === finalChannelId,
+      handleMessageBroadcasting
+    );
+    const completeSub = socketIOManager.evtMessageComplete.attach(
+      (d: MessageCompleteData) => (d.channelId || d.roomId) === finalChannelId,
+      handleMessageComplete
+    );
+    const controlSub = socketIOManager.evtControlMessage.attach(
+      (d: ControlMessageData) => (d.channelId || d.roomId) === finalChannelId,
+      handleControlMessage
+    );
 
     return () => {
-      // When leaving this chat, leave the room but don't disconnect
-      console.log(`[Chat] Leaving room ${roomId}`);
-      socketIOManager.leaveRoom(roomId);
-      msgHandler.detach();
-      completeHandler.detach();
+      if (finalChannelId) socketIOManager.leaveChannel(finalChannelId);
+      msgSub?.detach();
+      completeSub?.detach();
+      controlSub?.detach();
     };
-  }, [roomId, agentId, entityId, queryClient, socketIOManager]);
-
-  // Handle control messages
-  useEffect(() => {
-    // Function to handle control messages (enable/disable input)
-    const handleControlMessage = (data: any) => {
-      // Extract action and roomId with type safety
-      const { action, roomId: messageRoomId } = data || {};
-      const isInputControl = action === 'enable_input' || action === 'disable_input';
-
-      // Check if this is a valid input control message for this room
-      if (isInputControl && messageRoomId === roomId) {
-        clientLogger.info(`[Chat] Received control message: ${action} for room ${messageRoomId}`);
-
-        if (action === 'disable_input') {
-          setInputDisabled(true);
-          // setMessageProcessing(true); // REMOVE
-        } else if (action === 'enable_input') {
-          setInputDisabled(false);
-          // setMessageProcessing(false); // REMOVE
-        }
-      }
-    };
-
-    // Subscribe to control messages
-    socketIOManager.on('controlMessage', handleControlMessage);
-
-    // Cleanup subscription on unmount
-    return () => {
-      socketIOManager.off('controlMessage', handleControlMessage);
-    };
-  }, [roomId]);
-
-  // Use a stable ID for refs to avoid excessive updates
-  const scrollRefId = useRef(`scroll-${Math.random().toString(36).substring(2, 9)}`).current;
+  }, [finalChannelId, currentClientEntityId, socketIOManager, targetAgentId, addMessage, updateMessage]);
 
   const { scrollRef, isAtBottom, scrollToBottom, disableAutoScroll } = useAutoScroll({
     smooth: true,
   });
-
-  // Use a ref to track the previous message count to avoid excessive scrolling
   const prevMessageCountRef = useRef(0);
-
-  // Update scroll without creating a circular dependency
   const safeScrollToBottom = useCallback(() => {
-    // Add a small delay to avoid render loops
     setTimeout(() => {
       scrollToBottom();
     }, 0);
-  }, []);
+  }, [scrollToBottom]);
 
   useEffect(() => {
-    // Only scroll if the message count has changed
     if (messages.length !== prevMessageCountRef.current) {
-      console.log(`[Chat][${scrollRefId}] Messages updated, scrolling to bottom`);
       safeScrollToBottom();
       prevMessageCountRef.current = messages.length;
     }
-  }, [messages.length, safeScrollToBottom, scrollRefId]);
-
+  }, [messages.length, safeScrollToBottom]);
   useEffect(() => {
     safeScrollToBottom();
   }, [safeScrollToBottom]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
-      if (e.nativeEvent.isComposing) return;
       handleSendMessage(e as unknown as React.FormEvent<HTMLFormElement>);
     }
   };
 
+  const getContentTypeFromMimeType = (mimeType: string): CoreContentType | undefined => {
+    if (mimeType.startsWith('image/')) return CoreContentType.IMAGE;
+    if (mimeType.startsWith('video/')) return CoreContentType.VIDEO;
+    if (mimeType.startsWith('audio/')) return CoreContentType.AUDIO;
+    if (mimeType.includes('pdf') || mimeType.includes('document')) return CoreContentType.DOCUMENT;
+    return undefined;
+  };
+
   const handleSendMessage = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if ((!input && selectedFiles.length === 0) || inputDisabled) return;
+    if (
+      (!input.trim() && selectedFiles.length === 0) ||
+      inputDisabled ||
+      !finalChannelId ||
+      !finalServerId ||
+      !currentClientEntityId ||
+      !targetAgentData?.id
+    )
+      return;
 
-    const messageId = randomUUID();
-    let messageText = input;
-    let attachments: Media[] = [];
+    setInputDisabled(true);
+    const tempMessageId = randomUUID() as UUID;
+    let messageText = input.trim();
+    let processedUiAttachments: Media[] = []; // To hold attachments prepared for optimistic update and API
 
-    // Handle file uploads if files are selected
-    if (selectedFiles.length > 0) {
-      try {
-        console.log('[Chat] Uploading files before sending message...');
+    // Store current input and clear UI immediately
+    const currentInputVal = input;
+    setInput('');
+    const currentSelectedFiles = [...selectedFiles]; // Copy for processing
+    setSelectedFiles([]); // Clear selected files from UI
+    formRef.current?.reset();
 
-        // Set uploading state for all files
-        setSelectedFiles((prev) => prev.map((f) => ({ ...f, isUploading: true })));
-
-        // Upload all files concurrently
-        const uploadPromises = selectedFiles.map(async (fileData) => {
-          try {
-            const uploadResult = await apiClient.uploadMedia(agentId, fileData.file);
-            if (uploadResult.success) {
-              return {
-                id: `file-${messageId}-${fileData.id}`,
-                url: uploadResult.data.url,
-                source: 'file_upload',
-                contentType: getContentTypeFromMimeType(fileData.file.type),
-              };
-            } else {
-              throw new Error(`Upload failed for ${fileData.file.name}`);
-            }
-          } catch (error) {
-            console.error(`Failed to upload ${fileData.file.name}:`, error);
-            throw error;
-          }
-        });
-
-        const uploadResults = await Promise.all(uploadPromises);
-        attachments = uploadResults;
-      } catch (error) {
-        console.error('Failed to upload files:', error);
-        // Reset uploading state on error
-        setSelectedFiles((prev) =>
-          prev.map((f) => ({ ...f, isUploading: false, error: 'Upload failed' }))
-        );
-        return;
-      }
-    }
-
-    // Parse media from the input text to include in message data
-    const mediaInfos = parseMediaFromText(messageText);
-
-    // Create attachments array from parsed media for model processing
-    const mediaAttachments = mediaInfos.map((media, index) => ({
-      id: `media-${messageId}-${index}`,
-      url: media.url,
-      source: 'user_input',
-      contentType: media.type === 'image' ? ContentType.IMAGE : ContentType.VIDEO,
-    }));
-
-    // Combine file attachments and media attachments
-    const allAttachments = [...attachments, ...mediaAttachments];
-
-    // If there's no text but there are attachments, provide a default message
-    if (!messageText.trim() && allAttachments.length > 0) {
-      const fileTypes = allAttachments.map((a) => {
-        if (a.contentType === ContentType.IMAGE) {
-          return 'image';
-        } else if (a.contentType === ContentType.VIDEO) {
-          return 'video';
-        } else if (a.contentType === ContentType.AUDIO) {
-          return 'audio';
-        } else {
-          return 'file';
-        }
-      });
-      const uniqueTypes = [...new Set(fileTypes)];
-      messageText = `Shared ${uniqueTypes.join(' and ')}${allAttachments.length > 1 ? 's' : ''}`;
-    }
-
-    // Always add the user's message immediately to the UI before sending it to the server
-    const userMessage: ContentWithUser = {
+    // 1. Optimistically display user message with local file URLs (if any)
+    const optimisticUiMessage: UiMessage = {
+      id: tempMessageId,
       text: messageText,
       name: USER_NAME,
       createdAt: Date.now(),
-      senderId: entityId,
-      senderName: USER_NAME,
-      roomId: roomId,
+      senderId: currentClientEntityId,
+      isAgent: false,
+      isLoading: true, // Will be true until server ACK or agent response
+      channelId: finalChannelId,
+      serverId: finalServerId,
       source: CHAT_SOURCE,
-      id: messageId, // Add a unique ID for React keys and duplicate detection
-      attachments: allAttachments.length > 0 ? allAttachments : undefined,
+      attachments: currentSelectedFiles // Use local file objects for immediate display
+        .map((sf) => ({
+          id: sf.id,
+          url: URL.createObjectURL(sf.file), // Temporary local URL for display
+          title: sf.file.name,
+          contentType: getContentTypeFromMimeType(sf.file.type),
+          isUploading: true, // Indicate this is still pending proper upload
+        }))
+        .filter((att) => att.contentType !== undefined) as Media[],
     };
 
-    console.log('[Chat] Adding user message to UI:', userMessage);
+    if (messageText || currentSelectedFiles.length > 0) {
+      addMessage(optimisticUiMessage);
+    }
+    safeScrollToBottom();
 
-    // Update the local message list first for immediate feedback
-    queryClient.setQueryData(
-      ['messages', agentId, roomId, worldId],
-      (old: ContentWithUser[] = []) => {
-        // Check if exact same message exists already to prevent duplicates
-        const exists = old.some(
-          (msg) =>
-            msg.text === userMessage.text &&
-            msg.name === USER_NAME &&
-            Math.abs((msg.createdAt || 0) - userMessage.createdAt) < 1000
+    try {
+      // 2. Handle actual file uploads
+      if (currentSelectedFiles.length > 0) {
+        const uploadPromises = currentSelectedFiles.map(async (fileData) => {
+          try {
+            // Update this specific file's state in UI if you have per-file loading indicators
+            const uploadResult = await apiClient.uploadAgentMedia(
+              targetAgentData.id!, // Assuming DM, so targetAgentData.id is uploader context
+              fileData.file
+            );
+            if (uploadResult.success) {
+              return {
+                id: fileData.id, // Keep original temp ID for now
+                url: uploadResult.data.url, // This will be the server URL (e.g., /media/uploads/...)
+                title: fileData.file.name,
+                source: 'file_upload',
+                contentType: getContentTypeFromMimeType(fileData.file.type),
+              } as Media;
+            } else {
+              throw new Error(`Upload failed for ${fileData.file.name}`);
+            }
+          } catch (uploadError) {
+            clientLogger.error(`Failed to upload ${fileData.file.name}:`, uploadError);
+            // Update optimistic message to show failure for this attachment if possible
+            // Or show a toast notification for the specific file failure.
+            toast({ title: `Upload Failed: ${fileData.file.name}`, variant: 'destructive' });
+            return {
+              // Return a structure indicating failure or skip this attachment
+              id: fileData.id,
+              title: fileData.file.name,
+              error: 'Upload failed',
+            } as Partial<Media> & { error: string };
+          }
+        });
+        const settledUploads = await Promise.allSettled(uploadPromises);
+
+        processedUiAttachments = settledUploads
+          .filter(
+            (result) =>
+              result.status === 'fulfilled' && result.value && !(result.value as any).error
+          )
+          .map((result) => (result as PromiseFulfilledResult<Media>).value);
+
+        const failedUploads = settledUploads.filter(
+          (result) =>
+            result.status === 'rejected' ||
+            (result.status === 'fulfilled' && (result.value as any).error)
         );
 
-        if (exists) {
-          console.log('[Chat] Skipping duplicate user message');
-          return old;
+        if (failedUploads.length > 0) {
+          // Handle display of failed uploads or remove them from optimistic message
+          updateMessage(tempMessageId, {
+            attachments: optimisticUiMessage.attachments?.filter(
+              (att) =>
+                !failedUploads.some((fu) => {
+                  const failedAtt = fu.status === 'fulfilled' ? fu.value : null;
+                  return failedAtt && (failedAtt as any).id === att.id;
+                })
+            ),
+          });
         }
-
-        return [...old, userMessage];
+        // If no text was initially present, but files were uploaded, create a summary text.
+        if (!messageText.trim() && processedUiAttachments.length > 0) {
+          messageText = `Shared ${processedUiAttachments.length} file(s).`;
+        }
       }
-    );
 
-    // Send the message to the server/agent
-    socketIOManager.sendMessage(
-      messageText,
-      roomId,
-      CHAT_SOURCE,
-      allAttachments.length > 0 ? allAttachments : undefined
-    );
-    setInputDisabled(true);
+      // 3. Parse media URLs from text input
+      const mediaInfosFromText = parseMediaFromText(currentInputVal); // Use original input for URL parsing
+      const textMediaAttachments: Media[] = mediaInfosFromText.map(
+        (media: MediaInfo, index: number): Media => ({
+          id: `textmedia-${tempMessageId}-${index}`,
+          url: media.url,
+          title: media.type === 'image' ? 'Image' : media.type === 'video' ? 'Video' : 'Media Link',
+          source: 'user_input_url',
+          contentType:
+            media.type === 'image'
+              ? CoreContentType.IMAGE
+              : media.type === 'video'
+                ? CoreContentType.VIDEO
+                : undefined,
+        })
+      );
 
-    // Clear files and input after successful send
-    setSelectedFiles([]);
-    setInput('');
-    formRef.current?.reset();
+      const finalAttachments = [...processedUiAttachments, ...textMediaAttachments];
+      const finalTextContent =
+        messageText || (finalAttachments.length > 0 ? `Shared content.` : '');
+
+      if (!finalTextContent.trim() && finalAttachments.length === 0) {
+        clientLogger.warn('Attempted to send an empty message after processing.');
+        setInputDisabled(false);
+        removeMessage(tempMessageId);
+        return;
+      }
+
+      // 4. Send the final message via WebSocket
+      await socketIOManager.sendMessage(
+        finalTextContent,
+        finalChannelId!,
+        finalServerId!,
+        CHAT_SOURCE,
+        finalAttachments.length > 0 ? finalAttachments : undefined,
+        tempMessageId // Pass the tempMessageId to track the optimistic message
+      );
+
+      // Note: We don't update the optimistic message here anymore.
+      // The message will be updated when we receive the server broadcast with clientMessageId
+    } catch (error) {
+      clientLogger.error('Error sending message or uploading files:', error);
+      toast({
+        title: 'Error Sending Message',
+        description: error instanceof Error ? error.message : 'Could not send message.',
+        variant: 'destructive',
+      });
+      updateMessage(tempMessageId, {
+        isLoading: false,
+        text: `${optimisticUiMessage.text || 'Attachment(s)'} (Failed to send)`,
+      });
+    } finally {
+      setInputDisabled(false);
+      // selectedFiles should be empty now if all uploads were attempted
+      inputRef.current?.focus();
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
+    // Prioritizing the more robust filtering from the second part of the conflict
     const validFiles = files.filter(
-      (file) => file.type.startsWith('image/')
-      // file.type.startsWith('video/') ||
-      // file.type.startsWith('application/') ||
-      // file.type.startsWith('text/') ||
-      // file.type === 'application/pdf' ||
-      // file.type === 'application/msword' ||
-      // file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-      // file.type === 'application/vnd.ms-excel' ||
-      // file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
-      // file.type === 'application/vnd.ms-powerpoint' ||
-      // file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+      (file) =>
+        file.type.startsWith('image/') ||
+        file.type.startsWith('video/') ||
+        file.type.startsWith('audio/') || // Added audio
+        file.type === 'application/pdf' ||
+        file.type === 'application/msword' ||
+        file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+        file.type === 'application/vnd.ms-excel' ||
+        file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+        file.type === 'application/vnd.ms-powerpoint' ||
+        file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
+        file.type.startsWith('text/')
     );
 
-    // Filter out files that are already selected (check by name, size, and lastModified)
     const uniqueFiles = validFiles.filter((newFile) => {
       return !selectedFiles.some(
         (existingFile) =>
@@ -565,79 +635,66 @@ export default function Page({
       );
     });
 
-    const newFiles: UploadingFile[] = uniqueFiles.map((file) => ({
+    const newUploadingFiles: UploadingFile[] = uniqueFiles.map((file) => ({
       file,
       id: randomUUID(),
-      isUploading: false,
+      isUploading: false, // Start as not uploading
     }));
 
-    setSelectedFiles((prev) => [...prev, ...newFiles]);
-
-    // Reset the input so the same files can be selected again
-    if (e.target) {
-      e.target.value = '';
-    }
+    setSelectedFiles((prev) => {
+      const combined = [...prev, ...newUploadingFiles];
+      return Array.from(
+        new Map(combined.map((f) => [`${f.file.name}-${f.file.size}`, f])).values()
+      );
+    });
+    if (e.target) e.target.value = ''; // Clear file input
   };
 
   const removeFile = (fileId: string) => {
     setSelectedFiles((prev) => prev.filter((f) => f.id !== fileId));
   };
 
-  useEffect(() => {
-    if (inputRef.current) {
-      inputRef.current.focus();
-    }
-  }, []);
-
-  const handleDeleteMessage = (id: string) => {
-    deleteMemoryMutation.mutate({ agentId, memoryId: id });
-    queryClient.setQueryData(
-      ['messages', agentId, roomId, worldId],
-      (old: ContentWithUser[] = []) => old.filter((m) => m.id !== id)
-    );
+  const handleDeleteMessage = (messageId: string) => {
+    if (!finalChannelId) return;
+    deleteMessageCentral({ channelId: finalChannelId, messageId: messageId as UUID });
   };
 
   const handleClearChat = () => {
-    if (window.confirm('Clear all messages?')) {
-      clearMemoriesMutation.mutate({ agentId, roomId });
-      queryClient.setQueryData(['messages', agentId, roomId, worldId], []);
+    if (!finalChannelId) return;
+    if (window.confirm('Clear all messages in this chat?')) {
+      clearMessagesCentral(finalChannelId);
     }
   };
 
-  // Helper function to map MIME type to ContentType enum
-  const getContentTypeFromMimeType = (mimeType: string): ContentType | undefined => {
-    if (mimeType.startsWith('image/')) {
-      return ContentType.IMAGE;
-    } else if (mimeType.startsWith('video/')) {
-      return ContentType.VIDEO;
-    } else if (mimeType.startsWith('audio/')) {
-      return ContentType.AUDIO;
-    } else if (mimeType.includes('pdf') || mimeType.includes('document')) {
-      return ContentType.DOCUMENT;
-    }
-    return undefined;
-  };
+  if (isLoadingAgentData || (!targetAgentData && targetAgentId)) {
+    return (
+      <div className="flex flex-1 justify-center items-center">
+        <p>Loading agent details...</p>
+      </div>
+    );
+  }
+  if (!finalChannelId || !finalServerId || !targetAgentData) {
+    return (
+      <div className="flex flex-1 justify-center items-center">
+        <p>Loading chat context...</p>
+      </div>
+    );
+  }
 
   return (
     <div
       className={`flex flex-col w-full h-screen items-center ${showDetails ? 'col-span-3' : 'col-span-4'}`}
     >
-      {/* Wrapper to constrain width and manage vertical layout */}
       <div className="flex flex-col w-full md:max-w-4xl h-full p-4">
-        {/* Agent Header */}
         <div className="flex items-center justify-between mb-4 p-3 bg-card rounded-lg border">
           <div className="flex items-center gap-3">
             <Avatar className="size-10 border rounded-full">
-              <AvatarImage
-                src={
-                  agentData?.settings?.avatar ? agentData?.settings?.avatar : '/elizaos-icon.png'
-                }
-              />
+              <AvatarImage src={targetAgentData?.settings?.avatar || '/elizaos-icon.png'} />
             </Avatar>
             <div className="flex flex-col">
               <div className="flex items-center gap-2">
-                <h2 className="font-semibold text-lg">{agentData?.name || 'Agent'}</h2>
-                {agentData?.status === AgentStatus.ACTIVE ? (
+                <h2 className="font-semibold text-lg">{targetAgentData?.name || 'Agent'}</h2>
+                {targetAgentData?.status === AgentStatus.ACTIVE ? (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <div className="size-2.5 rounded-full bg-green-500 ring-2 ring-green-500/20 animate-pulse" />
@@ -657,50 +714,59 @@ export default function Page({
                   </Tooltip>
                 )}
               </div>
-              {agentData?.bio && (
+              {targetAgentData?.bio && (
                 <p className="text-sm text-muted-foreground line-clamp-1">
-                  {Array.isArray(agentData.bio) ? agentData.bio[0] : agentData.bio}
+                  {Array.isArray(targetAgentData.bio)
+                    ? targetAgentData.bio[0]
+                    : targetAgentData.bio}
                 </p>
               )}
             </div>
           </div>
-
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={handleClearChat}>
-              <Trash2 className="size-4" />
-            </Button>
             <Button
               variant="outline"
               size="sm"
-              onClick={toggleDetails}
-              className={cn('gap-1.5', showDetails && 'bg-secondary')}
+              onClick={handleClearChat}
+              disabled={!messages || messages.length === 0}
             >
-              <PanelRight className="size-4" />
+              <Trash2 className="size-4" />
             </Button>
+            {/* <Button variant="outline" size="sm" onClick={toggleDetails} className={cn('gap-1.5', showDetails && 'bg-secondary')}>
+              <PanelRight className="size-4" />
+            </Button> */}
           </div>
         </div>
 
-        {/* Main Chat Area - takes remaining height */}
         <div
           className={cn('flex flex-col transition-all duration-300 w-full grow overflow-hidden ')}
         >
-          {/* Chat Messages */}
           <ChatMessageList
             scrollRef={scrollRef}
             isAtBottom={isAtBottom}
-            scrollToBottom={safeScrollToBottom}
+            scrollToBottom={scrollToBottom}
             disableAutoScroll={disableAutoScroll}
-            className="flex-grow scrollbar-hide overflow-y-auto" // Ensure scrolling within this list
+            className="flex-1 w-full"
           >
-            {messages.map((message: ContentWithUser, index: number) => {
-              const isUser = message.name === USER_NAME;
+            {isLoadingMessages && messages.length === 0 && (
+              <div className="flex flex-1 justify-center items-center">
+                <p>Loading messages...</p>
+              </div>
+            )}
+            {!isLoadingMessages && messages.length === 0 && (
+              <div className="flex flex-1 justify-center items-center">
+                <p>No messages yet. Start the conversation!</p>
+              </div>
+            )}
+            {messages.map((message: UiMessage, index: number) => {
+              const isUser = !message.isAgent;
               const shouldAnimate =
                 index === messages.length - 1 &&
-                message.name !== USER_NAME &&
+                message.isAgent &&
                 message.id === animatedMessageIdRef.current;
               return (
                 <div
-                  key={`${message.id as string}-${message.createdAt}`}
+                  key={`${message.id}-${message.createdAt}`}
                   className={cn(
                     'flex flex-col gap-1 p-1',
                     isUser ? 'justify-end' : 'justify-start'
@@ -713,22 +779,15 @@ export default function Page({
                     {!isUser && (
                       <Avatar className="size-8 border rounded-full select-none mb-2">
                         <AvatarImage
-                          src={
-                            isUser
-                              ? '/user-icon.png'
-                              : agentData?.settings?.avatar
-                                ? agentData?.settings?.avatar
-                                : '/elizaos-icon.png'
-                          }
+                          src={targetAgentData?.settings?.avatar || '/elizaos-icon.png'}
                         />
                       </Avatar>
                     )}
-
                     <MemoizedMessageContent
                       message={message}
-                      agentId={agentId}
+                      agentForTts={targetAgentData}
                       shouldAnimate={shouldAnimate}
-                      onDelete={handleDeleteMessage}
+                      onDelete={() => handleDeleteMessage(message.id as string)}
                     />
                   </ChatBubble>
                 </div>
@@ -736,9 +795,7 @@ export default function Page({
             })}
           </ChatMessageList>
 
-          {/* Chat Input */}
           <div className="px-4 pb-4 mt-auto flex-shrink-0">
-            {/* Keep input at bottom */}
             {inputDisabled && (
               <div className="px-2 pb-2 text-sm text-muted-foreground flex items-center gap-2">
                 <div className="flex gap-0.5 items-center justify-center">
@@ -746,7 +803,7 @@ export default function Page({
                   <span className="w-[6px] h-[6px] bg-white rounded-full animate-bounce [animation-delay:0.2s]" />
                   <span className="w-[6px] h-[6px] bg-white rounded-full animate-bounce [animation-delay:0.4s]" />
                 </div>
-                <span>{agentData.name} is thinking</span>
+                <span>{targetAgentData.name} is thinking</span>
                 <div className="flex">
                   <span className="animate-pulse [animation-delay:0ms]">.</span>
                   <span className="animate-pulse [animation-delay:200ms]">.</span>
@@ -815,11 +872,11 @@ export default function Page({
                 onChange={({ target }) => setInput(target.value)}
                 placeholder={
                   inputDisabled
-                    ? 'Input disabled while agent is processing...'
+                    ? `${targetAgentData.name} is thinking...`
                     : 'Type your message here...'
                 }
                 className="min-h-12 resize-none rounded-md bg-card border-0 p-3 shadow-none focus-visible:ring-0"
-                disabled={inputDisabled || agentData.status === 'inactive'}
+                disabled={inputDisabled || targetAgentData?.status === 'inactive'}
               />
               <div className="flex items-center p-3 pt-0">
                 <Tooltip>
@@ -829,36 +886,36 @@ export default function Page({
                         variant="ghost"
                         size="icon"
                         onClick={() => {
-                          if (fileInputRef.current) {
-                            fileInputRef.current.click();
-                          }
+                          if (fileInputRef.current) fileInputRef.current.click();
                         }}
                       >
-                        <Image className="size-4" />
-                        <span className="sr-only">Attach image for description</span>
+                        <Paperclip className="size-4" />
+                        <span className="sr-only">Attach file</span>
                       </Button>
                       <input
                         type="file"
                         ref={fileInputRef}
                         onChange={handleFileChange}
-                        accept="image/*"
+                        accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt,.rtf,..."
                         multiple
                         className="hidden"
                       />
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="left">
-                    <p>Attach an image for the AI to describe</p>
+                    <p>Attach files</p>
                   </TooltipContent>
                 </Tooltip>
-                <AudioRecorder
-                  agentId={agentId}
-                  onChange={(newInput: string) => setInput(newInput)}
-                />
+                {targetAgentData?.id && (
+                  <AudioRecorder
+                    agentId={targetAgentData.id}
+                    onChange={(newInput: string) => setInput(newInput)}
+                  />
+                )}
                 <Button
                   disabled={
                     inputDisabled ||
-                    agentData.status === 'inactive' ||
+                    targetAgentData?.status === 'inactive' ||
                     selectedFiles.some((f) => f.isUploading)
                   }
                   type="submit"
@@ -880,7 +937,6 @@ export default function Page({
           </div>
         </div>
       </div>
-      {/* End of width constraining wrapper */}
     </div>
   );
 }

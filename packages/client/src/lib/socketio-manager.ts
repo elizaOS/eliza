@@ -2,7 +2,6 @@ import { USER_NAME } from '@/constants';
 import { SOCKET_MESSAGE_TYPE } from '@elizaos/core';
 import { Evt } from 'evt';
 import { io, type Socket } from 'socket.io-client';
-import { WorldManager } from './world-manager';
 import { randomUUID } from './utils';
 import clientLogger from './logger';
 
@@ -11,7 +10,8 @@ export type MessageBroadcastData = {
   senderId: string;
   senderName: string;
   text: string;
-  roomId: string;
+  channelId: string;
+  roomId?: string; // Deprecated - for backward compatibility only
   createdAt: number;
   source: string;
   name: string; // Required for ContentWithUser compatibility
@@ -20,7 +20,8 @@ export type MessageBroadcastData = {
 };
 
 export type MessageCompleteData = {
-  roomId: string;
+  channelId: string;
+  roomId?: string; // Deprecated - for backward compatibility only
   [key: string]: any;
 };
 
@@ -28,7 +29,8 @@ export type MessageCompleteData = {
 export type ControlMessageData = {
   action: 'enable_input' | 'disable_input';
   target?: string;
-  roomId: string;
+  channelId: string;
+  roomId?: string; // Deprecated - for backward compatibility only
   [key: string]: any;
 };
 
@@ -39,7 +41,8 @@ export type LogStreamData = {
   msg: string;
   agentId?: string;
   agentName?: string;
-  roomId?: string;
+  channelId?: string;
+  roomId?: string; // Deprecated - for backward compatibility only
   [key: string]: string | number | boolean | null | undefined;
 };
 
@@ -109,15 +112,14 @@ class EventAdapter {
  * using Socket.io. It maintains a single connection to the server and allows
  * joining and messaging in multiple rooms.
  */
-class SocketIOManager extends EventAdapter {
+export class SocketIOManager extends EventAdapter {
   private static instance: SocketIOManager | null = null;
   private socket: Socket | null = null;
   private isConnected = false;
   private connectPromise: Promise<void> | null = null;
   private resolveConnect: (() => void) | null = null;
-  private activeRooms: Set<string> = new Set();
-  private entityId: string | null = null;
-  private agentIds: string[] | null = null;
+  private activeCentralChannelIds: Set<string> = new Set();
+  private clientEntityId: string | null = null;
   private logStreamSubscribed: boolean = false;
 
   // Public accessor for EVT instances (for advanced usage)
@@ -154,11 +156,10 @@ class SocketIOManager extends EventAdapter {
 
   /**
    * Initialize the Socket.io connection to the server
-   * @param entityId The client entity ID
+   * @param clientEntityId The client entity ID (central user ID)
    */
-  public initialize(entityId: string, agentIds: string[]): void {
-    this.entityId = entityId;
-    this.agentIds = agentIds;
+  public initialize(clientEntityId: string): void {
+    this.clientEntityId = clientEntityId;
 
     if (this.socket) {
       clientLogger.warn('[SocketIO] Socket already initialized');
@@ -185,8 +186,8 @@ class SocketIOManager extends EventAdapter {
 
       this.emit('connect');
 
-      this.activeRooms.forEach((roomId) => {
-        this.joinRoom(roomId);
+      this.activeCentralChannelIds.forEach((channelId) => {
+        this.joinChannel(channelId);
       });
     });
 
@@ -194,7 +195,7 @@ class SocketIOManager extends EventAdapter {
       this.emit('unauthorized', reason);
     });
 
-    this.socket.on('messageBroadcast', (data) => {
+    this.socket.on('messageBroadcast', (data: MessageBroadcastData) => {
       clientLogger.info(`[SocketIO] Message broadcast received:`, data);
 
       // Log the full data structure to understand formats
@@ -221,32 +222,21 @@ class SocketIOManager extends EventAdapter {
         ),
       });
 
-      // Check if this is a message for one of our active rooms
-      if (this.activeRooms.has(data.roomId)) {
-        clientLogger.info(`[SocketIO] Handling message for active room ${data.roomId}`);
-        // Post the message to the event
+      // Check if this is a message for one of our active channels
+      const channelId = data.channelId || data.roomId; // Handle both new and old message format
+      if (channelId && this.activeCentralChannelIds.has(channelId)) {
+        clientLogger.info(`[SocketIO] Handling message for active channel ${channelId}`);
+        // Post the message to the event for UI updates
         this.emit('messageBroadcast', {
           ...data,
-          name: data.senderName, // Required for ContentWithUser compatibility
+          channelId: channelId, // Ensure channelId is always set
+          roomId: channelId, // Keep roomId for backward compatibility
+          name: data.senderName, // Required for ContentWithUser compatibility in some older UI parts
         });
-
-        if (this.socket) {
-          this.socket.emit('message', {
-            type: SOCKET_MESSAGE_TYPE.SEND_MESSAGE,
-            payload: {
-              senderId: data.senderId,
-              senderName: data.senderName,
-              message: data.text,
-              roomId: data.roomId,
-              worldId: WorldManager.getWorldId(),
-              source: data.source,
-            },
-          });
-        }
       } else {
         clientLogger.warn(
-          `[SocketIO] Received message for inactive room ${data.roomId}, active rooms:`,
-          Array.from(this.activeRooms)
+          `[SocketIO] Received message for inactive channel ${channelId}, active channels:`,
+          Array.from(this.activeCentralChannelIds)
         );
       }
     });
@@ -259,16 +249,21 @@ class SocketIOManager extends EventAdapter {
     this.socket.on('controlMessage', (data) => {
       clientLogger.info(`[SocketIO] Control message received:`, data);
 
-      // Check if this is for one of our active rooms
-      if (this.activeRooms.has(data.roomId)) {
-        clientLogger.info(`[SocketIO] Handling control message for active room ${data.roomId}`);
+      // Check if this is for one of our active channels
+      const channelId = data.channelId || data.roomId; // Handle both new and old message format
+      if (channelId && this.activeCentralChannelIds.has(channelId)) {
+        clientLogger.info(`[SocketIO] Handling control message for active channel ${channelId}`);
 
         // Emit the control message event
-        this.emit('controlMessage', data);
+        this.emit('controlMessage', {
+          ...data,
+          channelId: channelId, // Ensure channelId is always set
+          roomId: channelId, // Keep roomId for backward compatibility
+        });
       } else {
         clientLogger.warn(
-          `[SocketIO] Received control message for inactive room ${data.roomId}, active rooms:`,
-          Array.from(this.activeRooms)
+          `[SocketIO] Received control message for inactive channel ${channelId}, active channels:`,
+          Array.from(this.activeCentralChannelIds)
         );
       }
     });
@@ -319,12 +314,12 @@ class SocketIOManager extends EventAdapter {
   }
 
   /**
-   * Join a room to receive messages from it
-   * @param roomId Room/Agent ID to join
+   * Join a channel to receive messages from it
+   * @param channelId Channel ID to join
    */
-  public async joinRoom(roomId: string): Promise<void> {
+  public async joinChannel(channelId: string): Promise<void> {
     if (!this.socket) {
-      clientLogger.error('[SocketIO] Cannot join room: socket not initialized');
+      clientLogger.error('[SocketIO] Cannot join channel: socket not initialized');
       return;
     }
 
@@ -333,45 +328,63 @@ class SocketIOManager extends EventAdapter {
       await this.connectPromise;
     }
 
-    this.activeRooms.add(roomId);
+    this.activeCentralChannelIds.add(channelId);
     this.socket.emit('message', {
       type: SOCKET_MESSAGE_TYPE.ROOM_JOINING,
       payload: {
-        roomId,
-        entityId: this.entityId,
-        agentIds: this.agentIds,
+        channelId: channelId,
+        roomId: channelId, // Keep for backward compatibility
+        entityId: this.clientEntityId,
       },
     });
 
-    clientLogger.info(`[SocketIO] Joined room ${roomId}`);
+    clientLogger.info(`[SocketIO] Joined channel ${channelId}`);
   }
 
   /**
-   * Leave a room to stop receiving messages from it
-   * @param roomId Room/Agent ID to leave
+   * @deprecated Use joinChannel instead
    */
-  public leaveRoom(roomId: string): void {
+  public async joinRoom(channelId: string): Promise<void> {
+    return this.joinChannel(channelId);
+  }
+
+  /**
+   * Leave a channel to stop receiving messages from it
+   * @param channelId Channel ID to leave
+   */
+  public leaveChannel(channelId: string): void {
     if (!this.socket || !this.isConnected) {
-      clientLogger.warn(`[SocketIO] Cannot leave room ${roomId}: not connected`);
+      clientLogger.warn(`[SocketIO] Cannot leave channel ${channelId}: not connected`);
       return;
     }
 
-    this.activeRooms.delete(roomId);
-    clientLogger.info(`[SocketIO] Left room ${roomId}`);
+    this.activeCentralChannelIds.delete(channelId);
+    clientLogger.info(`[SocketIO] Left channel ${channelId}`);
   }
 
   /**
-   * Send a message to a specific room
+   * @deprecated Use leaveChannel instead
+   */
+  public leaveRoom(channelId: string): void {
+    return this.leaveChannel(channelId);
+  }
+
+  /**
+   * Send a message to a specific channel
    * @param message Message text to send
-   * @param roomId Room/Agent ID to send the message to
+   * @param channelId Channel ID to send the message to
+   * @param serverId Server ID to send the message to
    * @param source Source identifier (e.g., 'client_chat')
    * @param attachments Optional media attachments
+   * @param messageId Optional message ID for tracking optimistic updates
    */
   public async sendMessage(
     message: string,
-    roomId: string,
+    channelId: string,
+    serverId: string,
     source: string,
-    attachments?: any[]
+    attachments?: any[],
+    messageId?: string
   ): Promise<void> {
     if (!this.socket) {
       clientLogger.error('[SocketIO] Cannot send message: socket not initialized');
@@ -383,37 +396,30 @@ class SocketIOManager extends EventAdapter {
       await this.connectPromise;
     }
 
-    const messageId = randomUUID();
-    const worldId = WorldManager.getWorldId();
+    // Use provided messageId or generate a new one
+    const finalMessageId = messageId || randomUUID();
 
-    clientLogger.info(`[SocketIO] Sending message to room ${roomId}`);
+    clientLogger.info(
+      `[SocketIO] Sending message to central channel ${channelId} on server ${serverId}`
+    );
 
     // Emit message to server
     this.socket.emit('message', {
       type: SOCKET_MESSAGE_TYPE.SEND_MESSAGE,
       payload: {
-        senderId: this.entityId,
+        senderId: this.clientEntityId,
         senderName: USER_NAME,
         message,
-        roomId,
-        worldId,
-        messageId,
+        channelId: channelId,
+        roomId: channelId, // Keep for backward compatibility
+        serverId: serverId, // Client uses serverId, not worldId
+        messageId: finalMessageId,
         source,
         attachments,
       },
     });
 
-    // Immediately broadcast message locally so UI updates instantly
-    this.emit('messageBroadcast', {
-      senderId: this.entityId || '',
-      senderName: USER_NAME,
-      text: message,
-      roomId,
-      createdAt: Date.now(),
-      source,
-      name: USER_NAME, // Required for ContentWithUser compatibility
-      attachments,
-    });
+    // Note: We no longer broadcast locally - the server will send the message back with the proper ID
   }
 
   /**
@@ -488,7 +494,7 @@ class SocketIOManager extends EventAdapter {
       this.socket.disconnect();
       this.socket = null;
       this.isConnected = false;
-      this.activeRooms.clear();
+      this.activeCentralChannelIds.clear();
       this.logStreamSubscribed = false;
       clientLogger.info('[SocketIO] Disconnected from server');
     }

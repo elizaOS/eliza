@@ -1,5 +1,4 @@
 import { useAgent } from '@/hooks/use-query-hooks';
-import { WorldManager } from '@/lib/world-manager';
 import { useState } from 'react';
 import { useParams } from 'react-router';
 
@@ -16,7 +15,6 @@ import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '../compone
  */
 export default function AgentRoute() {
   const [showDetails, setShowDetails] = useState(true);
-  const worldId = WorldManager.getWorldId();
 
   const { agentId } = useParams<{ agentId: UUID }>();
 
@@ -24,14 +22,14 @@ export default function AgentRoute() {
 
   const agent: Agent | undefined = agentDataResponse?.data
     ? {
-        ...(agentDataResponse.data as AgentWithStatus),
-        status:
-          agentDataResponse.data.status === 'active'
-            ? CoreAgentStatusEnum.ACTIVE
-            : agentDataResponse.data.status === 'inactive'
-              ? CoreAgentStatusEnum.INACTIVE
-              : undefined,
-      }
+      ...(agentDataResponse.data as AgentWithStatus),
+      status:
+        agentDataResponse.data.status === 'active'
+          ? CoreAgentStatusEnum.ACTIVE
+          : agentDataResponse.data.status === 'inactive'
+            ? CoreAgentStatusEnum.INACTIVE
+            : undefined,
+    }
     : undefined;
 
   const toggleDetails = () => setShowDetails(!showDetails);
@@ -44,7 +42,6 @@ export default function AgentRoute() {
       <ResizablePanel defaultSize={65}>
         <Chat
           agentId={agentId}
-          worldId={worldId}
           agentData={agent}
           showDetails={showDetails}
           toggleDetails={toggleDetails}

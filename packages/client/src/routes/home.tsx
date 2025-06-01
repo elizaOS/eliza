@@ -1,19 +1,23 @@
 import PageTitle from '@/components/page-title';
-import ProfileCard from '@/components/profile-card';
 import ProfileOverlay from '@/components/profile-overlay';
-import { useAgentsWithDetails, useRooms } from '@/hooks/use-query-hooks';
-import { formatAgentName } from '@/lib/utils';
-import type { Agent, UUID } from '@elizaos/core';
-import { AgentStatus } from '@elizaos/core';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@radix-ui/react-tooltip';
-import { Cog, InfoIcon, Plus } from 'lucide-react';
-import { useState } from 'react';
+import {
+  useAgentsWithDetails,
+  useCentralChannels,
+  useCentralServers,
+} from '@/hooks/use-query-hooks';
+import { getEntityId } from '@/lib/utils';
+import { type Agent, type UUID, ChannelType as CoreChannelType } from '@elizaos/core';
+import { Plus } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAgentManagement } from '../hooks/use-agent-management';
-
+import AddAgentCard from '@/components/add-agent-card';
+import AgentCard from '@/components/agent-card';
+import GroupCard from '@/components/group-card';
 import GroupPanel from '@/components/group-panel';
+import { apiClient } from '@/lib/api';
 import { Button } from '../components/ui/button';
 import { Separator } from '../components/ui/separator';
+
 /**
  * Renders the main dashboard for managing agents and groups, providing interactive controls for viewing, starting, messaging, and configuring agents, as well as creating and editing groups.
  *
@@ -22,17 +26,18 @@ import { Separator } from '../components/ui/separator';
 export default function Home() {
   const { data: agentsData, isLoading, isError, error } = useAgentsWithDetails();
   const navigate = useNavigate();
+  const currentClientEntityId = getEntityId();
 
   // Extract agents properly from the response
   const agents = agentsData?.agents || [];
 
-  const { data: roomsData } = useRooms();
+  const { data: serversData, isLoading: isLoadingServers } = useCentralServers();
+  const servers = serversData?.data?.servers || [];
 
   const [isOverlayOpen, setOverlayOpen] = useState(false);
   const [isGroupPanelOpen, setIsGroupPanelOpen] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<Partial<Agent> | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState<UUID | null>(null);
-  const { startAgent, isAgentStarting, isAgentStopping } = useAgentManagement();
 
   const openOverlay = (agent: Partial<Agent>) => {
     setSelectedAgent(agent);
@@ -42,6 +47,16 @@ export default function Home() {
   const closeOverlay = () => {
     setSelectedAgent(null);
     setOverlayOpen(false);
+  };
+
+  const handleNavigateToDm = async (agent: Agent) => {
+    if (!agent.id) return;
+    // Navigate directly to agent chat - DM channel will be created automatically with default server
+    navigate(`/chat/${agent.id}`);
+  };
+
+  const handleCreateGroup = () => {
+    navigate('/group/new');
   };
 
   return (
@@ -78,108 +93,15 @@ export default function Home() {
 
           {!isLoading && !isError && (
             <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-2 auto-rows-fr agents-section">
+              <AddAgentCard />
               {agents
-                ?.sort((a, b) => Number(b?.enabled) - Number(a?.enabled))
+                .sort((a, b) => Number(b?.enabled) - Number(a?.enabled))
                 .map((agent) => {
                   return (
-                    <ProfileCard
+                    <AgentCard
                       key={agent.id}
-                      className="agent-card"
-                      title={
-                        <div className="flex gap-2 items-center">
-                          <div className="truncate max-w-24">{agent.name ?? 'Unnamed Agent'}</div>
-                          {agent?.status === AgentStatus.ACTIVE ? (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <div className="size-2.5 rounded-full bg-green-500 ring-2 ring-green-500/20 animate-pulse mt-[2px]" />
-                              </TooltipTrigger>
-                              <TooltipContent side="right">
-                                <p>Agent is active</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          ) : (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <div className="size-2.5 rounded-full bg-gray-300 ring-2 ring-gray-300/20 mt-[2px]" />
-                              </TooltipTrigger>
-                              <TooltipContent side="right">
-                                <p>Agent is inactive</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
-                        </div>
-                      }
-                      content={
-                        <div
-                          className="relative cursor-pointer h-full w-full flex items-center justify-center group"
-                          onClick={() => openOverlay(agent)}
-                          onKeyUp={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              openOverlay(agent);
-                            }
-                          }}
-                        >
-                          <div
-                            className={`
-                              w-full h-full flex items-center justify-center
-                              ${
-                                agent.status === AgentStatus.ACTIVE
-                                  ? 'brightness-[100%] hover:brightness-[107%]'
-                                  : 'grayscale }brightness-[75%] opacity-50 hover:brightness-[85%]'
-                              }
-                            `}
-                          >
-                            {agent.settings?.avatar ? (
-                              <img
-                                src={agent.settings.avatar}
-                                alt="Agent Avatar"
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              formatAgentName(agent?.name ?? '')
-                            )}
-                          </div>
-                          {agent.status !== AgentStatus.ACTIVE && (
-                            <span className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-black text-white text-xs px-2 py-1 rounded-md opacity-60">
-                              Offline
-                            </span>
-                          )}
-                        </div>
-                      }
-                      buttons={[
-                        agent.status === AgentStatus.ACTIVE
-                          ? {
-                              label: 'Message',
-                              action: () => navigate(`/chat/${agent.id}`),
-                              className: 'w-[80%] message-button',
-                              variant: 'default',
-                            }
-                          : {
-                              label: isAgentStarting(agent.id)
-                                ? 'Starting...'
-                                : isAgentStopping(agent.id)
-                                  ? 'Stopping...'
-                                  : 'Start',
-                              action: () => startAgent(agent),
-                              className: 'w-[80%] start-button',
-                              variant: 'default',
-                              disabled: isAgentStarting(agent.id) || isAgentStopping(agent.id),
-                            },
-                        {
-                          icon: <InfoIcon style={{ height: 16, width: 16 }} />,
-                          className: 'w-10 h-10 rounded-full agent-info-button',
-                          action: () => {
-                            openOverlay(agent);
-                          },
-                          variant: 'outline',
-                        },
-                        {
-                          icon: <Cog style={{ height: 16, width: 16 }} />,
-                          className: 'w-10 h-10 rounded-full agent-settings-button',
-                          action: () => navigate(`/settings/${agent.id}`),
-                          variant: 'outline',
-                        },
-                      ]}
+                      agent={agent}
+                      onChat={() => handleNavigateToDm(agent)}
                     />
                   );
                 })}
@@ -187,11 +109,7 @@ export default function Home() {
           )}
           <div className="flex items-center justify-between gap-2 p-2">
             <PageTitle title="Groups" />
-            <Button
-              variant="outline"
-              onClick={() => setIsGroupPanelOpen(true)}
-              className="groups-create-button"
-            >
+            <Button variant="outline" onClick={handleCreateGroup} className="groups-create-button">
               <Plus className="w-2 h-2" />
             </Button>
           </div>
@@ -199,54 +117,9 @@ export default function Home() {
 
           {!isLoading && !isError && (
             <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-2 auto-rows-fr groups-section">
-              {roomsData &&
-                Array.from(roomsData.entries()).map(([roomId, roomArray]) => {
-                  const roomName = roomArray.length > 0 ? roomArray[0]?.name : null;
-                  return (
-                    <ProfileCard
-                      key={roomId}
-                      title={
-                        <div className="flex gap-2 items-center">
-                          <div className="truncate max-w-24">{roomName}</div>
-                        </div>
-                      }
-                      content={
-                        <div
-                          className="relative cursor-pointer h-full w-full flex items-center justify-center group"
-                          onClick={() => navigate(`/room/${roomId}`)}
-                          onKeyUp={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              navigate(`/room/${roomId}`);
-                            }
-                          }}
-                        >
-                          <div className="w-full h-full flex items-center justify-center brightness-[100%] hover:brightness-[107%]">
-                            {roomName ? formatAgentName(roomName) : 'Unnamed Group'}
-                          </div>
-                        </div>
-                      }
-                      buttons={[
-                        {
-                          label: 'Chat',
-                          action: () => {
-                            navigate(`/room/${roomId}`);
-                          },
-                          className: 'w-[80%]',
-                          variant: 'default',
-                        },
-                        {
-                          icon: <Cog style={{ height: 16, width: 16 }} />,
-                          className: 'w-10 h-10 rounded-full',
-                          action: () => {
-                            setSelectedGroupId(roomId as UUID);
-                            setIsGroupPanelOpen(true);
-                          },
-                          variant: 'outline',
-                        },
-                      ]}
-                    />
-                  );
-                })}
+              {servers.map((server) => (
+                <ServerChannels key={server.id} serverId={server.id} />
+              ))}
             </div>
           )}
         </div>
@@ -263,9 +136,33 @@ export default function Home() {
             setSelectedGroupId(null);
             setIsGroupPanelOpen(false);
           }}
-          groupId={selectedGroupId ?? undefined}
+          channelId={selectedGroupId ?? undefined}
         />
       )}
     </>
   );
 }
+
+// Sub-component to fetch and display channels for a given server
+const ServerChannels = ({ serverId }: { serverId: UUID }) => {
+  const { data: channelsData, isLoading: isLoadingChannels } = useCentralChannels(serverId);
+  const groupChannels = useMemo(
+    () => channelsData?.data?.channels?.filter((ch) => ch.type === CoreChannelType.GROUP) || [],
+    [channelsData]
+  );
+
+  if (isLoadingChannels) return <p>Loading channels for server...</p>;
+  if (!groupChannels || groupChannels.length === 0)
+    return <p className="text-sm text-muted-foreground">No group channels in this server.</p>;
+
+  return (
+    <>
+      {groupChannels.map((channel) => (
+        <GroupCard
+          key={channel.id}
+          group={{ ...channel, server_id: serverId }} // Pass server_id for navigation context
+        />
+      ))}
+    </>
+  );
+};
