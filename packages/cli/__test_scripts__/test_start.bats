@@ -64,7 +64,21 @@ teardown() {
 # Basic agent check
 # -----------------------------------------------------------------------------
 @test "start and list shows Ada agent running" {
+  # Start a temporary server with Ada character
+  LOG_LEVEL=debug PGLITE_DATA_DIR="$TEST_TMP_DIR/elizadb" \
+  $ELIZAOS_CMD start -p "$TEST_SERVER_PORT" --character "$BATS_TEST_DIRNAME/test-characters/ada.json" \
+    >"$TEST_TMP_DIR/server.log" 2>&1 &
+  server_pid=$!
+  
+  # Wait for server to be ready
+  sleep 6
+  
+  # Test that agent list shows Ada
   run $ELIZAOS_CMD agent list --remote-url "http://localhost:$TEST_SERVER_PORT"
+  
+  # Clean up server
+  kill "$server_pid" 2>/dev/null || true
+  
   [ "$status" -eq 0 ]
   [[ "$output" == *"Ada"* ]]
 }
@@ -73,9 +87,23 @@ teardown() {
 # Call single agent endpoint (204/200 ok is fine)
 # -----------------------------------------------------------------------------
 @test "agent endpoint responds" {
+  # Start a temporary server with Ada character
+  LOG_LEVEL=debug PGLITE_DATA_DIR="$TEST_TMP_DIR/elizadb2" \
+  $ELIZAOS_CMD start -p "$TEST_SERVER_PORT" --character "$BATS_TEST_DIRNAME/test-characters/ada.json" \
+    >"$TEST_TMP_DIR/server2.log" 2>&1 &
+  server_pid=$!
+  
+  # Wait for server to be ready
+  sleep 6
+  
+  # Get agent list and extract agent ID
   run $ELIZAOS_CMD agent list --remote-url "http://localhost:$TEST_SERVER_PORT"
   [ "$status" -eq 0 ]
   agent_id=$(grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' <<<"$output" | head -1)
+  
+  # Clean up server
+  kill "$server_pid" 2>/dev/null || true
+  
   [ -n "$agent_id" ]
   run curl -s -o /dev/null -w "%{http_code}" "http://localhost:$TEST_SERVER_PORT/api/agents/$agent_id"
   [ "$status" -eq 0 ]
@@ -153,12 +181,35 @@ teardown() {
     # The 'skip' command exits with status 0, marking the test as skipped.
   fi
 
+  # Start a temporary server with Ada character
+  LOG_LEVEL=debug PGLITE_DATA_DIR="$TEST_TMP_DIR/elizadb3" \
+  $ELIZAOS_CMD start -p "$TEST_SERVER_PORT" --character "$BATS_TEST_DIRNAME/test-characters/ada.json" \
+    >"$TEST_TMP_DIR/server3.log" 2>&1 &
+  server_pid=$!
+  
+  # Wait for server to be ready
+  sleep 8
+  
   # Tests if able to get response from Ada agent
   run $ELIZAOS_CMD agent list --remote-url "http://localhost:$TEST_SERVER_PORT"
-  ELIZA_AGENT_ID=$(echo "$output" | grep 'Ada' | sed -E 's/.*│ *([0-9a-f\-]{36}) *.*/\1/')
-  local payload="{\"entityId\":\"31c75add-3a49-4bb1-ad40-92c6b4c39558\",\"roomId\":\"$ELIZA_AGENT_ID\",\"source\":\"client_chat\",\"text\":\"Ada, What's your stance on AI regulation?\",\"channelType\":\"API\"}"
-  run curl -s -X POST -H "Content-Type: application/json" -d "$payload" "http://localhost:$TEST_SERVER_PORT/api/agents/$ELIZA_AGENT_ID/message"
   [ "$status" -eq 0 ]
-  [[ "$output" == *thought* ]]
-  [[ "$output" == *action* ]]
+  ELIZA_AGENT_ID=$(echo "$output" | grep 'Ada' | sed -E 's/.*│ *([0-9a-f\-]{36}) *.*/\1/')
+  
+  if [ -n "$ELIZA_AGENT_ID" ]; then
+    local payload="{\"entityId\":\"31c75add-3a49-4bb1-ad40-92c6b4c39558\",\"roomId\":\"$ELIZA_AGENT_ID\",\"source\":\"client_chat\",\"text\":\"Ada, What's your stance on AI regulation?\",\"channelType\":\"API\"}"
+    run curl -s -X POST -H "Content-Type: application/json" -d "$payload" "http://localhost:$TEST_SERVER_PORT/api/agents/$ELIZA_AGENT_ID/message"
+    
+    # Clean up server
+    kill "$server_pid" 2>/dev/null || true
+    
+    [ "$status" -eq 0 ]
+    [[ "$output" == *thought* ]]
+    [[ "$output" == *action* ]]
+  else
+    # Clean up server
+    kill "$server_pid" 2>/dev/null || true
+    
+    # Fail if we couldn't find the Ada agent
+    [ -n "$ELIZA_AGENT_ID" ]
+  fi
 }
