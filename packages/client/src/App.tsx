@@ -1,6 +1,6 @@
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import AgentCreator from './components/agent-creator';
 import { AppSidebar } from './components/app-sidebar';
@@ -22,6 +22,9 @@ import Home from './routes/home';
 import NotFound from './routes/not-found';
 import Room from './routes/room';
 import Settings from './routes/settings';
+import { Menu } from 'lucide-react';
+import { Sheet, SheetContent, SheetTrigger } from './components/ui/sheet';
+import { Button } from './components/ui/button';
 
 // Create a query client with optimized settings
 const queryClient = new QueryClient({
@@ -69,6 +72,7 @@ prefetchInitialData();
 function AppContent() {
   useVersion();
   const { status } = useConnection();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Also prefetch when the component mounts (helps with HMR and refreshes)
   useEffect(() => {
@@ -80,7 +84,21 @@ function AppContent() {
       <SidebarProvider>
         <AppSidebar />
         <SidebarInset>
-          <div className="flex w-full justify-center">
+          {/* Mobile menu button */}
+          <div className="md:hidden absolute top-4 left-4 z-50">
+            <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon">
+                  <Menu className="h-5 w-5" />
+                  <span className="sr-only">Toggle menu</span>
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-80 p-0 z-50">
+                <AppSidebar isMobile={true} />
+              </SheetContent>
+            </Sheet>
+          </div>
+          <div className="flex w-full justify-center pt-16 md:pt-0">
             <div className="w-full md:max-w-4xl">
               <ConnectionErrorBanner />
             </div>

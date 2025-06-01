@@ -159,38 +159,38 @@ const RoomListSection = ({
   <SidebarSection title="Groups" className="mt-2">
     {roomsLoading
       ? Array.from({ length: 5 }).map((_, i) => (
-          <SidebarMenuItem key={i}>
-            <SidebarMenuSkeleton />
-          </SidebarMenuItem>
-        ))
+        <SidebarMenuItem key={i}>
+          <SidebarMenuSkeleton />
+        </SidebarMenuItem>
+      ))
       : Array.from(rooms.entries()).map(([roomId, roomArr]) => {
-          const roomName = roomArr[0]?.name ?? 'Unnamed';
-          const ids = roomArr.map((r) => r.agentId).filter(Boolean) as UUID[];
-          const names = ids.map((id) => agents.find((a) => a.id === id)?.name ?? 'Unknown');
-          return (
-            <SidebarMenuItem key={roomId} className="h-16">
-              <NavLink to={`/room/${roomId}`}>
-                <SidebarMenuButton className="px-4 py-2 my-2 h-full rounded-md">
-                  <div className="flex items-center gap-5">
-                    <AgentAvatarStack
-                      agentIds={ids}
-                      agentNames={names}
-                      agentAvatars={agentAvatarMap}
-                      size="md"
-                      showExtraTooltip
-                    />
-                    <div className="flex flex-col gap-1">
-                      <span className="text-base truncate max-w-24 leading-none">{roomName}</span>
-                      <span className="text-xs text-muted-foreground leading-none">
-                        {ids.length} {ids.length === 1 ? 'Member' : 'Members'}
-                      </span>
-                    </div>
+        const roomName = roomArr[0]?.name ?? 'Unnamed';
+        const ids = roomArr.map((r) => r.agentId).filter(Boolean) as UUID[];
+        const names = ids.map((id) => agents.find((a) => a.id === id)?.name ?? 'Unknown');
+        return (
+          <SidebarMenuItem key={roomId} className="h-16">
+            <NavLink to={`/room/${roomId}`}>
+              <SidebarMenuButton className="px-4 py-2 my-2 h-full rounded-md">
+                <div className="flex items-center gap-5">
+                  <AgentAvatarStack
+                    agentIds={ids}
+                    agentNames={names}
+                    agentAvatars={agentAvatarMap}
+                    size="md"
+                    showExtraTooltip
+                  />
+                  <div className="flex flex-col gap-1">
+                    <span className="text-base truncate max-w-24 leading-none">{roomName}</span>
+                    <span className="text-xs text-muted-foreground leading-none">
+                      {ids.length} {ids.length === 1 ? 'Member' : 'Members'}
+                    </span>
                   </div>
-                </SidebarMenuButton>
-              </NavLink>
-            </SidebarMenuItem>
-          );
-        })}
+                </div>
+              </SidebarMenuButton>
+            </NavLink>
+          </SidebarMenuItem>
+        );
+      })}
   </SidebarSection>
 );
 
@@ -212,7 +212,7 @@ const CreateButton = ({ onCreateRoom }: { onCreateRoom: () => void }) => {
         <Button
           variant="default"
           className={cn(
-            'w-full justify-between items-center relative bg-primary text-primary-foreground',
+            'w-full justify-between items-center relative bg-primary text-primary-foreground overflow-hidden',
             animate && 'animate-bounce-sm',
             'hover:shadow-md hover:scale-[1.02] transition-all duration-300 group'
           )}
@@ -245,7 +245,7 @@ const CreateButton = ({ onCreateRoom }: { onCreateRoom: () => void }) => {
  *
  * The sidebar includes sections for online and offline agents, group rooms, a create button for agents and groups, and footer links to documentation, logs, and settings. It handles loading and error states for agent and room data, and conditionally displays a group creation panel.
  */
-export function AppSidebar() {
+export function AppSidebar({ isMobile = false }: { isMobile?: boolean }) {
   const location = useLocation();
 
   const { data: agentsData, error: agentsError } = useAgentsWithDetails();
@@ -309,7 +309,14 @@ export function AppSidebar() {
   }, [roomsData]);
 
   return (
-    <Sidebar className="bg-background">
+    <Sidebar
+      className={cn(
+        "bg-background border-r min-h-screen",
+        isMobile ? "p-4 pt-0" : "p-4 w-72",
+        !isMobile && "hidden md:flex md:flex-col"
+      )}
+      collapsible="none"
+    >
       {/* ---------- header ---------- */}
       <SidebarHeader>
         <SidebarMenu>
@@ -317,7 +324,7 @@ export function AppSidebar() {
             <SidebarMenuButton size="lg" asChild>
               <NavLink to="/" className="px-6 py-2 h-full sidebar-logo">
                 <div className="flex flex-col pt-2 gap-1 items-start justify-center">
-                  <img alt="elizaos-logo" src="/elizaos-logo-light.png" width="90%" />
+                  <img alt="elizaos-logo" src="/elizaos-logo-light.png" className="w-32 max-w-full" />
                   <span className="text-xs font-mono text-muted-foreground">v{info.version}</span>
                 </div>
               </NavLink>
@@ -327,7 +334,7 @@ export function AppSidebar() {
       </SidebarHeader>
 
       {/* ---------- content ---------- */}
-      <SidebarContent>
+      <SidebarContent className="flex-1">
         {/* create */}
         <div className="px-4 py-2 mb-2">
           <CreateButton onCreateRoom={() => setGroupPanelOpen(true)} />
