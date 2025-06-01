@@ -14,6 +14,8 @@
     "build:docs": "turbo run build --filter=@elizaos/docs",
     "build": "turbo run build --filter=!@elizaos/docs",
     "build:client": "turbo run build --filter=@elizaos/client",
+    "format": "turbo run format --filter=./packages/*",
+    "format:check": "turbo run format:check --filter=./packages/*",
     "clean": "turbo run clean --filter=./packages/* && rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo bun.lock*",
     "build:cli": "turbo run build --filter=@elizaos/cli --no-cache",
     "build:core": "turbo run build --filter=@elizaos/core --no-cache",
