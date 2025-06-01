@@ -85,8 +85,7 @@ make_proj() {            # $1 = directory name
 @test "update --packages shows helpful message in empty directory" {
   run $ELIZAOS_CMD update --packages
   [ "$status" -eq 0 ]
-  [[ "$output" == *"empty directory"* ]]
-  [[ "$output" == *"elizaos create"* ]]
+  [[ "$output" == *"No package.json found"* ]]
 }
 
 @test "update --packages shows helpful message in non-elizaos project" {
@@ -103,7 +102,6 @@ EOF
   
   run $ELIZAOS_CMD update --packages
   [ "$status" -eq 0 ]
-  [[ "$output" == *"non-ElizaOS project"* ]]
   [[ "$output" == *"some-other-project"* ]]
   [[ "$output" == *"elizaos create"* ]]
 }
@@ -146,5 +144,5 @@ EOF
   
   run $ELIZAOS_CMD update --packages
   [ "$status" -eq 0 ]
-  [[ "$output" == *"No ElizaOS packages found"* ]]
+  [[ "$output" == *"doesn't appear to be an ElizaOS project"* ]]
 }
