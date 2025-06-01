@@ -5,33 +5,37 @@ import type {
   IDatabaseAdapter,
   Log,
   Memory,
-  MemoryMetadata,
   Participant,
   Relationship,
   Room,
   Task,
   UUID,
   World,
+  MemoryMetadata,
 } from './types';
 import { type Pool as PgPool } from 'pg';
 import { PGlite } from '@electric-sql/pglite';
 
 /**
- * An abstract class representing a database adapter for managing various entities
- * like entities, memories, entities, goals, and rooms.
- */
-/**
  * Database adapter class to be extended by individual database adapters.
  *
  * @template DB - The type of the database instance.
  * @abstract
- * implements IDatabaseAdapter
+ * @implements {IDatabaseAdapter}
  */
 export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter {
   /**
    * The database instance.
    */
   db: DB;
+
+  /**
+   * Creates a new DatabaseAdapter instance.
+   * @param db The database instance to use.
+   */
+  constructor(db: DB) {
+    this.db = db;
+  }
 
   /**
    * Initialize the database adapter.
@@ -131,13 +135,12 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
   abstract getMemories(params: {
     entityId?: UUID;
     agentId?: UUID;
+    roomId?: UUID;
     count?: number;
     unique?: boolean;
     tableName: string;
     start?: number;
     end?: number;
-    roomId?: UUID;
-    worldId?: UUID;
   }): Promise<Memory[]>;
 
   abstract getMemoriesByRoomIds(params: {
@@ -221,14 +224,11 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
    */
   abstract searchMemories(params: {
     tableName: string;
+    roomId: UUID;
     embedding: number[];
-    match_threshold?: number;
-    count?: number;
-    unique?: boolean;
-    query?: string;
-    roomId?: UUID;
-    worldId?: UUID;
-    entityId?: UUID;
+    match_threshold: number;
+    count: number;
+    unique: boolean;
   }): Promise<Memory[]>;
 
   /**
@@ -449,7 +449,7 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
    * Retrieves all agents from the database.
    * @returns A Promise that resolves to an array of Agent objects.
    */
-  abstract getAgents(): Promise<Partial<Agent>[]>;
+  abstract getAgents(): Promise<Agent[]>;
 
   /**
    * Creates a new agent in the database.
@@ -522,7 +522,7 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
    * @param params Object containing optional roomId and tags to filter tasks
    * @returns Promise resolving to an array of Task objects
    */
-  abstract getTasks(params: { roomId?: UUID; tags?: string[]; entityId?: UUID }): Promise<Task[]>;
+  abstract getTasks(params: { roomId?: UUID; tags?: string[] }): Promise<Task[]>;
 
   /**
    * Retrieves a specific task by its ID.

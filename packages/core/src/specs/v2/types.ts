@@ -1,6 +1,8 @@
 import { type Pool as PgPool } from 'pg';
 import { PGlite } from '@electric-sql/pglite';
 
+// Don't import Service from core, define our own v2 Service
+
 /**
  * Defines a custom type UUID representing a universally unique identifier
  */
@@ -45,9 +47,6 @@ export interface Content {
 
   /** Array of media attachments */
   attachments?: Media[];
-
-  /** room type */
-  channelType?: string;
 
   /**
    * Additional dynamic properties
@@ -568,7 +567,10 @@ export type World = {
   };
 };
 
-export type RoomMetadata = Record<string, unknown>;
+export type RoomMetadata = {
+  // No sourceChannelId needed here, Room.channelId IS the source/central channel ID
+  [key: string]: unknown;
+};
 
 export type Room = {
   id: UUID;
@@ -641,41 +643,6 @@ export enum ChannelType {
   API = 'API', // @deprecated - Use DM or GROUP instead
 }
 
-/**
- * Client instance
- */
-export abstract class Service {
-  /** Runtime instance */
-  protected runtime!: IAgentRuntime;
-
-  constructor(runtime?: IAgentRuntime) {
-    if (runtime) {
-      this.runtime = runtime;
-    }
-  }
-
-  abstract stop(): Promise<void>;
-
-  /** Service type */
-  static serviceType: string;
-
-  /** Service name */
-  abstract capabilityDescription: string;
-
-  /** Service configuration */
-  config?: { [key: string]: any };
-
-  /** Start service connection */
-  static async start(_runtime: IAgentRuntime): Promise<Service> {
-    throw new Error('Not implemented');
-  }
-
-  /** Stop service connection */
-  static async stop(_runtime: IAgentRuntime): Promise<unknown> {
-    throw new Error('Not implemented');
-  }
-}
-
 export type Route = {
   type: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'STATIC';
   path: string;
@@ -689,7 +656,6 @@ export type Route = {
 /**
  * Plugin for extending agent functionality
  */
-
 export type PluginEvents = {
   [K in keyof EventPayloadMap]?: EventHandler<K>[];
 } & {
@@ -1056,6 +1022,8 @@ export interface IDatabaseAdapter {
    */
   getRelationships(params: { entityId: UUID; tags?: string[] }): Promise<Relationship[]>;
 
+  ensureEmbeddingDimension(dimension: number): Promise<void>;
+
   getCache<T>(key: string): Promise<T | undefined>;
   setCache<T>(key: string, value: T): Promise<boolean>;
   deleteCache(key: string): Promise<boolean>;
@@ -1325,6 +1293,9 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 }
 
 /**
+ * Interface for settings object with key-value pairs.
+ */
+/**
  * Interface representing settings with string key-value pairs.
  */
 export interface RuntimeSettings {
@@ -1419,6 +1390,18 @@ export type GenerateTextParams = {
   /** Optional. A list of sequences at which the model will stop generating further tokens. */
   stopSequences?: string[];
 };
+
+/**
+ * Parameters for tokenizing text, i.e., converting a string into a sequence of numerical tokens.
+ * This is a common preprocessing step for many language models.
+ * This structure is used with `AgentRuntime.useModel` when the `modelType` is `ModelType.TEXT_TOKENIZER_ENCODE`.
+ */
+export interface TokenizeTextParams {
+  /** The input string to be tokenized. */
+  prompt: string;
+  /** The model type to use for tokenization, which determines the tokenizer algorithm and vocabulary. */
+  modelType: ModelTypeName;
+}
 
 /**
  * Parameters for detokenizing text, i.e., converting a sequence of numerical tokens back into a string.
@@ -1714,16 +1697,6 @@ export interface TextGenerationParams extends BaseModelParams {
 export interface TextEmbeddingParams extends BaseModelParams {
   /** The text to create embeddings for */
   text: string;
-}
-
-/**
- * Parameters for text tokenization models
- */
-export interface TokenizeTextParams extends BaseModelParams {
-  /** The text to tokenize */
-  prompt: string;
-  /** The model type to use for tokenization */
-  modelType: ModelTypeName;
 }
 
 /**
@@ -2029,6 +2002,13 @@ export interface ModelEventPayload extends EventPayload {
   };
 }
 
+/**
+ * Represents the parameters for a message received handler.
+ * @typedef {Object} MessageReceivedHandlerParams
+ * @property {IAgentRuntime} runtime - The agent runtime associated with the message.
+ * @property {Memory} message - The message received.
+ * @property {HandlerCallback} callback - The callback function to be executed after handling the message.
+ */
 export type MessageReceivedHandlerParams = {
   runtime: IAgentRuntime;
   message: Memory;
@@ -2406,4 +2386,39 @@ export interface ControlMessage {
 
   /** Room ID to ensure signal is directed to the correct chat window */
   roomId: UUID;
+}
+
+/**
+ * Client instance
+ */
+export abstract class Service {
+  /** Runtime instance */
+  protected runtime!: IAgentRuntime;
+
+  constructor(runtime?: IAgentRuntime) {
+    if (runtime) {
+      this.runtime = runtime;
+    }
+  }
+
+  abstract stop(): Promise<void>;
+
+  /** Service type */
+  static serviceType: string;
+
+  /** Service name */
+  abstract capabilityDescription: string;
+
+  /** Service configuration */
+  config?: { [key: string]: any };
+
+  /** Start service connection */
+  static async start(_runtime: IAgentRuntime): Promise<Service> {
+    throw new Error('Not implemented');
+  }
+
+  /** Stop service connection */
+  static async stop(_runtime: IAgentRuntime): Promise<unknown> {
+    throw new Error('Not implemented');
+  }
 }
