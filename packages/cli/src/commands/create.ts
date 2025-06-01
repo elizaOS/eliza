@@ -40,6 +40,7 @@ const initOptionsSchema = z.object({
   dir: z.string().default('.'),
   yes: z.boolean().default(false),
   type: z.enum(['project', 'plugin', 'agent']).default('project'),
+  tee: z.boolean().default(false),
 });
 
 /**
@@ -202,6 +203,7 @@ export const create = new Command()
   .option('-d, --dir <dir>', 'installation directory', '.')
   .option('-y, --yes', 'skip confirmation', false)
   .option('-t, --type <type>', 'type to create (project, plugin, or agent)', 'project')
+  .option('--tee', 'create a TEE starter project', false)
   .argument('[name]', 'name for the project, plugin, or agent')
   .action(async (name, opts) => {
     // Set non-interactive mode if environment variable is set or if -y/--yes flag is present in process.argv
@@ -228,6 +230,7 @@ export const create = new Command()
         dir: opts.dir || '.',
         yes: opts.yes, // Already properly converted to boolean above
         type: opts.type || '',
+        tee: opts.tee || false,
       };
 
       // Determine project type, respecting -y
@@ -494,6 +497,15 @@ export const create = new Command()
         aiModel = response.aiModel;
       }
 
+      // Determine which template to use based on --tee flag
+      const template = options.tee ? 'project-tee-starter' : 'project-starter';
+
+      if (options.tee) {
+        console.info('Creating TEE-enabled project with TEE capabilities...');
+      }
+
+      await copyTemplateUtil(template, targetDir, projectName);
+      
       if (!aiModel) {
         console.error('No AI model selected or provided');
         handleError(new Error('No AI model selected or provided'));
