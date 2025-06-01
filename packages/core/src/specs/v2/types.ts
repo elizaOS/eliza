@@ -4,10 +4,13 @@ import { PGlite } from '@electric-sql/pglite';
 // Don't import Service from core, define our own v2 Service
 
 /**
+<<<<<<< HEAD
  * Type definition for a Universally Unique Identifier (UUID) using a specific format.
  * @typedef {`${string}-${string}-${string}-${string}-${string}`} UUID
  */
 /**
+=======
+>>>>>>> 355d9e49795e12a47c76d2e253fa6d75489fa043
  * Defines a custom type UUID representing a universally unique identifier
  */
 export type UUID = `${string}-${string}-${string}-${string}-${string}`;
@@ -1704,6 +1707,7 @@ export interface TextEmbeddingParams extends BaseModelParams {
 }
 
 /**
+<<<<<<< HEAD
  * Parameters for text tokenization models
  */
 export interface TokenizeTextParams extends BaseModelParams {
@@ -1724,6 +1728,8 @@ export interface DetokenizeTextParams extends BaseModelParams {
 }
 
 /**
+=======
+>>>>>>> 355d9e49795e12a47c76d2e253fa6d75489fa043
  * Parameters for image generation models
  */
 export interface ImageGenerationParams extends BaseModelParams {

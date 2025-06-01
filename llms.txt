@@ -1194,10 +1194,6 @@ export interface TokenizeTextParams extends BaseModelParams {
   prompt: string;
   modelType: ModelType;
 }
-export interface DetokenizeTextParams extends BaseModelParams {
-  tokens: number[];
-  modelType: ModelType;
-}
 export interface ImageGenerationParams extends BaseModelParams {
   prompt: string;
   size?: string;

@@ -36,7 +36,7 @@
   "devDependencies": {
     "tsup": "8.4.0",
     "prettier": "3.5.3",
-    "vitest": "2.1.5",
+    "vitest": "3.1.4",
     "@vitest/coverage-v8": "2.1.5"
   },
   "scripts": {

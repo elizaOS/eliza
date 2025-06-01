@@ -2010,10 +2010,6 @@ export interface TokenizeTextParams extends BaseModelParams {
   prompt: string;
   modelType: ModelTypeName;
 }
-export interface DetokenizeTextParams extends BaseModelParams {
-  tokens: number[];
-  modelType: ModelTypeName;
-}
 export interface ImageGenerationParams extends BaseModelParams {
   prompt: string;
   size?: string;

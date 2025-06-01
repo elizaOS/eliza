@@ -15,7 +15,7 @@ export async function getActorDetails({
   runtime: IAgentRuntime;
   roomId: UUID;
 }) {
-  // WRITE ME
+  throw new Error('getActorDetails is not implemented.');
 }
 
 /**
@@ -24,7 +24,10 @@ export async function getActorDetails({
  * @returns string
  */
 export function formatActors({ actors }: { actors: Actor[] }) {
-  // WRITE ME
+  if (!actors || actors.length === 0) {
+    return 'No actors available.';
+  }
+  return actors.map((actor) => actor.name).join(', ');
 }
 
 /**
