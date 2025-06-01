@@ -10,9 +10,6 @@ export const formatPosts = ({
   actors: Actor[];
   conversationHeader?: boolean;
 }) => {
-<<<<<<< HEAD
-  return coreFormatPosts(messages as any);
-=======
   const entities = actors.map((actor) => ({
     id: actor.id,
     names: [actor.name, actor.username].filter(Boolean) as string[],
@@ -24,5 +21,4 @@ export const formatPosts = ({
     entities: entities as any,
     conversationHeader,
   });
->>>>>>> 355d9e49795e12a47c76d2e253fa6d75489fa043
 };

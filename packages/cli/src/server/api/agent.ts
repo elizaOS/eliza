@@ -83,6 +83,21 @@ const getRuntime = (agents: Map<UUID, IAgentRuntime>, agentId: UUID) => {
   return runtime;
 };
 
+/**
+ * Interface representing a custom request object that extends the express.Request interface.
+ * @interface CustomRequest
+ * @extends express.Request
+ * @property {Express.Multer.File} [file] - Optional property representing a file uploaded with the request
+ * @property {Express.Multer.File[]} [files] - Optional property representing multiple files uploaded with the request
+ * @property {Object} params - Object representing parameters included in the request
+ * @property {string} params.agentId - The unique identifier for the agent associated with the request
+ * @property {string} params.roomId - The unique identifier for the room associated with the request
+ * @property {string} params.logId - The unique identifier for the log associated with the request
+ * @property {string} params.worldId - The unique identifier for the world associated with the request
+ * @property {string} params.memoryId - The unique identifier for the memory associated with the request
+ * @property {string} params.messageId - The unique identifier for the message associated with the request
+ * @property {string} params.filename - The filename associated with the request
+ */
 interface CustomRequest extends express.Request {
   query: any;
   body: any;
@@ -90,6 +105,12 @@ interface CustomRequest extends express.Request {
   files?: MulterFile[];
   params: {
     agentId: string;
+    roomId?: string;
+    logId?: string;
+    worldId?: string;
+    memoryId?: string;
+    messageId?: string;
+    filename?: string;
   };
 }
 
@@ -1037,6 +1058,78 @@ export function agentRouter(
       logger.error(`[ROOMS LIST] Error retrieving rooms for agent ${agentId}:`, error);
       sendError(res, 500, 'RETRIEVAL_ERROR', 'Failed to retrieve agent rooms', error.message);
     }
+  });
+
+  // Get room details
+  router.get('/:agentId/rooms/:roomId', async (req: CustomRequest, res: express.Response) => {
+    const agentId = validateUuid(req.params.agentId);
+    const roomId = validateUuid(req.params.roomId);
+
+    if (!agentId || !roomId) {
+      sendError(res, 400, 'INVALID_ID', 'Invalid agent ID or room ID format');
+      return;
+    }
+
+    // Get runtime
+    const runtime = agents.get(agentId);
+    if (!runtime) {
+      sendError(res, 404, 'NOT_FOUND', 'Agent not found');
+      return;
+    }
+
+    try {
+      const room = await runtime.getRoom(roomId);
+      if (!room) {
+        sendError(res, 404, 'NOT_FOUND', 'Room not found');
+        return;
+      }
+
+      // Optionally, enrich room data with world name if needed
+      // This depends on whether getRoom returns worldId and if you want to include worldName
+      let worldName = 'N/A';
+      if (room.worldId) {
+        const world = await runtime.getWorld(room.worldId);
+        if (world) {
+          worldName = world.name;
+        }
+      }
+
+      sendSuccess(res, { ...room, worldName });
+    } catch (error) {
+      logger.error(`[ROOM DETAILS] Error retrieving room ${roomId} for agent ${agentId}:`, error);
+      sendError(res, 500, 'RETRIEVAL_ERROR', 'Failed to retrieve room details', error.message);
+    }
+  });
+
+  router.delete('/:agentId/logs/:logId', async (req, res) => {
+    const agentId = validateUuid(req.params.agentId);
+    const logId = validateUuid(req.params.logId);
+    if (!agentId || !logId) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_ID',
+          message: 'Invalid agent or log ID format',
+        },
+      });
+      return;
+    }
+
+    const runtime = agents.get(agentId);
+    if (!runtime) {
+      res.status(404).json({
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Agent not found',
+        },
+      });
+      return;
+    }
+
+    await runtime.deleteLog(logId);
+
+    res.status(204).send();
   });
 
   // Audio messages endpoints

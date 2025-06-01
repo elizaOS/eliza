@@ -1051,6 +1051,9 @@ export interface IDatabaseAdapter {
     roomId: UUID;
     type: string;
   }): Promise<void>;
+
+  getActorDetails(params: { roomId: UUID }): Promise<Actor[]>;
+
   searchMemories(params: {
     tableName: string;
     agentId: UUID;
