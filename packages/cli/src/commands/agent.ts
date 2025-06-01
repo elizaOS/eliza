@@ -287,13 +287,24 @@ Required configuration:
 
         let characterName = null;
 
-        async function createCharacter(payload) {
+        async function createCharacter(payload: any) {
           const response = await fetch(baseUrl, {
             method: 'POST',
             headers,
             body: JSON.stringify(payload),
           });
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HTTP ${response.status}: ${errorText}`);
+          }
+          
           const data = await response.json();
+          
+          if (!data || !data.data || !data.data.character) {
+            throw new Error(`Invalid response format: ${JSON.stringify(data)}`);
+          }
+          
           return data.data.character.name;
         }
 
