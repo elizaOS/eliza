@@ -1,5 +1,7 @@
 import AgentAvatarStack from '@/components/agent-avatar-stack';
 import ConnectionStatus from '@/components/connection-status';
+// ServerManagement hidden - using single default server
+// import { ServerManagement } from '@/components/server-management';
 // GroupPanel needs to be re-evaluated for central channel creation/editing
 // import GroupPanel from '@/components/group-panel';
 import { Button } from '@/components/ui/button';
@@ -159,10 +161,12 @@ const GroupChannelListSection = ({
   servers,
   isLoadingServers,
   className = '',
+  onManageServers,
 }: {
   servers: ClientMessageServer[] | undefined;
   isLoadingServers: boolean;
   className?: string;
+  onManageServers: () => void;
 }) => {
   const navigate = useNavigate();
 
@@ -332,72 +336,77 @@ export function AppSidebar() {
     : undefined;
 
   return (
-    <Sidebar className="bg-background">
-      {/* ---------- header ---------- */}
-      <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton size="lg" asChild>
-              <NavLink to="/" className="px-6 py-2 h-full sidebar-logo">
-                <div className="flex flex-col pt-2 gap-1 items-start justify-center">
-                  <img alt="elizaos-logo" src="/elizaos-logo-light.png" width="90%" />
-                  <span className="text-xs font-mono text-muted-foreground">v{info.version}</span>
-                </div>
-              </NavLink>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarHeader>
+    <>
+      <Sidebar className="bg-background">
+        {/* ---------- header ---------- */}
+        <SidebarHeader>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton size="lg" asChild>
+                <NavLink to="/" className="px-6 py-2 h-full sidebar-logo">
+                  <div className="flex flex-col pt-2 gap-1 items-start justify-center">
+                    <img alt="elizaos-logo" src="/elizaos-logo-light.png" width="90%" />
+                    <span className="text-xs font-mono text-muted-foreground">v{info.version}</span>
+                  </div>
+                </NavLink>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarHeader>
 
-      {/* ---------- content ---------- */}
-      <SidebarContent>
-        {/* create */}
-        <div className="px-4 py-2 mb-2">
-          <CreateButton onCreateGroupChannel={handleCreateGroupChannel} />
-        </div>
+        {/* ---------- content ---------- */}
+        <SidebarContent>
+          {/* create */}
+          <div className="px-4 py-2 mb-2">
+            <CreateButton onCreateGroupChannel={handleCreateGroupChannel} />
+          </div>
 
-        {isLoadingAgents && !agentLoadError && (
-          <SidebarSection title="Online">
-            <SidebarMenuSkeleton />
-          </SidebarSection>
-        )}
-        {agentLoadError && <div className="px-4 py-2 text-xs text-red-500">{agentLoadError}</div>}
+          {isLoadingAgents && !agentLoadError && (
+            <SidebarSection title="Online">
+              <SidebarMenuSkeleton />
+            </SidebarSection>
+          )}
+          {agentLoadError && <div className="px-4 py-2 text-xs text-red-500">{agentLoadError}</div>}
 
-        {!isLoadingAgents && !agentLoadError && (
-          <AgentListSection
-            title="Online"
-            agents={onlineAgents}
-            isOnline
-            activePath={location.pathname}
-          />
-        )}
-        {!isLoadingAgents && !agentLoadError && offlineAgents.length > 0 && (
-          <AgentListSection
-            title="Offline"
-            agents={offlineAgents}
-            isOnline={false}
-            activePath={location.pathname}
+          {!isLoadingAgents && !agentLoadError && (
+            <AgentListSection
+              title="Online"
+              agents={onlineAgents}
+              isOnline
+              activePath={location.pathname}
+            />
+          )}
+          {!isLoadingAgents && !agentLoadError && offlineAgents.length > 0 && (
+            <AgentListSection
+              title="Offline"
+              agents={offlineAgents}
+              isOnline={false}
+              activePath={location.pathname}
+              className="mt-2"
+            />
+          )}
+
+          <GroupChannelListSection
+            servers={servers}
+            isLoadingServers={isLoadingServers}
             className="mt-2"
+            onManageServers={() => { }} // Server management hidden
           />
-        )}
+        </SidebarContent>
 
-        <GroupChannelListSection
-          servers={servers}
-          isLoadingServers={isLoadingServers}
-          className="mt-2"
-        />
-      </SidebarContent>
+        {/* ---------- footer ---------- */}
+        <SidebarFooter className="px-4 py-4">
+          <SidebarMenu>
+            <FooterLink to="https://eliza.how/" Icon={Book} label="Documentation" />
+            <FooterLink to="/logs" Icon={TerminalIcon} label="Logs" />
+            <FooterLink to="/settings" Icon={Cog} label="Settings" />
+            <ConnectionStatus />
+          </SidebarMenu>
+        </SidebarFooter>
+      </Sidebar>
 
-      {/* ---------- footer ---------- */}
-      <SidebarFooter className="px-4 py-4">
-        <SidebarMenu>
-          <FooterLink to="https://eliza.how/" Icon={Book} label="Documentation" />
-          <FooterLink to="/logs" Icon={TerminalIcon} label="Logs" />
-          <FooterLink to="/settings" Icon={Cog} label="Settings" />
-          <ConnectionStatus />
-        </SidebarMenu>
-      </SidebarFooter>
-    </Sidebar>
+      {/* Server management hidden - using single default server */}
+    </>
   );
 }
 

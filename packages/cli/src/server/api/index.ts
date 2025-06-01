@@ -209,7 +209,7 @@ async function processSocketMessage(
   runtime: IAgentRuntime,
   payload: any,
   socketId: string,
-  socketRoomId: string,
+  socketChannelId: string, // This is the channelId from the client
   io: SocketIOServer,
   tracer?: Tracer
 ) {
@@ -228,22 +228,24 @@ async function processSocketMessage(
   }
 
   const entityId = createUniqueUuid(runtime, senderId);
-  const uniqueRoomId = createUniqueUuid(runtime, socketRoomId);
+  const uniqueChannelId = createUniqueUuid(runtime, socketChannelId);
   const source = payload.source;
-  const worldId = payload.worldId;
+  const serverId = payload.serverId; // Agent receives serverId from client
+  // Convert serverId to worldId for internal agent processing
+  const worldId = createUniqueUuid(runtime, serverId || 'client-chat');
 
   const executeLogic = async () => {
-    // Ensure connection between entity and room
+    // Ensure connection between entity and channel
     await runtime.ensureConnection({
       entityId: entityId,
-      roomId: uniqueRoomId,
+      roomId: uniqueChannelId, // Agent runtime still uses roomId internally
       userName: payload.senderName || 'User',
       name: payload.senderName || 'User',
       source: 'client_chat',
-      channelId: uniqueRoomId,
-      serverId: 'client-chat',
+      channelId: uniqueChannelId,
+      serverId: serverId || 'client-chat',
       type: ChannelType.DM,
-      worldId: worldId || createUniqueUuid(runtime, 'client-chat'),
+      worldId: worldId, // Agent's unique worldId derived from serverId
     });
 
     // Create unique message ID
@@ -260,7 +262,7 @@ async function processSocketMessage(
       id: messageId,
       entityId: entityId,
       agentId: runtime.agentId,
-      roomId: uniqueRoomId,
+      roomId: uniqueChannelId, // Agent runtime still uses roomId internally
       content: {
         text: payload.message,
         source: `${source}:${payload.senderName}`,
@@ -287,7 +289,9 @@ async function processSocketMessage(
           senderId: runtime.agentId,
           senderName: runtime.character.name,
           text: content.text || '',
-          roomId: socketRoomId,
+          channelId: socketChannelId,
+          roomId: socketChannelId, // Keep for backward compatibility
+          serverId: serverId, // Send back serverId to client, not worldId
           createdAt: Date.now(),
           source,
         };
@@ -306,10 +310,10 @@ async function processSocketMessage(
         if (content.thought) broadcastData.thought = content.thought;
         if (content.actions) broadcastData.actions = content.actions;
 
-        logger.debug(`Broadcasting message to room ${socketRoomId}`, {
-          room: socketRoomId,
+        logger.debug(`Broadcasting message to channel ${socketChannelId}`, {
+          channel: socketChannelId,
         });
-        io.to(socketRoomId).emit('messageBroadcast', broadcastData);
+        io.to(socketChannelId).emit('messageBroadcast', broadcastData);
         io.emit('messageBroadcast', broadcastData);
 
         // Save agent's response as memory with provider information
@@ -327,11 +331,21 @@ async function processSocketMessage(
                 providers: content.providers,
               }),
           },
-          roomId: uniqueRoomId,
+          roomId: uniqueChannelId,
           createdAt: Date.now(),
         };
         logger.debug('Memory object for response:', memory);
-        await runtime.createMemory(memory, 'messages');
+        try {
+          await runtime.createMemory(memory, 'messages');
+        } catch (error) {
+          // Handle duplicate key constraint gracefully
+          if (error.message && error.message.includes('memories_pkey')) {
+            logger.debug('Memory already exists, likely due to duplicate processing:', memory.id);
+          } else {
+            logger.error('Error creating memory:', error);
+            throw error;
+          }
+        }
         return [content];
       } catch (error) {
         logger.error('Error in socket message callback:', error);
@@ -348,18 +362,20 @@ async function processSocketMessage(
       callback,
       onComplete: () => {
         // Emit completion event (client might use this for UI like stopping loading indicators)
-        io.to(socketRoomId).emit('messageComplete', {
-          roomId: socketRoomId,
+        io.to(socketChannelId).emit('messageComplete', {
+          channelId: socketChannelId,
+          roomId: socketChannelId, // Keep for backward compatibility
           agentId,
           senderId,
         });
         // Also explicitly send control message to re-enable input
-        io.to(socketRoomId).emit('controlMessage', {
+        io.to(socketChannelId).emit('controlMessage', {
           action: 'enable_input',
-          roomId: socketRoomId,
+          channelId: socketChannelId,
+          roomId: socketChannelId, // Keep for backward compatibility
         });
         logger.debug('[SOCKET] Sent messageComplete and enable_input controlMessage', {
-          roomId: socketRoomId,
+          channelId: socketChannelId,
           agentId,
           senderId,
         });
@@ -372,12 +388,12 @@ async function processSocketMessage(
     logger.debug('[SOCKET MESSAGE] Instrumentation enabled. Starting span.', {
       agentId,
       entityId,
-      roomId: uniqueRoomId,
+      channelId: uniqueChannelId,
     });
     await tracer.startActiveSpan('socket.message.received', async (span) => {
       span.setAttributes({
         'eliza.agent.id': agentId,
-        'eliza.room.id': uniqueRoomId,
+        'eliza.channel.id': uniqueChannelId,
         'eliza.entity.id': entityId,
         'eliza.channel.type': ChannelType.DM,
         'eliza.message.source': source,
@@ -397,7 +413,7 @@ async function processSocketMessage(
         logger.debug('[SOCKET MESSAGE] Ending instrumentation span.', {
           agentId,
           entityId,
-          roomId: uniqueRoomId,
+          channelId: uniqueChannelId,
         });
       }
     });
@@ -406,7 +422,7 @@ async function processSocketMessage(
     logger.debug('[SOCKET MESSAGE] Instrumentation disabled or unavailable, skipping span.', {
       agentId,
       entityId,
-      roomId: uniqueRoomId,
+      channelId: uniqueChannelId,
     });
     try {
       await executeLogic();

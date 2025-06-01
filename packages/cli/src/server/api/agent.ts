@@ -28,7 +28,8 @@ import {
 } from '@elizaos/core';
 import express from 'express';
 import fs from 'node:fs';
-import type { File as MulterFile } from 'multer';
+// Using Express.Multer.File type instead of importing from multer directly
+type MulterFile = Express.Multer.File;
 
 // Cache for compiled regular expressions to improve performance
 const regexCache = new Map<string, RegExp>();

@@ -1,9 +1,8 @@
-import RoomComponent from '@/components/room';
-import type { UUID } from '@elizaos/core';
-import { useParams, useSearchParams } from 'react-router-dom';
+import GroupComponent from '@/components/group';
 import { validateUuid } from '@elizaos/core';
+import { useParams, useSearchParams } from 'react-router-dom';
 
-export default function RoomRoute() {
+export default function GroupRoute() {
   const { channelId: channelIdFromPath } = useParams<{ channelId: string }>();
   const [searchParams] = useSearchParams();
   const serverIdFromQuery = searchParams.get('serverId');
@@ -22,7 +21,7 @@ export default function RoomRoute() {
   return (
     <div className="flex w-full justify-center">
       <div className="w-full md:max-w-4xl">
-        <RoomComponent channelId={channelId} serverId={serverId} />
+        <GroupComponent channelId={channelId} serverId={serverId} />
       </div>
     </div>
   );

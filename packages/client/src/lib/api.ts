@@ -364,6 +364,7 @@ export const apiClient = {
   },
   deleteGlobalLogs: (): Promise<{ status: string; message: string }> =>
     fetcher({ url: '/logs', method: 'DELETE' }),
+  deleteLog: (logId: string): Promise<void> => fetcher({ url: `/logs/${logId}`, method: 'DELETE' }),
   getAgentLogs: (
     agentId: string,
     options?: {
@@ -438,4 +439,74 @@ export const apiClient = {
       body: formData,
     });
   },
+
+  // Agent memories (client-perspective)
+  getAgentMemories: (
+    agentId: UUID,
+    roomId?: UUID,
+    tableName = 'memories',
+    includeEmbedding = false
+  ): Promise<{ data: { memories: ClientMemory[] } }> => {
+    const queryParams = new URLSearchParams({ tableName });
+    if (roomId) queryParams.append('roomId', roomId);
+    if (includeEmbedding) queryParams.append('includeEmbedding', 'true');
+    return fetcher({
+      url: `/agents/${agentId}/memories?${queryParams.toString()}`,
+    });
+  },
+  deleteAgentMemory: (agentId: UUID, memoryId: string) =>
+    fetcher({ url: `/agents/${agentId}/memories/${memoryId}`, method: 'DELETE' }),
+  deleteAllAgentMemories: (agentId: UUID, roomId: UUID) =>
+    fetcher({ url: `/agents/${agentId}/memories/all/${roomId}`, method: 'DELETE' }),
+  updateAgentMemory: (agentId: UUID, memoryId: string, memoryData: Partial<ClientMemory>) =>
+    fetcher({ url: `/agents/${agentId}/memories/${memoryId}`, method: 'PATCH', body: memoryData }),
+
+  // Group chat management
+  deleteGroupMemory: (serverId: UUID, memoryId: UUID): Promise<void> =>
+    fetcher({
+      url: `/messages/central-channels/${serverId}/messages/${memoryId}`,
+      method: 'DELETE',
+    }),
+  clearGroupChat: (serverId: UUID): Promise<void> =>
+    fetcher({ url: `/messages/central-channels/${serverId}/messages`, method: 'DELETE' }),
+
+  // Agent internal memories (admin/debug)
+  getAgentInternalMemories: (
+    agentId: UUID,
+    agentPerspectiveRoomId: UUID,
+    tableName = 'messages',
+    options?: { includeEmbedding?: boolean }
+  ) =>
+    fetcher({
+      url: `/agents/${agentId}/rooms/${agentPerspectiveRoomId}/memories?tableName=${tableName}${options?.includeEmbedding ? '&includeEmbedding=true' : ''}`,
+    }),
+  deleteAgentInternalMemory: (agentId: UUID, memoryId: string) =>
+    fetcher({ url: `/agents/${agentId}/memories/${memoryId}`, method: 'DELETE' }),
+  deleteAllAgentInternalMemories: (agentId: UUID, agentPerspectiveRoomId: UUID) =>
+    fetcher({ url: `/agents/${agentId}/memories/all/${agentPerspectiveRoomId}`, method: 'DELETE' }),
+  updateAgentInternalMemory: (agentId: UUID, memoryId: string, memoryData: Partial<CoreMemory>) =>
+    fetcher({ url: `/agents/${agentId}/memories/${memoryId}`, method: 'PATCH', body: memoryData }),
+
+  // Server-Agent Association Management
+  addAgentToServer: (
+    serverId: UUID,
+    agentId: UUID
+  ): Promise<{ success: boolean; data: { serverId: UUID; agentId: UUID; message: string } }> =>
+    fetcher({ url: `/messages/servers/${serverId}/agents`, method: 'POST', body: { agentId } }),
+
+  removeAgentFromServer: (
+    serverId: UUID,
+    agentId: UUID
+  ): Promise<{ success: boolean; data: { serverId: UUID; agentId: UUID; message: string } }> =>
+    fetcher({ url: `/messages/servers/${serverId}/agents/${agentId}`, method: 'DELETE' }),
+
+  getAgentsForServer: (
+    serverId: UUID
+  ): Promise<{ success: boolean; data: { serverId: UUID; agents: UUID[] } }> =>
+    fetcher({ url: `/messages/servers/${serverId}/agents` }),
+
+  getServersForAgent: (
+    agentId: UUID
+  ): Promise<{ success: boolean; data: { agentId: UUID; servers: UUID[] } }> =>
+    fetcher({ url: `/messages/agents/${agentId}/servers` }),
 };

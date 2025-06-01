@@ -19,7 +19,7 @@ import clientLogger from '@/lib/logger';
 import { parseMediaFromText, removeMediaUrlsFromText, type MediaInfo } from '@/lib/media-utils';
 import SocketIOManager from '@/lib/socketio-manager';
 import { cn, getEntityId, moment, randomUUID } from '@/lib/utils';
-import type { Agent, Content, Media, UUID, Room } from '@elizaos/core';
+import type { Agent, Content, Media, UUID } from '@elizaos/core';
 import {
   AgentStatus,
   ContentType as CoreContentType,
@@ -28,7 +28,6 @@ import {
 } from '@elizaos/core';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
 
-import { useQueryClient } from '@tanstack/react-query';
 import {
   ChevronRight,
   PanelRight,
@@ -181,7 +180,7 @@ function MessageContent({
               title={attachment.title || 'Attachment'}
             />
           ))}
-        {message.text && message.createdAt && (
+        {message.text && message.createdAt && !isNaN(message.createdAt) && (
           <ChatBubbleTimestamp timestamp={moment(message.createdAt).format('LT')} />
         )}
       </ChatBubbleMessage>
@@ -217,7 +216,6 @@ export default function DMPage() {
   const serverIdFromQuery = searchParams.get('serverId');
 
   const { toast } = useToast();
-  const queryClient = useQueryClient();
   const currentClientEntityId = getEntityId();
 
   // Determine if we're in agent mode (URL: /chat/agentId) or channel mode (URL: /chat/channelId?agentId=X&serverId=Y)
@@ -247,30 +245,8 @@ export default function DMPage() {
       // Create DM channel automatically
       const createDMChannel = async () => {
         try {
-          // First, get or create a server
-          const serversResponse = await fetch('/api/messages/central-servers');
-          const serversData = await serversResponse.json();
-
-          let serverId;
-          if (serversData.success && serversData.data.servers.length > 0) {
-            serverId = serversData.data.servers[0].id;
-          } else {
-            // Create a default server
-            const createServerResponse = await fetch('/api/messages/servers', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                name: 'Default Chat Server',
-                sourceType: 'eliza_gui',
-              }),
-            });
-            const serverResult = await createServerResponse.json();
-            if (serverResult.success) {
-              serverId = serverResult.data.server.id;
-            } else {
-              throw new Error('Failed to create server');
-            }
-          }
+          // Always use the default server (ID "0")
+          const serverId = '0' as UUID;
 
           // Create DM channel
           const dmResponse = await fetch(
@@ -312,6 +288,9 @@ export default function DMPage() {
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
+    addMessage,
+    updateMessage,
+    removeMessage,
   } = useCentralChannelMessages(finalChannelId || undefined, finalServerId || undefined);
 
   const [selectedFiles, setSelectedFiles] = useState<UploadingFile[]>([]);
@@ -336,32 +315,40 @@ export default function DMPage() {
   useEffect(() => {
     if (!finalChannelId || !currentClientEntityId) return;
     socketIOManager.initialize(currentClientEntityId);
-    socketIOManager.joinRoom(finalChannelId);
+    socketIOManager.joinChannel(finalChannelId);
     clientLogger.info(
       `[DMPage] Joined DM channel ${finalChannelId} as user ${currentClientEntityId}`
     );
 
     const handleMessageBroadcasting = (data: MessageBroadcastData) => {
       clientLogger.info('[DMPage] Received raw messageBroadcast data:', JSON.stringify(data));
-      if (data.roomId !== finalChannelId) return;
+      const msgChannelId = data.channelId || data.roomId;
+      if (msgChannelId !== finalChannelId) return;
       const isCurrentUser = data.senderId === currentClientEntityId;
       const isTargetAgent = data.senderId === targetAgentId;
       if (!isCurrentUser && isTargetAgent) setInputDisabled(false);
 
-      queryClient.setQueryData<UiMessage[]>(['messages', finalChannelId], (old = []) => {
-        const messageExists = old.some((m) => m.id === data.id);
-        if (messageExists) {
-          clientLogger.info('[DMPage] Message already exists, skipping:', data.id);
-          return old;
-        }
+      // Check if this is a message we sent (by checking for clientMessageId)
+      const clientMessageId = (data as any).clientMessageId;
+      if (clientMessageId && isCurrentUser) {
+        // Update the optimistic message with the server version
+        updateMessage(clientMessageId, {
+          id: data.id || randomUUID(),
+          isLoading: false,
+          createdAt: typeof data.createdAt === 'number' ? data.createdAt : Date.parse(data.createdAt),
+          text: data.text, // Update text in case it was modified server-side
+          attachments: data.attachments, // Update attachments with server URLs
+        });
+      } else {
+        // Add new message from server
         const newUiMsg: UiMessage = {
           id: data.id || randomUUID(),
           text: data.text,
           name: data.senderName,
           senderId: data.senderId as UUID,
           isAgent: isTargetAgent,
-          createdAt: data.createdAt,
-          channelId: data.roomId as UUID,
+          createdAt: typeof data.createdAt === 'number' ? data.createdAt : Date.parse(data.createdAt),
+          channelId: (data.channelId || data.roomId) as UUID,
           serverId: data.serverId as UUID | undefined,
           source: data.source,
           attachments: data.attachments,
@@ -370,46 +357,44 @@ export default function DMPage() {
           isLoading: false,
         };
         clientLogger.info('[DMPage] Adding new UiMessage:', JSON.stringify(newUiMsg));
-        const newMessages = [...old, newUiMsg].sort((a, b) => a.createdAt - b.createdAt);
-        clientLogger.info(
-          '[DMPage] Messages after sort:',
-          newMessages.map((m) => ({ id: m.id, time: m.createdAt, text: m.text?.substring(0, 15) }))
-        );
+        addMessage(newUiMsg);
+
         if (isTargetAgent && newUiMsg.id) animatedMessageIdRef.current = newUiMsg.id;
         else animatedMessageIdRef.current = null;
-        return newMessages;
-      });
+      }
     };
     const handleMessageComplete = (data: MessageCompleteData) => {
-      if (data.roomId === finalChannelId) setInputDisabled(false);
+      const completeChannelId = data.channelId || data.roomId;
+      if (completeChannelId === finalChannelId) setInputDisabled(false);
     };
     const handleControlMessage = (data: ControlMessageData) => {
-      if (data.roomId === finalChannelId) {
+      const ctrlChannelId = data.channelId || data.roomId;
+      if (ctrlChannelId === finalChannelId) {
         if (data.action === 'disable_input') setInputDisabled(true);
         else if (data.action === 'enable_input') setInputDisabled(false);
       }
     };
 
     const msgSub = socketIOManager.evtMessageBroadcast.attach(
-      (d: MessageBroadcastData) => d.roomId === finalChannelId,
+      (d: MessageBroadcastData) => (d.channelId || d.roomId) === finalChannelId,
       handleMessageBroadcasting
     );
     const completeSub = socketIOManager.evtMessageComplete.attach(
-      (d: MessageCompleteData) => d.roomId === finalChannelId,
+      (d: MessageCompleteData) => (d.channelId || d.roomId) === finalChannelId,
       handleMessageComplete
     );
     const controlSub = socketIOManager.evtControlMessage.attach(
-      (d: ControlMessageData) => d.roomId === finalChannelId,
+      (d: ControlMessageData) => (d.channelId || d.roomId) === finalChannelId,
       handleControlMessage
     );
 
     return () => {
-      if (finalChannelId) socketIOManager.leaveRoom(finalChannelId);
+      if (finalChannelId) socketIOManager.leaveChannel(finalChannelId);
       msgSub?.detach();
       completeSub?.detach();
       controlSub?.detach();
     };
-  }, [finalChannelId, currentClientEntityId, queryClient, socketIOManager, targetAgentId]);
+  }, [finalChannelId, currentClientEntityId, socketIOManager, targetAgentId, addMessage, updateMessage]);
 
   const { scrollRef, isAtBottom, scrollToBottom, disableAutoScroll } = useAutoScroll({
     smooth: true,
@@ -494,10 +479,7 @@ export default function DMPage() {
     };
 
     if (messageText || currentSelectedFiles.length > 0) {
-      queryClient.setQueryData<UiMessage[]>(['messages', finalChannelId], (old = []) => [
-        ...old,
-        optimisticUiMessage,
-      ]);
+      addMessage(optimisticUiMessage);
     }
     safeScrollToBottom();
 
@@ -552,23 +534,15 @@ export default function DMPage() {
 
         if (failedUploads.length > 0) {
           // Handle display of failed uploads or remove them from optimistic message
-          queryClient.setQueryData<UiMessage[]>(['messages', finalChannelId], (old = []) =>
-            old.map((m) => {
-              if (m.id === tempMessageId) {
-                return {
-                  ...m,
-                  attachments: m.attachments?.filter(
-                    (att) =>
-                      !failedUploads.some((fu) => {
-                        const failedAtt = fu.status === 'fulfilled' ? fu.value : null;
-                        return failedAtt && (failedAtt as any).id === att.id;
-                      })
-                  ),
-                };
-              }
-              return m;
-            })
-          );
+          updateMessage(tempMessageId, {
+            attachments: optimisticUiMessage.attachments?.filter(
+              (att) =>
+                !failedUploads.some((fu) => {
+                  const failedAtt = fu.status === 'fulfilled' ? fu.value : null;
+                  return failedAtt && (failedAtt as any).id === att.id;
+                })
+            ),
+          });
         }
         // If no text was initially present, but files were uploaded, create a summary text.
         if (!messageText.trim() && processedUiAttachments.length > 0) {
@@ -600,42 +574,22 @@ export default function DMPage() {
       if (!finalTextContent.trim() && finalAttachments.length === 0) {
         clientLogger.warn('Attempted to send an empty message after processing.');
         setInputDisabled(false);
-        queryClient.setQueryData<UiMessage[]>(['messages', finalChannelId], (old = []) =>
-          old.filter((m) => m.id !== tempMessageId)
-        );
+        removeMessage(tempMessageId);
         return;
       }
 
-      // 4. Send the final message payload to the server
-      const response = await apiClient.postMessageToCentralChannel(finalChannelId!, {
-        author_id: currentClientEntityId!,
-        content: finalTextContent,
-        server_id: finalServerId!,
-        metadata: {
-          attachments: finalAttachments.length > 0 ? finalAttachments : undefined,
-          user_display_name: USER_NAME,
-        },
-        source_type: CHAT_SOURCE,
-        // clientTempId: tempMessageId, // Optional: send tempId for server to ACK with it
-      });
-
-      // 5. Update the optimistic message with server data, or remove if post failed severely
-      queryClient.setQueryData<UiMessage[]>(['messages', finalChannelId], (old = []) =>
-        old.map((m) => {
-          if (m.id === tempMessageId) {
-            const serverMsg = response.data; // This is MessageServiceStructure like
-            return {
-              ...optimisticUiMessage,
-              id: serverMsg.id,
-              text: serverMsg.content,
-              attachments: (serverMsg.metadata?.attachments as Media[]) || [],
-              isLoading: false,
-              createdAt: serverMsg.createdAt, // Corrected from created_at
-            };
-          }
-          return m;
-        })
+      // 4. Send the final message via WebSocket
+      await socketIOManager.sendMessage(
+        finalTextContent,
+        finalChannelId!,
+        finalServerId!,
+        CHAT_SOURCE,
+        finalAttachments.length > 0 ? finalAttachments : undefined,
+        tempMessageId // Pass the tempMessageId to track the optimistic message
       );
+
+      // Note: We don't update the optimistic message here anymore.
+      // The message will be updated when we receive the server broadcast with clientMessageId
     } catch (error) {
       clientLogger.error('Error sending message or uploading files:', error);
       toast({
@@ -643,13 +597,10 @@ export default function DMPage() {
         description: error instanceof Error ? error.message : 'Could not send message.',
         variant: 'destructive',
       });
-      queryClient.setQueryData<UiMessage[]>(['messages', finalChannelId], (old = []) =>
-        old.map((m) =>
-          m.id === tempMessageId
-            ? { ...m, isLoading: false, text: `${m.text || 'Attachment(s)'} (Failed to send)` }
-            : m
-        )
-      );
+      updateMessage(tempMessageId, {
+        isLoading: false,
+        text: `${optimisticUiMessage.text || 'Attachment(s)'} (Failed to send)`,
+      });
     } finally {
       setInputDisabled(false);
       // selectedFiles should be empty now if all uploads were attempted
@@ -847,10 +798,10 @@ export default function DMPage() {
           <div className="px-4 pb-4 mt-auto flex-shrink-0">
             {inputDisabled && (
               <div className="px-2 pb-2 text-sm text-muted-foreground flex items-center gap-2">
-                <div className="flex gap-1">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:0ms]"></div>
-                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:150ms]"></div>
-                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:300ms]"></div>
+                <div className="flex gap-0.5 items-center justify-center">
+                  <span className="w-[6px] h-[6px] bg-white rounded-full animate-bounce [animation-delay:0s]" />
+                  <span className="w-[6px] h-[6px] bg-white rounded-full animate-bounce [animation-delay:0.2s]" />
+                  <span className="w-[6px] h-[6px] bg-white rounded-full animate-bounce [animation-delay:0.4s]" />
                 </div>
                 <span>{targetAgentData.name} is thinking</span>
                 <div className="flex">
@@ -925,7 +876,7 @@ export default function DMPage() {
                     : 'Type your message here...'
                 }
                 className="min-h-12 resize-none rounded-md bg-card border-0 p-3 shadow-none focus-visible:ring-0"
-                disabled={inputDisabled}
+                disabled={inputDisabled || targetAgentData?.status === 'inactive'}
               />
               <div className="flex items-center p-3 pt-0">
                 <Tooltip>
@@ -962,7 +913,11 @@ export default function DMPage() {
                   />
                 )}
                 <Button
-                  disabled={inputDisabled || selectedFiles.some((f) => f.isUploading)}
+                  disabled={
+                    inputDisabled ||
+                    targetAgentData?.status === 'inactive' ||
+                    selectedFiles.some((f) => f.isUploading)
+                  }
                   type="submit"
                   size="sm"
                   className="ml-auto gap-1.5 h-[30px]"

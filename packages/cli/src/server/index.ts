@@ -25,7 +25,7 @@ import { and, desc, eq, lt } from 'drizzle-orm';
 import { drizzle, type PgliteDatabase } from 'drizzle-orm/pglite';
 import { v4 as uuidv4 } from 'uuid';
 import internalMessageBus from './bus';
-import * as centralSchema from './database/schema/central';
+import * as centralSchema from './database/schema';
 import type {
   MessageChannel,
   MessageServer,
@@ -131,6 +131,7 @@ export class AgentServer {
       logger.success('Central PGlite Drizzle ORM instance created with pglite driver.');
 
       await this.applyCentralMigrations();
+      await this.ensureDefaultServer();
 
       const agentDataDir = await resolvePgliteDir(options?.dataDir);
       logger.info(`[INIT] Agent Data Dir for SQL plugin: ${agentDataDir}`);
@@ -208,6 +209,46 @@ export class AgentServer {
     }
   }
 
+  private async ensureDefaultServer(): Promise<void> {
+    try {
+      // Check if any servers exist
+      const servers = await this.getCentralServers();
+      if (servers.length === 0) {
+        logger.info('[AgentServer] Creating default server with ID 0...');
+        // First try to create server with ID "0"
+        try {
+          // Create server with specific ID "0"
+          const now = new Date();
+          const serverWithId0 = {
+            id: '0' as UUID,
+            name: 'Default Server',
+            sourceType: 'eliza_default',
+            createdAt: now,
+            updatedAt: now,
+          };
+
+          await this.centralDrizzleDB
+            .insert(centralSchema.messageServerTable)
+            .values(serverWithId0)
+            .onConflictDoNothing();
+
+          logger.success('[AgentServer] Default server created or already exists with ID: 0');
+        } catch (error) {
+          logger.error('[AgentServer] Failed to create server with ID 0:', error);
+          // Fallback to regular creation
+          const server = await this.createCentralServer({
+            name: 'Default Server',
+            sourceType: 'eliza_default',
+          });
+          logger.success('[AgentServer] Default server created with ID:', server.id);
+        }
+      }
+    } catch (error) {
+      logger.error('[AgentServer] Error ensuring default server:', error);
+      // Non-fatal - continue startup
+    }
+  }
+
   private async createCentralTablesIfNotExists(): Promise<void> {
     logger.warn(
       '[FallbackDB] Attempting to create central tables directly (using Postgres-like DDL)...'
@@ -217,6 +258,7 @@ export class AgentServer {
       `CREATE TABLE IF NOT EXISTS channels ( id TEXT PRIMARY KEY, server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE, name TEXT NOT NULL, type TEXT NOT NULL, source_type TEXT, source_id TEXT, topic TEXT, metadata JSONB, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL, updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL );`,
       `CREATE TABLE IF NOT EXISTS messages ( id TEXT PRIMARY KEY, channel_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE, author_id TEXT NOT NULL, content TEXT NOT NULL, raw_message JSONB, in_reply_to_root_message_id TEXT REFERENCES messages(id) ON DELETE SET NULL, source_type TEXT, source_id TEXT, metadata JSONB, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL, updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL );`,
       `CREATE TABLE IF NOT EXISTS channel_participants ( channel_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE, user_id TEXT NOT NULL, PRIMARY KEY (channel_id, user_id) );`,
+      `CREATE TABLE IF NOT EXISTS server_agents ( server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE, agent_id TEXT NOT NULL, PRIMARY KEY (server_id, agent_id) );`,
     ];
     try {
       for (const statement of createStatements) {
@@ -546,6 +588,17 @@ export class AgentServer {
       logger.success(
         `Successfully registered agent ${runtime.character.name} (${runtime.agentId}) with core services.`
       );
+
+      // Auto-associate agent with default server (ID "0")
+      try {
+        await this.addAgentToServer('0' as UUID, runtime.agentId);
+        logger.info(
+          `[AgentServer] Auto-associated agent ${runtime.character.name} with default server (ID: 0)`
+        );
+      } catch (error) {
+        logger.error(`[AgentServer] Failed to auto-associate agent with default server:`, error);
+        // Non-fatal - continue
+      }
     } catch (error) {
       logger.error('Failed to register agent:', error);
       throw error;
@@ -922,7 +975,7 @@ export class AgentServer {
             : undefined
         )
       )
-      .orderBy(desc(centralSchema.centralRootMessageTable.createdAt))
+      .orderBy(centralSchema.centralRootMessageTable.createdAt)
       .limit(limit);
 
     return (await query) as CentralRootMessage[];
@@ -939,5 +992,87 @@ export class AgentServer {
         )
       );
     logger.info(`[AgentServer] Removed participant ${userId} from central channel ${channelId}`);
+  }
+
+  // ===============================
+  // Server-Agent Association Methods
+  // ===============================
+
+  /**
+   * Add an agent to a server
+   * @param {UUID} serverId - The server ID
+   * @param {UUID} agentId - The agent ID to add
+   */
+  async addAgentToServer(serverId: UUID, agentId: UUID): Promise<void> {
+    // First, verify the server exists
+    const server = await this.getCentralServerById(serverId);
+    if (!server) {
+      throw new Error(`Server ${serverId} not found`);
+    }
+
+    try {
+      // Insert into server_agents association table
+      await this.centralDrizzleDB
+        .insert(centralSchema.serverAgentsTable)
+        .values({
+          serverId: serverId,
+          agentId: agentId,
+        })
+        .onConflictDoNothing(); // Avoid errors if agent is already in server
+
+      logger.info(`[AgentServer] Added agent ${agentId} to server ${serverId}`);
+    } catch (error) {
+      logger.error(`[AgentServer] Error adding agent ${agentId} to server ${serverId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Remove an agent from a server
+   * @param {UUID} serverId - The server ID
+   * @param {UUID} agentId - The agent ID to remove
+   */
+  async removeAgentFromServer(serverId: UUID, agentId: UUID): Promise<void> {
+    await this.centralDrizzleDB
+      .delete(centralSchema.serverAgentsTable)
+      .where(
+        and(
+          eq(centralSchema.serverAgentsTable.serverId, serverId),
+          eq(centralSchema.serverAgentsTable.agentId, agentId)
+        )
+      );
+    logger.info(`[AgentServer] Removed agent ${agentId} from server ${serverId}`);
+  }
+
+  /**
+   * Get all agents associated with a server
+   * @param {UUID} serverId - The server ID
+   * @returns {Promise<UUID[]>} Array of agent IDs
+   */
+  async getAgentsForServer(serverId: UUID): Promise<UUID[]> {
+    const results = await this.centralDrizzleDB
+      .select({
+        agentId: centralSchema.serverAgentsTable.agentId,
+      })
+      .from(centralSchema.serverAgentsTable)
+      .where(eq(centralSchema.serverAgentsTable.serverId, serverId));
+
+    return results.map((r) => r.agentId as UUID);
+  }
+
+  /**
+   * Get all servers an agent belongs to
+   * @param {UUID} agentId - The agent ID
+   * @returns {Promise<UUID[]>} Array of server IDs
+   */
+  async getServersForAgent(agentId: UUID): Promise<UUID[]> {
+    const results = await this.centralDrizzleDB
+      .select({
+        serverId: centralSchema.serverAgentsTable.serverId,
+      })
+      .from(centralSchema.serverAgentsTable)
+      .where(eq(centralSchema.serverAgentsTable.agentId, agentId));
+
+    return results.map((r) => r.serverId as UUID);
   }
 }

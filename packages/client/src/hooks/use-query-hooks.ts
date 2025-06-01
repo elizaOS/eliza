@@ -1,7 +1,6 @@
 import { GROUP_CHAT_SOURCE, USER_NAME } from '@/constants';
 import { apiClient } from '@/lib/api';
-import { WorldManager } from '@/lib/world-manager';
-import type { Agent, Content, Memory, UUID, Room } from '@elizaos/core';
+import type { Agent, Content, Memory, UUID, Memory as CoreMemory } from '@elizaos/core';
 import {
   useQuery,
   useMutation,
@@ -38,6 +37,29 @@ type ContentWithUser = Content & {
   isLoading?: boolean;
   worldId?: string;
   id?: string; // Add optional ID field
+};
+
+// AgentLog type from the API
+type AgentLog = {
+  id?: string;
+  type?: string;
+  timestamp?: number;
+  message?: string;
+  details?: string;
+  roomId?: string;
+  body?: {
+    modelType?: string;
+    modelKey?: string;
+    params?: any;
+    response?: any;
+    usage?: {
+      prompt_tokens?: number;
+      completion_tokens?: number;
+      total_tokens?: number;
+    };
+  };
+  createdAt?: number;
+  [key: string]: any;
 };
 
 // Constants for stale times
@@ -284,6 +306,9 @@ export function useCentralChannelMessages(
   fetchNextPage: () => Promise<void>; // Simplified pagination trigger
   hasNextPage: boolean;
   isFetchingNextPage: boolean;
+  addMessage: (newMessage: UiMessage) => void;
+  updateMessage: (messageId: string, updates: Partial<UiMessage>) => void;
+  removeMessage: (messageId: string) => void;
 } {
   const currentClientCentralId = getEntityId(); // Central ID of the currently logged-in user
 
@@ -392,6 +417,41 @@ export function useCentralChannelMessages(
     }
   };
 
+  // Add method to manually add/update messages from external sources (e.g., WebSocket)
+  const addMessage = useCallback((newMessage: UiMessage) => {
+    setMessages((prev) => {
+      // Check if message already exists
+      const existingIndex = prev.findIndex((m) => m.id === newMessage.id);
+
+      if (existingIndex >= 0) {
+        // Update existing message
+        const updated = [...prev];
+        updated[existingIndex] = newMessage;
+        return updated.sort((a, b) => a.createdAt - b.createdAt);
+      } else {
+        // Add new message
+        return [...prev, newMessage].sort((a, b) => a.createdAt - b.createdAt);
+      }
+    });
+  }, []);
+
+  // Add method to update a message by ID
+  const updateMessage = useCallback((messageId: string, updates: Partial<UiMessage>) => {
+    setMessages((prev) => {
+      return prev.map((m) => {
+        if (m.id === messageId) {
+          return { ...m, ...updates };
+        }
+        return m;
+      });
+    });
+  }, []);
+
+  // Add method to remove a message by ID
+  const removeMessage = useCallback((messageId: string) => {
+    setMessages((prev) => prev.filter((m) => m.id !== messageId));
+  }, []);
+
   // This hook now manages its own state for messages
   // To integrate with React Query for caching of initial load or background updates:
   // One could use useInfiniteQuery, but given the manual state management already here for append/prepend,
@@ -406,6 +466,9 @@ export function useCentralChannelMessages(
     fetchNextPage,
     hasNextPage: hasMoreMessages,
     isFetchingNextPage: isFetchingMore,
+    addMessage,
+    updateMessage,
+    removeMessage,
   };
 }
 
@@ -413,7 +476,7 @@ export function useGroupChannelMessages(channelId: UUID | null, initialServerId?
   // This hook now becomes an alias or a slightly specialized version of useCentralChannelMessages
   // if group-specific logic (like different source filtering) isn't handled here.
   // For now, it can directly use useCentralChannelMessages.
-  return useCentralChannelMessages(channelId, initialServerId);
+  return useCentralChannelMessages(channelId ?? undefined, initialServerId);
 }
 
 // Hook for fetching agent actions
@@ -448,7 +511,7 @@ export function useDeleteLog() {
 
   return useMutation({
     mutationFn: ({ agentId, logId }: { agentId: string; logId: string }) =>
-      apiClient.deleteLog(agentId, logId),
+      apiClient.deleteLog(logId),
 
     onMutate: async ({ agentId, logId }) => {
       // Optimistically update the UI by removing the log from the cache
@@ -514,14 +577,12 @@ export function useAgentMemories(
         tableName,
         includeEmbedding,
         result,
-        dataLength: result.data?.memories?.length || result.data?.length,
-        firstMemory: result.data?.memories?.[0] || result.data?.[0],
-        hasEmbeddings: (result.data?.memories || result.data || []).some(
-          (m: any) => m.embedding?.length > 0
-        ),
+        dataLength: result.data?.memories?.length,
+        firstMemory: result.data?.memories?.[0],
+        hasEmbeddings: (result.data?.memories || []).some((m: any) => m.embedding?.length > 0),
       });
-      // Handle both response formats
-      return result.data?.memories || result.data || [];
+      // Handle response format
+      return result.data?.memories || [];
     },
     staleTime: 1000,
     refetchInterval: 10 * 1000,
@@ -673,40 +734,8 @@ export function useClearGroupChat() {
   });
 }
 
-/**
- * Fetches rooms for the current world, grouped by server ID.
- *
- * @param options - Optional query configuration.
- * @returns A query result containing a map of server IDs to arrays of rooms.
- */
-export function useRooms(options = {}) {
-  const network = useNetworkStatus();
-
-  return useQuery<Map<string, Room[]>>({
-    queryKey: ['rooms'],
-    queryFn: async () => {
-      const rooms = await apiClient.getRooms();
-      const worldRooms = rooms.data.filter(
-        (room: Room) =>
-          room.worldId === WorldManager.getWorldId() && room.source === GROUP_CHAT_SOURCE
-      );
-
-      const roomMap: Map<string, Room[]> = new Map();
-      for (const room of worldRooms) {
-        const { serverId, ...rest } = room;
-        if (serverId) {
-          roomMap.set(serverId, [...(roomMap.get(serverId) || []), { serverId, ...rest }]);
-        }
-      }
-
-      return roomMap;
-    },
-    staleTime: STALE_TIMES.FREQUENT,
-    refetchInterval: !network.isOffline ? STALE_TIMES.FREQUENT : false,
-    refetchIntervalInBackground: false,
-    ...options,
-  });
-}
+// REMOVED: useRooms - Client should use channels, not rooms
+// Rooms are an agent-only abstraction
 
 // Hook for fetching agent panels (public GET routes)
 /**

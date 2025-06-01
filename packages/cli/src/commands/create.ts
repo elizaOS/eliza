@@ -123,29 +123,8 @@ async function setupAIModelConfig(
           await fs.writeFile(envFilePath, content, 'utf8');
           console.info('[√] OpenAI placeholder configuration added to .env file');
         } else {
-          // Check if OpenAI API key already exists in environment
-          if (process.env.OPENAI_API_KEY) {
-            console.info('[√] OpenAI API key found in environment variables, skipping prompt');
-
-            // Still add a comment to the .env file for reference
-            let content = '';
-            if (existsSync(envFilePath)) {
-              content = await fs.readFile(envFilePath, 'utf8');
-            }
-
-            if (content && !content.endsWith('\n')) {
-              content += '\n';
-            }
-
-            content += '\n# AI Model Configuration\n';
-            content += '# OpenAI Configuration (using existing environment variable)\n';
-            content += '# OPENAI_API_KEY is already set in your environment\n';
-
-            await fs.writeFile(envFilePath, content, 'utf8');
-          } else {
-            // Interactive mode - prompt for API key
-            await promptAndStoreOpenAIKey(envFilePath);
-          }
+          // Interactive mode - prompt for OpenAI API key
+          await promptAndStoreOpenAIKey(envFilePath);
         }
         break;
       }
@@ -170,29 +149,8 @@ async function setupAIModelConfig(
           await fs.writeFile(envFilePath, content, 'utf8');
           console.info('[√] Anthropic API placeholder configuration added to .env file');
         } else {
-          // Check if Anthropic API key already exists in environment
-          if (process.env.ANTHROPIC_API_KEY) {
-            console.info('[√] Anthropic API key found in environment variables, skipping prompt');
-
-            // Still add a comment to the .env file for reference
-            let content = '';
-            if (existsSync(envFilePath)) {
-              content = await fs.readFile(envFilePath, 'utf8');
-            }
-
-            if (content && !content.endsWith('\n')) {
-              content += '\n';
-            }
-
-            content += '\n# AI Model Configuration\n';
-            content += '# Anthropic API Configuration (using existing environment variable)\n';
-            content += '# ANTHROPIC_API_KEY is already set in your environment\n';
-
-            await fs.writeFile(envFilePath, content, 'utf8');
-          } else {
-            // Interactive mode - prompt for API key
-            await promptAndStoreAnthropicKey(envFilePath);
-          }
+          // Interactive mode - prompt for Anthropic API key
+          await promptAndStoreAnthropicKey(envFilePath);
         }
         break;
       }
@@ -225,45 +183,6 @@ async function installDependencies(targetDir: string) {
     console.warn(
       "Failed to install dependencies automatically. Please run 'bun install' manually."
     );
-  }
-}
-
-/**
- * Creates .gitignore and .npmignore files in the target directory if they don't exist
- */
-async function createIgnoreFiles(targetDir: string): Promise<void> {
-  const gitignorePath = path.join(targetDir, '.gitignore');
-  const npmignorePath = path.join(targetDir, '.npmignore');
-
-  // Check if .gitignore exists and create it if not
-  if (!existsSync(gitignorePath)) {
-    // Use the exact content from the original plugin-starter/.gitignore
-    const gitignoreContent = `dist/
-node_modules/
-`;
-
-    try {
-      await fs.writeFile(gitignorePath, gitignoreContent);
-    } catch (error) {
-      console.error(`Failed to create .gitignore: ${error.message}`);
-    }
-  }
-
-  // Check if .npmignore exists and create it if not
-  if (!existsSync(npmignorePath)) {
-    // Use the exact content from the original plugin-starter/.npmignore
-    const npmignoreContent = `.turbo
-dist
-node_modules
-.env
-*.env
-.env.local`;
-
-    try {
-      await fs.writeFile(npmignorePath, npmignoreContent);
-    } catch (error) {
-      console.error(`Failed to create .npmignore: ${error.message}`);
-    }
   }
 }
 
@@ -463,8 +382,6 @@ export const create = new Command()
 
         await copyTemplateUtil('plugin', targetDir, pluginName);
 
-        await createIgnoreFiles(targetDir);
-
         console.info('Installing dependencies...');
         try {
           await runBunCommand(['install', '--no-optional'], targetDir);
@@ -584,8 +501,6 @@ export const create = new Command()
       }
 
       await copyTemplateUtil('project', targetDir, projectName);
-
-      await createIgnoreFiles(targetDir);
 
       // Define project-specific .env file path, this will be created if it doesn't exist by downstream functions.
       const projectEnvFilePath = path.join(targetDir, '.env');

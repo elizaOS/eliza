@@ -212,7 +212,7 @@ export default function GroupChatPage({
     [allAgents]
   );
 
-  const roomParticipantAgents = useMemo(() => {
+  const channelParticipantAgents = useMemo(() => {
     if (!participants || !allAgents.length) return [];
     return allAgents.filter((agent) => agent.id && participants.includes(agent.id));
   }, [participants, allAgents]);
@@ -220,7 +220,7 @@ export default function GroupChatPage({
   useEffect(() => {
     if (!channelId || !currentClientEntityId) return;
     socketIOManager.initialize(currentClientEntityId);
-    socketIOManager.joinRoom(channelId);
+    socketIOManager.joinChannel(channelId);
     clientLogger.info(
       `[GroupChatPage] Joined central channel ${channelId} as user ${currentClientEntityId}`
     );
@@ -231,10 +231,11 @@ export default function GroupChatPage({
         JSON.stringify(data)
       );
       clientLogger.info(
-        `[GroupChatPage] Current channelId: ${channelId}, data.roomId: ${data.roomId}`
+        `[GroupChatPage] Current channelId: ${channelId}, message channelId: ${data.channelId || data.roomId}`
       );
-      if (data.roomId !== channelId) {
-        clientLogger.info(`[GroupChatPage] Ignoring message for different channel: ${data.roomId}`);
+      const msgChannelId = data.channelId || data.roomId;
+      if (msgChannelId !== channelId) {
+        clientLogger.info(`[GroupChatPage] Ignoring message for different channel: ${msgChannelId}`);
         return;
       }
       const isCurrentUser = data.senderId === currentClientEntityId;
@@ -244,6 +245,27 @@ export default function GroupChatPage({
         setInputDisabled(false);
       }
       queryClient.setQueryData<UiMessage[]>(['messages', channelId], (old = []) => {
+        // Check if this is a message we sent (by checking for clientMessageId)
+        const clientMessageId = (data as any).clientMessageId;
+        if (clientMessageId && isCurrentUser) {
+          // Replace the optimistic message with the server version
+          return old.map((m) => {
+            if (m.id === clientMessageId) {
+              // Found our optimistic message, replace it with server version
+              return {
+                ...m,
+                id: data.id || randomUUID(),
+                isLoading: false,
+                createdAt: data.createdAt,
+                text: data.text, // Update text in case it was modified server-side
+                attachments: data.attachments, // Update attachments with server URLs
+              };
+            }
+            return m;
+          });
+        }
+
+        // Otherwise, check if message already exists
         const messageExists = old.some((m) => m.id === data.id);
         if (messageExists) {
           clientLogger.info('[GroupChatPage] Message already exists, skipping:', data.id);
@@ -257,7 +279,7 @@ export default function GroupChatPage({
           senderId: data.senderId as UUID,
           isAgent: isAgentSender,
           createdAt: data.createdAt,
-          channelId: data.roomId as UUID,
+          channelId: (data.channelId || data.roomId) as UUID,
           serverId: data.serverId as UUID | undefined,
           source: data.source,
           attachments: data.attachments,
@@ -281,31 +303,33 @@ export default function GroupChatPage({
     };
 
     const handleMessageComplete = (data: MessageCompleteData) => {
-      if (data.roomId === channelId) setInputDisabled(false);
+      const completeChannelId = data.channelId || data.roomId;
+      if (completeChannelId === channelId) setInputDisabled(false);
     };
     const handleControlMessage = (data: ControlMessageData) => {
-      if (data.roomId === channelId) {
+      const ctrlChannelId = data.channelId || data.roomId;
+      if (ctrlChannelId === channelId) {
         if (data.action === 'disable_input') setInputDisabled(true);
         else if (data.action === 'enable_input') setInputDisabled(false);
       }
     };
 
     const msgSub = socketIOManager.evtMessageBroadcast.attach(
-      (data: MessageBroadcastData) => data.roomId === channelId,
+      (data: MessageBroadcastData) => (data.channelId || data.roomId) === channelId,
       handleMessageBroadcasting
     );
     const completeSub = socketIOManager.evtMessageComplete.attach(
-      (data: MessageCompleteData) => data.roomId === channelId,
+      (data: MessageCompleteData) => (data.channelId || data.roomId) === channelId,
       handleMessageComplete
     );
     const controlSub = socketIOManager.evtControlMessage.attach(
-      (data: ControlMessageData) => data.roomId === channelId,
+      (data: ControlMessageData) => (data.channelId || data.roomId) === channelId,
       handleControlMessage
     );
 
     return () => {
       clientLogger.info(`[GroupChatPage] Leaving central channel ${channelId}`);
-      socketIOManager.leaveRoom(channelId);
+      socketIOManager.leaveChannel(channelId);
       msgSub?.detach();
       completeSub?.detach();
       controlSub?.detach();
@@ -480,49 +504,18 @@ export default function GroupChatPage({
         return;
       }
 
-      const response = await apiClient.postMessageToCentralChannel(channelId, {
-        author_id: currentClientEntityId,
-        content: finalText,
-        server_id: serverId,
-        metadata: {
-          attachments: finalAttachments.length > 0 ? finalAttachments : undefined,
-          user_display_name: USER_NAME,
-        },
-        source_type: GROUP_CHAT_SOURCE,
-      });
-
-      queryClient.setQueryData<UiMessage[]>(['messages', channelId], (old = []) =>
-        old.map((m) => {
-          if (m.id === tempMessageId) {
-            const serverResponseData = response.data;
-            const isAgentResp =
-              allAgents.some((a) => a.id === serverResponseData.authorId) &&
-              serverResponseData.authorId !== currentClientEntityId;
-            return {
-              id: serverResponseData.id,
-              text: serverResponseData.content,
-              name: isAgentResp
-                ? serverResponseData.metadata?.agentName ||
-                  serverResponseData.metadata?.authorDisplayName ||
-                  'Agent'
-                : USER_NAME,
-              senderId: serverResponseData.authorId,
-              isAgent: isAgentResp,
-              createdAt: serverResponseData.createdAt,
-              attachments: serverResponseData.metadata?.attachments as Media[] | undefined,
-              thought: isAgentResp ? serverResponseData.metadata?.thought : undefined,
-              actions: isAgentResp
-                ? (serverResponseData.metadata?.actions as string[] | undefined)
-                : undefined,
-              channelId: serverResponseData.channelId,
-              serverId: serverResponseData.metadata?.serverId || serverId,
-              source: serverResponseData.sourceType,
-              isLoading: false,
-            } as UiMessage;
-          }
-          return m;
-        })
+      // Send message via WebSocket
+      await socketIOManager.sendMessage(
+        finalText,
+        channelId,
+        serverId,
+        GROUP_CHAT_SOURCE,
+        finalAttachments.length > 0 ? finalAttachments : undefined,
+        tempMessageId // Pass the tempMessageId to track the optimistic message
       );
+
+      // Note: We don't update the optimistic message here anymore.
+      // The message will be updated when we receive the server broadcast with clientMessageId
     } catch (error) {
       clientLogger.error('Error sending group message:', error);
       toast({
@@ -599,9 +592,9 @@ export default function GroupChatPage({
         <div className="flex items-center justify-between mb-4 p-3 bg-card rounded-lg border">
           <div className="flex items-center gap-3">
             <AgentAvatarStack
-              agentIds={roomParticipantAgents.map((a) => a.id!)}
+              agentIds={channelParticipantAgents.map((a) => a.id!)}
               agentAvatars={agentAvatarMap}
-              agentNames={roomParticipantAgents.map((a) => a.name)}
+              agentNames={channelParticipantAgents.map((a) => a.name)}
               size="md"
             />
             <div className="flex flex-col">

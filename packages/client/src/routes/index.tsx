@@ -4,6 +4,8 @@ import App from '../App';
 
 // Lazy load components
 const Chat = lazy(() => import('../routes/chat'));
+const Group = lazy(() => import('../routes/group'));
+const GroupNew = lazy(() => import('../routes/group-new'));
 const AgentList = lazy(() => import('../routes/agent-list'));
 const AgentDetail = lazy(() => import('../routes/agent-detail'));
 const CharacterList = lazy(() => import('../routes/character-list'));
@@ -57,6 +59,22 @@ export const router = createBrowserRouter([
         element: (
           <Suspense fallback={<Loading />}>
             <Chat />
+          </Suspense>
+        ),
+      },
+      {
+        path: '/group/new',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <GroupNew />
+          </Suspense>
+        ),
+      },
+      {
+        path: '/group/:channelId',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <Group />
           </Suspense>
         ),
       },

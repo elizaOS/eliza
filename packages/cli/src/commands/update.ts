@@ -66,7 +66,7 @@ function isWorkspaceVersion(versionString: string): boolean {
  * @returns Whether the version is a special tag
  */
 function isSpecialVersionTag(version: string): boolean {
-  const specialTags = ['beta', 'latest', 'next', 'canary', 'rc', 'dev', 'nightly', 'alpha'];
+  const specialTags = ['latest', 'next', 'canary', 'rc', 'dev', 'nightly', 'alpha'];
   return specialTags.includes(version);
 }
 
@@ -251,9 +251,8 @@ async function updateDependencies(
       );
     }
 
-    // Determine package tag early
-    const isCLIBeta = latestCliVersion.includes('beta');
-    const packageTag = isCLIBeta ? 'beta' : 'latest';
+    // Use latest tag for stable v1.0.0 release
+    const packageTag = 'latest';
 
     // Display outdated packages
     console.info(`\nElizaOS packages that can be updated to @${packageTag}:`);
@@ -386,33 +385,26 @@ export async function performCliUpdate(): Promise<boolean> {
     // Install the specified version globally - use specific version instead of tag
     logger.debug(`Updating Eliza CLI to version: ${latestVersion}`);
     try {
-      // Use direct npm install command for global installation
+      // Try to install latest version
+      const { stdout, stderr } = await execa('npm', ['install', '-g', '@elizaos/cli']);
+      logger.info(`Successfully updated Eliza CLI to latest version`);
+      logger.info('Please restart your terminal for the changes to take effect.');
+    } catch (npmError) {
+      // If latest tag fails, try with specific version
       try {
-        // First try with beta tag which is more reliable
-        const { stdout, stderr } = await execa('npm', ['install', '-g', '@elizaos/cli@beta']);
-        logger.debug(`Successfully updated Eliza CLI to latest version`);
+        logger.info(`Latest installation failed, trying specific version: ${latestVersion}`);
+        const { stdout, stderr } = await execa('npm', [
+          'install',
+          '-g',
+          `@elizaos/cli@${latestVersion}`,
+        ]);
+        logger.info(`Successfully updated Eliza CLI to version ${latestVersion}`);
         logger.info('Please restart your terminal for the changes to take effect.');
-      } catch (npmError) {
-        // If beta tag fails, try with specific version
-        try {
-          logger.debug(`Beta installation failed, trying specific version: ${latestVersion}`);
-          const { stdout, stderr } = await execa('npm', [
-            'install',
-            '-g',
-            `@elizaos/cli@${latestVersion}`,
-          ]);
-          logger.debug(`Successfully updated Eliza CLI to version ${latestVersion}`);
-          logger.info('Please restart your terminal for the changes to take effect.');
-        } catch (versionError) {
-          throw new Error(
-            `Installation of @elizaos/cli version ${latestVersion} failed. Try manually with: npm install -g @elizaos/cli@beta`
-          );
-        }
+      } catch (versionError) {
+        throw new Error(
+          `Installation of @elizaos/cli version ${latestVersion} failed. Try manually with: npm install -g @elizaos/cli`
+        );
       }
-    } catch (error) {
-      logger.error('Failed to update Eliza CLI:', error.message);
-      logger.info('You can try manually with: npm install -g @elizaos/cli@beta');
-      process.exit(1);
     }
 
     console.info('ElizaOS CLI has been successfully updated!');
@@ -462,13 +454,13 @@ export const update = new Command()
         // Check if we're running via npx/bunx
         if ((await isRunningViaNpx()) || (await isRunningViaBunx())) {
           console.warn('CLI update is not available when running via npx or bunx.');
-          console.info('To install the latest version, run: npm install -g @elizaos/cli@beta');
+          console.info('To install the latest version, run: npm install -g @elizaos/cli');
         }
         // Check if globally installed
         else if (!(await isGlobalInstallation())) {
           console.warn('The CLI update is only available for globally installed CLI.');
           console.info('To update a local installation, use your package manager manually.');
-          console.info('For global installation, run: npm install -g @elizaos/cli@beta');
+          console.info('For global installation, run: npm install -g @elizaos/cli');
         }
         // Run CLI update
         else {

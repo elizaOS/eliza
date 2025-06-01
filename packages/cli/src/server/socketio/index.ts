@@ -42,17 +42,20 @@ export class SocketIORouter {
     logger.info(`[SocketIO] New connection: ${socket.id}`);
 
     socket.on(String(SOCKET_MESSAGE_TYPE.ROOM_JOINING), (payload) => {
-      logger.debug(`[SocketIO] Room joining event received directly: ${JSON.stringify(payload)}`);
-      this.handleRoomJoining(socket, payload);
+      logger.debug(
+        `[SocketIO] Channel joining event received directly: ${JSON.stringify(payload)}`
+      );
+      this.handleChannelJoining(socket, payload);
     });
 
     socket.on(String(SOCKET_MESSAGE_TYPE.SEND_MESSAGE), (payload) => {
       const messagePreview =
         payload.message?.substring(0, 50) + (payload.message?.length > 50 ? '...' : '');
+      const channelId = payload.channelId || payload.roomId;
       logger.info(
         `[SocketIO] SEND_MESSAGE event received directly: ${JSON.stringify({
           senderId: payload.senderId,
-          roomId: payload.roomId,
+          channelId: channelId,
           messagePreview,
         })}`
       );
@@ -98,8 +101,8 @@ export class SocketIORouter {
 
       switch (type) {
         case SOCKET_MESSAGE_TYPE.ROOM_JOINING:
-          logger.info(`[SocketIO ${socket.id}] Handling room joining via 'message' event`);
-          this.handleRoomJoining(socket, payload);
+          logger.info(`[SocketIO ${socket.id}] Handling channel joining via 'message' event`);
+          this.handleChannelJoining(socket, payload);
           break;
         case SOCKET_MESSAGE_TYPE.SEND_MESSAGE:
           logger.info(`[SocketIO ${socket.id}] Handling message sending via 'message' event`);
@@ -119,10 +122,11 @@ export class SocketIORouter {
     }
   }
 
-  private handleRoomJoining(socket: Socket, payload: any) {
-    const { roomId, agentId } = payload;
-    if (!roomId) {
-      this.sendErrorResponse(socket, `roomId (channel_id) is required for joining.`);
+  private handleChannelJoining(socket: Socket, payload: any) {
+    const channelId = payload.channelId || payload.roomId; // Support both for backward compatibility
+    const { agentId } = payload;
+    if (!channelId) {
+      this.sendErrorResponse(socket, `channelId is required for joining.`);
       return;
     }
     if (agentId) {
@@ -132,37 +136,42 @@ export class SocketIORouter {
         logger.info(`[SocketIO] Socket ${socket.id} associated with agent ${agentUuid}`);
       }
     }
-    socket.join(roomId);
-    logger.info(`[SocketIO] Socket ${socket.id} joined Socket.IO room: ${roomId}`);
-    const successMessage = `Socket ${socket.id} successfully joined room ${roomId}.`;
+    socket.join(channelId);
+    logger.info(`[SocketIO] Socket ${socket.id} joined Socket.IO channel: ${channelId}`);
+    const successMessage = `Socket ${socket.id} successfully joined channel ${channelId}.`;
     const responsePayload = {
       message: successMessage,
-      roomId,
+      channelId,
+      roomId: channelId, // Keep for backward compatibility
       ...(agentId && { agentId: validateUuid(agentId) || agentId }),
     };
-    socket.emit('room_joined', responsePayload);
+    socket.emit('channel_joined', responsePayload);
+    socket.emit('room_joined', responsePayload); // Keep for backward compatibility
     logger.info(`[SocketIO] ${successMessage}`);
   }
 
   private async handleCentralMessageSubmission(socket: Socket, payload: any) {
-    const { senderId, senderName, message, roomId, worldId, source, metadata, attachments } =
-      payload;
+    const channelId = payload.channelId || payload.roomId; // Support both for backward compatibility
+    const { senderId, senderName, message, serverId, source, metadata, attachments } = payload;
 
     logger.info(
-      `[SocketIO ${socket.id}] Received SEND_MESSAGE for central submission: room ${roomId} from ${senderName || senderId}`
+      `[SocketIO ${socket.id}] Received SEND_MESSAGE for central submission: channel ${channelId} from ${senderName || senderId}`
     );
 
-    if (!validateUuid(roomId) || !validateUuid(worldId) || !validateUuid(senderId) || !message) {
+    // Special handling for default server ID "0"
+    const isValidServerId = serverId === '0' || validateUuid(serverId);
+
+    if (!validateUuid(channelId) || !isValidServerId || !validateUuid(senderId) || !message) {
       this.sendErrorResponse(
         socket,
-        `For SEND_MESSAGE: roomId (channel_id), worldId (server_id), senderId (author_id), and message are required.`
+        `For SEND_MESSAGE: channelId, serverId (server_id), senderId (author_id), and message are required.`
       );
       return;
     }
 
     try {
       const newRootMessageData = {
-        channelId: roomId as UUID,
+        channelId: channelId as UUID,
         authorId: senderId as UUID,
         content: message as string,
         rawMessage: payload,
@@ -170,7 +179,7 @@ export class SocketIORouter {
           ...(metadata || {}),
           user_display_name: senderName,
           socket_id: socket.id,
-          worldId: worldId as UUID,
+          serverId: serverId as UUID,
           attachments,
         },
         sourceType: source || 'socketio_client',
@@ -182,11 +191,35 @@ export class SocketIORouter {
         `[SocketIO ${socket.id}] Message from ${senderId} (msgId: ${payload.messageId || 'N/A'}) submitted to central store (central ID: ${createdRootMessage.id}). It will be processed by agents and broadcasted upon their reply.`
       );
 
+      // Immediately broadcast the message to all clients in the channel
+      const messageBroadcast = {
+        id: createdRootMessage.id,
+        senderId: senderId,
+        senderName: senderName || 'User',
+        text: message,
+        channelId: channelId,
+        roomId: channelId, // Keep for backward compatibility
+        serverId: serverId, // Use serverId at message server layer
+        createdAt: new Date(createdRootMessage.createdAt).getTime(),
+        source: source || 'socketio_client',
+        attachments: attachments,
+      };
+
+      // Broadcast to everyone in the channel except the sender
+      socket.to(channelId).emit('messageBroadcast', messageBroadcast);
+
+      // Also send back to the sender with the server-assigned ID
+      socket.emit('messageBroadcast', {
+        ...messageBroadcast,
+        clientMessageId: payload.messageId,
+      });
+
       socket.emit('messageAck', {
         clientMessageId: payload.messageId,
         centralMessageId: createdRootMessage.id,
         status: 'received_by_server_and_processing',
-        roomId,
+        channelId,
+        roomId: channelId, // Keep for backward compatibility
       });
     } catch (error: any) {
       logger.error(

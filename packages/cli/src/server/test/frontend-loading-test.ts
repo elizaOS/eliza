@@ -52,8 +52,12 @@ class FrontendLoadingTest {
 
     // Create a test agent
     console.log('🤖 Creating test agent...');
-    const agentRuntime = await this.server.startAgent(testCharacter as any);
-    const agentId = agentRuntime.agentId;
+    // First ensure the agent exists in the database
+    const agent = await this.server.database.ensureAgentExists(testCharacter as any);
+    const agentId = agent.id;
+
+    // Then start the agent
+    const agentRuntime = await this.server.startAgent(agent);
     console.log(`✅ Test agent created with ID: ${agentId}`);
 
     return agentId;

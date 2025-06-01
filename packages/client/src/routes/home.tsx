@@ -50,19 +50,9 @@ export default function Home() {
   };
 
   const handleNavigateToDm = async (agent: Agent) => {
-    if (!currentClientEntityId || !agent.id) return;
-    try {
-      const dmChannelData = await apiClient.getOrCreateDmChannel(agent.id, currentClientEntityId);
-      if (dmChannelData.success && dmChannelData.data) {
-        navigate(
-          `/chat/${dmChannelData.data.id}?agentId=${agent.id}&serverId=${dmChannelData.data.messageServerId}`
-        );
-      } else {
-        console.error('Failed to get/create DM channel for agent: ', agent.name);
-      }
-    } catch (error) {
-      console.error('Error navigating to DM with agent:', agent.name, error);
-    }
+    if (!agent.id) return;
+    // Navigate directly to agent chat - DM channel will be created automatically with default server
+    navigate(`/chat/${agent.id}`);
   };
 
   const handleCreateGroup = () => {
@@ -128,10 +118,7 @@ export default function Home() {
           {!isLoading && !isError && (
             <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-2 auto-rows-fr groups-section">
               {servers.map((server) => (
-                <div key={server.id} className="mb-8">
-                  <h3 className="text-xl font-medium mb-4 border-b pb-2">{server.name} (Server)</h3>
-                  <ServerChannels serverId={server.id} />
-                </div>
+                <ServerChannels key={server.id} serverId={server.id} />
               ))}
             </div>
           )}
@@ -149,7 +136,7 @@ export default function Home() {
             setSelectedGroupId(null);
             setIsGroupPanelOpen(false);
           }}
-          groupId={selectedGroupId ?? undefined}
+          channelId={selectedGroupId ?? undefined}
         />
       )}
     </>
@@ -169,13 +156,13 @@ const ServerChannels = ({ serverId }: { serverId: UUID }) => {
     return <p className="text-sm text-muted-foreground">No group channels in this server.</p>;
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+    <>
       {groupChannels.map((channel) => (
         <GroupCard
           key={channel.id}
           group={{ ...channel, server_id: serverId }} // Pass server_id for navigation context
         />
       ))}
-    </div>
+    </>
   );
 };

@@ -34,11 +34,14 @@ export class MessageBusService extends Service {
     'Manages connection and message synchronization with the central message server.';
 
   private boundHandleIncomingMessage: (message: MessageServiceMessage) => Promise<void>;
+  private boundHandleServerAgentUpdate: (data: any) => void;
+  private subscribedServers: Set<UUID> = new Set();
 
   constructor(runtime: IAgentRuntime) {
     super(runtime);
     this.boundHandleIncomingMessage = this.handleIncomingMessage.bind(this);
-    this.connectToMessageBus();
+    this.boundHandleServerAgentUpdate = this.handleServerAgentUpdate.bind(this);
+    // Don't connect here - let start() handle it
   }
 
   static async start(runtime: IAgentRuntime): Promise<Service> {
@@ -57,6 +60,52 @@ export class MessageBusService extends Service {
       `[${this.runtime.character.name}] MessageBusService: Subscribing to internal message bus for 'new_message' events.`
     );
     internalMessageBus.on('new_message', this.boundHandleIncomingMessage);
+    internalMessageBus.on('server_agent_update', this.boundHandleServerAgentUpdate);
+
+    // Initialize by fetching servers this agent belongs to
+    this.fetchAgentServers();
+  }
+
+  private async fetchAgentServers() {
+    try {
+      const serverApiUrl = process.env.CENTRAL_MESSAGE_SERVER_URL || 'http://localhost:3000';
+      const response = await fetch(
+        `${serverApiUrl}/api/messages/agents/${this.runtime.agentId}/servers`
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.data?.servers) {
+          this.subscribedServers = new Set(data.data.servers);
+          logger.info(
+            `[${this.runtime.character.name}] MessageBusService: Agent is subscribed to ${this.subscribedServers.size} servers`
+          );
+        }
+      }
+    } catch (error) {
+      logger.error(
+        `[${this.runtime.character.name}] MessageBusService: Error fetching agent servers:`,
+        error
+      );
+    }
+  }
+
+  private handleServerAgentUpdate(data: any) {
+    if (data.agentId !== this.runtime.agentId) {
+      return; // Not for this agent
+    }
+
+    if (data.type === 'agent_added_to_server') {
+      this.subscribedServers.add(data.serverId);
+      logger.info(
+        `[${this.runtime.character.name}] MessageBusService: Agent added to server ${data.serverId}`
+      );
+    } else if (data.type === 'agent_removed_from_server') {
+      this.subscribedServers.delete(data.serverId);
+      logger.info(
+        `[${this.runtime.character.name}] MessageBusService: Agent removed from server ${data.serverId}`
+      );
+    }
   }
 
   public async handleIncomingMessage(message: MessageServiceMessage) {
@@ -66,6 +115,14 @@ export class MessageBusService extends Service {
     );
 
     try {
+      // Check if agent is subscribed to this server
+      if (!this.subscribedServers.has(message.server_id)) {
+        logger.debug(
+          `[${this.runtime.character.name}] MessageBusService: Agent not subscribed to server ${message.server_id}, ignoring message`
+        );
+        return;
+      }
+
       if (
         createUniqueUuid(this.runtime, message.author_id) === this.runtime.agentId &&
         message.source_type !== 'eliza_gui' // Allow messages from GUI even if authorId maps to agent (e.g., agent talking to itself via GUI)
@@ -164,6 +221,15 @@ export class MessageBusService extends Service {
         },
       };
 
+      // Check if this memory already exists (in case of duplicate processing)
+      const existingMemory = await this.runtime.getMemoryById(agentMemory.id);
+      if (existingMemory) {
+        logger.debug(
+          `[${this.runtime.character.name}] MessageBusService: Memory ${agentMemory.id} already exists, skipping duplicate processing`
+        );
+        return;
+      }
+
       const callbackForCentralBus = async (responseContent: Content): Promise<Memory[]> => {
         logger.info(
           `[${this.runtime.character.name}] Agent generated response for central message. Preparing to send back to bus.`
@@ -241,8 +307,8 @@ export class MessageBusService extends Service {
       );
 
       // Actual fetch to the central server API
-      const serverApiUrl =
-        process.env.CENTRAL_MESSAGE_SERVER_URL || 'http://localhost:3000/api/messages/submit';
+      const baseUrl = process.env.CENTRAL_MESSAGE_SERVER_URL || 'http://localhost:3000';
+      const serverApiUrl = `${baseUrl}/api/messages/submit`;
       const response = await fetch(serverApiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' /* TODO: Add Auth if needed */ },
@@ -265,6 +331,7 @@ export class MessageBusService extends Service {
   async stop(): Promise<void> {
     logger.info(`[${this.runtime.character.name}] MessageBusService stopping...`);
     internalMessageBus.off('new_message', this.boundHandleIncomingMessage);
+    internalMessageBus.off('server_agent_update', this.boundHandleServerAgentUpdate);
   }
 }
 

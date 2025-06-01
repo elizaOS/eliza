@@ -36,7 +36,7 @@ export function getCliInstallTag(): string {
   const version = getVersion();
   if (version.includes('-alpha')) {
     return 'alpha';
-  } else if (version.includes('-beta')) {
+  } else if (version.includes('beta')) {
     return 'beta';
   }
   return ''; // Return empty string for stable or non-tagged versions (implies latest)
@@ -157,10 +157,8 @@ export async function displayBanner(skipUpdateCheck: boolean = false) {
 
   const version = getVersion();
 
-  // if version includes "beta" or "alpha" then use red
-  if (version?.includes('beta')) {
-    versionColor = green;
-  } else if (version?.includes('alpha')) {
+  // if version includes "alpha" then use orange
+  if (version?.includes('alpha')) {
     versionColor = orange;
   }
   const banners = [

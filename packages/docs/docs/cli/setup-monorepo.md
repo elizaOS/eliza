@@ -8,7 +8,7 @@ image: /img/cli.jpg
 
 # Setup Monorepo Command
 
-Clone ElizaOS monorepo from a specific branch, defaults to v2-develop.
+Clone ElizaOS monorepo from a specific branch, defaults to main.
 
 ## Usage
 
@@ -18,10 +18,10 @@ elizaos setup-monorepo [options]
 
 ## Options
 
-| Option                  | Description           | Default      |
-| ----------------------- | --------------------- | ------------ |
-| `-b, --branch <branch>` | Branch to clone       | `v2-develop` |
-| `-d, --dir <directory>` | Destination directory | `./eliza`    |
+| Option                  | Description           | Default   |
+| ----------------------- | --------------------- | --------- |
+| `-b, --branch <branch>` | Branch to clone       | `main`    |
+| `-d, --dir <directory>` | Destination directory | `./eliza` |
 
 ## How It Works
 
@@ -34,11 +34,11 @@ elizaos setup-monorepo [options]
 ### Basic Usage
 
 ```bash
-# Clone default branch (v2-develop) to default directory (./eliza)
+# Clone default branch (main) to default directory (./eliza)
 elizaos setup-monorepo
 
 # Clone with verbose output
-elizaos setup-monorepo --dir ./eliza --branch v2-develop
+elizaos setup-monorepo --dir ./eliza --branch main
 ```
 
 ### Custom Branch
@@ -71,7 +71,7 @@ elizaos setup-monorepo --dir ./projects/eliza-fork
 
 ```bash
 # For contribution development
-elizaos setup-monorepo --branch v2-develop --dir ./eliza-contrib
+elizaos setup-monorepo --branch main --dir ./eliza-contrib
 
 # For stable development
 elizaos setup-monorepo --branch main --dir ./eliza-stable

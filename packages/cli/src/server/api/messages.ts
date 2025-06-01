@@ -4,11 +4,10 @@ import internalMessageBus from '../bus'; // Import the bus
 import type { AgentServer } from '../index'; // To access db and internal bus
 import type { MessageServiceStructure as MessageService } from '../types'; // Renamed to avoid conflict if MessageService class exists
 import { channelUpload } from '../upload'; // Import channelUpload
-import type { File as MulterFile } from 'multer';
+// Using Express.Multer.File type instead of importing from multer directly
+type MulterFile = Express.Multer.File;
 
-const DEFAULT_DM_SERVER_ID = '00000000-0000-0000-0000-000000000001' as UUID;
-const DEFAULT_DM_SERVER_NAME = 'Eliza DM Server';
-const DEFAULT_DM_SERVER_SOURCE_TYPE = 'eliza_system_dm';
+const DEFAULT_SERVER_ID = '0' as UUID; // Single default server
 
 interface ChannelUploadRequest extends express.Request {
   file?: MulterFile;
@@ -35,12 +34,10 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
       metadata, // Should include agent_name if author_id is agent's runtime.agentId
     } = req.body;
 
-    if (
-      !validateUuid(channel_id) ||
-      !validateUuid(author_id) ||
-      !content ||
-      !validateUuid(server_id)
-    ) {
+    // Special handling for default server ID "0"
+    const isValidServerId = server_id === '0' || validateUuid(server_id);
+
+    if (!validateUuid(channel_id) || !validateUuid(author_id) || !content || !isValidServerId) {
       return res.status(400).json({
         success: false,
         error: 'Missing required fields: channel_id, server_id, author_id, content',
@@ -66,13 +63,16 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
       if (serverInstance.socketIO) {
         serverInstance.socketIO.to(channel_id).emit('messageBroadcast', {
           senderId: author_id, // This is the agent's ID
-          senderName: metadata?.agent_name || 'Agent',
+          senderName: metadata?.agentName || 'Agent',
           text: content,
           roomId: channel_id, // For SocketIO, room is the central channel_id
-          worldId: server_id, // For SocketIO, world is the central server_id
+          serverId: server_id, // Client layer uses serverId
           createdAt: new Date(createdMessage.createdAt).getTime(),
           source: createdMessage.sourceType,
           id: createdMessage.id, // Central message ID
+          thought: raw_message?.thought,
+          actions: raw_message?.actions,
+          attachments: metadata?.attachments,
         });
       }
       // NO broadcast to internalMessageBus here, this endpoint is for messages ALREADY PROCESSED by an agent
@@ -143,7 +143,7 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
           senderName: messageForBus.author_display_name || 'User',
           text: messageForBus.content,
           roomId: messageForBus.channel_id,
-          worldId: messageForBus.server_id,
+          serverId: messageForBus.server_id, // Client layer uses serverId
           createdAt: messageForBus.created_at,
           source: messageForBus.source_type,
           id: messageForBus.id,
@@ -178,7 +178,10 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
       source_type, // Should be something like 'eliza_gui'
     } = req.body;
 
-    if (!channelIdParam || !validateUuid(author_id) || !content || !validateUuid(server_id)) {
+    // Special handling for default server ID "0"
+    const isValidServerId = server_id === '0' || validateUuid(server_id);
+
+    if (!channelIdParam || !validateUuid(author_id) || !content || !isValidServerId) {
       return res.status(400).json({
         success: false,
         error: 'Missing required fields: channelId, server_id, author_id, content',
@@ -228,7 +231,7 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
           senderName: metadata?.user_display_name || 'User',
           text: content,
           roomId: channelIdParam, // GUI uses central channelId as roomId for socket
-          worldId: server_id, // GUI uses central serverId as worldId for socket
+          serverId: server_id, // Client layer uses serverId
           createdAt: messageForBus.created_at,
           source: messageForBus.source_type,
           id: messageForBus.id,
@@ -316,7 +319,8 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
   // GET /api/central-servers/:serverId/channels
   // @ts-expect-error - this is a valid express route
   router.get('/central-servers/:serverId/channels', async (req, res) => {
-    const serverId = validateUuid(req.params.serverId);
+    const serverId =
+      req.params.serverId === '0' ? ('0' as UUID) : validateUuid(req.params.serverId);
     if (!serverId) {
       return res.status(400).json({ success: false, error: 'Invalid serverId' });
     }
@@ -369,11 +373,11 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
   });
 
   // GET /api/dm-channel?targetUserId=<target_user_id>
-  // @ts-expect-error - this is a valid express route // REMOVE IF NO LONGER NEEDED OR CONFIRM VALIDITY
   router.get('/dm-channel', async (req, res) => {
     const targetUserId = validateUuid(req.query.targetUserId as string);
     const currentUserId = validateUuid(req.query.currentUserId as string);
-    let providedDmServerId = validateUuid(req.query.dmServerId as string);
+    let providedDmServerId =
+      req.query.dmServerId === '0' ? ('0' as UUID) : validateUuid(req.query.dmServerId as string);
 
     if (!targetUserId || !currentUserId) {
       res.status(400).json({ success: false, error: 'Missing targetUserId or currentUserId' });
@@ -400,35 +404,9 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
         }
       }
 
-      // If no valid providedDmServerId, use/create the default DM server
+      // Always use the default server (ID "0")
       if (!dmServerIdToUse) {
-        // 1. Try to find by the well-known DEFAULT_DM_SERVER_ID first
-        let defaultDmServer = await serverInstance.getCentralServerById(DEFAULT_DM_SERVER_ID);
-
-        // 2. If not found by ID, try to find by sourceType (in case ID changed or wasn't used on creation)
-        if (!defaultDmServer) {
-          defaultDmServer = await serverInstance.getCentralServerBySourceType(
-            DEFAULT_DM_SERVER_SOURCE_TYPE
-          );
-        }
-
-        // 3. If still not found, create it.
-        if (!defaultDmServer) {
-          logger.info(
-            `No default DM server found by ID or sourceType, creating one with name '${DEFAULT_DM_SERVER_NAME}'...`
-          );
-          // Note: We let the DB generate the ID for this new server.
-          // If we wanted to ensure DEFAULT_DM_SERVER_ID is used, we'd need a more complex get-or-create-with-specific-id method.
-          defaultDmServer = await serverInstance.createCentralServer({
-            name: DEFAULT_DM_SERVER_NAME,
-            sourceType: DEFAULT_DM_SERVER_SOURCE_TYPE,
-          });
-          // If this is the very first DM server, and we want it to have the well-known ID,
-          // an alternative would be to update its ID after creation if the DB allows,
-          // or ensure the first created DM server is tagged/named distinctively if ID must be DB-generated.
-          // For now, we'll use the ID it gets upon creation.
-        }
-        dmServerIdToUse = defaultDmServer.id;
+        dmServerIdToUse = DEFAULT_SERVER_ID;
       }
 
       const channel = await serverInstance.findOrCreateCentralDmChannel(
@@ -458,16 +436,19 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
       metadata,
     } = req.body;
 
+    // Special handling for default server ID "0"
+    const isValidServerId = server_id === '0' || validateUuid(server_id);
+
     if (
       !name ||
-      !validateUuid(server_id) ||
+      !isValidServerId ||
       !Array.isArray(participantCentralUserIds) ||
       participantCentralUserIds.some((id) => !validateUuid(id))
     ) {
       return res.status(400).json({
         success: false,
         error:
-          'Invalid payload. Required: name, server_id (UUID), participantCentralUserIds (array of UUIDs). Optional: type, metadata.',
+          'Invalid payload. Required: name, server_id (UUID or "0"), participantCentralUserIds (array of UUIDs). Optional: type, metadata.',
       });
     }
     // Ensure current user is part of participants if not implicitly added by serverInstance.createCentralChannel logic
@@ -662,6 +643,148 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
       }
     }
   );
+
+  // ===============================
+  // Server-Agent Association Endpoints
+  // ===============================
+
+  // POST /api/messages/servers/:serverId/agents - Add agent to server
+  // @ts-expect-error - this is a valid express route
+  router.post('/servers/:serverId/agents', async (req, res) => {
+    const serverId =
+      req.params.serverId === '0' ? ('0' as UUID) : validateUuid(req.params.serverId);
+    const { agentId } = req.body;
+
+    if (!serverId || !validateUuid(agentId)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid serverId or agentId format',
+      });
+    }
+
+    try {
+      // Add agent to server association
+      await serverInstance.addAgentToServer(serverId, agentId as UUID);
+
+      // Notify the agent's message bus service to start listening for this server
+      const messageForBus = {
+        type: 'agent_added_to_server',
+        serverId,
+        agentId,
+      };
+      internalMessageBus.emit('server_agent_update', messageForBus);
+
+      res.status(201).json({
+        success: true,
+        data: {
+          serverId,
+          agentId,
+          message: 'Agent added to server successfully',
+        },
+      });
+    } catch (error) {
+      logger.error(`[MessagesRouter] Error adding agent ${agentId} to server ${serverId}:`, error);
+      res.status(500).json({ success: false, error: 'Failed to add agent to server' });
+    }
+  });
+
+  // DELETE /api/messages/servers/:serverId/agents/:agentId - Remove agent from server
+  // @ts-expect-error - this is a valid express route
+  router.delete('/servers/:serverId/agents/:agentId', async (req, res) => {
+    const serverId =
+      req.params.serverId === '0' ? ('0' as UUID) : validateUuid(req.params.serverId);
+    const agentId = validateUuid(req.params.agentId);
+
+    if (!serverId || !agentId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid serverId or agentId format',
+      });
+    }
+
+    try {
+      // Remove agent from server association
+      await serverInstance.removeAgentFromServer(serverId, agentId);
+
+      // Notify the agent's message bus service to stop listening for this server
+      const messageForBus = {
+        type: 'agent_removed_from_server',
+        serverId,
+        agentId,
+      };
+      internalMessageBus.emit('server_agent_update', messageForBus);
+
+      res.status(200).json({
+        success: true,
+        data: {
+          serverId,
+          agentId,
+          message: 'Agent removed from server successfully',
+        },
+      });
+    } catch (error) {
+      logger.error(
+        `[MessagesRouter] Error removing agent ${agentId} from server ${serverId}:`,
+        error
+      );
+      res.status(500).json({ success: false, error: 'Failed to remove agent from server' });
+    }
+  });
+
+  // GET /api/messages/servers/:serverId/agents - List agents in server
+  // @ts-expect-error - this is a valid express route
+  router.get('/servers/:serverId/agents', async (req, res) => {
+    const serverId =
+      req.params.serverId === '0' ? ('0' as UUID) : validateUuid(req.params.serverId);
+
+    if (!serverId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid serverId format',
+      });
+    }
+
+    try {
+      const agents = await serverInstance.getAgentsForServer(serverId);
+      res.json({
+        success: true,
+        data: {
+          serverId,
+          agents, // Array of agent IDs
+        },
+      });
+    } catch (error) {
+      logger.error(`[MessagesRouter] Error fetching agents for server ${serverId}:`, error);
+      res.status(500).json({ success: false, error: 'Failed to fetch server agents' });
+    }
+  });
+
+  // GET /api/messages/agents/:agentId/servers - List servers agent belongs to
+  // @ts-expect-error - this is a valid express route
+  router.get('/agents/:agentId/servers', async (req, res) => {
+    const agentId = validateUuid(req.params.agentId);
+
+    if (!agentId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid agentId format',
+      });
+    }
+
+    try {
+      const servers = await serverInstance.getServersForAgent(agentId);
+      res.json({
+        success: true,
+        data: {
+          agentId,
+          servers, // Array of server IDs
+        },
+      });
+    } catch (error) {
+      logger.error(`[MessagesRouter] Error fetching servers for agent ${agentId}:`, error);
+      res.status(500).json({ success: false, error: 'Failed to fetch agent servers' });
+    }
+  });
 
   return router;
 }

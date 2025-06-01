@@ -127,6 +127,19 @@ export const choiceAction: Action = {
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
     if (!state) {
       logger.error('State is required for validating the action');
+      throw new Error('State is required for validating the action');
+    }
+
+    const room = state.data.room ?? (await runtime.getRoom(message.roomId));
+
+    if (!room || !room.serverId) {
+      logger.error('Room or room.serverId is missing');
+      throw new Error('Room or room.serverId is required for validating the action');
+    }
+
+    const userRole = await getUserServerRole(runtime, message.entityId, room.serverId);
+
+    if (userRole !== 'OWNER' && userRole !== 'ADMIN') {
       return false;
     }
 

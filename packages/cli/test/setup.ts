@@ -26,7 +26,6 @@ class MockUserEnvInstance {
     this.clearCache = mockClearCache;
     this.getPackageVersion = mockGetPackageVersion;
     this.getLocalPackages = mockGetLocalPackages;
-    // ... assign other shared mocks if they are added above
   }
 }
 

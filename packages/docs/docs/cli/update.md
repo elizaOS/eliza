@@ -203,10 +203,10 @@ Only non-workspace packages will be updated.
 npm list -g @elizaos/cli
 
 # Install CLI globally if needed
-npm install -g @elizaos/cli@beta
+npm install -g @elizaos/cli
 
 # Update with administrator privileges (if needed)
-sudo npm install -g @elizaos/cli@beta
+sudo npm install -g @elizaos/cli
 ```
 
 ### Package Update Failures
