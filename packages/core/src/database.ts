@@ -474,13 +474,6 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
   abstract deleteAgent(agentId: UUID): Promise<boolean>;
 
   /**
-   * Ensures an agent exists in the database.
-   * @param agent The agent object to ensure exists.
-   * @returns A Promise that resolves when the agent has been ensured to exist.
-   */
-  abstract ensureAgentExists(agent: Partial<Agent>): Promise<Agent>;
-
-  /**
    * Ensures an embedding dimension exists in the database.
    * @param dimension The dimension to ensure exists.
    * @returns A Promise that resolves when the embedding dimension has been ensured to exist.

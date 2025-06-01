@@ -125,7 +125,7 @@ Before publishing, ensure your plugin meets these requirements:
 {
   "name": "@npm-username/plugin-name",
   "description": "${PLUGINDESCRIPTION}",
-  "version": "1.0.0-beta.74",
+  "version": "1.0.0",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

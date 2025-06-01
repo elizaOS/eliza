@@ -256,7 +256,7 @@ const config = {
           lastVersion: 'current',
           versions: {
             current: {
-              label: '1.0.0-beta',
+              label: '1.0.0',
               path: '',
               banner: 'none',
             },

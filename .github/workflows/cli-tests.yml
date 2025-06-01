@@ -7,7 +7,7 @@ env:
 on:
   push:
     branches:
-      - 'v2-develop'
+      - 'main'
     paths:
       - 'packages/cli/**'
       - 'packages/core/**'
@@ -16,7 +16,7 @@ on:
       - '.github/workflows/cli-tests.yml'
   pull_request:
     branches:
-      - 'v2-develop'
+      - 'main'
     paths:
       - 'packages/cli/**'
       - 'packages/core/**'

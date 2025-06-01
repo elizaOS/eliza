@@ -25,7 +25,7 @@ import TabItem from '@theme/TabItem';
 
 ```bash
 # Install globally
-npm install -g @elizaos/cli@beta
+npm install -g @elizaos/cli
 # Start ElizaOS
 elizaos start
 ```
@@ -35,7 +35,7 @@ elizaos start
 
 ```bash
 # Use directly with npx
-npx @elizaos/cli@beta start
+npx @elizaos/cli start
 ```
 
   </TabItem>
@@ -47,7 +47,7 @@ git clone git@github.com:elizaOS/eliza.git
 cd eliza
 
 # Switch to development branch
-git checkout v2-develop
+git checkout main
 
 # Install dependencies
 bun install
@@ -220,9 +220,9 @@ If your agent fails to start on the first attempt:
 
 Once you have your agent running, explore:
 
-- 🤖 [Understand Agents](./core/agents.md)
-- ⚡ [Add Custom Actions](./core/actions.md)
-- 🧠 [Configure Knowledge](./core/knowledge.md)
-- 🔌 [Add Services](./core/services.md)
+- [Understand Agents](./core/agents.md)
+- [Add Custom Actions](./core/actions.md)
+- [Configure Knowledge](./core/knowledge.md)
+- [Add Services](./core/services.md)
 
 Join the [Discord community](https://discord.gg/elizaOS) for support and to share what you're building!

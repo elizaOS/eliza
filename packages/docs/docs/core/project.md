@@ -29,10 +29,10 @@ You can create a new ElizaOS project using:
 
 ```bash
 # Using npm
-npm create eliza@beta
+npm create eliza
 
 # Or using npx
-npx @elizaos/cli@beta create
+npx @elizaos/cli create
 ```
 
 The CLI will guide you through the setup process, including:

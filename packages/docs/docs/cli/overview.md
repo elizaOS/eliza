@@ -15,7 +15,7 @@ The ElizaOS Command Line Interface (CLI) provides a comprehensive set of tools t
 Install the ElizaOS CLI globally using npm:
 
 ```bash
-npm install -g @elizaos/cli@beta
+npm install -g @elizaos/cli
 ```
 
 Or use it directly with npx:
@@ -29,7 +29,7 @@ elizaos [command]
 | Command                                 | Description                                                                                                    |
 | --------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | [`create`](./create.md)                 | Initialize a new project, plugin, or agent                                                                     |
-| [`setup-monorepo`](./setup-monorepo.md) | Clone ElizaOS monorepo from a specific branch (defaults to v2-develop)                                         |
+| [`setup-monorepo`](./setup-monorepo.md) | Clone ElizaOS monorepo from a specific branch (defaults to main)                                               |
 | [`plugins`](./plugins.md)               | Manage ElizaOS plugins                                                                                         |
 | [`agent`](./agent.md)                   | Manage ElizaOS agents                                                                                          |
 | [`tee`](./tee.md)                       | Manage TEE deployments                                                                                         |
