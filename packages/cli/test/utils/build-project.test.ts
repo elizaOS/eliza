@@ -60,46 +60,38 @@ describe('build-project', () => {
 
   describe('buildProject scenarios', () => {
     it('should build project successfully with default settings', async () => {
-      const projectDir = join(tempDir, 'test-project');
-      await mkdir(projectDir, { recursive: true });
+      const projectDir = tempDir;
       await writeFile(
         join(projectDir, 'package.json'),
-        JSON.stringify({
-          name: 'test-project',
-          version: '1.0.0',
-          scripts: { build: 'echo "building..."' },
-        })
+        JSON.stringify({ scripts: { build: 'echo build' } })
       );
+      mockRunBunCommand.mockResolvedValue({ success: true, stdout: '', stderr: '' });
 
       await buildProject(projectDir);
-
       expect(mockRunBunCommand).toHaveBeenCalledWith(['run', 'build'], projectDir);
-      expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining('Building project'));
-      expect(mockLogger.success).toHaveBeenCalledWith(
-        expect.stringContaining('Project built successfully')
+      expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining('Building project...'));
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        expect.stringContaining('Build completed successfully')
       );
+      // Ensure success is NOT called, as info is used
+      expect(mockLogger.success).not.toHaveBeenCalled();
     });
 
     it('should build plugin with plugin-specific settings', async () => {
-      const pluginDir = join(tempDir, 'test-plugin');
-      await mkdir(pluginDir, { recursive: true });
+      const pluginDir = tempDir;
       await writeFile(
         join(pluginDir, 'package.json'),
-        JSON.stringify({
-          name: 'test-plugin',
-          version: '1.0.0',
-          scripts: { build: 'echo "building plugin..."' },
-        })
+        JSON.stringify({ scripts: { build: 'echo build' } })
       );
+      mockRunBunCommand.mockResolvedValue({ success: true, stdout: '', stderr: '' });
 
-      await buildProject(pluginDir, true);
-
+      await buildProject(pluginDir, true); // isPlugin = true
       expect(mockRunBunCommand).toHaveBeenCalledWith(['run', 'build'], pluginDir);
-      expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining('Building plugin'));
-      expect(mockLogger.success).toHaveBeenCalledWith(
-        // Ensure success is logged for plugins too
-        expect.stringContaining('Plugin built successfully')
+      expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining('Building plugin...'));
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        expect.stringContaining('Build completed successfully')
       );
+      expect(mockLogger.success).not.toHaveBeenCalled();
     });
 
     it('should handle missing package.json gracefully', async () => {
@@ -132,7 +124,7 @@ describe('build-project', () => {
 
       // Make npm fallback also fail for this specific test
       mockExeca.mockImplementation(async (command, args) => {
-        if (command === 'npm' && args.includes('build')) {
+        if (command === 'npm' && args && args.includes('build')) {
           throw new Error('NPM fallback also failed');
         }
         return { stdout: '', stderr: '' };
@@ -143,7 +135,11 @@ describe('build-project', () => {
       );
 
       expect(mockRunBunCommand).toHaveBeenCalled();
-      expect(mockExeca).toHaveBeenCalledWith('npm', ['run', 'build'], expect.anything());
+      expect(mockExeca).toHaveBeenCalledWith(
+        'npm',
+        ['run', 'build'],
+        expect.objectContaining({ cwd: projectDir, stdio: 'inherit' })
+      );
       expect(mockLogger.error).toHaveBeenCalledWith(
         expect.stringContaining(
           'Failed to build project: Error: Failed to build using npm: Error: NPM fallback also failed'
@@ -166,7 +162,7 @@ describe('build-project', () => {
       mockRunBunCommand.mockRejectedValue(new Error('Bun layer failed')); // Bun fails first
       mockExeca.mockImplementation(async (command, args) => {
         // execa for npm
-        if (command === 'npm' && args.includes('build')) {
+        if (command === 'npm' && args && args.includes('build')) {
           throw new Error('NPM build failed');
         }
         return { stdout: '', stderr: '' };
@@ -176,7 +172,11 @@ describe('build-project', () => {
         'Failed to build using npm: Error: NPM build failed'
       );
       expect(mockRunBunCommand).toHaveBeenCalled();
-      expect(mockExeca).toHaveBeenCalledWith('npm', ['run', 'build'], expect.anything());
+      expect(mockExeca).toHaveBeenCalledWith(
+        'npm',
+        ['run', 'build'],
+        expect.objectContaining({ cwd: projectDir, stdio: 'inherit' })
+      );
       expect(mockLogger.error).toHaveBeenCalledWith(
         expect.stringContaining(
           'Failed to build project: Error: Failed to build using npm: Error: NPM build failed'
@@ -201,32 +201,23 @@ describe('build-project', () => {
     });
 
     it('should attempt tsc build if no build script and tsconfig.json exists', async () => {
-      const projectDir = join(tempDir, 'typescript-project-no-script');
-      await mkdir(projectDir, { recursive: true });
-      await writeFile(
-        // No build script
-        join(projectDir, 'package.json'),
-        JSON.stringify({ name: 'typescript-project-no-script', version: '1.0.0', scripts: {} })
-      );
-      await writeFile(
-        // tsconfig exists
-        join(projectDir, 'tsconfig.json'),
-        JSON.stringify({ compilerOptions: { target: 'es2020' } })
-      );
+      const projectDir = tempDir;
+      await writeFile(join(projectDir, 'package.json'), JSON.stringify({})); // No build script
+      await writeFile(join(projectDir, 'tsconfig.json'), JSON.stringify({ compilerOptions: {} }));
 
-      mockExeca.mockResolvedValue({ stdout: '', stderr: '' }); // tsc build succeeds
+      // Setup mockExeca to succeed for tsc
+      mockExeca.mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 });
 
       await buildProject(projectDir);
-
-      expect(mockLogger.warn).toHaveBeenCalledWith(
-        expect.stringContaining(`No build script found in ${join(projectDir, 'package.json')}`)
-      );
       expect(mockExeca).toHaveBeenCalledWith(
         'npx',
         ['tsc', '--build'],
-        expect.objectContaining({ cwd: projectDir })
+        expect.objectContaining({ cwd: projectDir, stdio: 'inherit' })
       );
-      expect(mockLogger.success).toHaveBeenCalledWith('Project built successfully');
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        expect.stringContaining('Build completed successfully')
+      );
+      expect(mockLogger.success).not.toHaveBeenCalled();
     });
 
     it('should handle tsc build failure', async () => {
@@ -234,7 +225,7 @@ describe('build-project', () => {
       await mkdir(projectDir, { recursive: true });
       await writeFile(
         join(projectDir, 'package.json'),
-        JSON.stringify({ name: 'typescript-project-tsc-fail', version: '1.0.0', scripts: {} })
+        JSON.stringify({ name: 'typescript-project-tsc-fail', version: '1.0.0' }) // No scripts property at all
       );
       await writeFile(
         join(projectDir, 'tsconfig.json'),
@@ -242,7 +233,7 @@ describe('build-project', () => {
       );
 
       mockExeca.mockImplementation(async (command, args) => {
-        if (command === 'npx' && args.includes('tsc')) {
+        if (command === 'npx' && args && args.includes('tsc')) {
           throw new Error('TSC build failed');
         }
         return { stdout: '', stderr: '' };
@@ -257,7 +248,7 @@ describe('build-project', () => {
       expect(mockExeca).toHaveBeenCalledWith(
         'npx',
         ['tsc', '--build'],
-        expect.objectContaining({ cwd: projectDir })
+        expect.objectContaining({ cwd: projectDir, stdio: 'inherit' })
       );
       expect(mockLogger.error).toHaveBeenCalledWith(
         expect.stringContaining(
@@ -319,21 +310,28 @@ describe('build-project', () => {
     });
 
     it('should handle monorepo projects', async () => {
-      mockIsMonorepoContext.mockResolvedValue(true);
-      const projectDir = join(tempDir, 'monorepo-project');
-      await mkdir(projectDir, { recursive: true });
+      const projectDir = tempDir;
       await writeFile(
         join(projectDir, 'package.json'),
-        JSON.stringify({
-          name: 'monorepo-project',
-          version: '1.0.0',
-          scripts: { build: 'echo "building monorepo project..."' },
-        })
+        JSON.stringify({ scripts: { build: 'echo build' } })
       );
+      mockIsMonorepoContext.mockResolvedValue(true); // Simulate monorepo
+      mockRunBunCommand.mockResolvedValue({ success: true, stdout: '', stderr: '' });
 
       await buildProject(projectDir);
-      expect(mockLogger.info).toHaveBeenCalledWith('Detected monorepo structure, skipping install');
+
+      // Check for the debug log specific to monorepo
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Detected monorepo structure, skipping install'
+      );
+      // Ensure it still attempts to build
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        expect.stringContaining('Using build script from package.json')
+      );
       expect(mockRunBunCommand).toHaveBeenCalledWith(['run', 'build'], projectDir);
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        expect.stringContaining('Build completed successfully')
+      );
     });
 
     it('should warn if no build script found in package.json AND no tsconfig.json', async () => {

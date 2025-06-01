@@ -4,9 +4,9 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "typeRoots": ["./node_modules/@types"],
-    "declaration": false,
-    "declarationMap": false,
+    "declaration": true,
+    "declarationMap": true,
     "sourceMap": true
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*", "../plugin-local-ai/src/types"]
 }

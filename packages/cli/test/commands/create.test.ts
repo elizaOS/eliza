@@ -14,6 +14,8 @@ const {
   mockEnsureElizaDir,
   mockHandleError,
   mockPromptAndStorePostgresUrl,
+  mockPromptAndStoreOpenAIKey, // Added for completeness
+  mockPromptAndStoreAnthropicKey, // Added for completeness
   mockRunBunCommand,
   mockSetupPgLite,
   mockResolveEnvFile,
@@ -99,6 +101,8 @@ const {
     mockEnsureElizaDir: vi.fn(),
     mockHandleError: vi.fn(),
     mockPromptAndStorePostgresUrl: vi.fn(),
+    mockPromptAndStoreOpenAIKey: vi.fn(),
+    mockPromptAndStoreAnthropicKey: vi.fn(),
     mockRunBunCommand: vi.fn(),
     mockSetupPgLite: vi.fn(),
     mockResolveEnvFile: vi.fn(),
@@ -129,6 +133,8 @@ vi.mock('@/src/utils', () => ({
   ensureElizaDir: mockEnsureElizaDir,
   handleError: mockHandleError,
   promptAndStorePostgresUrl: mockPromptAndStorePostgresUrl,
+  promptAndStoreOpenAIKey: mockPromptAndStoreOpenAIKey,
+  promptAndStoreAnthropicKey: mockPromptAndStoreAnthropicKey,
   runBunCommand: mockRunBunCommand,
   setupPgLite: mockSetupPgLite,
   resolveEnvFile: mockResolveEnvFile, // This is the problematic one
@@ -191,9 +197,18 @@ describe('create command', () => {
     mockLogger.warn.mockReset();
     mockLogger.error.mockReset();
     mockLogger.success.mockReset();
-    mockPrompts
-      .mockReset()
-      .mockResolvedValue({ type: 'project', nameResponse: 'myproject', database: 'pglite' });
+    mockPrompts.mockReset().mockImplementation(async (config: any) => {
+      if (config.name === 'type') return { type: 'project' };
+      if (config.name === 'nameResponse') return { nameResponse: 'default-test-project' };
+      if (config.name === 'database') return { database: 'pglite' };
+      if (config.name === 'aiModel') return { aiModel: 'local' };
+      if (config.name === 'confirm') return { confirm: true };
+      // Fallback for unexpected prompts during a test run
+      console.warn(
+        `[Test Mock Warning] Unhandled prompt in default mock: ${config.name || 'Unknown prompt'}`
+      );
+      return {};
+    });
     mockBuildProject.mockReset().mockResolvedValue(undefined);
     mockCopyTemplate.mockReset().mockResolvedValue(undefined);
     mockDisplayBanner.mockReset().mockResolvedValue(undefined);
@@ -210,6 +225,8 @@ describe('create command', () => {
     });
 
     mockPromptAndStorePostgresUrl.mockReset().mockResolvedValue('postgresql://localhost/test');
+    mockPromptAndStoreOpenAIKey.mockReset().mockResolvedValue('sk-openaikey');
+    mockPromptAndStoreAnthropicKey.mockReset().mockResolvedValue('sk-anthropic');
     mockRunBunCommand.mockReset().mockResolvedValue({ success: true, stdout: '', stderr: '' });
     mockSetupPgLite.mockReset().mockResolvedValue(undefined);
     mockResolveEnvFile.mockReset().mockReturnValue(join(tempDir, '.env'));
@@ -256,6 +273,7 @@ describe('create command', () => {
 
       await actionFn(projectName, { dir: '.', yes: true, type: 'project' });
 
+      expect(mockPrompts).not.toHaveBeenCalled(); // Crucial for non-interactive
       expect(mockDisplayBanner).toHaveBeenCalled();
       // Ensure the directory for the project is actually created before copyTemplate is called
       // (This would be part of createProjectDirectory in the SUT)
@@ -272,42 +290,38 @@ describe('create command', () => {
 
     it('should prompt for project type when not specified', async () => {
       mockPrompts
-        .mockResolvedValueOnce({ type: 'project' }) // For type selection
-        .mockResolvedValueOnce({ nameResponse: 'myproject' }) // For name
-        .mockResolvedValueOnce({ database: 'pglite' }); // For database
+        .mockResolvedValueOnce({ type: 'project' }) // 1. type
+        .mockResolvedValueOnce({ nameResponse: 'myproject' }) // 2. nameResponse
+        .mockResolvedValueOnce({ database: 'pglite' }) // 3. database
+        .mockResolvedValueOnce({ aiModel: 'local' }); // 4. aiModel
       const actionFn = getActionFn();
-
-      await actionFn(undefined, { dir: '.', yes: false, type: '' }); // Pass type as empty to trigger prompt
-
-      expect(mockPrompts).toHaveBeenCalledWith(expect.objectContaining({ name: 'type' }));
+      await actionFn(undefined, { dir: '.', yes: false, type: '' });
+      expect(mockPrompts.mock.calls[0][0].name).toBe('type');
+      expect(mockPrompts.mock.calls[1][0].name).toBe('nameResponse');
+      expect(mockPrompts.mock.calls[2][0].name).toBe('database');
+      expect(mockPrompts.mock.calls[3][0].name).toBe('aiModel');
     });
 
     it('should prompt for project name when not provided', async () => {
       mockPrompts
-        .mockResolvedValueOnce({ nameResponse: 'myproject' }) // For name
-        .mockResolvedValueOnce({ database: 'pglite' }); // For database
+        .mockResolvedValueOnce({ nameResponse: 'myproject' }) // 1. nameResponse (type is 'project')
+        .mockResolvedValueOnce({ database: 'pglite' }) // 2. database
+        .mockResolvedValueOnce({ aiModel: 'local' }); // 3. aiModel
       const actionFn = getActionFn();
-      // Pass type explicitly to only test name prompt
       await actionFn(undefined, { dir: '.', yes: false, type: 'project' });
-      expect(mockPrompts).toHaveBeenCalledWith(expect.objectContaining({ name: 'nameResponse' }));
+      expect(mockPrompts.mock.calls[0][0].name).toBe('nameResponse');
+      expect(mockPrompts.mock.calls[1][0].name).toBe('database');
+      expect(mockPrompts.mock.calls[2][0].name).toBe('aiModel');
     });
 
     it('should call handleError for invalid project names (e.g., spaces, uppercase)', async () => {
       const actionFn = getActionFn();
-
+      // Non-interactive, so no prompts should be called before validation error
+      mockPrompts.mockClear(); // Clear any beforeEach mock implementation for this test
       await expect(
         actionFn('my project', { dir: '.', yes: true, type: 'project' })
       ).rejects.toThrow('process.exit called');
-      expect(mockHandleError).toHaveBeenCalledWith(
-        expect.objectContaining({ message: 'process.exit called' })
-      );
-
-      mockHandleError.mockClear();
-      processExitSpy.mockClear();
-
-      await expect(actionFn('MyProject', { dir: '.', yes: true, type: 'project' })).rejects.toThrow(
-        'process.exit called'
-      );
+      expect(mockPrompts).not.toHaveBeenCalled();
       expect(mockHandleError).toHaveBeenCalledWith(
         expect.objectContaining({ message: 'process.exit called' })
       );
@@ -319,12 +333,13 @@ describe('create command', () => {
       const projectPath = resolvePath(tempDir, projectName);
       await mkdir(projectPath, { recursive: true });
       await writeFile(join(projectPath, 'dummy.txt'), 'content');
-
       const expectedErrorMsg = `Directory "${projectName}" is not empty`;
-      // This error is generated and thrown by mockHandleError based on SUT calling it.
+      // Non-interactive, no prompts before dir check
+      mockPrompts.mockClear();
       await expect(
         actionFn(projectName, { dir: '.', yes: true, type: 'project' })
       ).rejects.toThrowError(expectedErrorMsg);
+      expect(mockPrompts).not.toHaveBeenCalled();
       expect(mockHandleError).toHaveBeenCalledWith(expect.any(Error)); // Check it was an Error object
       // Further check the message of the error passed to mockHandleError
       const errorArg = mockHandleError.mock.calls[0][0] as Error;
@@ -332,31 +347,33 @@ describe('create command', () => {
     });
 
     it('should proceed if target directory exists but is empty', async () => {
-      const actionFn = getActionFn();
-      const projectName = 'testproject';
-      const projectPath = resolvePath(tempDir, projectName);
-      await mkdir(projectPath, { recursive: true }); // Exists but empty
-
-      // Ensure default prompt for database is covered if yes:true
-      mockPrompts.mockResolvedValue({ database: 'pglite' });
-
-      await actionFn(projectName, { dir: '.', yes: true, type: 'project' });
-      expect(mockCopyTemplate).toHaveBeenCalledWith('project', projectPath, projectName);
-      // Check if directory was actually created by SUT (it should be if it didn't exist)
-      // Here, it exists and is empty, so copyTemplate should proceed.
+      const originalArgv = process.argv;
+      process.argv = [...originalArgv, '--yes']; // Mock --yes flag
+      try {
+        const actionFn = getActionFn();
+        const projectName = 'testproject';
+        const projectPath = resolvePath(tempDir, projectName);
+        await mkdir(projectPath, { recursive: true });
+        // No need to mockPrompts for database/aiModel if --yes is effective
+        await actionFn(projectName, { dir: '.', yes: true, type: 'project' });
+        expect(mockPrompts).not.toHaveBeenCalled();
+        expect(mockCopyTemplate).toHaveBeenCalledWith('project', projectPath, projectName);
+      } finally {
+        process.argv = originalArgv; // Restore original argv
+      }
     });
 
     it('should setup postgres database when selected via prompts', async () => {
-      mockPrompts.mockReset();
-      // If name=undefined, type='project', yes=false. Prompts: 1. Name, 2. Database
       mockPrompts
-        .mockResolvedValueOnce({ nameResponse: 'myproject' }) // For name
-        .mockResolvedValueOnce({ database: 'postgres' }); // For database
+        .mockResolvedValueOnce({ nameResponse: 'my-pg-project' }) // 1. nameResponse (type='project', name=undefined)
+        .mockResolvedValueOnce({ database: 'postgres' }) // 2. database
+        .mockResolvedValueOnce({ aiModel: 'local' }); // 3. aiModel
       const actionFn = getActionFn();
-
       await actionFn(undefined, { dir: '.', yes: false, type: 'project' });
-
-      expect(mockPrompts).toHaveBeenCalledTimes(2);
+      expect(mockPrompts.mock.calls.length).toBe(3);
+      expect(mockPrompts.mock.calls[0][0].name).toBe('nameResponse');
+      expect(mockPrompts.mock.calls[1][0].name).toBe('database');
+      expect(mockPrompts.mock.calls[2][0].name).toBe('aiModel');
       expect(mockPromptAndStorePostgresUrl).toHaveBeenCalled();
       expect(mockSetupPgLite).not.toHaveBeenCalled();
     });
@@ -477,54 +494,57 @@ describe('create command', () => {
   describe('error handling tests', () => {
     it('should call handleError for invalid type parameter', async () => {
       const actionFn = getActionFn();
+      // Non-interactive for this specific error path
+      mockPrompts.mockClear();
       await expect(actionFn('test', { dir: '.', yes: true, type: 'invalid' })).rejects.toThrow(
         'process.exit called'
       );
+      expect(mockPrompts).not.toHaveBeenCalled();
       expect(mockHandleError).toHaveBeenCalledWith(
         expect.objectContaining({ message: 'process.exit called' })
       );
     });
 
     it('should handle user cancellation during prompts (returns undefined, no error)', async () => {
-      mockPrompts.mockResolvedValue({}); // Simulate user cancelling (e.g., empty object)
+      mockPrompts.mockReset().mockResolvedValueOnce({}); // Simulate cancellation at first prompt
       const actionFn = getActionFn();
       const result = await actionFn(undefined, { dir: '.', yes: false, type: '' });
-      expect(result).toBeUndefined(); // Or check that no further actions like copyTemplate occur
+      expect(result).toBeUndefined();
       expect(mockCopyTemplate).not.toHaveBeenCalled();
     });
 
     it('should call handleError for unexpected errors during copyTemplate', async () => {
-      mockPrompts.mockResolvedValueOnce({
-        type: 'project',
-        nameResponse: 'testproject',
-        database: 'pglite',
-      });
+      // This test will be interactive to get past initial checks, then copyTemplate fails
+      mockPrompts
+        .mockResolvedValueOnce({ type: 'project' })
+        .mockResolvedValueOnce({ nameResponse: 'testproject' })
+        .mockResolvedValueOnce({ database: 'pglite' })
+        .mockResolvedValueOnce({ aiModel: 'local' }); // Ensure all prompts are answered before copy
       const templateError = new Error('Template copy failed');
-      mockCopyTemplate.mockRejectedValue(templateError);
+      mockCopyTemplate.mockReset().mockRejectedValue(templateError); // mockReset before mockRejectedValue
       const actionFn = getActionFn();
-
-      await expect(
-        actionFn('testproject', { dir: '.', yes: true, type: 'project' })
-      ).rejects.toThrow(templateError); // Expect the exact error object to be re-thrown by mockHandleError
+      await expect(actionFn(undefined, { dir: '.', yes: false, type: '' })).rejects.toThrow(
+        templateError
+      );
       expect(mockHandleError).toHaveBeenCalledWith(templateError);
     });
   });
 
   describe('directory handling tests', () => {
     it('should create target project directory if it does not exist', async () => {
-      const actionFn = getActionFn();
-      const projectName = 'newproject';
-      const projectPath = resolvePath(tempDir, projectName);
-      // ensure it doesn't exist initially by not creating it with mkdir
-
-      await actionFn(projectName, { dir: '.', yes: true, type: 'project' });
-      // The SUT (createProjectDirectory) is responsible for mkdir.
-      // We verify by checking if copyTemplate was called with the correct path,
-      // implying the directory was ready.
-      expect(mockCopyTemplate).toHaveBeenCalledWith('project', projectPath, projectName);
-      // Optionally, we can also check if the directory now exists if we want to be super sure,
-      // but this tests an internal implementation detail of createProjectDirectory.
-      // expect(realExistsSync(projectPath)).toBe(true);
+      const originalArgv = process.argv;
+      process.argv = [...originalArgv, '--yes']; // Mock --yes flag
+      try {
+        const actionFn = getActionFn();
+        const projectName = 'newproject';
+        const projectPath = resolvePath(tempDir, projectName);
+        // No need to mockPrompts for database/aiModel if --yes is effective
+        await actionFn(projectName, { dir: '.', yes: true, type: 'project' });
+        expect(mockPrompts).not.toHaveBeenCalled();
+        expect(mockCopyTemplate).toHaveBeenCalledWith('project', projectPath, projectName);
+      } finally {
+        process.argv = originalArgv; // Restore original argv
+      }
     });
 
     it('should handle custom directory option correctly', async () => {

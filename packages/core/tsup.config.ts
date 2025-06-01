@@ -1,16 +1,12 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: {
-    index: 'src/index.ts',
-    'specs/v1/index': 'src/specs/v1/index.ts',
-    'specs/v2/index': 'src/specs/v2/index.ts',
-  },
+  entry: ['src/index.ts'],
   outDir: 'dist',
   clean: true,
   format: ['esm'],
   target: 'node18',
-  dts: true,
+  dts: false,
   external: [
     'dotenv',
     'fs',

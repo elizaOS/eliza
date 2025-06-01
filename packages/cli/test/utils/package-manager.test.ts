@@ -1,25 +1,33 @@
-import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
+import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
-// Mock dependencies
-vi.mock('@elizaos/core', () => ({
-  logger: {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  },
-}));
+// 1. Hoisted Mocks
+const { mockLogger, mockExeca, mockUserEnvironmentGetInstanceInfo } = vi.hoisted(() => {
+  return {
+    mockLogger: {
+      info: vi.fn(),
+      debug: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      success: vi.fn(),
+    },
+    mockExeca: vi.fn(),
+    mockUserEnvironmentGetInstanceInfo: vi.fn(),
+  };
+});
 
-vi.mock('execa', () => ({
-  execa: vi.fn(),
-}));
-
+// 2. Apply Mocks BEFORE importing SUT
+vi.mock('execa', () => ({ execa: mockExeca }));
+vi.mock('@elizaos/core', () => ({ logger: mockLogger }));
 vi.mock('../../src/utils/user-environment', () => ({
   UserEnvironment: {
-    getInstanceInfo: vi.fn(),
+    getInstanceInfo: mockUserEnvironmentGetInstanceInfo,
   },
 }));
 
+// 3. Import SUT AFTER mocks
 import {
   getPackageManager,
   isGlobalInstallation,
@@ -28,45 +36,57 @@ import {
   getInstallCommand,
   executeInstallation,
 } from '../../src/utils/package-manager';
-import { logger } from '@elizaos/core';
-import { execa } from 'execa';
-import { UserEnvironment } from '../../src/utils/user-environment';
 
 describe('package-manager', () => {
-  beforeEach(() => {
+  let tempDir: string;
+
+  beforeEach(async () => {
+    tempDir = await mkdtemp(join(tmpdir(), 'package-manager-test-'));
     vi.clearAllMocks();
+
+    // Set default mock behavior
+    mockUserEnvironmentGetInstanceInfo.mockResolvedValue({
+      packageManager: {
+        name: 'npm',
+        version: 'latest',
+        global: false,
+        isNpx: false,
+        isBunx: false,
+      },
+    });
+  });
+
+  afterEach(async () => {
+    if (tempDir) {
+      await rm(tempDir, { recursive: true, force: true });
+    }
   });
 
   describe('getPackageManager', () => {
     it('should return the detected package manager when known', async () => {
-      (UserEnvironment.getInstanceInfo as Mock).mockResolvedValue({
+      mockUserEnvironmentGetInstanceInfo.mockResolvedValue({
         packageManager: { name: 'npm' },
       });
-
       const result = await getPackageManager();
-
       expect(result).toBe('npm');
-      expect(logger.debug).toHaveBeenCalledWith('[PackageManager] Detecting package manager');
+      expect(mockLogger.debug).toHaveBeenCalledWith('[PackageManager] Detecting package manager');
     });
 
     it('should return bun as default when package manager is unknown', async () => {
-      (UserEnvironment.getInstanceInfo as Mock).mockResolvedValue({
+      mockUserEnvironmentGetInstanceInfo.mockResolvedValue({
         packageManager: { name: 'unknown' },
       });
-
       const result = await getPackageManager();
-
       expect(result).toBe('bun');
+      expect(mockLogger.debug).toHaveBeenCalledWith('[PackageManager] Detecting package manager');
     });
 
     it('should handle different package managers', async () => {
-      const packageManagers = ['yarn', 'pnpm', 'bun'];
-
+      const packageManagers = ['npm', 'yarn', 'pnpm', 'bun'];
       for (const pm of packageManagers) {
-        (UserEnvironment.getInstanceInfo as Mock).mockResolvedValue({
+        mockUserEnvironmentGetInstanceInfo.mockResolvedValue({
           packageManager: { name: pm },
         });
-
         const result = await getPackageManager();
         expect(result).toBe(pm);
       }
@@ -75,7 +95,7 @@ describe('package-manager', () => {
 
   describe('isGlobalInstallation', () => {
     it('should return true when CLI is globally installed', async () => {
-      (UserEnvironment.getInstanceInfo as Mock).mockResolvedValue({
+      mockUserEnvironmentGetInstanceInfo.mockResolvedValue({
         packageManager: { global: true },
       });
 
@@ -85,7 +105,7 @@ describe('package-manager', () => {
     });
 
     it('should return false when CLI is not globally installed', async () => {
-      (UserEnvironment.getInstanceInfo as Mock).mockResolvedValue({
+      mockUserEnvironmentGetInstanceInfo.mockResolvedValue({
         packageManager: { global: false },
       });
 
@@ -97,7 +117,7 @@ describe('package-manager', () => {
 
   describe('isRunningViaNpx', () => {
     it('should return true when running via npx', async () => {
-      (UserEnvironment.getInstanceInfo as Mock).mockResolvedValue({
+      mockUserEnvironmentGetInstanceInfo.mockResolvedValue({
         packageManager: { isNpx: true },
       });
 
@@ -107,7 +127,7 @@ describe('package-manager', () => {
     });
 
     it('should return false when not running via npx', async () => {
-      (UserEnvironment.getInstanceInfo as Mock).mockResolvedValue({
+      mockUserEnvironmentGetInstanceInfo.mockResolvedValue({
         packageManager: { isNpx: false },
       });
 
@@ -119,7 +139,7 @@ describe('package-manager', () => {
 
   describe('isRunningViaBunx', () => {
     it('should return true when running via bunx', async () => {
-      (UserEnvironment.getInstanceInfo as Mock).mockResolvedValue({
+      mockUserEnvironmentGetInstanceInfo.mockResolvedValue({
         packageManager: { isBunx: true },
       });
 
@@ -129,7 +149,7 @@ describe('package-manager', () => {
     });
 
     it('should return false when not running via bunx', async () => {
-      (UserEnvironment.getInstanceInfo as Mock).mockResolvedValue({
+      mockUserEnvironmentGetInstanceInfo.mockResolvedValue({
         packageManager: { isBunx: false },
       });
 
@@ -172,29 +192,28 @@ describe('package-manager', () => {
   });
 
   describe('executeInstallation', () => {
-    const mockExeca = execa as Mock;
-
     beforeEach(() => {
-      (UserEnvironment.getInstanceInfo as Mock).mockResolvedValue({
+      mockUserEnvironmentGetInstanceInfo.mockResolvedValue({
         packageManager: { name: 'npm' },
       });
     });
 
     it('should successfully install a regular package', async () => {
-      mockExeca.mockResolvedValue({});
+      const packageName = 'example-package';
+      mockExeca.mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 });
 
-      const result = await executeInstallation('lodash');
+      const result = await executeInstallation(packageName, undefined, tempDir);
 
-      expect(mockExeca).toHaveBeenCalledWith('npm', ['install', 'lodash'], {
-        cwd: process.cwd(),
-        stdio: 'inherit',
-      });
-      expect(logger.info).toHaveBeenCalledWith('Attempting to install package: lodash using npm');
-      expect(logger.info).toHaveBeenCalledWith('Successfully installed lodash.');
-      expect(result).toEqual({
-        success: true,
-        installedIdentifier: 'lodash',
-      });
+      expect(mockExeca).toHaveBeenCalledWith(
+        'npm',
+        ['install', packageName],
+        expect.objectContaining({ cwd: tempDir, stdio: 'inherit' })
+      );
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        `Attempting to install package: ${packageName} using npm`
+      );
+      expect(mockLogger.debug).toHaveBeenCalledWith(`Successfully installed ${packageName}.`);
+      expect(result).toEqual({ success: true, installedIdentifier: packageName });
     });
 
     it('should install package with version', async () => {
@@ -271,7 +290,7 @@ describe('package-manager', () => {
 
       const result = await executeInstallation('nonexistent-package');
 
-      expect(logger.warn).toHaveBeenCalledWith(
+      expect(mockLogger.warn).toHaveBeenCalledWith(
         'Installation failed for nonexistent-package: Installation failed'
       );
       expect(result).toEqual({
@@ -281,18 +300,24 @@ describe('package-manager', () => {
     });
 
     it('should use bun when detected as package manager', async () => {
-      (UserEnvironment.getInstanceInfo as Mock).mockResolvedValue({
+      const packageName = 'example-package';
+      mockUserEnvironmentGetInstanceInfo.mockResolvedValue({
         packageManager: { name: 'bun' },
       });
-      mockExeca.mockResolvedValue({});
+      mockExeca.mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 });
 
-      await executeInstallation('lodash');
+      const result = await executeInstallation(packageName, undefined, tempDir);
 
-      expect(mockExeca).toHaveBeenCalledWith('bun', ['add', 'lodash'], {
-        cwd: process.cwd(),
-        stdio: 'inherit',
-      });
-      expect(logger.info).toHaveBeenCalledWith('Attempting to install package: lodash using bun');
+      expect(mockExeca).toHaveBeenCalledWith(
+        'bun',
+        ['add', packageName],
+        expect.objectContaining({ cwd: tempDir, stdio: 'inherit' })
+      );
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        `Attempting to install package: ${packageName} using bun`
+      );
+      expect(mockLogger.debug).toHaveBeenCalledWith(`Successfully installed ${packageName}.`);
+      expect(result).toEqual({ success: true, installedIdentifier: packageName });
     });
 
     it('should handle scoped packages', async () => {

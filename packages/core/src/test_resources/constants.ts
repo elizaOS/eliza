@@ -1,4 +1,4 @@
-import type { UUID } from '../types';
+import type { UUID } from '@elizaos/core';
 
 export const SERVER_URL = 'http://localhost:7998';
 export const SUPABASE_URL = 'https://pronvzrzfwsptkojvudd.supabase.co';
