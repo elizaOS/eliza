@@ -119,7 +119,7 @@ teardown() {
   $ELIZAOS_CMD start -p "$NEW_PORT" --character "$BATS_TEST_DIRNAME/test-characters/ada.json" \
     >"$TEST_TMP_DIR/port.log" 2>&1 &
   pid=$!
-  sleep 4
+  sleep 6
   run grep -q "AgentServer is listening on port $NEW_PORT" "$TEST_TMP_DIR/port.log"
   kill "$pid" 2>/dev/null || true
   [ "$status" -eq 0 ]
