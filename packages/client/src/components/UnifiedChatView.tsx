@@ -1,0 +1,650 @@
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { ResizablePanel, ResizablePanelGroup, ResizableHandle } from '@/components/ui/resizable';
+import AgentDetailsPanel from '@/components/AgentDetailsPanel';
+import {
+    useAgent,
+    useAgentsWithDetails,
+    useChannelDetails,
+    useChannelParticipants,
+    useChannelMessages,
+    useDeleteChannelMessage,
+    useClearChannelMessages,
+    type UiMessage
+} from '@/hooks/use-query-hooks';
+import { Loader2, PanelRightClose, PanelRight, Send, Paperclip, FileText, X, Trash2, Play, ChevronRight } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { ContentType as CoreContentType, AgentStatus } from '@elizaos/core';
+import type { UUID, Agent, Media } from '@elizaos/core';
+import type { AgentWithStatus } from '@/types';
+import clientLogger from '@/lib/logger';
+import { ChatBubbleMessage, ChatBubbleTimestamp } from '@/components/ui/chat/chat-bubble';
+import { Avatar, AvatarImage } from '@/components/ui/avatar';
+import { useToast } from '@/hooks/use-toast';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { getEntityId, randomUUID, moment, cn } from '@/lib/utils';
+import { apiClient } from '@/lib/api';
+import { parseMediaFromText, removeMediaUrlsFromText, type MediaInfo } from '@/lib/media-utils';
+import { useAutoScroll } from '@/components/ui/chat/hooks/useAutoScroll';
+import { validateUuid } from '@elizaos/core';
+import { USER_NAME, CHAT_SOURCE, GROUP_CHAT_SOURCE } from '@/constants';
+import AIWriter from 'react-aiwriter';
+import { Badge } from '@/components/ui/badge';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
+import ChatTtsButton from '@/components/ui/chat/chat-tts-button';
+import CopyButton from '@/components/copy-button';
+import DeleteButton from '@/components/delete-button';
+import MediaContent from '@/components/media-content';
+import { useQueryClient } from '@tanstack/react-query';
+import { useSocketChat } from '@/hooks/use-socket-chat';
+import { useFileUpload, type UploadingFile } from '@/hooks/use-file-upload';
+import { ChatMessageListComponent } from './ChatMessageListComponent';
+import { ChatInputArea } from './ChatInputArea';
+
+const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
+
+interface UnifiedChatViewProps {
+    chatType: 'DM' | 'GROUP';
+    contextId: UUID; // agentId for DM, channelId for GROUP
+    serverId?: UUID; // Required for GROUP, optional for DM
+}
+
+// Message content component - exported for use in ChatMessageListComponent
+export const MemoizedMessageContent = React.memo(MessageContent);
+
+export function MessageContent({
+    message,
+    agentForTts,
+    shouldAnimate,
+    onDelete,
+    isUser,
+    getAgentInMessage,
+    agentAvatarMap,
+}: {
+    message: UiMessage;
+    agentForTts?: Agent | Partial<Agent> | null;
+    shouldAnimate?: boolean;
+    onDelete: (id: string) => void;
+    isUser: boolean;
+    getAgentInMessage?: (agentId: UUID) => Partial<Agent> | undefined;
+    agentAvatarMap?: Record<UUID, string | null>;
+}) {
+    const agentData = !isUser && getAgentInMessage ? getAgentInMessage(message.senderId) : agentForTts;
+
+    return (
+        <div className="flex flex-col w-full">
+            <ChatBubbleMessage
+                isLoading={message.isLoading}
+                {...(isUser ? { variant: 'sent' } : {})}
+                {...(!message.text && !message.attachments?.length ? { className: 'bg-transparent' } : {})}
+            >
+                {!isUser && agentData && (
+                    <div className="w-full">
+                        {message.text && message.thought && (
+                            <Collapsible className="mb-1">
+                                <CollapsibleTrigger className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors group">
+                                    <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]:rotate-90" />
+                                    {(agentData as Agent)?.name || 'Agent'}'s Thought Process
+                                </CollapsibleTrigger>
+                                <CollapsibleContent className="pl-5 pt-1">
+                                    <Badge variant="outline" className="text-xs">
+                                        {message.thought}
+                                    </Badge>
+                                </CollapsibleContent>
+                            </Collapsible>
+                        )}
+                    </div>
+                )}
+
+                <div className="py-2">
+                    {(() => {
+                        if (!message.text) return null;
+
+                        const mediaInfos = parseMediaFromText(message.text);
+                        const attachmentUrls = new Set(
+                            message.attachments?.map((att) => att.url).filter(Boolean) || []
+                        );
+                        const uniqueMediaInfos = mediaInfos.filter((media) => !attachmentUrls.has(media.url));
+                        const textWithoutUrls = removeMediaUrlsFromText(message.text, mediaInfos);
+
+                        return (
+                            <div className="space-y-3">
+                                {textWithoutUrls.trim() && (
+                                    <div>
+                                        {isUser ? (
+                                            textWithoutUrls
+                                        ) : shouldAnimate ? (
+                                            <AIWriter>{textWithoutUrls}</AIWriter>
+                                        ) : (
+                                            textWithoutUrls
+                                        )}
+                                    </div>
+                                )}
+
+                                {uniqueMediaInfos.length > 0 && (
+                                    <div className="space-y-2">
+                                        {uniqueMediaInfos.map((media, index) => (
+                                            <div key={`${media.url}-${index}`}>
+                                                <MediaContent url={media.url} title="Shared media" />
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
+                </div>
+
+                {message.attachments
+                    ?.filter((attachment) => attachment.url && attachment.url.trim() !== '')
+                    .map((attachment: Media) => (
+                        <MediaContent
+                            key={`${attachment.url}-${attachment.title}`}
+                            url={attachment.url}
+                            title={attachment.title || 'Attachment'}
+                        />
+                    ))}
+
+                {(message.text || message.attachments?.length) && message.createdAt && (
+                    <ChatBubbleTimestamp timestamp={moment(message.createdAt).format('LT')} />
+                )}
+            </ChatBubbleMessage>
+
+            <div className="flex justify-between items-end w-full">
+                <div className="flex items-center gap-1">
+                    {!isUser && message.text && !message.isLoading && agentForTts?.id && (
+                        <>
+                            <CopyButton text={message.text} />
+                            <ChatTtsButton agentId={agentForTts.id} text={message.text} />
+                        </>
+                    )}
+                    <DeleteButton onClick={() => onDelete(message.id as string)} />
+                </div>
+                <div>
+                    {message.actions && message.actions.length > 0 && (
+                        <Badge variant="outline" className="text-sm">
+                            {Array.isArray(message.actions) ? message.actions.join(', ') : message.actions}
+                        </Badge>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+export default function UnifiedChatView({ chatType, contextId, serverId }: UnifiedChatViewProps) {
+    const [showSidebar, setShowSidebar] = useState(false);
+    const [input, setInput] = useState('');
+    const [inputDisabled, setInputDisabled] = useState<boolean>(false);
+    const { toast } = useToast();
+    const queryClient = useQueryClient();
+
+    const inputRef = useRef<HTMLTextAreaElement>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const formRef = useRef<HTMLFormElement>(null);
+
+    const currentClientEntityId = getEntityId();
+
+    // For DM, we need agent data. For GROUP, we need channel data
+    const { data: agentDataResponse, isLoading: isLoadingAgent } = useAgent(
+        chatType === 'DM' ? contextId : undefined,
+        { enabled: chatType === 'DM' }
+    );
+
+    // Convert AgentWithStatus to Agent, ensuring required fields have defaults
+    const targetAgentData: Agent | undefined = agentDataResponse?.data
+        ? {
+            ...agentDataResponse.data,
+            createdAt: agentDataResponse.data.createdAt || Date.now(),
+            updatedAt: agentDataResponse.data.updatedAt || Date.now(),
+        } as Agent
+        : undefined;
+
+    // Group chat specific data
+    const { data: channelDetailsData } = useChannelDetails(
+        chatType === 'GROUP' ? contextId : undefined
+    );
+    const { data: participantsData } = useChannelParticipants(
+        chatType === 'GROUP' ? contextId : undefined
+    );
+    const participants = participantsData?.data;
+
+    const { data: agentsResponse } = useAgentsWithDetails();
+    const allAgents = agentsResponse?.agents || [];
+
+    const agentAvatarMap = useMemo(
+        () =>
+            allAgents.reduce(
+                (acc, agent) => {
+                    if (agent.id && agent.settings?.avatar) acc[agent.id] = agent.settings.avatar;
+                    return acc;
+                },
+                {} as Record<UUID, string | null>
+            ),
+        [allAgents]
+    );
+
+    const getAgentInMessage = useCallback(
+        (agentId: UUID) => {
+            return allAgents.find((a) => a.id === agentId);
+        },
+        [allAgents]
+    );
+
+    // DM channel management
+    const [dmChannelData, setDmChannelData] = useState<{ channelId: UUID; serverId: UUID } | null>(null);
+    const [isCreatingDM, setIsCreatingDM] = useState(false);
+
+    useEffect(() => {
+        if (chatType === 'DM' && contextId && !dmChannelData && !isCreatingDM) {
+            setIsCreatingDM(true);
+            const createDMChannel = async () => {
+                try {
+                    const serverIdToUse = DEFAULT_SERVER_ID;
+                    const dmResponse = await fetch(
+                        `/api/messages/dm-channel?targetUserId=${contextId}&currentUserId=${currentClientEntityId}&dmServerId=${serverIdToUse}`
+                    );
+                    const dmData = await dmResponse.json();
+                    if (dmData.success) {
+                        setDmChannelData({ channelId: dmData.data.id, serverId: serverIdToUse });
+                    } else { throw new Error('Failed to create DM channel'); }
+                } catch (error) {
+                    console.error('Error creating DM channel:', error);
+                    toast({ title: 'Error', description: 'Failed to create chat channel', variant: 'destructive' });
+                } finally { setIsCreatingDM(false); }
+            };
+            createDMChannel();
+        }
+    }, [chatType, contextId, dmChannelData, isCreatingDM, currentClientEntityId, toast]);
+
+    const finalChannelId = chatType === 'DM' ? dmChannelData?.channelId : contextId;
+    const finalServerId = chatType === 'DM' ? dmChannelData?.serverId : serverId;
+
+    const {
+        data: messages = [],
+        isLoading: isLoadingMessages,
+        addMessage,
+        updateMessage,
+        removeMessage,
+    } = useChannelMessages(finalChannelId || undefined, finalServerId || undefined);
+
+    const { mutate: deleteMessageCentral } = useDeleteChannelMessage();
+    const { mutate: clearMessagesCentral } = useClearChannelMessages();
+
+    const { scrollRef, isAtBottom, scrollToBottom, disableAutoScroll, autoScrollEnabled } = useAutoScroll({
+        smooth: true,
+    });
+    const prevMessageCountRef = useRef(0);
+
+    const safeScrollToBottom = useCallback(() => {
+        if (scrollRef.current) {
+            setTimeout(() => scrollToBottom(), 0);
+        }
+    }, [scrollToBottom, scrollRef]);
+
+    // Use socket chat hook
+    const { sendMessage, animatedMessageId } = useSocketChat({
+        channelId: finalChannelId,
+        currentUserId: currentClientEntityId,
+        contextId,
+        chatType,
+        allAgents,
+        messages,
+        onAddMessage: addMessage,
+        onUpdateMessage: updateMessage,
+        onInputDisabledChange: setInputDisabled,
+    });
+
+    // Use file upload hook
+    const {
+        selectedFiles,
+        handleFileChange,
+        removeFile,
+        createBlobUrls,
+        uploadFiles,
+        cleanupBlobUrls,
+        clearFiles,
+        getContentTypeFromMimeType,
+    } = useFileUpload({
+        agentId: targetAgentData?.id,
+        channelId: finalChannelId,
+        chatType,
+    });
+
+    // Auto-scroll handling
+    useEffect(() => {
+        const isInitialLoadWithMessages = prevMessageCountRef.current === 0 && messages.length > 0;
+        const hasNewMessages = messages.length !== prevMessageCountRef.current && prevMessageCountRef.current !== 0;
+
+        if (isInitialLoadWithMessages) {
+            clientLogger.debug('[UnifiedChatView] Initial messages loaded, scrolling to bottom.', { count: messages.length });
+            safeScrollToBottom();
+        } else if (hasNewMessages) {
+            if (autoScrollEnabled) {
+                clientLogger.debug('[UnifiedChatView] New messages and autoScroll enabled, scrolling.');
+                safeScrollToBottom();
+            } else {
+                clientLogger.debug('[UnifiedChatView] New messages, but autoScroll is disabled (user scrolled up).');
+            }
+        }
+        prevMessageCountRef.current = messages.length;
+    }, [messages, autoScrollEnabled, safeScrollToBottom, finalChannelId]);
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+            e.preventDefault();
+            handleSendMessage(e as unknown as React.FormEvent<HTMLFormElement>);
+        }
+    };
+
+    const handleSendMessage = async (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        if (
+            (!input.trim() && selectedFiles.length === 0) ||
+            inputDisabled ||
+            !finalChannelId ||
+            !finalServerId ||
+            !currentClientEntityId ||
+            (chatType === 'DM' && !targetAgentData?.id)
+        )
+            return;
+
+        setInputDisabled(true);
+        const tempMessageId = randomUUID() as UUID;
+        let messageText = input.trim();
+
+        const currentInputVal = input;
+        setInput('');
+        const currentSelectedFiles = [...selectedFiles];
+        clearFiles();
+        formRef.current?.reset();
+
+        // Create blob URLs for optimistic display
+        const optimisticAttachments = createBlobUrls(currentSelectedFiles);
+
+        const optimisticUiMessage: UiMessage = {
+            id: tempMessageId,
+            text: messageText,
+            name: USER_NAME,
+            createdAt: Date.now(),
+            senderId: currentClientEntityId,
+            isAgent: false,
+            isLoading: true,
+            channelId: finalChannelId,
+            serverId: finalServerId,
+            source: chatType === 'DM' ? CHAT_SOURCE : GROUP_CHAT_SOURCE,
+            attachments: optimisticAttachments,
+        };
+
+        // Add optimistic message
+        if (messageText || currentSelectedFiles.length > 0) {
+            addMessage(optimisticUiMessage);
+        }
+        safeScrollToBottom();
+
+        try {
+            let processedUiAttachments: Media[] = [];
+
+            if (currentSelectedFiles.length > 0) {
+                const { uploaded, failed, blobUrls } = await uploadFiles(currentSelectedFiles);
+                processedUiAttachments = uploaded;
+
+                if (failed.length > 0) {
+                    updateMessage(tempMessageId, {
+                        attachments: optimisticUiMessage.attachments?.filter(
+                            (att) => !failed.some((f) => f.file.id === att.id)
+                        ),
+                    });
+                }
+
+                // Cleanup blob URLs after upload
+                cleanupBlobUrls(blobUrls);
+
+                if (!messageText.trim() && processedUiAttachments.length > 0) {
+                    messageText = `Shared ${processedUiAttachments.length} file(s).`;
+                }
+            }
+
+            const mediaInfosFromText = parseMediaFromText(currentInputVal);
+            const textMediaAttachments: Media[] = mediaInfosFromText.map(
+                (media: MediaInfo, index: number): Media => ({
+                    id: `textmedia-${tempMessageId}-${index}`,
+                    url: media.url,
+                    title: media.type === 'image' ? 'Image' : media.type === 'video' ? 'Video' : 'Media Link',
+                    source: 'user_input_url',
+                    contentType:
+                        media.type === 'image'
+                            ? CoreContentType.IMAGE
+                            : media.type === 'video'
+                                ? CoreContentType.VIDEO
+                                : undefined,
+                })
+            );
+
+            const finalAttachments = [...processedUiAttachments, ...textMediaAttachments];
+            const finalTextContent =
+                messageText || (finalAttachments.length > 0 ? `Shared content.` : '');
+
+            if (!finalTextContent.trim() && finalAttachments.length === 0) {
+                clientLogger.warn('Attempted to send an empty message after processing.');
+                setInputDisabled(false);
+                removeMessage(tempMessageId);
+                return;
+            }
+
+            await sendMessage(
+                finalTextContent,
+                finalServerId!,
+                chatType === 'DM' ? CHAT_SOURCE : GROUP_CHAT_SOURCE,
+                finalAttachments.length > 0 ? finalAttachments : undefined,
+                tempMessageId
+            );
+        } catch (error) {
+            clientLogger.error('Error sending message or uploading files:', error);
+            toast({
+                title: 'Error Sending Message',
+                description: error instanceof Error ? error.message : 'Could not send message.',
+                variant: 'destructive',
+            });
+            updateMessage(tempMessageId, {
+                isLoading: false,
+                text: `${optimisticUiMessage.text || 'Attachment(s)'} (Failed to send)`,
+            });
+        } finally {
+            setInputDisabled(false);
+            inputRef.current?.focus();
+        }
+    };
+
+    const handleDeleteMessage = (messageId: string) => {
+        if (!finalChannelId || !messageId) return;
+        const validMessageId = validateUuid(messageId);
+        if (validMessageId) {
+            deleteMessageCentral({ channelId: finalChannelId, messageId: validMessageId });
+        }
+    };
+
+    const handleClearChat = () => {
+        if (!finalChannelId) return;
+        if (window.confirm(`Clear all messages in this ${chatType === 'DM' ? 'chat' : 'group chat'}?`)) {
+            clearMessagesCentral(finalChannelId);
+        }
+    };
+
+    useEffect(() => {
+        clientLogger.info('[UnifiedChatView] Mounted/Updated', { chatType, contextId, serverId });
+        return () => {
+            clientLogger.info('[UnifiedChatView] Unmounted');
+        };
+    }, [chatType, contextId, serverId]);
+
+    if (chatType === 'DM' && (isLoadingAgent || (!targetAgentData && contextId))) {
+        return (
+            <div className="flex items-center justify-center h-full">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+        );
+    }
+
+    if (!finalChannelId || !finalServerId || (chatType === 'DM' && !targetAgentData)) {
+        return (
+            <div className="flex flex-1 justify-center items-center">
+                <p>Loading chat context...</p>
+            </div>
+        );
+    }
+
+    // Chat header
+    const renderChatHeader = () => {
+        if (chatType === 'DM' && targetAgentData) {
+            return (
+                <div className="flex items-center justify-between mb-4 p-3 bg-card rounded-lg border">
+                    <div className="flex items-center gap-3">
+                        <Avatar className="size-10 border rounded-full">
+                            <AvatarImage src={targetAgentData?.settings?.avatar || '/elizaos-icon.png'} />
+                        </Avatar>
+                        <div className="flex flex-col">
+                            <div className="flex items-center gap-2">
+                                <h2 className="font-semibold text-lg">{targetAgentData?.name || 'Agent'}</h2>
+                                {targetAgentData?.status === AgentStatus.ACTIVE ? (
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <div className="size-2.5 rounded-full bg-green-500 ring-2 ring-green-500/20 animate-pulse" />
+                                        </TooltipTrigger>
+                                        <TooltipContent side="right">
+                                            <p>Agent is active</p>
+                                        </TooltipContent>
+                                    </Tooltip>
+                                ) : (
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <div className="size-2.5 rounded-full bg-gray-300 ring-2 ring-gray-300/20" />
+                                        </TooltipTrigger>
+                                        <TooltipContent side="right">
+                                            <p>Agent is inactive</p>
+                                        </TooltipContent>
+                                    </Tooltip>
+                                )}
+                            </div>
+                            {targetAgentData?.bio && (
+                                <p className="text-sm text-muted-foreground line-clamp-1">
+                                    {Array.isArray(targetAgentData.bio)
+                                        ? targetAgentData.bio[0]
+                                        : targetAgentData.bio}
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                    <div className="flex gap-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleClearChat}
+                            disabled={!messages || messages.length === 0}
+                        >
+                            <Trash2 className="size-4" />
+                        </Button>
+                    </div>
+                </div>
+            );
+        } else if (chatType === 'GROUP') {
+            return (
+                <div className="flex items-center justify-between mb-4 p-3 bg-card rounded-lg border">
+                    <div className="flex items-center gap-3">
+                        <h2 className="font-semibold text-lg">{channelDetailsData?.data?.name || 'Group Chat'}</h2>
+                    </div>
+                    <div className="flex gap-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleClearChat}
+                            disabled={!messages || messages.length === 0}
+                        >
+                            <Trash2 className="size-4" />
+                        </Button>
+                    </div>
+                </div>
+            );
+        }
+        return null;
+    };
+
+    return (
+        <ResizablePanelGroup direction="horizontal" className="h-full">
+            <ResizablePanel defaultSize={showSidebar ? 70 : 100} minSize={50}>
+                <div className="relative h-full">
+                    {/* Sidebar toggle button */}
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute top-4 right-4 z-10"
+                        onClick={() => setShowSidebar(!showSidebar)}
+                    >
+                        {showSidebar ? <PanelRightClose className="h-4 w-4" /> : <PanelRight className="h-4 w-4" />}
+                    </Button>
+
+                    {/* Main chat content */}
+                    <div className="h-full flex flex-col p-4">
+                        {renderChatHeader()}
+
+                        <div className={cn('flex flex-col transition-all duration-300 w-full grow overflow-hidden ')}>
+                            <ChatMessageListComponent
+                                messages={messages}
+                                isLoadingMessages={isLoadingMessages}
+                                chatType={chatType}
+                                currentClientEntityId={currentClientEntityId}
+                                targetAgentData={targetAgentData}
+                                animatedMessageId={animatedMessageId}
+                                scrollRef={scrollRef}
+                                isAtBottom={isAtBottom}
+                                scrollToBottom={scrollToBottom}
+                                disableAutoScroll={disableAutoScroll}
+                                finalChannelId={finalChannelId}
+                                getAgentInMessage={getAgentInMessage}
+                                agentAvatarMap={agentAvatarMap}
+                                onDeleteMessage={handleDeleteMessage}
+                            />
+
+                            <ChatInputArea
+                                input={input}
+                                setInput={setInput}
+                                inputDisabled={inputDisabled}
+                                selectedFiles={selectedFiles}
+                                removeFile={removeFile}
+                                handleFileChange={handleFileChange}
+                                handleSendMessage={handleSendMessage}
+                                handleKeyDown={handleKeyDown}
+                                chatType={chatType}
+                                targetAgentData={targetAgentData}
+                                formRef={formRef}
+                                inputRef={inputRef}
+                                fileInputRef={fileInputRef}
+                            />
+                        </div>
+                    </div>
+                </div>
+            </ResizablePanel>
+
+            {showSidebar && (
+                <>
+                    <ResizableHandle withHandle />
+                    <ResizablePanel defaultSize={30} minSize={20} maxSize={50}>
+                        {chatType === 'DM' && targetAgentData ? (
+                            <AgentDetailsPanel agent={targetAgentData} />
+                        ) : chatType === 'GROUP' ? (
+                            <div className="p-4">
+                                <h3 className="font-semibold mb-2">Group Details</h3>
+                                <p className="text-sm text-muted-foreground">
+                                    Group details panel coming soon...
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="p-4">
+                                <p className="text-sm text-muted-foreground">No details available</p>
+                            </div>
+                        )}
+                    </ResizablePanel>
+                </>
+            )}
+        </ResizablePanelGroup>
+    );
+} 

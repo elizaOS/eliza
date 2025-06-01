@@ -1,18 +1,9 @@
 import type { IAgentRuntime } from '@elizaos/core';
-import {
-  ChannelType,
-  createUniqueUuid,
-  logger,
-  SOCKET_MESSAGE_TYPE,
-  validateUuid,
-  type UUID,
-  type Content,
-} from '@elizaos/core';
-import type { Server as SocketIOServer, RemoteSocket, Socket } from 'socket.io';
-import type { DefaultEventsMap } from 'socket.io/dist/typed-events';
+import { logger, SOCKET_MESSAGE_TYPE, validateUuid, type UUID } from '@elizaos/core';
+import type { Socket, Server as SocketIOServer } from 'socket.io';
 import type { AgentServer } from '../index';
-import type { MessageServiceStructure as MessageService } from '../types';
 
+const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID; // Single default server
 export class SocketIORouter {
   private agents: Map<UUID, IAgentRuntime>;
   private connections: Map<string, UUID>; // socket.id -> agentId (for agent-specific interactions like log streaming, if any)
@@ -59,7 +50,7 @@ export class SocketIORouter {
           messagePreview,
         })}`
       );
-      this.handleCentralMessageSubmission(socket, payload);
+      this.handleMessageSubmission(socket, payload);
     });
 
     socket.on('message', (data) => {
@@ -106,7 +97,7 @@ export class SocketIORouter {
           break;
         case SOCKET_MESSAGE_TYPE.SEND_MESSAGE:
           logger.info(`[SocketIO ${socket.id}] Handling message sending via 'message' event`);
-          this.handleCentralMessageSubmission(socket, payload);
+          this.handleMessageSubmission(socket, payload);
           break;
         default:
           logger.warn(
@@ -150,7 +141,7 @@ export class SocketIORouter {
     logger.info(`[SocketIO] ${successMessage}`);
   }
 
-  private async handleCentralMessageSubmission(socket: Socket, payload: any) {
+  private async handleMessageSubmission(socket: Socket, payload: any) {
     const channelId = payload.channelId || payload.roomId; // Support both for backward compatibility
     const { senderId, senderName, message, serverId, source, metadata, attachments } = payload;
 
@@ -159,7 +150,7 @@ export class SocketIORouter {
     );
 
     // Special handling for default server ID "0"
-    const isValidServerId = serverId === '0' || validateUuid(serverId);
+    const isValidServerId = serverId === DEFAULT_SERVER_ID || validateUuid(serverId);
 
     if (!validateUuid(channelId) || !isValidServerId || !validateUuid(senderId) || !message) {
       this.sendErrorResponse(
@@ -216,7 +207,7 @@ export class SocketIORouter {
 
       socket.emit('messageAck', {
         clientMessageId: payload.messageId,
-        centralMessageId: createdRootMessage.id,
+        messageId: createdRootMessage.id,
         status: 'received_by_server_and_processing',
         channelId,
         roomId: channelId, // Keep for backward compatibility

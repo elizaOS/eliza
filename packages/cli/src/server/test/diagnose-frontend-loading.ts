@@ -38,7 +38,7 @@ async function testAgent() {
 }
 
 async function testServers() {
-  console.log('\n🌐 Testing central servers...');
+  console.log('\n🌐 Testing servers...');
   try {
     const response = await fetch(`${serverUrl}/api/messages/central-servers`);
     const data = await response.json();

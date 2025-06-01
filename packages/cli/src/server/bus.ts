@@ -1,7 +1,7 @@
 import EventEmitter from 'events';
 
 /**
- * A simple in-memory message bus for distributing messages from the central server
+ * A simple in-memory message bus for distributing messages from the server
  * to subscribed MessageBusService instances within the same process.
  *
  * For multi-process or multi-server deployments, this would need to be replaced

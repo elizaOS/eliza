@@ -10,7 +10,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { useAgents, useCentralServers } from '@/hooks/use-query-hooks';
+import { useAgents, useServers } from '@/hooks/use-query-hooks';
 import { apiClient } from '@/lib/api';
 import type { UUID } from '@elizaos/core';
 import { Loader2, Plus, X } from 'lucide-react';
@@ -32,7 +32,7 @@ interface ServerManagementProps {
 
 export function ServerManagement({ open, onOpenChange }: ServerManagementProps) {
     const { toast } = useToast();
-    const { data: serversData } = useCentralServers();
+    const { data: serversData } = useServers();
     const { data: agentsData } = useAgents();
 
     const [selectedServerId, setSelectedServerId] = useState<UUID | null>(null);

@@ -438,8 +438,11 @@ const startAgents = async (options: {
   // Conditionally resolve PGLite directory only if PostgreSQL URL is not provided
   const pgliteDataDir = postgresUrl ? undefined : await resolvePgliteDir();
 
-  console.log('postgresUrl is', postgresUrl);
-  console.log('pgliteDataDir is', pgliteDataDir);
+  if (postgresUrl) {
+    logger.info('Using PostgreSQL database');
+  } else {
+    logger.info('Using PGLite database');
+  }
 
   // Check if we should reconfigure based on command-line option or if using default config
   const shouldConfigure = options.configure || existingConfig.isDefault;

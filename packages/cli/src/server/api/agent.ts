@@ -234,7 +234,7 @@ export function agentRouter(
     }
   });
 
-  // Message handler for POST /:agentId/message - Updated for central message store
+  // Message handler for POST /:agentId/message - Updated for message store
   const handleAgentMessage = async (req: CustomRequest, res: express.Response) => {
     logger.debug(
       '[AGENT DIRECT MESSAGE API] Received message for agent, routing via central store'
@@ -258,7 +258,7 @@ export function agentRouter(
 
     const {
       channelId, // GLOBAL central channel ID
-      serverId, // GLOBAL central server ID
+      serverId, // GLOBAL server ID
       entityId, // GLOBAL ID of the sender of this message
       text,
       userName,
@@ -1161,7 +1161,7 @@ export function agentRouter(
         const audioBuffer = await fs.promises.readFile(audioFile.path);
         const transcription = await runtime.useModel(ModelType.TRANSCRIPTION, audioBuffer);
 
-        // Placeholder: This part needs to be updated to align with central message creation.
+        // Placeholder: This part needs to be updated to align with message creation.
         logger.info(`[AUDIO MESSAGE] Transcription for agent ${agentId}: ${transcription}`);
         cleanupFile(audioFile.path);
         sendSuccess(res, { transcription, message: 'Audio transcribed, further processing TBD.' });

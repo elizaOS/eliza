@@ -2,13 +2,13 @@ import PageTitle from '@/components/page-title';
 import ProfileOverlay from '@/components/profile-overlay';
 import {
   useAgentsWithDetails,
-  useCentralChannels,
-  useCentralServers,
+  useChannels,
+  useServers,
 } from '@/hooks/use-query-hooks';
 import { getEntityId } from '@/lib/utils';
 import { type Agent, type UUID, ChannelType as CoreChannelType } from '@elizaos/core';
 import { Plus } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AddAgentCard from '@/components/add-agent-card';
 import AgentCard from '@/components/agent-card';
@@ -17,6 +17,7 @@ import GroupPanel from '@/components/group-panel';
 import { apiClient } from '@/lib/api';
 import { Button } from '../components/ui/button';
 import { Separator } from '../components/ui/separator';
+import clientLogger from '@/lib/logger';
 
 /**
  * Renders the main dashboard for managing agents and groups, providing interactive controls for viewing, starting, messaging, and configuring agents, as well as creating and editing groups.
@@ -31,7 +32,7 @@ export default function Home() {
   // Extract agents properly from the response
   const agents = agentsData?.agents || [];
 
-  const { data: serversData, isLoading: isLoadingServers } = useCentralServers();
+  const { data: serversData, isLoading: isLoadingServers } = useServers();
   const servers = serversData?.data?.servers || [];
 
   const [isOverlayOpen, setOverlayOpen] = useState(false);
@@ -58,6 +59,12 @@ export default function Home() {
   const handleCreateGroup = () => {
     navigate('/group/new');
   };
+
+  useEffect(() => {
+    clientLogger.info('[Home] Component mounted/re-rendered. Key might have changed.');
+    // You might want to trigger data re-fetching here if it's not automatic
+    // e.g., queryClient.invalidateQueries(['agents']);
+  }, []); // Empty dependency array means this runs on mount and when key changes
 
   return (
     <>
@@ -145,7 +152,7 @@ export default function Home() {
 
 // Sub-component to fetch and display channels for a given server
 const ServerChannels = ({ serverId }: { serverId: UUID }) => {
-  const { data: channelsData, isLoading: isLoadingChannels } = useCentralChannels(serverId);
+  const { data: channelsData, isLoading: isLoadingChannels } = useChannels(serverId);
   const groupChannels = useMemo(
     () => channelsData?.data?.channels?.filter((ch) => ch.type === CoreChannelType.GROUP) || [],
     [channelsData]

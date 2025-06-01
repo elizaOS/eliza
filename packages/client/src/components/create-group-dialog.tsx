@@ -15,8 +15,9 @@ import { useToast } from '@/hooks/use-toast';
 import { getEntityId } from '@/lib/utils';
 import type { UUID } from '@elizaos/core';
 import { useNavigate } from 'react-router-dom';
-import { useCentralServers } from '@/hooks/use-query-hooks';
+import { useServers } from '@/hooks/use-query-hooks';
 
+const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID; // Single default server
 interface CreateGroupDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
@@ -30,13 +31,11 @@ export function CreateGroupDialog({ open, onOpenChange, serverId: providedServer
     const { toast } = useToast();
     const navigate = useNavigate();
     const currentUserId = getEntityId();
-    const { data: serversData } = useCentralServers();
 
     // Use default server if no serverId provided
     useEffect(() => {
         if (!providedServerId) {
-            // Always use server ID "0"
-            setEffectiveServerId('0' as UUID);
+            setEffectiveServerId(DEFAULT_SERVER_ID);
         }
     }, [providedServerId]);
 

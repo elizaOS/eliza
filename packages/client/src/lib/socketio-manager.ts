@@ -118,7 +118,7 @@ export class SocketIOManager extends EventAdapter {
   private isConnected = false;
   private connectPromise: Promise<void> | null = null;
   private resolveConnect: (() => void) | null = null;
-  private activeCentralChannelIds: Set<string> = new Set();
+  private activeChannelIds: Set<string> = new Set();
   private clientEntityId: string | null = null;
   private logStreamSubscribed: boolean = false;
 
@@ -186,7 +186,7 @@ export class SocketIOManager extends EventAdapter {
 
       this.emit('connect');
 
-      this.activeCentralChannelIds.forEach((channelId) => {
+      this.activeChannelIds.forEach((channelId) => {
         this.joinChannel(channelId);
       });
     });
@@ -224,7 +224,7 @@ export class SocketIOManager extends EventAdapter {
 
       // Check if this is a message for one of our active channels
       const channelId = data.channelId || data.roomId; // Handle both new and old message format
-      if (channelId && this.activeCentralChannelIds.has(channelId)) {
+      if (channelId && this.activeChannelIds.has(channelId)) {
         clientLogger.info(`[SocketIO] Handling message for active channel ${channelId}`);
         // Post the message to the event for UI updates
         this.emit('messageBroadcast', {
@@ -236,7 +236,7 @@ export class SocketIOManager extends EventAdapter {
       } else {
         clientLogger.warn(
           `[SocketIO] Received message for inactive channel ${channelId}, active channels:`,
-          Array.from(this.activeCentralChannelIds)
+          Array.from(this.activeChannelIds)
         );
       }
     });
@@ -251,7 +251,7 @@ export class SocketIOManager extends EventAdapter {
 
       // Check if this is for one of our active channels
       const channelId = data.channelId || data.roomId; // Handle both new and old message format
-      if (channelId && this.activeCentralChannelIds.has(channelId)) {
+      if (channelId && this.activeChannelIds.has(channelId)) {
         clientLogger.info(`[SocketIO] Handling control message for active channel ${channelId}`);
 
         // Emit the control message event
@@ -263,7 +263,7 @@ export class SocketIOManager extends EventAdapter {
       } else {
         clientLogger.warn(
           `[SocketIO] Received control message for inactive channel ${channelId}, active channels:`,
-          Array.from(this.activeCentralChannelIds)
+          Array.from(this.activeChannelIds)
         );
       }
     });
@@ -328,7 +328,7 @@ export class SocketIOManager extends EventAdapter {
       await this.connectPromise;
     }
 
-    this.activeCentralChannelIds.add(channelId);
+    this.activeChannelIds.add(channelId);
     this.socket.emit('message', {
       type: SOCKET_MESSAGE_TYPE.ROOM_JOINING,
       payload: {
@@ -358,7 +358,7 @@ export class SocketIOManager extends EventAdapter {
       return;
     }
 
-    this.activeCentralChannelIds.delete(channelId);
+    this.activeChannelIds.delete(channelId);
     clientLogger.info(`[SocketIO] Left channel ${channelId}`);
   }
 
@@ -494,7 +494,7 @@ export class SocketIOManager extends EventAdapter {
       this.socket.disconnect();
       this.socket = null;
       this.isConnected = false;
-      this.activeCentralChannelIds.clear();
+      this.activeChannelIds.clear();
       this.logStreamSubscribed = false;
       clientLogger.info('[SocketIO] Disconnected from server');
     }

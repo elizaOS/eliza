@@ -76,7 +76,7 @@ class FrontendLoadingTest {
       `  Status: ${agentResponse.status} - Agent: ${agentData.success ? agentData.data.name : 'Failed'}`
     );
 
-    // Test 2: Check central servers (needed for serverId)
+    // Test 2: Check servers (needed for serverId)
     console.log(`  Testing: GET /api/messages/central-servers`);
     const serversResponse = await fetch(`${baseUrl}/api/messages/central-servers`);
     const serversData = await serversResponse.json();

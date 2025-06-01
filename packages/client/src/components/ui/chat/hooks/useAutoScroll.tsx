@@ -9,14 +9,14 @@ interface ScrollState {
 interface UseAutoScrollOptions {
   offset?: number;
   smooth?: boolean;
-  content?: React.ReactNode;
+  // content?: React.ReactNode; // Removed as it's an indirect dependency, watching scrollHeight is better
 }
 
 export function useAutoScroll(options: UseAutoScrollOptions = {}) {
   const { offset = 20, smooth = false } = options;
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastContentHeight = useRef(0);
-  const userHasScrolled = useRef(false);
+  const userHasScrolled = useRef(false); // To track if user manually scrolled up
 
   const [scrollState, setScrollState] = useState<ScrollState>({
     isAtBottom: true,
@@ -35,87 +35,82 @@ export function useAutoScroll(options: UseAutoScrollOptions = {}) {
   const scrollToBottom = useCallback(
     (instant?: boolean) => {
       if (!scrollRef.current) return;
-
       const targetScrollTop = scrollRef.current.scrollHeight - scrollRef.current.clientHeight;
-
-      if (instant) {
-        scrollRef.current.scrollTop = targetScrollTop;
-      } else {
-        scrollRef.current.scrollTo({
-          top: targetScrollTop,
-          behavior: smooth ? 'smooth' : 'auto',
-        });
-      }
-
-      setScrollState({
-        isAtBottom: true,
-        autoScrollEnabled: true,
+      scrollRef.current.scrollTo({
+        top: targetScrollTop,
+        behavior: instant ? 'auto' : smooth ? 'smooth' : 'auto',
       });
+      // When we programmatically scroll to bottom, user is at bottom and autoScroll should be enabled
+      setScrollState({ isAtBottom: true, autoScrollEnabled: true });
       userHasScrolled.current = false;
     },
-    [smooth]
+    [smooth] // Removed checkIsAtBottom from here as it's not directly used, but ensure offset changes are handled if it affects logic elsewhere
   );
 
   const handleScroll = useCallback(() => {
     if (!scrollRef.current) return;
-
     const atBottom = checkIsAtBottom(scrollRef.current);
 
-    setScrollState((prev) => ({
-      isAtBottom: atBottom,
-      // Re-enable auto-scroll if at the bottom
-      autoScrollEnabled: atBottom ? true : prev.autoScrollEnabled,
-    }));
+    if (atBottom) {
+      // If user scrolls to the bottom, reset userHasScrolled and re-enable autoScroll
+      userHasScrolled.current = false;
+      setScrollState({ isAtBottom: true, autoScrollEnabled: true });
+    } else {
+      // User is not at the bottom. If userHasScrolled.current is true, it means they scrolled up.
+      // Keep autoScrollEnabled as false. If it was a programmatic scroll not to bottom, this state will reflect that.
+      setScrollState(prev => ({ ...prev, isAtBottom: false, autoScrollEnabled: userHasScrolled.current ? false : prev.autoScrollEnabled }));
+    }
   }, [checkIsAtBottom]);
 
   useEffect(() => {
     const element = scrollRef.current;
     if (!element) return;
-
     element.addEventListener('scroll', handleScroll, { passive: true });
     return () => element.removeEventListener('scroll', handleScroll);
   }, [handleScroll]);
 
+  // This effect reacts to new content (scrollHeight changes)
   useEffect(() => {
     const scrollElement = scrollRef.current;
     if (!scrollElement) return;
 
     const currentHeight = scrollElement.scrollHeight;
-    const hasNewContent = currentHeight !== lastContentHeight.current;
-
-    if (hasNewContent) {
-      if (scrollState.autoScrollEnabled) {
-        requestAnimationFrame(() => {
-          scrollToBottom(lastContentHeight.current === 0);
-        });
+    // Only act if height actually changed to avoid unnecessary processing
+    if (currentHeight !== lastContentHeight.current) {
+      if (currentHeight > lastContentHeight.current) { // Content added
+        if (scrollState.autoScrollEnabled && !userHasScrolled.current) {
+          requestAnimationFrame(() => {
+            scrollToBottom(lastContentHeight.current === 0); // Instant if first load, otherwise respect smooth option implicitly
+          });
+        }
       }
-      lastContentHeight.current = currentHeight;
+      lastContentHeight.current = currentHeight; // Update height regardless
     }
-  }, [scrollState.autoScrollEnabled, scrollToBottom]);
+  }, [scrollRef.current?.scrollHeight, scrollState.autoScrollEnabled, scrollToBottom]); // Dependency on scrollHeight
 
+  // ResizeObserver to handle container resizes (e.g., keyboard, devtools)
   useEffect(() => {
     const element = scrollRef.current;
     if (!element) return;
-
     const resizeObserver = new ResizeObserver(() => {
-      if (scrollState.autoScrollEnabled) {
-        scrollToBottom(true);
+      // Only auto-scroll on resize if user hasn't manually scrolled up and autoScroll is generally enabled
+      if (scrollState.autoScrollEnabled && !userHasScrolled.current) {
+        // It might be better to scroll smoothly here unless it's a major resize like orientation change
+        scrollToBottom(false);
       }
     });
-
     resizeObserver.observe(element);
     return () => resizeObserver.disconnect();
   }, [scrollState.autoScrollEnabled, scrollToBottom]);
 
   const disableAutoScroll = useCallback(() => {
-    const atBottom = scrollRef.current ? checkIsAtBottom(scrollRef.current) : false;
-
-    // Only disable if not at bottom
+    if (!scrollRef.current) return;
+    const atBottom = checkIsAtBottom(scrollRef.current);
     if (!atBottom) {
-      userHasScrolled.current = true;
-      setScrollState((prev) => ({
+      userHasScrolled.current = true; // User has taken control by scrolling up
+      setScrollState(prev => ({
         ...prev,
-        autoScrollEnabled: false,
+        autoScrollEnabled: false, // Disable auto-scroll
       }));
     }
   }, [checkIsAtBottom]);
@@ -124,7 +119,7 @@ export function useAutoScroll(options: UseAutoScrollOptions = {}) {
     scrollRef,
     isAtBottom: scrollState.isAtBottom,
     autoScrollEnabled: scrollState.autoScrollEnabled,
-    scrollToBottom: () => scrollToBottom(false),
+    scrollToBottom: () => scrollToBottom(false), // Expose a non-instant scroll by default
     disableAutoScroll,
   };
 }

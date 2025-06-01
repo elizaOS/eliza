@@ -458,7 +458,7 @@ export function setupSocketIO(
   setupLogStreaming(io, centralSocketRouter);
 
   // Old direct-to-agent processing path via sockets is now fully handled by SocketIORouter
-  // which routes messages through the central message store and internal bus.
+  // which routes messages through the message store and internal bus.
   // The old code block is removed.
 
   return io;
@@ -747,18 +747,29 @@ export function createApiRouter(
     );
   });
 
-  // Check if the server is running
-  router.get('/ping', (_req, res) => {
-    res.setHeader('Content-Type', 'application/json');
-    res.send(
-      JSON.stringify({
-        pong: true,
-        timestamp: Date.now(),
-      })
-    );
+  // Health check
+  router.get('/ping', (req, res) => {
+    res.json({ pong: true, timestamp: Date.now() });
   });
 
-  // Mount specific sub-routers FIRST
+  // Debug endpoint to check message servers (temporary)
+  router.get('/debug/servers', async (req, res) => {
+    try {
+      const servers = await serverInstance?.getServers();
+      res.json({
+        success: true,
+        servers: servers || [],
+        count: servers?.length || 0,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // Setup routes
   router.use('/agents', agentRouter(agents, serverInstance));
   router.use('/world', worldRouter(serverInstance));
   router.use('/envs', envRouter());

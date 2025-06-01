@@ -19,6 +19,7 @@ import prompts from 'prompts';
 import colors from 'yoctocolors';
 import { z } from 'zod';
 import { logger } from '@elizaos/core';
+import { join } from 'path';
 
 /**
  * This module handles creating projects, plugins, and agent characters.
@@ -411,6 +412,42 @@ export const create = new Command()
           `\nYour plugin is ready! Here's your development workflow:\n\n[1] Development\n   cd ${cdPath}\n   ${colors.cyan('elizaos dev')}                   # Start development with hot-reloading\n\n[2] Testing\n   ${colors.cyan('elizaos test')}                  # Run automated tests\n   ${colors.cyan('elizaos start')}                 # Test in a live agent environment\n\n[3] Publishing\n   ${colors.cyan('elizaos publish --test')}        # Check registry requirements\n   ${colors.cyan('elizaos publish')}               # Submit to registry\n\n[?] Learn more: https://eliza.how/docs/cli/plugins`
         );
         process.stdout.write(`\u001B]1337;CurrentDir=${targetDir}\u0007`);
+
+        // Add gitignore content
+        const gitignorePath = join(targetDir, '.gitignore');
+        const gitignoreContent = `
+# Dependencies
+node_modules/
+bun.lockb
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+
+# Build outputs
+dist/
+build/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage/
+
+# ElizaOS specific
+data/
+.eliza/
+.elizaos-migration.lock
+`;
+        await fs.writeFile(gitignorePath, gitignoreContent.trim());
+
         return;
       }
 

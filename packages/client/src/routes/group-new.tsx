@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CreateGroupDialog } from '@/components/create-group-dialog';
-import { useCentralServers } from '@/hooks/use-query-hooks';
+import { useServers } from '@/hooks/use-query-hooks';
 import type { UUID } from '@elizaos/core';
 
 export default function GroupNew() {
     const navigate = useNavigate();
     const [open, setOpen] = useState(true);
-    const { data: serversData } = useCentralServers();
+    const { data: serversData } = useServers();
     const [selectedServerId, setSelectedServerId] = useState<UUID | null>(null);
 
     useEffect(() => {

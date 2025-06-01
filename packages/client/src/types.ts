@@ -66,7 +66,7 @@ export interface MessageChannel {
 }
 
 // Represents a message from the central system for client display
-// This should align with what apiClient.getCentralChannelMessages returns for each message
+// This should align with what apiClient.getChannelMessages returns for each message
 export interface ServerMessage {
   id: UUID;
   channelId: UUID;

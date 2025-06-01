@@ -1,6 +1,6 @@
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import AgentCreator from './components/agent-creator';
 import { AppSidebar } from './components/app-sidebar';
@@ -23,6 +23,7 @@ import NotFound from './routes/not-found';
 import GroupChannel from './routes/group';
 import Settings from './routes/settings';
 import CreateGroupPage from './routes/group-new';
+import clientLogger from '@/lib/logger';
 
 // Create a query client with optimized settings
 const queryClient = new QueryClient({
@@ -70,16 +71,29 @@ prefetchInitialData();
 function AppContent() {
   useVersion();
   const { status } = useConnection();
+  const [homeKey, setHomeKey] = useState(Date.now());
+  const queryClient = useQueryClient();
 
-  // Also prefetch when the component mounts (helps with HMR and refreshes)
   useEffect(() => {
+    clientLogger.info('[AppContent] Mounted/Updated');
     prefetchInitialData();
   }, []);
+
+  const refreshHomePage = () => {
+    clientLogger.info('[AppContent] refreshHomePage called. Current homeKey:', homeKey);
+    const newKey = Date.now();
+    setHomeKey(newKey);
+    clientLogger.info('[AppContent] New homeKey set to:', newKey);
+
+    clientLogger.info('[AppContent] Invalidating queries for Home page refresh.');
+    queryClient.invalidateQueries({ queryKey: ['agents'] });
+    queryClient.invalidateQueries({ queryKey: ['servers'] });
+  };
 
   return (
     <TooltipProvider delayDuration={0}>
       <SidebarProvider>
-        <AppSidebar />
+        <AppSidebar refreshHomePage={refreshHomePage} />
         <SidebarInset>
           <div className="flex w-full justify-center">
             <div className="w-full md:max-w-4xl">
@@ -87,7 +101,7 @@ function AppContent() {
             </div>
           </div>
           <Routes>
-            <Route path="/" element={<Home />} />
+            <Route path="/" element={<Home key={homeKey} />} />
             <Route path="chat/:agentId" element={<Chat />} />
             <Route path="group/new" element={<CreateGroupPage />} />
             <Route path="settings/:agentId" element={<Settings />} />

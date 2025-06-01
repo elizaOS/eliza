@@ -12,7 +12,7 @@ import {
 } from '@elizaos/core';
 import internalMessageBus from '../bus'; // Import the bus
 
-// This interface defines the structure of messages coming from the central server
+// This interface defines the structure of messages coming from the server
 export interface MessageServiceMessage {
   id: UUID; // root_message.id
   channel_id: UUID;
@@ -30,8 +30,7 @@ export interface MessageServiceMessage {
 
 export class MessageBusService extends Service {
   static serviceType = 'message-bus-service';
-  capabilityDescription =
-    'Manages connection and message synchronization with the central message server.';
+  capabilityDescription = 'Manages connection and message synchronization with the message server.';
 
   private boundHandleIncomingMessage: (message: MessageServiceMessage) => Promise<void>;
   private boundHandleServerAgentUpdate: (data: any) => void;
@@ -232,7 +231,7 @@ export class MessageBusService extends Service {
 
       const callbackForCentralBus = async (responseContent: Content): Promise<Memory[]> => {
         logger.info(
-          `[${this.runtime.character.name}] Agent generated response for central message. Preparing to send back to bus.`
+          `[${this.runtime.character.name}] Agent generated response for message. Preparing to send back to bus.`
         );
         await this.sendAgentResponseToBus(
           agentRoomId,
@@ -252,7 +251,7 @@ export class MessageBusService extends Service {
       });
     } catch (error) {
       logger.error(
-        `[${this.runtime.character.name}] MessageBusService: Error processing incoming central message:`,
+        `[${this.runtime.character.name}] MessageBusService: Error processing incoming message:`,
         error
       );
     }
@@ -265,6 +264,22 @@ export class MessageBusService extends Service {
     inReplyToAgentMemoryId?: UUID
   ) {
     try {
+      // Check if the agent decided to IGNORE the message
+      if (content.actions && content.actions.includes('IGNORE')) {
+        logger.info(
+          `[${this.runtime.character.name}] MessageBusService: Agent chose to IGNORE message, not sending response to central server`
+        );
+        return;
+      }
+
+      // Also check if there's no text content
+      if (!content.text || content.text.trim() === '') {
+        logger.info(
+          `[${this.runtime.character.name}] MessageBusService: No text content in response, not sending to central server`
+        );
+        return;
+      }
+
       const room = await this.runtime.getRoom(agentRoomId);
       const world = await this.runtime.getWorld(agentWorldId);
 
@@ -286,7 +301,7 @@ export class MessageBusService extends Service {
         }
       }
 
-      const payloadToCentralServer = {
+      const payloadToServer = {
         channel_id: channelId,
         server_id: serverId,
         author_id: this.runtime.agentId, // This needs careful consideration: is it the agent's core ID or a specific central identity for the agent?
@@ -303,7 +318,7 @@ export class MessageBusService extends Service {
 
       logger.info(
         `[${this.runtime.character.name}] MessageBusService: Sending payload to central server API endpoint (/api/messages/submit):`,
-        payloadToCentralServer
+        payloadToServer
       );
 
       // Actual fetch to the central server API
@@ -312,7 +327,7 @@ export class MessageBusService extends Service {
       const response = await fetch(serverApiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' /* TODO: Add Auth if needed */ },
-        body: JSON.stringify(payloadToCentralServer),
+        body: JSON.stringify(payloadToServer),
       });
 
       if (!response.ok) {
@@ -338,6 +353,6 @@ export class MessageBusService extends Service {
 // Minimal plugin definition to register the service
 export const messageBusConnectorPlugin: Plugin = {
   name: 'internal-message-bus-connector',
-  description: 'Internal service to connect agent to the central message bus.',
+  description: 'Internal service to connect agent to the message bus.',
   services: [MessageBusService],
 };

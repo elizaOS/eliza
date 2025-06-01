@@ -7,9 +7,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { formatAgentName, cn } from '@/lib/utils';
 import type { Agent, UUID, Character } from '@elizaos/core';
 import { AgentStatus as CoreAgentStatus } from '@elizaos/core';
-import { InfoIcon, MessageSquare, Settings, Play, UserX, Loader2 } from 'lucide-react'; // Icons for actions
+import { InfoIcon, MessageSquare, Settings, Play, UserX, Loader2, PowerOff } from 'lucide-react'; // Icons for actions
 import { useAgentManagement } from '@/hooks/use-agent-management'; // For start/stop logic
 import type { AgentWithStatus } from '@/types';
+import clientLogger from '@/lib/logger'; // Assuming you have a logger
 
 interface AgentCardProps {
   agent: Partial<AgentWithStatus>; // Use AgentWithStatus from client types
@@ -23,26 +24,25 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
   const { startAgent, stopAgent, isAgentStarting, isAgentStopping } = useAgentManagement();
 
   if (!agent || !agent.id) {
+    clientLogger.error('[AgentCard] Agent data or ID is missing', { agent });
     return (
-      <Card className="p-4 min-h-[180px] flex items-center justify-center text-muted-foreground">
+      <Card className="p-4 min-h-[220px] flex items-center justify-center text-muted-foreground">
         Agent data not available.
       </Card>
     );
   }
-
+  const agentIdForNav = agent.id; // Store for logging
   const agentName = agent.name || 'Unnamed Agent';
   const avatarUrl = agent.settings?.avatar;
   const isActive = agent.status === CoreAgentStatus.ACTIVE;
   const isStarting = isAgentStarting(agent.id);
   const isStopping = isAgentStopping(agent.id);
 
-  // Prepare an object conforming to Core Agent type for mutations
-  // This is necessary if useAgentManagement hooks expect the full Agent object.
   const agentForMutation: Agent = {
     id: agent.id!,
     name: agentName,
     username: agent.username || agentName,
-    bio: agent.bio || '', // Assuming bio can be string. If string[], provide default [] or handle.
+    bio: agent.bio || '',
     messageExamples: agent.messageExamples || [],
     postExamples: agent.postExamples || [],
     topics: agent.topics || [],
@@ -54,11 +54,10 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
     style: agent.style || {},
     system: agent.system || undefined,
     templates: agent.templates || {},
-    // Agent-specific fields
     enabled: typeof agent.enabled === 'boolean' ? agent.enabled : true,
-    status: agent.status || CoreAgentStatus.INACTIVE, // Ensure this is CoreAgentStatus enum
-    createdAt: typeof agent.createdAt === 'number' ? agent.createdAt : Date.now(), // Must be number
-    updatedAt: typeof agent.updatedAt === 'number' ? agent.updatedAt : Date.now(), // Must be number
+    status: agent.status || CoreAgentStatus.INACTIVE,
+    createdAt: typeof agent.createdAt === 'number' ? agent.createdAt : Date.now(),
+    updatedAt: typeof agent.updatedAt === 'number' ? agent.updatedAt : Date.now(),
   };
 
   const handleStart = (e: React.MouseEvent) => {
@@ -69,6 +68,22 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
   const handleStop = (e: React.MouseEvent) => {
     e.stopPropagation();
     stopAgent(agentForMutation);
+  };
+
+  const handleCardClick = () => {
+    clientLogger.info('[AgentCard] handleCardClick triggered', {
+      agentId: agentIdForNav,
+      currentStatus: agent.status,
+      isActive,
+    });
+    if (!isActive) {
+      clientLogger.info(`[AgentCard] Agent is not active. Navigating to /chat/${agentIdForNav}`);
+      navigate(`/chat/${agentIdForNav}`);
+    } else {
+      clientLogger.info('[AgentCard] Agent is active. Click intended for chat button or other actions.');
+      // Optionally, if click on active card should also do something (e.g., open chat if no specific button is hit):
+      // onChat(agent); 
+    }
   };
 
   const handleChatClick = (e: React.MouseEvent) => {
@@ -84,9 +99,10 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
   return (
     <Card
       className={cn(
-        'w-full min-h-[220px] flex flex-col transition-all hover:shadow-xl',
-        isActive ? '' : 'opacity-75'
+        'w-full min-h-[220px] flex flex-col transition-all hover:shadow-xl cursor-pointer',
+        isActive ? '' : 'opacity-75 hover:opacity-100'
       )}
+      onClick={handleCardClick}
     >
       <CardHeader className="flex flex-row items-center gap-3 pb-2">
         <Avatar className="h-10 w-10 border">
@@ -99,12 +115,43 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
           </CardTitle>
           <div className="flex items-center gap-1.5 mt-1">
             <div
-              className={cn('w-2.5 h-2.5 rounded-full', isActive ? 'bg-green-500' : 'bg-gray-400')}
+              className={cn(
+                'w-2.5 h-2.5 rounded-full',
+                isActive ? 'bg-green-500' : 'bg-red-500'
+              )}
             />
             <p className="text-xs text-muted-foreground">
-              {isStarting ? 'Starting...' : isStopping ? 'Stopping...' : agent.status?.toString()}
+              {isStarting
+                ? 'Starting...'
+                : isStopping
+                  ? 'Stopping...'
+                  : agent.status?.toString() || CoreAgentStatus.INACTIVE}
             </p>
           </div>
+        </div>
+        {/* Action buttons in header */}
+        <div className="flex items-center gap-1 ml-auto">
+          {isActive && !isStopping && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button onClick={handleStop} variant="ghost" size="icon">
+                  <PowerOff className="h-4 w-4 text-red-500" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Stop Agent</TooltipContent>
+            </Tooltip>
+          )}
+          {isStopping && (
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          )}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button onClick={handleSettingsClick} variant="ghost" size="icon">
+                <Settings className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Settings</TooltipContent>
+          </Tooltip>
         </div>
       </CardHeader>
       <CardContent className="flex-grow flex items-center justify-center p-0 overflow-hidden">
@@ -120,13 +167,14 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
           </div>
         )}
       </CardContent>
-      <CardFooter className="p-3 grid grid-cols-2 gap-2">
+      <CardFooter className="p-3 grid grid-cols-2 gap-2 mt-auto">
         {isActive ? (
           <Button
             onClick={handleChatClick}
             className="w-full col-span-2"
             variant="default"
             size="sm"
+            disabled={isStopping || isStarting} /* Also disable if starting */
           >
             <MessageSquare className="mr-2 h-4 w-4" /> Message
           </Button>
@@ -146,9 +194,6 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
             {isStarting ? 'Starting...' : 'Start Agent'}
           </Button>
         )}
-        {/* <Button onClick={handleSettingsClick} variant="ghost" size="icon" className="col-span-1 justify-self-end">
-          <Settings className="h-4 w-4" />
-        </Button> */}
       </CardFooter>
     </Card>
   );

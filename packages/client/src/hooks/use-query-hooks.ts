@@ -13,7 +13,7 @@ import {
 } from '@tanstack/react-query';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from './use-toast';
-import { getEntityId } from '@/lib/utils';
+import { getEntityId, randomUUID, moment } from '@/lib/utils';
 import type {
   ServerMessage,
   AgentWithStatus,
@@ -278,24 +278,24 @@ export function useStopAgent() {
 
 // Type for UI message list items
 export type UiMessage = Content & {
-  id: UUID; // Central Message ID
+  id: UUID; // Message ID
   name: string; // Display name of sender (USER_NAME or agent name)
   senderId: UUID; // Central ID of the sender
   isAgent: boolean;
   createdAt: number; // Timestamp ms
   isLoading?: boolean;
   channelId: UUID; // Central Channel ID
-  serverId?: UUID; // Central Server ID (optional in some contexts, but good for full context)
+  serverId?: UUID; // Server ID (optional in some contexts, but good for full context)
   // attachments and other Content props are inherited
 };
 
 /**
- * Custom hook to manage fetching and loading messages for a specific CENTRAL channel.
- * @param {UUID | undefined} channelId - The GLOBAL/CENTRAL ID of the channel.
+ * Custom hook to manage fetching and loading messages for a specific channel.
+ * @param {UUID | undefined} channelId - The GLOBAL ID of the channel.
  * @returns {{...
 }} An object containing messages data, loading states, etc.
  */
-export function useCentralChannelMessages(
+export function useChannelMessages(
   channelId: UUID | undefined, // Changed from UUID | null
   initialServerId?: UUID | undefined // Changed from UUID (optional was already undefined)
 ): {
@@ -312,7 +312,7 @@ export function useCentralChannelMessages(
 } {
   const currentClientCentralId = getEntityId(); // Central ID of the currently logged-in user
 
-  // Using a more manual approach for pagination with getCentralChannelMessages
+  // Using a more manual approach for pagination with getChannelMessages
   const [messages, setMessages] = useState<UiMessage[]>([]);
   const [oldestMessageTimestamp, setOldestMessageTimestamp] = useState<number | null>(null);
   const [hasMoreMessages, setHasMoreMessages] = useState<boolean>(true);
@@ -324,6 +324,44 @@ export function useCentralChannelMessages(
   const transformServerMessageToUiMessage = useCallback(
     (sm: ServerMessage, serverIdToUse?: UUID): UiMessage => {
       const isAgent = sm.authorId !== currentClientCentralId;
+      let timestamp = Date.now(); // Default to now
+
+      if (typeof sm.createdAt === 'number') {
+        timestamp = sm.createdAt;
+      } else if (typeof sm.createdAt === 'string') {
+        const parsedTs = Date.parse(sm.createdAt); // Try direct parse
+        if (!isNaN(parsedTs)) {
+          timestamp = parsedTs;
+        } else {
+          // If direct parse fails, try moment (if available and robust)
+          // For now, log a warning if it's an unparsable string not handled by Date.parse
+          clientLogger.warn(
+            '[transformServerMessageToUiMessage] createdAt string was not directly parsable by Date.parse():',
+            sm.createdAt,
+            'for message id:',
+            sm.id
+          );
+          // As a fallback, could try new Date(sm.createdAt).getTime(), but Date.parse is usually sufficient
+          // Defaulting to Date.now() if unparsable to avoid NaN
+        }
+      } else if (sm.createdAt) {
+        // If it's not a number or string, but exists (e.g. could be a Date object from some contexts)
+        // Attempt to convert. This is less likely if types are strict from server.
+        try {
+          const dateObjTimestamp = new Date(sm.createdAt as any).getTime();
+          if (!isNaN(dateObjTimestamp)) {
+            timestamp = dateObjTimestamp;
+          }
+        } catch (e) {
+          clientLogger.warn(
+            '[transformServerMessageToUiMessage] Could not process createdAt (unknown type):',
+            sm.createdAt,
+            'for message:',
+            sm.id
+          );
+        }
+      }
+
       return {
         id: sm.id,
         text: sm.content,
@@ -335,7 +373,7 @@ export function useCentralChannelMessages(
           : USER_NAME,
         senderId: sm.authorId,
         isAgent: isAgent,
-        createdAt: Number(sm.createdAt),
+        createdAt: timestamp,
         attachments: sm.metadata?.attachments as any[],
         thought: isAgent ? sm.metadata?.thought : undefined,
         actions: isAgent ? sm.metadata?.actions : undefined,
@@ -364,7 +402,7 @@ export function useCentralChannelMessages(
       setInternalError(null);
 
       try {
-        const response = await apiClient.getCentralChannelMessages(channelId, {
+        const response = await apiClient.getChannelMessages(channelId, {
           limit: 30,
           before: beforeTimestamp,
         });
@@ -402,14 +440,24 @@ export function useCentralChannelMessages(
   ); // Add initialServerId to deps
 
   useEffect(() => {
-    // Initial fetch when channelId changes
+    // Initial fetch when channelId changes or becomes available
     if (channelId) {
+      clientLogger.info(
+        `[useChannelMessages] ChannelId changed or became available: ${channelId}. Clearing messages and fetching initial set.`
+      );
       setMessages([]); // Clear previous messages
       setOldestMessageTimestamp(null);
       setHasMoreMessages(true);
-      fetchMessages();
+      fetchMessages(); // This will set internalIsLoading to true
+    } else {
+      clientLogger.info('[useChannelMessages] ChannelId is undefined. Clearing messages.');
+      setMessages([]);
+      setOldestMessageTimestamp(null);
+      setHasMoreMessages(true);
+      setInternalIsLoading(false); // No channel, so not loading anything
     }
-  }, [channelId, fetchMessages]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channelId, fetchMessages]); // fetchMessages is memoized with useCallback
 
   const fetchNextPage = async () => {
     if (hasMoreMessages && !isFetchingMore && oldestMessageTimestamp) {
@@ -473,10 +521,10 @@ export function useCentralChannelMessages(
 }
 
 export function useGroupChannelMessages(channelId: UUID | null, initialServerId?: UUID) {
-  // This hook now becomes an alias or a slightly specialized version of useCentralChannelMessages
+  // This hook now becomes an alias or a slightly specialized version of useChannelMessages
   // if group-specific logic (like different source filtering) isn't handled here.
-  // For now, it can directly use useCentralChannelMessages.
-  return useCentralChannelMessages(channelId ?? undefined, initialServerId);
+  // For now, it can directly use useChannelMessages.
+  return useChannelMessages(channelId ?? undefined, initialServerId);
 }
 
 // Hook for fetching agent actions
@@ -1005,25 +1053,25 @@ export function useUpdateAgentInternalMemory() {
   });
 }
 
-// --- Hooks for Central Servers and Channels (GUI Navigation) ---
-export function useCentralServers(options = {}) {
+// --- Hooks for Servers and Channels (GUI Navigation) ---
+export function useServers(options = {}) {
   const network = useNetworkStatus();
   return useQuery<{ data: { servers: ClientMessageServer[] } }>({
     queryKey: ['servers'],
-    queryFn: () => apiClient.getCentralServers(),
+    queryFn: () => apiClient.getServers(),
     staleTime: STALE_TIMES.RARE,
     refetchInterval: !network.isOffline ? STALE_TIMES.RARE : false,
     ...options,
   });
 }
 
-export function useCentralChannels(serverId: UUID | undefined, options = {}) {
+export function useChannels(serverId: UUID | undefined, options = {}) {
   const network = useNetworkStatus();
   return useQuery<{ data: { channels: ClientMessageChannel[] } }>({
     queryKey: ['channels', serverId],
     queryFn: () => {
       if (!serverId) return Promise.resolve({ data: { channels: [] } }); // Handle undefined serverId case for queryFn
-      return apiClient.getCentralChannelsForServer(serverId);
+      return apiClient.getChannelsForServer(serverId);
     },
     enabled: !!serverId,
     staleTime: STALE_TIMES.STANDARD,
@@ -1032,14 +1080,14 @@ export function useCentralChannels(serverId: UUID | undefined, options = {}) {
   });
 }
 
-export function useCentralChannelDetails(channelId: UUID | undefined, options = {}) {
+export function useChannelDetails(channelId: UUID | undefined, options = {}) {
   // Allow undefined
   const network = useNetworkStatus();
   return useQuery<{ success: boolean; data: ClientMessageChannel | null }>({
     queryKey: ['channelDetails', channelId],
     queryFn: () => {
       if (!channelId) return Promise.resolve({ success: true, data: null });
-      return apiClient.getCentralChannelDetails(channelId);
+      return apiClient.getChannelDetails(channelId);
     },
     enabled: !!channelId,
     staleTime: STALE_TIMES.STANDARD,
@@ -1048,14 +1096,14 @@ export function useCentralChannelDetails(channelId: UUID | undefined, options = 
   });
 }
 
-export function useCentralChannelParticipants(channelId: UUID | undefined, options = {}) {
+export function useChannelParticipants(channelId: UUID | undefined, options = {}) {
   // Allow undefined
   const network = useNetworkStatus();
   return useQuery<{ success: boolean; data: UUID[] }>({
     queryKey: ['channelParticipants', channelId],
     queryFn: () => {
       if (!channelId) return Promise.resolve({ success: true, data: [] });
-      return apiClient.getCentralChannelParticipants(channelId);
+      return apiClient.getChannelParticipants(channelId);
     },
     enabled: !!channelId,
     staleTime: STALE_TIMES.STANDARD,
@@ -1064,7 +1112,7 @@ export function useCentralChannelParticipants(channelId: UUID | undefined, optio
   });
 }
 
-export function useDeleteCentralChannelMessage() {
+export function useDeleteChannelMessage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   return useMutation<
@@ -1073,7 +1121,7 @@ export function useDeleteCentralChannelMessage() {
     { channelId: UUID; messageId: UUID }
   >({
     mutationFn: async ({ channelId, messageId }) => {
-      await apiClient.deleteCentralChannelMessage(channelId, messageId);
+      await apiClient.deleteChannelMessage(channelId, messageId);
       return { channelId, messageId };
     },
     onSuccess: (_data, variables) => {
@@ -1093,12 +1141,12 @@ export function useDeleteCentralChannelMessage() {
   });
 }
 
-export function useClearCentralChannelMessages() {
+export function useClearChannelMessages() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   return useMutation<{ channelId: UUID }, Error, UUID>({
     mutationFn: async (channelId: UUID) => {
-      await apiClient.clearCentralChannelMessages(channelId);
+      await apiClient.clearChannelMessages(channelId);
       return { channelId };
     },
     onSuccess: (_data, variables_channelId) => {

@@ -244,21 +244,19 @@ export const apiClient = {
   ) =>
     fetcher({ url: `/agents/${agentId}/memories/${memoryId}`, method: 'PATCH', body: memoryData }),
 
-  // Central Message System Endpoints
-  getCentralServers: (): Promise<{ data: { servers: MessageServer[] } }> =>
+  // Message System Endpoints
+  getServers: (): Promise<{ data: { servers: MessageServer[] } }> =>
     fetcher({ url: '/messages/central-servers' }),
-  createCentralServer: (payload: {
+  createServer: (payload: {
     name: string;
     sourceType: string;
     sourceId?: string;
     metadata?: any;
   }): Promise<{ data: { server: MessageServer } }> =>
     fetcher({ url: '/messages/servers', method: 'POST', body: payload }),
-  getCentralChannelsForServer: (
-    serverId: UUID
-  ): Promise<{ data: { channels: MessageChannel[] } }> =>
+  getChannelsForServer: (serverId: UUID): Promise<{ data: { channels: MessageChannel[] } }> =>
     fetcher({ url: `/messages/central-servers/${serverId}/channels` }),
-  getCentralChannelMessages: (
+  getChannelMessages: (
     channelId: UUID,
     options?: {
       limit?: number;
@@ -272,7 +270,7 @@ export const apiClient = {
       url: `/messages/central-channels/${channelId}/messages?${queryParams.toString()}`,
     });
   },
-  postMessageToCentralChannel: (
+  postMessageToChannel: (
     channelId: UUID,
     payload: {
       author_id: UUID;
@@ -395,7 +393,7 @@ export const apiClient = {
   testEndpoint: (endpoint: string): Promise<any> => fetcher({ url: endpoint }),
 
   // PLACEHOLDER - Implement actual backend and uncomment
-  deleteCentralChannelMessage: async (channelId: UUID, messageId: UUID): Promise<void> => {
+  deleteChannelMessage: async (channelId: UUID, messageId: UUID): Promise<void> => {
     await fetcher({
       url: `/messages/central-channels/${channelId}/messages/${messageId}`,
       method: 'DELETE',
@@ -403,7 +401,7 @@ export const apiClient = {
   },
 
   // PLACEHOLDER - Implement actual backend and uncomment
-  clearCentralChannelMessages: async (channelId: UUID): Promise<void> => {
+  clearChannelMessages: async (channelId: UUID): Promise<void> => {
     await fetcher({
       url: `/messages/central-channels/${channelId}/messages`,
       method: 'DELETE',
@@ -415,12 +413,12 @@ export const apiClient = {
   }): Promise<{ success: boolean; data: MessageChannel }> =>
     fetcher({ url: '/messages/central-channels', method: 'POST', body: payload }),
 
-  getCentralChannelDetails: (
+  getChannelDetails: (
     channelId: UUID
   ): Promise<{ success: boolean; data: MessageChannel | null }> =>
     fetcher({ url: `/messages/central-channels/${channelId}/details` }),
 
-  getCentralChannelParticipants: (channelId: UUID): Promise<{ success: boolean; data: UUID[] }> => {
+  getChannelParticipants: (channelId: UUID): Promise<{ success: boolean; data: UUID[] }> => {
     return fetcher({ url: `/messages/central-channels/${channelId}/participants` });
   },
 

@@ -8,6 +8,13 @@
       "when": 1746884807264,
       "tag": "0000_snapshot",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1748797200000,
+      "tag": "0001_add_messaging_tables",
+      "breakpoints": true
     }
   ]
 }

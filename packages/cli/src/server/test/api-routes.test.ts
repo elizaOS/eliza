@@ -153,19 +153,19 @@ async function runTests() {
     }
     console.log('✅ Basic API endpoints working\n');
 
-    // Test 2: Messages API - Get Central Servers (should be empty initially)
-    console.log('📝 Test 2: Testing Messages API - Central Servers...');
+    // Test 2: Messages API - Get Servers (should be empty initially)
+    console.log('📝 Test 2: Testing Messages API - Servers...');
 
     const getServersResponse = await testClient.get('/api/messages/central-servers');
     console.log(`  GET /api/messages/central-servers - Status: ${getServersResponse.status}`);
     if (getServersResponse.status !== 200) {
-      throw new Error(`Get central servers failed: ${JSON.stringify(getServersResponse.body)}`);
+      throw new Error(`Get servers failed: ${JSON.stringify(getServersResponse.body)}`);
     }
     console.log(`  Found ${getServersResponse.body.data.servers.length} servers`);
     console.log('✅ Central servers endpoint working\n');
 
-    // Test 3: Create Central Server
-    console.log('📝 Test 3: Creating central server...');
+    // Test 3: Create Server
+    console.log('📝 Test 3: Creating server...');
     const createServerResponse = await testClient.post('/api/messages/servers', {
       name: 'Test Server',
       sourceType: 'test',

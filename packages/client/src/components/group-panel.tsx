@@ -1,17 +1,18 @@
-import { randomUUID } from '../lib/utils';
 import { Separator } from '@/components/ui/separator';
 import { GROUP_CHAT_SOURCE } from '@/constants';
-import { useCentralChannels, useCentralServers } from '@/hooks/use-query-hooks';
+import { useServers, useChannels } from '@/hooks/use-query-hooks';
 import { apiClient } from '@/lib/api';
 import { type Agent, AgentStatus, type UUID } from '@elizaos/core';
 import { useQueryClient } from '@tanstack/react-query';
-import { Loader2, Save, Trash, X } from 'lucide-react';
+import { Loader2, Trash, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import MultiSelectCombobox from './combobox';
 import { Button } from './ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from './ui/card';
 import { Input } from './ui/input';
+
+const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID; // Single default server
 
 // Define the Option type to match what MultiSelectCombobox expects
 interface Option {
@@ -43,15 +44,14 @@ export default function GroupPanel({ onClose, agents, channelId }: GroupPanel) {
   const [initialOptions, setInitialOptions] = useState<Option[]>([]);
   const [serverId, setServerId] = useState<UUID | null>(null);
 
-  const { data: serversData } = useCentralServers();
-  const { data: channelsData } = useCentralChannels(serverId || undefined);
+  const { data: channelsData } = useChannels(serverId || undefined);
 
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
   useEffect(() => {
     // Always use the default server (ID "0")
-    setServerId('0' as UUID);
+    setServerId(DEFAULT_SERVER_ID);
   }, []);
 
   useEffect(() => {
@@ -150,7 +150,7 @@ export default function GroupPanel({ onClose, agents, channelId }: GroupPanel) {
                 }
                 setDeleting(true);
                 try {
-                  await apiClient.deleteCentralChannelMessage(channelId, channelId);
+                  await apiClient.deleteChannelMessage(channelId, channelId);
                   // TODO: Add proper channel deletion endpoint
                 } catch (error) {
                   console.error('Failed to delete channel', error);

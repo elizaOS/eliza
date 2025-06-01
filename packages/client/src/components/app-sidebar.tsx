@@ -26,8 +26,8 @@ import {
 
 import {
   useAgentsWithDetails,
-  useCentralServers, // New hook
-  useCentralChannels, // New hook
+  useServers, // New hook
+  useChannels, // New hook
 } from '@/hooks/use-query-hooks';
 import info from '@/lib/info.json';
 import { cn, formatAgentName } from '@/lib/utils';
@@ -211,7 +211,7 @@ const ChannelsForServer = ({
   serverId: UUID;
   navigate: ReturnType<typeof useNavigate>;
 }) => {
-  const { data: channelsData, isLoading: isLoadingChannels } = useCentralChannels(serverId);
+  const { data: channelsData, isLoading: isLoadingChannels } = useChannels(serverId);
   const groupChannels = useMemo(
     () => channelsData?.data?.channels?.filter((ch) => ch.type === CoreChannelType.GROUP) || [],
     [channelsData]
@@ -301,12 +301,16 @@ const CreateButton = ({ onCreateGroupChannel }: { onCreateGroupChannel: () => vo
   );
 };
 
+interface AppSidebarProps {
+  refreshHomePage: () => void;
+}
+
 /**
  * Renders the main application sidebar, displaying navigation, agent lists, group rooms, and utility links.
  *
  * The sidebar includes sections for online and offline agents, group rooms, a create button for agents and groups, and footer links to documentation, logs, and settings. It handles loading and error states for agent and room data, and conditionally displays a group creation panel.
  */
-export function AppSidebar() {
+export function AppSidebar({ refreshHomePage }: AppSidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -315,7 +319,7 @@ export function AppSidebar() {
     error: agentsError,
     isLoading: isLoadingAgents,
   } = useAgentsWithDetails();
-  const { data: serversData, isLoading: isLoadingServers } = useCentralServers();
+  const { data: serversData, isLoading: isLoadingServers } = useServers();
 
   const agents = useMemo(() => agentsData?.agents || [], [agentsData]);
   const servers = useMemo(() => serversData?.data?.servers || [], [serversData]);
@@ -335,6 +339,18 @@ export function AppSidebar() {
     ? 'Error loading agents: NetworkError: Unable to connect to the server. Please check if the server is running.'
     : undefined;
 
+  const handleLogoClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    clientLogger.info('[AppSidebar] handleLogoClick triggered', { currentPath: location.pathname });
+    if (location.pathname === '/') {
+      clientLogger.info('[AppSidebar] Already on home page. Calling refreshHomePage().');
+      refreshHomePage();
+    } else {
+      clientLogger.info('[AppSidebar] Not on home page. Navigating to "/".');
+      navigate('/');
+    }
+  };
+
   return (
     <>
       <Sidebar className="bg-background">
@@ -343,12 +359,12 @@ export function AppSidebar() {
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton size="lg" asChild>
-                <NavLink to="/" className="px-6 py-2 h-full sidebar-logo">
+                <a href="/" onClick={handleLogoClick} className="px-6 py-2 h-full sidebar-logo no-underline">
                   <div className="flex flex-col pt-2 gap-1 items-start justify-center">
                     <img alt="elizaos-logo" src="/elizaos-logo-light.png" width="90%" />
                     <span className="text-xs font-mono text-muted-foreground">v{info.version}</span>
                   </div>
-                </NavLink>
+                </a>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
