@@ -42,7 +42,7 @@ elizaos agent [options] [command]
 
 - `-n, --name <name>`: Agent id, name, or index number from list (required)
 - `-j, --json`: Display agent configuration as JSON in the console
-- `-o, --output [file]`: Save agent config to JSON (defaults to {name}.json)
+- `-o, --output [file]`: Save agent config to JSON (defaults to `{name}.json`)
 
 ### Start Specific Options
 
