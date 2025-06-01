@@ -293,20 +293,20 @@ Required configuration:
             headers,
             body: JSON.stringify(payload),
           });
-          
+
           if (!response.ok) {
             const errorText = await response.text();
             logger.error(`Server returned ${response.status}: ${errorText}`);
             return null;
           }
-          
+
           const data = await response.json();
-          
+
           if (!data?.data?.character?.name) {
             logger.error(`Unexpected response format:`, data);
             return null;
           }
-          
+
           return data.data.character.name;
         }
 
@@ -354,7 +354,9 @@ Required configuration:
           payload.characterPath = options.remoteCharacter;
           characterName = await createCharacter(payload);
           if (!characterName) {
-            logger.error('Failed to create character from remote URL. Check server logs for details.');
+            logger.error(
+              'Failed to create character from remote URL. Check server logs for details.'
+            );
           }
         }
 

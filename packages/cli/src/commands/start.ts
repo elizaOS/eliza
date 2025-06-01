@@ -689,8 +689,8 @@ const startAgents = async (options: {
         `Starting default Eliza character with plugin: ${pluginModule.name || 'unnamed plugin'}`
       );
 
-      // Import the default character with all its plugins
-      const { character: defaultElizaCharacter } = await import('../characters/eliza');
+      // Get the default character with environment-aware plugins
+      const defaultElizaCharacter = getElizaCharacter();
 
       // Create an array of plugins, including the explicitly loaded one
       // We're using our test plugin plus all the plugins from the default character

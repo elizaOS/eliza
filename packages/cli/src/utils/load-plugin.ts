@@ -117,7 +117,8 @@ const importStrategies: ImportStrategy[] = [
   // Direct path import (for relative/absolute paths)
   {
     name: 'direct path',
-    tryImport: async (repository: string) => tryImporting(repository, 'direct path', repository, true),
+    tryImport: async (repository: string) =>
+      tryImporting(repository, 'direct path', repository, true),
   },
   // Least likely - global node_modules (usually for globally installed packages)
   {
@@ -137,35 +138,36 @@ const importStrategies: ImportStrategy[] = [
  */
 async function getOptimalStrategy(repository: string): Promise<ImportStrategy | null> {
   const packageJson = await readPackageJson(repository);
-  
+
   if (packageJson) {
     const entryPoint = packageJson.module || packageJson.main || DEFAULT_ENTRY_POINT;
     const entryPath = resolveNodeModulesPath(repository, entryPoint);
-    
+
     if (fs.existsSync(entryPath)) {
       return {
         name: `package.json entry (${entryPoint})`,
-        tryImport: async () => tryImporting(entryPath, `package.json entry (${entryPoint})`, repository)
+        tryImport: async () =>
+          tryImporting(entryPath, `package.json entry (${entryPoint})`, repository),
       };
     }
   }
-  
+
   const commonDistPath = resolveNodeModulesPath(repository, DEFAULT_ENTRY_POINT);
   if (fs.existsSync(commonDistPath)) {
     return {
       name: 'common dist pattern',
-      tryImport: async () => tryImporting(commonDistPath, 'common dist pattern', repository)
+      tryImport: async () => tryImporting(commonDistPath, 'common dist pattern', repository),
     };
   }
-  
+
   const localNodeModulesPath = resolveNodeModulesPath(repository);
   if (fs.existsSync(localNodeModulesPath)) {
     return {
       name: 'local node_modules',
-      tryImport: async () => tryImporting(localNodeModulesPath, 'local node_modules', repository)
+      tryImport: async () => tryImporting(localNodeModulesPath, 'local node_modules', repository),
     };
   }
-  
+
   return null;
 }
 
