@@ -12,7 +12,6 @@ export default defineConfig({
   target: 'node18',
   dts: true,
   tsconfig: './tsconfig.build.json', // Use build-specific tsconfig
-  ignoreWatch: ['**/__tests__/**', '**/*.test.ts', '**/*.spec.ts'],
   external: [
     'dotenv',
     'fs',
@@ -40,13 +39,11 @@ export default defineConfig({
   ],
   sourcemap: false,
   onSuccess: async () => {
-    // Remove test directories and empty folders from dist
+    // Remove test directories from dist
     const { execSync } = await import('child_process');
     try {
       execSync('find dist -name "__tests__" -type d -exec rm -rf {} + 2>/dev/null || true', { stdio: 'ignore' });
       execSync('find dist -name "test_resources" -type d -exec rm -rf {} + 2>/dev/null || true', { stdio: 'ignore' });
-      // Remove empty directories
-      execSync('find dist -type d -empty -delete 2>/dev/null || true', { stdio: 'ignore' });
     } catch (error) {
       // Ignore errors if directories don't exist
     }
