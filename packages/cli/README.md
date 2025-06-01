@@ -32,6 +32,7 @@ Initialize a new project, plugin, or agent.
   - `-d, --dir <dir>`: Installation directory (default: `.`)
   - `-y, --yes`: Skip confirmation and use defaults (default: `false`)
   - `-t, --type <type>`: Type to create: 'project', 'plugin', or 'agent' (default: 'project')
+  - `--tee`: create a TEE starter project (default: `false`)
 
 **Important notes:**
 

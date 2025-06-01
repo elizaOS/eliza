@@ -34,6 +34,7 @@ elizaos create --help
 | `-d, --dir <dir>`   | Installation directory (default: `.`)                     |
 | `-y, --yes`         | Skip confirmation and use defaults (default: `false`)     |
 | `-t, --type <type>` | Type of template to use (`project`, `plugin`, or `agent`) |
+| `--tee`             | create a TEE starter project (default: `false`)           |
 | `[name]`            | Name for the project, plugin, or agent (optional)         |
 
 ## Interactive Process
