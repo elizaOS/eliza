@@ -1,37 +1,16 @@
 // this just imported dotenv, settings will handle wrapping this
-//import "./config"; // Add this line first
 
-/*
-export * from "./actions";
-export * from "./context";
-export * from "./database";
-export * from "./embedding";
-export * from "./evaluators";
-export * from "./generation";
-export * from "./goals";
-export * from "./memory";
-*/
 export * from './messages';
 //export * from "./models";
 export * from './posts';
 //export * from "./providers";
 //export * from "./relationships";
 export * from './runtime';
-/*
-export * from "./settings";
-export * from "./types";
-export * from "./logger";
-export * from "./parsing";
-export * from "./uuid";
-export * from "./environment";
-export * from "./cache";
-export { default as knowledge } from "./knowledge";
-export * from "./ragknowledge";
-export * from "./utils";
-*/
 
-// This is the entrypoint for the core-plugin-v1 package
-// It exports everything needed for v1 plugin compatibility
+/*
+Core exports for Eliza SDK v1. This is the primary entrypoint for the SDK.
+These are the v1 specs, which are a shim over the v2 specs for backwards compatibility.
+*/
 
 // Core types
 export * from './types';
