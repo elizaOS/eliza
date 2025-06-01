@@ -505,14 +505,12 @@ export const create = new Command()
       }
 
       await copyTemplateUtil(template, targetDir, projectName);
-      
+
       if (!aiModel) {
         console.error('No AI model selected or provided');
         handleError(new Error('No AI model selected or provided'));
         return;
       }
-
-      await copyTemplateUtil('project', targetDir, projectName);
 
       // Define project-specific .env file path, this will be created if it doesn't exist by downstream functions.
       const projectEnvFilePath = path.join(targetDir, '.env');
