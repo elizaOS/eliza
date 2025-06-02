@@ -1,12 +1,13 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useAgentPanels, type AgentPanel } from '@/hooks/use-query-hooks';
-import type { UUID } from '@elizaos/core';
-import { Columns3, Database, Eye, Code, InfoIcon } from 'lucide-react';
+import { useAgentPanels, useAgent, type AgentPanel } from '@/hooks/use-query-hooks';
+import type { UUID, Agent } from '@elizaos/core';
+import { Columns3, Database, Eye, Code, InfoIcon, Loader2 } from 'lucide-react';
 import { JSX, useMemo, useState } from 'react';
 import { AgentActionViewer } from './agent-action-viewer';
 import { AgentLogViewer } from './agent-log-viewer';
 import { AgentMemoryViewer } from './agent-memory-viewer';
 import { Skeleton } from './ui/skeleton';
+import AgentSettings from '@/components/agent-settings';
 
 type AgentSidebarProps = {
   agentId: UUID | undefined;
@@ -19,6 +20,14 @@ type TabValue = FixedTabValue | string;
 export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
   const [detailsTab, setDetailsTab] = useState<TabValue>('details');
   const { data: panelsResponse, isLoading: isLoadingPanels } = useAgentPanels(agentId!, { enabled: !!agentId });
+
+  const {
+    data: agentDataResponse,
+    isLoading: isLoadingAgent,
+    error: agentError,
+  } = useAgent(agentId, { enabled: !!agentId && detailsTab === 'details' });
+
+  const agent = agentDataResponse?.data as Agent | undefined;
 
   const agentPanels = useMemo(() => {
     return panelsResponse?.data || [];
@@ -64,11 +73,28 @@ export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
         )}
       </TabsList>
 
-      <TabsContent value="details" className="overflow-y-auto flex-1">
+      <TabsContent value="details" className="overflow-y-auto flex-1 p-4">
         {detailsTab === 'details' && agentId && (
-          <div className="p-4">
-            Agent Settings for {agentName} (ID: {agentId}) will go here.
-          </div>
+          <>
+            {isLoadingAgent && (
+              <div className="flex items-center justify-center h-full">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              </div>
+            )}
+            {agentError && (
+              <div className="text-red-500">
+                Error loading agent details: {agentError.message}
+              </div>
+            )}
+            {!isLoadingAgent && !agentError && agent && (
+              <AgentSettings agent={agent} agentId={agentId} />
+            )}
+            {!isLoadingAgent && !agentError && !agent && !isLoadingPanels && (
+              <div className="text-muted-foreground">
+                Agent details not found.
+              </div>
+            )}
+          </>
         )}
         {detailsTab === 'details' && !agentId && (
           <div className="p-4 text-muted-foreground">

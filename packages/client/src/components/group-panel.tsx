@@ -1,6 +1,6 @@
 import { Separator } from '@/components/ui/separator';
 import { GROUP_CHAT_SOURCE } from '@/constants';
-import { useServers, useChannels } from '@/hooks/use-query-hooks';
+import { useAgentsWithDetails, useChannels, useServers } from '@/hooks/use-query-hooks';
 import { apiClient } from '@/lib/api';
 import { type Agent, AgentStatus, type UUID } from '@elizaos/core';
 import { useQueryClient } from '@tanstack/react-query';
@@ -11,6 +11,7 @@ import MultiSelectCombobox from './combobox';
 import { Button } from './ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from './ui/card';
 import { Input } from './ui/input';
+import { useToast } from '@/hooks/use-toast';
 
 const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID; // Single default server
 
@@ -41,18 +42,14 @@ export default function GroupPanel({ onClose, agents, channelId }: GroupPanel) {
   const [selectedAgents, setSelectedAgents] = useState<Partial<Agent>[]>([]);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [initialOptions, setInitialOptions] = useState<Option[]>([]);
-  const [serverId, setServerId] = useState<UUID | null>(null);
+  const [serverId, setServerId] = useState<UUID>(DEFAULT_SERVER_ID);
 
-  const { data: channelsData } = useChannels(serverId || undefined);
+  const { data: channelsData, refetch: refetchChannels } = useChannels(serverId || undefined, { enabled: !!serverId && !!channelId });
+  const { data: agentsData } = useAgentsWithDetails();
 
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-
-  useEffect(() => {
-    // Always use the default server (ID "0")
-    setServerId(DEFAULT_SERVER_ID);
-  }, []);
+  const { toast } = useToast();
 
   useEffect(() => {
     if (channelId && channelsData?.data?.channels) {
@@ -60,26 +57,44 @@ export default function GroupPanel({ onClose, agents, channelId }: GroupPanel) {
       if (channel) {
         setChatName(channel.name || '');
 
-        // TODO: Pre-select agents that are already in the channel
-        // This would require getting channel participants from the server
-        // For now, start with empty selection
-        setSelectedAgents([]);
-        setInitialOptions([]);
+        // Pre-select agents that are already in the channel - TODO: Requires channel participant data
+        // if (channel.participants && agentsData?.agents) { // channel.participants does not exist on type
+        //   const currentChannelParticipants = agentsData.agents.filter(agent => 
+        //     (channel.participants as any[]).some(p => p === agent.id || p.id === agent.id)
+        //   );
+        //   setSelectedAgents(currentChannelParticipants);
+        // } else {
+        setSelectedAgents([]); // Default to empty for now
+        // }
       }
+    } else if (!channelId) {
+      // Reset form for create mode
+      setChatName('');
+      setSelectedAgents([]);
     }
-  }, [channelId, channelsData]);
+  }, [channelId, channelsData, agentsData]);
 
-  // Create the options for the combobox
-  const getComboboxOptions = () => {
+  // Create the options for the combobox from all available agents
+  const getComboboxOptions = (): Option[] => {
     return (
-      agents
+      agentsData?.agents // Use agentsData (all agents) instead of props.agents
         ?.filter((agent) => agent.status === AgentStatus.ACTIVE && agent.name && agent.id)
         .map((agent) => ({
           icon: agent.settings?.avatar || '',
           label: agent.name || 'Unknown Agent',
-          id: agent.id,
+          id: agent.id as string, // Ensure id is string for Option type
         })) || []
     );
+  };
+
+  // Get initial selected options for the combobox when editing
+  const getInitialSelectedOptions = (): Option[] => {
+    if (!channelId) return [];
+    return selectedAgents.map(agent => ({
+      icon: agent.settings?.avatar || '',
+      label: agent.name || 'Unknown Agent',
+      id: agent.id as string,
+    }));
   };
 
   return (
@@ -130,7 +145,7 @@ export default function GroupPanel({ onClose, agents, channelId }: GroupPanel) {
                   }
                 }}
                 className="w-full"
-                initialSelected={initialOptions}
+                initialSelected={getInitialSelectedOptions()}
               />
             </div>
           </div>
@@ -141,24 +156,28 @@ export default function GroupPanel({ onClose, agents, channelId }: GroupPanel) {
             <Button
               variant="destructive"
               onClick={async () => {
-                // Add confirmation dialog
+                const channel = channelsData?.data?.channels.find(ch => ch.id === channelId);
                 const confirmDelete = window.confirm(
-                  `Are you sure you want to permanently delete the group chat "${chatName}"? This action cannot be undone.`
+                  `Are you sure you want to permanently delete the group chat "${channel?.name || chatName || 'this group'}"? This action cannot be undone.`
                 );
                 if (!confirmDelete) {
                   return;
                 }
                 setDeleting(true);
                 try {
-                  await apiClient.deleteChannelMessage(channelId, channelId);
-                  // TODO: Add proper channel deletion endpoint
+                  // TODO: Implement apiClient.deleteCentralChannel(channelId);
+                  // await apiClient.deleteCentralChannel(channelId); 
+                  console.warn('apiClient.deleteCentralChannel is not implemented.');
+                  toast({ title: 'Success (Simulated)', description: 'Group deletion simulated.' });
+                  queryClient.invalidateQueries({ queryKey: ['channels', serverId] });
+                  queryClient.invalidateQueries({ queryKey: ['channels'] });
+                  navigate(`/`); // Navigate home after deletion
+                  onClose();
                 } catch (error) {
                   console.error('Failed to delete channel', error);
+                  toast({ title: 'Error', description: 'Failed to delete group.', variant: 'destructive' });
                 } finally {
                   setDeleting(false);
-                  navigate(`/`);
-                  onClose();
-                  queryClient.invalidateQueries({ queryKey: ['channels'] });
                 }
               }}
               disabled={deleting || creating}
@@ -195,22 +214,33 @@ export default function GroupPanel({ onClose, agents, channelId }: GroupPanel) {
                   });
 
                   if (response.data) {
-                    navigate(`/group/${response.data.id}`);
+                    toast({ title: 'Success', description: `Group "${chatName}" created.` });
+                    navigate(`/group/${response.data.id}?serverId=${serverId}`);
                   }
                 } else {
-                  // TODO: Update existing channel
-                  // This would require an update channel endpoint
-                  console.log('Channel update not yet implemented');
+                  // Update existing channel
+                  const participantIds = selectedAgents.map((agent) => agent.id as UUID);
+                  // TODO: Implement apiClient.updateCentralGroupChat(channelId, { ... });
+                  // await apiClient.updateCentralGroupChat(channelId, {
+                  //   name: chatName,
+                  //   participantCentralUserIds: participantIds,
+                  // });
+                  console.warn('apiClient.updateCentralGroupChat is not implemented.');
+                  toast({ title: 'Success (Simulated)', description: `Group "${chatName}" update simulated.` });
+                  navigate(`/group/${channelId}?serverId=${serverId}`);
                 }
               } catch (error) {
                 console.error('Failed to create/update group', error);
+                const action = channelId ? 'update' : 'create';
+                toast({ title: 'Error', description: `Failed to ${action} group.`, variant: 'destructive' });
               } finally {
                 setCreating(false);
                 onClose();
+                queryClient.invalidateQueries({ queryKey: ['channels', serverId] });
                 queryClient.invalidateQueries({ queryKey: ['channels'] });
               }
             }}
-            disabled={!chatName.length || !serverId || deleting || creating}
+            disabled={!chatName.trim().length || !serverId || deleting || creating}
           >
             {creating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {channelId ? 'Update Group' : 'Create Group'}

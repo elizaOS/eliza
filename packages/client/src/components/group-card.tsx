@@ -3,18 +3,21 @@ import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 // import { Avatar, AvatarGroup } from '@/components/ui/avatar'; // AvatarGroup removed
-import type { UUID } from '@elizaos/core';
+import type { UUID, Agent } from '@elizaos/core';
 import type { MessageChannel as ClientMessageChannel } from '@/types';
 import { Users, MessageCircle } from 'lucide-react';
+import { generateGroupName, getEntityId } from '@/lib/utils';
 
 // The group prop will be a central channel, enriched with server_id for navigation context
+// Assume group.participants might be available or added later.
 interface GroupCardProps {
-  group: ClientMessageChannel & { server_id: UUID };
+  group: ClientMessageChannel & { server_id: UUID; participants?: Partial<Agent>[] };
   // onEdit?: (group: ClientMessageChannel) => void;
 }
 
 const GroupCard: React.FC<GroupCardProps> = ({ group /*, onEdit */ }) => {
   const navigate = useNavigate();
+  const currentClientId = getEntityId(); // Get current client/user ID
 
   if (!group || !group.id) {
     return (
@@ -24,9 +27,9 @@ const GroupCard: React.FC<GroupCardProps> = ({ group /*, onEdit */ }) => {
     );
   }
 
-  const groupName = group.name || 'Unnamed Group';
+  const groupName = generateGroupName(group, group.participants || [], currentClientId);
   // Assuming participant count might come from metadata or a separate query in the parent component
-  const participantCount = group.metadata?.participantCount || group.metadata?.member_count || 0;
+  const participantCount = group.metadata?.participantCount || group.metadata?.member_count || group.participants?.length || 0;
 
   const handleChatClick = () => {
     navigate(`/group/${group.id}?serverId=${group.server_id}`);

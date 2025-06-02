@@ -111,5 +111,5 @@ export default function AgentRoute() {
   });
   // AgentRoute no longer needs to manage its own ResizablePanelGroup for the chat and sidebar
   // chat will handle its own layout including the sidebar.
-  return <ChatComponent chatType="DM" contextId={agentId} />;
+  return <ChatComponent key={agentId} chatType="DM" contextId={agentId} />;
 }

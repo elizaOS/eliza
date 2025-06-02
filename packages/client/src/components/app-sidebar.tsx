@@ -30,7 +30,7 @@ import {
   useChannels, // New hook
 } from '@/hooks/use-query-hooks';
 import info from '@/lib/info.json';
-import { cn, formatAgentName, getAgentAvatar } from '@/lib/utils';
+import { cn, formatAgentName, getAgentAvatar, getEntityId, generateGroupName } from '@/lib/utils';
 import {
   AgentStatus as CoreAgentStatus,
   type Agent,
@@ -46,6 +46,7 @@ import { Book, ChevronDown, Cog, Plus, TerminalIcon, Users } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'; // Added useNavigate
 import clientLogger from '@/lib/logger'; // Added import
+import { useQueryClient } from '@tanstack/react-query'; // Import useQueryClient
 
 /* ---------- helpers ---------- */
 const partition = <T,>(src: T[], pred: (v: T) => boolean): [T[], T[]] => {
@@ -206,6 +207,8 @@ const ChannelsForServer = ({
   navigate: ReturnType<typeof useNavigate>;
 }) => {
   const { data: channelsData, isLoading: isLoadingChannels } = useChannels(serverId);
+  const currentClientId = getEntityId(); // Get current client/user ID
+
   const groupChannels = useMemo(
     () => channelsData?.data?.channels?.filter((ch) => ch.type === CoreChannelType.GROUP) || [],
     [channelsData]
@@ -234,7 +237,8 @@ const ChannelsForServer = ({
                 <div className="flex items-center gap-3">
                   <Users className="h-5 w-5 text-muted-foreground" /> {/* Group icon */}
                   <span className="text-sm truncate max-w-32">
-                    {channel.name || 'Unnamed Group'}
+                    {/* Use generateGroupName - assumes channel.participants exists or will be added */}
+                    {generateGroupName(channel, (channel as any).participants || [], currentClientId)}
                   </span>
                 </div>
               </SidebarMenuButton>
@@ -271,9 +275,10 @@ interface AppSidebarProps {
  *
  * The sidebar includes sections for online and offline agents, group rooms, a create button for agents and groups, and footer links to documentation, logs, and settings. It handles loading and error states for agent and room data, and conditionally displays a group creation panel.
  */
-export function AppSidebar({ refreshHomePage }: AppSidebarProps) {
+export function AppSidebar({ refreshHomePage, isMobile = false }: AppSidebarProps & { isMobile?: boolean }) {
   const location = useLocation();
   const navigate = useNavigate();
+  const queryClient = useQueryClient(); // Get query client instance
 
   const {
     data: agentsData,
@@ -302,8 +307,18 @@ export function AppSidebar({ refreshHomePage }: AppSidebarProps) {
   const handleLogoClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
     clientLogger.info('[AppSidebar] handleLogoClick triggered', { currentPath: location.pathname });
+
+    // Invalidate queries that should be fresh on home page
+    queryClient.invalidateQueries({ queryKey: ['agents'] });
+    queryClient.invalidateQueries({ queryKey: ['agentsWithDetails'] }); // if this is a separate key
+    queryClient.invalidateQueries({ queryKey: ['servers'] });
+    queryClient.invalidateQueries({ queryKey: ['channels'] }); // This is broad, consider more specific invalidations if performance is an issue
+    // Example: if you know active server IDs, invalidate ['channels', serverId]
+
     if (location.pathname === '/') {
       clientLogger.info('[AppSidebar] Already on home page. Calling refreshHomePage().');
+      // refreshHomePage should ideally trigger a re-render/refetch in Home.tsx
+      // This can be done by changing a key prop on Home.tsx or further query invalidations if needed.
       refreshHomePage();
     } else {
       clientLogger.info('[AppSidebar] Not on home page. Navigating to "/".');
@@ -313,7 +328,14 @@ export function AppSidebar({ refreshHomePage }: AppSidebarProps) {
 
   return (
     <>
-      <Sidebar className="bg-background">
+      <Sidebar
+        className={cn(
+          "bg-background border-r min-h-screen",
+          isMobile ? "p-4 pt-0" : "p-4 w-72",
+          !isMobile && "hidden md:flex md:flex-col"
+        )}
+        collapsible="none"
+      >
         {/* ---------- header ---------- */}
         <SidebarHeader>
           <SidebarMenu>
@@ -325,7 +347,7 @@ export function AppSidebar({ refreshHomePage }: AppSidebarProps) {
                   className="px-6 py-2 h-full sidebar-logo no-underline"
                 >
                   <div className="flex flex-col pt-2 gap-1 items-start justify-center">
-                    <img alt="elizaos-logo" src="/elizaos-logo-light.png" width="90%" />
+                    <img alt="elizaos-logo" src="/elizaos-logo-light.png" className="w-32 max-w-full" />
                     <span className="text-xs font-mono text-muted-foreground">v{info.version}</span>
                   </div>
                 </a>

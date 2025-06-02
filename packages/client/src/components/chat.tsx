@@ -26,18 +26,26 @@ import { useSocketChat } from '@/hooks/use-socket-chat';
 import { useToast } from '@/hooks/use-toast';
 import clientLogger from '@/lib/logger';
 import { parseMediaFromText, removeMediaUrlsFromText, type MediaInfo } from '@/lib/media-utils';
-import { cn, getEntityId, moment, randomUUID } from '@/lib/utils';
+import { cn, getEntityId, moment, randomUUID, getAgentAvatar, generateGroupName } from '@/lib/utils';
 import type { Agent, Media, UUID } from '@elizaos/core';
 import { AgentStatus, ContentType as CoreContentType, validateUuid } from '@elizaos/core';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
 import { useQueryClient } from '@tanstack/react-query';
-import { ChevronRight, Loader2, PanelRight, PanelRightClose, Trash2 } from 'lucide-react';
+import { ChevronRight, Loader2, PanelRight, PanelRightClose, Trash2, MessageSquarePlus } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AIWriter from 'react-aiwriter';
 import { ChatInputArea } from './ChatInputArea';
 import { ChatMessageListComponent } from './ChatMessageListComponent';
 import GroupPanel from './group-panel';
 import { AgentSidebar } from './agent-sidebar';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
 
@@ -177,6 +185,8 @@ export default function chat({ chatType, contextId, serverId }: UnifiedChatViewP
   const [inputDisabled, setInputDisabled] = useState<boolean>(false);
   const [selectedGroupAgentId, setSelectedGroupAgentId] = useState<UUID | null>(null);
   const [showGroupEditPanel, setShowGroupEditPanel] = useState(false);
+  const [priorDmRooms, setPriorDmRooms] = useState<{ id: string, name: string, channelId: UUID }[]>([]);
+  const [currentDmRoomId, setCurrentDmRoomId] = useState<string | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -238,12 +248,32 @@ export default function chat({ chatType, contextId, serverId }: UnifiedChatViewP
   );
   const [isCreatingDM, setIsCreatingDM] = useState(false);
 
-  // Reset DM channel data when switching agents
+  // Effect for Req #1: Simulate fetching prior DM rooms and set current
   useEffect(() => {
-    if (chatType === 'DM') {
-      setDmChannelData(null);
+    if (chatType === 'DM' && targetAgentData?.id) {
+      clientLogger.info(`[Chat] Simulating fetch of prior DM rooms for agent ${targetAgentData.id}`);
+      // Simulate API call
+      const fetchedRooms = [
+        { id: 'dm_room_1_' + targetAgentData.id, name: 'General Discussion', channelId: contextId }, // Assuming current contextId is one room
+        { id: 'dm_room_2_' + targetAgentData.id, name: 'Project Alpha Inquiry', channelId: randomUUID() as UUID },
+        { id: 'dm_room_3_' + targetAgentData.id, name: 'Follow-up from Meeting', channelId: randomUUID() as UUID },
+      ];
+      setPriorDmRooms(fetchedRooms);
+      // Assume the first room (or the one matching contextId) is the current one
+      const initialRoom = fetchedRooms.find(room => room.channelId === contextId) || fetchedRooms[0];
+      if (initialRoom) {
+        setCurrentDmRoomId(initialRoom.id);
+        // If dmChannelData is not set, or needs to align with this initialRoom's channelId
+        if (!dmChannelData || dmChannelData.channelId !== initialRoom.channelId) {
+          setDmChannelData({ channelId: initialRoom.channelId, serverId: DEFAULT_SERVER_ID });
+        }
+      }
+      clientLogger.info('[Chat] Simulated prior DM rooms:', fetchedRooms, 'Current DM Room ID:', initialRoom?.id);
+    } else {
+      setPriorDmRooms([]);
+      setCurrentDmRoomId(null);
     }
-  }, [contextId, chatType]);
+  }, [chatType, targetAgentData?.id, contextId]);
 
   useEffect(() => {
     if (chatType === 'DM' && contextId && !dmChannelData && !isCreatingDM) {
@@ -275,8 +305,12 @@ export default function chat({ chatType, contextId, serverId }: UnifiedChatViewP
     }
   }, [chatType, contextId, dmChannelData, isCreatingDM, currentClientEntityId, toast]);
 
-  const finalChannelId = chatType === 'DM' ? dmChannelData?.channelId : contextId;
-  const finalServerId = chatType === 'DM' ? dmChannelData?.serverId : serverId;
+  const finalChannelId = chatType === 'DM' ?
+    (currentDmRoomId ? priorDmRooms.find(r => r.id === currentDmRoomId)?.channelId : dmChannelData?.channelId)
+    : contextId;
+  const finalServerId = chatType === 'DM' ?
+    (currentDmRoomId ? DEFAULT_SERVER_ID : dmChannelData?.serverId)
+    : serverId;
 
   const {
     data: messages = [],
@@ -521,6 +555,21 @@ export default function chat({ chatType, contextId, serverId }: UnifiedChatViewP
     }
   };
 
+  const handleSelectDmRoom = (roomId: string) => {
+    const selectedRoom = priorDmRooms.find(room => room.id === roomId);
+    if (selectedRoom) {
+      clientLogger.info(`[Chat] DM Room selected: ${selectedRoom.name} (Channel ID: ${selectedRoom.channelId})`);
+      setCurrentDmRoomId(selectedRoom.id);
+      // Update dmChannelData to reflect the selected room's channelId, triggering message refetch via finalChannelId
+      setDmChannelData({ channelId: selectedRoom.channelId, serverId: DEFAULT_SERVER_ID });
+      // Messages will refetch because useChannelMessages depends on finalChannelId, which will change.
+      // Input field could be cleared, or kept, depending on desired UX. Let's clear it.
+      setInput('');
+      // Scroll to bottom after room switch might be needed
+      setTimeout(() => safeScrollToBottom(), 150);
+    }
+  };
+
   useEffect(() => {
     clientLogger.info('[chat] Mounted/Updated', { chatType, contextId, serverId });
     return () => {
@@ -551,7 +600,7 @@ export default function chat({ chatType, contextId, serverId }: UnifiedChatViewP
         <div className="flex items-center justify-between mb-4 p-3 bg-card rounded-lg border">
           <div className="flex items-center gap-3">
             <Avatar className="size-10 border rounded-full">
-              <AvatarImage src={targetAgentData?.settings?.avatar || '/elizaos-icon.png'} />
+              <AvatarImage src={getAgentAvatar(targetAgentData)} />
             </Avatar>
             <div className="flex flex-col">
               <div className="flex items-center gap-2">
@@ -585,7 +634,31 @@ export default function chat({ chatType, contextId, serverId }: UnifiedChatViewP
               )}
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
+            {chatType === 'DM' && priorDmRooms.length > 1 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="ml-2">
+                    <MessageSquarePlus className="size-4 mr-2" />
+                    Chat History ({priorDmRooms.length})
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuLabel>Prior Chats</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {priorDmRooms.map((room) => (
+                    <DropdownMenuItem
+                      key={room.id}
+                      onClick={() => handleSelectDmRoom(room.id)}
+                      disabled={room.id === currentDmRoomId}
+                    >
+                      {room.name}
+                      {room.id === currentDmRoomId && <span className="text-xs text-muted-foreground ml-2">(Current)</span>}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -603,14 +676,20 @@ export default function chat({ chatType, contextId, serverId }: UnifiedChatViewP
         participants
           ?.filter((p) => allAgents.some((a) => a.id === p))
           .map((pId) => allAgents.find((a) => a.id === pId))
-          .filter(Boolean) || [];
+          .filter(Boolean) as Partial<Agent>[] | undefined || [];
+
+      const groupDisplayName = generateGroupName(
+        channelDetailsData?.data || undefined,
+        groupAgents,
+        currentClientEntityId
+      );
 
       return (
         <div className="flex flex-col gap-3 mb-4">
           <div className="flex items-center justify-between p-3 bg-card rounded-lg border">
             <div className="flex items-center gap-3">
-              <h2 className="font-semibold text-lg">
-                {channelDetailsData?.data?.name || 'Group Chat'}
+              <h2 className="font-semibold text-lg" title={groupDisplayName}>
+                {groupDisplayName}
               </h2>
             </div>
             <div className="flex gap-2">
@@ -649,7 +728,7 @@ export default function chat({ chatType, contextId, serverId }: UnifiedChatViewP
                     className="flex items-center gap-2"
                   >
                     <Avatar className="size-5">
-                      <AvatarImage src={agent?.settings?.avatar || '/elizaos-icon.png'} />
+                      <AvatarImage src={getAgentAvatar(agent)} />
                     </Avatar>
                     <span>{agent?.name}</span>
                   </Button>
@@ -697,6 +776,7 @@ export default function chat({ chatType, contextId, serverId }: UnifiedChatViewP
                   chatType={chatType}
                   currentClientEntityId={currentClientEntityId}
                   targetAgentData={targetAgentData}
+                  allAgents={allAgents}
                   animatedMessageId={animatedMessageId}
                   scrollRef={scrollRef}
                   isAtBottom={isAtBottom}
@@ -729,50 +809,43 @@ export default function chat({ chatType, contextId, serverId }: UnifiedChatViewP
           </div>
         </ResizablePanel>
 
-        {/* ---------- right panel ---------- */}
-        <AgentSidebar agentId={contextId} agentName={targetAgentData?.name || 'Agent'} />
+        {/* ---------- right panel / sidebar ---------- */}
+        {(() => {
+          let sidebarAgentId: UUID | undefined = undefined;
+          let sidebarAgentName: string = 'Agent';
 
-        {showSidebar && (
-          <>
-            <ResizableHandle withHandle />
-            <ResizablePanel defaultSize={30} minSize={20} maxSize={50}>
-              {chatType === 'DM' && targetAgentData ? (
-                <AgentDetailsPanel agent={targetAgentData} />
-              ) : chatType === 'GROUP' ? (
-                <div className="p-4">
-                  <h3 className="font-semibold mb-2">Group Details</h3>
-                  <p className="text-sm text-muted-foreground mb-4">Channel ID: {contextId}</p>
-                  {participants && participants.length > 0 && (
-                    <div>
-                      <h4 className="font-medium mb-2">Participants ({participants.length})</h4>
-                      <div className="space-y-2">
-                        {participants.map((pId) => {
-                          const agent = allAgents.find((a) => a.id === pId);
-                          return agent ? (
-                            <div key={pId} className="flex items-center gap-2">
-                              <Avatar className="size-6">
-                                <AvatarImage src={agent.settings?.avatar || '/elizaos-icon.png'} />
-                              </Avatar>
-                              <span className="text-sm">{agent.name}</span>
-                            </div>
-                          ) : (
-                            <div key={pId} className="text-sm text-muted-foreground">
-                              Unknown participant: {pId}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="p-4">
-                  <p className="text-sm text-muted-foreground">No details available</p>
-                </div>
-              )}
-            </ResizablePanel>
-          </>
-        )}
+          if (chatType === 'DM') {
+            sidebarAgentId = contextId; // This is agentId for DM
+            sidebarAgentName = targetAgentData?.name || 'Agent';
+          } else if (chatType === 'GROUP' && selectedGroupAgentId) {
+            sidebarAgentId = selectedGroupAgentId;
+            const selectedAgent = allAgents.find(a => a.id === selectedGroupAgentId);
+            sidebarAgentName = selectedAgent?.name || 'Group Member';
+          } else if (chatType === 'GROUP' && !selectedGroupAgentId) {
+            // In group chat, if no specific agent is selected, sidebar might be disabled or show group info
+            // For now, AgentSidebar will show "Select an agent" as per its internal logic if agentId is undefined.
+            sidebarAgentName = 'Group'; // Or some generic name
+          }
+
+          // The old AgentDetailsPanel logic is now intended to be within AgentSidebar's "Details" tab
+          // The ResizablePanel for AgentDetailsPanel is removed if AgentSidebar is the primary right panel.
+
+          // If showSidebar is true, AgentSidebar will be visible due to the ResizablePanelGroup structure
+          // However, the current structure has AgentSidebar *outside* the conditional showSidebar block for AgentDetailsPanel
+          // This means AgentSidebar might always be taking space.
+          // Let's assume AgentSidebar is the *only* component in the right-most ResizablePanel when showSidebar is true.
+
+          return (
+            showSidebar && (
+              <>
+                <ResizableHandle withHandle />
+                <ResizablePanel defaultSize={30} minSize={20} maxSize={50}>
+                  <AgentSidebar agentId={sidebarAgentId} agentName={sidebarAgentName} />
+                </ResizablePanel>
+              </>
+            )
+          );
+        })()}
       </ResizablePanelGroup>
 
       {showGroupEditPanel && chatType === 'GROUP' && (

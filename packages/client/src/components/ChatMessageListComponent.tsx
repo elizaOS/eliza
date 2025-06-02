@@ -6,6 +6,7 @@ import { MemoizedMessageContent } from './chat';
 import type { UUID, Agent } from '@elizaos/core';
 import type { UiMessage } from '@/hooks/use-query-hooks';
 import { cn } from '@/lib/utils';
+import { getAgentAvatar } from '@/lib/utils';
 
 interface ChatMessageListComponentProps {
   messages: UiMessage[];
@@ -13,6 +14,7 @@ interface ChatMessageListComponentProps {
   chatType: 'DM' | 'GROUP';
   currentClientEntityId: string;
   targetAgentData?: Agent;
+  allAgents: Partial<Agent>[];
   animatedMessageId: string | null;
   scrollRef: React.RefObject<HTMLDivElement | null>;
   isAtBottom: boolean;
@@ -31,6 +33,7 @@ export const ChatMessageListComponent: React.FC<ChatMessageListComponentProps> =
   chatType,
   currentClientEntityId,
   targetAgentData,
+  allAgents,
   animatedMessageId,
   scrollRef,
   isAtBottom,
@@ -100,13 +103,14 @@ export const ChatMessageListComponent: React.FC<ChatMessageListComponentProps> =
                 <Avatar className="size-8 border rounded-full select-none mb-2">
                   <AvatarImage
                     src={
-                      chatType === 'DM'
-                        ? targetAgentData?.settings?.avatar || '/elizaos-icon.png'
-                        : senderAgent?.settings?.avatar ||
-                        (agentAvatarMap && message.senderId
-                          ? agentAvatarMap[message.senderId]
-                          : null) ||
-                        '/elizaos-icon.png'
+                      getAgentAvatar(
+                        chatType === 'DM'
+                          ? targetAgentData
+                          : senderAgent ||
+                          (agentAvatarMap && message.senderId && allAgents
+                            ? allAgents.find((a: Partial<Agent>) => a.id === message.senderId)
+                            : undefined)
+                      )
                     }
                   />
                 </Avatar>
