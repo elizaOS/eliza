@@ -189,8 +189,8 @@ describe('package-manager', () => {
         cwd: process.cwd(),
         stdio: 'inherit',
       });
-      expect(logger.info).toHaveBeenCalledWith('Attempting to install package: lodash using npm');
-      expect(logger.info).toHaveBeenCalledWith('Successfully installed lodash.');
+      expect(logger.debug).toHaveBeenCalledWith('Attempting to install package: lodash using npm');
+      expect(logger.debug).toHaveBeenCalledWith('Successfully installed lodash.');
       expect(result).toEqual({
         success: true,
         installedIdentifier: 'lodash',
@@ -292,7 +292,7 @@ describe('package-manager', () => {
         cwd: process.cwd(),
         stdio: 'inherit',
       });
-      expect(logger.info).toHaveBeenCalledWith('Attempting to install package: lodash using bun');
+      expect(logger.debug).toHaveBeenCalledWith('Attempting to install package: lodash using bun');
     });
 
     it('should handle scoped packages', async () => {

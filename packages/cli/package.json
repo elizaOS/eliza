@@ -42,6 +42,7 @@
     "test:cli": "bun run test:setup-commands && bun run test:agent-commands && bun run test:agent-customisations && bun run test:setup-monorepo && bun run test:plugins-command"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^0.40.0",
     "@babel/core": "^7.22.1",
     "@babel/parser": "^7.22.6",
     "@types/babel__core": "^7.20.1",
@@ -59,11 +60,15 @@
     "execa": "^7.0.0",
     "fs-extra": "^11.1.0",
     "glob": "^11.0.0",
+    "globby": "^14.0.2",
     "https-proxy-agent": "^6.2.0",
+    "ora": "^8.1.1",
     "prettier": "3.5.3",
     "prompts": "^2.4.2",
     "recast": "^0.23.2",
     "rimraf": "6.0.1",
+    "simple-git": "^3.27.0",
+    "tiktoken": "^1.0.18",
     "tsconfig-paths": "^4.2.0",
     "tsup": "8.4.0",
     "tsx": "^4.19.2",

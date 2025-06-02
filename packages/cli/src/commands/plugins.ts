@@ -410,3 +410,55 @@ plugins
       process.exit(1);
     }
   });
+
+plugins
+  .command('upgrade')
+  .description('Upgrade a plugin from version 0.x to 1.x using AI-powered migration')
+  .argument('<path>', 'GitHub repository URL or local folder path')
+  .option('--api-key <key>', 'Anthropic API key (or use ANTHROPIC_API_KEY env var)')
+  .option('--skip-tests', 'Skip test validation loop')
+  .option('--skip-validation', 'Skip production readiness validation')
+  .action(async (pluginPath, opts) => {
+    try {
+      // Lazy import to avoid loading dependencies until needed
+      const { PluginMigrator } = await import('../utils/upgrade/migrator.js');
+
+      // Set API key if provided
+      if (opts.apiKey) {
+        process.env.ANTHROPIC_API_KEY = opts.apiKey;
+      }
+
+      // Check for API key
+      if (!process.env.ANTHROPIC_API_KEY) {
+        logger.error('ANTHROPIC_API_KEY is required for plugin upgrade.');
+        console.log('\nPlease set ANTHROPIC_API_KEY environment variable or use --api-key option.');
+        process.exit(1);
+      }
+
+      // Create migrator instance with options
+      const migrator = new PluginMigrator({
+        skipTests: opts.skipTests,
+        skipValidation: opts.skipValidation,
+      });
+
+      // Run migration
+      console.log(`\n🚀 Starting plugin upgrade for: ${pluginPath}\n`);
+      const result = await migrator.migrate(pluginPath);
+
+      if (result.success) {
+        console.log(`\n✅ Plugin successfully upgraded!`);
+        console.log(`   Branch: ${result.branchName}`);
+        console.log(`   Repository: ${result.repoPath}`);
+        console.log(`\nNext steps:`);
+        console.log(`1. Review the changes in the ${result.branchName} branch`);
+        console.log(`2. Test the upgraded plugin thoroughly`);
+        console.log(`3. Create a pull request when ready`);
+      } else {
+        logger.error(`Plugin upgrade failed: ${result.error?.message}`);
+        process.exit(1);
+      }
+    } catch (error) {
+      handleError(error);
+      process.exit(1);
+    }
+  });
