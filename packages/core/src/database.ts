@@ -1,5 +1,3 @@
-import { PGlite } from '@electric-sql/pglite';
-import { type Sql } from 'postgres';
 import type {
   Agent,
   Component,
@@ -49,7 +47,7 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
    * Retrieves a connection to the database.
    * @returns A Promise that resolves to the database connection.
    */
-  abstract getConnection(): Promise<PGlite | Sql<{}>>;
+  abstract getConnection(): Promise<unknown>;
 
   /**
    * Retrieves an account by its ID.

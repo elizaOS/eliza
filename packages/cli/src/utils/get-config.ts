@@ -324,8 +324,8 @@ export async function ensureElizaDir(targetProjectDir?: string) {
 }
 
 /**
- * Sets up and configures Pglite database
- * @param elizaDbDir The directory for Pglite database
+ * Sets up and configures PGLite database
+ * @param elizaDbDir The directory for PGLite database
  * @param envFilePath Path to the .env file
  */
 export async function setupPgLite(
@@ -341,9 +341,9 @@ export async function setupPgLite(
   const targetEnvPath = envPath || envFilePath;
 
   try {
-    // Ensure the Pglite database directory exists
+    // Ensure the PGLite database directory exists
     await ensureDir(targetDbDir);
-    logger.debug('[Pglite] Created database directory:', targetDbDir);
+    logger.debug('[PGLite] Created database directory:', targetDbDir);
 
     // Set up the .env file with the full template first
     await setupEnvFile(targetEnvPath);
@@ -352,9 +352,9 @@ export async function setupPgLite(
     // This handles both new and existing .env files
     await storePgliteDataDir(targetDbDir, targetEnvPath);
 
-    logger.success('Pglite configuration saved');
+    logger.success('PGLite configuration saved');
   } catch (error) {
-    logger.error('Error setting up Pglite directory:', {
+    logger.error('Error setting up PGLite directory:', {
       error: error instanceof Error ? error.message : String(error),
       elizaDbDir,
       envFilePath,
@@ -398,11 +398,11 @@ export async function storePostgresUrl(url: string, envFilePath: string): Promis
 }
 
 /**
- * Stores the provided Pglite data directory in the specified `.env` file, replacing any existing entry.
+ * Stores the provided PGLite data directory in the specified `.env` file, replacing any existing entry.
  *
  * Updates the `PGLITE_DATA_DIR` environment variable in both the file and the current process.
  *
- * @param dataDir - The Pglite data directory path to store.
+ * @param dataDir - The PGLite data directory path to store.
  * @param envFilePath - Path to the `.env` file where the directory should be saved.
  *
  * @throws {Error} If reading from or writing to the `.env` file fails.
@@ -424,9 +424,9 @@ export async function storePgliteDataDir(dataDir: string, envFilePath: string): 
     await fs.writeFile(envFilePath, lines.join('\n'), 'utf8');
     process.env.PGLITE_DATA_DIR = dataDir;
 
-    logger.success('Pglite data directory saved to configuration');
+    logger.success('PGLite data directory saved to configuration');
   } catch (error) {
-    logger.error('Error saving Pglite configuration:', error);
+    logger.error('Error saving PGLite configuration:', error);
     throw error; // Re-throw to handle upstream
   }
 }
@@ -615,7 +615,7 @@ export async function promptAndStoreAnthropicKey(envFilePath: string): Promise<s
 }
 
 /**
- * Configures the database to use, either Pglite or PostgreSQL
+ * Configures the database to use, either PGLite or PostgreSQL
  * @param reconfigure If true, force reconfiguration even if already configured
  * @returns The postgres URL if using Postgres, otherwise null
  */
@@ -640,9 +640,9 @@ export async function configureDatabaseSettings(reconfigure = false): Promise<st
     return process.env.POSTGRES_URL;
   }
 
-  // If we already have PGLITE_DATA_DIR set in env and not reconfiguring, use Pglite
+  // If we already have PGLITE_DATA_DIR set in env and not reconfiguring, use PGLite
   if (pgliteDataDir && !reconfigure) {
-    logger.debug(`Using existing Pglite configuration: ${pgliteDataDir}`);
+    logger.debug(`Using existing PGLite configuration: ${pgliteDataDir}`);
 
     // Ensure the directory exists
     await ensureDir(pgliteDataDir);

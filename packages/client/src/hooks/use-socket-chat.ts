@@ -35,6 +35,7 @@ export function useSocketChat({
 }: UseSocketChatProps) {
   const socketIOManager = SocketIOManager.getInstance();
   const animatedMessageIdRef = useRef<string | null>(null);
+  const joinedChannelRef = useRef<string | null>(null); // Ref to track joined channel
 
   const sendMessage = useCallback(
     async (
@@ -59,13 +60,32 @@ export function useSocketChat({
   );
 
   useEffect(() => {
-    if (!channelId || !currentUserId) return;
+    if (!channelId || !currentUserId) {
+      // If channelId becomes undefined (e.g., navigating away), ensure we reset the ref
+      if (joinedChannelRef.current) {
+        clientLogger.info(
+          `[useSocketChat] useEffect: channelId is now null/undefined, resetting joinedChannelRef from ${joinedChannelRef.current}`
+        );
+        joinedChannelRef.current = null;
+      }
+      return;
+    }
 
-    socketIOManager.initialize(currentUserId);
-    socketIOManager.joinChannel(channelId);
-    clientLogger.info(
-      `[useSocketChat] Joined ${chatType} channel ${channelId} as user ${currentUserId}`
-    );
+    socketIOManager.initialize(currentUserId); // Initialize on user context
+
+    // Only join if this specific channelId hasn't been joined by this hook instance yet,
+    // or if the channelId has changed.
+    if (channelId !== joinedChannelRef.current) {
+      clientLogger.info(
+        `[useSocketChat] useEffect: Joining channel ${channelId}. Previous joinedChannelRef: ${joinedChannelRef.current}`
+      );
+      socketIOManager.joinChannel(channelId);
+      joinedChannelRef.current = channelId; // Mark this channelId as joined by this instance
+    } else {
+      clientLogger.info(
+        `[useSocketChat] useEffect: Channel ${channelId} already marked as joined by this instance. Skipping joinChannel call.`
+      );
+    }
 
     const handleMessageBroadcasting = (data: MessageBroadcastData) => {
       clientLogger.info(
@@ -157,23 +177,24 @@ export function useSocketChat({
     );
 
     return () => {
-      if (channelId) socketIOManager.leaveChannel(channelId);
+      if (channelId) {
+        clientLogger.info(
+          `[useSocketChat] useEffect cleanup: Leaving channel ${channelId}. Current joinedChannelRef: ${joinedChannelRef.current}`
+        );
+        socketIOManager.leaveChannel(channelId);
+        // Reset ref when component unmounts or channelId changes leading to cleanup
+        if (channelId === joinedChannelRef.current) {
+          joinedChannelRef.current = null;
+          clientLogger.info(
+            `[useSocketChat] useEffect cleanup: Reset joinedChannelRef for ${channelId}`
+          );
+        }
+      }
       msgSub?.detach();
       completeSub?.detach();
       controlSub?.detach();
     };
-  }, [
-    channelId,
-    currentUserId,
-    socketIOManager,
-    contextId,
-    chatType,
-    onAddMessage,
-    onUpdateMessage,
-    allAgents,
-    messages,
-    onInputDisabledChange,
-  ]);
+  }, [channelId, currentUserId, socketIOManager]);
 
   return {
     sendMessage,

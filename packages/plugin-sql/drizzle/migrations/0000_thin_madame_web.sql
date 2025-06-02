@@ -1,8 +1,3 @@
-CREATE EXTENSION IF NOT EXISTS vector;
---> statement-breakpoint
-CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;
---> statement-breakpoint
-
 CREATE TABLE "agents" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"enabled" boolean DEFAULT true NOT NULL,
@@ -11,7 +6,7 @@ CREATE TABLE "agents" (
 	"name" text NOT NULL,
 	"username" text,
 	"system" text DEFAULT '',
-	"bio" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"bio" jsonb DEFAULT '[]'::jsonb,
 	"message_examples" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"post_examples" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"topics" jsonb DEFAULT '[]'::jsonb NOT NULL,
@@ -31,6 +26,25 @@ CREATE TABLE "cache" (
 	"createdAt" timestamptz DEFAULT now() NOT NULL,
 	"expiresAt" timestamptz,
 	CONSTRAINT "cache_key_agent_unique" UNIQUE("key","agentId")
+);
+--> statement-breakpoint
+CREATE TABLE "channel_participants" (
+	"channel_id" text NOT NULL,
+	"user_id" text NOT NULL,
+	CONSTRAINT "channel_participants_channel_id_user_id_pk" PRIMARY KEY("channel_id","user_id")
+);
+--> statement-breakpoint
+CREATE TABLE "channels" (
+	"id" text PRIMARY KEY NOT NULL,
+	"server_id" text NOT NULL,
+	"name" text NOT NULL,
+	"type" text NOT NULL,
+	"source_type" text,
+	"source_id" text,
+	"topic" text,
+	"metadata" jsonb,
+	"created_at" timestamp DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	"updated_at" timestamp DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "components" (
@@ -104,6 +118,30 @@ CREATE TABLE "memories" (
         )
 );
 --> statement-breakpoint
+CREATE TABLE "message_servers" (
+	"id" text PRIMARY KEY NOT NULL,
+	"name" text NOT NULL,
+	"source_type" text NOT NULL,
+	"source_id" text,
+	"metadata" jsonb,
+	"created_at" timestamp DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	"updated_at" timestamp DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "central_messages" (
+	"id" text PRIMARY KEY NOT NULL,
+	"channel_id" text NOT NULL,
+	"author_id" text NOT NULL,
+	"content" text NOT NULL,
+	"raw_message" jsonb,
+	"in_reply_to_root_message_id" text,
+	"source_type" text,
+	"source_id" text,
+	"metadata" jsonb,
+	"created_at" timestamp DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	"updated_at" timestamp DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "participants" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"createdAt" timestamptz DEFAULT now() NOT NULL,
@@ -137,6 +175,12 @@ CREATE TABLE "rooms" (
 	"createdAt" timestamptz DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "server_agents" (
+	"server_id" text NOT NULL,
+	"agent_id" text NOT NULL,
+	CONSTRAINT "server_agents_server_id_agent_id_pk" PRIMARY KEY("server_id","agent_id")
+);
+--> statement-breakpoint
 CREATE TABLE "tasks" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"name" text NOT NULL,
@@ -161,6 +205,8 @@ CREATE TABLE "worlds" (
 );
 --> statement-breakpoint
 ALTER TABLE "cache" ADD CONSTRAINT "cache_agentId_agents_id_fk" FOREIGN KEY ("agentId") REFERENCES "public"."agents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "channel_participants" ADD CONSTRAINT "channel_participants_channel_id_channels_id_fk" FOREIGN KEY ("channel_id") REFERENCES "public"."channels"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "channels" ADD CONSTRAINT "channels_server_id_message_servers_id_fk" FOREIGN KEY ("server_id") REFERENCES "public"."message_servers"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "components" ADD CONSTRAINT "components_entityId_entities_id_fk" FOREIGN KEY ("entityId") REFERENCES "public"."entities"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "components" ADD CONSTRAINT "components_agentId_agents_id_fk" FOREIGN KEY ("agentId") REFERENCES "public"."agents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "components" ADD CONSTRAINT "components_roomId_rooms_id_fk" FOREIGN KEY ("roomId") REFERENCES "public"."rooms"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -179,6 +225,8 @@ ALTER TABLE "memories" ADD CONSTRAINT "memories_roomId_rooms_id_fk" FOREIGN KEY 
 ALTER TABLE "memories" ADD CONSTRAINT "fk_room" FOREIGN KEY ("roomId") REFERENCES "public"."rooms"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "memories" ADD CONSTRAINT "fk_user" FOREIGN KEY ("entityId") REFERENCES "public"."entities"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "memories" ADD CONSTRAINT "fk_agent" FOREIGN KEY ("agentId") REFERENCES "public"."agents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "central_messages" ADD CONSTRAINT "central_messages_channel_id_channels_id_fk" FOREIGN KEY ("channel_id") REFERENCES "public"."channels"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "central_messages" ADD CONSTRAINT "central_messages_in_reply_to_root_message_id_central_messages_id_fk" FOREIGN KEY ("in_reply_to_root_message_id") REFERENCES "public"."central_messages"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "participants" ADD CONSTRAINT "participants_entityId_entities_id_fk" FOREIGN KEY ("entityId") REFERENCES "public"."entities"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "participants" ADD CONSTRAINT "participants_roomId_rooms_id_fk" FOREIGN KEY ("roomId") REFERENCES "public"."rooms"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "participants" ADD CONSTRAINT "participants_agentId_agents_id_fk" FOREIGN KEY ("agentId") REFERENCES "public"."agents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -190,6 +238,7 @@ ALTER TABLE "relationships" ADD CONSTRAINT "relationships_agentId_agents_id_fk" 
 ALTER TABLE "relationships" ADD CONSTRAINT "fk_user_a" FOREIGN KEY ("sourceEntityId") REFERENCES "public"."entities"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "relationships" ADD CONSTRAINT "fk_user_b" FOREIGN KEY ("targetEntityId") REFERENCES "public"."entities"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "rooms" ADD CONSTRAINT "rooms_agentId_agents_id_fk" FOREIGN KEY ("agentId") REFERENCES "public"."agents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "server_agents" ADD CONSTRAINT "server_agents_server_id_message_servers_id_fk" FOREIGN KEY ("server_id") REFERENCES "public"."message_servers"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "worlds" ADD CONSTRAINT "worlds_agentId_agents_id_fk" FOREIGN KEY ("agentId") REFERENCES "public"."agents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "idx_embedding_memory" ON "embeddings" USING btree ("memory_id");--> statement-breakpoint
 CREATE INDEX "idx_memories_type_room" ON "memories" USING btree ("type","roomId");--> statement-breakpoint

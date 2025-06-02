@@ -51,7 +51,7 @@ EOF
     
     # Create a temporary Node.js script to call the plugin creator
     cat > /tmp/create-plugin.js << 'EOF'
-import { PluginCreator } from './dist/utils/plugins/creator.js';
+import { PluginCreator } from './dist/utils/plugin-creator.js';
 import fs from 'fs';
 
 const spec = JSON.parse(fs.readFileSync('/tmp/plugin-spec.json', 'utf-8'));

@@ -26,20 +26,19 @@
     "drizzle"
   ],
   "dependencies": {
-    "@electric-sql/pglite": "^0.3.2",
+    "@electric-sql/pglite": "^0.2.17",
     "@elizaos/core": "^1.0.2",
     "@types/pg": "8.11.10",
     "drizzle-kit": "^0.30.4",
     "drizzle-orm": "^0.39.1",
-    "pg": "^8.16.0",
-    "postgres": "^3.4.7"
+    "pg": "^8.13.3"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",
     "dockerode": "^4.0.4",
     "prettier": "3.5.3",
     "tsup": "8.4.0",
-    "vitest": "^1.6.1",
+    "vitest": "3.1.4",
     "zod": "^3.22.4"
   },
   "scripts": {

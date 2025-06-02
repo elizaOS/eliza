@@ -476,7 +476,7 @@ plugins
   .action(async (opts) => {
     try {
       // Lazy import to avoid loading dependencies until needed
-      const { PluginCreator } = await import('../utils/plugins/creator.js');
+      const { PluginCreator } = await import('../utils/plugin-creator.js');
 
       // Set API key if provided
       if (opts.apiKey) {

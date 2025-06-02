@@ -1,31 +1,25 @@
-import { getSchemaFactory } from './factory';
+import { pgTable, text, jsonb, timestamp } from 'drizzle-orm/pg-core';
+import { relations, sql } from 'drizzle-orm';
 import { channelTable } from './channel';
 
-const factory = getSchemaFactory();
-
-export const messageTable = (factory.table as any)('central_messages', {
-  id: factory.text('id').primaryKey(), // UUID stored as text
-  channelId: factory
-    .text('channel_id')
+export const messageTable = pgTable('central_messages', {
+  id: text('id').primaryKey(), // UUID stored as text
+  channelId: text('channel_id')
     .notNull()
     .references(() => channelTable.id, { onDelete: 'cascade' }),
-  authorId: factory.text('author_id').notNull(),
-  content: factory.text('content').notNull(),
-  rawMessage: factory.json('raw_message'),
-  inReplyToRootMessageId: factory
-    .text('in_reply_to_root_message_id')
-    .references(() => messageTable.id, {
-      onDelete: 'set null',
-    }),
-  sourceType: factory.text('source_type'),
-  sourceId: factory.text('source_id'),
-  metadata: factory.json('metadata'),
-  createdAt: factory
-    .timestamp('created_at', { mode: 'date' })
-    .default(factory.defaultTimestamp())
+  authorId: text('author_id').notNull(),
+  content: text('content').notNull(),
+  rawMessage: jsonb('raw_message'),
+  inReplyToRootMessageId: text('in_reply_to_root_message_id').references(() => messageTable.id, {
+    onDelete: 'set null',
+  }),
+  sourceType: text('source_type'),
+  sourceId: text('source_id'),
+  metadata: jsonb('metadata'),
+  createdAt: timestamp('created_at', { mode: 'date' })
+    .default(sql`CURRENT_TIMESTAMP`)
     .notNull(),
-  updatedAt: factory
-    .timestamp('updated_at', { mode: 'date' })
-    .default(factory.defaultTimestamp())
+  updatedAt: timestamp('updated_at', { mode: 'date' })
+    .default(sql`CURRENT_TIMESTAMP`)
     .notNull(),
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { PluginCreator } from '../src/utils/plugins/creator';
+import { PluginCreator } from '../src/utils/plugin-creator';
 
 // Mock all dependencies
 vi.mock('fs-extra', () => ({

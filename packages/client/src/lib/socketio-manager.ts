@@ -154,6 +154,10 @@ export class SocketIOManager extends EventAdapter {
     return SocketIOManager.instance?.isConnected || false;
   }
 
+  public isChannelActive(channelId: string): boolean {
+    return this.activeChannelIds.has(channelId);
+  }
+
   /**
    * Initialize the Socket.io connection to the server
    * @param clientEntityId The client entity ID (central user ID)
@@ -186,9 +190,11 @@ export class SocketIOManager extends EventAdapter {
 
       this.emit('connect');
 
-      this.activeChannelIds.forEach((channelId) => {
-        this.joinChannel(channelId);
-      });
+      // CRITICAL: Ensure this loop remains commented out or removed.
+      // this.activeChannelIds.forEach((channelId) => {
+      //   clientLogger.info(`[SocketIO] 'connect' event: Attempting to re-join active channel ${channelId} (THIS SHOULD NOT HAPPEN AUTOMATICALLY)`);
+      //   this.joinChannel(channelId);
+      // });
     });
 
     this.socket.on('unauthorized', (reason: string) => {
@@ -328,7 +334,16 @@ export class SocketIOManager extends EventAdapter {
       await this.connectPromise;
     }
 
+    clientLogger.info(
+      `[SocketIO] joinChannel: Attempting to join ${channelId}. Current activeChannelIds before add:`,
+      new Set(this.activeChannelIds)
+    );
     this.activeChannelIds.add(channelId);
+    clientLogger.info(
+      `[SocketIO] joinChannel: Joined ${channelId}. Current activeChannelIds after add:`,
+      new Set(this.activeChannelIds)
+    );
+
     this.socket.emit('message', {
       type: SOCKET_MESSAGE_TYPE.ROOM_JOINING,
       payload: {
@@ -338,7 +353,7 @@ export class SocketIOManager extends EventAdapter {
       },
     });
 
-    clientLogger.info(`[SocketIO] Joined channel ${channelId}`);
+    clientLogger.info(`[SocketIO] Emitted ROOM_JOINING for ${channelId}`);
   }
 
   /**
@@ -358,8 +373,17 @@ export class SocketIOManager extends EventAdapter {
       return;
     }
 
+    clientLogger.info(
+      `[SocketIO] leaveChannel: Attempting to leave ${channelId}. Current activeChannelIds before delete:`,
+      new Set(this.activeChannelIds)
+    );
     this.activeChannelIds.delete(channelId);
-    clientLogger.info(`[SocketIO] Left channel ${channelId}`);
+    clientLogger.info(
+      `[SocketIO] leaveChannel: Left ${channelId}. Current activeChannelIds after delete:`,
+      new Set(this.activeChannelIds)
+    );
+    // No server-side message for leaving a room in this client's protocol,
+    // client just stops listening / tracking.
   }
 
   /**

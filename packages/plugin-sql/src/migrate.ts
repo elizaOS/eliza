@@ -19,7 +19,7 @@ async function runMigrations() {
       const connectionManager = new PostgresConnectionManager(process.env.POSTGRES_URL);
       await connectionManager.initialize();
       await connectionManager.runMigrations();
-      await connectionManager.close();
+      // await connectionManager.close();
       logger.success('PostgreSQL migrations completed successfully');
       process.exit(0);
     } catch (error) {
@@ -38,7 +38,6 @@ async function runMigrations() {
     logger.info('Using PGlite database at:', elizaDbDir);
     const clientManager = new PGliteClientManager({
       dataDir: elizaDbDir,
-      relaxedDurability: true, // Enable for better performance during migrations
     });
 
     try {

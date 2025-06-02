@@ -75,7 +75,7 @@ echo ""
 
 # For demo purposes, we'll create a Node.js script that calls the CLI
 cat > generate.js << 'EOF'
-import { PluginCreator } from '@elizaos/cli/dist/utils/plugins/creator.js';
+import { PluginCreator } from '@elizaos/cli/dist/utils/plugin-creator.js';
 import fs from 'fs';
 
 const spec = JSON.parse(fs.readFileSync('./plugin-spec.json', 'utf-8'));

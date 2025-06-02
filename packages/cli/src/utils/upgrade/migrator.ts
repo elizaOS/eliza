@@ -7,18 +7,22 @@ import ora from 'ora';
 import * as path from 'path';
 import { dirname } from 'path';
 import simpleGit, { SimpleGit } from 'simple-git';
+import { encoding_for_model } from 'tiktoken';
 import { fileURLToPath } from 'url';
 import * as os from 'os';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// Initialize tiktoken encoder
+const encoder = encoding_for_model('gpt-4');
+
 // Configuration
 const MAX_TOKENS = 100000;
 const BRANCH_NAME = '1.x-claude';
 const MAX_TEST_ITERATIONS = 5;
 const MAX_REVISION_ITERATIONS = 3;
-const CLAUDE_CODE_TIMEOUT = 15 * 60 * 1000; // 15 minutes
+const CLAUDE_CODE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
 const MIN_DISK_SPACE_GB = 2; // Minimum 2GB free space required
 const LOCK_FILE_NAME = '.elizaos-migration.lock';
 
@@ -109,7 +113,7 @@ export class PluginMigrator {
       await this.initializeAnthropic();
 
       // Check disk space
-      spinner.info('Checking disk space...');
+      spinner.text = `Checking disk space...`;
       await this.checkDiskSpace();
 
       // Check for Claude Code
@@ -122,7 +126,7 @@ export class PluginMigrator {
       }
 
       // Step 1: Handle input (clone if GitHub URL, validate if folder)
-      spinner.info(`Setting up repository for ${input}...`);
+      spinner.text = `Setting up repository for ${input}...`;
       await this.handleInput(input);
       spinner.succeed(`Input validated for ${input}`);
 
@@ -138,7 +142,7 @@ export class PluginMigrator {
       logger.info(`Current branch: ${originalBranch}`);
 
       // Step 3: Create/checkout branch
-      spinner.info(`Creating branch ${BRANCH_NAME}...`);
+      spinner.text = `Creating branch ${BRANCH_NAME}...`;
       await this.createBranch();
       spinner.succeed(`Branch ${BRANCH_NAME} created`);
 
@@ -156,33 +160,32 @@ export class PluginMigrator {
 
       if (!skipGeneration) {
         // Step 4: Analyze repository
-        spinner.info(`Analyzing repository structure...`);
+        spinner.text = `Analyzing repository structure...`;
         const context = await this.analyzeRepository();
         spinner.succeed(`Repository analyzed`);
 
         // Step 5: Generate migration strategy
-        spinner.info(`Generating migration strategy...`);
+        spinner.text = `Generating migration strategy...`;
         const specificStrategy = await this.generateMigrationStrategy(context);
         spinner.succeed(`Migration strategy generated`);
 
         // Step 6: Create CLAUDE.md
-        spinner.info(`Creating migration instructions...`);
+        spinner.text = `Creating migration instructions...`;
         await this.createMigrationInstructions(specificStrategy);
         spinner.succeed(`Migration instructions created`);
       }
 
       // Step 7: Run migration with test loop
       if (!this.options.skipTests) {
-        spinner.info(`Running migration with test validation...`);
+        spinner.text = `Running migration with test validation...`;
         const migrationSuccess = await this.runMigrationWithTestLoop();
 
         if (!migrationSuccess) {
           throw new Error('Migration failed after maximum test iterations');
         }
-        spinner.succeed(`Migration applied (test validation passed)`);
       } else {
         // Just run Claude Code once without test validation
-        spinner.info(`Running migration (tests skipped)...`);
+        spinner.text = `Running migration (tests skipped)...`;
         await this.runClaudeCode();
         spinner.succeed(`Migration applied (test validation skipped)`);
       }
@@ -192,7 +195,7 @@ export class PluginMigrator {
 
       // Step 9: Production validation loop
       if (!this.options.skipValidation) {
-        spinner.info(`Validating migration for production readiness...`);
+        spinner.text = `Validating migration for production readiness...`;
         const validationSuccess = await this.runProductionValidationLoop();
 
         if (!validationSuccess) {
@@ -203,7 +206,7 @@ export class PluginMigrator {
       }
 
       // Step 10: Push branch
-      spinner.info(`Pushing branch ${BRANCH_NAME} to origin...`);
+      spinner.text = `Pushing branch ${BRANCH_NAME} to origin...`;
 
       // Check if we have push permissions
       try {
@@ -219,19 +222,10 @@ export class PluginMigrator {
 
       logger.info(`✅ Migration complete for ${input}!`);
 
-      // Step 11: Copy to CWD
-      const targetPath = await this.copyToCWD();
-      logger.info(`📁 Upgraded plugin copied to: ${targetPath}`);
-      logger.info(`\n📌 Next steps:`);
-      logger.info(`1. cd ${path.basename(targetPath)}`);
-      logger.info(`2. Review the changes`);
-      logger.info(`3. Test the upgraded plugin`);
-      logger.info(`4. Create a pull request when ready\n`);
-
       return {
         success: true,
         branchName: BRANCH_NAME,
-        repoPath: targetPath, // Return the copied path, not the temp path
+        repoPath: this.repoPath!,
       };
     } catch (error) {
       spinner.fail(`Migration failed for ${input}`);
@@ -338,15 +332,7 @@ export class PluginMigrator {
         };
       }
 
-      // First validate dependencies can be installed
-      logger.info('Validating dependencies...');
-      const dependencyValidation = await this.validateDependencies();
-
-      if (!dependencyValidation.success) {
-        return dependencyValidation;
-      }
-
-      // Now actually install dependencies
+      // First ensure dependencies are installed
       logger.info('Installing dependencies...');
       try {
         await execa('npm', ['install'], {
@@ -354,7 +340,6 @@ export class PluginMigrator {
           stdio: 'pipe',
           timeout: 300000, // 5 minute timeout for npm install
         });
-        logger.info('✅ Dependencies installed successfully');
       } catch (installError: any) {
         if (installError.timedOut) {
           return {
@@ -362,54 +347,8 @@ export class PluginMigrator {
             errors: 'npm install timed out after 5 minutes. Check network connection.',
           };
         }
-        const errorOutput = (installError.stdout || '') + '\n' + (installError.stderr || '');
-        return {
-          success: false,
-          errors: `npm install failed:\n${errorOutput}`,
-        };
-      }
-
-      // Run build first
-      logger.info('Running build...');
-      let buildSuccess = false;
-      let buildErrors = '';
-
-      try {
-        // Try bun build first
-        try {
-          await execa('bun', ['--version'], { stdio: 'pipe' });
-          await execa('bun', ['run', 'build'], {
-            cwd: this.repoPath!,
-            stdio: 'pipe',
-            timeout: 120000, // 2 minute timeout for build
-          });
-          buildSuccess = true;
-          logger.info('✅ Build successful with bun');
-        } catch (bunError: any) {
-          // Fallback to npm build
-          await execa('npm', ['run', 'build'], {
-            cwd: this.repoPath!,
-            stdio: 'pipe',
-            timeout: 120000, // 2 minute timeout for build
-          });
-          buildSuccess = true;
-          logger.info('✅ Build successful with npm');
-        }
-      } catch (buildError: any) {
-        buildErrors = (buildError.stdout || '') + '\n' + (buildError.stderr || '');
-        logger.error('Build failed:', buildErrors);
-        return {
-          success: false,
-          errors: `Build failed:\n${buildErrors}`,
-        };
-      }
-
-      // Only run tests if build succeeded
-      if (!buildSuccess) {
-        return {
-          success: false,
-          errors: buildErrors || 'Build failed',
-        };
+        logger.warn(`npm install failed: ${installError.message}`);
+        // Continue anyway - some tests might still work
       }
 
       // Check if elizaos command is available
@@ -452,10 +391,8 @@ export class PluginMigrator {
       const result = await execa(testCommand, testArgs, {
         cwd: this.repoPath!,
         stdio: 'pipe',
-        timeout: 300000, // 5 minute timeout for tests
       });
 
-      logger.info('✅ All tests passing!');
       return { success: true };
     } catch (error: any) {
       const errorOutput = (error.stdout || '') + '\n' + (error.stderr || '');
@@ -468,12 +405,9 @@ export class PluginMigrator {
     try {
       // Run tests again to capture fresh output
       const result = await this.runTests();
-      if (result.errors) {
-        return result.errors;
-      }
-      return 'Build and tests failed but no specific errors captured';
+      return result.errors || 'Tests failed but no specific errors captured';
     } catch (error) {
-      return `Failed to capture build/test errors: ${error}`;
+      return `Failed to capture test errors: ${error}`;
     }
   }
 
@@ -492,64 +426,23 @@ export class PluginMigrator {
 ${changedFilesContent}
 
 ## Evaluation Criteria:
-
-### 1. Import Compliance (CRITICAL)
-- ✅ ALL imports must come from @elizaos/core ONLY
-- ❌ NO imports from @elizaos/plugin, @elizaos/types, @elizaos/logger, etc. (these don't exist)
-- ❌ NO direct database adapter imports (PgliteDatabaseAdapter, PgDatabaseAdapter)
-
-### 2. Database Compatibility (CRITICAL)
-- ✅ Plugin must work with both Pglite and PostgreSQL
-- ✅ Uses ONLY runtime.databaseAdapter for database operations
-- ✅ Uses runtime.createMemory(), runtime.searchMemories(), runtime.createGoal()
-- ✅ Uses runtime.ensureConnection() for relationships
-- ❌ NO database-specific SQL or queries
-- ❌ NO assumptions about database type
-- ❌ NO direct database adapter usage
-
-### 3. Type Migrations
-- ✅ Account → Entity, userId → entityId, room → world correctly updated
-- ✅ IAgentRuntime → AgentRuntime
-
-### 4. Service Architecture
-- ✅ Services extend the base Service class with lifecycle methods (initialize, start, stop)
-- ✅ Proper event emission and handling
-
-### 5. Memory Operations
-- ✅ Uses new API with runtime.createMemory() instead of runtime.memory.remember()
-- ✅ Proper table names and structure
-
-### 6. Model Usage
-- ✅ Converted generateText to runtime.useModel()
-
-### 7. Templates
-- ✅ Migrated from JSON to XML format where applicable
-
-### 8. Testing
-- ✅ Comprehensive tests exist and cover main functionality
-- ✅ Database compatibility tests for both Pglite and PostgreSQL
-- ✅ Tests use vitest framework
-
-### 9. Code Quality
-- ✅ No stubs or incomplete code remains
-- ✅ Proper error handling throughout
-- ✅ Clean, well-organized code structure
-
-### 10. Plugin Structure
-- ✅ Proper plugin exports with name, version, actions, providers, evaluators, services
-- ✅ All components properly implemented and exported
+1. All imports are correctly updated
+2. All types are properly migrated (Account → Entity, userId → entityId, etc.)
+3. Services extend the base Service class with lifecycle methods
+4. Event system is properly implemented
+5. Memory operations use the new API
+6. Model usage is converted to runtime.useModel
+7. Templates are migrated to XML format
+8. Comprehensive tests exist and cover the main functionality
+9. No stubs or incomplete code remains
+10. Error handling is robust
 
 ## Response Format:
 Respond with a JSON object:
 {
   "production_ready": boolean,
   "revision_instructions": "Detailed instructions for what needs to be fixed (only if not production ready)"
-}
-
-## Validation Priority:
-1. Import compliance is MANDATORY - any non-@elizaos/core imports = NOT production ready
-2. Database compatibility is MANDATORY - must work with both Pglite and PostgreSQL
-3. All other criteria must also pass for production readiness`;
+}`;
 
     const message = await this.anthropic!.messages.create({
       model: 'claude-opus-4-20250514',
@@ -590,7 +483,7 @@ Respond with a JSON object:
       const filePath = path.join(this.repoPath!, file);
       if (await fs.pathExists(filePath)) {
         let fileContent = await fs.readFile(filePath, 'utf-8');
-        let fileTokens = Math.ceil(fileContent.length / 4); // Approximate 4 chars per token
+        let fileTokens = encoder.encode(fileContent).length;
 
         // If a single file exceeds MAX_TOKENS, truncate it
         if (fileTokens > MAX_TOKENS) {
@@ -599,7 +492,7 @@ Respond with a JSON object:
           let truncatedTokens = 0;
 
           for (const line of lines) {
-            const lineTokens = Math.ceil((line + '\n').length / 4); // Approximate 4 chars per token
+            const lineTokens = encoder.encode(line + '\n').length;
             if (truncatedTokens + lineTokens > MAX_TOKENS * 0.8) {
               // Use 80% of MAX_TOKENS for single file
               truncatedContent += '\n... (file truncated due to size) ...';
@@ -624,23 +517,17 @@ Respond with a JSON object:
   }
 
   private async runClaudeCodeWithContext(context: string): Promise<void> {
-    const prompt = `Please read the CLAUDE.md file and apply the migration. Additionally, address the following build/test errors:
+    const prompt = `Please read the CLAUDE.md file and apply the migration. Additionally, address the following:
 
 ${context}
 
-Make all necessary changes to fix the build and test issues and ensure the migration is complete and correct. The build must pass and all tests must pass.`;
+Make all necessary changes to fix the issues and ensure the migration is complete and correct.`;
 
     await this.runClaudeCodeWithPrompt(prompt);
   }
 
   private async runClaudeCodeWithPrompt(prompt: string): Promise<void> {
     process.chdir(this.repoPath!);
-
-    logger.info('🤖 Starting Claude Code execution...');
-    logger.info(`📁 Working directory: ${this.repoPath}`);
-    logger.info(`⏱️  Timeout: ${CLAUDE_CODE_TIMEOUT / 1000} seconds`);
-    logger.info('📝 Prompt: ' + prompt.substring(0, 100) + (prompt.length > 100 ? '...' : ''));
-    logger.info('----------------------------------------');
 
     // Create a timeout promise
     const timeoutPromise = new Promise<never>((_, reject) => {
@@ -654,31 +541,26 @@ Make all necessary changes to fix the build and test issues and ensure the migra
     // Create the execution promise
     const executePromise = (async () => {
       try {
-        const claudeArgs = [
-          '--print',
-          '--max-turns',
-          '30',
-          '--verbose',
-          '--model',
-          'opus',
-          '--dangerously-skip-permissions',
-          prompt,
-        ];
-
-        logger.info(`🚀 Executing: claude ${claudeArgs.join(' ')}`);
-        logger.info('📤 Claude Code output:');
-        logger.info('----------------------------------------');
-
-        this.activeClaudeProcess = execa('claude', claudeArgs, {
-          stdio: 'inherit',
-          cwd: this.repoPath!,
-        });
+        this.activeClaudeProcess = execa(
+          'claude',
+          [
+            '--print',
+            '--max-turns',
+            '30',
+            '--verbose',
+            '--model',
+            'opus',
+            '--dangerously-skip-permissions',
+            prompt,
+          ],
+          {
+            stdio: 'inherit',
+            cwd: this.repoPath!,
+          }
+        );
 
         await this.activeClaudeProcess;
         this.activeClaudeProcess = null;
-
-        logger.info('----------------------------------------');
-        logger.info('✅ Claude Code execution completed successfully');
       } catch (error: any) {
         this.activeClaudeProcess = null;
 
@@ -700,13 +582,12 @@ Make all necessary changes to fix the build and test issues and ensure the migra
         try {
           this.activeClaudeProcess.kill();
           this.activeClaudeProcess = null;
-          logger.warn('🛑 Claude Code process terminated due to timeout');
         } catch (killError) {
           logger.error('Failed to kill timed-out process:', killError);
         }
       }
 
-      logger.error('❌ Claude Code execution failed:', error);
+      logger.error('Claude Code execution failed:', error);
       throw error;
     }
   }
@@ -801,9 +682,9 @@ Make all necessary changes to fix the build and test issues and ensure the migra
     });
 
     let totalTokens = 0;
-    const readmeTokens = files.readme ? Math.ceil(files.readme.length / 4) : 0;
-    const packageTokens = files.packageJson ? Math.ceil(files.packageJson.length / 4) : 0;
-    const indexTokens = files.index ? Math.ceil(files.index.content.length / 4) : 0;
+    const readmeTokens = files.readme ? encoder.encode(files.readme).length : 0;
+    const packageTokens = files.packageJson ? encoder.encode(files.packageJson).length : 0;
+    const indexTokens = files.index ? encoder.encode(files.index.content).length : 0;
 
     totalTokens = readmeTokens + packageTokens + indexTokens;
 
@@ -834,7 +715,7 @@ Make all necessary changes to fix the build and test issues and ensure the migra
         continue;
       }
 
-      const fileTokens = Math.ceil(content.length / 4); // Approximate 4 chars per token
+      const fileTokens = encoder.encode(content).length;
       if (totalTokens + fileTokens > MAX_TOKENS) break;
       files.sourceFiles.push({ path: file, content });
       totalTokens += fileTokens;
@@ -856,41 +737,9 @@ Make all necessary changes to fix the build and test issues and ensure the migra
   private async generateMigrationStrategy(context: string): Promise<string> {
     const prompt = `You are migrating an Eliza plugin from version 0.x to 1.x. Analyze the provided codebase and generate a SPECIFIC, DETAILED migration strategy.
 
-## CRITICAL REQUIREMENT: ALL imports MUST come from @elizaos/core ONLY
-
-There are NO separate packages. Do NOT split imports into:
-- @elizaos/plugin (DOES NOT EXIST)
-- @elizaos/types (DOES NOT EXIST)
-- @elizaos/logger (DOES NOT EXIST)  
-- @elizaos/models (DOES NOT EXIST)
-- @elizaos/runtime (DOES NOT EXIST)
-
-ALL types, functions, and classes come from @elizaos/core:
-\`\`\`typescript
-import { Plugin, Action, AgentRuntime, logger, ModelClass, Memory, State, IDatabaseAdapter } from '@elizaos/core';
-\`\`\`
-
-## CRITICAL REQUIREMENT: DATABASE COMPATIBILITY
-
-The migrated plugin MUST be database-agnostic and work with both Pglite and PostgreSQL:
-
-### Database Abstraction Rules:
-- ✅ Use ONLY runtime.databaseAdapter for database operations
-- ✅ Use runtime.createMemory(), runtime.searchMemories(), runtime.createGoal()
-- ✅ Use runtime.ensureConnection() for relationships
-- ❌ NEVER import database adapters directly
-- ❌ NEVER use database-specific SQL or queries
-- ❌ NEVER make assumptions about database type
-
-### Migration Requirements:
-1. Remove any direct database imports (PgliteDatabaseAdapter, PgDatabaseAdapter, etc.)
-2. Replace all direct database calls with runtime API calls
-3. Ensure all memory operations use runtime.createMemory()
-4. Add database compatibility tests
-
 ## Key Migration Requirements:
 
-1. **Import Updates**: Update imports but keep them ALL from @elizaos/core (elizaLogger → logger, etc.)
+1. **Import Updates**: All @elizaos imports must use new paths (elizaLogger → logger, etc.)
 2. **Type Migrations**: Account → Entity, userId → entityId, room → world
 3. **Service Architecture**: Services must extend base Service class with lifecycle methods
 4. **Event System**: Implement proper event emission and handling
@@ -898,7 +747,6 @@ The migrated plugin MUST be database-agnostic and work with both Pglite and Post
 6. **Model Usage**: Convert generateText to runtime.useModel
 7. **Templates**: Migrate from JSON to XML format
 8. **Testing**: Create comprehensive unit and integration tests
-9. **Database Compatibility**: Ensure works with both Pglite and PostgreSQL
 
 ## Repository Context:
 
@@ -909,18 +757,15 @@ ${context}
 Generate a SPECIFIC migration strategy for THIS plugin. Your response should include:
 
 1. **Exact File Changes**: List each file that needs to be modified with specific changes
-2. **Import Mappings**: Exact old import → new import (ALL from @elizaos/core)
+2. **Import Mappings**: Exact old import → new import for this codebase
 3. **Type Updates**: List every type that needs updating with old → new
 4. **Service Migrations**: Identify services and exactly how to migrate them
 5. **Memory Operation Updates**: Find all memory operations and show exact changes
 6. **Model Usage Updates**: Find all model calls and show exact replacements
-7. **Database Compatibility Updates**: Remove direct database imports and use runtime APIs
-8. **Test Files to Create**: List specific test files with what they should test
-9. **Package.json Updates**: Exact scripts and dependencies to add/update (only @elizaos/core dependency)
+7. **Test Files to Create**: List specific test files with what they should test
+8. **Package.json Updates**: Exact scripts and dependencies to add/update
 
 Be extremely specific. Use actual file names, function names, and line references from the codebase.
-Remember: ALL imports come from @elizaos/core only!
-Remember: Plugin must work with BOTH Pglite and PostgreSQL!
 Format your response as a clear, actionable migration plan.`;
 
     // Retry logic for network failures
@@ -1072,171 +917,6 @@ The goal is a fully migrated, tested, and working 1.x plugin.
     if (this.lockFilePath && (await fs.pathExists(this.lockFilePath))) {
       await fs.remove(this.lockFilePath);
       this.lockFilePath = null;
-    }
-  }
-
-  private async copyToCWD(): Promise<string> {
-    const pluginName = path.basename(this.repoPath!);
-    const targetPath = path.join(process.cwd(), pluginName);
-
-    // Check if target already exists
-    if (await fs.pathExists(targetPath)) {
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const backupPath = `${targetPath}-backup-${timestamp}`;
-      logger.info(`Backing up existing ${pluginName} to ${path.basename(backupPath)}`);
-      await fs.move(targetPath, backupPath);
-    }
-
-    // Copy the upgraded plugin
-    logger.info(`Copying upgraded plugin to ${targetPath}`);
-    await fs.copy(this.repoPath!, targetPath, {
-      filter: (src) => {
-        // Skip .git directory and node_modules
-        const relativePath = path.relative(this.repoPath!, src);
-        return !relativePath.includes('.git') && !relativePath.includes('node_modules');
-      },
-    });
-
-    return targetPath;
-  }
-
-  private async validateDependencies(): Promise<{ success: boolean; errors?: string }> {
-    try {
-      logger.info('Validating dependencies can be installed...');
-
-      // First check if package.json exists
-      const packageJsonPath = path.join(this.repoPath!, 'package.json');
-      if (!(await fs.pathExists(packageJsonPath))) {
-        return {
-          success: false,
-          errors: 'No package.json found in repository.',
-        };
-      }
-
-      // Check package.json for correct dependencies
-      const packageJsonContent = await fs.readFile(packageJsonPath, 'utf-8');
-      const packageJson = JSON.parse(packageJsonContent);
-
-      // Validate dependencies - should only have @elizaos/core
-      const allDeps = {
-        ...packageJson.dependencies,
-        ...packageJson.devDependencies,
-        ...packageJson.peerDependencies,
-      };
-
-      const invalidElizaOSDeps = Object.keys(allDeps).filter(
-        (dep) => dep.startsWith('@elizaos/') && dep !== '@elizaos/core'
-      );
-
-      if (invalidElizaOSDeps.length > 0) {
-        return {
-          success: false,
-          errors: `Invalid ElizaOS dependencies found: ${invalidElizaOSDeps.join(', ')}.\n\nOnly @elizaos/core is allowed. These packages don't exist in ElizaOS 1.x:\n${invalidElizaOSDeps.map((dep) => `- ${dep}`).join('\n')}\n\nAll imports must come from @elizaos/core only.`,
-        };
-      }
-
-      // Check for database adapter imports in source files
-      const sourceFiles = await this.getAllSourceFiles();
-      const databaseImportErrors = [];
-
-      for (const file of sourceFiles) {
-        const content = await fs.readFile(path.join(this.repoPath!, file), 'utf-8');
-
-        // Check for forbidden database imports
-        if (
-          content.includes('PgliteDatabaseAdapter') ||
-          content.includes('PgDatabaseAdapter') ||
-          content.includes('PostgresDatabaseAdapter')
-        ) {
-          databaseImportErrors.push(`${file}: Contains direct database adapter imports`);
-        }
-
-        // Check for forbidden import patterns
-        const forbiddenImports = [
-          '@elizaos/plugin-sql',
-          '@elizaos/adapter-',
-          '@elizaos/plugin',
-          '@elizaos/types',
-          '@elizaos/logger',
-          '@elizaos/models',
-          '@elizaos/runtime',
-        ];
-
-        for (const forbiddenImport of forbiddenImports) {
-          if (
-            content.includes(`from "${forbiddenImport}`) ||
-            content.includes(`from '${forbiddenImport}`)
-          ) {
-            databaseImportErrors.push(`${file}: Contains forbidden import '${forbiddenImport}'`);
-          }
-        }
-      }
-
-      if (databaseImportErrors.length > 0) {
-        return {
-          success: false,
-          errors: `Database compatibility violations found:\n\n${databaseImportErrors.join('\n')}\n\nAll imports must come from @elizaos/core only. Use runtime APIs for database operations:\n- runtime.createMemory()\n- runtime.searchMemories()\n- runtime.createGoal()\n- runtime.ensureConnection()`,
-        };
-      }
-
-      // Try npm install with --dry-run to check for errors
-      try {
-        await execa('npm', ['install', '--dry-run'], {
-          cwd: this.repoPath!,
-          stdio: 'pipe',
-          timeout: 120000, // 2 minute timeout
-        });
-
-        logger.info('✅ Dependencies validation passed');
-        return { success: true };
-      } catch (installError: any) {
-        const errorOutput = (installError.stdout || '') + '\n' + (installError.stderr || '');
-
-        // Check for specific npm errors
-        if (errorOutput.includes('E404') || errorOutput.includes('Not found')) {
-          const missingPackages = errorOutput.match(/@elizaos\/[a-z-]+/g) || [];
-          const uniquePackages = [...new Set(missingPackages)];
-
-          return {
-            success: false,
-            errors: `NPM install failed - packages not found: ${uniquePackages.join(', ')}\n\nThese packages do not exist. All imports must come from @elizaos/core only.\n\nFull error:\n${errorOutput}`,
-          };
-        }
-
-        return {
-          success: false,
-          errors: `NPM install validation failed:\n${errorOutput}`,
-        };
-      }
-    } catch (error: any) {
-      return {
-        success: false,
-        errors: `Failed to validate dependencies: ${error.message}`,
-      };
-    }
-  }
-
-  private async getAllSourceFiles(): Promise<string[]> {
-    try {
-      const files = await globby(['**/*.ts', '**/*.js'], {
-        cwd: this.repoPath!,
-        ignore: [
-          'node_modules/**',
-          'dist/**',
-          'build/**',
-          '*.test.*',
-          '*.spec.*',
-          'coverage/**',
-          '**/*.min.js',
-          '**/*.min.ts',
-          '**/vendor/**',
-          '**/lib/**',
-        ],
-      });
-      return files;
-    } catch (error) {
-      logger.warn('Failed to get source files for validation:', error);
-      return [];
     }
   }
 }

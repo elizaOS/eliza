@@ -27,14 +27,17 @@
   ],
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-sql": "^1.0.2"
+    "@elizaos/plugin-anthropic": "1.0.0",
+    "@elizaos/plugin-discord": "1.0.3",
+    "@elizaos/plugin-sql": "^1.0.2",
+    "@elizaos/plugin-telegram": "1.0.0"
   },
   "devDependencies": {
     "@elizaos/cli": "workspace:*",
     "@types/node": "^22.15.3",
     "prettier": "3.5.3",
     "tsup": "8.4.0",
-    "vitest": "^1.6.1",
+    "vitest": "3.1.4",
     "zod": "^3.22.4"
   },
   "scripts": {

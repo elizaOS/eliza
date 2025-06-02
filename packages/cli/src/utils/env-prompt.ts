@@ -109,7 +109,7 @@ const ENV_VAR_CONFIGS: Record<string, EnvVarConfig[]> = {
       name: 'Database Directory',
       key: 'PGLITE_DATA_DIR',
       required: false,
-      description: 'Directory where Pglite will store database files.',
+      description: 'Directory where PGLite will store database files.',
       url: '',
       secret: false,
     },

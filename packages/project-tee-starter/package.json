@@ -35,6 +35,7 @@
   "dependencies": {
     "@elizaos/cli": "^1.0.0",
     "@elizaos/core": "^1.0.0",
+    "@elizaos/plugin-elevenlabs": "^1.0.0-beta.53",
     "@elizaos/plugin-redpill": "^1.0.0-beta.43",
     "@elizaos/plugin-sql": "^1.0.0",
     "@phala/dstack-sdk": "0.1.11",

@@ -12,8 +12,6 @@ import {
   type MemoryMetadata,
 } from './types';
 
-import { PGlite } from '@electric-sql/pglite';
-import { type Sql } from 'postgres'; // Added for postgres.js client type
 import { BM25 } from './search';
 import type {
   Action,
@@ -653,7 +651,7 @@ export class AgentRuntime implements IAgentRuntime {
     });
   }
 
-  async getConnection(): Promise<PGlite | Sql<{}>> {
+  async getConnection(): Promise<unknown> {
     // Updated return type
     if (!this.adapter) {
       throw new Error('Database adapter not registered');
