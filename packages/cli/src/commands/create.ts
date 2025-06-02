@@ -52,9 +52,9 @@ const initOptionsSchema = z.object({
 async function getLocalAvailableDatabases(): Promise<string[]> {
   // Hard-coded list of available databases to avoid GitHub API calls
   return [
-    'sqlite',
+    'pglite',
     'postgres',
-    // "sqlite",
+    // "pglite",
     // "supabase"
   ];
 }
@@ -93,8 +93,8 @@ function getAvailableAIModels() {
 function getAvailableDatabases() {
   return [
     {
-      title: 'SQLite (PGLite) - Recommended for development',
-      value: 'sqlite',
+      title: 'Pglite (Pglite) - Recommended for development',
+      value: 'pglite',
       description:
         'Fast, file-based database. Perfect for development and single-user deployments.',
     },
@@ -518,7 +518,7 @@ data/
       const availableDatabases = getAvailableDatabases();
       let database: string;
       if (options.yes) {
-        database = 'sqlite';
+        database = 'pglite';
         console.info(`Using default database: ${database}`);
       } else {
         const response = await prompts({
@@ -526,7 +526,7 @@ data/
           name: 'database',
           message: 'Select your database:',
           choices: availableDatabases,
-          initial: 0, // Default to SQLite
+          initial: 0, // Default to Pglite
         });
         database = response.database;
       }
@@ -576,11 +576,11 @@ data/
       const dirs = await ensureElizaDir(targetDir);
       logger.debug('Project directories set up:', dirs);
 
-      if (database === 'sqlite') {
-        const projectSqliteDbDir = path.join(targetDir, '.elizadb');
+      if (database === 'pglite') {
+        const projectPgliteDbDir = path.join(targetDir, '.elizadb');
         // Pass the target directory to ensure everything is created in the new project
-        await setupPgLite(projectSqliteDbDir, projectEnvFilePath, targetDir);
-        console.debug(`PGLite database will be stored in project directory: ${projectSqliteDbDir}`);
+        await setupPgLite(projectPgliteDbDir, projectEnvFilePath, targetDir);
+        console.debug(`Pglite database will be stored in project directory: ${projectPgliteDbDir}`);
       } else if (database === 'postgres' && !postgresUrl) {
         // Store Postgres URL in the project's .env file.
         postgresUrl = await promptAndStorePostgresUrl(projectEnvFilePath);

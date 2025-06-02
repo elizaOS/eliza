@@ -12,7 +12,8 @@ import {
   type MemoryMetadata,
 } from './types';
 
-import { Pool } from 'pg';
+import { PGlite } from '@electric-sql/pglite';
+import { type Sql } from 'postgres'; // Added for postgres.js client type
 import { BM25 } from './search';
 import type {
   Action,
@@ -39,8 +40,6 @@ import type {
   RuntimeSettings,
   SendHandlerFunction,
   Service,
-  ServiceInstance,
-  ServiceTypeRegistry,
   ServiceTypeName,
   State,
   TargetInfo,
@@ -51,8 +50,6 @@ import type {
 } from './types';
 import { EventType, type MessagePayload } from './types';
 import { stringToUuid } from './utils';
-
-import Database from 'better-sqlite3';
 
 // Minimal interface for RagService to ensure type safety for delegation
 // This avoids a direct import cycle if RagService imports from core.
@@ -656,7 +653,8 @@ export class AgentRuntime implements IAgentRuntime {
     });
   }
 
-  async getConnection(): Promise<Pool | Database.Database> {
+  async getConnection(): Promise<PGlite | Sql<{}>> {
+    // Updated return type
     if (!this.adapter) {
       throw new Error('Database adapter not registered');
     }

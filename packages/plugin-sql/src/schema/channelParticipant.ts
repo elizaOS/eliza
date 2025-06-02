@@ -1,8 +1,8 @@
 import { getSchemaFactory } from './factory';
 import { channelTable } from './channel';
 // For primaryKey, Drizzle's core function should be fine unless factory provides specific abstraction
-import { primaryKey } from 'drizzle-orm/pg-core'; // Assuming pg-core version is okay for SQLite too for this basic func
-// If not, import { primaryKey as sqlitePrimaryKey } from 'drizzle-orm/sqlite-core';
+import { primaryKey } from 'drizzle-orm/pg-core'; // Assuming pg-core version is okay for Pglite too for this basic func
+// If not, import { primaryKey as pglitePrimaryKey } from 'drizzle-orm/pglite-core';
 
 const factory = getSchemaFactory();
 

@@ -267,7 +267,7 @@ describe('PluginCreator', () => {
 
       const spec = {
         name: 'db-test-plugin',
-        description: 'A plugin that must work with both SQLite and PostgreSQL',
+        description: 'A plugin that must work with both Pglite and PostgreSQL',
         features: ['Memory storage', 'Data retrieval'],
       };
 
@@ -285,7 +285,7 @@ describe('PluginCreator', () => {
       const specCall = mockAnthropicCreate.mock.calls[0][0];
       expect(specCall.messages[0].content).toContain('Database Compatibility (MANDATORY)');
       expect(specCall.messages[0].content).toContain('runtime.createMemory()');
-      expect(specCall.messages[0].content).toContain('both SQLite and PostgreSQL');
+      expect(specCall.messages[0].content).toContain('both Pglite and PostgreSQL');
     });
 
     it('should validate import compliance in production readiness', async () => {
@@ -363,7 +363,7 @@ describe('PluginCreator', () => {
   });
 
   describe('database compatibility', () => {
-    it('should generate plugins that work with both SQLite and PostgreSQL', async () => {
+    it('should generate plugins that work with both Pglite and PostgreSQL', async () => {
       const { execa } = await import('execa');
       const fs = await import('fs-extra');
       const Anthropic = (await import('@anthropic-ai/sdk')).default;
@@ -428,7 +428,7 @@ describe('PluginCreator', () => {
       expect(specificationCall.messages[0].content).toContain('Database Compatibility (MANDATORY)');
       expect(specificationCall.messages[0].content).toContain('runtime.createMemory()');
       expect(specificationCall.messages[0].content).toContain('runtime.searchMemories()');
-      expect(specificationCall.messages[0].content).toContain('both SQLite and PostgreSQL');
+      expect(specificationCall.messages[0].content).toContain('both Pglite and PostgreSQL');
     });
 
     it('should include database compatibility test requirements', async () => {
@@ -497,10 +497,10 @@ describe('PluginCreator', () => {
 
       // Verify PLUGIN_SPEC.md includes database compatibility requirements
       expect(writtenContent).toContain('Database Compatibility (MANDATORY)');
-      expect(writtenContent).toContain('SQLite and PostgreSQL');
+      expect(writtenContent).toContain('Pglite and PostgreSQL');
       expect(writtenContent).toContain('runtime.createMemory()');
       expect(writtenContent).toContain('Database compatibility tests');
-      expect(writtenContent).toContain('SQLITE_DATA_DIR');
+      expect(writtenContent).toContain('PGLITE_DATA_DIR');
       expect(writtenContent).toContain('POSTGRES_URL');
     });
   });

@@ -5,7 +5,7 @@ import { UserEnvironment } from './user-environment';
 import { existsSync, promises as fs } from 'node:fs';
 import prompts from 'prompts';
 import { z } from 'zod';
-import { resolveEnvFile, resolveSqliteDir } from './resolve-utils';
+import { resolveEnvFile, resolvePgliteDir } from './resolve-utils';
 // Database config schemas
 const postgresConfigSchema = z.object({
   type: z.literal('postgres'),
@@ -14,8 +14,8 @@ const postgresConfigSchema = z.object({
   }),
 });
 
-const sqliteConfigSchema = z.object({
-  type: z.literal('sqlite'),
+const pgliteConfigSchema = z.object({
+  type: z.literal('pglite'),
   config: z.object({
     dataDir: z.string(),
   }),
@@ -78,11 +78,11 @@ STUDIOLM_MEDIUM_MODEL=
 STUDIOLM_EMBEDDING_MODEL=
 
 ### DATABASE ###
-# By default, Eliza will use a local sqlite instance
+# By default, Eliza will use a local pglite instance
 # If you fill out POSTGRES_URL, the agent will connect to your postgres instance instead of using the local path
 
-# You can override the sqlite data directory
-SQLITE_DATA_DIR=
+# You can override the pglite data directory
+PGLITE_DATA_DIR=
 
 # Fill this out if you want to use Postgres
 POSTGRES_URL=
@@ -227,7 +227,7 @@ export async function getElizaDirectories(targetProjectDir?: string) {
   });
 
   const defaultElizaDbDir = path.resolve(projectRoot, '.elizadb');
-  const elizaDbDir = await resolveSqliteDir(undefined, defaultElizaDbDir);
+  const elizaDbDir = await resolvePgliteDir(undefined, defaultElizaDbDir);
 
   return { elizaDir, elizaDbDir, envFilePath };
 }
@@ -324,8 +324,8 @@ export async function ensureElizaDir(targetProjectDir?: string) {
 }
 
 /**
- * Sets up and configures PGLite database
- * @param elizaDbDir The directory for PGLite database
+ * Sets up and configures Pglite database
+ * @param elizaDbDir The directory for Pglite database
  * @param envFilePath Path to the .env file
  */
 export async function setupPgLite(
@@ -341,20 +341,20 @@ export async function setupPgLite(
   const targetEnvPath = envPath || envFilePath;
 
   try {
-    // Ensure the PGLite database directory exists
+    // Ensure the Pglite database directory exists
     await ensureDir(targetDbDir);
-    logger.debug('[PGLite] Created database directory:', targetDbDir);
+    logger.debug('[Pglite] Created database directory:', targetDbDir);
 
     // Set up the .env file with the full template first
     await setupEnvFile(targetEnvPath);
 
-    // Then ensure SQLITE_DATA_DIR is properly set in the .env file
+    // Then ensure PGLITE_DATA_DIR is properly set in the .env file
     // This handles both new and existing .env files
-    await storeSqliteDataDir(targetDbDir, targetEnvPath);
+    await storePgliteDataDir(targetDbDir, targetEnvPath);
 
-    logger.success('PGLite configuration saved');
+    logger.success('Pglite configuration saved');
   } catch (error) {
-    logger.error('Error setting up PGLite directory:', {
+    logger.error('Error setting up Pglite directory:', {
       error: error instanceof Error ? error.message : String(error),
       elizaDbDir,
       envFilePath,
@@ -398,16 +398,16 @@ export async function storePostgresUrl(url: string, envFilePath: string): Promis
 }
 
 /**
- * Stores the provided PGLite data directory in the specified `.env` file, replacing any existing entry.
+ * Stores the provided Pglite data directory in the specified `.env` file, replacing any existing entry.
  *
- * Updates the `SQLITE_DATA_DIR` environment variable in both the file and the current process.
+ * Updates the `PGLITE_DATA_DIR` environment variable in both the file and the current process.
  *
- * @param dataDir - The PGLite data directory path to store.
+ * @param dataDir - The Pglite data directory path to store.
  * @param envFilePath - Path to the `.env` file where the directory should be saved.
  *
  * @throws {Error} If reading from or writing to the `.env` file fails.
  */
-export async function storeSqliteDataDir(dataDir: string, envFilePath: string): Promise<void> {
+export async function storePgliteDataDir(dataDir: string, envFilePath: string): Promise<void> {
   if (!dataDir) return;
 
   try {
@@ -417,16 +417,16 @@ export async function storeSqliteDataDir(dataDir: string, envFilePath: string): 
       content = await fs.readFile(envFilePath, 'utf8');
     }
 
-    // Remove existing SQLITE_DATA_DIR line if present
-    const lines = content.split('\n').filter((line) => !line.startsWith('SQLITE_DATA_DIR='));
-    lines.push(`SQLITE_DATA_DIR=${dataDir}`);
+    // Remove existing PGLITE_DATA_DIR line if present
+    const lines = content.split('\n').filter((line) => !line.startsWith('PGLITE_DATA_DIR='));
+    lines.push(`PGLITE_DATA_DIR=${dataDir}`);
 
     await fs.writeFile(envFilePath, lines.join('\n'), 'utf8');
-    process.env.SQLITE_DATA_DIR = dataDir;
+    process.env.PGLITE_DATA_DIR = dataDir;
 
-    logger.success('PGLite data directory saved to configuration');
+    logger.success('Pglite data directory saved to configuration');
   } catch (error) {
-    logger.error('Error saving PGLite configuration:', error);
+    logger.error('Error saving Pglite configuration:', error);
     throw error; // Re-throw to handle upstream
   }
 }
@@ -615,7 +615,7 @@ export async function promptAndStoreAnthropicKey(envFilePath: string): Promise<s
 }
 
 /**
- * Configures the database to use, either PGLite or PostgreSQL
+ * Configures the database to use, either Pglite or PostgreSQL
  * @param reconfigure If true, force reconfiguration even if already configured
  * @returns The postgres URL if using Postgres, otherwise null
  */
@@ -627,11 +627,11 @@ export async function configureDatabaseSettings(reconfigure = false): Promise<st
 
   // Check if we already have database configuration in env
   let postgresUrl = process.env.POSTGRES_URL;
-  const sqliteDataDir = await resolveSqliteDir(undefined, elizaDbDir);
+  const pgliteDataDir = await resolvePgliteDir(undefined, elizaDbDir);
 
   // Add debug logging
   logger.debug(`Configuration check - POSTGRES_URL: ${postgresUrl ? 'SET' : 'NOT SET'}`);
-  logger.debug(`Configuration check - SQLITE_DATA_DIR: ${sqliteDataDir ? 'SET' : 'NOT SET'}`);
+  logger.debug(`Configuration check - PGLITE_DATA_DIR: ${pgliteDataDir ? 'SET' : 'NOT SET'}`);
   logger.debug(`Configuration check - reconfigure: ${reconfigure}`);
 
   // BYPASS ADDED: Skip prompts and always use postgres if URL is provided
@@ -640,18 +640,18 @@ export async function configureDatabaseSettings(reconfigure = false): Promise<st
     return process.env.POSTGRES_URL;
   }
 
-  // If we already have SQLITE_DATA_DIR set in env and not reconfiguring, use PGLite
-  if (sqliteDataDir && !reconfigure) {
-    logger.debug(`Using existing PGLite configuration: ${sqliteDataDir}`);
+  // If we already have PGLITE_DATA_DIR set in env and not reconfiguring, use Pglite
+  if (pgliteDataDir && !reconfigure) {
+    logger.debug(`Using existing Pglite configuration: ${pgliteDataDir}`);
 
     // Ensure the directory exists
-    await ensureDir(sqliteDataDir);
+    await ensureDir(pgliteDataDir);
 
     return null;
   }
 
-  // BYPASS ADDED: Default to sqlite if no configuration is provided
-  console.log('BYPASS: No database configuration found, defaulting to sqlite');
+  // BYPASS ADDED: Default to pglite if no configuration is provided
+  console.log('BYPASS: No database configuration found, defaulting to pglite');
   await setupPgLite(elizaDbDir, envFilePath);
   return null;
 }
@@ -665,7 +665,7 @@ export async function configureDatabaseSettings(reconfigure = false): Promise<st
 export const rawConfigSchema = z
   .object({
     $schema: z.string().optional(),
-    database: z.discriminatedUnion('type', [postgresConfigSchema, sqliteConfigSchema]),
+    database: z.discriminatedUnion('type', [postgresConfigSchema, pgliteConfigSchema]),
     plugins: z.object({
       registry: z.string().url(),
       installed: z.array(z.string()),

@@ -892,6 +892,8 @@ export abstract class BaseDrizzleAdapter<
       return {
         ...component,
         id: component.id as UUID,
+        type: component.type, // Ensured type is included
+        createdAt: component.createdAt, // Ensured createdAt is included
         entityId: component.entityId as UUID,
         agentId: component.agentId as UUID,
         roomId: component.roomId as UUID,
@@ -1286,8 +1288,12 @@ export abstract class BaseDrizzleAdapter<
                     LIMIT ${opts.query_match_count}
                 `);
 
-        return results.rows
-          .map((row) => ({
+        // Handle different result shapes from .execute() based on the driver
+        const actualRows = 'rows' in results ? results.rows : results;
+
+        return actualRows
+          .map((row: any) => ({
+            // Add type any for row temporarily if TS complains about implicit any
             embedding: Array.isArray(row.embedding)
               ? row.embedding
               : typeof row.embedding === 'string'
@@ -1295,7 +1301,7 @@ export abstract class BaseDrizzleAdapter<
                 : [],
             levenshtein_score: Number(row.levenshtein_score),
           }))
-          .filter((row) => Array.isArray(row.embedding));
+          .filter((row: any) => Array.isArray(row.embedding));
       } catch (error) {
         logger.error('Error in getCachedEmbeddings:', {
           error: error instanceof Error ? error.message : String(error),
@@ -1439,6 +1445,7 @@ export abstract class BaseDrizzleAdapter<
         entityId: log.entityId as UUID,
         roomId: log.roomId as UUID,
         body: log.body as { [key: string]: unknown },
+        type: log.type, // Added missing type property
         createdAt: new Date(log.createdAt),
       }));
 
@@ -1943,6 +1950,7 @@ export abstract class BaseDrizzleAdapter<
         worldId: room.worldId as UUID,
         channelId: room.channelId as UUID,
         type: room.type as ChannelType,
+        source: room.source, // Ensured source is included
         metadata: room.metadata as RoomMetadata,
       }));
       return rooms;
@@ -1976,12 +1984,18 @@ export abstract class BaseDrizzleAdapter<
         id: room.id || v4(), // ensure each room has a unique ID
       }));
 
-      const insertedRooms = await this.db
+      const insertedResult = await this.db
         .insert(roomTable)
         .values(roomsWithIds)
         .onConflictDoNothing()
         .returning();
-      const insertedIds = insertedRooms.map((r) => r.id as UUID);
+
+      // Handle potential differences in how drivers return results from .returning()
+      const rowsToMap = Array.isArray(insertedResult)
+        ? insertedResult
+        : (insertedResult as any).rows;
+
+      const insertedIds = rowsToMap ? rowsToMap.map((r: any) => r.id as UUID) : [];
       return insertedIds;
     });
   }

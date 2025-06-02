@@ -359,7 +359,11 @@ export function AppSidebar({ refreshHomePage }: AppSidebarProps) {
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton size="lg" asChild>
-                <a href="/" onClick={handleLogoClick} className="px-6 py-2 h-full sidebar-logo no-underline">
+                <a
+                  href="/"
+                  onClick={handleLogoClick}
+                  className="px-6 py-2 h-full sidebar-logo no-underline"
+                >
                   <div className="flex flex-col pt-2 gap-1 items-start justify-center">
                     <img alt="elizaos-logo" src="/elizaos-logo-light.png" width="90%" />
                     <span className="text-xs font-mono text-muted-foreground">v{info.version}</span>
@@ -406,7 +410,7 @@ export function AppSidebar({ refreshHomePage }: AppSidebarProps) {
             servers={servers}
             isLoadingServers={isLoadingServers}
             className="mt-2"
-            onManageServers={() => { }} // Server management hidden
+            onManageServers={() => {}} // Server management hidden
           />
         </SidebarContent>
 

@@ -3,8 +3,8 @@
     "custom_preview": "/logos/mongodb.png",
     "description": "Database adapter for MongoDB enabling document storage with query capabilities."
   },
-  "@elizaos-plugins/adapter-sqlite": {
-    "custom_preview": "/logos/sqlite.png",
+  "@elizaos-plugins/adapter-pglite": {
+    "custom_preview": "/logos/pglite.png",
     "description": "Lightweight PostgreSQL adapter for embedded database applications."
   },
   "@elizaos-plugins/adapter-postgres": {
@@ -15,8 +15,8 @@
     "custom_preview": "/logos/qdrant.png",
     "description": "Vector database adapter for Qdrant with similarity search capabilities."
   },
-  "@elizaos-plugins/adapter-sqlite": {
-    "custom_preview": "/logos/sqlite.png",
+  "@elizaos-plugins/adapter-pglite": {
+    "custom_preview": "/logos/pglite.png",
     "description": "File-based SQL database adapter for lightweight local storage."
   },
   "@elizaos-plugins/adapter-sqljs": {

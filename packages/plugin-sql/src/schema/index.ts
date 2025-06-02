@@ -21,4 +21,4 @@ export { taskTable } from './tasks';
 export { worldTable } from './world';
 
 // Type and utility exports
-export { setDatabaseType } from './types';
+export { setDatabaseType } from './factory';

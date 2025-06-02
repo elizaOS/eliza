@@ -1,5 +1,6 @@
 import { type UUID, logger } from '@elizaos/core';
 import { type PgliteDatabase, drizzle } from 'drizzle-orm/pglite';
+import type { PGlite } from '@electric-sql/pglite';
 import { BaseDrizzleAdapter } from '../base';
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from '../schema/embedding';
 import type { PGliteClientManager } from './manager';
@@ -25,6 +26,7 @@ import type { PGliteClientManager } from './manager';
 export class PgliteDatabaseAdapter extends BaseDrizzleAdapter<PgliteDatabase> {
   private manager: PGliteClientManager;
   protected embeddingDimension: EmbeddingDimensionColumn = DIMENSION_MAP[384];
+  private initialized = false;
 
   /**
    * Constructor for creating an instance of a class.
@@ -34,7 +36,19 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter<PgliteDatabase> {
   constructor(agentId: UUID, manager: PGliteClientManager) {
     super(agentId);
     this.manager = manager;
-    this.db = drizzle(this.manager.getConnection());
+  }
+
+  /**
+   * Ensures the manager is initialized and sets up the db instance.
+   */
+  private async ensureInitialized(): Promise<void> {
+    if (!this.initialized || !this.db) {
+      await this.manager.initialize();
+      // Cast to PGlite for drizzle compatibility (PgliteWorker has same interface)
+      const connection = this.manager.getConnection() as PGlite;
+      this.db = drizzle(connection);
+      this.initialized = true;
+    }
   }
 
   /**
@@ -49,6 +63,8 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter<PgliteDatabase> {
       logger.warn('Database is shutting down');
       return null as unknown as T;
     }
+
+    await this.ensureInitialized();
     return operation();
   }
 
@@ -59,7 +75,9 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter<PgliteDatabase> {
    */
   async init(): Promise<void> {
     try {
+      await this.ensureInitialized();
       await this.manager.runMigrations();
+      logger.info('PgliteDatabaseAdapter initialized successfully');
     } catch (error) {
       logger.error('Failed to initialize database:', error);
       throw error;
@@ -71,6 +89,8 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter<PgliteDatabase> {
    */
   async close() {
     await this.manager.close();
+    this.initialized = false;
+    this.db = null as any;
   }
 
   /**
@@ -79,6 +99,7 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter<PgliteDatabase> {
    * @returns {Promise<PGlite>} A Promise that resolves with the connection.
    */
   async getConnection() {
-    return this.manager.getConnection();
+    await this.ensureInitialized();
+    return this.manager.getConnection() as PGlite;
   }
 }

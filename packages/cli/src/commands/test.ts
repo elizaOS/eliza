@@ -5,7 +5,7 @@ import {
   TestRunner,
   buildProject,
   promptForEnvVars,
-  resolveSqliteDir,
+  resolvePgliteDir,
   UserEnvironment,
 } from '@/src/utils';
 import { detectDirectoryType, type DirectoryInfo } from '@/src/utils/directory-detection';
@@ -163,7 +163,7 @@ const runE2eTests = async (
 
     // Set up standard paths and load .env
     const elizaDir = path.join(process.cwd(), '.eliza');
-    const elizaDbDir = await resolveSqliteDir();
+    const elizaDbDir = await resolvePgliteDir();
     const envInfo = await UserEnvironment.getInstanceInfo();
     const envFilePath = envInfo.paths.envFilePath;
 
@@ -180,7 +180,7 @@ const runE2eTests = async (
     }
 
     // Set the database directory in environment variables
-    process.env.SQLITE_DATA_DIR = elizaDbDir;
+    process.env.PGLITE_DATA_DIR = elizaDbDir;
     console.info(`Using database directory: ${elizaDbDir}`);
 
     // Load environment variables from project .env if it exists
@@ -195,7 +195,7 @@ const runE2eTests = async (
     // Always ensure database configuration is set
     try {
       console.info('Configuring database...');
-      await promptForEnvVars('sqlite');
+      await promptForEnvVars('pglite'); // This ensures PGLITE_DATA_DIR is set if not already
       console.info('Database configuration completed');
     } catch (error) {
       console.error('Error configuring database:', error);
@@ -207,8 +207,19 @@ const runE2eTests = async (
     }
 
     // Look for PostgreSQL URL in environment variables
-    const postgresUrl = process.env.POSTGRES_URL;
-    console.info(`PostgreSQL URL: ${postgresUrl ? 'found' : 'not found'}`);
+    let postgresUrl = process.env.POSTGRES_URL;
+    console.info(`Initial PostgreSQL URL: ${postgresUrl ? 'found' : 'not found'}`);
+
+    // If DISABLE_PGLITE_EXTENSIONS is true for tests, force PGlite by ignoring POSTGRES_URL
+    if (process.env.DISABLE_PGLITE_EXTENSIONS === 'true') {
+      console.info(
+        'DISABLE_PGLITE_EXTENSIONS is true, forcing PGlite for e2e tests. Ignoring POSTGRES_URL.'
+      );
+      postgresUrl = undefined;
+    }
+    console.info(
+      `Effective PostgreSQL URL for e2e tests: ${postgresUrl ? 'found' : 'not found (using PGlite)'}`
+    );
 
     // Create server instance
     console.info('Creating server instance...');

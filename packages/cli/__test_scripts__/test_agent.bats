@@ -2,7 +2,7 @@
 
 # -----------------------------------------------------------------------------
 # End‑to‑end tests for the ElizaOS agent sub‑commands running against a local
-# ElizaOS server instance backed by PGLite. The server is started once per test
+# ElizaOS server instance backed by Pglite. The server is started once per test
 # file (setup_file) and torn down in teardown_file.
 # -----------------------------------------------------------------------------
 
@@ -37,11 +37,11 @@ setup_file() {
   # ---------------------------------------------------------------------------
   echo "[DEBUG] Starting ElizaOS server on port $TEST_SERVER_PORT" >&2
   echo "[DEBUG] Server command: $ELIZAOS_CMD start --port $TEST_SERVER_PORT" >&2
-  echo "[DEBUG] PGLite data dir: $TEST_TMP_DIR/elizadb" >&2
+  echo "[DEBUG] Pglite data dir: $TEST_TMP_DIR/elizadb" >&2
   echo "[DEBUG] Server log file: $TEST_TMP_DIR/server.log" >&2
   
   LOG_LEVEL=debug \
-  SQLITE_DATA_DIR="$TEST_TMP_DIR/elizadb" \
+  PGLITE_DATA_DIR="$TEST_TMP_DIR/elizadb" \
   $ELIZAOS_CMD start --port "$TEST_SERVER_PORT" \
     >"$TEST_TMP_DIR/server.log" 2>&1 &
   SERVER_PID=$!

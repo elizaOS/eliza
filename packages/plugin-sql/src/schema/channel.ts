@@ -16,7 +16,7 @@ export const channelTable = (factory.table as any)('channels', {
   sourceType: factory.text('source_type'),
   sourceId: factory.text('source_id'),
   topic: factory.text('topic'),
-  metadata: factory.json('metadata'), // JSON stored as TEXT for SQLite
+  metadata: factory.json('metadata'), // JSON stored as TEXT for Pglite
   createdAt: factory
     .timestamp('created_at', { mode: 'date' })
     .default(factory.defaultTimestamp()) // Use factory helper for default timestamp

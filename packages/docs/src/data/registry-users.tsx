@@ -19,11 +19,11 @@ export const registryUsers: User[] = [
     tags: ['adapter'],
   },
   {
-    title: 'Sqlite',
+    title: 'Pglite',
     description: 'Lightweight PostgreSQL adapter for embedded database applications.',
-    preview: '/logos/sqlite.png',
-    website: 'https://github.com/elizaos-plugins/adapter-sqlite',
-    source: 'https://github.com/elizaos-plugins/adapter-sqlite',
+    preview: '/logos/pglite.png',
+    website: 'https://github.com/elizaos-plugins/adapter-pglite',
+    source: 'https://github.com/elizaos-plugins/adapter-pglite',
     tags: ['adapter'],
   },
   {
@@ -43,11 +43,11 @@ export const registryUsers: User[] = [
     tags: ['adapter'],
   },
   {
-    title: 'Sqlite',
+    title: 'Pglite',
     description: 'File-based SQL database adapter for lightweight local storage.',
-    preview: '/logos/sqlite.png',
-    website: 'https://github.com/elizaos-plugins/adapter-sqlite',
-    source: 'https://github.com/elizaos-plugins/adapter-sqlite',
+    preview: '/logos/pglite.png',
+    website: 'https://github.com/elizaos-plugins/adapter-pglite',
+    source: 'https://github.com/elizaos-plugins/adapter-pglite',
     tags: ['adapter'],
   },
   {

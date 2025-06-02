@@ -496,10 +496,10 @@ ${changedFilesContent}
 ### 1. Import Compliance (CRITICAL)
 - ✅ ALL imports must come from @elizaos/core ONLY
 - ❌ NO imports from @elizaos/plugin, @elizaos/types, @elizaos/logger, etc. (these don't exist)
-- ❌ NO direct database adapter imports (SqliteDatabaseAdapter, PgDatabaseAdapter)
+- ❌ NO direct database adapter imports (PgliteDatabaseAdapter, PgDatabaseAdapter)
 
 ### 2. Database Compatibility (CRITICAL)
-- ✅ Plugin must work with both SQLite and PostgreSQL
+- ✅ Plugin must work with both Pglite and PostgreSQL
 - ✅ Uses ONLY runtime.databaseAdapter for database operations
 - ✅ Uses runtime.createMemory(), runtime.searchMemories(), runtime.createGoal()
 - ✅ Uses runtime.ensureConnection() for relationships
@@ -527,7 +527,7 @@ ${changedFilesContent}
 
 ### 8. Testing
 - ✅ Comprehensive tests exist and cover main functionality
-- ✅ Database compatibility tests for both SQLite and PostgreSQL
+- ✅ Database compatibility tests for both Pglite and PostgreSQL
 - ✅ Tests use vitest framework
 
 ### 9. Code Quality
@@ -548,7 +548,7 @@ Respond with a JSON object:
 
 ## Validation Priority:
 1. Import compliance is MANDATORY - any non-@elizaos/core imports = NOT production ready
-2. Database compatibility is MANDATORY - must work with both SQLite and PostgreSQL
+2. Database compatibility is MANDATORY - must work with both Pglite and PostgreSQL
 3. All other criteria must also pass for production readiness`;
 
     const message = await this.anthropic!.messages.create({
@@ -872,7 +872,7 @@ import { Plugin, Action, AgentRuntime, logger, ModelClass, Memory, State, IDatab
 
 ## CRITICAL REQUIREMENT: DATABASE COMPATIBILITY
 
-The migrated plugin MUST be database-agnostic and work with both SQLite and PostgreSQL:
+The migrated plugin MUST be database-agnostic and work with both Pglite and PostgreSQL:
 
 ### Database Abstraction Rules:
 - ✅ Use ONLY runtime.databaseAdapter for database operations
@@ -883,7 +883,7 @@ The migrated plugin MUST be database-agnostic and work with both SQLite and Post
 - ❌ NEVER make assumptions about database type
 
 ### Migration Requirements:
-1. Remove any direct database imports (SqliteDatabaseAdapter, PgDatabaseAdapter, etc.)
+1. Remove any direct database imports (PgliteDatabaseAdapter, PgDatabaseAdapter, etc.)
 2. Replace all direct database calls with runtime API calls
 3. Ensure all memory operations use runtime.createMemory()
 4. Add database compatibility tests
@@ -898,7 +898,7 @@ The migrated plugin MUST be database-agnostic and work with both SQLite and Post
 6. **Model Usage**: Convert generateText to runtime.useModel
 7. **Templates**: Migrate from JSON to XML format
 8. **Testing**: Create comprehensive unit and integration tests
-9. **Database Compatibility**: Ensure works with both SQLite and PostgreSQL
+9. **Database Compatibility**: Ensure works with both Pglite and PostgreSQL
 
 ## Repository Context:
 
@@ -920,7 +920,7 @@ Generate a SPECIFIC migration strategy for THIS plugin. Your response should inc
 
 Be extremely specific. Use actual file names, function names, and line references from the codebase.
 Remember: ALL imports come from @elizaos/core only!
-Remember: Plugin must work with BOTH SQLite and PostgreSQL!
+Remember: Plugin must work with BOTH Pglite and PostgreSQL!
 Format your response as a clear, actionable migration plan.`;
 
     // Retry logic for network failures
@@ -1144,7 +1144,7 @@ The goal is a fully migrated, tested, and working 1.x plugin.
 
         // Check for forbidden database imports
         if (
-          content.includes('SqliteDatabaseAdapter') ||
+          content.includes('PgliteDatabaseAdapter') ||
           content.includes('PgDatabaseAdapter') ||
           content.includes('PostgresDatabaseAdapter')
         ) {

@@ -56,7 +56,7 @@ export default function GroupPanel({ onClose, agents, channelId }: GroupPanel) {
 
   useEffect(() => {
     if (channelId && channelsData?.data?.channels) {
-      const channel = channelsData.data.channels.find(ch => ch.id === channelId);
+      const channel = channelsData.data.channels.find((ch) => ch.id === channelId);
       if (channel) {
         setChatName(channel.name || '');
 
@@ -183,15 +183,15 @@ export default function GroupPanel({ onClose, agents, channelId }: GroupPanel) {
               try {
                 if (!channelId) {
                   // Create new channel
-                  const participantIds = selectedAgents.map(agent => agent.id as UUID);
+                  const participantIds = selectedAgents.map((agent) => agent.id as UUID);
                   const response = await apiClient.createCentralGroupChat({
                     name: chatName,
                     participantCentralUserIds: participantIds,
                     type: 'group',
                     server_id: serverId,
                     metadata: {
-                      source: GROUP_CHAT_SOURCE
-                    }
+                      source: GROUP_CHAT_SOURCE,
+                    },
                   });
 
                   if (response.data) {

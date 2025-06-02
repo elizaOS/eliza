@@ -10,9 +10,8 @@ export default defineConfig({
   sourcemap: false,
   // Ensure that all external dependencies are properly handled.
   // The regex explicitly includes dependencies that should not be externalized.
-  external: ['better-sqlite3'],
   noExternal: [
-    /^(?!(@electric-sql\/sqlite|zod|@elizaos\/core|chokidar|semver|octokit|execa|@noble\/curves)).*/,
+    /^(?!(@electric-sql\/pglite|zod|@elizaos\/core|chokidar|semver|octokit|execa|@noble\/curves)).*/,
   ],
   platform: 'node',
   minify: false,

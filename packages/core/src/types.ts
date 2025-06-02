@@ -1,6 +1,3 @@
-import { type Pool as PgPool } from 'pg';
-import Database from 'better-sqlite3';
-
 /**
  * Defines a custom type UUID representing a universally unique identifier
  */
@@ -858,7 +855,7 @@ export interface IDatabaseAdapter {
   /** Close database connection */
   close(): Promise<void>;
 
-  getConnection(): Promise<PgPool | Database.Database>;
+  getConnection(): Promise<any>;
 
   getAgent(agentId: UUID): Promise<Agent | null>;
 
@@ -1183,7 +1180,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 
   initialize(): Promise<void>;
 
-  getConnection(): Promise<PgPool | Database.Database>;
+  getConnection(): Promise<any>;
 
   getService<T extends Service>(service: ServiceTypeName | string): T | null;
 

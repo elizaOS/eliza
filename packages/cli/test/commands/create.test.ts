@@ -141,7 +141,7 @@ vi.mock('@/src/utils', () => ({
   isMonorepoContext: mockIsMonorepoContext,
   UserEnvironment: { getInstance: mockUserEnvironmentGetInstance }, // Mock the class with static method
   expandTildePath: vi.fn((p) => p), // from resolve-utils
-  resolveSqliteDir: vi.fn().mockResolvedValue('/mock/.elizadb'), // from resolve-utils
+  resolvePgliteDir: vi.fn().mockResolvedValue('/mock/.elizadb'), // from resolve-utils
   // from get-package-info, if not covered by isMonorepoContext already
   getPackageVersion: mockGetPackageVersion,
   getLocalPackages: mockGetLocalPackages,
@@ -200,7 +200,7 @@ describe('create command', () => {
     mockPrompts.mockReset().mockResolvedValue({
       type: 'project',
       nameResponse: 'myproject',
-      database: 'sqlite',
+      database: 'pglite',
       aiModel: 'local',
     });
     mockBuildProject.mockReset().mockResolvedValue(undefined);
@@ -289,7 +289,7 @@ describe('create command', () => {
       mockPrompts
         .mockResolvedValueOnce({ type: 'project' }) // For type selection
         .mockResolvedValueOnce({ nameResponse: 'myproject' }) // For name
-        .mockResolvedValueOnce({ database: 'sqlite' }) // For database
+        .mockResolvedValueOnce({ database: 'pglite' }) // For database
         .mockResolvedValueOnce({ aiModel: 'local' }); // For AI model
       const actionFn = getActionFn();
 
@@ -301,7 +301,7 @@ describe('create command', () => {
     it('should prompt for project name when not provided', async () => {
       mockPrompts
         .mockResolvedValueOnce({ nameResponse: 'myproject' }) // For name
-        .mockResolvedValueOnce({ database: 'sqlite' }) // For database
+        .mockResolvedValueOnce({ database: 'pglite' }) // For database
         .mockResolvedValueOnce({ aiModel: 'local' }); // For AI model
       const actionFn = getActionFn();
       // Pass type explicitly to only test name prompt
@@ -355,7 +355,7 @@ describe('create command', () => {
       await mkdir(projectPath, { recursive: true }); // Exists but empty
 
       // Ensure default prompt for database is covered if yes:true
-      mockPrompts.mockResolvedValue({ database: 'sqlite', aiModel: 'local' });
+      mockPrompts.mockResolvedValue({ database: 'pglite', aiModel: 'local' });
 
       await actionFn(projectName, { dir: '.', yes: true, type: 'project' });
       expect(mockCopyTemplate).toHaveBeenCalledWith('project-starter', projectPath, projectName);
@@ -379,11 +379,11 @@ describe('create command', () => {
       expect(mockSetupPgLite).not.toHaveBeenCalled();
     });
 
-    it('should setup sqlite database when selected via prompts', async () => {
+    it('should setup pglite database when selected via prompts', async () => {
       mockPrompts.mockReset();
       mockPrompts
         .mockResolvedValueOnce({ nameResponse: 'myproject' }) // For name
-        .mockResolvedValueOnce({ database: 'sqlite' }) // For database
+        .mockResolvedValueOnce({ database: 'pglite' }) // For database
         .mockResolvedValueOnce({ aiModel: 'local' }); // For AI model
       const actionFn = getActionFn();
 
@@ -399,7 +399,7 @@ describe('create command', () => {
 
       mockPrompts
         .mockResolvedValueOnce({ nameResponse: 'dbproject' })
-        .mockResolvedValueOnce({ database: 'sqlite' })
+        .mockResolvedValueOnce({ database: 'pglite' })
         .mockResolvedValueOnce({ aiModel: 'local' });
 
       await actionFn(undefined, { dir: '.', yes: false, type: 'project' });
@@ -410,8 +410,8 @@ describe('create command', () => {
       expect(databasePromptCall[0].choices).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            title: expect.stringContaining('SQLite'),
-            value: 'sqlite',
+            title: expect.stringContaining('Pglite'),
+            value: 'pglite',
           }),
           expect.objectContaining({
             title: expect.stringContaining('PostgreSQL'),
@@ -558,7 +558,7 @@ describe('create command', () => {
       mockPrompts.mockResolvedValueOnce({
         type: 'project',
         nameResponse: 'testproject',
-        database: 'sqlite',
+        database: 'pglite',
       });
       const templateError = new Error('Template copy failed');
       mockCopyTemplate.mockRejectedValue(templateError);
@@ -579,7 +579,7 @@ describe('create command', () => {
       // ensure it doesn't exist initially by not creating it with mkdir
 
       // Add aiModel to the mock prompts
-      mockPrompts.mockResolvedValue({ database: 'sqlite', aiModel: 'local' });
+      mockPrompts.mockResolvedValue({ database: 'pglite', aiModel: 'local' });
 
       await actionFn(projectName, { dir: '.', yes: true, type: 'project' });
       // The SUT (createProjectDirectory) is responsible for mkdir.
@@ -599,7 +599,7 @@ describe('create command', () => {
       await mkdir(customDirAbsolute, { recursive: true });
       const expectedFinalProjectPath = resolvePath(customDirAbsolute, projectName);
 
-      mockPrompts.mockResolvedValue({ database: 'sqlite' });
+      mockPrompts.mockResolvedValue({ database: 'pglite' });
 
       // SUT currently has a bug: it prematurely checks/errors on a non-target path.
       // This test will reflect that current failure mode.

@@ -13,8 +13,6 @@ import type {
   World,
   MemoryMetadata,
 } from './types';
-import { type Pool as PgPool } from 'pg';
-import Database from 'better-sqlite3';
 
 /**
  * Database adapter class to be extended by individual database adapters.
@@ -53,7 +51,7 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
    * Retrieves a connection to the database.
    * @returns A Promise that resolves to the database connection.
    */
-  abstract getConnection(): Promise<PgPool | Database.Database>;
+  abstract getConnection(): Promise<any>;
 
   /**
    * Retrieves an account by its ID.

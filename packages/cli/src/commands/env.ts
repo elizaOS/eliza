@@ -1,4 +1,4 @@
-import { handleError, resolveSqliteDir, UserEnvironment } from '@/src/utils';
+import { handleError, resolvePgliteDir, UserEnvironment } from '@/src/utils';
 import { Command } from 'commander';
 import dotenv from 'dotenv';
 import { existsSync } from 'node:fs';
@@ -398,19 +398,19 @@ async function resetEnv(yes = false): Promise<void> {
   const cacheDir = path.join(elizaDir, 'cache');
 
   const localEnvPath = (await getLocalEnvPath()) ?? path.join(process.cwd(), '.env');
-  const localDbDir = await resolveSqliteDir();
+  const localDbDir = await resolvePgliteDir();
 
   // Check if external Postgres is in use
   let usingExternalPostgres = false;
-  let usingSqlite = false;
+  let usingPglite = false;
   try {
     const localEnvVars = existsSync(localEnvPath) ? await parseEnvFile(localEnvPath) : {};
 
     // Check for external Postgres
     usingExternalPostgres = localEnvVars.POSTGRES_URL && localEnvVars.POSTGRES_URL.trim() !== '';
 
-    // Check for PGLite
-    usingSqlite = localEnvVars.SQLITE_DATA_DIR && localEnvVars.SQLITE_DATA_DIR.trim() !== '';
+    // Check for Pglite
+    usingPglite = localEnvVars.PGLITE_DATA_DIR && localEnvVars.PGLITE_DATA_DIR.trim() !== '';
   } catch (error) {
     // Ignore errors in env parsing
   }

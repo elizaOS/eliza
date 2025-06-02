@@ -1,137 +1,110 @@
 import { sql } from 'drizzle-orm';
 import {
-  pgTable,
-  uuid as pgUuid,
-  text as pgText,
-  jsonb as pgJsonb,
-  timestamp as pgTimestamp,
   boolean as pgBoolean,
-  integer as pgInteger,
-  vector as pgVector,
   check as pgCheck,
-  index as pgIndex,
   foreignKey as pgForeignKey,
+  index as pgIndex,
+  integer as pgInteger,
+  jsonb as pgJsonb,
+  pgTable,
+  text as pgText,
+  timestamp as pgTimestamp,
+  uuid as pgUuid,
+  vector as pgVector,
   type PgTableFn,
 } from 'drizzle-orm/pg-core';
-import {
-  sqliteTable,
-  text as sqliteText,
-  integer as sqliteInteger,
-  index as sqliteIndex,
-  foreignKey as sqliteForeignKey,
-  type SQLiteTableFn,
-} from 'drizzle-orm/sqlite-core';
-import { v4 as uuidv4 } from 'uuid';
 
-export type DatabaseType = 'postgres' | 'sqlite';
+export type DatabaseType = 'postgres' | 'pglite';
 
 // Type helpers for cross-database compatibility
-export type TableFn = PgTableFn | SQLiteTableFn;
-export type UuidColumn = ReturnType<typeof pgUuid> | ReturnType<typeof sqliteText>;
-export type TextColumn = ReturnType<typeof pgText> | ReturnType<typeof sqliteText>;
-export type JsonColumn = ReturnType<typeof pgJsonb> | ReturnType<typeof sqliteText>;
-export type BooleanColumn = ReturnType<typeof pgBoolean> | ReturnType<typeof sqliteInteger>;
-export type TimestampColumn = ReturnType<typeof pgTimestamp> | ReturnType<typeof sqliteInteger>;
-export type IntegerColumn = ReturnType<typeof pgInteger> | ReturnType<typeof sqliteInteger>;
+// Since Pglite uses PostgreSQL dialect, we use the same types for both
+export type TableFn = PgTableFn;
+export type UuidColumn = ReturnType<typeof pgUuid>;
+export type TextColumn = ReturnType<typeof pgText>;
+export type JsonColumn = ReturnType<typeof pgJsonb>;
+export type BooleanColumn = ReturnType<typeof pgBoolean>;
+export type TimestampColumn = ReturnType<typeof pgTimestamp>;
+export type IntegerColumn = ReturnType<typeof pgInteger>;
 
 /**
  * Schema factory to create database-specific column types
+ * Since Pglite is PostgreSQL-compatible, we use the same constructs for both
  */
 export class SchemaFactory {
   constructor(public dbType: DatabaseType) {}
 
   get table(): TableFn {
-    return this.dbType === 'postgres' ? pgTable : sqliteTable;
+    // Both postgres and pglite use pgTable
+    return pgTable;
   }
 
   uuid(name: string) {
-    if (this.dbType === 'postgres') {
-      return pgUuid(name);
-    }
-    // SQLite: Use TEXT with UUID format check
-    return sqliteText(name).$default(() => uuidv4());
+    // Both postgres and pglite support native UUID
+    return pgUuid(name);
   }
 
   text(name: string) {
-    return this.dbType === 'postgres' ? pgText(name) : sqliteText(name);
+    return pgText(name);
   }
 
   json(name: string) {
-    if (this.dbType === 'postgres') {
-      return pgJsonb(name);
-    }
-    // SQLite: Store JSON as TEXT
-    return sqliteText(name);
+    // Both postgres and pglite support JSONB
+    return pgJsonb(name);
   }
 
   boolean(name: string) {
-    if (this.dbType === 'postgres') {
-      return pgBoolean(name);
-    }
-    // SQLite: Store boolean as INTEGER (0/1)
-    return sqliteInteger(name, { mode: 'boolean' });
+    return pgBoolean(name);
   }
 
   timestamp(name: string, options?: { withTimezone?: boolean; mode?: 'date' | 'string' }) {
-    if (this.dbType === 'postgres') {
-      return pgTimestamp(name, options);
-    }
-    // SQLite: Store timestamp as INTEGER (Unix timestamp in milliseconds)
-    return sqliteInteger(name, { mode: 'timestamp' });
+    return pgTimestamp(name, options);
   }
 
   integer(name: string) {
-    return this.dbType === 'postgres' ? pgInteger(name) : sqliteInteger(name);
+    return pgInteger(name);
   }
 
   vector(name: string, dimensions: number) {
-    if (this.dbType === 'postgres') {
-      return pgVector(name, { dimensions });
+    // Pglite may not support pgvector extension yet
+    // For compatibility, we'll store as JSONB for pglite
+    if (this.dbType === 'pglite') {
+      return pgJsonb(name);
     }
-    // SQLite: Store vectors as JSON arrays
-    return sqliteText(name);
+    return pgVector(name, { dimensions });
   }
 
   textArray(name: string) {
-    if (this.dbType === 'postgres') {
-      return pgText(name).array();
-    }
-    // SQLite: Store arrays as JSON
-    return sqliteText(name);
+    // Both postgres and pglite support arrays
+    return pgText(name).array();
   }
 
   check(name: string, sql: any) {
-    if (this.dbType === 'postgres') {
-      return pgCheck(name, sql);
-    }
-    // SQLite doesn't support CHECK constraints in the same way
-    return null;
+    // Both postgres and pglite support CHECK constraints
+    return pgCheck(name, sql);
   }
 
   index(name?: string) {
-    return this.dbType === 'postgres' ? pgIndex(name) : sqliteIndex(name || '');
+    return pgIndex(name);
   }
 
   foreignKey(config: any) {
-    return this.dbType === 'postgres' ? pgForeignKey(config) : sqliteForeignKey(config);
+    return pgForeignKey(config);
   }
 
-  // Helper for timestamp defaults - return proper SQL defaults
+  // Helper for timestamp defaults
   defaultTimestamp() {
-    if (this.dbType === 'postgres') {
-      return sql`NOW()`;
-    }
-    // SQLite: Use current timestamp in milliseconds
-    return sql`(unixepoch() * 1000)`;
+    // Both postgres and pglite support NOW()
+    return sql`NOW()`;
   }
 
   // Helper for random UUID generation
   defaultRandomUuid() {
-    if (this.dbType === 'postgres') {
-      return sql`gen_random_uuid()`;
+    // Pglite may not have gen_random_uuid() extension
+    if (this.dbType === 'pglite') {
+      // Will use application-level UUID generation
+      return undefined;
     }
-    // SQLite: Use application-level UUID generation
-    return undefined; // Will use $default(() => uuidv4())
+    return sql`gen_random_uuid()`;
   }
 }
 

@@ -58,7 +58,11 @@ export function useAutoScroll(options: UseAutoScrollOptions = {}) {
     } else {
       // User is not at the bottom. If userHasScrolled.current is true, it means they scrolled up.
       // Keep autoScrollEnabled as false. If it was a programmatic scroll not to bottom, this state will reflect that.
-      setScrollState(prev => ({ ...prev, isAtBottom: false, autoScrollEnabled: userHasScrolled.current ? false : prev.autoScrollEnabled }));
+      setScrollState((prev) => ({
+        ...prev,
+        isAtBottom: false,
+        autoScrollEnabled: userHasScrolled.current ? false : prev.autoScrollEnabled,
+      }));
     }
   }, [checkIsAtBottom]);
 
@@ -77,7 +81,8 @@ export function useAutoScroll(options: UseAutoScrollOptions = {}) {
     const currentHeight = scrollElement.scrollHeight;
     // Only act if height actually changed to avoid unnecessary processing
     if (currentHeight !== lastContentHeight.current) {
-      if (currentHeight > lastContentHeight.current) { // Content added
+      if (currentHeight > lastContentHeight.current) {
+        // Content added
         if (scrollState.autoScrollEnabled && !userHasScrolled.current) {
           requestAnimationFrame(() => {
             scrollToBottom(lastContentHeight.current === 0); // Instant if first load, otherwise respect smooth option implicitly
@@ -108,7 +113,7 @@ export function useAutoScroll(options: UseAutoScrollOptions = {}) {
     const atBottom = checkIsAtBottom(scrollRef.current);
     if (!atBottom) {
       userHasScrolled.current = true; // User has taken control by scrolling up
-      setScrollState(prev => ({
+      setScrollState((prev) => ({
         ...prev,
         autoScrollEnabled: false, // Disable auto-scroll
       }));

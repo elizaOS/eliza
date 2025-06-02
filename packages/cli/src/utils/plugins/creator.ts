@@ -483,7 +483,7 @@ ${spec.services ? `Services: ${spec.services.join(', ')}` : ''}
 ## CRITICAL REQUIREMENTS
 
 ### 1. Database Compatibility (MANDATORY)
-This plugin MUST work with both SQLite and PostgreSQL. The specification must include:
+This plugin MUST work with both Pglite and PostgreSQL. The specification must include:
 - Database-agnostic design patterns
 - Use of runtime APIs only (no direct database access)
 - Memory operations using runtime.createMemory(), runtime.searchMemories()
@@ -512,7 +512,7 @@ Generate a detailed technical specification that includes:
 
 ## Database Abstraction Examples:
 \`\`\`typescript
-// Memory operations - works with both SQLite and PostgreSQL
+// Memory operations - works with both Pglite and PostgreSQL
 await runtime.createMemory({
   entityId: message.entityId,
   agentId: runtime.agentId,
@@ -538,7 +538,7 @@ await runtime.createGoal({
 \`\`\`
 
 Be extremely detailed and specific. This specification will be used to generate the actual code.
-Remember: The plugin must work with BOTH SQLite and PostgreSQL without any code changes.`;
+Remember: The plugin must work with BOTH Pglite and PostgreSQL without any code changes.`;
 
     const message = await this.anthropic!.messages.create({
       model: 'claude-opus-4-20250514',
@@ -576,13 +576,13 @@ ${spec.services ? `### Services\n${spec.services.map((s) => `- ${s}`).join('\n')
 ## CRITICAL REQUIREMENTS
 
 ### Database Compatibility (MANDATORY)
-This plugin MUST work with both SQLite and PostgreSQL without any code changes.
+This plugin MUST work with both Pglite and PostgreSQL without any code changes.
 
 #### Database Abstraction Rules:
 - ✅ Use ONLY runtime.databaseAdapter for database operations
 - ✅ Use runtime.createMemory(), runtime.searchMemories(), runtime.createGoal()
 - ✅ Use runtime.ensureConnection() for relationships
-- ❌ NEVER import database adapters directly (SqliteDatabaseAdapter, PgDatabaseAdapter)
+- ❌ NEVER import database adapters directly (PgliteDatabaseAdapter, PgDatabaseAdapter)
 - ❌ NEVER use database-specific SQL or queries
 - ❌ NEVER make assumptions about database type
 
@@ -605,7 +605,7 @@ const memories = await runtime.searchMemories({
 });
 
 // ❌ WRONG - Direct database imports
-import { SqliteDatabaseAdapter } from '@elizaos/plugin-sql';
+import { PgliteDatabaseAdapter } from '@elizaos/plugin-sql';
 \`\`\`
 
 ### Import Requirements (MANDATORY)
@@ -628,7 +628,7 @@ import {
 // ❌ WRONG - These packages don't exist
 import { logger } from '@elizaos/logger';
 import { Action } from '@elizaos/types';
-import { SqliteDatabaseAdapter } from '@elizaos/plugin-sql';
+import { PgliteDatabaseAdapter } from '@elizaos/plugin-sql';
 \`\`\`
 
 ## Detailed Technical Specification
@@ -648,7 +648,7 @@ You are now going to implement this plugin following ElizaOS 1.0.0 best practice
 - **Add detailed logging** using the ElizaOS logger
 
 ### 2. Database Compatibility
-- **MANDATORY**: Plugin must work with both SQLite and PostgreSQL
+- **MANDATORY**: Plugin must work with both Pglite and PostgreSQL
 - **Use ONLY runtime APIs** for all data operations
 - **NO direct database imports** or database-specific code
 - **Test with both databases** in test suite
@@ -670,15 +670,15 @@ You are now going to implement this plugin following ElizaOS 1.0.0 best practice
 - **Database compatibility tests**:
   \`\`\`typescript
   describe('Database Compatibility', () => {
-    it('should work with SQLite', async () => {
-      process.env.SQLITE_DATA_DIR = './.test-db';
+    it('should work with Pglite', async () => {
+      process.env.PGLITE_DATA_DIR = './.test-db';
       delete process.env.POSTGRES_URL;
       // Test plugin functionality
     });
     
     it('should work with PostgreSQL', async () => {
       process.env.POSTGRES_URL = 'postgresql://test:test@localhost:5432/test';
-      delete process.env.SQLITE_DATA_DIR;
+      delete process.env.PGLITE_DATA_DIR;
       // Test plugin functionality
     });
   });
@@ -697,7 +697,7 @@ Before considering implementation complete, verify:
 - ✅ All imports come from @elizaos/core only
 - ✅ No direct database adapter imports
 - ✅ Uses runtime APIs for all data operations
-- ✅ Works with both SQLite and PostgreSQL
+- ✅ Works with both Pglite and PostgreSQL
 - ✅ Has comprehensive tests for both database types
 - ✅ No database-specific code or SQL
 - ✅ Proper error handling throughout
@@ -707,7 +707,7 @@ Before considering implementation complete, verify:
 - ✅ All components properly exported
 
 Work systematically through each component, implementing it completely before moving to the next.
-Remember: Database compatibility is MANDATORY - the plugin MUST work with both SQLite and PostgreSQL.
+Remember: Database compatibility is MANDATORY - the plugin MUST work with both Pglite and PostgreSQL.
 `;
 
     await fs.writeFile(path.join(this.pluginPath!, 'PLUGIN_SPEC.md'), content);
@@ -970,18 +970,18 @@ ${allFiles}
 ### 1. Import Compliance (CRITICAL - MANDATORY)
 - ✅ ALL imports must come from @elizaos/core ONLY
 - ❌ NO imports from @elizaos/plugin, @elizaos/types, @elizaos/logger, etc. (these don't exist)
-- ❌ NO direct database adapter imports (SqliteDatabaseAdapter, PgDatabaseAdapter)
+- ❌ NO direct database adapter imports (PgliteDatabaseAdapter, PgDatabaseAdapter)
 - ✅ Correct import format: import { Plugin, Action, AgentRuntime, logger } from '@elizaos/core'
 
 ### 2. Database Compatibility (CRITICAL - MANDATORY)
-- ✅ Plugin must work with both SQLite and PostgreSQL without code changes
+- ✅ Plugin must work with both Pglite and PostgreSQL without code changes
 - ✅ Uses ONLY runtime.databaseAdapter for database operations
 - ✅ Uses runtime.createMemory(), runtime.searchMemories(), runtime.createGoal()
 - ✅ Uses runtime.ensureConnection() for relationships
 - ❌ NO database-specific SQL or queries
 - ❌ NO assumptions about database type
 - ❌ NO direct database adapter usage
-- ✅ Database compatibility tests for both SQLite and PostgreSQL
+- ✅ Database compatibility tests for both Pglite and PostgreSQL
 
 ### 3. Component Implementation
 - ✅ All components are fully implemented (no stubs or TODOs)
@@ -1014,7 +1014,7 @@ Respond with a JSON object:
 
 ## Validation Priority (ALL MUST PASS):
 1. Import compliance is MANDATORY - any non-@elizaos/core imports = NOT production ready
-2. Database compatibility is MANDATORY - must work with both SQLite and PostgreSQL
+2. Database compatibility is MANDATORY - must work with both Pglite and PostgreSQL
 3. All components must be fully implemented
 4. Comprehensive tests must exist
 5. All other criteria must also pass

@@ -80,9 +80,11 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
       clientLogger.info(`[AgentCard] Agent is not active. Navigating to /chat/${agentIdForNav}`);
       navigate(`/chat/${agentIdForNav}`);
     } else {
-      clientLogger.info('[AgentCard] Agent is active. Click intended for chat button or other actions.');
+      clientLogger.info(
+        '[AgentCard] Agent is active. Click intended for chat button or other actions.'
+      );
       // Optionally, if click on active card should also do something (e.g., open chat if no specific button is hit):
-      // onChat(agent); 
+      // onChat(agent);
     }
   };
 
@@ -115,10 +117,7 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
           </CardTitle>
           <div className="flex items-center gap-1.5 mt-1">
             <div
-              className={cn(
-                'w-2.5 h-2.5 rounded-full',
-                isActive ? 'bg-green-500' : 'bg-red-500'
-              )}
+              className={cn('w-2.5 h-2.5 rounded-full', isActive ? 'bg-green-500' : 'bg-red-500')}
             />
             <p className="text-xs text-muted-foreground">
               {isStarting
@@ -141,9 +140,7 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
               <TooltipContent>Stop Agent</TooltipContent>
             </Tooltip>
           )}
-          {isStopping && (
-            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-          )}
+          {isStopping && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button onClick={handleSettingsClick} variant="ghost" size="icon">
