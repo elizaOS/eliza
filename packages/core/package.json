@@ -13,13 +13,25 @@
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
       }
+    },
+    "./v1": {
+      "import": {
+        "types": "./dist/specs/v1/index.d.ts",
+        "default": "./dist/specs/v1/index.js"
+      }
+    },
+    "./v2": {
+      "import": {
+        "types": "./dist/specs/v2/index.d.ts",
+        "default": "./dist/specs/v2/index.js"
+      }
     }
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsup && tsc -p tsconfig.build.json",
+    "build": "tsup",
     "watch": "tsc --watch",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "dev": "tsup --watch",
