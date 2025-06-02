@@ -210,7 +210,7 @@ const config = {
       {
         showReadingTime: true,
         onUntruncatedBlogPosts: 'ignore',
-        editUrl: 'https://github.com/elizaos/eliza/tree/v2-develop/docs',
+        editUrl: 'https://github.com/elizaos/eliza/tree/develop/docs',
         blogSidebarTitle: 'Recent posts',
         blogSidebarCount: 'ALL',
         showLastUpdateAuthor: true,
@@ -235,7 +235,7 @@ const config = {
           blogTitle: 'AI News',
           blogDescription: 'Automated aggregating and summarization of elizaOS ecosystem updates',
           showReadingTime: true,
-          editUrl: 'https://github.com/elizaos/eliza/tree/v2-develop/packages/docs',
+          editUrl: 'https://github.com/elizaos/eliza/tree/develop/packages/docs',
           blogSidebarTitle: 'All posts',
           blogSidebarCount: 'ALL',
           showLastUpdateAuthor: true,
@@ -249,7 +249,7 @@ const config = {
         docs: {
           docItemComponent: '@theme/ApiItem',
           sidebarPath: require.resolve('./sidebars.ts'),
-          editUrl: 'https://github.com/elizaos/eliza/tree/v2-develop/packages/docs/',
+          editUrl: 'https://github.com/elizaos/eliza/tree/develop/packages/docs/',
           exclude: ['**/_media/**'],
           showLastUpdateAuthor: true,
           showLastUpdateTime: true,

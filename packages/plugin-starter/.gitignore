@@ -47,8 +47,8 @@ temp/
 
 # Database files
 *.db
-*.sqlite
-*.sqlite3
+*.pglite
+*.pglite3
 
 # ElizaOS specific
 .eliza/

@@ -1,13 +1,13 @@
 import { resolvePgliteDir } from '@/src/utils';
 import {
+  ChannelType,
   type Character,
   DatabaseAdapter,
   type IAgentRuntime,
-  type UUID,
   logger,
+  type UUID,
 } from '@elizaos/core';
-import { createDatabaseAdapter } from '@elizaos/plugin-sql';
-import * as bodyParser from 'body-parser';
+import bodyParser from 'body-parser';
 import cors from 'cors';
 import express, { Request, Response } from 'express';
 import * as fs from 'node:fs';
@@ -17,8 +17,20 @@ import { fileURLToPath } from 'node:url';
 import { Server as SocketIOServer } from 'socket.io';
 import { createApiRouter, createPluginRouteHandler, setupSocketIO } from './api';
 import { apiKeyAuthMiddleware } from './authMiddleware';
+import { messageBusConnectorPlugin } from './services/message';
+
+import internalMessageBus from './bus';
+import type {
+  MessageChannel,
+  MessageServer,
+  CentralRootMessage,
+  MessageServiceStructure,
+} from './types';
+import { createDatabaseAdapter } from '@elizaos/plugin-sql';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID; // Single default server
 
 /**
  * Represents a function that acts as a server middleware.
@@ -61,7 +73,8 @@ export class AgentServer {
   private serverPort: number = 3000; // Add property to store current port
   public isInitialized: boolean = false; // Flag to prevent double initialization
 
-  public database: DatabaseAdapter;
+  public database!: DatabaseAdapter;
+
   public startAgent!: (character: Character) => Promise<IAgentRuntime>;
   public stopAgent!: (runtime: IAgentRuntime) => void;
   public loadCharacterTryPath!: (characterPath: string) => Promise<Character>;
@@ -76,8 +89,6 @@ export class AgentServer {
     try {
       logger.debug('Initializing AgentServer (constructor)...');
       this.agents = new Map();
-      // Synchronous setup only.
-      // Database adapter creation and initialization are moved to the async initialize() method.
     } catch (error) {
       logger.error('Failed to initialize AgentServer (constructor):', error);
       throw error;
@@ -99,35 +110,138 @@ export class AgentServer {
     try {
       logger.debug('Initializing AgentServer (async operations)...');
 
-      // Resolve data directory (assuming resolvePgliteDir might be async or needs to be before DB creation)
-      const dataDir = await resolvePgliteDir(options?.dataDir);
-
-      // Create database adapter instance
-      // Assuming createDatabaseAdapter itself is synchronous and returns an adapter instance
+      const agentDataDir = await resolvePgliteDir(options?.dataDir);
+      logger.info(`[INIT] Database Dir for SQL plugin: ${agentDataDir}`);
       this.database = createDatabaseAdapter(
         {
-          dataDir,
+          dataDir: agentDataDir,
           postgresUrl: options?.postgresUrl,
         },
-        '00000000-0000-0000-0000-000000000002' // This UUID might need to be configurable or a named constant
-      );
-
-      // Initialize the database (which is an async operation on the adapter)
+        '00000000-0000-0000-0000-000000000002'
+      ) as DatabaseAdapter;
       await this.database.init();
-      logger.success('Database initialized successfully');
+      logger.success('Consolidated database initialized successfully');
 
-      // Only continue with server initialization after database is ready
+      // Add a small delay to ensure database is fully ready
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // Ensure default server exists
+      logger.info('[INIT] Ensuring default server exists...');
+      await this.ensureDefaultServer();
+      logger.success('[INIT] Default server setup complete');
+
       await this.initializeServer(options);
-
-      // wait 250 ms
       await new Promise((resolve) => setTimeout(resolve, 250));
-
-      // Success message moved to start method
       this.isInitialized = true;
     } catch (error) {
       logger.error('Failed to initialize AgentServer (async operations):', error);
       console.trace(error);
       throw error;
+    }
+  }
+
+  private async ensureDefaultServer(): Promise<void> {
+    try {
+      // Check if the default server exists
+      logger.info('[AgentServer] Checking for default server...');
+      const servers = await (this.database as any).getMessageServers();
+      logger.debug(`[AgentServer] Found ${servers.length} existing servers`);
+
+      // Log all existing servers for debugging
+      servers.forEach((s: any) => {
+        logger.debug(`[AgentServer] Existing server: ID=${s.id}, Name=${s.name}`);
+      });
+
+      const defaultServer = servers.find(
+        (s: any) => s.id === '00000000-0000-0000-0000-000000000000'
+      );
+
+      if (!defaultServer) {
+        logger.info(
+          '[AgentServer] Creating default server with UUID 00000000-0000-0000-0000-000000000000...'
+        );
+
+        // Use raw SQL to ensure the server is created with the exact ID
+        try {
+          await (this.database as any).db.execute(`
+            INSERT INTO message_servers (id, name, source_type, created_at, updated_at)
+            VALUES ('00000000-0000-0000-0000-000000000000', 'Default Server', 'eliza_default', NOW(), NOW())
+            ON CONFLICT (id) DO NOTHING
+          `);
+          logger.success('[AgentServer] Default server created via raw SQL');
+
+          // Immediately check if it was created
+          const checkResult = await (this.database as any).db.execute(
+            "SELECT id, name FROM message_servers WHERE id = '00000000-0000-0000-0000-000000000000'"
+          );
+          logger.debug('[AgentServer] Raw SQL check result:', checkResult);
+        } catch (sqlError) {
+          logger.error('[AgentServer] Raw SQL insert failed:', sqlError);
+
+          // Try creating with a regular UUID first to see if that works
+          try {
+            const testId = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
+            await (this.database as any).createMessageServer({
+              id: testId as UUID,
+              name: 'Test Server',
+              sourceType: 'test',
+            });
+            logger.info('[AgentServer] Test server created successfully with regular UUID');
+
+            // Now try with the all-zeros UUID
+            const server = await (this.database as any).createMessageServer({
+              id: '00000000-0000-0000-0000-000000000000' as UUID,
+              name: 'Default Server',
+              sourceType: 'eliza_default',
+            });
+            logger.success('[AgentServer] Default server created via ORM with ID:', server.id);
+          } catch (ormError) {
+            logger.error('[AgentServer] ORM creation also failed:', ormError);
+          }
+        }
+
+        // Verify it was created
+        const verifyServers = await (this.database as any).getMessageServers();
+        logger.debug(`[AgentServer] After creation attempt, found ${verifyServers.length} servers`);
+        verifyServers.forEach((s: any) => {
+          logger.debug(`[AgentServer] Server after creation: ID=${s.id}, Name=${s.name}`);
+        });
+
+        const verifyDefault = verifyServers.find(
+          (s: any) => s.id === '00000000-0000-0000-0000-000000000000'
+        );
+        if (!verifyDefault) {
+          // Instead of throwing, let's create with a different ID as a fallback
+          logger.warn(
+            '[AgentServer] Failed to create default server with all-zeros UUID, using fallback ID'
+          );
+          const fallbackId = 'default00-0000-0000-0000-000000000000' as UUID;
+          await (this.database as any).createMessageServer({
+            id: fallbackId,
+            name: 'Default Server (Fallback)',
+            sourceType: 'eliza_default',
+          });
+          // Update the DEFAULT_SERVER_ID constant to use this
+          (this as any).DEFAULT_SERVER_ID = fallbackId;
+          logger.success('[AgentServer] Created fallback default server with ID:', fallbackId);
+        } else {
+          logger.success('[AgentServer] Default server creation verified');
+        }
+      } else {
+        logger.info('[AgentServer] Default server already exists with ID:', defaultServer.id);
+      }
+    } catch (error) {
+      logger.error('[AgentServer] Error ensuring default server:', error);
+      // Try to log more details about the error
+      if (error instanceof Error) {
+        logger.error('[AgentServer] Error details:', {
+          message: error.message,
+          stack: error.stack,
+          name: error.name,
+        });
+      }
+      // Don't re-throw - use a fallback server ID instead
+      logger.warn('[AgentServer] Using in-memory default server ID as fallback');
     }
   }
 
@@ -177,28 +291,20 @@ export class AgentServer {
       // Agent-specific media serving - only serve files from agent-specific directories
       this.app.get(
         '/media/uploads/:agentId/:filename',
-        // @ts-expect-error - WTF?????
-
-        (req: Request, res: Response) => {
-          const agentId = req.params.agentId;
-          const filename = req.params.filename;
-
-          // Validate agent ID format (UUID)
+        // @ts-expect-error - this is a valid express route
+        (req: express.Request, res: express.Response) => {
+          const agentId = req.params.agentId as string;
+          const filename = req.params.filename as string;
           const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
           if (!uuidRegex.test(agentId)) {
             return res.status(400).json({ error: 'Invalid agent ID format' });
           }
-
-          // Sanitize filename to prevent directory traversal
           const sanitizedFilename = path.basename(filename);
           const agentUploadsPath = path.join(uploadsBasePath, agentId);
           const filePath = path.join(agentUploadsPath, sanitizedFilename);
-
-          // Ensure the file is within the agent's directory
           if (!filePath.startsWith(agentUploadsPath)) {
             return res.status(403).json({ error: 'Access denied' });
           }
-
           res.sendFile(filePath, (err) => {
             if (err) {
               res.status(404).json({ error: 'File not found' });
@@ -209,30 +315,58 @@ export class AgentServer {
 
       this.app.get(
         '/media/generated/:agentId/:filename',
-        // @ts-expect-error - WTF?????
-        (req: Request, res: Response) => {
+        // @ts-expect-error - this is a valid express route
+        (req: express.Request<{ agentId: string; filename: string }>, res: express.Response) => {
           const agentId = req.params.agentId;
           const filename = req.params.filename;
-
-          // Validate agent ID format (UUID)
           const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
           if (!uuidRegex.test(agentId)) {
             return res.status(400).json({ error: 'Invalid agent ID format' });
           }
-
-          // Sanitize filename to prevent directory traversal
           const sanitizedFilename = path.basename(filename);
           const agentGeneratedPath = path.join(generatedBasePath, agentId);
           const filePath = path.join(agentGeneratedPath, sanitizedFilename);
-
-          // Ensure the file is within the agent's directory
           if (!filePath.startsWith(agentGeneratedPath)) {
             return res.status(403).json({ error: 'Access denied' });
+          }
+          res.sendFile(filePath, (err) => {
+            if (err) {
+              res.status(404).json({ error: 'File not found' });
+            }
+          });
+        }
+      );
+
+      // Channel-specific media serving
+      this.app.get(
+        '/media/uploads/channels/:channelId/:filename',
+        (req: express.Request<{ channelId: string; filename: string }>, res: express.Response) => {
+          const channelId = req.params.channelId as string;
+          const filename = req.params.filename as string;
+          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+          if (!uuidRegex.test(channelId)) {
+            res.status(400).json({ error: 'Invalid channel ID format' });
+            return;
+          }
+
+          const sanitizedFilename = path.basename(filename);
+          const channelUploadsPath = path.join(uploadsBasePath, 'channels', channelId);
+          const filePath = path.join(channelUploadsPath, sanitizedFilename);
+
+          if (!filePath.startsWith(channelUploadsPath)) {
+            res.status(403).json({ error: 'Access denied' });
+            return;
           }
 
           res.sendFile(filePath, (err) => {
             if (err) {
-              res.status(404).json({ error: 'File not found' });
+              logger.warn(`[STATIC] Channel media file not found: ${filePath}`, err);
+              if (!res.headersSent) {
+                res.status(404).json({ error: 'File not found' });
+              }
+            } else {
+              logger.debug(`[STATIC] Served channel media file: ${filePath}`);
             }
           });
         }
@@ -303,7 +437,7 @@ export class AgentServer {
           next();
         },
         apiRouter,
-        (err, req, res, next) => {
+        (err: any, req: Request, res: Response, next: express.NextFunction) => {
           logger.error(`API error: ${req.method} ${req.path}`, err);
           res.status(500).json({
             success: false,
@@ -357,10 +491,10 @@ export class AgentServer {
       // Create HTTP server for Socket.io
       this.server = http.createServer(this.app);
 
-      // Initialize Socket.io
-      this.socketIO = setupSocketIO(this.server, this.agents);
+      // Initialize Socket.io, passing the AgentServer instance
+      this.socketIO = setupSocketIO(this.server, this.agents, this);
 
-      logger.success('AgentServer initialization complete');
+      logger.success('AgentServer HTTP server and Socket.IO initialized');
     } catch (error) {
       logger.error('Failed to complete server initialization:', error);
       throw error;
@@ -374,7 +508,7 @@ export class AgentServer {
    * @throws {Error} if the runtime is null/undefined, if agentId is missing, if character configuration is missing,
    * or if there are any errors during registration.
    */
-  public registerAgent(runtime: IAgentRuntime) {
+  public async registerAgent(runtime: IAgentRuntime) {
     try {
       if (!runtime) {
         throw new Error('Attempted to register null/undefined runtime');
@@ -386,9 +520,26 @@ export class AgentServer {
         throw new Error('Runtime missing character configuration');
       }
 
-      // Register the agent
       this.agents.set(runtime.agentId, runtime);
       logger.debug(`Agent ${runtime.character.name} (${runtime.agentId}) added to agents map`);
+
+      // Auto-register the MessageBusConnector plugin
+      try {
+        if (messageBusConnectorPlugin) {
+          await runtime.registerPlugin(messageBusConnectorPlugin);
+          logger.info(
+            `[AgentServer] Automatically registered MessageBusConnector for agent ${runtime.character.name}`
+          );
+        } else {
+          logger.error(`[AgentServer] CRITICAL: MessageBusConnector plugin definition not found.`);
+        }
+      } catch (e) {
+        logger.error(
+          `[AgentServer] CRITICAL: Failed to register MessageBusConnector for agent ${runtime.character.name}`,
+          e
+        );
+        // Decide if this is a fatal error for the agent.
+      }
 
       // Register TEE plugin if present
       const teePlugin = runtime.plugins.find((p) => p.name === 'phala-tee-plugin');
@@ -404,42 +555,15 @@ export class AgentServer {
         }
       }
 
-      // Register routes
-      logger.debug(
-        `Registering ${runtime.routes.length} custom routes for agent ${runtime.character.name} (${runtime.agentId})`
-      );
-      // for (const route of runtime.routes) { // Routes are now handled by createPluginRouteHandler
-      //   const routePath = route.path;
-      //   try {
-      //     switch (route.type) {
-      //       case 'STATIC':
-      //         this.app.get(routePath, (req, res) => route.handler(req, res, runtime));
-      //         break;
-      //       case 'GET':
-      //         this.app.get(routePath, (req, res) => route.handler(req, res, runtime));
-      //         break;
-      //       case 'POST':
-      //         this.app.post(routePath, (req, res) => route.handler(req, res, runtime));
-      //         break;
-      //       case 'PUT':
-      //         this.app.put(routePath, (req, res) => route.handler(req, res, runtime));
-      //         break;
-      //       case 'DELETE':
-      //         this.app.delete(routePath, (req, res) => route.handler(req, res, runtime));
-      //         break;
-      //       default:
-      //         logger.error(`Unknown route type: ${route.type} for path ${routePath}`);
-      //         continue;
-      //     }
-      //     logger.debug(`Registered ${route.type} route: ${routePath}`);
-      //   } catch (error) {
-      //     logger.error(`Failed to register route ${route.type} ${routePath}:`, error);
-      //     throw error;
-      //   }
-      // }
-
       logger.success(
-        `Successfully registered agent ${runtime.character.name} (${runtime.agentId})`
+        `Successfully registered agent ${runtime.character.name} (${runtime.agentId}) with core services.`
+      );
+
+      // Use the fallback server ID if it was set
+      const serverId = (this as any).DEFAULT_SERVER_ID || DEFAULT_SERVER_ID;
+      await this.addAgentToServer(serverId, runtime.agentId);
+      logger.info(
+        `[AgentServer] Auto-associated agent ${runtime.character.name} with server ID: ${serverId}`
       );
     } catch (error) {
       logger.error('Failed to register agent:', error);
@@ -538,10 +662,20 @@ export class AgentServer {
         logger.debug('Stopping all agents...');
         for (const [id, agent] of this.agents.entries()) {
           try {
-            agent.stop();
+            await agent.stop();
             logger.debug(`Stopped agent ${id}`);
           } catch (error) {
             logger.error(`Error stopping agent ${id}:`, error);
+          }
+        }
+
+        // Close database
+        if (this.database) {
+          try {
+            await this.database.close();
+            logger.info('Database closed.');
+          } catch (error) {
+            logger.error('Error closing database:', error);
           }
         }
 
@@ -572,12 +706,177 @@ export class AgentServer {
    * Stops the server if it is running. Closes the server connection,
    * stops the database connection, and logs a success message.
    */
-  public async stop() {
+  public async stop(): Promise<void> {
     if (this.server) {
       this.server.close(() => {
-        this.database.close();
         logger.success('Server stopped');
       });
     }
+  }
+
+  // Central DB Data Access Methods
+  async createServer(
+    data: Omit<MessageServer, 'id' | 'createdAt' | 'updatedAt'>
+  ): Promise<MessageServer> {
+    return (this.database as any).createMessageServer(data);
+  }
+
+  async getServers(): Promise<MessageServer[]> {
+    return (this.database as any).getMessageServers();
+  }
+
+  async getServerById(serverId: UUID): Promise<MessageServer | null> {
+    return (this.database as any).getMessageServerById(serverId);
+  }
+
+  async getServerBySourceType(sourceType: string): Promise<MessageServer | null> {
+    const servers = await (this.database as any).getMessageServers();
+    const filtered = servers.filter((s: MessageServer) => s.sourceType === sourceType);
+    return filtered.length > 0 ? filtered[0] : null;
+  }
+
+  async createChannel(
+    data: Omit<MessageChannel, 'id' | 'createdAt' | 'updatedAt'>,
+    participantIds?: UUID[]
+  ): Promise<MessageChannel> {
+    return (this.database as any).createChannel(data, participantIds);
+  }
+
+  async addParticipantsToChannel(channelId: UUID, userIds: UUID[]): Promise<void> {
+    return (this.database as any).addChannelParticipants(channelId, userIds);
+  }
+
+  async getChannelsForServer(serverId: UUID): Promise<MessageChannel[]> {
+    return (this.database as any).getChannelsForServer(serverId);
+  }
+
+  async getChannelDetails(channelId: UUID): Promise<MessageChannel | null> {
+    return (this.database as any).getChannelDetails(channelId);
+  }
+
+  async getChannelParticipants(channelId: UUID): Promise<UUID[]> {
+    return (this.database as any).getChannelParticipants(channelId);
+  }
+
+  async deleteMessage(messageId: UUID): Promise<void> {
+    return (this.database as any).deleteMessage(messageId);
+  }
+
+  async clearChannelMessages(channelId: UUID): Promise<void> {
+    // Get all messages for the channel and delete them one by one
+    const messages = await (this.database as any).getMessagesForChannel(channelId, 1000);
+    for (const message of messages) {
+      await (this.database as any).deleteMessage(message.id);
+    }
+    logger.info(`[AgentServer] Cleared all messages for central channel: ${channelId}`);
+  }
+
+  async findOrCreateCentralDmChannel(
+    user1Id: UUID,
+    user2Id: UUID,
+    messageServerId: UUID
+  ): Promise<MessageChannel> {
+    return (this.database as any).findOrCreateDmChannel(user1Id, user2Id, messageServerId);
+  }
+
+  async createMessage(
+    data: Omit<CentralRootMessage, 'id' | 'createdAt' | 'updatedAt'>
+  ): Promise<CentralRootMessage> {
+    const createdMessage = await (this.database as any).createMessage(data);
+
+    // Get the channel details to find the server ID
+    const channel = await this.getChannelDetails(createdMessage.channelId);
+    if (channel) {
+      // Emit to internal message bus for agent consumption
+      const messageForBus: MessageServiceStructure = {
+        id: createdMessage.id,
+        channel_id: createdMessage.channelId,
+        server_id: channel.messageServerId,
+        author_id: createdMessage.authorId,
+        content: createdMessage.content,
+        raw_message: createdMessage.rawMessage,
+        source_id: createdMessage.sourceId,
+        source_type: createdMessage.sourceType,
+        in_reply_to_message_id: createdMessage.inReplyToRootMessageId,
+        created_at: createdMessage.createdAt.getTime(),
+        metadata: createdMessage.metadata,
+      };
+
+      internalMessageBus.emit('new_message', messageForBus);
+      logger.info(`[AgentServer] Published message ${createdMessage.id} to internal message bus`);
+    }
+
+    return createdMessage;
+  }
+
+  async getMessagesForChannel(
+    channelId: UUID,
+    limit: number = 50,
+    beforeTimestamp?: Date
+  ): Promise<CentralRootMessage[]> {
+    return (this.database as any).getMessagesForChannel(channelId, limit, beforeTimestamp);
+  }
+
+  // Optional: Method to remove a participant
+  async removeParticipantFromChannel(channelId: UUID, userId: UUID): Promise<void> {
+    // Since we don't have a direct method for this, we'll need to handle it at the channel level
+    logger.warn(
+      `[AgentServer] Remove participant operation not directly supported in database adapter`
+    );
+  }
+
+  // ===============================
+  // Server-Agent Association Methods
+  // ===============================
+
+  /**
+   * Add an agent to a server
+   * @param {UUID} serverId - The server ID
+   * @param {UUID} agentId - The agent ID to add
+   */
+  async addAgentToServer(serverId: UUID, agentId: UUID): Promise<void> {
+    // First, verify the server exists
+    const server = await this.getServerById(serverId);
+    if (!server) {
+      throw new Error(`Server ${serverId} not found`);
+    }
+
+    return (this.database as any).addAgentToServer(serverId, agentId);
+  }
+
+  /**
+   * Remove an agent from a server
+   * @param {UUID} serverId - The server ID
+   * @param {UUID} agentId - The agent ID to remove
+   */
+  async removeAgentFromServer(serverId: UUID, agentId: UUID): Promise<void> {
+    return (this.database as any).removeAgentFromServer(serverId, agentId);
+  }
+
+  /**
+   * Get all agents associated with a server
+   * @param {UUID} serverId - The server ID
+   * @returns {Promise<UUID[]>} Array of agent IDs
+   */
+  async getAgentsForServer(serverId: UUID): Promise<UUID[]> {
+    return (this.database as any).getAgentsForServer(serverId);
+  }
+
+  /**
+   * Get all servers an agent belongs to
+   * @param {UUID} agentId - The agent ID
+   * @returns {Promise<UUID[]>} Array of server IDs
+   */
+  async getServersForAgent(agentId: UUID): Promise<UUID[]> {
+    // This method isn't directly supported in the adapter, so we need to implement it differently
+    const servers = await (this.database as any).getMessageServers();
+    const serverIds = [];
+    for (const server of servers) {
+      const agents = await (this.database as any).getAgentsForServer(server.id);
+      if (agents.includes(agentId)) {
+        serverIds.push(server.id);
+      }
+    }
+    return serverIds;
   }
 }

@@ -5,6 +5,7 @@
     "baseUrl": ".",
     "module": "ESNext",
     "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
     "target": "ESNext",
     "paths": {
       "@/*": ["*"],

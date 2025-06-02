@@ -75,8 +75,8 @@ describe('build-project', () => {
 
       expect(mockRunBunCommand).toHaveBeenCalledWith(['run', 'build'], projectDir);
       expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining('Building project'));
-      expect(mockLogger.success).toHaveBeenCalledWith(
-        expect.stringContaining('Project built successfully')
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        expect.stringContaining('Build completed successfully')
       );
     });
 
@@ -96,9 +96,9 @@ describe('build-project', () => {
 
       expect(mockRunBunCommand).toHaveBeenCalledWith(['run', 'build'], pluginDir);
       expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining('Building plugin'));
-      expect(mockLogger.success).toHaveBeenCalledWith(
+      expect(mockLogger.info).toHaveBeenCalledWith(
         // Ensure success is logged for plugins too
-        expect.stringContaining('Plugin built successfully')
+        expect.stringContaining('Build completed successfully')
       );
     });
 
@@ -226,7 +226,7 @@ describe('build-project', () => {
         ['tsc', '--build'],
         expect.objectContaining({ cwd: projectDir })
       );
-      expect(mockLogger.success).toHaveBeenCalledWith('Project built successfully');
+      expect(mockLogger.info).toHaveBeenCalledWith('Build completed successfully');
     });
 
     it('should handle tsc build failure', async () => {
@@ -332,7 +332,9 @@ describe('build-project', () => {
       );
 
       await buildProject(projectDir);
-      expect(mockLogger.info).toHaveBeenCalledWith('Detected monorepo structure, skipping install');
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Detected monorepo structure, skipping install'
+      );
       expect(mockRunBunCommand).toHaveBeenCalledWith(['run', 'build'], projectDir);
     });
 

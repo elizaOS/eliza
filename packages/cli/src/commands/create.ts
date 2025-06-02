@@ -19,6 +19,7 @@ import prompts from 'prompts';
 import colors from 'yoctocolors';
 import { z } from 'zod';
 import { logger } from '@elizaos/core';
+import { join } from 'path';
 
 /**
  * This module handles creating projects, plugins, and agent characters.
@@ -40,6 +41,7 @@ const initOptionsSchema = z.object({
   dir: z.string().default('.'),
   yes: z.boolean().default(false),
   type: z.enum(['project', 'plugin', 'agent']).default('project'),
+  tee: z.boolean().default(false),
 });
 
 /**
@@ -52,7 +54,7 @@ async function getLocalAvailableDatabases(): Promise<string[]> {
   return [
     'pglite',
     'postgres',
-    // "sqlite",
+    // "pglite",
     // "supabase"
   ];
 }
@@ -79,6 +81,28 @@ function getAvailableAIModels() {
       title: 'Anthropic (Claude)',
       value: 'claude',
       description: 'Use Anthropic Claude models',
+    },
+  ];
+}
+
+/**
+ * Gets available database options for selection during project creation.
+ *
+ * @returns {Array} Array of available database options
+ */
+function getAvailableDatabases() {
+  return [
+    {
+      title: 'Pglite (Pglite) - Recommended for development',
+      value: 'pglite',
+      description:
+        'Fast, file-based database. Perfect for development and single-user deployments.',
+    },
+    {
+      title: 'PostgreSQL - Recommended for production',
+      value: 'postgres',
+      description:
+        'Full-featured database with vector search. Best for production and multi-user systems.',
     },
   ];
 }
@@ -202,6 +226,7 @@ export const create = new Command()
   .option('-d, --dir <dir>', 'installation directory', '.')
   .option('-y, --yes', 'skip confirmation', false)
   .option('-t, --type <type>', 'type to create (project, plugin, or agent)', 'project')
+  .option('--tee', 'create a TEE starter project', false)
   .argument('[name]', 'name for the project, plugin, or agent')
   .action(async (name, opts) => {
     // Set non-interactive mode if environment variable is set or if -y/--yes flag is present in process.argv
@@ -228,6 +253,7 @@ export const create = new Command()
         dir: opts.dir || '.',
         yes: opts.yes, // Already properly converted to boolean above
         type: opts.type || '',
+        tee: opts.tee || false,
       };
 
       // Determine project type, respecting -y
@@ -408,6 +434,42 @@ export const create = new Command()
           `\nYour plugin is ready! Here's your development workflow:\n\n[1] Development\n   cd ${cdPath}\n   ${colors.cyan('elizaos dev')}                   # Start development with hot-reloading\n\n[2] Testing\n   ${colors.cyan('elizaos test')}                  # Run automated tests\n   ${colors.cyan('elizaos start')}                 # Test in a live agent environment\n\n[3] Publishing\n   ${colors.cyan('elizaos publish --test')}        # Check registry requirements\n   ${colors.cyan('elizaos publish')}               # Submit to registry\n\n[?] Learn more: https://eliza.how/docs/cli/plugins`
         );
         process.stdout.write(`\u001B]1337;CurrentDir=${targetDir}\u0007`);
+
+        // Add gitignore content
+        const gitignorePath = join(targetDir, '.gitignore');
+        const gitignoreContent = `
+# Dependencies
+node_modules/
+bun.lockb
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+
+# Build outputs
+dist/
+build/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage/
+
+# ElizaOS specific
+data/
+.eliza/
+.elizaos-migration.lock
+`;
+        await fs.writeFile(gitignorePath, gitignoreContent.trim());
+
         return;
       }
 
@@ -453,7 +515,7 @@ export const create = new Command()
         await fs.mkdir(targetDir, { recursive: true });
       }
 
-      const availableDatabases = await getLocalAvailableDatabases();
+      const availableDatabases = getAvailableDatabases();
       let database: string;
       if (options.yes) {
         database = 'pglite';
@@ -463,10 +525,8 @@ export const create = new Command()
           type: 'select',
           name: 'database',
           message: 'Select your database:',
-          choices: availableDatabases
-            .sort((a, b) => a.localeCompare(b))
-            .map((db) => ({ title: db, value: db })),
-          initial: availableDatabases.indexOf('pglite'),
+          choices: availableDatabases,
+          initial: 0, // Default to Pglite
         });
         database = response.database;
       }
@@ -494,13 +554,20 @@ export const create = new Command()
         aiModel = response.aiModel;
       }
 
+      // Determine which template to use based on --tee flag
+      const template = options.tee ? 'project-tee-starter' : 'project-starter';
+
+      if (options.tee) {
+        console.info('Creating TEE-enabled project with TEE capabilities...');
+      }
+
+      await copyTemplateUtil(template, targetDir, projectName);
+
       if (!aiModel) {
         console.error('No AI model selected or provided');
         handleError(new Error('No AI model selected or provided'));
         return;
       }
-
-      await copyTemplateUtil('project', targetDir, projectName);
 
       // Define project-specific .env file path, this will be created if it doesn't exist by downstream functions.
       const projectEnvFilePath = path.join(targetDir, '.env');
@@ -513,7 +580,7 @@ export const create = new Command()
         const projectPgliteDbDir = path.join(targetDir, '.elizadb');
         // Pass the target directory to ensure everything is created in the new project
         await setupPgLite(projectPgliteDbDir, projectEnvFilePath, targetDir);
-        console.debug(`PGLite database will be stored in project directory: ${projectPgliteDbDir}`);
+        console.debug(`Pglite database will be stored in project directory: ${projectPgliteDbDir}`);
       } else if (database === 'postgres' && !postgresUrl) {
         // Store Postgres URL in the project's .env file.
         postgresUrl = await promptAndStorePostgresUrl(projectEnvFilePath);

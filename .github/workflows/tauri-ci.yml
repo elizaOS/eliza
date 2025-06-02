@@ -12,7 +12,7 @@ env:
 
 on:
   push:
-    branches: [main, develop, v2-develop]
+    branches: [main, develop]
     paths:
       - 'packages/app/**'
       - '.github/workflows/**'

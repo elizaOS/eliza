@@ -307,7 +307,7 @@ import type {
   World,
 } from './types';
 import { type Pool as PgPool } from 'pg';
-import { PGlite } from '@electric-sql/pglite';
+import { PGlite } from '@electric-sql/sqlite';
 export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter
 ⋮----
 abstract init(): Promise<void>;
@@ -569,7 +569,7 @@ import type {
 } from './types';
 import { EventType, type MessagePayload } from './types';
 import { stringToUuid } from './utils';
-import { PGlite } from '@electric-sql/pglite';
+import { PGlite } from '@electric-sql/sqlite';
 import { Pool } from 'pg';
 ⋮----
 export class Semaphore
@@ -1004,7 +1004,7 @@ async sendMessageToTarget(target: TargetInfo, content: Content): Promise<void>
 ## File: packages/core/src/types.ts
 ````typescript
 import { type Pool as PgPool } from 'pg';
-import { PGlite } from '@electric-sql/pglite';
+import { PGlite } from '@electric-sql/sqlite';
 export type UUID = `${string}-${string}-${string}-${string}-${string}`;
 export function asUUID(id: string): UUID
 export interface Content {
@@ -2856,7 +2856,7 @@ The [AgentRuntime](/api/classes/AgentRuntime) class is the primary implementatio
 | **Plugins**           | Dynamic extensions of agent functionalities using custom actions, evaluators, providers, and adapters                                                                                   | [Plugins API](/api/type-aliases/Plugin/)                         | [`plugins.ts`](https://github.com/elizaos/runtime/plugins.ts), [actions](../actions), [evaluators](../evaluators), [providers](../providers)                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | **Services**          | Connects with external services for `IMAGE_DESCRIPTION`, `TRANSCRIPTION`, `TEXT_GENERATION`, `SPEECH_GENERATION`, `VIDEO`, `PDF`, `BROWSER`, `WEB_SEARCH`, `EMAIL_AUTOMATION`, and more | [Services API](/api/interfaces/IAgentRuntime/#services)          | [`services.ts`](https://github.com/elizaos/runtime/services.ts)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | **Memory Systems**    | Creates, retrieves, and embeds memories and manages conversation history.                                                                                                               | [Memory API](/api/interfaces/IMemoryManager)                     | [`memory.ts`](https://github.com/elizaos/runtime/memory.ts)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| **Database Adapters** | Persistent storage and retrieval for memories and knowledge                                                                                                                             | [databaseAdapter](api/interfaces/IAgentRuntime/#databaseAdapter) | [`MongoDB`](https://github.com/elizaos-plugins/adapter-mongodb), [`PostgreSQL`](https://github.com/elizaos-plugins/adapter-postgres), [`SQLite`](https://github.com/elizaos-plugins/adapter-sqlite), [`Supabase`](https://github.com/elizaos-plugins/adapter-supabase), [`PGLite`](https://github.com/elizaos-plugins/adapter-pglite), [`Qdrant`](https://github.com/elizaos-plugins/adapter-qdrant), [`SQL.js`](https://github.com/elizaos-plugins/adapter-sqljs)                                                                                                                                             |
+| **Database Adapters** | Persistent storage and retrieval for memories and knowledge                                                                                                                             | [databaseAdapter](api/interfaces/IAgentRuntime/#databaseAdapter) | [`MongoDB`](https://github.com/elizaos-plugins/adapter-mongodb), [`PostgreSQL`](https://github.com/elizaos-plugins/adapter-postgres), [`SQLite`](https://github.com/elizaos-plugins/adapter-sqlite), [`Supabase`](https://github.com/elizaos-plugins/adapter-supabase), [`PGLite`](https://github.com/elizaos-plugins/adapter-sqlite), [`Qdrant`](https://github.com/elizaos-plugins/adapter-qdrant), [`SQL.js`](https://github.com/elizaos-plugins/adapter-sqljs)                                                                                                                                             |
 | **Cache Management**  | Provides flexible storage and retrieval via various caching methods.                                                                                                                    | [Cache API](/api/interfaces/ICacheManager)                       | [`cache.ts`](https://github.com/elizaos/runtime/cache.ts)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 <details>
@@ -3302,7 +3302,7 @@ function createDatabaseAdapter(
   }
 
   // Default to PGLite
-  return new PgliteDatabaseAdapter(agentId, pgLiteClientManager);
+  return new SqliteDatabaseAdapter(agentId, pgLiteClientManager);
 }
 ```
 
@@ -3315,7 +3315,7 @@ Configure the database adapter using environment variables or settings:
 process.env.POSTGRES_URL = 'postgresql://username:password@localhost:5432/elizaos';
 
 // For PGLite (default)
-process.env.PGLITE_DATA_DIR = './.elizadb'; // Optional, defaults to './pglite'
+process.env.SQLITE_DATA_DIR = './.elizadb'; // Optional, defaults to './sqlite'
 ```
 
 ### Retry Logic & Error Handling
@@ -3477,7 +3477,7 @@ POSTGRES_URL=postgresql://username:password@localhost:5432/elizaos
 For PGLite, set the data directory (optional):
 
 ```
-PGLITE_DATA_DIR=./my-data
+SQLITE_DATA_DIR=./my-data
 ```
 
 ### How can I inspect the database contents?
@@ -5699,7 +5699,7 @@ npx @elizaos/cli create
 The CLI will guide you through the setup process, including:
 
 - Project name
-- Database selection (pglite, postgres, etc.)
+- Database selection (sqlite, postgres, etc.)
 - Initial configuration
 
 ## Project Configuration
@@ -5744,7 +5744,7 @@ Each agent in your project requires a character definition that controls its per
 
 ```typescript
 {
-  name: "agent_name", // Character's display name
+  name: "agentName", // Character's display name
   plugins: ["@elizaos/plugin-discord"], // Example plugins
   settings: {
     // Configuration settings
@@ -10239,7 +10239,7 @@ const startAgents = async (options: {
     "tsup": "8.4.0",
     "turbo": "^2.4.4",
     "typedoc": "0.27.9",
-    "typescript": "^5.8.2",
+    "typescript": "5.8.2",
     "vite": "5.4.12",
     "vitest": "3.0.5"
   },

@@ -1,6 +1,9 @@
 import AgentAvatarStack from '@/components/agent-avatar-stack';
 import ConnectionStatus from '@/components/connection-status';
-import GroupPanel from '@/components/group-panel';
+// ServerManagement hidden - using single default server
+// import { ServerManagement } from '@/components/server-management';
+// GroupPanel needs to be re-evaluated for central channel creation/editing
+// import GroupPanel from '@/components/group-panel';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -21,14 +24,28 @@ import {
   SidebarMenuSkeleton,
 } from '@/components/ui/sidebar';
 
-import { useAgentsWithDetails, useRooms } from '@/hooks/use-query-hooks';
+import {
+  useAgentsWithDetails,
+  useServers, // New hook
+  useChannels, // New hook
+} from '@/hooks/use-query-hooks';
 import info from '@/lib/info.json';
 import { cn, formatAgentName } from '@/lib/utils';
-import { AgentStatus, type Agent, type Room, type UUID } from '@elizaos/core';
+import {
+  AgentStatus as CoreAgentStatus,
+  type Agent,
+  type UUID,
+  ChannelType as CoreChannelType,
+} from '@elizaos/core';
+import type {
+  MessageChannel as ClientMessageChannel,
+  MessageServer as ClientMessageServer,
+} from '@/types';
 
-import { Book, ChevronDown, Cog, Plus, TerminalIcon } from 'lucide-react';
+import { Book, ChevronDown, Cog, Plus, TerminalIcon, Users } from 'lucide-react'; // Added Users icon for groups
 import { useEffect, useMemo, useState } from 'react';
-import { NavLink, useLocation } from 'react-router';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'; // Added useNavigate
+import clientLogger from '@/lib/logger'; // Added import
 
 /* ---------- helpers ---------- */
 const partition = <T,>(src: T[], pred: (v: T) => boolean): [T[], T[]] => {
@@ -37,12 +54,6 @@ const partition = <T,>(src: T[], pred: (v: T) => boolean): [T[], T[]] => {
   src.forEach((v) => (pred(v) ? pass : fail).push(v));
   return [pass, fail];
 };
-
-const getRoomAgentIds = (
-  roomsData: ReturnType<typeof useRooms>['data'],
-  roomId: string | null
-): UUID[] =>
-  roomId ? ((roomsData?.get(roomId) ?? []).map((r) => r.agentId).filter(Boolean) as UUID[]) : [];
 
 /* ---------- tiny components ---------- */
 const SectionHeader = ({
@@ -139,62 +150,109 @@ const AgentListSection = ({
         key={a?.id}
         agent={a as Agent}
         isOnline={isOnline}
-        active={activePath.includes(String(a?.id))}
+        active={activePath.includes(`/chat/${String(a?.id)}`)}
       />
     ))}
   </SidebarSection>
 );
 
-const RoomListSection = ({
-  rooms,
-  roomsLoading,
-  agents,
-  agentAvatarMap,
+// Updated RoomListSection to GroupChannelListSection
+const GroupChannelListSection = ({
+  servers,
+  isLoadingServers,
+  className = '',
+  onManageServers,
 }: {
-  rooms: Map<string, { agentId: UUID; name: string }[]>;
-  roomsLoading: boolean;
-  agents: Partial<Agent>[];
-  agentAvatarMap: Record<string, string | null>;
-}) => (
-  <SidebarSection title="Groups" className="mt-2">
-    {roomsLoading
-      ? Array.from({ length: 5 }).map((_, i) => (
-        <SidebarMenuItem key={i}>
-          <SidebarMenuSkeleton />
+  servers: ClientMessageServer[] | undefined;
+  isLoadingServers: boolean;
+  className?: string;
+  onManageServers: () => void;
+}) => {
+  const navigate = useNavigate();
+
+  return (
+    <SidebarSection title="Groups" className={className}>
+      <div className="flex justify-end px-2 mb-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => navigate('/group/new')}
+          className="text-xs"
+        >
+          <Plus className="h-3 w-3 mr-1" /> New Group
+        </Button>
+      </div>
+      {isLoadingServers &&
+        Array.from({ length: 3 }).map((_, i) => (
+          <SidebarMenuItem key={`skel-server-${i}`}>
+            <SidebarMenuSkeleton />
+          </SidebarMenuItem>
+        ))}
+      {servers?.map((server) => (
+        <SidebarGroup key={server.id} className="mt-1">
+          {/* Optionally display server name if relevant, or just list all groups flatly */}
+          {/* <div className="px-3 py-1 text-xs text-muted-foreground">{server.name}</div> */}
+          <ChannelsForServer serverId={server.id} navigate={navigate} />
+        </SidebarGroup>
+      ))}
+      {(!servers || servers.length === 0) && !isLoadingServers && (
+        <SidebarMenuItem>
+          <div className="p-4 text-xs text-muted-foreground">No groups found.</div>
         </SidebarMenuItem>
-      ))
-      : Array.from(rooms.entries()).map(([roomId, roomArr]) => {
-        const roomName = roomArr[0]?.name ?? 'Unnamed';
-        const ids = roomArr.map((r) => r.agentId).filter(Boolean) as UUID[];
-        const names = ids.map((id) => agents.find((a) => a.id === id)?.name ?? 'Unknown');
-        return (
-          <SidebarMenuItem key={roomId} className="h-16">
-            <NavLink to={`/room/${roomId}`}>
-              <SidebarMenuButton className="px-4 py-2 my-2 h-full rounded-md">
-                <div className="flex items-center gap-5">
-                  <AgentAvatarStack
-                    agentIds={ids}
-                    agentNames={names}
-                    agentAvatars={agentAvatarMap}
-                    size="md"
-                    showExtraTooltip
-                  />
-                  <div className="flex flex-col gap-1">
-                    <span className="text-base truncate max-w-24 leading-none">{roomName}</span>
-                    <span className="text-xs text-muted-foreground leading-none">
-                      {ids.length} {ids.length === 1 ? 'Member' : 'Members'}
-                    </span>
-                  </div>
+      )}
+    </SidebarSection>
+  );
+};
+
+const ChannelsForServer = ({
+  serverId,
+  navigate,
+}: {
+  serverId: UUID;
+  navigate: ReturnType<typeof useNavigate>;
+}) => {
+  const { data: channelsData, isLoading: isLoadingChannels } = useChannels(serverId);
+  const groupChannels = useMemo(
+    () => channelsData?.data?.channels?.filter((ch) => ch.type === CoreChannelType.GROUP) || [],
+    [channelsData]
+  );
+
+  if (isLoadingChannels) {
+    return (
+      <SidebarMenuItem>
+        <SidebarMenuSkeleton />
+      </SidebarMenuItem>
+    );
+  }
+  if (!groupChannels.length) {
+    return null; // Don't render section if no group channels for this server
+  }
+
+  return (
+    <SidebarGroupContent className="px-1 mt-0">
+      <SidebarMenu>
+        {groupChannels.map((channel) => (
+          <SidebarMenuItem key={channel.id} className="h-12">
+            <NavLink to={`/group/${channel.id}?serverId=${serverId}`}>
+              {' '}
+              {/* Updated route */}
+              <SidebarMenuButton className="px-4 py-2 my-1 h-full rounded-md">
+                <div className="flex items-center gap-3">
+                  <Users className="h-5 w-5 text-muted-foreground" /> {/* Group icon */}
+                  <span className="text-sm truncate max-w-32">
+                    {channel.name || 'Unnamed Group'}
+                  </span>
                 </div>
               </SidebarMenuButton>
             </NavLink>
           </SidebarMenuItem>
-        );
-      })}
-  </SidebarSection>
-);
+        ))}
+      </SidebarMenu>
+    </SidebarGroupContent>
+  );
+};
 
-const CreateButton = ({ onCreateRoom }: { onCreateRoom: () => void }) => {
+const CreateButton = ({ onCreateGroupChannel }: { onCreateGroupChannel: () => void }) => {
   const [animate, setAnimate] = useState(false);
 
   useEffect(() => {
@@ -232,7 +290,10 @@ const CreateButton = ({ onCreateRoom }: { onCreateRoom: () => void }) => {
             <Plus className="h-4 w-4" /> Create Agent
           </NavLink>
         </DropdownMenuItem>
-        <DropdownMenuItem className="flex items-center gap-2 px-4 py-3" onClick={onCreateRoom}>
+        <DropdownMenuItem
+          className="flex items-center gap-2 px-4 py-3"
+          onClick={onCreateGroupChannel}
+        >
           <Plus className="h-4 w-4" /> Create Group
         </DropdownMenuItem>
       </DropdownMenuContent>
@@ -240,152 +301,139 @@ const CreateButton = ({ onCreateRoom }: { onCreateRoom: () => void }) => {
   );
 };
 
+interface AppSidebarProps {
+  refreshHomePage: () => void;
+}
+
 /**
  * Renders the main application sidebar, displaying navigation, agent lists, group rooms, and utility links.
  *
  * The sidebar includes sections for online and offline agents, group rooms, a create button for agents and groups, and footer links to documentation, logs, and settings. It handles loading and error states for agent and room data, and conditionally displays a group creation panel.
  */
-export function AppSidebar({ isMobile = false }: { isMobile?: boolean }) {
+export function AppSidebar({ refreshHomePage, isMobile = false }: AppSidebarProps & { isMobile?: boolean }) {
   const location = useLocation();
+  const navigate = useNavigate();
 
-  const { data: agentsData, error: agentsError } = useAgentsWithDetails();
-  const { data: roomsData, isLoading: roomsLoading } = useRooms();
+  const {
+    data: agentsData,
+    error: agentsError,
+    isLoading: isLoadingAgents,
+  } = useAgentsWithDetails();
+  const { data: serversData, isLoading: isLoadingServers } = useServers();
 
   const agents = useMemo(() => agentsData?.agents || [], [agentsData]);
+  const servers = useMemo(() => serversData?.data?.servers || [], [serversData]);
 
-  const agentAvatarMap = useMemo(
-    () =>
-      agents.reduce(
-        (acc: Record<string, string | null>, a: Agent): Record<string, string | null> => {
-          if (a.id) {
-            acc[a.id] = a.settings?.avatar ?? null;
-          }
-          return acc;
-        },
-        {}
-      ),
+  const [onlineAgents, offlineAgents] = useMemo(
+    () => partition(agents, (a) => a.status === CoreAgentStatus.ACTIVE),
     [agents]
   );
 
-  const roomAgentIds = useMemo(
-    () =>
-      getRoomAgentIds(
-        roomsData,
-        location.pathname.startsWith('/chat/') ? location.pathname.split('/')[2] : null
-      ),
-    [roomsData, location.pathname]
-  );
+  // const [isGroupPanelOpen, setGroupPanelOpen] = useState(false); // GroupPanel logic needs rethink
+  const handleCreateGroupChannel = () => {
+    clientLogger.info('Create Group Channel clicked - needs UI for creating central channel.');
+    navigate('/group/new'); // Example navigation, implement this route
+  };
 
-  const [onlineAgents, offlineAgents] = useMemo(() => {
-    const [on, off] = partition(agents, (a) => a.status === AgentStatus.ACTIVE);
-    if (!roomAgentIds.length) return [on, off];
-    return [
-      // Ensure a.id exists before checking includes
-      on.filter((a) => a.id && roomAgentIds.includes(a.id)),
-      off.filter((a) => a.id && roomAgentIds.includes(a.id)),
-    ];
-  }, [agents, roomAgentIds]);
-
-  const [isGroupPanelOpen, setGroupPanelOpen] = useState(false);
   const agentLoadError = agentsError
     ? 'Error loading agents: NetworkError: Unable to connect to the server. Please check if the server is running.'
     : undefined;
 
-  // Filter roomsData to ensure agentId is defined
-  const filteredRoomsData = useMemo(() => {
-    if (!roomsData) return new Map<string, { agentId: UUID; name: string }[]>();
-
-    const filteredMap = new Map<string, { agentId: UUID; name: string }[]>();
-    roomsData.forEach((roomArray, key) => {
-      const validRooms = roomArray
-        .filter((room): room is Room & { agentId: UUID } => room.agentId !== undefined)
-        .map((room) => ({ agentId: room.agentId, name: room.name ?? 'Unnamed Room' }));
-
-      if (validRooms.length > 0) {
-        filteredMap.set(key, validRooms);
-      }
-    });
-    return filteredMap;
-  }, [roomsData]);
+  const handleLogoClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    clientLogger.info('[AppSidebar] handleLogoClick triggered', { currentPath: location.pathname });
+    if (location.pathname === '/') {
+      clientLogger.info('[AppSidebar] Already on home page. Calling refreshHomePage().');
+      refreshHomePage();
+    } else {
+      clientLogger.info('[AppSidebar] Not on home page. Navigating to "/".');
+      navigate('/');
+    }
+  };
 
   return (
-    <Sidebar
-      className={cn(
-        "bg-background border-r min-h-screen",
-        isMobile ? "p-4 pt-0" : "p-4 w-72",
-        !isMobile && "hidden md:flex md:flex-col"
-      )}
-      collapsible="none"
-    >
-      {/* ---------- header ---------- */}
-      <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton size="lg" asChild>
-              <NavLink to="/" className="px-6 py-2 h-full sidebar-logo">
-                <div className="flex flex-col pt-2 gap-1 items-start justify-center">
-                  <img alt="elizaos-logo" src="/elizaos-logo-light.png" className="w-32 max-w-full" />
-                  <span className="text-xs font-mono text-muted-foreground">v{info.version}</span>
-                </div>
-              </NavLink>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarHeader>
-
-      {/* ---------- content ---------- */}
-      <SidebarContent className="flex-1">
-        {/* create */}
-        <div className="px-4 py-2 mb-2">
-          <CreateButton onCreateRoom={() => setGroupPanelOpen(true)} />
-        </div>
-
-        {isGroupPanelOpen && (
-          <GroupPanel agents={agents} onClose={() => setGroupPanelOpen(false)} />
+    <>
+      <Sidebar
+        className={cn(
+          "bg-background border-r min-h-screen",
+          isMobile ? "p-4 pt-0" : "p-4 w-72",
+          !isMobile && "hidden md:flex md:flex-col"
         )}
+        collapsible="none"
+      >
+        {/* ---------- header ---------- */}
+        <SidebarHeader>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton size="lg" asChild>
+                <a
+                  href="/"
+                  onClick={handleLogoClick}
+                  className="px-6 py-2 h-full sidebar-logo no-underline"
+                >
+                  <div className="flex flex-col pt-2 gap-1 items-start justify-center">
+                    <img alt="elizaos-logo" src="/elizaos-logo-light.png" className="w-32 max-w-full" />
+                    <span className="text-xs font-mono text-muted-foreground">v{info.version}</span>
+                  </div>
+                </a>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarHeader>
 
-        {agentLoadError && <div className="px-4 py-2 text-xs">{agentLoadError}</div>}
+        {/* ---------- content ---------- */}
+        <SidebarContent className="flex-1">
+          {/* create */}
+          <div className="px-4 py-2 mb-2">
+            <CreateButton onCreateGroupChannel={handleCreateGroupChannel} />
+          </div>
 
-        {!agentLoadError && (
-          <AgentListSection
-            title="Online"
-            agents={onlineAgents}
-            isOnline
-            activePath={location.pathname}
-          />
-        )}
+          {isLoadingAgents && !agentLoadError && (
+            <SidebarSection title="Online">
+              <SidebarMenuSkeleton />
+            </SidebarSection>
+          )}
+          {agentLoadError && <div className="px-4 py-2 text-xs text-red-500">{agentLoadError}</div>}
 
-        {!agentLoadError && offlineAgents.length > 0 && (
-          <AgentListSection
-            title="Offline"
-            agents={offlineAgents}
-            isOnline={false}
-            activePath={location.pathname}
+          {!isLoadingAgents && !agentLoadError && (
+            <AgentListSection
+              title="Online"
+              agents={onlineAgents}
+              isOnline
+              activePath={location.pathname}
+            />
+          )}
+          {!isLoadingAgents && !agentLoadError && offlineAgents.length > 0 && (
+            <AgentListSection
+              title="Offline"
+              agents={offlineAgents}
+              isOnline={false}
+              activePath={location.pathname}
+              className="mt-2"
+            />
+          )}
+
+          <GroupChannelListSection
+            servers={servers}
+            isLoadingServers={isLoadingServers}
             className="mt-2"
+            onManageServers={() => {}} // Server management hidden
           />
-        )}
+        </SidebarContent>
 
-        {/* room section */}
-        {roomsData && !agentLoadError && (
-          <RoomListSection
-            rooms={filteredRoomsData}
-            roomsLoading={roomsLoading}
-            agents={agents}
-            agentAvatarMap={agentAvatarMap}
-          />
-        )}
-      </SidebarContent>
+        {/* ---------- footer ---------- */}
+        <SidebarFooter className="px-4 py-4">
+          <SidebarMenu>
+            <FooterLink to="https://eliza.how/" Icon={Book} label="Documentation" />
+            <FooterLink to="/logs" Icon={TerminalIcon} label="Logs" />
+            <FooterLink to="/settings" Icon={Cog} label="Settings" />
+            <ConnectionStatus />
+          </SidebarMenu>
+        </SidebarFooter>
+      </Sidebar>
 
-      {/* ---------- footer ---------- */}
-      <SidebarFooter className="px-4 py-4">
-        <SidebarMenu>
-          <FooterLink to="https://eliza.how/" Icon={Book} label="Documentation" />
-          <FooterLink to="/logs" Icon={TerminalIcon} label="Logs" />
-          <FooterLink to="/settings" Icon={Cog} label="Settings" />
-          <ConnectionStatus />
-        </SidebarMenu>
-      </SidebarFooter>
-    </Sidebar>
+      {/* Server management hidden - using single default server */}
+    </>
   );
 }
 

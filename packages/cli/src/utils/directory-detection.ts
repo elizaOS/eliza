@@ -109,12 +109,7 @@ export function detectDirectoryType(dir: string): DirectoryInfo {
  * Checks if a package.json indicates an ElizaOS plugin
  */
 function isElizaOSPlugin(packageJson: PackageJson): boolean {
-  // Check eliza.type field (primary detection method)
-  if (packageJson.eliza?.type === 'plugin') {
-    return true;
-  }
-
-  // Check keywords (legacy detection method)
+  // Check keywords (primary detection method)
   const keywords = packageJson.keywords || [];
   if (keywords.includes('plugin')) {
     return true;
@@ -132,12 +127,7 @@ function isElizaOSPlugin(packageJson: PackageJson): boolean {
  * Checks if a package.json and directory structure indicates an ElizaOS project
  */
 function isElizaOSProject(packageJson: PackageJson, dir: string): boolean {
-  // Check eliza.type field (primary detection method)
-  if (packageJson.eliza?.type === 'project') {
-    return true;
-  }
-
-  // Check keywords (legacy detection method)
+  // Check keywords (primary detection method)
   const keywords = packageJson.keywords || [];
   if (keywords.includes('project')) {
     return true;

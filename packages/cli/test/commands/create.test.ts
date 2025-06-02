@@ -14,6 +14,8 @@ const {
   mockEnsureElizaDir,
   mockHandleError,
   mockPromptAndStorePostgresUrl,
+  mockPromptAndStoreOpenAIKey,
+  mockPromptAndStoreAnthropicKey,
   mockRunBunCommand,
   mockSetupPgLite,
   mockResolveEnvFile,
@@ -99,6 +101,8 @@ const {
     mockEnsureElizaDir: vi.fn(),
     mockHandleError: vi.fn(),
     mockPromptAndStorePostgresUrl: vi.fn(),
+    mockPromptAndStoreOpenAIKey: vi.fn(),
+    mockPromptAndStoreAnthropicKey: vi.fn(),
     mockRunBunCommand: vi.fn(),
     mockSetupPgLite: vi.fn(),
     mockResolveEnvFile: vi.fn(),
@@ -129,6 +133,8 @@ vi.mock('@/src/utils', () => ({
   ensureElizaDir: mockEnsureElizaDir,
   handleError: mockHandleError,
   promptAndStorePostgresUrl: mockPromptAndStorePostgresUrl,
+  promptAndStoreOpenAIKey: mockPromptAndStoreOpenAIKey,
+  promptAndStoreAnthropicKey: mockPromptAndStoreAnthropicKey,
   runBunCommand: mockRunBunCommand,
   setupPgLite: mockSetupPgLite,
   resolveEnvFile: mockResolveEnvFile, // This is the problematic one
@@ -191,9 +197,12 @@ describe('create command', () => {
     mockLogger.warn.mockReset();
     mockLogger.error.mockReset();
     mockLogger.success.mockReset();
-    mockPrompts
-      .mockReset()
-      .mockResolvedValue({ type: 'project', nameResponse: 'myproject', database: 'pglite' });
+    mockPrompts.mockReset().mockResolvedValue({
+      type: 'project',
+      nameResponse: 'myproject',
+      database: 'pglite',
+      aiModel: 'local',
+    });
     mockBuildProject.mockReset().mockResolvedValue(undefined);
     mockCopyTemplate.mockReset().mockResolvedValue(undefined);
     mockDisplayBanner.mockReset().mockResolvedValue(undefined);
@@ -210,6 +219,8 @@ describe('create command', () => {
     });
 
     mockPromptAndStorePostgresUrl.mockReset().mockResolvedValue('postgresql://localhost/test');
+    mockPromptAndStoreOpenAIKey.mockReset().mockResolvedValue('mock-openai-key');
+    mockPromptAndStoreAnthropicKey.mockReset().mockResolvedValue('mock-anthropic-key');
     mockRunBunCommand.mockReset().mockResolvedValue({ success: true, stdout: '', stderr: '' });
     mockSetupPgLite.mockReset().mockResolvedValue(undefined);
     mockResolveEnvFile.mockReset().mockReturnValue(join(tempDir, '.env'));
@@ -260,7 +271,11 @@ describe('create command', () => {
       // Ensure the directory for the project is actually created before copyTemplate is called
       // (This would be part of createProjectDirectory in the SUT)
       // For the test, we assume createProjectDirectory works if copyTemplate is called with the right path.
-      expect(mockCopyTemplate).toHaveBeenCalledWith('project', expectedProjectPath, projectName);
+      expect(mockCopyTemplate).toHaveBeenCalledWith(
+        'project-starter',
+        expectedProjectPath,
+        projectName
+      );
       expect(mockSetupPgLite).toHaveBeenCalled();
       expect(mockRunBunCommand).toHaveBeenCalledWith(
         ['install', '--no-optional'],
@@ -274,7 +289,8 @@ describe('create command', () => {
       mockPrompts
         .mockResolvedValueOnce({ type: 'project' }) // For type selection
         .mockResolvedValueOnce({ nameResponse: 'myproject' }) // For name
-        .mockResolvedValueOnce({ database: 'pglite' }); // For database
+        .mockResolvedValueOnce({ database: 'pglite' }) // For database
+        .mockResolvedValueOnce({ aiModel: 'local' }); // For AI model
       const actionFn = getActionFn();
 
       await actionFn(undefined, { dir: '.', yes: false, type: '' }); // Pass type as empty to trigger prompt
@@ -285,7 +301,8 @@ describe('create command', () => {
     it('should prompt for project name when not provided', async () => {
       mockPrompts
         .mockResolvedValueOnce({ nameResponse: 'myproject' }) // For name
-        .mockResolvedValueOnce({ database: 'pglite' }); // For database
+        .mockResolvedValueOnce({ database: 'pglite' }) // For database
+        .mockResolvedValueOnce({ aiModel: 'local' }); // For AI model
       const actionFn = getActionFn();
       // Pass type explicitly to only test name prompt
       await actionFn(undefined, { dir: '.', yes: false, type: 'project' });
@@ -338,27 +355,70 @@ describe('create command', () => {
       await mkdir(projectPath, { recursive: true }); // Exists but empty
 
       // Ensure default prompt for database is covered if yes:true
-      mockPrompts.mockResolvedValue({ database: 'pglite' });
+      mockPrompts.mockResolvedValue({ database: 'pglite', aiModel: 'local' });
 
       await actionFn(projectName, { dir: '.', yes: true, type: 'project' });
-      expect(mockCopyTemplate).toHaveBeenCalledWith('project', projectPath, projectName);
+      expect(mockCopyTemplate).toHaveBeenCalledWith('project-starter', projectPath, projectName);
       // Check if directory was actually created by SUT (it should be if it didn't exist)
       // Here, it exists and is empty, so copyTemplate should proceed.
     });
 
     it('should setup postgres database when selected via prompts', async () => {
       mockPrompts.mockReset();
-      // If name=undefined, type='project', yes=false. Prompts: 1. Name, 2. Database
+      // If name=undefined, type='project', yes=false. Prompts: 1. Name, 2. Database, 3. AI Model
       mockPrompts
         .mockResolvedValueOnce({ nameResponse: 'myproject' }) // For name
-        .mockResolvedValueOnce({ database: 'postgres' }); // For database
+        .mockResolvedValueOnce({ database: 'postgres' }) // For database
+        .mockResolvedValueOnce({ aiModel: 'local' }); // For AI model
       const actionFn = getActionFn();
 
       await actionFn(undefined, { dir: '.', yes: false, type: 'project' });
 
-      expect(mockPrompts).toHaveBeenCalledTimes(2);
+      expect(mockPrompts).toHaveBeenCalledTimes(3);
       expect(mockPromptAndStorePostgresUrl).toHaveBeenCalled();
       expect(mockSetupPgLite).not.toHaveBeenCalled();
+    });
+
+    it('should setup pglite database when selected via prompts', async () => {
+      mockPrompts.mockReset();
+      mockPrompts
+        .mockResolvedValueOnce({ nameResponse: 'myproject' }) // For name
+        .mockResolvedValueOnce({ database: 'pglite' }) // For database
+        .mockResolvedValueOnce({ aiModel: 'local' }); // For AI model
+      const actionFn = getActionFn();
+
+      await actionFn(undefined, { dir: '.', yes: false, type: 'project' });
+
+      expect(mockPrompts).toHaveBeenCalledTimes(3);
+      expect(mockSetupPgLite).toHaveBeenCalled();
+      expect(mockPromptAndStorePostgresUrl).not.toHaveBeenCalled();
+    });
+
+    it('should create project with proper database configuration options', async () => {
+      const actionFn = getActionFn();
+
+      mockPrompts
+        .mockResolvedValueOnce({ nameResponse: 'dbproject' })
+        .mockResolvedValueOnce({ database: 'pglite' })
+        .mockResolvedValueOnce({ aiModel: 'local' });
+
+      await actionFn(undefined, { dir: '.', yes: false, type: 'project' });
+
+      // Verify database prompt has proper choices
+      const databasePromptCall = mockPrompts.mock.calls.find((call) => call[0].name === 'database');
+      expect(databasePromptCall).toBeDefined();
+      expect(databasePromptCall[0].choices).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            title: expect.stringContaining('Pglite'),
+            value: 'pglite',
+          }),
+          expect.objectContaining({
+            title: expect.stringContaining('PostgreSQL'),
+            value: 'postgres',
+          }),
+        ])
+      );
     });
   });
 
@@ -453,9 +513,10 @@ describe('create command', () => {
       expect(realExistsSync(expectedFilePath)).toBe(true);
       const fileContent = await readFile(expectedFilePath, 'utf8');
       const agentData = JSON.parse(fileContent);
-      expect(agentData.name).toBe(agentName); // This should pass if SUT uses agentName
-      // TODO: Fix SUT - currently outputs 'myagent' in examples regardless of input
-      expect(agentData.messageExamples[0][0].name).toBe('myagent'); // Adjusted to current SUT behavior
+      expect(agentData.name).toBe(agentName);
+      // TODO: Fix SUT - messageExamples are not correctly updated with the new character name
+      // The test currently expects 'myagent' which appears to be a bug in the implementation
+      expect(agentData.messageExamples[0][0].name).toBe('myagent');
     });
 
     it('should handle .json extension in agent name (writes myagent.json)', async () => {
@@ -469,8 +530,8 @@ describe('create command', () => {
       expect(realExistsSync(expectedFilePath)).toBe(true);
       const fileContent = await readFile(expectedFilePath, 'utf8');
       const agentData = JSON.parse(fileContent);
-      // TODO: Fix SUT - currently name in content is 'myagent.json'
-      expect(agentData.name).toBe('myagent.json'); // Adjusted to current SUT behavior
+      // The SUT keeps the .json extension in the name
+      expect(agentData.name).toBe(agentNameWithExt);
     });
   });
 
@@ -517,11 +578,14 @@ describe('create command', () => {
       const projectPath = resolvePath(tempDir, projectName);
       // ensure it doesn't exist initially by not creating it with mkdir
 
+      // Add aiModel to the mock prompts
+      mockPrompts.mockResolvedValue({ database: 'pglite', aiModel: 'local' });
+
       await actionFn(projectName, { dir: '.', yes: true, type: 'project' });
       // The SUT (createProjectDirectory) is responsible for mkdir.
       // We verify by checking if copyTemplate was called with the correct path,
       // implying the directory was ready.
-      expect(mockCopyTemplate).toHaveBeenCalledWith('project', projectPath, projectName);
+      expect(mockCopyTemplate).toHaveBeenCalledWith('project-starter', projectPath, projectName);
       // Optionally, we can also check if the directory now exists if we want to be super sure,
       // but this tests an internal implementation detail of createProjectDirectory.
       // expect(realExistsSync(projectPath)).toBe(true);
@@ -564,7 +628,7 @@ describe('create command', () => {
 
       expect(mockPrompts).not.toHaveBeenCalled();
       expect(mockCopyTemplate).toHaveBeenCalledWith(
-        'project',
+        'project-starter',
         join(tempDir, 'myproject'),
         'myproject'
       );

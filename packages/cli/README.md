@@ -32,10 +32,11 @@ Initialize a new project, plugin, or agent.
   - `-d, --dir <dir>`: Installation directory (default: `.`)
   - `-y, --yes`: Skip confirmation and use defaults (default: `false`)
   - `-t, --type <type>`: Type to create: 'project', 'plugin', or 'agent' (default: 'project')
+  - `--tee`: create a TEE starter project (default: `false`)
 
 **Important notes:**
 
-- Projects include a knowledge directory and a prompt for database selection (pglite or postgres)
+- Projects include a knowledge directory and a prompt for database selection (sqlite or postgres)
 - Plugins are automatically prefixed with "plugin-" if the prefix is missing
 - Agents are created as JSON character definition files in the current directory
 
@@ -118,6 +119,10 @@ Manage an ElizaOS plugin.
   - `installed-plugins`: List plugins found in the project dependencies
   - `remove <plugin>` (alias: `delete`): Remove a plugin from the project
     - Arguments: `<plugin>` (plugin name)
+  - `upgrade <path>`: Upgrade a plugin from v0.x to v1.x using AI
+    - Arguments: `<path>` (GitHub URL or local path)
+    - Options: `--api-key <key>`, `--skip-tests`, `--skip-validation`
+    - See [Plugin Upgrade Documentation](./docs/PLUGIN_UPGRADE.md) for details
 
 ### Agent Management
 

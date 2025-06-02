@@ -17,8 +17,8 @@ NC='\033[0m' # No Color
 # Default settings
 PERFORM_SQUASH=true
 PERFORM_SLIM=true
-SQUASHED_BRANCH="v2-squashed"
-SLIM_BRANCH="v2-slim"
+SQUASHED_BRANCH="develop-squashed"
+SLIM_BRANCH="develop-slim"
 DEBUG=false
 
 # Parse command line arguments
