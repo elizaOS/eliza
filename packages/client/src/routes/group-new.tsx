@@ -2,14 +2,14 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 // import { CreateGroupDialog } from '@/components/create-group-dialog'; // To be removed
 import GroupPanel from '@/components/group-panel'; // Import GroupPanel
-import { useAgentsWithDetails, useServers } from '@/hooks/use-query-hooks'; // Added useAgentsWithDetails
+// import { useAgentsWithDetails, useServers } from '@/hooks/use-query-hooks'; // No longer needed if GroupPanel fetches its own agents
 import type { UUID } from '@elizaos/core';
 
 export default function GroupNew() {
   const navigate = useNavigate();
   // const [open, setOpen] = useState(true); // GroupPanel typically manages its own visibility or is used as a page component
-  const { data: serversData } = useServers();
-  const { data: agentsData, isLoading: isLoadingAgents } = useAgentsWithDetails(); // Fetch agents
+  // const { data: serversData } = useServers();
+  // const { data: agentsData, isLoading: isLoadingAgents } = useAgentsWithDetails(); // GroupPanel fetches its own agents
   // const [selectedServerId, setSelectedServerId] = useState<UUID | null>(null); // GroupPanel will use DEFAULT_SERVER_ID
 
   // useEffect(() => {
@@ -34,15 +34,6 @@ export default function GroupNew() {
   //     </div>
   //   );
   // }
-  if (isLoadingAgents) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <p>Loading agent data...</p>
-      </div>
-    );
-  }
-
-  const agents = agentsData?.agents || [];
 
   return (
     // <CreateGroupDialog open={open} onOpenChange={handleOpenChange} serverId={selectedServerId} />
@@ -50,7 +41,7 @@ export default function GroupNew() {
     // GroupPanel will handle its own logic for fetching serverId (default) or if it were to be passed.
     <div className="pt-4 md:pt-8">
       <GroupPanel
-        agents={agents}
+        // agents={agents} // Removed prop
         onClose={() => navigate(-1)} // Navigate back on close
       // channelId is undefined, so it's in "create" mode
       />

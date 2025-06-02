@@ -167,14 +167,14 @@ const GroupChannelListSection = ({
 
   return (
     <SidebarSection title="Groups" className={className}>
-      <div className="flex justify-end px-2 mb-1">
+      <div className="flex justify-end px-2 mb-1 absolute right-0 top-0">
         <Button
           variant="ghost"
           size="sm"
           onClick={() => navigate('/group/new')}
           className="text-xs"
         >
-          <Plus className="h-3 w-3 mr-1" /> New Group
+          <Plus className="h-3 w-3 mr-1" /> +p
         </Button>
       </div>
       {isLoadingServers &&

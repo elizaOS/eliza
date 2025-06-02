@@ -47,6 +47,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import relativeTime from 'dayjs/plugin/relativeTime';
+import { useNavigate } from 'react-router-dom';
 moment.extend(relativeTime);
 
 const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
@@ -182,6 +183,7 @@ export function MessageContent({
 }
 
 export default function chat({ chatType, contextId, serverId }: UnifiedChatViewProps) {
+  const navigate = useNavigate();
   const [showSidebar, setShowSidebar] = useState(false);
   const [input, setInput] = useState('');
   const [inputDisabled, setInputDisabled] = useState<boolean>(false);
@@ -192,6 +194,12 @@ export default function chat({ chatType, contextId, serverId }: UnifiedChatViewP
   const [agentDmChannels, setAgentDmChannels] = useState<{ id: UUID, name: string, createdAt?: number, lastActivity?: number }[]>([]);
   const [currentDmChannelIdForAgent, setCurrentDmChannelIdForAgent] = useState<UUID | null>(null);
   const [isLoadingAgentDmChannels, setIsLoadingAgentDmChannels] = useState(false);
+
+  // State for Requirement #1: Multiple GROUP Channels (Simulated)
+  const [relatedGroupChannels, setRelatedGroupChannels] = useState<{ id: UUID, name: string, createdAt?: number, lastActivity?: number }[]>([]);
+  // currentGroupChannelId is effectively `contextId` when chatType is 'GROUP'
+  const [isLoadingRelatedGroupChannels, setIsLoadingRelatedGroupChannels] = useState(false);
+  const [isCreatingNewGroupChannel, setIsCreatingNewGroupChannel] = useState(false);
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -350,6 +358,32 @@ export default function chat({ chatType, contextId, serverId }: UnifiedChatViewP
     }
   }, [chatType, targetAgentData?.id]);
 
+  // Req #1: Effect to fetch/simulate related GROUP channels
+  useEffect(() => {
+    if (chatType === 'GROUP' && contextId) { // contextId is the current group channel ID
+      setIsLoadingRelatedGroupChannels(true);
+      clientLogger.info(`[Chat] Fetching/simulating related channels for group ${contextId}`);
+
+      // ** API Placeholder: Replace with actual API to fetch related group channels **
+      // Based on contextId, find other channels with same participant hash or parent ID
+      const simulateApiCall = setTimeout(() => {
+        const fetchedChannels = [
+          { id: contextId, name: channelDetailsData?.data?.name || 'Current Group Chat', createdAt: Date.now() - 100000, lastActivity: Date.now() }, // Current one
+          { id: randomUUID() as UUID, name: 'Group Chat Archive - Q1', createdAt: Date.now() - 9600000, lastActivity: Date.now() - 500000 },
+          { id: randomUUID() as UUID, name: 'Follow-up: Project Phoenix', createdAt: Date.now() - 8200000, lastActivity: Date.now() - 600000 },
+        ].sort((a, b) => (b.lastActivity || 0) - (a.lastActivity || 0));
+
+        setRelatedGroupChannels(fetchedChannels.filter(c => c.id !== contextId)); // Exclude current from "other" list for dropdown
+
+        setIsLoadingRelatedGroupChannels(false);
+      }, 600); // Simulate delay, slightly different from DM one
+
+      return () => clearTimeout(simulateApiCall);
+    } else {
+      setRelatedGroupChannels([]);
+    }
+  }, [chatType, contextId, channelDetailsData?.data?.name]);
+
   const finalChannelIdForHooks: UUID | undefined = useMemo(() => {
     return chatType === 'DM'
       ? (currentDmChannelIdForAgent || undefined)
@@ -497,6 +531,51 @@ export default function chat({ chatType, contextId, serverId }: UnifiedChatViewP
   };
   // END RESTORED HANDLERS //
 
+  // Req #1: Handler functions for GROUP channels
+  const handleSelectGroupChannel = (channelIdToSelect: UUID) => {
+    clientLogger.info(`[Chat] Group Channel selected for navigation: ${channelIdToSelect}`);
+    navigate(`/group/${channelIdToSelect}?serverId=${serverId}`);
+  };
+
+  const handleNewRelatedGroupChannel = async () => {
+    if (chatType !== 'GROUP' || !contextId) return;
+    clientLogger.info(`[Chat] Creating new related group channel for current group context ${contextId}`);
+    // Needs: current participant list to create a new channel with same/similar participants.
+    // This is a complex bit without backend support for cloning/relating groups.
+    // For simulation, we'll just create a random new group ID and navigate to it.
+
+    setIsCreatingNewGroupChannel(true);
+    try {
+      // ** API Placeholder: Replace with actual API call to create a new related group channel **
+      // Example: const newChannelData = await apiClient.createRelatedGroupChannel({ basedOnChannelId: contextId, name: "New Planning Session" });
+      await new Promise(resolve => setTimeout(resolve, 500)); // Simulate API delay
+      const newSimulatedChannelId = randomUUID() as UUID;
+
+      toast({ title: 'New Group Chat (Simulated)', description: `Would navigate to new group chat ${newSimulatedChannelId}` });
+      // In a real scenario, after creation, you'd get the new channel ID and navigate:
+      // navigate(`/group/${newSimulatedChannelId}?serverId=${serverId}`);
+      // For now, we can add to relatedGroupChannels if we want to simulate it in the dropdown, then select it.
+      // Or simply indicate that navigation would occur.
+      const newChannelPlaceholder = {
+        id: newSimulatedChannelId,
+        name: `New Session - ${moment().format('HH:mm')}`,
+        createdAt: Date.now(),
+        lastActivity: Date.now()
+      };
+      setRelatedGroupChannels(prev => [newChannelPlaceholder, ...prev].sort((a, b) => (b.lastActivity || 0) - (a.lastActivity || 0)));
+      // To make it immediately active (if not navigating away):
+      // This is tricky if we rely on contextId from URL. For true multi-channel with same participants,
+      // the `contextId` itself would need to change, meaning navigation is the cleaner way.
+      clientLogger.info('[Chat] Simulated creation. In real app, navigate to new group channel.');
+
+    } catch (error) {
+      clientLogger.error('[Chat] Error creating new related group channel:', error);
+      toast({ title: 'Error', description: 'Could not create new group chat session.', variant: 'destructive' });
+    } finally {
+      setIsCreatingNewGroupChannel(false);
+    }
+  };
+
   if (chatType === 'DM' && (isLoadingAgent || (!targetAgentData && contextId) || isLoadingAgentDmChannels)) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -599,37 +678,50 @@ export default function chat({ chatType, contextId, serverId }: UnifiedChatViewP
         </div>
       );
     } else if (chatType === 'GROUP') {
-      // Get agents in this group from participants
-      const groupAgents =
-        participants
-          ?.filter((p) => allAgents.some((a) => a.id === p))
-          .map((pId) => allAgents.find((a) => a.id === pId))
-          .filter(Boolean) as Partial<Agent>[] || [];
+      const groupAgents = participants?.filter(p => allAgents.some(a => a.id === p)).map(pId => allAgents.find(a => a.id === pId)).filter(Boolean) as Partial<Agent>[] || [];
+      const groupDisplayName = generateGroupName(channelDetailsData?.data || undefined, groupAgents, currentClientEntityId);
 
-      const groupDisplayName = generateGroupName(
-        channelDetailsData?.data || undefined,
-        groupAgents,
-        currentClientEntityId
-      );
+      const currentActualGroupChannelName = channelDetailsData?.data?.name || groupDisplayName;
 
       return (
         <div className="flex flex-col gap-3 mb-4">
           <div className="flex items-center justify-between p-3 bg-card rounded-lg border">
             <div className="flex items-center gap-3">
-              <h2 className="font-semibold text-lg" title={groupDisplayName}>
-                {groupDisplayName}
-              </h2>
+              <h2 className="font-semibold text-lg" title={groupDisplayName}>{groupDisplayName}</h2>
             </div>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => setShowGroupEditPanel(true)}>
-                Edit Group
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleClearChat}
-                disabled={!messages || messages.length === 0}
-              >
+            <div className="flex gap-2 items-center">
+              {(relatedGroupChannels.length > 0 || chatType === 'GROUP') && (
+                <div className="flex items-center gap-1">
+                  {relatedGroupChannels.length > 0 && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="sm">
+                          <MessageSquarePlus className="size-4 mr-2" />
+                          Other Sessions ({relatedGroupChannels.length})
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuLabel>Related Chat Sessions</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        {relatedGroupChannels.map((channel) => (
+                          <DropdownMenuItem
+                            key={channel.id}
+                            onClick={() => handleSelectGroupChannel(channel.id)}
+                          >
+                            {channel.name} ({moment(channel.lastActivity || channel.createdAt).fromNow()})
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                  <Button variant="outline" size="sm" onClick={handleNewRelatedGroupChannel} disabled={isCreatingNewGroupChannel || isLoadingRelatedGroupChannels}>
+                    {isCreatingNewGroupChannel ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Plus className="size-4 mr-2" />}
+                    New Session
+                  </Button>
+                </div>
+              )}
+              <Button variant="outline" size="sm" onClick={() => setShowGroupEditPanel(true)}>Edit Group</Button>
+              <Button variant="outline" size="sm" onClick={handleClearChat} disabled={!messages || messages.length === 0}>
                 <Trash2 className="size-4" />
               </Button>
             </div>
@@ -778,7 +870,6 @@ export default function chat({ chatType, contextId, serverId }: UnifiedChatViewP
 
       {showGroupEditPanel && chatType === 'GROUP' && (
         <GroupPanel
-          agents={allAgents}
           onClose={() => setShowGroupEditPanel(false)}
           channelId={contextId}
         />

@@ -3,9 +3,9 @@ import { GROUP_CHAT_SOURCE } from '@/constants';
 import { useAgentsWithDetails, useChannels, useServers } from '@/hooks/use-query-hooks';
 import { apiClient } from '@/lib/api';
 import { type Agent, AgentStatus, type UUID } from '@elizaos/core';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { Loader2, Trash, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router';
 import MultiSelectCombobox from './combobox';
 import { Button } from './ui/button';
@@ -19,11 +19,10 @@ const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID; // Sin
 interface Option {
   icon: string;
   label: string;
-  id?: string; // We'll add this to track agent IDs
+  id: string; // Make id mandatory for Option as agent.id is UUID (string)
 }
 
-interface GroupPanel {
-  agents: Partial<Agent>[] | undefined;
+interface GroupPanelProps {
   onClose: () => void;
   channelId?: UUID;
 }
@@ -34,62 +33,122 @@ interface GroupPanel {
  * If a {@link channelId} is provided, the panel loads the existing channel's details for editing; otherwise, it initializes for channel creation. Users can invite agents, update the channel name, create a new channel, update an existing channel, or delete a channel. Upon successful operations, the component navigates to the relevant channel, closes the panel, and refreshes the channel list.
  *
  * @param onClose - Callback invoked to close the panel.
- * @param agents - List of available agents to invite to the group chat.
  * @param channelId - Optional ID of the channel to edit.
  */
-export default function GroupPanel({ onClose, agents, channelId }: GroupPanel) {
+export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   const [chatName, setChatName] = useState('');
   const [selectedAgents, setSelectedAgents] = useState<Partial<Agent>[]>([]);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [serverId, setServerId] = useState<UUID>(DEFAULT_SERVER_ID);
+  const [isLoadingParticipants, setIsLoadingParticipants] = useState(false);
 
   const { data: channelsData, refetch: refetchChannels } = useChannels(serverId || undefined, { enabled: !!serverId && !!channelId });
   const { data: agentsData } = useAgentsWithDetails();
+  const allAvailableAgents = useMemo(() => agentsData?.agents || [], [agentsData]);
 
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  useEffect(() => {
-    if (channelId && channelsData?.data?.channels) {
-      const channel = channelsData.data.channels.find((ch) => ch.id === channelId);
-      if (channel) {
-        setChatName(channel.name || '');
+  // Fetch participants for the channel if in edit mode
+  const { data: channelParticipantsData, isLoading: isLoadingChannelParticipants } = useQuery({
+    queryKey: ['channelParticipants', channelId, serverId],
+    queryFn: async () => {
+      if (!channelId || !serverId) return { data: { participants: [] } };
+      console.log(`[GroupPanel] Simulating fetch for participants of channel: ${channelId}`);
+      await new Promise(resolve => setTimeout(resolve, 300));
 
-        // Pre-select agents that are already in the channel - TODO: Requires channel participant data
-        // if (channel.participants && agentsData?.agents) { // channel.participants does not exist on type
-        //   const currentChannelParticipants = agentsData.agents.filter(agent => 
-        //     (channel.participants as any[]).some(p => p === agent.id || p.id === agent.id)
-        //   );
-        //   setSelectedAgents(currentChannelParticipants);
-        // } else {
-        setSelectedAgents([]); // Default to empty for now
-        // }
+      // Improved simulation: If editing, and agents exist, simulate some are participants.
+      if (allAvailableAgents.length > 0) {
+        const simulatedParticipantIds = allAvailableAgents.slice(0, Math.min(2, allAvailableAgents.length)).map(a => a.id as UUID);
+        console.log('[GroupPanel] Simulated participant IDs for edit mode:', simulatedParticipantIds);
+        return { data: { participants: simulatedParticipantIds } };
       }
-    } else if (!channelId) {
-      // Reset form for create mode
+      return { data: { participants: [] } }; // Default to no participants
+    },
+    enabled: !!channelId && !!serverId && allAvailableAgents.length > 0, // Enable only if editing and agents are available to pick from
+  });
+
+  // Log for chatName and button disabled state
+  useEffect(() => {
+    console.log('[GroupPanel] chatName:', chatName, 'Trimmed length:', chatName.trim().length);
+    const buttonDisabled = !chatName.trim().length || !serverId || deleting || creating;
+    console.log('[GroupPanel] Create/Update button disabled state:', buttonDisabled,
+      {
+        chatNameEmpty: !chatName.trim().length,
+        serverIdMissing: !serverId,
+        isDeleting: deleting,
+        isCreating: creating
+      }
+    );
+  }, [chatName, serverId, deleting, creating]);
+
+  // Initialize for create mode, or load for edit mode
+  useEffect(() => {
+    console.log("[GroupPanel] Edit/Create Effect Triggered. channelId:", channelId);
+    if (channelId) {
+      // Edit mode
+      if (channelsData?.data?.channels) {
+        const channel = channelsData.data.channels.find((ch) => ch.id === channelId);
+        if (channel) {
+          console.log("[GroupPanel] Edit mode: Setting chat name to:", channel.name || '');
+          setChatName(channel.name || '');
+        } else {
+          console.log("[GroupPanel] Edit mode: Channel not found, resetting form.");
+          setChatName(''); // Channel for editing not found, reset
+          setSelectedAgents([]);
+          // toast({ title: "Error", description: "Group details not found for editing.", variant: "destructive" });
+        }
+      }
+      // Populate selectedAgents once participants are fetched and allAvailableAgents are loaded
+      // This check is crucial: only proceed if all data dependencies for this logic are met.
+      if (channelParticipantsData?.data?.participants && allAvailableAgents.length > 0) {
+        const participantIds = channelParticipantsData.data.participants as UUID[];
+        console.log("[GroupPanel] Edit mode: Fetched participant IDs:", participantIds);
+        const currentChannelParticipants = allAvailableAgents.filter(agent =>
+          participantIds.includes(agent.id as UUID)
+        );
+        setSelectedAgents(currentChannelParticipants);
+        console.log('[GroupPanel] Edit mode: Populated selectedAgents from fetched participants:', currentChannelParticipants);
+      } else {
+        // If participant data isn't ready yet, or no participants, ensure selectedAgents is empty
+        // This prevents stale selections if channelId changes and participant data isn't immediately available.
+        // However, if channelParticipantsData is loading, we should wait, not clear.
+        if (!isLoadingChannelParticipants) {
+          console.log("[GroupPanel] Edit mode: No participant data or no allAvailableAgents, clearing selectedAgents.");
+          setSelectedAgents([]);
+        }
+      }
+    } else {
+      // Create mode
+      console.log("[GroupPanel] Create mode: Resetting form.");
       setChatName('');
       setSelectedAgents([]);
     }
-  }, [channelId, channelsData, agentsData]);
+  }, [channelId, channelsData, channelParticipantsData, allAvailableAgents, isLoadingChannelParticipants]);
+  // Added isLoadingChannelParticipants to dependencies
 
-  // Create the options for the combobox from all available agents
+  // Log selected agents for Issue A
+  useEffect(() => {
+    console.log('[GroupPanel] selectedAgents updated:', selectedAgents);
+  }, [selectedAgents]);
+
   const getComboboxOptions = (): Option[] => {
     return (
-      agentsData?.agents // Use agentsData (all agents) instead of props.agents
+      allAvailableAgents
         ?.filter((agent) => agent.status === AgentStatus.ACTIVE && agent.name && agent.id)
         .map((agent) => ({
           icon: agent.settings?.avatar || '',
           label: agent.name || 'Unknown Agent',
-          id: agent.id as string, // Ensure id is string for Option type
+          id: agent.id as string,
         })) || []
     );
   };
 
-  // Get initial selected options for the combobox when editing
   const getInitialSelectedOptions = (): Option[] => {
-    if (!channelId) return [];
+    if (!channelId || selectedAgents.length === 0) return [];
+    console.log('[GroupPanel] getInitialSelectedOptions called, selectedAgents:', selectedAgents);
     return selectedAgents.map(agent => ({
       icon: agent.settings?.avatar || '',
       label: agent.name || 'Unknown Agent',
@@ -125,7 +184,9 @@ export default function GroupPanel({ onClose, agents, channelId }: GroupPanel) {
                 value={chatName}
                 onChange={(e) => setChatName(e.target.value)}
                 className="w-full"
-                placeholder="Enter chat name"
+                placeholder="Enter group name (e.g., Project Alpha Team)"
+                disabled={creating || deleting}
+                aria-disabled={creating || deleting}
               />
             </div>
 
@@ -135,14 +196,11 @@ export default function GroupPanel({ onClose, agents, channelId }: GroupPanel) {
               </label>
               <MultiSelectCombobox
                 options={getComboboxOptions()}
-                onSelect={(selected) => {
-                  if (agents) {
-                    // Convert selected options back to Agent objects by matching on ID
-                    const selectedAgentObjects = agents.filter((agent) =>
-                      selected.some((option) => option.id === agent.id)
-                    );
-                    setSelectedAgents(selectedAgentObjects);
-                  }
+                onSelect={(selectedOptions) => {
+                  const newSelectedAgentObjects = allAvailableAgents.filter(agent =>
+                    selectedOptions.some(option => option.id === agent.id)
+                  );
+                  setSelectedAgents(newSelectedAgentObjects);
                 }}
                 className="w-full"
                 initialSelected={getInitialSelectedOptions()}
@@ -195,14 +253,17 @@ export default function GroupPanel({ onClose, agents, channelId }: GroupPanel) {
             variant="default"
             className={channelId ? '' : 'w-full'}
             onClick={async () => {
-              if (!chatName || !chatName.length || !serverId) {
+              if (!chatName.trim().length || !serverId) { // Added trim here too for safety
+                toast({ title: "Validation Error", description: "Chat name cannot be empty.", variant: "destructive" });
                 return;
               }
               setCreating(true);
+              // Log participantIds for Issue A
+              const participantIds = selectedAgents.map((agent) => agent.id as UUID);
+              console.log('[GroupPanel] Attempting to create/update group with participant IDs:', participantIds);
               try {
                 if (!channelId) {
                   // Create new channel
-                  const participantIds = selectedAgents.map((agent) => agent.id as UUID);
                   const response = await apiClient.createCentralGroupChat({
                     name: chatName,
                     participantCentralUserIds: participantIds,
@@ -219,7 +280,6 @@ export default function GroupPanel({ onClose, agents, channelId }: GroupPanel) {
                   }
                 } else {
                   // Update existing channel
-                  const participantIds = selectedAgents.map((agent) => agent.id as UUID);
                   // TODO: Implement apiClient.updateCentralGroupChat(channelId, { ... });
                   // await apiClient.updateCentralGroupChat(channelId, {
                   //   name: chatName,
@@ -250,3 +310,4 @@ export default function GroupPanel({ onClose, agents, channelId }: GroupPanel) {
     </div>
   );
 }
+
