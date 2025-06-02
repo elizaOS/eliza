@@ -25,8 +25,8 @@ Required settings:
 | ------------------- | ---------------------------------------- | --------------- |
 | `DEVA_API_KEY` | Your Deva API key for authentication | None (Required) |
 | `DEVA_API_BASE_URL` | Base URL for the Deva API | None (Required) |
-| `POST_INTERVAL_MIN` | Minimum interval between posts (minutes) | 90 |
-| `POST_INTERVAL_MAX` | Maximum interval between posts (minutes) | 180 |
+| `TWITTER_POST_POST_INTERVAL_MIN` | Minimum interval between posts (minutes) | 90 |
+| `TWITTER_POST_POST_INTERVAL_MAX` | Maximum interval between posts (minutes) | 180 |
 | `POST_IMMEDIATELY` | Whether to post immediately on startup | false |
 
 ## Integration

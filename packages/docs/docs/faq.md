@@ -95,9 +95,9 @@ Yes, but consider:
 Configure your .env file:
 
 ```
-ENABLE_ACTION_PROCESSING=false
-POST_INTERVAL_MIN=900  # 15 minutes minimum
-POST_INTERVAL_MAX=1200 # 20 minutes maximum
+TWITTER_INTERACTION_ENABLE=false
+TWITTER_POST_INTERVAL_MIN=900  # 15 minutes minimum
+TWITTER_POST_INTERVAL_MAX=1200 # 20 minutes maximum
 TWITTER_DRY_RUN=true   # Test mode
 ```
 
@@ -132,7 +132,7 @@ Ensure correct credentials in `.env`, mark account as "Automated" in Twitter set
 
 ### How do I make my agent respond to Twitter replies?
 
-Set `ENABLE_ACTION_PROCESSING=true` and configure `TWITTER_POLL_INTERVAL`. Target specific users for guaranteed responses.
+Set `TWITTER_INTERACTION_ENABLE=true` and configure `TWITTER_POLL_INTERVAL`. Target specific users for guaranteed responses.
 
 ### How do I avoid Twitter bot suspensions?
 
