@@ -270,7 +270,7 @@ const CreateButton = ({ onCreateGroupChannel }: { onCreateGroupChannel: () => vo
         <Button
           variant="default"
           className={cn(
-            'w-full justify-between items-center relative bg-primary text-primary-foreground',
+            'w-full justify-between items-center relative bg-primary text-primary-foreground overflow-hidden',
             animate && 'animate-bounce-sm',
             'hover:shadow-md hover:scale-[1.02] transition-all duration-300 group'
           )}
@@ -310,7 +310,7 @@ interface AppSidebarProps {
  *
  * The sidebar includes sections for online and offline agents, group rooms, a create button for agents and groups, and footer links to documentation, logs, and settings. It handles loading and error states for agent and room data, and conditionally displays a group creation panel.
  */
-export function AppSidebar({ refreshHomePage }: AppSidebarProps) {
+export function AppSidebar({ refreshHomePage, isMobile = false }: AppSidebarProps & { isMobile?: boolean }) {
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -353,7 +353,14 @@ export function AppSidebar({ refreshHomePage }: AppSidebarProps) {
 
   return (
     <>
-      <Sidebar className="bg-background">
+      <Sidebar
+        className={cn(
+          "bg-background border-r min-h-screen",
+          isMobile ? "p-4 pt-0" : "p-4 w-72",
+          !isMobile && "hidden md:flex md:flex-col"
+        )}
+        collapsible="none"
+      >
         {/* ---------- header ---------- */}
         <SidebarHeader>
           <SidebarMenu>
@@ -365,7 +372,7 @@ export function AppSidebar({ refreshHomePage }: AppSidebarProps) {
                   className="px-6 py-2 h-full sidebar-logo no-underline"
                 >
                   <div className="flex flex-col pt-2 gap-1 items-start justify-center">
-                    <img alt="elizaos-logo" src="/elizaos-logo-light.png" width="90%" />
+                    <img alt="elizaos-logo" src="/elizaos-logo-light.png" className="w-32 max-w-full" />
                     <span className="text-xs font-mono text-muted-foreground">v{info.version}</span>
                   </div>
                 </a>
@@ -375,7 +382,7 @@ export function AppSidebar({ refreshHomePage }: AppSidebarProps) {
         </SidebarHeader>
 
         {/* ---------- content ---------- */}
-        <SidebarContent>
+        <SidebarContent className="flex-1">
           {/* create */}
           <div className="px-4 py-2 mb-2">
             <CreateButton onCreateGroupChannel={handleCreateGroupChannel} />

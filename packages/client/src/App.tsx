@@ -22,6 +22,9 @@ import Home from './routes/home';
 import NotFound from './routes/not-found';
 import GroupChannel from './routes/group';
 import Settings from './routes/settings';
+import { Menu } from 'lucide-react';
+import { Sheet, SheetContent, SheetTrigger } from './components/ui/sheet';
+import { Button } from './components/ui/button';
 import CreateGroupPage from './routes/group-new';
 import clientLogger from '@/lib/logger';
 
@@ -71,6 +74,7 @@ prefetchInitialData();
 function AppContent() {
   useVersion();
   const { status } = useConnection();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [homeKey, setHomeKey] = useState(Date.now());
   const queryClient = useQueryClient();
 
@@ -95,7 +99,21 @@ function AppContent() {
       <SidebarProvider>
         <AppSidebar refreshHomePage={refreshHomePage} />
         <SidebarInset>
-          <div className="flex w-full justify-center">
+          {/* Mobile menu button */}
+          <div className="md:hidden absolute top-4 left-4 z-50">
+            <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon">
+                  <Menu className="h-5 w-5" />
+                  <span className="sr-only">Toggle menu</span>
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-80 p-0 z-50">
+                <AppSidebar isMobile={true} />
+              </SheetContent>
+            </Sheet>
+          </div>
+          <div className="flex w-full justify-center pt-16 md:pt-0">
             <div className="w-full md:max-w-4xl">
               <ConnectionErrorBanner />
             </div>
