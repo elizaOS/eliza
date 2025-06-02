@@ -14,5 +14,3 @@ export const messageServerTable = pgTable('message_servers', {
     .default(sql`CURRENT_TIMESTAMP`)
     .notNull(),
 });
-
-// Relations will be added after creating the other tables
