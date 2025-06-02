@@ -31,6 +31,7 @@
     "@types/pg": "8.11.10",
     "drizzle-kit": "^0.30.4",
     "drizzle-orm": "^0.39.1",
+    "pg": "^8.16.0",
     "postgres": "^3.4.7"
   },
   "devDependencies": {

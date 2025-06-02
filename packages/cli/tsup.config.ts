@@ -31,12 +31,24 @@ const require = createRequire(import.meta.url);
   },
   esbuildPlugins: [
     copy({
-      assets: {
-        from: [
-          path.resolve(__dirname, '../../node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs'),
-        ],
-        to: [path.resolve(__dirname, 'dist')],
-      },
+      // Recommended to resolve assets relative to the tsup.config.ts file directory
+      resolveFrom: 'cwd',
+      assets: [
+        {
+          from: './node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs',
+          to: './dist',
+        },
+        {
+          from: './node_modules/@electric-sql/pglite/dist/pglite.data',
+          to: './dist',
+        },
+        {
+          from: './node_modules/@electric-sql/pglite/dist/pglite.wasm',
+          to: './dist',
+        },
+      ],
+      // Setting this to true will output a list of copied files
+      verbose: true,
     }),
   ],
 });
