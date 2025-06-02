@@ -58,23 +58,25 @@ elizaos plugins upgrade ./my-plugin --skip-tests --skip-validation
 - Creates new test files
 - Updates dependencies and configuration
 
-### 4. Test Loop (if not skipped)
+### 4. Build & Test Loop (if not skipped)
 
+- Runs `npm/bun build` to ensure code compiles
 - Runs `elizaos test` to validate the migration
-- If tests fail, re-engages Claude Code with error context
-- Continues up to 5 iterations until tests pass
+- If build or tests fail, re-engages Claude Code with error context
+- Continues up to 5 iterations until both build and tests pass
 
 ### 5. Production Validation (if not skipped)
 
-- Sends all changed files to Claude for review
+- Sends all changed files to Claude Opus 4 for review
 - Evaluates against production readiness criteria
 - If not ready, applies revision instructions and re-tests
 - Continues up to 3 revision iterations
 
-### 6. Branch Creation
+### 6. Branch Creation & Copy
 
 - Creates or updates a `1.x-claude` branch
-- Pushes the branch to origin
+- Pushes the branch to origin (if permissions allow)
+- Copies the upgraded plugin to your current working directory
 - Ready for manual review and PR creation
 
 ## Requirements
@@ -213,16 +215,46 @@ The plugin upgrade system includes multiple safety measures to ensure reliable a
 
 ### 7. **Validation Loops**
 
+- ✅ Build validation (ensures code compiles)
 - ✅ Test validation loop (max 5 iterations)
 - ✅ Production readiness validation (max 3 revisions)
-- ✅ AI-powered code review
-- ✅ Comprehensive test execution
+- ✅ AI-powered code review with Claude Opus 4
+- ✅ Comprehensive build and test execution
 
 ## Architecture Diagram
 
 The plugin upgrade system follows this flow:
 
-[See the Mermaid diagram in the conversation above for the complete flow chart]
+```mermaid
+flowchart TD
+    A[Start: elizaos plugins upgrade] --> B{Input Type?}
+    B -->|GitHub URL| C[Clone Repository]
+    B -->|Local Path| D[Use Local Repository]
+
+    C --> E[Repository Analysis]
+    D --> E
+
+    E --> F[Generate Migration Strategy<br/>with Claude Opus 4]
+    F --> G[Create CLAUDE.md Instructions]
+    G --> H[Run Claude Code Migration]
+
+    H --> I{Build & Test Loop}
+    I -->|Build/Tests Fail| J[Re-run Claude Code<br/>with Error Context]
+    J --> I
+    I -->|Success| K{Production Validation}
+
+    K -->|Not Ready| L[Apply Revision Instructions]
+    L --> I
+    K -->|Ready| M[Create/Push Branch]
+
+    M --> N[Copy to Current Directory]
+    N --> O[Success: Plugin Upgraded!]
+
+    %% Error paths
+    H -->|Timeout/Error| P[Cleanup & Exit]
+    I -->|Max Iterations| P
+    K -->|Max Revisions| P
+```
 
 ## Remaining Tasks & Future Improvements
 

@@ -5,7 +5,7 @@ import {
   TestRunner,
   buildProject,
   promptForEnvVars,
-  resolvePgliteDir,
+  resolveSqliteDir,
   UserEnvironment,
 } from '@/src/utils';
 import { detectDirectoryType, type DirectoryInfo } from '@/src/utils/directory-detection';
@@ -161,7 +161,7 @@ const runE2eTests = async (
 
     // Set up standard paths and load .env
     const elizaDir = path.join(process.cwd(), '.eliza');
-    const elizaDbDir = await resolvePgliteDir();
+    const elizaDbDir = await resolveSqliteDir();
     const envInfo = await UserEnvironment.getInstanceInfo();
     const envFilePath = envInfo.paths.envFilePath;
 
@@ -178,7 +178,7 @@ const runE2eTests = async (
     }
 
     // Set the database directory in environment variables
-    process.env.PGLITE_DATA_DIR = elizaDbDir;
+    process.env.SQLITE_DATA_DIR = elizaDbDir;
     console.info(`Using database directory: ${elizaDbDir}`);
 
     // Load environment variables from project .env if it exists
@@ -193,7 +193,7 @@ const runE2eTests = async (
     // Always ensure database configuration is set
     try {
       console.info('Configuring database...');
-      await promptForEnvVars('pglite');
+      await promptForEnvVars('sqlite');
       console.info('Database configuration completed');
     } catch (error) {
       console.error('Error configuring database:', error);

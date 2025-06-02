@@ -1,44 +1,42 @@
-import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
-import { ResizablePanel, ResizablePanelGroup, ResizableHandle } from '@/components/ui/resizable';
 import AgentDetailsPanel from '@/components/AgentDetailsPanel';
+import CopyButton from '@/components/copy-button';
+import DeleteButton from '@/components/delete-button';
+import MediaContent from '@/components/media-content';
+import { Avatar, AvatarImage } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { ChatBubbleMessage, ChatBubbleTimestamp } from '@/components/ui/chat/chat-bubble';
+import ChatTtsButton from '@/components/ui/chat/chat-tts-button';
+import { useAutoScroll } from '@/components/ui/chat/hooks/useAutoScroll';
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { CHAT_SOURCE, GROUP_CHAT_SOURCE, USER_NAME } from '@/constants';
+import { useFileUpload } from '@/hooks/use-file-upload';
 import {
     useAgent,
     useAgentsWithDetails,
     useChannelDetails,
-    useChannelParticipants,
     useChannelMessages,
-    useDeleteChannelMessage,
+    useChannelParticipants,
     useClearChannelMessages,
+    useDeleteChannelMessage,
     type UiMessage
 } from '@/hooks/use-query-hooks';
-import { Loader2, PanelRightClose, PanelRight, Send, Paperclip, FileText, X, Trash2, Play, ChevronRight } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { ContentType as CoreContentType, AgentStatus } from '@elizaos/core';
-import type { UUID, Agent, Media } from '@elizaos/core';
-import type { AgentWithStatus } from '@/types';
-import clientLogger from '@/lib/logger';
-import { ChatBubbleMessage, ChatBubbleTimestamp } from '@/components/ui/chat/chat-bubble';
-import { Avatar, AvatarImage } from '@/components/ui/avatar';
-import { useToast } from '@/hooks/use-toast';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { getEntityId, randomUUID, moment, cn } from '@/lib/utils';
-import { apiClient } from '@/lib/api';
-import { parseMediaFromText, removeMediaUrlsFromText, type MediaInfo } from '@/lib/media-utils';
-import { useAutoScroll } from '@/components/ui/chat/hooks/useAutoScroll';
-import { validateUuid } from '@elizaos/core';
-import { USER_NAME, CHAT_SOURCE, GROUP_CHAT_SOURCE } from '@/constants';
-import AIWriter from 'react-aiwriter';
-import { Badge } from '@/components/ui/badge';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
-import ChatTtsButton from '@/components/ui/chat/chat-tts-button';
-import CopyButton from '@/components/copy-button';
-import DeleteButton from '@/components/delete-button';
-import MediaContent from '@/components/media-content';
-import { useQueryClient } from '@tanstack/react-query';
 import { useSocketChat } from '@/hooks/use-socket-chat';
-import { useFileUpload, type UploadingFile } from '@/hooks/use-file-upload';
-import { ChatMessageListComponent } from './ChatMessageListComponent';
+import { useToast } from '@/hooks/use-toast';
+import clientLogger from '@/lib/logger';
+import { parseMediaFromText, removeMediaUrlsFromText, type MediaInfo } from '@/lib/media-utils';
+import { cn, getEntityId, moment, randomUUID } from '@/lib/utils';
+import type { Agent, Media, UUID } from '@elizaos/core';
+import { AgentStatus, ContentType as CoreContentType, validateUuid } from '@elizaos/core';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
+import { useQueryClient } from '@tanstack/react-query';
+import { ChevronRight, Loader2, PanelRight, PanelRightClose, Trash2 } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import AIWriter from 'react-aiwriter';
 import { ChatInputArea } from './ChatInputArea';
+import { ChatMessageListComponent } from './ChatMessageListComponent';
+import GroupPanel from './group-panel';
 
 const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
 
@@ -175,6 +173,8 @@ export default function UnifiedChatView({ chatType, contextId, serverId }: Unifi
     const [showSidebar, setShowSidebar] = useState(false);
     const [input, setInput] = useState('');
     const [inputDisabled, setInputDisabled] = useState<boolean>(false);
+    const [selectedGroupAgentId, setSelectedGroupAgentId] = useState<UUID | null>(null);
+    const [showGroupEditPanel, setShowGroupEditPanel] = useState(false);
     const { toast } = useToast();
     const queryClient = useQueryClient();
 
@@ -234,6 +234,13 @@ export default function UnifiedChatView({ chatType, contextId, serverId }: Unifi
     const [dmChannelData, setDmChannelData] = useState<{ channelId: UUID; serverId: UUID } | null>(null);
     const [isCreatingDM, setIsCreatingDM] = useState(false);
 
+    // Reset DM channel data when switching agents
+    useEffect(() => {
+        if (chatType === 'DM') {
+            setDmChannelData(null);
+        }
+    }, [contextId, chatType]);
+
     useEffect(() => {
         if (chatType === 'DM' && contextId && !dmChannelData && !isCreatingDM) {
             setIsCreatingDM(true);
@@ -281,6 +288,18 @@ export default function UnifiedChatView({ chatType, contextId, serverId }: Unifi
         }
     }, [scrollToBottom, scrollRef]);
 
+    // Scroll to bottom when switching chats/groups
+    useEffect(() => {
+        if (finalChannelId) {
+            // Reset message count when switching channels
+            prevMessageCountRef.current = 0;
+            // Scroll to bottom after a short delay to ensure messages are loaded
+            setTimeout(() => {
+                safeScrollToBottom();
+            }, 100);
+        }
+    }, [finalChannelId, safeScrollToBottom]);
+
     // Use socket chat hook
     const { sendMessage, animatedMessageId } = useSocketChat({
         channelId: finalChannelId,
@@ -289,8 +308,20 @@ export default function UnifiedChatView({ chatType, contextId, serverId }: Unifi
         chatType,
         allAgents,
         messages,
-        onAddMessage: addMessage,
-        onUpdateMessage: updateMessage,
+        onAddMessage: (message: UiMessage) => {
+            addMessage(message);
+            // Scroll to bottom when agent sends a message
+            if (message.isAgent) {
+                safeScrollToBottom();
+            }
+        },
+        onUpdateMessage: (messageId: string, updates: Partial<UiMessage>) => {
+            updateMessage(messageId, updates);
+            // Scroll to bottom when message is updated (sent successfully)
+            if (!updates.isLoading && updates.isLoading !== undefined) {
+                safeScrollToBottom();
+            }
+        },
         onInputDisabledChange: setInputDisabled,
     });
 
@@ -547,21 +578,65 @@ export default function UnifiedChatView({ chatType, contextId, serverId }: Unifi
                 </div>
             );
         } else if (chatType === 'GROUP') {
+            // Get agents in this group from participants
+            const groupAgents = participants?.filter(p =>
+                allAgents.some(a => a.id === p)
+            ).map(pId => allAgents.find(a => a.id === pId)).filter(Boolean) || [];
+
             return (
-                <div className="flex items-center justify-between mb-4 p-3 bg-card rounded-lg border">
-                    <div className="flex items-center gap-3">
-                        <h2 className="font-semibold text-lg">{channelDetailsData?.data?.name || 'Group Chat'}</h2>
+                <div className="flex flex-col gap-3 mb-4">
+                    <div className="flex items-center justify-between p-3 bg-card rounded-lg border">
+                        <div className="flex items-center gap-3">
+                            <h2 className="font-semibold text-lg">{channelDetailsData?.data?.name || 'Group Chat'}</h2>
+                        </div>
+                        <div className="flex gap-2">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setShowGroupEditPanel(true)}
+                            >
+                                Edit Group
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleClearChat}
+                                disabled={!messages || messages.length === 0}
+                            >
+                                <Trash2 className="size-4" />
+                            </Button>
+                        </div>
                     </div>
-                    <div className="flex gap-2">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={handleClearChat}
-                            disabled={!messages || messages.length === 0}
-                        >
-                            <Trash2 className="size-4" />
-                        </Button>
-                    </div>
+
+                    {groupAgents.length > 0 && (
+                        <div className="flex items-center gap-2 p-2 bg-card rounded-lg border overflow-x-auto">
+                            <span className="text-sm text-muted-foreground whitespace-nowrap">Agents:</span>
+                            <div className="flex gap-2">
+                                <Button
+                                    variant={!selectedGroupAgentId ? "default" : "ghost"}
+                                    size="sm"
+                                    onClick={() => setSelectedGroupAgentId(null)}
+                                    className="flex items-center gap-2"
+                                >
+                                    <span>All</span>
+                                </Button>
+                                {groupAgents.map((agent) => (
+                                    <Button
+                                        key={agent?.id}
+                                        variant={selectedGroupAgentId === agent?.id ? "default" : "ghost"}
+                                        size="sm"
+                                        onClick={() => setSelectedGroupAgentId(agent?.id || null)}
+                                        className="flex items-center gap-2"
+                                    >
+                                        <Avatar className="size-5">
+                                            <AvatarImage src={agent?.settings?.avatar || '/elizaos-icon.png'} />
+                                        </Avatar>
+                                        <span>{agent?.name}</span>
+                                    </Button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
             );
         }
@@ -569,82 +644,115 @@ export default function UnifiedChatView({ chatType, contextId, serverId }: Unifi
     };
 
     return (
-        <ResizablePanelGroup direction="horizontal" className="h-full">
-            <ResizablePanel defaultSize={showSidebar ? 70 : 100} minSize={50}>
-                <div className="relative h-full">
-                    {/* Sidebar toggle button */}
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="absolute top-4 right-4 z-10"
-                        onClick={() => setShowSidebar(!showSidebar)}
-                    >
-                        {showSidebar ? <PanelRightClose className="h-4 w-4" /> : <PanelRight className="h-4 w-4" />}
-                    </Button>
+        <>
+            <ResizablePanelGroup direction="horizontal" className="h-full">
+                <ResizablePanel defaultSize={showSidebar ? 70 : 100} minSize={50}>
+                    <div className="relative h-full">
+                        {/* Sidebar toggle button */}
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="absolute top-4 right-4 z-10"
+                            onClick={() => setShowSidebar(!showSidebar)}
+                        >
+                            {showSidebar ? <PanelRightClose className="h-4 w-4" /> : <PanelRight className="h-4 w-4" />}
+                        </Button>
 
-                    {/* Main chat content */}
-                    <div className="h-full flex flex-col p-4">
-                        {renderChatHeader()}
+                        {/* Main chat content */}
+                        <div className="h-full flex flex-col p-4">
+                            {renderChatHeader()}
 
-                        <div className={cn('flex flex-col transition-all duration-300 w-full grow overflow-hidden ')}>
-                            <ChatMessageListComponent
-                                messages={messages}
-                                isLoadingMessages={isLoadingMessages}
-                                chatType={chatType}
-                                currentClientEntityId={currentClientEntityId}
-                                targetAgentData={targetAgentData}
-                                animatedMessageId={animatedMessageId}
-                                scrollRef={scrollRef}
-                                isAtBottom={isAtBottom}
-                                scrollToBottom={scrollToBottom}
-                                disableAutoScroll={disableAutoScroll}
-                                finalChannelId={finalChannelId}
-                                getAgentInMessage={getAgentInMessage}
-                                agentAvatarMap={agentAvatarMap}
-                                onDeleteMessage={handleDeleteMessage}
-                            />
+                            <div className={cn('flex flex-col transition-all duration-300 w-full grow overflow-hidden ')}>
+                                <ChatMessageListComponent
+                                    messages={messages}
+                                    isLoadingMessages={isLoadingMessages}
+                                    chatType={chatType}
+                                    currentClientEntityId={currentClientEntityId}
+                                    targetAgentData={targetAgentData}
+                                    animatedMessageId={animatedMessageId}
+                                    scrollRef={scrollRef}
+                                    isAtBottom={isAtBottom}
+                                    scrollToBottom={scrollToBottom}
+                                    disableAutoScroll={disableAutoScroll}
+                                    finalChannelId={finalChannelId}
+                                    getAgentInMessage={getAgentInMessage}
+                                    agentAvatarMap={agentAvatarMap}
+                                    onDeleteMessage={handleDeleteMessage}
+                                    selectedGroupAgentId={selectedGroupAgentId}
+                                />
 
-                            <ChatInputArea
-                                input={input}
-                                setInput={setInput}
-                                inputDisabled={inputDisabled}
-                                selectedFiles={selectedFiles}
-                                removeFile={removeFile}
-                                handleFileChange={handleFileChange}
-                                handleSendMessage={handleSendMessage}
-                                handleKeyDown={handleKeyDown}
-                                chatType={chatType}
-                                targetAgentData={targetAgentData}
-                                formRef={formRef}
-                                inputRef={inputRef}
-                                fileInputRef={fileInputRef}
-                            />
+                                <ChatInputArea
+                                    input={input}
+                                    setInput={setInput}
+                                    inputDisabled={inputDisabled}
+                                    selectedFiles={selectedFiles}
+                                    removeFile={removeFile}
+                                    handleFileChange={handleFileChange}
+                                    handleSendMessage={handleSendMessage}
+                                    handleKeyDown={handleKeyDown}
+                                    chatType={chatType}
+                                    targetAgentData={targetAgentData}
+                                    formRef={formRef}
+                                    inputRef={inputRef}
+                                    fileInputRef={fileInputRef}
+                                />
+                            </div>
                         </div>
                     </div>
-                </div>
-            </ResizablePanel>
+                </ResizablePanel>
 
-            {showSidebar && (
-                <>
-                    <ResizableHandle withHandle />
-                    <ResizablePanel defaultSize={30} minSize={20} maxSize={50}>
-                        {chatType === 'DM' && targetAgentData ? (
-                            <AgentDetailsPanel agent={targetAgentData} />
-                        ) : chatType === 'GROUP' ? (
-                            <div className="p-4">
-                                <h3 className="font-semibold mb-2">Group Details</h3>
-                                <p className="text-sm text-muted-foreground">
-                                    Group details panel coming soon...
-                                </p>
-                            </div>
-                        ) : (
-                            <div className="p-4">
-                                <p className="text-sm text-muted-foreground">No details available</p>
-                            </div>
-                        )}
-                    </ResizablePanel>
-                </>
+                {showSidebar && (
+                    <>
+                        <ResizableHandle withHandle />
+                        <ResizablePanel defaultSize={30} minSize={20} maxSize={50}>
+                            {chatType === 'DM' && targetAgentData ? (
+                                <AgentDetailsPanel agent={targetAgentData} />
+                            ) : chatType === 'GROUP' ? (
+                                <div className="p-4">
+                                    <h3 className="font-semibold mb-2">Group Details</h3>
+                                    <p className="text-sm text-muted-foreground mb-4">
+                                        Channel ID: {contextId}
+                                    </p>
+                                    {participants && participants.length > 0 && (
+                                        <div>
+                                            <h4 className="font-medium mb-2">Participants ({participants.length})</h4>
+                                            <div className="space-y-2">
+                                                {participants.map(pId => {
+                                                    const agent = allAgents.find(a => a.id === pId);
+                                                    return agent ? (
+                                                        <div key={pId} className="flex items-center gap-2">
+                                                            <Avatar className="size-6">
+                                                                <AvatarImage src={agent.settings?.avatar || '/elizaos-icon.png'} />
+                                                            </Avatar>
+                                                            <span className="text-sm">{agent.name}</span>
+                                                        </div>
+                                                    ) : (
+                                                        <div key={pId} className="text-sm text-muted-foreground">
+                                                            Unknown participant: {pId}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="p-4">
+                                    <p className="text-sm text-muted-foreground">No details available</p>
+                                </div>
+                            )}
+                        </ResizablePanel>
+                    </>
+                )}
+            </ResizablePanelGroup>
+
+            {showGroupEditPanel && chatType === 'GROUP' && (
+                <GroupPanel
+                    agents={allAgents}
+                    onClose={() => setShowGroupEditPanel(false)}
+                    channelId={contextId}
+                />
             )}
-        </ResizablePanelGroup>
+        </>
     );
 } 

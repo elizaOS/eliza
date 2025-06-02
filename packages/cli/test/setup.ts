@@ -71,7 +71,7 @@ vi.mock('../src/utils/user-environment', () => ({
       paths: {
         elizaDir: '/mock/.eliza',
         envFilePath: '/mock/.env',
-        pgliteDbDir: '/mock/.elizadb',
+        sqliteDbDir: '/mock/.elizadb',
         pluginsDir: '/mock/.eliza/plugins',
         configPath: '/mock/.eliza/config.json',
         packageJsonPath: '/mock/package.json',
@@ -84,7 +84,7 @@ vi.mock('../src/utils/user-environment', () => ({
 vi.mock('../src/utils/resolve-utils', () => ({
   expandTildePath: vi.fn((p) => p),
   resolveEnvFile: vi.fn().mockReturnValue('/mock/globalDefault.env'), // Consistent global default
-  resolvePgliteDir: vi.fn().mockResolvedValue('/mock/.globalDefault-elizadb'),
+  resolveSqliteDir: vi.fn().mockResolvedValue('/mock/.globalDefault-elizadb'),
 }));
 
 // Mock for prompts, often used in commands
@@ -96,7 +96,7 @@ vi.mock('prompts', () => ({
     promptedToken: 'defaultMockToken',
     type: 'project', // default for create command
     nameResponse: 'defaultMockProject', // default for create command
-    database: 'pglite', // default for create command
+    database: 'sqlite', // default for create command
     postgresUrl: 'postgresql://mock:mock@localhost:5432/mockdb', // for get-config
     // Add other common prompt result keys here as they are identified
   }),

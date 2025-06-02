@@ -1,76 +1,82 @@
 import type { MessageExample } from '@elizaos/core';
 import { sql } from 'drizzle-orm';
-import { boolean, jsonb, pgTable, text, unique, uuid } from 'drizzle-orm/pg-core';
+import { getSchemaFactory } from './factory';
 import { numberTimestamp } from './types';
+import { unique as pgUnique } from 'drizzle-orm/pg-core';
+import { uniqueIndex as sqliteUniqueIndex } from 'drizzle-orm/sqlite-core';
 
-/**
- * Represents a table for storing agent data.
- *
- * @type {Table}
- */
-export const agentTable = pgTable(
+const factory = getSchemaFactory();
+
+export const agentTable = (factory.table as any)(
   'agents',
   {
-    id: uuid('id').primaryKey().defaultRandom(),
-    enabled: boolean('enabled').default(true).notNull(),
-    createdAt: numberTimestamp('createdAt')
-      .default(sql`now()`)
-      .notNull(),
-
-    updatedAt: numberTimestamp('updatedAt')
-      .default(sql`now()`)
-      .notNull(),
-
-    // Character
-    name: text('name').notNull(),
-    username: text('username'),
-    system: text('system').default(''),
-    bio: jsonb('bio')
+    id: factory
+      .uuid('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    enabled: factory.boolean('enabled').default(true).notNull(),
+    createdAt: numberTimestamp('createdAt').default(factory.defaultTimestamp()).notNull(),
+    updatedAt: numberTimestamp('updatedAt').default(factory.defaultTimestamp()).notNull(),
+    name: factory.text('name').notNull(),
+    username: factory.text('username'),
+    system: factory.text('system').default(''),
+    bio: factory
+      .json('bio')
       .$type<string | string[]>()
-      .default(sql`'[]'::jsonb`),
-    messageExamples: jsonb('message_examples')
+      .default(sql`'[]'`),
+    messageExamples: factory
+      .json('message_examples')
       .$type<MessageExample[][]>()
-      .default(sql`'[]'::jsonb`)
+      .default(sql`'[]'`)
       .notNull(),
-    postExamples: jsonb('post_examples')
+    postExamples: factory
+      .json('post_examples')
       .$type<string[]>()
-      .default(sql`'[]'::jsonb`)
+      .default(sql`'[]'`)
       .notNull(),
-    topics: jsonb('topics')
+    topics: factory
+      .json('topics')
       .$type<string[]>()
-      .default(sql`'[]'::jsonb`)
+      .default(sql`'[]'`)
       .notNull(),
-    adjectives: jsonb('adjectives')
+    adjectives: factory
+      .json('adjectives')
       .$type<string[]>()
-      .default(sql`'[]'::jsonb`)
+      .default(sql`'[]'`)
       .notNull(),
-    knowledge: jsonb('knowledge')
+    knowledge: factory
+      .json('knowledge')
       .$type<(string | { path: string; shared?: boolean })[]>()
-      .default(sql`'[]'::jsonb`)
+      .default(sql`'[]'`)
       .notNull(),
-    plugins: jsonb('plugins')
+    plugins: factory
+      .json('plugins')
       .$type<string[]>()
-      .default(sql`'[]'::jsonb`)
+      .default(sql`'[]'`)
       .notNull(),
-    settings: jsonb('settings')
+    settings: factory
+      .json('settings')
       .$type<{
         secrets?: { [key: string]: string | boolean | number };
         [key: string]: unknown;
       }>()
-      .default(sql`'{}'::jsonb`)
+      .default(sql`'{}'`)
       .notNull(),
-    style: jsonb('style')
+    style: factory
+      .json('style')
       .$type<{
         all?: string[];
         chat?: string[];
         post?: string[];
       }>()
-      .default(sql`'{}'::jsonb`)
+      .default(sql`'{}'`)
       .notNull(),
   },
   (table) => {
-    return {
-      nameUnique: unique('name_unique').on(table.name),
-    };
+    if (factory.dbType === 'postgres') {
+      return { nameUnique: pgUnique('name_unique').on(table.name) };
+    } else {
+      return { nameUniqueSqlite: sqliteUniqueIndex('sqlite_agent_name_unique_idx').on(table.name) };
+    }
   }
 );

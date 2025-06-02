@@ -60,7 +60,7 @@ export function resolveEnvFile(startDir: string = process.cwd(), boundaryDir?: s
  *
  * Resolution order:
  * 1. The `dir` argument if provided.
- * 2. The `PGLITE_DATA_DIR` environment variable.
+ * 2. The `SQLITE_DATA_DIR` environment variable.
  * 3. The `fallbackDir` argument if provided.
  * 4. `./.elizadb` relative to the current working directory.
  *
@@ -68,7 +68,7 @@ export function resolveEnvFile(startDir: string = process.cwd(), boundaryDir?: s
  * @param fallbackDir - Optional fallback directory when env var is not set.
  * @returns The resolved data directory with any tilde expanded.
  */
-export async function resolvePgliteDir(dir?: string, fallbackDir?: string): Promise<string> {
+export async function resolveSqliteDir(dir?: string, fallbackDir?: string): Promise<string> {
   const userEnv = UserEnvironment.getInstance();
   const pathsInfo = await userEnv.getPathInfo();
   const projectRoot = pathsInfo.monorepoRoot || process.cwd(); // Base directory should be monorepo root or cwd
@@ -79,11 +79,11 @@ export async function resolvePgliteDir(dir?: string, fallbackDir?: string): Prom
   }
 
   // The fallbackDir passed from getElizaDirectories will be monorepoRoot + '.elizadb' or similar.
-  // If fallbackDir is not provided (e.g. direct call to resolvePgliteDir),
+  // If fallbackDir is not provided (e.g. direct call to resolveSqliteDir),
   // then we construct the default path using projectRoot.
   const defaultBaseDir = path.join(projectRoot, '.elizadb');
 
-  const base = dir ?? process.env.PGLITE_DATA_DIR ?? fallbackDir ?? defaultBaseDir;
+  const base = dir ?? process.env.SQLITE_DATA_DIR ?? fallbackDir ?? defaultBaseDir;
 
   // Pass projectRoot for tilde expansion, assuming ~ means project root.
   return expandTildePath(base, projectRoot);

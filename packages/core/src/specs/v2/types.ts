@@ -1,5 +1,5 @@
 import { type Pool as PgPool } from 'pg';
-import { PGlite } from '@electric-sql/pglite';
+import Database from 'better-sqlite3';
 
 // Don't import Service from core, define our own v2 Service
 
@@ -824,7 +824,7 @@ export interface IDatabaseAdapter {
   /** Close database connection */
   close(): Promise<void>;
 
-  getConnection(): Promise<PGlite | PgPool>;
+  getConnection(): Promise<Database.Database | PgPool>;
 
   getAgent(agentId: UUID): Promise<Agent | null>;
 
@@ -1151,7 +1151,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 
   initialize(): Promise<void>;
 
-  getConnection(): Promise<PGlite | PgPool>;
+  getConnection(): Promise<Database.Database | PgPool>;
 
   getService<T extends Service>(service: ServiceTypeName | string): T | null;
 

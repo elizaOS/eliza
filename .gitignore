@@ -67,7 +67,7 @@ tsdoc_cache/
 tsdoc_comments/
 
 **/elizadb/**
-**/pglite/**
+**/sqlite/**
 *~
 \#*\#
 /.emacs.desktop
@@ -118,7 +118,7 @@ flycheck_*.el
 
 packages/autodoc/text_objects/*
 /env
-**pglite**
+**sqlite**
 **elizadb**
 **.eliza**
 

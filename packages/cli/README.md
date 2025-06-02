@@ -36,7 +36,7 @@ Initialize a new project, plugin, or agent.
 
 **Important notes:**
 
-- Projects include a knowledge directory and a prompt for database selection (pglite or postgres)
+- Projects include a knowledge directory and a prompt for database selection (sqlite or postgres)
 - Plugins are automatically prefixed with "plugin-" if the prefix is missing
 - Agents are created as JSON character definition files in the current directory
 

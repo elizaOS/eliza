@@ -13,8 +13,9 @@ import type {
   UUID,
   World,
 } from './types';
+import { v4 } from 'uuid';
+import Database from 'better-sqlite3';
 import { type Pool as PgPool } from 'pg';
-import { PGlite } from '@electric-sql/pglite';
 
 /**
  * An abstract class representing a database adapter for managing various entities
@@ -49,7 +50,7 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
    * Retrieves a connection to the database.
    * @returns A Promise that resolves to the database connection.
    */
-  abstract getConnection(): Promise<PGlite | PgPool>;
+  abstract getConnection(): Promise<Database.Database | PgPool>;
 
   /**
    * Retrieves an account by its ID.

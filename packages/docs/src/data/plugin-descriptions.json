@@ -3,8 +3,8 @@
     "custom_preview": "/logos/mongodb.png",
     "description": "Database adapter for MongoDB enabling document storage with query capabilities."
   },
-  "@elizaos-plugins/adapter-pglite": {
-    "custom_preview": "/logos/pglite.png",
+  "@elizaos-plugins/adapter-sqlite": {
+    "custom_preview": "/logos/sqlite.png",
     "description": "Lightweight PostgreSQL adapter for embedded database applications."
   },
   "@elizaos-plugins/adapter-postgres": {

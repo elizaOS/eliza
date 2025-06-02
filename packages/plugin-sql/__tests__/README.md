@@ -15,7 +15,7 @@ The previous dependency on `seed/config.ts` and the `TEST_DATABASE_URL` environm
 
 ### Database Schema and Migrations
 
-**Important:** The `PgliteDatabaseAdapter` used in testing is responsible for initializing the database schema required for the tests. The `setupMockedMigrations()` helper function, present in the test files, indicates that the standard migration process (e.g., `runMigrations` designed for a persistent PostgreSQL database) is adapted or bypassed for the PGlite test environment.
+**Important:** The `SqliteDatabaseAdapter` used in testing is responsible for initializing the database schema required for the tests. The `setupMockedMigrations()` helper function, present in the test files, indicates that the standard migration process (e.g., `runMigrations` designed for a persistent PostgreSQL database) is adapted or bypassed for the PGlite test environment.
 
 The schema defined in `packages/plugin-sql/src/schema/` is used to set up the PGlite instance.
 

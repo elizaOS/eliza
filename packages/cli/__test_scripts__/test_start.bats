@@ -31,7 +31,7 @@ setup() {
   export LOCAL_MEDIUM_MODEL="$LOCAL_SMALL_MODEL"
 
   # Launch server in background with the Ada character.
-  LOG_LEVEL=debug PGLITE_DATA_DIR="$TEST_TMP_DIR/elizadb" \
+  LOG_LEVEL=debug SQLITE_DATA_DIR="$TEST_TMP_DIR/elizadb" \
   SERVER_PORT="$TEST_SERVER_PORT" \
   $ELIZAOS_CMD start --character "$BATS_TEST_DIRNAME/test-characters/ada.json" \
     >"$TEST_TMP_DIR/server.log" 2>&1 &
@@ -87,7 +87,7 @@ teardown() {
 # -----------------------------------------------------------------------------
 @test "custom port spin‑up works" {
   NEW_PORT=3456
-  LOG_LEVEL=debug PGLITE_DATA_DIR="$TEST_TMP_DIR/elizadb2" \
+  LOG_LEVEL=debug SQLITE_DATA_DIR="$TEST_TMP_DIR/elizadb2" \
   $ELIZAOS_CMD start -p "$NEW_PORT" --character "$BATS_TEST_DIRNAME/test-characters/ada.json" \
     >"$TEST_TMP_DIR/port.log" 2>&1 &
   pid=$!
@@ -127,7 +127,7 @@ teardown() {
 # --configure flag triggers reconfiguration message in log
 # -----------------------------------------------------------------------------
 @test "configure option runs" {
-  LOG_LEVEL=debug PGLITE_DATA_DIR="$TEST_TMP_DIR/elizadb3" \
+  LOG_LEVEL=debug SQLITE_DATA_DIR="$TEST_TMP_DIR/elizadb3" \
   $ELIZAOS_CMD start --configure --character "$BATS_TEST_DIRNAME/test-characters/ada.json" \
     >"$TEST_TMP_DIR/config.log" 2>&1 &
   pid=$!

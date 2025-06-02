@@ -26,14 +26,15 @@
     "drizzle"
   ],
   "dependencies": {
-    "@electric-sql/pglite": "^0.2.17",
     "@elizaos/core": "^1.0.2",
     "@types/pg": "8.11.10",
+    "better-sqlite3": "^11.10.0",
     "drizzle-kit": "^0.30.4",
     "drizzle-orm": "^0.39.1",
     "pg": "^8.13.3"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.15.3",
     "dockerode": "^4.0.4",
     "prettier": "3.5.3",

@@ -22,6 +22,7 @@ interface ChatMessageListComponentProps {
     getAgentInMessage?: (agentId: UUID) => Partial<Agent> | undefined;
     agentAvatarMap?: Record<UUID, string | null>;
     onDeleteMessage: (messageId: string) => void;
+    selectedGroupAgentId?: UUID | null;
 }
 
 export const ChatMessageListComponent: React.FC<ChatMessageListComponentProps> = ({
@@ -39,7 +40,21 @@ export const ChatMessageListComponent: React.FC<ChatMessageListComponentProps> =
     getAgentInMessage,
     agentAvatarMap,
     onDeleteMessage,
+    selectedGroupAgentId,
 }) => {
+    // Filter messages based on selected agent in group chat
+    const filteredMessages = React.useMemo(() => {
+        if (chatType === 'GROUP' && selectedGroupAgentId) {
+            return messages.filter(message => {
+                // Show user messages and messages from selected agent
+                const isUser = message.senderId === currentClientEntityId;
+                const isSelectedAgent = message.senderId === selectedGroupAgentId;
+                return isUser || isSelectedAgent;
+            });
+        }
+        return messages;
+    }, [messages, chatType, selectedGroupAgentId, currentClientEntityId]);
+
     return (
         <ChatMessageList
             key={finalChannelId || 'no-channel'}
@@ -49,20 +64,20 @@ export const ChatMessageListComponent: React.FC<ChatMessageListComponentProps> =
             disableAutoScroll={disableAutoScroll}
             className="flex-1 w-full"
         >
-            {isLoadingMessages && messages.length === 0 && (
+            {isLoadingMessages && filteredMessages.length === 0 && (
                 <div className="flex flex-1 justify-center items-center">
                     <p>Loading messages...</p>
                 </div>
             )}
-            {!isLoadingMessages && messages.length === 0 && (
+            {!isLoadingMessages && filteredMessages.length === 0 && (
                 <div className="flex flex-1 justify-center items-center">
                     <p>No messages yet. Start the conversation!</p>
                 </div>
             )}
-            {messages.map((message: UiMessage, index: number) => {
+            {filteredMessages.map((message: UiMessage, index: number) => {
                 const isUser = chatType === 'DM' ? !message.isAgent : message.senderId === currentClientEntityId;
                 const shouldAnimate =
-                    index === messages.length - 1 &&
+                    index === filteredMessages.length - 1 &&
                     message.isAgent &&
                     message.id === animatedMessageId;
 

@@ -1,19 +1,19 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { vi } from 'vitest';
-import { drizzle } from 'drizzle-orm/pglite';
-import { migrate } from 'drizzle-orm/pglite/migrator';
-import { PGliteClientManager } from '../src/pglite/manager';
+import { drizzle } from 'drizzle-orm/libsql';
+import { migrate } from 'drizzle-orm/libsql/migrator';
+import { PGliteClientManager } from '../src/sqlite/manager';
 
 export function setupMockedMigrations(): void {
   vi.spyOn(PGliteClientManager.prototype, 'runMigrations').mockImplementation(async function () {
     // 'this' refers to the instance of PGliteClientManager.
-    const pgliteInstance = (this as any).client;
+    const sqliteInstance = (this as any).client;
 
     console.log('[TEST MOCK HELPER] PGliteClientManager.runMigrations: Starting mocked migration.');
 
     try {
-      const db = drizzle(pgliteInstance);
+      const db = drizzle(sqliteInstance);
 
       const helperFilePath = fileURLToPath(import.meta.url);
       const testsDir = path.dirname(helperFilePath);

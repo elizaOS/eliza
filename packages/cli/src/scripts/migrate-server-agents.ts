@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { PGlite } from '@electric-sql/pglite';
+import Database from 'better-sqlite3';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { logger } from '@elizaos/core';
@@ -19,8 +19,7 @@ async function runMigration() {
     }
 
     logger.info('Connecting to central database...');
-    const db = new PGlite(centralDbPath);
-    await db.waitReady;
+    const db = new Database(centralDbPath);
 
     logger.info('Running server_agents table migration...');
 
@@ -37,13 +36,13 @@ async function runMigration() {
       CREATE INDEX IF NOT EXISTS idx_server_agents_agent_id ON server_agents(agent_id);
     `;
 
-    await db.exec(migrationSQL);
+    db.exec(migrationSQL);
 
     logger.success('Migration completed successfully!');
     logger.info('The server_agents table has been created.');
     logger.info('You can now manage server-agent associations through the UI.');
 
-    await db.close();
+    db.close();
     process.exit(0);
   } catch (error) {
     logger.error('Migration failed:', error);

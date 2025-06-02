@@ -94,6 +94,7 @@ export function useSocketChat({
             typeof data.createdAt === 'number' ? data.createdAt : Date.parse(data.createdAt),
           text: data.text,
           attachments: data.attachments,
+          isAgent: false,
         });
       } else {
         // Add new message from other participants

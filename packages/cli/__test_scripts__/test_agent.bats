@@ -41,7 +41,7 @@ setup_file() {
   echo "[DEBUG] Server log file: $TEST_TMP_DIR/server.log" >&2
   
   LOG_LEVEL=debug \
-  PGLITE_DATA_DIR="$TEST_TMP_DIR/elizadb" \
+  SQLITE_DATA_DIR="$TEST_TMP_DIR/elizadb" \
   $ELIZAOS_CMD start --port "$TEST_SERVER_PORT" \
     >"$TEST_TMP_DIR/server.log" 2>&1 &
   SERVER_PID=$!

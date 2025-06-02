@@ -15,7 +15,7 @@ import type {
   UUID,
   World,
 } from '../types';
-import { PGlite } from '@electric-sql/pglite';
+import Database from 'better-sqlite3';
 import { Pool } from 'pg';
 
 /**
@@ -46,7 +46,7 @@ import { Pool } from 'pg';
  * @description Gets entities for a specific room
  */
 class MockDatabaseAdapter extends DatabaseAdapter {
-  getConnection(): Promise<PGlite | Pool> {
+  getConnection(): Promise<Database.Database | Pool> {
     throw new Error('Method not implemented.');
   }
   getEntityByIds(entityIds: UUID[]): Promise<Entity[] | null> {

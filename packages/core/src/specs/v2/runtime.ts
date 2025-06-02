@@ -1,6 +1,6 @@
 import { ChannelType } from '../../types';
 // Import types with the 'type' keyword
-import { PGlite } from '@electric-sql/pglite';
+import Database from 'better-sqlite3';
 import { Pool } from 'pg';
 import type {
   Action,
@@ -161,7 +161,7 @@ export class AgentRuntime implements IAgentRuntime {
     return this._runtime.initialize();
   }
 
-  async getConnection(): Promise<PGlite | Pool> {
+  async getConnection(): Promise<Database.Database | Pool> {
     return this._runtime.getConnection();
   }
 

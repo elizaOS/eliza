@@ -73,7 +73,7 @@ export default function GroupPanel({ onClose, agents, channelId }: GroupPanel) {
   const getComboboxOptions = () => {
     return (
       agents
-        ?.filter((agent) => agent.status === AgentStatus.ACTIVE && agent.name)
+        ?.filter((agent) => agent.status === AgentStatus.ACTIVE && agent.name && agent.id)
         .map((agent) => ({
           icon: agent.settings?.avatar || '',
           label: agent.name || 'Unknown Agent',
@@ -122,9 +122,9 @@ export default function GroupPanel({ onClose, agents, channelId }: GroupPanel) {
                 options={getComboboxOptions()}
                 onSelect={(selected) => {
                   if (agents) {
-                    // Convert selected options back to Agent objects by matching on label (name)
+                    // Convert selected options back to Agent objects by matching on ID
                     const selectedAgentObjects = agents.filter((agent) =>
-                      selected.some((option) => option.label === agent.name)
+                      selected.some((option) => option.id === agent.id)
                     );
                     setSelectedAgents(selectedAgentObjects);
                   }

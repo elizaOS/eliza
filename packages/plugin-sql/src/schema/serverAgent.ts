@@ -1,14 +1,17 @@
-import { pgTable, text, primaryKey } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { getSchemaFactory } from './factory';
 import { messageServerTable } from './messageServer';
+import { primaryKey } from 'drizzle-orm/pg-core';
 
-export const serverAgentsTable = pgTable(
+const factory = getSchemaFactory();
+
+export const serverAgentsTable = (factory.table as any)(
   'server_agents',
   {
-    serverId: text('server_id')
+    serverId: factory
+      .text('server_id')
       .notNull()
       .references(() => messageServerTable.id, { onDelete: 'cascade' }),
-    agentId: text('agent_id').notNull(), // This is the agent's UUID
+    agentId: factory.text('agent_id').notNull(), // This is the agent's UUID
   },
   (table) => ({
     pk: primaryKey({ columns: [table.serverId, table.agentId] }),

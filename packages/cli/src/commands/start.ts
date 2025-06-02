@@ -12,7 +12,7 @@ import {
   loadConfig,
   loadPluginModule,
   promptForEnvVars,
-  resolvePgliteDir,
+  resolveSqliteDir,
   saveConfig,
   UserEnvironment,
 } from '@/src/utils';
@@ -436,7 +436,7 @@ const startAgents = async (options: {
   }
 
   // Conditionally resolve PGLite directory only if PostgreSQL URL is not provided
-  const pgliteDataDir = postgresUrl ? undefined : await resolvePgliteDir();
+  const sqliteDataDir = postgresUrl ? undefined : await resolveSqliteDir();
 
   if (postgresUrl) {
     logger.info('Using PostgreSQL database');
@@ -462,12 +462,12 @@ const startAgents = async (options: {
     });
   }
 
-  console.log('pgliteDataDir', pgliteDataDir);
+  console.log('sqliteDataDir', sqliteDataDir);
   // Create server instance
   const server = new AgentServer();
   // Initialize server with appropriate database settings
   await server.initialize({
-    dataDir: pgliteDataDir,
+    dataDir: sqliteDataDir,
     postgresUrl,
   });
 

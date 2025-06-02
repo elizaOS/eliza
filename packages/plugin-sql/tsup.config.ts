@@ -9,16 +9,13 @@ export default defineConfig({
   dts: true,
   tsconfig: './tsconfig.build.json', // Use build-specific tsconfig
   external: [
-    'dotenv', // Externalize dotenv to prevent bundling
-    '@reflink/reflink',
-    '@node-llama-cpp',
-    'https',
-    'http',
-    'agentkeepalive',
-    'uuid',
+    '@drizzle-orm/better-sqlite3',
+    'better-sqlite3',
+    'pg',
     '@elizaos/core',
-    '@electric-sql/pglite',
-    'zod',
+    'fs',
+    'path',
+    'url',
   ],
   // Improve source map configuration
   esbuildOptions(options) {

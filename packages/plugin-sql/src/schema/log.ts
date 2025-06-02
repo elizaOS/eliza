@@ -1,8 +1,12 @@
 import { sql } from 'drizzle-orm';
-import { foreignKey, jsonb, pgTable, text, uuid } from 'drizzle-orm/pg-core';
+import { getSchemaFactory } from './factory';
 import { entityTable } from './entity';
 import { roomTable } from './room';
 import { numberTimestamp } from './types';
+import { foreignKey as pgForeignKey } from 'drizzle-orm/pg-core';
+import { foreignKey as sqliteForeignKey } from 'drizzle-orm/sqlite-core';
+
+const factory = getSchemaFactory();
 
 /**
  * Represents a PostgreSQL table for storing logs.
@@ -10,32 +14,41 @@ import { numberTimestamp } from './types';
  * @type {Table}
  */
 
-export const logTable = pgTable(
+export const logTable = (factory.table as any)(
   'logs',
   {
-    id: uuid('id').defaultRandom().notNull(),
-    createdAt: numberTimestamp('createdAt')
-      .default(sql`now()`)
+    id: factory
+      .uuid('id')
+      .$defaultFn(() => crypto.randomUUID())
       .notNull(),
-    entityId: uuid('entityId')
+    createdAt: numberTimestamp('createdAt').default(factory.defaultTimestamp()).notNull(),
+    entityId: factory
+      .uuid('entityId')
       .notNull()
       .references(() => entityTable.id),
-    body: jsonb('body').notNull(),
-    type: text('type').notNull(),
-    roomId: uuid('roomId')
+    body: factory.json('body').notNull(),
+    type: factory.text('type').notNull(),
+    roomId: factory
+      .uuid('roomId')
       .notNull()
       .references(() => roomTable.id, { onDelete: 'cascade' }),
   },
-  (table) => [
-    foreignKey({
-      name: 'fk_room',
-      columns: [table.roomId],
-      foreignColumns: [roomTable.id],
-    }).onDelete('cascade'),
-    foreignKey({
-      name: 'fk_user',
-      columns: [table.entityId],
-      foreignColumns: [entityTable.id],
-    }).onDelete('cascade'),
-  ]
+  (table) => {
+    const constraints: any = {};
+    if (factory.dbType === 'postgres') {
+      constraints.fk_room = pgForeignKey({
+        name: 'fk_room',
+        columns: [table.roomId],
+        foreignColumns: [roomTable.id],
+      }).onDelete('cascade');
+      constraints.fk_user = pgForeignKey({
+        name: 'fk_user',
+        columns: [table.entityId],
+        foreignColumns: [entityTable.id],
+      }).onDelete('cascade');
+    } else {
+      // For SQLite, foreign keys are handled by the references() calls in the column definitions
+    }
+    return constraints;
+  }
 );

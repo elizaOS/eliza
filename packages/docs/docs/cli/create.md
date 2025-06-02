@@ -43,7 +43,7 @@ When you run `elizaos create` without options, it launches an interactive wizard
 
 1. **What would you like to name your project?** - Enter your project name
 2. **Select your database:** - Choose between:
-   - `pglite` (local, file-based database)
+   - `sqlite` (local, file-based database)
    - `postgres` (requires connection details)
 
 ## Default Values (with -y flag)
@@ -52,7 +52,7 @@ When using the `-y` flag to skip prompts:
 
 - **Default name**: `myproject`
 - **Default type**: `project`
-- **Default database**: `pglite`
+- **Default database**: `sqlite`
 
 ## Examples
 
@@ -66,12 +66,12 @@ elizaos create
 This will prompt you for:
 
 - Project name
-- Database selection (pglite or postgres)
+- Database selection (sqlite or postgres)
 
 ### Quick Creation with Defaults
 
 ```bash
-# Create project with defaults (name: "myproject", database: pglite)
+# Create project with defaults (name: "myproject", database: sqlite)
 elizaos create -y
 ```
 

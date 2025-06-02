@@ -45,11 +45,11 @@ export function resolveEnvFile(startDir: string = process.cwd()): string {
 }
 
 /**
- * Resolves the directory used for PGlite database storage.
+ * Resolves the directory used for SQLite database storage.
  *
  * Resolution order:
  * 1. The `dir` argument if provided.
- * 2. The `PGLITE_DATA_DIR` environment variable.
+ * 2. The `SQLITE_DATA_DIR` environment variable.
  * 3. The `fallbackDir` argument if provided.
  * 4. `./.elizadb` relative to the current working directory.
  *
@@ -57,13 +57,16 @@ export function resolveEnvFile(startDir: string = process.cwd()): string {
  * @param fallbackDir - Optional fallback directory when env var is not set.
  * @returns The resolved data directory with any tilde expanded.
  */
-export function resolvePgliteDir(dir?: string, fallbackDir?: string): string {
+export function resolveSqliteDir(dir?: string, fallbackDir?: string): string {
   const envPath = resolveEnvFile();
   if (existsSync(envPath)) {
     dotenv.config({ path: envPath });
   }
 
   const base =
-    dir ?? process.env.PGLITE_DATA_DIR ?? fallbackDir ?? path.join(process.cwd(), '.elizadb');
+    dir ?? process.env.SQLITE_DATA_DIR ?? fallbackDir ?? path.join(process.cwd(), '.elizadb');
   return expandTildePath(base);
 }
+
+// Keep the old function name for backward compatibility during migration
+export const resolvePgliteDir = resolveSqliteDir;

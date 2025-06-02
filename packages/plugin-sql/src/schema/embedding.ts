@@ -1,61 +1,61 @@
 import { sql } from 'drizzle-orm';
-import { check, foreignKey, index, pgTable, uuid, vector } from 'drizzle-orm/pg-core';
-import { VECTOR_DIMS } from '@elizaos/core';
+import { getSchemaFactory } from './factory';
 import { memoryTable } from './memory';
 import { numberTimestamp } from './types';
+import { VECTOR_DIMS } from '@elizaos/core';
+import {
+  check as pgCheck,
+  foreignKey as pgForeignKey,
+  index as pgIndex,
+} from 'drizzle-orm/pg-core';
+import { index as sqliteIndex, foreignKey as sqliteForeignKey } from 'drizzle-orm/sqlite-core';
+
+const factory = getSchemaFactory();
+const tableCreator = factory.table as any;
 
 export const DIMENSION_MAP = {
-  [VECTOR_DIMS.SMALL]: 'dim384',
-  [VECTOR_DIMS.MEDIUM]: 'dim512',
-  [VECTOR_DIMS.LARGE]: 'dim768',
-  [VECTOR_DIMS.XL]: 'dim1024',
-  [VECTOR_DIMS.XXL]: 'dim1536',
-  [VECTOR_DIMS.XXXL]: 'dim3072',
+  [VECTOR_DIMS.SMALL]: 'dim_384',
+  [VECTOR_DIMS.MEDIUM]: 'dim_512',
+  [VECTOR_DIMS.LARGE]: 'dim_768',
+  [VECTOR_DIMS.XL]: 'dim_1024',
+  [VECTOR_DIMS.XXL]: 'dim_1536',
+  [VECTOR_DIMS.XXXL]: 'dim_3072',
 } as const;
 
 /**
  * Definition of the embeddings table in the database.
  * Contains columns for ID, Memory ID, Creation Timestamp, and multiple vector dimensions.
  */
-export const embeddingTable = pgTable(
+export const embeddingTable = tableCreator(
   'embeddings',
   {
-    id: uuid('id').primaryKey().defaultRandom().notNull(),
-    memoryId: uuid('memory_id').references(() => memoryTable.id),
-    createdAt: numberTimestamp('created_at')
-      .default(sql`now()`)
+    id: factory
+      .uuid('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID())
       .notNull(),
-    dim384: vector('dim_384', { dimensions: VECTOR_DIMS.SMALL }),
-    dim512: vector('dim_512', { dimensions: VECTOR_DIMS.MEDIUM }),
-    dim768: vector('dim_768', { dimensions: VECTOR_DIMS.LARGE }),
-    dim1024: vector('dim_1024', { dimensions: VECTOR_DIMS.XL }),
-    dim1536: vector('dim_1536', { dimensions: VECTOR_DIMS.XXL }),
-    dim3072: vector('dim_3072', { dimensions: VECTOR_DIMS.XXXL }),
+    memoryId: factory.uuid('memory_id').references(() => memoryTable.id, { onDelete: 'cascade' }),
+    createdAt: numberTimestamp('created_at').default(factory.defaultTimestamp()).notNull(),
+    dim_384: factory.vector('dim_384', VECTOR_DIMS.SMALL),
+    dim_512: factory.vector('dim_512', VECTOR_DIMS.MEDIUM),
+    dim_768: factory.vector('dim_768', VECTOR_DIMS.LARGE),
+    dim_1024: factory.vector('dim_1024', VECTOR_DIMS.XL),
+    dim_1536: factory.vector('dim_1536', VECTOR_DIMS.XXL),
+    dim_3072: factory.vector('dim_3072', VECTOR_DIMS.XXXL),
   },
-  (table) => [
-    check('embedding_source_check', sql`"memory_id" IS NOT NULL`),
-    index('idx_embedding_memory').on(table.memoryId),
-    foreignKey({
-      name: 'fk_embedding_memory',
-      columns: [table.memoryId],
-      foreignColumns: [memoryTable.id],
-    }).onDelete('cascade'),
-  ]
+  (table) => {
+    const constraints: any = {};
+    if (factory.dbType === 'postgres') {
+      constraints.check = pgCheck('embedding_source_check_pg', sql`"memory_id" IS NOT NULL`);
+      constraints.index = pgIndex('idx_embedding_memory_pg').on(table.memoryId);
+    } else {
+      constraints.index = sqliteIndex('idx_embedding_memory_sqlite').on(table.memoryId);
+    }
+    return constraints;
+  }
 );
 
-/**
- * Defines the possible values for the Embedding Dimension Column.
- * It can be "dim384", "dim512", "dim768", "dim1024", "dim1536", or "dim3072".
- */
-export type EmbeddingDimensionColumn =
-  | 'dim384'
-  | 'dim512'
-  | 'dim768'
-  | 'dim1024'
-  | 'dim1536'
-  | 'dim3072';
+export type EmbeddingDimensionKey = keyof typeof DIMENSION_MAP;
+export type EmbeddingDimensionColumn = (typeof DIMENSION_MAP)[EmbeddingDimensionKey];
 
-/**
- * Retrieve the type of a specific column in the EmbeddingTable based on the EmbeddingDimensionColumn key.
- */
-export type EmbeddingTableColumn = (typeof embeddingTable._.columns)[EmbeddingDimensionColumn];
+export type EmbeddingTableColumnType = (typeof embeddingTable._.columns)[EmbeddingDimensionColumn];

@@ -1,4 +1,4 @@
-import { resolvePgliteDir } from '@/src/utils';
+import { resolveSqliteDir } from '@/src/utils';
 import {
   ChannelType,
   type Character,
@@ -110,7 +110,7 @@ export class AgentServer {
     try {
       logger.debug('Initializing AgentServer (async operations)...');
 
-      const agentDataDir = await resolvePgliteDir(options?.dataDir);
+      const agentDataDir = await resolveSqliteDir(options?.dataDir);
       logger.info(`[INIT] Database Dir for SQL plugin: ${agentDataDir}`);
       this.database = createDatabaseAdapter(
         {

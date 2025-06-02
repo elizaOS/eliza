@@ -104,10 +104,10 @@ const ENV_VAR_CONFIGS: Record<string, EnvVarConfig[]> = {
       secret: true,
     },
   ],
-  pglite: [
+  sqlite: [
     {
       name: 'Database Directory',
-      key: 'PGLITE_DATA_DIR',
+      key: 'SQLITE_DATA_DIR',
       required: false,
       description: 'Directory where PGLite will store database files.',
       url: '',
@@ -216,7 +216,7 @@ export async function writeEnvFile(envVars: Record<string, string>): Promise<voi
  *
  * If the variable is already set in {@link process.env} and non-empty, returns its value without prompting.
  * Displays the variable's description and an optional URL for guidance. Uses masked input for secrets.
- * For optional variables, allows skipping by pressing Enter. For the `PGLITE_DATA_DIR` variable, expands a leading tilde to the project directory.
+ * For optional variables, allows skipping by pressing Enter. For the `SQLITE_DATA_DIR` variable, expands a leading tilde to the project directory.
  *
  * @param config - The configuration describing the environment variable to prompt for.
  * @returns The entered or existing value, or an empty string if an optional variable is skipped.
@@ -258,7 +258,7 @@ async function promptForEnvVar(config: EnvVarConfig): Promise<string | null> {
   }
 
   // Expand tilde in paths for database directory
-  if (config.key === 'PGLITE_DATA_DIR' && value && value.startsWith('~')) {
+  if (config.key === 'SQLITE_DATA_DIR' && value && value.startsWith('~')) {
     return value.replace(/^~/, process.cwd());
   }
 

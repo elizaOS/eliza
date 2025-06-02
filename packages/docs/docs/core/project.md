@@ -38,7 +38,7 @@ npx @elizaos/cli create
 The CLI will guide you through the setup process, including:
 
 - Project name
-- Database selection (pglite, postgres, etc.)
+- Database selection (sqlite, postgres, etc.)
 - Initial configuration
 
 ## Project Configuration
