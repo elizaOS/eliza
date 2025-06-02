@@ -407,7 +407,7 @@ describe('create command', () => {
       // Verify database prompt has proper choices
       const databasePromptCall = mockPrompts.mock.calls.find((call) => call[0].name === 'database');
       expect(databasePromptCall).toBeDefined();
-      expect(databasePromptCall[0].choices).toEqual(
+      expect(databasePromptCall![0].choices).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
             title: expect.stringContaining('Pglite'),
@@ -597,9 +597,8 @@ describe('create command', () => {
       const customDirRelative = 'test/resources/output';
       const customDirAbsolute = resolvePath(tempDir, customDirRelative);
       await mkdir(customDirAbsolute, { recursive: true });
-      const expectedFinalProjectPath = resolvePath(customDirAbsolute, projectName);
 
-      mockPrompts.mockResolvedValue({ database: 'pglite' });
+      mockPrompts.mockResolvedValue({ database: 'pglite', aiModel: 'local' });
 
       // SUT currently has a bug: it prematurely checks/errors on a non-target path.
       // This test will reflect that current failure mode.

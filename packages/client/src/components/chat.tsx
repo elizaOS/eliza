@@ -338,11 +338,12 @@ export default function chat({ chatType, contextId, serverId }: UnifiedChatViewP
       setIsLoadingAgentDmChannels(true);
       clientLogger.info(`[Chat] Fetching/simulating DM channels for agent ${targetAgentData.id}`);
       const simulateApiCall = setTimeout(() => {
-        const fetchedChannelsFromApi = [
-          { id: randomUUID() as UUID, name: 'Initial Chat', createdAt: Date.now() - 3600000, lastActivity: Date.now() - 10000 },
-          { id: randomUUID() as UUID, name: 'Project Discussion', createdAt: Date.now() - 7200000, lastActivity: Date.now() - 20000 },
-          { id: randomUUID() as UUID, name: 'Follow-up', createdAt: Date.now() - 10800000, lastActivity: Date.now() - 30000 },
-        ].sort((a, b) => (b.lastActivity || 0) - (a.lastActivity || 0));
+        // Remove placeholder chats - start with empty list or fetch from API
+        const fetchedChannelsFromApi: Array<{ id: UUID, name: string, createdAt?: number, lastActivity?: number }> = [];
+
+        // TODO: Replace with actual API call to fetch DM channels for this agent
+        // const response = await apiClient.getDmChannelsForAgent(targetAgentData.id);
+        // const fetchedChannelsFromApi = response.data?.channels || [];
         setAgentDmChannels(fetchedChannelsFromApi);
         if (fetchedChannelsFromApi.length > 0) {
           setCurrentDmChannelIdForAgent(fetchedChannelsFromApi[0].id);
@@ -367,11 +368,15 @@ export default function chat({ chatType, contextId, serverId }: UnifiedChatViewP
       // ** API Placeholder: Replace with actual API to fetch related group channels **
       // Based on contextId, find other channels with same participant hash or parent ID
       const simulateApiCall = setTimeout(() => {
+        // Remove placeholder group channels - start with current channel only
         const fetchedChannels = [
-          { id: contextId, name: channelDetailsData?.data?.name || 'Current Group Chat', createdAt: Date.now() - 100000, lastActivity: Date.now() }, // Current one
-          { id: randomUUID() as UUID, name: 'Group Chat Archive - Q1', createdAt: Date.now() - 9600000, lastActivity: Date.now() - 500000 },
-          { id: randomUUID() as UUID, name: 'Follow-up: Project Phoenix', createdAt: Date.now() - 8200000, lastActivity: Date.now() - 600000 },
-        ].sort((a, b) => (b.lastActivity || 0) - (a.lastActivity || 0));
+          { id: contextId, name: channelDetailsData?.data?.name || 'Current Group Chat', createdAt: Date.now() - 100000, lastActivity: Date.now() }
+        ];
+
+        // TODO: Replace with actual API call to fetch related group channels  
+        // const response = await apiClient.getRelatedGroupChannels(contextId);
+        // const additionalChannels = response.data?.channels || [];
+        // const fetchedChannels = [currentChannel, ...additionalChannels].sort((a, b) => (b.lastActivity || 0) - (a.lastActivity || 0));
 
         setRelatedGroupChannels(fetchedChannels.filter(c => c.id !== contextId)); // Exclude current from "other" list for dropdown
 

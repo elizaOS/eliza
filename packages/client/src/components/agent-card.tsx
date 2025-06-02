@@ -96,12 +96,12 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
   return (
     <Card
       className={cn(
-        'w-full min-h-[220px] flex flex-col transition-all hover:shadow-xl cursor-pointer',
+        'w-full aspect-square flex flex-col transition-all hover:shadow-xl cursor-pointer relative',
         isActive ? '' : 'opacity-75 hover:opacity-100'
       )}
       onClick={handleCardClick}
     >
-      <CardHeader className="flex flex-row items-center gap-3 pb-2">
+      <CardHeader className="flex flex-row items-center gap-3 absolute w-full h-16">
         <Avatar className="h-10 w-10 border">
           <AvatarImage src={avatarUrl} alt={agentName} />
           {/* Fallback can be initials or generic icon */}
@@ -110,6 +110,32 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
           <CardTitle className="text-lg truncate" title={agentName}>
             {agentName}
           </CardTitle>
+          {isActive ? (
+            <Button
+              onClick={handleChatClick}
+              className="w-full col-span-2 absolute bottom-0"
+              variant="default"
+              size="sm"
+              disabled={isStopping || isStarting} /* Also disable if starting */
+            >
+              <MessageSquare className="mr-2 h-4 w-4" />
+            </Button>
+          ) : (
+            <Button
+              onClick={handleStart}
+              disabled={isStarting || isStopping}
+              className="w-full col-span-2"
+              variant="outline"
+              size="sm"
+            >
+              {isStarting ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Play className="mr-2 h-4 w-4" />
+              )}
+              {isStarting ? 'Starting...' : 'Start'}
+            </Button>
+          )}
           <div className="flex items-center gap-1.5 mt-1">
             <div
               className={cn('w-2.5 h-2.5 rounded-full', isActive ? 'bg-green-500' : 'bg-red-500')}
@@ -143,7 +169,7 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
           <img
             src={avatarUrl}
             alt={agentName}
-            className={cn('w-full h-32 object-cover', isActive ? '' : 'grayscale')}
+            className={cn('w-64 h-64 object-cover', isActive ? '' : 'grayscale')}
           />
         ) : (
           <div className="w-full h-32 flex items-center justify-center bg-secondary text-2xl font-semibold text-muted-foreground">
@@ -151,34 +177,6 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
           </div>
         )}
       </CardContent>
-      <CardFooter className="p-3 grid grid-cols-2 gap-2 mt-auto">
-        {isActive ? (
-          <Button
-            onClick={handleChatClick}
-            className="w-full col-span-2"
-            variant="default"
-            size="sm"
-            disabled={isStopping || isStarting} /* Also disable if starting */
-          >
-            <MessageSquare className="mr-2 h-4 w-4" /> Message
-          </Button>
-        ) : (
-          <Button
-            onClick={handleStart}
-            disabled={isStarting || isStopping}
-            className="w-full col-span-2"
-            variant="outline"
-            size="sm"
-          >
-            {isStarting ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Play className="mr-2 h-4 w-4" />
-            )}
-            {isStarting ? 'Starting...' : 'Start Agent'}
-          </Button>
-        )}
-      </CardFooter>
     </Card>
   );
 };

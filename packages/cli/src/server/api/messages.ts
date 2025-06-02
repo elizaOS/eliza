@@ -186,6 +186,45 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
     }
 
     try {
+      // Ensure the channel exists before creating the message
+      let channelExists = false;
+      try {
+        const existingChannel = await serverInstance.getChannelDetails(channelIdParam);
+        channelExists = !!existingChannel;
+      } catch (error) {
+        logger.debug(`[Messages Router] Channel ${channelIdParam} does not exist, will create it`);
+      }
+
+      if (!channelExists) {
+        // Auto-create the channel if it doesn't exist
+        try {
+          const channelData = {
+            messageServerId: server_id as UUID,
+            name: `Chat ${channelIdParam.substring(0, 8)}`, // Default name
+            type: ChannelType.GROUP, // Default to GROUP type
+            sourceType: 'auto_created',
+            metadata: {
+              created_by: 'gui_auto_creation',
+              created_for_user: author_id,
+              created_at: new Date().toISOString(),
+            },
+          };
+
+          await serverInstance.createChannel(channelData, [author_id as UUID]);
+          logger.info(
+            `[Messages Router] Auto-created channel ${channelIdParam} for message submission`
+          );
+        } catch (createError: any) {
+          logger.error(
+            `[Messages Router] Failed to auto-create channel ${channelIdParam}:`,
+            createError
+          );
+          return res
+            .status(500)
+            .json({ success: false, error: `Failed to create channel: ${createError.message}` });
+        }
+      }
+
       const newRootMessageData = {
         channelId: channelIdParam,
         authorId: author_id as UUID,

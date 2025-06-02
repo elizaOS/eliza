@@ -162,7 +162,7 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
       onClick={onClose}
     >
       <Card className="w-[80%] max-w-2xl" onClick={(e) => e.stopPropagation()}>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle className="text-xl font-semibold">
             {channelId ? 'Edit Group Chat' : 'Create Group Chat'}
           </CardTitle>

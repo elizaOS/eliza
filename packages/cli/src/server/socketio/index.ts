@@ -1,5 +1,5 @@
 import type { IAgentRuntime } from '@elizaos/core';
-import { logger, SOCKET_MESSAGE_TYPE, validateUuid, type UUID } from '@elizaos/core';
+import { logger, SOCKET_MESSAGE_TYPE, validateUuid, ChannelType, type UUID } from '@elizaos/core';
 import type { Socket, Server as SocketIOServer } from 'socket.io';
 import type { AgentServer } from '../index';
 
@@ -161,6 +161,44 @@ export class SocketIORouter {
     }
 
     try {
+      // Ensure the channel exists before creating the message
+      let channelExists = false;
+      try {
+        const existingChannel = await this.serverInstance.getChannelDetails(channelId as UUID);
+        channelExists = !!existingChannel;
+      } catch (error) {
+        logger.debug(`[SocketIO ${socket.id}] Channel ${channelId} does not exist, will create it`);
+      }
+
+      if (!channelExists) {
+        // Auto-create the channel if it doesn't exist
+        try {
+          const channelData = {
+            messageServerId: serverId as UUID,
+            name: `Chat ${channelId.substring(0, 8)}`, // Default name
+            type: ChannelType.GROUP, // Default to GROUP type
+            sourceType: 'auto_created',
+            metadata: {
+              created_by: 'socketio_auto_creation',
+              created_for_user: senderId,
+              created_at: new Date().toISOString(),
+            },
+          };
+
+          await this.serverInstance.createChannel(channelData, [senderId as UUID]);
+          logger.info(
+            `[SocketIO ${socket.id}] Auto-created channel ${channelId} for message submission`
+          );
+        } catch (createError: any) {
+          logger.error(
+            `[SocketIO ${socket.id}] Failed to auto-create channel ${channelId}:`,
+            createError
+          );
+          this.sendErrorResponse(socket, `Failed to create channel: ${createError.message}`);
+          return;
+        }
+      }
+
       const newRootMessageData = {
         channelId: channelId as UUID,
         authorId: senderId as UUID,
