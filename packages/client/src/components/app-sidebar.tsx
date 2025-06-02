@@ -30,7 +30,7 @@ import {
   useChannels, // New hook
 } from '@/hooks/use-query-hooks';
 import info from '@/lib/info.json';
-import { cn, formatAgentName } from '@/lib/utils';
+import { cn, formatAgentName, getAgentAvatar } from '@/lib/utils';
 import {
   AgentStatus as CoreAgentStatus,
   type Agent,
@@ -106,17 +106,11 @@ const AgentRow = ({
       <SidebarMenuButton isActive={active} className="px-4 py-2 my-2 h-full rounded-md">
         <div className="flex items-center gap-2">
           <div className="relative w-8 h-8 rounded-full bg-gray-600">
-            {agent.settings?.avatar ? (
-              <img
-                src={agent.settings.avatar}
-                alt="avatar"
-                className="object-cover w-full h-full rounded-full"
-              />
-            ) : (
-              <span className="flex items-center justify-center w-full h-full text-sm">
-                {formatAgentName(agent.name)}
-              </span>
-            )}
+            <img
+              src={getAgentAvatar(agent)}
+              alt={agent.name || 'avatar'}
+              className="object-cover w-full h-full rounded-full"
+            />
             <span
               className={cn(
                 'absolute bottom-0 right-0 w-[10px] h-[10px] rounded-full border border-white',
@@ -252,52 +246,19 @@ const ChannelsForServer = ({
   );
 };
 
-const CreateButton = ({ onCreateGroupChannel }: { onCreateGroupChannel: () => void }) => {
-  const [animate, setAnimate] = useState(false);
-
-  useEffect(() => {
-    const t = setTimeout(() => {
-      setAnimate(true);
-      const rt = setTimeout(() => setAnimate(false), 1500);
-      return () => clearTimeout(rt);
-    }, 1000);
-    return () => clearTimeout(t);
-  }, []);
-
+// Updated CreateButton: Removed DropdownMenu, simplified to a single action (Create Agent)
+// For "Create Group", users will use the button in the "Groups" section header.
+const CreateAgentButton = ({ onClick }: { onClick: () => void }) => {
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="default"
-          className={cn(
-            'w-full justify-between items-center relative bg-primary text-primary-foreground',
-            animate && 'animate-bounce-sm',
-            'hover:shadow-md hover:scale-[1.02] transition-all duration-300 group'
-          )}
-        >
-          <span className="flex items-center gap-2">
-            <Plus className="h-4 w-4 group-hover:rotate-90 transition-transform duration-300" />
-            Create
-          </span>
-          <ChevronDown className="h-4 w-4 transition-transform group-data-[state=open]:rotate-180" />
-          <div className="absolute inset-0 opacity-0 bg-gradient-to-r via-white/20 group-hover:opacity-100 -translate-x-full group-hover:translate-x-full transition-all duration-1000" />
-        </Button>
-      </DropdownMenuTrigger>
-
-      <DropdownMenuContent align="start" className="w-48 z-50 mt-2">
-        <DropdownMenuItem asChild>
-          <NavLink to="/create" className="flex items-center gap-2 px-4 py-3">
-            <Plus className="h-4 w-4" /> Create Agent
-          </NavLink>
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          className="flex items-center gap-2 px-4 py-3"
-          onClick={onCreateGroupChannel}
-        >
-          <Plus className="h-4 w-4" /> Create Group
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={onClick}
+      className="w-full"
+    >
+      <Plus className="h-4 w-4 mr-2" />
+      Create Agent
+    </Button>
   );
 };
 
@@ -330,9 +291,8 @@ export function AppSidebar({ refreshHomePage }: AppSidebarProps) {
   );
 
   // const [isGroupPanelOpen, setGroupPanelOpen] = useState(false); // GroupPanel logic needs rethink
-  const handleCreateGroupChannel = () => {
-    clientLogger.info('Create Group Channel clicked - needs UI for creating central channel.');
-    navigate('/group/new'); // Example navigation, implement this route
+  const handleCreateAgent = () => {
+    navigate('/create'); // Navigate to agent creation route
   };
 
   const agentLoadError = agentsError
@@ -376,25 +336,39 @@ export function AppSidebar({ refreshHomePage }: AppSidebarProps) {
 
         {/* ---------- content ---------- */}
         <SidebarContent>
-          {/* create */}
-          <div className="px-4 py-2 mb-2">
-            <CreateButton onCreateGroupChannel={handleCreateGroupChannel} />
-          </div>
+          {/* create agent button - moved from old CreateButton dropdown */}
+          {/* This section is for the "Agents" list.
+              The "Create Agent" button should ideally be next to the "Agents" title.
+              Let's adjust the structure slightly if needed or place it prominently.
+          */}
 
           {isLoadingAgents && !agentLoadError && (
-            <SidebarSection title="Online">
+            <SidebarSection title="Agents">
               <SidebarMenuSkeleton />
             </SidebarSection>
           )}
           {agentLoadError && <div className="px-4 py-2 text-xs text-red-500">{agentLoadError}</div>}
 
           {!isLoadingAgents && !agentLoadError && (
-            <AgentListSection
-              title="Online"
-              agents={onlineAgents}
-              isOnline
-              activePath={location.pathname}
-            />
+            <>
+              <div className="flex items-center justify-between px-4 pt-1 pb-0">
+                <SectionHeader className="px-0 py-0">Agents</SectionHeader>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleCreateAgent}
+                  aria-label="Create Agent"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+              <AgentListSection
+                title="" // Title is now handled by the SectionHeader above
+                agents={onlineAgents}
+                isOnline
+                activePath={location.pathname}
+              />
+            </>
           )}
           {!isLoadingAgents && !agentLoadError && offlineAgents.length > 0 && (
             <AgentListSection
@@ -405,12 +379,22 @@ export function AppSidebar({ refreshHomePage }: AppSidebarProps) {
               className="mt-2"
             />
           )}
-
+          {/* Original CreateButton placement - to be removed or repurposed if "Create Group" is elsewhere */}
+          {/* The old CreateButton had "Create Agent" and "Create Group".
+               "Create Agent" is now a + button next to "Agents" title.
+               "Create Group" is a + button in the GroupChannelListSection.
+               So the old CreateButton component and its direct usage here can be removed.
+            */}
+          {/* 
+            <div className="px-4 py-2 mb-2">
+              <CreateButton onCreateGroupChannel={handleCreateGroupChannel} />
+            </div>
+          */}
           <GroupChannelListSection
             servers={servers}
             isLoadingServers={isLoadingServers}
             className="mt-2"
-            onManageServers={() => {}} // Server management hidden
+            onManageServers={() => { }} // Server management hidden
           />
         </SidebarContent>
 

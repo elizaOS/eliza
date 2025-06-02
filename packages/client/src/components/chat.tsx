@@ -37,6 +37,7 @@ import AIWriter from 'react-aiwriter';
 import { ChatInputArea } from './ChatInputArea';
 import { ChatMessageListComponent } from './ChatMessageListComponent';
 import GroupPanel from './group-panel';
+import { AgentSidebar } from './agent-sidebar';
 
 const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
 
@@ -170,7 +171,7 @@ export function MessageContent({
   );
 }
 
-export default function UnifiedChatView({ chatType, contextId, serverId }: UnifiedChatViewProps) {
+export default function chat({ chatType, contextId, serverId }: UnifiedChatViewProps) {
   const [showSidebar, setShowSidebar] = useState(false);
   const [input, setInput] = useState('');
   const [inputDisabled, setInputDisabled] = useState<boolean>(false);
@@ -194,10 +195,10 @@ export default function UnifiedChatView({ chatType, contextId, serverId }: Unifi
   // Convert AgentWithStatus to Agent, ensuring required fields have defaults
   const targetAgentData: Agent | undefined = agentDataResponse?.data
     ? ({
-        ...agentDataResponse.data,
-        createdAt: agentDataResponse.data.createdAt || Date.now(),
-        updatedAt: agentDataResponse.data.updatedAt || Date.now(),
-      } as Agent)
+      ...agentDataResponse.data,
+      createdAt: agentDataResponse.data.createdAt || Date.now(),
+      updatedAt: agentDataResponse.data.updatedAt || Date.now(),
+    } as Agent)
     : undefined;
 
   // Group chat specific data
@@ -360,17 +361,17 @@ export default function UnifiedChatView({ chatType, contextId, serverId }: Unifi
       messages.length !== prevMessageCountRef.current && prevMessageCountRef.current !== 0;
 
     if (isInitialLoadWithMessages) {
-      clientLogger.debug('[UnifiedChatView] Initial messages loaded, scrolling to bottom.', {
+      clientLogger.debug('[chat] Initial messages loaded, scrolling to bottom.', {
         count: messages.length,
       });
       safeScrollToBottom();
     } else if (hasNewMessages) {
       if (autoScrollEnabled) {
-        clientLogger.debug('[UnifiedChatView] New messages and autoScroll enabled, scrolling.');
+        clientLogger.debug('[chat] New messages and autoScroll enabled, scrolling.');
         safeScrollToBottom();
       } else {
         clientLogger.debug(
-          '[UnifiedChatView] New messages, but autoScroll is disabled (user scrolled up).'
+          '[chat] New messages, but autoScroll is disabled (user scrolled up).'
         );
       }
     }
@@ -521,9 +522,9 @@ export default function UnifiedChatView({ chatType, contextId, serverId }: Unifi
   };
 
   useEffect(() => {
-    clientLogger.info('[UnifiedChatView] Mounted/Updated', { chatType, contextId, serverId });
+    clientLogger.info('[chat] Mounted/Updated', { chatType, contextId, serverId });
     return () => {
-      clientLogger.info('[UnifiedChatView] Unmounted');
+      clientLogger.info('[chat] Unmounted');
     };
   }, [chatType, contextId, serverId]);
 
@@ -727,6 +728,9 @@ export default function UnifiedChatView({ chatType, contextId, serverId }: Unifi
             </div>
           </div>
         </ResizablePanel>
+
+        {/* ---------- right panel ---------- */}
+        <AgentSidebar agentId={contextId} agentName={targetAgentData?.name || 'Agent'} />
 
         {showSidebar && (
           <>

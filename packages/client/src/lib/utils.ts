@@ -104,3 +104,32 @@ export const compressImage = (
     reader.readAsDataURL(file);
   });
 };
+
+const AGENT_AVATAR_PLACEHOLDERS = [
+  '/images/agents/agent1.png', // Assuming these exist
+  '/images/agents/agent2.png',
+  '/images/agents/agent3.png',
+  '/images/agents/agent4.png',
+  '/images/agents/agent5.png',
+];
+
+export const getAgentAvatar = (
+  agent: { id?: UUID; settings?: { avatar?: string | null } } | undefined
+): string => {
+  if (agent?.settings?.avatar) {
+    return agent.settings.avatar;
+  }
+  if (agent?.id) {
+    // Simple deterministic assignment based on agent ID
+    let hash = 0;
+    for (let i = 0; i < agent.id.length; i++) {
+      const char = agent.id.charCodeAt(i);
+      hash = (hash << 5) - hash + char;
+      hash |= 0; // Convert to 32bit integer
+    }
+    const index = Math.abs(hash) % AGENT_AVATAR_PLACEHOLDERS.length;
+    return AGENT_AVATAR_PLACEHOLDERS[index];
+  }
+  // Fallback if no ID or other issue, or if AGENT_AVATAR_PLACEHOLDERS is empty
+  return '/elizaos-icon.png';
+};

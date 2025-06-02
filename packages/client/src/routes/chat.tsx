@@ -1,15 +1,13 @@
-import { useAgent } from '@/hooks/use-query-hooks';
-import { useState, useEffect } from 'react';
-import { useParams } from 'react-router';
-import { type UUID, type Agent, AgentStatus as CoreAgentStatusEnum } from '@elizaos/core';
-import type { AgentWithStatus } from '../types';
+import ChatComponent from '@/components/chat';
 import { Button } from '@/components/ui/button';
-import { Play, Loader2 } from 'lucide-react';
 import { useAgentManagement } from '@/hooks/use-agent-management';
+import { useAgent } from '@/hooks/use-query-hooks';
 import clientLogger from '@/lib/logger';
-
-// Import the new UnifiedChatView
-import UnifiedChatView from '@/components/UnifiedChatView';
+import { type Agent, AgentStatus as CoreAgentStatusEnum, type UUID } from '@elizaos/core';
+import { Loader2, Play } from 'lucide-react';
+import { useEffect } from 'react';
+import { useParams } from 'react-router';
+import type { AgentWithStatus } from '../types';
 
 /**
  * Displays the agent chat interface with an optional details sidebar in a resizable layout.
@@ -35,38 +33,38 @@ export default function AgentRoute() {
 
   const agentFromHook: Agent | undefined = agentDataResponse?.data
     ? ({
-        ...(agentDataResponse.data as AgentWithStatus),
-        status:
-          agentDataResponse.data.status === 'active'
-            ? CoreAgentStatusEnum.ACTIVE
-            : agentDataResponse.data.status === 'inactive'
-              ? CoreAgentStatusEnum.INACTIVE
-              : CoreAgentStatusEnum.INACTIVE,
-        username: agentDataResponse.data.username || agentDataResponse.data.name || 'Unknown',
-        bio: agentDataResponse.data.bio || '',
-        messageExamples: agentDataResponse.data.messageExamples || [],
-        postExamples: agentDataResponse.data.postExamples || [],
-        topics: agentDataResponse.data.topics || [],
-        adjectives: agentDataResponse.data.adjectives || [],
-        knowledge: agentDataResponse.data.knowledge || [],
-        plugins: agentDataResponse.data.plugins || [],
-        settings: agentDataResponse.data.settings || {},
-        secrets: (agentDataResponse.data as any).secrets || {},
-        style: agentDataResponse.data.style || {},
-        templates: agentDataResponse.data.templates || {},
-        enabled:
-          typeof agentDataResponse.data.enabled === 'boolean'
-            ? agentDataResponse.data.enabled
-            : true,
-        createdAt:
-          typeof agentDataResponse.data.createdAt === 'number'
-            ? agentDataResponse.data.createdAt
-            : Date.now(),
-        updatedAt:
-          typeof agentDataResponse.data.updatedAt === 'number'
-            ? agentDataResponse.data.updatedAt
-            : Date.now(),
-      } as Agent)
+      ...(agentDataResponse.data as AgentWithStatus),
+      status:
+        agentDataResponse.data.status === 'active'
+          ? CoreAgentStatusEnum.ACTIVE
+          : agentDataResponse.data.status === 'inactive'
+            ? CoreAgentStatusEnum.INACTIVE
+            : CoreAgentStatusEnum.INACTIVE,
+      username: agentDataResponse.data.username || agentDataResponse.data.name || 'Unknown',
+      bio: agentDataResponse.data.bio || '',
+      messageExamples: agentDataResponse.data.messageExamples || [],
+      postExamples: agentDataResponse.data.postExamples || [],
+      topics: agentDataResponse.data.topics || [],
+      adjectives: agentDataResponse.data.adjectives || [],
+      knowledge: agentDataResponse.data.knowledge || [],
+      plugins: agentDataResponse.data.plugins || [],
+      settings: agentDataResponse.data.settings || {},
+      secrets: (agentDataResponse.data as any).secrets || {},
+      style: agentDataResponse.data.style || {},
+      templates: agentDataResponse.data.templates || {},
+      enabled:
+        typeof agentDataResponse.data.enabled === 'boolean'
+          ? agentDataResponse.data.enabled
+          : true,
+      createdAt:
+        typeof agentDataResponse.data.createdAt === 'number'
+          ? agentDataResponse.data.createdAt
+          : Date.now(),
+      updatedAt:
+        typeof agentDataResponse.data.updatedAt === 'number'
+          ? agentDataResponse.data.updatedAt
+          : Date.now(),
+    } as Agent)
     : undefined;
 
   clientLogger.debug('[AgentRoute] Constructed agentFromHook:', agentFromHook);
@@ -108,10 +106,10 @@ export default function AgentRoute() {
     );
   }
 
-  clientLogger.info('[AgentRoute] Agent is active, rendering UnifiedChatView for DM', {
+  clientLogger.info('[AgentRoute] Agent is active, rendering chat for DM', {
     agentName: agentFromHook?.name,
   });
   // AgentRoute no longer needs to manage its own ResizablePanelGroup for the chat and sidebar
-  // UnifiedChatView will handle its own layout including the sidebar.
-  return <UnifiedChatView chatType="DM" contextId={agentId} />;
+  // chat will handle its own layout including the sidebar.
+  return <ChatComponent chatType="DM" contextId={agentId} />;
 }

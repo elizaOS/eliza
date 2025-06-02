@@ -2,7 +2,7 @@ import React from 'react';
 import { Avatar, AvatarImage } from '@/components/ui/avatar';
 import { ChatMessageList } from '@/components/ui/chat/chat-message-list';
 import { ChatBubble } from '@/components/ui/chat/chat-bubble';
-import { MemoizedMessageContent } from './UnifiedChatView';
+import { MemoizedMessageContent } from './chat';
 import type { UUID, Agent } from '@elizaos/core';
 import type { UiMessage } from '@/hooks/use-query-hooks';
 import { cn } from '@/lib/utils';
@@ -103,10 +103,10 @@ export const ChatMessageListComponent: React.FC<ChatMessageListComponentProps> =
                       chatType === 'DM'
                         ? targetAgentData?.settings?.avatar || '/elizaos-icon.png'
                         : senderAgent?.settings?.avatar ||
-                          (agentAvatarMap && message.senderId
-                            ? agentAvatarMap[message.senderId]
-                            : null) ||
-                          '/elizaos-icon.png'
+                        (agentAvatarMap && message.senderId
+                          ? agentAvatarMap[message.senderId]
+                          : null) ||
+                        '/elizaos-icon.png'
                     }
                   />
                 </Avatar>

@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -7,13 +8,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { useToast } from '@/hooks/use-toast';
-import { useAgents, useServers } from '@/hooks/use-query-hooks';
-import { apiClient } from '@/lib/api';
-import type { UUID } from '@elizaos/core';
-import { Loader2, Plus, X } from 'lucide-react';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Select,
   SelectContent,
@@ -21,9 +17,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Badge } from '@/components/ui/badge';
+import { useAgents, useServers } from '@/hooks/use-query-hooks';
+import { useToast } from '@/hooks/use-toast';
+import { apiClient } from '@/lib/api';
+import type { UUID } from '@elizaos/core';
+import { Loader2, Plus, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 interface ServerManagementProps {
   open: boolean;

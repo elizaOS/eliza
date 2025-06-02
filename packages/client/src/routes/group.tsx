@@ -1,6 +1,6 @@
+import ChatComponent from '@/components/chat';
 import { validateUuid } from '@elizaos/core';
 import { useParams, useSearchParams } from 'react-router-dom';
-import UnifiedChatView from '@/components/UnifiedChatView';
 
 export default function GroupRoute() {
   const { channelId: channelIdFromPath } = useParams<{ channelId: string }>();
@@ -18,5 +18,5 @@ export default function GroupRoute() {
     );
   }
 
-  return <UnifiedChatView chatType="GROUP" contextId={channelId} serverId={serverId} />;
+  return <ChatComponent chatType="GROUP" contextId={channelId} serverId={serverId} />;
 }
