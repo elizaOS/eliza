@@ -207,18 +207,9 @@ const runE2eTests = async (
     }
 
     // Look for PostgreSQL URL in environment variables
-    let postgresUrl = process.env.POSTGRES_URL;
-    console.info(`Initial PostgreSQL URL: ${postgresUrl ? 'found' : 'not found'}`);
-
-    // If DISABLE_PGLITE_EXTENSIONS is true for tests, force PGlite by ignoring POSTGRES_URL
-    if (process.env.DISABLE_PGLITE_EXTENSIONS === 'true') {
-      console.info(
-        'DISABLE_PGLITE_EXTENSIONS is true, forcing PGlite for e2e tests. Ignoring POSTGRES_URL.'
-      );
-      postgresUrl = undefined;
-    }
+    const postgresUrl = process.env.POSTGRES_URL;
     console.info(
-      `Effective PostgreSQL URL for e2e tests: ${postgresUrl ? 'found' : 'not found (using PGlite)'}`
+      `PostgreSQL URL for e2e tests: ${postgresUrl ? 'found' : 'not found (will use PGlite)'}`
     );
 
     // Create server instance
