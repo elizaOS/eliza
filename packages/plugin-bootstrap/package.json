@@ -26,12 +26,7 @@
     "tsup.config.ts"
   ],
   "dependencies": {
-    "@elizaos/core": "^1.0.2",
-    "@elizaos/plugin-anthropic": "github:elizaos-plugins/plugin-anthropic#v1.0.0",
-    "@elizaos/plugin-bootstrap": "workspace:*",
-    "@elizaos/plugin-discord": "1.0.3",
-    "@elizaos/plugin-knowledge": "^1.0.0",
-    "github:elizaos-plugins/plugin-telegram#v1.0.0": "github:elizaos-plugins/plugin-telegram#v1.0.0"
+    "@elizaos/core": "^1.0.2"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",
