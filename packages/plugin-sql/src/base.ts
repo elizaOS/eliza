@@ -18,20 +18,7 @@ import {
   ChannelType,
   RoomMetadata,
 } from '@elizaos/core';
-import {
-  and,
-  cosineDistance,
-  count,
-  desc,
-  eq,
-  gte,
-  inArray,
-  lte,
-  lt,
-  or,
-  sql,
-  not,
-} from 'drizzle-orm';
+import { and, cosineDistance, count, desc, eq, gte, inArray, lte, or, sql, not } from 'drizzle-orm';
 import { v4 } from 'uuid';
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from './schema/embedding';
 import {
@@ -49,8 +36,6 @@ import {
   worldTable,
 } from './schema/index';
 import type { DrizzleDatabase } from './types';
-import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
-import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 // Define the metadata type inline since we can't import it
 /**
@@ -102,43 +87,6 @@ export abstract class BaseDrizzleAdapter<
   constructor(agentId: UUID) {
     super();
     this.agentId = agentId;
-  }
-
-  /**
-   * Helper method to determine if we're using SQLite
-   */
-  protected isSQLite(): boolean {
-    return (
-      (this.db as any)?.session?.adapterName === 'better-sqlite3' ||
-      (this.db as any)?.getDialect?.().name === 'sqlite'
-    );
-  }
-
-  /**
-   * Helper method to cast database to SQLite type
-   */
-  protected asSQLite(): BetterSQLite3Database {
-    return this.db as BetterSQLite3Database;
-  }
-
-  /**
-   * Helper method to get the underlying SQLite connection
-   */
-  protected getSQLiteConnection(): any {
-    // Access the underlying better-sqlite3 connection from Drizzle
-    return (
-      (this.db as any).session?.db ||
-      (this.db as any).db ||
-      (this.db as any)._db ||
-      (this.db as any).client
-    );
-  }
-
-  /**
-   * Helper method to cast database to PostgreSQL type
-   */
-  protected asPostgreSQL(): NodePgDatabase {
-    return this.db as NodePgDatabase;
   }
 
   /**
@@ -221,56 +169,20 @@ export abstract class BaseDrizzleAdapter<
    */
   async ensureEmbeddingDimension(dimension: number) {
     return this.withDatabase(async () => {
-      // Use raw SQL to avoid union type issues
-      try {
-        if (this.isSQLite()) {
-          const conn = this.getSQLiteConnection();
-          const existingMemory = conn
-            .prepare(
-              `
-            SELECT e.dim_384, e.dim_512, e.dim_768, e.dim_1024, e.dim_1536, e.dim_3072
-            FROM memories m
-            INNER JOIN embeddings e ON m.id = e.memory_id
-            WHERE m.agent_id = ?
-            LIMIT 1
-          `
-            )
-            .get(this.agentId);
+      const existingMemory = await this.db
+        .select({
+          embedding: embeddingTable,
+        })
+        .from(memoryTable)
+        .innerJoin(embeddingTable, eq(embeddingTable.memoryId, memoryTable.id))
+        .where(eq(memoryTable.agentId, this.agentId))
+        .limit(1);
 
-          if (existingMemory) {
-            // Determine which dimension has data
-            const dims = [384, 512, 768, 1024, 1536, 3072];
-            for (const dim of dims) {
-              if ((existingMemory as any)[`dim_${dim}`]) {
-                this.embeddingDimension = DIMENSION_MAP[dim];
-                break;
-              }
-            }
-          }
-        } else {
-          const db = this.asPostgreSQL();
-          const existingMemory = await db.execute(sql`
-            SELECT e.dim_384, e.dim_512, e.dim_768, e.dim_1024, e.dim_1536, e.dim_3072
-            FROM memories m
-            INNER JOIN embeddings e ON m.id = e.memory_id
-            WHERE m.agent_id = ${this.agentId}
-            LIMIT 1
-          `);
-
-          if (existingMemory.rows.length > 0) {
-            const row = existingMemory.rows[0];
-            const dims = [384, 512, 768, 1024, 1536, 3072];
-            for (const dim of dims) {
-              if ((row as any)[`dim_${dim}`]) {
-                this.embeddingDimension = DIMENSION_MAP[dim];
-                break;
-              }
-            }
-          }
-        }
-      } catch (error) {
-        // If query fails, use default dimension
-        logger.debug('No existing embeddings found, using default dimension:', error);
+      if (existingMemory.length > 0) {
+        const usedDimension = Object.entries(DIMENSION_MAP).find(
+          ([_, colName]) => existingMemory[0].embedding[colName] !== null
+        );
+        // We don't actually need to use usedDimension for now, but it's good to know it's there.
       }
 
       this.embeddingDimension = DIMENSION_MAP[dimension];
@@ -284,43 +196,22 @@ export abstract class BaseDrizzleAdapter<
    */
   async getAgent(agentId: UUID): Promise<Agent | null> {
     return this.withDatabase(async () => {
-      if (this.isSQLite()) {
-        const db = this.asSQLite();
-        const result = await db
-          .select()
-          .from(agentTable)
-          .where(eq(agentTable.id, agentId))
-          .limit(1);
+      const rows = await this.db
+        .select()
+        .from(agentTable)
+        .where(eq(agentTable.id, agentId))
+        .limit(1);
 
-        if (result.length === 0) return null;
+      if (rows.length === 0) return null;
 
-        const row = result[0];
-        return {
-          ...row,
-          username: row.username || '',
-          id: row.id as UUID,
-          system: !row.system ? undefined : row.system,
-          bio: !row.bio ? '' : row.bio,
-        };
-      } else {
-        const db = this.asPostgreSQL();
-        const result = await db
-          .select()
-          .from(agentTable)
-          .where(eq(agentTable.id, agentId))
-          .limit(1);
-
-        if (result.length === 0) return null;
-
-        const row = result[0];
-        return {
-          ...row,
-          username: row.username || '',
-          id: row.id as UUID,
-          system: !row.system ? undefined : row.system,
-          bio: !row.bio ? '' : row.bio,
-        };
-      }
+      const row = rows[0];
+      return {
+        ...row,
+        username: row.username || '',
+        id: row.id as UUID,
+        system: !row.system ? undefined : row.system,
+        bio: !row.bio ? '' : row.bio,
+      };
     });
   }
 
@@ -331,22 +222,20 @@ export abstract class BaseDrizzleAdapter<
    */
   async getAgents(): Promise<Partial<Agent>[]> {
     return this.withDatabase(async () => {
-      const result = await this.db
+      const rows = await this.db
         .select({
           id: agentTable.id,
           name: agentTable.name,
           bio: agentTable.bio,
         })
         .from(agentTable);
-
-      return result.map((row) => ({
+      return rows.map((row) => ({
         ...row,
         id: row.id as UUID,
         bio: row.bio === null ? '' : row.bio,
       }));
     });
   }
-
   /**
    * Asynchronously creates a new agent record in the database.
    *
@@ -356,68 +245,15 @@ export abstract class BaseDrizzleAdapter<
   async createAgent(agent: Agent): Promise<boolean> {
     return this.withDatabase(async () => {
       try {
-        // Ensure createdAt is set
-        const agentWithTimestamp = {
-          ...agent,
-          createdAt: agent.createdAt || Date.now(),
-          updatedAt: agent.updatedAt || Date.now(),
-        };
-
-        if (this.isSQLite()) {
-          const conn = this.getSQLiteConnection();
-          const transaction = conn.transaction(() => {
-            conn
-              .prepare(
-                `
-              INSERT INTO agents (
-                id, enabled, createdAt, updatedAt, name, username, system,
-                bio, message_examples, post_examples, topics, adjectives,
-                knowledge, plugins, settings, style
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `
-              )
-              .run(
-                agentWithTimestamp.id,
-                agentWithTimestamp.enabled ? 1 : 0,
-                agentWithTimestamp.createdAt,
-                agentWithTimestamp.updatedAt,
-                agentWithTimestamp.name,
-                agentWithTimestamp.username,
-                agentWithTimestamp.system || '',
-                JSON.stringify(agentWithTimestamp.bio || []),
-                JSON.stringify(agentWithTimestamp.messageExamples || []),
-                JSON.stringify(agentWithTimestamp.postExamples || []),
-                JSON.stringify(agentWithTimestamp.topics || []),
-                JSON.stringify(agentWithTimestamp.adjectives || []),
-                JSON.stringify(agentWithTimestamp.knowledge || []),
-                JSON.stringify(agentWithTimestamp.plugins || []),
-                JSON.stringify(agentWithTimestamp.settings || {}),
-                JSON.stringify(agentWithTimestamp.style || {})
-              );
+        await this.db.transaction(async (tx) => {
+          await tx.insert(agentTable).values({
+            ...agent,
           });
-          transaction();
-        } else {
-          const db = this.asPostgreSQL();
-          await db.transaction(async (tx) => {
-            await tx.execute(sql`
-              INSERT INTO agents (
-                id, enabled, "createdAt", "updatedAt", name, username, system,
-                bio, message_examples, post_examples, topics, adjectives,
-                knowledge, plugins, settings, style
-              ) VALUES (
-                ${agentWithTimestamp.id}, ${agentWithTimestamp.enabled}, ${agentWithTimestamp.createdAt},
-                ${agentWithTimestamp.updatedAt}, ${agentWithTimestamp.name}, ${agentWithTimestamp.username},
-                ${agentWithTimestamp.system || ''}, ${agentWithTimestamp.bio || []},
-                ${agentWithTimestamp.messageExamples || []}, ${agentWithTimestamp.postExamples || []},
-                ${agentWithTimestamp.topics || []}, ${agentWithTimestamp.adjectives || []},
-                ${agentWithTimestamp.knowledge || []}, ${agentWithTimestamp.plugins || []},
-                ${agentWithTimestamp.settings || {}}, ${agentWithTimestamp.style || {}}
-              )
-            `);
-          });
-        }
+        });
 
-        logger.debug('Agent created successfully:', { agentId: agent.id });
+        logger.debug('Agent created successfully:', {
+          agentId: agent.id,
+        });
         return true;
       } catch (error) {
         logger.error('Error creating agent:', {
@@ -439,47 +275,28 @@ export abstract class BaseDrizzleAdapter<
   async updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean> {
     return this.withDatabase(async () => {
       try {
-        if (!agentId) throw new Error('Agent ID is required for update');
-
-        const isBetterSqlite =
-          (this.db as any).session?.adapterName === 'better-sqlite3' ||
-          (this.db as any).getDialect?.().name === 'sqlite';
-
-        if (isBetterSqlite) {
-          const dbSync = this.db as BetterSQLite3Database;
-          const updateTx = dbSync.transaction((tx) => {
-            let finalAgentData = { ...agent, updatedAt: Date.now() } as any;
-            if (agent.settings) {
-              const currentAgentResult = tx
-                .select({ settings: agentTable.settings })
-                .from(agentTable)
-                .where(eq(agentTable.id, agentId))
-                .limit(1)
-                .get();
-              const currentSettings = currentAgentResult?.settings || {};
-              finalAgentData.settings = { ...currentSettings, ...agent.settings };
-            }
-            const { id, createdAt, ...updatePayload } = finalAgentData;
-            tx.update(agentTable).set(updatePayload).where(eq(agentTable.id, agentId)).run();
-          });
-          updateTx();
-        } else {
-          await this.db.transaction(async (tx) => {
-            let agentDataToUpdate = { ...agent };
-            if (agentDataToUpdate.settings) {
-              agentDataToUpdate.settings = await this.mergeAgentSettings(
-                tx,
-                agentId,
-                agentDataToUpdate.settings
-              );
-            }
-            await tx
-              .update(agentTable)
-              .set({ ...agentDataToUpdate, updatedAt: Date.now() })
-              .where(eq(agentTable.id, agentId));
-          });
+        if (!agentId) {
+          throw new Error('Agent ID is required for update');
         }
-        logger.debug('Agent updated successfully:', { agentId });
+
+        await this.db.transaction(async (tx) => {
+          // Handle settings update if present
+          if (agent?.settings) {
+            agent.settings = await this.mergeAgentSettings(tx, agentId, agent.settings);
+          }
+
+          await tx
+            .update(agentTable)
+            .set({
+              ...agent,
+              updatedAt: Date.now(),
+            })
+            .where(eq(agentTable.id, agentId));
+        });
+
+        logger.debug('Agent updated successfully:', {
+          agentId,
+        });
         return true;
       } catch (error) {
         logger.error('Error updating agent:', {
@@ -501,7 +318,11 @@ export abstract class BaseDrizzleAdapter<
    * @returns The merged settings object
    * @private
    */
-  private async mergeAgentSettings(tx: any, agentId: UUID, updatedSettings: any): Promise<any> {
+  private async mergeAgentSettings(
+    tx: TDrizzleDatabase,
+    agentId: UUID,
+    updatedSettings: any
+  ): Promise<any> {
     // First get the current agent data
     const currentAgent = await tx
       .select({ settings: agentTable.settings })
@@ -591,414 +412,235 @@ export abstract class BaseDrizzleAdapter<
       try {
         logger.debug(`[DB] Beginning database transaction for deleting agent: ${agentId}`);
 
-        const isBetterSqlite =
-          (this.db as any).session?.adapterName === 'better-sqlite3' ||
-          (this.db as any).getDialect?.().name === 'sqlite';
+        // Use a transaction with timeout
+        const deletePromise = new Promise<boolean>((resolve, reject) => {
+          const timeoutId = setTimeout(() => {
+            logger.error(`[DB] Transaction timeout reached for agent deletion: ${agentId}`);
+            reject(new Error('Database transaction timeout'));
+          }, 30000);
 
-        if (isBetterSqlite) {
-          // SQLite uses synchronous transactions
-          const dbSync = this.db as BetterSQLite3Database;
+          this.db
+            .transaction(async (tx: DrizzleDatabase) => {
+              try {
+                // Step 1: Find all entities belonging to this agent
+                logger.debug(`[DB] Fetching entities for agent: ${agentId}`);
+                const entities = await tx
+                  .select({ entityId: entityTable.id })
+                  .from(entityTable)
+                  .where(eq(entityTable.agentId, agentId));
 
-          const transactionFn = dbSync.transaction((dbTx) => {
-            // Step 1: Find all entities belonging to this agent
-            logger.debug(`[DB] Fetching entities for agent: ${agentId}`);
-            const entities = dbTx
-              .select({ entityId: entityTable.id })
-              .from(entityTable)
-              .where(eq(entityTable.agentId, agentId))
-              .all();
-
-            const entityIds = entities.map((e) => e.entityId);
-            logger.debug(`[DB] Found ${entityIds.length} entities to delete for agent ${agentId}`);
-
-            // Step 2: Find all rooms for this agent
-            logger.debug(`[DB] Fetching rooms for agent: ${agentId}`);
-            const rooms = dbTx
-              .select({ roomId: roomTable.id })
-              .from(roomTable)
-              .where(eq(roomTable.agentId, agentId))
-              .all();
-
-            const roomIds = rooms.map((r) => r.roomId);
-            logger.debug(`[DB] Found ${roomIds.length} rooms for agent ${agentId}`);
-
-            // Delete logs first directly, addressing the foreign key constraint
-            logger.debug(`[DB] Explicitly deleting ALL logs with matching entityIds and roomIds`);
-
-            // Delete logs by entity IDs
-            if (entityIds.length > 0) {
-              logger.debug(`[DB] Deleting logs for ${entityIds.length} entities`);
-              const BATCH_SIZE = 50;
-              for (let i = 0; i < entityIds.length; i += BATCH_SIZE) {
-                const batch = entityIds.slice(i, i + BATCH_SIZE);
-                dbTx.delete(logTable).where(inArray(logTable.entityId, batch)).run();
-              }
-              logger.debug(`[DB] Entity logs deletion completed successfully`);
-            }
-
-            // Delete logs by room IDs
-            if (roomIds.length > 0) {
-              logger.debug(`[DB] Deleting logs for ${roomIds.length} rooms`);
-              const BATCH_SIZE = 50;
-              for (let i = 0; i < roomIds.length; i += BATCH_SIZE) {
-                const batch = roomIds.slice(i, i + BATCH_SIZE);
-                dbTx.delete(logTable).where(inArray(logTable.roomId, batch)).run();
-              }
-              logger.debug(`[DB] Room logs deletion completed successfully`);
-            }
-
-            // Step 3: Find memories that belong to entities
-            let memoryIds: UUID[] = [];
-            if (entityIds.length > 0) {
-              logger.debug(`[DB] Finding memories belonging to entities`);
-              const memories = dbTx
-                .select({ id: memoryTable.id })
-                .from(memoryTable)
-                .where(inArray(memoryTable.entityId, entityIds))
-                .all();
-
-              memoryIds = memories.map((m) => m.id as UUID);
-              logger.debug(`[DB] Found ${memoryIds.length} memories belonging to entities`);
-            }
-
-            // Step 4: Find memories that belong to the agent
-            logger.debug(`[DB] Finding memories belonging to agent directly`);
-            const agentMemories = dbTx
-              .select({ id: memoryTable.id })
-              .from(memoryTable)
-              .where(eq(memoryTable.agentId, agentId))
-              .all();
-
-            memoryIds = [...memoryIds, ...agentMemories.map((m) => m.id as UUID)];
-            logger.debug(`[DB] Found total of ${memoryIds.length} memories to delete`);
-
-            // Step 5: Find memories that belong to the rooms
-            if (roomIds.length > 0) {
-              logger.debug(`[DB] Finding memories belonging to rooms`);
-              const roomMemories = dbTx
-                .select({ id: memoryTable.id })
-                .from(memoryTable)
-                .where(inArray(memoryTable.roomId, roomIds))
-                .all();
-
-              memoryIds = [...memoryIds, ...roomMemories.map((m) => m.id as UUID)];
-              logger.debug(`[DB] Updated total to ${memoryIds.length} memories to delete`);
-            }
-
-            // Step 6: Delete embeddings for memories
-            if (memoryIds.length > 0) {
-              logger.debug(`[DB] Deleting embeddings for ${memoryIds.length} memories`);
-              const BATCH_SIZE = 100;
-              for (let i = 0; i < memoryIds.length; i += BATCH_SIZE) {
-                const batch = memoryIds.slice(i, i + BATCH_SIZE);
-                dbTx.delete(embeddingTable).where(inArray(embeddingTable.memoryId, batch)).run();
-              }
-              logger.debug(`[DB] Embeddings deleted successfully`);
-            }
-
-            // Step 7: Delete memories
-            if (memoryIds.length > 0) {
-              logger.debug(`[DB] Deleting ${memoryIds.length} memories`);
-              const BATCH_SIZE = 100;
-              for (let i = 0; i < memoryIds.length; i += BATCH_SIZE) {
-                const batch = memoryIds.slice(i, i + BATCH_SIZE);
-                dbTx.delete(memoryTable).where(inArray(memoryTable.id, batch)).run();
-              }
-              logger.debug(`[DB] Memories deleted successfully`);
-            }
-
-            // Step 8: Delete components for entities
-            if (entityIds.length > 0) {
-              logger.debug(`[DB] Deleting components for entities`);
-              dbTx.delete(componentTable).where(inArray(componentTable.entityId, entityIds)).run();
-              logger.debug(`[DB] Components deleted successfully`);
-            }
-
-            // Step 9: Delete source entity references in components
-            if (entityIds.length > 0) {
-              logger.debug(`[DB] Deleting source entity references in components`);
-              dbTx
-                .delete(componentTable)
-                .where(inArray(componentTable.sourceEntityId, entityIds))
-                .run();
-              logger.debug(`[DB] Source entity references deleted successfully`);
-            }
-
-            // Step 10: Delete participations for rooms
-            if (roomIds.length > 0) {
-              logger.debug(`[DB] Deleting participations for rooms`);
-              dbTx.delete(participantTable).where(inArray(participantTable.roomId, roomIds)).run();
-              logger.debug(`[DB] Participations deleted for rooms`);
-            }
-
-            // Step 11: Delete agent-related participations
-            logger.debug(`[DB] Deleting agent participations`);
-            dbTx.delete(participantTable).where(eq(participantTable.agentId, agentId)).run();
-            logger.debug(`[DB] Agent participations deleted`);
-
-            // Step 12: Delete rooms
-            if (roomIds.length > 0) {
-              logger.debug(`[DB] Deleting rooms`);
-              dbTx.delete(roomTable).where(inArray(roomTable.id, roomIds)).run();
-              logger.debug(`[DB] Rooms deleted successfully`);
-            }
-
-            // Step 13: Delete cache entries
-            logger.debug(`[DB] Deleting cache entries`);
-            dbTx.delete(cacheTable).where(eq(cacheTable.agentId, agentId)).run();
-            logger.debug(`[DB] Cache entries deleted successfully`);
-
-            // Step 14: Delete relationships
-            logger.debug(`[DB] Deleting relationships`);
-            if (entityIds.length > 0) {
-              dbTx
-                .delete(relationshipTable)
-                .where(inArray(relationshipTable.sourceEntityId, entityIds))
-                .run();
-              dbTx
-                .delete(relationshipTable)
-                .where(inArray(relationshipTable.targetEntityId, entityIds))
-                .run();
-            }
-            dbTx.delete(relationshipTable).where(eq(relationshipTable.agentId, agentId)).run();
-            logger.debug(`[DB] Relationships deleted successfully`);
-
-            // Step 15: Delete entities
-            if (entityIds.length > 0) {
-              logger.debug(`[DB] Deleting entities`);
-              dbTx.delete(entityTable).where(eq(entityTable.agentId, agentId)).run();
-              logger.debug(`[DB] Entities deleted successfully`);
-            }
-
-            // Step 16: Handle world references
-            logger.debug(`[DB] Checking for world references`);
-            const worlds = dbTx
-              .select({ id: worldTable.id })
-              .from(worldTable)
-              .where(eq(worldTable.agentId, agentId))
-              .all();
-
-            if (worlds.length > 0) {
-              const worldIds = worlds.map((w) => w.id);
-              logger.debug(`[DB] Found ${worldIds.length} worlds to delete`);
-
-              // Step 17: Delete worlds
-              dbTx.delete(worldTable).where(inArray(worldTable.id, worldIds)).run();
-              logger.debug(`[DB] Worlds deleted successfully`);
-            } else {
-              logger.debug(`[DB] No worlds found for this agent`);
-            }
-
-            // Step 18: Finally, delete the agent
-            logger.debug(`[DB] Deleting agent ${agentId}`);
-            dbTx.delete(agentTable).where(eq(agentTable.id, agentId)).run();
-            logger.debug(`[DB] Agent deleted successfully`);
-          });
-          transactionFn();
-        } else {
-          // PostgreSQL uses async transactions
-          const pgDb = this.db as NodePgDatabase;
-          await pgDb.transaction(async (tx) => {
-            // Step 1: Find all entities belonging to this agent
-            logger.debug(`[DB] Fetching entities for agent: ${agentId}`);
-            const entities = await tx
-              .select({ entityId: entityTable.id })
-              .from(entityTable)
-              .where(eq(entityTable.agentId, agentId));
-
-            const entityIds = entities.map((e) => e.entityId);
-            logger.debug(`[DB] Found ${entityIds.length} entities to delete for agent ${agentId}`);
-
-            // Step 2: Find all rooms for this agent
-            logger.debug(`[DB] Fetching rooms for agent: ${agentId}`);
-            const rooms = await tx
-              .select({ roomId: roomTable.id })
-              .from(roomTable)
-              .where(eq(roomTable.agentId, agentId));
-
-            const roomIds = rooms.map((r) => r.roomId);
-            logger.debug(`[DB] Found ${roomIds.length} rooms for agent ${agentId}`);
-
-            // Delete logs first directly, addressing the foreign key constraint
-            logger.debug(`[DB] Explicitly deleting ALL logs with matching entityIds and roomIds`);
-
-            // Delete logs by entity IDs
-            if (entityIds.length > 0) {
-              logger.debug(`[DB] Deleting logs for ${entityIds.length} entities (first batch)`);
-              // Break into smaller batches if there are many entities
-              const BATCH_SIZE = 50;
-              for (let i = 0; i < entityIds.length; i += BATCH_SIZE) {
-                const batch = entityIds.slice(i, i + BATCH_SIZE);
+                const entityIds = entities.map((e) => e.entityId);
                 logger.debug(
-                  `[DB] Processing entity logs batch ${i / BATCH_SIZE + 1} with ${batch.length} entities`
+                  `[DB] Found ${entityIds.length} entities to delete for agent ${agentId}`
                 );
-                await tx.delete(logTable).where(inArray(logTable.entityId, batch));
-              }
-              logger.debug(`[DB] Entity logs deletion completed successfully`);
-            }
 
-            // Delete logs by room IDs
-            if (roomIds.length > 0) {
-              logger.debug(`[DB] Deleting logs for ${roomIds.length} rooms (first batch)`);
-              // Break into smaller batches if there are many rooms
-              const BATCH_SIZE = 50;
-              for (let i = 0; i < roomIds.length; i += BATCH_SIZE) {
-                const batch = roomIds.slice(i, i + BATCH_SIZE);
+                // Step 2: Find all rooms for this agent
+                logger.debug(`[DB] Fetching rooms for agent: ${agentId}`);
+                const rooms = await tx
+                  .select({ roomId: roomTable.id })
+                  .from(roomTable)
+                  .where(eq(roomTable.agentId, agentId));
+
+                const roomIds = rooms.map((r) => r.roomId);
+                logger.debug(`[DB] Found ${roomIds.length} rooms for agent ${agentId}`);
+
+                // Delete logs first directly, addressing the foreign key constraint
                 logger.debug(
-                  `[DB] Processing room logs batch ${i / BATCH_SIZE + 1} with ${batch.length} rooms`
+                  `[DB] Explicitly deleting ALL logs with matching entityIds and roomIds`
                 );
-                await tx.delete(logTable).where(inArray(logTable.roomId, batch));
+
+                // Delete logs by entity IDs
+                if (entityIds.length > 0) {
+                  logger.debug(`[DB] Deleting logs for ${entityIds.length} entities (first batch)`);
+                  // Break into smaller batches if there are many entities
+                  const BATCH_SIZE = 50;
+                  for (let i = 0; i < entityIds.length; i += BATCH_SIZE) {
+                    const batch = entityIds.slice(i, i + BATCH_SIZE);
+                    logger.debug(
+                      `[DB] Processing entity logs batch ${i / BATCH_SIZE + 1} with ${batch.length} entities`
+                    );
+                    await tx.delete(logTable).where(inArray(logTable.entityId, batch));
+                  }
+                  logger.debug(`[DB] Entity logs deletion completed successfully`);
+                }
+
+                // Delete logs by room IDs
+                if (roomIds.length > 0) {
+                  logger.debug(`[DB] Deleting logs for ${roomIds.length} rooms (first batch)`);
+                  // Break into smaller batches if there are many rooms
+                  const BATCH_SIZE = 50;
+                  for (let i = 0; i < roomIds.length; i += BATCH_SIZE) {
+                    const batch = roomIds.slice(i, i + BATCH_SIZE);
+                    logger.debug(
+                      `[DB] Processing room logs batch ${i / BATCH_SIZE + 1} with ${batch.length} rooms`
+                    );
+                    await tx.delete(logTable).where(inArray(logTable.roomId, batch));
+                  }
+                  logger.debug(`[DB] Room logs deletion completed successfully`);
+                }
+
+                // Step 3: Find memories that belong to entities
+                let memoryIds: UUID[] = [];
+                if (entityIds.length > 0) {
+                  logger.debug(`[DB] Finding memories belonging to entities`);
+                  const memories = await tx
+                    .select({ id: memoryTable.id })
+                    .from(memoryTable)
+                    .where(inArray(memoryTable.entityId, entityIds));
+
+                  memoryIds = memories.map((m) => m.id as UUID);
+                  logger.debug(`[DB] Found ${memoryIds.length} memories belonging to entities`);
+                }
+
+                // Step 4: Find memories that belong to the agent
+                logger.debug(`[DB] Finding memories belonging to agent directly`);
+                const agentMemories = await tx
+                  .select({ id: memoryTable.id })
+                  .from(memoryTable)
+                  .where(eq(memoryTable.agentId, agentId));
+
+                memoryIds = [...memoryIds, ...agentMemories.map((m) => m.id as UUID)];
+                logger.debug(`[DB] Found total of ${memoryIds.length} memories to delete`);
+
+                // Step 5: Find memories that belong to the rooms
+                if (roomIds.length > 0) {
+                  logger.debug(`[DB] Finding memories belonging to rooms`);
+                  const roomMemories = await tx
+                    .select({ id: memoryTable.id })
+                    .from(memoryTable)
+                    .where(inArray(memoryTable.roomId, roomIds));
+
+                  memoryIds = [...memoryIds, ...roomMemories.map((m) => m.id as UUID)];
+                  logger.debug(`[DB] Updated total to ${memoryIds.length} memories to delete`);
+                }
+
+                // Step 6: Delete embeddings for memories
+                if (memoryIds.length > 0) {
+                  logger.debug(`[DB] Deleting embeddings for ${memoryIds.length} memories`);
+                  // Delete in smaller batches if there are many memories
+                  const BATCH_SIZE = 100;
+                  for (let i = 0; i < memoryIds.length; i += BATCH_SIZE) {
+                    const batch = memoryIds.slice(i, i + BATCH_SIZE);
+                    await tx.delete(embeddingTable).where(inArray(embeddingTable.memoryId, batch));
+                  }
+                  logger.debug(`[DB] Embeddings deleted successfully`);
+                }
+
+                // Step 7: Delete memories
+                if (memoryIds.length > 0) {
+                  logger.debug(`[DB] Deleting ${memoryIds.length} memories`);
+                  // Delete in smaller batches if there are many memories
+                  const BATCH_SIZE = 100;
+                  for (let i = 0; i < memoryIds.length; i += BATCH_SIZE) {
+                    const batch = memoryIds.slice(i, i + BATCH_SIZE);
+                    await tx.delete(memoryTable).where(inArray(memoryTable.id, batch));
+                  }
+                  logger.debug(`[DB] Memories deleted successfully`);
+                }
+
+                // Step 8: Delete components for entities
+                if (entityIds.length > 0) {
+                  logger.debug(`[DB] Deleting components for entities`);
+                  await tx
+                    .delete(componentTable)
+                    .where(inArray(componentTable.entityId, entityIds));
+                  logger.debug(`[DB] Components deleted successfully`);
+                }
+
+                // Step 9: Delete source entity references in components
+                if (entityIds.length > 0) {
+                  logger.debug(`[DB] Deleting source entity references in components`);
+                  await tx
+                    .delete(componentTable)
+                    .where(inArray(componentTable.sourceEntityId, entityIds));
+                  logger.debug(`[DB] Source entity references deleted successfully`);
+                }
+
+                // Step 10: Delete participations for rooms
+                if (roomIds.length > 0) {
+                  logger.debug(`[DB] Deleting participations for rooms`);
+                  await tx
+                    .delete(participantTable)
+                    .where(inArray(participantTable.roomId, roomIds));
+                  logger.debug(`[DB] Participations deleted for rooms`);
+                }
+
+                // Step 11: Delete agent-related participations
+                logger.debug(`[DB] Deleting agent participations`);
+                await tx.delete(participantTable).where(eq(participantTable.agentId, agentId));
+                logger.debug(`[DB] Agent participations deleted`);
+
+                // Step 12: Delete rooms
+                if (roomIds.length > 0) {
+                  logger.debug(`[DB] Deleting rooms`);
+                  await tx.delete(roomTable).where(inArray(roomTable.id, roomIds));
+                  logger.debug(`[DB] Rooms deleted successfully`);
+                }
+
+                // Step 13: Delete cache entries
+                logger.debug(`[DB] Deleting cache entries`);
+                await tx.delete(cacheTable).where(eq(cacheTable.agentId, agentId));
+                logger.debug(`[DB] Cache entries deleted successfully`);
+
+                // Step 14: Delete relationships
+                logger.debug(`[DB] Deleting relationships`);
+                // First delete where source entity is from this agent
+                if (entityIds.length > 0) {
+                  await tx
+                    .delete(relationshipTable)
+                    .where(inArray(relationshipTable.sourceEntityId, entityIds));
+                  // Then delete where target entity is from this agent
+                  await tx
+                    .delete(relationshipTable)
+                    .where(inArray(relationshipTable.targetEntityId, entityIds));
+                }
+                // Finally, delete by agent ID
+                await tx.delete(relationshipTable).where(eq(relationshipTable.agentId, agentId));
+                logger.debug(`[DB] Relationships deleted successfully`);
+
+                // Step 15: Delete entities
+                if (entityIds.length > 0) {
+                  logger.debug(`[DB] Deleting entities`);
+                  await tx.delete(entityTable).where(eq(entityTable.agentId, agentId));
+                  logger.debug(`[DB] Entities deleted successfully`);
+                }
+
+                // Step 16: Handle world references
+                logger.debug(`[DB] Checking for world references`);
+                const worlds = await tx
+                  .select({ id: worldTable.id })
+                  .from(worldTable)
+                  .where(eq(worldTable.agentId, agentId));
+
+                if (worlds.length > 0) {
+                  const worldIds = worlds.map((w) => w.id);
+                  logger.debug(`[DB] Found ${worldIds.length} worlds to delete`);
+
+                  // Step 17: Delete worlds
+                  await tx.delete(worldTable).where(inArray(worldTable.id, worldIds));
+                  logger.debug(`[DB] Worlds deleted successfully`);
+                } else {
+                  logger.debug(`[DB] No worlds found for this agent`);
+                }
+
+                // Step 18: Finally, delete the agent
+                logger.debug(`[DB] Deleting agent ${agentId}`);
+                await tx.delete(agentTable).where(eq(agentTable.id, agentId));
+                logger.debug(`[DB] Agent deleted successfully`);
+
+                resolve(true);
+              } catch (error) {
+                logger.error(`[DB] Error in transaction:`, error);
+                reject(error);
               }
-              logger.debug(`[DB] Room logs deletion completed successfully`);
-            }
+            })
+            .catch((transactionError) => {
+              clearTimeout(timeoutId);
+              reject(transactionError);
+            });
+        });
 
-            // Step 3: Find memories that belong to entities
-            let memoryIds: UUID[] = [];
-            if (entityIds.length > 0) {
-              logger.debug(`[DB] Finding memories belonging to entities`);
-              const memories = await tx
-                .select({ id: memoryTable.id })
-                .from(memoryTable)
-                .where(inArray(memoryTable.entityId, entityIds));
-
-              memoryIds = memories.map((m) => m.id as UUID);
-              logger.debug(`[DB] Found ${memoryIds.length} memories belonging to entities`);
-            }
-
-            // Step 4: Find memories that belong to the agent
-            logger.debug(`[DB] Finding memories belonging to agent directly`);
-            const agentMemories = await tx
-              .select({ id: memoryTable.id })
-              .from(memoryTable)
-              .where(eq(memoryTable.agentId, agentId));
-
-            memoryIds = [...memoryIds, ...agentMemories.map((m) => m.id as UUID)];
-            logger.debug(`[DB] Found total of ${memoryIds.length} memories to delete`);
-
-            // Step 5: Find memories that belong to the rooms
-            if (roomIds.length > 0) {
-              logger.debug(`[DB] Finding memories belonging to rooms`);
-              const roomMemories = await tx
-                .select({ id: memoryTable.id })
-                .from(memoryTable)
-                .where(inArray(memoryTable.roomId, roomIds));
-
-              memoryIds = [...memoryIds, ...roomMemories.map((m) => m.id as UUID)];
-              logger.debug(`[DB] Updated total to ${memoryIds.length} memories to delete`);
-            }
-
-            // Step 6: Delete embeddings for memories
-            if (memoryIds.length > 0) {
-              logger.debug(`[DB] Deleting embeddings for ${memoryIds.length} memories`);
-              // Delete in smaller batches if there are many memories
-              const BATCH_SIZE = 100;
-              for (let i = 0; i < memoryIds.length; i += BATCH_SIZE) {
-                const batch = memoryIds.slice(i, i + BATCH_SIZE);
-                await tx.delete(embeddingTable).where(inArray(embeddingTable.memoryId, batch));
-              }
-              logger.debug(`[DB] Embeddings deleted successfully`);
-            }
-
-            // Step 7: Delete memories
-            if (memoryIds.length > 0) {
-              logger.debug(`[DB] Deleting ${memoryIds.length} memories`);
-              // Delete in smaller batches if there are many memories
-              const BATCH_SIZE = 100;
-              for (let i = 0; i < memoryIds.length; i += BATCH_SIZE) {
-                const batch = memoryIds.slice(i, i + BATCH_SIZE);
-                await tx.delete(memoryTable).where(inArray(memoryTable.id, batch));
-              }
-              logger.debug(`[DB] Memories deleted successfully`);
-            }
-
-            // Step 8: Delete components for entities
-            if (entityIds.length > 0) {
-              logger.debug(`[DB] Deleting components for entities`);
-              await tx.delete(componentTable).where(inArray(componentTable.entityId, entityIds));
-              logger.debug(`[DB] Components deleted successfully`);
-            }
-
-            // Step 9: Delete source entity references in components
-            if (entityIds.length > 0) {
-              logger.debug(`[DB] Deleting source entity references in components`);
-              await tx
-                .delete(componentTable)
-                .where(inArray(componentTable.sourceEntityId, entityIds));
-              logger.debug(`[DB] Source entity references deleted successfully`);
-            }
-
-            // Step 10: Delete participations for rooms
-            if (roomIds.length > 0) {
-              logger.debug(`[DB] Deleting participations for rooms`);
-              await tx.delete(participantTable).where(inArray(participantTable.roomId, roomIds));
-              logger.debug(`[DB] Participations deleted for rooms`);
-            }
-
-            // Step 11: Delete agent-related participations
-            logger.debug(`[DB] Deleting agent participations`);
-            await tx.delete(participantTable).where(eq(participantTable.agentId, agentId));
-            logger.debug(`[DB] Agent participations deleted`);
-
-            // Step 12: Delete rooms
-            if (roomIds.length > 0) {
-              logger.debug(`[DB] Deleting rooms`);
-              await tx.delete(roomTable).where(inArray(roomTable.id, roomIds));
-              logger.debug(`[DB] Rooms deleted successfully`);
-            }
-
-            // Step 13: Delete cache entries
-            logger.debug(`[DB] Deleting cache entries`);
-            await tx.delete(cacheTable).where(eq(cacheTable.agentId, agentId));
-            logger.debug(`[DB] Cache entries deleted successfully`);
-
-            // Step 14: Delete relationships
-            logger.debug(`[DB] Deleting relationships`);
-            // First delete where source entity is from this agent
-            if (entityIds.length > 0) {
-              await tx
-                .delete(relationshipTable)
-                .where(inArray(relationshipTable.sourceEntityId, entityIds));
-              // Then delete where target entity is from this agent
-              await tx
-                .delete(relationshipTable)
-                .where(inArray(relationshipTable.targetEntityId, entityIds));
-            }
-            // Finally, delete by agent ID
-            await tx.delete(relationshipTable).where(eq(relationshipTable.agentId, agentId));
-            logger.debug(`[DB] Relationships deleted successfully`);
-
-            // Step 15: Delete entities
-            if (entityIds.length > 0) {
-              logger.debug(`[DB] Deleting entities`);
-              await tx.delete(entityTable).where(eq(entityTable.agentId, agentId));
-              logger.debug(`[DB] Entities deleted successfully`);
-            }
-
-            // Step 16: Handle world references
-            logger.debug(`[DB] Checking for world references`);
-            const worlds = await tx
-              .select({ id: worldTable.id })
-              .from(worldTable)
-              .where(eq(worldTable.agentId, agentId));
-
-            if (worlds.length > 0) {
-              const worldIds = worlds.map((w) => w.id);
-              logger.debug(`[DB] Found ${worldIds.length} worlds to delete`);
-
-              // Step 17: Delete worlds
-              await tx.delete(worldTable).where(inArray(worldTable.id, worldIds));
-              logger.debug(`[DB] Worlds deleted successfully`);
-            } else {
-              logger.debug(`[DB] No worlds found for this agent`);
-            }
-
-            // Step 18: Finally, delete the agent
-            logger.debug(`[DB] Deleting agent ${agentId}`);
-            await tx.delete(agentTable).where(eq(agentTable.id, agentId));
-            logger.debug(`[DB] Agent deleted successfully`);
-          });
-        }
-
+        await deletePromise;
         logger.success(`[DB] Agent ${agentId} successfully deleted`);
         return true;
       } catch (error) {
@@ -1159,34 +801,13 @@ export abstract class BaseDrizzleAdapter<
   async createEntities(entities: Entity[]): Promise<boolean> {
     return this.withDatabase(async () => {
       try {
-        const isBetterSqlite =
-          (this.db as any).session?.adapterName === 'better-sqlite3' ||
-          (this.db as any).getDialect?.().name === 'sqlite';
+        return await this.db.transaction(async (tx) => {
+          await tx.insert(entityTable).values(entities);
 
-        // Ensure all entities have createdAt timestamp
-        const now = Date.now();
-        const entitiesWithTimestamp = entities.map((entity) => ({
-          ...entity,
-          createdAt: (entity as any).createdAt || now,
-        }));
-
-        if (isBetterSqlite) {
-          const dbSync = this.db as BetterSQLite3Database;
-          // SQLite transaction - must be synchronous
-          const insertFn = dbSync.transaction(() => {
-            dbSync.insert(entityTable).values(entitiesWithTimestamp).run();
-          });
-          insertFn();
           logger.debug(entities.length, 'Entities created successfully');
+
           return true;
-        } else {
-          const pgDb = this.db as NodePgDatabase;
-          return await pgDb.transaction(async (tx) => {
-            await tx.insert(entityTable).values(entitiesWithTimestamp);
-            logger.debug(entities.length, 'Entities created successfully');
-            return true;
-          });
-        }
+        });
       } catch (error) {
         logger.error('Error creating entity:', {
           error: error instanceof Error ? error.message : String(error),
@@ -1716,36 +1337,14 @@ export abstract class BaseDrizzleAdapter<
         // This ensures any problematic characters are properly escaped during JSON serialization
         const jsonString = JSON.stringify(sanitizedBody);
 
-        const isBetterSqlite =
-          (this.db as any).session?.adapterName === 'better-sqlite3' ||
-          (this.db as any).getDialect?.().name === 'sqlite';
-
-        if (isBetterSqlite) {
-          const dbSync = this.db as BetterSQLite3Database;
-          const logTx = dbSync.transaction(() => {
-            dbSync
-              .insert(logTable)
-              .values({
-                id: v4() as UUID,
-                body: jsonString, // SQLite stores JSON as text
-                entityId: params.entityId,
-                roomId: params.roomId,
-                type: params.type,
-              })
-              .run();
+        await this.db.transaction(async (tx) => {
+          await tx.insert(logTable).values({
+            body: sql`${jsonString}::jsonb`,
+            entityId: params.entityId,
+            roomId: params.roomId,
+            type: params.type,
           });
-          logTx();
-        } else {
-          await this.db.transaction(async (tx) => {
-            await tx.insert(logTable).values({
-              id: v4() as UUID,
-              body: sql`${jsonString}::jsonb`,
-              entityId: params.entityId,
-              roomId: params.roomId,
-              type: params.type,
-            });
-          });
-        }
+        });
       } catch (error) {
         logger.error('Failed to create log entry:', {
           error: error instanceof Error ? error.message : String(error),
@@ -2028,83 +1627,38 @@ export abstract class BaseDrizzleAdapter<
     const contentToInsert =
       typeof memory.content === 'string' ? JSON.parse(memory.content) : memory.content;
 
-    const isBetterSqlite =
-      (this.db as any).session?.adapterName === 'better-sqlite3' ||
-      (this.db as any).getDialect?.().name === 'sqlite';
+    await this.db.transaction(async (tx) => {
+      await tx.insert(memoryTable).values([
+        {
+          id: memoryId,
+          type: tableName,
+          content: sql`${contentToInsert}::jsonb`,
+          metadata: sql`${memory.metadata || {}}::jsonb`,
+          entityId: memory.entityId,
+          roomId: memory.roomId,
+          worldId: memory.worldId, // Include worldId
+          agentId: this.agentId,
+          unique: memory.unique ?? isUnique,
+          createdAt: memory.createdAt,
+        },
+      ]);
 
-    if (isBetterSqlite) {
-      const dbSync = this.db as BetterSQLite3Database;
-      const memTx = dbSync.transaction(() => {
-        dbSync
-          .insert(memoryTable)
-          .values([
-            {
-              id: memoryId,
-              type: tableName,
-              content: contentToInsert,
-              metadata: memory.metadata || {},
-              entityId: memory.entityId,
-              roomId: memory.roomId,
-              worldId: memory.worldId,
-              agentId: this.agentId,
-              unique: memory.unique ?? isUnique,
-              createdAt: memory.createdAt,
-            },
-          ])
-          .run();
+      if (memory.embedding && Array.isArray(memory.embedding)) {
+        const embeddingValues: Record<string, unknown> = {
+          id: v4(),
+          memoryId: memoryId,
+          createdAt: memory.createdAt,
+        };
 
-        if (memory.embedding && Array.isArray(memory.embedding)) {
-          const embeddingValues: Record<string, unknown> = {
-            id: v4(),
-            memoryId: memoryId,
-            createdAt: memory.createdAt,
-          };
+        const cleanVector = memory.embedding.map((n) =>
+          Number.isFinite(n) ? Number(n.toFixed(6)) : 0
+        );
 
-          const cleanVector = memory.embedding.map((n) =>
-            Number.isFinite(n) ? Number(n.toFixed(6)) : 0
-          );
+        embeddingValues[this.embeddingDimension] = cleanVector;
 
-          embeddingValues[this.embeddingDimension] = cleanVector;
-
-          dbSync.insert(embeddingTable).values([embeddingValues]).run();
-        }
-      });
-      memTx();
-    } else {
-      const pgDb = this.db as NodePgDatabase;
-      await pgDb.transaction(async (tx) => {
-        await tx.insert(memoryTable).values([
-          {
-            id: memoryId,
-            type: tableName,
-            content: sql`${contentToInsert}::jsonb`,
-            metadata: sql`${memory.metadata || {}}::jsonb`,
-            entityId: memory.entityId,
-            roomId: memory.roomId,
-            worldId: memory.worldId,
-            agentId: this.agentId,
-            unique: memory.unique ?? isUnique,
-            createdAt: memory.createdAt,
-          },
-        ]);
-
-        if (memory.embedding && Array.isArray(memory.embedding)) {
-          const embeddingValues: Record<string, unknown> = {
-            id: v4(),
-            memoryId: memoryId,
-            createdAt: memory.createdAt,
-          };
-
-          const cleanVector = memory.embedding.map((n) =>
-            Number.isFinite(n) ? Number(n.toFixed(6)) : 0
-          );
-
-          embeddingValues[this.embeddingDimension] = cleanVector;
-
-          await tx.insert(embeddingTable).values([embeddingValues]);
-        }
-      });
-    }
+        await tx.insert(embeddingTable).values([embeddingValues]);
+      }
+    });
 
     return memoryId;
   }
@@ -2124,135 +1678,64 @@ export abstract class BaseDrizzleAdapter<
           hasEmbedding: !!memory.embedding,
         });
 
-        const isBetterSqlite =
-          (this.db as any).session?.adapterName === 'better-sqlite3' ||
-          (this.db as any).getDialect?.().name === 'sqlite';
+        await this.db.transaction(async (tx) => {
+          // Update memory content if provided
+          if (memory.content) {
+            const contentToUpdate =
+              typeof memory.content === 'string' ? JSON.parse(memory.content) : memory.content;
 
-        if (isBetterSqlite) {
-          const dbSync = this.db as BetterSQLite3Database;
-          const updateTx = dbSync.transaction(() => {
-            // Update memory content if provided
-            if (memory.content) {
-              const contentToUpdate =
-                typeof memory.content === 'string' ? JSON.parse(memory.content) : memory.content;
+            await tx
+              .update(memoryTable)
+              .set({
+                content: sql`${contentToUpdate}::jsonb`,
+                ...(memory.metadata && { metadata: sql`${memory.metadata}::jsonb` }),
+              })
+              .where(eq(memoryTable.id, memory.id));
+          } else if (memory.metadata) {
+            // Update only metadata if content is not provided
+            await tx
+              .update(memoryTable)
+              .set({
+                metadata: sql`${memory.metadata}::jsonb`,
+              })
+              .where(eq(memoryTable.id, memory.id));
+          }
 
-              dbSync
-                .update(memoryTable)
-                .set({
-                  content: contentToUpdate,
-                  ...(memory.metadata && { metadata: memory.metadata }),
-                })
-                .where(eq(memoryTable.id, memory.id))
-                .run();
-            } else if (memory.metadata) {
-              // Update only metadata if content is not provided
-              dbSync
-                .update(memoryTable)
-                .set({
-                  metadata: memory.metadata,
-                })
-                .where(eq(memoryTable.id, memory.id))
-                .run();
-            }
+          // Update embedding if provided
+          if (memory.embedding && Array.isArray(memory.embedding)) {
+            const cleanVector = memory.embedding.map((n) =>
+              Number.isFinite(n) ? Number(n.toFixed(6)) : 0
+            );
 
-            // Update embedding if provided
-            if (memory.embedding && Array.isArray(memory.embedding)) {
-              const cleanVector = memory.embedding.map((n) =>
-                Number.isFinite(n) ? Number(n.toFixed(6)) : 0
-              );
+            // Check if embedding exists
+            const existingEmbedding = await tx
+              .select({ id: embeddingTable.id })
+              .from(embeddingTable)
+              .where(eq(embeddingTable.memoryId, memory.id))
+              .limit(1);
 
-              // Check if embedding exists
-              const existingEmbedding = dbSync
-                .select({ id: embeddingTable.id })
-                .from(embeddingTable)
-                .where(eq(embeddingTable.memoryId, memory.id))
-                .limit(1)
-                .all();
-
-              if (existingEmbedding.length > 0) {
-                // Update existing embedding
-                const updateValues: Record<string, unknown> = {};
-                updateValues[this.embeddingDimension] = cleanVector;
-
-                dbSync
-                  .update(embeddingTable)
-                  .set(updateValues)
-                  .where(eq(embeddingTable.memoryId, memory.id))
-                  .run();
-              } else {
-                // Create new embedding
-                const embeddingValues: Record<string, unknown> = {
-                  id: v4(),
-                  memoryId: memory.id,
-                  createdAt: Date.now(),
-                };
-                embeddingValues[this.embeddingDimension] = cleanVector;
-
-                dbSync.insert(embeddingTable).values([embeddingValues]).run();
-              }
-            }
-          });
-          updateTx();
-        } else {
-          await this.db.transaction(async (tx) => {
-            // Update memory content if provided
-            if (memory.content) {
-              const contentToUpdate =
-                typeof memory.content === 'string' ? JSON.parse(memory.content) : memory.content;
+            if (existingEmbedding.length > 0) {
+              // Update existing embedding
+              const updateValues: Record<string, unknown> = {};
+              updateValues[this.embeddingDimension] = cleanVector;
 
               await tx
-                .update(memoryTable)
-                .set({
-                  content: sql`${contentToUpdate}::jsonb`,
-                  ...(memory.metadata && { metadata: sql`${memory.metadata}::jsonb` }),
-                })
-                .where(eq(memoryTable.id, memory.id));
-            } else if (memory.metadata) {
-              // Update only metadata if content is not provided
-              await tx
-                .update(memoryTable)
-                .set({
-                  metadata: sql`${memory.metadata}::jsonb`,
-                })
-                .where(eq(memoryTable.id, memory.id));
+                .update(embeddingTable)
+                .set(updateValues)
+                .where(eq(embeddingTable.memoryId, memory.id));
+            } else {
+              // Create new embedding
+              const embeddingValues: Record<string, unknown> = {
+                id: v4(),
+                memoryId: memory.id,
+                createdAt: Date.now(),
+              };
+              embeddingValues[this.embeddingDimension] = cleanVector;
+
+              await tx.insert(embeddingTable).values([embeddingValues]);
             }
-
-            // Update embedding if provided
-            if (memory.embedding && Array.isArray(memory.embedding)) {
-              const cleanVector = memory.embedding.map((n) =>
-                Number.isFinite(n) ? Number(n.toFixed(6)) : 0
-              );
-
-              // Check if embedding exists
-              const existingEmbedding = await tx
-                .select({ id: embeddingTable.id })
-                .from(embeddingTable)
-                .where(eq(embeddingTable.memoryId, memory.id))
-                .limit(1);
-
-              if (existingEmbedding.length > 0) {
-                // Update existing embedding
-                const updateValues: Record<string, unknown> = {};
-                updateValues[this.embeddingDimension] = cleanVector;
-
-                await tx
-                  .update(embeddingTable)
-                  .set(updateValues)
-                  .where(eq(embeddingTable.memoryId, memory.id));
-              } else {
-                // Create new embedding
-                const embeddingValues: Record<string, unknown> = {
-                  id: v4(),
-                  memoryId: memory.id,
-                  createdAt: Date.now(),
-                };
-                embeddingValues[this.embeddingDimension] = cleanVector;
-
-                await tx.insert(embeddingTable).values([embeddingValues]);
-              }
-            }
-          });
-        }
+          }
+        });
 
         logger.debug('Memory updated successfully:', {
           memoryId: memory.id,
@@ -2275,35 +1758,16 @@ export abstract class BaseDrizzleAdapter<
    */
   async deleteMemory(memoryId: UUID): Promise<void> {
     return this.withDatabase(async () => {
-      const isBetterSqlite =
-        (this.db as any).session?.adapterName === 'better-sqlite3' ||
-        (this.db as any).getDialect?.().name === 'sqlite';
+      await this.db.transaction(async (tx) => {
+        // See if there are any fragments that we need to delete
+        await this.deleteMemoryFragments(tx, memoryId);
 
-      if (isBetterSqlite) {
-        const dbSync = this.db as BetterSQLite3Database;
-        const deleteTx = dbSync.transaction(() => {
-          // See if there are any fragments that we need to delete
-          this.deleteMemoryFragmentsSync(dbSync, memoryId);
+        // Then delete the embedding for the main memory
+        await tx.delete(embeddingTable).where(eq(embeddingTable.memoryId, memoryId));
 
-          // Then delete the embedding for the main memory
-          dbSync.delete(embeddingTable).where(eq(embeddingTable.memoryId, memoryId)).run();
-
-          // Finally delete the memory itself
-          dbSync.delete(memoryTable).where(eq(memoryTable.id, memoryId)).run();
-        });
-        deleteTx();
-      } else {
-        await this.db.transaction(async (tx) => {
-          // See if there are any fragments that we need to delete
-          await this.deleteMemoryFragments(tx, memoryId);
-
-          // Then delete the embedding for the main memory
-          await tx.delete(embeddingTable).where(eq(embeddingTable.memoryId, memoryId));
-
-          // Finally delete the memory itself
-          await tx.delete(memoryTable).where(eq(memoryTable.id, memoryId));
-        });
-      }
+        // Finally delete the memory itself
+        await tx.delete(memoryTable).where(eq(memoryTable.id, memoryId));
+      });
 
       logger.debug('Memory and related fragments removed successfully:', {
         memoryId,
@@ -2337,31 +1801,6 @@ export abstract class BaseDrizzleAdapter<
   }
 
   /**
-   * Synchronous version for SQLite - deletes all memory fragments
-   * @param tx The SQLite database transaction
-   * @param documentId The UUID of the document memory whose fragments should be deleted
-   * @private
-   */
-  private deleteMemoryFragmentsSync(tx: BetterSQLite3Database, documentId: UUID): void {
-    const fragmentsToDelete = this.getMemoryFragmentsSync(tx, documentId);
-
-    if (fragmentsToDelete.length > 0) {
-      const fragmentIds = fragmentsToDelete.map((f) => f.id) as UUID[];
-
-      // Delete embeddings for fragments
-      tx.delete(embeddingTable).where(inArray(embeddingTable.memoryId, fragmentIds)).run();
-
-      // Delete the fragments
-      tx.delete(memoryTable).where(inArray(memoryTable.id, fragmentIds)).run();
-
-      logger.debug('Deleted related fragments:', {
-        documentId,
-        fragmentCount: fragmentsToDelete.length,
-      });
-    }
-  }
-
-  /**
    * Retrieves all memory fragments that reference a specific document memory
    * @param tx The database transaction
    * @param documentId The UUID of the document memory whose fragments should be retrieved
@@ -2383,28 +1822,6 @@ export abstract class BaseDrizzleAdapter<
   }
 
   /**
-   * Synchronous version for SQLite - retrieves all memory fragments
-   * @param tx The SQLite database
-   * @param documentId The UUID of the document memory whose fragments should be retrieved
-   * @returns An array of memory fragments
-   * @private
-   */
-  private getMemoryFragmentsSync(tx: BetterSQLite3Database, documentId: UUID): { id: UUID }[] {
-    const fragments = tx
-      .select({ id: memoryTable.id })
-      .from(memoryTable)
-      .where(
-        and(
-          eq(memoryTable.agentId, this.agentId),
-          sql`json_extract(${memoryTable.metadata}, '$.documentId') = ${documentId}`
-        )
-      )
-      .all();
-
-    return fragments.map((f) => ({ id: f.id as UUID }));
-  }
-
-  /**
    * Asynchronously deletes all memories from the database based on the provided parameters.
    * @param {UUID} roomId - The ID of the room to delete memories from.
    * @param {string} tableName - The name of the table to delete memories from.
@@ -2412,69 +1829,33 @@ export abstract class BaseDrizzleAdapter<
    */
   async deleteAllMemories(roomId: UUID, tableName: string): Promise<void> {
     return this.withDatabase(async () => {
-      const isBetterSqlite =
-        (this.db as any).session?.adapterName === 'better-sqlite3' ||
-        (this.db as any).getDialect?.().name === 'sqlite';
+      await this.db.transaction(async (tx) => {
+        // 1) fetch all memory IDs for this room + table
+        const rows = await tx
+          .select({ id: memoryTable.id })
+          .from(memoryTable)
+          .where(and(eq(memoryTable.roomId, roomId), eq(memoryTable.type, tableName)));
 
-      if (isBetterSqlite) {
-        const dbSync = this.db as BetterSQLite3Database;
-        const deleteAllTx = dbSync.transaction(() => {
-          // 1) fetch all memory IDs for this room + table
-          const rows = dbSync
-            .select({ id: memoryTable.id })
-            .from(memoryTable)
-            .where(and(eq(memoryTable.roomId, roomId), eq(memoryTable.type, tableName)))
-            .all();
+        const ids = rows.map((r) => r.id);
+        logger.debug('[deleteAllMemories] memory IDs to delete:', { roomId, tableName, ids });
 
-          const ids = rows.map((r) => r.id);
-          logger.debug('[deleteAllMemories] memory IDs to delete:', { roomId, tableName, ids });
+        if (ids.length === 0) {
+          return;
+        }
 
-          if (ids.length === 0) {
-            return;
-          }
+        // 2) delete any fragments for "document" memories & their embeddings
+        await Promise.all(
+          ids.map(async (memoryId) => {
+            await this.deleteMemoryFragments(tx, memoryId);
+            await tx.delete(embeddingTable).where(eq(embeddingTable.memoryId, memoryId));
+          })
+        );
 
-          // 2) delete any fragments for "document" memories & their embeddings
-          ids.forEach((memoryId) => {
-            this.deleteMemoryFragmentsSync(dbSync, memoryId);
-            dbSync.delete(embeddingTable).where(eq(embeddingTable.memoryId, memoryId)).run();
-          });
-
-          // 3) delete the memories themselves
-          dbSync
-            .delete(memoryTable)
-            .where(and(eq(memoryTable.roomId, roomId), eq(memoryTable.type, tableName)))
-            .run();
-        });
-        deleteAllTx();
-      } else {
-        await this.db.transaction(async (tx) => {
-          // 1) fetch all memory IDs for this room + table
-          const rows = await tx
-            .select({ id: memoryTable.id })
-            .from(memoryTable)
-            .where(and(eq(memoryTable.roomId, roomId), eq(memoryTable.type, tableName)));
-
-          const ids = rows.map((r) => r.id);
-          logger.debug('[deleteAllMemories] memory IDs to delete:', { roomId, tableName, ids });
-
-          if (ids.length === 0) {
-            return;
-          }
-
-          // 2) delete any fragments for "document" memories & their embeddings
-          await Promise.all(
-            ids.map(async (memoryId) => {
-              await this.deleteMemoryFragments(tx, memoryId);
-              await tx.delete(embeddingTable).where(eq(embeddingTable.memoryId, memoryId));
-            })
-          );
-
-          // 3) delete the memories themselves
-          await tx
-            .delete(memoryTable)
-            .where(and(eq(memoryTable.roomId, roomId), eq(memoryTable.type, tableName)));
-        });
-      }
+        // 3) delete the memories themselves
+        await tx
+          .delete(memoryTable)
+          .where(and(eq(memoryTable.roomId, roomId), eq(memoryTable.type, tableName)));
+      });
 
       logger.debug('All memories removed successfully:', { roomId, tableName });
     });
@@ -2613,18 +1994,9 @@ export abstract class BaseDrizzleAdapter<
   async deleteRoom(roomId: UUID): Promise<void> {
     if (!roomId) throw new Error('Room ID is required');
     return this.withDatabase(async () => {
-      const isBetterSqlite =
-        (this.db as any).session?.adapterName === 'better-sqlite3' ||
-        (this.db as any).getDialect?.().name === 'sqlite';
-
-      if (isBetterSqlite) {
-        const dbSync = this.db as BetterSQLite3Database;
-        dbSync.delete(roomTable).where(eq(roomTable.id, roomId)).run();
-      } else {
-        await this.db.transaction(async (tx) => {
-          await tx.delete(roomTable).where(eq(roomTable.id, roomId));
-        });
-      }
+      await this.db.transaction(async (tx) => {
+        await tx.delete(roomTable).where(eq(roomTable.id, roomId));
+      });
     });
   }
 
@@ -2727,52 +2099,23 @@ export abstract class BaseDrizzleAdapter<
   async removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
     return this.withDatabase(async () => {
       try {
-        const isBetterSqlite =
-          (this.db as any).session?.adapterName === 'better-sqlite3' ||
-          (this.db as any).getDialect?.().name === 'sqlite';
+        const result = await this.db.transaction(async (tx) => {
+          return await tx
+            .delete(participantTable)
+            .where(
+              and(eq(participantTable.entityId, entityId), eq(participantTable.roomId, roomId))
+            )
+            .returning();
+        });
 
-        if (isBetterSqlite) {
-          const dbSync = this.db as BetterSQLite3Database;
-          const conn = this.getSQLiteConnection();
+        const removed = result.length > 0;
+        logger.debug(`Participant ${removed ? 'removed' : 'not found'}:`, {
+          entityId,
+          roomId,
+          removed,
+        });
 
-          // SQLite doesn't support RETURNING, so we need to check existence first
-          const existing = conn
-            .prepare('SELECT id FROM participants WHERE entityId = ? AND roomId = ? LIMIT 1')
-            .get(entityId, roomId);
-
-          if (existing) {
-            conn
-              .prepare('DELETE FROM participants WHERE entityId = ? AND roomId = ?')
-              .run(entityId, roomId);
-          }
-
-          const removed = !!existing;
-          logger.debug(`Participant ${removed ? 'removed' : 'not found'}:`, {
-            entityId,
-            roomId,
-            removed,
-          });
-
-          return removed;
-        } else {
-          const result = await this.db.transaction(async (tx) => {
-            return await tx
-              .delete(participantTable)
-              .where(
-                and(eq(participantTable.entityId, entityId), eq(participantTable.roomId, roomId))
-              )
-              .returning();
-          });
-
-          const removed = result.length > 0;
-          logger.debug(`Participant ${removed ? 'removed' : 'not found'}:`, {
-            entityId,
-            roomId,
-            removed,
-          });
-
-          return removed;
-        }
+        return removed;
       } catch (error) {
         logger.error('Failed to remove participant:', {
           error: error instanceof Error ? error.message : String(error),
@@ -2870,13 +2213,8 @@ export abstract class BaseDrizzleAdapter<
   ): Promise<void> {
     return this.withDatabase(async () => {
       try {
-        const isBetterSqlite =
-          (this.db as any).session?.adapterName === 'better-sqlite3' ||
-          (this.db as any).getDialect?.().name === 'sqlite';
-
-        if (isBetterSqlite) {
-          const dbSync = this.db as BetterSQLite3Database;
-          dbSync
+        await this.db.transaction(async (tx) => {
+          await tx
             .update(participantTable)
             .set({ roomState: state })
             .where(
@@ -2885,22 +2223,8 @@ export abstract class BaseDrizzleAdapter<
                 eq(participantTable.entityId, entityId),
                 eq(participantTable.agentId, this.agentId)
               )
-            )
-            .run();
-        } else {
-          await this.db.transaction(async (tx) => {
-            await tx
-              .update(participantTable)
-              .set({ roomState: state })
-              .where(
-                and(
-                  eq(participantTable.roomId, roomId),
-                  eq(participantTable.entityId, entityId),
-                  eq(participantTable.agentId, this.agentId)
-                )
-              );
-          });
-        }
+            );
+        });
       } catch (error) {
         logger.error('Failed to set participant user state:', {
           roomId,
@@ -3099,49 +2423,21 @@ export abstract class BaseDrizzleAdapter<
   async setCache<T>(key: string, value: T): Promise<boolean> {
     return this.withDatabase(async () => {
       try {
-        const isBetterSqlite =
-          (this.db as any).session?.adapterName === 'better-sqlite3' ||
-          (this.db as any).getDialect?.().name === 'sqlite';
-
-        if (isBetterSqlite) {
-          const dbSync = this.db as BetterSQLite3Database;
-          const cacheTx = dbSync.transaction(() => {
-            dbSync
-              .insert(cacheTable)
-              .values({
-                key: key,
-                agentId: this.agentId,
+        await this.db.transaction(async (tx) => {
+          await tx
+            .insert(cacheTable)
+            .values({
+              key: key,
+              agentId: this.agentId,
+              value: value,
+            })
+            .onConflictDoUpdate({
+              target: [cacheTable.key, cacheTable.agentId],
+              set: {
                 value: value,
-                createdAt: Date.now(),
-              })
-              .onConflictDoUpdate({
-                target: [cacheTable.key, cacheTable.agentId],
-                set: {
-                  value: value,
-                },
-              })
-              .run();
-          });
-          cacheTx();
-        } else {
-          const pgDb = this.db as NodePgDatabase;
-          await pgDb.transaction(async (tx) => {
-            await tx
-              .insert(cacheTable)
-              .values({
-                key: key,
-                agentId: this.agentId,
-                value: value,
-                createdAt: Date.now(),
-              })
-              .onConflictDoUpdate({
-                target: [cacheTable.key, cacheTable.agentId],
-                set: {
-                  value: value,
-                },
-              });
-          });
-        }
+              },
+            });
+        });
         return true;
       } catch (error) {
         logger.error('Error setting cache', {
@@ -3162,27 +2458,11 @@ export abstract class BaseDrizzleAdapter<
   async deleteCache(key: string): Promise<boolean> {
     return this.withDatabase(async () => {
       try {
-        const isBetterSqlite =
-          (this.db as any).session?.adapterName === 'better-sqlite3' ||
-          (this.db as any).getDialect?.().name === 'sqlite';
-
-        if (isBetterSqlite) {
-          const dbSync = this.db as BetterSQLite3Database;
-          const delCacheTx = dbSync.transaction(() => {
-            dbSync
-              .delete(cacheTable)
-              .where(and(eq(cacheTable.agentId, this.agentId), eq(cacheTable.key, key)))
-              .run();
-          });
-          delCacheTx();
-        } else {
-          const pgDb = this.db as NodePgDatabase;
-          await pgDb.transaction(async (tx) => {
-            await tx
-              .delete(cacheTable)
-              .where(and(eq(cacheTable.agentId, this.agentId), eq(cacheTable.key, key)));
-          });
-        }
+        await this.db.transaction(async (tx) => {
+          await tx
+            .delete(cacheTable)
+            .where(and(eq(cacheTable.agentId, this.agentId), eq(cacheTable.key, key)));
+        });
         return true;
       } catch (error) {
         logger.error('Error deleting cache', {
@@ -3524,538 +2804,4 @@ export abstract class BaseDrizzleAdapter<
       }
     });
   }
-
-  // Message Server Database Operations
-
-  /**
-   * Creates a new message server in the central database
-   */
-  async createMessageServer(data: {
-    id?: UUID; // Allow passing a specific ID
-    name: string;
-    sourceType: string;
-    sourceId?: string;
-    metadata?: any;
-  }): Promise<{
-    id: UUID;
-    name: string;
-    sourceType: string;
-    sourceId?: string;
-    metadata?: any;
-    createdAt: Date;
-    updatedAt: Date;
-  }> {
-    return this.withDatabase(async () => {
-      const newId = data.id || (v4() as UUID);
-      const now = new Date();
-      const serverToInsert = {
-        id: newId,
-        name: data.name,
-        sourceType: data.sourceType,
-        sourceId: data.sourceId,
-        metadata: data.metadata,
-        createdAt: now,
-        updatedAt: now,
-      };
-
-      await this.db.insert(messageServerTable).values(serverToInsert).onConflictDoNothing(); // In case the ID already exists
-
-      // If server already existed, fetch it
-      if (data.id) {
-        const existing = await this.db
-          .select()
-          .from(messageServerTable)
-          .where(eq(messageServerTable.id, data.id))
-          .limit(1);
-        if (existing.length > 0) {
-          return {
-            id: existing[0].id as UUID,
-            name: existing[0].name,
-            sourceType: existing[0].sourceType,
-            sourceId: existing[0].sourceId || undefined,
-            metadata: existing[0].metadata || undefined,
-            createdAt: existing[0].createdAt,
-            updatedAt: existing[0].updatedAt,
-          };
-        }
-      }
-
-      return serverToInsert;
-    });
-  }
-
-  /**
-   * Gets all message servers
-   */
-  async getMessageServers(): Promise<
-    Array<{
-      id: UUID;
-      name: string;
-      sourceType: string;
-      sourceId?: string;
-      metadata?: any;
-      createdAt: Date;
-      updatedAt: Date;
-    }>
-  > {
-    return this.withDatabase(async () => {
-      const results = await this.db.select().from(messageServerTable);
-      return results.map((r) => ({
-        id: r.id as UUID,
-        name: r.name,
-        sourceType: r.sourceType,
-        sourceId: r.sourceId || undefined,
-        metadata: r.metadata || undefined,
-        createdAt: r.createdAt,
-        updatedAt: r.updatedAt,
-      }));
-    });
-  }
-
-  /**
-   * Gets a message server by ID
-   */
-  async getMessageServerById(serverId: UUID): Promise<{
-    id: UUID;
-    name: string;
-    sourceType: string;
-    sourceId?: string;
-    metadata?: any;
-    createdAt: Date;
-    updatedAt: Date;
-  } | null> {
-    return this.withDatabase(async () => {
-      const results = await this.db
-        .select()
-        .from(messageServerTable)
-        .where(eq(messageServerTable.id, serverId))
-        .limit(1);
-      return results.length > 0
-        ? {
-            id: results[0].id as UUID,
-            name: results[0].name,
-            sourceType: results[0].sourceType,
-            sourceId: results[0].sourceId || undefined,
-            metadata: results[0].metadata || undefined,
-            createdAt: results[0].createdAt,
-            updatedAt: results[0].updatedAt,
-          }
-        : null;
-    });
-  }
-
-  /**
-   * Creates a new channel
-   */
-  async createChannel(
-    data: {
-      messageServerId: UUID;
-      name: string;
-      type: string;
-      sourceType?: string;
-      sourceId?: string;
-      topic?: string;
-      metadata?: any;
-    },
-    participantIds?: UUID[]
-  ): Promise<{
-    id: UUID;
-    messageServerId: UUID;
-    name: string;
-    type: string;
-    sourceType?: string;
-    sourceId?: string;
-    topic?: string;
-    metadata?: any;
-    createdAt: Date;
-    updatedAt: Date;
-  }> {
-    return this.withDatabase(async () => {
-      const newId = v4() as UUID;
-      const now = new Date();
-      const channelToInsert = {
-        id: newId,
-        messageServerId: data.messageServerId,
-        name: data.name,
-        type: data.type,
-        sourceType: data.sourceType,
-        sourceId: data.sourceId,
-        topic: data.topic,
-        metadata: data.metadata,
-        createdAt: now,
-        updatedAt: now,
-      };
-
-      const isBetterSqlite =
-        (this.db as any).session?.adapterName === 'better-sqlite3' ||
-        (this.db as any).getDialect?.().name === 'sqlite';
-
-      if (isBetterSqlite) {
-        const dbSync = this.db as BetterSQLite3Database;
-        const channelTx = dbSync.transaction(() => {
-          dbSync.insert(channelTable).values(channelToInsert).run();
-
-          if (participantIds && participantIds.length > 0) {
-            const participantValues = participantIds.map((userId) => ({
-              channelId: newId,
-              userId: userId,
-            }));
-            dbSync
-              .insert(channelParticipantsTable)
-              .values(participantValues)
-              .onConflictDoNothing()
-              .run();
-          }
-        });
-        channelTx();
-      } else {
-        await this.db.transaction(async (tx) => {
-          await tx.insert(channelTable).values(channelToInsert);
-
-          if (participantIds && participantIds.length > 0) {
-            const participantValues = participantIds.map((userId) => ({
-              channelId: newId,
-              userId: userId,
-            }));
-            await tx
-              .insert(channelParticipantsTable)
-              .values(participantValues)
-              .onConflictDoNothing();
-          }
-        });
-      }
-
-      return channelToInsert;
-    });
-  }
-
-  /**
-   * Gets channels for a server
-   */
-  async getChannelsForServer(serverId: UUID): Promise<
-    Array<{
-      id: UUID;
-      messageServerId: UUID;
-      name: string;
-      type: string;
-      sourceType?: string;
-      sourceId?: string;
-      topic?: string;
-      metadata?: any;
-      createdAt: Date;
-      updatedAt: Date;
-    }>
-  > {
-    return this.withDatabase(async () => {
-      const results = await this.db
-        .select()
-        .from(channelTable)
-        .where(eq(channelTable.messageServerId, serverId));
-      return results.map((r) => ({
-        id: r.id as UUID,
-        messageServerId: r.messageServerId as UUID,
-        name: r.name,
-        type: r.type,
-        sourceType: r.sourceType || undefined,
-        sourceId: r.sourceId || undefined,
-        topic: r.topic || undefined,
-        metadata: r.metadata || undefined,
-        createdAt: r.createdAt,
-        updatedAt: r.updatedAt,
-      }));
-    });
-  }
-
-  /**
-   * Gets channel details
-   */
-  async getChannelDetails(channelId: UUID): Promise<{
-    id: UUID;
-    messageServerId: UUID;
-    name: string;
-    type: string;
-    sourceType?: string;
-    sourceId?: string;
-    topic?: string;
-    metadata?: any;
-    createdAt: Date;
-    updatedAt: Date;
-  } | null> {
-    return this.withDatabase(async () => {
-      const results = await this.db
-        .select()
-        .from(channelTable)
-        .where(eq(channelTable.id, channelId))
-        .limit(1);
-      return results.length > 0
-        ? {
-            id: results[0].id as UUID,
-            messageServerId: results[0].messageServerId as UUID,
-            name: results[0].name,
-            type: results[0].type,
-            sourceType: results[0].sourceType || undefined,
-            sourceId: results[0].sourceId || undefined,
-            topic: results[0].topic || undefined,
-            metadata: results[0].metadata || undefined,
-            createdAt: results[0].createdAt,
-            updatedAt: results[0].updatedAt,
-          }
-        : null;
-    });
-  }
-
-  /**
-   * Creates a message
-   */
-  async createMessage(data: {
-    channelId: UUID;
-    authorId: UUID;
-    content: string;
-    rawMessage?: any;
-    sourceType?: string;
-    sourceId?: string;
-    metadata?: any;
-    inReplyToRootMessageId?: UUID;
-  }): Promise<{
-    id: UUID;
-    channelId: UUID;
-    authorId: UUID;
-    content: string;
-    rawMessage?: any;
-    sourceType?: string;
-    sourceId?: string;
-    metadata?: any;
-    inReplyToRootMessageId?: UUID;
-    createdAt: Date;
-    updatedAt: Date;
-  }> {
-    return this.withDatabase(async () => {
-      const newId = v4() as UUID;
-      const now = new Date();
-      const messageToInsert = {
-        id: newId,
-        channelId: data.channelId,
-        authorId: data.authorId,
-        content: data.content,
-        rawMessage: data.rawMessage,
-        sourceType: data.sourceType,
-        sourceId: data.sourceId,
-        metadata: data.metadata,
-        inReplyToRootMessageId: data.inReplyToRootMessageId,
-        createdAt: now,
-        updatedAt: now,
-      };
-
-      await this.db.insert(messageTable).values(messageToInsert);
-      return messageToInsert;
-    });
-  }
-
-  /**
-   * Gets messages for a channel
-   */
-  async getMessagesForChannel(
-    channelId: UUID,
-    limit: number = 50,
-    beforeTimestamp?: Date
-  ): Promise<
-    Array<{
-      id: UUID;
-      channelId: UUID;
-      authorId: UUID;
-      content: string;
-      rawMessage?: any;
-      sourceType?: string;
-      sourceId?: string;
-      metadata?: any;
-      inReplyToRootMessageId?: UUID;
-      createdAt: Date;
-      updatedAt: Date;
-    }>
-  > {
-    return this.withDatabase(async () => {
-      const conditions = [eq(messageTable.channelId, channelId)];
-      if (beforeTimestamp) {
-        conditions.push(lt(messageTable.createdAt, beforeTimestamp));
-      }
-
-      const query = this.db
-        .select()
-        .from(messageTable)
-        .where(and(...conditions))
-        .orderBy(desc(messageTable.createdAt))
-        .limit(limit);
-
-      const results = await query;
-      return results.map((r) => ({
-        id: r.id as UUID,
-        channelId: r.channelId as UUID,
-        authorId: r.authorId as UUID,
-        content: r.content,
-        rawMessage: r.rawMessage || undefined,
-        sourceType: r.sourceType || undefined,
-        sourceId: r.sourceId || undefined,
-        metadata: r.metadata || undefined,
-        inReplyToRootMessageId: r.inReplyToRootMessageId as UUID | undefined,
-        createdAt: r.createdAt,
-        updatedAt: r.updatedAt,
-      }));
-    });
-  }
-
-  /**
-   * Deletes a message
-   */
-  async deleteMessage(messageId: UUID): Promise<void> {
-    return this.withDatabase(async () => {
-      await this.db.delete(messageTable).where(eq(messageTable.id, messageId));
-    });
-  }
-
-  /**
-   * Adds participants to a channel
-   */
-  async addChannelParticipants(channelId: UUID, userIds: UUID[]): Promise<void> {
-    return this.withDatabase(async () => {
-      if (!userIds || userIds.length === 0) return;
-
-      const participantValues = userIds.map((userId) => ({
-        channelId: channelId,
-        userId: userId,
-      }));
-
-      await this.db
-        .insert(channelParticipantsTable)
-        .values(participantValues)
-        .onConflictDoNothing();
-    });
-  }
-
-  /**
-   * Gets participants for a channel
-   */
-  async getChannelParticipants(channelId: UUID): Promise<UUID[]> {
-    return this.withDatabase(async () => {
-      const results = await this.db
-        .select({ userId: channelParticipantsTable.userId })
-        .from(channelParticipantsTable)
-        .where(eq(channelParticipantsTable.channelId, channelId));
-
-      return results.map((r) => r.userId as UUID);
-    });
-  }
-
-  /**
-   * Adds an agent to a server
-   */
-  async addAgentToServer(serverId: UUID, agentId: UUID): Promise<void> {
-    return this.withDatabase(async () => {
-      await this.db
-        .insert(serverAgentsTable)
-        .values({
-          serverId: serverId,
-          agentId: agentId,
-        })
-        .onConflictDoNothing();
-    });
-  }
-
-  /**
-   * Gets agents for a server
-   */
-  async getAgentsForServer(serverId: UUID): Promise<UUID[]> {
-    return this.withDatabase(async () => {
-      const results = await this.db
-        .select({ agentId: serverAgentsTable.agentId })
-        .from(serverAgentsTable)
-        .where(eq(serverAgentsTable.serverId, serverId));
-
-      return results.map((r) => r.agentId as UUID);
-    });
-  }
-
-  /**
-   * Removes an agent from a server
-   */
-  async removeAgentFromServer(serverId: UUID, agentId: UUID): Promise<void> {
-    return this.withDatabase(async () => {
-      await this.db
-        .delete(serverAgentsTable)
-        .where(
-          and(eq(serverAgentsTable.serverId, serverId), eq(serverAgentsTable.agentId, agentId))
-        );
-    });
-  }
-
-  /**
-   * Finds or creates a DM channel between two users
-   */
-  async findOrCreateDmChannel(
-    user1Id: UUID,
-    user2Id: UUID,
-    messageServerId: UUID
-  ): Promise<{
-    id: UUID;
-    messageServerId: UUID;
-    name: string;
-    type: string;
-    sourceType?: string;
-    sourceId?: string;
-    topic?: string;
-    metadata?: any;
-    createdAt: Date;
-    updatedAt: Date;
-  }> {
-    return this.withDatabase(async () => {
-      const ids = [user1Id, user2Id].sort();
-      const dmChannelName = `DM-${ids[0]}-${ids[1]}`;
-
-      const existingChannels = await this.db
-        .select()
-        .from(channelTable)
-        .where(
-          and(
-            eq(channelTable.type, ChannelType.DM),
-            eq(channelTable.name, dmChannelName),
-            eq(channelTable.messageServerId, messageServerId)
-          )
-        )
-        .limit(1);
-
-      if (existingChannels.length > 0) {
-        return {
-          id: existingChannels[0].id as UUID,
-          messageServerId: existingChannels[0].messageServerId as UUID,
-          name: existingChannels[0].name,
-          type: existingChannels[0].type,
-          sourceType: existingChannels[0].sourceType || undefined,
-          sourceId: existingChannels[0].sourceId || undefined,
-          topic: existingChannels[0].topic || undefined,
-          metadata: existingChannels[0].metadata || undefined,
-          createdAt: existingChannels[0].createdAt,
-          updatedAt: existingChannels[0].updatedAt,
-        };
-      }
-
-      // Create new DM channel
-      return this.createChannel(
-        {
-          messageServerId,
-          name: dmChannelName,
-          type: ChannelType.DM,
-          metadata: { user1: ids[0], user2: ids[1] },
-        },
-        ids
-      );
-    });
-  }
 }
-
-// Import tables at the end to avoid circular dependencies
-import {
-  messageServerTable,
-  channelTable,
-  messageTable,
-  channelParticipantsTable,
-  serverAgentsTable,
-} from './schema';

@@ -1,7 +1,7 @@
 import { type UUID, logger } from '@elizaos/core';
 import { type NodePgDatabase, drizzle } from 'drizzle-orm/node-postgres';
 import { BaseDrizzleAdapter } from '../base';
-import { DIMENSION_MAP, type EmbeddingDimensionColumn, setDatabaseType } from '../schema';
+import { DIMENSION_MAP, type EmbeddingDimensionColumn } from '../schema/embedding';
 import type { PostgresConnectionManager } from './manager';
 import { type Pool as PgPool } from 'pg';
 
@@ -22,8 +22,6 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter<NodePgDatabase> {
     private manager: PostgresConnectionManager
   ) {
     super(agentId);
-    // Set database type to postgres for proper schema generation
-    setDatabaseType('postgres');
     this.manager = manager;
   }
 

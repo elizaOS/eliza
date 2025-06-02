@@ -5,24 +5,26 @@ export default defineConfig({
   outDir: 'dist',
   sourcemap: true,
   clean: true,
-  format: ['esm'],
+  format: ['esm'], // Ensure you're targeting CommonJS
   dts: true,
   tsconfig: './tsconfig.build.json', // Use build-specific tsconfig
   external: [
-    '@drizzle-orm/better-sqlite3',
-    'better-sqlite3',
-    'pg',
+    'dotenv', // Externalize dotenv to prevent bundling
+    '@reflink/reflink',
+    '@node-llama-cpp',
+    'https',
+    'http',
+    'agentkeepalive',
+    'uuid',
     '@elizaos/core',
-    'fs',
-    'path',
-    'url',
+    '@electric-sql/pglite',
+    'zod',
   ],
   // Improve source map configuration
   esbuildOptions(options) {
     options.sourceRoot = './'; // Set source root to help with source mapping
     options.sourcesContent = true;
     options.outbase = './src'; // Makes output paths match input structure
-    options.platform = 'node'; // Ensure node platform for proper handling
   },
   keepNames: true, // Preserve names for better debugging
 });

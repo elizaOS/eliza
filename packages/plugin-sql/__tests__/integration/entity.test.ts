@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
-import { SqliteDatabaseAdapter } from '../../src/sqlite/adapter';
-import { SqliteClientManager } from '../../src/sqlite/manager';
+import { PgliteDatabaseAdapter } from '../../src/pglite/adapter';
+import { PGliteClientManager } from '../../src/pglite/manager';
 import { type UUID, type Entity } from '@elizaos/core';
 import { entityTestAgentSettings, testEntities } from './seed';
 import { v4 } from 'uuid';
@@ -27,8 +27,8 @@ vi.mock('@elizaos/core', async () => {
 
 describe('Entity Integration Tests', () => {
   // Database connection variables
-  let connectionManager: SqliteClientManager;
-  let adapter: SqliteDatabaseAdapter;
+  let connectionManager: PGliteClientManager;
+  let adapter: PgliteDatabaseAdapter;
   let testAgentId: UUID;
 
   beforeAll(async () => {
@@ -36,9 +36,9 @@ describe('Entity Integration Tests', () => {
     testAgentId = entityTestAgentSettings.id as UUID;
 
     // Initialize connection manager and adapter
-    connectionManager = new SqliteClientManager({});
+    connectionManager = new PGliteClientManager({});
     await connectionManager.initialize();
-    adapter = new SqliteDatabaseAdapter(testAgentId, connectionManager);
+    adapter = new PgliteDatabaseAdapter(testAgentId, connectionManager);
     await adapter.init();
 
     // Ensure the test agent exists
@@ -51,7 +51,7 @@ describe('Entity Integration Tests', () => {
     try {
       await client.query(`DELETE FROM agents WHERE name = '${entityTestAgentSettings.name}'`);
     } finally {
-      // No release needed for Sqlite instance from getConnection like with pg PoolClient
+      // No release needed for PGlite instance from getConnection like with pg PoolClient
     }
 
     // Close all connections

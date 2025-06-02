@@ -1,9 +1,7 @@
 import { sql } from 'drizzle-orm';
-import { getSchemaFactory } from './factory';
+import { jsonb, pgTable, text, uuid } from 'drizzle-orm/pg-core';
 import { agentTable } from './agent';
 import { numberTimestamp } from './types';
-
-const factory = getSchemaFactory();
 
 /**
  * Represents a table schema for worlds in the database.
@@ -11,18 +9,18 @@ const factory = getSchemaFactory();
  * @type {PgTable}
  */
 
-export const worldTable = (factory.table as any)('worlds', {
-  id: factory
-    .uuid('id')
+export const worldTable = pgTable('worlds', {
+  id: uuid('id')
     .notNull()
     .primaryKey()
-    .$defaultFn(() => crypto.randomUUID()),
-  agentId: factory
-    .uuid('agentId')
+    .default(sql`gen_random_uuid()`),
+  agentId: uuid('agentId')
     .notNull()
     .references(() => agentTable.id, { onDelete: 'cascade' }),
-  name: factory.text('name').notNull(),
-  metadata: factory.json('metadata'),
-  serverId: factory.text('serverId').notNull(),
-  createdAt: numberTimestamp('createdAt').default(factory.defaultTimestamp()).notNull(),
+  name: text('name').notNull(),
+  metadata: jsonb('metadata'),
+  serverId: text('serverId').notNull(),
+  createdAt: numberTimestamp('createdAt')
+    .default(sql`now()`)
+    .notNull(),
 });

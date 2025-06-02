@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
-import { SqliteDatabaseAdapter } from '../../src/sqlite/adapter';
-import { SqliteClientManager } from '../../src/sqlite/manager';
+import { PgliteDatabaseAdapter } from '../../src/pglite/adapter';
+import { PGliteClientManager } from '../../src/pglite/manager';
 import { type UUID } from '@elizaos/core';
 import { cacheTestAgentSettings, testCacheEntries } from './seed';
 import { setupMockedMigrations } from '../test-helpers';
@@ -23,8 +23,8 @@ vi.mock('@elizaos/core', async () => {
 
 describe('Cache Integration Tests', () => {
   // Database connection variables
-  let connectionManager: SqliteClientManager;
-  let adapter: SqliteDatabaseAdapter;
+  let connectionManager: PGliteClientManager;
+  let adapter: PgliteDatabaseAdapter;
   let testAgentId: UUID;
 
   beforeAll(async () => {
@@ -32,9 +32,9 @@ describe('Cache Integration Tests', () => {
     testAgentId = cacheTestAgentSettings.id as UUID;
 
     // Initialize connection manager and adapter
-    connectionManager = new SqliteClientManager({});
+    connectionManager = new PGliteClientManager({});
     await connectionManager.initialize();
-    adapter = new SqliteDatabaseAdapter(testAgentId, connectionManager);
+    adapter = new PgliteDatabaseAdapter(testAgentId, connectionManager);
     await adapter.init();
 
     // Ensure the test agent exists
@@ -47,7 +47,7 @@ describe('Cache Integration Tests', () => {
     try {
       await client.query(`DELETE FROM agents WHERE name = '${cacheTestAgentSettings.name}'`);
     } finally {
-      // No release needed for Sqlite instance from getConnection like with pg PoolClient
+      // No release needed for PGlite instance from getConnection like with pg PoolClient
     }
 
     // Close all connections
@@ -90,7 +90,7 @@ describe('Cache Integration Tests', () => {
         expect(dbResult.rows.length).toBe(1);
         expect(dbResult.rows[0].value).toBe(value);
       } finally {
-        // No release needed for Sqlite instance from getConnection like with pg PoolClient
+        // No release needed for PGlite instance from getConnection like with pg PoolClient
       }
     });
 

@@ -1,13 +1,10 @@
-// Import shim first to ensure __filename and __dirname are available for better-sqlite3
-import './shim';
-
 import type { IDatabaseAdapter, UUID } from '@elizaos/core';
 import { type IAgentRuntime, type Plugin, logger } from '@elizaos/core';
-import { SqliteDatabaseAdapter } from './sqlite/adapter';
-import { SqliteClientManager } from './sqlite/manager';
+import { PgliteDatabaseAdapter } from './pglite/adapter';
+import { PGliteClientManager } from './pglite/manager';
 import { PgDatabaseAdapter } from './pg/adapter';
 import { PostgresConnectionManager } from './pg/manager';
-import { resolveSqliteDir } from './utils';
+import { resolvePgliteDir } from './utils';
 
 /**
  * Global Singleton Instances (Package-scoped)
@@ -22,7 +19,7 @@ import { resolveSqliteDir } from './utils';
 const GLOBAL_SINGLETONS = Symbol.for('@elizaos/plugin-sql/global-singletons');
 
 interface GlobalSingletons {
-  sqliteClientManager?: SqliteClientManager;
+  pgLiteClientManager?: PGliteClientManager;
   postgresConnectionManager?: PostgresConnectionManager;
 }
 
@@ -37,7 +34,7 @@ const globalSingletons = globalSymbols[GLOBAL_SINGLETONS];
 /**
  * Creates a database adapter based on the provided configuration.
  * If a postgresUrl is provided in the config, a PgDatabaseAdapter is initialized using the PostgresConnectionManager.
- * If no postgresUrl is provided, a SqliteDatabaseAdapter is initialized using SqliteClientManager with the dataDir from the config.
+ * If no postgresUrl is provided, a PgliteDatabaseAdapter is initialized using PGliteClientManager with the dataDir from the config.
  *
  * @param {object} config - The configuration object.
  * @param {string} [config.dataDir] - The directory where data is stored. Defaults to "./.elizadb".
@@ -52,7 +49,7 @@ export function createDatabaseAdapter(
   },
   agentId: UUID
 ): IDatabaseAdapter {
-  const dataDir = resolveSqliteDir(config.dataDir);
+  const dataDir = resolvePgliteDir(config.dataDir);
 
   if (config.postgresUrl) {
     if (!globalSingletons.postgresConnectionManager) {
@@ -63,11 +60,11 @@ export function createDatabaseAdapter(
     return new PgDatabaseAdapter(agentId, globalSingletons.postgresConnectionManager);
   }
 
-  if (!globalSingletons.sqliteClientManager) {
-    globalSingletons.sqliteClientManager = new SqliteClientManager(dataDir);
+  if (!globalSingletons.pgLiteClientManager) {
+    globalSingletons.pgLiteClientManager = new PGliteClientManager({ dataDir });
   }
 
-  return new SqliteDatabaseAdapter(agentId, globalSingletons.sqliteClientManager);
+  return new PgliteDatabaseAdapter(agentId, globalSingletons.pgLiteClientManager);
 }
 
 /**
@@ -82,10 +79,10 @@ export function createDatabaseAdapter(
  */
 const sqlPlugin: Plugin = {
   name: 'sql',
-  description: 'SQL database adapter plugin using Drizzle ORM with PostgreSQL and SQLite support',
+  description: 'SQL database adapter plugin using Drizzle ORM',
   init: async (_, runtime: IAgentRuntime) => {
     const config = {
-      dataDir: resolveSqliteDir(runtime.getSetting('SQLITE_DATA_DIR') as string | undefined),
+      dataDir: resolvePgliteDir(runtime.getSetting('PGLITE_DATA_DIR') as string | undefined),
       postgresUrl: runtime.getSetting('POSTGRES_URL'),
     };
 

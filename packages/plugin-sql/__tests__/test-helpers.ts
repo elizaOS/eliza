@@ -1,19 +1,19 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { vi } from 'vitest';
-import { drizzle } from 'drizzle-orm/better-sqlite3';
-import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
-import { SqliteClientManager } from '../src/sqlite/manager';
+import { drizzle } from 'drizzle-orm/pglite';
+import { migrate } from 'drizzle-orm/pglite/migrator';
+import { PGliteClientManager } from '../src/pglite/manager';
 
 export function setupMockedMigrations(): void {
-  vi.spyOn(SqliteClientManager.prototype, 'runMigrations').mockImplementation(async function () {
-    // 'this' refers to the instance of SqliteClientManager.
-    const sqliteInstance = (this as any).client;
+  vi.spyOn(PGliteClientManager.prototype, 'runMigrations').mockImplementation(async function () {
+    // 'this' refers to the instance of PGliteClientManager.
+    const pgliteInstance = (this as any).client;
 
-    console.log('[TEST MOCK HELPER] SqliteClientManager.runMigrations: Starting mocked migration.');
+    console.log('[TEST MOCK HELPER] PGliteClientManager.runMigrations: Starting mocked migration.');
 
     try {
-      const db = drizzle(sqliteInstance);
+      const db = drizzle(pgliteInstance);
 
       const helperFilePath = fileURLToPath(import.meta.url);
       const testsDir = path.dirname(helperFilePath);
@@ -21,7 +21,7 @@ export function setupMockedMigrations(): void {
       const migrationsPath = path.resolve(packageRoot, 'drizzle/migrations');
 
       console.log(
-        `[TEST MOCK HELPER] SqliteClientManager.runMigrations: Resolved migrations path to: ${migrationsPath}`
+        `[TEST MOCK HELPER] PGliteClientManager.runMigrations: Resolved migrations path to: ${migrationsPath}`
       );
 
       await migrate(db, {
@@ -30,11 +30,11 @@ export function setupMockedMigrations(): void {
       });
 
       console.log(
-        '[TEST MOCK HELPER] SqliteClientManager.runMigrations: Mocked migration successful.'
+        '[TEST MOCK HELPER] PGliteClientManager.runMigrations: Mocked migration successful.'
       );
     } catch (error) {
       console.error(
-        '[TEST MOCK HELPER] SqliteClientManager.runMigrations: Error during mocked migration:',
+        '[TEST MOCK HELPER] PGliteClientManager.runMigrations: Error during mocked migration:',
         error
       );
       throw error;

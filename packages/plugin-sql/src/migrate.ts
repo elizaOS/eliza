@@ -1,18 +1,15 @@
-// Import shim first to ensure __filename and __dirname are available for better-sqlite3
-import './shim';
-
 import { logger } from '@elizaos/core';
 import { config } from 'dotenv';
 import { PostgresConnectionManager } from './pg/manager';
-import { SqliteClientManager } from './sqlite/manager';
-import { resolveSqliteDir } from './utils';
+import { PGliteClientManager } from './pglite/manager';
+import { resolvePgliteDir } from './utils';
 
 config({ path: '../../.env' });
 
 /**
- * Executes database migrations using either PostgreSQL or SQLite, depending on environment configuration.
+ * Executes database migrations using either PostgreSQL or PGlite, depending on environment configuration.
  *
- * If the `POSTGRES_URL` environment variable is set, migrations are run against the specified PostgreSQL database. Otherwise, migrations are run using a SQLite database, with the data directory determined by the `SQLITE_DATA_DIR` environment variable or a project-specific default path.
+ * If the `POSTGRES_URL` environment variable is set, migrations are run against the specified PostgreSQL database. Otherwise, migrations are run using a PGlite database, with the data directory determined by the `PGLITE_DATA_DIR` environment variable or a project-specific default path.
  *
  * @remark This function terminates the Node.js process upon completion or failure.
  */
@@ -30,29 +27,31 @@ async function runMigrations() {
       process.exit(1);
     }
   } else {
-    const elizaDbDir = resolveSqliteDir();
+    const elizaDbDir = resolvePgliteDir();
 
-    if (!process.env.SQLITE_DATA_DIR) {
-      logger.info(`SQLITE_DATA_DIR not set, defaulting to project path: ${elizaDbDir}`);
+    if (!process.env.PGLITE_DATA_DIR) {
+      logger.info(`PGLITE_DATA_DIR not set, defaulting to project path: ${elizaDbDir}`);
     } else {
-      logger.info(`Using SQLITE_DATA_DIR: ${elizaDbDir}`);
+      logger.info(`Using PGLITE_DATA_DIR: ${elizaDbDir}`);
     }
 
-    logger.info('Using SQLite database at:', elizaDbDir);
-    const clientManager = new SqliteClientManager(elizaDbDir);
+    logger.info('Using PGlite database at:', elizaDbDir);
+    const clientManager = new PGliteClientManager({
+      dataDir: elizaDbDir,
+    });
 
     try {
       await clientManager.initialize();
       await clientManager.runMigrations();
-      logger.success('SQLite migrations completed successfully');
+      logger.success('PGlite migrations completed successfully');
       await clientManager.close();
       process.exit(0);
     } catch (error) {
-      logger.error('SQLite migration failed:', error);
+      logger.error('PGlite migration failed:', error);
       try {
         await clientManager.close();
       } catch (closeError) {
-        logger.error('Failed to close SQLite connection:', closeError);
+        logger.error('Failed to close PGlite connection:', closeError);
       }
       process.exit(1);
     }

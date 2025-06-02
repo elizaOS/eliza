@@ -1,10 +1,8 @@
 import { sql } from 'drizzle-orm';
-import { getSchemaFactory } from './factory';
+import { jsonb, pgTable, text, uuid } from 'drizzle-orm/pg-core';
 import { agentTable } from './agent';
 import { numberTimestamp } from './types';
-import { worldTable } from './world'; // worldTable should now be factory-aware
-
-const factory = getSchemaFactory();
+import { worldTable } from './world';
 
 /**
  * Defines a table schema for 'rooms' in the database.
@@ -21,25 +19,25 @@ const factory = getSchemaFactory();
  * @property {string} channelId - The channel ID of the room.
  * @property {number} createdAt - The timestamp of when the room was created.
  */
-export const roomTable = (factory.table as any)('rooms', {
-  id: factory
-    .uuid('id')
+export const roomTable = pgTable('rooms', {
+  id: uuid('id')
     .notNull()
     .primaryKey()
-    .$defaultFn(() => crypto.randomUUID()),
-  agentId: factory.uuid('agentId').references(() => agentTable.id, {
+    .default(sql`gen_random_uuid()`),
+  agentId: uuid('agentId').references(() => agentTable.id, {
     onDelete: 'cascade',
   }),
-  source: factory.text('source').notNull(),
-  type: factory.text('type').notNull(),
-  serverId: factory.text('serverId'),
-  worldId: factory.uuid('worldId').references(() => worldTable.id, {
-    onDelete: 'cascade',
-  }),
-  name: factory.text('name'),
-  metadata: factory.json('metadata'),
-  channelId: factory.text('channelId'),
+  source: text('source').notNull(),
+  type: text('type').notNull(),
+  serverId: text('serverId'),
+  worldId: uuid('worldId'), // no guarantee that world exists, it is optional for now
+  // .references(() => worldTable.id, {
+  //   onDelete: 'cascade',
+  // }),
+  name: text('name'),
+  metadata: jsonb('metadata'),
+  channelId: text('channelId'),
   createdAt: numberTimestamp('createdAt')
-    .notNull()
-    .$defaultFn(() => Date.now()),
+    .default(sql`now()`)
+    .notNull(),
 });

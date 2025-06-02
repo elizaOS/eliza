@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
-import { SqliteDatabaseAdapter } from '../../src/sqlite/adapter';
-import { SqliteClientManager } from '../../src/sqlite/manager';
+import { PgliteDatabaseAdapter } from '../../src/pglite/adapter';
+import { PGliteClientManager } from '../../src/pglite/manager';
 import { type UUID } from '@elizaos/core';
 import {
   worldTestAgentId,
@@ -31,15 +31,15 @@ vi.mock('@elizaos/core', async () => {
 
 describe('World Integration Tests', () => {
   // Database connection variables
-  let connectionManager: SqliteClientManager;
-  let adapter: SqliteDatabaseAdapter;
+  let connectionManager: PGliteClientManager;
+  let adapter: PgliteDatabaseAdapter;
   let agentId: UUID = worldTestAgentId;
 
   beforeAll(async () => {
     // Initialize connection manager and adapter
-    connectionManager = new SqliteClientManager({});
+    connectionManager = new PGliteClientManager({});
     await connectionManager.initialize();
-    adapter = new SqliteDatabaseAdapter(agentId, connectionManager);
+    adapter = new PgliteDatabaseAdapter(agentId, connectionManager);
     await adapter.init();
 
     try {

@@ -112,7 +112,7 @@ The plugin uses the following environment variables:
 
 - `POSTGRES_URL`: Connection string for PostgreSQL database (e.g., `postgresql://user:password@localhost:5432/dbname`)
   - If not provided, the plugin will use PGlite as a fallback
-- `SQLITE_DATA_DIR`: (Optional) Directory for PGlite data storage (default: `./sqlite`)
+- `PGLITE_DATA_DIR`: (Optional) Directory for PGlite data storage (default: `./pglite`)
 
 These variables should be defined in a `.env` file at the root of your project.
 

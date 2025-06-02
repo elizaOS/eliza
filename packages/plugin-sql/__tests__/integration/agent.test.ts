@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
-import { SqliteDatabaseAdapter } from '../../src/sqlite/adapter';
-import { SqliteClientManager } from '../../src/sqlite/manager';
+import { PgliteDatabaseAdapter } from '../../src/pglite/adapter';
+import { PGliteClientManager } from '../../src/pglite/manager';
 import { type UUID, type Agent } from '@elizaos/core';
 import { agentTable } from '../../src/schema/agent';
 import { sql } from 'drizzle-orm';
@@ -28,20 +28,20 @@ vi.mock('@elizaos/core', async () => {
 
 describe('Agent Integration Tests', () => {
   // Database connection variables
-  let connectionManager: SqliteClientManager;
-  let adapter: SqliteDatabaseAdapter;
+  let connectionManager: PGliteClientManager;
+  let adapter: PgliteDatabaseAdapter;
   let testAgentId: UUID;
 
   beforeAll(async () => {
     // Create a random agent ID for use with the adapter
     testAgentId = uuidv4() as UUID;
 
-    // Initialize connection manager for Sqlite (in-memory)
-    connectionManager = new SqliteClientManager('test.db');
+    // Initialize connection manager for PGlite (in-memory)
+    connectionManager = new PGliteClientManager({});
     await connectionManager.initialize();
 
     // Initialize adapter after cleanup
-    adapter = new SqliteDatabaseAdapter(testAgentId, connectionManager);
+    adapter = new PgliteDatabaseAdapter(testAgentId, connectionManager);
     await adapter.init();
   }, 15000); // Increased timeout for setup and cleanup
 
@@ -54,9 +54,9 @@ describe('Agent Integration Tests', () => {
     // Clean up any existing test data
     try {
       // Get a client to execute the cleanup query
-      const sqliteInstance = connectionManager.getConnection();
+      const pgliteInstance = connectionManager.getConnection();
 
-      await sqliteInstance.query(`DELETE FROM agents WHERE name LIKE 'Integration Test%'`);
+      await pgliteInstance.query(`DELETE FROM agents WHERE name LIKE 'Integration Test%'`);
     } catch (error) {
       console.error('Error cleaning test data:', error);
     }
@@ -234,11 +234,11 @@ describe('Agent Integration Tests', () => {
 
     it('should handle retrieving agents when none exist', async () => {
       // First delete all test agents to ensure clean state
-      const sqliteInstance = connectionManager.getConnection();
+      const pgliteInstance = connectionManager.getConnection();
       try {
-        await sqliteInstance.query(`DELETE FROM agents WHERE name LIKE 'Integration Test%'`);
+        await pgliteInstance.query(`DELETE FROM agents WHERE name LIKE 'Integration Test%'`);
       } finally {
-        // No release needed for Sqlite instance from getConnection like with pg PoolClient
+        // No release needed for PGlite instance from getConnection like with pg PoolClient
       }
 
       // Now retrieve agents
@@ -834,10 +834,10 @@ describe('Agent Integration Tests', () => {
 
     it('should return 0 when no agents exist', async () => {
       // First delete all test agents to ensure clean state
-      const sqliteInstance = connectionManager.getConnection();
+      const pgliteInstance = connectionManager.getConnection();
       try {
         // Delete all agents with test names
-        await sqliteInstance.query(`DELETE FROM agents WHERE name LIKE 'Integration Test%'`);
+        await pgliteInstance.query(`DELETE FROM agents WHERE name LIKE 'Integration Test%'`);
 
         // Then try to count agents with a specific pattern that shouldn't exist
         const specificCount = await adapter.db
@@ -848,7 +848,7 @@ describe('Agent Integration Tests', () => {
 
         expect(specificCount).toBe(0);
       } finally {
-        // No release needed for Sqlite instance from getConnection like with pg PoolClient
+        // No release needed for PGlite instance from getConnection like with pg PoolClient
       }
     });
   });
