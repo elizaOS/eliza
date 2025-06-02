@@ -245,9 +245,7 @@ export async function performCliUpdate(): Promise<boolean> {
 
     console.log(`Updating CLI from ${currentVersion} to ${latestVersion}...`);
 
-    const isGlobal = await isGlobalInstallation();
-    const packageToInstall = isGlobal ? '@elizaos/cli' : '@elizaos/cli';
-
+    const packageToInstall = '@elizaos/cli';
     await executeInstallation(packageToInstall, latestVersion, process.cwd());
     console.log(`CLI updated successfully to version ${latestVersion} [✓]`);
     return true;
