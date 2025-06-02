@@ -74,16 +74,24 @@ Add the following lines to the `.env` file, replacing placeholder values with yo
 # OpenAI API Key (Optional, if using OpenAI features)
 OPENAI_API_KEY=your_openai_api_key_here
 
-# Twitter Configuration (Required)
+# Twitter Configuration (Required for agent authentication)
 TWITTER_USERNAME=your_twitter_username
 TWITTER_PASSWORD=your_twitter_password
-TWITTER_EMAIL=your_twitter_email
+TWITTER_EMAIL=your_twitter_email # Required for login, can sometimes be the same as username
 
-# Twitter Features (Optional - enable as needed)
-TWITTER_ENABLE_POST_GENERATION=true    # Set to true to enable automated posting
-TWITTER_INTERACTION_ENABLE=true        # Set to true to enable interactions on mentions, tags, and comments on agent posts
-TWITTER_POST_INTERVAL_MIN=1            # Minimum minutes between posts
-TWITTER_POST_INTERVAL_MAX=2            # Maximum minutes between posts
+# Automated Post Generation (Optional)
+# Enable this feature to have your agent automatically create and publish tweets.
+TWITTER_ENABLE_POST_GENERATION=true    # Set to true to enable, false to disable.
+# Define the time window (in minutes) between automatically generated posts.
+# The agent will pick a random interval within this range.
+TWITTER_POST_INTERVAL_MIN=60           # Example: Minimum 60 minutes between posts.
+TWITTER_POST_INTERVAL_MAX=180          # Example: Maximum 180 minutes between posts.
+
+# Automated Interactions (Optional)
+# Enable this feature to allow your agent to interact with mentions, replies to its tweets, etc.
+TWITTER_INTERACTION_ENABLE=true        # Set to true to enable, false to disable.
+# Interval in seconds for how often the agent checks for new interactions (mentions, replies).
+TWITTER_POLL_INTERVAL=120              # Example: Check every 120 seconds (2 minutes).
 ```
 
 **Important:** The Twitter username, password, and email are required for authentication. Never commit your `.env` file containing real credentials to version control. Add `.env` to your `.gitignore` file to prevent accidental exposure.
@@ -163,21 +171,37 @@ For enhanced Twitter functionality, you can enable additional features by adding
 
 ```
 # Advanced Twitter Features
-TWITTER_TIMELINE_ENABLE=true           # Enable timeline checking so agent can comment on timeline posts
-TWITTER_SPACES_ENABLE=true             # Enable agent participation in Twitter Spaces
-TWITTER_TIMELINE_MODE=home             # Timeline mode (home, user, etc.)
-TWITTER_TIMELINE_POLL_INTERVAL=300     # Timeline polling interval in seconds
+
+# Timeline Interaction (Optional)
+# Allows the agent to monitor and potentially interact with posts on its Twitter timeline.
+TWITTER_TIMELINE_ENABLE=true           # Set to true to enable, false to disable.
+# Specifies which timeline to monitor. Common options:
+# "home": The main home timeline.
+# "user": Only tweets from specific users (requires further configuration if supported by the plugin version).
+TWITTER_TIMELINE_MODE=home             # Default is "home".
+# How often (in seconds) the agent checks the timeline for new posts.
+TWITTER_TIMELINE_POLL_INTERVAL=300     # Example: Check every 300 seconds (5 minutes).
+
+# Twitter Spaces Participation (Optional)
+# Enables the agent to join and participate in Twitter Spaces.
+TWITTER_SPACES_ENABLE=true             # Set to true to enable, false to disable.
+# If you want your agent to speak in Spaces using Text-to-Speech (TTS),
+# you need an ElevenLabs API key.
+ELEVENLABS_XI_API_KEY=your_elevenlabs_api_key_here # Required for TTS in Spaces.
 ```
 
 **Timeline Features:**
 
-- `TWITTER_TIMELINE_ENABLE`: When set to `true`, allows the agent to monitor and interact with posts in the timeline
-- `TWITTER_TIMELINE_MODE`: Specifies which timeline to monitor (e.g., "home" for home timeline)
-- `TWITTER_TIMELINE_POLL_INTERVAL`: Controls how often (in seconds) the agent checks the timeline for new posts
+- `TWITTER_TIMELINE_ENABLE`: When set to `true`, allows the agent to monitor and interact with posts in its configured timeline. This can include liking, retweeting, quoting, or replying to tweets based on the agent's defined logic.
+- `TWITTER_TIMELINE_MODE`: Specifies which timeline to monitor (e.g., "home" for the agent's main home timeline).
+- `TWITTER_TIMELINE_POLL_INTERVAL`: Controls how often (in seconds) the agent checks the specified timeline for new posts to process.
 
 **Spaces Features:**
 
-- `TWITTER_SPACES_ENABLE`: When set to `true`, enables the agent to participate in Twitter Spaces conversations
+- `TWITTER_SPACES_ENABLE`: When set to `true`, enables the agent to join Twitter Spaces. Depending on its configuration, it might listen or even request to speak.
+- `ELEVENLABS_XI_API_KEY`: If `TWITTER_SPACES_ENABLE` is true and you want your agent to speak using synthesized voice (Text-to-Speech), provide your ElevenLabs API key here.
+
+**Note on Advanced Spaces Configuration:** While `TWITTER_SPACES_ENABLE` turns the feature on/off, more detailed configurations for how the agent behaves in Spaces (e.g., whether it tries to host, maximum speakers it allows if hosting, typical duration, idle timeouts) are typically managed within your project's `src/index.ts` file, under the `character.settings.twitter.spaces` object. Refer to the plugin's documentation for specific details on configuring these behaviors.
 
 ### Advanced: Server Deployment with Twitter Cookies
 
