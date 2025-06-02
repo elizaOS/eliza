@@ -16,7 +16,7 @@ Database adapters implement the [`IDatabaseAdapter`](/api/interfaces/IDatabaseAd
 | [PostgreSQL](https://github.com/elizaos-plugins/adapter-postgres) | Enterprise & vector search | Dynamic vector dimensions, fuzzy matching, comprehensive logging      |
 | [SQLite](https://github.com/elizaos-plugins/adapter-sqlite)       | Development & embedded     | Lightweight, file-based, vector BLOB support                          |
 | [Supabase](https://github.com/elizaos-plugins/adapter-supabase)   | Cloud-hosted vector DB     | Multiple embedding sizes, real-time subscriptions, row-level security |
-| [PGLite](https://github.com/elizaos-plugins/adapter-pglite)       | Browser environments       | Lightweight PostgreSQL implementation, HNSW indexing                  |
+| [PGLite](https://github.com/elizaos-plugins/adapter-sqlite)       | Browser environments       | Lightweight PostgreSQL implementation, HNSW indexing                  |
 | [Qdrant](https://github.com/elizaos-plugins/adapter-qdrant)       | Vector-focused deployments | Optimized for RAG applications, sophisticated preprocessing           |
 | [SQL.js](https://github.com/elizaos-plugins/adapter-sqljs)        | Browser environments       | Full SQLite functionality in browser, complex queries                 |
 

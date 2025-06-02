@@ -414,7 +414,7 @@ Ensure correct credentials in `.env`, mark account as "Automated" in Twitter set
 
 ### How do I make my agent respond to Twitter replies?
 
-Set `ENABLE_ACTION_PROCESSING=true` and configure `TWITTER_POLL_INTERVAL`. Target specific users for guaranteed responses.
+Set `TWITTER_INTERACTION_ENABLE=true` and configure `TWITTER_POLL_INTERVAL`. Target specific users for guaranteed responses.
 
 ### How do I avoid Twitter bot suspensions?
 

@@ -366,7 +366,7 @@ validate_package_json() {
   # Just test that the command can detect it's not in a plugin directory
   run $ELIZAOS_CMD publish
   [ "$status" -ne 0 ]
-  [[ "$output" == *"must be run from a plugin directory"* ]]
+  [[ "$output" == *"No package.json found"* ]]
 }
 
 @test "publish command detects missing images" {
@@ -421,7 +421,7 @@ EOF
   # Just test from current directory which is not a plugin directory
   run $ELIZAOS_CMD publish
   [ "$status" -ne 0 ]
-  [[ "$output" == *"must be run from a plugin directory"* ]]
+  [[ "$output" == *"No package.json found"* ]]
 }
 
 @test "publish fails in plugin directory without package.json" {

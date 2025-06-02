@@ -1143,7 +1143,7 @@ Complete changelog:
 * chore: add embedding tests by @shlokkhemani in https://github.com/elizaOS/eliza/pull/1944
 * feat: new plugin Arthera Chain by @elpiarthera in https://github.com/elizaOS/eliza/pull/1818
 * fix: fixed error in C3PO and improved error handling feedback by @JoeyKhd in https://github.com/elizaOS/eliza/pull/1951
-* feat: add pglite db adapter by @KONFeature in https://github.com/elizaOS/eliza/pull/1810
+* feat: add sqlite db adapter by @KONFeature in https://github.com/elizaOS/eliza/pull/1810
 * feat: Add fraxtal chain to evm by @kesar in https://github.com/elizaOS/eliza/pull/1954
 * feat: add coin price plugin (CoinMarketCap, CoinGecko & CoinCap) by @proteanx in https://github.com/elizaOS/eliza/pull/1808
 * fix: abstract readme by @cygaar in https://github.com/elizaOS/eliza/pull/1963

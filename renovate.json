@@ -20,8 +20,8 @@
       "matchPackagePatterns": ["^eslint", "^prettier"]
     },
     {
-      "groupName": "SQLite related",
-      "matchPackagePatterns": ["sqlite", "^@types/better-sqlite3", "^@types/sql.js"]
+      "groupName": "Pglite related",
+      "matchPackagePatterns": ["pglite", "^@types/better-pglite3", "^@types/sql.js"]
     }
   ],
   "timezone": "UTC",

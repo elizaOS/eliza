@@ -41,9 +41,14 @@ const __dirname = path.dirname(__filename);
  *
  * @param pluginName The name or path of the plugin.
  * @param version The CLI version, used for installing the plugin.
+ * @param isTestMode Whether we're in test mode (should not modify current directory).
  * @returns The loaded Plugin object, or null if loading/installation fails.
  */
-async function loadAndPreparePlugin(pluginName: string, version: string): Promise<Plugin | null> {
+async function loadAndPreparePlugin(
+  pluginName: string,
+  version: string,
+  isTestMode: boolean = false
+): Promise<Plugin | null> {
   logger.debug(`Processing plugin: ${pluginName}`);
   let pluginModule: any;
 
@@ -52,6 +57,14 @@ async function loadAndPreparePlugin(pluginName: string, version: string): Promis
     pluginModule = await loadPluginModule(pluginName);
 
     if (!pluginModule) {
+      // In test mode, don't install missing plugins - just skip them
+      if (isTestMode || process.env.ELIZA_TESTING_PLUGIN === 'true') {
+        logger.warn(
+          `Plugin ${pluginName} not available during test. Skipping installation to avoid modifying plugin package.json.`
+        );
+        return null;
+      }
+
       // If loading failed, try installing and then loading again
       logger.info(`Plugin ${pluginName} not available, installing into ${process.cwd()}...`);
       try {
@@ -282,7 +295,11 @@ export async function startAgent(
 
     if (!loadedPluginsMap.has(pluginName)) {
       //logger.debug(`Attempting to load plugin by name from character definition: ${pluginName}`);
-      const loadedPlugin = await loadAndPreparePlugin(pluginName, installTag);
+      const loadedPlugin = await loadAndPreparePlugin(
+        pluginName,
+        installTag,
+        options.isPluginTestMode
+      );
       if (loadedPlugin) {
         characterPlugins.push(loadedPlugin);
         // Double-check name consistency and avoid duplicates
@@ -435,8 +452,14 @@ const startAgents = async (options: {
     process.env.POSTGRES_URL = postgresUrl;
   }
 
-  // Conditionally resolve PGLite directory only if PostgreSQL URL is not provided
+  // Conditionally resolve Pglite directory only if PostgreSQL URL is not provided
   const pgliteDataDir = postgresUrl ? undefined : await resolvePgliteDir();
+
+  if (postgresUrl) {
+    logger.info('Using PostgreSQL database');
+  } else {
+    logger.info('Using Pglite database');
+  }
 
   // Check if we should reconfigure based on command-line option or if using default config
   const shouldConfigure = options.configure || existingConfig.isDefault;
@@ -456,6 +479,7 @@ const startAgents = async (options: {
     });
   }
 
+  console.log('pgliteDataDir', pgliteDataDir);
   // Create server instance
   const server = new AgentServer();
   // Initialize server with appropriate database settings
@@ -689,8 +713,8 @@ const startAgents = async (options: {
         `Starting default Eliza character with plugin: ${pluginModule.name || 'unnamed plugin'}`
       );
 
-      // Import the default character with all its plugins
-      const { character: defaultElizaCharacter } = await import('../characters/eliza');
+      // Get the default character with environment-aware plugins
+      const defaultElizaCharacter = getElizaCharacter();
 
       // Create an array of plugins, including the explicitly loaded one
       // We're using our test plugin plus all the plugins from the default character

@@ -101,7 +101,7 @@
 - feat: add docs for story plugin [\#1672](https://github.com/elizaOS/eliza/pull/1672) ([chandiniv1](https://github.com/chandiniv1))
 - fix: 1668  fix twitter image link [\#1671](https://github.com/elizaOS/eliza/pull/1671) ([nusk0](https://github.com/nusk0))
 - fix: 1634  fix image description service [\#1667](https://github.com/elizaOS/eliza/pull/1667) ([nusk0](https://github.com/nusk0))
-- fix: Seperated imageModelProvider and imageVisionModelProvider for ImageDescriptioServices [\#1664](https://github.com/elizaOS/eliza/pull/1664) ([denizekiz](https://github.com/denizekiz))
+- fix: Separated imageModelProvider and imageVisionModelProvider for ImageDescriptioServices [\#1664](https://github.com/elizaOS/eliza/pull/1664) ([denizekiz](https://github.com/denizekiz))
 - fix: Update Supabase schema.sql [\#1660](https://github.com/elizaOS/eliza/pull/1660) ([0xRider](https://github.com/0xRider))
 - fix: Fix bug in plugin-bootstrap/src/evaluators/facts.ts [\#1648](https://github.com/elizaOS/eliza/pull/1648) ([metakai1](https://github.com/metakai1))
 - Added Hungarian README [\#1645](https://github.com/elizaOS/eliza/pull/1645) ([mdominikd](https://github.com/mdominikd))
@@ -188,7 +188,7 @@
 - bun install shows errors [\#1234](https://github.com/elizaOS/eliza/issues/1234)
 - Long tweets fail with error Tweet needs to be a bit shorter \(Code 186\) [\#1178](https://github.com/elizaOS/eliza/issues/1178)
 - Unable to Perform Transfer with plugin-evm Due to Parameter Parsing Error [\#964](https://github.com/elizaOS/eliza/issues/964)
-- I have a twitter premium subscription and MAX\_TWEET\_LENGTH  to 2500 but I can't to post a tweet with more than 280 characteres [\#883](https://github.com/elizaOS/eliza/issues/883)
+- I have a twitter premium subscription and MAX\_TWEET\_LENGTH  to 2500 but I can't to post a tweet with more than 280 characters [\#883](https://github.com/elizaOS/eliza/issues/883)
 - Twitter cookies do not match the docs [\#558](https://github.com/elizaOS/eliza/issues/558)
 
 **Closed issues:**

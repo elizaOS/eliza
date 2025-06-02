@@ -1,3 +1,5 @@
+import { PGlite } from '@electric-sql/pglite';
+import { type Sql } from 'postgres';
 import type {
   Agent,
   Component,
@@ -13,8 +15,6 @@ import type {
   UUID,
   World,
 } from './types';
-import { type Pool as PgPool } from 'pg';
-import { PGlite } from '@electric-sql/pglite';
 
 /**
  * An abstract class representing a database adapter for managing various entities
@@ -49,7 +49,7 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
    * Retrieves a connection to the database.
    * @returns A Promise that resolves to the database connection.
    */
-  abstract getConnection(): Promise<PGlite | PgPool>;
+  abstract getConnection(): Promise<PGlite | Sql<{}>>;
 
   /**
    * Retrieves an account by its ID.

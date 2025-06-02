@@ -1,12 +1,14 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: ['src/index.ts'],
+  entry: ['src/index.ts', 'src/specs/v1/index.ts', 'src/specs/v2/index.ts'],
   outDir: 'dist',
   clean: true,
   format: ['esm'],
   target: 'node18',
-  dts: false,
+  dts: true,
+  tsconfig: './tsconfig.build.json', // Use build-specific tsconfig
+  ignoreWatch: ['**/__tests__/**', '**/test_resources/**'],
   external: [
     'dotenv',
     'fs',
