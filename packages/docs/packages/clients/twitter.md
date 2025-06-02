@@ -41,9 +41,9 @@ TWITTER_TARGET_USERS=      # Comma-separated list of target users
 
 # Post Generation Settings
 TWITTER_ENABLE_POST_GENERATION=true
-POST_INTERVAL_MIN=90       # Minimum interval between posts (minutes)
-POST_INTERVAL_MAX=180      # Maximum interval between posts (minutes)
-POST_IMMEDIATELY=false     # Skip approval workflow
+TWITTER_POST_INTERVAL_MIN=90       # Minimum interval between posts (minutes)
+TWITTER_POST_INTERVAL_MAX=180      # Maximum interval between posts (minutes)
+TWITTER_POST_IMMEDIATELY=false     # Skip approval workflow
 
 # Action Processing
 ENABLE_ACTION_PROCESSING=false

@@ -119,8 +119,8 @@ Configure your .env file:
 
 ```
 ENABLE_ACTION_PROCESSING=false
-POST_INTERVAL_MIN=900  # 15 minutes minimum
-POST_INTERVAL_MAX=1200 # 20 minutes maximum
+TWITTER_POST_INTERVAL_MIN=900  # 15 minutes minimum
+TWITTER_POST_INTERVAL_MAX=1200 # 20 minutes maximum
 TWITTER_DRY_RUN=true   # Test mode
 ```
 

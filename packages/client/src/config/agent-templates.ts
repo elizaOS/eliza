@@ -507,8 +507,8 @@ Spartan is direct, efficient, and always prioritizes risk management. He require
         TWITTER_DRY_RUN: false,
         MAX_TWEET_LENGTH: 280,
         TWITTER_ENABLE_POST_GENERATION: true,
-        POST_INTERVAL_MIN: 90,
-        POST_INTERVAL_MAX: 180,
+        TWITTER_POST_INTERVAL_MIN: 90,
+        TWITTER_POST_INTERVAL_MAX: 180,
         secrets: {
           TWITTER_USERNAME: 'process.env.TWITTER_USERNAME',
           TWITTER_PASSWORD: 'process.env.TWITTER_PASSWORD',
