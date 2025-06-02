@@ -375,7 +375,7 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
   router.get('/dm-channel', async (req, res) => {
     const targetUserId = validateUuid(req.query.targetUserId as string);
     const currentUserId = validateUuid(req.query.currentUserId as string);
-    let providedDmServerId =
+    const providedDmServerId =
       req.query.dmServerId === DEFAULT_SERVER_ID
         ? DEFAULT_SERVER_ID
         : validateUuid(req.query.dmServerId as string);
