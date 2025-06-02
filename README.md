@@ -1,28 +1,10 @@
-# Eliza 🤖
+# Eliza
 
-<div align="center">
-  <img src="./packages/docs/static/img/eliza_banner.jpg" alt="Eliza Banner" width="100%" />
-</div>
-
-<div align="center">
-
-📑 [Technical Report](https://arxiv.org/pdf/2501.06781) | 📖 [Documentation](https://elizaos.github.io/eliza/) | 🎯 [Examples](https://github.com/thejoven/awesome-eliza)
-
-</div>
-
-## 🌍 README Translations
-
-[中文说明](packages/docs/i18n/readme/README_CN.md) | [日本語の説明](packages/docs/i18n/readme/README_JA.md) | [한국어 설명](packages/docs/i18n/readme/README_KOR.md) | [Persian](packages/docs/i18n/readme/README_FA.md) | [Français](packages/docs/i18n/readme/README_FR.md) | [Português](packages/docs/i18n/readme/README_PTBR.md) | [Türkçe](packages/docs/i18n/readme/README_TR.md) | [Русский](packages/docs/i18n/readme/README_RU.md) | [Español](packages/docs/i18n/readme/README_ES.md) | [Italiano](packages/docs/i18n/readme/README_IT.md) | [ไทย](packages/docs/i18n/readme/README_TH.md) | [Deutsch](packages/docs/i18n/readme/README_DE.md) | [Tiếng Việt](packages/docs/i18n/readme/README_VI.md) | [עִברִית](packages/docs/i18n/readme/README_HE.md) | [Tagalog](packages/docs/i18n/readme/README_TG.md) | [Polski](packages/docs/i18n/readme/README_PL.md) | [Arabic](packages/docs/i18n/readme/README_AR.md) | [Hungarian](packages/docs/i18n/readme/README_HU.md) | [Srpski](packages/docs/i18n/readme/README_RS.md) | [Română](packages/docs/i18n/readme/README_RO.md) | [Nederlands](packages/docs/i18n/readme/README_NL.md) | [Ελληνικά](packages/docs/i18n/readme/README_GR.md)
-
-## 🚩 Overview
-
-<div align="center">
-  <img src="./packages/docs/static/img/eliza_diagram.jpg" alt="Eliza Diagram" width="100%" />
-</div>
+A framework for multi-agent development and deployment
 
 ## ✨ Features
 
-- 🛠️ Full-featured Discord, X (Twitter) and Telegram connectors
+- 🛠️ Full-featured Discord, X (Twitter) and Telegram connectors (and many more!)
 - 🔗 Support for every model (Llama, Grok, OpenAI, Anthropic, Gemini, etc.)
 - 👥 Multi-agent and room support
 - 📚 Easily ingest and interact with your documents
