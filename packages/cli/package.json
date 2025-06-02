@@ -80,6 +80,7 @@
   },
   "gitHead": "d5bd5c43bfebeb7ac02f9e029f924cb6cd5c2ec7",
   "dependencies": {
+    "@electric-sql/pglite": "^0.3.2",
     "@elizaos/core": "^1.0.2",
     "@elizaos/plugin-discord": "1.0.3",
     "@elizaos/plugin-local-ai": "^1.0.0",
