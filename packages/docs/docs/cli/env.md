@@ -144,7 +144,7 @@ If no local `.env` file exists:
 | `TELEGRAM_BOT_TOKEN` | Token for Telegram bot integration           |
 | `DISCORD_BOT_TOKEN`  | Token for Discord bot integration            |
 | `POSTGRES_URL`       | PostgreSQL database connection string        |
-| `PGLITE_DATA_DIR`    | Directory for PGLite database files          |
+| `SQLITE_DATA_DIR`    | Directory for PGLite database files          |
 | `MODEL_PROVIDER`     | Default model provider to use                |
 | `LOG_LEVEL`          | Logging verbosity (debug, info, warn, error) |
 | `PORT`               | HTTP API port number                         |

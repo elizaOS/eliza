@@ -409,7 +409,7 @@ async function resetEnv(yes = false): Promise<void> {
     // Check for external Postgres
     usingExternalPostgres = localEnvVars.POSTGRES_URL && localEnvVars.POSTGRES_URL.trim() !== '';
 
-    // Check for PGLite
+    // Check for Pglite
     usingPglite = localEnvVars.PGLITE_DATA_DIR && localEnvVars.PGLITE_DATA_DIR.trim() !== '';
   } catch (error) {
     // Ignore errors in env parsing

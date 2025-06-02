@@ -218,7 +218,7 @@ Two main GitHub Actions workflows handle the CI/CD process for the Tauri applica
 
 - **`tauri-ci.yml`**:
 
-  - Triggered on pushes to `main`, `develop`, and `v2-develop` branches.
+  - Triggered on pushes to `main` and `develop` branches.
   - Performs debug builds of the desktop application (Linux, macOS, Windows) to ensure code integrity and catch build issues early.
 
 - **`tauri-release.yml`**:

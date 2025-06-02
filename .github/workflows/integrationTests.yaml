@@ -12,6 +12,7 @@ env:
   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
   TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
   TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+  ELIZA_NONINTERACTIVE: true
 
 jobs:
   integration-tests:

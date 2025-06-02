@@ -455,12 +455,12 @@ export async function repoHasBranch(repoUrl: string, branchName: string): Promis
 }
 
 export async function getBestBranch(repoUrl: string): Promise<string> {
-  // Check for v2 or v2-develop branches
-  if (await repoHasBranch(repoUrl, 'v2')) {
-    return 'v2';
+  // Check for develop or main branches
+  if (await repoHasBranch(repoUrl, 'develop')) {
+    return 'develop';
   }
-  if (await repoHasBranch(repoUrl, 'v2-develop')) {
-    return 'v2-develop';
+  if (await repoHasBranch(repoUrl, 'main')) {
+    return 'main';
   }
   // Default to main branch
   return 'main';
