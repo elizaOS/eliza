@@ -183,11 +183,18 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
                 id="chat-name"
                 value={chatName}
                 onChange={(e) => setChatName(e.target.value)}
-                className="w-full"
+                className="w-full bg-background text-foreground"
                 placeholder="Enter group name (e.g., Project Alpha Team)"
                 disabled={creating || deleting}
-                aria-disabled={creating || deleting}
+                autoFocus={!channelId} // Auto-focus for create mode
               />
+              {/* Debug info - remove in production */}
+              {process.env.NODE_ENV === 'development' && (
+                <div className="text-xs text-muted-foreground">
+                  Debug: creating={String(creating)}, deleting={String(deleting)},
+                  chatName="{chatName}", length={chatName.length}
+                </div>
+              )}
             </div>
 
             <div className="flex flex-col gap-2 w-full">
@@ -197,14 +204,25 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
               <MultiSelectCombobox
                 options={getComboboxOptions()}
                 onSelect={(selectedOptions) => {
+                  console.log('[GroupPanel] MultiSelectCombobox onSelect called with:', selectedOptions);
                   const newSelectedAgentObjects = allAvailableAgents.filter(agent =>
                     selectedOptions.some(option => option.id === agent.id)
                   );
+                  console.log('[GroupPanel] Filtered agent objects:', newSelectedAgentObjects);
                   setSelectedAgents(newSelectedAgentObjects);
                 }}
                 className="w-full"
                 initialSelected={getInitialSelectedOptions()}
+                key={`multiselect-${channelId || 'create'}-${allAvailableAgents.length}`} // Force re-render when context changes
               />
+              {/* Debug info - remove in production */}
+              {process.env.NODE_ENV === 'development' && (
+                <div className="text-xs text-muted-foreground">
+                  Debug: selectedAgents count={selectedAgents.length},
+                  options count={getComboboxOptions().length},
+                  allAvailableAgents count={allAvailableAgents.length}
+                </div>
+              )}
             </div>
           </div>
         </CardContent>
