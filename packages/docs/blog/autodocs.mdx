@@ -36,7 +36,7 @@ flowchart
 subgraph DataCollection["Data Collection Systems"]
 subgraph ELIZA["elizaos.github.io (Contributor Analytics)"]
 EG_INGEST["📥 Ingest GitHub Data
-PRs, Issues, Comments"] --> EG_DB[("💾 SQLite DB +
+PRs, Issues, Comments"] --> EG_DB[("💾 Pglite DB +
 Diffable Format")]
 EG_PROCESS["⚙️ Process & Score
 Contributions"]
@@ -57,7 +57,7 @@ end
 Discord, X, Github
 Blockchain, Telegram"]
 AI_STORE[("💾 Encrypted
-SQLite DB")]
+Pglite DB")]
 AI_ENRICH["🧠 AI Analysis
 & Enrichment"]
 AI_GENERATE["📝 Generate

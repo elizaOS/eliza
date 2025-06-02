@@ -448,13 +448,87 @@ plugins
       if (result.success) {
         console.log(`\n✅ Plugin successfully upgraded!`);
         console.log(`   Branch: ${result.branchName}`);
-        console.log(`   Repository: ${result.repoPath}`);
+        console.log(`   Location: ${result.repoPath}`);
+        console.log(`\nThe upgraded plugin has been copied to your current directory.`);
         console.log(`\nNext steps:`);
-        console.log(`1. Review the changes in the ${result.branchName} branch`);
-        console.log(`2. Test the upgraded plugin thoroughly`);
-        console.log(`3. Create a pull request when ready`);
+        console.log(`1. cd ${path.basename(result.repoPath)}`);
+        console.log(`2. Review the changes`);
+        console.log(`3. Test the upgraded plugin thoroughly`);
+        console.log(`4. Push to GitHub and create a pull request when ready`);
       } else {
         logger.error(`Plugin upgrade failed: ${result.error?.message}`);
+        process.exit(1);
+      }
+    } catch (error) {
+      handleError(error);
+      process.exit(1);
+    }
+  });
+
+plugins
+  .command('generate')
+  .description('Generate a new plugin using AI-powered code generation')
+  .option('--api-key <key>', 'Anthropic API key (or use ANTHROPIC_API_KEY env var)')
+  .option('--skip-tests', 'Skip test validation loop')
+  .option('--skip-validation', 'Skip production readiness validation')
+  .option('--skip-prompts', 'Skip interactive prompts (requires --spec-file)')
+  .option('--spec-file <path>', 'Path to JSON file containing plugin specification')
+  .action(async (opts) => {
+    try {
+      // Lazy import to avoid loading dependencies until needed
+      const { PluginCreator } = await import('../utils/plugins/creator.js');
+
+      // Set API key if provided
+      if (opts.apiKey) {
+        process.env.ANTHROPIC_API_KEY = opts.apiKey;
+      }
+
+      // Check for API key
+      if (!process.env.ANTHROPIC_API_KEY) {
+        logger.error('ANTHROPIC_API_KEY is required for plugin generation.');
+        console.log('\nPlease set ANTHROPIC_API_KEY environment variable or use --api-key option.');
+        process.exit(1);
+      }
+
+      // Handle spec file if provided
+      let spec = undefined;
+      if (opts.specFile) {
+        try {
+          const specContent = fs.readFileSync(opts.specFile, 'utf-8');
+          spec = JSON.parse(specContent);
+        } catch (error) {
+          logger.error(`Failed to read or parse spec file: ${error.message}`);
+          process.exit(1);
+        }
+      } else if (opts.skipPrompts) {
+        logger.error('--skip-prompts requires --spec-file to be provided');
+        process.exit(1);
+      }
+
+      // Create creator instance with options
+      const creator = new PluginCreator({
+        skipTests: opts.skipTests,
+        skipValidation: opts.skipValidation,
+        skipPrompts: opts.skipPrompts,
+        spec: spec,
+      });
+
+      // Run generation
+      console.log(`\n🚀 Starting AI-powered plugin generation...\n`);
+      const result = await creator.create();
+
+      if (result.success) {
+        console.log(`\n✅ Plugin successfully generated!`);
+        console.log(`   Name: ${result.pluginName}`);
+        console.log(`   Location: ${result.pluginPath}`);
+        console.log(`\nThe plugin has been created in your current directory.`);
+        console.log(`\nNext steps:`);
+        console.log(`1. cd ${path.basename(result.pluginPath)}`);
+        console.log(`2. Review the generated code`);
+        console.log(`3. Test the plugin: npm test`);
+        console.log(`4. Add to your ElizaOS project`);
+      } else {
+        logger.error(`Plugin generation failed: ${result.error?.message}`);
         process.exit(1);
       }
     } catch (error) {

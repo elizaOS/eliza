@@ -1,25 +1,26 @@
 import { addHeader, ChannelType, AgentRuntime as coreAgentRuntime } from '../v2';
+import { formatMessages } from './messages';
 import {
+  type Action,
+  type Adapter,
   type Character,
+  type Evaluator,
   type HandlerCallback,
   type IAgentRuntime,
   type ICacheManager,
   type IDatabaseAdapter,
   type IMemoryManager,
+  type Memory,
   ModelProviderName,
   type Plugin,
   type Provider,
-  type Adapter,
   type Service,
   type ServiceType,
   type State,
   type UUID,
-  type Action,
-  type Evaluator,
-  type Memory,
 } from './types';
 
-import { formatMessages } from './messages';
+const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID; // Single default server
 
 export class AgentRuntime implements IAgentRuntime {
   private _runtime;
@@ -313,8 +314,8 @@ export class AgentRuntime implements IAgentRuntime {
       source: 'Unknown',
       type: 'Unknown' as ChannelType,
       channelId: roomId,
-      serverId: '0',
-      worldId: '0' as UUID,
+      serverId: DEFAULT_SERVER_ID,
+      worldId: DEFAULT_SERVER_ID,
       metadata: {},
     });
   }
