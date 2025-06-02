@@ -188,7 +188,7 @@ async function updateDependencies(
   }
 
   // Check for major updates
-  const hasMajorUpdates = Object.entries(updates).some(([pkg, { current, latest }]) =>
+  const hasMajorUpdates = Object.entries(updates).some(([, { current, latest }]) =>
     isMajorUpdate(current, latest)
   );
 
