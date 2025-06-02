@@ -30,9 +30,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 describe('setup-monorepo command', () => {
-  const mockConsoleInfo = vi.spyOn(console, 'info').mockImplementation(() => { });
-  const mockConsoleLog = vi.spyOn(console, 'log').mockImplementation(() => { });
-  const mockConsoleError = vi.spyOn(console, 'error').mockImplementation(() => { });
+  const mockConsoleInfo = vi.spyOn(console, 'info').mockImplementation(() => {});
+  const mockConsoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
+  const mockConsoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
 
   beforeEach(() => {
     vi.clearAllMocks();
