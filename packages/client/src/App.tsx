@@ -21,7 +21,6 @@ import AgentCreatorRoute from './routes/createAgent';
 import Home from './routes/home';
 import NotFound from './routes/not-found';
 import GroupChannel from './routes/group';
-import Settings from './routes/settings';
 import { Menu } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from './components/ui/sheet';
 import { Button } from './components/ui/button';
@@ -109,7 +108,7 @@ function AppContent() {
                 </Button>
               </SheetTrigger>
               <SheetContent side="left" className="w-80 p-0 z-50">
-                <AppSidebar isMobile={true} />
+                <AppSidebar isMobile={true} refreshHomePage={refreshHomePage} />
               </SheetContent>
             </Sheet>
           </div>
@@ -122,7 +121,6 @@ function AppContent() {
             <Route path="/" element={<Home key={homeKey} />} />
             <Route path="chat/:agentId" element={<Chat />} />
             <Route path="group/new" element={<CreateGroupPage />} />
-            <Route path="settings/:agentId" element={<Settings />} />
             <Route path="agents/new" element={<AgentCreatorRoute />} />
             <Route path="/create" element={<AgentCreator />} />
             <Route

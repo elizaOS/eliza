@@ -169,7 +169,7 @@ export function useFileUpload({ agentId, channelId, chatType }: UseFileUploadPro
       settledUploads.forEach((result, index) => {
         if (result.status === 'fulfilled') {
           if (result.value.success && 'media' in result.value) {
-            uploaded.push(result.value.media);
+            uploaded.push(result.value.media as Media);
           } else if ('file' in result.value) {
             failed.push(result.value as { file: UploadingFile; error: string });
           }

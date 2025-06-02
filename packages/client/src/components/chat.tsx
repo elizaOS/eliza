@@ -31,7 +31,7 @@ import type { Agent, Media, UUID } from '@elizaos/core';
 import { AgentStatus, ContentType as CoreContentType, validateUuid } from '@elizaos/core';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
 import { useQueryClient } from '@tanstack/react-query';
-import { ChevronRight, Loader2, PanelRight, PanelRightClose, Trash2, MessageSquarePlus } from 'lucide-react';
+import { ChevronRight, Loader2, PanelRight, PanelRightClose, Trash2, MessageSquarePlus, Plus } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AIWriter from 'react-aiwriter';
 import { ChatInputArea } from './ChatInputArea';
@@ -46,6 +46,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import relativeTime from 'dayjs/plugin/relativeTime';
+moment.extend(relativeTime);
 
 const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
 
@@ -185,8 +187,12 @@ export default function chat({ chatType, contextId, serverId }: UnifiedChatViewP
   const [inputDisabled, setInputDisabled] = useState<boolean>(false);
   const [selectedGroupAgentId, setSelectedGroupAgentId] = useState<UUID | null>(null);
   const [showGroupEditPanel, setShowGroupEditPanel] = useState(false);
-  const [priorDmRooms, setPriorDmRooms] = useState<{ id: string, name: string, channelId: UUID }[]>([]);
-  const [currentDmRoomId, setCurrentDmRoomId] = useState<string | null>(null);
+
+  // State for Requirement #1: Multiple DM Channels with a single agent
+  const [agentDmChannels, setAgentDmChannels] = useState<{ id: UUID, name: string, createdAt?: number, lastActivity?: number }[]>([]);
+  const [currentDmChannelIdForAgent, setCurrentDmChannelIdForAgent] = useState<UUID | null>(null);
+  const [isLoadingAgentDmChannels, setIsLoadingAgentDmChannels] = useState(false);
+
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -248,145 +254,120 @@ export default function chat({ chatType, contextId, serverId }: UnifiedChatViewP
   );
   const [isCreatingDM, setIsCreatingDM] = useState(false);
 
-  // Effect for Req #1: Simulate fetching prior DM rooms and set current
-  useEffect(() => {
-    if (chatType === 'DM' && targetAgentData?.id) {
-      clientLogger.info(`[Chat] Simulating fetch of prior DM rooms for agent ${targetAgentData.id}`);
-      // Simulate API call
-      const fetchedRooms = [
-        { id: 'dm_room_1_' + targetAgentData.id, name: 'General Discussion', channelId: contextId }, // Assuming current contextId is one room
-        { id: 'dm_room_2_' + targetAgentData.id, name: 'Project Alpha Inquiry', channelId: randomUUID() as UUID },
-        { id: 'dm_room_3_' + targetAgentData.id, name: 'Follow-up from Meeting', channelId: randomUUID() as UUID },
-      ];
-      setPriorDmRooms(fetchedRooms);
-      // Assume the first room (or the one matching contextId) is the current one
-      const initialRoom = fetchedRooms.find(room => room.channelId === contextId) || fetchedRooms[0];
-      if (initialRoom) {
-        setCurrentDmRoomId(initialRoom.id);
-        // If dmChannelData is not set, or needs to align with this initialRoom's channelId
-        if (!dmChannelData || dmChannelData.channelId !== initialRoom.channelId) {
-          setDmChannelData({ channelId: initialRoom.channelId, serverId: DEFAULT_SERVER_ID });
-        }
-      }
-      clientLogger.info('[Chat] Simulated prior DM rooms:', fetchedRooms, 'Current DM Room ID:', initialRoom?.id);
-    } else {
-      setPriorDmRooms([]);
-      setCurrentDmRoomId(null);
-    }
-  }, [chatType, targetAgentData?.id, contextId]);
-
-  useEffect(() => {
-    if (chatType === 'DM' && contextId && !dmChannelData && !isCreatingDM) {
-      setIsCreatingDM(true);
-      const createDMChannel = async () => {
-        try {
-          const serverIdToUse = DEFAULT_SERVER_ID;
-          const dmResponse = await fetch(
-            `/api/messages/dm-channel?targetUserId=${contextId}&currentUserId=${currentClientEntityId}&dmServerId=${serverIdToUse}`
-          );
-          const dmData = await dmResponse.json();
-          if (dmData.success) {
-            setDmChannelData({ channelId: dmData.data.id, serverId: serverIdToUse });
-          } else {
-            throw new Error('Failed to create DM channel');
-          }
-        } catch (error) {
-          console.error('Error creating DM channel:', error);
-          toast({
-            title: 'Error',
-            description: 'Failed to create chat channel',
-            variant: 'destructive',
-          });
-        } finally {
-          setIsCreatingDM(false);
-        }
-      };
-      createDMChannel();
-    }
-  }, [chatType, contextId, dmChannelData, isCreatingDM, currentClientEntityId, toast]);
-
-  const finalChannelId = chatType === 'DM' ?
-    (currentDmRoomId ? priorDmRooms.find(r => r.id === currentDmRoomId)?.channelId : dmChannelData?.channelId)
-    : contextId;
-  const finalServerId = chatType === 'DM' ?
-    (currentDmRoomId ? DEFAULT_SERVER_ID : dmChannelData?.serverId)
-    : serverId;
-
-  const {
-    data: messages = [],
-    isLoading: isLoadingMessages,
-    addMessage,
-    updateMessage,
-    removeMessage,
-  } = useChannelMessages(finalChannelId || undefined, finalServerId || undefined);
-
-  const { mutate: deleteMessageCentral } = useDeleteChannelMessage();
-  const { mutate: clearMessagesCentral } = useClearChannelMessages();
-
-  const { scrollRef, isAtBottom, scrollToBottom, disableAutoScroll, autoScrollEnabled } =
-    useAutoScroll({
-      smooth: true,
-    });
+  const { scrollRef, isAtBottom, scrollToBottom, disableAutoScroll, autoScrollEnabled } = useAutoScroll({ smooth: true });
   const prevMessageCountRef = useRef(0);
-
   const safeScrollToBottom = useCallback(() => {
     if (scrollRef.current) {
       setTimeout(() => scrollToBottom(), 0);
     }
   }, [scrollToBottom, scrollRef]);
 
-  // Scroll to bottom when switching chats/groups
-  useEffect(() => {
-    if (finalChannelId) {
-      // Reset message count when switching channels
-      prevMessageCountRef.current = 0;
-      // Scroll to bottom after a short delay to ensure messages are loaded
-      setTimeout(() => {
-        safeScrollToBottom();
-      }, 100);
+  // Define handlers before useEffect that might call them
+  const handleSelectDmRoom = (channelIdToSelect: UUID) => {
+    const selectedChannel = agentDmChannels.find(channel => channel.id === channelIdToSelect);
+    if (selectedChannel) {
+      clientLogger.info(`[Chat] DM Channel selected: ${selectedChannel.name} (Channel ID: ${selectedChannel.id})`);
+      setCurrentDmChannelIdForAgent(selectedChannel.id);
+      setInput('');
+      setTimeout(() => safeScrollToBottom(), 150);
+      // TODO: Update URL if using /chat/:agentId/:channelId
     }
-  }, [finalChannelId, safeScrollToBottom]);
+  };
 
-  // Use socket chat hook
-  const { sendMessage, animatedMessageId } = useSocketChat({
-    channelId: finalChannelId,
-    currentUserId: currentClientEntityId,
-    contextId,
-    chatType,
-    allAgents,
-    messages,
-    onAddMessage: (message: UiMessage) => {
-      addMessage(message);
-      // Scroll to bottom when agent sends a message
-      if (message.isAgent) {
-        safeScrollToBottom();
-      }
-    },
-    onUpdateMessage: (messageId: string, updates: Partial<UiMessage>) => {
-      updateMessage(messageId, updates);
-      // Scroll to bottom when message is updated (sent successfully)
-      if (!updates.isLoading && updates.isLoading !== undefined) {
-        safeScrollToBottom();
-      }
-    },
-    onInputDisabledChange: setInputDisabled,
-  });
+  const handleNewDmChannel = async (agentIdForNewChannel: UUID | undefined) => {
+    if (!agentIdForNewChannel || chatType !== 'DM') return;
+    clientLogger.info(`[Chat] Creating new DM channel with agent ${agentIdForNewChannel}`);
+    setIsCreatingDM(true);
+    try {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      const newChannelSimulated = {
+        id: randomUUID() as UUID,
+        name: `New Chat - ${moment().format('HH:mm')}`,
+        createdAt: Date.now(),
+        lastActivity: Date.now(),
+      };
+      setAgentDmChannels(prevChannels => [newChannelSimulated, ...prevChannels].sort((a, b) => (b.lastActivity || 0) - (a.lastActivity || 0)));
+      setCurrentDmChannelIdForAgent(newChannelSimulated.id);
+      setInput('');
+      toast({ title: 'New Chat Created', description: `Switched to "${newChannelSimulated.name}"` });
+      setTimeout(() => safeScrollToBottom(), 150);
+    } catch (error) {
+      clientLogger.error('[Chat] Error creating new DM channel:', error);
+      toast({ title: 'Error', description: 'Could not create new chat.', variant: 'destructive' });
+    } finally {
+      setIsCreatingDM(false);
+    }
+  };
 
-  // Use file upload hook
+  const handleDeleteCurrentDmChannel = async () => {
+    if (chatType !== 'DM' || !currentDmChannelIdForAgent || !targetAgentData?.id) return;
+    const channelToDelete = agentDmChannels.find(ch => ch.id === currentDmChannelIdForAgent);
+    if (!channelToDelete) return;
+    const confirm = window.confirm(`Are you sure you want to delete the chat "${channelToDelete.name}" with ${targetAgentData.name}? This action cannot be undone.`);
+    if (!confirm) return;
+    clientLogger.info(`[Chat] Deleting DM channel ${currentDmChannelIdForAgent}`);
+    try {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      toast({ title: 'Chat Deleted', description: `"${channelToDelete.name}" was deleted.` });
+      const remainingChannels = agentDmChannels.filter(ch => ch.id !== currentDmChannelIdForAgent);
+      setAgentDmChannels(remainingChannels.sort((a, b) => (b.lastActivity || 0) - (a.lastActivity || 0)));
+      if (remainingChannels.length > 0) {
+        setCurrentDmChannelIdForAgent(remainingChannels[0].id);
+        clientLogger.info('[Chat] Switched to DM channel:', remainingChannels[0].id);
+      } else {
+        clientLogger.info('[Chat] No DM channels left after deletion, creating a new one.');
+        handleNewDmChannel(targetAgentData.id);
+      }
+    } catch (error) {
+      clientLogger.error('[Chat] Error deleting DM channel:', error);
+      toast({ title: 'Error', description: 'Could not delete chat.', variant: 'destructive' });
+    }
+  };
+
+  // Req #1: Effect to fetch/simulate DM channels for the current agent
+  useEffect(() => {
+    if (chatType === 'DM' && targetAgentData?.id) {
+      setIsLoadingAgentDmChannels(true);
+      clientLogger.info(`[Chat] Fetching/simulating DM channels for agent ${targetAgentData.id}`);
+      const simulateApiCall = setTimeout(() => {
+        const fetchedChannelsFromApi = [
+          { id: randomUUID() as UUID, name: 'Initial Chat', createdAt: Date.now() - 3600000, lastActivity: Date.now() - 10000 },
+          { id: randomUUID() as UUID, name: 'Project Discussion', createdAt: Date.now() - 7200000, lastActivity: Date.now() - 20000 },
+          { id: randomUUID() as UUID, name: 'Follow-up', createdAt: Date.now() - 10800000, lastActivity: Date.now() - 30000 },
+        ].sort((a, b) => (b.lastActivity || 0) - (a.lastActivity || 0));
+        setAgentDmChannels(fetchedChannelsFromApi);
+        if (fetchedChannelsFromApi.length > 0) {
+          setCurrentDmChannelIdForAgent(fetchedChannelsFromApi[0].id);
+        } else {
+          handleNewDmChannel(targetAgentData.id);
+        }
+        setIsLoadingAgentDmChannels(false);
+      }, 500);
+      return () => clearTimeout(simulateApiCall);
+    } else {
+      setAgentDmChannels([]);
+      setCurrentDmChannelIdForAgent(null);
+    }
+  }, [chatType, targetAgentData?.id]);
+
+  const finalChannelIdForHooks: UUID | undefined = useMemo(() => {
+    return chatType === 'DM'
+      ? (currentDmChannelIdForAgent || undefined)
+      : (contextId || undefined);
+  }, [chatType, currentDmChannelIdForAgent, contextId]);
+
+  const finalServerIdForHooks: UUID | undefined = useMemo(() => {
+    return chatType === 'DM'
+      ? DEFAULT_SERVER_ID
+      : (serverId || undefined);
+  }, [chatType, serverId]);
+
   const {
-    selectedFiles,
-    handleFileChange,
-    removeFile,
-    createBlobUrls,
-    uploadFiles,
-    cleanupBlobUrls,
-    clearFiles,
-    getContentTypeFromMimeType,
-  } = useFileUpload({
-    agentId: targetAgentData?.id,
-    channelId: finalChannelId,
-    chatType,
-  });
+    data: messages = [], isLoading: isLoadingMessages, addMessage, updateMessage, removeMessage
+  } = useChannelMessages(finalChannelIdForHooks, finalServerIdForHooks);
+
+  const { mutate: deleteMessageCentral } = useDeleteChannelMessage();
+  const { mutate: clearMessagesCentral } = useClearChannelMessages();
 
   // Auto-scroll handling
   useEffect(() => {
@@ -410,8 +391,42 @@ export default function chat({ chatType, contextId, serverId }: UnifiedChatViewP
       }
     }
     prevMessageCountRef.current = messages.length;
-  }, [messages, autoScrollEnabled, safeScrollToBottom, finalChannelId]);
+  }, [messages, autoScrollEnabled, safeScrollToBottom, finalChannelIdForHooks]);
 
+  const { sendMessage, animatedMessageId } = useSocketChat({
+    channelId: finalChannelIdForHooks,
+    currentUserId: currentClientEntityId,
+    contextId,
+    chatType,
+    allAgents,
+    messages,
+    onAddMessage: (message: UiMessage) => {
+      addMessage(message);
+      if (message.isAgent) safeScrollToBottom();
+    },
+    onUpdateMessage: (messageId: string, updates: Partial<UiMessage>) => {
+      updateMessage(messageId, updates);
+      if (!updates.isLoading && updates.isLoading !== undefined) safeScrollToBottom();
+    },
+    onInputDisabledChange: setInputDisabled,
+  });
+
+  const {
+    selectedFiles, handleFileChange, removeFile, createBlobUrls, uploadFiles, cleanupBlobUrls, clearFiles, getContentTypeFromMimeType
+  } = useFileUpload({
+    agentId: targetAgentData?.id,
+    channelId: finalChannelIdForHooks,
+    chatType,
+  });
+
+  useEffect(() => {
+    clientLogger.info('[chat] Mounted/Updated', { chatType, contextId, serverId });
+    return () => {
+      clientLogger.info('[chat] Unmounted');
+    };
+  }, [chatType, contextId, serverId]);
+
+  // RESTORED HANDLERS //
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
@@ -421,163 +436,68 @@ export default function chat({ chatType, contextId, serverId }: UnifiedChatViewP
 
   const handleSendMessage = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (
-      (!input.trim() && selectedFiles.length === 0) ||
-      inputDisabled ||
-      !finalChannelId ||
-      !finalServerId ||
-      !currentClientEntityId ||
-      (chatType === 'DM' && !targetAgentData?.id)
-    )
-      return;
+    if ((!input.trim() && selectedFiles.length === 0) || inputDisabled || !finalChannelIdForHooks || !finalServerIdForHooks || !currentClientEntityId || (chatType === 'DM' && !targetAgentData?.id)) return;
 
     setInputDisabled(true);
     const tempMessageId = randomUUID() as UUID;
     let messageText = input.trim();
-
     const currentInputVal = input;
     setInput('');
     const currentSelectedFiles = [...selectedFiles];
     clearFiles();
     formRef.current?.reset();
-
-    // Create blob URLs for optimistic display
     const optimisticAttachments = createBlobUrls(currentSelectedFiles);
-
     const optimisticUiMessage: UiMessage = {
-      id: tempMessageId,
-      text: messageText,
-      name: USER_NAME,
-      createdAt: Date.now(),
-      senderId: currentClientEntityId,
-      isAgent: false,
-      isLoading: true,
-      channelId: finalChannelId,
-      serverId: finalServerId,
-      source: chatType === 'DM' ? CHAT_SOURCE : GROUP_CHAT_SOURCE,
-      attachments: optimisticAttachments,
+      id: tempMessageId, text: messageText, name: USER_NAME, createdAt: Date.now(), senderId: currentClientEntityId, isAgent: false, isLoading: true,
+      channelId: finalChannelIdForHooks,
+      serverId: finalServerIdForHooks,
+      source: chatType === 'DM' ? CHAT_SOURCE : GROUP_CHAT_SOURCE, attachments: optimisticAttachments,
     };
-
-    // Add optimistic message
-    if (messageText || currentSelectedFiles.length > 0) {
-      addMessage(optimisticUiMessage);
-    }
+    if (messageText || currentSelectedFiles.length > 0) addMessage(optimisticUiMessage);
     safeScrollToBottom();
-
     try {
       let processedUiAttachments: Media[] = [];
-
       if (currentSelectedFiles.length > 0) {
         const { uploaded, failed, blobUrls } = await uploadFiles(currentSelectedFiles);
         processedUiAttachments = uploaded;
-
-        if (failed.length > 0) {
-          updateMessage(tempMessageId, {
-            attachments: optimisticUiMessage.attachments?.filter(
-              (att) => !failed.some((f) => f.file.id === att.id)
-            ),
-          });
-        }
-
-        // Cleanup blob URLs after upload
+        if (failed.length > 0) updateMessage(tempMessageId, { attachments: optimisticUiMessage.attachments?.filter(att => !failed.some(f => f.file.id === att.id)) });
         cleanupBlobUrls(blobUrls);
-
-        if (!messageText.trim() && processedUiAttachments.length > 0) {
-          messageText = `Shared ${processedUiAttachments.length} file(s).`;
-        }
+        if (!messageText.trim() && processedUiAttachments.length > 0) messageText = `Shared ${processedUiAttachments.length} file(s).`;
       }
-
       const mediaInfosFromText = parseMediaFromText(currentInputVal);
-      const textMediaAttachments: Media[] = mediaInfosFromText.map(
-        (media: MediaInfo, index: number): Media => ({
-          id: `textmedia-${tempMessageId}-${index}`,
-          url: media.url,
-          title: media.type === 'image' ? 'Image' : media.type === 'video' ? 'Video' : 'Media Link',
-          source: 'user_input_url',
-          contentType:
-            media.type === 'image'
-              ? CoreContentType.IMAGE
-              : media.type === 'video'
-                ? CoreContentType.VIDEO
-                : undefined,
-        })
-      );
-
+      const textMediaAttachments: Media[] = mediaInfosFromText.map((media: MediaInfo, index: number): Media => ({ id: `textmedia-${tempMessageId}-${index}`, url: media.url, title: media.type === 'image' ? 'Image' : media.type === 'video' ? 'Video' : 'Media Link', source: 'user_input_url', contentType: media.type === 'image' ? CoreContentType.IMAGE : media.type === 'video' ? CoreContentType.VIDEO : undefined }));
       const finalAttachments = [...processedUiAttachments, ...textMediaAttachments];
-      const finalTextContent =
-        messageText || (finalAttachments.length > 0 ? `Shared content.` : '');
-
+      const finalTextContent = messageText || (finalAttachments.length > 0 ? `Shared content.` : '');
       if (!finalTextContent.trim() && finalAttachments.length === 0) {
-        clientLogger.warn('Attempted to send an empty message after processing.');
-        setInputDisabled(false);
-        removeMessage(tempMessageId);
-        return;
+        setInputDisabled(false); removeMessage(tempMessageId); return;
       }
-
-      await sendMessage(
-        finalTextContent,
-        finalServerId!,
-        chatType === 'DM' ? CHAT_SOURCE : GROUP_CHAT_SOURCE,
-        finalAttachments.length > 0 ? finalAttachments : undefined,
-        tempMessageId
-      );
+      await sendMessage(finalTextContent, finalServerIdForHooks, chatType === 'DM' ? CHAT_SOURCE : GROUP_CHAT_SOURCE, finalAttachments.length > 0 ? finalAttachments : undefined, tempMessageId);
     } catch (error) {
       clientLogger.error('Error sending message or uploading files:', error);
-      toast({
-        title: 'Error Sending Message',
-        description: error instanceof Error ? error.message : 'Could not send message.',
-        variant: 'destructive',
-      });
-      updateMessage(tempMessageId, {
-        isLoading: false,
-        text: `${optimisticUiMessage.text || 'Attachment(s)'} (Failed to send)`,
-      });
+      toast({ title: 'Error Sending Message', description: error instanceof Error ? error.message : 'Could not send message.', variant: 'destructive' });
+      updateMessage(tempMessageId, { isLoading: false, text: `${optimisticUiMessage.text || 'Attachment(s)'} (Failed to send)` });
     } finally {
-      setInputDisabled(false);
-      inputRef.current?.focus();
+      setInputDisabled(false); inputRef.current?.focus();
     }
   };
 
   const handleDeleteMessage = (messageId: string) => {
-    if (!finalChannelId || !messageId) return;
+    if (!finalChannelIdForHooks || !messageId) return;
     const validMessageId = validateUuid(messageId);
     if (validMessageId) {
-      deleteMessageCentral({ channelId: finalChannelId, messageId: validMessageId });
+      deleteMessageCentral({ channelId: finalChannelIdForHooks, messageId: validMessageId });
     }
   };
 
   const handleClearChat = () => {
-    if (!finalChannelId) return;
-    if (
-      window.confirm(`Clear all messages in this ${chatType === 'DM' ? 'chat' : 'group chat'}?`)
-    ) {
-      clearMessagesCentral(finalChannelId);
+    if (chatType !== 'GROUP' || !finalChannelIdForHooks) return;
+    if (window.confirm(`Clear all messages in this group chat?`)) {
+      clearMessagesCentral(finalChannelIdForHooks);
     }
   };
+  // END RESTORED HANDLERS //
 
-  const handleSelectDmRoom = (roomId: string) => {
-    const selectedRoom = priorDmRooms.find(room => room.id === roomId);
-    if (selectedRoom) {
-      clientLogger.info(`[Chat] DM Room selected: ${selectedRoom.name} (Channel ID: ${selectedRoom.channelId})`);
-      setCurrentDmRoomId(selectedRoom.id);
-      // Update dmChannelData to reflect the selected room's channelId, triggering message refetch via finalChannelId
-      setDmChannelData({ channelId: selectedRoom.channelId, serverId: DEFAULT_SERVER_ID });
-      // Messages will refetch because useChannelMessages depends on finalChannelId, which will change.
-      // Input field could be cleared, or kept, depending on desired UX. Let's clear it.
-      setInput('');
-      // Scroll to bottom after room switch might be needed
-      setTimeout(() => safeScrollToBottom(), 150);
-    }
-  };
-
-  useEffect(() => {
-    clientLogger.info('[chat] Mounted/Updated', { chatType, contextId, serverId });
-    return () => {
-      clientLogger.info('[chat] Unmounted');
-    };
-  }, [chatType, contextId, serverId]);
-
-  if (chatType === 'DM' && (isLoadingAgent || (!targetAgentData && contextId))) {
+  if (chatType === 'DM' && (isLoadingAgent || (!targetAgentData && contextId) || isLoadingAgentDmChannels)) {
     return (
       <div className="flex items-center justify-center h-full">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -585,7 +505,7 @@ export default function chat({ chatType, contextId, serverId }: UnifiedChatViewP
     );
   }
 
-  if (!finalChannelId || !finalServerId || (chatType === 'DM' && !targetAgentData)) {
+  if (!finalChannelIdForHooks || !finalServerIdForHooks || (chatType === 'DM' && !targetAgentData)) {
     return (
       <div className="flex flex-1 justify-center items-center">
         <p>Loading chat context...</p>
@@ -635,35 +555,43 @@ export default function chat({ chatType, contextId, serverId }: UnifiedChatViewP
             </div>
           </div>
           <div className="flex gap-2 items-center">
-            {chatType === 'DM' && priorDmRooms.length > 1 && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="ml-2">
-                    <MessageSquarePlus className="size-4 mr-2" />
-                    Chat History ({priorDmRooms.length})
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuLabel>Prior Chats</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  {priorDmRooms.map((room) => (
-                    <DropdownMenuItem
-                      key={room.id}
-                      onClick={() => handleSelectDmRoom(room.id)}
-                      disabled={room.id === currentDmRoomId}
-                    >
-                      {room.name}
-                      {room.id === currentDmRoomId && <span className="text-xs text-muted-foreground ml-2">(Current)</span>}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+            {chatType === 'DM' && (
+              <div className="flex items-center gap-1">
+                {agentDmChannels.length > 0 && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm">
+                        <MessageSquarePlus className="size-4 mr-2" />
+                        {agentDmChannels.find(c => c.id === currentDmChannelIdForAgent)?.name || 'Select Chat'} ({agentDmChannels.length})
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuLabel>Chat Sessions with {targetAgentData.name}</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      {agentDmChannels.map((channel) => (
+                        <DropdownMenuItem
+                          key={channel.id}
+                          onClick={() => handleSelectDmRoom(channel.id)}
+                          disabled={channel.id === currentDmChannelIdForAgent}
+                        >
+                          {channel.name} ({moment(channel.lastActivity || channel.createdAt).fromNow()})
+                          {channel.id === currentDmChannelIdForAgent && <span className="text-xs text-muted-foreground ml-2">(Current)</span>}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+                <Button variant="outline" size="sm" onClick={() => handleNewDmChannel(targetAgentData?.id)} disabled={isCreatingDM || isLoadingAgentDmChannels}>
+                  {isCreatingDM ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Plus className="size-4 mr-2" />}
+                  New Chat
+                </Button>
+              </div>
             )}
             <Button
               variant="outline"
               size="sm"
-              onClick={handleClearChat}
-              disabled={!messages || messages.length === 0}
+              onClick={chatType === 'DM' ? handleDeleteCurrentDmChannel : handleClearChat}
+              disabled={!messages || messages.length === 0 || (chatType === 'DM' && !currentDmChannelIdForAgent)}
             >
               <Trash2 className="size-4" />
             </Button>
@@ -676,7 +604,7 @@ export default function chat({ chatType, contextId, serverId }: UnifiedChatViewP
         participants
           ?.filter((p) => allAgents.some((a) => a.id === p))
           .map((pId) => allAgents.find((a) => a.id === pId))
-          .filter(Boolean) as Partial<Agent>[] | undefined || [];
+          .filter(Boolean) as Partial<Agent>[] || [];
 
       const groupDisplayName = generateGroupName(
         channelDetailsData?.data || undefined,
@@ -782,7 +710,7 @@ export default function chat({ chatType, contextId, serverId }: UnifiedChatViewP
                   isAtBottom={isAtBottom}
                   scrollToBottom={scrollToBottom}
                   disableAutoScroll={disableAutoScroll}
-                  finalChannelId={finalChannelId}
+                  finalChannelId={finalChannelIdForHooks}
                   getAgentInMessage={getAgentInMessage}
                   agentAvatarMap={agentAvatarMap}
                   onDeleteMessage={handleDeleteMessage}

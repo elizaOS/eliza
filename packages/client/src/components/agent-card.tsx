@@ -93,11 +93,6 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
     onChat(agent);
   };
 
-  const handleSettingsClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    navigate(`/settings/${agent.id}`);
-  };
-
   return (
     <Card
       className={cn(
@@ -141,14 +136,6 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
             </Tooltip>
           )}
           {isStopping && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button onClick={handleSettingsClick} variant="ghost" size="icon">
-                <Settings className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Settings</TooltipContent>
-          </Tooltip>
         </div>
       </CardHeader>
       <CardContent className="flex-grow flex items-center justify-center p-0 overflow-hidden">

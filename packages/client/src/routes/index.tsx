@@ -11,7 +11,8 @@ const AgentDetail = lazy(() => import('../routes/agent-detail'));
 const CharacterList = lazy(() => import('../routes/character-list'));
 const CharacterForm = lazy(() => import('../routes/character-form'));
 const CharacterDetail = lazy(() => import('../routes/character-detail'));
-const Settings = lazy(() => import('../routes/settings'));
+// const Settings = lazy(() => import('../routes/settings')); // Settings route for individual agent to be removed
+const EnvSettings = lazy(() => import('../components/env-settings')); // Lazy import for EnvSettings
 const NotFound = lazy(() => import('../routes/not-found'));
 
 // Loading fallback
@@ -111,10 +112,10 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: '/settings',
+        path: '/settings', // General settings route
         element: (
           <Suspense fallback={<Loading />}>
-            <Settings />
+            <EnvSettings />
           </Suspense>
         ),
       },

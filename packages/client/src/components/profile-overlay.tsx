@@ -59,12 +59,6 @@ export default function ProfileOverlay({ isOpen, onClose, agentId }: ProfileOver
     if (isProcessing) return;
     startAgent(agent!);
   };
-
-  // Navigate to settings
-  const navigateToSettings = () => {
-    navigate(`/settings/${agentId}`);
-  };
-
   return (
     <div
       className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 backdrop-blur-sm"
@@ -102,9 +96,8 @@ export default function ProfileOverlay({ isOpen, onClose, agentId }: ProfileOver
                     )}
                   </div>
                   <div
-                    className={`absolute bottom-1 right-1 w-4 h-4 rounded-full border-2 border-background ${
-                      isActive ? 'bg-green-500' : 'bg-muted-foreground'
-                    }`}
+                    className={`absolute bottom-1 right-1 w-4 h-4 rounded-full border-2 border-background ${isActive ? 'bg-green-500' : 'bg-muted-foreground'
+                      }`}
                   />
                 </div>
                 <div className="flex flex-col justify-center mr-4">
@@ -217,15 +210,6 @@ export default function ProfileOverlay({ isOpen, onClose, agentId }: ProfileOver
 
         <CardFooter className="flex justify-between items-center p-4 border-t">
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-9 w-9 flex items-center justify-center"
-              onClick={navigateToSettings}
-            >
-              <Cog className="w-4 h-4" />
-            </Button>
-
             {isActive ? (
               <StopAgentButton agent={agent} showIcon={true} size="default" className="h-9" />
             ) : (
