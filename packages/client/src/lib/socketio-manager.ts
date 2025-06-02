@@ -408,7 +408,8 @@ export class SocketIOManager extends EventAdapter {
     serverId: string,
     source: string,
     attachments?: any[],
-    messageId?: string
+    messageId?: string,
+    metadata?: Record<string, any>
   ): Promise<void> {
     if (!this.socket) {
       clientLogger.error('[SocketIO] Cannot send message: socket not initialized');
@@ -440,6 +441,7 @@ export class SocketIOManager extends EventAdapter {
         messageId: finalMessageId,
         source,
         attachments,
+        metadata,
       },
     });
 

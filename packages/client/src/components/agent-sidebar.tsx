@@ -2,7 +2,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAgentPanels, useAgent, type AgentPanel } from '@/hooks/use-query-hooks';
 import type { UUID, Agent } from '@elizaos/core';
 import { Columns3, Database, Eye, Code, InfoIcon, Loader2 } from 'lucide-react';
-import { JSX, useMemo, useState } from 'react';
+import { JSX, useMemo, useState, useEffect } from 'react';
 import { AgentActionViewer } from './agent-action-viewer';
 import { AgentLogViewer } from './agent-log-viewer';
 import { AgentMemoryViewer } from './agent-memory-viewer';
@@ -20,6 +20,13 @@ type TabValue = FixedTabValue | string;
 export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
   const [detailsTab, setDetailsTab] = useState<TabValue>('details');
   const { data: panelsResponse, isLoading: isLoadingPanels } = useAgentPanels(agentId!, { enabled: !!agentId });
+
+  // Reset to details tab when a new agent is selected
+  useEffect(() => {
+    if (agentId) {
+      setDetailsTab('details');
+    }
+  }, [agentId]);
 
   const {
     data: agentDataResponse,

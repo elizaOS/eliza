@@ -148,6 +148,10 @@ export class SocketIORouter {
     logger.info(
       `[SocketIO ${socket.id}] Received SEND_MESSAGE for central submission: channel ${channelId} from ${senderName || senderId}`
     );
+    logger.info(
+      `[SocketIO ${socket.id}] Full payload for debugging:`,
+      JSON.stringify(payload, null, 2)
+    );
 
     // Special handling for default server ID "0"
     const isValidServerId = serverId === DEFAULT_SERVER_ID || validateUuid(serverId);
@@ -162,32 +166,87 @@ export class SocketIORouter {
 
     try {
       // Ensure the channel exists before creating the message
+      logger.info(
+        `[SocketIO ${socket.id}] Checking if channel ${channelId} exists before creating message`
+      );
       let channelExists = false;
       try {
         const existingChannel = await this.serverInstance.getChannelDetails(channelId as UUID);
         channelExists = !!existingChannel;
-      } catch (error) {
-        logger.debug(`[SocketIO ${socket.id}] Channel ${channelId} does not exist, will create it`);
+        logger.info(`[SocketIO ${socket.id}] Channel ${channelId} exists: ${channelExists}`);
+      } catch (error: any) {
+        logger.info(
+          `[SocketIO ${socket.id}] Channel ${channelId} does not exist, will create it. Error: ${error.message}`
+        );
       }
 
       if (!channelExists) {
         // Auto-create the channel if it doesn't exist
+        logger.info(
+          `[SocketIO ${socket.id}] Auto-creating channel ${channelId} with serverId ${serverId}`
+        );
         try {
+          // First verify the server exists
+          const servers = await this.serverInstance.getServers();
+          const serverExists = servers.some((s) => s.id === serverId);
+          logger.info(
+            `[SocketIO ${socket.id}] Server ${serverId} exists: ${serverExists}. Available servers: ${servers.map((s) => s.id).join(', ')}`
+          );
+
+          if (!serverExists) {
+            logger.error(
+              `[SocketIO ${socket.id}] Server ${serverId} does not exist, cannot create channel`
+            );
+            this.sendErrorResponse(socket, `Server ${serverId} does not exist`);
+            return;
+          }
+
+          // Determine if this is likely a DM based on the context
+          const isDmChannel =
+            metadata?.isDm || metadata?.channelType === 'DM' || senderName?.includes('DM');
+
           const channelData = {
             messageServerId: serverId as UUID,
-            name: `Chat ${channelId.substring(0, 8)}`, // Default name
-            type: ChannelType.GROUP, // Default to GROUP type
+            name: isDmChannel
+              ? `DM ${channelId.substring(0, 8)}`
+              : `Chat ${channelId.substring(0, 8)}`,
+            type: isDmChannel ? ChannelType.DM : ChannelType.GROUP,
             sourceType: 'auto_created',
             metadata: {
               created_by: 'socketio_auto_creation',
               created_for_user: senderId,
               created_at: new Date().toISOString(),
+              channel_type: isDmChannel ? 'DM' : 'GROUP',
+              ...metadata,
             },
           };
 
-          await this.serverInstance.createChannel(channelData, [senderId as UUID]);
           logger.info(
-            `[SocketIO ${socket.id}] Auto-created channel ${channelId} for message submission`
+            `[SocketIO ${socket.id}] Creating channel with data:`,
+            JSON.stringify(channelData, null, 2)
+          );
+
+          // For DM channels, we need to determine the participants
+          let participants = [senderId as UUID];
+          if (isDmChannel) {
+            // Try to extract the other participant from metadata or payload
+            const otherParticipant =
+              metadata?.targetUserId || metadata?.recipientId || payload.targetUserId;
+            if (otherParticipant && validateUuid(otherParticipant)) {
+              participants.push(otherParticipant as UUID);
+              logger.info(
+                `[SocketIO ${socket.id}] DM channel will include participants: ${participants.join(', ')}`
+              );
+            } else {
+              logger.warn(
+                `[SocketIO ${socket.id}] DM channel missing second participant, only adding sender: ${senderId}`
+              );
+            }
+          }
+
+          await this.serverInstance.createChannel(channelData, participants);
+          logger.info(
+            `[SocketIO ${socket.id}] Auto-created ${isDmChannel ? 'DM' : 'group'} channel ${channelId} for message submission with ${participants.length} participants`
           );
         } catch (createError: any) {
           logger.error(
@@ -197,6 +256,10 @@ export class SocketIORouter {
           this.sendErrorResponse(socket, `Failed to create channel: ${createError.message}`);
           return;
         }
+      } else {
+        logger.info(
+          `[SocketIO ${socket.id}] Channel ${channelId} already exists, proceeding with message creation`
+        );
       }
 
       const newRootMessageData = {

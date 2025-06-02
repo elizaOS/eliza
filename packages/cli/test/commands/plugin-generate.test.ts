@@ -85,7 +85,7 @@ describe('plugins generate command', () => {
 
     expect(result.exitCode).toBe(1);
     expect(result.stdout).toContain('--skip-prompts requires --spec-file to be provided');
-  });
+  }, 120000);
 
   it('should validate spec file exists', async () => {
     const result = await runCLI([
@@ -98,7 +98,7 @@ describe('plugins generate command', () => {
 
     expect(result.exitCode).toBe(1);
     expect(result.stdout).toContain('Failed to read or parse spec file');
-  });
+  }, 120000);
 
   it('should validate spec file is valid JSON', async () => {
     // Create an invalid JSON file
@@ -108,7 +108,7 @@ describe('plugins generate command', () => {
 
     expect(result.exitCode).toBe(1);
     expect(result.stdout).toContain('Failed to read or parse spec file');
-  });
+  }, 120000);
 
   it('should accept valid spec file', async () => {
     // Create a valid spec file

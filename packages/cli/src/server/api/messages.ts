@@ -187,32 +187,87 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
 
     try {
       // Ensure the channel exists before creating the message
+      logger.info(
+        `[Messages Router] Checking if channel ${channelIdParam} exists before creating message`
+      );
       let channelExists = false;
       try {
         const existingChannel = await serverInstance.getChannelDetails(channelIdParam);
         channelExists = !!existingChannel;
-      } catch (error) {
-        logger.debug(`[Messages Router] Channel ${channelIdParam} does not exist, will create it`);
+        logger.info(`[Messages Router] Channel ${channelIdParam} exists: ${channelExists}`);
+      } catch (error: any) {
+        logger.info(
+          `[Messages Router] Channel ${channelIdParam} does not exist, will create it. Error: ${error.message}`
+        );
       }
 
       if (!channelExists) {
         // Auto-create the channel if it doesn't exist
+        logger.info(
+          `[Messages Router] Auto-creating channel ${channelIdParam} with serverId ${server_id}`
+        );
         try {
+          // First verify the server exists
+          const servers = await serverInstance.getServers();
+          const serverExists = servers.some((s) => s.id === server_id);
+          logger.info(
+            `[Messages Router] Server ${server_id} exists: ${serverExists}. Available servers: ${servers.map((s) => s.id).join(', ')}`
+          );
+
+          if (!serverExists) {
+            logger.error(
+              `[Messages Router] Server ${server_id} does not exist, cannot create channel`
+            );
+            return res
+              .status(500)
+              .json({ success: false, error: `Server ${server_id} does not exist` });
+          }
+
+          // Determine if this is likely a DM based on the context
+          const isDmChannel =
+            metadata?.isDm || metadata?.channelType === 'DM' || metadata?.channel_type === 'DM';
+
           const channelData = {
             messageServerId: server_id as UUID,
-            name: `Chat ${channelIdParam.substring(0, 8)}`, // Default name
-            type: ChannelType.GROUP, // Default to GROUP type
+            name: isDmChannel
+              ? `DM ${channelIdParam.substring(0, 8)}`
+              : `Chat ${channelIdParam.substring(0, 8)}`,
+            type: isDmChannel ? ChannelType.DM : ChannelType.GROUP,
             sourceType: 'auto_created',
             metadata: {
               created_by: 'gui_auto_creation',
               created_for_user: author_id,
               created_at: new Date().toISOString(),
+              channel_type: isDmChannel ? 'DM' : 'GROUP',
+              ...metadata,
             },
           };
 
-          await serverInstance.createChannel(channelData, [author_id as UUID]);
           logger.info(
-            `[Messages Router] Auto-created channel ${channelIdParam} for message submission`
+            `[Messages Router] Creating channel with data:`,
+            JSON.stringify(channelData, null, 2)
+          );
+
+          // For DM channels, we need to determine the participants
+          let participants = [author_id as UUID];
+          if (isDmChannel) {
+            // Try to extract the other participant from metadata
+            const otherParticipant = metadata?.targetUserId || metadata?.recipientId;
+            if (otherParticipant && validateUuid(otherParticipant)) {
+              participants.push(otherParticipant as UUID);
+              logger.info(
+                `[Messages Router] DM channel will include participants: ${participants.join(', ')}`
+              );
+            } else {
+              logger.warn(
+                `[Messages Router] DM channel missing second participant, only adding author: ${author_id}`
+              );
+            }
+          }
+
+          await serverInstance.createChannel(channelData, participants);
+          logger.info(
+            `[Messages Router] Auto-created ${isDmChannel ? 'DM' : 'group'} channel ${channelIdParam} for message submission with ${participants.length} participants`
           );
         } catch (createError: any) {
           logger.error(
@@ -223,6 +278,10 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
             .status(500)
             .json({ success: false, error: `Failed to create channel: ${createError.message}` });
         }
+      } else {
+        logger.info(
+          `[Messages Router] Channel ${channelIdParam} already exists, proceeding with message creation`
+        );
       }
 
       const newRootMessageData = {

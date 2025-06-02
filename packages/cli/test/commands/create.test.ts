@@ -592,6 +592,7 @@ describe('create command', () => {
     });
 
     it('should handle custom directory option correctly', async () => {
+      process.env.ELIZA_NONINTERACTIVE = '1'; // Set non-interactive mode to avoid prompting issues
       const actionFn = getActionFn();
       const projectName = 'testproject';
       const customDirRelative = 'test/resources/output';

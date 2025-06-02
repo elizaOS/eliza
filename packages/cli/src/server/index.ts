@@ -175,28 +175,20 @@ export class AgentServer {
             "SELECT id, name FROM message_servers WHERE id = '00000000-0000-0000-0000-000000000000'"
           );
           logger.debug('[AgentServer] Raw SQL check result:', checkResult);
-        } catch (sqlError) {
+        } catch (sqlError: any) {
           logger.error('[AgentServer] Raw SQL insert failed:', sqlError);
 
-          // Try creating with a regular UUID first to see if that works
+          // Try creating with ORM as fallback
           try {
-            const testId = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
-            await (this.database as any).createMessageServer({
-              id: testId as UUID,
-              name: 'Test Server',
-              sourceType: 'test',
-            });
-            logger.info('[AgentServer] Test server created successfully with regular UUID');
-
-            // Now try with the all-zeros UUID
             const server = await (this.database as any).createMessageServer({
               id: '00000000-0000-0000-0000-000000000000' as UUID,
               name: 'Default Server',
               sourceType: 'eliza_default',
             });
             logger.success('[AgentServer] Default server created via ORM with ID:', server.id);
-          } catch (ormError) {
-            logger.error('[AgentServer] ORM creation also failed:', ormError);
+          } catch (ormError: any) {
+            logger.error('[AgentServer] Both SQL and ORM creation failed:', ormError);
+            throw new Error(`Failed to create default server: ${ormError.message}`);
           }
         }
 
@@ -211,37 +203,16 @@ export class AgentServer {
           (s: any) => s.id === '00000000-0000-0000-0000-000000000000'
         );
         if (!verifyDefault) {
-          // Instead of throwing, let's create with a different ID as a fallback
-          logger.warn(
-            '[AgentServer] Failed to create default server with all-zeros UUID, using fallback ID'
-          );
-          const fallbackId = 'default00-0000-0000-0000-000000000000' as UUID;
-          await (this.database as any).createMessageServer({
-            id: fallbackId,
-            name: 'Default Server (Fallback)',
-            sourceType: 'eliza_default',
-          });
-          // Update the DEFAULT_SERVER_ID constant to use this
-          (this as any).DEFAULT_SERVER_ID = fallbackId;
-          logger.success('[AgentServer] Created fallback default server with ID:', fallbackId);
+          throw new Error(`Failed to create or verify default server with ID ${DEFAULT_SERVER_ID}`);
         } else {
-          logger.success('[AgentServer] Default server creation verified');
+          logger.success('[AgentServer] Default server creation verified successfully');
         }
       } else {
         logger.info('[AgentServer] Default server already exists with ID:', defaultServer.id);
       }
     } catch (error) {
       logger.error('[AgentServer] Error ensuring default server:', error);
-      // Try to log more details about the error
-      if (error instanceof Error) {
-        logger.error('[AgentServer] Error details:', {
-          message: error.message,
-          stack: error.stack,
-          name: error.name,
-        });
-      }
-      // Don't re-throw - use a fallback server ID instead
-      logger.warn('[AgentServer] Using in-memory default server ID as fallback');
+      throw error; // Re-throw to prevent startup if default server can't be created
     }
   }
 
@@ -559,11 +530,9 @@ export class AgentServer {
         `Successfully registered agent ${runtime.character.name} (${runtime.agentId}) with core services.`
       );
 
-      // Use the fallback server ID if it was set
-      const serverId = (this as any).DEFAULT_SERVER_ID || DEFAULT_SERVER_ID;
-      await this.addAgentToServer(serverId, runtime.agentId);
+      await this.addAgentToServer(DEFAULT_SERVER_ID, runtime.agentId);
       logger.info(
-        `[AgentServer] Auto-associated agent ${runtime.character.name} with server ID: ${serverId}`
+        `[AgentServer] Auto-associated agent ${runtime.character.name} with server ID: ${DEFAULT_SERVER_ID}`
       );
     } catch (error) {
       logger.error('Failed to register agent:', error);

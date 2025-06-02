@@ -43,20 +43,37 @@ export function useSocketChat({
       serverId: UUID,
       source: string,
       attachments?: any[],
-      tempMessageId?: string
+      tempMessageId?: string,
+      metadata?: Record<string, any>,
+      overrideChannelId?: UUID
     ) => {
-      if (!channelId) return;
+      const channelIdToUse = overrideChannelId || channelId;
+      if (!channelIdToUse) {
+        clientLogger.error('[useSocketChat] Cannot send message: no channel ID available');
+        return;
+      }
+
+      // Add metadata for DM channels
+      const messageMetadata = {
+        ...metadata,
+        channelType: chatType,
+        ...(chatType === 'DM' && {
+          isDm: true,
+          targetUserId: contextId, // The agent ID for DM channels
+        }),
+      };
 
       await socketIOManager.sendMessage(
         text,
-        channelId,
+        channelIdToUse,
         serverId,
         source,
         attachments,
-        tempMessageId
+        tempMessageId,
+        messageMetadata
       );
     },
-    [channelId, socketIOManager]
+    [channelId, socketIOManager, chatType, contextId]
   );
 
   useEffect(() => {

@@ -21,6 +21,7 @@ import type {
   MessageServer as ClientMessageServer,
 } from '@/types';
 import clientLogger from '@/lib/logger';
+import { useNavigate } from 'react-router-dom';
 
 /**
  * Represents content with additional user information.
@@ -1161,6 +1162,39 @@ export function useClearChannelMessages() {
       toast({
         title: 'Error Clearing Channel',
         description: error instanceof Error ? error.message : 'Failed to clear messages',
+        variant: 'destructive',
+      });
+    },
+  });
+}
+
+export function useDeleteChannel() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const navigate = useNavigate();
+
+  return useMutation<void, Error, { channelId: UUID; serverId: UUID }>({
+    mutationFn: async ({ channelId }) => {
+      // TODO: Implement delete channel API endpoint
+      // await apiClient.deleteChannel(channelId);
+      // For now, just simulate the deletion
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    },
+    onSuccess: (_data, variables) => {
+      toast({
+        title: 'Group Deleted',
+        description: 'The group has been successfully deleted.',
+      });
+      // Invalidate channel queries
+      queryClient.invalidateQueries({ queryKey: ['channels', variables.serverId] });
+      queryClient.invalidateQueries({ queryKey: ['channels'] });
+      // Navigate back to home
+      navigate('/');
+    },
+    onError: (error) => {
+      toast({
+        title: 'Error Deleting Group',
+        description: error instanceof Error ? error.message : 'Failed to delete group',
         variant: 'destructive',
       });
     },

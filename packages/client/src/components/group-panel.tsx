@@ -175,31 +175,25 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
 
         <CardContent className="pt-4">
           <div className="flex flex-col gap-4 w-full">
-            <div className="flex flex-col gap-2 w-full">
-              <label htmlFor="chat-name" className="text-sm font-medium">
-                Chat Name
-              </label>
-              <Input
-                id="chat-name"
-                value={chatName}
-                onChange={(e) => setChatName(e.target.value)}
-                className="w-full bg-background text-foreground"
-                placeholder="Enter group name (e.g., Project Alpha Team)"
-                disabled={creating || deleting}
-                autoFocus={!channelId} // Auto-focus for create mode
-              />
-              {/* Debug info - remove in production */}
-              {process.env.NODE_ENV === 'development' && (
-                <div className="text-xs text-muted-foreground">
-                  Debug: creating={String(creating)}, deleting={String(deleting)},
-                  chatName="{chatName}", length={chatName.length}
-                </div>
-              )}
-            </div>
+            {channelId && (
+              <div className="flex flex-col gap-2 w-full">
+                <label htmlFor="chat-name" className="text-sm font-medium">
+                  Chat Name (Optional)
+                </label>
+                <Input
+                  id="chat-name"
+                  value={chatName}
+                  onChange={(e) => setChatName(e.target.value)}
+                  className="w-full bg-background text-foreground"
+                  placeholder="Leave blank to auto-generate from participants"
+                  disabled={creating || deleting}
+                />
+              </div>
+            )}
 
             <div className="flex flex-col gap-2 w-full">
               <label htmlFor="invite-agents" className="text-sm font-medium">
-                Invite Agents
+                Select Agents {!channelId && <span className="text-muted-foreground">(Required)</span>}
               </label>
               <MultiSelectCombobox
                 options={getComboboxOptions()}
@@ -215,13 +209,10 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
                 initialSelected={getInitialSelectedOptions()}
                 key={`multiselect-${channelId || 'create'}-${allAvailableAgents.length}`} // Force re-render when context changes
               />
-              {/* Debug info - remove in production */}
-              {process.env.NODE_ENV === 'development' && (
-                <div className="text-xs text-muted-foreground">
-                  Debug: selectedAgents count={selectedAgents.length},
-                  options count={getComboboxOptions().length},
-                  allAvailableAgents count={allAvailableAgents.length}
-                </div>
+              {selectedAgents.length > 0 && (
+                <p className="text-sm text-muted-foreground">
+                  {selectedAgents.length} agent{selectedAgents.length > 1 ? 's' : ''} selected
+                </p>
               )}
             </div>
           </div>
@@ -271,19 +262,20 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
             variant="default"
             className={channelId ? '' : 'w-full'}
             onClick={async () => {
-              if (!chatName.trim().length || !serverId) { // Added trim here too for safety
-                toast({ title: "Validation Error", description: "Chat name cannot be empty.", variant: "destructive" });
+              if (!channelId && selectedAgents.length === 0) {
+                toast({ title: "Validation Error", description: "Please select at least one agent for the group.", variant: "destructive" });
                 return;
               }
+
               setCreating(true);
-              // Log participantIds for Issue A
               const participantIds = selectedAgents.map((agent) => agent.id as UUID);
               console.log('[GroupPanel] Attempting to create/update group with participant IDs:', participantIds);
+
               try {
                 if (!channelId) {
-                  // Create new channel
+                  // Create new channel - no name required, will be auto-generated
                   const response = await apiClient.createCentralGroupChat({
-                    name: chatName,
+                    name: '', // Empty name will trigger auto-generation
                     participantCentralUserIds: participantIds,
                     type: 'group',
                     server_id: serverId,
@@ -293,7 +285,7 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
                   });
 
                   if (response.data) {
-                    toast({ title: 'Success', description: `Group "${chatName}" created.` });
+                    toast({ title: 'Success', description: 'Group created successfully.' });
                     navigate(`/group/${response.data.id}?serverId=${serverId}`);
                   }
                 } else {
@@ -304,7 +296,7 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
                   //   participantCentralUserIds: participantIds,
                   // });
                   console.warn('apiClient.updateCentralGroupChat is not implemented.');
-                  toast({ title: 'Success (Simulated)', description: `Group "${chatName}" update simulated.` });
+                  toast({ title: 'Success (Simulated)', description: 'Group updated successfully.' });
                   navigate(`/group/${channelId}?serverId=${serverId}`);
                 }
               } catch (error) {
@@ -318,7 +310,7 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
                 queryClient.invalidateQueries({ queryKey: ['channels'] });
               }
             }}
-            disabled={!chatName.trim().length || !serverId || deleting || creating}
+            disabled={(!channelId && selectedAgents.length === 0) || !serverId || deleting || creating}
           >
             {creating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {channelId ? 'Update Group' : 'Create Group'}

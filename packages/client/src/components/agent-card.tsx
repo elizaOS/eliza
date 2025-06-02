@@ -70,7 +70,7 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
     stopAgent(agentForMutation);
   };
 
-  const handleCardClick = () => {
+  const handleCardClick = (e: React.MouseEvent) => {
     clientLogger.info('[AgentCard] handleCardClick triggered', {
       agentId: agentIdForNav,
       currentStatus: agent.status,
@@ -83,8 +83,7 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
       clientLogger.info(
         '[AgentCard] Agent is active. Click intended for chat button or other actions.'
       );
-      // Optionally, if click on active card should also do something (e.g., open chat if no specific button is hit):
-      // onChat(agent);
+      handleChatClick(e);
     }
   };
 
@@ -110,32 +109,6 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
           <CardTitle className="text-lg truncate" title={agentName}>
             {agentName}
           </CardTitle>
-          {isActive ? (
-            <Button
-              onClick={handleChatClick}
-              className="w-full col-span-2 absolute bottom-0"
-              variant="default"
-              size="sm"
-              disabled={isStopping || isStarting} /* Also disable if starting */
-            >
-              <MessageSquare className="mr-2 h-4 w-4" />
-            </Button>
-          ) : (
-            <Button
-              onClick={handleStart}
-              disabled={isStarting || isStopping}
-              className="w-full col-span-2"
-              variant="outline"
-              size="sm"
-            >
-              {isStarting ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Play className="mr-2 h-4 w-4" />
-              )}
-              {isStarting ? 'Starting...' : 'Start'}
-            </Button>
-          )}
           <div className="flex items-center gap-1.5 mt-1">
             <div
               className={cn('w-2.5 h-2.5 rounded-full', isActive ? 'bg-green-500' : 'bg-red-500')}
@@ -155,7 +128,7 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button onClick={handleStop} variant="ghost" size="icon">
-                  <PowerOff className="h-4 w-4 text-red-500" />
+                  <PowerOff className="h-4 w-4 m-2 text-red-500" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>Stop Agent</TooltipContent>
@@ -169,13 +142,41 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
           <img
             src={avatarUrl}
             alt={agentName}
-            className={cn('w-64 h-64 object-cover', isActive ? '' : 'grayscale')}
+            className={cn('w-full aspect-square object-cover rounded-lg', isActive ? '' : 'grayscale')}
           />
         ) : (
-          <div className="w-full h-32 flex items-center justify-center bg-secondary text-2xl font-semibold text-muted-foreground">
+          <div className="w-full h-full flex items-center rounded-lg justify-center bg-secondary text-2xl font-semibold text-muted-foreground">
             {formatAgentName(agentName)}
           </div>
         )}
+        <div className="absolute bottom-4 right-4">
+          {isActive ? (
+            <Button
+              onClick={handleChatClick}
+              className=""
+              variant="default"
+              size="sm"
+              disabled={isStopping || isStarting} /* Also disable if starting */
+            >
+              <MessageSquare className="h-4 w-4" />
+            </Button>
+          ) : (
+            <Button
+              onClick={handleStart}
+              disabled={isStarting || isStopping}
+              className=""
+              variant="outline"
+              size="sm"
+            >
+              {isStarting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Play className="h-4 w-4" />
+              )}
+              {isStarting ? 'Starting...' : 'Start'}
+            </Button>
+          )}
+        </div>
       </CardContent>
     </Card>
   );

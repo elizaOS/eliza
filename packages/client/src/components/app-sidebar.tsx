@@ -42,11 +42,12 @@ import type {
   MessageServer as ClientMessageServer,
 } from '@/types';
 
-import { Book, ChevronDown, Cog, Plus, TerminalIcon, Users } from 'lucide-react'; // Added Users icon for groups
+import { Book, ChevronDown, Cog, Plus, TerminalIcon, Users, Trash2 } from 'lucide-react'; // Added Users icon for groups
 import { useEffect, useMemo, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'; // Added useNavigate
 import clientLogger from '@/lib/logger'; // Added import
 import { useQueryClient } from '@tanstack/react-query'; // Import useQueryClient
+import { useDeleteChannel } from '@/hooks/use-query-hooks';
 
 /* ---------- helpers ---------- */
 const partition = <T,>(src: T[], pred: (v: T) => boolean): [T[], T[]] => {
@@ -167,16 +168,6 @@ const GroupChannelListSection = ({
 
   return (
     <SidebarSection title="Groups" className={className}>
-      <div className="flex justify-end px-2 mb-1 absolute right-0 top-0">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => navigate('/group/new')}
-          className="text-xs"
-        >
-          <Plus className="h-3 w-3 mr-1" /> +p
-        </Button>
-      </div>
       {isLoadingServers &&
         Array.from({ length: 3 }).map((_, i) => (
           <SidebarMenuItem key={`skel-server-${i}`}>
@@ -195,6 +186,16 @@ const GroupChannelListSection = ({
           <div className="p-4 text-xs text-muted-foreground">No groups found.</div>
         </SidebarMenuItem>
       )}
+      <div className="flex justify-endtop-0">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => navigate('/group/new')}
+          className="text-xs"
+        >
+          <Plus className="h-3 w-3 mr-1" /> New Group
+        </Button>
+      </div>
     </SidebarSection>
   );
 };
@@ -208,11 +209,29 @@ const ChannelsForServer = ({
 }) => {
   const { data: channelsData, isLoading: isLoadingChannels } = useChannels(serverId);
   const currentClientId = getEntityId(); // Get current client/user ID
+  const deleteChannelMutation = useDeleteChannel();
+  const [deletingChannelId, setDeletingChannelId] = useState<UUID | null>(null);
 
   const groupChannels = useMemo(
     () => channelsData?.data?.channels?.filter((ch) => ch.type === CoreChannelType.GROUP) || [],
     [channelsData]
   );
+
+  const handleDeleteChannel = async (e: React.MouseEvent, channelId: UUID) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (window.confirm('Are you sure you want to delete this group? This action cannot be undone.')) {
+      setDeletingChannelId(channelId);
+      try {
+        await deleteChannelMutation.mutateAsync({ channelId, serverId });
+      } catch (error) {
+        console.error('Failed to delete channel:', error);
+      } finally {
+        setDeletingChannelId(null);
+      }
+    }
+  };
 
   if (isLoadingChannels) {
     return (
@@ -229,20 +248,29 @@ const ChannelsForServer = ({
     <SidebarGroupContent className="px-1 mt-0">
       <SidebarMenu>
         {groupChannels.map((channel) => (
-          <SidebarMenuItem key={channel.id} className="h-12">
-            <NavLink to={`/group/${channel.id}?serverId=${serverId}`}>
-              {' '}
-              {/* Updated route */}
-              <SidebarMenuButton className="px-4 py-2 my-1 h-full rounded-md">
-                <div className="flex items-center gap-3">
-                  <Users className="h-5 w-5 text-muted-foreground" /> {/* Group icon */}
-                  <span className="text-sm truncate max-w-32">
-                    {/* Use generateGroupName - assumes channel.participants exists or will be added */}
-                    {generateGroupName(channel, (channel as any).participants || [], currentClientId)}
-                  </span>
-                </div>
-              </SidebarMenuButton>
-            </NavLink>
+          <SidebarMenuItem key={channel.id} className="h-12 group">
+            <div className="flex items-center gap-1 w-full">
+              <NavLink to={`/group/${channel.id}?serverId=${serverId}`} className="flex-1">
+                <SidebarMenuButton className="px-4 py-2 my-1 h-full rounded-md">
+                  <div className="flex items-center gap-3">
+                    <Users className="h-5 w-5 text-muted-foreground" /> {/* Group icon */}
+                    <span className="text-sm truncate max-w-32">
+                      {/* Use generateGroupName - assumes channel.participants exists or will be added */}
+                      {generateGroupName(channel, (channel as any).participants || [], currentClientId)}
+                    </span>
+                  </div>
+                </SidebarMenuButton>
+              </NavLink>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={(e) => handleDeleteChannel(e, channel.id)}
+                disabled={deletingChannelId === channel.id}
+              >
+                <Trash2 className="h-4 w-4 text-destructive" />
+              </Button>
+            </div>
           </SidebarMenuItem>
         ))}
       </SidebarMenu>
@@ -386,20 +414,11 @@ export function AppSidebar({ refreshHomePage, isMobile = false }: AppSidebarProp
               </div>
               <AgentListSection
                 title="" // Title is now handled by the SectionHeader above
-                agents={onlineAgents}
+                agents={[...onlineAgents, ...offlineAgents]}
                 isOnline
                 activePath={location.pathname}
               />
             </>
-          )}
-          {!isLoadingAgents && !agentLoadError && offlineAgents.length > 0 && (
-            <AgentListSection
-              title="Offline"
-              agents={offlineAgents}
-              isOnline={false}
-              activePath={location.pathname}
-              className="mt-2"
-            />
           )}
           {/* Original CreateButton placement - to be removed or repurposed if "Create Group" is elsewhere */}
           {/* The old CreateButton had "Create Agent" and "Create Group".
