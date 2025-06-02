@@ -198,6 +198,7 @@ Create comprehensive unit and integration tests:
 - Test memory operations with both database types
 - Test error handling
 - **TEST DATABASE COMPATIBILITY:**
+
   ```typescript
   describe('Database Compatibility', () => {
     it('should work with SQLite', async () => {

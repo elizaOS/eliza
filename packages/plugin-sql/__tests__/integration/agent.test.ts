@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import { SqliteDatabaseAdapter } from '../../src/sqlite/adapter';
-import { PGliteClientManager } from '../../src/sqlite/manager';
+import { SqliteClientManager } from '../../src/sqlite/manager';
 import { type UUID, type Agent } from '@elizaos/core';
 import { agentTable } from '../../src/schema/agent';
 import { sql } from 'drizzle-orm';
@@ -28,7 +28,7 @@ vi.mock('@elizaos/core', async () => {
 
 describe('Agent Integration Tests', () => {
   // Database connection variables
-  let connectionManager: PGliteClientManager;
+  let connectionManager: SqliteClientManager;
   let adapter: SqliteDatabaseAdapter;
   let testAgentId: UUID;
 
@@ -36,8 +36,8 @@ describe('Agent Integration Tests', () => {
     // Create a random agent ID for use with the adapter
     testAgentId = uuidv4() as UUID;
 
-    // Initialize connection manager for PGlite (in-memory)
-    connectionManager = new PGliteClientManager({});
+    // Initialize connection manager for Sqlite (in-memory)
+    connectionManager = new SqliteClientManager('test.db');
     await connectionManager.initialize();
 
     // Initialize adapter after cleanup
@@ -238,7 +238,7 @@ describe('Agent Integration Tests', () => {
       try {
         await sqliteInstance.query(`DELETE FROM agents WHERE name LIKE 'Integration Test%'`);
       } finally {
-        // No release needed for PGlite instance from getConnection like with pg PoolClient
+        // No release needed for Sqlite instance from getConnection like with pg PoolClient
       }
 
       // Now retrieve agents
@@ -848,7 +848,7 @@ describe('Agent Integration Tests', () => {
 
         expect(specificCount).toBe(0);
       } finally {
-        // No release needed for PGlite instance from getConnection like with pg PoolClient
+        // No release needed for Sqlite instance from getConnection like with pg PoolClient
       }
     });
   });

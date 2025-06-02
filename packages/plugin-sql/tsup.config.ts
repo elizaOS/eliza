@@ -5,7 +5,7 @@ export default defineConfig({
   outDir: 'dist',
   sourcemap: true,
   clean: true,
-  format: ['esm'], // Ensure you're targeting CommonJS
+  format: ['esm'],
   dts: true,
   tsconfig: './tsconfig.build.json', // Use build-specific tsconfig
   external: [
@@ -22,6 +22,7 @@ export default defineConfig({
     options.sourceRoot = './'; // Set source root to help with source mapping
     options.sourcesContent = true;
     options.outbase = './src'; // Makes output paths match input structure
+    options.platform = 'node'; // Ensure node platform for proper handling
   },
   keepNames: true, // Preserve names for better debugging
 });

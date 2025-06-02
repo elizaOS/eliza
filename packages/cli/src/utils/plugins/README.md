@@ -49,16 +49,25 @@ The creator collects plugin requirements through interactive prompts:
 - Components needed (actions, providers, evaluators, services)
 - Specific component names and purposes
 
+**Enhanced with:**
+
+- Database compatibility requirements
+- Import compliance standards
+- Production readiness criteria
+
 ### 2. Template Creation
 
 - Creates plugin structure from plugin-starter template
 - Falls back to manual structure creation if template unavailable
 - Initializes git repository for version control
+- **Ensures database-agnostic structure**
 
 ### 3. Specification Generation
 
 - Uses Claude Opus 4 to generate detailed technical specification
 - Creates comprehensive architecture and implementation plan
+- **Includes mandatory database compatibility requirements**
+- **Enforces @elizaos/core-only import policy**
 - Generates PLUGIN_SPEC.md with all requirements
 
 ### 4. Code Generation
@@ -66,6 +75,8 @@ The creator collects plugin requirements through interactive prompts:
 - Claude Code reads the specification and implements the entire plugin
 - Creates all components with full functionality
 - Generates comprehensive test suites
+- **Ensures database-agnostic implementation**
+- **Validates import compliance**
 
 ### 5. Validation Loops
 

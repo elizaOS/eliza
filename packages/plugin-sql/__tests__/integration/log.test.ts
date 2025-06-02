@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import { SqliteDatabaseAdapter } from '../../src/sqlite/adapter';
-import { PGliteClientManager } from '../../src/sqlite/manager';
+import { SqliteClientManager } from '../../src/sqlite/manager';
 import { type UUID, type Entity, type Room, type Agent, type World } from '@elizaos/core';
 import {
   logTestAgentSettings,
@@ -32,7 +32,7 @@ vi.mock('@elizaos/core', async () => {
 
 describe('Log Integration Tests', () => {
   // Database connection variables
-  let connectionManager: PGliteClientManager;
+  let connectionManager: SqliteClientManager;
   let adapter: SqliteDatabaseAdapter;
   let testAgentId: UUID;
   let testEntityId: UUID;
@@ -47,7 +47,7 @@ describe('Log Integration Tests', () => {
     testWorldId = logTestWorld.id;
 
     // Initialize connection manager and adapter
-    connectionManager = new PGliteClientManager({});
+    connectionManager = new SqliteClientManager({});
     await connectionManager.initialize();
     adapter = new SqliteDatabaseAdapter(testAgentId, connectionManager);
     await adapter.init();

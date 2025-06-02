@@ -39,29 +39,44 @@ else
     echo "✓ Claude Code is installed (version: $CLAUDE_VERSION)"
 fi
 
-# Create logs directory
-LOG_DIR="./plugin-creator-demo-$(date +%Y%m%d-%H%M%S)"
+# Get the starting directory
+START_DIR=$(pwd)
+
+# Create logs directory with absolute path
+LOG_DIR="$START_DIR/plugin-creator-demo-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$LOG_DIR"
 
 echo ""
 echo "Log directory: $LOG_DIR"
 echo ""
 
-# Navigate to the CLI directory
-cd /Users/shawwalters/eliza/packages/cli
+# Find the CLI directory dynamically
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CLI_DIR="$(dirname "$SCRIPT_DIR")"
 
-# Create spec file
+# Check if we found a valid CLI directory
+if [[ ! -f "$CLI_DIR/package.json" ]] || [[ ! -d "$CLI_DIR/dist" ]]; then
+    echo "❌ Could not find ElizaOS CLI directory"
+    echo "Expected structure: packages/cli/dist and packages/cli/package.json"
+    echo "Make sure this script is run from the packages/cli/examples directory"
+    echo "or that the CLI has been built (npm run build)"
+    exit 1
+fi
+
+echo "✓ Found CLI directory: $CLI_DIR"
+
+# Create spec file for demo with absolute path
 SPEC_FILE="$LOG_DIR/time-tracker-spec.json"
 cat > "$SPEC_FILE" << 'EOF'
 {
   "name": "time-tracker",
   "description": "A plugin to display current time and manage timezone offsets for ElizaOS agents",
   "features": [
-    "Display current time in agent's response",
-    "Set and manage timezone offset", 
-    "Get time in different timezones",
-    "Provide formatted time strings",
-    "Track elapsed time between requests"
+    "Display current time",
+    "Set timezone offset",
+    "Get time in different zones",
+    "Format time strings",
+    "Track elapsed time"
   ],
   "actions": ["displayTime", "setTimezoneOffset", "getTimeInZone"],
   "providers": ["currentTimeProvider", "timezoneProvider"]
@@ -71,70 +86,15 @@ EOF
 echo "✓ Plugin specification created"
 echo ""
 
-# Create a runner script that skips tests and validation
-RUNNER_SCRIPT="$LOG_DIR/run-creator-demo.js"
-cat > "$RUNNER_SCRIPT" << 'EOF'
-import { PluginCreator } from './dist/utils/plugins/creator.js';
-import fs from 'fs';
-
-const specPath = process.argv[2];
-const spec = JSON.parse(fs.readFileSync(specPath, 'utf-8'));
-
-console.log('🚀 Starting DEMO plugin generation...');
-console.log('📋 Plugin spec:', JSON.stringify(spec, null, 2));
-console.log('\n⚡ Skipping tests and validation for faster demo\n');
-
-const creator = new PluginCreator({
-  skipPrompts: true,
-  spec: spec,
-  skipTests: true,      // Skip test validation for demo
-  skipValidation: true, // Skip production validation for demo
-});
-
-(async () => {
-  const startTime = Date.now();
-  
-  try {
-    const result = await creator.create();
-    
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-    
-    if (result.success) {
-      console.log('\n✅ Plugin generated successfully!');
-      console.log(`⏱️  Time taken: ${elapsed} seconds`);
-      console.log(`📁 Plugin name: ${result.pluginName}`);
-      console.log(`📍 Location: ${result.pluginPath}`);
-      
-      // Show some basic info about what was created
-      const packageJsonPath = `${result.pluginPath}/package.json`;
-      if (fs.existsSync(packageJsonPath)) {
-        const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-        console.log(`📦 Package: ${pkg.name} v${pkg.version}`);
-      }
-      
-      process.exit(0);
-    } else {
-      console.error('\n❌ Plugin generation failed:', result.error);
-      console.error(`⏱️  Failed after: ${elapsed} seconds`);
-      process.exit(1);
-    }
-  } catch (error) {
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-    console.error('\n❌ Unexpected error:', error);
-    console.error(`⏱️  Failed after: ${elapsed} seconds`);
-    process.exit(1);
-  }
-})();
-EOF
-
 # Run the plugin creator
-echo "🚀 Running plugin creator in DEMO mode..."
-echo "⚡ This will skip tests and validation"
+echo "🚀 Starting DEMO plugin generation..."
+echo "⚡ Skipping tests and validation for faster demo"
 echo ""
 
 # Execute with timestamp
 START_TIME=$(date +%s)
-node "$RUNNER_SCRIPT" "$SPEC_FILE" 2>&1 | tee "$LOG_DIR/time-tracker.log"
+cd "$CLI_DIR"
+node dist/index.js plugins generate --skip-prompts --spec-file "$SPEC_FILE" --skip-tests --skip-validation 2>&1 | tee "$LOG_DIR/time-tracker.log"
 RESULT=${PIPESTATUS[0]}
 END_TIME=$(date +%s)
 ELAPSED=$((END_TIME - START_TIME))
@@ -149,7 +109,7 @@ if [ $RESULT -eq 0 ]; then
     echo ""
     
     # Check if plugin was created
-    EXPECTED_DIR="/Users/shawwalters/eliza/packages/cli/plugin-time-tracker"
+    EXPECTED_DIR="$CLI_DIR/plugin-time-tracker"
     if [ -d "$EXPECTED_DIR" ]; then
         echo "📁 Plugin created at: $EXPECTED_DIR"
         echo ""

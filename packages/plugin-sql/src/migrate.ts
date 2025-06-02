@@ -1,3 +1,6 @@
+// Import shim first to ensure __filename and __dirname are available for better-sqlite3
+import './shim';
+
 import { logger } from '@elizaos/core';
 import { config } from 'dotenv';
 import { PostgresConnectionManager } from './pg/manager';

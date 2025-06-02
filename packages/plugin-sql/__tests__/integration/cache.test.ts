@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import { SqliteDatabaseAdapter } from '../../src/sqlite/adapter';
-import { PGliteClientManager } from '../../src/sqlite/manager';
+import { SqliteClientManager } from '../../src/sqlite/manager';
 import { type UUID } from '@elizaos/core';
 import { cacheTestAgentSettings, testCacheEntries } from './seed';
 import { setupMockedMigrations } from '../test-helpers';
@@ -23,7 +23,7 @@ vi.mock('@elizaos/core', async () => {
 
 describe('Cache Integration Tests', () => {
   // Database connection variables
-  let connectionManager: PGliteClientManager;
+  let connectionManager: SqliteClientManager;
   let adapter: SqliteDatabaseAdapter;
   let testAgentId: UUID;
 
@@ -32,7 +32,7 @@ describe('Cache Integration Tests', () => {
     testAgentId = cacheTestAgentSettings.id as UUID;
 
     // Initialize connection manager and adapter
-    connectionManager = new PGliteClientManager({});
+    connectionManager = new SqliteClientManager({});
     await connectionManager.initialize();
     adapter = new SqliteDatabaseAdapter(testAgentId, connectionManager);
     await adapter.init();
@@ -47,7 +47,7 @@ describe('Cache Integration Tests', () => {
     try {
       await client.query(`DELETE FROM agents WHERE name = '${cacheTestAgentSettings.name}'`);
     } finally {
-      // No release needed for PGlite instance from getConnection like with pg PoolClient
+      // No release needed for Sqlite instance from getConnection like with pg PoolClient
     }
 
     // Close all connections
@@ -90,7 +90,7 @@ describe('Cache Integration Tests', () => {
         expect(dbResult.rows.length).toBe(1);
         expect(dbResult.rows[0].value).toBe(value);
       } finally {
-        // No release needed for PGlite instance from getConnection like with pg PoolClient
+        // No release needed for Sqlite instance from getConnection like with pg PoolClient
       }
     });
 

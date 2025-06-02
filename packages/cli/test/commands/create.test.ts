@@ -378,6 +378,48 @@ describe('create command', () => {
       expect(mockPromptAndStorePostgresUrl).toHaveBeenCalled();
       expect(mockSetupPgLite).not.toHaveBeenCalled();
     });
+
+    it('should setup sqlite database when selected via prompts', async () => {
+      mockPrompts.mockReset();
+      mockPrompts
+        .mockResolvedValueOnce({ nameResponse: 'myproject' }) // For name
+        .mockResolvedValueOnce({ database: 'sqlite' }) // For database
+        .mockResolvedValueOnce({ aiModel: 'local' }); // For AI model
+      const actionFn = getActionFn();
+
+      await actionFn(undefined, { dir: '.', yes: false, type: 'project' });
+
+      expect(mockPrompts).toHaveBeenCalledTimes(3);
+      expect(mockSetupPgLite).toHaveBeenCalled();
+      expect(mockPromptAndStorePostgresUrl).not.toHaveBeenCalled();
+    });
+
+    it('should create project with proper database configuration options', async () => {
+      const actionFn = getActionFn();
+
+      mockPrompts
+        .mockResolvedValueOnce({ nameResponse: 'dbproject' })
+        .mockResolvedValueOnce({ database: 'sqlite' })
+        .mockResolvedValueOnce({ aiModel: 'local' });
+
+      await actionFn(undefined, { dir: '.', yes: false, type: 'project' });
+
+      // Verify database prompt has proper choices
+      const databasePromptCall = mockPrompts.mock.calls.find((call) => call[0].name === 'database');
+      expect(databasePromptCall).toBeDefined();
+      expect(databasePromptCall[0].choices).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            title: expect.stringContaining('SQLite'),
+            value: 'sqlite',
+          }),
+          expect.objectContaining({
+            title: expect.stringContaining('PostgreSQL'),
+            value: 'postgres',
+          }),
+        ])
+      );
+    });
   });
 
   describe('plugin creation', () => {

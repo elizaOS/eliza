@@ -86,6 +86,28 @@ function getAvailableAIModels() {
 }
 
 /**
+ * Gets available database options for selection during project creation.
+ *
+ * @returns {Array} Array of available database options
+ */
+function getAvailableDatabases() {
+  return [
+    {
+      title: 'SQLite (PGLite) - Recommended for development',
+      value: 'sqlite',
+      description:
+        'Fast, file-based database. Perfect for development and single-user deployments.',
+    },
+    {
+      title: 'PostgreSQL - Recommended for production',
+      value: 'postgres',
+      description:
+        'Full-featured database with vector search. Best for production and multi-user systems.',
+    },
+  ];
+}
+
+/**
  * Sets up AI model configuration in the project's .env file based on user selection.
  *
  * @param {string} aiModel - The selected AI model ('local', 'openai', or 'claude')
@@ -493,7 +515,7 @@ data/
         await fs.mkdir(targetDir, { recursive: true });
       }
 
-      const availableDatabases = await getLocalAvailableDatabases();
+      const availableDatabases = getAvailableDatabases();
       let database: string;
       if (options.yes) {
         database = 'sqlite';
@@ -503,10 +525,8 @@ data/
           type: 'select',
           name: 'database',
           message: 'Select your database:',
-          choices: availableDatabases
-            .sort((a, b) => a.localeCompare(b))
-            .map((db) => ({ title: db, value: db })),
-          initial: availableDatabases.indexOf('sqlite'),
+          choices: availableDatabases,
+          initial: 0, // Default to SQLite
         });
         database = response.database;
       }

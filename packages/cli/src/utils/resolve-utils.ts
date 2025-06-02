@@ -56,7 +56,7 @@ export function resolveEnvFile(startDir: string = process.cwd(), boundaryDir?: s
 }
 
 /**
- * Resolves the directory used for PGlite database storage.
+ * Resolves the directory used for Sqlite database storage.
  *
  * Resolution order:
  * 1. The `dir` argument if provided.

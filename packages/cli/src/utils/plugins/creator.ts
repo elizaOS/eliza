@@ -363,7 +363,7 @@ export class PluginCreator {
       files: ['dist', 'README.md'],
     };
 
-    await fs.writeJson(path.join(this.pluginPath!, 'package.json'), packageJson, { spaces: 2 });
+    await fs.writeJSON(path.join(this.pluginPath!, 'package.json'), packageJson, { spaces: 2 });
 
     // Create tsconfig.json
     const tsconfig = {
@@ -376,7 +376,7 @@ export class PluginCreator {
       exclude: ['node_modules', 'dist'],
     };
 
-    await fs.writeJson(path.join(this.pluginPath!, 'tsconfig.json'), tsconfig, { spaces: 2 });
+    await fs.writeJSON(path.join(this.pluginPath!, 'tsconfig.json'), tsconfig, { spaces: 2 });
 
     // Create tsup.config.ts
     const tsupConfig = `import { defineConfig } from 'tsup';
@@ -480,19 +480,65 @@ ${spec.providers ? `Providers: ${spec.providers.join(', ')}` : ''}
 ${spec.evaluators ? `Evaluators: ${spec.evaluators.join(', ')}` : ''}
 ${spec.services ? `Services: ${spec.services.join(', ')}` : ''}
 
+## CRITICAL REQUIREMENTS
+
+### 1. Database Compatibility (MANDATORY)
+This plugin MUST work with both SQLite and PostgreSQL. The specification must include:
+- Database-agnostic design patterns
+- Use of runtime APIs only (no direct database access)
+- Memory operations using runtime.createMemory(), runtime.searchMemories()
+- Goal operations using runtime.createGoal(), runtime.updateGoal()
+- Relationship operations using runtime.ensureConnection()
+- NO database-specific code or SQL queries
+- NO direct database adapter imports
+
+### 2. Import Requirements (MANDATORY)
+- ALL imports must come from @elizaos/core ONLY
+- NO imports from @elizaos/plugin, @elizaos/types, @elizaos/logger (these don't exist)
+- Use: import { Plugin, Action, AgentRuntime, logger, Memory, State } from '@elizaos/core'
+
 ## Task
 Generate a detailed technical specification that includes:
 
-1. **Architecture Overview**: How the plugin components work together
+1. **Architecture Overview**: How the plugin components work together (database-agnostic)
 2. **Component Specifications**: Detailed specs for each action, provider, evaluator, and service
-3. **Data Flow**: How data moves through the plugin
-4. **Integration Points**: How the plugin integrates with ElizaOS
-5. **Implementation Details**: Specific algorithms, APIs, or techniques to use
-6. **Testing Strategy**: What tests are needed
-7. **Error Handling**: How errors should be handled
-8. **Configuration**: Any configuration options needed
+3. **Data Flow**: How data moves through the plugin using runtime APIs
+4. **Integration Points**: How the plugin integrates with ElizaOS runtime
+5. **Implementation Details**: Specific algorithms, APIs, or techniques to use (database-agnostic)
+6. **Database Abstraction**: How to use runtime APIs for all data operations
+7. **Testing Strategy**: What tests are needed (including database compatibility tests)
+8. **Error Handling**: How errors should be handled
+9. **Configuration**: Any configuration options needed
 
-Be extremely detailed and specific. This specification will be used to generate the actual code.`;
+## Database Abstraction Examples:
+\`\`\`typescript
+// Memory operations - works with both SQLite and PostgreSQL
+await runtime.createMemory({
+  entityId: message.entityId,
+  agentId: runtime.agentId,
+  content: { text: 'Important information' },
+  roomId: message.roomId,
+  embedding: await runtime.embed('Important information'),
+});
+
+// Search memories - database-agnostic
+const memories = await runtime.searchMemories({
+  text: query,
+  entityId: message.entityId,
+  count: 10,
+});
+
+// Goal operations - database-agnostic
+await runtime.createGoal({
+  entityId: message.entityId,
+  agentId: runtime.agentId,
+  name: 'Complete task',
+  status: 'IN_PROGRESS',
+});
+\`\`\`
+
+Be extremely detailed and specific. This specification will be used to generate the actual code.
+Remember: The plugin must work with BOTH SQLite and PostgreSQL without any code changes.`;
 
     const message = await this.anthropic!.messages.create({
       model: 'claude-opus-4-20250514',
@@ -527,6 +573,64 @@ ${spec.providers ? `### Providers\n${spec.providers.map((p) => `- ${p}`).join('\
 ${spec.evaluators ? `### Evaluators\n${spec.evaluators.map((e) => `- ${e}`).join('\n')}` : ''}
 ${spec.services ? `### Services\n${spec.services.map((s) => `- ${s}`).join('\n')}` : ''}
 
+## CRITICAL REQUIREMENTS
+
+### Database Compatibility (MANDATORY)
+This plugin MUST work with both SQLite and PostgreSQL without any code changes.
+
+#### Database Abstraction Rules:
+- ✅ Use ONLY runtime.databaseAdapter for database operations
+- ✅ Use runtime.createMemory(), runtime.searchMemories(), runtime.createGoal()
+- ✅ Use runtime.ensureConnection() for relationships
+- ❌ NEVER import database adapters directly (SqliteDatabaseAdapter, PgDatabaseAdapter)
+- ❌ NEVER use database-specific SQL or queries
+- ❌ NEVER make assumptions about database type
+
+#### Example Database-Agnostic Code:
+\`\`\`typescript
+// ✅ CORRECT - Memory operations
+await runtime.createMemory({
+  entityId: message.entityId,
+  agentId: runtime.agentId,
+  content: { text: 'Information to store' },
+  roomId: message.roomId,
+  embedding: await runtime.embed('Information to store'),
+});
+
+// ✅ CORRECT - Search operations
+const memories = await runtime.searchMemories({
+  text: searchQuery,
+  entityId: message.entityId,
+  count: 10,
+});
+
+// ❌ WRONG - Direct database imports
+import { SqliteDatabaseAdapter } from '@elizaos/plugin-sql';
+\`\`\`
+
+### Import Requirements (MANDATORY)
+ALL imports must come from @elizaos/core ONLY:
+
+\`\`\`typescript
+// ✅ CORRECT - All from @elizaos/core
+import {
+  Plugin,
+  Action,
+  AgentRuntime,
+  logger,
+  Memory,
+  State,
+  Content,
+  HandlerCallback,
+  Service,
+} from '@elizaos/core';
+
+// ❌ WRONG - These packages don't exist
+import { logger } from '@elizaos/logger';
+import { Action } from '@elizaos/types';
+import { SqliteDatabaseAdapter } from '@elizaos/plugin-sql';
+\`\`\`
+
 ## Detailed Technical Specification
 
 ${detailedSpec}
@@ -535,25 +639,75 @@ ${detailedSpec}
 
 You are now going to implement this plugin following ElizaOS 1.0.0 best practices:
 
-1. **Use TypeScript** for all code
-2. **Follow the ElizaOS plugin structure** exactly
-3. **Implement all components** specified above
-4. **Create comprehensive tests** for each component
-5. **Use proper error handling** throughout
-6. **Add detailed logging** using the ElizaOS logger
-7. **Follow the coding standards** from the ElizaOS repository
-8. **Ensure all imports use @elizaos/core**
-9. **Make the plugin production-ready** with no stubs or incomplete code
+### 1. Core Implementation
+- **Use TypeScript** for all code
+- **Follow the ElizaOS plugin structure** exactly
+- **Implement all components** specified above
+- **Create comprehensive tests** for each component
+- **Use proper error handling** throughout
+- **Add detailed logging** using the ElizaOS logger
 
-Remember:
-- Services must extend the base Service class with lifecycle methods
-- Actions must implement validate and handler functions
-- Providers must return formatted context strings
-- Evaluators run after interactions
-- All components must be properly exported in index.ts
-- Tests must use vitest and cover all functionality
+### 2. Database Compatibility
+- **MANDATORY**: Plugin must work with both SQLite and PostgreSQL
+- **Use ONLY runtime APIs** for all data operations
+- **NO direct database imports** or database-specific code
+- **Test with both databases** in test suite
+
+### 3. Import Compliance
+- **ALL imports from @elizaos/core ONLY**
+- **NO imports from non-existent packages**
+- **Follow import examples above exactly**
+
+### 4. Component Requirements
+- **Services**: Must extend the base Service class with lifecycle methods (initialize, start, stop)
+- **Actions**: Must implement validate and handler functions
+- **Providers**: Must return formatted context strings using runtime APIs
+- **Evaluators**: Run after interactions, store data using runtime APIs
+- **All components**: Must be properly exported in index.ts
+
+### 5. Testing Requirements
+- **Tests must use vitest** and cover all functionality
+- **Database compatibility tests**:
+  \`\`\`typescript
+  describe('Database Compatibility', () => {
+    it('should work with SQLite', async () => {
+      process.env.SQLITE_DATA_DIR = './.test-db';
+      delete process.env.POSTGRES_URL;
+      // Test plugin functionality
+    });
+    
+    it('should work with PostgreSQL', async () => {
+      process.env.POSTGRES_URL = 'postgresql://test:test@localhost:5432/test';
+      delete process.env.SQLITE_DATA_DIR;
+      // Test plugin functionality
+    });
+  });
+  \`\`\`
+
+### 6. Quality Requirements
+- **NO stubs or incomplete code**
+- **Production-ready implementation**
+- **Proper error handling**
+- **Clean, well-organized code**
+
+## Production Readiness Checklist
+
+Before considering implementation complete, verify:
+
+- ✅ All imports come from @elizaos/core only
+- ✅ No direct database adapter imports
+- ✅ Uses runtime APIs for all data operations
+- ✅ Works with both SQLite and PostgreSQL
+- ✅ Has comprehensive tests for both database types
+- ✅ No database-specific code or SQL
+- ✅ Proper error handling throughout
+- ✅ No stubs or incomplete code
+- ✅ Services extend base Service class
+- ✅ Actions have validation and handlers
+- ✅ All components properly exported
 
 Work systematically through each component, implementing it completely before moving to the next.
+Remember: Database compatibility is MANDATORY - the plugin MUST work with both SQLite and PostgreSQL.
 `;
 
     await fs.writeFile(path.join(this.pluginPath!, 'PLUGIN_SPEC.md'), content);
@@ -812,23 +966,60 @@ Make all necessary changes to fix the issues and ensure the plugin builds and al
 ${allFiles}
 
 ## Evaluation Criteria:
-1. All components are fully implemented (no stubs or TODOs)
-2. Comprehensive tests exist for all functionality
-3. Proper error handling throughout
-4. Follows ElizaOS 1.0.0 patterns and best practices
-5. All imports use @elizaos/core
-6. Services extend base Service class with lifecycle methods
-7. Actions have proper validation and handlers
-8. Documentation is complete
-9. Code is clean and well-organized
-10. Plugin exports are correct
+
+### 1. Import Compliance (CRITICAL - MANDATORY)
+- ✅ ALL imports must come from @elizaos/core ONLY
+- ❌ NO imports from @elizaos/plugin, @elizaos/types, @elizaos/logger, etc. (these don't exist)
+- ❌ NO direct database adapter imports (SqliteDatabaseAdapter, PgDatabaseAdapter)
+- ✅ Correct import format: import { Plugin, Action, AgentRuntime, logger } from '@elizaos/core'
+
+### 2. Database Compatibility (CRITICAL - MANDATORY)
+- ✅ Plugin must work with both SQLite and PostgreSQL without code changes
+- ✅ Uses ONLY runtime.databaseAdapter for database operations
+- ✅ Uses runtime.createMemory(), runtime.searchMemories(), runtime.createGoal()
+- ✅ Uses runtime.ensureConnection() for relationships
+- ❌ NO database-specific SQL or queries
+- ❌ NO assumptions about database type
+- ❌ NO direct database adapter usage
+- ✅ Database compatibility tests for both SQLite and PostgreSQL
+
+### 3. Component Implementation
+- ✅ All components are fully implemented (no stubs or TODOs)
+- ✅ Services extend base Service class with lifecycle methods (initialize, start, stop)
+- ✅ Actions have proper validation and handlers
+- ✅ Providers return formatted context using runtime APIs
+- ✅ Evaluators store data using runtime APIs
+
+### 4. Testing Coverage
+- ✅ Comprehensive tests exist for all functionality
+- ✅ Tests use vitest framework
+- ✅ Database compatibility tests included
+- ✅ Tests cover main plugin functionality
+- ✅ Error handling tests included
+
+### 5. Code Quality
+- ✅ Proper error handling throughout
+- ✅ Follows ElizaOS 1.0.0 patterns and best practices
+- ✅ Documentation is complete
+- ✅ Code is clean and well-organized
+- ✅ Plugin exports are correct
+- ✅ No stubs or incomplete code remains
 
 ## Response Format:
 Respond with a JSON object:
 {
   "production_ready": boolean,
   "revision_instructions": "Detailed instructions for what needs to be fixed (only if not production ready)"
-}`;
+}
+
+## Validation Priority (ALL MUST PASS):
+1. Import compliance is MANDATORY - any non-@elizaos/core imports = NOT production ready
+2. Database compatibility is MANDATORY - must work with both SQLite and PostgreSQL
+3. All components must be fully implemented
+4. Comprehensive tests must exist
+5. All other criteria must also pass
+
+If ANY of the CRITICAL requirements fail, the plugin is NOT production ready.`;
 
     const message = await this.anthropic!.messages.create({
       model: 'claude-opus-4-20250514',

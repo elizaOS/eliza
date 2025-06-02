@@ -62,12 +62,17 @@ elizaos plugins upgrade ./my-plugin --skip-tests --skip-validation
 
 - Runs `npm/bun build` to ensure code compiles
 - Runs `elizaos test` to validate the migration
+- **Enhanced Validation**: Checks for database compatibility and import compliance
 - If build or tests fail, re-engages Claude Code with error context
 - Continues up to 5 iterations until both build and tests pass
 
 ### 5. Production Validation (if not skipped)
 
 - Sends all changed files to Claude Opus 4 for review
+- **Critical Validations**:
+  - **Import Compliance**: ALL imports must come from @elizaos/core ONLY
+  - **Database Compatibility**: Plugin must work with both SQLite and PostgreSQL
+  - **No Database-Specific Code**: No direct database adapter imports or SQL
 - Evaluates against production readiness criteria
 - If not ready, applies revision instructions and re-tests
 - Continues up to 3 revision iterations

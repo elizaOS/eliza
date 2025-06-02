@@ -61,8 +61,11 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Create logs directory
-LOG_DIR="./plugin-generator-logs-$(date +%Y%m%d-%H%M%S)"
+# Get the starting directory
+START_DIR=$(pwd)
+
+# Create logs directory with absolute path
+LOG_DIR="$START_DIR/plugin-generator-logs-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$LOG_DIR"
 
 echo ""
@@ -70,8 +73,40 @@ echo "Starting plugin generation..."
 echo "Log file: $LOG_DIR/plugin-generation.log"
 echo ""
 
-# Navigate to the CLI directory
-cd /Users/shawwalters/eliza/packages/cli
+# Find the CLI directory dynamically
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CLI_DIR="$(dirname "$SCRIPT_DIR")"
+
+# Check if we found a valid CLI directory
+if [[ ! -f "$CLI_DIR/package.json" ]] || [[ ! -d "$CLI_DIR/dist" ]]; then
+    echo "❌ Could not find ElizaOS CLI directory"
+    echo "Expected structure: packages/cli/dist and packages/cli/package.json"
+    echo "Make sure this script is run from the packages/cli/examples directory"
+    echo "or that the CLI has been built (npm run build)"
+    exit 1
+fi
+
+echo "✓ Found CLI directory: $CLI_DIR"
+
+# Create spec file for the plugin
+SPEC_FILE="$LOG_DIR/time-tracker-spec.json"
+cat > "$SPEC_FILE" << 'EOF'
+{
+  "name": "time-tracker",
+  "description": "A plugin to display current time and manage timezone offsets for ElizaOS agents",
+  "features": [
+    "Display current time",
+    "Set timezone offset",
+    "Get time in different zones",
+    "Format time strings",
+    "Track elapsed time"
+  ],
+  "actions": ["displayTime", "setTimezoneOffset", "getTimeInZone"],
+  "providers": ["currentTimeProvider", "timezoneProvider"]
+}
+EOF
+
+echo "✓ Plugin specification created"
 
 # Build options string
 OPTIONS="$SKIP_TESTS $SKIP_VALIDATION $API_KEY_ARG"
@@ -81,29 +116,12 @@ if [[ -n "$SKIP_TESTS" ]] || [[ -n "$SKIP_VALIDATION" ]]; then
     echo ""
 fi
 
-# Run the elizaos plugin generate command
-# Note: Since the generate command is interactive by default, 
-# we need to provide answers via a pipe or use --skip-prompts
-# For this demo, we'll create an expect script or use echo to provide inputs
-
-# Create an input file for the interactive prompts
-INPUT_FILE="$LOG_DIR/inputs.txt"
-cat > "$INPUT_FILE" << 'EOF'
-time-tracker
-A plugin to display current time and manage timezone offsets for ElizaOS agents
-Display current time, Set timezone offset, Get time in different zones, Format time strings, Track elapsed time
-displayTime, setTimezoneOffset, getTimeInZone
-currentTimeProvider, timezoneProvider
-
-
-EOF
-
 echo "Running elizaos plugin generate..."
 echo ""
 
-# Run the command with inputs piped in
-# Using the built CLI directly like upgrade-giphy.sh does
-cat "$INPUT_FILE" | node dist/index.js plugins generate $OPTIONS 2>&1 | tee "$LOG_DIR/plugin-generation.log"
+# Run the command with spec file
+cd "$CLI_DIR"
+node dist/index.js plugins generate --skip-prompts --spec-file "$SPEC_FILE" $OPTIONS 2>&1 | tee "$LOG_DIR/plugin-generation.log"
 
 # Check if generation was successful
 if [ ${PIPESTATUS[0]} -eq 0 ]; then
@@ -112,15 +130,15 @@ if [ ${PIPESTATUS[0]} -eq 0 ]; then
     echo ""
     
     # Check for the generated plugin
-    if [ -d "plugin-time-tracker" ]; then
-        echo "Plugin created at: ./plugin-time-tracker"
+    if [ -d "$CLI_DIR/plugin-time-tracker" ]; then
+        echo "Plugin created at: $CLI_DIR/plugin-time-tracker"
         echo ""
         echo "Plugin structure:"
-        find plugin-time-tracker -type f \( -name "*.ts" -o -name "*.json" -o -name "*.md" \) | grep -v node_modules | sort | head -20
+        find "$CLI_DIR/plugin-time-tracker" -type f \( -name "*.ts" -o -name "*.json" -o -name "*.md" \) | grep -v node_modules | sort | head -20
         
         echo ""
         echo "Next steps:"
-        echo "1. cd plugin-time-tracker"
+        echo "1. cd $CLI_DIR/plugin-time-tracker"
         echo "2. Review the generated code"
         echo "3. npm install && npm run build"
         echo "4. npm test"

@@ -46,8 +46,11 @@ else
     echo "✓ Claude Code is installed"
 fi
 
-# Create logs directory
-LOG_DIR="./plugin-creator-logs-$(date +%Y%m%d-%H%M%S)"
+# Get the starting directory
+START_DIR=$(pwd)
+
+# Create logs directory with absolute path
+LOG_DIR="$START_DIR/plugin-creator-logs-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$LOG_DIR"
 
 echo ""
@@ -71,6 +74,26 @@ fi
 
 echo "✓ Found CLI directory: $CLI_DIR"
 
+# Create spec file for the plugin
+SPEC_FILE="$LOG_DIR/time-tracker-spec.json"
+cat > "$SPEC_FILE" << 'EOF'
+{
+  "name": "time-tracker",
+  "description": "A plugin to display current time and manage timezone offsets for ElizaOS agents",
+  "features": [
+    "Display current time in agent's response",
+    "Set and manage timezone offset", 
+    "Get time in different timezones",
+    "Provide formatted time strings",
+    "Track elapsed time between requests"
+  ],
+  "actions": ["displayTime", "setTimezoneOffset", "getTimeInZone"],
+  "providers": ["currentTimeProvider", "timezoneProvider"]
+}
+EOF
+
+echo "✓ Plugin specification created"
+
 # Run the plugin creator using the CLI
 echo "🚀 Running plugin creator..."
 echo "This will:"
@@ -80,23 +103,9 @@ echo "  3. Run build and test loops"
 echo "  4. Validate production readiness"
 echo ""
 
-# Prepare inputs for the interactive prompts
-INPUT_FILE="$LOG_DIR/inputs.txt"
-cat > "$INPUT_FILE" << 'EOF'
-time-tracker
-A plugin to display current time and manage timezone offsets for ElizaOS agents
-Display current time, Set timezone offset, Get time in different zones, Format time strings, Track elapsed time
-displayTime, setTimezoneOffset, getTimeInZone
-currentTimeProvider, timezoneProvider
-
-
-EOF
-
-echo "✓ Plugin inputs prepared"
-
 # Execute the CLI command from the CLI directory
 cd "$CLI_DIR"
-cat "$INPUT_FILE" | node dist/index.js plugins generate 2>&1 | tee "$LOG_DIR/time-tracker.log"
+node dist/index.js plugins generate --skip-prompts --spec-file "$SPEC_FILE" 2>&1 | tee "$LOG_DIR/time-tracker.log"
 
 # Check result
 if [ ${PIPESTATUS[0]} -eq 0 ]; then

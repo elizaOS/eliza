@@ -1,3 +1,6 @@
+// Import shim first to ensure __filename and __dirname are available for better-sqlite3
+import './shim';
+
 import type { IDatabaseAdapter, UUID } from '@elizaos/core';
 import { type IAgentRuntime, type Plugin, logger } from '@elizaos/core';
 import { SqliteDatabaseAdapter } from './sqlite/adapter';

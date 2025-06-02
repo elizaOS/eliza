@@ -1113,6 +1113,72 @@ The goal is a fully migrated, tested, and working 1.x plugin.
         };
       }
 
+      // Check package.json for correct dependencies
+      const packageJsonContent = await fs.readFile(packageJsonPath, 'utf-8');
+      const packageJson = JSON.parse(packageJsonContent);
+
+      // Validate dependencies - should only have @elizaos/core
+      const allDeps = {
+        ...packageJson.dependencies,
+        ...packageJson.devDependencies,
+        ...packageJson.peerDependencies,
+      };
+
+      const invalidElizaOSDeps = Object.keys(allDeps).filter(
+        (dep) => dep.startsWith('@elizaos/') && dep !== '@elizaos/core'
+      );
+
+      if (invalidElizaOSDeps.length > 0) {
+        return {
+          success: false,
+          errors: `Invalid ElizaOS dependencies found: ${invalidElizaOSDeps.join(', ')}.\n\nOnly @elizaos/core is allowed. These packages don't exist in ElizaOS 1.x:\n${invalidElizaOSDeps.map((dep) => `- ${dep}`).join('\n')}\n\nAll imports must come from @elizaos/core only.`,
+        };
+      }
+
+      // Check for database adapter imports in source files
+      const sourceFiles = await this.getAllSourceFiles();
+      const databaseImportErrors = [];
+
+      for (const file of sourceFiles) {
+        const content = await fs.readFile(path.join(this.repoPath!, file), 'utf-8');
+
+        // Check for forbidden database imports
+        if (
+          content.includes('SqliteDatabaseAdapter') ||
+          content.includes('PgDatabaseAdapter') ||
+          content.includes('PostgresDatabaseAdapter')
+        ) {
+          databaseImportErrors.push(`${file}: Contains direct database adapter imports`);
+        }
+
+        // Check for forbidden import patterns
+        const forbiddenImports = [
+          '@elizaos/plugin-sql',
+          '@elizaos/adapter-',
+          '@elizaos/plugin',
+          '@elizaos/types',
+          '@elizaos/logger',
+          '@elizaos/models',
+          '@elizaos/runtime',
+        ];
+
+        for (const forbiddenImport of forbiddenImports) {
+          if (
+            content.includes(`from "${forbiddenImport}`) ||
+            content.includes(`from '${forbiddenImport}`)
+          ) {
+            databaseImportErrors.push(`${file}: Contains forbidden import '${forbiddenImport}'`);
+          }
+        }
+      }
+
+      if (databaseImportErrors.length > 0) {
+        return {
+          success: false,
+          errors: `Database compatibility violations found:\n\n${databaseImportErrors.join('\n')}\n\nAll imports must come from @elizaos/core only. Use runtime APIs for database operations:\n- runtime.createMemory()\n- runtime.searchMemories()\n- runtime.createGoal()\n- runtime.ensureConnection()`,
+        };
+      }
+
       // Try npm install with --dry-run to check for errors
       try {
         await execa('npm', ['install', '--dry-run'], {
@@ -1147,6 +1213,30 @@ The goal is a fully migrated, tested, and working 1.x plugin.
         success: false,
         errors: `Failed to validate dependencies: ${error.message}`,
       };
+    }
+  }
+
+  private async getAllSourceFiles(): Promise<string[]> {
+    try {
+      const files = await globby(['**/*.ts', '**/*.js'], {
+        cwd: this.repoPath!,
+        ignore: [
+          'node_modules/**',
+          'dist/**',
+          'build/**',
+          '*.test.*',
+          '*.spec.*',
+          'coverage/**',
+          '**/*.min.js',
+          '**/*.min.ts',
+          '**/vendor/**',
+          '**/lib/**',
+        ],
+      });
+      return files;
+    } catch (error) {
+      logger.warn('Failed to get source files for validation:', error);
+      return [];
     }
   }
 }

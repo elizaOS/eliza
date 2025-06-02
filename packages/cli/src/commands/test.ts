@@ -12,7 +12,7 @@ import { detectDirectoryType, type DirectoryInfo } from '@/src/utils/directory-d
 import { type IAgentRuntime, type ProjectAgent } from '@elizaos/core';
 import { Command, Option } from 'commander';
 import * as dotenv from 'dotenv';
-import { exec } from 'node:child_process';
+import { exec, spawn } from 'node:child_process';
 import * as fs from 'node:fs';
 import { existsSync } from 'node:fs';
 import * as net from 'node:net';
@@ -81,7 +81,7 @@ function processFilterName(name?: string): string | undefined {
 async function runComponentTests(
   options: { name?: string; skipBuild?: boolean },
   projectInfo: DirectoryInfo
-) {
+): Promise<{ failed: boolean }> {
   // Build the project or plugin first unless skip-build is specified
   if (!options.skipBuild) {
     try {
@@ -98,39 +98,41 @@ async function runComponentTests(
 
   console.info('Running component tests...');
 
-  try {
-    // Use safer approach to avoid command injection
-    const execa = await import('execa');
-    const args = ['run', 'vitest', 'run', '--passWithNoTests'];
+  return new Promise((resolve) => {
+    // Build command arguments
+    const args = ['run', 'vitest', 'run', '--passWithNoTests', '--reporter=default'];
 
     // Add filter if specified
     if (options.name) {
       const baseName = processFilterName(options.name);
       console.info(`Using test filter: ${baseName}`);
-
-      // Add filter as separate arguments
       args.push('-t', baseName);
     }
 
-    const { stdout, stderr } = await execa.execaCommand(`bun ${args.join(' ')}`, {
-      maxBuffer: 10 * 1024 * 1024,
-      shell: true,
+    console.info('Executing: bun', args.join(' '));
+
+    // Use spawn for real-time output streaming
+    const child = spawn('bun', args, {
+      stdio: 'inherit',
+      shell: false,
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        FORCE_COLOR: '1', // Force color output
+        CI: 'false', // Ensure we're not in CI mode which might buffer
+      },
     });
-    console.log(stdout);
-    if (stderr) console.error(stderr);
 
-    console.info('Component tests completed');
+    child.on('close', (code) => {
+      console.info('Component tests completed');
+      resolve({ failed: code !== 0 });
+    });
 
-    // Check if there were test failures in the output
-    if (stdout.includes('FAIL') || stderr?.includes('FAIL')) {
-      return { failed: true };
-    }
-
-    return { failed: false };
-  } catch (error) {
-    console.error('Error running component tests:', error);
-    return { failed: true };
-  }
+    child.on('error', (error) => {
+      console.error('Error running component tests:', error);
+      resolve({ failed: true });
+    });
+  });
 }
 
 /**

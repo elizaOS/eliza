@@ -471,7 +471,8 @@ plugins
   .option('--api-key <key>', 'Anthropic API key (or use ANTHROPIC_API_KEY env var)')
   .option('--skip-tests', 'Skip test validation loop')
   .option('--skip-validation', 'Skip production readiness validation')
-  .option('--skip-prompts', 'Skip interactive prompts (requires pre-defined spec)')
+  .option('--skip-prompts', 'Skip interactive prompts (requires --spec-file)')
+  .option('--spec-file <path>', 'Path to JSON file containing plugin specification')
   .action(async (opts) => {
     try {
       // Lazy import to avoid loading dependencies until needed
@@ -489,11 +490,27 @@ plugins
         process.exit(1);
       }
 
+      // Handle spec file if provided
+      let spec = undefined;
+      if (opts.specFile) {
+        try {
+          const specContent = fs.readFileSync(opts.specFile, 'utf-8');
+          spec = JSON.parse(specContent);
+        } catch (error) {
+          logger.error(`Failed to read or parse spec file: ${error.message}`);
+          process.exit(1);
+        }
+      } else if (opts.skipPrompts) {
+        logger.error('--skip-prompts requires --spec-file to be provided');
+        process.exit(1);
+      }
+
       // Create creator instance with options
       const creator = new PluginCreator({
         skipTests: opts.skipTests,
         skipValidation: opts.skipValidation,
         skipPrompts: opts.skipPrompts,
+        spec: spec,
       });
 
       // Run generation

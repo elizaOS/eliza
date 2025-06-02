@@ -126,7 +126,12 @@ export abstract class BaseDrizzleAdapter<
    */
   protected getSQLiteConnection(): any {
     // Access the underlying better-sqlite3 connection from Drizzle
-    return (this.db as any).session?.db || (this.db as any).db;
+    return (
+      (this.db as any).session?.db ||
+      (this.db as any).db ||
+      (this.db as any)._db ||
+      (this.db as any).client
+    );
   }
 
   /**
@@ -280,39 +285,40 @@ export abstract class BaseDrizzleAdapter<
   async getAgent(agentId: UUID): Promise<Agent | null> {
     return this.withDatabase(async () => {
       if (this.isSQLite()) {
-        const conn = this.getSQLiteConnection();
-        const row = conn
-          .prepare(
-            `
-          SELECT * FROM agents WHERE id = ? LIMIT 1
-        `
-          )
-          .get(agentId);
+        const db = this.asSQLite();
+        const result = await db
+          .select()
+          .from(agentTable)
+          .where(eq(agentTable.id, agentId))
+          .limit(1);
 
-        if (!row) return null;
+        if (result.length === 0) return null;
 
+        const row = result[0];
         return {
-          ...(row as any),
-          username: (row as any).username || '',
-          id: (row as any).id as UUID,
-          system: !(row as any).system ? undefined : (row as any).system,
-          bio: !(row as any).bio ? '' : (row as any).bio,
+          ...row,
+          username: row.username || '',
+          id: row.id as UUID,
+          system: !row.system ? undefined : row.system,
+          bio: !row.bio ? '' : row.bio,
         };
       } else {
         const db = this.asPostgreSQL();
-        const rows = await db.execute(sql`
-          SELECT * FROM agents WHERE id = ${agentId} LIMIT 1
-        `);
+        const result = await db
+          .select()
+          .from(agentTable)
+          .where(eq(agentTable.id, agentId))
+          .limit(1);
 
-        if (rows.rows.length === 0) return null;
+        if (result.length === 0) return null;
 
-        const row = rows.rows[0];
+        const row = result[0];
         return {
-          ...(row as any),
-          username: (row as any).username || '',
-          id: (row as any).id as UUID,
-          system: !(row as any).system ? undefined : (row as any).system,
-          bio: !(row as any).bio ? '' : (row as any).bio,
+          ...row,
+          username: row.username || '',
+          id: row.id as UUID,
+          system: !row.system ? undefined : row.system,
+          bio: !row.bio ? '' : row.bio,
         };
       }
     });
@@ -325,33 +331,19 @@ export abstract class BaseDrizzleAdapter<
    */
   async getAgents(): Promise<Partial<Agent>[]> {
     return this.withDatabase(async () => {
-      if (this.isSQLite()) {
-        const conn = this.getSQLiteConnection();
-        const rows = conn
-          .prepare(
-            `
-          SELECT id, name, bio FROM agents
-        `
-          )
-          .all();
+      const result = await this.db
+        .select({
+          id: agentTable.id,
+          name: agentTable.name,
+          bio: agentTable.bio,
+        })
+        .from(agentTable);
 
-        return (rows as any[]).map((row) => ({
-          ...row,
-          id: row.id as UUID,
-          bio: row.bio === null ? '' : row.bio,
-        }));
-      } else {
-        const db = this.asPostgreSQL();
-        const rows = await db.execute(sql`
-          SELECT id, name, bio FROM agents
-        `);
-
-        return rows.rows.map((row) => ({
-          ...(row as any),
-          id: (row as any).id as UUID,
-          bio: (row as any).bio === null ? '' : (row as any).bio,
-        }));
-      }
+      return result.map((row) => ({
+        ...row,
+        id: row.id as UUID,
+        bio: row.bio === null ? '' : row.bio,
+      }));
     });
   }
 
@@ -455,7 +447,7 @@ export abstract class BaseDrizzleAdapter<
 
         if (isBetterSqlite) {
           const dbSync = this.db as BetterSQLite3Database;
-          dbSync.transaction((tx) => {
+          const updateTx = dbSync.transaction((tx) => {
             let finalAgentData = { ...agent, updatedAt: Date.now() } as any;
             if (agent.settings) {
               const currentAgentResult = tx
@@ -470,6 +462,7 @@ export abstract class BaseDrizzleAdapter<
             const { id, createdAt, ...updatePayload } = finalAgentData;
             tx.update(agentTable).set(updatePayload).where(eq(agentTable.id, agentId)).run();
           });
+          updateTx();
         } else {
           await this.db.transaction(async (tx) => {
             let agentDataToUpdate = { ...agent };
@@ -606,7 +599,7 @@ export abstract class BaseDrizzleAdapter<
           // SQLite uses synchronous transactions
           const dbSync = this.db as BetterSQLite3Database;
 
-          dbSync.transaction((dbTx) => {
+          const transactionFn = dbSync.transaction((dbTx) => {
             // Step 1: Find all entities belonging to this agent
             logger.debug(`[DB] Fetching entities for agent: ${agentId}`);
             const entities = dbTx
@@ -800,7 +793,8 @@ export abstract class BaseDrizzleAdapter<
             logger.debug(`[DB] Deleting agent ${agentId}`);
             dbTx.delete(agentTable).where(eq(agentTable.id, agentId)).run();
             logger.debug(`[DB] Agent deleted successfully`);
-          })();
+          });
+          transactionFn();
         } else {
           // PostgreSQL uses async transactions
           const pgDb = this.db as NodePgDatabase;
@@ -1178,13 +1172,16 @@ export abstract class BaseDrizzleAdapter<
 
         if (isBetterSqlite) {
           const dbSync = this.db as BetterSQLite3Database;
-          dbSync.transaction((tx) => {
-            tx.insert(entityTable).values(entitiesWithTimestamp).run();
-          })();
+          // SQLite transaction - must be synchronous
+          const insertFn = dbSync.transaction(() => {
+            dbSync.insert(entityTable).values(entitiesWithTimestamp).run();
+          });
+          insertFn();
           logger.debug(entities.length, 'Entities created successfully');
           return true;
         } else {
-          return await this.db.transaction(async (tx) => {
+          const pgDb = this.db as NodePgDatabase;
+          return await pgDb.transaction(async (tx) => {
             await tx.insert(entityTable).values(entitiesWithTimestamp);
             logger.debug(entities.length, 'Entities created successfully');
             return true;
@@ -1719,14 +1716,36 @@ export abstract class BaseDrizzleAdapter<
         // This ensures any problematic characters are properly escaped during JSON serialization
         const jsonString = JSON.stringify(sanitizedBody);
 
-        await this.db.transaction(async (tx) => {
-          await tx.insert(logTable).values({
-            body: sql`${jsonString}::jsonb`,
-            entityId: params.entityId,
-            roomId: params.roomId,
-            type: params.type,
+        const isBetterSqlite =
+          (this.db as any).session?.adapterName === 'better-sqlite3' ||
+          (this.db as any).getDialect?.().name === 'sqlite';
+
+        if (isBetterSqlite) {
+          const dbSync = this.db as BetterSQLite3Database;
+          const logTx = dbSync.transaction(() => {
+            dbSync
+              .insert(logTable)
+              .values({
+                id: v4() as UUID,
+                body: jsonString, // SQLite stores JSON as text
+                entityId: params.entityId,
+                roomId: params.roomId,
+                type: params.type,
+              })
+              .run();
           });
-        });
+          logTx();
+        } else {
+          await this.db.transaction(async (tx) => {
+            await tx.insert(logTable).values({
+              id: v4() as UUID,
+              body: sql`${jsonString}::jsonb`,
+              entityId: params.entityId,
+              roomId: params.roomId,
+              type: params.type,
+            });
+          });
+        }
       } catch (error) {
         logger.error('Failed to create log entry:', {
           error: error instanceof Error ? error.message : String(error),
@@ -2009,38 +2028,83 @@ export abstract class BaseDrizzleAdapter<
     const contentToInsert =
       typeof memory.content === 'string' ? JSON.parse(memory.content) : memory.content;
 
-    await this.db.transaction(async (tx) => {
-      await tx.insert(memoryTable).values([
-        {
-          id: memoryId,
-          type: tableName,
-          content: sql`${contentToInsert}::jsonb`,
-          metadata: sql`${memory.metadata || {}}::jsonb`,
-          entityId: memory.entityId,
-          roomId: memory.roomId,
-          worldId: memory.worldId, // Include worldId
-          agentId: this.agentId,
-          unique: memory.unique ?? isUnique,
-          createdAt: memory.createdAt,
-        },
-      ]);
+    const isBetterSqlite =
+      (this.db as any).session?.adapterName === 'better-sqlite3' ||
+      (this.db as any).getDialect?.().name === 'sqlite';
 
-      if (memory.embedding && Array.isArray(memory.embedding)) {
-        const embeddingValues: Record<string, unknown> = {
-          id: v4(),
-          memoryId: memoryId,
-          createdAt: memory.createdAt,
-        };
+    if (isBetterSqlite) {
+      const dbSync = this.db as BetterSQLite3Database;
+      const memTx = dbSync.transaction(() => {
+        dbSync
+          .insert(memoryTable)
+          .values([
+            {
+              id: memoryId,
+              type: tableName,
+              content: contentToInsert,
+              metadata: memory.metadata || {},
+              entityId: memory.entityId,
+              roomId: memory.roomId,
+              worldId: memory.worldId,
+              agentId: this.agentId,
+              unique: memory.unique ?? isUnique,
+              createdAt: memory.createdAt,
+            },
+          ])
+          .run();
 
-        const cleanVector = memory.embedding.map((n) =>
-          Number.isFinite(n) ? Number(n.toFixed(6)) : 0
-        );
+        if (memory.embedding && Array.isArray(memory.embedding)) {
+          const embeddingValues: Record<string, unknown> = {
+            id: v4(),
+            memoryId: memoryId,
+            createdAt: memory.createdAt,
+          };
 
-        embeddingValues[this.embeddingDimension] = cleanVector;
+          const cleanVector = memory.embedding.map((n) =>
+            Number.isFinite(n) ? Number(n.toFixed(6)) : 0
+          );
 
-        await tx.insert(embeddingTable).values([embeddingValues]);
-      }
-    });
+          embeddingValues[this.embeddingDimension] = cleanVector;
+
+          dbSync.insert(embeddingTable).values([embeddingValues]).run();
+        }
+      });
+      memTx();
+    } else {
+      const pgDb = this.db as NodePgDatabase;
+      await pgDb.transaction(async (tx) => {
+        await tx.insert(memoryTable).values([
+          {
+            id: memoryId,
+            type: tableName,
+            content: sql`${contentToInsert}::jsonb`,
+            metadata: sql`${memory.metadata || {}}::jsonb`,
+            entityId: memory.entityId,
+            roomId: memory.roomId,
+            worldId: memory.worldId,
+            agentId: this.agentId,
+            unique: memory.unique ?? isUnique,
+            createdAt: memory.createdAt,
+          },
+        ]);
+
+        if (memory.embedding && Array.isArray(memory.embedding)) {
+          const embeddingValues: Record<string, unknown> = {
+            id: v4(),
+            memoryId: memoryId,
+            createdAt: memory.createdAt,
+          };
+
+          const cleanVector = memory.embedding.map((n) =>
+            Number.isFinite(n) ? Number(n.toFixed(6)) : 0
+          );
+
+          embeddingValues[this.embeddingDimension] = cleanVector;
+
+          await tx.insert(embeddingTable).values([embeddingValues]);
+        }
+      });
+    }
 
     return memoryId;
   }
@@ -2060,64 +2124,135 @@ export abstract class BaseDrizzleAdapter<
           hasEmbedding: !!memory.embedding,
         });
 
-        await this.db.transaction(async (tx) => {
-          // Update memory content if provided
-          if (memory.content) {
-            const contentToUpdate =
-              typeof memory.content === 'string' ? JSON.parse(memory.content) : memory.content;
+        const isBetterSqlite =
+          (this.db as any).session?.adapterName === 'better-sqlite3' ||
+          (this.db as any).getDialect?.().name === 'sqlite';
 
-            await tx
-              .update(memoryTable)
-              .set({
-                content: sql`${contentToUpdate}::jsonb`,
-                ...(memory.metadata && { metadata: sql`${memory.metadata}::jsonb` }),
-              })
-              .where(eq(memoryTable.id, memory.id));
-          } else if (memory.metadata) {
-            // Update only metadata if content is not provided
-            await tx
-              .update(memoryTable)
-              .set({
-                metadata: sql`${memory.metadata}::jsonb`,
-              })
-              .where(eq(memoryTable.id, memory.id));
-          }
+        if (isBetterSqlite) {
+          const dbSync = this.db as BetterSQLite3Database;
+          const updateTx = dbSync.transaction(() => {
+            // Update memory content if provided
+            if (memory.content) {
+              const contentToUpdate =
+                typeof memory.content === 'string' ? JSON.parse(memory.content) : memory.content;
 
-          // Update embedding if provided
-          if (memory.embedding && Array.isArray(memory.embedding)) {
-            const cleanVector = memory.embedding.map((n) =>
-              Number.isFinite(n) ? Number(n.toFixed(6)) : 0
-            );
+              dbSync
+                .update(memoryTable)
+                .set({
+                  content: contentToUpdate,
+                  ...(memory.metadata && { metadata: memory.metadata }),
+                })
+                .where(eq(memoryTable.id, memory.id))
+                .run();
+            } else if (memory.metadata) {
+              // Update only metadata if content is not provided
+              dbSync
+                .update(memoryTable)
+                .set({
+                  metadata: memory.metadata,
+                })
+                .where(eq(memoryTable.id, memory.id))
+                .run();
+            }
 
-            // Check if embedding exists
-            const existingEmbedding = await tx
-              .select({ id: embeddingTable.id })
-              .from(embeddingTable)
-              .where(eq(embeddingTable.memoryId, memory.id))
-              .limit(1);
+            // Update embedding if provided
+            if (memory.embedding && Array.isArray(memory.embedding)) {
+              const cleanVector = memory.embedding.map((n) =>
+                Number.isFinite(n) ? Number(n.toFixed(6)) : 0
+              );
 
-            if (existingEmbedding.length > 0) {
-              // Update existing embedding
-              const updateValues: Record<string, unknown> = {};
-              updateValues[this.embeddingDimension] = cleanVector;
+              // Check if embedding exists
+              const existingEmbedding = dbSync
+                .select({ id: embeddingTable.id })
+                .from(embeddingTable)
+                .where(eq(embeddingTable.memoryId, memory.id))
+                .limit(1)
+                .all();
+
+              if (existingEmbedding.length > 0) {
+                // Update existing embedding
+                const updateValues: Record<string, unknown> = {};
+                updateValues[this.embeddingDimension] = cleanVector;
+
+                dbSync
+                  .update(embeddingTable)
+                  .set(updateValues)
+                  .where(eq(embeddingTable.memoryId, memory.id))
+                  .run();
+              } else {
+                // Create new embedding
+                const embeddingValues: Record<string, unknown> = {
+                  id: v4(),
+                  memoryId: memory.id,
+                  createdAt: Date.now(),
+                };
+                embeddingValues[this.embeddingDimension] = cleanVector;
+
+                dbSync.insert(embeddingTable).values([embeddingValues]).run();
+              }
+            }
+          });
+          updateTx();
+        } else {
+          await this.db.transaction(async (tx) => {
+            // Update memory content if provided
+            if (memory.content) {
+              const contentToUpdate =
+                typeof memory.content === 'string' ? JSON.parse(memory.content) : memory.content;
 
               await tx
-                .update(embeddingTable)
-                .set(updateValues)
-                .where(eq(embeddingTable.memoryId, memory.id));
-            } else {
-              // Create new embedding
-              const embeddingValues: Record<string, unknown> = {
-                id: v4(),
-                memoryId: memory.id,
-                createdAt: Date.now(),
-              };
-              embeddingValues[this.embeddingDimension] = cleanVector;
-
-              await tx.insert(embeddingTable).values([embeddingValues]);
+                .update(memoryTable)
+                .set({
+                  content: sql`${contentToUpdate}::jsonb`,
+                  ...(memory.metadata && { metadata: sql`${memory.metadata}::jsonb` }),
+                })
+                .where(eq(memoryTable.id, memory.id));
+            } else if (memory.metadata) {
+              // Update only metadata if content is not provided
+              await tx
+                .update(memoryTable)
+                .set({
+                  metadata: sql`${memory.metadata}::jsonb`,
+                })
+                .where(eq(memoryTable.id, memory.id));
             }
-          }
-        });
+
+            // Update embedding if provided
+            if (memory.embedding && Array.isArray(memory.embedding)) {
+              const cleanVector = memory.embedding.map((n) =>
+                Number.isFinite(n) ? Number(n.toFixed(6)) : 0
+              );
+
+              // Check if embedding exists
+              const existingEmbedding = await tx
+                .select({ id: embeddingTable.id })
+                .from(embeddingTable)
+                .where(eq(embeddingTable.memoryId, memory.id))
+                .limit(1);
+
+              if (existingEmbedding.length > 0) {
+                // Update existing embedding
+                const updateValues: Record<string, unknown> = {};
+                updateValues[this.embeddingDimension] = cleanVector;
+
+                await tx
+                  .update(embeddingTable)
+                  .set(updateValues)
+                  .where(eq(embeddingTable.memoryId, memory.id));
+              } else {
+                // Create new embedding
+                const embeddingValues: Record<string, unknown> = {
+                  id: v4(),
+                  memoryId: memory.id,
+                  createdAt: Date.now(),
+                };
+                embeddingValues[this.embeddingDimension] = cleanVector;
+
+                await tx.insert(embeddingTable).values([embeddingValues]);
+              }
+            }
+          });
+        }
 
         logger.debug('Memory updated successfully:', {
           memoryId: memory.id,
@@ -2140,16 +2275,35 @@ export abstract class BaseDrizzleAdapter<
    */
   async deleteMemory(memoryId: UUID): Promise<void> {
     return this.withDatabase(async () => {
-      await this.db.transaction(async (tx) => {
-        // See if there are any fragments that we need to delete
-        await this.deleteMemoryFragments(tx, memoryId);
+      const isBetterSqlite =
+        (this.db as any).session?.adapterName === 'better-sqlite3' ||
+        (this.db as any).getDialect?.().name === 'sqlite';
 
-        // Then delete the embedding for the main memory
-        await tx.delete(embeddingTable).where(eq(embeddingTable.memoryId, memoryId));
+      if (isBetterSqlite) {
+        const dbSync = this.db as BetterSQLite3Database;
+        const deleteTx = dbSync.transaction(() => {
+          // See if there are any fragments that we need to delete
+          this.deleteMemoryFragmentsSync(dbSync, memoryId);
 
-        // Finally delete the memory itself
-        await tx.delete(memoryTable).where(eq(memoryTable.id, memoryId));
-      });
+          // Then delete the embedding for the main memory
+          dbSync.delete(embeddingTable).where(eq(embeddingTable.memoryId, memoryId)).run();
+
+          // Finally delete the memory itself
+          dbSync.delete(memoryTable).where(eq(memoryTable.id, memoryId)).run();
+        });
+        deleteTx();
+      } else {
+        await this.db.transaction(async (tx) => {
+          // See if there are any fragments that we need to delete
+          await this.deleteMemoryFragments(tx, memoryId);
+
+          // Then delete the embedding for the main memory
+          await tx.delete(embeddingTable).where(eq(embeddingTable.memoryId, memoryId));
+
+          // Finally delete the memory itself
+          await tx.delete(memoryTable).where(eq(memoryTable.id, memoryId));
+        });
+      }
 
       logger.debug('Memory and related fragments removed successfully:', {
         memoryId,
@@ -2183,6 +2337,31 @@ export abstract class BaseDrizzleAdapter<
   }
 
   /**
+   * Synchronous version for SQLite - deletes all memory fragments
+   * @param tx The SQLite database transaction
+   * @param documentId The UUID of the document memory whose fragments should be deleted
+   * @private
+   */
+  private deleteMemoryFragmentsSync(tx: BetterSQLite3Database, documentId: UUID): void {
+    const fragmentsToDelete = this.getMemoryFragmentsSync(tx, documentId);
+
+    if (fragmentsToDelete.length > 0) {
+      const fragmentIds = fragmentsToDelete.map((f) => f.id) as UUID[];
+
+      // Delete embeddings for fragments
+      tx.delete(embeddingTable).where(inArray(embeddingTable.memoryId, fragmentIds)).run();
+
+      // Delete the fragments
+      tx.delete(memoryTable).where(inArray(memoryTable.id, fragmentIds)).run();
+
+      logger.debug('Deleted related fragments:', {
+        documentId,
+        fragmentCount: fragmentsToDelete.length,
+      });
+    }
+  }
+
+  /**
    * Retrieves all memory fragments that reference a specific document memory
    * @param tx The database transaction
    * @param documentId The UUID of the document memory whose fragments should be retrieved
@@ -2204,6 +2383,28 @@ export abstract class BaseDrizzleAdapter<
   }
 
   /**
+   * Synchronous version for SQLite - retrieves all memory fragments
+   * @param tx The SQLite database
+   * @param documentId The UUID of the document memory whose fragments should be retrieved
+   * @returns An array of memory fragments
+   * @private
+   */
+  private getMemoryFragmentsSync(tx: BetterSQLite3Database, documentId: UUID): { id: UUID }[] {
+    const fragments = tx
+      .select({ id: memoryTable.id })
+      .from(memoryTable)
+      .where(
+        and(
+          eq(memoryTable.agentId, this.agentId),
+          sql`json_extract(${memoryTable.metadata}, '$.documentId') = ${documentId}`
+        )
+      )
+      .all();
+
+    return fragments.map((f) => ({ id: f.id as UUID }));
+  }
+
+  /**
    * Asynchronously deletes all memories from the database based on the provided parameters.
    * @param {UUID} roomId - The ID of the room to delete memories from.
    * @param {string} tableName - The name of the table to delete memories from.
@@ -2211,33 +2412,69 @@ export abstract class BaseDrizzleAdapter<
    */
   async deleteAllMemories(roomId: UUID, tableName: string): Promise<void> {
     return this.withDatabase(async () => {
-      await this.db.transaction(async (tx) => {
-        // 1) fetch all memory IDs for this room + table
-        const rows = await tx
-          .select({ id: memoryTable.id })
-          .from(memoryTable)
-          .where(and(eq(memoryTable.roomId, roomId), eq(memoryTable.type, tableName)));
+      const isBetterSqlite =
+        (this.db as any).session?.adapterName === 'better-sqlite3' ||
+        (this.db as any).getDialect?.().name === 'sqlite';
 
-        const ids = rows.map((r) => r.id);
-        logger.debug('[deleteAllMemories] memory IDs to delete:', { roomId, tableName, ids });
+      if (isBetterSqlite) {
+        const dbSync = this.db as BetterSQLite3Database;
+        const deleteAllTx = dbSync.transaction(() => {
+          // 1) fetch all memory IDs for this room + table
+          const rows = dbSync
+            .select({ id: memoryTable.id })
+            .from(memoryTable)
+            .where(and(eq(memoryTable.roomId, roomId), eq(memoryTable.type, tableName)))
+            .all();
 
-        if (ids.length === 0) {
-          return;
-        }
+          const ids = rows.map((r) => r.id);
+          logger.debug('[deleteAllMemories] memory IDs to delete:', { roomId, tableName, ids });
 
-        // 2) delete any fragments for "document" memories & their embeddings
-        await Promise.all(
-          ids.map(async (memoryId) => {
-            await this.deleteMemoryFragments(tx, memoryId);
-            await tx.delete(embeddingTable).where(eq(embeddingTable.memoryId, memoryId));
-          })
-        );
+          if (ids.length === 0) {
+            return;
+          }
 
-        // 3) delete the memories themselves
-        await tx
-          .delete(memoryTable)
-          .where(and(eq(memoryTable.roomId, roomId), eq(memoryTable.type, tableName)));
-      });
+          // 2) delete any fragments for "document" memories & their embeddings
+          ids.forEach((memoryId) => {
+            this.deleteMemoryFragmentsSync(dbSync, memoryId);
+            dbSync.delete(embeddingTable).where(eq(embeddingTable.memoryId, memoryId)).run();
+          });
+
+          // 3) delete the memories themselves
+          dbSync
+            .delete(memoryTable)
+            .where(and(eq(memoryTable.roomId, roomId), eq(memoryTable.type, tableName)))
+            .run();
+        });
+        deleteAllTx();
+      } else {
+        await this.db.transaction(async (tx) => {
+          // 1) fetch all memory IDs for this room + table
+          const rows = await tx
+            .select({ id: memoryTable.id })
+            .from(memoryTable)
+            .where(and(eq(memoryTable.roomId, roomId), eq(memoryTable.type, tableName)));
+
+          const ids = rows.map((r) => r.id);
+          logger.debug('[deleteAllMemories] memory IDs to delete:', { roomId, tableName, ids });
+
+          if (ids.length === 0) {
+            return;
+          }
+
+          // 2) delete any fragments for "document" memories & their embeddings
+          await Promise.all(
+            ids.map(async (memoryId) => {
+              await this.deleteMemoryFragments(tx, memoryId);
+              await tx.delete(embeddingTable).where(eq(embeddingTable.memoryId, memoryId));
+            })
+          );
+
+          // 3) delete the memories themselves
+          await tx
+            .delete(memoryTable)
+            .where(and(eq(memoryTable.roomId, roomId), eq(memoryTable.type, tableName)));
+        });
+      }
 
       logger.debug('All memories removed successfully:', { roomId, tableName });
     });
@@ -2376,9 +2613,18 @@ export abstract class BaseDrizzleAdapter<
   async deleteRoom(roomId: UUID): Promise<void> {
     if (!roomId) throw new Error('Room ID is required');
     return this.withDatabase(async () => {
-      await this.db.transaction(async (tx) => {
-        await tx.delete(roomTable).where(eq(roomTable.id, roomId));
-      });
+      const isBetterSqlite =
+        (this.db as any).session?.adapterName === 'better-sqlite3' ||
+        (this.db as any).getDialect?.().name === 'sqlite';
+
+      if (isBetterSqlite) {
+        const dbSync = this.db as BetterSQLite3Database;
+        dbSync.delete(roomTable).where(eq(roomTable.id, roomId)).run();
+      } else {
+        await this.db.transaction(async (tx) => {
+          await tx.delete(roomTable).where(eq(roomTable.id, roomId));
+        });
+      }
     });
   }
 
@@ -2481,23 +2727,52 @@ export abstract class BaseDrizzleAdapter<
   async removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
     return this.withDatabase(async () => {
       try {
-        const result = await this.db.transaction(async (tx) => {
-          return await tx
-            .delete(participantTable)
-            .where(
-              and(eq(participantTable.entityId, entityId), eq(participantTable.roomId, roomId))
-            )
-            .returning();
-        });
+        const isBetterSqlite =
+          (this.db as any).session?.adapterName === 'better-sqlite3' ||
+          (this.db as any).getDialect?.().name === 'sqlite';
 
-        const removed = result.length > 0;
-        logger.debug(`Participant ${removed ? 'removed' : 'not found'}:`, {
-          entityId,
-          roomId,
-          removed,
-        });
+        if (isBetterSqlite) {
+          const dbSync = this.db as BetterSQLite3Database;
+          const conn = this.getSQLiteConnection();
 
-        return removed;
+          // SQLite doesn't support RETURNING, so we need to check existence first
+          const existing = conn
+            .prepare('SELECT id FROM participants WHERE entityId = ? AND roomId = ? LIMIT 1')
+            .get(entityId, roomId);
+
+          if (existing) {
+            conn
+              .prepare('DELETE FROM participants WHERE entityId = ? AND roomId = ?')
+              .run(entityId, roomId);
+          }
+
+          const removed = !!existing;
+          logger.debug(`Participant ${removed ? 'removed' : 'not found'}:`, {
+            entityId,
+            roomId,
+            removed,
+          });
+
+          return removed;
+        } else {
+          const result = await this.db.transaction(async (tx) => {
+            return await tx
+              .delete(participantTable)
+              .where(
+                and(eq(participantTable.entityId, entityId), eq(participantTable.roomId, roomId))
+              )
+              .returning();
+          });
+
+          const removed = result.length > 0;
+          logger.debug(`Participant ${removed ? 'removed' : 'not found'}:`, {
+            entityId,
+            roomId,
+            removed,
+          });
+
+          return removed;
+        }
       } catch (error) {
         logger.error('Failed to remove participant:', {
           error: error instanceof Error ? error.message : String(error),
@@ -2595,8 +2870,13 @@ export abstract class BaseDrizzleAdapter<
   ): Promise<void> {
     return this.withDatabase(async () => {
       try {
-        await this.db.transaction(async (tx) => {
-          await tx
+        const isBetterSqlite =
+          (this.db as any).session?.adapterName === 'better-sqlite3' ||
+          (this.db as any).getDialect?.().name === 'sqlite';
+
+        if (isBetterSqlite) {
+          const dbSync = this.db as BetterSQLite3Database;
+          dbSync
             .update(participantTable)
             .set({ roomState: state })
             .where(
@@ -2605,8 +2885,22 @@ export abstract class BaseDrizzleAdapter<
                 eq(participantTable.entityId, entityId),
                 eq(participantTable.agentId, this.agentId)
               )
-            );
-        });
+            )
+            .run();
+        } else {
+          await this.db.transaction(async (tx) => {
+            await tx
+              .update(participantTable)
+              .set({ roomState: state })
+              .where(
+                and(
+                  eq(participantTable.roomId, roomId),
+                  eq(participantTable.entityId, entityId),
+                  eq(participantTable.agentId, this.agentId)
+                )
+              );
+          });
+        }
       } catch (error) {
         logger.error('Failed to set participant user state:', {
           roomId,
@@ -2805,22 +3099,49 @@ export abstract class BaseDrizzleAdapter<
   async setCache<T>(key: string, value: T): Promise<boolean> {
     return this.withDatabase(async () => {
       try {
-        await this.db.transaction(async (tx) => {
-          await tx
-            .insert(cacheTable)
-            .values({
-              key: key,
-              agentId: this.agentId,
-              value: value,
-              createdAt: Date.now(),
-            })
-            .onConflictDoUpdate({
-              target: [cacheTable.key, cacheTable.agentId],
-              set: {
+        const isBetterSqlite =
+          (this.db as any).session?.adapterName === 'better-sqlite3' ||
+          (this.db as any).getDialect?.().name === 'sqlite';
+
+        if (isBetterSqlite) {
+          const dbSync = this.db as BetterSQLite3Database;
+          const cacheTx = dbSync.transaction(() => {
+            dbSync
+              .insert(cacheTable)
+              .values({
+                key: key,
+                agentId: this.agentId,
                 value: value,
-              },
-            });
-        });
+                createdAt: Date.now(),
+              })
+              .onConflictDoUpdate({
+                target: [cacheTable.key, cacheTable.agentId],
+                set: {
+                  value: value,
+                },
+              })
+              .run();
+          });
+          cacheTx();
+        } else {
+          const pgDb = this.db as NodePgDatabase;
+          await pgDb.transaction(async (tx) => {
+            await tx
+              .insert(cacheTable)
+              .values({
+                key: key,
+                agentId: this.agentId,
+                value: value,
+                createdAt: Date.now(),
+              })
+              .onConflictDoUpdate({
+                target: [cacheTable.key, cacheTable.agentId],
+                set: {
+                  value: value,
+                },
+              });
+          });
+        }
         return true;
       } catch (error) {
         logger.error('Error setting cache', {
@@ -2841,11 +3162,27 @@ export abstract class BaseDrizzleAdapter<
   async deleteCache(key: string): Promise<boolean> {
     return this.withDatabase(async () => {
       try {
-        await this.db.transaction(async (tx) => {
-          await tx
-            .delete(cacheTable)
-            .where(and(eq(cacheTable.agentId, this.agentId), eq(cacheTable.key, key)));
-        });
+        const isBetterSqlite =
+          (this.db as any).session?.adapterName === 'better-sqlite3' ||
+          (this.db as any).getDialect?.().name === 'sqlite';
+
+        if (isBetterSqlite) {
+          const dbSync = this.db as BetterSQLite3Database;
+          const delCacheTx = dbSync.transaction(() => {
+            dbSync
+              .delete(cacheTable)
+              .where(and(eq(cacheTable.agentId, this.agentId), eq(cacheTable.key, key)))
+              .run();
+          });
+          delCacheTx();
+        } else {
+          const pgDb = this.db as NodePgDatabase;
+          await pgDb.transaction(async (tx) => {
+            await tx
+              .delete(cacheTable)
+              .where(and(eq(cacheTable.agentId, this.agentId), eq(cacheTable.key, key)));
+          });
+        }
         return true;
       } catch (error) {
         logger.error('Error deleting cache', {
@@ -3349,17 +3686,44 @@ export abstract class BaseDrizzleAdapter<
         updatedAt: now,
       };
 
-      await this.db.transaction(async (tx) => {
-        await tx.insert(channelTable).values(channelToInsert);
+      const isBetterSqlite =
+        (this.db as any).session?.adapterName === 'better-sqlite3' ||
+        (this.db as any).getDialect?.().name === 'sqlite';
 
-        if (participantIds && participantIds.length > 0) {
-          const participantValues = participantIds.map((userId) => ({
-            channelId: newId,
-            userId: userId,
-          }));
-          await tx.insert(channelParticipantsTable).values(participantValues).onConflictDoNothing();
-        }
-      });
+      if (isBetterSqlite) {
+        const dbSync = this.db as BetterSQLite3Database;
+        const channelTx = dbSync.transaction(() => {
+          dbSync.insert(channelTable).values(channelToInsert).run();
+
+          if (participantIds && participantIds.length > 0) {
+            const participantValues = participantIds.map((userId) => ({
+              channelId: newId,
+              userId: userId,
+            }));
+            dbSync
+              .insert(channelParticipantsTable)
+              .values(participantValues)
+              .onConflictDoNothing()
+              .run();
+          }
+        });
+        channelTx();
+      } else {
+        await this.db.transaction(async (tx) => {
+          await tx.insert(channelTable).values(channelToInsert);
+
+          if (participantIds && participantIds.length > 0) {
+            const participantValues = participantIds.map((userId) => ({
+              channelId: newId,
+              userId: userId,
+            }));
+            await tx
+              .insert(channelParticipantsTable)
+              .values(participantValues)
+              .onConflictDoNothing();
+          }
+        });
+      }
 
       return channelToInsert;
     });
