@@ -1,31 +1,56 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:base"],
-  "baseBranches": ["v2-develop", "develop", "main"],
+  "extends": [
+    "config:base"
+  ],
+  "baseBranches": [
+    "develop",
+    "main"
+  ],
   "packageRules": [
     {
       "groupName": "Discord.js ecosystem",
-      "matchPackagePatterns": ["^@discordjs/", "^discord.js"]
+      "matchPackagePatterns": [
+        "^@discordjs/",
+        "^discord.js"
+      ]
     },
     {
       "groupName": "TypeScript and related",
-      "matchPackagePatterns": ["^@typescript-eslint/", "^typescript$", "^ts-", "^tslib$"]
+      "matchPackagePatterns": [
+        "^@typescript-eslint/",
+        "^typescript$",
+        "^ts-",
+        "^tslib$"
+      ]
     },
     {
       "groupName": "Rollup and plugins",
-      "matchPackagePatterns": ["^@rollup/", "^rollup"]
+      "matchPackagePatterns": [
+        "^@rollup/",
+        "^rollup"
+      ]
     },
     {
       "groupName": "ESLint and formatting",
-      "matchPackagePatterns": ["^eslint", "^prettier"]
+      "matchPackagePatterns": [
+        "^eslint",
+        "^prettier"
+      ]
     },
     {
       "groupName": "SQLite related",
-      "matchPackagePatterns": ["sqlite", "^@types/better-sqlite3", "^@types/sql.js"]
+      "matchPackagePatterns": [
+        "sqlite",
+        "^@types/better-sqlite3",
+        "^@types/sql.js"
+      ]
     }
   ],
   "timezone": "UTC",
-  "schedule": ["every weekend"],
+  "schedule": [
+    "every weekend"
+  ],
   "prHourlyLimit": 2,
   "prConcurrentLimit": 10,
   "rangeStrategy": "pin",
