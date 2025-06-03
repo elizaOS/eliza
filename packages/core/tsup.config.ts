@@ -1,7 +1,20 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: ['src/index.ts', 'src/specs/v1/index.ts', 'src/specs/v2/index.ts'],
+  entry: [
+    'src/index.ts',
+    'src/specs/v1/index.ts',
+    'src/specs/v1/state.ts',
+    'src/specs/v1/actionExample.ts',
+    'src/specs/v1/templates.ts',
+    'src/specs/v1/uuid.ts',
+    'src/specs/v1/provider.ts',
+    'src/specs/v1/messages.ts',
+    'src/specs/v1/posts.ts',
+    'src/specs/v1/runtime.ts',
+    'src/specs/v1/types.ts',
+    'src/specs/v2/index.ts',
+  ],
   outDir: 'dist',
   clean: true,
   format: ['esm'],
