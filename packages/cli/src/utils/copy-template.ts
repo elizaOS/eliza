@@ -168,7 +168,13 @@ export async function copyTemplate(
  * Replace hardcoded "plugin-starter" strings in TypeScript files with the actual plugin name
  */
 async function replacePluginNameInFiles(targetDir: string, pluginName: string): Promise<void> {
-  const filesToProcess = ['src/index.ts', '__tests__/plugin.test.ts', 'e2e/starter-plugin.test.ts'];
+  const filesToProcess = [
+    'src/index.ts',
+    '__tests__/plugin.test.ts',
+    'e2e/starter-plugin.test.ts',
+    'README.md',
+    // Note: package.json excluded to maintain npm package structure
+  ];
 
   for (const filePath of filesToProcess) {
     const fullPath = path.join(targetDir, filePath);
