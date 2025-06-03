@@ -4,11 +4,10 @@
     "build": {
       "dependsOn": ["^build"],
       "env": ["LOG_LEVEL"],
-      "outputs": ["dist/**"],
-      "cache": false
+      "outputs": ["dist/**"]
     },
     "lint": {
-      "cache": false
+      "outputs": [".eslintcache"]
     },
     "format": {
       "outputs": []
@@ -29,14 +28,16 @@
     },
     "test": {
       "dependsOn": ["@elizaos/core#build"],
-      "persistent": true,
-      "cache": false
+      "outputs": ["coverage/**"],
+      "inputs": ["src/**/*.ts", "src/**/*.js", "__tests__/**/*", "*.test.*"]
     },
     "migrate": {
-      "dependsOn": ["@elizaos/core#build"]
+      "dependsOn": ["@elizaos/core#build"],
+      "cache": false
     },
     "migrate:generate": {
-      "dependsOn": ["@elizaos/core#build"]
+      "dependsOn": ["@elizaos/core#build"],
+      "cache": false
     },
     "clean": {
       "cache": false

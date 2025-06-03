@@ -1,0 +1,69 @@
+---
+slug: macos-dev-setup-guide
+title: 'Easy macOS Development Setup for ElizaOS'
+authors: [team]
+tags: [macos, setup, development, elizaos, guide, cli]
+image: /img/dev-setup.jpg # Placeholder: Please replace with an appropriate image
+---
+
+# Easy macOS Development Setup for ElizaOS
+
+## Get Your Mac Ready for ElizaOS in One Step!
+
+Setting up a development environment can sometimes be tricky, especially if you're new to the tools. This guide provides a streamlined way to configure your macOS machine for ElizaOS development using a single command.
+
+Our setup script automates the installation of essential tools:
+
+- **Homebrew**: The missing package manager for macOS.
+- **Node.js (Version 23)**: The JavaScript runtime environment needed for ElizaOS.
+- **Bun**: A fast JavaScript all-in-one toolkit used by ElizaOS.
+
+## The Magic Command
+
+Open your macOS Terminal (you can find it in `/Applications/Utilities/Terminal.app`) and paste the following command, then press Enter:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/elizaos/eliza/main/packages/docs/scripts/setup-macos.sh | bash
+```
+
+## What Happens Next?
+
+The script will:
+
+1.  **Check your system**: It first ensures you're running on macOS.
+2.  **Install Homebrew**: If you don't have Homebrew, it will install it. Homebrew is used to install other development tools.
+3.  **Install Node.js v23**: It installs Node.js version 23, which is required for ElizaOS.
+4.  **Install Bun**: It installs Bun, our preferred JavaScript toolkit.
+5.  **Configure your PATH**: It automatically updates your shell profile (`.zprofile`, `.bash_profile`, or `.profile`) so that your system can find the installed tools.
+6.  **Show a summary**: Once finished, the script will display a summary of what was installed and their versions.
+
+You'll see messages in your terminal indicating the progress of each step.
+
+## After Running the Script
+
+Once the script completes, it will advise you to either:
+
+- **Restart your terminal**: Close your current terminal window and open a new one.
+- **Source your shell profile**: Run a command like `source ~/.zprofile` (the exact file will be mentioned by the script, e.g., `~/.bash_profile` or `~/.profile` depending on your shell).
+
+This step is crucial for the changes to take effect, allowing you to use commands like `node`, `npm`, and `bun` directly.
+
+## Verify Your Setup
+
+The script itself provides a verification summary at the end. You can also manually check the versions of the installed tools by opening a **new** terminal window (or after sourcing your profile) and running:
+
+```bash
+node --version
+npm --version
+bun --version
+```
+
+You should see Node.js v23.x.x, a version of npm (which comes with Node.js), and the latest version of Bun.
+
+## Troubleshooting
+
+- **Command not found (e.g., `node: command not found`)**: This usually means you haven't restarted your terminal or sourced your shell profile correctly after the script ran. Try that first. Ensure you are in a new terminal session.
+- **Homebrew issues**: If there are issues related to Homebrew, the script will output error messages. You might need to check Homebrew's documentation or logs.
+- **Script errors**: If the script itself fails, carefully read the error messages. They often provide clues about what went wrong.
+
+You're now all set up to start developing with ElizaOS on your Mac! Happy coding!
