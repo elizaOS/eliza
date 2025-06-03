@@ -7,9 +7,42 @@ const REGISTRY_ORG = 'elizaos-plugins';
 const REGISTRY_REPO = 'registry';
 const REGISTRY_URL = `https://raw.githubusercontent.com/${REGISTRY_ORG}/${REGISTRY_REPO}/refs/heads/main/generated-registry.json`;
 
+interface GitVersionInfo {
+  version: string | null;
+  branch: string | null;
+}
+
+interface PluginGitInfo {
+  repo: string;
+  v0: GitVersionInfo;
+  v1: GitVersionInfo;
+}
+
+interface PluginNpmInfo {
+  repo: string;
+  v0: string | null;
+  v1: string | null;
+}
+
+interface PluginSupport {
+  v0: boolean;
+  v1: boolean;
+}
+
+interface PluginInfo {
+  git: PluginGitInfo;
+  npm: PluginNpmInfo;
+  supports: PluginSupport;
+}
+
+interface RegistryResponse {
+  lastUpdatedAt: string;
+  registry: Record<string, PluginInfo>;
+}
+
 /**
  * Function to fetch plugins data from the registry API and merge with agent plugins.
- * @returns {Object} A promise representing the result of the fetch request
+ * @returns {UseQueryResult<PluginEntry[]>} Query result containing array of plugin entries
  */
 export function usePlugins() {
   return useQuery({
@@ -23,12 +56,19 @@ export function usePlugins() {
         ]);
 
         // Process registry data
-        const registryData = await registryResponse.json();
+        const registryData: RegistryResponse = await registryResponse.json();
 
         // Extract plugin names from registry that support v1 and are plugins
         const registryPlugins = Object.entries(registryData.registry || {})
           .filter(
-            ([name, data]: [string, any]) => name.includes('plugin') && data.supports?.v1 === true
+            ([name, data]: [string, PluginInfo]) => {
+              // Check if it's a plugin and has v1 support
+              const isPlugin = name.includes('plugin');
+              const hasV1Support = data.supports.v1 === true;
+              const hasV1Version = data.npm.v1 !== null || (data.git.v1.version !== null && data.git.v1.branch !== null);
+
+              return isPlugin && hasV1Support && hasV1Version;
+            }
           )
           .map(([name]) => name)
           .sort();
@@ -43,6 +83,7 @@ export function usePlugins() {
             );
             if (activeAgent && activeAgent.id) {
               const agentDetailResponse = await apiClient.getAgent(activeAgent.id);
+
               if (agentDetailResponse.data?.plugins) {
                 agentPlugins = agentDetailResponse.data.plugins;
               }
@@ -52,39 +93,22 @@ export function usePlugins() {
           clientLogger.warn('Could not fetch agent plugins:', agentError);
         }
 
-        // Merge registry plugins with agent plugins, removing duplicates
+        // Merge registry plugins with agent plugins and remove duplicates
         const allPlugins = [...new Set([...registryPlugins, ...agentPlugins])];
-
         return allPlugins.sort();
       } catch (error) {
         clientLogger.error('Failed to fetch from registry, falling back to basic list:', error);
 
-        // Temporarily return hardcoded plugins as an array
+        // Return fallback plugins with basic info
         return [
-          '@elizaos/core',
           '@elizaos/plugin-bootstrap',
           '@elizaos/plugin-evm',
-          '@elizaos/plugin-solana',
-          '@elizaos/plugin-tee',
-          '@elizaos/plugin-twitter',
-          '@elizaos/plugin-openai',
-          '@elizaos/plugin-telegram',
-          '@elizaos/cli',
           '@elizaos/plugin-discord',
           '@elizaos/plugin-elevenlabs',
           '@elizaos/plugin-anthropic',
-          '@elizaos/plugin-local-ai',
-          '@elizaos/plugin-sql',
           '@elizaos/plugin-browser',
-          '@elizaos/plugin-video-understanding',
-          '@elizaos/plugin-pdf',
-          '@elizaos/plugin-storage-s3',
           '@elizaos/plugin-farcaster',
-          '@elizaos/plugin-groq',
-          '@elizaos/plugin-redpill',
-          '@elizaos/plugin-ollama',
-          '@elizaos/plugin-venice',
-          '@fleek-platform/eliza-plugin-mcp',
+          '@elizaos/plugin-groq'
         ]
           .filter((name) => name.includes('plugin'))
           .sort();
