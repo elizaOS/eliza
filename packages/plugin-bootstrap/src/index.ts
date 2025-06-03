@@ -24,7 +24,7 @@ import {
   type Plugin,
   PluginEvents,
   postCreationTemplate,
-  Room,
+  type Room,
   shouldRespondTemplate,
   truncateToCompleteSentence,
   type UUID,
@@ -1008,80 +1008,7 @@ const handleServerSync = async ({
 }: WorldPayload) => {
   logger.debug(`[Bootstrap] Handling server sync event for server: ${world.name}`);
   try {
-    // Create/ensure the world exists for this server
-    await runtime.ensureWorldExists({
-      id: world.id,
-      name: world.name,
-      agentId: runtime.agentId,
-      serverId: world.serverId,
-      metadata: {
-        ...world.metadata,
-      },
-    });
-
-    // First sync all rooms/channels
-    if (rooms && rooms.length > 0) {
-      for (const room of rooms) {
-        await runtime.ensureRoomExists({
-          id: room.id,
-          name: room.name,
-          source: source,
-          type: room.type,
-          channelId: room.channelId,
-          serverId: world.serverId,
-          worldId: world.id,
-        });
-      }
-    }
-
-    // Then sync all users
-    if (entities && entities.length > 0) {
-      // Process entities in batches to avoid overwhelming the system
-      const batchSize = 50;
-      for (let i = 0; i < entities.length; i += batchSize) {
-        const entityBatch = entities.slice(i, i + batchSize);
-
-        // check if user is in any of these rooms in rooms
-        const firstRoomUserIsIn = rooms.length > 0 ? rooms[0] : null;
-
-        if (!firstRoomUserIsIn) {
-          logger.warn(`[Bootstrap] No rooms found for syncing users`);
-          continue;
-        }
-
-        // Process each user in the batch
-        await Promise.all(
-          entityBatch.map(async (entity: Entity) => {
-            try {
-              if (!entity?.id) {
-                logger.warn(`[Bootstrap] No entity ID found for syncing users`);
-                return;
-              }
-
-              await runtime.ensureConnection({
-                entityId: entity.id,
-                roomId: firstRoomUserIsIn.id,
-                userName: entity.metadata?.[source].username,
-                name: entity.metadata?.[source].name,
-                source: source,
-                channelId: firstRoomUserIsIn.channelId,
-                serverId: world.serverId,
-                type: firstRoomUserIsIn.type,
-                worldId: world.id,
-              });
-            } catch (err) {
-              logger.warn(`[Bootstrap] Failed to sync user ${entity.metadata?.username}: ${err}`);
-            }
-          })
-        );
-
-        // Add a small delay between batches if not the last batch
-        if (i + batchSize < entities.length) {
-          await new Promise((resolve) => setTimeout(resolve, 500));
-        }
-      }
-    }
-
+    await runtime.ensureConnections(entities, rooms, source, world)
     logger.debug(`Successfully synced standardized world structure for ${world.name}`);
     onComplete?.();
   } catch (error) {
