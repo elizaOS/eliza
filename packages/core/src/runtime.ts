@@ -1075,7 +1075,7 @@ export class AgentRuntime implements IAgentRuntime {
       await this.createRooms(roomObjsToCreate);
     }
 
-    // add parps (ensureParticipantInRoom)
+    // add participants (ensureParticipantInRoom)
     if (firstRoom) {
       // if we're only adding to one room, then we just need
 
