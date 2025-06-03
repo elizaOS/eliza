@@ -431,12 +431,12 @@ export function AppSidebar({ refreshHomePage, isMobile = false }: AppSidebarProp
               <CreateButton onCreateGroupChannel={handleCreateGroupChannel} />
             </div>
           */}
-          <GroupChannelListSection
+          {/* <GroupChannelListSection
             servers={servers}
             isLoadingServers={isLoadingServers}
             className="mt-2"
             onManageServers={() => { }} // Server management hidden
-          />
+          /> */}
         </SidebarContent>
 
         {/* ---------- footer ---------- */}

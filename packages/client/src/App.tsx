@@ -119,6 +119,7 @@ function AppContent() {
           </div>
           <Routes>
             <Route path="/" element={<Home key={homeKey} />} />
+            <Route path="chat/:agentId/:channelId" element={<Chat />} />
             <Route path="chat/:agentId" element={<Chat />} />
             <Route path="group/new" element={<CreateGroupPage />} />
             <Route path="agents/new" element={<AgentCreatorRoute />} />

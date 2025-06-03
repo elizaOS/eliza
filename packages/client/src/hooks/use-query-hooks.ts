@@ -1175,10 +1175,7 @@ export function useDeleteChannel() {
 
   return useMutation<void, Error, { channelId: UUID; serverId: UUID }>({
     mutationFn: async ({ channelId }) => {
-      // TODO: Implement delete channel API endpoint
-      // await apiClient.deleteChannel(channelId);
-      // For now, just simulate the deletion
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await apiClient.deleteChannel(channelId);
     },
     onSuccess: (_data, variables) => {
       toast({

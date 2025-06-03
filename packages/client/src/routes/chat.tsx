@@ -15,21 +15,18 @@ import type { AgentWithStatus } from '../types';
  * Renders the chat panel for a specific agent, and conditionally shows a sidebar with agent details based on user interaction. If no agent ID is present in the URL, displays a "No data." message.
  */
 export default function AgentRoute() {
-  const { agentId } = useParams<{ agentId: UUID }>();
+  // useParams will include agentId and optionally channelId for /chat/:agentId/:channelId routes
+  const { agentId, channelId } = useParams<{ agentId: UUID; channelId?: UUID }>();
 
   useEffect(() => {
-    clientLogger.info('[AgentRoute] Component mounted/updated', { agentId });
+    clientLogger.info('[AgentRoute] Component mounted/updated', { agentId, channelId });
     return () => {
-      clientLogger.info('[AgentRoute] Component unmounted', { agentId });
+      clientLogger.info('[AgentRoute] Component unmounted', { agentId, channelId });
     };
-  }, [agentId]);
+  }, [agentId, channelId]);
 
   const { data: agentDataResponse, isLoading: isLoadingAgent } = useAgent(agentId);
   const { startAgent, isAgentStarting } = useAgentManagement();
-
-  clientLogger.debug('[AgentRoute] Current agentId from useParams:', agentId);
-  clientLogger.debug('[AgentRoute] isLoadingAgent:', isLoadingAgent);
-  clientLogger.debug('[AgentRoute] agentDataResponse:', agentDataResponse);
 
   const agentFromHook: Agent | undefined = agentDataResponse?.data
     ? ({
@@ -66,8 +63,6 @@ export default function AgentRoute() {
           : Date.now(),
     } as Agent)
     : undefined;
-
-  clientLogger.debug('[AgentRoute] Constructed agentFromHook:', agentFromHook);
 
   if (!agentId) return <div className="p-4">Agent ID not provided.</div>;
   if (isLoadingAgent || !agentFromHook)
@@ -108,8 +103,15 @@ export default function AgentRoute() {
 
   clientLogger.info('[AgentRoute] Agent is active, rendering chat for DM', {
     agentName: agentFromHook?.name,
+    dmChannelIdFromRoute: channelId,
   });
-  // AgentRoute no longer needs to manage its own ResizablePanelGroup for the chat and sidebar
-  // chat will handle its own layout including the sidebar.
-  return <ChatComponent key={agentId} chatType="DM" contextId={agentId} />;
+
+  return (
+    <ChatComponent
+      key={`${agentId}-${channelId || 'no-dm-channel'}`}
+      chatType="DM"
+      contextId={agentId}
+      initialDmChannelId={channelId}
+    />
+  );
 }

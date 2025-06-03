@@ -408,6 +408,23 @@ export const apiClient = {
     });
   },
 
+  deleteChannel: async (channelId: UUID): Promise<void> => {
+    await fetcher({
+      url: `/messages/central-channels/${channelId}`,
+      method: 'DELETE',
+    });
+  },
+
+  updateChannel: async (
+    channelId: UUID,
+    updates: { name?: string; participantCentralUserIds?: UUID[]; metadata?: any }
+  ): Promise<{ success: boolean; data: MessageChannel }> =>
+    fetcher({
+      url: `/messages/central-channels/${channelId}`,
+      method: 'PATCH',
+      body: updates,
+    }),
+
   createCentralGroupChannel: (payload: {
     /* ... */
   }): Promise<{ success: boolean; data: MessageChannel }> =>
