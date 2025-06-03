@@ -2942,6 +2942,7 @@ export abstract class BaseDrizzleAdapter<
    */
   async createChannel(
     data: {
+      id?: UUID; // Allow passing a specific ID
       messageServerId: UUID;
       name: string;
       type: string;
@@ -2964,7 +2965,7 @@ export abstract class BaseDrizzleAdapter<
     updatedAt: Date;
   }> {
     return this.withDatabase(async () => {
-      const newId = v4() as UUID;
+      const newId = data.id || (v4() as UUID);
       const now = new Date();
       const channelToInsert = {
         id: newId,

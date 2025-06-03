@@ -736,7 +736,7 @@ export class AgentServer {
   }
 
   async createChannel(
-    data: Omit<MessageChannel, 'id' | 'createdAt' | 'updatedAt'>,
+    data: Omit<MessageChannel, 'id' | 'createdAt' | 'updatedAt'> & { id?: UUID },
     participantIds?: UUID[]
   ): Promise<MessageChannel> {
     return (this.database as any).createChannel(data, participantIds);

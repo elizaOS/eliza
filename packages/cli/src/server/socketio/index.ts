@@ -174,6 +174,7 @@ export class SocketIORouter {
         // Auto-create the channel if it doesn't exist
         try {
           const channelData = {
+            id: channelId as UUID, // Use the specific channel ID from the client
             messageServerId: serverId as UUID,
             name: `Chat ${channelId.substring(0, 8)}`, // Default name
             type: ChannelType.GROUP, // Default to GROUP type
