@@ -199,6 +199,7 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
         // Auto-create the channel if it doesn't exist
         try {
           const channelData = {
+            id: channelIdParam as UUID, // Use the specific channel ID from the URL
             messageServerId: server_id as UUID,
             name: `Chat ${channelIdParam.substring(0, 8)}`, // Default name
             type: ChannelType.GROUP, // Default to GROUP type
