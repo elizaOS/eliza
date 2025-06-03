@@ -1,33 +1,17 @@
-# Eliza 🤖
+# Eliza
 
-<div align="center">
-  <img src="./docs/static/img/eliza_banner.jpg" alt="Eliza Banner" width="100%" />
-</div>
-
-<div align="center">
-
-📑 [Technical Report](https://arxiv.org/pdf/2501.06781) | 📖 [Documentation](https://elizaos.github.io/eliza/) | 🎯 [Examples](https://github.com/thejoven/awesome-eliza)
-
-</div>
-
-## 🌍 README Translations
-
-[中文说明](packages/docs/i18n/readme/README_CN.md) | [日本語の説明](packages/docs/i18n/readme/README_JA.md) | [한국어 설명](packages/docs/i18n/readme/README_KOR.md) | [Persian](packages/docs/i18n/readme/README_FA.md) | [Français](packages/docs/i18n/readme/README_FR.md) | [Português](packages/docs/i18n/readme/README_PTBR.md) | [Türkçe](packages/docs/i18n/readme/README_TR.md) | [Русский](packages/docs/i18n/readme/README_RU.md) | [Español](packages/docs/i18n/readme/README_ES.md) | [Italiano](packages/docs/i18n/readme/README_IT.md) | [ไทย](packages/docs/i18n/readme/README_TH.md) | [Deutsch](packages/docs/i18n/readme/README_DE.md) | [Tiếng Việt](packages/docs/i18n/readme/README_VI.md) | [עִברִית](packages/docs/i18n/readme/README_HE.md) | [Tagalog](packages/docs/i18n/readme/README_TG.md) | [Polski](packages/docs/i18n/readme/README_PL.md) | [Arabic](packages/docs/i18n/readme/README_AR.md) | [Hungarian](packages/docs/i18n/readme/README_HU.md) | [Srpski](packages/docs/i18n/readme/README_RS.md) | [Română](packages/docs/i18n/readme/README_RO.md) | [Nederlands](packages/docs/i18n/readme/README_NL.md) | [Ελληνικά](packages/docs/i18n/readme/README_GR.md)
-
-## 🚩 Overview
-
-<div align="center">
-  <img src="./docs/static/img/eliza_diagram.jpg" alt="Eliza Diagram" width="100%" />
-</div>
+A framework for multi-agent development and deployment
 
 ## ✨ Features
 
-- 🛠️ Full-featured Discord, X (Twitter) and Telegram connectors
+- 🛠️ Full-featured Discord, X (Twitter) and Telegram connectors (and many more!)
 - 🔗 Support for every model (Llama, Grok, OpenAI, Anthropic, Gemini, etc.)
-- 👥 Multi-agent and room support
-- 📚 Easily ingest and interact with your documents
-- 💾 Retrievable memory and document store
-- 🚀 Highly extensible - create your own actions and clients
+- 🎨 Modern and professional UI with a redesigned dashboard for managing agents and groups.
+- 💬 Robust real-time communication with enhanced channel and message handling.
+- 👥 Multi-agent and group support with intuitive management.
+- 📚 Easily ingest and interact with your documents.
+- 💾 Retrievable memory and document store.
+- 🚀 Highly extensible - create your own actions and clients.
 - 📦 Just works!
 
 ## Video Tutorials
@@ -46,8 +30,7 @@
 
 ### Prerequisites
 
-- [Python 2.7+](https://www.python.org/downloads/)
-- [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
+- [Node.js](https://nodejs.org/) (v18 or higher recommended)
 - [bun](https://bun.sh/docs/installation)
 
 > **Note for Windows Users:** [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual) is required.
@@ -117,12 +100,15 @@ bun start # npm will work too
 
 ### Interact via Browser
 
-Once the agent is running, you can visit http://localhost:3000 to interact with your agent through a web interface. The interface provides:
+Once Eliza is running, access the modern web interface at http://localhost:3000. It has been professionally redesigned and features:
 
-- Real-time chat with your agent
-- Character configuration options
-- Plugin management
-- Memory and conversation history
+- A welcoming dashboard with a gradient hero section and clear calls-to-action for creating agents and groups.
+- Visually enhanced cards for managing agents and groups, including status indicators and member counts.
+- Real-time chat capabilities with your agents.
+- Character configuration options.
+- Plugin management.
+- Comprehensive memory and conversation history.
+- Responsive design for an optimal experience on various screen sizes.
 
 ### OpenTelemetry Instrumentation (Optional)
 
@@ -201,6 +187,55 @@ To run the pre-commit hook manually:
 bun run pre-commit
 ```
 
+## 📂 Repository Structure
+
+Eliza is organized as a monorepo using Bun, Lerna, and Turbo for efficient package management and build orchestration. Here's a detailed overview of the project structure:
+
+-   **`/` (Root)**:
+    -   `.github/`: GitHub Actions workflows for CI/CD pipelines and issue templates
+    -   `.husky/`: Git hooks configuration, including pre-commit formatting
+    -   `.devcontainer/`: Development container configurations for consistent environments
+    -   `packages/`: Core packages and modules (detailed below)
+    -   `scripts/`: Build, development, and utility scripts
+    -   `data/`: Application and user data storage
+    -   `AGENTS.md`: Comprehensive agent documentation and specifications
+    -   `CHANGELOG.md`: Detailed version history and changes
+    -   `Dockerfile`, `docker-compose.yaml`: Container configurations for deployment
+    -   `lerna.json`, `package.json`, `turbo.json`: Monorepo configuration and workspace definitions
+
+-   **`/packages/`**: Core components of the Eliza framework:
+    -   `core/`: The foundational package (@elizaos/core) implementing:
+        - OpenTelemetry instrumentation for tracing and monitoring
+        - LangChain integration for AI model interactions
+        - PDF processing capabilities
+        - Logging and error handling infrastructure
+    -   `app/`: Tauri-based cross-platform application (@elizaos/app)
+        - React-based UI implementation
+        - Tauri plugins for system integration
+        - Desktop and mobile builds support
+    -   `autodoc/`: Documentation automation tool (@elizaos/autodoc)
+        - LangChain-powered documentation generation
+        - TypeScript parsing and analysis
+        - GitHub integration via Octokit
+    -   `cli/`: Command-line interface for Eliza management
+    -   `client/`: Client libraries for web interfaces
+    -   `create-eliza/`: Project scaffolding tool
+    -   `docs/`: Official documentation source files
+    -   `plugin-bootstrap/`: Core agent initialization (@elizaos/plugin-bootstrap)
+        - Provides fundamental agent actions (reply, follow/unfollow, mute/unmute)
+        - Implements core evaluators and providers
+        - Handles message processing and world events
+    -   `plugin-sql/`: Database integration (@elizaos/plugin-sql)
+        - PostgreSQL integration with PGLite support
+        - Drizzle ORM for type-safe queries
+        - Migration management tools
+        - Integration testing support
+    -   `plugin-starter/`: Template for creating new plugins
+    -   `project-starter/`, `project-tee-starter/`: Project templates
+
+This architecture enables modular development, clear separation of concerns, and scalable feature implementation across the Eliza ecosystem.
+
+
 ## Tauri Application CI/CD and Signing
 
 The Eliza application, built with Tauri and located in `packages/app`, is configured for cross-platform continuous integration and deployment. This setup automates the building and releasing of the application for various operating systems.
@@ -218,7 +253,7 @@ Two main GitHub Actions workflows handle the CI/CD process for the Tauri applica
 
 - **`tauri-ci.yml`**:
 
-  - Triggered on pushes to `main`, `develop`, and `v2-develop` branches.
+  - Triggered on pushes to `main` and `develop` branches.
   - Performs debug builds of the desktop application (Linux, macOS, Windows) to ensure code integrity and catch build issues early.
 
 - **`tauri-release.yml`**:

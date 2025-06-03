@@ -205,6 +205,12 @@ export class PostgresConnectionManager implements IDatabaseClientManager<PgPool>
         migrationsSchema: 'public',
       });
     } catch (error) {
+      if (error instanceof Error && error.message.includes('already exists')) {
+        logger.info(
+          'Database migrations already applied - if you need to upgrade, you will need to manually migrate or reset your database'
+        );
+        return;
+      }
       logger.error('Failed to run database migrations (pg):', error);
     }
   }

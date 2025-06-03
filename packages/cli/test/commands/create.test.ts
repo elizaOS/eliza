@@ -378,6 +378,48 @@ describe('create command', () => {
       expect(mockPromptAndStorePostgresUrl).toHaveBeenCalled();
       expect(mockSetupPgLite).not.toHaveBeenCalled();
     });
+
+    it('should setup pglite database when selected via prompts', async () => {
+      mockPrompts.mockReset();
+      mockPrompts
+        .mockResolvedValueOnce({ nameResponse: 'myproject' }) // For name
+        .mockResolvedValueOnce({ database: 'pglite' }) // For database
+        .mockResolvedValueOnce({ aiModel: 'local' }); // For AI model
+      const actionFn = getActionFn();
+
+      await actionFn(undefined, { dir: '.', yes: false, type: 'project' });
+
+      expect(mockPrompts).toHaveBeenCalledTimes(3);
+      expect(mockSetupPgLite).toHaveBeenCalled();
+      expect(mockPromptAndStorePostgresUrl).not.toHaveBeenCalled();
+    });
+
+    it('should create project with proper database configuration options', async () => {
+      const actionFn = getActionFn();
+
+      mockPrompts
+        .mockResolvedValueOnce({ nameResponse: 'dbproject' })
+        .mockResolvedValueOnce({ database: 'pglite' })
+        .mockResolvedValueOnce({ aiModel: 'local' });
+
+      await actionFn(undefined, { dir: '.', yes: false, type: 'project' });
+
+      // Verify database prompt has proper choices
+      const databasePromptCall = mockPrompts.mock.calls.find((call) => call[0].name === 'database');
+      expect(databasePromptCall).toBeDefined();
+      expect(databasePromptCall![0].choices).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            title: expect.stringContaining('Pglite'),
+            value: 'pglite',
+          }),
+          expect.objectContaining({
+            title: expect.stringContaining('PostgreSQL'),
+            value: 'postgres',
+          }),
+        ])
+      );
+    });
   });
 
   describe('plugin creation', () => {
@@ -555,9 +597,8 @@ describe('create command', () => {
       const customDirRelative = 'test/resources/output';
       const customDirAbsolute = resolvePath(tempDir, customDirRelative);
       await mkdir(customDirAbsolute, { recursive: true });
-      const expectedFinalProjectPath = resolvePath(customDirAbsolute, projectName);
 
-      mockPrompts.mockResolvedValue({ database: 'pglite' });
+      mockPrompts.mockResolvedValue({ database: 'pglite', aiModel: 'local' });
 
       // SUT currently has a bug: it prematurely checks/errors on a non-target path.
       // This test will reflect that current failure mode.

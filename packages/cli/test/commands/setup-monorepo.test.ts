@@ -44,7 +44,7 @@ describe('setup-monorepo command', () => {
     it('should have correct name and description', () => {
       expect(setupMonorepo.name()).toBe('setup-monorepo');
       expect(setupMonorepo.description()).toBe(
-        'Clone ElizaOS monorepo from a specific branch, defaults to v2-develop'
+        'Clone ElizaOS monorepo from a specific branch, defaults to develop'
       );
     });
 
@@ -54,7 +54,7 @@ describe('setup-monorepo command', () => {
       expect(options).toHaveLength(2);
       expect(options[0].flags).toBe('-b, --branch <branch>');
       expect(options[0].description).toBe('Branch to install');
-      expect(options[0].defaultValue).toBe('v2-develop');
+      expect(options[0].defaultValue).toBe('develop');
 
       expect(options[1].flags).toBe('-d, --dir <directory>');
       expect(options[1].description).toBe('Destination directory');
@@ -72,11 +72,11 @@ describe('setup-monorepo command', () => {
       (execa as Mock).mockResolvedValue({});
 
       // Simulate the command execution with default options
-      const options = { branch: 'v2-develop', dir: './eliza' };
+      const options = { branch: 'develop', dir: './eliza' };
 
       // This simulates what happens inside the action handler
       const repo = 'elizaOS/eliza';
-      const branch = options.branch || 'v2-develop';
+      const branch = options.branch || 'develop';
       const dir = options.dir || './eliza';
       const destinationDir = '/current/working/dir/eliza';
 
@@ -88,13 +88,13 @@ describe('setup-monorepo command', () => {
       expect(expectedGitArgs).toEqual([
         'clone',
         '-b',
-        'v2-develop',
+        'develop',
         'https://github.com/elizaOS/eliza',
         '/current/working/dir/eliza',
       ]);
 
       // Verify that the mocks are set up correctly for the expected flow
-      expect(branch).toBe('v2-develop');
+      expect(branch).toBe('develop');
       expect(dir).toBe('./eliza');
       expect(repo).toBe('elizaOS/eliza');
     });

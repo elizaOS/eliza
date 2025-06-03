@@ -58,17 +58,14 @@ async function readPackageJson(repository: string): Promise<PackageJson | null> 
 async function tryImporting(
   importPath: string,
   strategy: string,
-  repository: string,
-  silentFailure = false
+  repository: string
 ): Promise<any | null> {
   try {
     const module = await import(importPath);
     logger.success(`Successfully loaded plugin '${repository}' using ${strategy} (${importPath})`);
     return module;
   } catch (error) {
-    if (!silentFailure) {
-      logger.debug(`Import failed using ${strategy} ('${importPath}'):`, error);
-    }
+    logger.debug(`Import failed using ${strategy} ('${importPath}'):`, error);
     return null;
   }
 }
@@ -86,13 +83,34 @@ const importStrategies: ImportStrategy[] = [
         const pluginName = repository.replace('@elizaos/', '');
         const workspacePath = path.resolve(process.cwd(), '..', pluginName, 'dist', 'index.js');
         if (fs.existsSync(workspacePath)) {
-          return tryImporting(workspacePath, 'workspace dependency', repository, true);
+          return tryImporting(workspacePath, 'workspace dependency', repository);
         }
       }
       return null;
     },
   },
-  // Most likely to succeed for installed packages - check package.json entry first
+  {
+    name: 'direct path',
+    tryImport: async (repository: string) => tryImporting(repository, 'direct path', repository),
+  },
+  {
+    name: 'local node_modules',
+    tryImport: async (repository: string) =>
+      tryImporting(resolveNodeModulesPath(repository), 'local node_modules', repository),
+  },
+  {
+    name: 'global node_modules',
+    tryImport: async (repository: string) => {
+      const globalPath = path.resolve(getGlobalNodeModulesPath(), repository);
+      if (!fs.existsSync(path.dirname(globalPath))) {
+        logger.debug(
+          `Global node_modules directory not found at ${path.dirname(globalPath)}, skipping for ${repository}`
+        );
+        return null;
+      }
+      return tryImporting(globalPath, 'global node_modules', repository);
+    },
+  },
   {
     name: 'package.json entry',
     tryImport: async (repository: string) => {
@@ -103,12 +121,10 @@ const importStrategies: ImportStrategy[] = [
       return tryImporting(
         resolveNodeModulesPath(repository, entryPoint),
         `package.json entry (${entryPoint})`,
-        repository,
-        true
+        repository
       );
     },
   },
-  // Second most common - standard dist/index.js pattern
   {
     name: 'common dist pattern',
     tryImport: async (repository: string) => {
@@ -118,89 +134,22 @@ const importStrategies: ImportStrategy[] = [
       return tryImporting(
         resolveNodeModulesPath(repository, DEFAULT_ENTRY_POINT),
         'common dist pattern',
-        repository,
-        true
+        repository
       );
-    },
-  },
-  // Try local node_modules directory import (for packages without explicit entry)
-  {
-    name: 'local node_modules',
-    tryImport: async (repository: string) =>
-      tryImporting(resolveNodeModulesPath(repository), 'local node_modules', repository, true),
-  },
-  // Direct path import (for relative/absolute paths)
-  {
-    name: 'direct path',
-    tryImport: async (repository: string) =>
-      tryImporting(repository, 'direct path', repository, true),
-  },
-  // Least likely - global node_modules (usually for globally installed packages)
-  {
-    name: 'global node_modules',
-    tryImport: async (repository: string) => {
-      const globalPath = path.resolve(getGlobalNodeModulesPath(), repository);
-      if (!fs.existsSync(path.dirname(globalPath))) {
-        return null;
-      }
-      return tryImporting(globalPath, 'global node_modules', repository, true);
     },
   },
 ];
 
 /**
- * Determines the optimal import strategy based on what's available
- */
-async function getOptimalStrategy(repository: string): Promise<ImportStrategy | null> {
-  const packageJson = await readPackageJson(repository);
-
-  if (packageJson) {
-    const entryPoint = packageJson.module || packageJson.main || DEFAULT_ENTRY_POINT;
-    const entryPath = resolveNodeModulesPath(repository, entryPoint);
-
-    if (fs.existsSync(entryPath)) {
-      return {
-        name: `package.json entry (${entryPoint})`,
-        tryImport: async () =>
-          tryImporting(entryPath, `package.json entry (${entryPoint})`, repository),
-      };
-    }
-  }
-
-  const commonDistPath = resolveNodeModulesPath(repository, DEFAULT_ENTRY_POINT);
-  if (fs.existsSync(commonDistPath)) {
-    return {
-      name: 'common dist pattern',
-      tryImport: async () => tryImporting(commonDistPath, 'common dist pattern', repository),
-    };
-  }
-
-  const localNodeModulesPath = resolveNodeModulesPath(repository);
-  if (fs.existsSync(localNodeModulesPath)) {
-    return {
-      name: 'local node_modules',
-      tryImport: async () => tryImporting(localNodeModulesPath, 'local node_modules', repository),
-    };
-  }
-
-  return null;
-}
-
-/**
  * Attempts to load a plugin module using various strategies.
- * First tries to find the optimal path, then falls back to trying all strategies.
+ * It tries direct import, local node_modules, global node_modules,
+ * package.json entry points, and common dist patterns.
  *
  * @param repository - The plugin repository/package name to load.
  * @returns The loaded plugin module or null if loading fails after all attempts.
  */
 export async function loadPluginModule(repository: string): Promise<any | null> {
   //logger.debug(`Attempting to load plugin module: ${repository}`);
-
-  const optimalStrategy = await getOptimalStrategy(repository);
-  if (optimalStrategy) {
-    const result = await optimalStrategy.tryImport(repository);
-    if (result) return result;
-  }
 
   for (const strategy of importStrategies) {
     const result = await strategy.tryImport(repository);

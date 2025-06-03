@@ -2,6 +2,7 @@ import react from '@vitejs/plugin-react-swc';
 import path from 'node:path';
 import { type Plugin, type UserConfig, defineConfig, loadEnv } from 'vite';
 import viteCompression from 'vite-plugin-compression';
+import tailwindcss from '@tailwindcss/vite';
 // @ts-ignore:next-line
 // @ts-ignore:next-line
 import type { ViteUserConfig } from 'vitest/config'; // Import Vitest config type for test property
@@ -36,6 +37,7 @@ export default defineConfig(({ mode }): CustomUserConfig => {
 
   return {
     plugins: [
+      tailwindcss(),
       react() as unknown as Plugin,
       nodePolyfills() as unknown as Plugin,
       viteCompression({

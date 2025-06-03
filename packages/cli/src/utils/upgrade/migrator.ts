@@ -1,14 +1,15 @@
 import Anthropic from '@anthropic-ai/sdk';
-import chalk from 'chalk';
+import { logger } from '@elizaos/core';
 import { execa } from 'execa';
-import fs from 'fs-extra';
+import * as fs from 'fs-extra';
 import { globby } from 'globby';
 import ora from 'ora';
-import path, { dirname } from 'path';
-import { simpleGit, SimpleGit } from 'simple-git';
+import * as path from 'path';
+import { dirname } from 'path';
+import simpleGit, { SimpleGit } from 'simple-git';
 import { encoding_for_model } from 'tiktoken';
 import { fileURLToPath } from 'url';
-import { logger } from '@elizaos/core';
+import * as os from 'os';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -17,10 +18,13 @@ const __dirname = dirname(__filename);
 const encoder = encoding_for_model('gpt-4');
 
 // Configuration
-const MAX_TOKENS = 20000;
+const MAX_TOKENS = 100000;
 const BRANCH_NAME = '1.x-claude';
 const MAX_TEST_ITERATIONS = 5;
 const MAX_REVISION_ITERATIONS = 3;
+const CLAUDE_CODE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+const MIN_DISK_SPACE_GB = 2; // Minimum 2GB free space required
+const LOCK_FILE_NAME = '.elizaos-migration.lock';
 
 interface MigrationResult {
   success: boolean;
@@ -47,6 +51,8 @@ export class PluginMigrator {
   private anthropic: Anthropic | null;
   private changedFiles: Set<string>;
   private options: MigratorOptions;
+  private lockFilePath: string | null = null;
+  private activeClaudeProcess: any = null;
 
   constructor(options: MigratorOptions = {}) {
     this.git = simpleGit();
@@ -56,6 +62,37 @@ export class PluginMigrator {
     this.anthropic = null;
     this.changedFiles = new Set();
     this.options = options;
+
+    // Register cleanup handlers
+    this.registerCleanupHandlers();
+  }
+
+  private registerCleanupHandlers(): void {
+    const cleanup = async () => {
+      logger.info('Cleaning up migration process...');
+
+      // Kill any active Claude Code process
+      if (this.activeClaudeProcess) {
+        try {
+          this.activeClaudeProcess.kill();
+          logger.info('Terminated active Claude Code process');
+        } catch (error) {
+          logger.error('Failed to terminate Claude Code process:', error);
+        }
+      }
+
+      // Remove lock file
+      await this.removeLockFile();
+
+      process.exit(1);
+    };
+
+    process.on('SIGINT', cleanup);
+    process.on('SIGTERM', cleanup);
+    process.on('uncaughtException', async (error) => {
+      logger.error('Uncaught exception:', error);
+      await cleanup();
+    });
   }
 
   async initializeAnthropic(): Promise<void> {
@@ -69,17 +106,45 @@ export class PluginMigrator {
   }
 
   async migrate(input: string): Promise<MigrationResult> {
-    const spinner = ora(`Processing ${input}`);
+    const spinner = ora(`Processing ${input}...`).start();
+    let originalBranch: string | undefined;
 
     try {
-      spinner.start();
+      await this.initializeAnthropic();
 
-      if (!this.anthropic) await this.initializeAnthropic();
+      // Check disk space
+      spinner.text = `Checking disk space...`;
+      await this.checkDiskSpace();
 
-      // Step 1: Handle input
-      spinner.text = `Analyzing input for ${input}...`;
+      // Check for Claude Code
+      try {
+        await execa('claude', ['--version'], { stdio: 'pipe' });
+      } catch {
+        throw new Error(
+          'Claude Code is required for migration. Install with: npm install -g @anthropic-ai/claude-code'
+        );
+      }
+
+      // Step 1: Handle input (clone if GitHub URL, validate if folder)
+      spinner.text = `Setting up repository for ${input}...`;
       await this.handleInput(input);
       spinner.succeed(`Input validated for ${input}`);
+
+      // Create lock file to prevent concurrent migrations
+      await this.createLockFile();
+
+      // Security warning
+      logger.warn('⚠️  SECURITY WARNING: This command will execute code from the repository.');
+      logger.warn('Only run this on trusted repositories you own or have reviewed.');
+
+      // Step 2: Save current branch for recovery
+      originalBranch = (await this.git.branch()).current;
+      logger.info(`Current branch: ${originalBranch}`);
+
+      // Step 3: Create/checkout branch
+      spinner.text = `Creating branch ${BRANCH_NAME}...`;
+      await this.createBranch();
+      spinner.succeed(`Branch ${BRANCH_NAME} created`);
 
       // Track initial git state to identify changed files later
       const initialCommit = await this.git.revparse(['HEAD']);
@@ -94,28 +159,23 @@ export class PluginMigrator {
       }
 
       if (!skipGeneration) {
-        // Step 2: Analyze repository
+        // Step 4: Analyze repository
         spinner.text = `Analyzing repository structure...`;
         const context = await this.analyzeRepository();
         spinner.succeed(`Repository analyzed`);
 
-        // Step 3: Generate migration strategy
+        // Step 5: Generate migration strategy
         spinner.text = `Generating migration strategy...`;
         const specificStrategy = await this.generateMigrationStrategy(context);
         spinner.succeed(`Migration strategy generated`);
 
-        // Step 4: Create CLAUDE.md
+        // Step 6: Create CLAUDE.md
         spinner.text = `Creating migration instructions...`;
         await this.createMigrationInstructions(specificStrategy);
         spinner.succeed(`Migration instructions created`);
       }
 
-      // Step 5: Create branch
-      spinner.text = `Creating branch ${BRANCH_NAME}...`;
-      await this.createBranch();
-      spinner.succeed(`Branch ${BRANCH_NAME} created`);
-
-      // Step 6: Run migration with test loop
+      // Step 7: Run migration with test loop
       if (!this.options.skipTests) {
         spinner.text = `Running migration with test validation...`;
         const migrationSuccess = await this.runMigrationWithTestLoop();
@@ -130,10 +190,10 @@ export class PluginMigrator {
         spinner.succeed(`Migration applied (test validation skipped)`);
       }
 
-      // Step 7: Track changed files
+      // Step 8: Track changed files
       await this.trackChangedFiles(initialCommit);
 
-      // Step 8: Production validation loop
+      // Step 9: Production validation loop
       if (!this.options.skipValidation) {
         spinner.text = `Validating migration for production readiness...`;
         const validationSuccess = await this.runProductionValidationLoop();
@@ -145,10 +205,20 @@ export class PluginMigrator {
         spinner.info(`Production validation skipped`);
       }
 
-      // Step 9: Push branch
+      // Step 10: Push branch
       spinner.text = `Pushing branch ${BRANCH_NAME} to origin...`;
-      await this.git.push('origin', BRANCH_NAME, { '--set-upstream': null });
-      spinner.succeed(`Branch ${BRANCH_NAME} pushed`);
+
+      // Check if we have push permissions
+      try {
+        // First try a dry run
+        await this.git.push('origin', BRANCH_NAME, { '--dry-run': null });
+        // If dry run succeeds, do the actual push
+        await this.git.push('origin', BRANCH_NAME, { '--set-upstream': null });
+        spinner.succeed(`Branch ${BRANCH_NAME} pushed`);
+      } catch (pushError: any) {
+        spinner.warn(`Could not push branch to origin: ${pushError.message}`);
+        logger.warn('Branch created locally but not pushed. You may need to push manually.');
+      }
 
       logger.info(`✅ Migration complete for ${input}!`);
 
@@ -161,12 +231,28 @@ export class PluginMigrator {
       spinner.fail(`Migration failed for ${input}`);
       logger.error(`Error processing ${input}:`, error);
 
+      // Clean up lock file
+      await this.removeLockFile();
+
+      // Try to restore original state
+      try {
+        if (this.git && originalBranch) {
+          logger.info(`Attempting to restore original branch: ${originalBranch}`);
+          await this.git.checkout(originalBranch);
+        }
+      } catch (restoreError) {
+        logger.error('Failed to restore original branch:', restoreError);
+      }
+
       return {
         success: false,
         branchName: BRANCH_NAME,
         repoPath: this.repoPath || '',
         error: error as Error,
       };
+    } finally {
+      // Always clean up lock file
+      await this.removeLockFile();
     }
   }
 
@@ -237,20 +323,80 @@ export class PluginMigrator {
 
   private async runTests(): Promise<{ success: boolean; errors?: string }> {
     try {
+      // Check if package.json exists
+      const packageJsonPath = path.join(this.repoPath!, 'package.json');
+      if (!(await fs.pathExists(packageJsonPath))) {
+        return {
+          success: false,
+          errors: 'No package.json found in repository. Cannot run tests.',
+        };
+      }
+
       // First ensure dependencies are installed
-      await execa('npm', ['install'], {
+      logger.info('Installing dependencies...');
+      try {
+        await execa('npm', ['install'], {
+          cwd: this.repoPath!,
+          stdio: 'pipe',
+          timeout: 300000, // 5 minute timeout for npm install
+        });
+      } catch (installError: any) {
+        if (installError.timedOut) {
+          return {
+            success: false,
+            errors: 'npm install timed out after 5 minutes. Check network connection.',
+          };
+        }
+        logger.warn(`npm install failed: ${installError.message}`);
+        // Continue anyway - some tests might still work
+      }
+
+      // Check if elizaos command is available
+      let testCommand: string;
+      let testArgs: string[];
+
+      try {
+        // Check if elizaos is available
+        await execa('npx', ['elizaos', '--version'], {
+          cwd: this.repoPath!,
+          stdio: 'pipe',
+        });
+        testCommand = 'npx';
+        testArgs = ['elizaos', 'test'];
+        logger.info('Running tests with elizaos test...');
+      } catch {
+        // Fallback to npm/bun test
+        const packageJson = JSON.parse(
+          await fs.readFile(path.join(this.repoPath!, 'package.json'), 'utf-8')
+        );
+
+        if (packageJson.scripts?.test) {
+          // Check if bun is available
+          try {
+            await execa('bun', ['--version'], { stdio: 'pipe' });
+            testCommand = 'bun';
+            testArgs = ['test'];
+            logger.info('Running tests with bun test...');
+          } catch {
+            testCommand = 'npm';
+            testArgs = ['test'];
+            logger.info('Running tests with npm test...');
+          }
+        } else {
+          throw new Error('No test script found in package.json and elizaos not available');
+        }
+      }
+
+      // Run the test command
+      const result = await execa(testCommand, testArgs, {
         cwd: this.repoPath!,
         stdio: 'pipe',
       });
 
-      // Then run elizaos test
-      await execa('npx', ['elizaos', 'test'], {
-        cwd: this.repoPath!,
-        stdio: 'pipe',
-      });
       return { success: true };
     } catch (error: any) {
-      const errorOutput = error.stdout + '\n' + error.stderr;
+      const errorOutput = (error.stdout || '') + '\n' + (error.stderr || '');
+      logger.error('Test execution failed:', errorOutput);
       return { success: false, errors: errorOutput };
     }
   }
@@ -336,8 +482,29 @@ Respond with a JSON object:
     for (const file of this.changedFiles) {
       const filePath = path.join(this.repoPath!, file);
       if (await fs.pathExists(filePath)) {
-        const fileContent = await fs.readFile(filePath, 'utf-8');
-        const fileTokens = encoder.encode(fileContent).length;
+        let fileContent = await fs.readFile(filePath, 'utf-8');
+        let fileTokens = encoder.encode(fileContent).length;
+
+        // If a single file exceeds MAX_TOKENS, truncate it
+        if (fileTokens > MAX_TOKENS) {
+          const lines = fileContent.split('\n');
+          let truncatedContent = '';
+          let truncatedTokens = 0;
+
+          for (const line of lines) {
+            const lineTokens = encoder.encode(line + '\n').length;
+            if (truncatedTokens + lineTokens > MAX_TOKENS * 0.8) {
+              // Use 80% of MAX_TOKENS for single file
+              truncatedContent += '\n... (file truncated due to size) ...';
+              break;
+            }
+            truncatedContent += line + '\n';
+            truncatedTokens += lineTokens;
+          }
+
+          fileContent = truncatedContent;
+          fileTokens = truncatedTokens;
+        }
 
         if (totalTokens + fileTokens > MAX_TOKENS) break;
 
@@ -362,30 +529,65 @@ Make all necessary changes to fix the issues and ensure the migration is complet
   private async runClaudeCodeWithPrompt(prompt: string): Promise<void> {
     process.chdir(this.repoPath!);
 
-    try {
-      await execa(
-        'claude',
-        [
-          '--print',
-          '--max-turns',
-          '30',
-          '--verbose',
-          '--model',
-          'opus',
-          '--dangerously-skip-permissions',
-          prompt,
-        ],
-        {
-          stdio: 'inherit',
-          cwd: this.repoPath!,
-        }
-      );
-    } catch (error: any) {
-      if (error.code === 'ENOENT') {
-        throw new Error(
-          'Claude Code not found! Install with: npm install -g @anthropic-ai/claude-code'
+    // Create a timeout promise
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        reject(
+          new Error(`Claude Code execution timed out after ${CLAUDE_CODE_TIMEOUT / 1000} seconds`)
         );
+      }, CLAUDE_CODE_TIMEOUT);
+    });
+
+    // Create the execution promise
+    const executePromise = (async () => {
+      try {
+        this.activeClaudeProcess = execa(
+          'claude',
+          [
+            '--print',
+            '--max-turns',
+            '30',
+            '--verbose',
+            '--model',
+            'opus',
+            '--dangerously-skip-permissions',
+            prompt,
+          ],
+          {
+            stdio: 'inherit',
+            cwd: this.repoPath!,
+          }
+        );
+
+        await this.activeClaudeProcess;
+        this.activeClaudeProcess = null;
+      } catch (error: any) {
+        this.activeClaudeProcess = null;
+
+        if (error.code === 'ENOENT') {
+          throw new Error(
+            'Claude Code not found! Install with: npm install -g @anthropic-ai/claude-code'
+          );
+        }
+        throw error;
       }
+    })();
+
+    // Race between execution and timeout
+    try {
+      await Promise.race([executePromise, timeoutPromise]);
+    } catch (error) {
+      // Kill the process if it's still running
+      if (this.activeClaudeProcess) {
+        try {
+          this.activeClaudeProcess.kill();
+          this.activeClaudeProcess = null;
+        } catch (killError) {
+          logger.error('Failed to kill timed-out process:', killError);
+        }
+      }
+
+      logger.error('Claude Code execution failed:', error);
       throw error;
     }
   }
@@ -472,6 +674,10 @@ Make all necessary changes to fix the issues and ensure the migration is complet
         '*.spec.*',
         'coverage/**',
         'cloned_repos/**',
+        '**/*.min.js',
+        '**/*.min.ts',
+        '**/vendor/**',
+        '**/lib/**',
       ],
     });
 
@@ -492,7 +698,23 @@ Make all necessary changes to fix the issues and ensure the migration is complet
     for (const file of sortedFiles) {
       if (file === files.index?.path) continue;
       const filePath = path.join(this.repoPath!, file);
+
+      // Check file size before reading
+      const stats = await fs.stat(filePath);
+      if (stats.size > 1024 * 1024) {
+        // Skip files larger than 1MB
+        logger.warn(`Skipping large file: ${file} (${stats.size} bytes)`);
+        continue;
+      }
+
       const content = await fs.readFile(filePath, 'utf-8');
+
+      // Check if file is likely binary
+      if (content.includes('\0')) {
+        logger.warn(`Skipping binary file: ${file}`);
+        continue;
+      }
+
       const fileTokens = encoder.encode(content).length;
       if (totalTokens + fileTokens > MAX_TOKENS) break;
       files.sourceFiles.push({ path: file, content });
@@ -546,19 +768,39 @@ Generate a SPECIFIC migration strategy for THIS plugin. Your response should inc
 Be extremely specific. Use actual file names, function names, and line references from the codebase.
 Format your response as a clear, actionable migration plan.`;
 
-    const message = await this.anthropic!.messages.create({
-      model: 'claude-opus-4-20250514',
-      max_tokens: 8192,
-      temperature: 0,
-      messages: [
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
-    });
+    // Retry logic for network failures
+    let retries = 3;
+    let lastError: Error | null = null;
 
-    return message.content.map((block) => (block.type === 'text' ? block.text : '')).join('');
+    while (retries > 0) {
+      try {
+        const message = await this.anthropic!.messages.create({
+          model: 'claude-opus-4-20250514',
+          max_tokens: 8192,
+          temperature: 0,
+          messages: [
+            {
+              role: 'user',
+              content: prompt,
+            },
+          ],
+        });
+
+        return message.content.map((block) => (block.type === 'text' ? block.text : '')).join('');
+      } catch (error: any) {
+        lastError = error;
+        retries--;
+
+        if (retries > 0) {
+          logger.warn(`API call failed, retrying... (${retries} attempts remaining)`);
+          await new Promise((resolve) => setTimeout(resolve, 2000)); // Wait 2 seconds before retry
+        }
+      }
+    }
+
+    throw new Error(
+      `Failed to generate migration strategy after 3 attempts: ${lastError?.message}`
+    );
   }
 
   private async createMigrationInstructions(specificStrategy: string): Promise<void> {
@@ -620,5 +862,61 @@ The goal is a fully migrated, tested, and working 1.x plugin.
   private async runClaudeCode(): Promise<void> {
     const migrationPrompt = `Please read the CLAUDE.md file in this repository and execute all the migration steps described there. Apply all changes systematically, create all tests, and ensure everything works.`;
     await this.runClaudeCodeWithPrompt(migrationPrompt);
+  }
+
+  private async checkDiskSpace(): Promise<void> {
+    const diskSpace = await this.getAvailableDiskSpace();
+    if (diskSpace < MIN_DISK_SPACE_GB) {
+      throw new Error(
+        `Insufficient disk space. Need at least ${MIN_DISK_SPACE_GB}GB free, but only ${diskSpace.toFixed(2)}GB available.`
+      );
+    }
+  }
+
+  private async getAvailableDiskSpace(): Promise<number> {
+    try {
+      const result = await execa('df', ['-k', os.tmpdir()]);
+      const lines = result.stdout.split('\n');
+      const dataLine = lines[1]; // Second line contains the data
+      const parts = dataLine.split(/\s+/);
+      const availableKB = parseInt(parts[3]);
+      return availableKB / 1024 / 1024; // Convert to GB
+    } catch (error) {
+      logger.warn('Could not check disk space, proceeding anyway');
+      return MIN_DISK_SPACE_GB + 1; // Assume enough space if check fails
+    }
+  }
+
+  private async createLockFile(): Promise<void> {
+    if (!this.repoPath) return;
+
+    this.lockFilePath = path.join(this.repoPath, LOCK_FILE_NAME);
+
+    // Check if lock file exists
+    if (await fs.pathExists(this.lockFilePath)) {
+      const lockData = await fs.readFile(this.lockFilePath, 'utf-8');
+      throw new Error(
+        `Another migration is already running on this repository.\n` +
+          `Lock file: ${this.lockFilePath}\n` +
+          `Lock data: ${lockData}\n` +
+          `If this is an error, manually delete the lock file and try again.`
+      );
+    }
+
+    // Create lock file with process info
+    const lockData = {
+      pid: process.pid,
+      startTime: new Date().toISOString(),
+      repository: this.repoPath,
+    };
+
+    await fs.writeFile(this.lockFilePath, JSON.stringify(lockData, null, 2));
+  }
+
+  private async removeLockFile(): Promise<void> {
+    if (this.lockFilePath && (await fs.pathExists(this.lockFilePath))) {
+      await fs.remove(this.lockFilePath);
+      this.lockFilePath = null;
+    }
   }
 }

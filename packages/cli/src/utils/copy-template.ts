@@ -73,7 +73,7 @@ function getPackageName(templateType: string): string {
  * Copy a project or plugin template to target directory
  */
 export async function copyTemplate(
-  templateType: 'project-starter' | 'project-tee-starter' | 'plugin',
+  templateType: 'project' | 'project-starter' | 'project-tee-starter' | 'plugin',
   targetDir: string,
   name: string
 ) {
@@ -107,6 +107,12 @@ export async function copyTemplate(
 
   // Copy template files as-is
   await copyDir(templateDir, targetDir);
+
+  // For plugin templates, replace hardcoded "plugin-starter" strings in source files
+  if (templateType === 'plugin') {
+    const pluginNameFromPath = path.basename(targetDir);
+    await replacePluginNameInFiles(targetDir, pluginNameFromPath);
+  }
 
   // Update package.json with dependency versions only (leave placeholders intact)
   const packageJsonPath = path.join(targetDir, 'package.json');
@@ -156,6 +162,42 @@ export async function copyTemplate(
   }
 
   logger.debug(`${templateType} template copied successfully`);
+}
+
+/**
+ * Replace hardcoded "plugin-starter" strings in TypeScript files with the actual plugin name
+ */
+async function replacePluginNameInFiles(targetDir: string, pluginName: string): Promise<void> {
+  const filesToProcess = [
+    'src/index.ts',
+    '__tests__/plugin.test.ts',
+    'e2e/starter-plugin.test.ts',
+    'README.md',
+    // Note: package.json excluded to maintain npm package structure
+  ];
+
+  for (const filePath of filesToProcess) {
+    const fullPath = path.join(targetDir, filePath);
+
+    try {
+      if (
+        await fs
+          .access(fullPath)
+          .then(() => true)
+          .catch(() => false)
+      ) {
+        let content = await fs.readFile(fullPath, 'utf8');
+
+        // Replace the hardcoded plugin name
+        content = content.replace(/plugin-starter/g, pluginName);
+
+        await fs.writeFile(fullPath, content, 'utf8');
+        logger.debug(`Updated plugin name in ${filePath}`);
+      }
+    } catch (error) {
+      logger.warn(`Could not update ${filePath}: ${error.message}`);
+    }
+  }
 }
 
 /**

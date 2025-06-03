@@ -19,8 +19,8 @@
       "matchPackageNames": ["/^eslint/", "/^prettier/"]
     },
     {
-      "groupName": "SQLite related",
-      "matchPackageNames": ["/sqlite/", "/^@types/better-sqlite3/", "/^@types/sql.js/"]
+      "groupName": "Pglite related",
+      "matchPackageNames": ["/pglite/", "/^@types/better-pglite3/", "/^@types/sql.js/"]
     }
   ],
   "timezone": "UTC",
