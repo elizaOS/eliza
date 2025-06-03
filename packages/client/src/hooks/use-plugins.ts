@@ -16,8 +16,13 @@ export function usePlugins() {
     queryKey: ['plugins'],
     queryFn: async () => {
       try {
-        // Fetch plugins from registry
-        const registryResponse = await fetch(REGISTRY_URL);
+        // Fetch plugins from registry and agent data in parallel
+        const [registryResponse, agentsResponse] = await Promise.all([
+          fetch(REGISTRY_URL),
+          apiClient.getAgents(),
+        ]);
+
+        // Process registry data
         const registryData = await registryResponse.json();
 
         // Extract plugin names from registry that support v1 and are plugins
@@ -28,10 +33,9 @@ export function usePlugins() {
           .map(([name]) => name)
           .sort();
 
-        // Try to get current agent plugins to include dynamic/local ones
+        // Process agent plugins from the parallel fetch
         let agentPlugins: string[] = [];
         try {
-          const agentsResponse = await apiClient.getAgents();
           if (agentsResponse.data?.agents?.length > 0) {
             // Get plugins from the first active agent
             const activeAgent = agentsResponse.data.agents.find(
