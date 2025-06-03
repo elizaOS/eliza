@@ -139,8 +139,7 @@ export const choiceAction: Action = {
     const room = state.data.room ?? (await runtime.getRoom(message.roomId));
 
     if (!room || !room.serverId) {
-      logger.error('Room or room.serverId is missing');
-      throw new Error('Room or room.serverId is required for validating the action');
+      return false;
     }
 
     const userRole = await getUserServerRole(runtime, message.entityId, room.serverId);
