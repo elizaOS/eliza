@@ -4,12 +4,15 @@ import App from '../App';
 
 // Lazy load components
 const Chat = lazy(() => import('../routes/chat'));
+const Group = lazy(() => import('../routes/group'));
+const GroupNew = lazy(() => import('../routes/group-new'));
 const AgentList = lazy(() => import('../routes/agent-list'));
 const AgentDetail = lazy(() => import('../routes/agent-detail'));
 const CharacterList = lazy(() => import('../routes/character-list'));
 const CharacterForm = lazy(() => import('../routes/character-form'));
 const CharacterDetail = lazy(() => import('../routes/character-detail'));
-const Settings = lazy(() => import('../routes/settings'));
+// const Settings = lazy(() => import('../routes/settings')); // Settings route for individual agent to be removed
+const EnvSettings = lazy(() => import('../components/env-settings')); // Lazy import for EnvSettings
 const NotFound = lazy(() => import('../routes/not-found'));
 
 // Loading fallback
@@ -61,6 +64,22 @@ export const router = createBrowserRouter([
         ),
       },
       {
+        path: '/group/new',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <GroupNew />
+          </Suspense>
+        ),
+      },
+      {
+        path: '/group/:channelId',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <Group />
+          </Suspense>
+        ),
+      },
+      {
         path: '/characters',
         element: (
           <Suspense fallback={<Loading />}>
@@ -93,10 +112,10 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: '/settings',
+        path: '/settings', // General settings route
         element: (
           <Suspense fallback={<Loading />}>
-            <Settings />
+            <EnvSettings />
           </Suspense>
         ),
       },

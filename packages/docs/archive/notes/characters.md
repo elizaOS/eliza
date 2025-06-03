@@ -288,7 +288,7 @@ Your response should not contain any questions. Brief, concise statements only. 
   },
   "adjectives": ["knowledgeable", "approachable", "practical"],
   "settings": {
-    "model": "claude-3-opus-20240229",
+    "model": "claude-opus-4-20250514",
     "voice": { "model": "en-US-neural" }
   }
 }

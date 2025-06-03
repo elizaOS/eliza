@@ -28,7 +28,7 @@ async function cloneRepository(repo: string, branch: string, destination: string
       console.error(`\n[X] Branch '${branch}' doesn't exist in the ElizaOS repository.`);
       console.error(`Please specify a valid branch name. Common branches include:`);
       console.error(`  • main - The main branch`);
-      console.error(`  • v2-develop - The development branch (default)`);
+      console.error(`  • develop - The development branch (default)`);
       console.error(
         `\nFor a complete list of branches, visit: https://github.com/elizaOS/eliza/branches`
       );
@@ -65,13 +65,13 @@ function displayNextSteps(dir: string): void {
 
 export const setupMonorepo = new Command()
   .name('setup-monorepo')
-  .description('Clone ElizaOS monorepo from a specific branch, defaults to v2-develop')
-  .option('-b, --branch <branch>', 'Branch to install', 'v2-develop')
+  .description('Clone ElizaOS monorepo from a specific branch, defaults to develop')
+  .option('-b, --branch <branch>', 'Branch to install', 'develop')
   .option('-d, --dir <directory>', 'Destination directory', './eliza')
   .action(async (options) => {
     try {
       const repo = 'elizaOS/eliza';
-      const branch = options.branch || 'v2-develop';
+      const branch = options.branch || 'develop';
       const dir = options.dir || './eliza';
 
       // Create destination directory if it doesn't exist

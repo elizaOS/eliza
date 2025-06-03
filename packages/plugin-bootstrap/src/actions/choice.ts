@@ -130,12 +130,6 @@ export const choiceAction: Action = {
       throw new Error('State is required for validating the action');
     }
 
-    // Get all tasks with options metadata
-    const pendingTasks = await runtime.getTasks({
-      roomId: message.roomId,
-      tags: ['AWAITING_CHOICE'],
-    });
-
     const room = state.data.room ?? (await runtime.getRoom(message.roomId));
 
     if (!room || !room.serverId) {
@@ -148,10 +142,31 @@ export const choiceAction: Action = {
       return false;
     }
 
-    // Only validate if there are pending tasks with options
-    return (
-      pendingTasks && pendingTasks.length > 0 && pendingTasks.some((task) => task.metadata?.options)
-    );
+    try {
+      // Get all tasks with options metadata
+      const pendingTasks = await runtime.getTasks({
+        roomId: message.roomId,
+        tags: ['AWAITING_CHOICE'],
+      });
+
+      const room = state.data.room ?? (await runtime.getRoom(message.roomId));
+
+      const userRole = await getUserServerRole(runtime, message.entityId, room.serverId);
+
+      if (userRole !== 'OWNER' && userRole !== 'ADMIN') {
+        return false;
+      }
+
+      // Only validate if there are pending tasks with options
+      return (
+        pendingTasks &&
+        pendingTasks.length > 0 &&
+        pendingTasks.some((task) => task.metadata?.options)
+      );
+    } catch (error) {
+      logger.error('Error validating choice action:', error);
+      return false;
+    }
   },
 
   handler: async (

@@ -8,6 +8,7 @@ on:
   push:
     branches:
       - 'main'
+      - 'develop'
     paths:
       - 'packages/cli/**'
       - 'packages/core/**'
@@ -17,6 +18,7 @@ on:
   pull_request:
     branches:
       - 'main'
+      - 'develop'
     paths:
       - 'packages/cli/**'
       - 'packages/core/**'

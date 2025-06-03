@@ -1,6 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { TaskService } from '../src/services/task';
-import { ScenarioService } from '../src/services/scenario';
 import { EventType, IAgentRuntime, logger, Service } from '@elizaos/core';
 import { bootstrapPlugin } from '../src/index';
 import { UUID, ModelType, ServiceType } from '@elizaos/core';
@@ -143,7 +142,7 @@ describe('TaskService', () => {
 
     // Mock getTaskWorker for 'Past scheduled task'
     const mockWorkerExecute = vi.fn().mockResolvedValue(undefined);
-    mockRuntime.getTaskWorker = vi.fn((taskName: string) => {
+    mockRuntime.getTaskWorker = vi.fn().mockImplementation((taskName: string) => {
       if (taskName === 'Past scheduled task') {
         return {
           name: taskName,
@@ -152,7 +151,7 @@ describe('TaskService', () => {
         };
       }
       return undefined;
-    });
+    }) as any;
 
     // Call the method to check tasks
     // This will internally call executeTask if conditions are met, but we test executeTask directly for more control
@@ -201,7 +200,7 @@ describe('TaskService', () => {
 
     // Mock getTaskWorker for 'Error task' to throw an error
     const mockErrorExecute = vi.fn().mockRejectedValue(new Error('Worker execution error'));
-    mockRuntime.getTaskWorker = vi.fn((taskName: string) => {
+    mockRuntime.getTaskWorker = vi.fn().mockImplementation((taskName: string) => {
       if (taskName === 'Error task') {
         return {
           name: taskName,
@@ -210,7 +209,7 @@ describe('TaskService', () => {
         };
       }
       return undefined;
-    });
+    }) as any;
     vi.spyOn(logger, 'error').mockImplementation(() => {}); // Suppress error logging for this test
 
     // Expose the private method for testing
@@ -248,50 +247,6 @@ describe('TaskService', () => {
     //     }),
     //   })
     // );
-  });
-});
-
-describe('ScenarioService', () => {
-  let mockRuntime: MockRuntime;
-  let scenarioService: ScenarioService;
-
-  beforeEach(() => {
-    // Use setupActionTest for consistent test setup
-    const setup = setupActionTest();
-    mockRuntime = setup.mockRuntime;
-
-    // Create service instance
-    scenarioService = new ScenarioService(mockRuntime as IAgentRuntime);
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it('should be instantiated with a runtime', () => {
-    expect(scenarioService).toBeDefined();
-    expect(scenarioService).toBeInstanceOf(ScenarioService);
-
-    // Verify that the service has the expected properties
-    expect(ScenarioService).toHaveProperty('serviceType');
-    expect(ScenarioService.serviceType).toBe('scenario');
-    expect(scenarioService).toHaveProperty('runtime');
-    expect(scenarioService).toHaveProperty('stop');
-    expect(typeof scenarioService.stop).toBe('function');
-  });
-
-  it('should start the service successfully', async () => {
-    // Test that the service can be started
-    const startPromise = ScenarioService.start(mockRuntime as IAgentRuntime);
-
-    // Should return a Promise
-    expect(startPromise).toBeInstanceOf(Promise);
-
-    // Verify the service was instantiated correctly
-    const service = await startPromise;
-    expect(service).toBeDefined();
-    expect(service).toBeInstanceOf(ScenarioService);
-    expect((service as any).runtime).toBe(mockRuntime);
   });
 });
 

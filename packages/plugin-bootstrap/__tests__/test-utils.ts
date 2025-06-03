@@ -355,194 +355,15 @@ export function createMockService(overrides: Partial<Record<string, any>> = {}):
  * @param overrides - Optional overrides for default mock implementations
  * @returns An object containing mockRuntime, mockMessage, mockState, and callbackFn
  */
-export function setupActionTest(
-  overrides: {
-    runtimeOverrides?: Partial<MockRuntime>;
-    messageOverrides?: Partial<Memory>;
-    stateOverrides?: Partial<State>;
-    callbackFn?: ReturnType<typeof vi.fn>;
-  } = {}
-) {
-  // Create mock callback function
-  const callbackFn = overrides.callbackFn || vi.fn();
-
-  // Create a message from a user directed at our agent
-  const mockMessage: Partial<Memory> = createMockMemory({
-    id: 'test-message-id' as UUID,
-    roomId: 'test-room-id' as UUID,
-    entityId: 'test-entity-id' as UUID,
-    agentId: 'test-agent-id' as UUID,
-    content: {
-      text: 'Hello agent follow this room', // Added "follow" to pass keyword check
-      channelType: ChannelType.GROUP,
-    },
-    ...overrides.messageOverrides,
-  });
-
-  // Create a standardized state object
-  const mockState: Partial<State> = createMockState({
-    values: {
-      agentName: 'Test Agent',
-      recentMessages: 'User: Hello agent\nAgent: Hi there!',
-      actionNames:
-        'REPLY, FOLLOW_ROOM, UNFOLLOW_ROOM, IGNORE, MUTE_ROOM, UNMUTE_ROOM, CHOOSE_OPTION, SEND_MESSAGE, UPDATE_ENTITY, NONE',
-      choices: 'Option A|Option B|Option C',
-      choicePrefix: 'Choose option:',
-      choiceDelimiter: '|',
-      ...overrides.stateOverrides?.values,
-    },
-    data: {
-      room: {
-        id: 'test-room-id',
-        type: 'group',
-        worldId: 'test-world-id',
-        serverId: 'test-server-id',
-        name: 'Test Room',
-      },
-      currentParticipantState: 'ACTIVE',
-      ...overrides.stateOverrides?.data,
-    },
-    ...overrides.stateOverrides,
-  });
-
-  // Create a mock runtime with the necessary methods for action testing
-  const mockRuntime = createMockRuntime({
-    // Override default mocks with action-specific implementations
-    useModel: vi.fn().mockImplementation((modelType, params) => {
-      if (modelType === ModelType.OBJECT_LARGE) {
-        return Promise.resolve({
-          thought: 'I should respond in a friendly way',
-          message: 'Hello there! How can I help you today?',
-        });
-      } else if (modelType === ModelType.TEXT_SMALL) {
-        return Promise.resolve('yes');
-      } else if (params?.prompt?.includes('choice')) {
-        return Promise.resolve({
-          taskId: 'task-12345678',
-          selectedOption: 'BLUE',
-        });
-      } else if (params?.prompt?.includes('sendMessage')) {
-        return Promise.resolve({
-          targetType: 'user',
-          source: 'default',
-          identifiers: {
-            username: 'testuser',
-          },
-        });
-      }
-      return Promise.resolve('Default response');
-    }),
-
-    // Additional mock implementations for action tests
-    getTasks: vi.fn().mockResolvedValue([
-      {
-        id: 'task-12345678',
-        name: 'Test Task',
-        metadata: {
-          options: [
-            { name: 'OPTION_1', description: 'First option' },
-            { name: 'OPTION_2', description: 'Second option' },
-            { name: 'BLUE', description: 'Blue color' },
-          ],
-        },
-        tags: ['AWAITING_CHOICE'],
-      },
-    ]),
-
-    getUserServerRole: vi.fn().mockResolvedValue('ADMIN'),
-
-    getMemberRole: vi.fn().mockImplementation((roomId, entityId) => {
-      if (entityId === 'test-agent-id') return Promise.resolve('member');
-      return Promise.resolve('ADMIN');
-    }),
-
-    findEntityByName: vi.fn().mockResolvedValue({
-      id: 'entity-id',
-      names: ['Test User'],
-      worldId: 'test-world-id',
-    }),
-
-    getWorld: vi.fn().mockResolvedValue({
-      id: 'test-world-id',
-      metadata: {
-        roles: {
-          'test-entity-id': 'NONE',
-          'test-agent-id': 'OWNER', // Agent needs to be OWNER to modify roles
-        },
-      },
-      serverId: 'test-server-id',
-    }),
-
-    getComponents: vi.fn().mockResolvedValue([
-      { id: 'component-1', type: 'discord', metadata: { isActive: true } },
-      { id: 'component-2', type: 'telegram', metadata: { isActive: true } },
-    ]),
-
-    getRooms: vi
-      .fn()
-      .mockResolvedValue([
-        { id: 'target-room-id', name: 'test-channel', worldId: 'test-world-id' },
-      ]),
-
-    getParticipantUserState: vi.fn().mockImplementation((roomId, userId) => {
-      // For unmute test - return MUTED
-      if (
-        roomId === 'test-room-id' &&
-        userId === 'test-agent-id' &&
-        mockState.data?.currentParticipantState === 'MUTED'
-      ) {
-        return Promise.resolve('MUTED');
-      }
-      // For unfollow test - return FOLLOWED
-      else if (
-        roomId === 'test-room-id' &&
-        userId === 'test-agent-id' &&
-        mockState.data?.currentParticipantState === 'FOLLOWED'
-      ) {
-        return Promise.resolve('FOLLOWED');
-      }
-      // Default - return ACTIVE
-      return Promise.resolve('ACTIVE');
-    }),
-
-    setParticipantUserState: vi.fn().mockImplementation((roomId, userId, state) => {
-      mockState.data!.currentParticipantState = state;
-      return Promise.resolve();
-    }),
-
-    createMemory: vi.fn().mockImplementation((memory) => {
-      // To fix the issue with callback not being called, we need to call it here
-      // since many actions might just create a memory without calling the callback directly
-      if (memory.content?.actions?.includes('FOLLOW_ROOM_START')) {
-        callbackFn({
-          text: 'I am now following this room and will participate in conversations.',
-          actions: ['FOLLOW_ROOM'],
-        });
-      } else if (memory.content?.actions?.includes('IGNORE_ACKNOWLEDGED')) {
-        callbackFn({
-          text: 'I will stop responding to messages in this room unless directly mentioned.',
-          actions: ['IGNORE'],
-        });
-      } else if (memory.content?.actions?.includes('MUTE_ROOM_START')) {
-        callbackFn({
-          text: 'I have muted this room and will no longer respond to any messages here.',
-          actions: ['MUTE_ROOM'],
-        });
-      } else if (memory.content?.actions?.includes('UNMUTE_ROOM_START')) {
-        callbackFn({
-          text: 'I have unmuted this room and will now respond to messages when mentioned.',
-          actions: ['UNMUTE_ROOM'],
-        });
-      } else if (memory.content?.actions?.includes('UNFOLLOW_ROOM_START')) {
-        callbackFn({
-          text: 'I am no longer following this room. I will only respond when directly mentioned.',
-          actions: ['UNFOLLOW_ROOM'],
-        });
-      }
-      return Promise.resolve(memory as Memory);
-    }),
-    ...overrides.runtimeOverrides,
-  });
+export function setupActionTest(options?: {
+  runtimeOverrides?: Partial<MockRuntime>;
+  messageOverrides?: Partial<Memory>;
+  stateOverrides?: Partial<State>;
+}) {
+  const mockRuntime = createMockRuntime(options?.runtimeOverrides);
+  const mockMessage = createMockMemory(options?.messageOverrides);
+  const mockState = createMockState(options?.stateOverrides);
+  const callbackFn = vi.fn().mockResolvedValue([] as Memory[]); // Explicitly type the return value
 
   return {
     mockRuntime,
@@ -589,6 +410,10 @@ export type MockRuntime = Partial<IAgentRuntime & IDatabaseAdapter> & {
   registerEvent: ReturnType<typeof vi.fn>;
   getCache: ReturnType<typeof vi.fn>;
   setCache: ReturnType<typeof vi.fn>;
+
+  // Knowledge methods
+  getKnowledge: ReturnType<typeof vi.fn>;
+  addKnowledge: ReturnType<typeof vi.fn>;
 
   // Task-related methods
   registerTaskWorker: ReturnType<typeof vi.fn>;

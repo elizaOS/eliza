@@ -12,6 +12,7 @@ env:
   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
   TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
   TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
 jobs:
   integration-tests:
@@ -40,9 +41,13 @@ jobs:
           SHARP_IGNORE_GLOBAL_LIBVIPS: '1'
         run: bun install
 
+      - name: Install global packages
+        run: npm install -g @anthropic-ai/claude-code
+
       - name: Create .env file for tests
         run: |
           echo "OPENAI_API_KEY=$OPENAI_API_KEY" > .env
+          echo "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" >> .env
           echo "LOG_LEVEL=info" >> .env
 
       - name: Build packages
@@ -57,6 +62,11 @@ jobs:
         run: |
           if [ -z "$OPENAI_API_KEY" ]; then
               echo "Error: OPENAI_API_KEY is not set."
+              exit 1
+          fi
+
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+              echo "Error: ANTHROPIC_API_KEY is not set."
               exit 1
           fi
 
