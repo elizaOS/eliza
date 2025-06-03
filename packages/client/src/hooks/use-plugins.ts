@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api';
+import clientLogger from '@/lib/logger';
 
 // Registry configuration - centralized for maintainability
 const REGISTRY_ORG = 'elizaos-plugins';
@@ -44,7 +45,7 @@ export function usePlugins() {
             }
           }
         } catch (agentError) {
-          console.log('Could not fetch agent plugins:', agentError);
+          clientLogger.warn('Could not fetch agent plugins:', agentError);
         }
 
         // Merge registry plugins with agent plugins, removing duplicates
@@ -52,7 +53,7 @@ export function usePlugins() {
 
         return allPlugins.sort();
       } catch (error) {
-        console.error('Failed to fetch from registry, falling back to basic list:', error);
+        clientLogger.error('Failed to fetch from registry, falling back to basic list:', error);
 
         // Temporarily return hardcoded plugins as an array
         return [
