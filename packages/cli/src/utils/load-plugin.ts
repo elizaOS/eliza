@@ -74,6 +74,21 @@ async function tryImporting(
  * Collection of import strategies
  */
 const importStrategies: ImportStrategy[] = [
+  // Try workspace dependencies first (for monorepo packages)
+  {
+    name: 'workspace dependency',
+    tryImport: async (repository: string) => {
+      if (repository.startsWith('@elizaos/plugin-')) {
+        // Try to find the plugin in the workspace
+        const pluginName = repository.replace('@elizaos/', '');
+        const workspacePath = path.resolve(process.cwd(), '..', pluginName, 'dist', 'index.js');
+        if (fs.existsSync(workspacePath)) {
+          return tryImporting(workspacePath, 'workspace dependency', repository);
+        }
+      }
+      return null;
+    },
+  },
   {
     name: 'direct path',
     tryImport: async (repository: string) => tryImporting(repository, 'direct path', repository),
