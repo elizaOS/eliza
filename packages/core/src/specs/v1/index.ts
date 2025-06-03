@@ -17,26 +17,27 @@ export * from './types';
 
 // Adapters created for v1 -> v2 compatibility
 // Export only the adapter functions and V1 types to avoid conflicts
-export { fromV2State, toV2State, State } from './state';
+export { fromV2State, toV2State } from './state';
+export type { State } from './state';
 
 export { asUUID, generateUuidFromString } from './uuid';
 
 export {
   fromV2ActionExample,
   toV2ActionExample,
-  ActionExample,
   convertContentToV1,
   convertContentToV2,
 } from './actionExample';
 
-export { fromV2Provider, toV2Provider, Provider } from './provider';
+export type { ActionExample } from './actionExample';
 
-export {
-  createTemplateFunction,
-  processTemplate,
-  getTemplateValues,
-  TemplateType,
-} from './templates';
+export { fromV2Provider, toV2Provider } from './provider';
+
+export type { Provider } from './provider';
+
+export { createTemplateFunction, processTemplate, getTemplateValues } from './templates';
+
+export type { TemplateType } from './templates';
 
 // Existing exports
 export * from './messages';

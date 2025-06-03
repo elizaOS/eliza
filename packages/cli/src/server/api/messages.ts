@@ -228,6 +228,7 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
             metadata?.isDm || metadata?.channelType === 'DM' || metadata?.channel_type === 'DM';
 
           const channelData = {
+            id: channelIdParam as UUID, // Use the specific channel ID from the URL
             messageServerId: server_id as UUID,
             name: isDmChannel
               ? `DM ${channelIdParam.substring(0, 8)}`

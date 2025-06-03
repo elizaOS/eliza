@@ -206,6 +206,7 @@ export class SocketIORouter {
             metadata?.isDm || metadata?.channelType === 'DM' || senderName?.includes('DM');
 
           const channelData = {
+            id: channelId as UUID, // Use the specific channel ID from the client
             messageServerId: serverId as UUID,
             name: isDmChannel
               ? `DM ${channelId.substring(0, 8)}`

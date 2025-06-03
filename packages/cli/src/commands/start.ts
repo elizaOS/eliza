@@ -692,23 +692,33 @@ const startAgents = async (options: {
       // Get the default character with environment-aware plugins
       const defaultElizaCharacter = getElizaCharacter();
 
-      // Create an array of plugins, including the explicitly loaded one
-      // We're using our test plugin plus all the plugins from the default character
-      const pluginsToLoad = [pluginModule];
+      // Clone the character and add the plugin to its plugins array for GUI display
+      const characterWithPlugin = {
+        ...defaultElizaCharacter,
+        plugins: [...defaultElizaCharacter.plugins, `@elizaos/${pluginModule.name}`],
+      };
 
       logger.debug(
-        `Using default character with plugins: ${defaultElizaCharacter.plugins.join(', ')}`
+        `Using default character with plugins: ${characterWithPlugin.plugins.join(', ')}`
       );
       logger.debug(
-        "Plugin test mode: Using default character's plugins plus the plugin being tested"
+        `Plugin test mode: Loading local plugin (${pluginModule.name}) as pre-provided plugin object and in character plugins array`
       );
 
-      // Start the agent with the default character and our test plugin
-      // We're in plugin test mode, so we should skip auto-loading embedding models
-      await startAgent(defaultElizaCharacter, server, undefined, pluginsToLoad, {
+      // Start the agent with the modified character that includes the plugin in its plugins array
+      // AND pass the actual plugin object so it loads from the local source instead of trying to download
+      const runtime = await startAgent(characterWithPlugin, server, undefined, [pluginModule], {
         isPluginTestMode: true,
       });
-      logger.debug('Character started with plugin successfully');
+
+      // Save the modified character to the database so the API returns the correct plugin list
+      // Do this AFTER starting the agent so the runtime and database are properly initialized
+      try {
+        await runtime.updateAgent(runtime.agentId, { plugins: characterWithPlugin.plugins });
+        logger.debug(`Updated agent plugins in database: ${pluginModule.name}`);
+      } catch (error) {
+        logger.warn(`Failed to update agent plugins in database: ${error.message}`);
+      }
     } else {
       // When not in a project or plugin, use the environment-aware character
       const elizaCharacter = getElizaCharacter();
