@@ -1218,6 +1218,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 
   registerEvaluator(evaluator: Evaluator): void;
 
+  ensureConnections(entities: Entity[], rooms: Room[], source: string, world: World): Promise<void>;
   ensureConnection({
     entityId,
     roomId,
