@@ -1077,8 +1077,6 @@ export class AgentRuntime implements IAgentRuntime {
 
     // add participants (ensureParticipantInRoom)
     if (firstRoom) {
-      // if we're only adding to one room, then we just need
-
       // get all the entities in this room
       const entityIdsInFirstRoom = await this.getParticipantsForRoom(firstRoom.id);
       const entityIdsInFirstRoomFiltered = entityIdsInFirstRoom.filter(Boolean);
@@ -1095,13 +1093,6 @@ export class AgentRuntime implements IAgentRuntime {
         // pglite handle this at over 10k records fine though
         await this.addParticipantsRoom(missingIdsInRoom, firstRoom.id);
       }
-
-      // for when we know who's in what room
-      /*
-      const pairs = entities.map(e => ([e.id, firstRoom[0].id]))
-      console.log('pairs', pairs)
-      //await this.getParticipantsForRooms(pairs)
-      */
     }
 
     this.logger.success(`Success: Successfully connected world`);
