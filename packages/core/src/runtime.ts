@@ -996,6 +996,11 @@ export class AgentRuntime implements IAgentRuntime {
 
     const firstRoom = rooms.length > 0 ? rooms[0] : null;
 
+    if (!firstRoom) {
+      console.trace();
+      this.logger.error('ensureConnections - no valid first room');
+      return;
+    }
     // Always add the agent to the first room
     await this.ensureParticipantInRoom(this.agentId, firstRoom.id);
 
