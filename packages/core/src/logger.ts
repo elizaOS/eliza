@@ -274,9 +274,27 @@ const options = {
   },
 };
 
+// allow runtime logger to inherent options set here
+const createLogger = (bindings: any | boolean = false) => {
+  const opts: any = {...options} // shallow copy
+  if (bindings) {
+    //opts.level = process.env.LOG_LEVEL || 'info'
+    opts.base = bindings // shallow change
+    opts.transport = {
+      target: 'pino-pretty', // this is just a string, not a dynamic import
+      options: {
+        colorize: true,
+        translateTime: 'SYS:standard',
+        ignore: 'pid,hostname',
+      },
+    }
+  }
+  const logger = pino(opts);
+  return logger
+};
+
 // Create basic logger initially
 let logger = pino(options);
-
 // Add type for logger with clear method
 interface LoggerWithClear extends pino.Logger {
   clear: () => void;
@@ -327,22 +345,6 @@ if (typeof process !== 'undefined') {
     };
   }
 }
-
-// allow runtime logger to inherent options set here
-const createLogger = (bindings = {}) => {
-  return pino({
-    level: process.env.LOG_LEVEL || 'info',
-    base: bindings,
-    transport: {
-      target: 'pino-pretty', // this is just a string, not a dynamic import
-      options: {
-        colorize: true,
-        translateTime: 'SYS:standard',
-        ignore: 'pid,hostname',
-      },
-    },
-  });
-};
 
 export { createLogger, logger };
 
