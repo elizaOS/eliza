@@ -141,10 +141,10 @@ export class MessageBusService extends Service {
         return;
       }
 
-      // Skip ALL self loop messages
-      if (message.author_id === this.runtime.agentId && message.source_type === 'agent_response') {
+      // Skip agent_response messages from other agents in DM channels to prevent cross-agent chatter
+      if (message.source_type === 'agent_response' && (message.metadata?.channelType === 'DM' || message.metadata?.isDm)) {
         logger.debug(
-          `[${this.runtime.character.name}] MessageBusService: Skipping self loop message.`
+          `[${this.runtime.character.name}] MessageBusService: Skipping agent_response message in DM channel to prevent cross-agent interference.`
         );
         return;
       }
