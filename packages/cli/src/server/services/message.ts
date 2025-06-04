@@ -4,6 +4,7 @@ import {
   Service,
   createUniqueUuid,
   logger,
+  validateUuid,
   type Content,
   type IAgentRuntime,
   type Memory,
@@ -150,6 +151,13 @@ export class MessageBusService extends Service {
         );
         try {
           const serverApiUrl = process.env.CENTRAL_MESSAGE_SERVER_URL || 'http://localhost:3000';
+
+          if (!validateUuid(message.channel_id)) {
+            logger.warn(
+              `[${this.runtime.character.name}] MessageBusService: Invalid channel_id: ${message.channel_id}`
+            );
+            return;
+          }
           const response = await fetch(
             `${serverApiUrl}/api/messages/central-channels/${message.channel_id}/participants`
           );
