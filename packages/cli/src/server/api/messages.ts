@@ -359,12 +359,25 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
     try {
       const messages = await serverInstance.getMessagesForChannel(channelId, limit, beforeDate);
       // Transform to MessageService structure if GUI expects timestamps as numbers, or align types
-      const messagesForGui = messages.map((msg) => ({
-        ...msg,
-        created_at: new Date(msg.createdAt).getTime(), // Ensure timestamp number
-        updated_at: new Date(msg.updatedAt).getTime(),
-        // Ensure other fields align with client's MessageServiceStructure / ServerMessage
-      }));
+      const messagesForGui = messages.map((msg) => {
+        // Extract thought and actions from rawMessage for historical messages
+        const rawMessage = typeof msg.rawMessage === 'string' 
+          ? JSON.parse(msg.rawMessage) 
+          : msg.rawMessage;
+        
+        return {
+          ...msg,
+          created_at: new Date(msg.createdAt).getTime(), // Ensure timestamp number
+          updated_at: new Date(msg.updatedAt).getTime(),
+          // Include thought and actions from rawMessage in metadata for client compatibility
+          metadata: {
+            ...msg.metadata,
+            thought: rawMessage?.thought,
+            actions: rawMessage?.actions,
+          },
+          // Ensure other fields align with client's MessageServiceStructure / ServerMessage
+        };
+      });
       res.json({ success: true, data: { messages: messagesForGui } });
     } catch (error) {
       logger.error(

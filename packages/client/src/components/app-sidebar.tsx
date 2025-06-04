@@ -130,13 +130,11 @@ const AgentRow = ({
 const AgentListSection = ({
   title,
   agents,
-  isOnline,
   activePath,
   className,
 }: {
   title: string;
   agents: Partial<Agent>[];
-  isOnline: boolean;
   activePath: string;
   className?: string;
 }) => (
@@ -145,7 +143,7 @@ const AgentListSection = ({
       <AgentRow
         key={a?.id}
         agent={a as Agent}
-        isOnline={isOnline}
+        isOnline={a.status === CoreAgentStatus.ACTIVE}
         active={activePath.includes(`/chat/${String(a?.id)}`)}
       />
     ))}
@@ -415,7 +413,6 @@ export function AppSidebar({ refreshHomePage, isMobile = false }: AppSidebarProp
               <AgentListSection
                 title="" // Title is now handled by the SectionHeader above
                 agents={[...onlineAgents, ...offlineAgents]}
-                isOnline
                 activePath={location.pathname}
               />
             </>

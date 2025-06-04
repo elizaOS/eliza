@@ -65,7 +65,7 @@ export const ChatMessageListComponent: React.FC<ChatMessageListComponentProps> =
       isAtBottom={isAtBottom}
       scrollToBottom={scrollToBottom}
       disableAutoScroll={disableAutoScroll}
-      className="flex-1 w-full"
+      className="h-full w-full"
     >
       {isLoadingMessages && filteredMessages.length === 0 && (
         <div className="flex flex-1 justify-center items-center">
@@ -78,8 +78,7 @@ export const ChatMessageListComponent: React.FC<ChatMessageListComponentProps> =
         </div>
       )}
       {filteredMessages.map((message: UiMessage, index: number) => {
-        const isUser =
-          chatType === 'DM' ? !message.isAgent : message.senderId === currentClientEntityId;
+        const isUser = message.senderId === currentClientEntityId;
         const shouldAnimate =
           index === filteredMessages.length - 1 &&
           message.isAgent &&
@@ -93,7 +92,7 @@ export const ChatMessageListComponent: React.FC<ChatMessageListComponentProps> =
         return (
           <div
             key={`${message.id}-${message.createdAt}`}
-            className={cn('flex flex-col gap-1 p-1', isUser ? 'justify-end' : 'justify-start')}
+            className={cn('flex gap-1 p-1', isUser ? 'justify-end' : 'justify-start')}
           >
             <ChatBubble
               variant={isUser ? 'sent' : 'received'}
