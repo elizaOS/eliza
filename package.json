@@ -74,7 +74,5 @@
     "protobufjs",
     "utf-8-validate"
   ],
-  "dependencies": {
-    "@elizaos/cli": "1.0.4"
-  }
+  "dependencies": {}
 }
