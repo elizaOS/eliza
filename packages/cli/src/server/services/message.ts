@@ -141,10 +141,10 @@ export class MessageBusService extends Service {
         return;
       }
 
-      // Additional check: Skip ALL agent_response messages to prevent infinite loops between agents
-      if (message.source_type === 'agent_response') {
+      // Skip ALL self loop messages
+      if (message.author_id === this.runtime.agentId && message.source_type === 'agent_response') {
         logger.debug(
-          `[${this.runtime.character.name}] MessageBusService: Skipping agent_response message to prevent infinite loops between agents.`
+          `[${this.runtime.character.name}] MessageBusService: Skipping self loop message.`
         );
         return;
       }
