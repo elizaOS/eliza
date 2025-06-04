@@ -4,6 +4,7 @@ import {
   Service,
   createUniqueUuid,
   logger,
+  validateUuid,
   type Content,
   type IAgentRuntime,
   type Memory,
@@ -121,9 +122,17 @@ export class MessageBusService extends Service {
         );
         return;
       }
+      logger.info(
+        `[${this.runtime.character.name}] MessageBusService: Passed server subscription check for ${message.server_id}`
+      );
+
+      const uniqueAuthorId = createUniqueUuid(this.runtime, message.author_id);
+      logger.info(
+        `[${this.runtime.character.name}] MessageBusService: Self-message check - message.author_id: ${message.author_id}, uniqueAuthorId: ${uniqueAuthorId}, runtime.agentId: ${this.runtime.agentId}, source_type: ${message.source_type}`
+      );
 
       if (
-        createUniqueUuid(this.runtime, message.author_id) === this.runtime.agentId &&
+        uniqueAuthorId === this.runtime.agentId &&
         message.source_type !== 'eliza_gui' // Allow messages from GUI even if authorId maps to agent (e.g., agent talking to itself via GUI)
       ) {
         logger.debug(
@@ -131,6 +140,63 @@ export class MessageBusService extends Service {
         );
         return;
       }
+      logger.info(
+        `[${this.runtime.character.name}] MessageBusService: Passed self-message check`
+      );
+
+      // Check if this is a DM channel and if agent is a participant
+      if (message.metadata?.channelType === 'DM' || message.metadata?.isDm) {
+        logger.info(
+          `[${this.runtime.character.name}] MessageBusService: This is a DM channel, checking participants`
+        );
+        try {
+          const serverApiUrl = process.env.CENTRAL_MESSAGE_SERVER_URL || 'http://localhost:3000';
+
+          if (!validateUuid(message.channel_id)) {
+            logger.warn(
+              `[${this.runtime.character.name}] MessageBusService: Invalid channel_id: ${message.channel_id}`
+            );
+            return;
+          }
+          const response = await fetch(
+            `${serverApiUrl}/api/messages/central-channels/${message.channel_id}/participants`
+          );
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.data) {
+              const participants = data.data as string[];
+              logger.info(
+                `[${this.runtime.character.name}] MessageBusService: DM channel ${message.channel_id} participants: ${participants.join(', ')}, checking agent ID: ${this.runtime.agentId}`
+              );
+              // Check if this agent is a participant in the DM channel
+              if (!participants.includes(this.runtime.agentId)) {
+                logger.info(
+                  `[${this.runtime.character.name}] MessageBusService: Agent not a participant in DM channel ${message.channel_id}, ignoring message`
+                );
+                return;
+              }
+              logger.info(
+                `[${this.runtime.character.name}] MessageBusService: Agent IS a participant in DM channel ${message.channel_id}, proceeding with message processing`
+              );
+            }
+          } else {
+            logger.warn(
+              `[${this.runtime.character.name}] MessageBusService: Failed to fetch channel participants for ${message.channel_id}, status: ${response.status}`
+            );
+          }
+        } catch (error) {
+          logger.error(
+            `[${this.runtime.character.name}] MessageBusService: Error checking DM channel participants:`,
+            error
+          );
+          // Continue processing if participant check fails to avoid blocking messages
+        }
+      }
+
+      logger.info(
+        `[${this.runtime.character.name}] MessageBusService: All checks passed, proceeding to create agent memory and emit MESSAGE_RECEIVED event`
+      );
 
       const agentWorldId = createUniqueUuid(this.runtime, message.server_id);
       const agentRoomId = createUniqueUuid(this.runtime, message.channel_id);
