@@ -411,7 +411,10 @@ const messageReceivedHandler = async ({
           const responseObject = parseKeyValueXml(response);
           logger.debug('[Bootstrap] Parsed response:', responseObject);
 
-          shouldRespond = responseObject?.action && responseObject.action === 'RESPOND';
+          // If an action is provided, the agent intends to respond in some way
+          // Only exclude explicit non-response actions
+          const nonResponseActions = ['IGNORE', 'NONE'];
+          shouldRespond = responseObject?.action && !nonResponseActions.includes(responseObject.action.toUpperCase());
         } else {
           logger.debug(
             `[Bootstrap] Skipping shouldRespond check for ${runtime.character.name} because ${room?.type} ${room?.source}`
@@ -529,14 +532,18 @@ const messageReceivedHandler = async ({
             // without actions there can't be more than one message
             await callback(responseContent);
           } else {
+            logger.debug('[Bootstrap] About to process actions with responseMessages:', responseMessages.length);
             await runtime.processActions(
               message,
               responseMessages,
               state,
               async (memory: Content) => {
+                logger.debug('[Bootstrap] Action callback called with actions:', memory.actions);
+                await callback(memory);
                 return [];
               }
             );
+            logger.debug('[Bootstrap] Finished processing actions');
             if (responseMessages.length) {
               // Log provider usage for complex responses
               for (const responseMessage of responseMessages) {
@@ -551,9 +558,8 @@ const messageReceivedHandler = async ({
                 }
               }
 
-              for (const memory of responseMessages) {
-                await callback(memory.content);
-              }
+              // Don't double-callback for responseMessages since processActions should handle all callbacks
+              logger.debug('[Bootstrap] Skipping responseMessages callbacks - actions should have handled their own callbacks');
             }
           }
           await runtime.evaluate(
@@ -1050,9 +1056,9 @@ const controlMessageHandler = async ({
     // This would typically be handled by a registered service with sendMessage capability
 
     // Get any registered WebSocket service
-    const serviceNames = Array.from(runtime.getAllServices().keys());
+    const serviceNames = Array.from(runtime.getAllServices().keys()) as string[];
     const websocketServiceName = serviceNames.find(
-      (name) => name.toLowerCase().includes('websocket') || name.toLowerCase().includes('socket')
+      (name: string) => name.toLowerCase().includes('websocket') || name.toLowerCase().includes('socket')
     );
 
     if (websocketServiceName) {
