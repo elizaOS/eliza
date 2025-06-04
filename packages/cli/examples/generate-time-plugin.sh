@@ -22,7 +22,7 @@ fi
 # Check if Claude Code is installed
 if ! command -v claude &> /dev/null; then
     echo "❌ Claude Code not found!"
-    echo "Please install it first: npm install -g @anthropic-ai/claude-code"
+    echo "Please install it first: bun install -g @anthropic-ai/claude-code"
     exit 1
 fi
 
@@ -137,8 +137,8 @@ if [ $? -eq 0 ]; then
         echo "✨ Next steps:"
         echo "1. cd $TEST_DIR/plugin-time-tracker"
         echo "2. Review the generated code"
-        echo "3. npm test (to run tests)"
-        echo "4. npm run build (to build)"
+        echo "3. bun test (to run tests)"
+        echo "4. bun run build (to build)"
         echo "5. Add to your ElizaOS project"
     fi
 else

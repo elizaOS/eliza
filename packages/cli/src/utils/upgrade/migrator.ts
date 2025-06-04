@@ -121,7 +121,7 @@ export class PluginMigrator {
         await execa('claude', ['--version'], { stdio: 'pipe' });
       } catch {
         throw new Error(
-          'Claude Code is required for migration. Install with: npm install -g @anthropic-ai/claude-code'
+          'Claude Code is required for migration. Install with: bun install -g @anthropic-ai/claude-code'
         );
       }
 
@@ -335,19 +335,19 @@ export class PluginMigrator {
       // First ensure dependencies are installed
       logger.info('Installing dependencies...');
       try {
-        await execa('npm', ['install'], {
+        await execa('bun', ['install'], {
           cwd: this.repoPath!,
           stdio: 'pipe',
-          timeout: 300000, // 5 minute timeout for npm install
+          timeout: 300000, // 5 minute timeout for bun install
         });
       } catch (installError: any) {
         if (installError.timedOut) {
           return {
             success: false,
-            errors: 'npm install timed out after 5 minutes. Check network connection.',
+            errors: 'bun install timed out after 5 minutes. Check network connection.',
           };
         }
-        logger.warn(`npm install failed: ${installError.message}`);
+        logger.warn(`bun install failed: ${installError.message}`);
         // Continue anyway - some tests might still work
       }
 
@@ -357,31 +357,23 @@ export class PluginMigrator {
 
       try {
         // Check if elizaos is available
-        await execa('npx', ['elizaos', '--version'], {
+        await execa('bunx', ['elizaos', '--version'], {
           cwd: this.repoPath!,
           stdio: 'pipe',
         });
-        testCommand = 'npx';
+        testCommand = 'bunx';
         testArgs = ['elizaos', 'test'];
         logger.info('Running tests with elizaos test...');
       } catch {
-        // Fallback to npm/bun test
+        // Fallback to bun test
         const packageJson = JSON.parse(
           await fs.readFile(path.join(this.repoPath!, 'package.json'), 'utf-8')
         );
 
         if (packageJson.scripts?.test) {
-          // Check if bun is available
-          try {
-            await execa('bun', ['--version'], { stdio: 'pipe' });
-            testCommand = 'bun';
-            testArgs = ['test'];
-            logger.info('Running tests with bun test...');
-          } catch {
-            testCommand = 'npm';
-            testArgs = ['test'];
-            logger.info('Running tests with npm test...');
-          }
+          testCommand = 'bun';
+          testArgs = ['test'];
+          logger.info('Running tests with bun test...');
         } else {
           throw new Error('No test script found in package.json and elizaos not available');
         }
@@ -566,7 +558,7 @@ Make all necessary changes to fix the issues and ensure the migration is complet
 
         if (error.code === 'ENOENT') {
           throw new Error(
-            'Claude Code not found! Install with: npm install -g @anthropic-ai/claude-code'
+            'Claude Code not found! Install with: bun install -g @anthropic-ai/claude-code'
           );
         }
         throw error;

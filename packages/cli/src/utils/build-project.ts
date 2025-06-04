@@ -46,44 +46,33 @@ export async function buildProject(cwd: string, isPlugin = false) {
     // Read package.json (we already validated it exists)
     const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
     if (packageJson.scripts?.build) {
-      // Package has a build script, use it
-      logger.debug('Using build script from package.json');
+      // Package has a build script, use bun to run it
+      logger.debug('Using build script from package.json with bun');
 
       try {
-        // Try with bun first
-        logger.debug('Attempting to build with bun...');
+        logger.debug('Building with bun...');
         await runBunCommand(['run', 'build'], cwd);
         logger.info(`Build completed successfully`);
         return;
-      } catch (bunError) {
-        logger.debug(`Bun build failed, falling back to npm: ${bunError}`);
-
-        try {
-          // Fall back to npm if bun fails
-          logger.debug('Attempting to build with npm...');
-          await execa('npm', ['run', 'build'], { cwd, stdio: 'inherit' });
-          logger.info(`Build completed successfully`);
-          return;
-        } catch (npmError) {
-          logger.debug(`npm build failed: ${npmError}`);
-          throw new Error(`Failed to build using npm: ${npmError}`);
-        }
+      } catch (buildError) {
+        logger.debug(`Bun build failed: ${buildError}`);
+        throw new Error(`Failed to build using bun: ${buildError}`);
       }
     }
 
     // If we get here, no build script was found
     logger.warn(`No build script found in ${packageJsonPath}. Attempting common build commands.`);
 
-    // For TypeScript projects, try tsc
+    // For TypeScript projects, try tsc with bunx
     const tsconfigPath = path.join(cwd, 'tsconfig.json');
     if (fs.existsSync(tsconfigPath)) {
       try {
-        logger.debug('Found tsconfig.json, attempting to build with tsc...');
-        await execa('npx', ['tsc', '--build'], { cwd, stdio: 'inherit' });
+        logger.debug('Found tsconfig.json, attempting to build with bunx tsc...');
+        await execa('bunx', ['tsc', '--build'], { cwd, stdio: 'inherit' });
         logger.info(`Build completed successfully`);
         return;
       } catch (tscError) {
-        logger.debug(`tsc build failed: ${tscError}`);
+        logger.debug(`bunx tsc build failed: ${tscError}`);
       }
     }
 

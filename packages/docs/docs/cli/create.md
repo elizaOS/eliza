@@ -214,6 +214,29 @@ bun pm cache rm
 bun install
 ```
 
+### Bun Installation Issues
+
+```bash
+# If you see "bun: command not found" errors
+# Install Bun using the appropriate command for your system:
+
+# Linux/macOS:
+curl -fsSL https://bun.sh/install | bash
+
+# Windows:
+powershell -c "irm bun.sh/install.ps1 | iex"
+
+# macOS with Homebrew:
+brew install bun
+
+# After installation, restart your terminal or:
+source ~/.bashrc  # Linux
+source ~/.zshrc   # macOS with zsh
+
+# Verify installation:
+bun --version
+```
+
 ### Database Connection Problems
 
 **PGLite Issues:**

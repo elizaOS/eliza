@@ -12,7 +12,7 @@ import path from 'node:path';
 
 /**
  * Normalizes a plugins input string to a standard format, typically 'plugin-name'.
- * Used primarily for display and generating commands in npx instructions.
+ * Used primarily for display and generating commands in bunx instructions.
  */
 export const normalizePluginNameForDisplay = (pluginInput: string): string => {
   let baseName = pluginInput;
@@ -525,7 +525,7 @@ plugins
         console.log(`\nNext steps:`);
         console.log(`1. cd ${path.basename(result.pluginPath)}`);
         console.log(`2. Review the generated code`);
-        console.log(`3. Test the plugin: npm test`);
+        console.log(`3. Test the plugin: bun test`);
         console.log(`4. Add to your ElizaOS project`);
       } else {
         logger.error(`Plugin generation failed: ${result.error?.message}`);

@@ -321,7 +321,7 @@
         "@elizaos/plugin-telegram": "1.0.0",
       },
       "devDependencies": {
-        "@elizaos/cli": "1.0.4",
+        "@elizaos/cli": "workspace:*",
         "@types/node": "^22.15.3",
         "prettier": "3.5.3",
         "tsup": "8.4.0",
@@ -422,12 +422,12 @@
     "node-llama-cpp",
   ],
   "overrides": {
-    "@types/react": "19.1.5",
-    "typedoc": "0.27.9",
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
     "@nrwl/devkit": "19.8.4",
     "@nrwl/tao": "19.8.4",
+    "@types/react": "19.1.5",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "typedoc": "0.27.9",
     "typedoc-plugin-markdown": "4.2.10",
   },
   "packages": {

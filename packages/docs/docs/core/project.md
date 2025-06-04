@@ -28,11 +28,11 @@ my-eliza-project/
 You can create a new ElizaOS project using:
 
 ```bash
-# Using npm
-npm create eliza
+# Using bun (recommended)
+bun create eliza
 
-# Or using npx
-npx @elizaos/cli create
+# Or using bunx
+bunx @elizaos/cli create
 ```
 
 The CLI will guide you through the setup process, including:

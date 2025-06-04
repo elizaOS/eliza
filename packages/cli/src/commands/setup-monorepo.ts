@@ -60,7 +60,26 @@ function displayNextSteps(dir: string): void {
   console.log('\n4. Start ElizaOS:');
   console.log('   bun run start or bun run dev');
 
-  console.log('\nNote: Make sure you have Node.js and bun installed on your system.');
+  // Enhanced bun installation guidance
+  console.log('\n📋 Prerequisites:');
+  console.log('   • Node.js 23.3.0+');
+  console.log('   • Bun (JavaScript runtime & package manager)');
+  
+  console.log('\n🚀 If you don\'t have Bun installed:');
+  const platform = process.platform;
+  
+  if (platform === 'win32') {
+    console.log('   Windows: powershell -c "irm bun.sh/install.ps1 | iex"');
+    console.log('   Alternative: scoop install bun (if you have Scoop)');
+  } else {
+    console.log('   Linux/macOS: curl -fsSL https://bun.sh/install | bash');
+    if (platform === 'darwin') {
+      console.log('   macOS alternative: brew install bun (if you have Homebrew)');
+    }
+  }
+  
+  console.log('   More options: https://bun.sh/docs/installation');
+  console.log('   After installation, restart your terminal');
 }
 
 export const setupMonorepo = new Command()

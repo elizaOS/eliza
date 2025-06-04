@@ -244,6 +244,27 @@ elizaos start --build
 
 ## Troubleshooting
 
+### Bun Installation Issues
+
+If you encounter "command not found: bun" or similar errors:
+
+```bash
+# For macOS (using curl)
+curl -fsSL https://bun.sh/install | bash
+
+# For macOS (using Homebrew)
+brew install bun
+
+# For Linux (using curl)
+curl -fsSL https://bun.sh/install | bash
+
+# For Windows (using PowerShell)
+powershell -c "irm bun.sh/install.ps1 | iex"
+
+# After installation, restart your terminal and verify
+bun --version
+```
+
 ### Startup Failures
 
 ```bash
