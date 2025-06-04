@@ -65,7 +65,7 @@ export const ChatMessageListComponent: React.FC<ChatMessageListComponentProps> =
       isAtBottom={isAtBottom}
       scrollToBottom={scrollToBottom}
       disableAutoScroll={disableAutoScroll}
-      className="flex-1 w-full min-h-0"
+      className="h-full w-full"
     >
       {isLoadingMessages && filteredMessages.length === 0 && (
         <div className="flex flex-1 justify-center items-center">

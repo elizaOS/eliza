@@ -777,26 +777,29 @@ export default function Chat({ chatType, contextId, serverId, initialDmChannelId
                   'flex flex-col transition-all duration-300 w-full grow overflow-hidden '
                 )}
               >
-                <ChatMessageListComponent
-                  messages={messages}
-                  isLoadingMessages={isLoadingMessages}
-                  chatType={chatType}
-                  currentClientEntityId={currentClientEntityId}
-                  targetAgentData={targetAgentData}
-                  allAgents={allAgents}
-                  animatedMessageId={animatedMessageId}
-                  scrollRef={scrollRef}
-                  isAtBottom={isAtBottom}
-                  scrollToBottom={scrollToBottom}
-                  disableAutoScroll={disableAutoScroll}
-                  finalChannelId={finalChannelIdForHooks}
-                  getAgentInMessage={getAgentInMessage}
-                  agentAvatarMap={agentAvatarMap}
-                  onDeleteMessage={handleDeleteMessage}
-                  selectedGroupAgentId={chatState.selectedGroupAgentId}
-                />
+                <div className="flex-1 min-h-0">
+                  <ChatMessageListComponent
+                    messages={messages}
+                    isLoadingMessages={isLoadingMessages}
+                    chatType={chatType}
+                    currentClientEntityId={currentClientEntityId}
+                    targetAgentData={targetAgentData}
+                    allAgents={allAgents}
+                    animatedMessageId={animatedMessageId}
+                    scrollRef={scrollRef}
+                    isAtBottom={isAtBottom}
+                    scrollToBottom={scrollToBottom}
+                    disableAutoScroll={disableAutoScroll}
+                    finalChannelId={finalChannelIdForHooks}
+                    getAgentInMessage={getAgentInMessage}
+                    agentAvatarMap={agentAvatarMap}
+                    onDeleteMessage={handleDeleteMessage}
+                    selectedGroupAgentId={chatState.selectedGroupAgentId}
+                  />
+                </div>
 
-                <ChatInputArea
+                <div className="flex-shrink-0">
+                  <ChatInputArea
                   input={chatState.input}
                   setInput={(value) => updateChatState({ input: value })}
                   inputDisabled={chatState.inputDisabled}
@@ -811,6 +814,7 @@ export default function Chat({ chatType, contextId, serverId, initialDmChannelId
                   inputRef={inputRef}
                   fileInputRef={fileInputRef}
                 />
+                </div>
               </div>
             </div>
           </div>
