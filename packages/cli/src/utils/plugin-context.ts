@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { buildProject } from './build-project';
 import { normalizePluginName } from './registry';
+import { detectDirectoryType } from './directory-detection';
 
 interface PackageInfo {
   name: string;
@@ -20,7 +21,6 @@ interface PluginContext {
 
 /**
  * Normalizes plugin names for comparison by removing common prefixes and scopes
- * Uses the first result from the existing normalizePluginName function
  */
 function normalizeForComparison(name: string): string {
   const normalized = normalizePluginName(name)[0] || name;
@@ -34,12 +34,15 @@ function normalizeForComparison(name: string): string {
 export function detectPluginContext(pluginName: string): PluginContext {
   const cwd = process.cwd();
   
-  // Check if we're in a plugin directory with package.json
-  const packageJsonPath = path.join(cwd, 'package.json');
-  if (!fs.existsSync(packageJsonPath)) {
+  // Use existing directory detection to check if we're in a plugin
+  const directoryInfo = detectDirectoryType(cwd);
+  
+  if (directoryInfo.type !== 'elizaos-plugin' || !directoryInfo.hasPackageJson) {
     return { isLocalDevelopment: false };
   }
   
+  // Get package info from directory detection result
+  const packageJsonPath = path.join(cwd, 'package.json');
   let packageInfo: PackageInfo;
   try {
     packageInfo = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
@@ -48,11 +51,11 @@ export function detectPluginContext(pluginName: string): PluginContext {
     return { isLocalDevelopment: false };
   }
   
-  // Multiple ways to detect if this is the same plugin
+  // Check if the requested plugin matches the current package
   const normalizedRequestedPlugin = normalizeForComparison(pluginName);
   const normalizedCurrentPackage = normalizeForComparison(packageInfo.name);
   
-  // Also check if the directory name matches (for cases where package.json name differs)
+  // Also check directory name as fallback
   const dirName = path.basename(cwd);
   const normalizedDirName = normalizeForComparison(dirName);
   
@@ -61,7 +64,6 @@ export function detectPluginContext(pluginName: string): PluginContext {
     normalizedRequestedPlugin === normalizedDirName;
   
   if (isCurrentPlugin) {
-    // Look for built output
     const mainEntry = packageInfo.main || 'dist/index.js';
     const localPath = path.resolve(cwd, mainEntry);
     const needsBuild = !fs.existsSync(localPath);
