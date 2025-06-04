@@ -140,9 +140,15 @@ export class MessageBusService extends Service {
         );
         return;
       }
-      logger.info(
-        `[${this.runtime.character.name}] MessageBusService: Passed self-message check`
-      );
+
+      // Additional check: Skip messages that are agent responses from this same agent
+      if (message.source_type === 'agent_response' && message.author_id === this.runtime.agentId) {
+        logger.debug(
+          `[${this.runtime.character.name}] MessageBusService: Skipping agent_response message from self to prevent infinite loops.`
+        );
+        return;
+      }
+      logger.info(`[${this.runtime.character.name}] MessageBusService: Passed self-message check`);
 
       // Check if this is a DM channel and if agent is a participant
       if (message.metadata?.channelType === 'DM' || message.metadata?.isDm) {
