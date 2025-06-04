@@ -78,8 +78,7 @@ export const ChatMessageListComponent: React.FC<ChatMessageListComponentProps> =
         </div>
       )}
       {filteredMessages.map((message: UiMessage, index: number) => {
-        const isUser =
-          chatType === 'DM' ? !message.isAgent : message.senderId === currentClientEntityId;
+        const isUser = message.senderId === currentClientEntityId;
         const shouldAnimate =
           index === filteredMessages.length - 1 &&
           message.isAgent &&
