@@ -142,7 +142,7 @@ export class MessageBusService extends Service {
       }
 
       // Skip agent_response messages from other agents in DM channels to prevent cross-agent chatter
-      if (message.source_type === 'agent_response' && (message.metadata?.channelType === 'dm' || message.metadata?.isDm)) {
+      if (message.source_type === 'agent_response' && (message.metadata?.channelType === ChannelType.DM || message.metadata?.isDm)) {
         logger.debug(
           `[${this.runtime.character.name}] MessageBusService: Skipping agent_response message in DM channel to prevent cross-agent interference.`
         );
@@ -151,7 +151,7 @@ export class MessageBusService extends Service {
       logger.info(`[${this.runtime.character.name}] MessageBusService: Passed self-message check`);
 
       // Check if this is a DM channel and if agent is a participant
-      if (message.metadata?.channelType === 'dm' || message.metadata?.isDm) {
+      if (message.metadata?.channelType === ChannelType.DM || message.metadata?.isDm) {
         logger.info(
           `[${this.runtime.character.name}] MessageBusService: This is a DM channel, checking participants`
         );
@@ -388,7 +388,7 @@ export class MessageBusService extends Service {
           agentName: this.runtime.character.name,
           attachments: content.attachments,
           channelType: originalMessage?.metadata?.channelType || room?.type,
-          isDm: originalMessage?.metadata?.isDm || originalMessage?.metadata?.channelType === 'DM' || room?.type === 'dm',
+          isDm: originalMessage?.metadata?.isDm || (originalMessage?.metadata?.channelType || room?.type) === ChannelType.DM,
         },
       };
 
