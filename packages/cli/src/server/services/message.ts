@@ -128,7 +128,7 @@ export class MessageBusService extends Service {
 
       const uniqueAuthorId = createUniqueUuid(this.runtime, message.author_id);
       logger.info(
-        `[${this.runtime.character.name}] MessageBusService: Self-message check - message.author_id: ${message.author_id}, uniqueAuthorId: ${uniqueAuthorId}, runtime.agentId: ${this.runtime.agentId}, source_type: ${message.source_type}`
+        `[${this.runtime.character.name}] MessageBusService: Self-message check - message.author_id: ${message.author_id}, uniqueAuthorId: ${uniqueAuthorId}, runtime.agentId: ${this.runtime.agentId}, source_type: ${message.source_type} channelType: ${message.metadata?.channelType} isDm: ${message.metadata?.isDm}`
       );
 
       if (
@@ -142,7 +142,7 @@ export class MessageBusService extends Service {
       }
 
       // Skip agent_response messages from other agents in DM channels to prevent cross-agent chatter
-      if (message.source_type === 'agent_response' && (message.metadata?.channelType === 'DM' || message.metadata?.isDm)) {
+      if (message.source_type === 'agent_response' && (message.metadata?.channelType === 'dm' || message.metadata?.isDm)) {
         logger.debug(
           `[${this.runtime.character.name}] MessageBusService: Skipping agent_response message in DM channel to prevent cross-agent interference.`
         );
@@ -151,7 +151,7 @@ export class MessageBusService extends Service {
       logger.info(`[${this.runtime.character.name}] MessageBusService: Passed self-message check`);
 
       // Check if this is a DM channel and if agent is a participant
-      if (message.metadata?.channelType === 'DM' || message.metadata?.isDm) {
+      if (message.metadata?.channelType === 'dm' || message.metadata?.isDm) {
         logger.info(
           `[${this.runtime.character.name}] MessageBusService: This is a DM channel, checking participants`
         );
@@ -309,7 +309,8 @@ export class MessageBusService extends Service {
           agentRoomId,
           agentWorldId,
           responseContent,
-          agentMemory.id
+          agentMemory.id,
+          message
         );
         // The core runtime/bootstrap plugin will handle creating the agent's own memory of its response.
         // So, we return an empty array here as this callback's primary job is to ferry the response externally.
@@ -333,7 +334,8 @@ export class MessageBusService extends Service {
     agentRoomId: UUID,
     agentWorldId: UUID,
     content: Content,
-    inReplyToAgentMemoryId?: UUID
+    inReplyToAgentMemoryId?: UUID,
+    originalMessage?: MessageServiceMessage
   ) {
     try {
       // Check if the agent decided to IGNORE the message
@@ -385,6 +387,8 @@ export class MessageBusService extends Service {
           agent_id: this.runtime.agentId,
           agentName: this.runtime.character.name,
           attachments: content.attachments,
+          channelType: originalMessage?.metadata?.channelType || room?.type,
+          isDm: originalMessage?.metadata?.isDm || originalMessage?.metadata?.channelType === 'DM' || room?.type === 'dm',
         },
       };
 
