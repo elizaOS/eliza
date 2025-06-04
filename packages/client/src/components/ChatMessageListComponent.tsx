@@ -93,7 +93,7 @@ export const ChatMessageListComponent: React.FC<ChatMessageListComponentProps> =
         return (
           <div
             key={`${message.id}-${message.createdAt}`}
-            className={cn('flex flex-col gap-1 p-1', isUser ? 'justify-end' : 'justify-start')}
+            className={cn('flex gap-1 p-1', isUser ? 'justify-end' : 'justify-start')}
           >
             <ChatBubble
               variant={isUser ? 'sent' : 'received'}
