@@ -1,6 +1,6 @@
 import { ToastAction } from '@/components/ui/toast';
 import info from '@/lib/info.json';
-import { useEffect } from 'react';
+import { useEffect, useCallback } from 'react';
 import { NavLink } from 'react-router';
 import semver from 'semver';
 import { useToast } from './use-toast';
@@ -32,7 +32,7 @@ export default function useVersion() {
     } catch {}
   }
 
-  const compareVersion = async () => {
+  const compareVersion = useCallback(async () => {
     try {
       const latestVersion = await getLatestRelease('elizaos/eliza');
       const thisVersion = info?.version;
@@ -53,7 +53,7 @@ export default function useVersion() {
     } catch (e) {
       clientLogger.error(`Unable to retrieve latest version from GitHub: ${e}`);
     }
-  };
+  }, [toast]);
 
   useEffect(() => {
     compareVersion();
