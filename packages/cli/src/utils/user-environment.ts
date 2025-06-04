@@ -133,31 +133,36 @@ export class UserEnvironment {
 
     try {
       // Get bun version
-      const { stdout } = await import('execa').then(({ execa }) =>
-        execa('bun', ['--version'])
-      );
+      const { stdout } = await import('execa').then(({ execa }) => execa('bun', ['--version']));
       version = stdout.trim();
       logger.debug(`[UserEnvironment] Bun version: ${version}`);
     } catch (e) {
-      logger.warn(
+      logger.error(
         `[UserEnvironment] Could not get bun version: ${e instanceof Error ? e.message : String(e)}`
       );
-      
+
       // Enhanced bun installation guidance
       const platform = process.platform;
-      logger.warn('[UserEnvironment] Bun is required for ElizaOS CLI. Please install it:');
-      
+      logger.error('❌ Bun is required for ElizaOS CLI but is not installed or not found in PATH.');
+      logger.error('');
+      logger.error('🚀 Install Bun using the appropriate command for your system:');
+      logger.error('');
+
       if (platform === 'win32') {
-        logger.warn('   Windows: powershell -c "irm bun.sh/install.ps1 | iex"');
+        logger.error('   Windows: powershell -c "irm bun.sh/install.ps1 | iex"');
       } else {
-        logger.warn('   Linux/macOS: curl -fsSL https://bun.sh/install | bash');
+        logger.error('   Linux/macOS: curl -fsSL https://bun.sh/install | bash');
         if (platform === 'darwin') {
-          logger.warn('   macOS (Homebrew): brew install bun');
+          logger.error('   macOS (Homebrew): brew install bun');
         }
-      }
+      }      logger.error('');
+      logger.error('   More options: https://bun.sh/docs/installation');
+      logger.error('   After installation, restart your terminal or source your shell profile');
+      logger.error('');
       
-      logger.warn('   More options: https://bun.sh/docs/installation');
-      logger.warn('   After installation, restart your terminal or source your shell profile');
+      // Force exit the process - Bun is required for ElizaOS CLI
+      logger.error('🔴 Exiting: Bun installation is required to continue.');
+      process.exit(1);
     }
 
     const packageName = '@elizaos/cli';
