@@ -33,7 +33,7 @@
     "@elizaos/plugin-telegram": "1.0.0"
   },
   "devDependencies": {
-    "@elizaos/cli": "workspace:*",
+    "@elizaos/cli": "1.0.4",
     "@types/node": "^22.15.3",
     "prettier": "3.5.3",
     "tsup": "8.4.0",
