@@ -5,10 +5,9 @@
   "sideEffects": false,
   "type": "module",
   "scripts": {
-    "extract-version": "bash ./version.sh",
-    "start:client": "bun run extract-version && vite",
-    "dev:client": "bun run extract-version && node --max-old-space-size=4096 node_modules/.bin/vite",
-    "build": "bun run extract-version && vite build",
+    "start:client": "vite",
+    "dev:client": "node --max-old-space-size=4096 node_modules/.bin/vite",
+    "build": "vite build",
     "preview": "vite preview",
     "lint": "prettier --write ./src",
     "format": "prettier --write ./src",
@@ -22,9 +21,6 @@
     "test:ci": "playwright test --reporter=list,html",
     "test:debug": "playwright test --debug",
     "install:browsers": "playwright install",
-    "start:and:test": "cd ../../.. && bun start & sleep 10 && cd packages/client/ui-tests && playwright test",
-    "start:and:test:headed": "cd ../../.. && bun start & sleep 10 && cd packages/client/ui-tests && playwright test --headed",
-    "start:and:test:specific": "cd ../../.. && bun start & sleep 10 && cd packages/client/ui-tests && playwright test $npm_config_test_file --project=$npm_config_project",
     "postinstall": "echo \"\n⚠️  IMPORTANT: You must run 'npm run install:browsers' to download browser binaries required for testing ⚠️\n\""
   },
   "dependencies": {
