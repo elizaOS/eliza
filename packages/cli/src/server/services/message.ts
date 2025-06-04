@@ -141,14 +141,10 @@ export class MessageBusService extends Service {
         return;
       }
 
-      // Additional check: Skip messages that are agent responses from this same agent
-      logger.info(
-        `[${this.runtime.character.name}] MessageBusService: DEBUG - source_type: "${message.source_type}", author_id: "${message.author_id}", runtime.agentId: "${this.runtime.agentId}"`
-      );
-      
-      if (message.source_type === 'agent_response' && message.author_id === this.runtime.agentId) {
+      // Additional check: Skip ALL agent_response messages to prevent infinite loops between agents
+      if (message.source_type === 'agent_response') {
         logger.debug(
-          `[${this.runtime.character.name}] MessageBusService: Skipping agent_response message from self to prevent infinite loops.`
+          `[${this.runtime.character.name}] MessageBusService: Skipping agent_response message to prevent infinite loops between agents.`
         );
         return;
       }
