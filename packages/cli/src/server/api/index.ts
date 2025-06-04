@@ -511,6 +511,14 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
       query: req.query,
     });
 
+    // Skip standard agent API routes - these should be handled by agentRouter
+    // Pattern: /agents/{uuid}/... but NOT /agents/{uuid}/plugins/{pluginName}/...
+    const agentApiRoutePattern = /^\/agents\/[a-f0-9-]{36}\/(?!plugins\/)/i;
+    if (agentApiRoutePattern.test(req.path)) {
+      logger.debug(`Skipping agent API route in plugin handler: ${req.path}`);
+      return next();
+    }
+
     // Debug output for JavaScript requests
     if (
       req.path.endsWith('.js') ||
