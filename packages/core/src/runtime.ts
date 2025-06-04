@@ -979,8 +979,10 @@ export class AgentRuntime implements IAgentRuntime {
 
   // highly SQL optimized queries
   async ensureConnections(entities, rooms, source, world): Promise<void> {
-    // Create/ensure the world exists for this server
-    await this.ensureWorldExists({ ...world, agentId: this.agentId });
+    console.log('ensureConnections entities:', entities);
+    console.log('ensureConnections rooms:', rooms);
+    console.log('ensureConnections source:', source);
+    console.log('ensureConnections world:', world);
 
     // guards
     if (!entities) {
@@ -988,30 +990,56 @@ export class AgentRuntime implements IAgentRuntime {
       this.logger.error('ensureConnections - no entities');
       return;
     }
-    if (!rooms) {
+    if (!rooms || rooms.length === 0) {
       console.trace();
       this.logger.error('ensureConnections - no rooms');
       return;
     }
 
-    const firstRoom = rooms.length > 0 ? rooms[0] : null;
+    // Create/ensure the world exists for this server
+    await this.ensureWorldExists({ ...world, agentId: this.agentId });
 
-    if (!firstRoom) {
-      console.trace();
-      this.logger.error('ensureConnections - no valid first room');
-      return;
+    const firstRoom = rooms[0];
+
+    // Helper function for chunking arrays
+    const chunkArray = (arr, size) =>
+      arr.reduce((chunks, item, i) => {
+        if (i % size === 0) chunks.push([]);
+        chunks[chunks.length - 1].push(item);
+        return chunks;
+      }, []);
+
+    // Step 1: Create all rooms FIRST (before adding any participants)
+    const roomIds = rooms.map((r) => r.id);
+    const roomExistsCheck = await this.getRoomsByIds(roomIds);
+    const roomsIdExists = roomExistsCheck.map((r) => r.id);
+    const roomsToCreate = roomIds.filter((id) => !roomsIdExists.includes(id));
+
+    const rf = {
+      worldId: world.id,
+      serverId: world.serverId,
+      source,
+      agentId: this.agentId,
+    };
+
+    if (roomsToCreate.length) {
+      this.logger.debug(
+        'runtime/ensureConnections - create',
+        roomsToCreate.length.toLocaleString(),
+        'rooms'
+      );
+      const roomObjsToCreate = rooms
+        .filter((r) => roomsToCreate.includes(r.id))
+        .map((r) => ({ ...r, ...rf }));
+      await this.createRooms(roomObjsToCreate);
     }
-    // Always add the agent to the first room
-    await this.ensureParticipantInRoom(this.agentId, firstRoom.id);
 
-    // Entities need to exist
+    // Step 2: Create all entities
     const entityIds = entities.map((e) => e.id);
-
-    // These might already exist
     const entityExistsCheck = await this.adapter.getEntityByIds(entityIds);
-
     const entitiesToUpdate = entityExistsCheck.map((e) => e.id);
     const entitiesToCreate = entities.filter((e) => !entitiesToUpdate.includes(e.id));
+
     const r = {
       roomId: firstRoom.id,
       channelId: firstRoom.channelId,
@@ -1022,14 +1050,6 @@ export class AgentRuntime implements IAgentRuntime {
       serverId: world.serverId,
     };
 
-    const chunkArray = (arr, size) =>
-      arr.reduce((chunks, item, i) => {
-        if (i % size === 0) chunks.push([]);
-        chunks[chunks.length - 1].push(item);
-        return chunks;
-      }, []);
-
-    // we can do these in parallel?
     if (entitiesToCreate.length) {
       this.logger.debug(
         'runtime/ensureConnections - creating',
@@ -1050,49 +1070,24 @@ export class AgentRuntime implements IAgentRuntime {
       }
     }
 
-    // ensure room exists
-    const roomIds = rooms.map((r) => r.id);
-    const roomExistsCheck = await this.getRoomsByIds(roomIds);
+    // Step 3: Now add all participants (rooms and entities must exist by now)
+    // Always add the agent to the first room
+    await this.ensureParticipantInRoom(this.agentId, firstRoom.id);
 
-    const roomsIdExists = roomExistsCheck.map((r) => r.id);
-    // why create them if we're only using the first?
-    const roomsToCreate = roomIds.filter((id) => !roomsIdExists.includes(id));
-    // add: worldId, source, serverId, worldId, agentId, metadata?
-    const rf = {
-      ...wf,
-      source,
-    };
-    if (roomsToCreate.length) {
+    // Add all entities to the first room
+    const entityIdsInFirstRoom = await this.getParticipantsForRoom(firstRoom.id);
+    const entityIdsInFirstRoomFiltered = entityIdsInFirstRoom.filter(Boolean);
+    const missingIdsInRoom = entityIds.filter((id) => !entityIdsInFirstRoomFiltered.includes(id));
+
+    if (missingIdsInRoom.length) {
       this.logger.debug(
-        'runtime/ensureConnections - create',
-        roomsToCreate.length.toLocaleString(),
-        'rooms'
+        'runtime/ensureConnections - Missing',
+        missingIdsInRoom.length.toLocaleString(),
+        'connections in',
+        firstRoom.id
       );
-      // don't need to batch, no server has 5k rooms
-      const roomObjsToCreate = rooms
-        .filter((r) => roomsToCreate.includes(r.id))
-        .map((r) => ({ ...r, ...rf }));
-      await this.createRooms(roomObjsToCreate);
-    }
-
-    // add participants (ensureParticipantInRoom)
-    if (firstRoom) {
-      // get all the entities in this room
-      const entityIdsInFirstRoom = await this.getParticipantsForRoom(firstRoom.id);
-      const entityIdsInFirstRoomFiltered = entityIdsInFirstRoom.filter(Boolean);
-      const missingIdsInRoom = entityIds.filter((id) => !entityIdsInFirstRoomFiltered.includes(id));
-
-      // add all to single room
-      if (missingIdsInRoom.length) {
-        this.logger.debug(
-          'runtime/ensureConnections - Missing',
-          missingIdsInRoom.length.toLocaleString(),
-          'connections in',
-          firstRoom.id
-        );
-        // pglite handle this at over 10k records fine though
-        await this.addParticipantsRoom(missingIdsInRoom, firstRoom.id);
-      }
+      // pglite handle this at over 10k records fine though
+      await this.addParticipantsRoom(missingIdsInRoom, firstRoom.id);
     }
 
     this.logger.success(`Success: Successfully connected world`);
