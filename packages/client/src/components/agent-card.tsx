@@ -142,7 +142,10 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
           <img
             src={avatarUrl}
             alt={agentName}
-            className={cn('w-full aspect-square object-cover rounded-lg', isActive ? '' : 'grayscale')}
+            className={cn(
+              'w-full aspect-square object-cover rounded-lg',
+              isActive ? '' : 'grayscale'
+            )}
           />
         ) : (
           <div className="w-full h-full flex items-center rounded-lg justify-center bg-secondary text-2xl font-semibold text-muted-foreground">

@@ -95,7 +95,7 @@ async function main() {
             return false;
           }
           return true;
-        }
+        },
       });
 
       // Update package.json with correct version

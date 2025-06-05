@@ -120,7 +120,10 @@ export default function MultiSelectCombobox({
           {selected.length > 0 ? (
             <>
               {selected.slice(0, 3).map((item, index) => (
-                <Badge key={item.id || item.label || index} className="flex items-center gap-1 px-2">
+                <Badge
+                  key={item.id || item.label || index}
+                  className="flex items-center gap-1 px-2"
+                >
                   {item.label}
                   <X
                     size={12}
@@ -158,13 +161,18 @@ export default function MultiSelectCombobox({
             options.map((option, index) => (
               <div
                 key={option.id || option.label || index}
-                className={`flex items-center gap-2 p-2 cursor-pointer rounded hover:bg-muted ${isOptionSelected(option) ? 'bg-muted' : 'bg-card'
-                  }`}
+                className={`flex items-center gap-2 p-2 cursor-pointer rounded hover:bg-muted ${
+                  isOptionSelected(option) ? 'bg-muted' : 'bg-card'
+                }`}
                 onClick={() => toggleSelection(option)}
               >
                 <div className="bg-gray-500 rounded-full w-4 h-4 flex justify-center items-center overflow-hidden text-xs">
                   {option.icon ? (
-                    <img src={option.icon} alt={option.label} className="w-full h-full object-cover" />
+                    <img
+                      src={option.icon}
+                      alt={option.label}
+                      className="w-full h-full object-cover"
+                    />
                   ) : (
                     formatAgentName(option.label)
                   )}

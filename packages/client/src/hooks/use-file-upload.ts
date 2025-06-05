@@ -57,7 +57,7 @@ export function useFileUpload({ agentId, channelId, chatType }: UseFileUploadPro
           file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
           file.type === 'application/vnd.ms-powerpoint' ||
           file.type ===
-          'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
           file.type.startsWith('text/')
       );
 

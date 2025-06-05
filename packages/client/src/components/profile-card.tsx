@@ -7,14 +7,14 @@ interface ButtonConfig {
   action?: () => void;
   className?: string;
   variant?:
-  | 'link'
-  | 'default'
-  | 'destructive'
-  | 'outline'
-  | 'secondary'
-  | 'ghost'
-  | null
-  | undefined;
+    | 'link'
+    | 'default'
+    | 'destructive'
+    | 'outline'
+    | 'secondary'
+    | 'ghost'
+    | null
+    | undefined;
   size?: 'default' | 'sm' | 'lg' | 'icon' | null | undefined;
   disabled?: boolean;
 }

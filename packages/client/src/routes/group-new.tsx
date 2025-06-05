@@ -43,7 +43,7 @@ export default function GroupNew() {
       <GroupPanel
         // agents={agents} // Removed prop
         onClose={() => navigate(-1)} // Navigate back on close
-      // channelId is undefined, so it's in "create" mode
+        // channelId is undefined, so it's in "create" mode
       />
     </div>
   );
