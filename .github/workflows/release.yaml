@@ -62,11 +62,8 @@ jobs:
           echo "Checking out latest tag: $LATEST_TAG"
           git checkout -b temp-publish-branch $LATEST_TAG
 
-          echo "Setting version to: $VERSION"
-          # Update lerna.json and all package.json files to the release version
-          npx lerna version $VERSION --exact --no-git-tag-version --no-push --yes --force-publish
-
           echo "Publishing version: $VERSION"
-          npx lerna publish from-package --yes --dist-tag latest --no-private --force-publish
+          # Use lerna publish directly with the version, which handles both versioning and publishing
+          npx lerna publish $VERSION --exact --yes --dist-tag latest --no-private --force-publish --no-git-tag-version --no-push
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
