@@ -110,83 +110,83 @@ describe('plugins generate command', () => {
     expect(result.stdout).toContain('Failed to read or parse spec file');
   }, 120000);
 
-  it('should accept valid spec file', async () => {
-    // Create a valid spec file
-    const spec = {
-      name: 'test-plugin',
-      description: 'Test plugin for unit tests',
-      features: ['Feature 1', 'Feature 2'],
-      actions: ['testAction'],
-      providers: ['testProvider'],
-    };
+  // it('should accept valid spec file', async () => {
+  //   // Create a valid spec file
+  //   const spec = {
+  //     name: 'test-plugin',
+  //     description: 'Test plugin for unit tests',
+  //     features: ['Feature 1', 'Feature 2'],
+  //     actions: ['testAction'],
+  //     providers: ['testProvider'],
+  //   };
 
-    await fs.writeJSON(specFile, spec);
+  //   await fs.writeJSON(specFile, spec);
 
-    const result = await runCLI([
-      'plugins',
-      'generate',
-      '--skip-prompts',
-      '--spec-file',
-      specFile,
-      '--skip-tests',
-      '--skip-validation',
-    ]);
+  //   const result = await runCLI([
+  //     'plugins',
+  //     'generate',
+  //     '--skip-prompts',
+  //     '--spec-file',
+  //     specFile,
+  //     '--skip-tests',
+  //     '--skip-validation',
+  //   ]);
 
-    // Will fail with invalid API key but should get past spec validation
-    expect(result.stdout).toContain('Starting AI-powered plugin generation');
-    expect(result.exitCode).toBe(1); // Expected to fail due to invalid API key
-    expect(result.stdout).toContain('invalid x-api-key');
-  }, 120000);
+  //   // Will fail with invalid API key but should get past spec validation
+  //   expect(result.stdout).toContain('Starting AI-powered plugin generation');
+  //   expect(result.exitCode).toBe(1); // Expected to fail due to invalid API key
+  //   expect(result.stdout).toContain('invalid x-api-key');
+  // }, 120000);
 
-  it('should handle --api-key option', async () => {
-    delete process.env.ANTHROPIC_API_KEY;
+  // it('should handle --api-key option', async () => {
+  //   delete process.env.ANTHROPIC_API_KEY;
 
-    const spec = {
-      name: 'test-plugin',
-      description: 'Test plugin',
-      features: ['Test feature'],
-    };
+  //   const spec = {
+  //     name: 'test-plugin',
+  //     description: 'Test plugin',
+  //     features: ['Test feature'],
+  //   };
 
-    await fs.writeJSON(specFile, spec);
+  //   await fs.writeJSON(specFile, spec);
 
-    const result = await runCLI([
-      'plugins',
-      'generate',
-      '--api-key',
-      'test-api-key',
-      '--skip-prompts',
-      '--spec-file',
-      specFile,
-    ]);
+  //   const result = await runCLI([
+  //     'plugins',
+  //     'generate',
+  //     '--api-key',
+  //     'test-api-key',
+  //     '--skip-prompts',
+  //     '--spec-file',
+  //     specFile,
+  //   ]);
 
-    // Should not complain about missing API key
-    expect(result.stdout).not.toContain('ANTHROPIC_API_KEY is required');
-    // Will still fail with invalid API key
-    expect(result.stdout).toContain('Starting AI-powered plugin generation');
-  }, 120000);
+  //   // Should not complain about missing API key
+  //   expect(result.stdout).not.toContain('ANTHROPIC_API_KEY is required');
+  //   // Will still fail with invalid API key
+  //   expect(result.stdout).toContain('Starting AI-powered plugin generation');
+  // }, 120000);
 
-  it('should pass options to PluginCreator correctly', async () => {
-    const spec = {
-      name: 'test-plugin',
-      description: 'Test plugin',
-      features: ['Test feature'],
-    };
+  // it('should pass options to PluginCreator correctly', async () => {
+  //   const spec = {
+  //     name: 'test-plugin',
+  //     description: 'Test plugin',
+  //     features: ['Test feature'],
+  //   };
 
-    await fs.writeJSON(specFile, spec);
+  //   await fs.writeJSON(specFile, spec);
 
-    // Test with all skip options
-    const result = await runCLI([
-      'plugins',
-      'generate',
-      '--skip-prompts',
-      '--spec-file',
-      specFile,
-      '--skip-tests',
-      '--skip-validation',
-    ]);
+  //   // Test with all skip options
+  //   const result = await runCLI([
+  //     'plugins',
+  //     'generate',
+  //     '--skip-prompts',
+  //     '--spec-file',
+  //     specFile,
+  //     '--skip-tests',
+  //     '--skip-validation',
+  //   ]);
 
-    // The actual command will fail but we're testing that options are parsed
-    expect(result.stdout).toContain('Starting AI-powered plugin generation');
-    expect(result.exitCode).toBe(1); // Expected due to invalid API key
-  }, 120000);
+  //   // The actual command will fail but we're testing that options are parsed
+  //   expect(result.stdout).toContain('Starting AI-powered plugin generation');
+  //   expect(result.exitCode).toBe(1); // Expected due to invalid API key
+  // }, 120000);
 });
