@@ -142,7 +142,7 @@ export type IsValidServiceType<T extends string> = T extends ServiceTypeName ? t
  * Type-safe service class definition
  */
 export type TypedServiceClass<T extends ServiceTypeName> = {
-  new (runtime?: IAgentRuntime): Service;
+  new(runtime?: IAgentRuntime): Service;
   serviceType: T;
   start(runtime: IAgentRuntime): Promise<Service>;
 };

@@ -4,7 +4,7 @@ import { ChatInput } from '@/components/ui/chat/chat-input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { AudioRecorder } from '@/components/audio-recorder';
 import { Loader2, Paperclip, Send, FileText, X } from 'lucide-react';
-import type { Agent, UUID, ChannelType } from '@elizaos/core';
+import { Agent, UUID, ChannelType } from '@elizaos/core';
 import type { UploadingFile } from '@/hooks/use-file-upload';
 
 interface ChatInputAreaProps {
@@ -48,7 +48,7 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
             <span className="w-[6px] h-[6px] bg-white rounded-full animate-bounce [animation-delay:0.4s]" />
           </div>
           <span>
-            {chatType === 'DM' && targetAgentData
+            {chatType === ChannelType.DM && targetAgentData
               ? `${targetAgentData.name} is thinking`
               : 'Agent is thinking'}
           </span>
@@ -118,15 +118,15 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
           onChange={({ target }) => setInput(target.value)}
           placeholder={
             inputDisabled
-              ? chatType === 'DM' && targetAgentData
+              ? chatType === ChannelType.DM && targetAgentData
                 ? `${targetAgentData.name} is thinking...`
                 : 'Agent is processing...'
-              : chatType === 'DM'
+              : chatType === ChannelType.DM
                 ? 'Type your message here...'
                 : 'Message group...'
           }
           className="min-h-12 resize-none rounded-md bg-card border-0 p-3 shadow-none focus-visible:ring-0"
-          disabled={inputDisabled || (chatType === 'DM' && targetAgentData?.status === 'inactive')}
+          disabled={inputDisabled || (chatType === ChannelType.DM && targetAgentData?.status === 'inactive')}
         />
         <div className="flex items-center p-3 pt-0">
           <Tooltip>
@@ -156,7 +156,7 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
               <p>Attach files</p>
             </TooltipContent>
           </Tooltip>
-          {chatType === 'DM' && targetAgentData?.id && (
+          {chatType === ChannelType.DM && targetAgentData?.id && (
             <AudioRecorder
               agentId={targetAgentData.id}
               onChange={(newInput: string) => setInput(newInput)}
@@ -165,7 +165,7 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
           <Button
             disabled={
               inputDisabled ||
-              (chatType === 'DM' && targetAgentData?.status === 'inactive') ||
+              (chatType === ChannelType.DM && targetAgentData?.status === 'inactive') ||
               selectedFiles.some((f) => f.isUploading)
             }
             type="submit"

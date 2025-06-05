@@ -225,7 +225,7 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
 
           // Determine if this is likely a DM based on the context
           const isDmChannel =
-            metadata?.isDm || metadata?.channelType === 'DM' || metadata?.channel_type === 'DM';
+            metadata?.isDm || metadata?.channelType === ChannelType.DM || metadata?.channel_type === ChannelType.DM;
 
           const channelData = {
             id: channelIdParam as UUID, // Use the specific channel ID from the URL
@@ -268,7 +268,7 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
 
           await serverInstance.createChannel(channelData, participants);
           logger.info(
-            `[Messages Router] Auto-created ${isDmChannel ? 'DM' : 'GROUP'} channel ${channelIdParam} for message submission with ${participants.length} participants`
+            `[Messages Router] Auto-created ${isDmChannel ? ChannelType.DM : ChannelType.GROUP} channel ${channelIdParam} for message submission with ${participants.length} participants`
           );
         } catch (createError: any) {
           logger.error(
