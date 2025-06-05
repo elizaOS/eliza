@@ -17,7 +17,7 @@ fi
 
 if ! command -v claude &> /dev/null; then
     echo "❌ Claude Code not found. Install with:"
-    echo "   npm install -g @anthropic-ai/claude-code"
+    echo "   bun install -g @anthropic-ai/claude-code"
     exit 1
 fi
 
