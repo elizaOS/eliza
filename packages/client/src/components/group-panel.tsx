@@ -39,7 +39,12 @@ interface ChannelParticipantsResponse {
 type SelectableAgent = Agent & { id: UUID; name: string };
 
 function isAgentSelectable(agent: Partial<Agent>): agent is SelectableAgent {
-  return !!agent.id && !!validateUuid(agent.id) && typeof agent.name === 'string' && agent.name.trim() !== '';
+  return (
+    !!agent.id &&
+    !!validateUuid(agent.id) &&
+    typeof agent.name === 'string' &&
+    agent.name.trim() !== ''
+  );
 }
 
 export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
@@ -49,8 +54,14 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   const initializedRef = useRef(false);
   const lastChannelIdRef = useRef(channelId);
 
-  const { data: channelsData } = useChannels(channelId ? serverId : undefined, { enabled: !!channelId });
-  const { data: agentsData, isLoading: isLoadingAgents, isError: isErrorAgents } = useAgentsWithDetails();
+  const { data: channelsData } = useChannels(channelId ? serverId : undefined, {
+    enabled: !!channelId,
+  });
+  const {
+    data: agentsData,
+    isLoading: isLoadingAgents,
+    isError: isErrorAgents,
+  } = useAgentsWithDetails();
 
   const allAvailableSelectableAgents = useMemo(() => {
     return (agentsData?.agents || []).filter(isAgentSelectable);
@@ -131,7 +142,11 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
       clientLogger.error('Failed to delete channel', error);
       const errorMsg = error instanceof Error ? error.message : 'Could not delete group.';
       if (typeof error === 'object' && error !== null && (error as any).statusCode === 404) {
-        toast({ title: 'Error Deleting Group', description: "Delete operation not found on server.", variant: 'destructive' });
+        toast({
+          title: 'Error Deleting Group',
+          description: 'Delete operation not found on server.',
+          variant: 'destructive',
+        });
       } else {
         toast({ title: 'Error Deleting Group', description: errorMsg, variant: 'destructive' });
       }
@@ -142,7 +157,7 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
     data: channelParticipantsApiResponse,
     isLoading: isLoadingChannelParticipants,
     isError: isErrorChannelParticipants,
-    error: errorChannelParticipants
+    error: errorChannelParticipants,
   }: UseQueryResult<ChannelParticipantsResponse, Error> = useQuery({
     queryKey: ['channelParticipants', channelId],
     queryFn: async () => {
@@ -176,31 +191,53 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
     if (!channelId) return; // Only handle edit mode
 
     if (isErrorChannelParticipants) {
-      toast({ title: "Error", description: `Could not load group participants: ${errorChannelParticipants?.message || 'Unknown error'}`, variant: "destructive" });
+      toast({
+        title: 'Error',
+        description: `Could not load group participants: ${errorChannelParticipants?.message || 'Unknown error'}`,
+        variant: 'destructive',
+      });
       setSelectedAgents([]);
       return;
     }
 
     if (channelParticipantsApiResponse?.success && channelParticipantsApiResponse.data) {
       const participantIds = channelParticipantsApiResponse.data;
-      const newSelected = allAvailableSelectableAgents.filter(agent => participantIds.includes(agent.id));
+      const newSelected = allAvailableSelectableAgents.filter((agent) =>
+        participantIds.includes(agent.id)
+      );
 
-      const currentSelectedIds = selectedAgents.map(a => a.id).sort().join(',');
-      const newSelectedIds = newSelected.map(a => a.id).sort().join(',');
+      const currentSelectedIds = selectedAgents
+        .map((a) => a.id)
+        .sort()
+        .join(',');
+      const newSelectedIds = newSelected
+        .map((a) => a.id)
+        .sort()
+        .join(',');
 
       if (currentSelectedIds !== newSelectedIds) {
         setSelectedAgents(newSelected);
       }
     } else if (channelParticipantsApiResponse && !channelParticipantsApiResponse.success) {
-      toast({ title: "Error", description: `Could not load group participants: ${channelParticipantsApiResponse.error?.message || 'Server error'}`, variant: "destructive" });
+      toast({
+        title: 'Error',
+        description: `Could not load group participants: ${channelParticipantsApiResponse.error?.message || 'Server error'}`,
+        variant: 'destructive',
+      });
       setSelectedAgents([]);
     } else {
       setSelectedAgents([]);
     }
   }, [
-    channelId, isLoadingAgents, isLoadingChannelParticipants,
-    channelParticipantsApiResponse, allAvailableSelectableAgents, isErrorChannelParticipants,
-    errorChannelParticipants, toast, selectedAgents
+    channelId,
+    isLoadingAgents,
+    isLoadingChannelParticipants,
+    channelParticipantsApiResponse,
+    allAvailableSelectableAgents,
+    isErrorChannelParticipants,
+    errorChannelParticipants,
+    toast,
+    selectedAgents,
   ]);
 
   const comboboxOptions: ComboboxOption[] = useMemo(() => {
@@ -219,23 +256,26 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
     if (!channelId) return STABLE_EMPTY_COMBOBOX_OPTIONS_ARRAY; // Create mode
     if (selectedAgents.length === 0) return STABLE_EMPTY_COMBOBOX_OPTIONS_ARRAY; // No agents selected
 
-    return selectedAgents.map(agent => ({
+    return selectedAgents.map((agent) => ({
       id: agent.id,
       label: `${agent.name}${agent.status === AgentStatus.INACTIVE ? ' (Inactive)' : ''}`,
       icon: agent.settings?.avatar || '',
     }));
   }, [channelId, selectedAgents, isLoadingAgents, STABLE_EMPTY_COMBOBOX_OPTIONS_ARRAY]);
 
-  const handleSelectAgents = useCallback((selectedOptions: ComboboxOption[]) => {
-    const newSelectedAgentObjects = allAvailableSelectableAgents.filter(agent =>
-      selectedOptions.some(option => option.id === agent.id)
-    );
-    setSelectedAgents(newSelectedAgentObjects);
-  }, [allAvailableSelectableAgents]);
+  const handleSelectAgents = useCallback(
+    (selectedOptions: ComboboxOption[]) => {
+      const newSelectedAgentObjects = allAvailableSelectableAgents.filter((agent) =>
+        selectedOptions.some((option) => option.id === agent.id)
+      );
+      setSelectedAgents(newSelectedAgentObjects);
+    },
+    [allAvailableSelectableAgents]
+  );
 
   const handleDeleteGroup = useCallback(async () => {
     if (!channelId) return;
-    const channel = channelsData?.data?.channels.find(ch => ch.id === channelId);
+    const channel = channelsData?.data?.channels.find((ch) => ch.id === channelId);
     const confirmDelete = window.confirm(
       `Are you sure you want to permanently delete the group chat "${channel?.name || chatName || 'this group'}"? This action cannot be undone.`
     );
@@ -245,13 +285,17 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
 
   const handleCreateOrUpdateGroup = useCallback(async () => {
     if (selectedAgents.length === 0) {
-      toast({ title: "Validation Error", description: "Please select at least one agent for the group.", variant: "destructive" });
+      toast({
+        title: 'Validation Error',
+        description: 'Please select at least one agent for the group.',
+        variant: 'destructive',
+      });
       return;
     }
 
-    const participantIds = selectedAgents.map(agent => agent.id);
+    const participantIds = selectedAgents.map((agent) => agent.id);
     // Generate name if empty
-    const finalName = chatName.trim() || selectedAgents.map(agent => agent.name).join(', ');
+    const finalName = chatName.trim() || selectedAgents.map((agent) => agent.name).join(', ');
 
     if (!channelId) {
       createGroupMutation.mutate({ name: finalName, participantIds });
@@ -297,13 +341,18 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
                 onChange={(e) => setChatName(e.target.value)}
                 className="w-full bg-background text-foreground"
                 placeholder="Leave blank to auto-generate from participants"
-                disabled={createGroupMutation.isPending || updateGroupMutation.isPending || deleteGroupMutation.isPending}
+                disabled={
+                  createGroupMutation.isPending ||
+                  updateGroupMutation.isPending ||
+                  deleteGroupMutation.isPending
+                }
               />
             </div>
 
             <div className="flex flex-col gap-2 w-full">
               <label htmlFor="invite-agents" className="text-sm font-medium">
-                Select Agents {!channelId && <span className="text-muted-foreground">(Required)</span>}
+                Select Agents{' '}
+                {!channelId && <span className="text-muted-foreground">(Required)</span>}
               </label>
               {isLoadingAgents ? (
                 <div className="flex items-center justify-center p-4">
@@ -337,7 +386,12 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
             <Button
               variant="destructive"
               onClick={handleDeleteGroup}
-              disabled={deleteGroupMutation.isPending || createGroupMutation.isPending || updateGroupMutation.isPending || isLoadingAgents}
+              disabled={
+                deleteGroupMutation.isPending ||
+                createGroupMutation.isPending ||
+                updateGroupMutation.isPending ||
+                isLoadingAgents
+              }
             >
               {deleteGroupMutation.isPending ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -354,7 +408,9 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
             onClick={handleCreateOrUpdateGroup}
             disabled={isSubmitDisabled}
           >
-            {(createGroupMutation.isPending || updateGroupMutation.isPending) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {(createGroupMutation.isPending || updateGroupMutation.isPending) && (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            )}
             {channelId ? 'Update Group' : 'Create Group'}
           </Button>
         </CardFooter>
@@ -362,4 +418,3 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
     </div>
   );
 }
-

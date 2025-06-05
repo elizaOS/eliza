@@ -8,7 +8,7 @@ import { emoji } from './emoji-handler';
  */
 export async function autoInstallBun(): Promise<boolean> {
   const platform = process.platform;
-  
+
   try {
     // First check if bun is already available
     await execa('bun', ['--version'], { stdio: 'ignore' });
@@ -18,35 +18,30 @@ export async function autoInstallBun(): Promise<boolean> {
   }
 
   logger.info(`${emoji.rocket('Bun is required for ElizaOS CLI. Installing automatically...')}`);
-  
+
   try {
     if (platform === 'win32') {
       // Windows installation
       logger.info('Installing Bun on Windows...');
-      await execa('powershell', [
-        '-c',
-        'irm bun.sh/install.ps1 | iex'
-      ], {
-        stdio: 'inherit'
+      await execa('powershell', ['-c', 'irm bun.sh/install.ps1 | iex'], {
+        stdio: 'inherit',
       });
     } else {
       // Linux/macOS installation
       logger.info('Installing Bun on Linux/macOS...');
-      
+
       // Use shell to execute the curl | bash command directly
-      await execa('sh', [
-        '-c',
-        'curl -fsSL https://bun.sh/install | bash'
-      ], {
-        stdio: 'inherit'
+      await execa('sh', ['-c', 'curl -fsSL https://bun.sh/install | bash'], {
+        stdio: 'inherit',
       });
     }
 
     // Add bun to PATH for current session
-    const bunPath = platform === 'win32' 
-      ? `${process.env.USERPROFILE}\\.bun\\bin`
-      : `${process.env.HOME}/.bun/bin`;
-    
+    const bunPath =
+      platform === 'win32'
+        ? `${process.env.USERPROFILE}\\.bun\\bin`
+        : `${process.env.HOME}/.bun/bin`;
+
     if (bunPath && !process.env.PATH?.includes(bunPath)) {
       process.env.PATH = `${bunPath}${platform === 'win32' ? ';' : ':'}${process.env.PATH}`;
     }
@@ -54,12 +49,12 @@ export async function autoInstallBun(): Promise<boolean> {
     // Verify installation worked
     await execa('bun', ['--version'], { stdio: 'ignore' });
     logger.success(`${emoji.success('Bun installed successfully!')}`);
-    
+
     return true;
   } catch (error) {
     logger.error(`${emoji.error('Failed to automatically install Bun:')}`);
     logger.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
-    
+
     // Fall back to manual installation instructions
     logger.info(`\n${emoji.info('Please install Bun manually:')}`);
     if (platform === 'win32') {
@@ -71,8 +66,10 @@ export async function autoInstallBun(): Promise<boolean> {
       }
     }
     logger.info(`\n${emoji.link('More options: https://bun.sh/docs/installation')}`);
-    logger.info(`\n${emoji.tip('After installation, restart your terminal or source your shell profile')}`);
-    
+    logger.info(
+      `\n${emoji.tip('After installation, restart your terminal or source your shell profile')}`
+    );
+
     return false;
   }
 }
@@ -86,16 +83,16 @@ export function shouldAutoInstall(): boolean {
   if (process.env.CI === 'true' || process.env.CI === '1') {
     return false;
   }
-  
+
   // Don't auto-install if explicitly disabled
   if (process.env.ELIZA_NO_AUTO_INSTALL === 'true') {
     return false;
   }
-  
+
   // Check for --no-auto-install flag (backup check)
   if (process.argv.includes('--no-auto-install')) {
     return false;
   }
-  
+
   return true;
 }

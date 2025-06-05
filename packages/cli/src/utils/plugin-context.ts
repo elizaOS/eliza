@@ -33,14 +33,14 @@ function normalizeForComparison(name: string): string {
  */
 export function detectPluginContext(pluginName: string): PluginContext {
   const cwd = process.cwd();
-  
+
   // Use existing directory detection to check if we're in a plugin
   const directoryInfo = detectDirectoryType(cwd);
-  
+
   if (directoryInfo.type !== 'elizaos-plugin' || !directoryInfo.hasPackageJson) {
     return { isLocalDevelopment: false };
   }
-  
+
   // Get package info from directory detection result
   const packageJsonPath = path.join(cwd, 'package.json');
   let packageInfo: PackageInfo;
@@ -50,36 +50,36 @@ export function detectPluginContext(pluginName: string): PluginContext {
     logger.debug(`Failed to parse package.json: ${error}`);
     return { isLocalDevelopment: false };
   }
-  
+
   // Check if the requested plugin matches the current package
   const normalizedRequestedPlugin = normalizeForComparison(pluginName);
   const normalizedCurrentPackage = normalizeForComparison(packageInfo.name);
-  
+
   // Also check directory name as fallback
   const dirName = path.basename(cwd);
   const normalizedDirName = normalizeForComparison(dirName);
-  
-  const isCurrentPlugin = 
+
+  const isCurrentPlugin =
     normalizedRequestedPlugin === normalizedCurrentPackage ||
     normalizedRequestedPlugin === normalizedDirName;
-  
+
   if (isCurrentPlugin) {
     const mainEntry = packageInfo.main || 'dist/index.js';
     const localPath = path.resolve(cwd, mainEntry);
     const needsBuild = !fs.existsSync(localPath);
-    
+
     logger.debug(`Detected local plugin development: ${pluginName}`);
     logger.debug(`Expected output: ${localPath}`);
     logger.debug(`Needs build: ${needsBuild}`);
-    
+
     return {
       isLocalDevelopment: true,
       localPath,
       packageInfo,
-      needsBuild
+      needsBuild,
     };
   }
-  
+
   return { isLocalDevelopment: false };
 }
 
@@ -90,15 +90,15 @@ export async function ensurePluginBuilt(context: PluginContext): Promise<boolean
   if (!context.isLocalDevelopment || !context.needsBuild || !context.packageInfo) {
     return true;
   }
-  
+
   const { packageInfo, localPath } = context;
-  
+
   // Check if build script exists
   if (packageInfo.scripts?.build) {
     logger.info('Plugin not built, attempting to build...');
     try {
       await buildProject(process.cwd(), true);
-      
+
       // Verify the build created the expected output
       if (localPath && fs.existsSync(localPath)) {
         logger.success('Plugin built successfully');
@@ -112,7 +112,7 @@ export async function ensurePluginBuilt(context: PluginContext): Promise<boolean
       return false;
     }
   }
-  
+
   logger.error(`Plugin not built and no build script found in package.json`);
   logger.info(`Add a "build" script to package.json or run 'bun run build' manually`);
   return false;
@@ -125,9 +125,9 @@ export function provideLocalPluginGuidance(pluginName: string, context: PluginCo
   if (!context.isLocalDevelopment) {
     return;
   }
-  
+
   logger.info(`\nLocal plugin development detected for: ${pluginName}`);
-  
+
   if (context.needsBuild) {
     logger.info('To fix this issue:');
     logger.info('1. Build the plugin: bun run build');
@@ -137,6 +137,6 @@ export function provideLocalPluginGuidance(pluginName: string, context: PluginCo
     logger.info('Plugin appears to be built but failed to load.');
     logger.info('Try rebuilding: bun run build');
   }
-  
+
   logger.info('\nFor more information, see the plugin development guide.');
 }

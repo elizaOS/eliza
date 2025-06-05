@@ -219,7 +219,9 @@ const ChannelsForServer = ({
     e.preventDefault();
     e.stopPropagation();
 
-    if (window.confirm('Are you sure you want to delete this group? This action cannot be undone.')) {
+    if (
+      window.confirm('Are you sure you want to delete this group? This action cannot be undone.')
+    ) {
       setDeletingChannelId(channelId);
       try {
         await deleteChannelMutation.mutateAsync({ channelId, serverId });
@@ -254,7 +256,11 @@ const ChannelsForServer = ({
                     <Users className="h-5 w-5 text-muted-foreground" /> {/* Group icon */}
                     <span className="text-sm truncate max-w-32">
                       {/* Use generateGroupName - assumes channel.participants exists or will be added */}
-                      {generateGroupName(channel, (channel as any).participants || [], currentClientId)}
+                      {generateGroupName(
+                        channel,
+                        (channel as any).participants || [],
+                        currentClientId
+                      )}
                     </span>
                   </div>
                 </SidebarMenuButton>
@@ -280,12 +286,7 @@ const ChannelsForServer = ({
 // For "Create Group", users will use the button in the "Groups" section header.
 const CreateAgentButton = ({ onClick }: { onClick: () => void }) => {
   return (
-    <Button
-      variant="outline"
-      size="sm"
-      onClick={onClick}
-      className="w-full"
-    >
+    <Button variant="outline" size="sm" onClick={onClick} className="w-full">
       <Plus className="h-4 w-4 mr-2" />
       Create Agent
     </Button>
@@ -301,7 +302,10 @@ interface AppSidebarProps {
  *
  * The sidebar includes sections for online and offline agents, group rooms, a create button for agents and groups, and footer links to documentation, logs, and settings. It handles loading and error states for agent and room data, and conditionally displays a group creation panel.
  */
-export function AppSidebar({ refreshHomePage, isMobile = false }: AppSidebarProps & { isMobile?: boolean }) {
+export function AppSidebar({
+  refreshHomePage,
+  isMobile = false,
+}: AppSidebarProps & { isMobile?: boolean }) {
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient(); // Get query client instance
@@ -356,9 +360,9 @@ export function AppSidebar({ refreshHomePage, isMobile = false }: AppSidebarProp
     <>
       <Sidebar
         className={cn(
-          "bg-background border-r min-h-screen",
-          isMobile ? "p-4 pt-0" : "p-4 w-72",
-          !isMobile && "hidden md:flex md:flex-col"
+          'bg-background border-r min-h-screen',
+          isMobile ? 'p-4 pt-0' : 'p-4 w-72',
+          !isMobile && 'hidden md:flex md:flex-col'
         )}
         collapsible="none"
       >
@@ -373,7 +377,11 @@ export function AppSidebar({ refreshHomePage, isMobile = false }: AppSidebarProp
                   className="px-6 py-2 h-full sidebar-logo no-underline"
                 >
                   <div className="flex flex-col pt-2 gap-1 items-start justify-center">
-                    <img alt="elizaos-logo" src="/elizaos-logo-light.png" className="w-32 max-w-full" />
+                    <img
+                      alt="elizaos-logo"
+                      src="/elizaos-logo-light.png"
+                      className="w-32 max-w-full"
+                    />
                     <span className="text-xs font-mono text-muted-foreground">v{info.version}</span>
                   </div>
                 </a>

@@ -101,16 +101,14 @@ export const ChatMessageListComponent: React.FC<ChatMessageListComponentProps> =
               {!isUser && (
                 <Avatar className="size-8 border rounded-full select-none mb-2">
                   <AvatarImage
-                    src={
-                      getAgentAvatar(
-                        chatType === ChannelType.DM
-                          ? targetAgentData
-                          : senderAgent ||
-                          (agentAvatarMap && message.senderId && allAgents
-                            ? allAgents.find((a: Partial<Agent>) => a.id === message.senderId)
-                            : undefined)
-                      )
-                    }
+                    src={getAgentAvatar(
+                      chatType === ChannelType.DM
+                        ? targetAgentData
+                        : senderAgent ||
+                            (agentAvatarMap && message.senderId && allAgents
+                              ? allAgents.find((a: Partial<Agent>) => a.id === message.senderId)
+                              : undefined)
+                    )}
                   />
                 </Avatar>
               )}

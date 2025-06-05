@@ -60,16 +60,15 @@ export function usePlugins() {
 
         // Extract plugin names from registry that support v1 and are plugins
         const registryPlugins = Object.entries(registryData.registry || {})
-          .filter(
-            ([name, data]: [string, PluginInfo]) => {
-              // Check if it's a plugin and has v1 support
-              const isPlugin = name.includes('plugin');
-              const hasV1Support = data.supports.v1 === true;
-              const hasV1Version = data.npm.v1 !== null || (data.git.v1.version !== null && data.git.v1.branch !== null);
+          .filter(([name, data]: [string, PluginInfo]) => {
+            // Check if it's a plugin and has v1 support
+            const isPlugin = name.includes('plugin');
+            const hasV1Support = data.supports.v1 === true;
+            const hasV1Version =
+              data.npm.v1 !== null || (data.git.v1.version !== null && data.git.v1.branch !== null);
 
-              return isPlugin && hasV1Support && hasV1Version;
-            }
-          )
+            return isPlugin && hasV1Support && hasV1Version;
+          })
           .map(([name]) => name)
           .sort();
 
@@ -108,7 +107,7 @@ export function usePlugins() {
           '@elizaos/plugin-anthropic',
           '@elizaos/plugin-browser',
           '@elizaos/plugin-farcaster',
-          '@elizaos/plugin-groq'
+          '@elizaos/plugin-groq',
         ]
           .filter((name) => name.includes('plugin'))
           .sort();
