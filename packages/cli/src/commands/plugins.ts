@@ -209,11 +209,11 @@ const promptForPluginEnvVars = async (packageName: string, cwd: string): Promise
   
   if (Object.keys(envRequirements).length === 0) {
     logger.debug(`No environment variables required for ${packageName}`);
-    console.log(`✅ No environment variables required for ${packageName}`);
+    logger.info(`✅ No environment variables required for ${packageName}`);
     return;
   }
 
-  console.log(`\n${emoji.rocket(`Plugin ${packageName} requires environment variables:`)}`);
+  logger.info(`\n${emoji.rocket(`Plugin ${packageName} requires environment variables:`)}`);
   
   // Read current .env file to check for existing values
   const envContent = readEnvFile(cwd);
