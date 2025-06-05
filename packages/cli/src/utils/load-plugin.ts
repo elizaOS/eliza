@@ -173,21 +173,50 @@ const importStrategies: ImportStrategy[] = [
 ];
 
 /**
- * Attempts to load a plugin module using various strategies.
- * It tries direct import, local node_modules, global node_modules,
- * package.json entry points, and common dist patterns.
+ * Determines if a plugin is from the ElizaOS ecosystem
+ */
+function isElizaOSPlugin(repository: string): boolean {
+  return repository.startsWith('@elizaos/') || repository.startsWith('@elizaos-plugins/');
+}
+
+/**
+ * Get relevant import strategies based on plugin type
+ */
+function getStrategiesForPlugin(repository: string): ImportStrategy[] {
+  const isElizaOS = isElizaOSPlugin(repository);
+  
+  if (isElizaOS) {
+    // ElizaOS ecosystem plugins: try all strategies
+    return importStrategies;
+  } else {
+    // Third-party plugins: only try relevant strategies
+    return importStrategies.filter(strategy => 
+      strategy.name === 'local development plugin' ||
+      strategy.name === 'package.json entry' ||
+      strategy.name === 'common dist pattern'
+    );
+  }
+}
+
+/**
+ * Attempts to load a plugin module using relevant strategies based on plugin type.
+ * ElizaOS ecosystem plugins (@elizaos/*) use all strategies,
+ * while third-party plugins use only relevant strategies to avoid noise.
  *
  * @param repository - The plugin repository/package name to load.
  * @returns The loaded plugin module or null if loading fails after all attempts.
  */
 export async function loadPluginModule(repository: string): Promise<any | null> {
-  //logger.debug(`Attempting to load plugin module: ${repository}`);
+  const isElizaOS = isElizaOSPlugin(repository);
+  const strategies = getStrategiesForPlugin(repository);
+  
+  logger.debug(`Loading ${isElizaOS ? 'ElizaOS' : 'third-party'} plugin: ${repository} (${strategies.length} strategies)`);
 
-  for (const strategy of importStrategies) {
+  for (const strategy of strategies) {
     const result = await strategy.tryImport(repository);
     if (result) return result;
   }
 
-  logger.warn(`Failed to load plugin module '${repository}' using all available strategies.`);
+  logger.warn(`Failed to load plugin module '${repository}' using all relevant strategies.`);
   return null;
 }
