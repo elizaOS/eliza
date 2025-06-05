@@ -29,7 +29,7 @@ echo ""
 echo "Checking for Claude Code..."
 if ! command -v claude &> /dev/null; then
     echo "❌ Claude Code not found!"
-    echo "Please install it first: npm install -g @anthropic-ai/claude-code"
+    echo "Please install it first: bun install -g @anthropic-ai/claude-code"
     exit 1
 else
     echo "✓ Claude Code is installed"
@@ -82,7 +82,7 @@ if [[ ! -f "$CLI_DIR/package.json" ]] || [[ ! -d "$CLI_DIR/dist" ]]; then
     echo "❌ Could not find ElizaOS CLI directory"
     echo "Expected structure: packages/cli/dist and packages/cli/package.json"
     echo "Make sure this script is run from the packages/cli/examples directory"
-    echo "or that the CLI has been built (npm run build)"
+    echo "or that the CLI has been built (bun run build)"
     exit 1
 fi
 
@@ -140,8 +140,8 @@ if [ ${PIPESTATUS[0]} -eq 0 ]; then
         echo "Next steps:"
         echo "1. cd $CLI_DIR/plugin-time-tracker"
         echo "2. Review the generated code"
-        echo "3. npm install && npm run build"
-        echo "4. npm test"
+        echo "3. bun install && bun run build"
+        echo "4. bun test"
     fi
 else
     echo ""

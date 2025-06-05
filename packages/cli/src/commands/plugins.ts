@@ -7,12 +7,13 @@ import { Command } from 'commander';
 import { execa } from 'execa';
 import fs from 'node:fs';
 import path from 'node:path';
+import { emoji } from '../utils/emoji-handler';
 
 // --- Helper Functions ---
 
 /**
  * Normalizes a plugins input string to a standard format, typically 'plugin-name'.
- * Used primarily for display and generating commands in npx instructions.
+ * Used primarily for display and generating commands in bunx instructions.
  */
 export const normalizePluginNameForDisplay = (pluginInput: string): string => {
   let baseName = pluginInput;
@@ -442,11 +443,11 @@ plugins
       });
 
       // Run migration
-      console.log(`\n🚀 Starting plugin upgrade for: ${pluginPath}\n`);
+      console.log(`\n${emoji.rocket(`Starting plugin upgrade for: ${pluginPath}`)}\n`);
       const result = await migrator.migrate(pluginPath);
 
       if (result.success) {
-        console.log(`\n✅ Plugin successfully upgraded!`);
+        console.log(`\n${emoji.success('Plugin successfully upgraded!')}`);
         console.log(`   Branch: ${result.branchName}`);
         console.log(`   Location: ${result.repoPath}`);
         console.log(`\nThe upgraded plugin has been copied to your current directory.`);
@@ -514,18 +515,18 @@ plugins
       });
 
       // Run generation
-      console.log(`\n🚀 Starting AI-powered plugin generation...\n`);
+      console.log(`\n${emoji.rocket('Starting AI-powered plugin generation...')}\n`);
       const result = await creator.create();
 
       if (result.success) {
-        console.log(`\n✅ Plugin successfully generated!`);
+        console.log(`\n${emoji.success('Plugin successfully generated!')}`);
         console.log(`   Name: ${result.pluginName}`);
         console.log(`   Location: ${result.pluginPath}`);
         console.log(`\nThe plugin has been created in your current directory.`);
         console.log(`\nNext steps:`);
         console.log(`1. cd ${path.basename(result.pluginPath)}`);
         console.log(`2. Review the generated code`);
-        console.log(`3. Test the plugin: npm test`);
+        console.log(`3. Test the plugin: bun test`);
         console.log(`4. Add to your ElizaOS project`);
       } else {
         logger.error(`Plugin generation failed: ${result.error?.message}`);

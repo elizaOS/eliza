@@ -196,17 +196,35 @@ Only non-workspace packages will be updated.
 
 ## Troubleshooting
 
+### Bun Installation Issues
+
+If you encounter errors related to bun not being found:
+
+```bash
+# For Linux/macOS (using curl)
+curl -fsSL https://bun.sh/install | bash
+
+# For macOS (using Homebrew)
+brew install bun
+
+# For Windows (using PowerShell)
+powershell -c "irm bun.sh/install.ps1 | iex"
+
+# After installation, restart your terminal and verify
+bun --version
+```
+
 ### CLI Update Issues
 
 ```bash
 # Check if CLI is installed globally
-npm list -g @elizaos/cli
+bun pm ls -g @elizaos/cli
 
 # Install CLI globally if needed
-npm install -g @elizaos/cli
+bun install -g @elizaos/cli
 
 # Update with administrator privileges (if needed)
-sudo npm install -g @elizaos/cli
+sudo bun install -g @elizaos/cli
 ```
 
 ### Package Update Failures
@@ -250,18 +268,18 @@ elizaos update
 # For global CLI updates on macOS/Linux
 sudo elizaos update --cli
 
-# Or change npm global directory ownership
-sudo chown -R $(whoami) ~/.npm
+# Or change bun global directory ownership
+sudo chown -R $(whoami) ~/.bun
 ```
 
 ### Network Issues
 
 ```bash
-# Check npm registry connectivity
-npm ping
+# Check registry connectivity
+bun config get registry
 
 # Update with different registry
-npm config set registry https://registry.npmjs.org/
+bun config set registry https://registry.npmjs.org/
 elizaos update
 ```
 

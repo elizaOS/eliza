@@ -198,7 +198,7 @@ Publish a plugin to the registry.
 
 The `elizaos publish` command is designed for **initial plugin publishing only**. After initial publishing, use standard npm and git workflows for updates:
 
-- `npm version patch|minor|major` to update version
+- `bun version patch|minor|major` to update version (or `npm version` if preferred)
 - `npm publish` to publish to npm
 - `git push origin main && git push --tags` to update GitHub
 
@@ -644,7 +644,7 @@ Plugins extend the functionality of ElizaOS agents by providing additional capab
    elizaos test
 
    # Update version and publish updates
-   npm version patch  # or minor/major
+   bun version patch  # or minor/major (or npm version if preferred)
    npm publish
    git push origin main && git push --tags
    ```

@@ -9,6 +9,7 @@ import simpleGit, { SimpleGit } from 'simple-git';
 import { fileURLToPath } from 'url';
 import * as os from 'os';
 import inquirer from 'inquirer';
+import { runBunCommand } from './run-bun';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -112,7 +113,7 @@ export class PluginCreator {
         await execa('claude', ['--version'], { stdio: 'pipe' });
       } catch {
         throw new Error(
-          'Claude Code is required for plugin generation. Install with: npm install -g @anthropic-ai/claude-code'
+          'Claude Code is required for plugin generation. Install with: bun install -g @anthropic-ai/claude-code'
         );
       }
 
@@ -153,7 +154,7 @@ export class PluginCreator {
       logger.info(`\n📌 Next steps:`);
       logger.info(`1. cd ${path.basename(targetPath)}`);
       logger.info(`2. Review the generated code`);
-      logger.info(`3. Run tests: npm test`);
+      logger.info(`3. Run tests: bun test`);
       logger.info(`4. Add to your ElizaOS project\n`);
 
       return {
@@ -306,7 +307,7 @@ export class PluginCreator {
     // Use elizaos create command to create from template
     try {
       await execa(
-        'npx',
+        'bunx',
         ['@elizaos/cli', 'create', `plugin-${pluginName}`, '-t', 'plugin-starter'],
         {
           cwd: tempDir,
@@ -426,7 +427,7 @@ ElizaOS ${pluginName} plugin
 ## Installation
 
 \`\`\`bash
-npm install @elizaos/plugin-${pluginName}
+bun install @elizaos/plugin-${pluginName}
 \`\`\`
 
 ## Usage
@@ -879,7 +880,7 @@ Make all necessary changes to fix the issues and ensure the plugin builds and al
 
         if (error.code === 'ENOENT') {
           throw new Error(
-            'Claude Code not found! Install with: npm install -g @anthropic-ai/claude-code'
+            'Claude Code not found! Install with: bun install -g @anthropic-ai/claude-code'
           );
         }
         throw error;
@@ -906,21 +907,13 @@ Make all necessary changes to fix the issues and ensure the plugin builds and al
 
   private async runBuild(): Promise<{ success: boolean; errors?: string }> {
     try {
-      // Install dependencies first
-      logger.info('Installing dependencies...');
-      await execa('npm', ['install'], {
-        cwd: this.pluginPath!,
-        stdio: 'pipe',
-        timeout: 300000,
-      });
+      // Install dependencies first using bun
+      logger.info('Installing dependencies with bun...');
+      await runBunCommand(['install'], this.pluginPath!);
 
-      // Run build
-      logger.info('Running build...');
-      await execa('npm', ['run', 'build'], {
-        cwd: this.pluginPath!,
-        stdio: 'pipe',
-        timeout: 120000,
-      });
+      // Run build using bun
+      logger.info('Running build with bun...');
+      await runBunCommand(['run', 'build'], this.pluginPath!);
 
       return { success: true };
     } catch (error: any) {
@@ -937,12 +930,8 @@ Make all necessary changes to fix the issues and ensure the plugin builds and al
 
   private async runTests(): Promise<{ success: boolean; errors?: string }> {
     try {
-      logger.info('Running tests...');
-      await execa('npm', ['test'], {
-        cwd: this.pluginPath!,
-        stdio: 'pipe',
-        timeout: 300000,
-      });
+      logger.info('Running tests with bun...');
+      await runBunCommand(['test'], this.pluginPath!);
 
       return { success: true };
     } catch (error: any) {

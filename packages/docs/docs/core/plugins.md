@@ -40,7 +40,7 @@ The ElizaOS plugin system maintains the same basic concept as previous versions,
 
 The new CLI tool introduces a streamlined workflow for plugin development without ever needing to touch the ElizaOS monorepo directly:
 
-1. **Create**: `npm create eliza` - Initialize a new plugin project with proper structure
+1. **Create**: `bun create eliza` - Initialize a new plugin project with proper structure
 2. **Develop**: Edit the plugin code in the generated project structure
 3. **Test**: `elizaos test` - Test the plugin functionality
 4. **Run**: `elizaos start` - Run the plugin with a default agent
@@ -51,11 +51,11 @@ The new CLI tool introduces a streamlined workflow for plugin development withou
 You can create a new ElizaOS plugin using the CLI:
 
 ```bash
-# Using npm
-npm create eliza
+# Using bun (recommended)
+bun create eliza
 
-# Or using npx
-npx create-eliza
+# Or using bunx
+bunx create-eliza
 ```
 
 When prompted, select "Plugin" as the type to create. The CLI will guide you through the setup process, creating a plugin with the proper structure and dependencies.
