@@ -13,7 +13,7 @@ import {
   List,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useAgentMemories } from '@/hooks/use-query-hooks';
+import { useAgentMemories, useAgents } from '@/hooks/use-query-hooks';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -74,6 +74,9 @@ export function AgentMemoryViewer({ agentId, agentName }: AgentMemoryViewerProps
   const [loadingMore, setLoadingMore] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'graph'>('list');
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Get all agents to look up names by ID
+  const { data: agentsData } = useAgents();
 
   // Fetch from appropriate table(s) based on selected type
   const messagesTableName = selectedType === MemoryType.facts ? undefined : 'messages';
@@ -267,9 +270,20 @@ export function AgentMemoryViewer({ agentId, agentName }: AgentMemoryViewerProps
     const content = memory.content as ChatMemoryContent;
     const IconComponent = getMemoryIcon(memory, content);
     const isAgent = memory.entityId === memory.agentId;
-    const entityName = isAgent
-      ? memory.metadata?.source || agentName
-      : memory.metadata?.source || 'User';
+    
+    // Look up entity name from agents data or fallback to metadata
+    const getEntityName = () => {
+      if (isAgent) {
+        // For agents, try to find the agent name by ID
+        const agent = agentsData?.data?.agents?.find(a => a.id === memory.entityId);
+        return agent?.name || agentName;
+      } else {
+        // For users, use raw metadata or fallback
+        return (memory.metadata as any)?.raw?.senderName || memory.metadata?.source || 'User';
+      }
+    };
+    
+    const entityName = getEntityName();
 
     return (
       <div className="border rounded-lg p-4 bg-card hover:bg-accent/5 transition-colors group">
