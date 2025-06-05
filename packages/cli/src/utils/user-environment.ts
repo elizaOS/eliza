@@ -155,7 +155,11 @@ export class UserEnvironment {
             version = stdout.trim();
             logger.debug(`[UserEnvironment] Bun version after auto-install: ${version}`);
           } catch (retryError) {
-            logger.error('Failed to verify Bun installation after auto-install');
+            logger.error(
+              `Failed to verify Bun installation after auto-install: ${
+                retryError instanceof Error ? retryError.message : String(retryError)
+              }`
+            );
             // Continue to manual installation instructions
           }
         }
