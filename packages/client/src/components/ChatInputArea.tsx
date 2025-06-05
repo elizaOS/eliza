@@ -126,7 +126,9 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
                 : 'Message group...'
           }
           className="min-h-12 resize-none rounded-md bg-card border-0 p-3 shadow-none focus-visible:ring-0"
-          disabled={inputDisabled || (chatType === ChannelType.DM && targetAgentData?.status === 'inactive')}
+          disabled={
+            inputDisabled || (chatType === ChannelType.DM && targetAgentData?.status === 'inactive')
+          }
         />
         <div className="flex items-center p-3 pt-0">
           <Tooltip>

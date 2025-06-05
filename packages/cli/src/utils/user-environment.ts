@@ -147,11 +147,13 @@ export class UserEnvironment {
       if (shouldAutoInstall()) {
         logger.info(`${emoji.info('Attempting to automatically install Bun...')}`);
         const installSuccess = await autoInstallBun();
-        
+
         if (installSuccess) {
           // Try to get version again after installation
           try {
-            const { stdout } = await import('execa').then(({ execa }) => execa('bun', ['--version']));
+            const { stdout } = await import('execa').then(({ execa }) =>
+              execa('bun', ['--version'])
+            );
             version = stdout.trim();
             logger.debug(`[UserEnvironment] Bun version after auto-install: ${version}`);
           } catch (retryError) {
@@ -172,7 +174,9 @@ export class UserEnvironment {
           `${emoji.error('Bun is required for ElizaOS CLI but is not installed or not found in PATH.')}`
         );
         logger.error('');
-        logger.error(`${emoji.rocket('Install Bun using the appropriate command for your system:')}`);
+        logger.error(
+          `${emoji.rocket('Install Bun using the appropriate command for your system:')}`
+        );
         logger.error('');
 
         if (platform === 'win32') {
