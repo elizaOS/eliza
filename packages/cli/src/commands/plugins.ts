@@ -2,12 +2,14 @@ import { handleError, installPlugin, logHeader } from '@/src/utils';
 import { fetchPluginRegistry } from '@/src/utils/plugin-discovery';
 import { normalizePluginName } from '@/src/utils/registry';
 import { detectDirectoryType, getDirectoryTypeDescription } from '@/src/utils/directory-detection';
+import { promptForEnvVars } from '@/src/utils/env-prompt';
 import { logger } from '@elizaos/core';
 import { Command } from 'commander';
 import { execa } from 'execa';
 import fs from 'node:fs';
 import path from 'node:path';
 import { emoji } from '../utils/emoji-handler';
+import readline from 'readline';
 
 // --- Helper Functions ---
 
@@ -51,13 +53,13 @@ export const findPluginPackageName = (
     : pluginInput;
   normalizedBase = normalizedBase.replace(/^plugin-/, ''); // Remove prefix if present
 
-  // Potential package names to check
+  // Potential package names to check (prioritize @elizaos/ over @elizaos-plugins/)
   const possibleNames = [
     pluginInput, // Check the raw input first
-    `@elizaos/plugin-${normalizedBase}`,
+    `@elizaos/plugin-${normalizedBase}`, // Prioritize @elizaos/ scope
+    `@elizaos/${normalizedBase}`, // Might be needed if input was 'plugin-abc' -> base 'abc' -> check '@elizaos/abc'
     `@elizaos-plugins/plugin-${normalizedBase}`, // Check alternative scope
     `plugin-${normalizedBase}`,
-    `@elizaos/${normalizedBase}`, // Might be needed if input was 'plugin-abc' -> base 'abc' -> check '@elizaos/abc'
     `@elizaos-plugins/${normalizedBase}`,
   ];
 
@@ -68,6 +70,186 @@ export const findPluginPackageName = (
   }
 
   return null; // Not found
+};
+
+/**
+ * Extracts the actual npm package name from various input formats.
+ * This function handles GitHub URLs, package names, and repository names
+ * but preserves the exact package name for installation.
+ */
+export const extractPackageName = (pluginInput: string): string => {
+  // Handle GitHub URLs and repository names  
+  const githubUrlRegex = /^https?:\/\/github\.com\/([a-zA-Z0-9_-]+)\/([a-zA-Z0-9_.-]+?)(?:\.git)?(?:#([a-zA-Z0-9_.-]+))?$/;
+  const githubShortRegex = /^(?:github:)?([a-zA-Z0-9_-]+)\/([a-zA-Z0-9_.-]+)(?:#([a-zA-Z0-9_.-]+))?$/;
+  
+  // Check for GitHub URL format first
+  const githubUrlMatch = pluginInput.match(githubUrlRegex);
+  if (githubUrlMatch) {
+    const [, owner, repo] = githubUrlMatch;
+    // For GitHub repos, we typically expect the package name to be scoped
+    // e.g., github:elizaos-plugins/plugin-discord -> @elizaos-plugins/plugin-discord
+    return `@${owner}/${repo}`;
+  }
+  
+  // Check for GitHub shorthand format
+  const githubShortMatch = pluginInput.match(githubShortRegex);
+  if (githubShortMatch) {
+    const [, owner, repo] = githubShortMatch;
+    return `@${owner}/${repo}`;
+  }
+
+  // Return the input as-is for regular package names
+  return pluginInput;
+};
+
+
+
+/**
+ * Attempts to find the package.json of an installed plugin and extract environment variable requirements
+ * from its agentConfig.pluginParameters
+ */
+const extractPluginEnvRequirements = async (packageName: string, cwd: string): Promise<{ [key: string]: { type: string; description: string } }> => {
+  try {
+    // Try to find the plugin's package.json in node_modules
+    const nodeModulesPath = path.join(cwd, 'node_modules', packageName, 'package.json');
+    
+    if (!fs.existsSync(nodeModulesPath)) {
+      logger.debug(`Plugin package.json not found at: ${nodeModulesPath}`);
+      return {};
+    }
+
+    const packageJsonContent = fs.readFileSync(nodeModulesPath, 'utf-8');
+    const packageJson = JSON.parse(packageJsonContent);
+    
+    // Extract environment variables from agentConfig.pluginParameters
+    const agentConfig = packageJson.agentConfig;
+    if (!agentConfig || !agentConfig.pluginParameters) {
+      logger.debug(`No agentConfig.pluginParameters found in ${packageName}`);
+      return {};
+    }
+
+    logger.debug(`Found environment variables for ${packageName}: ${Object.keys(agentConfig.pluginParameters).join(', ')}`);
+    
+    return agentConfig.pluginParameters;
+  } catch (error) {
+    logger.debug(`Error reading plugin package.json for ${packageName}: ${error.message}`);
+    return {};
+  }
+};
+
+/**
+ * Reads the current .env file content
+ */
+const readEnvFile = (cwd: string): string => {
+  const envPath = path.join(cwd, '.env');
+  try {
+    return fs.readFileSync(envPath, 'utf-8');
+  } catch (error) {
+    // File doesn't exist, return empty string
+    return '';
+  }
+};
+
+/**
+ * Writes content to the .env file
+ */
+const writeEnvFile = (cwd: string, content: string): void => {
+  const envPath = path.join(cwd, '.env');
+  fs.writeFileSync(envPath, content, 'utf-8');
+};
+
+/**
+ * Prompts user for an environment variable value
+ */
+const promptForEnvVar = async (varName: string, description: string, type: string): Promise<string> => {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+  });
+
+  return new Promise((resolve) => {
+    const prompt = `Enter value for ${varName} (${description})${type === 'string' ? '' : ` [${type}]`}: `;
+    rl.question(prompt, (answer) => {
+      rl.close();
+      resolve(answer.trim());
+    });
+  });
+};
+
+/**
+ * Updates the .env file with a new environment variable
+ */
+const updateEnvFile = (cwd: string, varName: string, value: string): void => {
+  const envContent = readEnvFile(cwd);
+  const lines = envContent.split('\n');
+  
+  // Check if the variable already exists
+  const existingLineIndex = lines.findIndex(line => line.startsWith(`${varName}=`));
+  
+  if (existingLineIndex >= 0) {
+    // Update existing line
+    lines[existingLineIndex] = `${varName}=${value}`;
+  } else {
+    // Add new line
+    if (envContent && !envContent.endsWith('\n')) {
+      lines.push(''); // Add empty line if file doesn't end with newline
+    }
+    lines.push(`${varName}=${value}`);
+  }
+  
+  writeEnvFile(cwd, lines.join('\n'));
+};
+
+/**
+ * Prompts for environment variables based on the plugin's agentConfig.pluginParameters
+ * and writes them to the .env file
+ */
+const promptForPluginEnvVars = async (packageName: string, cwd: string): Promise<void> => {
+  const envRequirements = await extractPluginEnvRequirements(packageName, cwd);
+  
+  if (Object.keys(envRequirements).length === 0) {
+    logger.debug(`No environment variables required for ${packageName}`);
+    console.log(`✅ No environment variables required for ${packageName}`);
+    return;
+  }
+
+  console.log(`\n${emoji.rocket(`Plugin ${packageName} requires environment variables:`)}`);
+  
+  // Read current .env file to check for existing values
+  const envContent = readEnvFile(cwd);
+  const existingVars: { [key: string]: string } = {};
+  
+  envContent.split('\n').forEach(line => {
+    const match = line.match(/^([^=]+)=(.*)$/);
+    if (match) {
+      existingVars[match[1]] = match[2];
+    }
+  });
+
+  for (const [varName, config] of Object.entries(envRequirements)) {
+    const { type = 'string', description = 'No description available' } = config;
+    
+    // Check if variable already exists and has a value
+    if (existingVars[varName] && existingVars[varName] !== '') {
+      console.log(`✓ ${varName} is already set in .env file`);
+      continue;
+    }
+    
+    try {
+      const value = await promptForEnvVar(varName, description, type);
+      
+      if (value) {
+        updateEnvFile(cwd, varName, value);
+        console.log(`✓ Added ${varName} to .env file`);
+      } else {
+        console.log(`⚠ Skipped ${varName} (no value provided)`);
+      }
+    } catch (error) {
+      logger.warn(`Failed to prompt for ${varName}: ${error.message}`);
+    }
+  }
+  
+  console.log(`\n${emoji.success('Environment variable setup complete!')}`);
 };
 
 /** Helper function to get dependencies from package.json using directory detection */
@@ -183,7 +365,7 @@ plugins
   .alias('install')
   .description('Add a plugin to the project')
   .argument('<plugin>', 'plugins name (e.g., "abc", "plugin-abc", "elizaos/plugin-abc")')
-  .option('-n, --no-env-prompt', 'Skip prompting for environment variables')
+  .option('-s, --skip-env-prompt', 'Skip prompting for environment variables')
   .option('-b, --branch <branchName>', 'Branch to install from when using monorepo source', 'main')
   .option('-T, --tag <tagname>', 'Specify a tag to install (e.g., beta)')
   .action(async (pluginArg, opts) => {
@@ -245,9 +427,21 @@ plugins
           logger.info(
             `Successfully installed ${pluginNameForPostInstall} from ${githubSpecifier}.`
           );
-          // TODO: Add post-installation steps here, similar to other plugin types
-          // e.g., prompting for env vars, updating config.
-          // For now, just exit cleanly.
+          
+          // Prompt for environment variables if not skipped
+          if (!opts.skipEnvPrompt) {
+            const packageName = extractPackageName(plugin);
+            console.log(`\n🔧 Checking environment variables for ${packageName}...`);
+            try {
+              await promptForPluginEnvVars(packageName, cwd);
+            } catch (error) {
+              logger.warn(`Warning: Could not prompt for environment variables: ${error.message}`);
+              // Don't fail the installation if env prompting fails
+            }
+          } else {
+            console.log(`\n⏭️  Skipping environment variable prompts due to --skip-env-prompt flag`);
+          }
+          
           process.exit(0);
         } else {
           logger.error(`Failed to install plugin from ${githubSpecifier}.`);
@@ -272,6 +466,24 @@ plugins
 
         if (registryInstallResult) {
           console.log(`Successfully installed ${targetName}`);
+          
+          // Prompt for environment variables if not skipped
+          if (!opts.skipEnvPrompt) {
+            // Refresh dependencies after installation to find the actual installed package name
+            const updatedDependencies = getDependenciesFromDirectory(cwd);
+            const actualPackageName = findPluginPackageName(targetName, updatedDependencies || {}) || targetName;
+            
+            console.log(`\n🔧 Checking environment variables for ${actualPackageName}...`);
+            try {
+              await promptForPluginEnvVars(actualPackageName, cwd);
+            } catch (error) {
+              logger.warn(`Warning: Could not prompt for environment variables: ${error.message}`);
+              // Don't fail the installation if env prompting fails
+            }
+          } else {
+            console.log(`\n⏭️  Skipping environment variable prompts due to --skip-env-prompt flag`);
+          }
+          
           process.exit(0);
         }
 
