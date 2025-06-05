@@ -10,6 +10,7 @@ import simpleGit, { SimpleGit } from 'simple-git';
 import { encoding_for_model } from 'tiktoken';
 import { fileURLToPath } from 'url';
 import * as os from 'os';
+import { emoji } from '../emoji-handler';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -134,7 +135,9 @@ export class PluginMigrator {
       await this.createLockFile();
 
       // Security warning
-      logger.warn('⚠️  SECURITY WARNING: This command will execute code from the repository.');
+      logger.warn(
+        `${emoji.warning('SECURITY WARNING: This command will execute code from the repository.')}`
+      );
       logger.warn('Only run this on trusted repositories you own or have reviewed.');
 
       // Step 2: Save current branch for recovery
@@ -220,7 +223,7 @@ export class PluginMigrator {
         logger.warn('Branch created locally but not pushed. You may need to push manually.');
       }
 
-      logger.info(`✅ Migration complete for ${input}!`);
+      logger.info(`${emoji.success(`Migration complete for ${input}!`)}`);
 
       return {
         success: true,

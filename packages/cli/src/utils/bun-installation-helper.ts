@@ -1,22 +1,23 @@
 import { logger } from '@elizaos/core';
+import { emoji } from './emoji-handler';
 
 /**
  * Display helpful bun installation instructions with OS-specific commands
  */
 export function displayBunInstallationTips(): void {
-  logger.error('\n❌ Bun is not installed or not found in PATH');
-  logger.info('\n🚀 Install Bun using the appropriate command for your system:');
+  logger.error(`\n${emoji.error('Bun is not installed or not found in PATH')}`);
+  logger.info(`\n${emoji.rocket('Install Bun using the appropriate command for your system:')}`);
   
   // Detect OS and show relevant command
   const platform = process.platform;
   
   if (platform === 'win32') {
-    logger.info('\n📦 Windows:');
+    logger.info(`\n${emoji.package('Windows:')}`);
     logger.info('   powershell -c "irm bun.sh/install.ps1 | iex"');
     logger.info('   # or use Scoop: scoop install bun');
     logger.info('   # or use Chocolatey: choco install bun');
   } else {
-    logger.info('\n🐧 Linux/macOS:');
+    logger.info(`\n${emoji.penguin('Linux/macOS:')}`);
     logger.info('   curl -fsSL https://bun.sh/install | bash');
     
     if (platform === 'darwin') {
@@ -24,8 +25,8 @@ export function displayBunInstallationTips(): void {
     }
   }
   
-  logger.info('\n🔗 More installation options: https://bun.sh/docs/installation');
-  logger.info('\n💡 After installation, restart your terminal or run:');
+  logger.info(`\n${emoji.link('More installation options: https://bun.sh/docs/installation')}`);
+  logger.info(`\n${emoji.tip('After installation, restart your terminal or run:')}`);
   logger.info('   source ~/.bashrc  # Linux');
   logger.info('   source ~/.zshrc   # macOS with zsh');
   logger.info('   # or restart your terminal');

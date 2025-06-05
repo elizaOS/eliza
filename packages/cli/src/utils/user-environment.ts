@@ -7,6 +7,7 @@ import { logger } from '@elizaos/core';
 import { existsSync, statSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { resolveEnvFile } from './resolve-utils';
+import { emoji } from './emoji-handler';
 
 // Types
 interface OSInfo {
@@ -143,9 +144,11 @@ export class UserEnvironment {
 
       // Enhanced bun installation guidance
       const platform = process.platform;
-      logger.error('❌ Bun is required for ElizaOS CLI but is not installed or not found in PATH.');
+      logger.error(
+        `${emoji.error('Bun is required for ElizaOS CLI but is not installed or not found in PATH.')}`
+      );
       logger.error('');
-      logger.error('🚀 Install Bun using the appropriate command for your system:');
+      logger.error(`${emoji.rocket('Install Bun using the appropriate command for your system:')}`);
       logger.error('');
 
       if (platform === 'win32') {
@@ -155,11 +158,12 @@ export class UserEnvironment {
         if (platform === 'darwin') {
           logger.error('   macOS (Homebrew): brew install bun');
         }
-      }      logger.error('');
+      }
+      logger.error('');
       logger.error('   More options: https://bun.sh/docs/installation');
       logger.error('   After installation, restart your terminal or source your shell profile');
       logger.error('');
-      
+
       // Force exit the process - Bun is required for ElizaOS CLI
       logger.error('🔴 Exiting: Bun installation is required to continue.');
       process.exit(1);

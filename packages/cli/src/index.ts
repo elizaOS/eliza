@@ -15,10 +15,11 @@ import { test } from '@/src/commands/test';
 import { update } from '@/src/commands/update';
 import { displayBanner, getVersion, checkAndShowUpdateNotification } from '@/src/utils';
 import { logger } from '@elizaos/core';
-import { Command, Option } from 'commander';
+import { Command } from 'commander';
 import fs from 'node:fs';
 import path, { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { configureEmojis } from '@/src/utils/emoji-handler';
 
 process.on('SIGINT', () => process.exit(0));
 process.on('SIGTERM', () => process.exit(0));
@@ -29,6 +30,11 @@ process.on('SIGTERM', () => process.exit(0));
  * @returns {Promise<void>}
  */
 async function main() {
+  // Check for --no-emoji flag early (before command parsing)
+  if (process.argv.includes('--no-emoji')) {
+    configureEmojis({ forceDisable: true });
+  }
+
   // For ESM modules we need to use import.meta.url instead of __dirname
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = dirname(__filename);
