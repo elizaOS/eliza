@@ -411,7 +411,10 @@ const messageReceivedHandler = async ({
           const responseObject = parseKeyValueXml(response);
           logger.debug('[Bootstrap] Parsed response:', responseObject);
 
-          shouldRespond = responseObject?.action && responseObject.action === 'RESPOND';
+          // If an action is provided, the agent intends to respond in some way
+          // Only exclude explicit non-response actions
+          const nonResponseActions = ['IGNORE', 'NONE'];
+          shouldRespond = responseObject?.action && !nonResponseActions.includes(responseObject.action.toUpperCase());
         } else {
           logger.debug(
             `[Bootstrap] Skipping shouldRespond check for ${runtime.character.name} because ${room?.type} ${room?.source}`
@@ -546,7 +549,7 @@ const messageReceivedHandler = async ({
                 ) {
                   logger.debug(
                     '[Bootstrap] Complex response used providers',
-                    responseMessage.content.providers
+                    responseMessage.content.providers 
                   );
                 }
               }
@@ -1050,9 +1053,9 @@ const controlMessageHandler = async ({
     // This would typically be handled by a registered service with sendMessage capability
 
     // Get any registered WebSocket service
-    const serviceNames = Array.from(runtime.getAllServices().keys());
+    const serviceNames = Array.from(runtime.getAllServices().keys()) as string[];
     const websocketServiceName = serviceNames.find(
-      (name) => name.toLowerCase().includes('websocket') || name.toLowerCase().includes('socket')
+      (name: string) => name.toLowerCase().includes('websocket') || name.toLowerCase().includes('socket')
     );
 
     if (websocketServiceName) {
