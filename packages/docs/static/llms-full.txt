@@ -1227,8 +1227,8 @@ export type Media = {
 };
 export enum ChannelType {
   SELF = 'SELF',
-  DM = 'dm',
-  GROUP = 'group',
+  DM = 'DM',
+  GROUP = 'GROUP',
   VOICE_DM = 'VOICE_DM',
   VOICE_GROUP = 'VOICE_GROUP',
   FEED = 'FEED',

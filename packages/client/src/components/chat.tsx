@@ -1,4 +1,3 @@
-import AgentDetailsPanel from '@/components/AgentDetailsPanel';
 import CopyButton from '@/components/copy-button';
 import DeleteButton from '@/components/delete-button';
 import MediaContent from '@/components/media-content';
@@ -22,26 +21,24 @@ import {
   useDeleteChannelMessage,
   type UiMessage,
 } from '@/hooks/use-query-hooks';
-import { apiClient } from '@/lib/api';
 import { useSocketChat } from '@/hooks/use-socket-chat';
 import { useToast } from '@/hooks/use-toast';
+import { apiClient } from '@/lib/api';
 import clientLogger from '@/lib/logger';
 import { parseMediaFromText, removeMediaUrlsFromText, type MediaInfo } from '@/lib/media-utils';
-import { cn, getEntityId, moment, randomUUID, getAgentAvatar, generateGroupName } from '@/lib/utils';
+import { cn, generateGroupName, getAgentAvatar, getEntityId, moment, randomUUID } from '@/lib/utils';
 import type { Agent, Media, UUID } from '@elizaos/core';
-import { AgentStatus, ContentType as CoreContentType, validateUuid } from '@elizaos/core';
+import { AgentStatus, ChannelType, ContentType as CoreContentType, validateUuid } from '@elizaos/core';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
 import { useQueryClient } from '@tanstack/react-query';
-import { ChevronRight, Loader2, PanelRight, PanelRightClose, Trash2, MessageSquarePlus, Plus } from 'lucide-react';
+import { ChevronRight, Loader2, MessageSquarePlus, PanelRight, PanelRightClose, Plus, Trash2 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AIWriter from 'react-aiwriter';
+import { AgentSidebar } from './agent-sidebar';
 import { ChatInputArea } from './ChatInputArea';
 import { ChatMessageListComponent } from './ChatMessageListComponent';
 import GroupPanel from './group-panel';
-import { AgentSidebar } from './agent-sidebar';
 
-import relativeTime from 'dayjs/plugin/relativeTime';
-import { useDmChannelsForAgent, useCreateDmChannel } from '@/hooks/use-dm-channels';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -50,12 +47,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useCreateDmChannel, useDmChannelsForAgent } from '@/hooks/use-dm-channels';
+import relativeTime from 'dayjs/plugin/relativeTime';
 moment.extend(relativeTime);
 
 const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
 
 interface UnifiedChatViewProps {
-  chatType: 'DM' | 'GROUP';
+  chatType: ChannelType.DM | ChannelType.GROUP;
   contextId: UUID; // agentId for DM, channelId for GROUP
   serverId?: UUID; // Required for GROUP, optional for DM
   initialDmChannelId?: UUID; // New prop for specific DM channel from URL
@@ -224,8 +223,8 @@ export default function Chat({ chatType, contextId, serverId, initialDmChannelId
 
   // For DM, we need agent data. For GROUP, we need channel data
   const { data: agentDataResponse, isLoading: isLoadingAgent } = useAgent(
-    chatType === 'DM' ? contextId : undefined,
-    { enabled: chatType === 'DM' }
+    chatType === ChannelType.DM ? contextId : undefined,
+    { enabled: chatType === ChannelType.DM }
   );
 
   // Convert AgentWithStatus to Agent, ensuring required fields have defaults
@@ -239,16 +238,16 @@ export default function Chat({ chatType, contextId, serverId, initialDmChannelId
 
   // Use the new hooks for DM channel management
   const { data: agentDmChannels = [], isLoading: isLoadingAgentDmChannels } = useDmChannelsForAgent(
-    chatType === 'DM' ? contextId : undefined
+    chatType === ChannelType.DM ? contextId : undefined
   );
   const createDmChannelMutation = useCreateDmChannel();
 
   // Group chat specific data
   const { data: channelDetailsData } = useChannelDetails(
-    chatType === 'GROUP' ? contextId : undefined
+    chatType === ChannelType.GROUP ? contextId : undefined
   );
   const { data: participantsData } = useChannelParticipants(
-    chatType === 'GROUP' ? contextId : undefined
+    chatType === ChannelType.GROUP ? contextId : undefined
   );
   const participants = participantsData?.data;
 
@@ -257,7 +256,7 @@ export default function Chat({ chatType, contextId, serverId, initialDmChannelId
 
   // Get agents in the current group
   const groupAgents = useMemo(() => {
-    if (chatType !== 'GROUP' || !participants) return [];
+    if (chatType !== ChannelType.GROUP || !participants) return [];
     return participants
       .map(pId => allAgents.find(a => a.id === pId))
       .filter(Boolean) as Agent[];
@@ -323,7 +322,7 @@ export default function Chat({ chatType, contextId, serverId, initialDmChannelId
 
   // Handle DM channel deletion
   const handleDeleteCurrentDmChannel = useCallback(async () => {
-    if (chatType !== 'DM' || !chatState.currentDmChannelId || !targetAgentData?.id) return;
+    if (chatType !== ChannelType.DM || !chatState.currentDmChannelId || !targetAgentData?.id) return;
     const channelToDelete = agentDmChannels.find(ch => ch.id === chatState.currentDmChannelId);
     if (!channelToDelete) return;
     const confirm = window.confirm(`Are you sure you want to delete the chat "${channelToDelete.name}" with ${targetAgentData.name}? This action cannot be undone.`);
@@ -348,7 +347,7 @@ export default function Chat({ chatType, contextId, serverId, initialDmChannelId
 
   // Effect to handle initial DM channel selection or creation
   useEffect(() => {
-    if (chatType === 'DM' && targetAgentData?.id) {
+    if (chatType === ChannelType.DM && targetAgentData?.id) {
       if (!isLoadingAgentDmChannels && !createDmChannelMutation.isPending && !chatState.isCreatingDM) {
         // Prioritize initialDmChannelId from props if it's valid and belongs to the current agent's DMs
         if (initialDmChannelId && agentDmChannels.some(c => c.id === initialDmChannelId)) {
@@ -367,7 +366,7 @@ export default function Chat({ chatType, contextId, serverId, initialDmChannelId
           handleNewDmChannel(targetAgentData.id); // This will navigate and set currentDmChannelId
         }
       }
-    } else if (chatType !== 'DM' && chatState.currentDmChannelId !== null) {
+    } else if (chatType !== ChannelType.DM && chatState.currentDmChannelId !== null) {
       // Only reset if necessary
       updateChatState({ currentDmChannelId: null });
     }
@@ -386,7 +385,7 @@ export default function Chat({ chatType, contextId, serverId, initialDmChannelId
 
   // Auto-select single agent in group
   useEffect(() => {
-    if (chatType === 'GROUP' && groupAgents.length === 1 && !chatState.selectedGroupAgentId) {
+    if (chatType === ChannelType.GROUP && groupAgents.length === 1 && !chatState.selectedGroupAgentId) {
       updateChatState({
         selectedGroupAgentId: groupAgents[0].id as UUID,
         showSidebar: true
@@ -395,12 +394,12 @@ export default function Chat({ chatType, contextId, serverId, initialDmChannelId
   }, [chatType, groupAgents, chatState.selectedGroupAgentId, updateChatState]);
 
   // Get the final channel ID for hooks
-  const finalChannelIdForHooks: UUID | undefined = chatType === 'DM'
+  const finalChannelIdForHooks: UUID | undefined = chatType === ChannelType.DM
     ? (chatState.currentDmChannelId || undefined)
     : (contextId || undefined);
 
   const finalServerIdForHooks: UUID | undefined = useMemo(() => {
-    return chatType === 'DM'
+    return chatType === ChannelType.DM
       ? DEFAULT_SERVER_ID
       : (serverId || undefined);
   }, [chatType, serverId]);
@@ -475,7 +474,7 @@ export default function Chat({ chatType, contextId, serverId, initialDmChannelId
 
     // For DM chats, ensure we have a channel before sending
     let channelIdToUse = finalChannelIdForHooks;
-    if (chatType === 'DM' && !channelIdToUse && targetAgentData?.id) {
+    if (chatType === ChannelType.DM && !channelIdToUse && targetAgentData?.id) {
       clientLogger.info('[Chat] No DM channel selected, creating one before sending message');
       try {
         const newChannel = await createDmChannelMutation.mutateAsync({
@@ -498,7 +497,7 @@ export default function Chat({ chatType, contextId, serverId, initialDmChannelId
       }
     }
 
-    if ((!chatState.input.trim() && selectedFiles.length === 0) || chatState.inputDisabled || !channelIdToUse || !finalServerIdForHooks || !currentClientEntityId || (chatType === 'DM' && !targetAgentData?.id)) return;
+    if ((!chatState.input.trim() && selectedFiles.length === 0) || chatState.inputDisabled || !channelIdToUse || !finalServerIdForHooks || !currentClientEntityId || (chatType === ChannelType.DM && !targetAgentData?.id)) return;
 
     updateChatState({ inputDisabled: true });
     const tempMessageId = randomUUID() as UUID;
@@ -513,7 +512,7 @@ export default function Chat({ chatType, contextId, serverId, initialDmChannelId
       id: tempMessageId, text: messageText, name: USER_NAME, createdAt: Date.now(), senderId: currentClientEntityId, isAgent: false, isLoading: true,
       channelId: channelIdToUse,
       serverId: finalServerIdForHooks,
-      source: chatType === 'DM' ? CHAT_SOURCE : GROUP_CHAT_SOURCE, attachments: optimisticAttachments,
+      source: chatType === ChannelType.DM ? CHAT_SOURCE : GROUP_CHAT_SOURCE, attachments: optimisticAttachments,
     };
     if (messageText || currentSelectedFiles.length > 0) addMessage(optimisticUiMessage);
     safeScrollToBottom();
@@ -533,7 +532,7 @@ export default function Chat({ chatType, contextId, serverId, initialDmChannelId
       if (!finalTextContent.trim() && finalAttachments.length === 0) {
         updateChatState({ inputDisabled: false }); removeMessage(tempMessageId); return;
       }
-      await sendMessage(finalTextContent, finalServerIdForHooks, chatType === 'DM' ? CHAT_SOURCE : GROUP_CHAT_SOURCE, finalAttachments.length > 0 ? finalAttachments : undefined, tempMessageId, undefined, channelIdToUse);
+      await sendMessage(finalTextContent, finalServerIdForHooks, chatType === ChannelType.DM ? CHAT_SOURCE : GROUP_CHAT_SOURCE, finalAttachments.length > 0 ? finalAttachments : undefined, tempMessageId, undefined, channelIdToUse);
     } catch (error) {
       clientLogger.error('Error sending message or uploading files:', error);
       toast({ title: 'Error Sending Message', description: error instanceof Error ? error.message : 'Could not send message.', variant: 'destructive' });
@@ -553,7 +552,7 @@ export default function Chat({ chatType, contextId, serverId, initialDmChannelId
 
   const handleClearChat = () => {
     if (!finalChannelIdForHooks) return;
-    const confirmMessage = chatType === 'DM'
+    const confirmMessage = chatType === ChannelType.DM
       ? `Clear all messages in this chat with ${targetAgentData?.name}?`
       : `Clear all messages in this group chat?`;
     if (window.confirm(confirmMessage)) {
@@ -561,7 +560,7 @@ export default function Chat({ chatType, contextId, serverId, initialDmChannelId
     }
   };
 
-  if (chatType === 'DM' && (isLoadingAgent || (!targetAgentData && contextId) || isLoadingAgentDmChannels)) {
+  if (chatType === ChannelType.DM && (isLoadingAgent || (!targetAgentData && contextId) || isLoadingAgentDmChannels)) {
     return (
       <div className="flex items-center justify-center h-full">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -569,7 +568,7 @@ export default function Chat({ chatType, contextId, serverId, initialDmChannelId
     );
   }
 
-  if (!finalChannelIdForHooks || !finalServerIdForHooks || (chatType === 'DM' && !targetAgentData)) {
+  if (!finalChannelIdForHooks || !finalServerIdForHooks || (chatType === ChannelType.DM && !targetAgentData)) {
     return (
       <div className="flex flex-1 justify-center items-center">
         <p>Loading chat context...</p>
@@ -579,7 +578,7 @@ export default function Chat({ chatType, contextId, serverId, initialDmChannelId
 
   // Chat header
   const renderChatHeader = () => {
-    if (chatType === 'DM' && targetAgentData) {
+    if (chatType === ChannelType.DM && targetAgentData) {
       return (
         <div className="flex items-center justify-between mb-4 p-3 bg-card rounded-lg border">
           <div className="flex items-center gap-3">
@@ -619,7 +618,7 @@ export default function Chat({ chatType, contextId, serverId, initialDmChannelId
             </div>
           </div>
           <div className="flex gap-2 items-center">
-            {chatType === 'DM' && (
+            {chatType === ChannelType.DM && (
               <div className="flex items-center gap-1">
                 {agentDmChannels.length > 0 && (
                   <DropdownMenu>
@@ -684,16 +683,16 @@ export default function Chat({ chatType, contextId, serverId, initialDmChannelId
             <Button
               variant="outline"
               size="sm"
-              onClick={chatType === 'DM' ? handleDeleteCurrentDmChannel : handleClearChat}
-              disabled={!messages || messages.length === 0 || (chatType === 'DM' && !chatState.currentDmChannelId)}
-              title={chatType === 'DM' ? 'Delete current chat session' : 'Clear all messages'}
+              onClick={chatType === ChannelType.DM ? handleDeleteCurrentDmChannel : handleClearChat}
+              disabled={!messages || messages.length === 0 || (chatType === ChannelType.DM && !chatState.currentDmChannelId)}
+              title={chatType === ChannelType.DM ? 'Delete current chat session' : 'Clear all messages'}
             >
               <Trash2 className="size-4" />
             </Button>
           </div>
         </div>
       );
-    } else if (chatType === 'GROUP') {
+    } else if (chatType === ChannelType.GROUP) {
       const groupDisplayName = generateGroupName(channelDetailsData?.data || undefined, groupAgents, currentClientEntityId);
 
       return (
@@ -801,20 +800,20 @@ export default function Chat({ chatType, contextId, serverId, initialDmChannelId
 
                 <div className="flex-shrink-0">
                   <ChatInputArea
-                  input={chatState.input}
-                  setInput={(value) => updateChatState({ input: value })}
-                  inputDisabled={chatState.inputDisabled}
-                  selectedFiles={selectedFiles}
-                  removeFile={removeFile}
-                  handleFileChange={handleFileChange}
-                  handleSendMessage={handleSendMessage}
-                  handleKeyDown={handleKeyDown}
-                  chatType={chatType}
-                  targetAgentData={targetAgentData}
-                  formRef={formRef}
-                  inputRef={inputRef}
-                  fileInputRef={fileInputRef}
-                />
+                    input={chatState.input}
+                    setInput={(value) => updateChatState({ input: value })}
+                    inputDisabled={chatState.inputDisabled}
+                    selectedFiles={selectedFiles}
+                    removeFile={removeFile}
+                    handleFileChange={handleFileChange}
+                    handleSendMessage={handleSendMessage}
+                    handleKeyDown={handleKeyDown}
+                    chatType={chatType}
+                    targetAgentData={targetAgentData}
+                    formRef={formRef}
+                    inputRef={inputRef}
+                    fileInputRef={fileInputRef}
+                  />
                 </div>
               </div>
             </div>
@@ -826,14 +825,14 @@ export default function Chat({ chatType, contextId, serverId, initialDmChannelId
           let sidebarAgentId: UUID | undefined = undefined;
           let sidebarAgentName: string = 'Agent';
 
-          if (chatType === 'DM') {
+          if (chatType === ChannelType.DM) {
             sidebarAgentId = contextId; // This is agentId for DM
             sidebarAgentName = targetAgentData?.name || 'Agent';
-          } else if (chatType === 'GROUP' && chatState.selectedGroupAgentId) {
+          } else if (chatType === ChannelType.GROUP && chatState.selectedGroupAgentId) {
             sidebarAgentId = chatState.selectedGroupAgentId;
             const selectedAgent = allAgents.find(a => a.id === chatState.selectedGroupAgentId);
             sidebarAgentName = selectedAgent?.name || 'Group Member';
-          } else if (chatType === 'GROUP' && !chatState.selectedGroupAgentId) {
+          } else if (chatType === ChannelType.GROUP && !chatState.selectedGroupAgentId) {
             sidebarAgentName = 'Group';
           }
 
@@ -850,7 +849,7 @@ export default function Chat({ chatType, contextId, serverId, initialDmChannelId
         })()}
       </ResizablePanelGroup>
 
-      {chatState.showGroupEditPanel && chatType === 'GROUP' && (
+      {chatState.showGroupEditPanel && chatType === ChannelType.GROUP && (
         <GroupPanel
           onClose={() => updateChatState({ showGroupEditPanel: false })}
           channelId={contextId}

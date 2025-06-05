@@ -2,7 +2,7 @@
 
 import { AgentServer } from '../index';
 import { v4 as uuidv4 } from 'uuid';
-import type { UUID, Plugin } from '@elizaos/core';
+import { type UUID, type Plugin, ChannelType } from '@elizaos/core';
 import type { Character } from '@elizaos/core';
 import { startAgent } from '../../commands/start';
 import sqlPlugin from '@elizaos/plugin-sql';
@@ -190,7 +190,7 @@ async function runTests() {
     const createChannelResponse = await testClient.post('/api/messages/channels', {
       messageServerId: testServerId,
       name: 'Test Channel',
-      type: 'group',
+      type: ChannelType.GROUP,
       metadata: { test: true },
     });
 
@@ -322,7 +322,7 @@ async function runTests() {
     const groupChannelResponse = await testClient.post('/api/messages/central-channels', {
       name: 'Test Group Channel',
       participantCentralUserIds: [user1Id, user2Id, testUserId],
-      type: 'group',
+      type: ChannelType.GROUP,
       server_id: testServerId,
       metadata: { test: true },
     });
