@@ -8,6 +8,7 @@ import {
   Memory,
   State,
   Content,
+  ChannelType,
 } from '@elizaos/core';
 import * as entityUtils from '@elizaos/core';
 import {
@@ -68,7 +69,7 @@ describe('Reflection Evaluator', () => {
 
     // Arrange
     // Ensure mockMessage.content.channelType is defined for the roomType
-    mockMessage.content = { ...mockMessage.content, channelType: 'group' };
+    mockMessage.content = { ...mockMessage.content, channelType: ChannelType.GROUP };
     // Mock getRelationships and getMemories as they are called before composePrompt
     mockRuntime.getRelationships.mockResolvedValue([]);
     mockRuntime.getMemories.mockResolvedValue([]); // For knownFacts
