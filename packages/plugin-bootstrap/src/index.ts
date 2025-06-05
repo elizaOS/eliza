@@ -1011,7 +1011,7 @@ const handleServerSync = async ({
 }: WorldPayload) => {
   logger.debug(`[Bootstrap] Handling server sync event for server: ${world.name}`);
   try {
-    await runtime.ensureConnections(entities, rooms, source, world)
+    await runtime.ensureConnections(entities, rooms, source, world);
     logger.debug(`Successfully synced standardized world structure for ${world.name}`);
     onComplete?.();
   } catch (error) {

@@ -7,10 +7,10 @@ import { emoji } from './emoji-handler';
 export function displayBunInstallationTips(): void {
   logger.error(`\n${emoji.error('Bun is not installed or not found in PATH')}`);
   logger.info(`\n${emoji.rocket('Install Bun using the appropriate command for your system:')}`);
-  
+
   // Detect OS and show relevant command
   const platform = process.platform;
-  
+
   if (platform === 'win32') {
     logger.info(`\n${emoji.package('Windows:')}`);
     logger.info('   powershell -c "irm bun.sh/install.ps1 | iex"');
@@ -19,12 +19,12 @@ export function displayBunInstallationTips(): void {
   } else {
     logger.info(`\n${emoji.penguin('Linux/macOS:')}`);
     logger.info('   curl -fsSL https://bun.sh/install | bash');
-    
+
     if (platform === 'darwin') {
       logger.info('   # or use Homebrew: brew install bun');
     }
   }
-  
+
   logger.info(`\n${emoji.link('More installation options: https://bun.sh/docs/installation')}`);
   logger.info(`\n${emoji.tip('After installation, restart your terminal or run:')}`);
   logger.info('   source ~/.bashrc  # Linux');
@@ -37,7 +37,7 @@ export function displayBunInstallationTips(): void {
  */
 export function displayBunInstallationTipCompact(): string {
   const platform = process.platform;
-  
+
   if (platform === 'win32') {
     return 'Install bun: powershell -c "irm bun.sh/install.ps1 | iex" (see https://bun.sh/docs/installation)';
   } else {

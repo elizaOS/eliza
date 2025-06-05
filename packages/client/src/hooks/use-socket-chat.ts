@@ -5,7 +5,7 @@ import type {
   MessageCompleteData,
   ControlMessageData,
 } from '@/lib/socketio-manager';
-import type { UUID, Agent } from '@elizaos/core';
+import { UUID, Agent, ChannelType } from '@elizaos/core';
 import type { UiMessage } from './use-query-hooks';
 import { randomUUID } from '@/lib/utils';
 import clientLogger from '@/lib/logger';
@@ -14,7 +14,7 @@ interface UseSocketChatProps {
   channelId: UUID | undefined;
   currentUserId: string;
   contextId: UUID; // agentId for DM, channelId for GROUP
-  chatType: 'DM' | 'GROUP';
+  chatType: ChannelType.DM | ChannelType.GROUP;
   allAgents: Agent[];
   messages: UiMessage[];
   onAddMessage: (message: UiMessage) => void;
@@ -57,7 +57,7 @@ export function useSocketChat({
       const messageMetadata = {
         ...metadata,
         channelType: chatType,
-        ...(chatType === 'DM' && {
+        ...(chatType === ChannelType.DM && {
           isDm: true,
           targetUserId: contextId, // The agent ID for DM channels
         }),
@@ -115,7 +115,7 @@ export function useSocketChat({
 
       // Unified message handling for both DM and GROUP
       const isTargetAgent =
-        chatType === 'DM'
+        chatType === ChannelType.DM
           ? data.senderId === contextId
           : allAgents.some((agent) => agent.id === data.senderId);
 

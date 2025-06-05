@@ -13,7 +13,7 @@ import {
   List,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useAgentMemories } from '@/hooks/use-query-hooks';
+import { useAgentMemories, useAgents } from '@/hooks/use-query-hooks';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -75,15 +75,29 @@ export function AgentMemoryViewer({ agentId, agentName }: AgentMemoryViewerProps
   const [viewMode, setViewMode] = useState<'list' | 'graph'>('list');
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Determine table name based on selected type
-  const tableName =
-    selectedType === MemoryType.facts
-      ? 'facts'
-      : selectedType === MemoryType.messagesSent || selectedType === MemoryType.messagesReceived
-        ? 'messages'
-        : undefined;
+  // Get all agents to look up names by ID
+  const { data: agentsData } = useAgents();
 
-  const { data: memories = [], isLoading, error } = useAgentMemories(agentId, tableName);
+  // Fetch from appropriate table(s) based on selected type
+  const messagesTableName = selectedType === MemoryType.facts ? undefined : 'messages';
+  const factsTableName =
+    selectedType === MemoryType.facts || selectedType === MemoryType.all ? 'facts' : undefined;
+
+  const {
+    data: messagesData = [],
+    isLoading: isLoadingMessages,
+    error: messagesError,
+  } = useAgentMemories(agentId, messagesTableName);
+  const {
+    data: factsData = [],
+    isLoading: isLoadingFacts,
+    error: factsError,
+  } = useAgentMemories(agentId, factsTableName);
+
+  // Combine memories from both sources
+  const memories = [...messagesData, ...factsData];
+  const isLoading = isLoadingMessages || isLoadingFacts;
+  const error = messagesError || factsError;
 
   // Filter and search memories
   const filteredMemories = memories.filter((memory: Memory) => {
@@ -91,6 +105,12 @@ export function AgentMemoryViewer({ agentId, agentName }: AgentMemoryViewerProps
     if (selectedType !== MemoryType.all) {
       const content = memory.content as ChatMemoryContent;
 
+      // Facts are handled by table selection, so if we're on facts table, show all
+      if (selectedType === MemoryType.facts) {
+        return true; // Already filtered by table
+      }
+
+      // For messages table, filter by type
       if (selectedType === MemoryType.thoughts && !content?.thought) return false;
       if (selectedType === MemoryType.messagesSent && memory.entityId !== memory.agentId)
         return false;
@@ -259,9 +279,20 @@ export function AgentMemoryViewer({ agentId, agentName }: AgentMemoryViewerProps
     const content = memory.content as ChatMemoryContent;
     const IconComponent = getMemoryIcon(memory, content);
     const isAgent = memory.entityId === memory.agentId;
-    const entityName = isAgent
-      ? memory.metadata?.source || agentName
-      : memory.metadata?.source || 'User';
+
+    // Look up entity name from agents data or fallback to metadata
+    const getEntityName = () => {
+      if (isAgent) {
+        // For agents, try to find the agent name by ID
+        const agent = agentsData?.data?.agents?.find((a) => a.id === memory.entityId);
+        return agent?.name || agentName;
+      } else {
+        // For users, use raw metadata or fallback
+        return (memory.metadata as any)?.raw?.senderName || memory.metadata?.source || 'User';
+      }
+    };
+
+    const entityName = getEntityName();
 
     return (
       <div className="border rounded-lg p-4 bg-card hover:bg-accent/5 transition-colors group">
