@@ -268,7 +268,7 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
 
           await serverInstance.createChannel(channelData, participants);
           logger.info(
-            `[Messages Router] Auto-created ${isDmChannel ? 'DM' : 'group'} channel ${channelIdParam} for message submission with ${participants.length} participants`
+            `[Messages Router] Auto-created ${isDmChannel ? 'DM' : 'GROUP'} channel ${channelIdParam} for message submission with ${participants.length} participants`
           );
         } catch (createError: any) {
           logger.error(
@@ -361,10 +361,10 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
       // Transform to MessageService structure if GUI expects timestamps as numbers, or align types
       const messagesForGui = messages.map((msg) => {
         // Extract thought and actions from rawMessage for historical messages
-        const rawMessage = typeof msg.rawMessage === 'string' 
-          ? JSON.parse(msg.rawMessage) 
+        const rawMessage = typeof msg.rawMessage === 'string'
+          ? JSON.parse(msg.rawMessage)
           : msg.rawMessage;
-        
+
         return {
           ...msg,
           created_at: new Date(msg.createdAt).getTime(), // Ensure timestamp number

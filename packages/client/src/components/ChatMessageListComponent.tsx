@@ -3,7 +3,7 @@ import { Avatar, AvatarImage } from '@/components/ui/avatar';
 import { ChatMessageList } from '@/components/ui/chat/chat-message-list';
 import { ChatBubble } from '@/components/ui/chat/chat-bubble';
 import { MemoizedMessageContent } from './chat';
-import type { UUID, Agent } from '@elizaos/core';
+import type { UUID, Agent, ChannelType } from '@elizaos/core';
 import type { UiMessage } from '@/hooks/use-query-hooks';
 import { cn } from '@/lib/utils';
 import { getAgentAvatar } from '@/lib/utils';
@@ -11,7 +11,7 @@ import { getAgentAvatar } from '@/lib/utils';
 interface ChatMessageListComponentProps {
   messages: UiMessage[];
   isLoadingMessages: boolean;
-  chatType: 'DM' | 'GROUP';
+  chatType: ChannelType.GROUP | ChannelType.DM;
   currentClientEntityId: string;
   targetAgentData?: Agent;
   allAgents: Partial<Agent>[];

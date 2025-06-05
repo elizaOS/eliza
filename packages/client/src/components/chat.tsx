@@ -801,20 +801,20 @@ export default function Chat({ chatType, contextId, serverId, initialDmChannelId
 
                 <div className="flex-shrink-0">
                   <ChatInputArea
-                  input={chatState.input}
-                  setInput={(value) => updateChatState({ input: value })}
-                  inputDisabled={chatState.inputDisabled}
-                  selectedFiles={selectedFiles}
-                  removeFile={removeFile}
-                  handleFileChange={handleFileChange}
-                  handleSendMessage={handleSendMessage}
-                  handleKeyDown={handleKeyDown}
-                  chatType={chatType}
-                  targetAgentData={targetAgentData}
-                  formRef={formRef}
-                  inputRef={inputRef}
-                  fileInputRef={fileInputRef}
-                />
+                    input={chatState.input}
+                    setInput={(value) => updateChatState({ input: value })}
+                    inputDisabled={chatState.inputDisabled}
+                    selectedFiles={selectedFiles}
+                    removeFile={removeFile}
+                    handleFileChange={handleFileChange}
+                    handleSendMessage={handleSendMessage}
+                    handleKeyDown={handleKeyDown}
+                    chatType={chatType}
+                    targetAgentData={targetAgentData}
+                    formRef={formRef}
+                    inputRef={inputRef}
+                    fileInputRef={fileInputRef}
+                  />
                 </div>
               </div>
             </div>

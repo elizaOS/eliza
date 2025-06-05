@@ -322,7 +322,7 @@ export function createMockState(overrides: Partial<State> = {}): Partial<State> 
     data: {
       room: {
         id: 'test-room-id',
-        type: 'group',
+        type: 'GROUP',
         worldId: 'test-world-id',
         serverId: 'test-server-id',
       },

@@ -247,7 +247,7 @@ export class SocketIORouter {
 
           await this.serverInstance.createChannel(channelData, participants);
           logger.info(
-            `[SocketIO ${socket.id}] Auto-created ${isDmChannel ? 'DM' : 'group'} channel ${channelId} for message submission with ${participants.length} participants`
+            `[SocketIO ${socket.id}] Auto-created ${isDmChannel ? 'DM' : 'GROUP'} channel ${channelId} for message submission with ${participants.length} participants`
           );
         } catch (createError: any) {
           logger.error(
