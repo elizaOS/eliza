@@ -75,15 +75,17 @@ export function AgentMemoryViewer({ agentId, agentName }: AgentMemoryViewerProps
   const [viewMode, setViewMode] = useState<'list' | 'graph'>('list');
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Determine table name based on selected type
-  const tableName =
-    selectedType === MemoryType.facts
-      ? 'facts'
-      : selectedType === MemoryType.messagesSent || selectedType === MemoryType.messagesReceived
-        ? 'messages'
-        : undefined;
-
-  const { data: memories = [], isLoading, error } = useAgentMemories(agentId, tableName);
+  // Fetch from appropriate table(s) based on selected type
+  const messagesTableName = selectedType === MemoryType.facts ? undefined : 'messages';
+  const factsTableName = selectedType === MemoryType.facts || selectedType === MemoryType.all ? 'facts' : undefined;
+  
+  const { data: messagesData = [], isLoading: isLoadingMessages, error: messagesError } = useAgentMemories(agentId, messagesTableName);
+  const { data: factsData = [], isLoading: isLoadingFacts, error: factsError } = useAgentMemories(agentId, factsTableName);
+  
+  // Combine memories from both sources
+  const memories = [...messagesData, ...factsData];
+  const isLoading = isLoadingMessages || isLoadingFacts;
+  const error = messagesError || factsError;
 
   // Filter and search memories
   const filteredMemories = memories.filter((memory: Memory) => {
@@ -91,6 +93,12 @@ export function AgentMemoryViewer({ agentId, agentName }: AgentMemoryViewerProps
     if (selectedType !== MemoryType.all) {
       const content = memory.content as ChatMemoryContent;
 
+      // Facts are handled by table selection, so if we're on facts table, show all
+      if (selectedType === MemoryType.facts) {
+        return true; // Already filtered by table
+      }
+      
+      // For messages table, filter by type
       if (selectedType === MemoryType.thoughts && !content?.thought) return false;
       if (selectedType === MemoryType.messagesSent && memory.entityId !== memory.agentId)
         return false;
