@@ -16,6 +16,7 @@ import {
   saveConfig,
   UserEnvironment,
 } from '@/src/utils';
+import { detectPluginContext, provideLocalPluginGuidance } from '@/src/utils/plugin-context';
 import {
   AgentRuntime,
   encryptedCharacter,
@@ -47,31 +48,53 @@ async function loadAndPreparePlugin(pluginName: string, version: string): Promis
   logger.debug(`Processing plugin: ${pluginName}`);
   let pluginModule: any;
 
-  try {
-    // Use the centralized loader first
-    pluginModule = await loadPluginModule(pluginName);
-
-    if (!pluginModule) {
-      // If loading failed, try installing and then loading again
-      logger.info(`Plugin ${pluginName} not available, installing into ${process.cwd()}...`);
-      try {
-        await installPlugin(pluginName, process.cwd(), version);
-        // Try loading again after installation using the centralized loader
-        pluginModule = await loadPluginModule(pluginName);
-      } catch (installError) {
-        logger.error(`Failed to install plugin ${pluginName}: ${installError}`);
-        return null; // Installation failed
+  // Check if this is a local development scenario BEFORE attempting any loading
+  const context = detectPluginContext(pluginName);
+  
+  if (context.isLocalDevelopment) {
+    logger.debug(`Local plugin development detected for: ${pluginName}`);
+    
+    // For local development, we should never try to install - just load directly
+    try {
+      pluginModule = await loadPluginModule(pluginName);
+      if (!pluginModule) {
+        logger.error(`Failed to load local plugin ${pluginName}.`);
+        provideLocalPluginGuidance(pluginName, context);
+        return null;
       }
+    } catch (error) {
+      logger.error(`Error loading local plugin ${pluginName}: ${error}`);
+      provideLocalPluginGuidance(pluginName, context);
+      return null;
+    }
+  } else {
+    // External plugin - use existing logic
+    try {
+      // Use the centralized loader first
+      pluginModule = await loadPluginModule(pluginName);
 
       if (!pluginModule) {
-        logger.error(`Failed to load plugin ${pluginName} even after installation.`);
-        return null; // Loading failed post-installation
+        // If loading failed, try installing and then loading again
+        logger.info(`Plugin ${pluginName} not available, installing into ${process.cwd()}...`);
+        try {
+          await installPlugin(pluginName, process.cwd(), version);
+          // Try loading again after installation using the centralized loader
+          pluginModule = await loadPluginModule(pluginName);
+        } catch (installError) {
+          logger.error(`Failed to install plugin ${pluginName}: ${installError}`);
+          return null; // Installation failed
+        }
+
+        if (!pluginModule) {
+          logger.error(`Failed to load plugin ${pluginName} even after installation.`);
+          return null; // Loading failed post-installation
+        }
       }
+    } catch (error) {
+      // Catch any unexpected error during the combined load/install/load process
+      logger.error(`An unexpected error occurred while processing plugin ${pluginName}: ${error}`);
+      return null;
     }
-  } catch (error) {
-    // Catch any unexpected error during the combined load/install/load process
-    logger.error(`An unexpected error occurred while processing plugin ${pluginName}: ${error}`);
-    return null;
   }
 
   if (!pluginModule) {

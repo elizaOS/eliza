@@ -1,6 +1,7 @@
 import { logger } from '@elizaos/core';
 import fs from 'node:fs';
 import path from 'node:path';
+import { detectPluginContext, ensurePluginBuilt, provideLocalPluginGuidance } from './plugin-context';
 
 interface PackageJson {
   module?: string;
@@ -74,7 +75,38 @@ async function tryImporting(
  * Collection of import strategies
  */
 const importStrategies: ImportStrategy[] = [
-  // Try workspace dependencies first (for monorepo packages)
+  // Try local development first - this is the most important for plugin testing
+  {
+    name: 'local development plugin',
+    tryImport: async (repository: string) => {
+      const context = detectPluginContext(repository);
+      
+      if (context.isLocalDevelopment) {
+        logger.debug(`Detected local development for plugin: ${repository}`);
+        
+        // Ensure the plugin is built
+        const isBuilt = await ensurePluginBuilt(context);
+        if (!isBuilt) {
+          provideLocalPluginGuidance(repository, context);
+          return null;
+        }
+        
+        // Try to load from built output
+        if (context.localPath && fs.existsSync(context.localPath)) {
+          logger.info(`Loading local development plugin: ${repository}`);
+          return tryImporting(context.localPath, 'local development plugin', repository);
+        }
+        
+        // This shouldn't happen if ensurePluginBuilt succeeded, but handle it gracefully
+        logger.warn(`Plugin built but output not found at expected path: ${context.localPath}`);
+        provideLocalPluginGuidance(repository, context);
+        return null;
+      }
+      
+      return null;
+    },
+  },
+  // Try workspace dependencies (for monorepo packages)
   {
     name: 'workspace dependency',
     tryImport: async (repository: string) => {

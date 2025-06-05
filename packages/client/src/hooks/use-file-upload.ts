@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { ContentType as CoreContentType } from '@elizaos/core';
-import type { UUID, Media } from '@elizaos/core';
+import type { UUID, Media, ChannelType } from '@elizaos/core';
 import { randomUUID } from '@/lib/utils';
 import { apiClient } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
@@ -18,7 +18,7 @@ export type UploadingFile = {
 interface UseFileUploadProps {
   agentId?: UUID;
   channelId?: UUID;
-  chatType: 'DM' | 'GROUP';
+  chatType: ChannelType.DM | ChannelType.GROUP;
 }
 
 export function useFileUpload({ agentId, channelId, chatType }: UseFileUploadProps) {
@@ -57,7 +57,7 @@ export function useFileUpload({ agentId, channelId, chatType }: UseFileUploadPro
           file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
           file.type === 'application/vnd.ms-powerpoint' ||
           file.type ===
-            'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
+          'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
           file.type.startsWith('text/')
       );
 
@@ -132,7 +132,7 @@ export function useFileUpload({ agentId, channelId, chatType }: UseFileUploadPro
       const uploadPromises = files.map(async (fileData) => {
         try {
           const uploadResult =
-            chatType === 'DM' && agentId
+            chatType === ChannelType.DM && agentId
               ? await apiClient.uploadAgentMedia(agentId, fileData.file)
               : await apiClient.uploadChannelMedia(channelId!, fileData.file);
 

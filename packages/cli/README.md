@@ -8,6 +8,27 @@ The ElizaOS CLI provides a comprehensive set of commands to manage your ElizaOS 
 bun install -g @elizaos/cli
 ```
 
+### Automatic Bun Installation
+
+The ElizaOS CLI requires [Bun](https://bun.sh) as its package manager. If Bun is not installed when you run the CLI, it will attempt to automatically install it for you.
+
+**Auto-installation features:**
+- ✅ Detects when Bun is missing
+- ✅ Downloads and installs Bun automatically on Windows, macOS, and Linux  
+- ✅ Updates PATH for the current session
+- ✅ Falls back to manual installation instructions if auto-install fails
+- ✅ Skips auto-installation in CI environments
+- ✅ Can be disabled with `--no-auto-install` flag
+
+**To disable auto-installation:**
+```bash
+# Global flag (applies to all commands)
+elizaos --no-auto-install create my-project
+
+# Environment variable
+ELIZA_NO_AUTO_INSTALL=true elizaos create my-project
+```
+
 ### Alternative usage with npx
 
 You can also run the CLI directly without installation using npx:
@@ -17,6 +38,24 @@ npx @elizaos/cli [command]
 ```
 
 This is useful for trying out commands without installing the CLI globally.
+
+## Global Options
+
+The following options are available for all ElizaOS CLI commands:
+
+- `--no-emoji`: Disable emoji output for better compatibility with certain terminals or scripts
+- `--no-auto-install`: Disable automatic Bun installation (useful in CI environments or when you prefer manual control)
+- `-v, --version`: Show the CLI version number
+- `-h, --help`: Display help information
+
+**Example usage:**
+```bash
+# Disable auto-installation and emojis
+elizaos --no-auto-install --no-emoji create my-project
+
+# Just show version
+elizaos --version
+```
 
 ## Commands
 
@@ -198,7 +237,7 @@ Publish a plugin to the registry.
 
 The `elizaos publish` command is designed for **initial plugin publishing only**. After initial publishing, use standard npm and git workflows for updates:
 
-- `npm version patch|minor|major` to update version
+- `bun version patch|minor|major` to update version (or `npm version` if preferred)
 - `npm publish` to publish to npm
 - `git push origin main && git push --tags` to update GitHub
 
@@ -644,7 +683,7 @@ Plugins extend the functionality of ElizaOS agents by providing additional capab
    elizaos test
 
    # Update version and publish updates
-   npm version patch  # or minor/major
+   bun version patch  # or minor/major (or npm version if preferred)
    npm publish
    git push origin main && git push --tags
    ```

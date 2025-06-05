@@ -3,6 +3,7 @@ import { Command } from 'commander';
 import { execa } from 'execa';
 import fs from 'node:fs';
 import path from 'node:path';
+import { emoji } from '../utils/emoji-handler';
 
 /**
  * Clones a GitHub repository at a specified branch into a target directory.
@@ -58,9 +59,26 @@ function displayNextSteps(dir: string): void {
 
   // Step 4: Start ElizaOS
   console.log('\n4. Start ElizaOS:');
-  console.log('   bun run start or bun run dev');
+  console.log('   bun run start or bun run dev');  // Enhanced bun installation guidance
+  console.log(`\n${emoji.list('Prerequisites:')}`);
+  console.log(`   ${emoji.bullet('Node.js 23.3.0+')}`);
+  console.log(`   ${emoji.bullet('Bun (JavaScript runtime & package manager)')}`);
 
-  console.log('\nNote: Make sure you have Node.js and bun installed on your system.');
+  console.log(`\n${emoji.rocket('If you don\'t have Bun installed:')}`);
+  const platform = process.platform;
+  
+  if (platform === 'win32') {
+    console.log('   Windows: powershell -c "irm bun.sh/install.ps1 | iex"');
+    console.log('   Alternative: scoop install bun (if you have Scoop)');
+  } else {
+    console.log('   Linux/macOS: curl -fsSL https://bun.sh/install | bash');
+    if (platform === 'darwin') {
+      console.log('   macOS alternative: brew install bun (if you have Homebrew)');
+    }
+  }
+  
+  console.log('   More options: https://bun.sh/docs/installation');
+  console.log('   After installation, restart your terminal');
 }
 
 export const setupMonorepo = new Command()

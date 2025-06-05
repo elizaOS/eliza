@@ -97,7 +97,7 @@ function AppContent() {
     <TooltipProvider delayDuration={0}>
       <SidebarProvider>
         <AppSidebar refreshHomePage={refreshHomePage} />
-        <SidebarInset>
+        <SidebarInset className="h-screen flex flex-col">
           {/* Mobile menu button */}
           <div className="md:hidden absolute top-4 left-4 z-50">
             <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
@@ -112,12 +112,13 @@ function AppContent() {
               </SheetContent>
             </Sheet>
           </div>
-          <div className="flex w-full justify-center pt-16 md:pt-0">
+          <div className="flex w-full justify-center pt-16 md:pt-0 flex-shrink-0">
             <div className="w-full md:max-w-4xl">
               <ConnectionErrorBanner />
             </div>
           </div>
-          <Routes>
+          <div className="flex-1 min-h-0">
+            <Routes>
             <Route path="/" element={<Home key={homeKey} />} />
             <Route path="chat/:agentId/:channelId" element={<Chat />} />
             <Route path="chat/:agentId" element={<Chat />} />
@@ -151,6 +152,7 @@ function AppContent() {
             {/* Catch-all route for 404 errors */}
             <Route path="*" element={<NotFound />} />
           </Routes>
+          </div>
         </SidebarInset>
       </SidebarProvider>
       <Toaster />

@@ -27,7 +27,7 @@
       "cache": false
     },
     "test": {
-      "dependsOn": ["@elizaos/core#build"],
+      "dependsOn": ["^build"],
       "outputs": ["coverage/**"],
       "inputs": ["src/**/*.ts", "src/**/*.js", "__tests__/**/*", "*.test.*"]
     },

@@ -7,6 +7,8 @@ import { logger } from '@elizaos/core';
 import { existsSync, statSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { resolveEnvFile } from './resolve-utils';
+import { emoji } from './emoji-handler';
+import { autoInstallBun, shouldAutoInstall } from './auto-install-bun';
 
 // Types
 interface OSInfo {
@@ -25,7 +27,7 @@ interface CLIInfo {
 }
 
 interface PackageManagerInfo {
-  name: 'npm' | 'yarn' | 'pnpm' | 'bun' | 'unknown';
+  name: 'bun';
   version: string | null;
   global: boolean;
   isNpx: boolean;
@@ -120,90 +122,97 @@ export class UserEnvironment {
   }
 
   /**
-   * Detects the active package manager
+   * Detects the active package manager - always returns bun for ElizaOS CLI
    * @param directory Optional directory to check for lock files. Defaults to process.cwd().
    */
   private async getPackageManagerInfo(directory?: string): Promise<PackageManagerInfo> {
-    logger.debug('[UserEnvironment] Detecting package manager');
-
-    const targetDir = directory || process.cwd();
-    logger.debug(`[UserEnvironment] Checking for lock files in: ${targetDir}`);
+    logger.debug('[UserEnvironment] Using bun as the package manager for ElizaOS CLI');
 
     const isNpx = process.env.npm_execpath?.includes('npx');
-
     const isBunx = process.argv[0]?.includes('bun');
 
-    // Check for lock files in current directory
-    const lockFiles = {
-      'bun.lockb': 'bun',
-      'pnpm-lock.yaml': 'pnpm',
-      'yarn.lock': 'yarn',
-      'package-lock.json': 'npm',
-    } as const;
-
-    let detectedPM: PackageManagerInfo['name'] = 'unknown';
     let version: string | null = null;
 
     try {
-      // Check lock files in the target directory
-      for (const [file, pm] of Object.entries(lockFiles)) {
-        if (existsSync(path.join(targetDir, file))) {
-          detectedPM = pm as PackageManagerInfo['name'];
-          logger.debug(`[UserEnvironment] Detected ${pm} from lock file: ${file}`);
-          break;
-        }
-      }
-
-      // If no lock file found, try environment detection
-      if (detectedPM === 'unknown') {
-        if (isNpx) detectedPM = 'npm';
-        else if (isBunx) detectedPM = 'bun';
-        else if (process.env.npm_config_user_agent?.startsWith('pnpm')) detectedPM = 'pnpm';
-        else if (process.env.npm_config_user_agent?.startsWith('yarn')) detectedPM = 'yarn';
-        else if (process.env.npm_config_user_agent?.startsWith('npm')) detectedPM = 'npm';
-      }
-
-      // Try to get version
-      if (detectedPM !== 'unknown') {
-        try {
-          const { stdout } = await import('execa').then(({ execa }) =>
-            execa(detectedPM, ['--version'])
-          );
-          version = stdout.trim();
-        } catch (e) {
-          logger.debug(
-            `[UserEnvironment] Could not get ${detectedPM} version: ${e instanceof Error ? e.message : String(e)}`
-          );
-        }
-      }
-    } catch (error) {
-      logger.warn(
-        `[UserEnvironment] Error detecting package manager: ${error instanceof Error ? error.message : String(error)}`
+      // Get bun version
+      const { stdout } = await import('execa').then(({ execa }) => execa('bun', ['--version']));
+      version = stdout.trim();
+      logger.debug(`[UserEnvironment] Bun version: ${version}`);
+    } catch (e) {
+      logger.debug(
+        `[UserEnvironment] Could not get bun version: ${e instanceof Error ? e.message : String(e)}`
       );
+
+      // Attempt auto-installation if conditions are met
+      if (shouldAutoInstall()) {
+        logger.info(`${emoji.info('Attempting to automatically install Bun...')}`);
+        const installSuccess = await autoInstallBun();
+        
+        if (installSuccess) {
+          // Try to get version again after installation
+          try {
+            const { stdout } = await import('execa').then(({ execa }) => execa('bun', ['--version']));
+            version = stdout.trim();
+            logger.debug(`[UserEnvironment] Bun version after auto-install: ${version}`);
+          } catch (retryError) {
+            logger.error(
+              `Failed to verify Bun installation after auto-install: ${
+                retryError instanceof Error ? retryError.message : String(retryError)
+              }`
+            );
+            // Continue to manual installation instructions
+          }
+        }
+      }
+
+      // If auto-installation failed or was not attempted, show manual instructions
+      if (!version) {
+        const platform = process.platform;
+        logger.error(
+          `${emoji.error('Bun is required for ElizaOS CLI but is not installed or not found in PATH.')}`
+        );
+        logger.error('');
+        logger.error(`${emoji.rocket('Install Bun using the appropriate command for your system:')}`);
+        logger.error('');
+
+        if (platform === 'win32') {
+          logger.error('   Windows: powershell -c "irm bun.sh/install.ps1 | iex"');
+        } else {
+          logger.error('   Linux/macOS: curl -fsSL https://bun.sh/install | bash');
+          if (platform === 'darwin') {
+            logger.error('   macOS (Homebrew): brew install bun');
+          }
+        }
+        logger.error('');
+        logger.error('   More options: https://bun.sh/docs/installation');
+        logger.error('   After installation, restart your terminal or source your shell profile');
+        logger.error('');
+
+        // Force exit the process - Bun is required for ElizaOS CLI
+        logger.error('🔴 Exiting: Bun installation is required to continue.');
+        process.exit(1);
+      }
     }
 
-    const packageName = '@elizaos/cli'; // Define package name
+    const packageName = '@elizaos/cli';
     let isGlobalCheck = false;
     try {
       // Check if running via npx/bunx first, as these might trigger global check falsely
       if (!isNpx && !isBunx) {
-        // Execute `npm ls -g --depth=0 <packageName>`.
-        // If the package is installed globally, the command succeeds (exit code 0).
-        // If not, it fails (non-zero exit code), triggering the catch block.
-        // Use stdio: 'ignore' to suppress output.
-        execSync(`npm ls -g --depth=0 ${packageName}`, { stdio: 'ignore' });
+        // Check if bun has the CLI installed globally
+        execSync(`bun pm ls -g | grep -q "${packageName}"`, { stdio: 'ignore' });
         isGlobalCheck = true;
       }
     } catch (error) {
-      // npm ls exits with error if package not found globally
+      // Package not found globally
       isGlobalCheck = false;
     }
 
-    // Combine npm check with NODE_ENV check
+    // Combine check with NODE_ENV check
     const isGlobal = isGlobalCheck || process.env.NODE_ENV === 'global';
 
     return {
-      name: detectedPM,
+      name: 'bun',
       version,
       global: isGlobal,
       isNpx,

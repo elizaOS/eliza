@@ -142,7 +142,7 @@ export type IsValidServiceType<T extends string> = T extends ServiceTypeName ? t
  * Type-safe service class definition
  */
 export type TypedServiceClass<T extends ServiceTypeName> = {
-  new (runtime?: IAgentRuntime): Service;
+  new(runtime?: IAgentRuntime): Service;
   serviceType: T;
   start(runtime: IAgentRuntime): Promise<Service>;
 };
@@ -628,8 +628,8 @@ export enum ContentType {
 
 export enum ChannelType {
   SELF = 'SELF', // Messages to self
-  DM = 'dm', // Direct messages between two participants
-  GROUP = 'group', // Group messages with multiple participants
+  DM = 'DM', // Direct messages between two participants
+  GROUP = 'GROUP', // Group messages with multiple participants
   VOICE_DM = 'VOICE_DM', // Voice direct messages
   VOICE_GROUP = 'VOICE_GROUP', // Voice channels with multiple participants
   FEED = 'FEED', // Social media feed

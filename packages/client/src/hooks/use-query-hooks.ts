@@ -633,6 +633,7 @@ export function useAgentMemories(
       // Handle response format
       return result.data?.memories || [];
     },
+    enabled: Boolean(agentId && tableName),
     staleTime: 1000,
     refetchInterval: 10 * 1000,
   });

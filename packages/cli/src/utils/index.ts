@@ -14,6 +14,7 @@ export * from './helpers';
 export * from './install-plugin';
 export * from './load-plugin';
 export * from './package-manager';
+export * from './plugin-context';
 export * from './port-handling';
 export * from './publisher';
 export * from './resolve-import';

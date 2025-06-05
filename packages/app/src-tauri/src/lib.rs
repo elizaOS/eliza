@@ -48,8 +48,7 @@ pub fn run() {
             // Start the server if it's not already running
             if !is_server_running() {
                 println!("Starting Eliza server...");
-                match Command::new("npx")
-                    .arg("elizaos")
+                match Command::new("elizaos")
                     .arg("start")
                     .spawn() {
                         Ok(child) => {
