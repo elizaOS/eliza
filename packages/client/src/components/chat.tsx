@@ -367,7 +367,8 @@ export default function Chat({ chatType, contextId, serverId, initialDmChannelId
           handleNewDmChannel(targetAgentData.id); // This will navigate and set currentDmChannelId
         }
       }
-    } else if (chatType !== 'DM') {
+    } else if (chatType !== 'DM' && chatState.currentDmChannelId !== null) {
+      // Only reset if necessary
       updateChatState({ currentDmChannelId: null });
     }
   }, [
