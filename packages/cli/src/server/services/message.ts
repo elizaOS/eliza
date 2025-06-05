@@ -171,54 +171,6 @@ export class MessageBusService extends Service {
     return true;
   }
 
-  private async validateDMParticipation(message: MessageServiceMessage): Promise<boolean> {
-    if (!(message.metadata?.channelType === ChannelType.DM || message.metadata?.isDm)) {
-      return true;
-    }
-
-    logger.info(
-      `[${this.runtime.character.name}] MessageBusService: This is a DM channel, checking participants`
-    );
-
-    try {
-      if (!validateUuid(message.channel_id)) {
-        logger.warn(
-          `[${this.runtime.character.name}] MessageBusService: Invalid channel_id: ${message.channel_id}`
-        );
-        return false;
-      }
-
-      const participants = await this.getChannelParticipants(message.channel_id);
-
-      if (participants.length > 0) {
-        logger.info(
-          `[${this.runtime.character.name}] MessageBusService: DM channel ${message.channel_id} participants: ${participants.join(', ')}, checking agent ID: ${this.runtime.agentId}`
-        );
-
-        if (!participants.includes(this.runtime.agentId)) {
-          logger.info(
-            `[${this.runtime.character.name}] MessageBusService: Agent not a participant in DM channel ${message.channel_id}, ignoring message`
-          );
-          return false;
-        }
-
-        logger.info(
-          `[${this.runtime.character.name}] MessageBusService: Agent IS a participant in DM channel ${message.channel_id}, proceeding with message processing`
-        );
-      } else {
-        logger.warn(
-          `[${this.runtime.character.name}] MessageBusService: No participants found for DM channel ${message.channel_id}`
-        );
-      }
-    } catch (error) {
-      logger.error(
-        `[${this.runtime.character.name}] MessageBusService: Error checking DM channel participants:`,
-        error
-      );
-    }
-
-    return true;
-  }
 
   private async ensureWorldAndRoomExist(message: MessageServiceMessage): Promise<{ agentWorldId: UUID; agentRoomId: UUID }> {
     const agentWorldId = createUniqueUuid(this.runtime, message.server_id);
@@ -328,10 +280,22 @@ export class MessageBusService extends Service {
       { messageId: message.id }
     );
 
+    const participants = await this.getChannelParticipants(message.channel_id);
+
+    if (!participants.includes(this.runtime.agentId)) {
+      logger.info(
+        `[${this.runtime.character.name}] MessageBusService: Agent not a participant in channel ${message.channel_id}, ignoring message`
+      );
+      return;
+    }
+
+    logger.info(
+      `[${this.runtime.character.name}] MessageBusService: Agent is a participant in channel ${message.channel_id}, proceeding with message processing`
+    );
+
     try {
       if (!(await this.validateServerSubscription(message))) return;
       if (!(await this.validateNotSelfMessage(message))) return;
-      if (!(await this.validateDMParticipation(message))) return;
 
       logger.info(
         `[${this.runtime.character.name}] MessageBusService: All checks passed, proceeding to create agent memory and emit MESSAGE_RECEIVED event`
