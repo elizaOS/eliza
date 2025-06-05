@@ -304,7 +304,7 @@ export class MessageBusService extends Service {
         logger.info(
           `[${this.runtime.character.name}] Agent generated response for message. Preparing to send back to bus.`
         );
-        
+
         // Send response to central bus
         await this.sendAgentResponseToBus(
           agentRoomId,
@@ -313,35 +313,11 @@ export class MessageBusService extends Service {
           agentMemory.id,
           message
         );
-        
-        // Create memory for the agent's own response with proper attribution
-        const responseMemory: Memory = {
-          id: createUniqueUuid(this.runtime, `response-${agentMemory.id}`),
-          entityId: this.runtime.agentId, // This agent authored the response
-          agentId: this.runtime.agentId,  // This agent saved the memory
-          roomId: agentRoomId,
-          worldId: agentWorldId,
-          content: responseContent,
-          createdAt: Date.now(),
-          metadata: {
-            type: 'message',
-            source: 'agent_response',
-            sourceId: agentMemory.id,
-            raw: {
-              ...responseContent,
-              senderName: this.runtime.character.name, // Add sender name for consistency
-              senderId: this.runtime.agentId,
-            },
-          },
-        };
-        
-        // Save the agent's response as a memory
-        await this.runtime.createMemory(responseMemory, 'messages');
-        logger.info(
-          `[${this.runtime.character.name}] Created memory for agent response: ${responseMemory.id}`
-        );
-        
-        return [responseMemory];
+
+        // The core runtime/bootstrap plugin will handle creating the agent's own memory of its response.
+        // So, we return an empty array here as this callback's primary job is to ferry the response externally.
+        return [];
+
       };
 
       await this.runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
