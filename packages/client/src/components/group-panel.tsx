@@ -1,3 +1,4 @@
+import { ChannelType } from '@elizaos/core';
 import { Separator } from '@/components/ui/separator';
 import { GROUP_CHAT_SOURCE } from '@/constants';
 import { useAgentsWithDetails, useChannels } from '@/hooks/use-query-hooks';
@@ -5,7 +6,7 @@ import { apiClient } from '@/lib/api';
 import { type Agent, AgentStatus, type UUID, validateUuid } from '@elizaos/core';
 import { useQueryClient, useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { Loader2, Trash, X } from 'lucide-react';
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import MultiSelectCombobox from './combobox';
 import { Button } from './ui/button';
@@ -47,6 +48,8 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const serverId = DEFAULT_SERVER_ID;
+  const initializedRef = useRef(false);
+  const lastChannelIdRef = useRef(channelId);
 
   const { data: channelsData } = useChannels(channelId ? serverId : undefined, { enabled: !!channelId });
   const { data: agentsData, isLoading: isLoadingAgents, isError: isErrorAgents } = useAgentsWithDetails();
@@ -73,45 +76,55 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
     enabled: !!channelId,
   });
 
+  // Separate effect for initializing chat name when channel loads
+  useEffect(() => {
+    if (channelId && channelsData?.data?.channels) {
+      const channelDetails = channelsData.data.channels.find((ch) => ch.id === channelId);
+      if (!initializedRef.current || lastChannelIdRef.current !== channelId) {
+        setChatName(channelDetails?.name || '');
+        initializedRef.current = true;
+        lastChannelIdRef.current = channelId;
+      }
+    } else if (!channelId) {
+      // Reset for create mode
+      initializedRef.current = false;
+      setChatName('');
+      setSelectedAgents([]);
+    }
+  }, [channelId, channelsData]);
+
+  // Separate effect for handling participants
   useEffect(() => {
     if (isLoadingAgents) return;
     if (channelId && isLoadingChannelParticipants) return;
+    if (!channelId) return; // Only handle edit mode
 
-    if (channelId) {
-      const channelDetails = channelsData?.data?.channels.find((ch) => ch.id === channelId);
-      if (chatName !== (channelDetails?.name || '')) {
-        setChatName(channelDetails?.name || '');
+    if (isErrorChannelParticipants) {
+      toast({ title: "Error", description: `Could not load group participants: ${errorChannelParticipants?.message || 'Unknown error'}`, variant: "destructive" });
+      setSelectedAgents([]);
+      return;
+    }
+    
+    if (channelParticipantsApiResponse?.success && channelParticipantsApiResponse.data) {
+      const participantIds = channelParticipantsApiResponse.data;
+      const newSelected = allAvailableSelectableAgents.filter(agent => participantIds.includes(agent.id));
+
+      const currentSelectedIds = selectedAgents.map(a => a.id).sort().join(',');
+      const newSelectedIds = newSelected.map(a => a.id).sort().join(',');
+
+      if (currentSelectedIds !== newSelectedIds) {
+        setSelectedAgents(newSelected);
       }
-
-      if (isErrorChannelParticipants) {
-        toast({ title: "Error", description: `Could not load group participants: ${errorChannelParticipants?.message || 'Unknown error'}`, variant: "destructive" });
-        if (selectedAgents.length > 0) setSelectedAgents([]);
-        return;
-      }
-      if (channelParticipantsApiResponse?.success && channelParticipantsApiResponse.data) {
-        const participantIds = channelParticipantsApiResponse.data;
-        const newSelected = allAvailableSelectableAgents.filter(agent => participantIds.includes(agent.id));
-
-        const currentSelectedIds = selectedAgents.map(a => a.id).sort().join(',');
-        const newSelectedIds = newSelected.map(a => a.id).sort().join(',');
-
-        if (currentSelectedIds !== newSelectedIds) {
-          setSelectedAgents(newSelected);
-        }
-      } else if (channelParticipantsApiResponse && !channelParticipantsApiResponse.success) {
-        toast({ title: "Error", description: `Could not load group participants: ${channelParticipantsApiResponse.error?.message || 'Server error'}`, variant: "destructive" });
-        if (selectedAgents.length > 0) setSelectedAgents([]);
-      } else {
-        if (selectedAgents.length > 0) setSelectedAgents([]);
-      }
+    } else if (channelParticipantsApiResponse && !channelParticipantsApiResponse.success) {
+      toast({ title: "Error", description: `Could not load group participants: ${channelParticipantsApiResponse.error?.message || 'Server error'}`, variant: "destructive" });
+      setSelectedAgents([]);
     } else {
-      if (chatName !== '') setChatName('');
-      if (selectedAgents.length > 0) setSelectedAgents([]);
+      setSelectedAgents([]);
     }
   }, [
-    channelId, isLoadingAgents, isLoadingChannelParticipants, channelsData,
+    channelId, isLoadingAgents, isLoadingChannelParticipants,
     channelParticipantsApiResponse, allAvailableSelectableAgents, isErrorChannelParticipants,
-    errorChannelParticipants, toast, chatName, selectedAgents
+    errorChannelParticipants, toast, selectedAgents
   ]);
 
   const comboboxOptions: ComboboxOption[] = useMemo(() => {
@@ -173,18 +186,22 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   }, [channelId, chatName, channelsData, navigate, onClose, queryClient, serverId, toast]);
 
   const handleCreateOrUpdateGroup = useCallback(async () => {
-    if (!channelId && selectedAgents.length === 0) {
+    if (selectedAgents.length === 0) {
       toast({ title: "Validation Error", description: "Please select at least one agent for the group.", variant: "destructive" });
       return;
     }
     setCreating(true);
     const participantIds = selectedAgents.map(agent => agent.id);
+    
+    // Generate name if empty
+    const finalName = chatName.trim() || selectedAgents.map(agent => agent.name).join(', ');
+    
     try {
       if (!channelId) {
         const response = await apiClient.createCentralGroupChat({
-          name: '',
+          name: finalName,
           participantCentralUserIds: participantIds,
-          type: 'group',
+          type: ChannelType.GROUP,
           server_id: serverId,
           metadata: { source: GROUP_CHAT_SOURCE },
         });
@@ -195,7 +212,7 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
         }
       } else {
         await apiClient.updateChannel(channelId, {
-          name: chatName,
+          name: finalName,
           participantCentralUserIds: participantIds,
         });
         toast({ title: 'Group Updated', description: 'Group details updated successfully.' });
@@ -215,7 +232,7 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   }, [channelId, chatName, selectedAgents, serverId, navigate, onClose, queryClient, toast]);
 
   const isSubmitDisabled =
-    (!channelId && selectedAgents.length === 0) ||
+    selectedAgents.length === 0 ||
     creating ||
     deleting ||
     (isErrorAgents && allAvailableSelectableAgents.length === 0) ||
@@ -240,21 +257,19 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
 
         <CardContent className="pt-4">
           <div className="flex flex-col gap-4 w-full">
-            {channelId && (
-              <div className="flex flex-col gap-2 w-full">
-                <label htmlFor="chat-name" className="text-sm font-medium">
-                  Chat Name (Optional)
-                </label>
-                <Input
-                  id="chat-name"
-                  value={chatName}
-                  onChange={(e) => setChatName(e.target.value)}
-                  className="w-full bg-background text-foreground"
-                  placeholder="Leave blank to auto-generate from participants"
-                  disabled={creating || deleting}
-                />
-              </div>
-            )}
+            <div className="flex flex-col gap-2 w-full">
+              <label htmlFor="chat-name" className="text-sm font-medium">
+                Chat Name (Optional)
+              </label>
+              <Input
+                id="chat-name"
+                value={chatName}
+                onChange={(e) => setChatName(e.target.value)}
+                className="w-full bg-background text-foreground"
+                placeholder="Leave blank to auto-generate from participants"
+                disabled={creating || deleting}
+              />
+            </div>
 
             <div className="flex flex-col gap-2 w-full">
               <label htmlFor="invite-agents" className="text-sm font-medium">
