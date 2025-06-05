@@ -80,11 +80,20 @@ export function AgentMemoryViewer({ agentId, agentName }: AgentMemoryViewerProps
 
   // Fetch from appropriate table(s) based on selected type
   const messagesTableName = selectedType === MemoryType.facts ? undefined : 'messages';
-  const factsTableName = selectedType === MemoryType.facts || selectedType === MemoryType.all ? 'facts' : undefined;
-  
-  const { data: messagesData = [], isLoading: isLoadingMessages, error: messagesError } = useAgentMemories(agentId, messagesTableName);
-  const { data: factsData = [], isLoading: isLoadingFacts, error: factsError } = useAgentMemories(agentId, factsTableName);
-  
+  const factsTableName =
+    selectedType === MemoryType.facts || selectedType === MemoryType.all ? 'facts' : undefined;
+
+  const {
+    data: messagesData = [],
+    isLoading: isLoadingMessages,
+    error: messagesError,
+  } = useAgentMemories(agentId, messagesTableName);
+  const {
+    data: factsData = [],
+    isLoading: isLoadingFacts,
+    error: factsError,
+  } = useAgentMemories(agentId, factsTableName);
+
   // Combine memories from both sources
   const memories = [...messagesData, ...factsData];
   const isLoading = isLoadingMessages || isLoadingFacts;
@@ -100,7 +109,7 @@ export function AgentMemoryViewer({ agentId, agentName }: AgentMemoryViewerProps
       if (selectedType === MemoryType.facts) {
         return true; // Already filtered by table
       }
-      
+
       // For messages table, filter by type
       if (selectedType === MemoryType.thoughts && !content?.thought) return false;
       if (selectedType === MemoryType.messagesSent && memory.entityId !== memory.agentId)
@@ -270,19 +279,19 @@ export function AgentMemoryViewer({ agentId, agentName }: AgentMemoryViewerProps
     const content = memory.content as ChatMemoryContent;
     const IconComponent = getMemoryIcon(memory, content);
     const isAgent = memory.entityId === memory.agentId;
-    
+
     // Look up entity name from agents data or fallback to metadata
     const getEntityName = () => {
       if (isAgent) {
         // For agents, try to find the agent name by ID
-        const agent = agentsData?.data?.agents?.find(a => a.id === memory.entityId);
+        const agent = agentsData?.data?.agents?.find((a) => a.id === memory.entityId);
         return agent?.name || agentName;
       } else {
         // For users, use raw metadata or fallback
         return (memory.metadata as any)?.raw?.senderName || memory.metadata?.source || 'User';
       }
     };
-    
+
     const entityName = getEntityName();
 
     return (

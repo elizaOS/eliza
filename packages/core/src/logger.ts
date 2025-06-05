@@ -276,10 +276,10 @@ const options = {
 
 // allow runtime logger to inherent options set here
 const createLogger = (bindings: any | boolean = false) => {
-  const opts: any = {...options} // shallow copy
+  const opts: any = { ...options }; // shallow copy
   if (bindings) {
     //opts.level = process.env.LOG_LEVEL || 'info'
-    opts.base = bindings // shallow change
+    opts.base = bindings; // shallow change
     opts.transport = {
       target: 'pino-pretty', // this is just a string, not a dynamic import
       options: {
@@ -287,10 +287,10 @@ const createLogger = (bindings: any | boolean = false) => {
         translateTime: 'SYS:standard',
         ignore: 'pid,hostname',
       },
-    }
+    };
   }
   const logger = pino(opts);
-  return logger
+  return logger;
 };
 
 // Create basic logger initially

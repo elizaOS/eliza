@@ -94,7 +94,9 @@ export async function executeInstallation(
   } catch (error: any) {
     // Check if it's a bun not found error
     if (error.code === 'ENOENT' || error.message?.includes('bun: command not found')) {
-      logger.warn(`Installation failed - bun command not found. ${displayBunInstallationTipCompact()}`);
+      logger.warn(
+        `Installation failed - bun command not found. ${displayBunInstallationTipCompact()}`
+      );
     } else {
       logger.warn(`Installation failed for ${finalSpecifier}: ${error.message}`);
     }

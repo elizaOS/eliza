@@ -1472,9 +1472,9 @@ export function agentRouter(
       const cleanMemories = includeEmbedding
         ? memories
         : memories.map((memory) => ({
-          ...memory,
-          embedding: undefined,
-        }));
+            ...memory,
+            embedding: undefined,
+          }));
 
       sendSuccess(res, { memories: cleanMemories });
     } catch (error) {
@@ -1516,9 +1516,9 @@ export function agentRouter(
       const cleanMemories = includeEmbedding
         ? memories
         : memories.map((memory) => ({
-          ...memory,
-          embedding: undefined,
-        }));
+            ...memory,
+            embedding: undefined,
+          }));
       sendSuccess(res, { memories: cleanMemories });
     } catch (error) {
       logger.error(`[AGENT MEMORIES] Error retrieving memories for agent ${agentId}:`, error);

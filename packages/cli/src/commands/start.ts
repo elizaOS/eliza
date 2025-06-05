@@ -50,10 +50,10 @@ async function loadAndPreparePlugin(pluginName: string, version: string): Promis
 
   // Check if this is a local development scenario BEFORE attempting any loading
   const context = detectPluginContext(pluginName);
-  
+
   if (context.isLocalDevelopment) {
     logger.debug(`Local plugin development detected for: ${pluginName}`);
-    
+
     // For local development, we should never try to install - just load directly
     try {
       pluginModule = await loadPluginModule(pluginName);

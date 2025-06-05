@@ -96,8 +96,9 @@ export default function ProfileOverlay({ isOpen, onClose, agentId }: ProfileOver
                     )}
                   </div>
                   <div
-                    className={`absolute bottom-1 right-1 w-4 h-4 rounded-full border-2 border-background ${isActive ? 'bg-green-500' : 'bg-muted-foreground'
-                      }`}
+                    className={`absolute bottom-1 right-1 w-4 h-4 rounded-full border-2 border-background ${
+                      isActive ? 'bg-green-500' : 'bg-muted-foreground'
+                    }`}
                   />
                 </div>
                 <div className="flex flex-col justify-center mr-4">

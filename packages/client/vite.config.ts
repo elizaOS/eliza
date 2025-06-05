@@ -19,17 +19,26 @@ interface CustomUserConfig extends UserConfig {
 // Function to get version and write info.json
 const getVersionAndWriteInfo = () => {
   const lernaPath = path.resolve(__dirname, '../../lerna.json');
+  const packageJsonPath = path.resolve(__dirname, '../../package.json');
   const infoJsonDir = path.resolve(__dirname, 'src/lib');
   const infoJsonPath = path.resolve(infoJsonDir, 'info.json');
   let version = '0.0.0-error'; // Default/fallback version
 
   try {
+    // First try to get version from lerna.json
     if (fs.existsSync(lernaPath)) {
       const lernaContent = fs.readFileSync(lernaPath, 'utf-8');
       const lernaConfig = JSON.parse(lernaContent);
       version = lernaConfig.version || version;
     } else {
-      console.warn(`Warning: ${lernaPath} does not exist. Using fallback version.`);
+      console.warn(`Warning: ${lernaPath} does not exist. Trying package.json...`);
+
+      // Fallback to main package.json if lerna.json doesn't exist
+      if (fs.existsSync(packageJsonPath)) {
+        const packageContent = fs.readFileSync(packageJsonPath, 'utf-8');
+        const packageConfig = JSON.parse(packageContent);
+        version = packageConfig.version || version;
+      }
     }
 
     if (!fs.existsSync(infoJsonDir)) {
