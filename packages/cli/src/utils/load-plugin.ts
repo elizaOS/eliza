@@ -188,16 +188,17 @@ function isElizaOSPlugin(repository: string): boolean {
  */
 function getStrategiesForPlugin(repository: string): ImportStrategy[] {
   const isElizaOS = isElizaOSPlugin(repository);
-  
+
   if (isElizaOS) {
     // ElizaOS ecosystem plugins: try all strategies
     return importStrategies;
   } else {
     // Third-party plugins: only try relevant strategies
-    return importStrategies.filter(strategy => 
-      strategy.name === 'local development plugin' ||
-      strategy.name === 'package.json entry' ||
-      strategy.name === 'common dist pattern'
+    return importStrategies.filter(
+      (strategy) =>
+        strategy.name === 'local development plugin' ||
+        strategy.name === 'package.json entry' ||
+        strategy.name === 'common dist pattern'
     );
   }
 }
@@ -213,8 +214,10 @@ function getStrategiesForPlugin(repository: string): ImportStrategy[] {
 export async function loadPluginModule(repository: string): Promise<any | null> {
   const isElizaOS = isElizaOSPlugin(repository);
   const strategies = getStrategiesForPlugin(repository);
-  
-  logger.debug(`Loading ${isElizaOS ? 'ElizaOS' : 'third-party'} plugin: ${repository} (${strategies.length} strategies)`);
+
+  logger.debug(
+    `Loading ${isElizaOS ? 'ElizaOS' : 'third-party'} plugin: ${repository} (${strategies.length} strategies)`
+  );
 
   for (const strategy of strategies) {
     const result = await strategy.tryImport(repository);
