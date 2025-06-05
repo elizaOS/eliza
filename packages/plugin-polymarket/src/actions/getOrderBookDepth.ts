@@ -10,7 +10,8 @@ import {
   composePromptFromState,
 } from '@elizaos/core';
 import { callLLMWithTimeout } from '../utils/llmHelpers';
-import { initializeClobClient, type BookParams } from '../utils/clobClient';
+import { initializeClobClient } from '../utils/clobClient';
+import { Side } from '@polymarket/clob-client';
 import { getOrderBookDepthTemplate } from '../templates';
 import type { OrderBook } from '../types';
 
@@ -183,7 +184,7 @@ Please provide one or more token IDs in your request. Examples:
       const clobClient = await initializeClobClient(runtime);
 
       // Prepare book parameters
-      const bookParams: BookParams[] = tokenIds.map((tokenId) => ({ token_id: tokenId }));
+      const bookParams = tokenIds.map((tokenId) => ({ token_id: tokenId, side: Side.BUY }));
 
       // Fetch order book data
       const orderBooks: OrderBook[] = await clobClient.getOrderBooks(bookParams);

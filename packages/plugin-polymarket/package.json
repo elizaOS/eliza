@@ -1,20 +1,16 @@
 {
   "name": "@elizaos/plugin-polymarket",
-  "description": "ElizaOS plugin for Polymarket prediction markets",
-  "version": "0.1.0",
+  "version": "1.0.0-beta.41",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
-  "keywords": [
-    "polymarket",
-    "prediction-markets",
-    "elizaos",
-    "plugin"
-  ],
   "repository": {
     "type": "git",
-    "url": ""
+    "url": "https://github.com/elizaos-plugins/plugin-polymarket"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "exports": {
     "./package.json": "./package.json",
@@ -29,36 +25,34 @@
     "dist"
   ],
   "dependencies": {
-    "@elizaos/cli": "workspace:*",
-    "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-sql": "workspace:*",
-    "@polymarket/clob-client": "^4.16.0",
-    "ethers": "^6.13.1",
-    "node-fetch": "^3.0.0",
-    "ws": "^8.17.0",
-    "zod": "3.24.2"
+    "@elizaos/core": "^1.0.0-beta.41",
+    "@polymarket/clob-client": "^4.18.0",
+    "ethers": "^6.13.4",
+    "zod": "^3.22.4"
   },
   "devDependencies": {
-    "tsup": "8.4.0",
+    "@types/node": "^20.11.30",
+    "@vitest/coverage-v8": "2.1.5",
+    "dotenv": "^16.4.5",
     "prettier": "3.5.3",
-    "vitest": "2.1.5",
-    "@vitest/coverage-v8": "2.1.5"
+    "tsup": "8.4.0",
+    "typescript": "^5.0.0",
+    "vite-tsconfig-paths": "^4.3.1",
+    "vitest": "2.1.5"
   },
   "scripts": {
-    "start": "elizaos start",
-    "dev": "elizaos dev",
     "build": "tsup",
+    "dev": "tsup --watch",
     "lint": "prettier --write ./src",
-    "test:component": "vitest run",
-    "test:e2e": "elizaos test",
-    "test": "npm run test:component && npm run test:e2e",
-    "test:coverage": "vitest run --coverage",
-    "test:watch": "vitest",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "prettier --write ./src",
-    "format:check": "prettier --check ./src"
+    "format:check": "prettier --check ./src",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
-  "publishConfig": {
-    "access": "public"
+  "peerDependencies": {
+    "typescript": "5.8.2"
   },
-  "gitHead": "b165ad83e5f7a21bc1edbd83374ca087e3cd6b33"
+  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460"
 }

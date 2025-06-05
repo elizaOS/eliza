@@ -957,318 +957,1870 @@ interface ApiKeyResponse {
 
 Once API credentials are created, they are automatically used by other trading actions like PLACE_ORDER for authenticated operations.
 
-### DELETE_API_KEY
+### PLACE_ORDER
 
-Revokes/deletes an existing API key to disable L2 authentication for that specific key. This permanently invalidates the API credentials and any active sessions using them.
+Creates and places both limit and market orders on Polymarket prediction markets. This action uses the official Polymarket ClobClient to create signed orders and submit them to the CLOB (Central Limit Order Book).
 
-**Triggers**: `DELETE_API_KEY`, `REVOKE_API_KEY`, `DELETE_POLYMARKET_API_KEY`, `REMOVE_API_CREDENTIALS`, `REVOKE_CLOB_CREDENTIALS`, `DELETE_API_ACCESS`, `DISABLE_API_KEY`
+**Triggers**: `PLACE_ORDER`, `CREATE_ORDER`, `BUY_TOKEN`, `SELL_TOKEN`, `LIMIT_ORDER`, `MARKET_ORDER`, `TRADE`, `ORDER`, `BUY`, `SELL`, `PURCHASE`, `PLACE_BUY`, `PLACE_SELL`, `CREATE_BUY_ORDER`, `CREATE_SELL_ORDER`, `SUBMIT_ORDER`, `EXECUTE_ORDER`, `MAKE_ORDER`, `PLACE_TRADE`
 
 **Usage Examples**:
 
-- "Revoke API key 12345678-1234-5678-9abc-123456789012"
-- "Delete API key abc12345-def6-7890-ghij-klmnopqrstuv"
-- "Remove my CLOB API credentials"
-- "Disable API access for key 98765432-1098-7654-3210-fedcba987654"
+- "Buy 100 shares of token 123456 at $0.50 limit order"
+- "Sell 50 tokens of 789012 at $0.75"
+- "Place market order to buy 25 tokens of 456789"
+- "Create a GTC order to buy 200 shares at 0.60 for market 111222"
+- "Submit FOK sell order for 75 shares at $0.45"
 
-**Required Parameter**:
+**Required Parameters**:
 
-- **apiKeyId**: The UUID of the API key to revoke (format: 12345678-1234-5678-9abc-123456789012)
+- **tokenId**: The specific token ID for the prediction market outcome (numeric string)
+- **side**: Order side - `BUY` or `SELL`
+- **price**: Price per share (0.0-1.0 for prediction markets, or percentage like 50 for 50%)
+- **size**: Number of shares to buy/sell
 
-**Response**: Returns revocation confirmation including:
+**Optional Parameters**:
 
-- Success/failure status
-- API key ID that was revoked
-- Revocation timestamp
-- Important security notices about invalidated sessions
+- **orderType**: Order type - `GTC` (limit), `FOK` (market), `GTD`, `FAK` (default: `GTC`)
+- **feeRateBps**: Fee rate in basis points (default: `0`)
 
-**Example Response**:
+**Order Types**:
+
+- **GTC (Good Till Cancelled)**: Limit order that stays active until filled or cancelled
+- **FOK (Fill Or Kill)**: Market order that executes immediately or fails completely
+- **GTD (Good Till Date)**: Order with expiration date
+- **FAK (Fill And Kill)**: Partial fill allowed, remainder cancelled
+
+**Prerequisites**:
+
+1. **API Credentials**: Must have created API keys using CREATE_API_KEY action
+2. **Environment Variables**: CLOB_API_KEY, CLOB_API_SECRET, CLOB_API_PASSPHRASE must be set
+3. **Private Key**: POLYMARKET_PRIVATE_KEY for order signing
+4. **Active Market**: Token ID must correspond to an active, tradeable market
+
+**Example Responses**:
+
+**Successful Limit Order**:
 
 ```
-✅ API Key Revoked Successfully
+✅ Order Placed Successfully
 
-Revocation Details:
-• API Key ID: 12345678-1234-5678-9abc-123456789012
-• Revoked At: 2024-01-15T10:45:00.000Z
-• Status: Permanently disabled
+Order Details:
+• Type: limit buy order
+• Token ID: 123456
+• Side: BUY
+• Price: $0.5000 (50.00%)
+• Size: 100 shares
+• Total Value: $50.0000
+• Fee Rate: 0 bps
 
-⚠️ Important Notice:
-- This API key can no longer be used for authentication
-- Any existing authenticated sessions using this key will be invalidated
-- You'll need to create a new API key for future trading operations
+Order Response:
+• Order ID: order_abc123
+• Status: unmatched
+• Transaction Hash(es): 0xabcdef123456
 
-Next Steps:
-If you need API access, use the CREATE_API_KEY action to generate new credentials.
+📋 Your order has been placed and is waiting to be matched.
+```
+
+**Successful Market Order**:
+
+```
+✅ Order Placed Successfully
+
+Order Details:
+• Type: market sell order
+• Token ID: 789012
+• Side: SELL
+• Price: $0.7500 (75.00%)
+• Size: 50 shares
+• Total Value: $37.5000
+• Fee Rate: 10 bps
+
+Order Response:
+• Order ID: order_xyz789
+• Status: matched
+• Transaction Hash(es): 0x123456abcdef
+
+🎉 Your order was immediately matched and executed!
 ```
 
 **TypeScript Usage**:
 
 ```typescript
-import { revokeApiKeyAction } from '@elizaos/plugin-polymarket';
+import { placeOrderAction } from '@elizaos/plugin-polymarket';
 
-// Use in your ElizaOS agent
-const result = await revokeApiKeyAction.handler(runtime, message, state);
+// Place a limit buy order
+const limitOrder = await placeOrderAction.handler(
+  runtime,
+  {
+    content: { text: 'Buy 100 shares of token 123456 at $0.50 limit order' },
+  },
+  state
+);
 
-// Access revocation data
-const revocationResult = result.data.revocation; // RevokeApiKeyResponse
-const success = result.data.success; // boolean
+// Place a market sell order
+const marketOrder = await placeOrderAction.handler(
+  runtime,
+  {
+    content: { text: 'Place market order to sell 50 tokens of 789012' },
+  },
+  state
+);
+
+// Access order response data
+const orderDetails = limitOrder.data.orderDetails;
+const orderResponse = limitOrder.data.orderResponse;
+const success = limitOrder.data.success;
 ```
 
-**Revocation Response Schema**:
+**Order Response Schema**:
 
 ```typescript
-interface RevokeApiKeyResponse {
-  success: boolean; // Whether revocation succeeded
-  apiKeyId: string; // The revoked API key ID
-  revokedAt: string; // ISO timestamp of revocation
-  message: string; // Success message
+interface PlaceOrderResponse {
+  success: boolean;
+  orderDetails: {
+    tokenId: string;
+    side: 'BUY' | 'SELL';
+    price: number;
+    size: number;
+    orderType: string;
+    feeRateBps: string;
+    totalValue: string;
+  };
+  orderResponse: {
+    success: boolean;
+    orderId?: string;
+    status?: 'matched' | 'delayed' | 'unmatched';
+    orderHashes?: string[];
+    errorMsg?: string;
+  };
+  timestamp: string;
 }
 ```
 
-**Security Considerations**:
+**Parameter Extraction**:
 
-- Revocation is permanent and cannot be undone
-- All active sessions using the revoked key will be immediately invalidated
-- This affects any automated systems or scripts using the revoked credentials
-- Revoked keys cannot be reactivated - new keys must be created instead
-- The revocation requires the private key for authentication (L1 auth)
+The action uses intelligent parameter extraction with two methods:
 
-**Use Cases**:
+1. **LLM Extraction**: Uses AI to understand natural language requests
+2. **Regex Fallback**: Pattern matching for structured requests
 
-- **Security Incidents**: Immediately disable compromised API keys
-- **Access Management**: Remove API access for specific applications
-- **Key Rotation**: Disable old keys when implementing new ones
-- **Account Cleanup**: Remove unused or outdated API credentials
-- **Permission Changes**: Revoke access when authorization requirements change
+**Supported Input Formats**:
+
+```typescript
+// Natural language
+'I want to buy 100 shares of token 123456 at $0.50 as a limit order';
+
+// Structured format
+'Buy 100 tokens of 123456 at price $0.50';
+
+// Market orders
+'Place market order to sell 50 shares of token 789012';
+
+// With order type
+'Create GTC order to buy 25 shares at 0.75 for market 456789';
+```
+
+**Price Handling**:
+
+- **Decimal format**: 0.50 (50% probability)
+- **Percentage format**: 50 (automatically converted to 0.50)
+- **Dollar format**: $0.50 (parsed as 0.50)
 
 **Error Handling**:
 
-- Validates API key ID format (UUID)
-- Handles non-existent or already revoked keys
-- Provides clear error messages for troubleshooting
-- Network connectivity and API error handling
-- Authentication failure scenarios
-
-**Integration with API Key Management**:
-
-Use in combination with CREATE_API_KEY for complete API key lifecycle management. Best practice is to revoke old keys before creating new ones for security.
-
-**Security Notes**:
-
-- API key revocation is permanent and cannot be undone
-- Revoked keys cannot be used for any further authentication
-- Ensure you have other API keys available if needed for continued trading
-
-### GET_API_KEYS
-
-Retrieves all API keys associated with your Polymarket account address. This action uses the official Polymarket ClobClient.getApiKeys() method for reliable authentication.
-
-**Triggers**: `GET_API_KEYS`, `GET_ALL_API_KEYS`, `LIST_API_KEYS`, `RETRIEVE_API_KEYS`, `SHOW_API_KEYS`, `GET_POLYMARKET_API_KEYS`, `LIST_CLOB_CREDENTIALS`, `SHOW_MY_API_KEYS`
-
-**Usage Examples**:
-
-- "Get my API keys"
-- "Show all my API keys"
-- "List my CLOB credentials"
-- "Retrieve all Polymarket API keys"
-
-**Setup Requirements**:
-
-1. **Create API Keys First**: Use the CREATE_API_KEY action to generate credentials
-2. **Set Environment Variables**: Add the returned credentials to your .env file
-3. **Restart Application**: Reload to pick up the new environment variables
-
-**Required Environment Variables**:
-
-```bash
-# For L1 authentication (wallet operations)
-WALLET_PRIVATE_KEY=your_private_key_here
-
-# For L2 authentication (API operations) - REQUIRED for GET_API_KEYS
-CLOB_API_KEY=your_api_key_here
-CLOB_API_SECRET=your_api_secret_here
-CLOB_API_PASSPHRASE=your_api_passphrase_here
-
-# Optional - defaults to https://clob.polymarket.com
-CLOB_API_URL=https://clob.polymarket.com
-```
-
-**Alternative Environment Variable Names**:
-
-- `CLOB_SECRET` (instead of `CLOB_API_SECRET`)
-- `CLOB_PASS_PHRASE` (instead of `CLOB_API_PASSPHRASE`)
-
-**TypeScript Example**:
-
 ```typescript
-// This action automatically uses your configured API credentials
-// No additional parameters needed
+// Configuration errors
+'❌ CLOB_API_URL is required in configuration';
 
-interface GetAllApiKeysResponse {
-  success: boolean;
-  apiKeys: ApiKeyData[];
-  count: number;
-  address: string;
-}
+// Parameter errors
+'❌ Please provide valid order parameters: token ID, price, and size';
 
-interface ApiKeyData {
-  key: string; // API key ID
-  secret: string; // API secret (truncated in response)
-  passphrase: string; // API passphrase (truncated in response)
-  created_at?: string; // Creation timestamp
-  active?: boolean; // Key status
-  permissions?: string[]; // Key permissions
-}
+// Market errors
+'❌ Invalid market data: The market may not exist or be inactive';
+
+// Order placement errors
+'❌ Failed to submit order: Insufficient balance';
 ```
-
-**Step-by-Step Setup**:
-
-1. **Generate API Keys**:
-
-   ```
-   User: "create an api key for polymarket"
-   ```
-
-2. **Copy Credentials**: When the action succeeds, copy the returned credentials
-
-3. **Update .env File**:
-
-   ```bash
-   # Add these lines to your .env file
-   CLOB_API_KEY=c6f85fb9-3b49-9726-9d15-e8584d975625
-   CLOB_API_SECRET=Yc8q_kEBtX...your_full_secret_here
-   CLOB_API_PASSPHRASE=6096fa1e...your_full_passphrase_here
-   ```
-
-4. **Restart Application**: Stop and restart ElizaOS to load the new variables
-
-5. **Test Retrieval**:
-   ```
-   User: "get my polymarket api keys"
-   ```
-
-**Response Format**:
-
-- **Success**: Returns array of API key objects with key details
-- **Empty**: Returns success with count: 0 if no API keys exist
-- **Error**: Returns detailed error message with troubleshooting steps
-
-**Enhanced Features**:
-
-- **Official ClobClient Integration**: Uses Polymarket's official TypeScript client
-- **Comprehensive Error Messages**: Clear instructions for setup and troubleshooting
-- **Multiple Environment Variable Support**: Flexible naming conventions
-- **Security-First Design**: Credentials are truncated in responses
-- **Validation**: Checks for required credentials before attempting requests
-
-**Common Issues & Solutions**:
-
-| Issue                       | Solution                                                       |
-| --------------------------- | -------------------------------------------------------------- |
-| "API credentials not found" | Set CLOB_API_KEY, CLOB_API_SECRET, CLOB_API_PASSPHRASE in .env |
-| "401 Unauthorized"          | Verify credentials are correct and restart application         |
-| "Connection refused"        | Check CLOB_API_URL setting and network connectivity            |
-| "No API keys found"         | Create API keys first using CREATE_API_KEY action              |
 
 **Security Considerations**:
 
-- API secrets and passphrases are truncated in responses for security
-- This action requires existing L2 authentication credentials
-- Use this to audit and manage your API key inventory
-- Consider revoking unused keys with DELETE_API_KEY action
+- Orders are cryptographically signed using your private key
+- API credentials are required for order submission
+- All orders are subject to Polymarket's risk management
+- Private keys never leave your local environment
+
+**Use Cases**:
+
+- **Limit Orders**: Set specific price targets and wait for fills
+- **Market Orders**: Execute immediately at current market prices
+- **Automated Trading**: Integrate with trading strategies and bots
+- **Portfolio Management**: Rebalance positions across markets
+- **Arbitrage**: Take advantage of price discrepancies
+
+**Best Practices**:
+
+1. **Start Small**: Test with small order sizes first
+2. **Check Markets**: Verify token IDs correspond to active markets
+3. **Monitor Orders**: Track order status and fills
+4. **Risk Management**: Set appropriate position sizes
+5. **Fee Awareness**: Consider fee rates in your trading strategy
+
+**Integration Examples**:
+
+```typescript
+// Combined with market data
+const markets = await getClobMarkets.handler(runtime, message, state);
+const tokenId = markets.data.markets[0].tokens[0].token_id;
+
+const order = await placeOrderAction.handler(
+  runtime,
+  {
+    content: { text: `Buy 100 shares of token ${tokenId} at $0.60` },
+  },
+  state
+);
+
+// Order management workflow
+const orderBook = await getOrderBookSummary.handler(
+  runtime,
+  {
+    content: { text: `Show order book for token ${tokenId}` },
+  },
+  state
+);
+
+const bestPrice = orderBook.data.orderBook.bids[0]?.price;
+if (bestPrice) {
+  await placeOrderAction.handler(
+    runtime,
+    {
+      content: { text: `Buy 50 shares of token ${tokenId} at $${bestPrice}` },
+    },
+    state
+  );
+}
+```
+
+**Troubleshooting**:
+
+| Issue                       | Solution                                         |
+| --------------------------- | ------------------------------------------------ |
+| "CLOB_API_URL required"     | Set CLOB_API_URL environment variable            |
+| "API credentials not found" | Create API keys using CREATE_API_KEY action      |
+| "Invalid token ID"          | Verify token ID exists and market is active      |
+| "Insufficient balance"      | Check account balance and allowances             |
+| "Order creation failed"     | Verify market is active and parameters are valid |
+
+**Rate Limits**:
+
+- Follows Polymarket's standard rate limiting
+- Failed orders don't count against rate limits
+- Consider delays between rapid order submissions
+
+### DELETE_API_KEY
+
+Deletes the API key currently configured in your environment variables from Polymarket. This action is irreversible and targets the key specified by `CLOB_API_KEY`, `CLOB_API_SECRET`, and `CLOB_API_PASSPHRASE`.
+
+**Triggers**: `DELETE_API_KEY`, `REMOVE_API_KEY`, `DELETE_CONFIGURED_API_KEY`, `REMOVE_CONFIGURED_API_KEY`, `ERASE_API_KEY`, `REVOKE_API_KEY`
+
+**Usage Examples**:
+
+- "Delete my configured Polymarket API key"
+- "Remove API key abc123def456" (Note: The specified ID is for confirmation only)
+- "Erase my configured API key"
+
+**Important Note**:
+This action will **always** delete the API key that is currently configured in your environment via the `CLOB_API_KEY`, `CLOB_API_SECRET`, and `CLOB_API_PASSPHRASE` variables. If you provide an API key ID in your message, it's used for confirmation purposes only - the action will still delete the configured key.
+
+**Required Environment Variables**:
+
+- `CLOB_API_URL`: Polymarket CLOB endpoint
+- `CLOB_API_KEY`: The API key to be deleted
+- `CLOB_API_SECRET` (or `CLOB_SECRET`): The secret for the API key
+- `CLOB_API_PASSPHRASE` (or `CLOB_PASS_PHRASE`): The passphrase for the API key
+- `WALLET_PRIVATE_KEY` (or `PRIVATE_KEY` / `POLYMARKET_PRIVATE_KEY`): For signing the deletion request
+
+**Example Success Response**:
+
+```json
+{
+  "text": "✅ Successfully deleted API Key: your-configured-api-key-id\n\nThe API key has been permanently removed from Polymarket. You will need to create new API credentials to continue using authenticated endpoints.",
+  "data": {
+    "success": true,
+    "deletedKeyId": "your-configured-api-key-id",
+    "message": "API Key your-configured-api-key-id was successfully deleted from Polymarket."
+  }
+}
+```
+
+**Example Error Response**:
+
+```json
+{
+  "text": "❌ Failed to delete API Key your-configured-api-key-id: API Key your-configured-api-key-id not found or invalid. It may have already been deleted.\n\nPossible causes:\n• API key has already been deleted\n• Invalid API credentials\n• Network connectivity issues\n• Polymarket API is temporarily unavailable",
+  "data": {
+    "success": false,
+    "deletedKeyId": "your-configured-api-key-id",
+    "message": "API Key your-configured-api-key-id not found or invalid. It may have already been deleted.",
+    "error": "API key not found"
+  }
+}
+```
+
+**TypeScript Usage**:
+
+```typescript
+import { deleteApiKeyAction, DeleteApiKeyPayload, DeleteApiKeyResponseData } from '@elizaos/plugin-polymarket';
+import { IAgentRuntime, Memory, State, HandlerCallback } from '@elizaos/core';
+
+// Example usage
+const runtime: IAgentRuntime = /* your runtime */;
+const message: Memory = {
+  content: { text: 'Delete my configured API key' }
+} as Memory;
+const state: State = {} as State;
+
+const callback: HandlerCallback = (response) => {
+  const data = response.data as DeleteApiKeyResponseData;
+  if (data.success) {
+    console.log(`API key ${data.deletedKeyId} was successfully deleted`);
+  } else {
+    console.error(`Failed to delete API key: ${data.error}`);
+  }
+};
+
+// Call the action
+await deleteApiKeyAction.handler(runtime, message, state, {}, callback);
+```
+
+**Response Data Schema**:
+
+```typescript
+interface DeleteApiKeyResponseData {
+  success: boolean; // True if deletion was successful
+  message?: string; // Descriptive message about the outcome
+  deletedKeyId?: string; // ID of the API key that was deleted
+  error?: string; // Error message if success is false
+}
+```
+
+**Security Considerations**:
+
+- API credentials are generated using your wallet's private key signature
+- Store credentials securely in environment variables or secure storage
+- Never share or log the full secret or passphrase
+- Credentials enable authenticated trading operations
+- Use HTTPS connections when transmitting credentials
+
+**Use Cases**:
+
+- Setting up trading capabilities for the first time
+- Rotating API credentials for security
+- Enabling order placement and cancellation
+- Accessing authenticated market data endpoints
+- Preparing for automated trading strategies
+
+**What API Credentials Enable**:
+
+- **Order Placement**: Create buy/sell orders on markets
+- **Order Management**: Cancel or modify existing orders
+- **Account Operations**: View balances and positions
+- **Authenticated Endpoints**: Access private user data
+- **Rate Limit Benefits**: Higher rate limits for authenticated users
+
+**Error Handling**:
+
+- Validates private key availability in environment
+- Handles wallet signature failures
+- Provides clear error messages for troubleshooting
+- Network connectivity and API error handling
+
+**Integration with Order Placement**:
+
+Once API credentials are created, they are automatically used by other trading actions like PLACE_ORDER for authenticated operations.
+
+### PLACE_TYPED_ORDER
+
+Creates and places typed orders with explicit order type handling (GTC, FOK, GTD) on Polymarket prediction markets. This action provides more granular control over order types compared to the general PLACE_ORDER action.
+
+**Triggers**: `PLACE_TYPED_ORDER`, `CREATE_TYPED_ORDER`, `PLACE_GTC_ORDER`, `PLACE_FOK_ORDER`, `PLACE_GTD_ORDER`, `CREATE_GTC_ORDER`, `CREATE_FOK_ORDER`, `CREATE_GTD_ORDER`, `TYPED_ORDER`, `SPECIFIC_ORDER_TYPE`, `ORDER_WITH_TYPE`, `LIMIT_ORDER_TYPED`, `MARKET_ORDER_TYPED`, `TIMED_ORDER`, `EXPIRING_ORDER`
+
+**Usage Examples**:
+
+- "Place GTC buy order for 100 shares of token 123456 at $0.50"
+- "Create FOK sell order for 50 tokens 789012 at price 0.75"
+- "Place GTD order to buy 25 shares of 456789 at $0.60 expiring in 2 hours"
+- "Create GTC limit order to sell 200 shares at $0.45"
+
+**Required Parameters**:
+
+- **tokenId**: The specific token ID for the prediction market outcome (numeric string)
+- **side**: Order side - `BUY` or `SELL`
+- **price**: Price per share (0.01-0.99 for prediction markets)
+- **size**: Number of shares to buy/sell
+- **orderType**: Order type - `GTC`, `FOK`, or `GTD`
+
+**Optional Parameters**:
+
+- **expiration**: Unix timestamp for GTD orders (auto-generated if not provided)
+- **feeRateBps**: Fee rate in basis points (default: `0`)
+
+**Order Types Explained**:
+
+| Order Type | Full Name           | Description                                                                 | Use Case                                                            |
+| ---------- | ------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| **GTC**    | Good Till Cancelled | Limit order that stays active until filled or manually cancelled            | Setting specific price targets and waiting for market to reach them |
+| **FOK**    | Fill Or Kill        | Market order that must execute immediately in full or be cancelled entirely | Immediate execution when you need to enter/exit quickly             |
+| **GTD**    | Good Till Date      | Order with automatic expiration at a specified timestamp                    | Time-sensitive strategies with automatic cleanup                    |
 
 **Prerequisites**:
 
-- Must have created at least one API key using CREATE_API_KEY action
-- API credentials must be set in environment variables
-- Valid private key for wallet verification
+1. **API Credentials**: Must have created API keys using CREATE_API_KEY action
+2. **Environment Variables**: CLOB_API_KEY, CLOB_API_SECRET, CLOB_API_PASSPHRASE must be set
+3. **Private Key**: POLYMARKET_PRIVATE_KEY for order signing
+4. **Active Market**: Token ID must correspond to an active, tradeable market
 
-## API Integration
+**Example Responses**:
 
-This plugin uses the Polymarket CLOB API:
-
-- **Base URL**: https://clob.polymarket.com
-- **Documentation**: https://docs.polymarket.com/developers/CLOB/introduction
-- **Rate Limits**: Follows Polymarket's standard rate limiting
-
-## Development
-
-### Project Structure
+**Successful GTC Order**:
 
 ```
-src/
-├── actions/           # Action implementations
-│   ├── retrieveAllMarkets.ts
-│   ├── getSimplifiedMarkets.ts
-│   ├── getMarketDetails.ts
-│   ├── getOrderBookSummary.ts
-│   ├── getOrderBookDepth.ts
-│   ├── getBestPrice.ts
-│   ├── getMidpointPrice.ts
-│   └── getSpread.ts
-├── utils/            # Utility functions
-│   ├── clobClient.ts # CLOB API client
-│   └── llmHelpers.ts # LLM parameter extraction
-├── templates.ts      # LLM prompt templates
-├── plugin.ts         # Main plugin definition
-└── index.ts          # Plugin entry point
+✅ **GTC Order Placed Successfully**
+
+**Order Details:**
+• **Type**: Good Till Cancelled (limit order) buy
+• **Token ID**: 123456
+• **Side**: BUY
+• **Price**: $0.5000 (50.00%)
+• **Size**: 100 shares
+• **Total Value**: $50.0000
+• **Fee Rate**: 0 bps
+
+**Order Response:**
+• **Order ID**: order_abc123
+• **Status**: unmatched
+• **Transaction Hash(es)**: 0xabcdef123456
+
+📋 Your order has been placed and is waiting to be matched.
 ```
 
-### Adding New Actions
+**Successful FOK Order**:
 
-1. Create action file in `src/actions/`
-2. Follow the existing pattern with validate/handler methods
-3. Add LLM templates for parameter extraction
-4. Register action in `src/plugin.ts`
-5. Write unit tests in `src/__tests__/`
+```
+✅ **FOK Order Placed Successfully**
 
-### Testing
+**Order Details:**
+• **Type**: Fill Or Kill (market order) sell
+• **Token ID**: 789012
+• **Side**: SELL
+• **Price**: $0.7500 (75.00%)
+• **Size**: 50 shares
+• **Total Value**: $37.5000
+• **Fee Rate**: 0 bps
 
-```bash
-# Run unit tests
-npm run test:component
+**Order Response:**
+• **Order ID**: order_xyz789
+• **Status**: matched
+• **Transaction Hash(es)**: 0x123456abcdef
 
-# Run with coverage
-npm run test:coverage
-
-# Run end-to-end tests
-npm run test:e2e
+🎉 Your order was immediately matched and executed!
 ```
 
-## Error Handling
+**Successful GTD Order**:
 
-The plugin includes comprehensive error handling:
+```
+✅ **GTD Order Placed Successfully**
 
-- Configuration validation
-- API connectivity checks
-- Graceful degradation for network issues
-- Detailed error messages for troubleshooting
+**Order Details:**
+• **Type**: Good Till Date (expiring order) buy
+• **Token ID**: 456789
+• **Side**: BUY
+• **Price**: $0.6000 (60.00%)
+• **Size**: 25 shares
+• **Total Value**: $15.0000
+• **Fee Rate**: 0 bps
+• **Expiration**: 12/25/2024, 3:30:00 PM
 
-## Supported Markets
+**Order Response:**
+• **Order ID**: order_gtd456
+• **Status**: unmatched
+• **Transaction Hash(es)**: 0x789abcdef123
 
-This plugin works with all Polymarket prediction markets including:
+📋 Your order has been placed and will automatically cancel if not filled by the expiration time.
+```
 
-- Political events and elections
-- Cryptocurrency price predictions
-- Sports outcomes
-- Economic indicators
-- Current events and news
+**TypeScript Usage**:
 
-## License
+```typescript
+import { placeTypedOrderAction, PlaceTypedOrderResponseData } from '@elizaos/plugin-polymarket';
 
-MIT License - see LICENSE file for details.
+// Place a GTC limit order
+const gtcOrder = await placeTypedOrderAction.handler(
+  runtime,
+  {
+    content: { text: 'Place GTC buy order for 100 shares of token 123456 at $0.50' },
+  },
+  state
+);
 
-## Contributing
+// Place a FOK market order
+const fokOrder = await placeTypedOrderAction.handler(
+  runtime,
+  {
+    content: { text: 'Create FOK sell order for 50 tokens 789012 at price 0.75' },
+  },
+  state
+);
 
-1. Follow the existing code patterns
-2. Add comprehensive tests for new features
-3. Update documentation
-4. Ensure TypeScript compliance
-5. Test against live Polymarket API
+// Place a GTD order with expiration
+const gtdOrder = await placeTypedOrderAction.handler(
+  runtime,
+  {
+    content: { text: 'Place GTD order to buy 25 shares of 456789 at $0.60 expiring in 2 hours' },
+  },
+  state
+);
 
-## Support
+// Access order response data
+const orderDetails = gtcOrder.data.orderDetails;
+const orderResponse = gtcOrder.data.orderResponse;
+const success = gtcOrder.data.success;
+```
 
-For issues and questions:
+**Response Schema**:
 
-- Check the ElizaOS documentation
-- Review Polymarket API documentation
-- File issues in the project repository
+```typescript
+interface PlaceTypedOrderResponseData {
+  success: boolean;
+  orderDetails: {
+    tokenId: string;
+    side: 'BUY' | 'SELL';
+    price: number;
+    size: number;
+    orderType: string;
+    expiration?: number; // Unix timestamp for GTD orders
+    feeRateBps: string;
+    totalValue: string;
+  };
+  orderResponse: {
+    success: boolean;
+    orderId?: string;
+    status?: 'matched' | 'delayed' | 'unmatched';
+    orderHashes?: string[];
+    errorMsg?: string;
+  };
+  timestamp: string;
+}
+
+interface PlaceTypedOrderPayload {
+  tokenId: string;
+  price: number;
+  size: number;
+  side: 'BUY' | 'SELL';
+  orderType: 'GTC' | 'FOK' | 'GTD';
+  expiration?: number; // Unix timestamp for GTD orders
+  feeRateBps?: string;
+}
+```
+
+**Parameter Extraction**:
+
+The action uses intelligent parameter extraction with two methods:
+
+1. **LLM Extraction**: Uses AI to understand natural language requests
+2. **Regex Fallback**: Pattern matching for structured requests
+
+**Supported Input Formats**:
+
+```typescript
+// Natural language with order type
+'Place GTC buy order for 100 shares of token 123456 at $0.50';
+
+// Market order specification
+'Create FOK sell order for 50 tokens 789012 at price 0.75';
+
+// GTD with expiration
+'Place GTD order to buy 25 shares of 456789 at $0.60 expiring in 2 hours';
+
+// Structured format
+'place GTC 100 123456 at 0.50';
+```
+
+**GTD Expiration Handling**:
+
+- **Natural Language**: "expiring in 2 hours", "expires in 30 minutes"
+- **Auto-Default**: If GTD order doesn't specify expiration, defaults to 1 hour
+- **Unix Timestamp**: Direct timestamp support for programmatic use
+- **Time Parsing**: Supports hours and minutes in natural language
+
+**Error Handling**:
+
+```typescript
+// Parameter validation errors
+'❌ Please provide valid typed order parameters: token ID, side, price, size, and order type';
+
+// Order type validation
+'❌ Invalid order type: INVALID. Must be GTC, FOK, or GTD';
+
+// Price validation
+'❌ Price 1.5 is outside valid range (0.01-0.99) for prediction markets';
+
+// Market errors
+'❌ Invalid market data: The market may not exist or be inactive';
+
+// Insufficient balance
+'❌ Insufficient balance to place this order. Please check your account balance';
+```
+
+**Key Differences from PLACE_ORDER**:
+
+| Feature              | PLACE_ORDER                | PLACE_TYPED_ORDER             |
+| -------------------- | -------------------------- | ----------------------------- |
+| **Order Types**      | Generic with optional type | Explicit GTC/FOK/GTD handling |
+| **Expiration**       | Limited support            | Full GTD expiration control   |
+| **Type Validation**  | Basic                      | Comprehensive type checking   |
+| **Natural Language** | General                    | Type-specific parsing         |
+| **Use Case**         | General trading            | Specific order strategies     |
+
+**Use Cases and Strategies**:
+
+**GTC Orders (Good Till Cancelled)**:
+
+- Setting price targets and waiting for market movement
+- Dollar-cost averaging strategies
+- Long-term position building
+- Taking advantage of market volatility
+
+**FOK Orders (Fill Or Kill)**:
+
+- Quick market entry/exit
+- Arbitrage opportunities
+- Large orders that need immediate full execution
+- Time-sensitive trading strategies
+
+**GTD Orders (Good Till Date)**:
+
+- Event-driven trading with automatic cleanup
+- Short-term strategies with defined time limits
+- Reducing manual order management
+- Preventing stale orders in fast-moving markets
+
+**Best Practices**:
+
+1. **Order Type Selection**:
+
+   - Use GTC for patient, price-sensitive strategies
+   - Use FOK for immediate execution needs
+   - Use GTD for time-bounded strategies
+
+2. **GTD Expiration Guidelines**:
+
+   - Set realistic expiration times based on market volatility
+   - Consider market hours and expected volume
+   - Allow buffer time for potential fills
+
+3. **Price Setting**:
+
+   - GTC: Set competitive but patient prices
+   - FOK: Use current market prices for immediate execution
+   - GTD: Balance competitive pricing with time constraints
+
+4. **Risk Management**:
+   - Monitor GTC orders regularly to avoid stale prices
+   - Use FOK for large orders to avoid partial fills
+   - Set appropriate GTD expiration to limit exposure time
+
+**Integration Examples**:
+
+```typescript
+// Strategy: Time-based arbitrage with GTD
+const arbitrageOrder = await placeTypedOrderAction.handler(
+  runtime,
+  {
+    content: {
+      text: 'Place GTD buy order for 500 shares of token 123456 at $0.48 expiring in 30 minutes',
+    },
+  },
+  state
+);
+
+// Strategy: Quick exit with FOK
+const exitOrder = await placeTypedOrderAction.handler(
+  runtime,
+  {
+    content: { text: 'Create FOK sell order for 1000 tokens 789012 at current market price' },
+  },
+  state
+);
+
+// Strategy: Patient accumulation with GTC
+const accumulationOrder = await placeTypedOrderAction.handler(
+  runtime,
+  {
+    content: { text: 'Place GTC buy order for 200 shares of token 456789 at $0.52' },
+  },
+  state
+);
+```
+
+**Troubleshooting**:
+
+| Issue                       | Solution                                                |
+| --------------------------- | ------------------------------------------------------- |
+| "Invalid order type"        | Use only GTC, FOK, or GTD                               |
+| "GTD expiration required"   | Specify expiration time or let system default to 1 hour |
+| "Price outside valid range" | Use prices between 0.01 and 0.99 for prediction markets |
+| "Order creation failed"     | Check market is active and parameters are valid         |
+| "Insufficient balance"      | Verify account has enough funds for the order           |
+
+### CANCEL_ALL_ORDERS
+
+Cancels all open orders for the authenticated user across all Polymarket markets. This action provides a quick way to stop all trading activity and clear all pending orders.
+
+**Triggers**: `CANCEL_ALL_ORDERS`, `CANCEL_ALL`, `CANCEL_ORDERS`, `CANCEL_ALL_OPEN_ORDERS`, `CLOSE_ALL_ORDERS`, `STOP_ALL_ORDERS`, `CANCEL_EVERYTHING`, `CANCEL_ALL_TRADES`, `CANCEL_ALL_POSITIONS`, `STOP_ALL_TRADING`, `CLOSE_ALL_POSITIONS`, `CANCEL_OPEN_ORDERS`, `CANCEL_PENDING_ORDERS`, `CLEAR_ALL_ORDERS`, `REMOVE_ALL_ORDERS`
+
+**Usage Examples**:
+
+- "Cancel all my open orders"
+- "Stop all my trading and cancel everything"
+- "Clear all pending orders"
+- "CANCEL_ALL_ORDERS"
+
+**Prerequisites**:
+
+1. **API Credentials**: Must have created API keys using CREATE_API_KEY action
+2. **Environment Variables**: CLOB_API_KEY, CLOB_API_SECRET, CLOB_API_PASSPHRASE must be set
+3. **Private Key**: POLYMARKET_PRIVATE_KEY for signing cancellation requests
+
+**No Parameters Required**: This action automatically cancels all open orders for your account
+
+**Example Successful Response**:
+
+```
+✅ **All Orders Cancelled Successfully**
+
+**Cancellation Summary:**
+• **Orders Cancelled**: 5
+• **Status**: Complete
+• **Timestamp**: 2024-01-15T10:30:00.000Z
+
+**Cancelled Order IDs:**
+1. `order-abc123def456`
+2. `order-789xyz012abc`
+3. `order-def456ghi789`
+4. `order-mno123pqr456`
+5. `order-stu789vwx012`
+
+**Result**: Successfully cancelled 5 open orders
+
+**⚠️ Important Note:**
+All your pending orders across all markets have been cancelled. Any partially filled orders will remain as executed, but unfilled portions have been cancelled.
+```
+
+**Example No Orders Response**:
+
+```
+✅ **All Orders Cancelled Successfully**
+
+**Cancellation Summary:**
+• **Orders Cancelled**: All open orders
+• **Status**: Complete
+• **Timestamp**: 2024-01-15T10:30:00.000Z
+
+**Result**: No open orders found to cancel
+
+**⚠️ Important Note:**
+All your pending orders across all markets have been cancelled. Any partially filled orders will remain as executed, but unfilled portions have been cancelled.
+```
+
+**TypeScript Usage**:
+
+```typescript
+import { cancelAllOrdersAction, CancelAllOrdersResponseData } from '@elizaos/plugin-polymarket';
+
+// Cancel all open orders
+const result = await cancelAllOrdersAction.handler(
+  runtime,
+  {
+    content: { text: 'Cancel all my open orders' },
+  },
+  state
+);
+
+// Access cancellation response data
+const success = result.data.success; // boolean
+const cancelledCount = result.data.cancelledOrdersCount; // number
+const cancelledOrders = result.data.cancelledOrders; // string[]
+const message = result.data.message; // string
+const timestamp = result.data.timestamp; // string
+
+// Handle the response
+if (success) {
+  console.log(`Successfully cancelled ${cancelledCount} orders`);
+  console.log('Cancelled order IDs:', cancelledOrders);
+} else {
+  console.error('Failed to cancel orders:', result.data.error);
+}
+```
+
+**Response Schema**:
+
+```typescript
+interface CancelAllOrdersResponseData {
+  success: boolean; // True if cancellation was successful
+  cancelledOrdersCount: number; // Number of orders that were cancelled
+  cancelledOrders: string[]; // Array of cancelled order IDs
+  message: string; // Descriptive message about the result
+  timestamp: string; // ISO timestamp of the operation
+  error?: string; // Error message if success is false
+}
+```
+
+**Response Handling**:
+
+The action intelligently handles different response formats from the Polymarket CLOB API:
+
+1. **Array Response**: When API returns array of cancelled order IDs
+2. **Object Response**: When API returns object with success status and order details
+3. **Simple Response**: When API returns basic success indicator
+4. **Empty Response**: When no orders are found to cancel
+
+**Key Features**:
+
+- **Bulk Cancellation**: Cancels all orders in a single API call
+- **Cross-Market**: Works across all markets where you have open orders
+- **Comprehensive Logging**: Returns detailed information about cancelled orders
+- **Error Handling**: Graceful handling of various error scenarios
+- **Order Tracking**: Provides list of cancelled order IDs for reference
+
+**Use Cases**:
+
+**Emergency Stop**:
+
+- Quickly halt all trading activity
+- Respond to market volatility or news events
+- Stop automated trading strategies immediately
+
+**Portfolio Management**:
+
+- Clean slate before implementing new strategy
+- End of trading session cleanup
+- Risk management during uncertain periods
+
+**Strategy Changes**:
+
+- Clear existing orders before strategy adjustment
+- Switch between different trading approaches
+- Rebalance order book positioning
+
+**Maintenance**:
+
+- Prepare for system maintenance or updates
+- Clean up stale or outdated orders
+- Simplify order management workflow
+
+**Error Handling**:
+
+```typescript
+// Authentication errors
+'❌ Authentication failed. Please check your API credentials.';
+
+// Network errors
+'❌ Network connectivity issues. Please try again in a moment.';
+
+// Rate limiting
+'❌ Rate limit exceeded. Please wait before trying again.';
+
+// No orders to cancel
+'❌ No open orders found to cancel.';
+
+// General API errors
+'❌ An unexpected error occurred while cancelling orders.';
+```
+
+**Important Considerations**:
+
+**Irreversible Action**:
+
+- Once orders are cancelled, they cannot be uncancelled or restored
+- You must place a new order if you want to re-enter the position
+- Executed portions of partially filled orders remain valid
+
+**Market Impact**:
+
+- Large cancellations may affect market liquidity temporarily
+- Consider market conditions before bulk cancellation
+- Some orders may fill during the cancellation process
+
+**Timing**:
+
+- Cancellation requests are processed immediately
+- Network latency may affect exact timing
+- Some orders might execute before cancellation completes
+
+**Best Practices**:
+
+1. **Confirmation**: Double-check you want to cancel ALL orders
+2. **Timing**: Consider market hours and activity levels
+3. **Follow-up**: Verify cancellation success and remaining positions
+4. **Documentation**: Keep records of cancelled orders for analysis
+5. **Strategy**: Have a plan for recreating desired orders if needed
+
+**Integration Examples**:
+
+```typescript
+// Emergency stop with confirmation
+const orderBook = await getActiveOrdersAction.handler(
+  runtime,
+  {
+    content: { text: 'Show my active orders' },
+  },
+  state
+);
+
+if (orderBook.data.orders.length > 0) {
+  console.log(`Found ${orderBook.data.orders.length} active orders`);
+
+  const cancelResult = await cancelAllOrdersAction.handler(
+    runtime,
+    {
+      content: { text: 'Cancel all orders immediately' },
+    },
+    state
+  );
+
+  console.log(`Cancellation result: ${cancelResult.data.message}`);
+}
+
+// Scheduled cleanup
+const cleanup = async () => {
+  try {
+    const result = await cancelAllOrdersAction.handler(
+      runtime,
+      {
+        content: { text: 'End of day cleanup - cancel all orders' },
+      },
+      state
+    );
+
+    if (result.data.success) {
+      console.log(`Daily cleanup: cancelled ${result.data.cancelledOrdersCount} orders`);
+    }
+  } catch (error) {
+    console.error('Cleanup failed:', error);
+  }
+};
+
+// Strategy rotation
+const rotateStrategy = async () => {
+  // Step 1: Cancel all existing orders
+  await cancelAllOrdersAction.handler(
+    runtime,
+    {
+      content: { text: 'Clear all orders for strategy change' },
+    },
+    state
+  );
+
+  // Step 2: Implement new strategy
+  // ... new order placement logic
+};
+```
+
+**Troubleshooting**:
+
+| Issue                         | Solution                                               |
+| ----------------------------- | ------------------------------------------------------ |
+| "Authentication failed"       | Verify API credentials are valid and properly set      |
+| "No open orders found"        | Check if you have any active orders before cancelling  |
+| "Network connectivity issues" | Check internet connection and try again                |
+| "Rate limit exceeded"         | Wait a moment before retrying the cancellation request |
+| "Operation failed"            | Check Polymarket status and API availability           |
+
+**Rate Limits**:
+
+- Follows Polymarket's standard rate limiting for authenticated operations
+- Failed cancellations don't count against rate limits
+- Consider delays between rapid cancellation requests
+
+**Security Notes**:
+
+- Cancellation requests are cryptographically signed
+- API credentials are required for authentication
+- All operations are logged for audit purposes
+- Private keys never leave your local environment
+
+### CANCEL_ORDER
+
+Cancels a specific order by its ID on Polymarket CLOB. This action allows precise cancellation of individual orders without affecting other pending orders.
+
+**Triggers**: `CANCEL_ORDER`, `CANCEL_ORDER_BY_ID`, `CANCEL_SPECIFIC_ORDER`, `CANCEL_ORDER_ID`, `STOP_ORDER`, `REMOVE_ORDER`, `DELETE_ORDER`, `CANCEL_TRADE`, `STOP_TRADE`, `CLOSE_ORDER`, `ABORT_ORDER`, `REVOKE_ORDER`, `WITHDRAW_ORDER`, `KILL_ORDER`, `TERMINATE_ORDER`
+
+**Usage Examples**:
+
+- "Cancel order abc123def456"
+- "Stop order ID 789xyz012abc"
+- "Remove the order with ID order-123-456-789"
+- "CANCEL_ORDER 0x1234567890abcdef"
+
+**Required Parameter**:
+
+- **Order ID**: The specific order identifier to cancel (must be at least 8 characters)
+
+**Prerequisites**:
+
+1. **API Credentials**: Must have created API keys using CREATE_API_KEY action
+2. **Environment Variables**: CLOB_API_KEY, CLOB_API_SECRET, CLOB_API_PASSPHRASE must be set
+3. **Private Key**: POLYMARKET_PRIVATE_KEY for signing cancellation requests
+4. **Valid Order ID**: Order must exist and be in a cancellable state
+
+**Example Successful Response**:
+
+```
+✅ **Order Cancelled Successfully**
+
+**Cancellation Details:**
+• **Order ID**: `abc123def456`
+• **Status**: Cancelled
+• **Timestamp**: 2024-01-15T10:30:00.000Z
+
+**Result**: Order abc123def456 has been successfully cancelled
+
+**⚠️ Important Note:**
+The order has been permanently cancelled and cannot be restored. Any unfilled portions of the order will no longer execute, but any already executed portions remain valid.
+```
+
+**TypeScript Usage**:
+
+```typescript
+import { cancelOrderByIdAction, CancelOrderResponseData } from '@elizaos/plugin-polymarket';
+
+// Cancel a specific order
+const result = await cancelOrderByIdAction.handler(
+  runtime,
+  {
+    content: { text: 'Cancel order abc123def456' },
+  },
+  state
+);
+
+// Access cancellation response data
+const success = result.data.success; // boolean
+const orderId = result.data.orderId; // string
+const message = result.data.message; // string
+const timestamp = result.data.timestamp; // string
+
+// Handle the response
+if (success) {
+  console.log(`Successfully cancelled order ${orderId}`);
+} else {
+  console.error('Failed to cancel order:', result.data.error);
+}
+```
+
+**Response Schema**:
+
+```typescript
+interface CancelOrderResponseData {
+  success: boolean; // True if cancellation was successful
+  orderId: string; // The order ID that was cancelled
+  message: string; // Descriptive message about the result
+  timestamp: string; // ISO timestamp of the operation
+  error?: string; // Error message if success is false
+}
+
+interface CancelOrderPayload {
+  orderId: string; // Order ID extracted from user message
+  error?: string; // Error message if extraction failed
+}
+```
+
+**Parameter Extraction**:
+
+The action uses intelligent parameter extraction with two methods:
+
+1. **LLM Extraction**: Uses AI to understand natural language requests and extract order IDs
+2. **Regex Fallback**: Pattern matching for structured requests when LLM fails
+
+**Supported Input Formats**:
+
+```typescript
+// Natural language
+'Cancel order abc123def456';
+'Stop the order with ID 789xyz012abc';
+'Remove order order-123-456-789';
+
+// Direct command format
+'CANCEL_ORDER abc123def456';
+
+// Structured format
+'Cancel order ID: 0x1234567890abcdef';
+```
+
+**Key Features**:
+
+- **Precise Targeting**: Cancel only the specific order you want
+- **Order ID Validation**: Ensures order ID format is valid before attempting cancellation
+- **Intelligent Extraction**: Understands various ways of specifying order IDs
+- **Comprehensive Error Handling**: Detailed error messages for different failure scenarios
+- **Fallback Logic**: Regex pattern matching when LLM extraction fails
+
+**Use Cases**:
+
+**Selective Cancellation**:
+
+- Cancel specific outdated orders while keeping others active
+- Remove orders with incorrect parameters
+- Cancel orders that are no longer strategically relevant
+
+**Risk Management**:
+
+- Quickly cancel orders that may be adversely affected by market events
+- Stop orders with pricing errors before they execute
+- Cancel orders in specific markets while maintaining others
+
+**Portfolio Management**:
+
+- Remove orders that no longer fit your strategy
+- Cancel orders to free up balance for better opportunities
+- Clean up specific positions without affecting the entire portfolio
+
+**Error Handling**:
+
+```typescript
+// Order not found
+'❌ Order not found. The order may have already been cancelled or filled.';
+
+// Authentication errors
+'❌ Authentication failed. Please check your API credentials.';
+
+// Network errors
+'❌ Network connectivity issues. Please try again in a moment.';
+
+// Already cancelled
+'❌ Order cannot be cancelled because it is already cancelled or fully filled.';
+
+// Invalid order ID
+'❌ Invalid order ID format. Please provide a valid order identifier.';
+
+// Missing order ID
+'❌ Please provide a valid order ID to cancel';
+```
+
+**Order ID Sources**:
+
+You can find order IDs from:
+
+- **Order Placement Responses**: When you place orders, the response contains the order ID
+- **Active Orders List**: Use the get active orders action to see current order IDs
+- **Order History**: Check past orders for their IDs
+- **Trading Platform**: Order IDs are displayed in the Polymarket trading interface
+
+**Important Considerations**:
+
+**Order States**:
+
+- Orders can only be cancelled if they are in an active (unfilled) state
+- Partially filled orders can be cancelled (only unfilled portion is cancelled)
+- Fully filled orders cannot be cancelled
+- Already cancelled orders will return an error
+
+**Timing**:
+
+- Cancellation requests are processed immediately
+- Very fast-moving markets may execute orders before cancellation completes
+- Network latency can affect timing of cancellation
+
+**Irreversibility**:
+
+- Once cancelled, orders cannot be uncancelled or restored
+- You must place a new order if you want to re-enter the position
+- Executed portions of partially filled orders remain valid
+
+**Best Practices**:
+
+1. **Verify Order ID**: Double-check the order ID before cancelling
+2. **Check Order Status**: Ensure the order still exists and is cancellable
+3. **Timing Consideration**: Cancel orders before important market events
+4. **Record Keeping**: Keep track of cancelled orders for analysis
+5. **Confirmation**: Verify cancellation success before assuming order is cancelled
+
+**Integration Examples**:
+
+```typescript
+// Conditional cancellation based on market changes
+const checkAndCancel = async (orderId: string, priceThreshold: number) => {
+  const currentPrice = await getBestPriceAction.handler(
+    runtime,
+    {
+      content: { text: `Get best price for token ${tokenId} on buy side` },
+    },
+    state
+  );
+
+  if (currentPrice.data.price > priceThreshold) {
+    await cancelOrderByIdAction.handler(
+      runtime,
+      {
+        content: { text: `Cancel order ${orderId}` },
+      },
+      state
+    );
+  }
+};
+
+// Batch cancellation of specific orders
+const cancelSpecificOrders = async (orderIds: string[]) => {
+  for (const orderId of orderIds) {
+    try {
+      await cancelOrderByIdAction.handler(
+        runtime,
+        {
+          content: { text: `Cancel order ${orderId}` },
+        },
+        state
+      );
+      console.log(`Cancelled order ${orderId}`);
+    } catch (error) {
+      console.error(`Failed to cancel order ${orderId}:`, error);
+    }
+  }
+};
+
+// Cancel and replace strategy
+const cancelAndReplace = async (oldOrderId: string, newOrderParams: any) => {
+  // First cancel the old order
+  const cancelResult = await cancelOrderByIdAction.handler(
+    runtime,
+    {
+      content: { text: `Cancel order ${oldOrderId}` },
+    },
+    state
+  );
+
+  if (cancelResult.data.success) {
+    // Place new order with updated parameters
+    await placeOrderAction.handler(
+      runtime,
+      {
+        content: {
+          text: `Buy ${newOrderParams.size} shares of token ${newOrderParams.tokenId} at $${newOrderParams.price}`,
+        },
+      },
+      state
+    );
+  }
+};
+```
+
+**Troubleshooting**:
+
+| Issue                       | Solution                                                |
+| --------------------------- | ------------------------------------------------------- |
+| "Invalid order type"        | Use only GTC, FOK, or GTD                               |
+| "GTD expiration required"   | Specify expiration time or let system default to 1 hour |
+| "Price outside valid range" | Use prices between 0.01 and 0.99 for prediction markets |
+| "Order creation failed"     | Check market is active and parameters are valid         |
+| "Insufficient balance"      | Verify account has enough funds for the order           |
+
+### CANCEL_ALL_ORDERS
+
+Cancels all open orders for the authenticated user across all Polymarket markets. This action provides a quick way to stop all trading activity and clear all pending orders.
+
+**Triggers**: `CANCEL_ALL_ORDERS`, `CANCEL_ALL`, `CANCEL_ORDERS`, `CANCEL_ALL_OPEN_ORDERS`, `CLOSE_ALL_ORDERS`, `STOP_ALL_ORDERS`, `CANCEL_EVERYTHING`, `CANCEL_ALL_TRADES`, `CANCEL_ALL_POSITIONS`, `STOP_ALL_TRADING`, `CLOSE_ALL_POSITIONS`, `CANCEL_OPEN_ORDERS`, `CANCEL_PENDING_ORDERS`, `CLEAR_ALL_ORDERS`, `REMOVE_ALL_ORDERS`
+
+**Usage Examples**:
+
+- "Cancel all my open orders"
+- "Stop all my trading and cancel everything"
+- "Clear all pending orders"
+- "CANCEL_ALL_ORDERS"
+
+**Prerequisites**:
+
+1. **API Credentials**: Must have created API keys using CREATE_API_KEY action
+2. **Environment Variables**: CLOB_API_KEY, CLOB_API_SECRET, CLOB_API_PASSPHRASE must be set
+3. **Private Key**: POLYMARKET_PRIVATE_KEY for signing cancellation requests
+
+**No Parameters Required**: This action automatically cancels all open orders for your account
+
+**Example Successful Response**:
+
+```
+✅ **All Orders Cancelled Successfully**
+
+**Cancellation Summary:**
+• **Orders Cancelled**: 5
+• **Status**: Complete
+• **Timestamp**: 2024-01-15T10:30:00.000Z
+
+**Cancelled Order IDs:**
+1. `order-abc123def456`
+2. `order-789xyz012abc`
+3. `order-def456ghi789`
+4. `order-mno123pqr456`
+5. `order-stu789vwx012`
+
+**Result**: Successfully cancelled 5 open orders
+
+**⚠️ Important Note:**
+All your pending orders across all markets have been cancelled. Any partially filled orders will remain as executed, but unfilled portions have been cancelled.
+```
+
+**Example No Orders Response**:
+
+```
+✅ **All Orders Cancelled Successfully**
+
+**Cancellation Summary:**
+• **Orders Cancelled**: All open orders
+• **Status**: Complete
+• **Timestamp**: 2024-01-15T10:30:00.000Z
+
+**Result**: No open orders found to cancel
+
+**⚠️ Important Note:**
+All your pending orders across all markets have been cancelled. Any partially filled orders will remain as executed, but unfilled portions have been cancelled.
+```
+
+**TypeScript Usage**:
+
+```typescript
+import { cancelAllOrdersAction, CancelAllOrdersResponseData } from '@elizaos/plugin-polymarket';
+
+// Cancel all open orders
+const result = await cancelAllOrdersAction.handler(
+  runtime,
+  {
+    content: { text: 'Cancel all my open orders' },
+  },
+  state
+);
+
+// Access cancellation response data
+const success = result.data.success; // boolean
+const cancelledCount = result.data.cancelledOrdersCount; // number
+const cancelledOrders = result.data.cancelledOrders; // string[]
+const message = result.data.message; // string
+const timestamp = result.data.timestamp; // string
+
+// Handle the response
+if (success) {
+  console.log(`Successfully cancelled ${cancelledCount} orders`);
+  console.log('Cancelled order IDs:', cancelledOrders);
+} else {
+  console.error('Failed to cancel orders:', result.data.error);
+}
+```
+
+**Response Schema**:
+
+```typescript
+interface CancelAllOrdersResponseData {
+  success: boolean; // True if cancellation was successful
+  cancelledOrdersCount: number; // Number of orders that were cancelled
+  cancelledOrders: string[]; // Array of cancelled order IDs
+  message: string; // Descriptive message about the result
+  timestamp: string; // ISO timestamp of the operation
+  error?: string; // Error message if success is false
+}
+```
+
+**Response Handling**:
+
+The action intelligently handles different response formats from the Polymarket CLOB API:
+
+1. **Array Response**: When API returns array of cancelled order IDs
+2. **Object Response**: When API returns object with success status and order details
+3. **Simple Response**: When API returns basic success indicator
+4. **Empty Response**: When no orders are found to cancel
+
+**Key Features**:
+
+- **Bulk Cancellation**: Cancels all orders in a single API call
+- **Cross-Market**: Works across all markets where you have open orders
+- **Comprehensive Logging**: Returns detailed information about cancelled orders
+- **Error Handling**: Graceful handling of various error scenarios
+- **Order Tracking**: Provides list of cancelled order IDs for reference
+
+**Use Cases**:
+
+**Emergency Stop**:
+
+- Quickly halt all trading activity
+- Respond to market volatility or news events
+- Stop automated trading strategies immediately
+
+**Portfolio Management**:
+
+- Clean slate before implementing new strategy
+- End of trading session cleanup
+- Risk management during uncertain periods
+
+**Strategy Changes**:
+
+- Clear existing orders before strategy adjustment
+- Switch between different trading approaches
+- Rebalance order book positioning
+
+**Maintenance**:
+
+- Prepare for system maintenance or updates
+- Clean up stale or outdated orders
+- Simplify order management workflow
+
+**Error Handling**:
+
+```typescript
+// Authentication errors
+'❌ Authentication failed. Please check your API credentials.';
+
+// Network errors
+'❌ Network connectivity issues. Please try again in a moment.';
+
+// Rate limiting
+'❌ Rate limit exceeded. Please wait before trying again.';
+
+// No orders to cancel
+'❌ No open orders found to cancel.';
+
+// General API errors
+'❌ An unexpected error occurred while cancelling orders.';
+```
+
+**Important Considerations**:
+
+**Irreversible Action**:
+
+- Once orders are cancelled, they cannot be uncancelled or restored
+- You must place a new order if you want to re-enter the position
+- Executed portions of partially filled orders remain valid
+
+**Market Impact**:
+
+- Large cancellations may affect market liquidity temporarily
+- Consider market conditions before bulk cancellation
+- Some orders may fill during the cancellation process
+
+**Timing**:
+
+- Cancellation requests are processed immediately
+- Network latency may affect exact timing
+- Some orders might execute before cancellation completes
+
+**Best Practices**:
+
+1. **Confirmation**: Double-check you want to cancel ALL orders
+2. **Timing**: Consider market hours and activity levels
+3. **Follow-up**: Verify cancellation success and remaining positions
+4. **Documentation**: Keep records of cancelled orders for analysis
+5. **Strategy**: Have a plan for recreating desired orders if needed
+
+**Integration Examples**:
+
+```typescript
+// Emergency stop with confirmation
+const orderBook = await getActiveOrdersAction.handler(
+  runtime,
+  {
+    content: { text: 'Show my active orders' },
+  },
+  state
+);
+
+if (orderBook.data.orders.length > 0) {
+  console.log(`Found ${orderBook.data.orders.length} active orders`);
+
+  const cancelResult = await cancelAllOrdersAction.handler(
+    runtime,
+    {
+      content: { text: 'Cancel all orders immediately' },
+    },
+    state
+  );
+
+  console.log(`Cancellation result: ${cancelResult.data.message}`);
+}
+
+// Scheduled cleanup
+const cleanup = async () => {
+  try {
+    const result = await cancelAllOrdersAction.handler(
+      runtime,
+      {
+        content: { text: 'End of day cleanup - cancel all orders' },
+      },
+      state
+    );
+
+    if (result.data.success) {
+      console.log(`Daily cleanup: cancelled ${result.data.cancelledOrdersCount} orders`);
+    }
+  } catch (error) {
+    console.error('Cleanup failed:', error);
+  }
+};
+
+// Strategy rotation
+const rotateStrategy = async () => {
+  // Step 1: Cancel all existing orders
+  await cancelAllOrdersAction.handler(
+    runtime,
+    {
+      content: { text: 'Clear all orders for strategy change' },
+    },
+    state
+  );
+
+  // Step 2: Implement new strategy
+  // ... new order placement logic
+};
+```
+
+**Troubleshooting**:
+
+| Issue                         | Solution                                              |
+| ----------------------------- | ----------------------------------------------------- |
+| "Authentication failed"       | Verify API credentials are valid and properly set     |
+| "No open orders found"        | Check if you have any active orders before cancelling |
+| "Network connectivity issues" | Check internet connection and try again               |
+| "Rate limit exceeded"         | Wait before retrying the cancellation request         |
+| "Operation failed"            | Check Polymarket status and API availability          |
+
+**Rate Limits**:
+
+- Follows Polymarket's standard rate limiting for authenticated operations
+- Failed cancellations don't count against rate limits
+- Consider delays between rapid cancellation requests
+
+**Security Notes**:
+
+- Cancellation requests are cryptographically signed
+- API credentials are required for authentication
+- All operations are logged for audit purposes
+- Private keys never leave your local environment
+
+### CANCEL_MARKET_ORDERS
+
+Cancels all orders for a specific market and/or asset ID on Polymarket CLOB. This action provides targeted cancellation capabilities, allowing you to cancel orders for specific markets or tokens while leaving orders in other markets untouched.
+
+**Triggers**: `CANCEL_MARKET_ORDERS`, `CANCEL_ORDERS_FOR_MARKET`, `CANCEL_MARKET_ORDER`, `CANCEL_ORDERS_IN_MARKET`, `STOP_MARKET_ORDERS`, `REMOVE_MARKET_ORDERS`, `DELETE_MARKET_ORDERS`, `CANCEL_ALL_ORDERS_FOR_MARKET`, `CLOSE_MARKET_ORDERS`, `ABORT_MARKET_ORDERS`, `CANCEL_ORDERS_BY_MARKET`, `STOP_ORDERS_FOR_MARKET`, `CLEAR_MARKET_ORDERS`, `REMOVE_ORDERS_FROM_MARKET`, `CANCEL_SPECIFIC_MARKET_ORDERS`
+
+**Usage Examples**:
+
+- "Cancel all orders for market 0xbd31dc8a20211944f6b70f31557f1001557b59905b7738480ca09bd4532f84af"
+- "Cancel orders for asset 52114319501245915516055106046884209969926127482827954674443846427813813222426"
+- "Cancel orders in market abc123 for token 456789"
+- "CANCEL_MARKET_ORDERS market=0x123abc assetId=789def"
+- "Stop all orders in the Trump 2024 market"
+
+**Required Parameters** (at least one):
+
+- **Market ID**: The market condition identifier (typically a long hex string)
+- **Asset ID**: The token/asset identifier (typically a long numeric string)
+
+Both parameters can be provided together for more precise targeting.
+
+**Prerequisites**:
+
+1. **API Credentials**: Must have created API keys using CREATE_API_KEY action
+2. **Environment Variables**: CLOB_API_KEY, CLOB_API_SECRET, CLOB_API_PASSPHRASE must be set
+3. **Private Key**: POLYMARKET_PRIVATE_KEY for signing cancellation requests
+4. **Valid Identifiers**: Market condition ID and/or asset ID must be valid
+
+**Example Successful Response (Market ID)**:
+
+```
+✅ **Market Orders Cancelled Successfully**
+
+**Cancellation Summary:**
+**Market**: `0xbd31dc8a20211944f6b70f31557f1001557b59905b7738480ca09bd4532f84af`
+• **Orders Cancelled**: 3
+• **Status**: Complete
+• **Timestamp**: 2024-01-15T10:30:00.000Z
+
+**Cancelled Order IDs:**
+1. `order-abc123def456`
+2. `order-789xyz012abc`
+3. `order-def456ghi789`
+
+**Result**: Successfully cancelled 3 orders for the specified market
+
+**⚠️ Important Note:**
+All matching orders for the specified market/asset have been cancelled. Any partially filled orders will remain as executed, but unfilled portions have been cancelled.
+```
+
+**Example Successful Response (Asset ID)**:
+
+```
+✅ **Market Orders Cancelled Successfully**
+
+**Cancellation Summary:**
+**Asset ID**: `52114319501245915516055106046884209969926127482827954674443846427813813222426`
+• **Orders Cancelled**: 2
+• **Status**: Complete
+• **Timestamp**: 2024-01-15T10:30:00.000Z
+
+**Cancelled Order IDs:**
+1. `order-mno123pqr456`
+2. `order-stu789vwx012`
+
+**Result**: Successfully cancelled 2 orders for the specified market
+
+**⚠️ Important Note:**
+All matching orders for the specified market/asset have been cancelled. Any partially filled orders will remain as executed, but unfilled portions have been cancelled.
+```
+
+**Example No Orders Response**:
+
+```
+✅ **Market Orders Cancelled Successfully**
+
+**Cancellation Summary:**
+**Market**: `0xbd31dc8a20211944f6b70f31557f1001557b59905b7738480ca09bd4532f84af`
+• **Orders Cancelled**: All matching orders
+• **Status**: Complete
+• **Timestamp**: 2024-01-15T10:30:00.000Z
+
+**Result**: No open orders found to cancel for the specified market
+
+**⚠️ Important Note:**
+All matching orders for the specified market/asset have been cancelled. Any partially filled orders will remain as executed, but unfilled portions have been cancelled.
+```
+
+**TypeScript Usage**:
+
+```typescript
+import {
+  cancelMarketOrdersAction,
+  CancelMarketOrdersResponseData,
+} from '@elizaos/plugin-polymarket';
+
+// Cancel orders for a specific market
+const result = await cancelMarketOrdersAction.handler(
+  runtime,
+  {
+    content: {
+      text: 'Cancel all orders for market 0xbd31dc8a20211944f6b70f31557f1001557b59905b7738480ca09bd4532f84af',
+    },
+  },
+  state
+);
+
+// Access cancellation response data
+const success = result.data.success; // boolean
+const cancelledCount = result.data.cancelledOrdersCount; // number
+const cancelledOrders = result.data.cancelledOrders; // string[]
+const market = result.data.market; // string | undefined
+const assetId = result.data.assetId; // string | undefined
+const message = result.data.message; // string
+const timestamp = result.data.timestamp; // string
+
+// Handle the response
+if (success) {
+  console.log(`Successfully cancelled ${cancelledCount} orders`);
+  console.log('Cancelled order IDs:', cancelledOrders);
+  console.log('Market:', market, 'Asset ID:', assetId);
+} else {
+  console.error('Failed to cancel market orders:', result.data.error);
+}
+```
+
+**Response Schema**:
+
+```typescript
+interface CancelMarketOrdersResponseData {
+  success: boolean; // True if cancellation was successful
+  cancelledOrdersCount: number; // Number of orders that were cancelled
+  cancelledOrders: string[]; // Array of cancelled order IDs
+  market?: string; // Market condition ID (if provided)
+  assetId?: string; // Asset/token ID (if provided)
+  message: string; // Descriptive message about the result
+  timestamp: string; // ISO timestamp of the operation
+  error?: string; // Error message if success is false
+}
+
+interface CancelMarketOrdersPayload {
+  market?: string; // Market condition ID (optional)
+  assetId?: string; // Asset/token ID (optional)
+  error?: string; // Error message if extraction failed
+}
+```
+
+**Parameter Extraction**:
+
+The action uses intelligent parameter extraction with two methods:
+
+1. **LLM Extraction**: Uses AI to understand natural language requests and extract market/asset IDs
+2. **Regex Fallback**: Pattern matching for structured requests when LLM fails
+
+**Supported Input Formats**:
+
+```typescript
+// Market ID only
+'Cancel all orders for market 0xbd31dc8a20211944f6b70f31557f1001557b59905b7738480ca09bd4532f84af';
+'Stop orders in market abc123';
+
+// Asset ID only
+'Cancel orders for asset 52114319501245915516055106046884209969926127482827954674443846427813813222426';
+'Remove orders for token 456789';
+
+// Both parameters
+'Cancel orders in market abc123 for token 456789';
+'CANCEL_MARKET_ORDERS market=0x123abc assetId=789def';
+
+// Natural language
+'Stop all orders in the Trump 2024 market';
+'Cancel my bets on Bitcoin reaching $100k';
+```
+
+**Key Features**:
+
+- **Targeted Cancellation**: Cancel orders only for specific markets or assets
+- **Flexible Parameters**: Use market ID, asset ID, or both for precise targeting
+- **Intelligent Extraction**: Understands various ways of specifying identifiers
+- **Comprehensive Error Handling**: Detailed error messages for different failure scenarios
+- **Fallback Logic**: Regex pattern matching when LLM extraction fails
+- **Selective Impact**: Other markets remain unaffected
+
+**Use Cases**:
+
+**Market-Specific Management**:
+
+- Cancel all orders in a specific prediction market
+- Clear positions from markets with unexpected news
+- Exit all positions in a particular category (politics, crypto, sports)
+
+**Asset-Specific Operations**:
+
+- Cancel all orders for a specific token/outcome
+- Clear YES or NO positions across multiple markets
+- Remove orders for tokens with specific conditions
+
+**Risk Management**:
+
+- Quickly exit exposure to specific markets during volatility
+- Cancel orders in markets with regulatory concerns
+- Remove positions from markets approaching resolution
+
+**Strategy Adjustments**:
+
+- Clear orders from markets no longer fitting your strategy
+- Rebalance exposure by removing orders from specific markets
+- Focus trading activity by cancelling orders in less important markets
+
+**Portfolio Optimization**:
+
+- Remove orders from low-volume or stagnant markets
+- Clear positions to free up capital for better opportunities
+- Streamline order management by reducing active markets
+
+**How to Find Market/Asset IDs**:
+
+Market condition IDs and asset IDs can be obtained from:
+
+- Market details queries (`GET_MARKET_DETAILS`)
+- Active orders list (`GET_ACTIVE_ORDERS`)
+- Order placement responses
+- Market exploration APIs (`GET_ALL_MARKETS`, `GET_CLOB_MARKETS`)
+
+**Error Handling**:
+
+```typescript
+// Missing parameters
+'❌ Please provide a valid market condition ID and/or asset ID (token ID) to cancel orders';
+
+// Invalid identifiers
+'❌ Invalid market ID or asset ID. Please check the provided identifiers.';
+
+// Authentication errors
+'❌ Authentication failed. Please check your API credentials.';
+
+// Network errors
+'❌ Network connectivity issues. Please try again in a moment.';
+
+// No orders found
+'❌ No open orders found to cancel for the specified market.';
+
+// API errors
+'❌ An unexpected error occurred while cancelling market orders.';
+```
+
+**Important Considerations**:
+
+**Precision vs. Scope**:
+
+- More specific targeting means fewer orders cancelled
+- Broader parameters (market only) cancel more orders
+- Consider the scope of cancellation before execution
+
+**Market Impact**:
+
+- Cancelling many orders in a single market may affect liquidity
+- Consider market size and activity before bulk cancellation
+- Staggered cancellation may reduce market impact
+
+**Timing**:
+
+- Cancellation requests are processed immediately
+- Some orders may fill during the cancellation process
+- Network latency may affect exact timing
+
+**Best Practices**:
+
+1. **Verification**: Double-check market and asset IDs before cancellation
+2. **Impact Assessment**: Consider the effect on market liquidity
+3. **Timing**: Be aware of market hours and high-activity periods
+4. **Follow-up**: Verify cancellation success and check remaining positions
+5. **Documentation**: Keep records of cancelled orders for analysis
+
+**Integration Examples**:
+
+```typescript
+// Market-specific emergency stop
+const marketEmergencyStop = async (marketId: string) => {
+  try {
+    const result = await cancelMarketOrdersAction.handler(
+      runtime,
+      {
+        content: { text: `Cancel all orders for market ${marketId}` },
+      },
+      state
+    );
+
+    if (result.data.success) {
+      console.log(
+        `Emergency stop: cancelled ${result.data.cancelledOrdersCount} orders in market ${marketId}`
+      );
+    }
+  } catch (error) {
+    console.error('Market emergency stop failed:', error);
+  }
+};
+
+// Asset-specific cleanup
+const assetCleanup = async (assetId: string) => {
+  const result = await cancelMarketOrdersAction.handler(
+    runtime,
+    {
+      content: { text: `Cancel orders for asset ${assetId}` },
+    },
+    state
+  );
+
+  return result.data.cancelledOrders;
+};
+
+// Combined market and asset targeting
+const preciseCleanup = async (marketId: string, assetId: string) => {
+  const result = await cancelMarketOrdersAction.handler(
+    runtime,
+    {
+      content: { text: `Cancel orders in market ${marketId} for token ${assetId}` },
+    },
+    state
+  );
+
+  console.log(`Precise cleanup: ${result.data.message}`);
+};
+```

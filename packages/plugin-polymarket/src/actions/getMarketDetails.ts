@@ -89,9 +89,53 @@ export const getMarketDetailsAction: Action = {
         const errorContent: Content = {
           text: `❌ **Error**: ${errorMessage}
 
-Please provide a market condition ID in your request. For example:
-• "Show me market 0x1234567890abcdef..."
-• "Get details for condition ID 0xabc123..."`,
+Please provide a market condition ID in your request. Here are comprehensive examples:
+
+**📊 BASIC MARKET DETAILS QUERIES:**
+• "Show me market 0x1234567890abcdef1234567890abcdef12345678"
+• "Get details for condition ID 0xabc123def456789..."
+• "Market details for 0x9876543210fedcba..."
+• "Show market info for 0xdeadbeefcafebabe..."
+• "Get market data for condition 0x1a2b3c4d5e6f..."
+
+**🔍 DETAILED MARKET QUERIES:**
+• "Show me the full details for market 0x1234567890abcdef..."
+• "Get complete market information for condition ID 0xabc123..."
+• "Display all market data for 0x9876543210fedcba..."
+• "Retrieve comprehensive details for market 0xdeadbeef..."
+• "Show trading info for market condition 0x1a2b3c4d..."
+
+**🎯 CONTEXT-AWARE QUERIES:**
+• "Get details for Bitcoin prediction market 0x1234567890abcdef..."
+• "Show election market details 0xabc123def456..."
+• "Sports betting market info for 0x9876543210fedcba..."
+• "Weather prediction market details 0xdeadbeef..."
+• "Crypto market information for 0x1a2b3c4d..."
+
+**📋 STRUCTURED QUERIES:**
+• "MARKET_DETAILS 0x1234567890abcdef1234567890abcdef12345678"
+• "Get market { condition_id: 0xabc123... }"
+• "Market info = 0x9876543210fedcba..."
+• "Show condition_id: 0xdeadbeef..."
+• "Details(0x1a2b3c4d5e6f...)"
+
+**📈 WHAT YOU'LL SEE:**
+Market details include:
+• Market question and description
+• Condition ID and question ID
+• Category and market slug
+• Active/closed status and dates
+• Trading parameters (min order size, tick size)
+• Outcome tokens and their IDs
+• Rewards and incentive information
+• Contract addresses (FPMM)
+• Game/event timing information
+
+**💡 Pro Tips:**
+• Condition IDs are 64-character hex strings starting with '0x'
+• Use this to understand market structure before trading
+• Check active/closed status before placing orders
+• Review outcome tokens to understand what you're betting on`,
           actions: ['GET_MARKET_DETAILS'],
           data: { error: errorMessage },
         };
@@ -121,9 +165,53 @@ Please provide a market condition ID in your request. For example:
       const errorContent: Content = {
         text: `❌ **Error**: ${errorMessage}
 
-Please provide a market condition ID in your request. For example:
-• "Show me market 0x1234567890abcdef..."
-• "Get details for condition ID 0xabc123..."`,
+Please provide a market condition ID in your request. Here are comprehensive examples:
+
+**📊 BASIC MARKET DETAILS QUERIES:**
+• "Show me market 0x1234567890abcdef1234567890abcdef12345678"
+• "Get details for condition ID 0xabc123def456789..."
+• "Market details for 0x9876543210fedcba..."
+• "Show market info for 0xdeadbeefcafebabe..."
+• "Get market data for condition 0x1a2b3c4d5e6f..."
+
+**🔍 DETAILED MARKET QUERIES:**
+• "Show me the full details for market 0x1234567890abcdef..."
+• "Get complete market information for condition ID 0xabc123..."
+• "Display all market data for 0x9876543210fedcba..."
+• "Retrieve comprehensive details for market 0xdeadbeef..."
+• "Show trading info for market condition 0x1a2b3c4d..."
+
+**🎯 CONTEXT-AWARE QUERIES:**
+• "Get details for Bitcoin prediction market 0x1234567890abcdef..."
+• "Show election market details 0xabc123def456..."
+• "Sports betting market info for 0x9876543210fedcba..."
+• "Weather prediction market details 0xdeadbeef..."
+• "Crypto market information for 0x1a2b3c4d..."
+
+**📋 STRUCTURED QUERIES:**
+• "MARKET_DETAILS 0x1234567890abcdef1234567890abcdef12345678"
+• "Get market { condition_id: 0xabc123... }"
+• "Market info = 0x9876543210fedcba..."
+• "Show condition_id: 0xdeadbeef..."
+• "Details(0x1a2b3c4d5e6f...)"
+
+**📈 WHAT YOU'LL SEE:**
+Market details include:
+• Market question and description
+• Condition ID and question ID
+• Category and market slug
+• Active/closed status and dates
+• Trading parameters (min order size, tick size)
+• Outcome tokens and their IDs
+• Rewards and incentive information
+• Contract addresses (FPMM)
+• Game/event timing information
+
+**💡 Pro Tips:**
+• Condition IDs are 64-character hex strings starting with '0x'
+• Use this to understand market structure before trading
+• Check active/closed status before placing orders
+• Review outcome tokens to understand what you're betting on`,
         actions: ['GET_MARKET_DETAILS'],
         data: { error: errorMessage },
       };
@@ -287,6 +375,111 @@ Please check:
         name: '{{user2}}',
         content: {
           text: "I'll need a market condition ID to fetch the details. Please provide the specific market identifier.",
+          actions: ['GET_MARKET_DETAILS'],
+        },
+      },
+    ],
+    [
+      {
+        name: '{{user1}}',
+        content: {
+          text: 'Market details for 0x9876543210fedcba9876543210fedcba98765432',
+        },
+      },
+      {
+        name: '{{user2}}',
+        content: {
+          text: "I'll retrieve the comprehensive market details for you.",
+          actions: ['GET_MARKET_DETAILS'],
+        },
+      },
+    ],
+    [
+      {
+        name: '{{user1}}',
+        content: {
+          text: 'Show market info for 0xdeadbeefcafebabe1234567890abcdef12345678',
+        },
+      },
+      {
+        name: '{{user2}}',
+        content: {
+          text: 'Getting the market information including trading parameters and outcome tokens.',
+          actions: ['GET_MARKET_DETAILS'],
+        },
+      },
+    ],
+    [
+      {
+        name: '{{user1}}',
+        content: {
+          text: 'Get details for Bitcoin prediction market 0x1a2b3c4d5e6f7890',
+        },
+      },
+      {
+        name: '{{user2}}',
+        content: {
+          text: "I'll fetch the Bitcoin prediction market details for you.",
+          actions: ['GET_MARKET_DETAILS'],
+        },
+      },
+    ],
+    [
+      {
+        name: '{{user1}}',
+        content: {
+          text: 'MARKET_DETAILS 0xfedcba0987654321fedcba0987654321fedcba09',
+        },
+      },
+      {
+        name: '{{user2}}',
+        content: {
+          text: 'Retrieving detailed market information...',
+          actions: ['GET_MARKET_DETAILS'],
+        },
+      },
+    ],
+    [
+      {
+        name: '{{user1}}',
+        content: {
+          text: 'Show me comprehensive details for condition 0x1111222233334444',
+        },
+      },
+      {
+        name: '{{user2}}',
+        content: {
+          text: "I'll get the comprehensive details including rewards, tokens, and trading parameters.",
+          actions: ['GET_MARKET_DETAILS'],
+        },
+      },
+    ],
+    [
+      {
+        name: '{{user1}}',
+        content: {
+          text: 'What is the structure of market 0xaaabbbcccdddeeefffggghhhiiijjjkkkllmnop',
+        },
+      },
+      {
+        name: '{{user2}}',
+        content: {
+          text: "I'll show you the market structure including outcome tokens and trading rules.",
+          actions: ['GET_MARKET_DETAILS'],
+        },
+      },
+    ],
+    [
+      {
+        name: '{{user1}}',
+        content: {
+          text: 'Display market information for 0x0123456789abcdef0123456789abcdef01234567',
+        },
+      },
+      {
+        name: '{{user2}}',
+        content: {
+          text: 'Displaying the complete market information with all available details.',
           actions: ['GET_MARKET_DETAILS'],
         },
       },

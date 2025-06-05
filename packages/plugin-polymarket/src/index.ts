@@ -24,12 +24,20 @@ export { getBestPriceAction } from './actions/getBestPrice';
 export { getMidpointPriceAction } from './actions/getMidpointPrice';
 export { getSpreadAction } from './actions/getSpread';
 export { placeOrderAction } from './actions/placeOrder';
+export { placeTypedOrderAction } from './actions/placeTypedOrder';
+export { cancelAllOrdersAction } from './actions/cancelAllOrders';
+export { cancelOrderByIdAction } from './actions/cancelOrderById';
+export { cancelMarketOrdersAction } from './actions/cancelMarketOrders';
+export { getOrderDetailsAction } from './actions/getOrderDetails';
+export { checkOrderScoringAction } from './actions/checkOrderScoring';
+export { getActiveOrdersAction } from './actions/getActiveOrders';
 export { createApiKeyAction } from './actions/createApiKey';
 export { revokeApiKeyAction } from './actions/revokeApiKey';
 export { getAllApiKeysAction } from './actions/getAllApiKeys';
+export { deleteApiKeyAction } from './actions/deleteApiKey';
 
 // Export utilities and services for advanced use cases
-export { initializeClobClient } from './utils/clobClient';
+export { initializeClobClient, initializeClobClientWithCreds } from './utils/clobClient';
 export { callLLMWithTimeout } from './utils/llmHelpers';
 export { PolymarketService } from './plugin';
 

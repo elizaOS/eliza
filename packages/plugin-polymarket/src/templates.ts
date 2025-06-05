@@ -543,3 +543,35 @@ Output:
 
 Output JSON:
 `;
+
+export const deleteApiKeyTemplate = `You are an AI assistant. Your task is to extract optional confirmation parameters for deleting a Polymarket API key.
+
+Review the recent messages:
+<recent_messages>
+{{recentMessages}}
+</recent_messages>
+
+Based on the conversation, identify:
+- apiKeyId: The API key ID provided by the user for confirmation (optional)
+
+Look for:
+- UUID format strings like "12345678-1234-5678-9abc-123456789012"
+- API key identifiers mentioned in the message
+- Confirmation IDs or references to specific keys
+
+Examples:
+- "Delete API key 12345678-1234-5678-9abc-123456789012" → apiKeyId: "12345678-1234-5678-9abc-123456789012"
+- "Remove my configured API key" → no apiKeyId extracted
+- "Delete key abc123def456" → apiKeyId: "abc123def456"
+
+Respond with a JSON object containing only the extracted values.
+The JSON should have this structure:
+{
+    "apiKeyId"?: string
+}
+
+If no API key ID is mentioned for confirmation, you MUST respond with the following JSON structure:
+{
+    "error": "No API key ID provided for confirmation. Will delete the configured API key."
+}
+`;
