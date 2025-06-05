@@ -145,32 +145,14 @@ export class MessageBusService extends Service {
   }
 
   private async validateNotSelfMessage(message: MessageServiceMessage): Promise<boolean> {
-    const uniqueAuthorId = createUniqueUuid(this.runtime, message.author_id);
-    logger.info(
-      `[${this.runtime.character.name}] MessageBusService: Self-message check - message.author_id: ${message.author_id}, uniqueAuthorId: ${uniqueAuthorId}, runtime.agentId: ${this.runtime.agentId}, source_type: ${message.source_type} channelType: ${message.metadata?.channelType} isDm: ${message.metadata?.isDm}`
-    );
-
-    if (
-      uniqueAuthorId === this.runtime.agentId &&
-      message.source_type !== 'client_chat'
-    ) {
+    if (message.author_id === this.runtime.agentId) {
       logger.debug(
-        `[${this.runtime.character.name}] MessageBusService: Skipping own message or non-GUI message from central bus potentially sent by self.`
+        `[${this.runtime.character.name}] MessageBusService: Agent is the author of the message, ignoring message`
       );
       return false;
     }
-
-    if (message.source_type === 'agent_response' && (message.metadata?.channelType === ChannelType.DM || message.metadata?.isDm)) {
-      logger.debug(
-        `[${this.runtime.character.name}] MessageBusService: Skipping agent_response message in DM channel to prevent cross-agent interference.`
-      );
-      return false;
-    }
-
-    logger.info(`[${this.runtime.character.name}] MessageBusService: Passed self-message check`);
     return true;
   }
-
 
   private async ensureWorldAndRoomExist(message: MessageServiceMessage): Promise<{ agentWorldId: UUID; agentRoomId: UUID }> {
     const agentWorldId = createUniqueUuid(this.runtime, message.server_id);
