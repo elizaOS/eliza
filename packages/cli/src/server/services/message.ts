@@ -251,7 +251,11 @@ export class MessageBusService extends Service {
         type: 'message',
         source: message.source_type || 'central-bus',
         sourceId: message.id,
-        raw: message.raw_message,
+        raw: {
+          ...message.raw_message,
+          senderName: message.author_display_name || `User-${message.author_id.substring(0, 8)}`,
+          senderId: message.author_id,
+        },
       },
     };
   }
@@ -300,6 +304,8 @@ export class MessageBusService extends Service {
         logger.info(
           `[${this.runtime.character.name}] Agent generated response for message. Preparing to send back to bus.`
         );
+
+        // Send response to central bus
         await this.sendAgentResponseToBus(
           agentRoomId,
           agentWorldId,
@@ -307,9 +313,11 @@ export class MessageBusService extends Service {
           agentMemory.id,
           message
         );
+
         // The core runtime/bootstrap plugin will handle creating the agent's own memory of its response.
         // So, we return an empty array here as this callback's primary job is to ferry the response externally.
         return [];
+
       };
 
       await this.runtime.emitEvent(EventType.MESSAGE_RECEIVED, {

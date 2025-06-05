@@ -1500,10 +1500,17 @@ export function agentRouter(
     try {
       const tableName = (req.query.tableName as string) || 'messages';
       const includeEmbedding = req.query.includeEmbedding === 'true';
+      const roomId = req.query.roomId ? validateUuid(req.query.roomId as string) : undefined;
+
+      if (req.query.roomId && !roomId) {
+        sendError(res, 400, 'INVALID_ID', 'Invalid room ID format');
+        return;
+      }
 
       const memories = await runtime.getMemories({
         agentId,
         tableName,
+        roomId,
       });
 
       const cleanMemories = includeEmbedding
