@@ -239,7 +239,7 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
               created_by: 'gui_auto_creation',
               created_for_user: author_id,
               created_at: new Date().toISOString(),
-              channel_type: isDmChannel ? 'DM' : 'GROUP',
+              channel_type: isDmChannel ? ChannelType.DM : ChannelType.GROUP,
               ...metadata,
             },
           };

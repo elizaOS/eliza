@@ -1,4 +1,4 @@
-import type { UUID, Agent, Memory, Entity, Room, ChannelType } from '@elizaos/core';
+import { UUID, Agent, Memory, Entity, Room, ChannelType } from '@elizaos/core';
 import { AgentStatus } from '@elizaos/core';
 import { type Embedding } from '../../../src/schema/embedding';
 
@@ -59,7 +59,7 @@ export const embeddingTestRoom: Room = {
   name: 'Embedding Test Room',
   agentId: embeddingTestAgentId,
   source: 'test',
-  type: 'dm' as ChannelType,
+  type: ChannelType.DM,
   worldId: embeddingTestWorldId,
 };
 

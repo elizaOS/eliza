@@ -5,7 +5,7 @@ import type {
   MessageCompleteData,
   ControlMessageData,
 } from '@/lib/socketio-manager';
-import type { UUID, Agent } from '@elizaos/core';
+import type { UUID, Agent, ChannelType } from '@elizaos/core';
 import type { UiMessage } from './use-query-hooks';
 import { randomUUID } from '@/lib/utils';
 import clientLogger from '@/lib/logger';
@@ -14,7 +14,7 @@ interface UseSocketChatProps {
   channelId: UUID | undefined;
   currentUserId: string;
   contextId: UUID; // agentId for DM, channelId for GROUP
-  chatType: 'DM' | 'GROUP';
+  chatType: ChannelType.DM | ChannelType.GROUP;
   allAgents: Agent[];
   messages: UiMessage[];
   onAddMessage: (message: UiMessage) => void;

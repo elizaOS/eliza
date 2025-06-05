@@ -1,4 +1,3 @@
-import AgentDetailsPanel from '@/components/AgentDetailsPanel';
 import CopyButton from '@/components/copy-button';
 import DeleteButton from '@/components/delete-button';
 import MediaContent from '@/components/media-content';
@@ -22,26 +21,24 @@ import {
   useDeleteChannelMessage,
   type UiMessage,
 } from '@/hooks/use-query-hooks';
-import { apiClient } from '@/lib/api';
 import { useSocketChat } from '@/hooks/use-socket-chat';
 import { useToast } from '@/hooks/use-toast';
+import { apiClient } from '@/lib/api';
 import clientLogger from '@/lib/logger';
 import { parseMediaFromText, removeMediaUrlsFromText, type MediaInfo } from '@/lib/media-utils';
-import { cn, getEntityId, moment, randomUUID, getAgentAvatar, generateGroupName } from '@/lib/utils';
+import { cn, generateGroupName, getAgentAvatar, getEntityId, moment, randomUUID } from '@/lib/utils';
 import type { Agent, Media, UUID } from '@elizaos/core';
-import { AgentStatus, ContentType as CoreContentType, validateUuid } from '@elizaos/core';
+import { AgentStatus, ChannelType, ContentType as CoreContentType, validateUuid } from '@elizaos/core';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
 import { useQueryClient } from '@tanstack/react-query';
-import { ChevronRight, Loader2, PanelRight, PanelRightClose, Trash2, MessageSquarePlus, Plus } from 'lucide-react';
+import { ChevronRight, Loader2, MessageSquarePlus, PanelRight, PanelRightClose, Plus, Trash2 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AIWriter from 'react-aiwriter';
+import { AgentSidebar } from './agent-sidebar';
 import { ChatInputArea } from './ChatInputArea';
 import { ChatMessageListComponent } from './ChatMessageListComponent';
 import GroupPanel from './group-panel';
-import { AgentSidebar } from './agent-sidebar';
 
-import relativeTime from 'dayjs/plugin/relativeTime';
-import { useDmChannelsForAgent, useCreateDmChannel } from '@/hooks/use-dm-channels';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -50,12 +47,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useCreateDmChannel, useDmChannelsForAgent } from '@/hooks/use-dm-channels';
+import relativeTime from 'dayjs/plugin/relativeTime';
 moment.extend(relativeTime);
 
 const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
 
 interface UnifiedChatViewProps {
-  chatType: 'DM' | 'GROUP';
+  chatType: ChannelType.DM | ChannelType.GROUP;
   contextId: UUID; // agentId for DM, channelId for GROUP
   serverId?: UUID; // Required for GROUP, optional for DM
   initialDmChannelId?: UUID; // New prop for specific DM channel from URL
@@ -239,16 +238,16 @@ export default function Chat({ chatType, contextId, serverId, initialDmChannelId
 
   // Use the new hooks for DM channel management
   const { data: agentDmChannels = [], isLoading: isLoadingAgentDmChannels } = useDmChannelsForAgent(
-    chatType === 'DM' ? contextId : undefined
+    chatType === ChannelType.DM ? contextId : undefined
   );
   const createDmChannelMutation = useCreateDmChannel();
 
   // Group chat specific data
   const { data: channelDetailsData } = useChannelDetails(
-    chatType === 'GROUP' ? contextId : undefined
+    chatType === ChannelType.GROUP ? contextId : undefined
   );
   const { data: participantsData } = useChannelParticipants(
-    chatType === 'GROUP' ? contextId : undefined
+    chatType === ChannelType.GROUP ? contextId : undefined
   );
   const participants = participantsData?.data;
 
@@ -257,7 +256,7 @@ export default function Chat({ chatType, contextId, serverId, initialDmChannelId
 
   // Get agents in the current group
   const groupAgents = useMemo(() => {
-    if (chatType !== 'GROUP' || !participants) return [];
+    if (chatType !== ChannelType.GROUP || !participants) return [];
     return participants
       .map(pId => allAgents.find(a => a.id === pId))
       .filter(Boolean) as Agent[];
@@ -386,7 +385,7 @@ export default function Chat({ chatType, contextId, serverId, initialDmChannelId
 
   // Auto-select single agent in group
   useEffect(() => {
-    if (chatType === 'GROUP' && groupAgents.length === 1 && !chatState.selectedGroupAgentId) {
+    if (chatType === ChannelType.GROUP && groupAgents.length === 1 && !chatState.selectedGroupAgentId) {
       updateChatState({
         selectedGroupAgentId: groupAgents[0].id as UUID,
         showSidebar: true
@@ -693,7 +692,7 @@ export default function Chat({ chatType, contextId, serverId, initialDmChannelId
           </div>
         </div>
       );
-    } else if (chatType === 'GROUP') {
+    } else if (chatType === ChannelType.GROUP) {
       const groupDisplayName = generateGroupName(channelDetailsData?.data || undefined, groupAgents, currentClientEntityId);
 
       return (
@@ -826,14 +825,14 @@ export default function Chat({ chatType, contextId, serverId, initialDmChannelId
           let sidebarAgentId: UUID | undefined = undefined;
           let sidebarAgentName: string = 'Agent';
 
-          if (chatType === 'DM') {
+          if (chatType === ChannelType.DM) {
             sidebarAgentId = contextId; // This is agentId for DM
             sidebarAgentName = targetAgentData?.name || 'Agent';
-          } else if (chatType === 'GROUP' && chatState.selectedGroupAgentId) {
+          } else if (chatType === ChannelType.GROUP && chatState.selectedGroupAgentId) {
             sidebarAgentId = chatState.selectedGroupAgentId;
             const selectedAgent = allAgents.find(a => a.id === chatState.selectedGroupAgentId);
             sidebarAgentName = selectedAgent?.name || 'Group Member';
-          } else if (chatType === 'GROUP' && !chatState.selectedGroupAgentId) {
+          } else if (chatType === ChannelType.GROUP && !chatState.selectedGroupAgentId) {
             sidebarAgentName = 'Group';
           }
 
@@ -850,7 +849,7 @@ export default function Chat({ chatType, contextId, serverId, initialDmChannelId
         })()}
       </ResizablePanelGroup>
 
-      {chatState.showGroupEditPanel && chatType === 'GROUP' && (
+      {chatState.showGroupEditPanel && chatType === ChannelType.GROUP && (
         <GroupPanel
           onClose={() => updateChatState({ showGroupEditPanel: false })}
           channelId={contextId}

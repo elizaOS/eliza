@@ -4,7 +4,7 @@ import { ChatInput } from '@/components/ui/chat/chat-input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { AudioRecorder } from '@/components/audio-recorder';
 import { Loader2, Paperclip, Send, FileText, X } from 'lucide-react';
-import type { Agent, UUID } from '@elizaos/core';
+import type { Agent, UUID, ChannelType } from '@elizaos/core';
 import type { UploadingFile } from '@/hooks/use-file-upload';
 
 interface ChatInputAreaProps {
@@ -16,7 +16,7 @@ interface ChatInputAreaProps {
   handleFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleSendMessage: (e: React.FormEvent<HTMLFormElement>) => void;
   handleKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
-  chatType: 'DM' | 'GROUP';
+  chatType: ChannelType.DM | ChannelType.GROUP;
   targetAgentData?: Agent;
   formRef: React.RefObject<HTMLFormElement | null>;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
