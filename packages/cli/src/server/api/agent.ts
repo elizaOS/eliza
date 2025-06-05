@@ -963,7 +963,7 @@ export function agentRouter(
     }
 
     try {
-      const { name, type = 'dm', source = 'client', worldId, metadata } = req.body;
+      const { name, type = ChannelType.DM, source = 'client', worldId, metadata } = req.body;
 
       if (!name) {
         sendError(res, 400, 'MISSING_PARAM', 'Room name is required');
@@ -1472,9 +1472,9 @@ export function agentRouter(
       const cleanMemories = includeEmbedding
         ? memories
         : memories.map((memory) => ({
-            ...memory,
-            embedding: undefined,
-          }));
+          ...memory,
+          embedding: undefined,
+        }));
 
       sendSuccess(res, { memories: cleanMemories });
     } catch (error) {
@@ -1500,18 +1500,25 @@ export function agentRouter(
     try {
       const tableName = (req.query.tableName as string) || 'messages';
       const includeEmbedding = req.query.includeEmbedding === 'true';
+      const roomId = req.query.roomId ? validateUuid(req.query.roomId as string) : undefined;
+
+      if (req.query.roomId && !roomId) {
+        sendError(res, 400, 'INVALID_ID', 'Invalid room ID format');
+        return;
+      }
 
       const memories = await runtime.getMemories({
         agentId,
         tableName,
+        roomId,
       });
 
       const cleanMemories = includeEmbedding
         ? memories
         : memories.map((memory) => ({
-            ...memory,
-            embedding: undefined,
-          }));
+          ...memory,
+          embedding: undefined,
+        }));
       sendSuccess(res, { memories: cleanMemories });
     } catch (error) {
       logger.error(`[AGENT MEMORIES] Error retrieving memories for agent ${agentId}:`, error);
