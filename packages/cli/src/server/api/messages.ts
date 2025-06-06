@@ -693,6 +693,12 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
     try {
       // Clear messages first
       await serverInstance.clearChannelMessages(channelId);
+      // Emit SocketIO event for real-time updates
+      if (serverInstance.socketIO) {
+        serverInstance.socketIO.to(channelId).emit('channelCleared', {
+          channelId: channelId,
+        });
+      }
       // Delete the channel (assuming this method exists or will be implemented)
       // For now, just return success since clearing messages is the main functionality
       res.status(204).send();
