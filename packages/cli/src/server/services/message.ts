@@ -154,7 +154,9 @@ export class MessageBusService extends Service {
     return true;
   }
 
-  private async ensureWorldAndRoomExist(message: MessageServiceMessage): Promise<{ agentWorldId: UUID; agentRoomId: UUID }> {
+  private async ensureWorldAndRoomExist(
+    message: MessageServiceMessage
+  ): Promise<{ agentWorldId: UUID; agentRoomId: UUID }> {
     const agentWorldId = createUniqueUuid(this.runtime, message.server_id);
     const agentRoomId = createUniqueUuid(this.runtime, message.channel_id);
 
@@ -289,7 +291,12 @@ export class MessageBusService extends Service {
 
       const { agentWorldId, agentRoomId } = await this.ensureWorldAndRoomExist(message);
       const agentAuthorEntityId = await this.ensureAuthorEntityExists(message);
-      const agentMemory = this.createAgentMemory(message, agentAuthorEntityId, agentRoomId, agentWorldId);
+      const agentMemory = this.createAgentMemory(
+        message,
+        agentAuthorEntityId,
+        agentRoomId,
+        agentWorldId
+      );
 
       // Check if this memory already exists (in case of duplicate processing)
       const existingMemory = await this.runtime.getMemoryById(agentMemory.id);
@@ -317,7 +324,6 @@ export class MessageBusService extends Service {
         // The core runtime/bootstrap plugin will handle creating the agent's own memory of its response.
         // So, we return an empty array here as this callback's primary job is to ferry the response externally.
         return [];
-
       };
 
       await this.runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
@@ -391,7 +397,9 @@ export class MessageBusService extends Service {
           agentName: this.runtime.character.name,
           attachments: content.attachments,
           channelType: originalMessage?.metadata?.channelType || room?.type,
-          isDm: originalMessage?.metadata?.isDm || (originalMessage?.metadata?.channelType || room?.type) === ChannelType.DM,
+          isDm:
+            originalMessage?.metadata?.isDm ||
+            (originalMessage?.metadata?.channelType || room?.type) === ChannelType.DM,
         },
       };
 

@@ -19,7 +19,9 @@ type TabValue = FixedTabValue | string;
 
 export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
   const [detailsTab, setDetailsTab] = useState<TabValue>('details');
-  const { data: panelsResponse, isLoading: isLoadingPanels } = useAgentPanels(agentId!, { enabled: !!agentId });
+  const { data: panelsResponse, isLoading: isLoadingPanels } = useAgentPanels(agentId!, {
+    enabled: !!agentId,
+  });
 
   // Reset to details tab when a new agent is selected
   useEffect(() => {
@@ -89,49 +91,39 @@ export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
               </div>
             )}
             {agentError && (
-              <div className="text-red-500">
-                Error loading agent details: {agentError.message}
-              </div>
+              <div className="text-red-500">Error loading agent details: {agentError.message}</div>
             )}
             {!isLoadingAgent && !agentError && agent && (
               <AgentSettings agent={agent} agentId={agentId} />
             )}
             {!isLoadingAgent && !agentError && !agent && !isLoadingPanels && (
-              <div className="text-muted-foreground">
-                Agent details not found.
-              </div>
+              <div className="text-muted-foreground">Agent details not found.</div>
             )}
           </>
         )}
         {detailsTab === 'details' && !agentId && (
-          <div className="p-4 text-muted-foreground">
-            Select an agent to see their details.
-          </div>
+          <div className="p-4 text-muted-foreground">Select an agent to see their details.</div>
         )}
       </TabsContent>
 
       <TabsContent value="actions" className="overflow-y-auto flex-1">
         {detailsTab === 'actions' && agentId && <AgentActionViewer agentId={agentId} />}
         {detailsTab === 'actions' && !agentId && (
-          <div className="p-4 text-muted-foreground">
-            Select an agent to see their actions.
-          </div>
+          <div className="p-4 text-muted-foreground">Select an agent to see their actions.</div>
         )}
       </TabsContent>
       <TabsContent value="logs" className="overflow-y-auto flex-1">
         {detailsTab === 'logs' && agentId && <AgentLogViewer agentName={agentName} level="all" />}
         {detailsTab === 'logs' && !agentId && (
-          <div className="p-4 text-muted-foreground">
-            Select an agent to see their logs.
-          </div>
+          <div className="p-4 text-muted-foreground">Select an agent to see their logs.</div>
         )}
       </TabsContent>
       <TabsContent value="memories" className="overflow-y-auto flex-1">
-        {detailsTab === 'memories' && agentId && <AgentMemoryViewer agentId={agentId} agentName={agentName} />}
+        {detailsTab === 'memories' && agentId && (
+          <AgentMemoryViewer agentId={agentId} agentName={agentName} />
+        )}
         {detailsTab === 'memories' && !agentId && (
-          <div className="p-4 text-muted-foreground">
-            Select an agent to see their memories.
-          </div>
+          <div className="p-4 text-muted-foreground">Select an agent to see their memories.</div>
         )}
       </TabsContent>
       {agentPanels.map((panel: AgentPanel) => (

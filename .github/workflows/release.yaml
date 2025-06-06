@@ -49,6 +49,9 @@ jobs:
         run: |
           # Get the latest release tag
           LATEST_TAG=$(git describe --tags `git rev-list --tags --max-count=1`)
+          
+          # Extract version number from tag (remove 'v' prefix if present)
+          VERSION=${LATEST_TAG#v}
 
           # Force clean the working directory and reset any changes
           echo "Cleaning working directory and resetting any changes"
@@ -59,7 +62,8 @@ jobs:
           echo "Checking out latest tag: $LATEST_TAG"
           git checkout -b temp-publish-branch $LATEST_TAG
 
-          echo "Publishing version: $LATEST_TAG"
-          npx lerna publish from-package --yes --dist-tag latest
+          echo "Publishing version: $VERSION"
+          # Use lerna publish directly with the version, which handles both versioning and publishing
+          npx lerna publish $VERSION --exact --yes --dist-tag latest --no-private --force-publish --no-git-tag-version --no-push
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

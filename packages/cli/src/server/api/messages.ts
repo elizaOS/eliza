@@ -225,7 +225,9 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
 
           // Determine if this is likely a DM based on the context
           const isDmChannel =
-            metadata?.isDm || metadata?.channelType === ChannelType.DM || metadata?.channel_type === ChannelType.DM;
+            metadata?.isDm ||
+            metadata?.channelType === ChannelType.DM ||
+            metadata?.channel_type === ChannelType.DM;
 
           const channelData = {
             id: channelIdParam as UUID, // Use the specific channel ID from the URL
@@ -361,9 +363,8 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
       // Transform to MessageService structure if GUI expects timestamps as numbers, or align types
       const messagesForGui = messages.map((msg) => {
         // Extract thought and actions from rawMessage for historical messages
-        const rawMessage = typeof msg.rawMessage === 'string'
-          ? JSON.parse(msg.rawMessage)
-          : msg.rawMessage;
+        const rawMessage =
+          typeof msg.rawMessage === 'string' ? JSON.parse(msg.rawMessage) : msg.rawMessage;
 
         return {
           ...msg,

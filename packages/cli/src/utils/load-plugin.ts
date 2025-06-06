@@ -1,7 +1,11 @@
 import { logger } from '@elizaos/core';
 import fs from 'node:fs';
 import path from 'node:path';
-import { detectPluginContext, ensurePluginBuilt, provideLocalPluginGuidance } from './plugin-context';
+import {
+  detectPluginContext,
+  ensurePluginBuilt,
+  provideLocalPluginGuidance,
+} from './plugin-context';
 
 interface PackageJson {
   module?: string;
@@ -80,29 +84,29 @@ const importStrategies: ImportStrategy[] = [
     name: 'local development plugin',
     tryImport: async (repository: string) => {
       const context = detectPluginContext(repository);
-      
+
       if (context.isLocalDevelopment) {
         logger.debug(`Detected local development for plugin: ${repository}`);
-        
+
         // Ensure the plugin is built
         const isBuilt = await ensurePluginBuilt(context);
         if (!isBuilt) {
           provideLocalPluginGuidance(repository, context);
           return null;
         }
-        
+
         // Try to load from built output
         if (context.localPath && fs.existsSync(context.localPath)) {
           logger.info(`Loading local development plugin: ${repository}`);
           return tryImporting(context.localPath, 'local development plugin', repository);
         }
-        
+
         // This shouldn't happen if ensurePluginBuilt succeeded, but handle it gracefully
         logger.warn(`Plugin built but output not found at expected path: ${context.localPath}`);
         provideLocalPluginGuidance(repository, context);
         return null;
       }
-      
+
       return null;
     },
   },
@@ -173,21 +177,53 @@ const importStrategies: ImportStrategy[] = [
 ];
 
 /**
- * Attempts to load a plugin module using various strategies.
- * It tries direct import, local node_modules, global node_modules,
- * package.json entry points, and common dist patterns.
+ * Determines if a plugin is from the ElizaOS ecosystem
+ */
+function isElizaOSPlugin(repository: string): boolean {
+  return repository.startsWith('@elizaos/') || repository.startsWith('@elizaos-plugins/');
+}
+
+/**
+ * Get relevant import strategies based on plugin type
+ */
+function getStrategiesForPlugin(repository: string): ImportStrategy[] {
+  const isElizaOS = isElizaOSPlugin(repository);
+
+  if (isElizaOS) {
+    // ElizaOS ecosystem plugins: try all strategies
+    return importStrategies;
+  } else {
+    // Third-party plugins: only try relevant strategies
+    return importStrategies.filter(
+      (strategy) =>
+        strategy.name === 'local development plugin' ||
+        strategy.name === 'package.json entry' ||
+        strategy.name === 'common dist pattern'
+    );
+  }
+}
+
+/**
+ * Attempts to load a plugin module using relevant strategies based on plugin type.
+ * ElizaOS ecosystem plugins (@elizaos/*) use all strategies,
+ * while third-party plugins use only relevant strategies to avoid noise.
  *
  * @param repository - The plugin repository/package name to load.
  * @returns The loaded plugin module or null if loading fails after all attempts.
  */
 export async function loadPluginModule(repository: string): Promise<any | null> {
-  //logger.debug(`Attempting to load plugin module: ${repository}`);
+  const isElizaOS = isElizaOSPlugin(repository);
+  const strategies = getStrategiesForPlugin(repository);
 
-  for (const strategy of importStrategies) {
+  logger.debug(
+    `Loading ${isElizaOS ? 'ElizaOS' : 'third-party'} plugin: ${repository} (${strategies.length} strategies)`
+  );
+
+  for (const strategy of strategies) {
     const result = await strategy.tryImport(repository);
     if (result) return result;
   }
 
-  logger.warn(`Failed to load plugin module '${repository}' using all available strategies.`);
+  logger.warn(`Failed to load plugin module '${repository}' using all relevant strategies.`);
   return null;
 }

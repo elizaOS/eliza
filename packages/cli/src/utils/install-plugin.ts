@@ -125,7 +125,9 @@ export async function installPlugin(
   const context = detectPluginContext(packageName);
   if (context.isLocalDevelopment) {
     logger.warn(`Prevented self-installation of plugin ${packageName}`);
-    logger.info(`You're developing this plugin locally. Use 'bun run build' to build it instead of installing.`);
+    logger.info(
+      `You're developing this plugin locally. Use 'bun run build' to build it instead of installing.`
+    );
     return false;
   }
 
