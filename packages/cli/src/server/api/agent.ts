@@ -462,8 +462,14 @@ export function agentRouter(
                   }
                   return false;
                 };
-                logger.debug(`Executing handler for plugin route: ${r.path}`);
-                if (executeHandler()) return;
+
+                if (r.isMultipart) {
+                  logger.debug(`Executing multipart handler for plugin route: ${r.path}`);
+                  if (executeHandler()) return;
+                } else {
+                  logger.debug(`Executing non-multipart handler for plugin route: ${r.path}`);
+                  if (executeHandler()) return;
+                }
               }
             }
           }
@@ -1750,10 +1756,7 @@ export function agentRouter(
       return;
     }
     try {
-      const rooms = await db.getRoomsByWorld(worldId);
-      for (const room of rooms) {
-        await db.deleteRoom(room.id);
-      }
+      await db.deleteRoomsByWorldId(worldId);
       res.status(204).send();
     } catch (error) {
       logger.error('[GROUP DELETE] Error deleting group:', error);
