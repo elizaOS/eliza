@@ -1,6 +1,9 @@
+import { Separator } from '@/components/ui/separator';
 import CopyButton from '@/components/copy-button';
 import DeleteButton from '@/components/delete-button';
+import RetryButton from '@/components/retry-button';
 import MediaContent from '@/components/media-content';
+import ProfileOverlay from '@/components/profile-overlay';
 import { Avatar, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -45,6 +48,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/r
 import { useQueryClient } from '@tanstack/react-query';
 import {
   ChevronRight,
+  Info,
   Loader2,
   MessageSquarePlus,
   PanelRight,
@@ -84,6 +88,7 @@ interface UnifiedChatViewProps {
 interface ChatUIState {
   showSidebar: boolean;
   showGroupEditPanel: boolean;
+  showProfileOverlay: boolean;
   input: string;
   inputDisabled: boolean;
   selectedGroupAgentId: UUID | null;
@@ -99,6 +104,7 @@ export function MessageContent({
   agentForTts,
   shouldAnimate,
   onDelete,
+  onRetry,
   isUser,
   getAgentInMessage,
   agentAvatarMap,
@@ -107,6 +113,7 @@ export function MessageContent({
   agentForTts?: Agent | Partial<Agent> | null;
   shouldAnimate?: boolean;
   onDelete: (id: string) => void;
+  onRetry?: (messageText: string) => void;
   isUser: boolean;
   getAgentInMessage?: (agentId: UUID) => Partial<Agent> | undefined;
   agentAvatarMap?: Record<UUID, string | null>;
@@ -201,6 +208,9 @@ export function MessageContent({
               <ChatTtsButton agentId={agentForTts.id} text={message.text} />
             </>
           )}
+          {isUser && message.text && !message.isLoading && onRetry && (
+            <RetryButton onClick={() => onRetry(message.text!)} />
+          )}
           <DeleteButton onClick={() => onDelete(message.id as string)} />
         </div>
         <div>
@@ -228,6 +238,7 @@ export default function Chat({
   const [chatState, setChatState] = useState<ChatUIState>({
     showSidebar: false,
     showGroupEditPanel: false,
+    showProfileOverlay: false,
     input: '',
     inputDisabled: false,
     selectedGroupAgentId: null,
@@ -255,10 +266,10 @@ export default function Chat({
   // Convert AgentWithStatus to Agent, ensuring required fields have defaults
   const targetAgentData: Agent | undefined = agentDataResponse?.data
     ? ({
-        ...agentDataResponse.data,
-        createdAt: agentDataResponse.data.createdAt || Date.now(),
-        updatedAt: agentDataResponse.data.updatedAt || Date.now(),
-      } as Agent)
+      ...agentDataResponse.data,
+      createdAt: agentDataResponse.data.createdAt || Date.now(),
+      updatedAt: agentDataResponse.data.updatedAt || Date.now(),
+    } as Agent)
     : undefined;
 
   // Use the new hooks for DM channel management
@@ -529,7 +540,6 @@ export default function Chat({
     uploadFiles,
     cleanupBlobUrls,
     clearFiles,
-    getContentTypeFromMimeType,
   } = useFileUpload({
     agentId: targetAgentData?.id,
     channelId: finalChannelIdForHooks,
@@ -678,6 +688,22 @@ export default function Chat({
     }
   };
 
+  const handleRetryMessage = (messageText: string) => {
+    if (!messageText.trim() || chatState.inputDisabled) return;
+    // Set the input to the message text and submit it
+    updateChatState({ input: messageText });
+    // Focus the input after a brief delay to ensure state has updated
+    setTimeout(() => {
+      if (inputRef.current) {
+        inputRef.current.focus();
+        // Trigger form submission
+        if (formRef.current) {
+          formRef.current.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+        }
+      }
+    }, 10);
+  };
+
   const handleClearChat = () => {
     if (!finalChannelIdForHooks) return;
     const confirmMessage =
@@ -718,31 +744,48 @@ export default function Chat({
       return (
         <div className="flex items-center justify-between mb-4 p-3 bg-card rounded-lg border">
           <div className="flex items-center gap-3">
-            <Avatar className="size-10 border rounded-full">
-              <AvatarImage src={getAgentAvatar(targetAgentData)} />
-            </Avatar>
+            <div className="relative">
+              <Avatar className="size-10 border rounded-full">
+                <AvatarImage src={getAgentAvatar(targetAgentData)} />
+              </Avatar>
+              {targetAgentData?.status === AgentStatus.ACTIVE ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="absolute bottom-0 right-0 w-[10px] h-[10px] rounded-full border border-white bg-green-500" />
+                  </TooltipTrigger>
+                  <TooltipContent side="right">
+                    <p>Agent is active</p>
+                  </TooltipContent>
+                </Tooltip>
+              ) : (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="absolute bottom-0 right-0 w-[10px] h-[10px] rounded-full border border-white bg-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent side="right">
+                    <p>Agent is inactive</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+            </div>
             <div className="flex flex-col">
               <div className="flex items-center gap-2">
                 <h2 className="font-semibold text-lg">{targetAgentData?.name || 'Agent'}</h2>
-                {targetAgentData?.status === AgentStatus.ACTIVE ? (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="size-2.5 rounded-full bg-green-500 ring-2 ring-green-500/20 animate-pulse" />
-                    </TooltipTrigger>
-                    <TooltipContent side="right">
-                      <p>Agent is active</p>
-                    </TooltipContent>
-                  </Tooltip>
-                ) : (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="size-2.5 rounded-full bg-gray-300 ring-2 ring-gray-300/20" />
-                    </TooltipTrigger>
-                    <TooltipContent side="right">
-                      <p>Agent is inactive</p>
-                    </TooltipContent>
-                  </Tooltip>
-                )}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0"
+                      onClick={() => updateChatState({ showProfileOverlay: true })}
+                    >
+                      <Info className="size-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p>View agent profile</p>
+                  </TooltipContent>
+                </Tooltip>
               </div>
               {targetAgentData?.bio && (
                 <p className="text-sm text-muted-foreground line-clamp-1">
@@ -798,8 +841,8 @@ export default function Chat({
                                 <span className="text-xs text-muted-foreground">
                                   {moment(
                                     channel.metadata?.createdAt ||
-                                      channel.updatedAt ||
-                                      channel.createdAt
+                                    channel.updatedAt ||
+                                    channel.createdAt
                                   ).fromNow()}
                                 </span>
                               </div>
@@ -843,9 +886,33 @@ export default function Chat({
               title={
                 chatType === ChannelType.DM ? 'Delete current chat session' : 'Clear all messages'
               }
+              className="xl:px-3"
             >
               <Trash2 className="size-4" />
+              <span className="hidden xl:inline xl:ml-2">
+                {chatType === ChannelType.DM ? 'Delete' : 'Clear'}
+              </span>
             </Button>
+            <Separator orientation="vertical" className="h-8" />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="xl:px-3 xl:h-8 h-8 w-8 xl:w-auto ml-3"
+                  onClick={() => updateChatState({ showSidebar: !chatState.showSidebar })}
+                >
+                  {chatState.showSidebar ? (
+                    <PanelRightClose className="h-4 w-4" />
+                  ) : (
+                    <PanelRight className="h-4 w-4" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p>{chatState.showSidebar ? 'Close SidePanel' : 'Open SidePanel'}</p>
+              </TooltipContent>
+            </Tooltip>
           </div>
         </div>
       );
@@ -877,8 +944,22 @@ export default function Chat({
                 size="sm"
                 onClick={handleClearChat}
                 disabled={!messages || messages.length === 0}
+                className="xl:px-3"
               >
                 <Trash2 className="size-4" />
+                <span className="hidden xl:inline xl:ml-2">Clear</span>
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="xl:px-3 xl:h-8 h-8 w-8 xl:w-auto"
+                onClick={() => updateChatState({ showSidebar: !chatState.showSidebar })}
+              >
+                {chatState.showSidebar ? (
+                  <PanelRightClose className="h-4 w-4" />
+                ) : (
+                  <PanelRight className="h-4 w-4" />
+                )}
               </Button>
             </div>
           </div>
@@ -928,20 +1009,6 @@ export default function Chat({
       <ResizablePanelGroup direction="horizontal" className="h-full">
         <ResizablePanel defaultSize={chatState.showSidebar ? 70 : 100} minSize={50}>
           <div className="relative h-full">
-            {/* Sidebar toggle button */}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="absolute top-4 right-4 z-10"
-              onClick={() => updateChatState({ showSidebar: !chatState.showSidebar })}
-            >
-              {chatState.showSidebar ? (
-                <PanelRightClose className="h-4 w-4" />
-              ) : (
-                <PanelRight className="h-4 w-4" />
-              )}
-            </Button>
-
             {/* Main chat content */}
             <div className="h-full flex flex-col p-4">
               {renderChatHeader()}
@@ -968,6 +1035,7 @@ export default function Chat({
                     getAgentInMessage={getAgentInMessage}
                     agentAvatarMap={agentAvatarMap}
                     onDeleteMessage={handleDeleteMessage}
+                    onRetryMessage={handleRetryMessage}
                     selectedGroupAgentId={chatState.selectedGroupAgentId}
                   />
                 </div>
@@ -1027,6 +1095,14 @@ export default function Chat({
         <GroupPanel
           onClose={() => updateChatState({ showGroupEditPanel: false })}
           channelId={contextId}
+        />
+      )}
+
+      {chatState.showProfileOverlay && chatType === ChannelType.DM && targetAgentData?.id && (
+        <ProfileOverlay
+          isOpen={chatState.showProfileOverlay}
+          onClose={() => updateChatState({ showProfileOverlay: false })}
+          agentId={targetAgentData.id}
         />
       )}
     </>
