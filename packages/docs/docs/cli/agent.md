@@ -18,14 +18,14 @@ elizaos agent [options] [command]
 
 ## Subcommands
 
-| Subcommand | Aliases | Description                             | Required Options                                                   | Additional Options                                                    |
-| ---------- | ------- | --------------------------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------------- |
-| `list`     | `ls`    | List available agents                   |                                                                    | `-j, --json`, `-r, --remote-url <url>`, `-p, --port <port>`           |
-| `get`      | `g`     | Get agent details                       | `-n, --name <name>`                                                | `-j, --json`, `-o, --output [file]`, `-r, --remote-url`, `-p, --port` |
-| `start`    | `s`     | Start an agent with a character profile | One of: `-n, --name`, `-j, --json`, `--path`, `--remote-character` | `-r, --remote-url <url>`, `-p, --port <port>`                         |
-| `stop`     | `st`    | Stop an agent                           | `-n, --name <name>`                                                | `-r, --remote-url <url>`, `-p, --port <port>`                         |
-| `remove`   | `rm`    | Remove an agent                         | `-n, --name <name>`                                                | `-r, --remote-url <url>`, `-p, --port <port>`                         |
-| `set`      |         | Update agent configuration              | `-n, --name <name>` AND one of: `-c, --config` OR `-f, --file`     | `-r, --remote-url <url>`, `-p, --port <port>`                         |
+| Subcommand | Aliases | Description                             | Required Options                                               | Additional Options                                                    |
+| ---------- | ------- | --------------------------------------- | -------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `list`     | `ls`    | List available agents                   |                                                                | `-j, --json`, `-r, --remote-url <url>`, `-p, --port <port>`           |
+| `get`      | `g`     | Get agent details                       | `-n, --name <name>`                                            | `-j, --json`, `-o, --output [file]`, `-r, --remote-url`, `-p, --port` |
+| `start`    | `s`     | Start an agent with a character profile | One of: `-n, --name`, `--path`, `--remote-character`           | `-r, --remote-url <url>`, `-p, --port <port>`                         |
+| `stop`     | `st`    | Stop an agent                           | `-n, --name <name>`                                            | `-r, --remote-url <url>`, `-p, --port <port>`                         |
+| `remove`   | `rm`    | Remove an agent                         | `-n, --name <name>`                                            | `-r, --remote-url <url>`, `-p, --port <port>`                         |
+| `set`      |         | Update agent configuration              | `-n, --name <name>` AND one of: `-c, --config` OR `-f, --file` | `-r, --remote-url <url>`, `-p, --port <port>`                         |
 
 ## Options Reference
 
@@ -47,7 +47,6 @@ elizaos agent [options] [command]
 ### Start Specific Options
 
 - `-n, --name <name>`: Name of an existing agent to start
-- `-j, --json <json>`: Character JSON configuration string
 - `--path <path>`: Path to local character JSON file
 - `--remote-character <url>`: URL to remote character JSON file
 
@@ -116,9 +115,6 @@ elizaos agent start --name eliza
 # Start with local character file
 elizaos agent start --path ./characters/eliza.json
 
-# Start with JSON configuration string
-elizaos agent start --json '{"name":"eliza","system":"You are a helpful assistant"}'
-
 # Start from remote character file
 elizaos agent start --remote-character https://example.com/characters/eliza.json
 
@@ -130,7 +126,7 @@ elizaos agent start --path ./eliza.json --port 4000
 ```
 
 **Required Configuration:**
-You must provide one of these options: `--name`, `--path`, `--json`, or `--remote-character`
+You must provide one of these options: `--name`, `--path`, or `--remote-character`
 
 ### Stopping Agents
 
