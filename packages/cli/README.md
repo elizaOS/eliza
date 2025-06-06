@@ -13,14 +13,16 @@ bun install -g @elizaos/cli
 The ElizaOS CLI requires [Bun](https://bun.sh) as its package manager. If Bun is not installed when you run the CLI, it will attempt to automatically install it for you.
 
 **Auto-installation features:**
+
 - ✅ Detects when Bun is missing
-- ✅ Downloads and installs Bun automatically on Windows, macOS, and Linux  
+- ✅ Downloads and installs Bun automatically on Windows, macOS, and Linux
 - ✅ Updates PATH for the current session
 - ✅ Falls back to manual installation instructions if auto-install fails
 - ✅ Skips auto-installation in CI environments
 - ✅ Can be disabled with `--no-auto-install` flag
 
 **To disable auto-installation:**
+
 ```bash
 # Global flag (applies to all commands)
 elizaos --no-auto-install create my-project
@@ -49,6 +51,7 @@ The following options are available for all ElizaOS CLI commands:
 - `-h, --help`: Display help information
 
 **Example usage:**
+
 ```bash
 # Disable auto-installation and emojis
 elizaos --no-auto-install --no-emoji create my-project
@@ -185,7 +188,6 @@ Manage ElizaOS agents.
   - `start` (alias: `s`): Start an agent
     - Options:
       - `-n, --name <name>`: Name of an existing agent to start
-      - `-j, --json <json>`: Character JSON configuration string
       - `--path <path>`: Local path to character JSON file
       - `--remote-character <url>`: URL to remote character JSON file
       - `-r, --remote-url <url>`: URL of the remote agent runtime
