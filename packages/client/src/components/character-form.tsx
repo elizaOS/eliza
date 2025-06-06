@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { AVATAR_IMAGE_MAX_SIZE, FIELD_REQUIREMENT_TYPE, FIELD_REQUIREMENTS } from '@/constants';
 import { useToast } from '@/hooks/use-toast';
+import { exportCharacterAsJson } from '@/lib/export-utils';
 import { compressImage } from '@/lib/utils';
 import type { Agent } from '@elizaos/core';
 import type React from 'react';
@@ -20,7 +21,7 @@ import {
 } from '@/components/ui/select';
 import { getAllVoiceModels, getVoiceModelByValue, providerPluginMap } from '../config/voice-models';
 import { useElevenLabsVoices } from '@/hooks/use-elevenlabs-voices';
-import { Trash, Loader2 } from 'lucide-react';
+import { Trash, Loader2, RotateCcw, Download, Upload, Save } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { agentTemplates, getTemplateById } from '@/config/agent-templates';
 
@@ -364,7 +365,7 @@ export default function CharacterForm({
                 {field.title}
                 {field.name in FIELD_REQUIREMENTS &&
                   (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.name] ===
-                    FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
+                  FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
               </Label>
             </TooltipTrigger>
             {field.tooltip && (
@@ -439,7 +440,7 @@ export default function CharacterForm({
                 {field.title}
                 {field.path in FIELD_REQUIREMENTS &&
                   (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.path] ===
-                    FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
+                  FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
               </Label>
             </TooltipTrigger>
             {field.tooltip && (
@@ -512,6 +513,10 @@ export default function CharacterForm({
     } finally {
       event.target.value = '';
     }
+  };
+
+  const handleExportJSON = () => {
+    exportCharacterAsJson(characterValue, toast);
   };
 
   /**
@@ -631,13 +636,13 @@ export default function CharacterForm({
               >
                 {isDeleting ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Deleting...
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span className="hidden sm:inline ml-2">Deleting...</span>
                   </>
                 ) : (
                   <>
-                    <Trash className="mr-2 h-4 w-4" />
-                    Delete Agent
+                    <Trash className="h-4 w-4" />
+                    <span className="hidden sm:inline ml-2">Delete Agent</span>
                   </>
                 )}
               </Button>
@@ -653,7 +658,8 @@ export default function CharacterForm({
                 onReset?.();
               }}
             >
-              Reset Changes
+              <RotateCcw className="h-4 w-4" />
+              <span className="hidden sm:inline ml-2">Reset Changes</span>
             </Button>
             <div className="relative">
               <input
@@ -663,11 +669,26 @@ export default function CharacterForm({
                 className="absolute inset-0 opacity-0 cursor-pointer"
               />
               <Button type="button" variant="outline">
-                Import JSON
+                <Upload className="h-4 w-4" />
+                <span className="hidden sm:inline ml-2">Import JSON</span>
               </Button>
             </div>
+            <Button type="button" variant="outline" onClick={handleExportJSON}>
+              <Download className="h-4 w-4" />
+              <span className="hidden sm:inline ml-2">Export JSON</span>
+            </Button>
             <Button type="submit" disabled={isSubmitting} className="agent-form-submit">
-              {isSubmitting ? 'Saving...' : 'Save Changes'}
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="hidden sm:inline ml-2">Saving...</span>
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4" />
+                  <span className="hidden sm:inline ml-2">Save Changes</span>
+                </>
+              )}
             </Button>
           </div>
         </div>
