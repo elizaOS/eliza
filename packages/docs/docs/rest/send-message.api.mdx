@@ -1,8 +1,8 @@
 ---
 id: send-message
-title: 'Send a message to an agent'
-description: 'Sends a message to an agent and receives a response'
-sidebar_label: 'Send a message to an agent'
+title: 'Send a message to a channel'
+description: 'Sends a message to a central channel for processing by agents'
+sidebar_label: 'Send a message to a channel'
 hide_title: true
 hide_table_of_contents: true
 api: eJztV01v4zgM/SsCL7sLeJLM7uzFt8xMDwF2MEXbPbU5MBZjaypLHklOmg383xeU7Dpo0ja7GPQ0RoD4g6RIPpJ62kPA0kN+CzV5jyV5yABLMsHDMgNJvnCqCcoayOGajPQCRS8qghVoRJQWaKRwVJDaEIs48o01niAD25BDtrCQkIMnI78kfcigQYc1BXLswh4M1gR5Wn8hIQPFyzYYKsjA0fdWOZKQB9dSBr6oqEbI9xB2Dav54JQpIYO1dTUGyKFtlYTuaRiLz8KuRagouQ7dMhknHz5auWOLT9cqrAksmu8Bm0arIgY0/ebZ4P7YFbv6RkXgAB2HHxT5KEdGkuM8HDv9nI9Jh6Nw1tb/TZc1WDPQQ3hd78sAK0t3GXjbuoJe17uOcsOafXFAFy/ObKqEmIDfZ+/57/S6fqijxtmCvCcpfFvw3brVegc/DoZk9UBwZa0mNJABPWDdaErAc+lgOMPiEPSrguchcUMPQfTBHuU1g1DZtqzOsDPn+v7FC2UCOYNa9JpDhtlYo9Gcb4mlhXXCEXprWLLLAAuWOswnOocMmApU+2PrRy05TxbGphRbNMHzhAl4Tz+gGnmWXFGjdzf29ZHxfEc9jr5KecE/IxxbFcECV3tQgYsHPvWV2mVDbZzu3KNRlUbgiYQ91/0vpKbrhib8MJsd993CbFAr2SecY2Rc4xwUKx6Eb9twa9SeO46cs+51m4WVZ1TDBRsTUXaE4ly1g+KRFFDpE6X8VPNzFCQpYhhCmYQwf0xQDBUSl4ABng/H8MSWE8YGsbatkT/ReCs0/jzVLMmHfm4qUz668xOWN4ElOhYqyxyysT6Gyrwwhyk2apoo63TfU8duOsLjyW0Ggtk6DTlUITT5dKptgbqyPuR/zGazIyf/4s9C0oa0bWruxWQp8kUG92rkjBcDPoccb4x+mN3jm8QDxudhhB9Mdc5KTOWQC63+QfH1WswvF8f78+VCSFu07GdMpFhbJx5VNu8ns8nsHeqmQvFOzMVa04NaaYp8yxeokR/mi34zWDMt31p3P7kzd+aGNzteQXkhyavSkOSteUWiZZa2VaESKGI+9U641jAz6FdXxgc0BU3EhZGNVbyto9Z2Gz0sHGFQpszuTI0GS76NPkXKwsTClMn+4BuTBMcsRqC4uri+SZJrLGgCGTDSKSMHEfc9ikXs0f6Q8ZibT7auW6MC73djffh8Oi1VqNrVpLD1lFja+vQfd3ouwjpRp94iH49On46ewrUfZ8b/PFT1/cVlNG00KsMVE73f931xC9io8TCXQT4eq4bmWGbA9c/C+/0KPf3tdNfx6+8tuR3kt8sMNugUV0dsIKk838t+Er0Q169X/RnqN/H0wPWM+wN3NIzEBnXLT5DBPe0ODoXdssugIuRDEXuUvvZ8690N2xi1j+Zxlw0a86KgJrwouzyYOZdfr28gg1V/QKzjYAWHW25v3CZPbfNIhOO7PWg0ZRunKSSbfP0Lmv1bBw==
@@ -19,15 +19,19 @@ import OperationTabs from '@theme/OperationTabs';
 import TabItem from '@theme/TabItem';
 import Heading from '@theme/Heading';
 
-<Heading as={'h1'} className={'openapi__heading'} children={'Send a message to an agent'}></Heading>
+<Heading
+  as={'h1'}
+  className={'openapi__heading'}
+  children={'Send a message to a channel'}
+></Heading>
 
 <MethodEndpoint
   method={'post'}
-  path={'/api/agents/{agentId}/message'}
+  path={'/api/messages/central-channels/{channelId}/messages'}
   context={'endpoint'}
 ></MethodEndpoint>
 
-Sends a message to an agent and receives a response
+Sends a message to a central channel for processing by agents
 
 <Heading
   id={'request'}
@@ -39,17 +43,11 @@ Sends a message to an agent and receives a response
 <ParamsDetails
   parameters={[
     {
-      name: 'agentId',
+      name: 'channelId',
       in: 'path',
       required: true,
       schema: { type: 'string', format: 'uuid' },
-      description: 'ID of the agent',
-    },
-    {
-      name: 'worldId',
-      in: 'query',
-      schema: { type: 'string', format: 'uuid' },
-      description: 'ID of the world (defaults to 00000000-0000-0000-0000-000000000000)',
+      description: 'ID of the central channel',
     },
   ]}
 ></ParamsDetails>
@@ -63,21 +61,35 @@ Sends a message to an agent and receives a response
         schema: {
           type: 'object',
           properties: {
-            entityId: {
+            author_id: {
               type: 'string',
               format: 'uuid',
-              description: 'ID of the entity sending the message',
+              description: 'ID of the user sending the message',
             },
-            roomId: { type: 'string', format: 'uuid', description: 'ID of the room' },
-            source: { type: 'string', description: 'Source of the message (e.g., curl-test)' },
-            text: { type: 'string', description: 'Message text' },
-            channelType: {
+            content: { type: 'string', description: 'Message content' },
+            server_id: {
               type: 'string',
-              enum: ['API', 'VOICE', 'DM', 'GROUP', 'FEED', 'SELF', 'SYSTEM'],
-              description: 'Type of the channel',
+              description: 'ID of the server (UUID or "0" for default)',
+            },
+            in_reply_to_message_id: {
+              type: 'string',
+              format: 'uuid',
+              description: 'ID of the message being replied to (optional)',
+            },
+            raw_message: {
+              type: 'object',
+              description: 'Raw message data (optional)',
+            },
+            metadata: {
+              type: 'object',
+              description: 'Additional metadata including user_display_name (optional)',
+            },
+            source_type: {
+              type: 'string',
+              description: 'Source of the message (e.g., eliza_gui)',
             },
           },
-          required: ['entityId', 'roomId', 'text', 'channelType'],
+          required: ['author_id', 'content', 'server_id'],
         },
       },
     },
@@ -89,7 +101,7 @@ Sends a message to an agent and receives a response
   label={undefined}
   responses={{
     '201': {
-      description: 'Message sent and processed successfully',
+      description: 'Message sent and queued for processing successfully',
       content: {
         'application/json': {
           schema: {
@@ -99,36 +111,57 @@ Sends a message to an agent and receives a response
               data: {
                 type: 'object',
                 properties: {
-                  message: {
+                  id: {
+                    type: 'string',
+                    format: 'uuid',
+                    description: 'ID of the created message',
+                  },
+                  channel_id: {
+                    type: 'string',
+                    format: 'uuid',
+                    description: 'ID of the channel',
+                  },
+                  server_id: {
+                    type: 'string',
+                    description: 'ID of the server',
+                  },
+                  author_id: {
+                    type: 'string',
+                    format: 'uuid',
+                    description: 'ID of the message author',
+                  },
+                  content: {
+                    type: 'string',
+                    description: 'Message content',
+                  },
+                  created_at: {
+                    type: 'number',
+                    description: 'Timestamp when the message was created',
+                  },
+                  source_type: {
+                    type: 'string',
+                    description: 'Source type of the message',
+                  },
+                  raw_message: {
                     type: 'object',
-                    properties: {
-                      text: { type: 'string', description: "Text content of the agent's response" },
-                      thought: {
-                        type: 'string',
-                        description: "Agent's internal thought process for the response",
-                      },
-                      actions: {
-                        type: 'array',
-                        items: { type: 'string' },
-                        description: 'Actions the agent decided on (e.g., [\"REPLY\"])',
-                      },
-                    },
-                    title: 'AgentResponseContent',
+                    description: 'Raw message data if provided',
                   },
-                  messageId: {
+                  metadata: {
+                    type: 'object',
+                    description: 'Additional metadata',
+                  },
+                  author_display_name: {
+                    type: 'string',
+                    description: 'Display name of the author',
+                  },
+                  in_reply_to_message_id: {
                     type: 'string',
                     format: 'uuid',
-                    description: "ID of the user's incoming message that was processed",
+                    description: 'ID of the message being replied to',
                   },
-                  name: { type: 'string', description: 'Name of the agent that responded' },
-                  roomId: {
+                  source_id: {
                     type: 'string',
-                    format: 'uuid',
-                    description: 'ID of the room where the interaction occurred',
-                  },
-                  source: {
-                    type: 'string',
-                    description: "Original source from the user's request",
+                    description: 'Original message ID from source platform',
                   },
                 },
               },
@@ -136,13 +169,9 @@ Sends a message to an agent and receives a response
           },
         },
       },
-    },
-    '204': {
-      description:
-        'Message processed successfully, but the agent chose not to reply or no textual reply was generated. This can happen if the agent decides to IGNORE or perform a non-reply action.',
     },
     '400': {
-      description: 'Invalid agent ID or request body',
+      description: 'Invalid request parameters',
       content: {
         'application/json': {
           schema: {
@@ -150,34 +179,8 @@ Sends a message to an agent and receives a response
             properties: {
               success: { type: 'boolean', example: false },
               error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string', description: 'Error code' },
-                  message: { type: 'string', description: 'Error message' },
-                  details: { type: 'string', description: 'Detailed error information' },
-                },
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-    '404': {
-      description: 'Agent not found',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string', description: 'Error code' },
-                  message: { type: 'string', description: 'Error message' },
-                  details: { type: 'string', description: 'Detailed error information' },
-                },
+                type: 'string',
+                description: 'Error message describing what is missing or invalid',
               },
             },
             title: 'Error',
@@ -194,12 +197,8 @@ Sends a message to an agent and receives a response
             properties: {
               success: { type: 'boolean', example: false },
               error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string', description: 'Error code' },
-                  message: { type: 'string', description: 'Error message' },
-                  details: { type: 'string', description: 'Detailed error information' },
-                },
+                type: 'string',
+                description: 'Error message',
               },
             },
             title: 'Error',
