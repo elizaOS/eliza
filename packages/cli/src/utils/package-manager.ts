@@ -1,19 +1,16 @@
 import { logger } from '@elizaos/core';
 import { execa } from 'execa';
 import { UserEnvironment } from './user-environment';
+import { displayBunInstallationTipCompact } from './bun-installation-helper';
 
 /**
- * Detects and returns the preferred package manager for the current environment.
+ * Always returns 'bun' as the package manager for ElizaOS CLI.
  *
- * @returns A promise that resolves to the name of the package manager to use: 'npm', 'yarn', 'pnpm', or 'bun'.
- *
- * @remark Defaults to 'bun' if the package manager cannot be determined.
+ * @returns A promise that resolves to 'bun'.
  */
 export async function getPackageManager(): Promise<string> {
-  const envInfo = await UserEnvironment.getInstanceInfo();
-
-  logger.debug('[PackageManager] Detecting package manager');
-  return envInfo.packageManager.name === 'unknown' ? 'bun' : envInfo.packageManager.name;
+  logger.debug('[PackageManager] Using bun as the package manager for ElizaOS CLI');
+  return 'bun';
 }
 
 /**
@@ -44,18 +41,12 @@ export async function isRunningViaBunx(): Promise<boolean> {
 }
 
 /**
- * Get the install command for the specified package manager
- * @param {string} packageManager - The package manager to use
+ * Get the install command for bun
  * @param {boolean} isGlobal - Whether to install globally
- * @returns {string[]} - The install command array
+ * @returns {string[]} - The bun install command array
  */
-export function getInstallCommand(packageManager: string, isGlobal: boolean): string[] {
-  if (packageManager === 'npm') {
-    return ['install', ...(isGlobal ? ['-g'] : [])];
-  } else {
-    // bun
-    return ['add', ...(isGlobal ? ['-g'] : [])];
-  }
+export function getInstallCommand(isGlobal: boolean): string[] {
+  return ['add', ...(isGlobal ? ['-g'] : [])];
 }
 
 /**
@@ -74,10 +65,9 @@ export async function executeInstallation(
   versionOrTag = '',
   directory: string = process.cwd()
 ): Promise<{ success: boolean; installedIdentifier: string | null }> {
-  const packageManager = await getPackageManager();
-  const installCommand = getInstallCommand(packageManager, false);
+  const installCommand = getInstallCommand(false);
 
-  logger.debug(`Attempting to install package: ${packageName} using ${packageManager}`);
+  logger.debug(`Attempting to install package: ${packageName} using bun`);
 
   const finalSpecifier = packageName.startsWith('github:')
     ? `${packageName}${versionOrTag ? `#${versionOrTag}` : ''}`
@@ -85,7 +75,7 @@ export async function executeInstallation(
       ? `${packageName}@${versionOrTag}`
       : packageName;
   try {
-    await execa(packageManager, [...installCommand, finalSpecifier], {
+    await execa('bun', [...installCommand, finalSpecifier], {
       cwd: directory,
       stdio: 'inherit',
     });
@@ -101,8 +91,15 @@ export async function executeInstallation(
       : packageName;
 
     return { success: true, installedIdentifier };
-  } catch (error) {
-    logger.warn(`Installation failed for ${finalSpecifier}: ${error.message}`);
+  } catch (error: any) {
+    // Check if it's a bun not found error
+    if (error.code === 'ENOENT' || error.message?.includes('bun: command not found')) {
+      logger.warn(
+        `Installation failed - bun command not found. ${displayBunInstallationTipCompact()}`
+      );
+    } else {
+      logger.warn(`Installation failed for ${finalSpecifier}: ${error.message}`);
+    }
     return { success: false, installedIdentifier: null };
   }
 }

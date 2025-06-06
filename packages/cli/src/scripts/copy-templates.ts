@@ -87,7 +87,16 @@ async function main() {
 
     // Copy each template and update its package.json
     for (const template of templates) {
-      await fs.copy(template.src, template.dest);
+      await fs.copy(template.src, template.dest, {
+        filter: (srcPath) => {
+          const baseName = path.basename(srcPath);
+          if (baseName === 'node_modules' || baseName === '.git') {
+            // console.log(`Filtering out: ${srcPath}`); // Log which paths are being filtered
+            return false;
+          }
+          return true;
+        },
+      });
 
       // Update package.json with correct version
       const packageJsonPath = path.resolve(template.dest, 'package.json');

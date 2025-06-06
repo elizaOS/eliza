@@ -97,7 +97,7 @@ function AppContent() {
     <TooltipProvider delayDuration={0}>
       <SidebarProvider>
         <AppSidebar refreshHomePage={refreshHomePage} />
-        <SidebarInset>
+        <SidebarInset className="h-screen flex flex-col">
           {/* Mobile menu button */}
           <div className="md:hidden absolute top-4 left-4 z-50">
             <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
@@ -112,45 +112,47 @@ function AppContent() {
               </SheetContent>
             </Sheet>
           </div>
-          <div className="flex w-full justify-center pt-16 md:pt-0">
+          <div className="flex w-full justify-center pt-16 md:pt-0 flex-shrink-0">
             <div className="w-full md:max-w-4xl">
               <ConnectionErrorBanner />
             </div>
           </div>
-          <Routes>
-            <Route path="/" element={<Home key={homeKey} />} />
-            <Route path="chat/:agentId/:channelId" element={<Chat />} />
-            <Route path="chat/:agentId" element={<Chat />} />
-            <Route path="group/new" element={<CreateGroupPage />} />
-            <Route path="agents/new" element={<AgentCreatorRoute />} />
-            <Route path="/create" element={<AgentCreator />} />
-            <Route
-              path="/logs"
-              element={
-                <div className="flex w-full justify-center">
-                  <div className="w-full md:max-w-4xl">
-                    <div className="flex items-center justify-between mb-4">
-                      <h2 className="text-2xl p-4 font-bold">System Logs</h2>
+          <div className="flex-1 min-h-0">
+            <Routes>
+              <Route path="/" element={<Home key={homeKey} />} />
+              <Route path="chat/:agentId/:channelId" element={<Chat />} />
+              <Route path="chat/:agentId" element={<Chat />} />
+              <Route path="group/new" element={<CreateGroupPage />} />
+              <Route path="agents/new" element={<AgentCreatorRoute />} />
+              <Route path="/create" element={<AgentCreator />} />
+              <Route
+                path="/logs"
+                element={
+                  <div className="flex w-full justify-center">
+                    <div className="w-full md:max-w-4xl">
+                      <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-2xl p-4 font-bold">System Logs</h2>
+                      </div>
+                      <AgentLogViewer />
                     </div>
-                    <AgentLogViewer />
                   </div>
-                </div>
-              }
-            />
-            <Route path="group/:channelId" element={<GroupChannel />} />
-            <Route
-              path="settings/"
-              element={
-                <div className="flex w-full justify-center">
-                  <div className="w-full md:max-w-4xl">
-                    <EnvSettings />
+                }
+              />
+              <Route path="group/:channelId" element={<GroupChannel />} />
+              <Route
+                path="settings/"
+                element={
+                  <div className="flex w-full justify-center">
+                    <div className="w-full md:max-w-4xl">
+                      <EnvSettings />
+                    </div>
                   </div>
-                </div>
-              }
-            />
-            {/* Catch-all route for 404 errors */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+                }
+              />
+              {/* Catch-all route for 404 errors */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </div>
         </SidebarInset>
       </SidebarProvider>
       <Toaster />

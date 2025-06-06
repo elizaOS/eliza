@@ -1,5 +1,6 @@
 import react from '@vitejs/plugin-react-swc';
 import path from 'node:path';
+import fs from 'node:fs';
 import { type Plugin, type UserConfig, defineConfig, loadEnv } from 'vite';
 import viteCompression from 'vite-plugin-compression';
 import tailwindcss from '@tailwindcss/vite';
@@ -14,6 +15,70 @@ import { nodePolyfills } from 'vite-plugin-node-polyfills';
 interface CustomUserConfig extends UserConfig {
   test?: ViteUserConfig['test'];
 }
+
+// Function to get version and write info.json
+const getVersionAndWriteInfo = () => {
+  const lernaPath = path.resolve(__dirname, '../../lerna.json');
+  const packageJsonPath = path.resolve(__dirname, '../../package.json');
+  const infoJsonDir = path.resolve(__dirname, 'src/lib');
+  const infoJsonPath = path.resolve(infoJsonDir, 'info.json');
+  let version = '0.0.0-error'; // Default/fallback version
+
+  try {
+    // First try to get version from lerna.json
+    if (fs.existsSync(lernaPath)) {
+      const lernaContent = fs.readFileSync(lernaPath, 'utf-8');
+      const lernaConfig = JSON.parse(lernaContent);
+      version = lernaConfig.version || version;
+    } else {
+      console.warn(`Warning: ${lernaPath} does not exist. Trying package.json...`);
+
+      // Fallback to main package.json if lerna.json doesn't exist
+      if (fs.existsSync(packageJsonPath)) {
+        const packageContent = fs.readFileSync(packageJsonPath, 'utf-8');
+        const packageConfig = JSON.parse(packageContent);
+        version = packageConfig.version || version;
+      }
+    }
+
+    if (!fs.existsSync(infoJsonDir)) {
+      fs.mkdirSync(infoJsonDir, { recursive: true });
+    }
+    fs.writeFileSync(infoJsonPath, JSON.stringify({ version }));
+    console.log(`Version ${version} written to ${infoJsonPath}`);
+    return version;
+  } catch (error) {
+    console.error('Error processing version:', error);
+    // Attempt to write info.json even if there was an error reading lerna.json
+    if (!fs.existsSync(infoJsonDir)) {
+      fs.mkdirSync(infoJsonDir, { recursive: true });
+    }
+    fs.writeFileSync(infoJsonPath, JSON.stringify({ version })); // Writes the fallback version
+    console.warn(`Fallback version ${version} written to ${infoJsonPath} due to error.`);
+    return version;
+  }
+};
+
+// Custom plugin to generate version info
+const versionPlugin = (): Plugin => {
+  let appVersion: string;
+  return {
+    name: 'eliza-version-plugin',
+    // config hook runs before server starts and build
+    config: () => {
+      appVersion = getVersionAndWriteInfo();
+      return {
+        define: {
+          'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion),
+        },
+      };
+    },
+    // buildStart is good too, but config ensures define is set early
+    // buildStart: () => {
+    //   getVersionAndWriteInfo();
+    // },
+  };
+};
 
 export default defineConfig(({ mode }): CustomUserConfig => {
   const envDir = path.resolve(__dirname, '../..');
@@ -37,6 +102,7 @@ export default defineConfig(({ mode }): CustomUserConfig => {
 
   return {
     plugins: [
+      versionPlugin(),
       tailwindcss(),
       react() as unknown as Plugin,
       nodePolyfills() as unknown as Plugin,

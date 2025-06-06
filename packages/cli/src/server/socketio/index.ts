@@ -203,7 +203,9 @@ export class SocketIORouter {
 
           // Determine if this is likely a DM based on the context
           const isDmChannel =
-            metadata?.isDm || metadata?.channelType === 'DM' || senderName?.includes('DM');
+            metadata?.isDm ||
+            metadata?.channelType === ChannelType.DM ||
+            senderName?.includes('DM');
 
           const channelData = {
             id: channelId as UUID, // Use the specific channel ID from the client
@@ -217,7 +219,7 @@ export class SocketIORouter {
               created_by: 'socketio_auto_creation',
               created_for_user: senderId,
               created_at: new Date().toISOString(),
-              channel_type: isDmChannel ? 'DM' : 'GROUP',
+              channel_type: isDmChannel ? ChannelType.DM : ChannelType.GROUP,
               ...metadata,
             },
           };
@@ -247,7 +249,7 @@ export class SocketIORouter {
 
           await this.serverInstance.createChannel(channelData, participants);
           logger.info(
-            `[SocketIO ${socket.id}] Auto-created ${isDmChannel ? 'DM' : 'group'} channel ${channelId} for message submission with ${participants.length} participants`
+            `[SocketIO ${socket.id}] Auto-created ${isDmChannel ? ChannelType.DM : ChannelType.GROUP} channel ${channelId} for message submission with ${participants.length} participants`
           );
         } catch (createError: any) {
           logger.error(

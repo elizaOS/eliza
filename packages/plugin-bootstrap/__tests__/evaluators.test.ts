@@ -8,6 +8,7 @@ import {
   Memory,
   State,
   Content,
+  ChannelType,
 } from '@elizaos/core';
 import * as entityUtils from '@elizaos/core';
 import {
@@ -68,7 +69,7 @@ describe('Reflection Evaluator', () => {
 
     // Arrange
     // Ensure mockMessage.content.channelType is defined for the roomType
-    mockMessage.content = { ...mockMessage.content, channelType: 'group' };
+    mockMessage.content = { ...mockMessage.content, channelType: ChannelType.GROUP };
     // Mock getRelationships and getMemories as they are called before composePrompt
     mockRuntime.getRelationships.mockResolvedValue([]);
     mockRuntime.getMemories.mockResolvedValue([]); // For knownFacts
@@ -100,7 +101,7 @@ describe('Reflection Evaluator', () => {
       expect.objectContaining({
         state: expect.objectContaining({
           ...(mockState.data?.values || {}), // Include actual values from mockState
-          roomType: 'group',
+          roomType: ChannelType.GROUP,
           senderId: 'test-entity-id',
           knownFacts: '', // Assuming formatFacts returns '' for empty knownFacts
           entitiesInRoom: JSON.stringify([
@@ -532,7 +533,7 @@ describe('Multiple Prompt Evaluator Factory', () => {
     });
 
     // Spy on logger
-    vi.spyOn(logger, 'warn').mockImplementation(() => {});
+    vi.spyOn(logger, 'warn').mockImplementation(() => { });
 
     // Call the handler - should not throw even with one prompt failing
     const result = await testEvaluator.handler(

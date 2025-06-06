@@ -4,6 +4,7 @@ import {
   Service,
   createUniqueUuid,
   logger,
+  validateUuid,
   type Content,
   type IAgentRuntime,
   type Memory,
@@ -65,6 +66,29 @@ export class MessageBusService extends Service {
     this.fetchAgentServers();
   }
 
+  private async getChannelParticipants(channelId: UUID): Promise<string[]> {
+    try {
+      const serverApiUrl = process.env.CENTRAL_MESSAGE_SERVER_URL || 'http://localhost:3000';
+      const response = await fetch(
+        `${serverApiUrl}/api/messages/central-channels/${channelId}/participants`
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.data) {
+          return data.data;
+        }
+      }
+      return [];
+    } catch (error) {
+      logger.error(
+        `[${this.runtime.character.name}] MessageBusService: Error fetching participants for channel ${channelId}:`,
+        error
+      );
+      return [];
+    }
+  }
+
   private async fetchAgentServers() {
     try {
       const serverApiUrl = process.env.CENTRAL_MESSAGE_SERVER_URL || 'http://localhost:3000';
@@ -107,118 +131,172 @@ export class MessageBusService extends Service {
     }
   }
 
+  private async validateServerSubscription(message: MessageServiceMessage): Promise<boolean> {
+    if (!this.subscribedServers.has(message.server_id)) {
+      logger.debug(
+        `[${this.runtime.character.name}] MessageBusService: Agent not subscribed to server ${message.server_id}, ignoring message`
+      );
+      return false;
+    }
+    logger.info(
+      `[${this.runtime.character.name}] MessageBusService: Passed server subscription check for ${message.server_id}`
+    );
+    return true;
+  }
+
+  private async validateNotSelfMessage(message: MessageServiceMessage): Promise<boolean> {
+    if (message.author_id === this.runtime.agentId) {
+      logger.debug(
+        `[${this.runtime.character.name}] MessageBusService: Agent is the author of the message, ignoring message`
+      );
+      return false;
+    }
+    return true;
+  }
+
+  private async ensureWorldAndRoomExist(
+    message: MessageServiceMessage
+  ): Promise<{ agentWorldId: UUID; agentRoomId: UUID }> {
+    const agentWorldId = createUniqueUuid(this.runtime, message.server_id);
+    const agentRoomId = createUniqueUuid(this.runtime, message.channel_id);
+
+    try {
+      await this.runtime.ensureWorldExists({
+        id: agentWorldId,
+        name: message.metadata?.serverName || `Server ${message.server_id.substring(0, 8)}`,
+        agentId: this.runtime.agentId,
+        serverId: message.server_id,
+        metadata: {
+          ...(message.metadata?.serverMetadata || {}),
+        },
+      });
+    } catch (error) {
+      if (error.message && error.message.includes('worlds_pkey')) {
+        logger.debug(
+          `[${this.runtime.character.name}] MessageBusService: World ${agentWorldId} already exists, continuing with message processing`
+        );
+      } else {
+        throw error;
+      }
+    }
+
+    try {
+      await this.runtime.ensureRoomExists({
+        id: agentRoomId,
+        name: message.metadata?.channelName || `Channel ${message.channel_id.substring(0, 8)}`,
+        agentId: this.runtime.agentId,
+        worldId: agentWorldId,
+        channelId: message.channel_id,
+        serverId: message.server_id,
+        source: message.source_type || 'central-bus',
+        type: message.metadata?.channelType || ChannelType.GROUP,
+        metadata: {
+          ...(message.metadata?.channelMetadata || {}),
+        },
+      });
+    } catch (error) {
+      if (error.message && error.message.includes('rooms_pkey')) {
+        logger.debug(
+          `[${this.runtime.character.name}] MessageBusService: Room ${agentRoomId} already exists, continuing with message processing`
+        );
+      } else {
+        throw error;
+      }
+    }
+
+    return { agentWorldId, agentRoomId };
+  }
+
+  private async ensureAuthorEntityExists(message: MessageServiceMessage): Promise<UUID> {
+    const agentAuthorEntityId = createUniqueUuid(this.runtime, message.author_id);
+
+    const authorEntity = await this.runtime.getEntityById(agentAuthorEntityId);
+    if (!authorEntity) {
+      await this.runtime.createEntity({
+        id: agentAuthorEntityId,
+        names: [message.author_display_name || `User-${message.author_id.substring(0, 8)}`],
+        agentId: this.runtime.agentId,
+        metadata: {
+          author_id: message.author_id,
+          source: message.source_type,
+        },
+      });
+    }
+
+    return agentAuthorEntityId;
+  }
+
+  private createAgentMemory(
+    message: MessageServiceMessage,
+    agentAuthorEntityId: UUID,
+    agentRoomId: UUID,
+    agentWorldId: UUID
+  ): Memory {
+    const messageContent: Content = {
+      text: message.content,
+      source: message.source_type || 'central-bus',
+      attachments: message.metadata?.attachments,
+      inReplyTo: message.in_reply_to_message_id
+        ? createUniqueUuid(this.runtime, message.in_reply_to_message_id)
+        : undefined,
+    };
+
+    return {
+      id: createUniqueUuid(this.runtime, message.id),
+      entityId: agentAuthorEntityId,
+      agentId: this.runtime.agentId,
+      roomId: agentRoomId,
+      worldId: agentWorldId,
+      content: messageContent,
+      createdAt: message.created_at,
+      metadata: {
+        type: 'message',
+        source: message.source_type || 'central-bus',
+        sourceId: message.id,
+        raw: {
+          ...message.raw_message,
+          senderName: message.author_display_name || `User-${message.author_id.substring(0, 8)}`,
+          senderId: message.author_id,
+        },
+      },
+    };
+  }
+
   public async handleIncomingMessage(message: MessageServiceMessage) {
     logger.info(
       `[${this.runtime.character.name}] MessageBusService: Received message from central bus`,
       { messageId: message.id }
     );
 
+    const participants = await this.getChannelParticipants(message.channel_id);
+
+    if (!participants.includes(this.runtime.agentId)) {
+      logger.info(
+        `[${this.runtime.character.name}] MessageBusService: Agent not a participant in channel ${message.channel_id}, ignoring message`
+      );
+      return;
+    }
+
+    logger.info(
+      `[${this.runtime.character.name}] MessageBusService: Agent is a participant in channel ${message.channel_id}, proceeding with message processing`
+    );
+
     try {
-      // Check if agent is subscribed to this server
-      if (!this.subscribedServers.has(message.server_id)) {
-        logger.debug(
-          `[${this.runtime.character.name}] MessageBusService: Agent not subscribed to server ${message.server_id}, ignoring message`
-        );
-        return;
-      }
+      if (!(await this.validateServerSubscription(message))) return;
+      if (!(await this.validateNotSelfMessage(message))) return;
 
-      if (
-        createUniqueUuid(this.runtime, message.author_id) === this.runtime.agentId &&
-        message.source_type !== 'eliza_gui' // Allow messages from GUI even if authorId maps to agent (e.g., agent talking to itself via GUI)
-      ) {
-        logger.debug(
-          `[${this.runtime.character.name}] MessageBusService: Skipping own message or non-GUI message from central bus potentially sent by self.`
-        );
-        return;
-      }
+      logger.info(
+        `[${this.runtime.character.name}] MessageBusService: All checks passed, proceeding to create agent memory and emit MESSAGE_RECEIVED event`
+      );
 
-      const agentWorldId = createUniqueUuid(this.runtime, message.server_id);
-      const agentRoomId = createUniqueUuid(this.runtime, message.channel_id);
-      const agentAuthorEntityId = createUniqueUuid(this.runtime, message.author_id);
-
-      try {
-        await this.runtime.ensureWorldExists({
-          id: agentWorldId,
-          name: message.metadata?.serverName || `Server ${message.server_id.substring(0, 8)}`,
-          agentId: this.runtime.agentId,
-          serverId: message.server_id,
-          metadata: {
-            ...(message.metadata?.serverMetadata || {}),
-          },
-        });
-      } catch (error) {
-        // Handle duplicate key constraint for worlds - this can happen with race conditions
-        if (error.message && error.message.includes('worlds_pkey')) {
-          logger.debug(
-            `[${this.runtime.character.name}] MessageBusService: World ${agentWorldId} already exists, continuing with message processing`
-          );
-        } else {
-          throw error; // Re-throw if it's a different error
-        }
-      }
-
-      try {
-        await this.runtime.ensureRoomExists({
-          id: agentRoomId,
-          name: message.metadata?.channelName || `Channel ${message.channel_id.substring(0, 8)}`,
-          agentId: this.runtime.agentId,
-          worldId: agentWorldId,
-          channelId: message.channel_id,
-          serverId: message.server_id,
-          source: message.source_type || 'central-bus',
-          type: message.metadata?.channelType || ChannelType.GROUP,
-          metadata: {
-            ...(message.metadata?.channelMetadata || {}),
-          },
-        });
-      } catch (error) {
-        // Handle duplicate key constraint for rooms - this can happen with race conditions
-        if (error.message && error.message.includes('rooms_pkey')) {
-          logger.debug(
-            `[${this.runtime.character.name}] MessageBusService: Room ${agentRoomId} already exists, continuing with message processing`
-          );
-        } else {
-          throw error; // Re-throw if it's a different error
-        }
-      }
-
-      const authorEntity = await this.runtime.getEntityById(agentAuthorEntityId);
-      if (!authorEntity) {
-        await this.runtime.createEntity({
-          id: agentAuthorEntityId,
-          names: [message.author_display_name || `User-${message.author_id.substring(0, 8)}`],
-          agentId: this.runtime.agentId,
-          metadata: {
-            author_id: message.author_id,
-            source: message.source_type,
-          },
-        });
-      }
-
-      const messageContent: Content = {
-        text: message.content,
-        source: message.source_type || 'central-bus',
-        attachments: message.metadata?.attachments, // Assuming attachments are passed in metadata
-        inReplyTo: message.in_reply_to_message_id
-          ? createUniqueUuid(this.runtime, message.in_reply_to_message_id)
-          : undefined,
-      };
-
-      const agentMemory: Memory = {
-        id: createUniqueUuid(this.runtime, message.id),
-        entityId: agentAuthorEntityId,
-        agentId: this.runtime.agentId,
-        roomId: agentRoomId,
-        worldId: agentWorldId,
-        content: messageContent,
-        createdAt: message.created_at,
-        metadata: {
-          type: 'message',
-          source: message.source_type || 'central-bus',
-          sourceId: message.id,
-          raw: message.raw_message,
-        },
-      };
+      const { agentWorldId, agentRoomId } = await this.ensureWorldAndRoomExist(message);
+      const agentAuthorEntityId = await this.ensureAuthorEntityExists(message);
+      const agentMemory = this.createAgentMemory(
+        message,
+        agentAuthorEntityId,
+        agentRoomId,
+        agentWorldId
+      );
 
       // Check if this memory already exists (in case of duplicate processing)
       const existingMemory = await this.runtime.getMemoryById(agentMemory.id);
@@ -233,12 +311,16 @@ export class MessageBusService extends Service {
         logger.info(
           `[${this.runtime.character.name}] Agent generated response for message. Preparing to send back to bus.`
         );
+
+        // Send response to central bus
         await this.sendAgentResponseToBus(
           agentRoomId,
           agentWorldId,
           responseContent,
-          agentMemory.id
+          agentMemory.id,
+          message
         );
+
         // The core runtime/bootstrap plugin will handle creating the agent's own memory of its response.
         // So, we return an empty array here as this callback's primary job is to ferry the response externally.
         return [];
@@ -261,7 +343,8 @@ export class MessageBusService extends Service {
     agentRoomId: UUID,
     agentWorldId: UUID,
     content: Content,
-    inReplyToAgentMemoryId?: UUID
+    inReplyToAgentMemoryId?: UUID,
+    originalMessage?: MessageServiceMessage
   ) {
     try {
       // Check if the agent decided to IGNORE the message
@@ -313,6 +396,10 @@ export class MessageBusService extends Service {
           agent_id: this.runtime.agentId,
           agentName: this.runtime.character.name,
           attachments: content.attachments,
+          channelType: originalMessage?.metadata?.channelType || room?.type,
+          isDm:
+            originalMessage?.metadata?.isDm ||
+            (originalMessage?.metadata?.channelType || room?.type) === ChannelType.DM,
         },
       };
 

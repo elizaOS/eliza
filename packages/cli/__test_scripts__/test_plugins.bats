@@ -69,32 +69,32 @@ create_test_project() {
 # -----------------------------------------------------------------------------
 @test "plugins add installs a plugin" {
   create_test_project test-add-project
-  run $ELIZAOS_CMD plugins add @elizaos/plugin-sql --no-env-prompt
+  run $ELIZAOS_CMD plugins add @elizaos/plugin-sql --skip-env-prompt
   [ "$status" -eq 0 ]
   grep -q '@elizaos/plugin-sql' package.json
 }
 
 @test "plugins install alias works" {
   create_test_project test-install-alias
-  run $ELIZAOS_CMD plugins install @elizaos/plugin-openai --no-env-prompt
+  run $ELIZAOS_CMD plugins install @elizaos/plugin-openai --skip-env-prompt
   [ "$status" -eq 0 ]
   grep -q '@elizaos/plugin-openai' package.json
 }
 
 @test "plugins add supports third-party plugins" {
   create_test_project test-third-party
-  run $ELIZAOS_CMD plugins add @fleek-platform/eliza-plugin-mcp --no-env-prompt
+  run $ELIZAOS_CMD plugins add @fleek-platform/eliza-plugin-mcp --skip-env-prompt
   [ "$status" -eq 0 ]
   grep -q '@fleek-platform/eliza-plugin-mcp' package.json
 }
 
 @test "plugins add supports GitHub URL installation" {
   create_test_project test-github-url
-  run $ELIZAOS_CMD plugins add https://github.com/fleek-platform/eliza-plugin-mcp --no-env-prompt
+  run $ELIZAOS_CMD plugins add https://github.com/fleek-platform/eliza-plugin-mcp --skip-env-prompt
   [ "$status" -eq 0 ]
 
   create_test_project test-github-shorthand
-  run $ELIZAOS_CMD plugins add github:elizaos-plugins/plugin-openrouter#1.x --no-env-prompt
+  run $ELIZAOS_CMD plugins add github:elizaos-plugins/plugin-openrouter#1.x --skip-env-prompt
   [ "$status" -eq 0 ]
   grep -q 'github:elizaos-plugins/plugin-openrouter#1.x' package.json
 }
@@ -104,7 +104,7 @@ create_test_project() {
 # -----------------------------------------------------------------------------
 @test "plugins installed-plugins shows installed plugins" {
   create_test_project test-installed-project
-  run $ELIZAOS_CMD plugins add @elizaos/plugin-openai --no-env-prompt
+  run $ELIZAOS_CMD plugins add @elizaos/plugin-openai --skip-env-prompt
   [ "$status" -eq 0 ]
   run $ELIZAOS_CMD plugins installed-plugins
   [ "$status" -eq 0 ]
@@ -116,7 +116,7 @@ create_test_project() {
 # -----------------------------------------------------------------------------
 @test "plugins remove uninstalls a plugin" {
   create_test_project test-remove-project
-  run $ELIZAOS_CMD plugins add @elizaos/plugin-sql --no-env-prompt
+  run $ELIZAOS_CMD plugins add @elizaos/plugin-sql --skip-env-prompt
   [ "$status" -eq 0 ]
   grep -q '@elizaos/plugin-sql' package.json
   run $ELIZAOS_CMD plugins remove @elizaos/plugin-sql
@@ -128,7 +128,7 @@ create_test_project() {
   create_test_project test-remove-aliases
 
   for p in @elizaos/plugin-sql @elizaos/plugin-openai @elizaos/plugin-anthropic; do
-    run $ELIZAOS_CMD plugins add "$p" --no-env-prompt
+    run $ELIZAOS_CMD plugins add "$p" --skip-env-prompt
     [ "$status" -eq 0 ]
   done
 
@@ -144,7 +144,7 @@ create_test_project() {
 # -----------------------------------------------------------------------------
 @test "plugins add fails for missing plugin" {
   create_test_project proj-missing-plugin
-  run $ELIZAOS_CMD plugins add missing --no-env-prompt
+  run $ELIZAOS_CMD plugins add missing --skip-env-prompt
   [ "$status" -ne 0 ]
   [[ "$output" =~ "not found in registry" ]] || [[ "${error:-}" =~ "not found in registry" ]]
 }
@@ -154,14 +154,14 @@ create_test_project() {
 # -----------------------------------------------------------------------------
 @test "plugins add via direct GitHub URL" {
   create_test_project proj-direct-github-url
-  run $ELIZAOS_CMD plugins add https://github.com/fleek-platform/eliza-plugin-mcp --no-env-prompt
+  run $ELIZAOS_CMD plugins add https://github.com/fleek-platform/eliza-plugin-mcp --skip-env-prompt
   [ "$status" -eq 0 ]
   grep -q '@fleek-platform/eliza-plugin-mcp' package.json
 }
 
 @test "plugins add via GitHub shorthand URL" {
   create_test_project proj-shorthand-github-url
-  run $ELIZAOS_CMD plugins add github:elizaos-plugins/plugin-openrouter#1.x --no-env-prompt
+  run $ELIZAOS_CMD plugins add github:elizaos-plugins/plugin-openrouter#1.x --skip-env-prompt
   [ "$status" -eq 0 ]
   grep -q 'github:elizaos-plugins/plugin-openrouter#1.x' package.json
 }

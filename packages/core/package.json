@@ -36,7 +36,7 @@
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "dev": "tsup --watch",
     "build:docs": "cd docs && bun run build",
-    "test": "vitest run",
+    "test": "vitest run --coverage",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "format": "prettier --write ./src",

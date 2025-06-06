@@ -39,7 +39,7 @@ echo ""
 echo "Checking for Claude Code..."
 if ! command -v claude &> /dev/null; then
     echo "❌ Claude Code not found!"
-    echo "Please install it first: npm install -g @anthropic-ai/claude-code"
+    echo "Please install it first: bun install -g @anthropic-ai/claude-code"
     exit 1
 else
     echo "✓ Claude Code is installed"
@@ -85,7 +85,7 @@ if [ ${PIPESTATUS[0]} -eq 0 ]; then
     echo "Next steps:"
     echo "  1. cd /tmp/plugin-giphy"
     echo "  2. git diff main...1.x-claude  # Review changes"
-    echo "  3. npm test                    # Run tests"
+    echo "  3. bun test                    # Run tests"
     echo "  4. git push origin 1.x-claude  # Push branch"
 else
     echo ""

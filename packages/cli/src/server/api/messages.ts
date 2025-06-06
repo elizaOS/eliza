@@ -225,7 +225,9 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
 
           // Determine if this is likely a DM based on the context
           const isDmChannel =
-            metadata?.isDm || metadata?.channelType === 'DM' || metadata?.channel_type === 'DM';
+            metadata?.isDm ||
+            metadata?.channelType === ChannelType.DM ||
+            metadata?.channel_type === ChannelType.DM;
 
           const channelData = {
             id: channelIdParam as UUID, // Use the specific channel ID from the URL
@@ -239,7 +241,7 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
               created_by: 'gui_auto_creation',
               created_for_user: author_id,
               created_at: new Date().toISOString(),
-              channel_type: isDmChannel ? 'DM' : 'GROUP',
+              channel_type: isDmChannel ? ChannelType.DM : ChannelType.GROUP,
               ...metadata,
             },
           };
@@ -268,7 +270,7 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
 
           await serverInstance.createChannel(channelData, participants);
           logger.info(
-            `[Messages Router] Auto-created ${isDmChannel ? 'DM' : 'group'} channel ${channelIdParam} for message submission with ${participants.length} participants`
+            `[Messages Router] Auto-created ${isDmChannel ? ChannelType.DM : ChannelType.GROUP} channel ${channelIdParam} for message submission with ${participants.length} participants`
           );
         } catch (createError: any) {
           logger.error(
@@ -359,12 +361,24 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
     try {
       const messages = await serverInstance.getMessagesForChannel(channelId, limit, beforeDate);
       // Transform to MessageService structure if GUI expects timestamps as numbers, or align types
-      const messagesForGui = messages.map((msg) => ({
-        ...msg,
-        created_at: new Date(msg.createdAt).getTime(), // Ensure timestamp number
-        updated_at: new Date(msg.updatedAt).getTime(),
-        // Ensure other fields align with client's MessageServiceStructure / ServerMessage
-      }));
+      const messagesForGui = messages.map((msg) => {
+        // Extract thought and actions from rawMessage for historical messages
+        const rawMessage =
+          typeof msg.rawMessage === 'string' ? JSON.parse(msg.rawMessage) : msg.rawMessage;
+
+        return {
+          ...msg,
+          created_at: new Date(msg.createdAt).getTime(), // Ensure timestamp number
+          updated_at: new Date(msg.updatedAt).getTime(),
+          // Include thought and actions from rawMessage in metadata for client compatibility
+          metadata: {
+            ...msg.metadata,
+            thought: rawMessage?.thought,
+            actions: rawMessage?.actions,
+          },
+          // Ensure other fields align with client's MessageServiceStructure / ServerMessage
+        };
+      });
       res.json({ success: true, data: { messages: messagesForGui } });
     } catch (error) {
       logger.error(

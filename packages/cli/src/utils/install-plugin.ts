@@ -5,6 +5,7 @@ import { loadPluginModule } from './load-plugin';
 import { executeInstallation } from './package-manager';
 import { fetchPluginRegistry } from './plugin-discovery';
 import { normalizePluginName } from './registry';
+import { detectPluginContext } from './plugin-context';
 
 /**
  * Get the CLI's installation directory when running globally
@@ -119,6 +120,16 @@ export async function installPlugin(
   versionSpecifier?: string
 ): Promise<boolean> {
   logger.debug(`Installing plugin: ${packageName}`);
+
+  // Check if we're trying to install a plugin into its own directory
+  const context = detectPluginContext(packageName);
+  if (context.isLocalDevelopment) {
+    logger.warn(`Prevented self-installation of plugin ${packageName}`);
+    logger.info(
+      `You're developing this plugin locally. Use 'bun run build' to build it instead of installing.`
+    );
+    return false;
+  }
 
   const cliDir = getCliDirectory();
 

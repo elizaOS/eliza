@@ -299,7 +299,7 @@ export function createMockMemory(overrides: Partial<Memory> = {}): Partial<Memor
     agentId: 'test-agent-id' as UUID,
     content: {
       text: 'Test message',
-      channelType: 'GROUP',
+      channelType: ChannelType.GROUP,
     } as Content,
     createdAt: Date.now(),
     ...overrides,
@@ -322,7 +322,7 @@ export function createMockState(overrides: Partial<State> = {}): Partial<State> 
     data: {
       room: {
         id: 'test-room-id',
-        type: 'group',
+        type: ChannelType.GROUP,
         worldId: 'test-world-id',
         serverId: 'test-server-id',
       },

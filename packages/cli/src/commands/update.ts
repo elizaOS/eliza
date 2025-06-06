@@ -1,4 +1,13 @@
-import { buildProject, displayBanner, executeInstallation, getPackageManager, handleError, isGlobalInstallation, isRunningViaBunx, isRunningViaNpx } from '@/src/utils';
+import {
+  buildProject,
+  displayBanner,
+  executeInstallation,
+  getPackageManager,
+  handleError,
+  isGlobalInstallation,
+  isRunningViaBunx,
+  isRunningViaNpx,
+} from '@/src/utils';
 import { logger } from '@elizaos/core';
 import { Command } from 'commander';
 import { execa } from 'execa';
@@ -316,9 +325,9 @@ export const update = new Command()
         if (isNpx || isBunx) {
           console.warn('CLI update is not available when running via npx or bunx.');
           console.info('Please install the CLI globally:');
-          console.info('  npm install -g @elizaos/cli');
+          console.info('  bun install -g @elizaos/cli');
           console.info('  # or');
-          console.info('  bun add -g @elizaos/cli');
+          console.info('  npm install -g @elizaos/cli');
 
           if (!updatePackages) return;
         } else {
@@ -346,12 +355,16 @@ export const update = new Command()
 
         if (directoryInfo.elizaPackageCount === 0) {
           console.info('No ElizaOS packages found in this project.');
-          console.info("This might be a new project that hasn't installed ElizaOS dependencies yet.");
+          console.info(
+            "This might be a new project that hasn't installed ElizaOS dependencies yet."
+          );
           console.info('Consider adding ElizaOS packages first, such as: bun add @elizaos/core');
           return;
         }
 
-        console.info(`Found ${directoryInfo.elizaPackageCount} ElizaOS package(s) to check for updates`);
+        console.info(
+          `Found ${directoryInfo.elizaPackageCount} ElizaOS package(s) to check for updates`
+        );
 
         await updateDependencies(cwd, isPlugin, options.check, options.skipBuild);
 

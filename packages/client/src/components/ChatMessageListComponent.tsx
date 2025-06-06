@@ -3,7 +3,7 @@ import { Avatar, AvatarImage } from '@/components/ui/avatar';
 import { ChatMessageList } from '@/components/ui/chat/chat-message-list';
 import { ChatBubble } from '@/components/ui/chat/chat-bubble';
 import { MemoizedMessageContent } from './chat';
-import type { UUID, Agent } from '@elizaos/core';
+import { UUID, Agent, ChannelType } from '@elizaos/core';
 import type { UiMessage } from '@/hooks/use-query-hooks';
 import { cn } from '@/lib/utils';
 import { getAgentAvatar } from '@/lib/utils';
@@ -11,7 +11,7 @@ import { getAgentAvatar } from '@/lib/utils';
 interface ChatMessageListComponentProps {
   messages: UiMessage[];
   isLoadingMessages: boolean;
-  chatType: 'DM' | 'GROUP';
+  chatType: ChannelType.GROUP | ChannelType.DM;
   currentClientEntityId: string;
   targetAgentData?: Agent;
   allAgents: Partial<Agent>[];
@@ -47,7 +47,7 @@ export const ChatMessageListComponent: React.FC<ChatMessageListComponentProps> =
 }) => {
   // Filter messages based on selected agent in group chat
   const filteredMessages = React.useMemo(() => {
-    if (chatType === 'GROUP' && selectedGroupAgentId) {
+    if (chatType === ChannelType.GROUP && selectedGroupAgentId) {
       return messages.filter((message) => {
         // Show user messages and messages from selected agent
         const isUser = message.senderId === currentClientEntityId;
@@ -65,7 +65,7 @@ export const ChatMessageListComponent: React.FC<ChatMessageListComponentProps> =
       isAtBottom={isAtBottom}
       scrollToBottom={scrollToBottom}
       disableAutoScroll={disableAutoScroll}
-      className="flex-1 w-full"
+      className="h-full w-full"
     >
       {isLoadingMessages && filteredMessages.length === 0 && (
         <div className="flex flex-1 justify-center items-center">
@@ -78,22 +78,21 @@ export const ChatMessageListComponent: React.FC<ChatMessageListComponentProps> =
         </div>
       )}
       {filteredMessages.map((message: UiMessage, index: number) => {
-        const isUser =
-          chatType === 'DM' ? !message.isAgent : message.senderId === currentClientEntityId;
+        const isUser = message.senderId === currentClientEntityId;
         const shouldAnimate =
           index === filteredMessages.length - 1 &&
           message.isAgent &&
           message.id === animatedMessageId;
 
         const senderAgent =
-          chatType === 'GROUP' && !isUser && getAgentInMessage
+          chatType === ChannelType.GROUP && !isUser && getAgentInMessage
             ? getAgentInMessage(message.senderId)
             : undefined;
 
         return (
           <div
             key={`${message.id}-${message.createdAt}`}
-            className={cn('flex flex-col gap-1 p-1', isUser ? 'justify-end' : 'justify-start')}
+            className={cn('flex gap-1 p-1', isUser ? 'justify-end' : 'justify-start')}
           >
             <ChatBubble
               variant={isUser ? 'sent' : 'received'}
@@ -102,29 +101,27 @@ export const ChatMessageListComponent: React.FC<ChatMessageListComponentProps> =
               {!isUser && (
                 <Avatar className="size-8 border rounded-full select-none mb-2">
                   <AvatarImage
-                    src={
-                      getAgentAvatar(
-                        chatType === 'DM'
-                          ? targetAgentData
-                          : senderAgent ||
-                          (agentAvatarMap && message.senderId && allAgents
-                            ? allAgents.find((a: Partial<Agent>) => a.id === message.senderId)
-                            : undefined)
-                      )
-                    }
+                    src={getAgentAvatar(
+                      chatType === ChannelType.DM
+                        ? targetAgentData
+                        : senderAgent ||
+                            (agentAvatarMap && message.senderId && allAgents
+                              ? allAgents.find((a: Partial<Agent>) => a.id === message.senderId)
+                              : undefined)
+                    )}
                   />
                 </Avatar>
               )}
               <MemoizedMessageContent
                 message={message}
                 agentForTts={
-                  chatType === 'DM' ? targetAgentData : (senderAgent as Agent | undefined)
+                  chatType === ChannelType.DM ? targetAgentData : (senderAgent as Agent | undefined)
                 }
                 shouldAnimate={shouldAnimate}
                 onDelete={onDeleteMessage}
                 isUser={isUser}
-                getAgentInMessage={chatType === 'GROUP' ? getAgentInMessage : undefined}
-                agentAvatarMap={chatType === 'GROUP' ? agentAvatarMap : undefined}
+                getAgentInMessage={chatType === ChannelType.GROUP ? getAgentInMessage : undefined}
+                agentAvatarMap={chatType === ChannelType.GROUP ? agentAvatarMap : undefined}
               />
             </ChatBubble>
           </div>
