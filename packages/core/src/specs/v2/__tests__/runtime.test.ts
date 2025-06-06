@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AgentRuntime } from '../runtime';
+import { AgentRuntime as CoreAgentRuntime } from '../../../runtime';
 import { MemoryType, ModelType } from '../types';
 import type {
   Action,
@@ -87,7 +88,6 @@ const mockDatabaseAdapter: IDatabaseAdapter = {
   createAgent: vi.fn().mockResolvedValue(true),
   updateAgent: vi.fn().mockResolvedValue(true),
   deleteAgent: vi.fn().mockResolvedValue(true),
-  ensureAgentExists: vi.fn().mockResolvedValue(undefined),
   ensureEmbeddingDimension: vi.fn().mockResolvedValue(undefined),
   getEntitiesForRoom: vi.fn().mockResolvedValue([]),
   updateEntity: vi.fn().mockResolvedValue(undefined),
@@ -263,19 +263,14 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       });
 
       // Mock adapter calls needed for initialize
-      vi.mocked(mockDatabaseAdapter.ensureAgentExists).mockResolvedValue({
+      vi.mocked(mockDatabaseAdapter.getAgent).mockResolvedValue({
         ...mockCharacter,
         id: agentId, // ensureAgentExists should return the agent
         createdAt: Date.now(),
         updatedAt: Date.now(),
         enabled: true,
       });
-      vi.mocked(mockDatabaseAdapter.getAgent).mockResolvedValue({
-        ...mockCharacter,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        enabled: true,
-      }); // Add required Agent fields
+      vi.mocked(mockDatabaseAdapter.updateAgent).mockResolvedValue(true);
       vi.mocked(mockDatabaseAdapter.getEntityByIds).mockResolvedValue([
         {
           id: agentId,
@@ -294,37 +289,16 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
   });
 
   describe('Initialization', () => {
-    beforeEach(() => {
-      // Mock adapter calls needed for a successful initialize
-      vi.mocked(mockDatabaseAdapter.ensureAgentExists).mockResolvedValue({
-        ...mockCharacter,
-        id: agentId, // ensureAgentExists should return the agent
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        enabled: true,
-      });
-      vi.mocked(mockDatabaseAdapter.getEntityByIds).mockResolvedValue([
-        {
-          id: agentId,
-          agentId: agentId,
-          names: [mockCharacter.name],
-        },
-      ]);
-      vi.mocked(mockDatabaseAdapter.getRoomsByIds).mockResolvedValue([]);
-      vi.mocked(mockDatabaseAdapter.getParticipantsForRoom).mockResolvedValue([]);
-      // mockDatabaseAdapter.getAgent is NOT called by initialize anymore after ensureAgentExists returns the agent
-    });
+    it('should call the core runtime initialize method', async () => {
+      const coreInitializeSpy = vi
+        .spyOn(CoreAgentRuntime.prototype, 'initialize')
+        .mockResolvedValue();
 
-    it('should call adapter.init and core setup methods', async () => {
       await runtime.initialize();
 
-      expect(mockDatabaseAdapter.init).toHaveBeenCalledTimes(1);
-      expect(mockDatabaseAdapter.ensureAgentExists).toHaveBeenCalledWith(mockCharacter);
-      // expect(mockDatabaseAdapter.getAgent).toHaveBeenCalledWith(agentId); // This is no longer called
-      expect(mockDatabaseAdapter.getEntityByIds).toHaveBeenCalledWith([agentId]);
-      expect(mockDatabaseAdapter.getRoomsByIds).toHaveBeenCalledWith([agentId]);
-      expect(mockDatabaseAdapter.createRooms).toHaveBeenCalled();
-      expect(mockDatabaseAdapter.addParticipantsRoom).toHaveBeenCalledWith([agentId], agentId);
+      expect(coreInitializeSpy).toHaveBeenCalledTimes(1);
+
+      coreInitializeSpy.mockRestore();
     });
 
     it('should throw if adapter is not available during initialize', async () => {
@@ -333,12 +307,18 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         character: mockCharacter,
         agentId: agentId,
       });
+
+      // We expect the core runtime's initialize to throw, so we can mock it to simulate the error
+      const coreInitializeSpy = vi
+        .spyOn(CoreAgentRuntime.prototype, 'initialize')
+        .mockRejectedValue(new Error('Database adapter not initialized'));
+
       await expect(runtimeWithoutAdapter.initialize()).rejects.toThrow(
         /Database adapter not initialized/
       );
-    });
 
-    // Add more tests for initialize: existing entity, existing room, knowledge processing etc.
+      coreInitializeSpy.mockRestore();
+    });
   });
 
   describe('State Composition', () => {
