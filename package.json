@@ -10,7 +10,7 @@
     "start": "turbo run start --filter=./packages/cli --log-prefix=none --force",
     "start:debug": "cross-env NODE_NO_WARNINGS=1 LOG_LEVEL=debug elizaos start",
     "start:app": "turbo run start --filter=./packages/app",
-    "dev": "bun run scripts/dev.js",
+    "dev": "bun run scripts/dev-watch.js",
     "build:docs": "turbo run build --filter=@elizaos/docs",
     "build": "turbo run build --filter=!@elizaos/docs --force",
     "build:client": "turbo run build --filter=@elizaos/client",
@@ -75,6 +75,7 @@
     "utf-8-validate"
   ],
   "dependencies": {
-    "chokidar": "^4.0.3"
+    "chokidar": "^4.0.3",
+    "ws": "^8.18.0"
   }
 }
