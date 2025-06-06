@@ -533,6 +533,17 @@ export default function Chat({
       updateMessage(messageId, updates);
       if (!updates.isLoading && updates.isLoading !== undefined) safeScrollToBottom();
     },
+    onDeleteMessage: (messageId: string) => {
+      removeMessage(messageId);
+    },
+    onClearMessages: () => {
+      // Clear the local message list to prevent UI flicker during refetch
+      setMessages([]);
+      // Invalidate the query to trigger a refetch
+      queryClient.invalidateQueries({
+        queryKey: ['channelMessages', finalChannelIdForHooks, finalServerIdForHooks],
+      });
+    },
     onInputDisabledChange: (disabled: boolean) => updateChatState({ inputDisabled: disabled }),
   });
 

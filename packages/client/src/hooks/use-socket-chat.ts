@@ -4,6 +4,8 @@ import type {
   MessageBroadcastData,
   MessageCompleteData,
   ControlMessageData,
+  MessageDeletedData,
+  ChannelClearedData,
 } from '@/lib/socketio-manager';
 import { UUID, Agent, ChannelType } from '@elizaos/core';
 import type { UiMessage } from './use-query-hooks';
@@ -19,6 +21,8 @@ interface UseSocketChatProps {
   messages: UiMessage[];
   onAddMessage: (message: UiMessage) => void;
   onUpdateMessage: (messageId: string, updates: Partial<UiMessage>) => void;
+  onDeleteMessage: (messageId: string) => void;
+  onClearMessages: () => void;
   onInputDisabledChange: (disabled: boolean) => void;
 }
 
@@ -31,6 +35,8 @@ export function useSocketChat({
   messages,
   onAddMessage,
   onUpdateMessage,
+  onDeleteMessage,
+  onClearMessages,
   onInputDisabledChange,
 }: UseSocketChatProps) {
   const socketIOManager = SocketIOManager.getInstance();
@@ -180,6 +186,20 @@ export function useSocketChat({
       }
     };
 
+    const handleMessageDeleted = (data: MessageDeletedData) => {
+      const deletedChannelId = data.channelId || data.roomId;
+      if (deletedChannelId === channelId && data.messageId) {
+        onDeleteMessage(data.messageId);
+      }
+    };
+
+    const handleChannelCleared = (data: ChannelClearedData) => {
+      const clearedChannelId = data.channelId || data.roomId;
+      if (clearedChannelId === channelId) {
+        onClearMessages();
+      }
+    };
+
     const msgSub = socketIOManager.evtMessageBroadcast.attach(
       (d: MessageBroadcastData) => (d.channelId || d.roomId) === channelId,
       handleMessageBroadcasting
@@ -191,6 +211,14 @@ export function useSocketChat({
     const controlSub = socketIOManager.evtControlMessage.attach(
       (d: ControlMessageData) => (d.channelId || d.roomId) === channelId,
       handleControlMessage
+    );
+    const deleteSub = socketIOManager.evtMessageDeleted.attach(
+      (d: MessageDeletedData) => (d.channelId || d.roomId) === channelId,
+      handleMessageDeleted
+    );
+    const clearSub = socketIOManager.evtChannelCleared.attach(
+      (d: ChannelClearedData) => (d.channelId || d.roomId) === channelId,
+      handleChannelCleared
     );
 
     return () => {
@@ -207,10 +235,12 @@ export function useSocketChat({
           );
         }
       }
-      msgSub?.detach();
-      completeSub?.detach();
-      controlSub?.detach();
+      detachSubscriptions([msgSub, completeSub, controlSub, deleteSub, clearSub]);
     };
+
+    function detachSubscriptions(subscriptions: Array<{ detach: () => void } | undefined>) {
+      subscriptions.forEach((sub) => sub?.detach());
+    }
   }, [channelId, currentUserId, socketIOManager]);
 
   return {

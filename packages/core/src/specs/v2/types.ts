@@ -1859,7 +1859,11 @@ export enum EventType {
   // Message events
   MESSAGE_RECEIVED = 'MESSAGE_RECEIVED',
   MESSAGE_SENT = 'MESSAGE_SENT',
+  MESSAGE_DELETED = 'MESSAGE_DELETED',
 
+  // Channel events
+  CHANNEL_CLEARED = 'CHANNEL_CLEARED',
+  
   // Voice events
   VOICE_MESSAGE_RECEIVED = 'VOICE_MESSAGE_RECEIVED',
   VOICE_MESSAGE_SENT = 'VOICE_MESSAGE_SENT',
@@ -2025,6 +2029,7 @@ export interface EventPayloadMap {
   [EventType.ENTITY_UPDATED]: EntityPayload;
   [EventType.MESSAGE_RECEIVED]: MessagePayload;
   [EventType.MESSAGE_SENT]: MessagePayload;
+  [EventType.MESSAGE_DELETED]: MessagePayload;
   [EventType.REACTION_RECEIVED]: MessagePayload;
   [EventType.POST_GENERATED]: InvokePayload;
   [EventType.INTERACTION_RECEIVED]: MessagePayload;
@@ -2036,6 +2041,7 @@ export interface EventPayloadMap {
   [EventType.EVALUATOR_STARTED]: EvaluatorEventPayload;
   [EventType.EVALUATOR_COMPLETED]: EvaluatorEventPayload;
   [EventType.MODEL_USED]: ModelEventPayload;
+  [EventType.CHANNEL_CLEARED]: MessagePayload;
 }
 
 /**

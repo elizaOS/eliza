@@ -58,9 +58,10 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
         const existingChannel = await serverInstance.getChannelDetails(channelIdParam);
         channelExists = !!existingChannel;
         logger.info(`[Messages Router] Channel ${channelIdParam} exists: ${channelExists}`);
-      } catch (error: any) {
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
         logger.info(
-          `[Messages Router] Channel ${channelIdParam} does not exist, will create it. Error: ${error.message}`
+          `[Messages Router] Channel ${channelIdParam} does not exist, will create it. Error: ${errorMessage}`
         );
       }
 
@@ -110,12 +111,12 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
           };
 
           logger.info(
-            `[Messages Router] Creating channel with data:`,
+            '[Messages Router] Creating channel with data:',
             JSON.stringify(channelData, null, 2)
           );
 
           // For DM channels, we need to determine the participants
-          let participants = [author_id as UUID];
+          const participants = [author_id as UUID];
           if (isDmChannel) {
             // Try to extract the other participant from metadata
             const otherParticipant = metadata?.targetUserId || metadata?.recipientId;
@@ -135,14 +136,15 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
           logger.info(
             `[Messages Router] Auto-created ${isDmChannel ? ChannelType.DM : ChannelType.GROUP} channel ${channelIdParam} for message submission with ${participants.length} participants`
           );
-        } catch (createError: any) {
+        } catch (createError: unknown) {
+          const errorMessage = createError instanceof Error ? createError.message : String(createError);
           logger.error(
             `[Messages Router] Failed to auto-create channel ${channelIdParam}:`,
             createError
           );
           return res
             .status(500)
-            .json({ success: false, error: `Failed to create channel: ${createError.message}` });
+            .json({ success: false, error: `Failed to create channel: ${errorMessage}` });
         }
       } else {
         logger.info(
@@ -164,8 +166,12 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
 
       const createdRootMessage = await serverInstance.createMessage(newRootMessageData);
 
+      if (!createdRootMessage.id) {
+        throw new Error('Created message does not have an ID');
+      }
+
       const messageForBus: MessageService = {
-        id: createdRootMessage.id!,
+        id: createdRootMessage.id,
         channel_id: createdRootMessage.channelId,
         server_id: server_id as UUID,
         author_id: createdRootMessage.authorId,
@@ -212,8 +218,8 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
   // GET messages for a central channel
   router.get('/central-channels/:channelId/messages', async (req, res) => {
     const channelId = validateUuid(req.params.channelId);
-    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
-    const before = req.query.before ? parseInt(req.query.before as string, 10) : undefined;
+    const limit = req.query.limit ? Number.parseInt(req.query.limit as string, 10) : 50;
+    const before = req.query.before ? Number.parseInt(req.query.before as string, 10) : undefined;
     const beforeDate = before ? new Date(before) : undefined;
 
     if (!channelId) {
@@ -349,15 +355,17 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
       const channel = await serverInstance.findOrCreateCentralDmChannel(
         currentUserId,
         targetUserId,
-        dmServerIdToUse! // dmServerIdToUse will be set by this point
+        dmServerIdToUse
       );
       res.json({ success: true, data: channel });
-    } catch (error: any) {
-      logger.error(`[Messages Router /dm-channel] Error finding/creating DM channel:`, {
+    } catch (error: unknown) {
+      const errorDetails = error instanceof Error ? {
         message: error.message,
         stack: error.stack,
         originalError: error,
-      });
+      } : { message: String(error) };
+      
+      logger.error('Error finding/creating DM channel:', errorDetails);
       res.status(500).json({ success: false, error: 'Failed to find or create DM channel' });
     }
   });
@@ -405,14 +413,15 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
       );
 
       res.status(201).json({ success: true, data: newChannel });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       logger.error(
         '[Messages Router /central-channels] Error creating group channel:',
-        error.message
+        errorMessage
       );
       res
         .status(500)
-        .json({ success: false, error: 'Failed to create group channel', details: error.message });
+        .json({ success: false, error: 'Failed to create group channel', details: errorMessage });
     }
   });
 
@@ -460,7 +469,19 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
       return res.status(400).json({ success: false, error: 'Invalid channelId or messageId' });
     }
     try {
+      // First, delete the message from central database
       await serverInstance.deleteMessage(messageId);
+      logger.info(`[Messages Router] Deleted message ${messageId} from central database`);
+      
+      // Then emit message_deleted event to internal bus for agent memory cleanup
+      const deletedMessagePayload = {
+        messageId: messageId,
+        channelId: channelId,
+      };
+      
+      internalMessageBus.emit('message_deleted', deletedMessagePayload);
+      logger.info(`[Messages Router] Emitted message_deleted event to internal bus for message ${messageId}`);
+      
       // Also, emit an event via SocketIO to inform clients about the deletion
       if (serverInstance.socketIO) {
         serverInstance.socketIO.to(channelId).emit('messageDeleted', {
@@ -485,7 +506,16 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
       return res.status(400).json({ success: false, error: 'Invalid channelId' });
     }
     try {
+      // Clear all messages from central database
       await serverInstance.clearChannelMessages(channelId);
+      
+      // Emit to internal bus for agent memory cleanup  
+      const channelClearedPayload = {
+        channelId: channelId,
+      };
+      internalMessageBus.emit('channel_cleared', channelClearedPayload);
+      logger.info(`[Messages Router] Emitted channel_cleared event to internal bus for channel ${channelId}`);
+      
       // Also, emit an event via SocketIO to inform clients about the channel clear
       if (serverInstance.socketIO) {
         serverInstance.socketIO.to(channelId).emit('channelCleared', {
@@ -568,7 +598,7 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
 
       // Enhanced security validation
       // Validate MIME type
-      if (!ALLOWED_MEDIA_MIME_TYPES.includes(mediaFile.mimetype as any)) {
+      if (!ALLOWED_MEDIA_MIME_TYPES.includes(mediaFile.mimetype as typeof ALLOWED_MEDIA_MIME_TYPES[number])) {
         res.status(400).json({ success: false, error: `Invalid file type: ${mediaFile.mimetype}` });
         return;
       }
@@ -608,9 +638,10 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
             size: mediaFile.size,
           },
         });
-      } catch (error: any) {
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
         logger.error(
-          `[MessagesRouter /upload-media] Error processing upload for channel ${channelId}: ${error.message}`,
+          `[MessagesRouter /upload-media] Error processing upload for channel ${channelId}: ${errorMessage}`,
           error
         );
         res.status(500).json({ success: false, error: 'Failed to process media upload' });
