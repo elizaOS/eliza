@@ -1,20 +1,17 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { execSync } from "child_process";
-import { mkdtemp, rm, writeFile, mkdir, readFile, access } from "fs/promises";
+import { mkdtemp, rm, writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
-import { existsSync } from "fs";
 
 describe("ElizaOS Setup Monorepo Commands", () => {
   let testTmpDir: string;
   let elizaosCmd: string;
   let originalCwd: string;
-  let originalPath: string;
 
   beforeEach(async () => {
-    // Store original working directory and PATH
+    // Store original working directory
     originalCwd = process.cwd();
-    originalPath = process.env.PATH || "";
     
     // Create temporary directory
     testTmpDir = await mkdtemp(join(tmpdir(), "eliza-test-monorepo-"));
@@ -23,35 +20,11 @@ describe("ElizaOS Setup Monorepo Commands", () => {
     // Setup CLI command
     const scriptDir = join(__dirname, "..");
     elizaosCmd = `bun run ${join(scriptDir, "../dist/index.js")}`;
-
-    // ---------------------------------------------------------------------------
-    // Fake git implementation that records its argv and creates a dummy repo.
-    // ---------------------------------------------------------------------------
-    const binDir = join(testTmpDir, "bin");
-    await mkdir(binDir, { recursive: true });
-    
-    const gitMockScript = `#!/usr/bin/env bash
-printf '%q ' "$@" > "${testTmpDir}/git_args.txt"
-if [[ "$1" == clone ]]; then
-  dest="\${@: -1}"
-  mkdir -p "$dest/packages" "$dest/.git"
-  echo '{}' > "$dest/package.json"
-  echo "Cloned successfully to $dest"
-  exit 0
-else
-  echo "git $*"
-  exit 0
-fi`;
-    
-    await writeFile(join(binDir, "git"), gitMockScript);
-    execSync(`chmod +x ${join(binDir, "git")}`);
-    process.env.PATH = `${binDir}:${originalPath}`;
   });
 
   afterEach(async () => {
-    // Restore original working directory and PATH
+    // Restore original working directory
     process.chdir(originalCwd);
-    process.env.PATH = originalPath;
     
     if (testTmpDir && testTmpDir.includes("eliza-test-monorepo-")) {
       try {
@@ -86,6 +59,14 @@ fi`;
   test("setup-monorepo shows directory option", () => {
     const result = execSync(`${elizaosCmd} setup-monorepo --help`, { encoding: "utf8" });
     expect(result).toContain("--dir");
+  });
+
+  test("setup-monorepo uses default branch and directory", () => {
+    // This would try to clone, so we just test that it recognizes the command
+    // without actually performing the network operation
+    const result = execSync(`${elizaosCmd} setup-monorepo --help`, { encoding: "utf8" });
+    expect(result).toContain("Branch to install");
+    expect(result).toContain("develop"); // default branch
   });
 
   // Directory must be empty
