@@ -1,3 +1,4 @@
+import { Separator } from '@/components/ui/separator';
 import CopyButton from '@/components/copy-button';
 import DeleteButton from '@/components/delete-button';
 import RetryButton from '@/components/retry-button';
@@ -892,10 +893,11 @@ export default function Chat({
                 {chatType === ChannelType.DM ? 'Delete' : 'Clear'}
               </span>
             </Button>
+            <Separator orientation="vertical" className="h-8" />
             <Button
               variant="ghost"
               size="sm"
-              className="xl:px-3 xl:h-8 h-8 w-8 xl:w-auto"
+              className="xl:px-3 xl:h-8 h-8 w-8 xl:w-auto ml-3"
               onClick={() => updateChatState({ showSidebar: !chatState.showSidebar })}
             >
               {chatState.showSidebar ? (
