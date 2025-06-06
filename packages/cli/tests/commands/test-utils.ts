@@ -28,32 +28,36 @@ export async function setupTestEnvironment(): Promise<TestContext> {
  * Standard cleanup for CLI tests - restores directory and removes temp files
  */
 export async function cleanupTestEnvironment(context: TestContext): Promise<void> {
-  // Only change directory if the original directory still exists
-  if (existsSync(context.originalCwd)) {
-    try {
-      process.chdir(context.originalCwd);
-    } catch (e) {
-      // If we can't change back, try to change to a safe directory
-      try {
-        process.chdir(tmpdir());
-      } catch (e2) {
-        // Ignore if we can't even change to temp dir
-      }
-    }
-  } else {
-    // If original directory doesn't exist, change to temp dir as fallback
-    try {
-      process.chdir(tmpdir());
-    } catch (e) {
-      // Ignore if we can't change to temp dir
-    }
-  }
+  safeChangeDirectory(context.originalCwd);
   
   if (context.testTmpDir && context.testTmpDir.includes("eliza-test-")) {
     try {
       await rm(context.testTmpDir, { recursive: true });
     } catch (e) {
       // Ignore cleanup errors
+    }
+  }
+}
+
+/**
+ * Safe directory change helper that handles missing directories
+ */
+export function safeChangeDirectory(targetDir: string): void {
+  if (existsSync(targetDir)) {
+    try {
+      process.chdir(targetDir);
+    } catch (e) {
+      try {
+        process.chdir(tmpdir());
+      } catch (e2) {
+        // Ignore if we can't change to temp dir
+      }
+    }
+  } else {
+    try {
+      process.chdir(tmpdir());
+    } catch (e) {
+      // Ignore if we can't change to temp dir
     }
   }
 }

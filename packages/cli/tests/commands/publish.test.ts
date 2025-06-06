@@ -3,7 +3,7 @@ import { execSync } from "child_process";
 import { mkdtemp, rm, writeFile, mkdir, access } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
-import { existsSync } from "fs";
+import { safeChangeDirectory } from "./test-utils";
 
 describe("ElizaOS Publish Commands", () => {
   let testTmpDir: string;
@@ -208,7 +208,7 @@ esac`);
 
   afterEach(async () => {
     // Restore original working directory and PATH
-    process.chdir(originalCwd);
+    safeChangeDirectory(originalCwd);
     process.env.PATH = originalPath;
     
     // Clean up environment variables

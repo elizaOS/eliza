@@ -3,6 +3,7 @@ import { execSync } from "child_process";
 import { mkdtemp, rm, readFile, access } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
+import { safeChangeDirectory } from "./test-utils";
 
 describe("ElizaOS Plugin Commands", () => {
   let testTmpDir: string;
@@ -24,7 +25,7 @@ describe("ElizaOS Plugin Commands", () => {
 
   afterEach(async () => {
     // Restore original working directory
-    process.chdir(originalCwd);
+    safeChangeDirectory(originalCwd);
     
     if (testTmpDir && testTmpDir.includes("eliza-test-plugins-")) {
       try {

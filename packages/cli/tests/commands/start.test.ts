@@ -3,6 +3,7 @@ import { execSync, spawn } from "child_process";
 import { mkdtemp, rm, mkdir } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
+import { safeChangeDirectory } from "./test-utils";
 
 describe("ElizaOS Start Commands", () => {
   let testTmpDir: string;
@@ -56,7 +57,7 @@ describe("ElizaOS Start Commands", () => {
     delete process.env.TEST_SERVER_PORT;
     
     // Restore original working directory
-    process.chdir(originalCwd);
+    safeChangeDirectory(originalCwd);
     
     if (testTmpDir && testTmpDir.includes("eliza-test-start-")) {
       try {

@@ -3,6 +3,7 @@ import { execSync } from "child_process";
 import { mkdtemp, rm, writeFile } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
+import { safeChangeDirectory } from "./test-utils";
 
 describe("ElizaOS Update Commands", () => {
   let testTmpDir: string;
@@ -24,12 +25,7 @@ describe("ElizaOS Update Commands", () => {
 
   afterEach(async () => {
     // Restore original working directory (if it still exists)
-    try {
-      process.chdir(originalCwd);
-    } catch (e) {
-      // Ignore if original directory no longer exists
-      console.warn(`Could not restore original directory: ${originalCwd}`);
-    }
+    safeChangeDirectory(originalCwd);
     
     if (testTmpDir && testTmpDir.includes("eliza-test-update-")) {
       try {
