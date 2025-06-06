@@ -64,25 +64,25 @@ export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
       defaultValue="details"
       value={detailsTab}
       onValueChange={(v: TabValue) => setDetailsTab(v)}
-      className="flex flex-col h-full"
+      className="flex flex-col h-full w-full max-w-full"
     >
-      <TabsList className="flex">
+      <TabsList className="flex w-full max-w-full overflow-x-auto">
         {allTabs.map((tab) => (
-          <TabsTrigger key={tab.value} value={tab.value} className="flex items-center gap-1.5">
+          <TabsTrigger key={tab.value} value={tab.value} className="flex items-center gap-1.5 flex-shrink-0">
             {tab.icon}
-            <span>{tab.label}</span>
+            <span className="truncate">{tab.label}</span>
           </TabsTrigger>
         ))}
         {isLoadingPanels && (
           <>
             {[...Array(2)].map((_, i) => (
-              <Skeleton key={`skel-tab-${i}`} className="h-9 w-full rounded-md" />
+              <Skeleton key={`skel-tab-${i}`} className="h-9 w-full rounded-md flex-shrink-0" />
             ))}
           </>
         )}
       </TabsList>
 
-      <TabsContent value="details" className="overflow-y-auto flex-1 p-4">
+      <TabsContent value="details" className="overflow-y-auto overflow-x-hidden flex-1 p-4 w-full max-w-full">
         {detailsTab === 'details' && agentId && (
           <>
             {isLoadingAgent && (
@@ -91,10 +91,12 @@ export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
               </div>
             )}
             {agentError && (
-              <div className="text-red-500">Error loading agent details: {agentError.message}</div>
+              <div className="text-red-500 break-words">Error loading agent details: {agentError.message}</div>
             )}
             {!isLoadingAgent && !agentError && agent && (
-              <AgentSettings agent={agent} agentId={agentId} />
+              <div className="w-full max-w-full">
+                <AgentSettings agent={agent} agentId={agentId} />
+              </div>
             )}
             {!isLoadingAgent && !agentError && !agent && !isLoadingPanels && (
               <div className="text-muted-foreground">Agent details not found.</div>
@@ -106,33 +108,43 @@ export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
         )}
       </TabsContent>
 
-      <TabsContent value="actions" className="overflow-y-auto flex-1">
-        {detailsTab === 'actions' && agentId && <AgentActionViewer agentId={agentId} />}
+      <TabsContent value="actions" className="overflow-y-auto overflow-x-hidden flex-1 w-full max-w-full">
+        {detailsTab === 'actions' && agentId && (
+          <div className="w-full max-w-full">
+            <AgentActionViewer agentId={agentId} />
+          </div>
+        )}
         {detailsTab === 'actions' && !agentId && (
           <div className="p-4 text-muted-foreground">Select an agent to see their actions.</div>
         )}
       </TabsContent>
-      <TabsContent value="logs" className="overflow-y-auto flex-1">
-        {detailsTab === 'logs' && agentId && <AgentLogViewer agentName={agentName} level="all" />}
+      <TabsContent value="logs" className="overflow-y-auto overflow-x-hidden flex-1 w-full max-w-full">
+        {detailsTab === 'logs' && agentId && (
+          <div className="w-full max-w-full">
+            <AgentLogViewer agentName={agentName} level="all" />
+          </div>
+        )}
         {detailsTab === 'logs' && !agentId && (
           <div className="p-4 text-muted-foreground">Select an agent to see their logs.</div>
         )}
       </TabsContent>
-      <TabsContent value="memories" className="overflow-y-auto flex-1">
+      <TabsContent value="memories" className="overflow-y-auto overflow-x-hidden flex-1 w-full max-w-full">
         {detailsTab === 'memories' && agentId && (
-          <AgentMemoryViewer agentId={agentId} agentName={agentName} />
+          <div className="w-full max-w-full">
+            <AgentMemoryViewer agentId={agentId} agentName={agentName} />
+          </div>
         )}
         {detailsTab === 'memories' && !agentId && (
           <div className="p-4 text-muted-foreground">Select an agent to see their memories.</div>
         )}
       </TabsContent>
       {agentPanels.map((panel: AgentPanel) => (
-        <TabsContent key={panel.name} value={panel.name} className="overflow-y-auto flex-1">
+        <TabsContent key={panel.name} value={panel.name} className="overflow-y-auto overflow-x-hidden flex-1 w-full max-w-full">
           {detailsTab === panel.name && agentId && (
             <iframe
               src={`${panel.path}?agentId=${agentId}`}
               title={panel.name}
-              className="w-full h-full border-0 flex-1"
+              className="w-full h-full border-0 flex-1 max-w-full"
             />
           )}
         </TabsContent>

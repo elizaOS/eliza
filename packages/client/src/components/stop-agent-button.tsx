@@ -68,7 +68,7 @@ export default function StopAgentButton({
       ) : (
         <>
           {showIcon && <Square className="mr-2 h-4 w-4" />}
-          Stop Agent
+          Stop
         </>
       )}
     </Button>

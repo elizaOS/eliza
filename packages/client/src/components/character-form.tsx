@@ -11,7 +11,7 @@ import { exportCharacterAsJson } from '@/lib/export-utils';
 import { compressImage } from '@/lib/utils';
 import type { Agent } from '@elizaos/core';
 import type React from 'react';
-import { type FormEvent, type ReactNode, useState, useMemo, useCallback } from 'react';
+import { type FormEvent, type ReactNode, useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import {
   Select,
   SelectContent,
@@ -74,6 +74,34 @@ export type CharacterFormProps = {
   };
 };
 
+// Custom hook to detect container width and determine if labels should be shown
+const useContainerWidth = (threshold: number = 768) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [showLabels, setShowLabels] = useState(true);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width } = entry.contentRect;
+        setShowLabels(width >= threshold);
+      }
+    });
+
+    resizeObserver.observe(container);
+
+    // Initial check
+    const { width } = container.getBoundingClientRect();
+    setShowLabels(width >= threshold);
+
+    return () => resizeObserver.disconnect();
+  }, [threshold]);
+
+  return { containerRef, showLabels };
+};
+
 export default function CharacterForm({
   characterValue,
   setCharacterValue,
@@ -90,6 +118,9 @@ export default function CharacterForm({
   const { data: elevenlabsVoices, isLoading: isLoadingVoices } = useElevenLabsVoices();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<string>('none');
+
+  // Use the custom hook to detect container width
+  const { containerRef, showLabels } = useContainerWidth(640); // Adjust threshold as needed
 
   // Get all voice models, using the dynamic ElevenLabs voices when available
   const allVoiceModels = useMemo(() => {
@@ -543,7 +574,7 @@ export default function CharacterForm({
   );
 
   return (
-    <div className="container w-full mx-auto p-6">
+    <div ref={containerRef} className="container w-full mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-3xl font-bold">{title || 'Agent Settings'}</h1>
@@ -626,70 +657,126 @@ export default function CharacterForm({
         <div className="flex justify-between gap-4 mt-6">
           <div className="flex gap-4">
             {onDelete && (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  onDelete?.();
-                }}
-                disabled={isDeleting}
-              >
-                {isDeleting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span className="hidden sm:inline ml-2">Deleting...</span>
-                  </>
-                ) : (
-                  <>
-                    <Trash className="h-4 w-4" />
-                    <span className="hidden sm:inline ml-2">Delete Agent</span>
-                  </>
-                )}
-              </Button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        onDelete?.();
+                      }}
+                      disabled={isDeleting}
+                    >
+                      {isDeleting ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          {showLabels && <span className="ml-2">Deleting...</span>}
+                        </>
+                      ) : (
+                        <>
+                          <Trash className="h-4 w-4" />
+                          {showLabels && <span className="ml-2">Delete Agent</span>}
+                        </>
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Permanently delete this agent and all its data</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             )}
-            {stopAgentButton}
+            {stopAgentButton && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div>{stopAgentButton}</div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Stop the agent from running</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
           </div>
 
           <div className="flex gap-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                onReset?.();
-              }}
-            >
-              <RotateCcw className="h-4 w-4" />
-              <span className="hidden sm:inline ml-2">Reset Changes</span>
-            </Button>
-            <div className="relative">
-              <input
-                type="file"
-                accept=".json"
-                onChange={handleImportJSON}
-                className="absolute inset-0 opacity-0 cursor-pointer"
-              />
-              <Button type="button" variant="outline">
-                <Upload className="h-4 w-4" />
-                <span className="hidden sm:inline ml-2">Import JSON</span>
-              </Button>
-            </div>
-            <Button type="button" variant="outline" onClick={handleExportJSON}>
-              <Download className="h-4 w-4" />
-              <span className="hidden sm:inline ml-2">Export JSON</span>
-            </Button>
-            <Button type="submit" disabled={isSubmitting} className="agent-form-submit">
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span className="hidden sm:inline ml-2">Saving...</span>
-                </>
-              ) : (
-                <>
-                  <Save className="h-4 w-4" />
-                  <span className="hidden sm:inline ml-2">Save Changes</span>
-                </>
-              )}
-            </Button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      onReset?.();
+                    }}
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    {showLabels && <span className="ml-2">Reset Changes</span>}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Reset all form fields to their original values</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="relative">
+                    <input
+                      type="file"
+                      accept=".json"
+                      onChange={handleImportJSON}
+                      className="absolute inset-0 opacity-0 cursor-pointer"
+                    />
+                    <Button type="button" variant="outline">
+                      <Upload className="h-4 w-4" />
+                      {showLabels && <span className="ml-2">Import JSON</span>}
+                    </Button>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Import agent configuration from a JSON file</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button type="button" variant="outline" onClick={handleExportJSON}>
+                    <Download className="h-4 w-4" />
+                    {showLabels && <span className="ml-2">Export JSON</span>}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Export current agent configuration as a JSON file</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button type="submit" disabled={isSubmitting} className="agent-form-submit">
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        {showLabels && <span className="ml-2">Saving...</span>}
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-4 w-4" />
+                        {showLabels && <span className="ml-2">Save Changes</span>}
+                      </>
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Save all changes to the agent configuration</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </div>
       </form>
