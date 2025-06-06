@@ -87,7 +87,6 @@ const mockDatabaseAdapter: IDatabaseAdapter = {
   createAgent: vi.fn().mockResolvedValue(true),
   updateAgent: vi.fn().mockResolvedValue(true),
   deleteAgent: vi.fn().mockResolvedValue(true),
-  ensureAgentExists: vi.fn().mockResolvedValue(undefined),
   ensureEmbeddingDimension: vi.fn().mockResolvedValue(undefined),
   getEntitiesForRoom: vi.fn().mockResolvedValue([]),
   updateEntity: vi.fn().mockResolvedValue(undefined),
@@ -116,8 +115,16 @@ const mockDatabaseAdapter: IDatabaseAdapter = {
   getLogs: vi.fn().mockResolvedValue([]),
   deleteLog: vi.fn().mockResolvedValue(undefined),
   removeWorld: vi.fn().mockResolvedValue(undefined),
-  deleteRoomsByServerId: vi.fn().mockResolvedValue(undefined),
-  getMemoriesByServerId: vi.fn().mockResolvedValue([]),
+  deleteRoomsByWorldId: function (worldId: UUID): Promise<void> {
+    throw new Error('Function not implemented.');
+  },
+  getMemoriesByWorldId: function (params: {
+    worldId: UUID;
+    count?: number;
+    tableName?: string;
+  }): Promise<Memory[]> {
+    throw new Error('Function not implemented.');
+  },
 };
 
 // Mock action creator (matches your example)
@@ -255,19 +262,16 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       });
 
       // Mock adapter calls needed for initialize
-      vi.mocked(mockDatabaseAdapter.ensureAgentExists).mockResolvedValue({
-        ...mockCharacter,
-        id: agentId, // ensureAgentExists should return the agent
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        enabled: true,
-      });
-      vi.mocked(mockDatabaseAdapter.getAgent).mockResolvedValue({
-        ...mockCharacter,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        enabled: true,
-      }); // Add required Agent fields
+      const ensureAgentExistsSpy = vi
+        .spyOn(AgentRuntime.prototype, 'ensureAgentExists')
+        .mockResolvedValue({
+          ...mockCharacter,
+          id: agentId, // ensureAgentExists should return the agent
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          enabled: true,
+        });
+
       vi.mocked(mockDatabaseAdapter.getEntityByIds).mockResolvedValue([
         {
           id: agentId,
@@ -283,19 +287,23 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       expect(runtime.actions.some((a) => a.name === 'TestAction')).toBe(true);
       expect(runtime.providers.some((p) => p.name === 'TestProvider')).toBe(true);
       expect(runtime.models.has(ModelType.TEXT_SMALL)).toBe(true);
+      ensureAgentExistsSpy.mockRestore();
     });
   });
 
   describe('Initialization', () => {
+    let ensureAgentExistsSpy: any;
     beforeEach(() => {
       // Mock adapter calls needed for a successful initialize
-      vi.mocked(mockDatabaseAdapter.ensureAgentExists).mockResolvedValue({
-        ...mockCharacter,
-        id: agentId, // ensureAgentExists should return the agent
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        enabled: true,
-      });
+      ensureAgentExistsSpy = vi
+        .spyOn(AgentRuntime.prototype, 'ensureAgentExists')
+        .mockResolvedValue({
+          ...mockCharacter,
+          id: agentId, // ensureAgentExists should return the agent
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          enabled: true,
+        });
       vi.mocked(mockDatabaseAdapter.getEntityByIds).mockResolvedValue([
         {
           id: agentId,
@@ -308,12 +316,28 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       // mockDatabaseAdapter.getAgent is NOT called by initialize anymore after ensureAgentExists returns the agent
     });
 
-    it('should call adapter.init and core setup methods', async () => {
+    afterEach(() => {
+      ensureAgentExistsSpy.mockRestore();
+    });
+
+    it('should call adapter.init and core setup methods for an existing agent', async () => {
       await runtime.initialize();
 
       expect(mockDatabaseAdapter.init).toHaveBeenCalledTimes(1);
-      expect(mockDatabaseAdapter.ensureAgentExists).toHaveBeenCalledWith(mockCharacter);
+      expect(runtime.ensureAgentExists).toHaveBeenCalledWith(mockCharacter);
       // expect(mockDatabaseAdapter.getAgent).toHaveBeenCalledWith(agentId); // This is no longer called
+      expect(mockDatabaseAdapter.getEntityByIds).toHaveBeenCalledWith([agentId]);
+      expect(mockDatabaseAdapter.getRoomsByIds).toHaveBeenCalledWith([agentId]);
+      expect(mockDatabaseAdapter.createRooms).toHaveBeenCalled();
+      expect(mockDatabaseAdapter.addParticipantsRoom).toHaveBeenCalledWith([agentId], agentId);
+    });
+
+    it('should create a new agent if one does not exist', async () => {
+      // No need to override the spy, initialize should handle it.
+      await runtime.initialize();
+
+      expect(mockDatabaseAdapter.init).toHaveBeenCalledTimes(1);
+      expect(runtime.ensureAgentExists).toHaveBeenCalledWith(mockCharacter);
       expect(mockDatabaseAdapter.getEntityByIds).toHaveBeenCalledWith([agentId]);
       expect(mockDatabaseAdapter.getRoomsByIds).toHaveBeenCalledWith([agentId]);
       expect(mockDatabaseAdapter.createRooms).toHaveBeenCalled();

@@ -24,6 +24,7 @@ import {
   getSalt,
   logger,
   messageHandlerTemplate,
+  stringToUuid,
   validateUuid,
 } from '@elizaos/core';
 import express from 'express';
@@ -519,12 +520,26 @@ export function agentRouter(
         character.settings.secrets = encryptObjectValues(character.settings.secrets, salt);
       }
 
-      const createdAgent = await db.ensureAgentExists(character);
+      const ensureAgentExists = async (character: Character) => {
+        const agentId = stringToUuid(character.name);
+        let agent = await db.getAgent(agentId);
+        if (!agent) {
+          await db.createAgent({ ...character, id: agentId });
+          agent = await db.getAgent(agentId);
+        }
+        return agent;
+      };
+
+      const newAgent = await ensureAgentExists(character);
+
+      if (!newAgent) {
+        throw new Error(`Failed to create agent ${character.name}`);
+      }
 
       res.status(201).json({
         success: true,
         data: {
-          id: createdAgent.id,
+          id: newAgent.id,
           character: character,
         },
       });
