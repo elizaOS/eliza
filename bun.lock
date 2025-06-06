@@ -3,6 +3,9 @@
   "workspaces": {
     "": {
       "name": "eliza",
+      "dependencies": {
+        "chokidar": "^4.0.3",
+      },
       "devDependencies": {
         "@types/bun": "latest",
         "@types/node": "^22.15.3",
