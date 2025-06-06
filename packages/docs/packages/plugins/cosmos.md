@@ -180,7 +180,7 @@ confirming / yes
 4. Agent calls action and responds after completing:
 
 ```
-Successfuly swapped 10 OSMO tokens to ATOM on chain cosmoshub.
+Successfully swapped 10 OSMO tokens to ATOM on chain cosmoshub.
 Transaction Hash: E84F36D6EEFAA6D7B70827F34EDAB83258BB86EFE33AEA1F4559D00B30CD3B50
 ```
 
@@ -227,7 +227,7 @@ Swap 10 OSMO on osmosis to USDC with denom uusdc on axelar
 6. Action call and agent response:
 
 ```
-Successfuly swapped 10 OSMO tokens to USDC uusdc on chain axelar.
+Successfully swapped 10 OSMO tokens to USDC uusdc on chain axelar.
 Transaction Hash: E84F36D6EEFAA6D7B70827F34EDAB83258BB86EFE33AEA1F4559D00B30CD3B50
 ```
 

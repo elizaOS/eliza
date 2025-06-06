@@ -979,11 +979,6 @@ export class AgentRuntime implements IAgentRuntime {
 
   // highly SQL optimized queries
   async ensureConnections(entities, rooms, source, world): Promise<void> {
-    console.log('ensureConnections entities:', entities);
-    console.log('ensureConnections rooms:', rooms);
-    console.log('ensureConnections source:', source);
-    console.log('ensureConnections world:', world);
-
     // guards
     if (!entities) {
       console.trace();

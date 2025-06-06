@@ -82,9 +82,8 @@
   "dependencies": {
     "@electric-sql/pglite": "^0.3.2",
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-discord": "1.0.3",
-    "@elizaos/plugin-local-ai": "^1.0.0",
-    "@elizaos/plugin-openai": "^1.0.0",
+    "@elizaos/plugin-local-ai": "latest",
+    "@elizaos/plugin-openai": "latest",
     "@elizaos/plugin-sql": "workspace:*",
     "@noble/curves": "^1.6.0",
     "@sindresorhus/merge-streams": "^4.0.0",
