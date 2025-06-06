@@ -73,8 +73,7 @@ Initialize a new project, plugin, or agent.
 - **Options:**
   - `-d, --dir <dir>`: Installation directory (default: `.`)
   - `-y, --yes`: Skip confirmation and use defaults (default: `false`)
-  - `-t, --type <type>`: Type to create: 'project', 'plugin', or 'agent' (default: 'project')
-  - `--tee`: create a TEE starter project (default: `false`)
+  - `-t, --type <type>`: Type to create: 'project', 'plugin', 'agent', or 'tee' (default: 'project')
 
 **Important notes:**
 
@@ -449,7 +448,7 @@ elizaos tee phala <command> [options]
 
    ```bash
    # Create a TEE project starter template
-   elizaos create tee-agent --tee
+   elizaos create -t tee tee-agent
 
    # cd into directory and authenticate your Phala Cloud API Key
    cd tee-agent
