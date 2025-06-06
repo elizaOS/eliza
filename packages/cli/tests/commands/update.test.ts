@@ -23,8 +23,13 @@ describe("ElizaOS Update Commands", () => {
   });
 
   afterEach(async () => {
-    // Restore original working directory
-    process.chdir(originalCwd);
+    // Restore original working directory (if it still exists)
+    try {
+      process.chdir(originalCwd);
+    } catch (e) {
+      // Ignore if original directory no longer exists
+      console.warn(`Could not restore original directory: ${originalCwd}`);
+    }
     
     if (testTmpDir && testTmpDir.includes("eliza-test-update-")) {
       try {
