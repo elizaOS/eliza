@@ -39,8 +39,7 @@
     "format:check": "prettier --check ./src",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "test": "vitest run",
-    "test:cli": "bun test tests/commands/",
-    "test:cli:bats": "cd __test_scripts__ && ./run_all_bats.sh"
+    "test:cli": "bun test tests/commands/"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.40.0",
