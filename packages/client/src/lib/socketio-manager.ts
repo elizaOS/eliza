@@ -308,7 +308,7 @@ export class SocketIOManager extends EventAdapter {
 
     // Listen for message deletion events
     this.socket.on('messageDeleted', (data) => {
-      clientLogger.info(`[SocketIO] Message deleted event received:`, data);
+      clientLogger.debug(`[SocketIO] Message deleted event received:`, data);
 
       // Check if this is for one of our active channels
       const channelId = data.channelId || data.roomId; // Handle both new and old message format
