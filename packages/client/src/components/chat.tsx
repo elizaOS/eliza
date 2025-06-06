@@ -894,18 +894,25 @@ export default function Chat({
               </span>
             </Button>
             <Separator orientation="vertical" className="h-8" />
-            <Button
-              variant="ghost"
-              size="sm"
-              className="xl:px-3 xl:h-8 h-8 w-8 xl:w-auto ml-3"
-              onClick={() => updateChatState({ showSidebar: !chatState.showSidebar })}
-            >
-              {chatState.showSidebar ? (
-                <PanelRightClose className="h-4 w-4" />
-              ) : (
-                <PanelRight className="h-4 w-4" />
-              )}
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="xl:px-3 xl:h-8 h-8 w-8 xl:w-auto ml-3"
+                  onClick={() => updateChatState({ showSidebar: !chatState.showSidebar })}
+                >
+                  {chatState.showSidebar ? (
+                    <PanelRightClose className="h-4 w-4" />
+                  ) : (
+                    <PanelRight className="h-4 w-4" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p>{chatState.showSidebar ? 'Close SidePanel' : 'Open SidePanel'}</p>
+              </TooltipContent>
+            </Tooltip>
           </div>
         </div>
       );
