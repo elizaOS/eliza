@@ -522,8 +522,9 @@ export default function Chat({
       removeMessage(messageId);
     },
     onClearMessages: () => {
-      // The useChannelMessages hook should handle clearing messages when the query is invalidated
-      // We can trigger a refetch or invalidate the query
+      // Clear the local message list to prevent UI flicker during refetch
+      setMessages([]);
+      // Invalidate the query to trigger a refetch
       queryClient.invalidateQueries({
         queryKey: ['channelMessages', finalChannelIdForHooks, finalServerIdForHooks],
       });
