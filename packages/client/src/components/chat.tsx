@@ -518,6 +518,16 @@ export default function Chat({
       updateMessage(messageId, updates);
       if (!updates.isLoading && updates.isLoading !== undefined) safeScrollToBottom();
     },
+    onDeleteMessage: (messageId: string) => {
+      removeMessage(messageId);
+    },
+    onClearMessages: () => {
+      // The useChannelMessages hook should handle clearing messages when the query is invalidated
+      // We can trigger a refetch or invalidate the query
+      queryClient.invalidateQueries({
+        queryKey: ['channelMessages', finalChannelIdForHooks, finalServerIdForHooks],
+      });
+    },
     onInputDisabledChange: (disabled: boolean) => updateChatState({ inputDisabled: disabled }),
   });
 
