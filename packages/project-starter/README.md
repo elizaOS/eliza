@@ -14,30 +14,30 @@ This is the starter template for ElizaOS projects.
 ## Getting Started
 
 ```bash
-# Clone the starter project
-npx elizaos create my-project
+# Create a new project
+elizaos create -t project my-project
+# Dependencies are automatically installed and built
 
 # Navigate to the project directory
 cd my-project
 
-# Install dependencies
-npm install
-
-# Start development server
-npm run dev
+# Start development immediately
+elizaos dev
 ```
 
 ## Development
 
 ```bash
-# Start development server
-npm run dev
+# Start development with hot-reloading (recommended)
+elizaos dev
 
-# Build the project
-npm run build
+# OR start without hot-reloading
+elizaos start
+# Note: When using 'start', you need to rebuild after changes:
+# bun run build
 
 # Test the project
-npm run test
+elizaos test
 ```
 
 ## Testing
@@ -50,15 +50,15 @@ ElizaOS provides a comprehensive testing structure for projects:
 
   - **Unit Tests**: Test individual functions and components in isolation
   - **Integration Tests**: Test how components work together
-  - Run with: `npm run test:component`
+  - Run with: `elizaos test component`
 
 - **End-to-End Tests** (`e2e/` directory):
 
   - Test the project within a full ElizaOS runtime
-  - Run with: `npm run test:e2e`
+  - Run with: `elizaos test e2e`
 
 - **Running All Tests**:
-  - `npm run test` runs both component and e2e tests
+  - `elizaos test` runs both component and e2e tests
 
 ### Writing Tests
 
@@ -107,4 +107,3 @@ Customize your project by modifying:
 
 - `src/index.ts` - Main entry point
 - `src/character.ts` - Character definition
-- `src/plugin.ts` - Plugin configuration
