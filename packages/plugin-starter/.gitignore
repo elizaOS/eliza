@@ -52,6 +52,6 @@ temp/
 
 # ElizaOS specific
 .eliza/
-elizadb/
+.elizadb/
 pglite/
 cache/
