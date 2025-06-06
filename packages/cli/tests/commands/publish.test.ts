@@ -21,8 +21,8 @@ describe("ElizaOS Publish Commands", () => {
     process.chdir(testTmpDir);
     
     // Setup CLI command
-    const scriptDir = join(__dirname, "..");
-    elizaosCmd = `bun run ${join(scriptDir, "../dist/index.js")}`;
+    const scriptDir = join(__dirname, "../..");
+    elizaosCmd = `bun run ${join(scriptDir, "dist/index.js")}`;
 
     // === COMPREHENSIVE CREDENTIAL MOCKING ===
     // Set all possible environment variables to avoid any prompts

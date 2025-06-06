@@ -29,8 +29,8 @@ describe("ElizaOS Start Commands", () => {
     process.chdir(testTmpDir);
     
     // Setup CLI command
-    const scriptDir = join(__dirname, "..");
-    elizaosCmd = `bun run ${join(scriptDir, "../dist/index.js")}`;
+    const scriptDir = join(__dirname, "../..");
+    elizaosCmd = `bun run ${join(scriptDir, "dist/index.js")}`;
 
     // Make PORT + model envs explicit.
     process.env.LOCAL_SMALL_MODEL = "DeepHermes-3-Llama-3-3B-Preview-q4.gguf";
