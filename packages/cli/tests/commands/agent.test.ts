@@ -18,8 +18,8 @@ describe("ElizaOS Agent Commands", () => {
     testTmpDir = await mkdtemp(join(tmpdir(), "eliza-test-agent-"));
     
     // Setup CLI command
-    const scriptDir = join(__dirname, "../..");
-    elizaosCmd = `bun run ${join(scriptDir, "dist/index.js")}`;
+    const scriptDir = join(__dirname, "..");
+    elizaosCmd = `bun run ${join(scriptDir, "../dist/index.js")}`;
 
     // Kill any existing processes on port 3000
     try {
@@ -35,7 +35,7 @@ describe("ElizaOS Agent Commands", () => {
     // Start the ElizaOS server
     console.log(`[DEBUG] Starting ElizaOS server on port ${testServerPort}`);
     
-    serverProcess = spawn("bun", ["run", join(scriptDir, "dist/index.js"), "start", "--port", testServerPort], {
+    serverProcess = spawn("bun", ["run", join(scriptDir, "../dist/index.js"), "start", "--port", testServerPort], {
       env: {
         ...process.env,
         LOG_LEVEL: "debug",

@@ -15,8 +15,8 @@ describe("ElizaOS Create Commands", () => {
     testTmpDir = await mkdtemp(join(tmpdir(), "eliza-test-"));
     
     // Setup CLI commands
-    const scriptDir = join(__dirname, "../..");
-    elizaosCmd = `bun run ${join(scriptDir, "dist/index.js")}`;
+    const scriptDir = join(__dirname, "..");
+    elizaosCmd = `bun run ${join(scriptDir, "../dist/index.js")}`;
     createElizaCmd = `bun run ${join(scriptDir, "../../create-eliza/index.mjs")}`;
     
     // Change to test directory

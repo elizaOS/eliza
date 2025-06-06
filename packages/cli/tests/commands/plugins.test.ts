@@ -18,8 +18,8 @@ describe("ElizaOS Plugin Commands", () => {
     process.chdir(testTmpDir);
     
     // Setup CLI command
-    const scriptDir = join(__dirname, "../..");
-    elizaosCmd = `bun run ${join(scriptDir, "dist/index.js")}`;
+    const scriptDir = join(__dirname, "..");
+    elizaosCmd = `bun run ${join(scriptDir, "../dist/index.js")}`;
   });
 
   afterEach(async () => {
