@@ -3,7 +3,7 @@ import { execSync } from "child_process";
 import { mkdtemp, rm, writeFile, mkdir, access } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
-import { safeChangeDirectory } from "./test-utils";
+import { safeChangeDirectory, runCliCommandSilently } from "./test-utils";
 
 describe("ElizaOS Publish Commands", () => {
   let testTmpDir: string;
@@ -384,7 +384,7 @@ esac`);
     await mkdir("plugin-test");
     process.chdir(join(testTmpDir, "plugin-test"));
     await writeFile("package.json", "invalid json");
-    const result = execSync(`${elizaosCmd} publish --help`, { encoding: "utf8" });
+    const result = runCliCommandSilently(elizaosCmd, "publish --help");
     expect(result).toContain("publish");
   });
 

@@ -84,6 +84,17 @@ export function runCliCommand(elizaosCmd: string, args: string, options: { timeo
 }
 
 /**
+ * Helper to run CLI command silently (suppressing console output)
+ */
+export function runCliCommandSilently(elizaosCmd: string, args: string, options: { timeout?: number } = {}): string {
+  return execSync(`${elizaosCmd} ${args}`, { 
+    encoding: "utf8",
+    stdio: "pipe",
+    timeout: options.timeout || 30000
+  });
+}
+
+/**
  * Helper to run CLI command and expect it to fail
  */
 export function expectCliCommandToFail(elizaosCmd: string, args: string, options: { timeout?: number } = {}): { status: number; output: string } {

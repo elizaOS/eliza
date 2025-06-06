@@ -3,7 +3,7 @@ import { execSync } from "child_process";
 import { mkdtemp, rm, writeFile } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
-import { safeChangeDirectory } from "./test-utils";
+import { safeChangeDirectory, runCliCommandSilently } from "./test-utils";
 
 describe("ElizaOS Update Commands", () => {
   let testTmpDir: string;
@@ -38,10 +38,7 @@ describe("ElizaOS Update Commands", () => {
 
   // Helper function to create project
   const makeProj = async (name: string) => {
-    execSync(`${elizaosCmd} create ${name} --yes`, { 
-      stdio: "pipe",
-      timeout: 60000
-    });
+    runCliCommandSilently(elizaosCmd, `create ${name} --yes`, { timeout: 60000 });
     process.chdir(join(testTmpDir, name));
   };
 
@@ -59,10 +56,7 @@ describe("ElizaOS Update Commands", () => {
   test("update runs in a valid project", async () => {
     await makeProj("update-app");
     
-    const result = execSync(`${elizaosCmd} update`, { 
-      encoding: "utf8",
-      timeout: 30000
-    });
+    const result = runCliCommandSilently(elizaosCmd, "update", { timeout: 30000 });
     
     // Should either succeed or show success message
     expect(result).toMatch(/(Project successfully updated|Update completed|already up to date|No updates available)/);
@@ -71,10 +65,7 @@ describe("ElizaOS Update Commands", () => {
   test("update --check works", async () => {
     await makeProj("update-check-app");
     
-    const result = execSync(`${elizaosCmd} update --check`, { 
-      encoding: "utf8",
-      timeout: 30000
-    });
+    const result = runCliCommandSilently(elizaosCmd, "update --check", { timeout: 30000 });
     
     expect(result).toMatch(/Version: 1\.0/);
   }, 120000);
@@ -82,10 +73,7 @@ describe("ElizaOS Update Commands", () => {
   test("update --skip-build works", async () => {
     await makeProj("update-skip-build-app");
     
-    const result = execSync(`${elizaosCmd} update --skip-build`, { 
-      encoding: "utf8",
-      timeout: 30000
-    });
+    const result = runCliCommandSilently(elizaosCmd, "update --skip-build", { timeout: 30000 });
     
     expect(result).not.toContain("Building project");
   }, 120000);
@@ -93,20 +81,14 @@ describe("ElizaOS Update Commands", () => {
   test("update --packages works", async () => {
     await makeProj("update-packages-app");
     
-    const result = execSync(`${elizaosCmd} update --packages`, { 
-      encoding: "utf8",
-      timeout: 30000
-    });
+    const result = runCliCommandSilently(elizaosCmd, "update --packages", { timeout: 30000 });
     
     // Should either succeed or show success message
     expect(result).toMatch(/(Project successfully updated|Update completed|already up to date|No updates available)/);
   }, 120000);
 
   test("update --cli works outside a project", () => {
-    const result = execSync(`${elizaosCmd} update --cli`, { 
-      encoding: "utf8",
-      timeout: 30000
-    });
+    const result = runCliCommandSilently(elizaosCmd, "update --cli", { timeout: 30000 });
     
     // Should either show success or message about installing globally
     expect(result).toMatch(/(Project successfully updated|Update completed|already up to date|No updates available|install the CLI globally|CLI update is not available)/);
@@ -115,20 +97,14 @@ describe("ElizaOS Update Commands", () => {
   test("update --cli --packages works", async () => {
     await makeProj("update-combined-app");
     
-    const result = execSync(`${elizaosCmd} update --cli --packages`, { 
-      encoding: "utf8",
-      timeout: 30000
-    });
+    const result = runCliCommandSilently(elizaosCmd, "update --cli --packages", { timeout: 30000 });
     
     // Should either succeed or show success message
     expect(result).toMatch(/(Project successfully updated|Update completed|already up to date|No updates available)/);
   }, 120000);
 
   test("update succeeds outside a project (global check)", () => {
-    const result = execSync(`${elizaosCmd} update`, { 
-      encoding: "utf8",
-      timeout: 30000
-    });
+    const result = runCliCommandSilently(elizaosCmd, "update", { timeout: 30000 });
     
     // Should either show success or message about creating project
     expect(result).toMatch(/(Project successfully updated|Update completed|already up to date|No updates available|create a new ElizaOS project|This appears to be an empty directory)/);
@@ -136,10 +112,7 @@ describe("ElizaOS Update Commands", () => {
 
   // Non-project directory handling
   test("update --packages shows helpful message in empty directory", () => {
-    const result = execSync(`${elizaosCmd} update --packages`, { 
-      encoding: "utf8",
-      timeout: 30000
-    });
+    const result = runCliCommandSilently(elizaosCmd, "update --packages", { timeout: 30000 });
     
     expect(result).toContain("This appears to be an empty directory");
   }, 60000);
@@ -154,10 +127,7 @@ describe("ElizaOS Update Commands", () => {
       }
     }, null, 2));
     
-    const result = execSync(`${elizaosCmd} update --packages`, { 
-      encoding: "utf8",
-      timeout: 30000
-    });
+    const result = runCliCommandSilently(elizaosCmd, "update --packages", { timeout: 30000 });
     
     expect(result).toContain("some-other-project");
     expect(result).toContain("elizaos create");
@@ -175,10 +145,7 @@ describe("ElizaOS Update Commands", () => {
       }
     }, null, 2));
     
-    const result = execSync(`${elizaosCmd} update --packages --check`, { 
-      encoding: "utf8",
-      timeout: 30000
-    });
+    const result = runCliCommandSilently(elizaosCmd, "update --packages --check", { timeout: 30000 });
     
     expect(result).toContain("ElizaOS");
   }, 120000);
@@ -198,10 +165,7 @@ describe("ElizaOS Update Commands", () => {
       }
     }, null, 2));
     
-    const result = execSync(`${elizaosCmd} update --packages`, { 
-      encoding: "utf8",
-      timeout: 30000
-    });
+    const result = runCliCommandSilently(elizaosCmd, "update --packages", { timeout: 30000 });
     
     expect(result).toContain("No ElizaOS packages found");
   }, 120000);

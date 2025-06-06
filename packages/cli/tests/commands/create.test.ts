@@ -4,13 +4,18 @@ import { mkdtemp, rm, readFile } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { existsSync } from "fs";
+import { safeChangeDirectory, runCliCommandSilently, expectCliCommandToFail } from "./test-utils";
 
 describe("ElizaOS Create Commands", () => {
   let testTmpDir: string;
   let elizaosCmd: string;
   let createElizaCmd: string;
+  let originalCwd: string;
 
   beforeEach(async () => {
+    // Store original working directory
+    originalCwd = process.cwd();
+    
     // Setup test environment for each test
     testTmpDir = await mkdtemp(join(tmpdir(), "eliza-test-"));
     
@@ -24,6 +29,9 @@ describe("ElizaOS Create Commands", () => {
   });
 
   afterEach(async () => {
+    // Restore original working directory
+    safeChangeDirectory(originalCwd);
+    
     if (testTmpDir) {
       try {
         await rm(testTmpDir, { recursive: true });
@@ -60,10 +68,7 @@ describe("ElizaOS Create Commands", () => {
   test("create default project succeeds", async () => {
     execSync(`rm -rf my-default-app`, { stdio: "ignore" });
     
-    const result = execSync(`${elizaosCmd} create my-default-app --yes`, { 
-      encoding: "utf8",
-      timeout: 30000 // 30 second timeout for project creation
-    });
+    const result = runCliCommandSilently(elizaosCmd, "create my-default-app --yes", { timeout: 30000 });
     
     // Check for various success patterns since output might vary
     const successPatterns = [
@@ -93,10 +98,7 @@ describe("ElizaOS Create Commands", () => {
   test("create plugin project succeeds", async () => {
     execSync(`rm -rf plugin-my-plugin-app`, { stdio: "ignore" });
     
-    const result = execSync(`${elizaosCmd} create my-plugin-app --yes --type plugin`, { 
-      encoding: "utf8",
-      timeout: 30000
-    });
+    const result = runCliCommandSilently(elizaosCmd, "create my-plugin-app --yes --type plugin", { timeout: 30000 });
     
     // Check for various success patterns
     const successPatterns = [
@@ -125,7 +127,7 @@ describe("ElizaOS Create Commands", () => {
   test("create agent succeeds", async () => {
     execSync(`rm -f my-test-agent.json`, { stdio: "ignore" });
     
-    const result = execSync(`${elizaosCmd} create my-test-agent --yes --type agent`, { encoding: "utf8" });
+    const result = runCliCommandSilently(elizaosCmd, "create my-test-agent --yes --type agent");
     
     expect(result).toContain("Agent character created successfully");
     expect(existsSync("my-test-agent.json")).toBe(true);
@@ -135,45 +137,28 @@ describe("ElizaOS Create Commands", () => {
   test("rejects creating project in existing directory", async () => {
     execSync(`rm -rf existing-app && mkdir existing-app`, { stdio: "ignore" });
     
-    try {
-      const result = execSync(`${elizaosCmd} create existing-app --yes`, { encoding: "utf8" });
-      expect(result).toContain("already exists");
-    } catch (e: any) {
-      // Command should fail with non-zero exit code
-      expect(e.status).not.toBe(0);
-    }
+    const result = expectCliCommandToFail(elizaosCmd, "create existing-app --yes");
+    expect(result.output).toContain("already exists");
   });
 
   test("create project in current directory", async () => {
     execSync(`rm -rf create-in-place && mkdir create-in-place`, { stdio: "ignore" });
     process.chdir("create-in-place");
     
-    const result = execSync(`${elizaosCmd} create . --yes`, { encoding: "utf8" });
+    const result = runCliCommandSilently(elizaosCmd, "create . --yes");
     
     expect(result).toContain("Project initialized successfully!");
     expect(existsSync("package.json")).toBe(true);
   });
 
   test("rejects invalid project name", async () => {
-    try {
-      execSync(`${elizaosCmd} create "Invalid Name" --yes`, { encoding: "utf8" });
-      expect(false).toBe(true); // Should not reach here
-    } catch (e: any) {
-      expect(e.status).not.toBe(0);
-      const errorOutput = (e.stdout || "") + (e.stderr || "");
-      expect(errorOutput).toMatch(/Invalid/i);
-    }
+    const result = expectCliCommandToFail(elizaosCmd, 'create "Invalid Name" --yes');
+    expect(result.output).toMatch(/Invalid/i);
   });
 
   test("rejects invalid project type", async () => {
-    try {
-      execSync(`${elizaosCmd} create bad-type-proj --yes --type bad-type`, { encoding: "utf8" });
-      expect(false).toBe(true); // Should not reach here
-    } catch (e: any) {
-      expect(e.status).not.toBe(0);
-      const errorOutput = (e.stdout || "") + (e.stderr || "");
-      expect(errorOutput).toMatch(/Invalid type/i);
-    }
+    const result = expectCliCommandToFail(elizaosCmd, "create bad-type-proj --yes --type bad-type");
+    expect(result.output).toMatch(/Invalid type/i);
   });
 
   // create-eliza parity tests
@@ -181,7 +166,7 @@ describe("ElizaOS Create Commands", () => {
     execSync(`rm -rf my-create-app`, { stdio: "ignore" });
     
     try {
-      const result = execSync(`${createElizaCmd} my-create-app --yes`, { encoding: "utf8" });
+      const result = runCliCommandSilently(createElizaCmd, "my-create-app --yes");
       
       expect(result).toContain("Project initialized successfully!");
       expect(existsSync("my-create-app")).toBe(true);
@@ -197,7 +182,7 @@ describe("ElizaOS Create Commands", () => {
     execSync(`rm -rf plugin-my-create-plugin`, { stdio: "ignore" });
     
     try {
-      const result = execSync(`${createElizaCmd} my-create-plugin --yes --type plugin`, { encoding: "utf8" });
+      const result = runCliCommandSilently(createElizaCmd, "my-create-plugin --yes --type plugin");
       
       expect(result).toContain("Plugin initialized successfully!");
       const pluginDir = "plugin-my-create-plugin";
@@ -214,7 +199,7 @@ describe("ElizaOS Create Commands", () => {
     execSync(`rm -f my-create-agent.json`, { stdio: "ignore" });
     
     try {
-      const result = execSync(`${createElizaCmd} my-create-agent --yes --type agent`, { encoding: "utf8" });
+      const result = runCliCommandSilently(createElizaCmd, "my-create-agent --yes --type agent");
       
       expect(result).toContain("Agent character created successfully");
       expect(existsSync("my-create-agent.json")).toBe(true);
