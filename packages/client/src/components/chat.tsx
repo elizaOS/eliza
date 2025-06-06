@@ -1,5 +1,6 @@
 import CopyButton from '@/components/copy-button';
 import DeleteButton from '@/components/delete-button';
+import RetryButton from '@/components/retry-button';
 import MediaContent from '@/components/media-content';
 import ProfileOverlay from '@/components/profile-overlay';
 import { Avatar, AvatarImage } from '@/components/ui/avatar';
@@ -102,6 +103,7 @@ export function MessageContent({
   agentForTts,
   shouldAnimate,
   onDelete,
+  onRetry,
   isUser,
   getAgentInMessage,
   agentAvatarMap,
@@ -110,6 +112,7 @@ export function MessageContent({
   agentForTts?: Agent | Partial<Agent> | null;
   shouldAnimate?: boolean;
   onDelete: (id: string) => void;
+  onRetry?: (messageText: string) => void;
   isUser: boolean;
   getAgentInMessage?: (agentId: UUID) => Partial<Agent> | undefined;
   agentAvatarMap?: Record<UUID, string | null>;
@@ -203,6 +206,9 @@ export function MessageContent({
               <CopyButton text={message.text} />
               <ChatTtsButton agentId={agentForTts.id} text={message.text} />
             </>
+          )}
+          {isUser && message.text && !message.isLoading && onRetry && (
+            <RetryButton onClick={() => onRetry(message.text!)} />
           )}
           <DeleteButton onClick={() => onDelete(message.id as string)} />
         </div>
@@ -682,6 +688,22 @@ export default function Chat({
     }
   };
 
+  const handleRetryMessage = (messageText: string) => {
+    if (!messageText.trim() || chatState.inputDisabled) return;
+    // Set the input to the message text and submit it
+    updateChatState({ input: messageText });
+    // Focus the input after a brief delay to ensure state has updated
+    setTimeout(() => {
+      if (inputRef.current) {
+        inputRef.current.focus();
+        // Trigger form submission
+        if (formRef.current) {
+          formRef.current.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+        }
+      }
+    }, 10);
+  };
+
   const handleClearChat = () => {
     if (!finalChannelIdForHooks) return;
     const confirmMessage =
@@ -987,6 +1009,7 @@ export default function Chat({
                     getAgentInMessage={getAgentInMessage}
                     agentAvatarMap={agentAvatarMap}
                     onDeleteMessage={handleDeleteMessage}
+                    onRetryMessage={handleRetryMessage}
                     selectedGroupAgentId={chatState.selectedGroupAgentId}
                   />
                 </div>
