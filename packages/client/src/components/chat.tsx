@@ -533,7 +533,6 @@ export default function Chat({
     uploadFiles,
     cleanupBlobUrls,
     clearFiles,
-    getContentTypeFromMimeType,
   } = useFileUpload({
     agentId: targetAgentData?.id,
     channelId: finalChannelIdForHooks,
@@ -722,9 +721,30 @@ export default function Chat({
       return (
         <div className="flex items-center justify-between mb-4 p-3 bg-card rounded-lg border">
           <div className="flex items-center gap-3">
-            <Avatar className="size-10 border rounded-full">
-              <AvatarImage src={getAgentAvatar(targetAgentData)} />
-            </Avatar>
+            <div className="relative">
+              <Avatar className="size-10 border rounded-full">
+                <AvatarImage src={getAgentAvatar(targetAgentData)} />
+              </Avatar>
+              {targetAgentData?.status === AgentStatus.ACTIVE ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="absolute bottom-0 right-0 w-[10px] h-[10px] rounded-full border border-white bg-green-500" />
+                  </TooltipTrigger>
+                  <TooltipContent side="right">
+                    <p>Agent is active</p>
+                  </TooltipContent>
+                </Tooltip>
+              ) : (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="absolute bottom-0 right-0 w-[10px] h-[10px] rounded-full border border-white bg-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent side="right">
+                    <p>Agent is inactive</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+            </div>
             <div className="flex flex-col">
               <div className="flex items-center gap-2">
                 <h2 className="font-semibold text-lg">{targetAgentData?.name || 'Agent'}</h2>
@@ -732,8 +752,8 @@ export default function Chat({
                   <TooltipTrigger asChild>
                     <Button
                       variant="ghost"
-                      size="icon"
-                      className="size-6"
+                      size="sm"
+                      className="h-6 w-6 p-0"
                       onClick={() => updateChatState({ showProfileOverlay: true })}
                     >
                       <Info className="size-4" />
@@ -743,25 +763,6 @@ export default function Chat({
                     <p>View agent profile</p>
                   </TooltipContent>
                 </Tooltip>
-                {targetAgentData?.status === AgentStatus.ACTIVE ? (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="size-2.5 rounded-full bg-green-500 ring-2 ring-green-500/20 animate-pulse" />
-                    </TooltipTrigger>
-                    <TooltipContent side="right">
-                      <p>Agent is active</p>
-                    </TooltipContent>
-                  </Tooltip>
-                ) : (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="size-2.5 rounded-full bg-gray-300 ring-2 ring-gray-300/20" />
-                    </TooltipTrigger>
-                    <TooltipContent side="right">
-                      <p>Agent is inactive</p>
-                    </TooltipContent>
-                  </Tooltip>
-                )}
               </div>
               {targetAgentData?.bio && (
                 <p className="text-sm text-muted-foreground line-clamp-1">
@@ -862,8 +863,24 @@ export default function Chat({
               title={
                 chatType === ChannelType.DM ? 'Delete current chat session' : 'Clear all messages'
               }
+              className="xl:px-3"
             >
               <Trash2 className="size-4" />
+              <span className="hidden xl:inline xl:ml-2">
+                {chatType === ChannelType.DM ? 'Delete' : 'Clear'}
+              </span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="xl:px-3 xl:h-8 h-8 w-8 xl:w-auto"
+              onClick={() => updateChatState({ showSidebar: !chatState.showSidebar })}
+            >
+              {chatState.showSidebar ? (
+                <PanelRightClose className="h-4 w-4" />
+              ) : (
+                <PanelRight className="h-4 w-4" />
+              )}
             </Button>
           </div>
         </div>
@@ -896,8 +913,22 @@ export default function Chat({
                 size="sm"
                 onClick={handleClearChat}
                 disabled={!messages || messages.length === 0}
+                className="xl:px-3"
               >
                 <Trash2 className="size-4" />
+                <span className="hidden xl:inline xl:ml-2">Clear</span>
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="xl:px-3 xl:h-8 h-8 w-8 xl:w-auto"
+                onClick={() => updateChatState({ showSidebar: !chatState.showSidebar })}
+              >
+                {chatState.showSidebar ? (
+                  <PanelRightClose className="h-4 w-4" />
+                ) : (
+                  <PanelRight className="h-4 w-4" />
+                )}
               </Button>
             </div>
           </div>
@@ -947,20 +978,6 @@ export default function Chat({
       <ResizablePanelGroup direction="horizontal" className="h-full">
         <ResizablePanel defaultSize={chatState.showSidebar ? 70 : 100} minSize={50}>
           <div className="relative h-full">
-            {/* Sidebar toggle button */}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="absolute top-4 right-4 z-10"
-              onClick={() => updateChatState({ showSidebar: !chatState.showSidebar })}
-            >
-              {chatState.showSidebar ? (
-                <PanelRightClose className="h-4 w-4" />
-              ) : (
-                <PanelRight className="h-4 w-4" />
-              )}
-            </Button>
-
             {/* Main chat content */}
             <div className="h-full flex flex-col p-4">
               {renderChatHeader()}
