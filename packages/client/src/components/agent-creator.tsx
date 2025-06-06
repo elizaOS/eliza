@@ -82,7 +82,7 @@ export default function AgentCreator() {
       characterValue={agentState.agent}
       setCharacterValue={agentState}
       title="Agent Settings"
-      description="Configure your AI age sdfjnabsjklfhb ahjlsdbf nt's behavior and capabilities. Recommended default plugins: @elizaos/plugin-sql, @elizaos/plugin-local-ai"
+      description="Recommended default plugins: @elizaos/plugin-sql, @elizaos/plugin-local-ai"
       onSubmit={handleSubmit}
       onReset={() => agentState.reset()}
       onDelete={() => {

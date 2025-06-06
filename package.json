@@ -74,8 +74,5 @@
     "protobufjs",
     "utf-8-validate"
   ],
-  "dependencies": {
-    "chokidar": "^4.0.3",
-    "ws": "^8.18.0"
-  }
+  "dependencies": {}
 }
