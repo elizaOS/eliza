@@ -1,564 +1,161 @@
 ---
-description: ElizaOS v2 - Core memory management
+description: ElizaOS Memory System and State
 globs: 
 alwaysApply: false
 ---
 > You are an expert in ElizaOS v2, TypeScript, memory management, and AI agent development. You focus on creating efficient memory systems, optimized state composition, and robust knowledge integration with performance optimization.
 
-## Memory & State Architecture Flow
+## Memory & State Architecture
 
-```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│ Memory Creation │    │ State Composition│    │ Knowledge Base  │
-│   & Storage     │───▶│  & Context Build │───▶│  Integration    │
-│                 │    │                  │    │                 │
-│ - Memory Types  │    │ - Provider Data  │    │ - Document Proc │
-│ - Validation    │    │ - Context Merge  │    │ - Embeddings    │
-│ - Embeddings    │    │ - Template Rend  │    │ - Retrieval     │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-         │                       │                       │
-         ▼                       ▼                       ▼
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│ Memory Retrieval│    │ Performance      │    │ Caching &       │
-│   & Search      │    │  Optimization    │    │  Invalidation   │
-│                 │    │                  │    │                 │
-│ - Similarity    │    │ - Query Opt      │    │ - State Cache   │
-│ - Filtering     │    │ - Batching       │    │ - Memory Cache  │
-│ - Pagination    │    │ - Indexing       │    │ - TTL Strategy  │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-```
+In ElizaOS, memory and state management are not handled by separate manager classes but are core responsibilities of the `AgentRuntime`. The runtime provides a direct and unified API for interacting with the agent's memory, which is persisted through an `IDatabaseAdapter`.
 
-## Core Implementation Patterns
+### Core Memory Operations via `AgentRuntime`
 
-### Memory Management System
+All interactions with the agent's memory (creating facts, retrieving history, semantic search) are performed through methods on the `IAgentRuntime` instance.
 
 ```typescript
-// ✅ DO: Comprehensive memory management with validation and optimization
-// Reference: /Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza/packages/core/src/types.ts
-import type {
-  Memory,
-  MemoryMetadata,
-  MemoryType,
-  UUID,
-  Content,
-  IAgentRuntime,
-  State,
+// ✅ DO: Use the AgentRuntime instance for all memory operations.
+// Reference: packages/core/src/runtime.ts
+// Reference: packages/core/src/types.ts
+
+import {
+  type IAgentRuntime,
+  type Memory,
+  type Entity,
+  type Relationship,
+  type CreateMemory,
+  asUUID,
 } from '@elizaos/core';
+import { logger } from '@elizaos/core';
 
-/**
- * Advanced memory manager with caching and performance optimization
- */
-export class MemoryManager {
-  private cache = new Map<string, CachedMemory>();
-  private embeddingCache = new Map<string, number[]>();
-  private readonly cacheTimeout = 600000; // 10 minutes
-  private readonly maxCacheSize = 1000;
+// --- Example: Working with Memories ---
+async function manageMemories(runtime: IAgentRuntime) {
+  // 1. Create a new memory (e.g., a message)
+  const newMemory: CreateMemory = {
+    agentId: runtime.agentId,
+    entityId: asUUID('some-user-uuid'),
+    roomId: asUUID('some-room-uuid'),
+    content: { text: "The user is interested in learning about ElizaOS plugins." },
+    // The runtime will automatically generate embeddings if not provided
+  };
+  const memoryId = await runtime.createMemory(newMemory);
+  logger.info(`New memory created with ID: ${memoryId}`);
 
-  constructor(private runtime: IAgentRuntime) {}
+  // 2. Retrieve recent memories from a room
+  const recentMemories = await runtime.getMemories({
+    roomId: asUUID('some-room-uuid'),
+    count: 10,
+  });
+  logger.info(`Retrieved ${recentMemories.length} recent memories.`);
 
-  /**
-   * Create memory with validation and embedding generation
-   */
-  async createMemory(params: CreateMemoryParams): Promise<UUID> {
-    try {
-      // Validate memory content
-      this.validateMemoryContent(params.content);
-      
-      // Create memory object with metadata
-      const memory: Memory = {
-        entityId: params.entityId,
-        agentId: params.agentId || this.runtime.agentId,
-        roomId: params.roomId,
-        worldId: params.worldId,
-        content: params.content,
-        unique: params.unique || false,
-        metadata: params.metadata || this.generateDefaultMetadata(params.content),
-        createdAt: Date.now(),
-      };
-
-      // Generate embedding if not provided
-      if (!memory.embedding && memory.content.text) {
-        memory.embedding = await this.generateEmbedding(memory.content.text);
-      }
-
-      // Store memory
-      const memoryId = await this.runtime.createMemory(
-        memory,
-        params.tableName || 'memories',
-        memory.unique
-      );
-
-      // Update cache
-      this.updateMemoryCache(memoryId, memory);
-      
-      logger.info(`Memory created successfully: ${memoryId}`);
-      return memoryId;
-    } catch (error) {
-      logger.error('Failed to create memory:', error);
-      throw new MemoryCreationError(`Memory creation failed: ${error.message}`, error);
-    }
-  }
-
-  /**
-   * Retrieve memories with advanced filtering and caching
-   */
-  async getMemories(params: GetMemoriesParams): Promise<Memory[]> {
-    const cacheKey = this.generateMemoryCacheKey(params);
-    
-    try {
-      // Check cache first
-      const cached = this.getFromCache(cacheKey);
-      if (cached && !params.skipCache) {
-        logger.debug('Returning cached memories');
-        return cached.memories;
-      }
-
-      // Fetch from database
-      const memories = await this.runtime.getMemories({
-        entityId: params.entityId,
-        agentId: params.agentId,
-        roomId: params.roomId,
-        worldId: params.worldId,
-        count: params.count || 50,
-        unique: params.unique,
-        tableName: params.tableName || 'memories',
-        start: params.start,
-        end: params.end,
-      });
-
-      // Filter by metadata if specified
-      const filteredMemories = params.metadataFilter 
-        ? this.filterByMetadata(memories, params.metadataFilter)
-        : memories;
-
-      // Sort if requested
-      const sortedMemories = params.sortBy 
-        ? this.sortMemories(filteredMemories, params.sortBy, params.sortOrder)
-        : filteredMemories;
-
-      // Cache result
-      this.setCache(cacheKey, { memories: sortedMemories, timestamp: Date.now() });
-      
-      logger.debug(`Retrieved ${sortedMemories.length} memories`);
-      return sortedMemories;
-    } catch (error) {
-      logger.error('Failed to retrieve memories:', error);
-      throw new MemoryRetrievalError(`Memory retrieval failed: ${error.message}`, error);
-    }
-  }
-
-  /**
-   * Search memories using semantic similarity
-   */
-  async searchMemories(params: SearchMemoriesParams): Promise<MemorySearchResult[]> {
-    try {
-      // Generate query embedding
-      const queryEmbedding = await this.generateEmbedding(params.query);
-      
-      // Search with embedding
-      const searchResults = await this.runtime.searchMemories({
-        embedding: queryEmbedding,
-        match_threshold: params.threshold || 0.7,
-        count: params.count || 20,
-        tableName: params.tableName || 'memories',
-        roomId: params.roomId,
-        worldId: params.worldId,
-        entityId: params.entityId,
-        unique: params.unique,
-      });
-
-      // Enhance results with additional context
-      const enhancedResults = await this.enhanceSearchResults(searchResults, params);
-      
-      // Apply post-search filtering
-      const filteredResults = params.postFilter 
-        ? this.applyPostSearchFilter(enhancedResults, params.postFilter)
-        : enhancedResults;
-
-      logger.debug(`Search returned ${filteredResults.length} results`);
-      return filteredResults;
-    } catch (error) {
-      logger.error('Memory search failed:', error);
-      throw new MemorySearchError(`Memory search failed: ${error.message}`, error);
-    }
-  }
-
-  /**
-   * Generate embedding with caching
-   */
-  private async generateEmbedding(text: string): Promise<number[]> {
-    const cacheKey = this.hashText(text);
-    
-    // Check embedding cache
-    const cached = this.embeddingCache.get(cacheKey);
-    if (cached) {
-      return cached;
-    }
-
-    try {
-      const embedding = await this.runtime.useModel('TEXT_EMBEDDING', { text });
-      
-      // Cache embedding (with size limit)
-      if (this.embeddingCache.size >= this.maxCacheSize) {
-        const firstKey = this.embeddingCache.keys().next().value;
-        this.embeddingCache.delete(firstKey);
-      }
-      this.embeddingCache.set(cacheKey, embedding);
-      
-      return embedding;
-    } catch (error) {
-      logger.error('Failed to generate embedding:', error);
-      throw new EmbeddingGenerationError(`Embedding generation failed: ${error.message}`, error);
-    }
-  }
-
-  /**
-   * Validate memory content structure
-   */
-  private validateMemoryContent(content: Content): void {
-    if (!content) {
-      throw new MemoryValidationError('Memory content is required');
-    }
-
-    if (!content.text && !content.attachments && !content.url) {
-      throw new MemoryValidationError('Memory must have text, attachments, or URL');
-    }
-
-    if (content.text && content.text.length > 10000) {
-      throw new MemoryValidationError('Memory text exceeds maximum length (10000 characters)');
-    }
-  }
+  // 3. Perform a semantic search
+  const searchResults = await runtime.searchMemories({
+    query: "What are ElizaOS plugins?",
+    match_threshold: 0.75,
+    count: 5,
+  });
+  logger.info(`Found ${searchResults.length} relevant memories from search.`);
 }
 
-/**
- * State composition system with provider integration
- */
-export class StateComposer {
-  private stateCache = new Map<string, CachedState>();
-  private readonly cacheTimeout = 300000; // 5 minutes
-
-  constructor(private runtime: IAgentRuntime) {}
-
-  /**
-   * Compose comprehensive state with provider data
-   */
-  async composeState(
-    message: Memory,
-    options: StateCompositionOptions = {}
-  ): Promise<State> {
-    const cacheKey = this.generateStateCacheKey(message, options);
-    
-    try {
-      // Check cache unless explicitly skipped
-      if (!options.skipCache) {
-        const cached = this.getStateFromCache(cacheKey);
-        if (cached) {
-          logger.debug('Returning cached state');
-          return cached.state;
-        }
-      }
-
-      // Get base state from runtime
-      const baseState = await this.runtime.composeState(
-        message,
-        options.includeList,
-        options.onlyInclude,
-        true // Skip runtime cache to use our own
-      );
-
-      // Enhance state with additional context
-      const enhancedState = await this.enhanceState(baseState, message, options);
-      
-      // Apply transformations
-      const transformedState = options.transformers 
-        ? await this.applyTransformers(enhancedState, options.transformers)
-        : enhancedState;
-
-      // Validate final state
-      this.validateState(transformedState);
-
-      // Cache result
-      this.setStateCache(cacheKey, { state: transformedState, timestamp: Date.now() });
-      
-      logger.debug('State composition completed', {
-        textLength: transformedState.text?.length || 0,
-        dataKeys: Object.keys(transformedState.data || {}).length,
-        valueKeys: Object.keys(transformedState.values || {}).length,
-      });
-
-      return transformedState;
-    } catch (error) {
-      logger.error('State composition failed:', error);
-      throw new StateCompositionError(`State composition failed: ${error.message}`, error);
-    }
-  }
-
-  /**
-   * Enhance state with conversation context and user information
-   */
-  private async enhanceState(
-    baseState: State,
-    message: Memory,
-    options: StateCompositionOptions
-  ): Promise<State> {
-    const enhanced = { ...baseState };
-
-    // Add conversation context if requested
-    if (options.includeConversationContext) {
-      const conversationData = await this.getConversationContext(message);
-      enhanced.data = { ...enhanced.data, conversation: conversationData };
-    }
-
-    // Add user context if requested
-    if (options.includeUserContext) {
-      const userData = await this.getUserContext(message.entityId);
-      enhanced.data = { ...enhanced.data, user: userData };
-    }
-
-    // Add temporal context
-    if (options.includeTemporalContext) {
-      const temporalData = this.getTemporalContext();
-      enhanced.values = { ...enhanced.values, ...temporalData };
-    }
-
-    return enhanced;
-  }
-
-  /**
-   * Get conversation context including recent messages and themes
-   */
-  private async getConversationContext(message: Memory): Promise<ConversationContext> {
-    try {
-      // Get recent messages
-      const recentMessages = await this.runtime.getMemories({
-        roomId: message.roomId,
-        tableName: 'messages',
-        count: 20,
-        end: message.createdAt,
-      });
-
-      // Extract themes and sentiment
-      const themes = this.extractThemes(recentMessages);
-      const sentiment = this.analyzeSentiment(recentMessages);
-      
-      return {
-        messageCount: recentMessages.length,
-        themes,
-        sentiment,
-        lastActivity: recentMessages[0]?.createdAt || message.createdAt,
-        participants: await this.runtime.getParticipantsForRoom(message.roomId),
-      };
-    } catch (error) {
-      logger.warn('Failed to get conversation context:', error);
-      return { messageCount: 0, themes: [], sentiment: 'neutral' };
-    }
-  }
-}
-
-/**
- * Knowledge integration system with document processing
- */
-export class KnowledgeIntegrator {
-  private documentCache = new Map<string, ProcessedDocument>();
-  private readonly chunkSize = 1000;
-  private readonly overlapSize = 200;
-
-  constructor(private runtime: IAgentRuntime) {}
-
-  /**
-   * Process and integrate knowledge from various sources
-   */
-  async integrateKnowledge(sources: KnowledgeSource[]): Promise<KnowledgeIntegrationResult> {
-    const results: ProcessedDocument[] = [];
-    const errors: KnowledgeError[] = [];
-
-    for (const source of sources) {
-      try {
-        const processed = await this.processKnowledgeSource(source);
-        results.push(processed);
-        logger.info(`Processed knowledge source: ${source.path || source.url}`);
-      } catch (error) {
-        logger.error(`Failed to process knowledge source:`, error);
-        errors.push({
-          source: source.path || source.url || 'unknown',
-          error: error.message,
-        });
-      }
-    }
-
-    return {
-      processedDocuments: results,
-      totalChunks: results.reduce((sum, doc) => sum + doc.chunks.length, 0),
-      errors,
-      integrationTime: Date.now(),
-    };
-  }
-
-  /**
-   * Process individual knowledge source with chunking and embedding
-   */
-  private async processKnowledgeSource(source: KnowledgeSource): Promise<ProcessedDocument> {
-    // Check cache first
-    const cacheKey = source.path || source.url || JSON.stringify(source);
-    const cached = this.documentCache.get(cacheKey);
-    if (cached && !source.forceRefresh) {
-      return cached;
-    }
-
-    // Extract content based on source type
-    const content = await this.extractContent(source);
-    
-    // Split into chunks
-    const chunks = this.createChunks(content, this.chunkSize, this.overlapSize);
-    
-    // Generate embeddings for chunks
-    const embeddedChunks = await this.generateChunkEmbeddings(chunks);
-    
-    // Create knowledge memories
-    const memories = await this.createKnowledgeMemories(embeddedChunks, source);
-    
-    const processed: ProcessedDocument = {
-      source: cacheKey,
-      title: source.title || this.extractTitle(content),
-      content,
-      chunks: embeddedChunks,
-      memories: memories.map(m => m.id!),
-      metadata: source.metadata || {},
-      processedAt: Date.now(),
-    };
-
-    // Cache result
-    this.documentCache.set(cacheKey, processed);
-    
-    return processed;
-  }
-
-  /**
-   * Create text chunks with overlap for better context preservation
-   */
-  private createChunks(text: string, chunkSize: number, overlapSize: number): TextChunk[] {
-    const chunks: TextChunk[] = [];
-    const sentences = text.split(/[.!?]+/).filter(s => s.trim());
-    
-    let currentChunk = '';
-    let currentSize = 0;
-    let chunkIndex = 0;
-
-    for (let i = 0; i < sentences.length; i++) {
-      const sentence = sentences[i].trim() + '.';
-      
-      if (currentSize + sentence.length > chunkSize && currentChunk) {
-        // Save current chunk
-        chunks.push({
-          id: `chunk_${chunkIndex++}`,
-          text: currentChunk.trim(),
-          position: chunkIndex - 1,
-          size: currentSize,
-        });
-
-        // Start new chunk with overlap
-        const overlapSentences = this.getOverlapSentences(sentences, i, overlapSize);
-        currentChunk = overlapSentences.join(' ') + ' ';
-        currentSize = currentChunk.length;
-      }
-      
-      currentChunk += sentence + ' ';
-      currentSize += sentence.length + 1;
-    }
-
-    // Add final chunk
-    if (currentChunk.trim()) {
-      chunks.push({
-        id: `chunk_${chunkIndex}`,
-        text: currentChunk.trim(),
-        position: chunkIndex,
-        size: currentSize,
-      });
-    }
-
-    return chunks;
-  }
-
-  /**
-   * Retrieve relevant knowledge based on query
-   */
-  async retrieveKnowledge(
-    query: string,
-    options: KnowledgeRetrievalOptions = {}
-  ): Promise<KnowledgeRetrievalResult> {
-    try {
-      // Generate query embedding
-      const queryEmbedding = await this.runtime.useModel('TEXT_EMBEDDING', { text: query });
-      
-      // Search knowledge memories
-      const searchResults = await this.runtime.searchMemories({
-        embedding: queryEmbedding,
-        match_threshold: options.threshold || 0.75,
-        count: options.maxResults || 10,
-        tableName: 'knowledge',
-        unique: options.unique,
-      });
-
-      // Group by document and rank
-      const groupedResults = this.groupResultsByDocument(searchResults);
-      const rankedResults = this.rankKnowledgeResults(groupedResults, query);
-      
-      return {
-        query,
-        results: rankedResults,
-        totalResults: searchResults.length,
-        processingTime: Date.now(),
-      };
-    } catch (error) {
-      logger.error('Knowledge retrieval failed:', error);
-      throw new KnowledgeRetrievalError(`Knowledge retrieval failed: ${error.message}`, error);
-    }
-  }
+// ❌ DON'T: Attempt to instantiate a separate MemoryManager or access the DB directly.
+// The runtime abstracts away the database implementation and provides a consistent API.
+function badMemoryAccess(runtime: IAgentRuntime) {
+  // const memoryManager = new MemoryManager(runtime); // WRONG: This class doesn't exist.
+  // runtime.database.query(...); // WRONG: Bypasses runtime logic and optimizations.
 }
 ```
 
-## Performance Optimization Patterns
+### Working with Entities and Relationships
+
+The `AgentRuntime` also provides methods to manage `Entities` (e.g., users, channels, concepts) and the `Relationships` between them. This forms the agent's knowledge graph.
 
 ```typescript
-// ✅ DO: Implement comprehensive performance optimization
-export class PerformanceOptimizer {
-  private queryCache = new Map<string, QueryResult>();
-  private batchProcessor = new BatchProcessor();
-  
-  /**
-   * Optimize memory queries with batching and caching
-   */
-  async optimizeMemoryQueries(queries: MemoryQuery[]): Promise<OptimizedQueryResult[]> {
-    // Group similar queries for batching
-    const groupedQueries = this.groupQueriesByType(queries);
-    const results: OptimizedQueryResult[] = [];
+// ✅ DO: Use the AgentRuntime to manage the agent's knowledge graph.
+// Reference: packages/core/src/types.ts
 
-    for (const [queryType, queryGroup] of groupedQueries) {
-      const batchResults = await this.processBatchedQueries(queryType, queryGroup);
-      results.push(...batchResults);
+async function manageKnowledgeGraph(runtime: IAgentRuntime) {
+  // 1. Create or update an entity
+  const userEntity: Partial<Entity> = {
+    id: asUUID('user-jane-doe'),
+    type: 'person',
+    name: 'Jane Doe',
+    data: {
+      username: 'janedoe',
+      interests: ['AI', 'TypeScript'],
     }
+  };
+  await runtime.createEntity(userEntity.id, userEntity);
+  logger.info(`Created/updated entity for ${userEntity.name}`);
 
-    return results;
+  const pluginEntity: Partial<Entity> = {
+    id: asUUID('concept-elizaos-plugin'),
+    type: 'concept',
+    name: 'ElizaOS Plugin',
+    data: {
+      description: 'A module that extends an agent\'s capabilities.'
+    }
+  };
+  await runtime.createEntity(pluginEntity.id, pluginEntity);
+
+  // 2. Create a relationship between entities
+  const relationship: Omit<Relationship, 'id'> = {
+    source: userEntity.id,
+    target: pluginEntity.id,
+    type: 'INTERESTED_IN',
+    weight: 0.9, // Represents the strength of the relationship
+  };
+  await runtime.createRelationship(relationship);
+  logger.info(`Created relationship: ${userEntity.name} -> INTERESTED_IN -> ${pluginEntity.name}`);
+
+  // 3. Retrieve entities and their relationships
+  const janeDoe = await runtime.getEntity(userEntity.id);
+  const relatedEntities = await runtime.getRelatedEntities(userEntity.id);
+
+  if (janeDoe) {
+    logger.info('Retrieved Entity:', janeDoe);
   }
-
-  /**
-   * Implement intelligent caching with TTL and size limits
-   */
-  private setupIntelligentCaching(): void {
-    // Memory cache with LRU eviction
-    setInterval(() => {
-      this.cleanupExpiredCache();
-    }, 60000); // Cleanup every minute
-
-    // Preload frequently accessed memories
-    setInterval(() => {
-      this.preloadFrequentMemories();
-    }, 300000); // Every 5 minutes
+  if (relatedEntities.length > 0) {
+    logger.info('Found related entities:', relatedEntities);
   }
 }
 ```
 
-## References
-1. [ElizaOS Core Types](mdc:Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza/packages/core/src/types.ts)
-2. [AgentRuntime Architecture](mdc:.cursor/rules/elizaos/elizaos_v2_core_runtime.mdc)
-3. [Core Components](mdc:.cursor/rules/elizaos/elizaos_v2_core_components.mdc)
+### State Composition
+
+State composition is the process of gathering all relevant context for the LLM to make a decision. This is handled by Providers, which are orchestrated by the `AgentRuntime`. The `composeState` method is an internal runtime function used in this process. You typically influence state by creating good `Providers`, not by calling `composeState` directly.
+
+```typescript
+// ✅ DO: Create effective providers to influence the agent's state.
+// Providers are the correct way to inject context into the state object.
+
+import { type Provider } from '@elizaos/core';
+
+export const userProfileProvider: Provider = {
+  name: 'userProfile',
+  description: 'Provides information about the user interacting with the agent.',
+  get: async (runtime, message, state) => {
+    // The runtime is used to fetch the relevant entity data
+    const userEntity = await runtime.getEntity(message.entityId);
+    if (!userEntity) {
+      return { text: "The user's profile is not available." };
+    }
+    const profileText = `The user's name is ${userEntity.name}. Interests include: ${userEntity.data?.interests?.join(', ') || 'not specified'}.`;
+    return {
+      text: profileText,
+      data: { user: userEntity.data } // Provide structured data for other components
+    };
+  }
+};
+
+// ❌ DON'T: Try to call or override `composeState` directly.
+// This is an internal runtime mechanism.
+// Extend the agent's context by registering well-defined Providers via plugins.
+```
+
+## Best Practices
+
+*   **Unified API**: Always use the `IAgentRuntime` instance as the single entry point for all memory and knowledge graph operations.
+*   **Abstracted Storage**: Write your components to be agnostic of the underlying database. The `IDatabaseAdapter` and the runtime methods provide a consistent interface whether you're using PGLite or a full Postgres server.
+*   **Structured Data**: Use `Entities` and `Relationships` to build a rich, queryable knowledge graph for your agent, rather than just storing unstructured text in `Memories`.
+*   **Semantic Search**: Leverage `runtime.searchMemories()` with a text query to find the most relevant information, rather than fetching large numbers of recent memories and filtering them manually.
+*   **Stateless Components**: Ensure your Actions, Providers, and Evaluators are stateless. When they need to interact with memory, they should do so through the `runtime` instance passed to them.

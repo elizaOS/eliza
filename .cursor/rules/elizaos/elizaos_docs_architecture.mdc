@@ -1,5 +1,5 @@
 ---
-description: 
+description: ElizaOS Architecture
 globs: 
 alwaysApply: false
 ---
@@ -75,39 +75,37 @@ ElizaOS v2 is a modular agent framework designed for building autonomous AI agen
 
 ## Core Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         ElizaOS v2 Runtime                     │
-├─────────────────┬─────────────────┬─────────────────────────────┤
-│   Agent Core    │  Plugin System  │       Memory System         │
-│                 │                 │                             │
-│ ┌─────────────┐ │ ┌─────────────┐ │ ┌─────────────────────────┐ │
-│ │ Character   │ │ │  Actions    │ │ │     Memory Manager      │ │
-│ │ Config      │ │ │             │ │ │                         │ │
-│ └─────────────┘ │ │ ┌─────────┐ │ │ │ ┌─────────────────────┐ │ │
-│                 │ │ │Provider │ │ │ │ │   Vector Database   │ │ │
-│ ┌─────────────┐ │ │ └─────────┘ │ │ │ │   - Embeddings      │ │ │
-│ │ State Mgmt  │ │ │             │ │ │ │   - Similarity      │ │ │
-│ └─────────────┘ │ │ ┌─────────┐ │ │ │ │   - Retrieval       │ │ │
-│                 │ │ │Evaluator│ │ │ │ └─────────────────────┘ │ │
-│                 │ │ └─────────┘ │ │ │                         │ │
-│                 │ └─────────────┘ │ │ ┌─────────────────────┐ │ │
-│                 │                 │ │ │   State Composer    │ │ │
-│                 │                 │ │ │   - Context Build   │ │ │
-│                 │                 │ │ │   - Provider Chain  │ │ │
-│                 │                 │ │ └─────────────────────┘ │ │
-│                 │                 │ └─────────────────────────┘ │
-└─────────────────┴─────────────────┴─────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    Platform Integrations                       │
-├─────────────────┬─────────────────┬─────────────────────────────┤
-│   Discord Bot   │   Twitter API   │     Telegram Bot            │
-│   - Messages    │   - Tweets      │     - Messages              │
-│   - Slash Cmds  │   - Replies     │     - Commands              │
-│   - Voice       │   - Streaming   │     - Media                 │
-└─────────────────┴─────────────────┴─────────────────────────────┘
+The ElizaOS v2 architecture is centered around the `AgentRuntime`, a powerful orchestrator that manages the entire lifecycle of an AI agent. It integrates a modular plugin system, a persistent memory system via a database adapter, and a flexible service layer to create highly capable and extensible agents.
+
+```mermaid
+graph TD
+    subgraph AgentRuntime
+        A[Character Config] --> B(Initialization);
+        B --> C{Plugin System};
+        B --> D{Memory System};
+        B --> E{Service Layer};
+        B --> F{Event System};
+
+        C -- registers --> G[Actions];
+        C -- registers --> H[Providers];
+        C -- registers --> I[Evaluators];
+        
+        D -- uses --> J[IDatabaseAdapter];
+        J -- driver for --> K[Postgres/PGLite];
+
+        E -- manages --> L[Services];
+    end
+
+    subgraph "External Interactions"
+        M[User Message] --> AgentRuntime;
+        AgentRuntime -- uses --> N[LLM/Model Providers];
+        AgentRuntime -- interacts via --> O[Platform Connectors];
+    end
+
+    AgentRuntime -- Manages --> P[Agent State];
+    P -- persists via --> D;
+
+    style AgentRuntime fill:#f9f,stroke:#333,stroke-width:2px
 ```
 
 ## Core Concepts
