@@ -23,13 +23,13 @@ vi.mock('node:path', () => ({
   },
 }));
 
-import { setupMonorepo } from '../../src/commands/setup-monorepo';
+import { monorepo } from '../../src/commands/monorepo';
 import { handleError } from '../../src/utils';
 import { execa } from 'execa';
 import fs from 'node:fs';
 import path from 'node:path';
 
-describe('setup-monorepo command', () => {
+describe('monorepo command', () => {
   const mockConsoleInfo = vi.spyOn(console, 'info').mockImplementation(() => {});
   const mockConsoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
   const mockConsoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -42,14 +42,14 @@ describe('setup-monorepo command', () => {
 
   describe('command configuration', () => {
     it('should have correct name and description', () => {
-      expect(setupMonorepo.name()).toBe('setup-monorepo');
-      expect(setupMonorepo.description()).toBe(
+      expect(monorepo.name()).toBe('monorepo');
+      expect(monorepo.description()).toBe(
         'Clone ElizaOS monorepo from a specific branch, defaults to develop'
       );
     });
 
     it('should have correct options', () => {
-      const options = setupMonorepo.options;
+      const options = monorepo.options;
 
       expect(options).toHaveLength(2);
       expect(options[0].flags).toBe('-b, --branch <branch>');
