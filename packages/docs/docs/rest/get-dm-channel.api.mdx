@@ -1,0 +1,166 @@
+---
+id: get-dm-channel
+title: 'Get DM channel'
+description: 'Finds or creates a direct message channel between two users'
+sidebar_label: 'Get DM channel'
+hide_title: true
+hide_table_of_contents: true
+api: eJztV01v4zgM/SsCL7sLeJLM7uzFt8xMDwF2MEXbPbU5MBZjaypLHklOmg383xeU7Dpo0ja7GPQ0RoD4g6RIPpJ62kPA0kN+CzV5jyV5yABLMsHDMgNJvnCqCcoayOGajPQCRS8qghVoRJQWaKRwVJDaEIs48o01niAD25BDtrCQkIMnI78kfcigQYc1BXLswh4M1gR5Wn8hIQPFyzYYKsjA0fdWOZKQB9dSBr6oqEbI9xB2Dav54JQpIYO1dTUGyKFtlYTuaRiLz8KuRagouQ7dMhknHz5auWOLT9cqrAksmu8Bm0arIgY0/ebZ4P7YFbv6RkXgAB2HHxT5KEdGkuM8HDv9nI9Jh6Nw1tb
+sidebar_class_name: 'get api-method'
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
+
+<Heading as={'h1'} className={'openapi__heading'} children={'Get DM channel'}></Heading>
+
+<MethodEndpoint
+  method={'get'}
+  path={'/api/messages/dm-channel'}
+  context={'endpoint'}
+></MethodEndpoint>
+
+Finds an existing direct message channel between two users or creates a new one if it doesn't exist
+
+<Heading
+  id={'request'}
+  as={'h2'}
+  className={'openapi-tabs__heading'}
+  children={'Request'}
+></Heading>
+
+<ParamsDetails
+  parameters={[
+    {
+      name: 'targetUserId',
+      in: 'query',
+      required: true,
+      schema: { type: 'string', format: 'uuid' },
+      description: 'ID of the target user for the DM',
+    },
+    {
+      name: 'currentUserId',
+      in: 'query',
+      required: true,
+      schema: { type: 'string', format: 'uuid' },
+      description: 'ID of the current user initiating the DM',
+    },
+    {
+      name: 'dmServerId',
+      in: 'query',
+      required: false,
+      schema: { type: 'string', format: 'uuid' },
+      description: 'ID of the server to create the DM in (optional, defaults to "0")',
+    },
+  ]}
+></ParamsDetails>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{
+    '200': {
+      description: 'DM channel found or created successfully',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: true },
+              data: {
+                type: 'object',
+                properties: {
+                  id: {
+                    type: 'string',
+                    format: 'uuid',
+                    description: 'ID of the DM channel',
+                  },
+                  messageServerId: {
+                    type: 'string',
+                    format: 'uuid',
+                    description: 'ID of the server this channel belongs to',
+                  },
+                  name: {
+                    type: 'string',
+                    description: 'Name of the DM channel',
+                  },
+                  type: {
+                    type: 'string',
+                    description: 'Type of the channel (DM)',
+                  },
+                  createdAt: {
+                    type: 'string',
+                    format: 'date-time',
+                    description: 'Timestamp when the channel was created',
+                  },
+                  updatedAt: {
+                    type: 'string',
+                    format: 'date-time',
+                    description: 'Timestamp when the channel was last updated',
+                  },
+                  metadata: {
+                    type: 'object',
+                    description: 'Additional metadata about the channel',
+                    properties: {
+                      participants: {
+                        type: 'array',
+                        items: {
+                          type: 'string',
+                          format: 'uuid',
+                        },
+                        description: 'IDs of the participants in this DM',
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '400': {
+      description: 'Invalid request parameters',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'string',
+                description: 'Error message describing what is missing or invalid',
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '500': {
+      description: 'Error finding or creating DM channel',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'string',
+                description: 'Error message',
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

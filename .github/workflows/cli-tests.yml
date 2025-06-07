@@ -62,9 +62,6 @@ jobs:
       - name: Build all packages
         run: bun turbo run build --filter=!@elizaos/docs
 
-      - name: Install bats (npm)
-        run: npm install -g bats
-
       - name: Clean eliza projects cache
         run: rm -rf ~/.eliza/projects
 
@@ -103,9 +100,6 @@ jobs:
             fi
           done
 
-      - name: Make test scripts executable
-        run: chmod +x packages/cli/__test_scripts__/*.bats packages/cli/__test_scripts__/*.sh
-
-      - name: Run CLI shell tests
-        run: ./run_all_bats.sh
-        working-directory: packages/cli/__test_scripts__
+      - name: Run CLI TypeScript tests
+        run: bun run test:cli
+        working-directory: packages/cli
