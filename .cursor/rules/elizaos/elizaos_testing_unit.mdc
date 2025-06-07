@@ -1,0 +1,862 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+> You are an expert in ElizaOS v2, TypeScript, testing frameworks (Vitest, Jest), and comprehensive unit testing strategies. You focus on producing robust, maintainable test suites that ensure component reliability and prevent regressions.
+
+## ElizaOS Testing Architecture Flow
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Test Setup    │    │   Mock Factory   │    │  Test Utilities │
+│   - Config      │───▶│   - Services     │───▶│   - Helpers     │
+│   - Fixtures    │    │   - External APIs│    │   - Assertions  │
+│   - Database    │    │   - File System  │    │   - Generators  │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+         │                       │                       │
+         ▼                       ▼                       ▼
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│  Component Tests│    │ Integration Hooks│    │  Coverage Report│
+│  - Actions      │    │  - Runtime       │    │  - Branch       │
+│  - Providers    │    │  - Memory        │    │  - Statement    │
+│  - Evaluators   │    │  - Plugins       │    │  - Function     │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+```
+
+## Project Structure
+
+```
+eliza/
+├── packages/core/
+│   ├── src/
+│   │   ├── actions/
+│   │   ├── providers/
+│   │   └── evaluators/
+│   └── tests/
+│       ├── __mocks__/        # Mock implementations
+│       ├── fixtures/         # Test data
+│       ├── utils/           # Test utilities
+│       ├── actions/         # Action tests
+│       ├── providers/       # Provider tests
+│       └── evaluators/      # Evaluator tests
+├── plugins/
+│   └── plugin-*/
+│       ├── src/
+│       └── tests/
+│           ├── unit/        # Unit tests
+│           ├── integration/ # Integration tests
+│           └── fixtures/    # Test data
+└── vitest.config.ts         # Test configuration
+```
+
+## Core Testing Patterns
+
+### Test Configuration Setup
+
+```typescript
+// ✅ DO: Implement comprehensive test configuration
+import { defineConfig } from 'vitest/config';
+import path from 'path';
+
+export default defineConfig({
+  test: {
+    globals: true,
+    environment: 'node',
+    setupFiles: ['./tests/setup.ts'],
+    include: [
+      '**/*{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}',
+      '**/__tests__/**/*.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'
+    ],
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/build/**'
+    ],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html'],
+      exclude: [
+        '**/*.d.ts',
+        '**/*.config.*',
+        '**/node_modules/**',
+        '**/tests/**'
+      ],
+      thresholds: {
+        global: {
+          branches: 80,
+          functions: 80,
+          lines: 80,
+          statements: 80
+        }
+      }
+    },
+    testTimeout: 10000,
+    hookTimeout: 10000
+  },
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+      '@tests': path.resolve(__dirname, './tests')
+    }
+  }
+});
+
+// tests/setup.ts - Global test setup
+import { vi } from 'vitest';
+import { config } from 'dotenv';
+
+// Load test environment variables
+config({ path: '.env.test' });
+
+// Global mocks
+vi.mock('fs/promises');
+vi.mock('path');
+
+// Custom matchers
+expect.extend({
+  toBeValidElizaAction(received: any) {
+    const requiredFields = ['name', 'description', 'examples', 'handler'];
+    const missingFields = requiredFields.filter(field => !(field in received));
+    
+    if (missingFields.length > 0) {
+      return {
+        message: () => `Expected valid ElizaOS Action but missing: ${missingFields.join(', ')}`,
+        pass: false
+      };
+    }
+
+    return {
+      message: () => 'Expected not to be a valid ElizaOS Action',
+      pass: true
+    };
+  }
+});
+
+// Global test utilities
+global.createMockRuntime = () => ({
+  agentId: 'test-agent',
+  character: {
+    name: 'TestAgent',
+    settings: {}
+  },
+  providers: new Map(),
+  actions: new Map(),
+  evaluators: new Map()
+});
+```
+
+### Action Testing Patterns
+
+```typescript
+// ✅ DO: Comprehensive Action testing with all scenarios
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { Action, IAgentRuntime, Memory, State } from '@elizaos/core';
+
+// Example Action implementation
+export const testAction: Action = {
+  name: 'TEST_ACTION',
+  description: 'Test action for demonstration',
+  examples: [
+    [
+      {
+        user: '{{user1}}',
+        content: { text: 'test command' }
+      },
+      {
+        user: '{{agent}}',
+        content: { text: 'Test response', action: 'TEST_ACTION' }
+      }
+    ]
+  ],
+  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+    return message.content.text?.includes('test') || false;
+  },
+  handler: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State
+  ): Promise<boolean> => {
+    if (!await testAction.validate!(runtime, message)) {
+      return false;
+    }
+
+    const response = `Processed: ${message.content.text}`;
+    
+    await runtime.messageManager.createMemory({
+      userId: runtime.agentId,
+      content: { text: response, action: 'TEST_ACTION' },
+      roomId: message.roomId,
+      embedding: new Array(1536).fill(0)
+    });
+
+    return true;
+  }
+};
+
+describe('Action Tests', () => {
+  let mockRuntime: IAgentRuntime;
+  let mockMessage: Memory;
+  let mockState: State;
+
+  beforeEach(() => {
+    // Setup mock runtime
+    mockRuntime = {
+      agentId: 'test-agent-id',
+      character: {
+        name: 'TestAgent',
+        settings: {}
+      },
+      messageManager: {
+        createMemory: vi.fn().mockResolvedValue({
+          id: 'memory-id',
+          content: { text: 'response' }
+        }),
+        getMemories: vi.fn().mockResolvedValue([]),
+        searchMemoriesByEmbedding: vi.fn().mockResolvedValue([])
+      },
+      providers: new Map(),
+      actions: new Map(),
+      evaluators: new Map()
+    } as any;
+
+    // Setup mock message
+    mockMessage = {
+      id: 'message-id',
+      userId: 'user-id',
+      content: { text: 'test message' },
+      roomId: 'room-id',
+      embedding: new Array(1536).fill(0),
+      createdAt: Date.now()
+    };
+
+    // Setup mock state
+    mockState = {
+      userId: 'user-id',
+      roomId: 'room-id',
+      agentId: 'agent-id',
+      bio: 'Test bio',
+      lore: 'Test lore',
+      messageDirections: 'Test directions',
+      postDirections: 'Test post directions',
+      recentMessages: [],
+      goalsAccomplished: [],
+      goals: [],
+      actionNames: [],
+      actors: [],
+      actorsData: [],
+      recentMessagesData: []
+    };
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe('Action Structure Validation', () => {
+    it('should have all required properties', () => {
+      expect(testAction).toBeValidElizaAction();
+      expect(testAction.name).toBe('TEST_ACTION');
+      expect(testAction.description).toBeTruthy();
+      expect(testAction.examples).toHaveLength(1);
+      expect(testAction.validate).toBeDefined();
+      expect(testAction.handler).toBeDefined();
+    });
+
+    it('should have proper example format', () => {
+      const example = testAction.examples[0];
+      expect(example).toHaveLength(2);
+      expect(example[0]).toHaveProperty('user');
+      expect(example[0]).toHaveProperty('content');
+      expect(example[1]).toHaveProperty('user');
+      expect(example[1]).toHaveProperty('content');
+    });
+  });
+
+  describe('Validation Logic', () => {
+    it('should validate messages containing "test"', async () => {
+      const result = await testAction.validate!(mockRuntime, mockMessage);
+      expect(result).toBe(true);
+    });
+
+    it('should reject messages not containing "test"', async () => {
+      mockMessage.content.text = 'hello world';
+      const result = await testAction.validate!(mockRuntime, mockMessage);
+      expect(result).toBe(false);
+    });
+
+    it('should handle missing text content', async () => {
+      mockMessage.content = {};
+      const result = await testAction.validate!(mockRuntime, mockMessage);
+      expect(result).toBe(false);
+    });
+
+    it('should handle null/undefined message content', async () => {
+      mockMessage.content = null as any;
+      const result = await testAction.validate!(mockRuntime, mockMessage);
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('Handler Logic', () => {
+    it('should process valid messages successfully', async () => {
+      const result = await testAction.handler(mockRuntime, mockMessage, mockState);
+      
+      expect(result).toBe(true);
+      expect(mockRuntime.messageManager.createMemory).toHaveBeenCalledWith({
+        userId: mockRuntime.agentId,
+        content: { 
+          text: 'Processed: test message', 
+          action: 'TEST_ACTION' 
+        },
+        roomId: mockMessage.roomId,
+        embedding: expect.any(Array)
+      });
+    });
+
+    it('should reject invalid messages', async () => {
+      mockMessage.content.text = 'invalid message';
+      const result = await testAction.handler(mockRuntime, mockMessage, mockState);
+      
+      expect(result).toBe(false);
+      expect(mockRuntime.messageManager.createMemory).not.toHaveBeenCalled();
+    });
+
+    it('should handle memory creation failures', async () => {
+      mockRuntime.messageManager.createMemory = vi.fn().mockRejectedValue(
+        new Error('Memory creation failed')
+      );
+
+      await expect(
+        testAction.handler(mockRuntime, mockMessage, mockState)
+      ).rejects.toThrow('Memory creation failed');
+    });
+
+    it('should work without state parameter', async () => {
+      const result = await testAction.handler(mockRuntime, mockMessage);
+      expect(result).toBe(true);
+    });
+  });
+
+  describe('Edge Cases', () => {
+    it('should handle concurrent validation calls', async () => {
+      const promises = Array.from({ length: 10 }, () =>
+        testAction.validate!(mockRuntime, mockMessage)
+      );
+
+      const results = await Promise.all(promises);
+      expect(results).toEqual(new Array(10).fill(true));
+    });
+
+    it('should handle large message content', async () => {
+      mockMessage.content.text = 'test ' + 'x'.repeat(10000);
+      const result = await testAction.validate!(mockRuntime, mockMessage);
+      expect(result).toBe(true);
+    });
+
+    it('should handle special characters in content', async () => {
+      mockMessage.content.text = 'test with émojis 🎉 and special chars @#$%';
+      const result = await testAction.validate!(mockRuntime, mockMessage);
+      expect(result).toBe(true);
+    });
+  });
+});
+```
+
+### Provider Testing Patterns
+
+```typescript
+// ✅ DO: Comprehensive Provider testing with state management
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { Provider, IAgentRuntime, Memory, State } from '@elizaos/core';
+
+// Example Provider implementation
+export const testProvider: Provider = {
+  get: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<string> => {
+    const memories = await runtime.messageManager.getMemories({
+      roomId: message.roomId,
+      count: 5
+    });
+
+    const context = memories
+      .map(m => m.content.text)
+      .filter(Boolean)
+      .join('\n');
+
+    return `Context: ${context}\nCurrent state: ${state?.bio || 'Unknown'}`;
+  }
+};
+
+describe('Provider Tests', () => {
+  let mockRuntime: IAgentRuntime;
+  let mockMessage: Memory;
+  let mockState: State;
+
+  beforeEach(() => {
+    mockRuntime = {
+      agentId: 'test-agent',
+      messageManager: {
+        getMemories: vi.fn().mockResolvedValue([
+          { content: { text: 'Previous message 1' } },
+          { content: { text: 'Previous message 2' } },
+          { content: { text: 'Previous message 3' } }
+        ])
+      }
+    } as any;
+
+    mockMessage = {
+      id: 'msg-id',
+      roomId: 'room-id',
+      content: { text: 'current message' }
+    } as Memory;
+
+    mockState = {
+      bio: 'Test agent bio',
+      roomId: 'room-id',
+      userId: 'user-id'
+    } as State;
+  });
+
+  describe('Provider Functionality', () => {
+    it('should retrieve and format context correctly', async () => {
+      const result = await testProvider.get(mockRuntime, mockMessage, mockState);
+      
+      expect(result).toContain('Context: Previous message 1');
+      expect(result).toContain('Previous message 2');
+      expect(result).toContain('Previous message 3');
+      expect(result).toContain('Current state: Test agent bio');
+      
+      expect(mockRuntime.messageManager.getMemories).toHaveBeenCalledWith({
+        roomId: 'room-id',
+        count: 5
+      });
+    });
+
+    it('should handle empty memories', async () => {
+      mockRuntime.messageManager.getMemories = vi.fn().mockResolvedValue([]);
+      
+      const result = await testProvider.get(mockRuntime, mockMessage, mockState);
+      
+      expect(result).toBe('Context: \nCurrent state: Test agent bio');
+    });
+
+    it('should handle missing state', async () => {
+      const result = await testProvider.get(mockRuntime, mockMessage);
+      
+      expect(result).toContain('Current state: Unknown');
+    });
+
+    it('should filter out empty text content', async () => {
+      mockRuntime.messageManager.getMemories = vi.fn().mockResolvedValue([
+        { content: { text: 'Valid message' } },
+        { content: { text: '' } },
+        { content: { text: null } },
+        { content: {} },
+        { content: { text: 'Another valid message' } }
+      ]);
+
+      const result = await testProvider.get(mockRuntime, mockMessage, mockState);
+      
+      expect(result).toContain('Valid message');
+      expect(result).toContain('Another valid message');
+      expect(result).not.toContain('null');
+    });
+  });
+
+  describe('Error Handling', () => {
+    it('should handle memory retrieval failures', async () => {
+      mockRuntime.messageManager.getMemories = vi.fn().mockRejectedValue(
+        new Error('Database connection failed')
+      );
+
+      await expect(
+        testProvider.get(mockRuntime, mockMessage, mockState)
+      ).rejects.toThrow('Database connection failed');
+    });
+
+    it('should handle malformed memory objects', async () => {
+      mockRuntime.messageManager.getMemories = vi.fn().mockResolvedValue([
+        null,
+        undefined,
+        { content: null },
+        { content: { text: 'Valid message' } }
+      ]);
+
+      const result = await testProvider.get(mockRuntime, mockMessage, mockState);
+      expect(result).toContain('Valid message');
+    });
+  });
+
+  describe('Performance Tests', () => {
+    it('should handle large number of memories efficiently', async () => {
+      const largeMeorySet = Array.from({ length: 1000 }, (_, i) => ({
+        content: { text: `Message ${i}` }
+      }));
+      
+      mockRuntime.messageManager.getMemories = vi.fn().mockResolvedValue(largeMeorySet);
+
+      const startTime = Date.now();
+      const result = await testProvider.get(mockRuntime, mockMessage, mockState);
+      const endTime = Date.now();
+
+      expect(endTime - startTime).toBeLessThan(1000); // Should complete in under 1 second
+      expect(result).toContain('Message 0');
+      expect(result).toContain('Message 999');
+    });
+  });
+});
+```
+
+### Evaluator Testing Patterns
+
+```typescript
+// ✅ DO: Comprehensive Evaluator testing with scoring validation
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { Evaluator, IAgentRuntime, Memory, State } from '@elizaos/core';
+
+// Example Evaluator implementation
+export const testEvaluator: Evaluator = {
+  name: 'TEST_EVALUATOR',
+  description: 'Evaluates message relevance',
+  examples: [
+    {
+      context: 'User asking about weather',
+      messages: [
+        { user: 'user', content: { text: 'What is the weather like?' } },
+        { user: 'agent', content: { text: 'The weather is sunny today.' } }
+      ],
+      outcome: 'Relevant and helpful response'
+    }
+  ],
+  handler: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<number> => {
+    const messageText = message.content.text?.toLowerCase() || '';
+    
+    // Simple scoring based on content
+    let score = 0.5; // Base score
+    
+    // Increase score for question words
+    const questionWords = ['what', 'how', 'where', 'when', 'why', 'who'];
+    if (questionWords.some(word => messageText.includes(word))) {
+      score += 0.2;
+    }
+    
+    // Increase score for polite words
+    const politeWords = ['please', 'thank', 'sorry'];
+    if (politeWords.some(word => messageText.includes(word))) {
+      score += 0.1;
+    }
+    
+    // Decrease score for negative words
+    const negativeWords = ['hate', 'terrible', 'awful'];
+    if (negativeWords.some(word => messageText.includes(word))) {
+      score -= 0.3;
+    }
+    
+    // Ensure score is between 0 and 1
+    return Math.max(0, Math.min(1, score));
+  }
+};
+
+describe('Evaluator Tests', () => {
+  let mockRuntime: IAgentRuntime;
+  let mockMessage: Memory;
+  let mockState: State;
+
+  beforeEach(() => {
+    mockRuntime = {
+      agentId: 'test-agent'
+    } as any;
+
+    mockMessage = {
+      id: 'msg-id',
+      content: { text: 'test message' }
+    } as Memory;
+
+    mockState = {} as State;
+  });
+
+  describe('Evaluator Structure', () => {
+    it('should have all required properties', () => {
+      expect(testEvaluator.name).toBe('TEST_EVALUATOR');
+      expect(testEvaluator.description).toBeTruthy();
+      expect(testEvaluator.examples).toHaveLength(1);
+      expect(testEvaluator.handler).toBeDefined();
+    });
+
+    it('should have proper example format', () => {
+      const example = testEvaluator.examples[0];
+      expect(example).toHaveProperty('context');
+      expect(example).toHaveProperty('messages');
+      expect(example).toHaveProperty('outcome');
+      expect(Array.isArray(example.messages)).toBe(true);
+    });
+  });
+
+  describe('Scoring Logic', () => {
+    it('should return base score for neutral message', async () => {
+      mockMessage.content.text = 'hello there';
+      const score = await testEvaluator.handler(mockRuntime, mockMessage, mockState);
+      expect(score).toBe(0.5);
+    });
+
+    it('should increase score for questions', async () => {
+      mockMessage.content.text = 'what is the weather like?';
+      const score = await testEvaluator.handler(mockRuntime, mockMessage, mockState);
+      expect(score).toBe(0.7); // 0.5 + 0.2
+    });
+
+    it('should increase score for polite language', async () => {
+      mockMessage.content.text = 'please help me';
+      const score = await testEvaluator.handler(mockRuntime, mockMessage, mockState);
+      expect(score).toBe(0.6); // 0.5 + 0.1
+    });
+
+    it('should decrease score for negative language', async () => {
+      mockMessage.content.text = 'i hate this';
+      const score = await testEvaluator.handler(mockRuntime, mockMessage, mockState);
+      expect(score).toBe(0.2); // 0.5 - 0.3
+    });
+
+    it('should combine multiple factors', async () => {
+      mockMessage.content.text = 'what do you think about this terrible situation?';
+      const score = await testEvaluator.handler(mockRuntime, mockMessage, mockState);
+      expect(score).toBe(0.4); // 0.5 + 0.2 - 0.3
+    });
+
+    it('should handle edge case combinations', async () => {
+      mockMessage.content.text = 'why do you hate everything so much please tell me?';
+      const score = await testEvaluator.handler(mockRuntime, mockMessage, mockState);
+      expect(score).toBe(0.4); // 0.5 + 0.2 + 0.1 - 0.3, clamped
+    });
+  });
+
+  describe('Score Validation', () => {
+    it('should always return score between 0 and 1', async () => {
+      const testCases = [
+        'extremely terrible awful hate hate hate',
+        'what how where when why please thank you',
+        '',
+        'neutral message'
+      ];
+
+      for (const testCase of testCases) {
+        mockMessage.content.text = testCase;
+        const score = await testEvaluator.handler(mockRuntime, mockMessage, mockState);
+        
+        expect(score).toBeGreaterThanOrEqual(0);
+        expect(score).toBeLessThanOrEqual(1);
+        expect(typeof score).toBe('number');
+        expect(Number.isNaN(score)).toBe(false);
+      }
+    });
+
+    it('should handle missing or empty text', async () => {
+      const testCases = [
+        { text: '' },
+        { text: null },
+        { text: undefined },
+        {}
+      ];
+
+      for (const content of testCases) {
+        mockMessage.content = content as any;
+        const score = await testEvaluator.handler(mockRuntime, mockMessage, mockState);
+        
+        expect(score).toBe(0.5); // Should return base score
+      }
+    });
+  });
+
+  describe('Performance and Consistency', () => {
+    it('should return consistent scores for same input', async () => {
+      mockMessage.content.text = 'what is your favorite color please?';
+      
+      const scores = await Promise.all(
+        Array.from({ length: 10 }, () => 
+          testEvaluator.handler(mockRuntime, mockMessage, mockState)
+        )
+      );
+
+      // All scores should be identical
+      expect(new Set(scores).size).toBe(1);
+      expect(scores[0]).toBe(0.8); // 0.5 + 0.2 + 0.1
+    });
+
+    it('should handle concurrent evaluations', async () => {
+      const messages = [
+        'what is happening?',
+        'please help me',
+        'i hate this',
+        'hello world'
+      ];
+
+      const promises = messages.map(text => {
+        const msg = { ...mockMessage, content: { text } };
+        return testEvaluator.handler(mockRuntime, msg, mockState);
+      });
+
+      const scores = await Promise.all(promises);
+      
+      expect(scores).toHaveLength(4);
+      expect(scores[0]).toBe(0.7); // question
+      expect(scores[1]).toBe(0.6); // polite
+      expect(scores[2]).toBe(0.2); // negative
+      expect(scores[3]).toBe(0.5); // neutral
+    });
+  });
+});
+```
+
+## Testing Utilities and Fixtures
+
+```typescript
+// ✅ DO: Create comprehensive test utilities
+// tests/utils/test-helpers.ts
+export class TestHelpers {
+  static createMockMemory(overrides: Partial<Memory> = {}): Memory {
+    return {
+      id: 'test-memory-id',
+      userId: 'test-user-id',
+      content: { text: 'test message' },
+      roomId: 'test-room-id',
+      embedding: new Array(1536).fill(0),
+      createdAt: Date.now(),
+      ...overrides
+    };
+  }
+
+  static createMockState(overrides: Partial<State> = {}): State {
+    return {
+      userId: 'test-user-id',
+      roomId: 'test-room-id',
+      agentId: 'test-agent-id',
+      bio: 'Test agent biography',
+      lore: 'Test agent lore',
+      messageDirections: 'Test message directions',
+      postDirections: 'Test post directions',
+      recentMessages: [],
+      goalsAccomplished: [],
+      goals: [],
+      actionNames: [],
+      actors: [],
+      actorsData: [],
+      recentMessagesData: [],
+      ...overrides
+    };
+  }
+
+  static createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgentRuntime {
+    return {
+      agentId: 'test-agent-id',
+      character: {
+        name: 'TestAgent',
+        settings: {}
+      },
+      messageManager: {
+        createMemory: vi.fn().mockResolvedValue(this.createMockMemory()),
+        getMemories: vi.fn().mockResolvedValue([]),
+        searchMemoriesByEmbedding: vi.fn().mockResolvedValue([])
+      },
+      providers: new Map(),
+      actions: new Map(),
+      evaluators: new Map(),
+      ...overrides
+    } as any;
+  }
+
+  static async waitForPromises(): Promise<void> {
+    await new Promise(resolve => setImmediate(resolve));
+  }
+
+  static createTestSuite<T>(
+    name: string,
+    factory: () => T,
+    tests: Array<{
+      name: string;
+      test: (instance: T) => Promise<void> | void;
+    }>
+  ) {
+    describe(name, () => {
+      let instance: T;
+
+      beforeEach(() => {
+        instance = factory();
+      });
+
+      tests.forEach(({ name, test }) => {
+        it(name, () => test(instance));
+      });
+    });
+  }
+}
+
+// tests/fixtures/sample-data.ts
+export const sampleMemories: Memory[] = [
+  {
+    id: 'memory-1',
+    userId: 'user-1',
+    content: { text: 'Hello, how are you?' },
+    roomId: 'room-1',
+    embedding: new Array(1536).fill(0.1),
+    createdAt: Date.now() - 1000
+  },
+  {
+    id: 'memory-2',
+    userId: 'agent-1',
+    content: { text: 'I am doing well, thank you!' },
+    roomId: 'room-1',
+    embedding: new Array(1536).fill(0.2),
+    createdAt: Date.now()
+  }
+];
+
+export const sampleCharacter = {
+  name: 'TestBot',
+  bio: 'A helpful test assistant',
+  lore: 'Created for testing purposes',
+  settings: {
+    secrets: {},
+    voice: {
+      model: 'en_US-female'
+    }
+  }
+};
+```
+
+## Best Practices Summary
+
+### Test Organization
+- Group related tests in describe blocks
+- Use descriptive test names that explain the expected behavior
+- Follow AAA pattern: Arrange, Act, Assert
+- Test both happy path and edge cases
+
+### Mocking Strategy
+- Mock external dependencies (APIs, file system, database)
+- Use real implementations for core logic being tested
+- Reset mocks between tests
+- Verify mock interactions when relevant
+
+### Assertion Patterns
+- Use specific assertions over generic ones
+- Test return values, side effects, and error conditions
+- Validate both positive and negative cases
+- Check edge cases and boundary conditions
+
+### Coverage Requirements
+- Aim for high coverage but focus on meaningful tests
+- Cover all public interfaces
+- Test error paths and edge cases
+- Include performance and concurrency tests
+
+### Test Data Management
+- Use factories for creating test data
+- Keep test data minimal and focused
+- Use realistic but simple test scenarios
+- Avoid dependencies between tests
+
+## References
+- [Vitest Documentation](mdc:https:/vitest.dev)
+- [Testing Best Practices](mdc:https:/kentcdodds.com/blog/common-mistakes-with-react-testing-library)
+- [Jest Mocking Guide](mdc:https:/jestjs.io/docs/mock-functions)
+- [TypeScript Testing Patterns](mdc:https:/github.com/microsoft/TypeScript/wiki/Coding-guidelines)

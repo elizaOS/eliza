@@ -1,0 +1,1206 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+> You are an expert in ElizaOS v2, TypeScript, blockchain development, Solana, Ethereum/BNB Smart Chain, and cryptocurrency integrations. You focus on producing secure, efficient onchain plugin code that follows ElizaOS architecture patterns.
+
+## ElizaOS Onchain Plugin Architecture Flow
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│  Wallet Provider│    │ Connection Mgmt  │    │ Transaction Svc │
+│  - Private Keys │───▶│ - RPC Endpoints  │───▶│ - Tx Construction│
+│  - Public Keys  │    │ - Network Config │    │ - Fee Estimation│
+│  - Signatures   │    │ - Health Check   │    │ - Broadcasting  │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+         │                       │                       │
+         ▼                       ▼                       ▼
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Actions Layer │    │  Blockchain APIs │    │  Security Layer │
+│   - Transfer    │    │  - Balance Query │    │  - Input Valid  │
+│   - Swap/Trade  │    │  - Price Feeds   │    │  - Rate Limiting│
+│   - Contract Call│    │  - Token Info    │    │  - Error Handle │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+```
+
+## Project Structure
+
+```
+eliza_plugins/onchain/
+├── plugin-solana/
+│   ├── src/
+│   │   ├── index.ts              # Plugin exports
+│   │   ├── types.ts              # Type definitions
+│   │   ├── actions/              # Blockchain actions
+│   │   │   ├── transfer.ts       # Token transfers
+│   │   │   ├── swap.ts           # DEX operations
+│   │   │   └── index.ts          # Action exports
+│   │   ├── providers/            # Data providers
+│   │   │   ├── wallet.ts         # Wallet management
+│   │   │   ├── connection.ts     # RPC connections
+│   │   │   └── index.ts          # Provider exports
+│   │   └── utils/                # Utilities
+│   │       ├── bignum.ts         # BigNumber handling
+│   │       ├── validation.ts     # Input validation
+│   │       └── constants.ts      # Network configs
+├── plugin-bnb-v2/
+│   ├── src/
+│   │   ├── index.ts              # Plugin exports
+│   │   ├── types.ts              # Type definitions
+│   │   ├── abi/                  # Contract ABIs
+│   │   ├── actions/              # Blockchain actions
+│   │   ├── contracts/            # Smart contracts
+│   │   ├── providers/            # Web3 providers
+│   │   └── utils/                # Chain utilities
+└── shared/
+    ├── types.ts                  # Common types
+    ├── errors.ts                 # Error classes
+    └── validation.ts             # Common validation
+```
+
+## Core Implementation Patterns
+
+### Wallet Provider Setup
+
+```typescript
+// ✅ DO: Implement secure wallet provider with proper error handling
+import { Keypair, Connection, PublicKey } from "@solana/web3.js";
+import { WalletError, ConnectionError } from "../utils/errors.js";
+
+interface WalletConfig {
+  privateKey?: string;
+  publicKey?: string;
+  network: "mainnet" | "devnet" | "testnet";
+  rpcEndpoint?: string;
+}
+
+class SolanaWalletProvider {
+  private keypair: Keypair | null = null;
+  private connection: Connection;
+  private config: WalletConfig;
+
+  constructor(config: WalletConfig) {
+    this.config = config;
+    this.validateConfig();
+    this.initializeConnection();
+    this.initializeWallet();
+  }
+
+  private validateConfig(): void {
+    if (!this.config.network) {
+      throw new WalletError("Network configuration is required");
+    }
+
+    if (this.config.privateKey && !this.isValidPrivateKey(this.config.privateKey)) {
+      throw new WalletError("Invalid private key format");
+    }
+  }
+
+  private initializeConnection(): void {
+    const endpoint = this.config.rpcEndpoint || this.getDefaultRpcEndpoint();
+    
+    try {
+      this.connection = new Connection(endpoint, {
+        commitment: "confirmed",
+        confirmTransactionInitialTimeout: 60000,
+      });
+    } catch (error) {
+      throw new ConnectionError(`Failed to connect to RPC: ${error.message}`);
+    }
+  }
+
+  private initializeWallet(): void {
+    if (this.config.privateKey) {
+      try {
+        const secretKey = this.decodePrivateKey(this.config.privateKey);
+        this.keypair = Keypair.fromSecretKey(secretKey);
+      } catch (error) {
+        throw new WalletError(`Failed to initialize wallet: ${error.message}`);
+      }
+    }
+  }
+
+  async getBalance(address?: string): Promise<number> {
+    try {
+      const publicKey = address 
+        ? new PublicKey(address)
+        : this.keypair?.publicKey;
+
+      if (!publicKey) {
+        throw new WalletError("No wallet address available");
+      }
+
+      const balance = await this.connection.getBalance(publicKey);
+      return balance / 1e9; // Convert lamports to SOL
+    } catch (error) {
+      throw new WalletError(`Failed to get balance: ${error.message}`);
+    }
+  }
+
+  private getDefaultRpcEndpoint(): string {
+    switch (this.config.network) {
+      case "mainnet":
+        return "https://api.mainnet-beta.solana.com";
+      case "devnet":
+        return "https://api.devnet.solana.com";
+      case "testnet":
+        return "https://api.testnet.solana.com";
+      default:
+        throw new WalletError(`Unknown network: ${this.config.network}`);
+    }
+  }
+}
+
+// ❌ DON'T: Use insecure wallet initialization
+class InsecureWalletProvider {
+  constructor(privateKey: string) {
+    // No validation, no error handling
+    this.keypair = Keypair.fromSecretKey(Buffer.from(privateKey, "hex"));
+    this.connection = new Connection("https://api.mainnet-beta.solana.com");
+  }
+}
+```
+
+### Transaction Construction and Broadcasting
+
+```typescript
+// ✅ DO: Implement robust transaction handling with proper validation
+import { 
+  Transaction, 
+  SystemProgram, 
+  LAMPORTS_PER_SOL,
+  sendAndConfirmTransaction,
+  PublicKey
+} from "@solana/web3.js";
+import { TransactionError, ValidationError } from "../utils/errors.js";
+
+interface TransferParams {
+  to: string;
+  amount: number;
+  memo?: string;
+  priorityFee?: number;
+}
+
+class SolanaTransactionService {
+  constructor(
+    private walletProvider: SolanaWalletProvider,
+    private connection: Connection
+  ) {}
+
+  async transfer(params: TransferParams): Promise<string> {
+    try {
+      // Validate parameters
+      this.validateTransferParams(params);
+
+      // Get keypair
+      const fromKeypair = this.walletProvider.getKeypair();
+      if (!fromKeypair) {
+        throw new TransactionError("No wallet available for signing");
+      }
+
+      // Validate recipient address
+      const toPublicKey = this.validateAddress(params.to);
+
+      // Check balance
+      await this.validateSufficientBalance(fromKeypair.publicKey, params.amount);
+
+      // Create transaction
+      const transaction = new Transaction();
+
+      // Add priority fee if specified
+      if (params.priorityFee) {
+        transaction.add(
+          SystemProgram.transfer({
+            fromPubkey: fromKeypair.publicKey,
+            toPubkey: toPublicKey,
+            lamports: params.priorityFee,
+          })
+        );
+      }
+
+      // Add transfer instruction
+      transaction.add(
+        SystemProgram.transfer({
+          fromPubkey: fromKeypair.publicKey,
+          toPubkey: toPublicKey,
+          lamports: params.amount * LAMPORTS_PER_SOL,
+        })
+      );
+
+      // Add memo if provided
+      if (params.memo) {
+        transaction.add(this.createMemoInstruction(params.memo));
+      }
+
+      // Get recent blockhash
+      const { blockhash, lastValidBlockHeight } = 
+        await this.connection.getLatestBlockhash();
+      transaction.recentBlockhash = blockhash;
+      transaction.lastValidBlockHeight = lastValidBlockHeight;
+
+      // Sign and send transaction
+      const signature = await sendAndConfirmTransaction(
+        this.connection,
+        transaction,
+        [fromKeypair],
+        {
+          commitment: "confirmed",
+          maxRetries: 3,
+        }
+      );
+
+      return signature;
+    } catch (error) {
+      if (error instanceof TransactionError || error instanceof ValidationError) {
+        throw error;
+      }
+      throw new TransactionError(`Transfer failed: ${error.message}`);
+    }
+  }
+
+  private validateTransferParams(params: TransferParams): void {
+    if (!params.to) {
+      throw new ValidationError("Recipient address is required");
+    }
+
+    if (!params.amount || params.amount <= 0) {
+      throw new ValidationError("Amount must be greater than 0");
+    }
+
+    if (params.amount > 1000) { // Safety limit
+      throw new ValidationError("Amount exceeds safety limit");
+    }
+
+    if (params.memo && params.memo.length > 100) {
+      throw new ValidationError("Memo exceeds maximum length");
+    }
+  }
+
+  private validateAddress(address: string): PublicKey {
+    try {
+      return new PublicKey(address);
+    } catch (error) {
+      throw new ValidationError(`Invalid address format: ${address}`);
+    }
+  }
+
+  private async validateSufficientBalance(
+    publicKey: PublicKey, 
+    amount: number
+  ): Promise<void> {
+    const balance = await this.connection.getBalance(publicKey);
+    const requiredLamports = amount * LAMPORTS_PER_SOL;
+    const fee = 5000; // Estimated transaction fee
+
+    if (balance < requiredLamports + fee) {
+      throw new ValidationError(
+        `Insufficient balance. Required: ${requiredLamports + fee}, Available: ${balance}`
+      );
+    }
+  }
+}
+
+// ❌ DON'T: Skip validation and error handling
+class UnsafeTransactionService {
+  async transfer(to: string, amount: number): Promise<string> {
+    // No validation, no error handling
+    const transaction = new Transaction();
+    transaction.add(
+      SystemProgram.transfer({
+        fromPubkey: this.wallet.publicKey,
+        toPubkey: new PublicKey(to),
+        lamports: amount * LAMPORTS_PER_SOL,
+      })
+    );
+    return await sendAndConfirmTransaction(this.connection, transaction, [this.wallet]);
+  }
+}
+```
+
+### Smart Contract Integration (BNB Chain)
+
+```typescript
+// ✅ DO: Implement secure smart contract interactions
+import { ethers, Contract, Wallet, JsonRpcProvider } from "ethers";
+import { ContractError, ValidationError } from "../utils/errors.js";
+
+interface ContractConfig {
+  address: string;
+  abi: any[];
+  network: "mainnet" | "testnet";
+  rpcUrl?: string;
+}
+
+interface SwapParams {
+  tokenIn: string;
+  tokenOut: string;
+  amountIn: string;
+  minAmountOut: string;
+  recipient: string;
+  deadline?: number;
+}
+
+class BNBContractService {
+  private contract: Contract;
+  private provider: JsonRpcProvider;
+  private wallet?: Wallet;
+
+  constructor(
+    private config: ContractConfig,
+    privateKey?: string
+  ) {
+    this.validateConfig();
+    this.initializeProvider();
+    this.initializeContract();
+    
+    if (privateKey) {
+      this.initializeWallet(privateKey);
+    }
+  }
+
+  private validateConfig(): void {
+    if (!this.config.address || !ethers.isAddress(this.config.address)) {
+      throw new ValidationError("Invalid contract address");
+    }
+
+    if (!this.config.abi || !Array.isArray(this.config.abi)) {
+      throw new ValidationError("Valid contract ABI is required");
+    }
+  }
+
+  private initializeProvider(): void {
+    const rpcUrl = this.config.rpcUrl || this.getDefaultRpcUrl();
+    
+    try {
+      this.provider = new JsonRpcProvider(rpcUrl);
+    } catch (error) {
+      throw new ContractError(`Failed to initialize provider: ${error.message}`);
+    }
+  }
+
+  private initializeContract(): void {
+    try {
+      this.contract = new Contract(
+        this.config.address,
+        this.config.abi,
+        this.provider
+      );
+    } catch (error) {
+      throw new ContractError(`Failed to initialize contract: ${error.message}`);
+    }
+  }
+
+  private initializeWallet(privateKey: string): void {
+    try {
+      this.wallet = new Wallet(privateKey, this.provider);
+      this.contract = this.contract.connect(this.wallet);
+    } catch (error) {
+      throw new ContractError(`Failed to initialize wallet: ${error.message}`);
+    }
+  }
+
+  async executeSwap(params: SwapParams): Promise<string> {
+    if (!this.wallet) {
+      throw new ContractError("Wallet not initialized for transactions");
+    }
+
+    try {
+      // Validate swap parameters
+      await this.validateSwapParams(params);
+
+      // Estimate gas
+      const gasEstimate = await this.contract.swapExactTokensForTokens.estimateGas(
+        params.amountIn,
+        params.minAmountOut,
+        [params.tokenIn, params.tokenOut],
+        params.recipient,
+        params.deadline || Math.floor(Date.now() / 1000) + 600 // 10 minutes
+      );
+
+      // Add 20% buffer to gas estimate
+      const gasLimit = gasEstimate * 120n / 100n;
+
+      // Get current gas price
+      const gasPrice = await this.provider.getGasPrice();
+
+      // Execute transaction
+      const tx = await this.contract.swapExactTokensForTokens(
+        params.amountIn,
+        params.minAmountOut,
+        [params.tokenIn, params.tokenOut],
+        params.recipient,
+        params.deadline || Math.floor(Date.now() / 1000) + 600,
+        {
+          gasLimit,
+          gasPrice: gasPrice * 110n / 100n, // 10% higher than current
+        }
+      );
+
+      // Wait for confirmation
+      const receipt = await tx.wait();
+      
+      if (receipt.status !== 1) {
+        throw new ContractError("Transaction failed");
+      }
+
+      return tx.hash;
+    } catch (error) {
+      if (error instanceof ContractError || error instanceof ValidationError) {
+        throw error;
+      }
+      throw new ContractError(`Swap execution failed: ${error.message}`);
+    }
+  }
+
+  private async validateSwapParams(params: SwapParams): Promise<void> {
+    // Validate addresses
+    if (!ethers.isAddress(params.tokenIn)) {
+      throw new ValidationError("Invalid tokenIn address");
+    }
+    if (!ethers.isAddress(params.tokenOut)) {
+      throw new ValidationError("Invalid tokenOut address");
+    }
+    if (!ethers.isAddress(params.recipient)) {
+      throw new ValidationError("Invalid recipient address");
+    }
+
+    // Validate amounts
+    try {
+      const amountIn = ethers.parseUnits(params.amountIn, 18);
+      const minAmountOut = ethers.parseUnits(params.minAmountOut, 18);
+      
+      if (amountIn <= 0n) {
+        throw new ValidationError("Amount in must be greater than 0");
+      }
+      if (minAmountOut <= 0n) {
+        throw new ValidationError("Min amount out must be greater than 0");
+      }
+    } catch (error) {
+      throw new ValidationError("Invalid amount format");
+    }
+
+    // Validate deadline
+    if (params.deadline && params.deadline < Math.floor(Date.now() / 1000)) {
+      throw new ValidationError("Deadline is in the past");
+    }
+
+    // Check token balance
+    await this.validateTokenBalance(params.tokenIn, params.amountIn);
+  }
+
+  private async validateTokenBalance(tokenAddress: string, amount: string): Promise<void> {
+    if (!this.wallet) return;
+
+    try {
+      // Create token contract instance
+      const tokenAbi = [
+        "function balanceOf(address owner) view returns (uint256)"
+      ];
+      const tokenContract = new Contract(tokenAddress, tokenAbi, this.provider);
+      
+      const balance = await tokenContract.balanceOf(this.wallet.address);
+      const requiredAmount = ethers.parseUnits(amount, 18);
+      
+      if (balance < requiredAmount) {
+        throw new ValidationError(
+          `Insufficient token balance. Required: ${amount}, Available: ${ethers.formatUnits(balance, 18)}`
+        );
+      }
+    } catch (error) {
+      if (error instanceof ValidationError) {
+        throw error;
+      }
+      throw new ContractError(`Failed to check token balance: ${error.message}`);
+    }
+  }
+
+  private getDefaultRpcUrl(): string {
+    switch (this.config.network) {
+      case "mainnet":
+        return "https://bsc-dataseed.binance.org/";
+      case "testnet":
+        return "https://data-seed-prebsc-1-s1.binance.org:8545/";
+      default:
+        throw new ValidationError(`Unknown network: ${this.config.network}`);
+    }
+  }
+}
+```
+
+## Advanced Patterns
+
+### Multi-Chain Provider System
+
+```typescript
+// ✅ DO: Implement unified multi-chain provider interface
+interface ChainConfig {
+  chainId: number;
+  name: string;
+  rpcUrl: string;
+  nativeCurrency: {
+    name: string;
+    symbol: string;
+    decimals: number;
+  };
+}
+
+interface BlockchainProvider {
+  getBalance(address: string): Promise<bigint>;
+  sendTransaction(params: any): Promise<string>;
+  estimateGas(params: any): Promise<bigint>;
+  getTokenBalance(tokenAddress: string, walletAddress: string): Promise<bigint>;
+}
+
+class MultiChainProvider {
+  private providers = new Map<string, BlockchainProvider>();
+  private configs = new Map<string, ChainConfig>();
+
+  registerProvider(chainName: string, provider: BlockchainProvider, config: ChainConfig): void {
+    this.providers.set(chainName, provider);
+    this.configs.set(chainName, config);
+  }
+
+  async getBalance(chainName: string, address: string): Promise<string> {
+    const provider = this.getProvider(chainName);
+    const config = this.getConfig(chainName);
+    
+    const balance = await provider.getBalance(address);
+    return ethers.formatUnits(balance, config.nativeCurrency.decimals);
+  }
+
+  async executeTransaction(
+    chainName: string, 
+    params: any
+  ): Promise<{ hash: string; chainId: number }> {
+    const provider = this.getProvider(chainName);
+    const config = this.getConfig(chainName);
+    
+    const hash = await provider.sendTransaction(params);
+    
+    return {
+      hash,
+      chainId: config.chainId
+    };
+  }
+
+  private getProvider(chainName: string): BlockchainProvider {
+    const provider = this.providers.get(chainName);
+    if (!provider) {
+      throw new Error(`Provider not found for chain: ${chainName}`);
+    }
+    return provider;
+  }
+
+  private getConfig(chainName: string): ChainConfig {
+    const config = this.configs.get(chainName);
+    if (!config) {
+      throw new Error(`Config not found for chain: ${chainName}`);
+    }
+    return config;
+  }
+}
+```
+
+### Rate Limiting and Request Management
+
+```typescript
+// ✅ DO: Implement intelligent rate limiting for blockchain requests
+interface RateLimitConfig {
+  maxRequestsPerSecond: number;
+  maxRequestsPerMinute: number;
+  burstSize: number;
+}
+
+class BlockchainRequestManager {
+  private requestQueue: Array<() => Promise<any>> = [];
+  private processing = false;
+  private requestCounts = {
+    second: 0,
+    minute: 0,
+  };
+  private lastSecond = 0;
+  private lastMinute = 0;
+
+  constructor(private config: RateLimitConfig) {
+    this.startCleanupTimer();
+  }
+
+  async execute<T>(request: () => Promise<T>): Promise<T> {
+    return new Promise((resolve, reject) => {
+      this.requestQueue.push(async () => {
+        try {
+          const result = await request();
+          resolve(result);
+        } catch (error) {
+          reject(error);
+        }
+      });
+
+      this.processQueue();
+    });
+  }
+
+  private async processQueue(): Promise<void> {
+    if (this.processing || this.requestQueue.length === 0) {
+      return;
+    }
+
+    this.processing = true;
+
+    while (this.requestQueue.length > 0) {
+      // Check rate limits
+      if (!this.canMakeRequest()) {
+        await this.waitForRateLimit();
+        continue;
+      }
+
+      const request = this.requestQueue.shift();
+      if (request) {
+        this.incrementCounters();
+        
+        try {
+          await request();
+        } catch (error) {
+          console.error("Request failed:", error);
+        }
+
+        // Small delay between requests
+        await this.sleep(50);
+      }
+    }
+
+    this.processing = false;
+  }
+
+  private canMakeRequest(): boolean {
+    const now = Date.now();
+    const currentSecond = Math.floor(now / 1000);
+    const currentMinute = Math.floor(now / 60000);
+
+    // Reset counters if needed
+    if (currentSecond !== this.lastSecond) {
+      this.requestCounts.second = 0;
+      this.lastSecond = currentSecond;
+    }
+
+    if (currentMinute !== this.lastMinute) {
+      this.requestCounts.minute = 0;
+      this.lastMinute = currentMinute;
+    }
+
+    return (
+      this.requestCounts.second < this.config.maxRequestsPerSecond &&
+      this.requestCounts.minute < this.config.maxRequestsPerMinute
+    );
+  }
+
+  private incrementCounters(): void {
+    this.requestCounts.second++;
+    this.requestCounts.minute++;
+  }
+
+  private async waitForRateLimit(): Promise<void> {
+    // Wait until next second if second limit exceeded
+    if (this.requestCounts.second >= this.config.maxRequestsPerSecond) {
+      const nextSecond = (this.lastSecond + 1) * 1000;
+      const delay = nextSecond - Date.now();
+      if (delay > 0) {
+        await this.sleep(delay);
+      }
+    }
+
+    // Wait until next minute if minute limit exceeded
+    if (this.requestCounts.minute >= this.config.maxRequestsPerMinute) {
+      const nextMinute = (this.lastMinute + 1) * 60000;
+      const delay = nextMinute - Date.now();
+      if (delay > 0) {
+        await this.sleep(delay);
+      }
+    }
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  private startCleanupTimer(): void {
+    setInterval(() => {
+      const now = Date.now();
+      const currentSecond = Math.floor(now / 1000);
+      const currentMinute = Math.floor(now / 60000);
+
+      if (currentSecond !== this.lastSecond) {
+        this.requestCounts.second = 0;
+      }
+
+      if (currentMinute !== this.lastMinute) {
+        this.requestCounts.minute = 0;
+      }
+    }, 1000);
+  }
+}
+```
+
+## Error Handling and Security
+
+### Custom Error Classes
+
+```typescript
+// ✅ DO: Implement comprehensive error classification
+export class OnchainError extends Error {
+  constructor(
+    message: string,
+    public code: string,
+    public context?: Record<string, any>
+  ) {
+    super(message);
+    this.name = "OnchainError";
+  }
+}
+
+export class WalletError extends OnchainError {
+  constructor(message: string, context?: Record<string, any>) {
+    super(message, "WALLET_ERROR", context);
+    this.name = "WalletError";
+  }
+}
+
+export class TransactionError extends OnchainError {
+  constructor(message: string, context?: Record<string, any>) {
+    super(message, "TRANSACTION_ERROR", context);
+    this.name = "TransactionError";
+  }
+}
+
+export class ContractError extends OnchainError {
+  constructor(message: string, context?: Record<string, any>) {
+    super(message, "CONTRACT_ERROR", context);
+    this.name = "ContractError";
+  }
+}
+
+export class ValidationError extends OnchainError {
+  constructor(message: string, public field?: string) {
+    super(message, "VALIDATION_ERROR", { field });
+    this.name = "ValidationError";
+  }
+}
+
+export class NetworkError extends OnchainError {
+  constructor(message: string, public network?: string) {
+    super(message, "NETWORK_ERROR", { network });
+    this.name = "NetworkError";
+  }
+}
+
+export class InsufficientFundsError extends OnchainError {
+  constructor(
+    required: string,
+    available: string,
+    token?: string
+  ) {
+    super(
+      `Insufficient funds. Required: ${required}, Available: ${available}`,
+      "INSUFFICIENT_FUNDS",
+      { required, available, token }
+    );
+    this.name = "InsufficientFundsError";
+  }
+}
+```
+
+### Security Validation Patterns
+
+```typescript
+// ✅ DO: Implement comprehensive security validations
+class SecurityValidator {
+  // Validate transaction parameters for safety
+  static validateTransactionParams(params: any): void {
+    // Check for suspicious amounts
+    if (params.amount && this.isSuspiciousAmount(params.amount)) {
+      throw new ValidationError("Amount exceeds safety threshold");
+    }
+
+    // Validate address formats
+    if (params.to && !this.isValidAddress(params.to)) {
+      throw new ValidationError("Invalid recipient address");
+    }
+
+    // Check for contract interaction safety
+    if (params.data && this.containsUnsafeOperations(params.data)) {
+      throw new ValidationError("Transaction contains potentially unsafe operations");
+    }
+
+    // Validate gas settings
+    if (params.gasPrice && this.isExcessiveGasPrice(params.gasPrice)) {
+      throw new ValidationError("Gas price exceeds safety threshold");
+    }
+  }
+
+  // Sanitize user inputs
+  static sanitizeInput(input: string): string {
+    return input
+      .trim()
+      .replace(/[^\w\s.-]/g, '') // Remove special characters
+      .substring(0, 100); // Limit length
+  }
+
+  // Validate private key securely
+  static validatePrivateKey(privateKey: string): boolean {
+    // Check format without logging the actual key
+    const keyRegex = /^[0-9a-fA-F]{64}$/;
+    return keyRegex.test(privateKey.replace('0x', ''));
+  }
+
+  // Rate limiting for sensitive operations
+  static checkRateLimit(operation: string, identifier: string): boolean {
+    const key = `${operation}:${identifier}`;
+    const now = Date.now();
+    const window = 60000; // 1 minute
+    const limit = 5; // 5 operations per minute
+
+    // Implementation would use Redis or in-memory store
+    // This is a simplified example
+    return true; // Placeholder
+  }
+
+  private static isSuspiciousAmount(amount: string | number): boolean {
+    const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
+    return numAmount > 1000; // Configurable threshold
+  }
+
+  private static isValidAddress(address: string): boolean {
+    try {
+      // For Ethereum-style addresses
+      if (address.startsWith('0x')) {
+        return ethers.isAddress(address);
+      }
+      
+      // For Solana addresses
+      new PublicKey(address);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private static containsUnsafeOperations(data: string): boolean {
+    const unsafePatterns = [
+      'selfdestruct',
+      'delegatecall',
+      'callcode'
+    ];
+
+    return unsafePatterns.some(pattern => 
+      data.toLowerCase().includes(pattern)
+    );
+  }
+
+  private static isExcessiveGasPrice(gasPrice: string | bigint): boolean {
+    const price = typeof gasPrice === 'string' ? BigInt(gasPrice) : gasPrice;
+    const threshold = ethers.parseUnits('100', 'gwei'); // 100 Gwei threshold
+    return price > threshold;
+  }
+}
+```
+
+## Performance Optimization
+
+### Connection Pooling and Caching
+
+```typescript
+// ✅ DO: Implement efficient connection management
+class ConnectionPool {
+  private connections = new Map<string, Connection>();
+  private healthChecks = new Map<string, number>();
+  private maxConnections = 10;
+
+  async getConnection(endpoint: string): Promise<Connection> {
+    // Check if connection exists and is healthy
+    if (this.connections.has(endpoint)) {
+      const connection = this.connections.get(endpoint)!;
+      
+      if (await this.isConnectionHealthy(endpoint)) {
+        return connection;
+      } else {
+        // Remove unhealthy connection
+        this.connections.delete(endpoint);
+        this.healthChecks.delete(endpoint);
+      }
+    }
+
+    // Create new connection if under limit
+    if (this.connections.size >= this.maxConnections) {
+      throw new NetworkError("Connection pool exhausted");
+    }
+
+    const connection = new Connection(endpoint, {
+      commitment: "confirmed",
+      confirmTransactionInitialTimeout: 30000,
+    });
+
+    this.connections.set(endpoint, connection);
+    this.healthChecks.set(endpoint, Date.now());
+
+    return connection;
+  }
+
+  private async isConnectionHealthy(endpoint: string): Promise<boolean> {
+    const lastCheck = this.healthChecks.get(endpoint) || 0;
+    const checkInterval = 60000; // 1 minute
+
+    if (Date.now() - lastCheck < checkInterval) {
+      return true; // Recently checked
+    }
+
+    try {
+      const connection = this.connections.get(endpoint)!;
+      await connection.getSlot();
+      this.healthChecks.set(endpoint, Date.now());
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  cleanup(): void {
+    this.connections.clear();
+    this.healthChecks.clear();
+  }
+}
+
+// Cache for blockchain data
+class BlockchainCache {
+  private cache = new Map<string, { data: any; timestamp: number; ttl: number }>();
+  private cleanupInterval: NodeJS.Timeout;
+
+  constructor() {
+    // Clean expired entries every minute
+    this.cleanupInterval = setInterval(() => {
+      this.cleanup();
+    }, 60000);
+  }
+
+  set(key: string, data: any, ttlSeconds = 300): void {
+    this.cache.set(key, {
+      data,
+      timestamp: Date.now(),
+      ttl: ttlSeconds * 1000
+    });
+  }
+
+  get<T>(key: string): T | null {
+    const entry = this.cache.get(key);
+    
+    if (!entry) {
+      return null;
+    }
+
+    if (Date.now() - entry.timestamp > entry.ttl) {
+      this.cache.delete(key);
+      return null;
+    }
+
+    return entry.data as T;
+  }
+
+  private cleanup(): void {
+    const now = Date.now();
+    
+    for (const [key, entry] of this.cache.entries()) {
+      if (now - entry.timestamp > entry.ttl) {
+        this.cache.delete(key);
+      }
+    }
+  }
+
+  destroy(): void {
+    clearInterval(this.cleanupInterval);
+    this.cache.clear();
+  }
+}
+```
+
+## Anti-patterns and Common Mistakes
+
+### Transaction Anti-patterns
+
+```typescript
+// ❌ DON'T: Skip transaction validation
+async function unsafeTransfer(to: string, amount: number): Promise<string> {
+  // No validation, no error handling
+  const transaction = new Transaction();
+  transaction.add(
+    SystemProgram.transfer({
+      fromPubkey: wallet.publicKey,
+      toPubkey: new PublicKey(to), // Could throw if invalid
+      lamports: amount * LAMPORTS_PER_SOL,
+    })
+  );
+  
+  return await sendAndConfirmTransaction(connection, transaction, [wallet]);
+}
+
+// ❌ DON'T: Hardcode network configurations
+const connection = new Connection("https://api.mainnet-beta.solana.com"); // Hardcoded
+
+// ❌ DON'T: Expose private keys in logs
+console.log(`Using wallet: ${privateKey}`); // Security risk
+
+// ✅ DO: Implement proper validation and security
+async function safeTransfer(params: TransferParams): Promise<TransactionResult> {
+  // Validate all parameters
+  validateTransferParams(params);
+  
+  // Use environment-based configuration
+  const connection = getConnection();
+  
+  // Secure logging without sensitive data
+  logger.info("Initiating transfer", { 
+    to: params.to, 
+    amount: params.amount,
+    memo: params.memo 
+  });
+
+  try {
+    const signature = await executeTransfer(params);
+    return { success: true, signature };
+  } catch (error) {
+    logger.error("Transfer failed", { error: error.message });
+    return { success: false, error: error.message };
+  }
+}
+```
+
+### Contract Interaction Anti-patterns
+
+```typescript
+// ❌ DON'T: Use unlimited gas or ignore gas estimation
+const tx = await contract.someMethod(params, {
+  gasLimit: 10000000, // Arbitrary large number
+  gasPrice: ethers.parseUnits("1000", "gwei") // Extremely high gas price
+});
+
+// ❌ DON'T: Skip deadline validation for time-sensitive operations
+const deadline = Math.floor(Date.now() / 1000) + 86400; // 24 hours - too long
+
+// ✅ DO: Use proper gas estimation and reasonable parameters
+const gasEstimate = await contract.someMethod.estimateGas(params);
+const gasLimit = gasEstimate * 120n / 100n; // 20% buffer
+
+const gasPrice = await provider.getGasPrice();
+const adjustedGasPrice = gasPrice * 110n / 100n; // 10% above current
+
+const deadline = Math.floor(Date.now() / 1000) + 600; // 10 minutes
+
+const tx = await contract.someMethod(params, {
+  gasLimit,
+  gasPrice: adjustedGasPrice
+});
+```
+
+## Testing Patterns
+
+### Unit Testing for Onchain Components
+
+```typescript
+// ✅ DO: Comprehensive testing for blockchain components
+import { describe, it, expect, beforeEach, vi } from "vitest";
+
+describe("SolanaWalletProvider", () => {
+  let provider: SolanaWalletProvider;
+  let mockConnection: any;
+
+  beforeEach(() => {
+    mockConnection = {
+      getBalance: vi.fn(),
+      getSlot: vi.fn(),
+    };
+
+    provider = new SolanaWalletProvider({
+      network: "devnet",
+      privateKey: "valid_test_key"
+    });
+
+    // Inject mock connection
+    (provider as any).connection = mockConnection;
+  });
+
+  describe("getBalance", () => {
+    it("should return balance in SOL", async () => {
+      mockConnection.getBalance.mockResolvedValue(1000000000); // 1 SOL in lamports
+
+      const balance = await provider.getBalance("test_address");
+
+      expect(balance).toBe(1);
+      expect(mockConnection.getBalance).toHaveBeenCalledWith(
+        expect.any(PublicKey)
+      );
+    });
+
+    it("should handle connection errors", async () => {
+      mockConnection.getBalance.mockRejectedValue(new Error("Network error"));
+
+      await expect(provider.getBalance("test_address"))
+        .rejects.toThrow(WalletError);
+    });
+  });
+
+  describe("initialization", () => {
+    it("should throw error for invalid network", () => {
+      expect(() => new SolanaWalletProvider({
+        network: "invalid" as any
+      })).toThrow(WalletError);
+    });
+
+    it("should validate private key format", () => {
+      expect(() => new SolanaWalletProvider({
+        network: "devnet",
+        privateKey: "invalid_key"
+      })).toThrow(WalletError);
+    });
+  });
+});
+```
+
+## Best Practices Summary
+
+### Security
+- Always validate addresses and amounts before transactions
+- Implement rate limiting for API calls and transactions  
+- Use environment variables for sensitive configuration
+- Never log private keys or sensitive transaction data
+- Implement proper gas estimation and limits
+
+### Performance
+- Use connection pooling for RPC endpoints
+- Implement intelligent caching for blockchain data
+- Batch requests when possible to reduce API calls
+- Monitor and limit transaction fees
+
+### Error Handling  
+- Create specific error types for different failure scenarios
+- Provide detailed context in error messages
+- Implement retry logic with exponential backoff
+- Log errors appropriately without exposing sensitive data
+
+### Code Organization
+- Separate wallet management from transaction logic
+- Use proper TypeScript types for all blockchain data
+- Implement validation layers for all user inputs
+- Create reusable utilities for common operations
+
+### Testing
+- Mock blockchain connections for unit tests
+- Test error scenarios and edge cases
+- Validate gas estimation and fee calculation
+- Test with different network conditions
+
+## References
+- [Solana Web3.js Documentation](mdc:https:/docs.solana.com/developing/clients/javascript-api)
+- [Ethers.js Documentation](mdc:https:/docs.ethers.org/v6)
+- [BNB Smart Chain Documentation](mdc:https:/docs.bnbchain.org)
+- [Solana Best Practices](mdc:https:/docs.solana.com/developing/programming-model/transactions#best-practices)
+- [Ethereum Security Best Practices](mdc:https:/consensys.github.io/smart-contract-best-practices)
+</rewritten_file>

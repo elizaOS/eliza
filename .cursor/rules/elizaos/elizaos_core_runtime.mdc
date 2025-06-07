@@ -1,0 +1,1047 @@
+---
+description: ElizaOS v2 - Core, Runtime 
+globs: 
+alwaysApply: false
+---
+> You are an expert in ElizaOS v2, TypeScript, agent architecture, and AI agent development. You focus on producing robust, scalable agent runtime implementations with proper character configuration, plugin management, and service lifecycle patterns.
+
+## AgentRuntime Architecture Flow
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│ Character Config│    │  Runtime Init    │    │ Plugin Registry │
+│   & Validation  │───▶│  & Services      │───▶│  & Actions      │
+│                 │    │                  │    │                 │
+│ - Bio & Style   │    │ - AgentRuntime   │    │ - registerPlugin│
+│ - Examples      │    │ - Database       │    │ - Actions List  │
+│ - Settings      │    │ - Models         │    │ - Providers     │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+         │                       │                       │
+         ▼                       ▼                       ▼
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│ Entity & Room   │    │ State Management │    │ Event System    │
+│  Management     │    │   & Memory       │    │ & Monitoring    │
+│                 │    │                  │    │                 │
+│ - ensureConnection │ │ - composeState   │    │ - Event Emitter │
+│ - Room Creation │    │ - Memory Context │    │ - Lifecycle     │
+│ - Participants  │    │ - Knowledge      │    │ - Error Handling│
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+```
+
+## Project Structure
+
+```
+agent-project/
+├── src/
+│   ├── index.ts               # Main entry point
+│   ├── character.json         # Character configuration
+│   ├── runtime/               # Runtime initialization
+│   │   ├── agent.ts           # AgentRuntime setup
+│   │   ├── config.ts          # Runtime configuration
+│   │   └── types.ts           # Runtime type definitions
+│   ├── plugins/               # Plugin management
+│   │   ├── index.ts           # Plugin registry
+│   │   ├── core.ts            # Core plugins
+│   │   └── custom.ts          # Custom plugins
+│   ├── services/              # Service implementations
+│   │   ├── database.ts        # Database adapter
+│   │   ├── memory.ts          # Memory management
+│   │   └── models.ts          # Model providers
+│   └── utils/
+│       ├── validation.ts      # Configuration validation
+│       ├── helpers.ts         # Runtime utilities
+│       └── constants.ts       # Runtime constants
+├── config/
+│   └── environments/          # Environment-specific configs
+├── characters/                # Additional character files
+└── tests/                     # Runtime tests
+```
+
+## Core Implementation Patterns
+
+### AgentRuntime Initialization
+
+```typescript
+// ✅ DO: Comprehensive AgentRuntime setup with proper error handling
+// Reference: /Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza/packages/core/src/types.ts
+import {
+  AgentRuntime,
+  IAgentRuntime,
+  Character,
+  Plugin,
+  IDatabaseAdapter,
+  ModelType,
+  UUID,
+  asUUID,
+} from '@elizaos/core';
+import { logger } from '@elizaos/core';
+import { validateCharacter, loadCharacterConfig } from './utils/validation';
+import { createDatabaseAdapter } from './services/database';
+import { corePlugins, customPlugins } from './plugins';
+
+/**
+ * Comprehensive AgentRuntime factory with validation and error handling
+ */
+export class AgentRuntimeFactory {
+  private static instance: IAgentRuntime | null = null;
+
+  /**
+   * Create and initialize an AgentRuntime instance
+   */
+  static async create(options: RuntimeCreationOptions): Promise<IAgentRuntime> {
+    logger.info('Initializing AgentRuntime...');
+    
+    try {
+      // Load and validate character configuration
+      const character = await this.loadCharacter(options.characterPath);
+      
+      // Create database adapter
+      const databaseAdapter = await this.createDatabase(options.databaseConfig);
+      
+      // Initialize plugins
+      const plugins = await this.initializePlugins(options.plugins || []);
+      
+      // Create runtime instance
+      const runtime = new AgentRuntime({
+        character,
+        databaseAdapter,
+        plugins: [...corePlugins, ...plugins],
+        modelProviders: options.modelProviders || [],
+        fetch: options.fetch || fetch,
+        ...options.runtimeConfig,
+      });
+
+      // Initialize the runtime
+      await runtime.initialize();
+      
+      // Register additional services
+      await this.registerServices(runtime, options.services || []);
+      
+      // Set up event handlers
+      this.setupEventHandlers(runtime);
+      
+      // Validate runtime state
+      await this.validateRuntime(runtime);
+      
+      this.instance = runtime;
+      logger.info(`AgentRuntime initialized successfully for character: ${character.name}`);
+      
+      return runtime;
+    } catch (error) {
+      logger.error('Failed to initialize AgentRuntime:', error);
+      throw new RuntimeInitializationError(`Runtime initialization failed: ${error.message}`, error);
+    }
+  }
+
+  /**
+   * Load and validate character configuration
+   */
+  private static async loadCharacter(characterPath: string): Promise<Character> {
+    try {
+      const character = await loadCharacterConfig(characterPath);
+      
+      // Validate character structure
+      const validation = validateCharacter(character);
+      if (!validation.valid) {
+        throw new CharacterValidationError(`Character validation failed: ${validation.errors.join(', ')}`);
+      }
+      
+      // Ensure required fields
+      if (!character.name || character.name.trim() === '') {
+        throw new CharacterValidationError('Character name is required');
+      }
+      
+      // Validate bio format
+      if (!character.bio || (Array.isArray(character.bio) && character.bio.length === 0)) {
+        throw new CharacterValidationError('Character bio is required');
+      }
+      
+      // Set defaults for optional fields
+      return {
+        id: character.id || asUUID(crypto.randomUUID()),
+        username: character.username || character.name.toLowerCase().replace(/\s+/g, '_'),
+        topics: character.topics || [],
+        adjectives: character.adjectives || [],
+        messageExamples: character.messageExamples || [],
+        postExamples: character.postExamples || [],
+        style: {
+          all: character.style?.all || [],
+          chat: character.style?.chat || [],
+          post: character.style?.post || [],
+          ...character.style,
+        },
+        settings: character.settings || {},
+        secrets: character.secrets || {},
+        plugins: character.plugins || [],
+        ...character,
+      };
+    } catch (error) {
+      if (error instanceof CharacterValidationError) {
+        throw error;
+      }
+      throw new CharacterLoadError(`Failed to load character from ${characterPath}: ${error.message}`, error);
+    }
+  }
+
+  /**
+   * Initialize and validate plugins
+   */
+  private static async initializePlugins(pluginConfigs: PluginConfig[]): Promise<Plugin[]> {
+    const plugins: Plugin[] = [];
+    
+    for (const config of pluginConfigs) {
+      try {
+        logger.debug(`Loading plugin: ${config.name}`);
+        
+        const plugin = await this.loadPlugin(config);
+        await this.validatePlugin(plugin);
+        
+        plugins.push(plugin);
+        logger.debug(`Plugin loaded successfully: ${plugin.name}`);
+      } catch (error) {
+        if (config.required !== false) {
+          throw new PluginLoadError(`Failed to load required plugin ${config.name}: ${error.message}`, error);
+        }
+        
+        logger.warn(`Optional plugin ${config.name} failed to load:`, error.message);
+      }
+    }
+    
+    return plugins;
+  }
+
+  /**
+   * Set up runtime event handlers for monitoring and debugging
+   */
+  private static setupEventHandlers(runtime: IAgentRuntime): void {
+    // Model usage tracking
+    runtime.registerEvent('MODEL_USED', async (payload) => {
+      logger.debug(`Model used: ${payload.type} by ${payload.provider}`, {
+        tokens: payload.tokens,
+        prompt: payload.prompt.substring(0, 100) + '...',
+      });
+    });
+
+    // Action execution tracking
+    runtime.registerEvent('ACTION_STARTED', async (payload) => {
+      logger.debug(`Action started: ${payload.actionName}`);
+    });
+
+    runtime.registerEvent('ACTION_COMPLETED', async (payload) => {
+      logger.debug(`Action completed: ${payload.actionName}`, {
+        completed: payload.completed,
+        error: payload.error?.message,
+      });
+    });
+
+    // Error handling
+    runtime.registerEvent('ERROR', async (payload) => {
+      logger.error('Runtime error occurred:', payload);
+    });
+  }
+
+  /**
+   * Get the current runtime instance (singleton pattern)
+   */
+  static getInstance(): IAgentRuntime | null {
+    return this.instance;
+  }
+
+  /**
+   * Gracefully shutdown the runtime
+   */
+  static async shutdown(): Promise<void> {
+    if (this.instance) {
+      logger.info('Shutting down AgentRuntime...');
+      await this.instance.stop();
+      this.instance = null;
+      logger.info('AgentRuntime shutdown complete');
+    }
+  }
+}
+
+// ❌ DON'T: Minimal runtime setup without validation or error handling
+const badRuntime = new AgentRuntime({
+  character: { name: 'Agent' }, // Incomplete character
+  // Missing database adapter, no error handling
+});
+```
+
+### Character Configuration Patterns
+
+```typescript
+// ✅ DO: Comprehensive character configuration with validation
+// Reference: /Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza/packages/core/src/types.ts
+import type { Character, MessageExample, UUID } from '@elizaos/core';
+
+/**
+ * Character configuration builder with validation
+ */
+export class CharacterBuilder {
+  private character: Partial<Character> = {};
+
+  /**
+   * Set basic character information
+   */
+  setBasicInfo(info: {
+    name: string;
+    username?: string;
+    bio: string | string[];
+    system?: string;
+  }): this {
+    this.character.name = info.name;
+    this.character.username = info.username || info.name.toLowerCase().replace(/\s+/g, '_');
+    this.character.bio = info.bio;
+    this.character.system = info.system;
+    return this;
+  }
+
+  /**
+   * Set conversation examples with validation
+   */
+  setMessageExamples(examples: MessageExample[][]): this {
+    // Validate examples format
+    for (const conversation of examples) {
+      if (!Array.isArray(conversation) || conversation.length === 0) {
+        throw new CharacterValidationError('Each conversation must be a non-empty array');
+      }
+      
+      for (const message of conversation) {
+        if (!message.name || !message.content?.text) {
+          throw new CharacterValidationError('Each message must have name and content.text');
+        }
+      }
+    }
+    
+    this.character.messageExamples = examples;
+    return this;
+  }
+
+  /**
+   * Set character traits and topics
+   */
+  setPersonality(personality: {
+    topics?: string[];
+    adjectives?: string[];
+    style?: {
+      all?: string[];
+      chat?: string[];
+      post?: string[];
+    };
+  }): this {
+    this.character.topics = personality.topics || [];
+    this.character.adjectives = personality.adjectives || [];
+    this.character.style = {
+      all: personality.style?.all || [],
+      chat: personality.style?.chat || [],
+      post: personality.style?.post || [],
+    };
+    return this;
+  }
+
+  /**
+   * Set configuration and plugins
+   */
+  setConfiguration(config: {
+    settings?: Record<string, any>;
+    secrets?: Record<string, string | boolean | number>;
+    plugins?: string[];
+    knowledge?: Character['knowledge'];
+  }): this {
+    this.character.settings = config.settings || {};
+    this.character.secrets = config.secrets || {};
+    this.character.plugins = config.plugins || [];
+    this.character.knowledge = config.knowledge || [];
+    return this;
+  }
+
+  /**
+   * Build and validate the character
+   */
+  build(): Character {
+    const validation = validateCharacter(this.character);
+    if (!validation.valid) {
+      throw new CharacterValidationError(`Character validation failed: ${validation.errors.join(', ')}`);
+    }
+    
+    return this.character as Character;
+  }
+}
+
+/**
+ * Character validation utilities
+ */
+export function validateCharacter(character: Partial<Character>): ValidationResult {
+  const errors: string[] = [];
+  
+  // Required fields validation
+  if (!character.name || character.name.trim() === '') {
+    errors.push('Character name is required');
+  }
+  
+  if (!character.bio || (Array.isArray(character.bio) && character.bio.length === 0)) {
+    errors.push('Character bio is required');
+  }
+  
+  // Message examples validation
+  if (character.messageExamples) {
+    for (let i = 0; i < character.messageExamples.length; i++) {
+      const conversation = character.messageExamples[i];
+      if (!Array.isArray(conversation)) {
+        errors.push(`Message example ${i} must be an array`);
+        continue;
+      }
+      
+      for (let j = 0; j < conversation.length; j++) {
+        const message = conversation[j];
+        if (!message.name) {
+          errors.push(`Message example ${i}.${j} missing name`);
+        }
+        if (!message.content?.text) {
+          errors.push(`Message example ${i}.${j} missing content.text`);
+        }
+      }
+    }
+  }
+  
+  // Plugin validation
+  if (character.plugins) {
+    for (const plugin of character.plugins) {
+      if (typeof plugin !== 'string' || plugin.trim() === '') {
+        errors.push('All plugins must be non-empty strings');
+      }
+    }
+  }
+  
+  // Settings validation
+  if (character.settings && typeof character.settings !== 'object') {
+    errors.push('Settings must be an object');
+  }
+  
+  return {
+    valid: errors.length === 0,
+    errors,
+  };
+}
+
+// Example comprehensive character configuration
+export const exampleCharacter: Character = {
+  name: "Technical Assistant",
+  username: "tech_assistant",
+  bio: [
+    "A knowledgeable AI assistant specializing in software development and technical support.",
+    "Experienced with modern web technologies, APIs, and best practices.",
+    "Focused on providing clear, actionable guidance with practical examples."
+  ],
+  system: "You are a technical assistant. Provide accurate, helpful information about software development, APIs, and programming concepts. Always include practical examples when possible.",
+  messageExamples: [
+    [
+      {
+        name: "user",
+        content: { text: "How do I handle errors in async functions?" }
+      },
+      {
+        name: "Technical Assistant",
+        content: {
+          text: "For async functions, use try-catch blocks to handle errors. Here's a pattern:\n\n```javascript\nasync function fetchData() {\n  try {\n    const response = await api.getData();\n    return response.data;\n  } catch (error) {\n    logger.error('Failed to fetch data:', error);\n    throw new Error('Data fetch failed');\n  }\n}\n```\n\nThis ensures errors are properly caught and logged."
+        }
+      }
+    ]
+  ],
+  topics: [
+    "software development",
+    "web APIs",
+    "JavaScript",
+    "TypeScript",
+    "error handling",
+    "best practices"
+  ],
+  adjectives: [
+    "knowledgeable",
+    "helpful",
+    "precise",
+    "practical",
+    "patient"
+  ],
+  style: {
+    all: [
+      "Provide clear, actionable guidance",
+      "Include practical code examples",
+      "Reference industry best practices",
+      "Be concise but thorough"
+    ],
+    chat: [
+      "Use a helpful, professional tone",
+      "Ask clarifying questions when needed",
+      "Break down complex topics into steps"
+    ],
+    post: [
+      "Focus on educational content",
+      "Include relevant examples",
+      "Provide context and reasoning"
+    ]
+  },
+  settings: {
+    model: ModelType.TEXT_LARGE,
+    temperature: 0.7,
+    maxTokens: 2000,
+    voice: {
+      model: "en_US-neutral-medium"
+    }
+  },
+  plugins: [
+    "@elizaos/plugin-bootstrap",
+    "@elizaos/plugin-node"
+  ]
+};
+
+// ❌ DON'T: Minimal character without proper structure
+const badCharacter = {
+  name: "Agent",
+  bio: "An AI agent", // Too minimal
+  // Missing messageExamples, style, proper structure
+};
+```
+
+### Plugin Registration & Management
+
+```typescript
+// ✅ DO: Systematic plugin registration with error handling
+// Reference: /Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza/packages/core/src/types.ts
+import type { Plugin, IAgentRuntime, Action, Provider, Evaluator, Service } from '@elizaos/core';
+
+/**
+ * Plugin registry with dependency management and validation
+ */
+export class PluginRegistry {
+  private registeredPlugins = new Map<string, Plugin>();
+  private dependencyGraph = new Map<string, string[]>();
+
+  /**
+   * Register plugins with dependency resolution
+   */
+  async registerPlugins(runtime: IAgentRuntime, plugins: Plugin[]): Promise<void> {
+    // Build dependency graph
+    this.buildDependencyGraph(plugins);
+    
+    // Sort plugins by dependencies
+    const sortedPlugins = this.resolveDependencies(plugins);
+    
+    // Register plugins in dependency order
+    for (const plugin of sortedPlugins) {
+      await this.registerSinglePlugin(runtime, plugin);
+    }
+  }
+
+  /**
+   * Register a single plugin with full validation
+   */
+  private async registerSinglePlugin(runtime: IAgentRuntime, plugin: Plugin): Promise<void> {
+    try {
+      logger.info(`Registering plugin: ${plugin.name}`);
+      
+      // Validate plugin structure
+      this.validatePlugin(plugin);
+      
+      // Check for conflicts
+      this.checkPluginConflicts(plugin);
+      
+      // Initialize plugin if it has an init function
+      if (plugin.init) {
+        const config = this.getPluginConfig(plugin.name);
+        await plugin.init(config, runtime);
+      }
+      
+      // Register plugin components
+      await this.registerPluginComponents(runtime, plugin);
+      
+      // Mark as registered
+      this.registeredPlugins.set(plugin.name, plugin);
+      
+      logger.info(`Plugin registered successfully: ${plugin.name}`);
+    } catch (error) {
+      logger.error(`Failed to register plugin ${plugin.name}:`, error);
+      throw new PluginRegistrationError(`Plugin registration failed for ${plugin.name}: ${error.message}`, error);
+    }
+  }
+
+  /**
+   * Register all plugin components (actions, providers, evaluators, services)
+   */
+  private async registerPluginComponents(runtime: IAgentRuntime, plugin: Plugin): Promise<void> {
+    // Register actions
+    if (plugin.actions) {
+      for (const action of plugin.actions) {
+        this.validateAction(action);
+        runtime.registerAction(action);
+        logger.debug(`Registered action: ${action.name} from ${plugin.name}`);
+      }
+    }
+
+    // Register providers
+    if (plugin.providers) {
+      for (const provider of plugin.providers) {
+        this.validateProvider(provider);
+        runtime.registerProvider(provider);
+        logger.debug(`Registered provider: ${provider.name} from ${plugin.name}`);
+      }
+    }
+
+    // Register evaluators
+    if (plugin.evaluators) {
+      for (const evaluator of plugin.evaluators) {
+        this.validateEvaluator(evaluator);
+        runtime.registerEvaluator(evaluator);
+        logger.debug(`Registered evaluator: ${evaluator.name} from ${plugin.name}`);
+      }
+    }
+
+    // Register services
+    if (plugin.services) {
+      for (const ServiceClass of plugin.services) {
+        await runtime.registerService(ServiceClass);
+        logger.debug(`Registered service: ${ServiceClass.serviceType} from ${plugin.name}`);
+      }
+    }
+
+    // Register models
+    if (plugin.models) {
+      for (const [modelType, handler] of Object.entries(plugin.models)) {
+        runtime.registerModel(modelType, handler, plugin.name);
+        logger.debug(`Registered model: ${modelType} from ${plugin.name}`);
+      }
+    }
+
+    // Register events
+    if (plugin.events) {
+      for (const [eventType, handlers] of Object.entries(plugin.events)) {
+        for (const handler of handlers) {
+          runtime.registerEvent(eventType, handler);
+          logger.debug(`Registered event handler: ${eventType} from ${plugin.name}`);
+        }
+      }
+    }
+  }
+
+  /**
+   * Validate plugin structure and requirements
+   */
+  private validatePlugin(plugin: Plugin): void {
+    if (!plugin.name || plugin.name.trim() === '') {
+      throw new PluginValidationError('Plugin name is required');
+    }
+    
+    if (!plugin.description || plugin.description.trim() === '') {
+      throw new PluginValidationError(`Plugin ${plugin.name} must have a description`);
+    }
+    
+    // Validate dependencies exist
+    if (plugin.dependencies) {
+      for (const dep of plugin.dependencies) {
+        if (!this.registeredPlugins.has(dep)) {
+          throw new PluginValidationError(`Plugin ${plugin.name} depends on unregistered plugin: ${dep}`);
+        }
+      }
+    }
+  }
+
+  /**
+   * Check for plugin conflicts
+   */
+  private checkPluginConflicts(plugin: Plugin): void {
+    if (this.registeredPlugins.has(plugin.name)) {
+      throw new PluginConflictError(`Plugin ${plugin.name} is already registered`);
+    }
+    
+    // Check for action name conflicts
+    if (plugin.actions) {
+      for (const action of plugin.actions) {
+        for (const [existingPluginName, existingPlugin] of this.registeredPlugins) {
+          if (existingPlugin.actions?.some(a => a.name === action.name)) {
+            throw new PluginConflictError(
+              `Action name conflict: ${action.name} already exists in plugin ${existingPluginName}`
+            );
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Get registered plugin by name
+   */
+  getPlugin(name: string): Plugin | undefined {
+    return this.registeredPlugins.get(name);
+  }
+
+  /**
+   * Get all registered plugins
+   */
+  getAllPlugins(): Plugin[] {
+    return Array.from(this.registeredPlugins.values());
+  }
+}
+
+// ❌ DON'T: Simple plugin registration without validation
+async function badPluginRegistration(runtime: IAgentRuntime, plugins: Plugin[]) {
+  // No dependency resolution, validation, or error handling
+  for (const plugin of plugins) {
+    await runtime.registerPlugin(plugin);
+  }
+}
+```
+
+### Service Lifecycle Management
+
+```typescript
+// ✅ DO: Comprehensive service lifecycle management
+// Reference: /Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza/packages/core/src/types.ts
+import type { Service, IAgentRuntime, ServiceTypeName } from '@elizaos/core';
+
+/**
+ * Service manager for lifecycle operations
+ */
+export class ServiceManager {
+  private services = new Map<ServiceTypeName, Service>();
+  private serviceStartOrder: ServiceTypeName[] = [];
+  private isShuttingDown = false;
+
+  /**
+   * Initialize and start all services in proper order
+   */
+  async initializeServices(runtime: IAgentRuntime, serviceClasses: (typeof Service)[]): Promise<void> {
+    logger.info('Initializing services...');
+    
+    try {
+      // Sort services by dependencies and priority
+      const sortedServices = this.sortServicesByDependencies(serviceClasses);
+      
+      // Start services in order
+      for (const ServiceClass of sortedServices) {
+        await this.startService(runtime, ServiceClass);
+      }
+      
+      // Set up health monitoring
+      this.setupHealthMonitoring();
+      
+      logger.info(`Successfully initialized ${this.services.size} services`);
+    } catch (error) {
+      logger.error('Service initialization failed:', error);
+      await this.shutdownServices();
+      throw error;
+    }
+  }
+
+  /**
+   * Start a single service with error handling
+   */
+  private async startService(runtime: IAgentRuntime, ServiceClass: typeof Service): Promise<void> {
+    const serviceType = ServiceClass.serviceType as ServiceTypeName;
+    
+    try {
+      logger.debug(`Starting service: ${serviceType}`);
+      
+      // Check if already running
+      if (this.services.has(serviceType)) {
+        logger.warn(`Service ${serviceType} is already running`);
+        return;
+      }
+      
+      // Start the service
+      const service = await ServiceClass.start(runtime);
+      
+      // Validate service
+      this.validateService(service, serviceType);
+      
+      // Register service
+      this.services.set(serviceType, service);
+      this.serviceStartOrder.push(serviceType);
+      
+      logger.debug(`Service started successfully: ${serviceType}`);
+    } catch (error) {
+      logger.error(`Failed to start service ${serviceType}:`, error);
+      throw new ServiceStartError(`Service ${serviceType} failed to start: ${error.message}`, error);
+    }
+  }
+
+  /**
+   * Get a service by type with type safety
+   */
+  getService<T extends Service>(serviceType: ServiceTypeName): T | null {
+    const service = this.services.get(serviceType);
+    return service as T | null;
+  }
+
+  /**
+   * Check service health status
+   */
+  async checkServiceHealth(): Promise<ServiceHealthReport> {
+    const healthReport: ServiceHealthReport = {
+      overall: 'healthy',
+      services: {},
+      timestamp: Date.now(),
+    };
+
+    for (const [serviceType, service] of this.services) {
+      try {
+        // Check if service has health check method
+        if ('healthCheck' in service && typeof service.healthCheck === 'function') {
+          const health = await (service as any).healthCheck();
+          healthReport.services[serviceType] = {
+            status: health ? 'healthy' : 'unhealthy',
+            lastCheck: Date.now(),
+          };
+        } else {
+          // Basic check - service exists and is not stopped
+          healthReport.services[serviceType] = {
+            status: 'healthy',
+            lastCheck: Date.now(),
+          };
+        }
+      } catch (error) {
+        healthReport.services[serviceType] = {
+          status: 'unhealthy',
+          lastCheck: Date.now(),
+          error: error.message,
+        };
+        healthReport.overall = 'degraded';
+      }
+    }
+
+    return healthReport;
+  }
+
+  /**
+   * Gracefully shutdown all services
+   */
+  async shutdownServices(): Promise<void> {
+    if (this.isShuttingDown) {
+      logger.warn('Service shutdown already in progress');
+      return;
+    }
+
+    this.isShuttingDown = true;
+    logger.info('Shutting down services...');
+
+    // Shutdown in reverse order of startup
+    const shutdownOrder = [...this.serviceStartOrder].reverse();
+    
+    for (const serviceType of shutdownOrder) {
+      await this.stopService(serviceType);
+    }
+    
+    this.services.clear();
+    this.serviceStartOrder = [];
+    this.isShuttingDown = false;
+    
+    logger.info('All services shut down successfully');
+  }
+
+  /**
+   * Stop a single service
+   */
+  private async stopService(serviceType: ServiceTypeName): Promise<void> {
+    const service = this.services.get(serviceType);
+    if (!service) return;
+
+    try {
+      logger.debug(`Stopping service: ${serviceType}`);
+      await service.stop();
+      this.services.delete(serviceType);
+      logger.debug(`Service stopped: ${serviceType}`);
+    } catch (error) {
+      logger.error(`Error stopping service ${serviceType}:`, error);
+      // Continue with other services even if one fails
+    }
+  }
+
+  /**
+   * Set up periodic health monitoring
+   */
+  private setupHealthMonitoring(): void {
+    setInterval(async () => {
+      const healthReport = await this.checkServiceHealth();
+      
+      if (healthReport.overall !== 'healthy') {
+        logger.warn('Service health check detected issues:', healthReport);
+      }
+    }, 60000); // Check every minute
+  }
+}
+
+/**
+ * Service health report interfaces
+ */
+interface ServiceHealthReport {
+  overall: 'healthy' | 'degraded' | 'unhealthy';
+  services: Record<ServiceTypeName, ServiceHealthStatus>;
+  timestamp: number;
+}
+
+interface ServiceHealthStatus {
+  status: 'healthy' | 'unhealthy';
+  lastCheck: number;
+  error?: string;
+}
+
+// ❌ DON'T: Basic service management without lifecycle or health monitoring
+class BadServiceManager {
+  private services = new Map();
+  
+  async startServices(serviceClasses: any[]) {
+    // No dependency resolution, error handling, or health monitoring
+    for (const ServiceClass of serviceClasses) {
+      const service = new ServiceClass();
+      this.services.set(ServiceClass.name, service);
+    }
+  }
+}
+```
+
+## Custom Error Classes
+
+```typescript
+// ✅ DO: Create specific error types for better error handling
+export class RuntimeInitializationError extends Error {
+  constructor(message: string, public cause?: Error) {
+    super(message);
+    this.name = 'RuntimeInitializationError';
+  }
+}
+
+export class CharacterValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CharacterValidationError';
+  }
+}
+
+export class CharacterLoadError extends Error {
+  constructor(message: string, public cause?: Error) {
+    super(message);
+    this.name = 'CharacterLoadError';
+  }
+}
+
+export class PluginRegistrationError extends Error {
+  constructor(message: string, public cause?: Error) {
+    super(message);
+    this.name = 'PluginRegistrationError';
+  }
+}
+
+export class PluginValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PluginValidationError';
+  }
+}
+
+export class PluginConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PluginConflictError';
+  }
+}
+
+export class ServiceStartError extends Error {
+  constructor(message: string, public cause?: Error) {
+    super(message);
+    this.name = 'ServiceStartError';
+  }
+}
+```
+
+## Configuration Interfaces
+
+```typescript
+// ✅ DO: Define comprehensive configuration interfaces
+export interface RuntimeCreationOptions {
+  characterPath: string;
+  databaseConfig: DatabaseConfig;
+  plugins?: PluginConfig[];
+  modelProviders?: string[];
+  services?: (typeof Service)[];
+  runtimeConfig?: RuntimeConfig;
+  fetch?: typeof fetch;
+}
+
+export interface PluginConfig {
+  name: string;
+  config?: Record<string, any>;
+  required?: boolean;
+}
+
+export interface DatabaseConfig {
+  type: 'sqlite' | 'postgres';
+  connectionString?: string;
+  options?: Record<string, any>;
+}
+
+export interface RuntimeConfig {
+  conversationLength?: number;
+  embeddingDimension?: number;
+  enableLogging?: boolean;
+  logLevel?: 'debug' | 'info' | 'warn' | 'error';
+}
+
+export interface ValidationResult {
+  valid: boolean;
+  errors: string[];
+}
+```
+
+## Best Practices
+
+### Character Configuration
+- Always validate character structure before runtime initialization
+- Include comprehensive message examples for better context
+- Use descriptive bio and personality traits
+- Set appropriate model configurations in settings
+- Document plugin dependencies clearly
+
+### Runtime Initialization
+- Use factory pattern for complex runtime setup
+- Implement proper error handling and logging
+- Validate all configuration before initialization
+- Set up monitoring and health checks
+- Handle graceful shutdown scenarios
+
+### Plugin Management
+- Resolve plugin dependencies before registration
+- Validate plugin structure and conflicts
+- Use proper error handling for plugin failures
+- Monitor plugin performance and health
+- Document plugin capabilities and requirements
+
+### Service Lifecycle
+- Start services in dependency order
+- Implement health monitoring
+- Handle service failures gracefully
+- Provide proper shutdown procedures
+- Log service state changes
+
+## Anti-patterns
+
+```typescript
+// ❌ DON'T: Skip validation and error handling
+const runtime = new AgentRuntime({
+  character: JSON.parse(fs.readFileSync('character.json')), // No validation
+  // Missing required database adapter
+});
+
+// ❌ DON'T: Register plugins without dependency management
+for (const plugin of plugins) {
+  runtime.registerPlugin(plugin); // No await, no error handling
+}
+
+// ❌ DON'T: Ignore service lifecycle
+const service = new CustomService();
+services.set('custom', service); // No proper startup or health monitoring
+```
+
+## References
+1. [ElizaOS Core Types](mdc:Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza/packages/core/src/types.ts)
+2. [Character Configuration Examples](mdc:Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza/packages/cli/__test_scripts__/test-characters)
+3. [ElizaOS Core Framework Guide](mdc:.cursor/rules/elizaos/elizaos_v2_core.md)
+4. [Plugin Development Patterns](mdc:.cursor/rules/elizaos/api_plugins.md)
