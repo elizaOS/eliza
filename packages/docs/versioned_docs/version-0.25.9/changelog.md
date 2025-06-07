@@ -2395,9 +2395,9 @@ Complete changelog:
 * default set to new standard  post time 90-180 type: post time by @o-on-x in https://github.com/ai16z/eliza/pull/369
 * feat: readme by @ponderingdemocritus in https://github.com/ai16z/eliza/pull/370
 * twitter-profile-remake by @alextitonis in https://github.com/ai16z/eliza/pull/263
-* fix: bug in getRecentMessageInteractions not awating for promisses before formating by @bmgalego in https://github.com/ai16z/eliza/pull/366
+* fix: bug in getRecentMessageInteractions not awating for promises before formatting by @bmgalego in https://github.com/ai16z/eliza/pull/366
 * feat: starknet token transfer by @enitrat in https://github.com/ai16z/eliza/pull/373
-* feat: Adding unit tests for start - Covering goals, defaultCharacters, relationships, evaulators, posts, database, messages by @ai16z-demirix in https://github.com/ai16z/eliza/pull/367
+* feat: Adding unit tests for start - Covering goals, defaultCharacters, relationships, evaluators, posts, database, messages by @ai16z-demirix in https://github.com/ai16z/eliza/pull/367
 * feat: Enhance Heurist Image Generation Settings and Image Handling by @tsubasakong in https://github.com/ai16z/eliza/pull/375
 * feat: install clients from plugin by @ponderingdemocritus in https://github.com/ai16z/eliza/pull/371
 * fix: openrouter 70b don't support 128000, changed to 405b in model.ts by @denizekiz in https://github.com/ai16z/eliza/pull/356
