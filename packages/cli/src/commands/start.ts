@@ -32,6 +32,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { detectDirectoryType, getDirectoryTypeDescription } from '@/src/utils/directory-detection';
+import { validatePort } from '@/src/utils/port-validation';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -771,13 +772,7 @@ export const start = new Command()
   )
   .option('-char, --character [paths...]', 'Character file(s) to use - accepts paths or URLs')
   .option('-b, --build', 'Build the project before starting')
-  .option('-p, --port <port>', 'Port to listen on (default: 3000)', (v) => {
-    const n = Number.parseInt(v, 10);
-    if (Number.isNaN(n) || n <= 0 || n > 65535) {
-      throw new Error('Port must be a number between 1 and 65535');
-    }
-    return n;
-  })
+  .option('-p, --port <port>', 'Port to listen on (default: 3000)', validatePort)
   .hook('preAction', async () => {
     await displayBanner();
   })

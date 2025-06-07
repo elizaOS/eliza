@@ -1,5 +1,6 @@
 import { buildProject, handleError, isMonorepoContext, UserEnvironment } from '@/src/utils';
 import { detectDirectoryType, getDirectoryTypeDescription } from '@/src/utils/directory-detection';
+import { validatePort } from '@/src/utils/port-validation';
 import { Command, Option } from 'commander';
 import chokidar from 'chokidar';
 import type { ChildProcess } from 'node:child_process';
@@ -203,7 +204,7 @@ export const dev = new Command()
   .option('-char, --character [paths...]', 'Character file(s) to use - accepts paths or URLs')
   .option('-b, --build', 'Build the project before starting')
   .addOption(
-    new Option('-p, --port <port>', 'Port to listen on').argParser((val) => Number.parseInt(val))
+    new Option('-p, --port <port>', 'Port to listen on (default: 3000)').argParser(validatePort)
   )
   .action(async (options) => {
     try {
