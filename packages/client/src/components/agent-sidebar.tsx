@@ -64,9 +64,9 @@ export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
       defaultValue="details"
       value={detailsTab}
       onValueChange={(v: TabValue) => setDetailsTab(v)}
-      className="flex flex-col h-full w-full max-w-full"
+      className="flex flex-col h-screen w-full max-w-full"
     >
-      <TabsList className="flex w-full max-w-full overflow-x-auto">
+      <TabsList className="flex w-full max-w-full overflow-x-auto flex-shrink-0">
         {allTabs.map((tab) => (
           <TabsTrigger key={tab.value} value={tab.value} className="flex items-center gap-1.5 flex-shrink-0">
             {tab.icon}
@@ -82,7 +82,7 @@ export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
         )}
       </TabsList>
 
-      <TabsContent value="details" className="overflow-y-auto overflow-x-hidden flex-1 p-4 w-full max-w-full">
+      <TabsContent value="details" className="overflow-y-auto overflow-x-hidden flex-1 p-4 w-full max-w-full min-h-0">
         {detailsTab === 'details' && agentId && (
           <>
             {isLoadingAgent && (
@@ -108,7 +108,7 @@ export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
         )}
       </TabsContent>
 
-      <TabsContent value="actions" className="overflow-y-auto overflow-x-hidden flex-1 w-full max-w-full">
+      <TabsContent value="actions" className="overflow-y-auto overflow-x-hidden flex-1 w-full max-w-full min-h-0">
         {detailsTab === 'actions' && agentId && (
           <div className="w-full max-w-full">
             <AgentActionViewer agentId={agentId} />
@@ -118,7 +118,7 @@ export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
           <div className="p-4 text-muted-foreground">Select an agent to see their actions.</div>
         )}
       </TabsContent>
-      <TabsContent value="logs" className="overflow-y-auto overflow-x-hidden flex-1 w-full max-w-full">
+      <TabsContent value="logs" className="overflow-y-auto overflow-x-hidden flex-1 w-full max-w-full min-h-0">
         {detailsTab === 'logs' && agentId && (
           <div className="w-full max-w-full">
             <AgentLogViewer agentName={agentName} level="all" />
@@ -128,7 +128,7 @@ export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
           <div className="p-4 text-muted-foreground">Select an agent to see their logs.</div>
         )}
       </TabsContent>
-      <TabsContent value="memories" className="overflow-y-auto overflow-x-hidden flex-1 w-full max-w-full">
+      <TabsContent value="memories" className="overflow-y-auto overflow-x-hidden flex-1 w-full max-w-full min-h-0">
         {detailsTab === 'memories' && agentId && (
           <div className="w-full max-w-full">
             <AgentMemoryViewer agentId={agentId} agentName={agentName} />
@@ -139,7 +139,7 @@ export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
         )}
       </TabsContent>
       {agentPanels.map((panel: AgentPanel) => (
-        <TabsContent key={panel.name} value={panel.name} className="overflow-y-auto overflow-x-hidden flex-1 w-full max-w-full">
+        <TabsContent key={panel.name} value={panel.name} className="overflow-y-auto overflow-x-hidden flex-1 w-full max-w-full min-h-0">
           {detailsTab === panel.name && agentId && (
             <iframe
               src={`${panel.path}?agentId=${agentId}`}
