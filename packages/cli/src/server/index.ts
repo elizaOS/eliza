@@ -607,10 +607,13 @@ export class AgentServer {
 
       // Use http server instead of app.listen
       this.server.listen(port, () => {
-        // Display the dashboard URL with the correct port after the server is actually listening
-        console.log(
-          `\x1b[32mStartup successful!\nGo to the dashboard at \x1b[1mhttp://localhost:${port}\x1b[22m\x1b[0m`
-        );
+        // Only show the dashboard URL in production mode
+        if (process.env.NODE_ENV !== 'development') {
+          // Display the dashboard URL with the correct port after the server is actually listening
+          console.log(
+            `\x1b[32mStartup successful!\nGo to the dashboard at \x1b[1mhttp://localhost:${port}\x1b[22m\x1b[0m`
+          );
+        }
 
         // Add log for test readiness
         console.log(`AgentServer is listening on port ${port}`);

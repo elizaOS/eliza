@@ -155,6 +155,10 @@ function startActualCliServer() {
       stdio: 'inherit',
       shell: false,
       detached: false,
+      env: {
+        ...process.env,
+        NODE_ENV: 'development'
+      }
     });
 
     child.on('close', (code, signal) => {
