@@ -152,7 +152,7 @@ Clone ElizaOS monorepo from a specific branch (defaults to main).
 Manage an ElizaOS plugin.
 
 - **Subcommands:**
-  - `list` (alias: `l`): List all available plugins
+  - `list` (alias: `l`): List available plugins (shows v1.x plugins by default)
   - `add <plugin>` (alias: `install`): Add a plugin to the project
     - Arguments: `<plugin>` (plugin name)
     - Options: `-n, --no-env-prompt`, `-b, --branch <branchName>`, `-T, --tag <tagname>`
