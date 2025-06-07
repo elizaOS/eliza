@@ -9,13 +9,5 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <script>
-      // Only load dev refresh script in development
-      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        const script = document.createElement('script');
-        script.src = '/dev-refresh.js';
-        document.head.appendChild(script);
-      }
-    </script>
   </body>
 </html>
