@@ -46,6 +46,10 @@ const require = createRequire(import.meta.url);
           from: './node_modules/@electric-sql/pglite/dist/pglite.wasm',
           to: './dist',
         },
+        {
+          from: './src/utils/upgrade/CLAUDE.md',
+          to: './dist/utils/upgrade',
+        },
       ],
       // Setting this to true will output a list of copied files
       verbose: true,
