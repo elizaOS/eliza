@@ -9,6 +9,7 @@ import {
   UserEnvironment,
 } from '@/src/utils';
 import { detectDirectoryType, type DirectoryInfo } from '@/src/utils/directory-detection';
+import { validatePort } from '@/src/utils/port-validation';
 import { type IAgentRuntime, type ProjectAgent } from '@elizaos/core';
 import { Command, Option } from 'commander';
 import * as dotenv from 'dotenv';
@@ -693,8 +694,8 @@ test
 // Add options after subcommands
 test
   .addOption(
-    new Option('-p, --port <port>', 'Server port for e2e tests').argParser((val) =>
-      Number.parseInt(val)
+    new Option('-p, --port <port>', 'Server port for e2e tests (default: 3000)').argParser(
+      validatePort
     )
   )
   .option('-n, --name <n>', 'Filter tests by name (matches file names or test suite names)')
