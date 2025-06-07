@@ -24,6 +24,9 @@ export interface ServiceTypeRegistry {
   TEE: 'tee';
   TASK: 'task';
   INSTRUMENTATION: 'instrumentation';
+  WALLET: 'wallet';
+  LP_POOL: 'lp_pool';
+  TOKEN_DATA: 'token_data';
 }
 
 /**
@@ -88,6 +91,9 @@ export const ServiceType = {
   TEE: 'tee',
   TASK: 'task',
   INSTRUMENTATION: 'instrumentation',
+  WALLET: 'wallet',
+  LP_POOL: 'lp_pool',
+  TOKEN_DATA: 'token_data',
 } as const satisfies ServiceTypeRegistry;
 
 /**

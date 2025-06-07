@@ -15,4 +15,6 @@ export * from './tee';
 export * from './messaging';
 export * from './testing';
 export * from './settings';
+export * from './wallet';
 export * from './runtime';
+export * from './lp';
