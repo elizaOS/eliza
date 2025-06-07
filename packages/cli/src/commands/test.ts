@@ -9,7 +9,13 @@ import {
   UserEnvironment,
 } from '@/src/utils';
 import { detectDirectoryType, type DirectoryInfo } from '@/src/utils/directory-detection';
-import { logger, type IAgentRuntime, type ProjectAgent, type Plugin } from '@elizaos/core';
+import {
+  logger,
+  type IAgentRuntime,
+  type ProjectAgent,
+  type Plugin,
+  AgentRuntime,
+} from '@elizaos/core';
 import { Command, Option } from 'commander';
 import * as dotenv from 'dotenv';
 import { exec, spawn } from 'node:child_process';
@@ -21,7 +27,10 @@ import { promisify } from 'node:util';
 import { pathToFileURL } from 'url';
 import { startAgent } from './start';
 import { getElizaCharacter } from '../characters/eliza';
-import { loadAndPreparePlugin } from '@/src/utils/plugin-loader';
+import { installPlugin, loadPluginModule } from '@/src/utils';
+import { getCliInstallTag } from '@/src/utils';
+import { detectPluginContext, provideLocalPluginGuidance } from '@/src/utils/plugin-context';
+import which from 'which';
 const execAsync = promisify(exec);
 
 /**
@@ -34,83 +43,143 @@ async function loadPluginDependencies(projectInfo: DirectoryInfo): Promise<Plugi
   if (projectInfo.type !== 'elizaos-plugin') {
     return [];
   }
-
-  /**
-   * NOTE: This logic is duplicated from `packages/cli/src/utils/install-plugin.ts`.
-   * It is used to determine the directory name for a plugin dependency.
-   * If `install-plugin.ts` changes, this needs to be updated.
-   */
-  function getPluginDirName(pluginIdentifier: string): string {
-    // Handle scoped npm packages like @elizaos/plugin-solana -> solana
-    if (pluginIdentifier.startsWith('@elizaos/plugin-')) {
-      return pluginIdentifier.replace('@elizaos/plugin-', '');
-    }
-    // Handle unscoped npm packages like elizaos-plugin-solana -> solana
-    if (pluginIdentifier.startsWith('elizaos-plugin-')) {
-      return pluginIdentifier.replace('elizaos-plugin-', '');
-    }
-    if (pluginIdentifier.startsWith('npm:')) {
-      const pkgName = pluginIdentifier.substring(4);
-      if (pkgName.startsWith('@elizaos/plugin-')) {
-        return pkgName.replace('@elizaos/plugin-', '');
-      }
-      if (pkgName.startsWith('elizaos-plugin-')) {
-        return pkgName.replace('elizaos-plugin-', '');
-      }
-      return pkgName;
-    }
-    if (pluginIdentifier.startsWith('github:')) {
-      const parts = pluginIdentifier.substring(7).split('/');
-      return parts[parts.length - 1].replace('.git', '');
-    }
-    // For local paths or other formats, we might need more logic
-    // For now, let's just use the basename
-    return path.basename(pluginIdentifier);
-  }
-
   const project = await loadProject(process.cwd());
   const dependencyPlugins: Plugin[] = [];
 
   if (project.isPlugin && project.pluginModule?.dependencies?.length > 0) {
-    logger.info(`[Test Command] Loading dependencies for plugin: ${project.pluginModule.name}`);
     const projectPluginsPath = path.join(process.cwd(), '.eliza', 'plugins');
-    logger.info(`[Test Command] Looking for dependencies in: ${projectPluginsPath}`);
-
     for (const dependency of project.pluginModule.dependencies) {
-      // The dependency is now in node_modules of the temp project
       const pluginPath = path.join(projectPluginsPath, 'node_modules', dependency);
-      logger.info(`[Test Command] Checking for dependency path: ${pluginPath}`);
-
-      const pathExists = fs.existsSync(pluginPath);
-      logger.info(`[Test Command] Path ${pluginPath} exists: ${pathExists}`);
-
-      if (pathExists) {
+      if (fs.existsSync(pluginPath)) {
         try {
-          // Before loading, we need to build the dependency plugin
-          logger.info(`Building dependency plugin: ${dependency}...`);
-          await buildProject(pluginPath, true);
-          logger.info(`Build completed for ${dependency}`);
-
-          logger.info(`Loading dependency: ${dependency} from ${pluginPath}`);
+          // Dependencies from node_modules are pre-built. We just need to load them.
           const pluginProject = await loadProject(pluginPath);
           if (pluginProject.pluginModule) {
             dependencyPlugins.push(pluginProject.pluginModule);
-            logger.info(`Successfully loaded plugin: ${pluginProject.pluginModule.name}`);
-          } else {
-            logger.warn(`Could not load plugin module from ${pluginPath}`);
           }
         } catch (error) {
           logger.error(`Failed to load or build dependency ${dependency}:`, error);
         }
-      } else {
-        logger.warn(
-          `Plugin dependency path does not exist: ${pluginPath}. It may not have been installed correctly.`
-        );
       }
     }
   }
-
   return dependencyPlugins;
+}
+
+function isValidPluginShape(obj: any): obj is Plugin {
+  if (!obj || typeof obj !== 'object' || !obj.name) {
+    return false;
+  }
+  // Check for the presence of at least one key functional property
+  return !!(
+    obj.init ||
+    obj.services ||
+    obj.providers ||
+    obj.actions ||
+    obj.memoryManagers ||
+    obj.componentTypes ||
+    obj.evaluators ||
+    obj.adapter ||
+    obj.models ||
+    obj.events ||
+    obj.routes ||
+    obj.tests ||
+    obj.config ||
+    obj.description // description is also mandatory technically
+  );
+}
+
+async function loadAndPreparePlugin(pluginName: string): Promise<Plugin | null> {
+  const version = getCliInstallTag();
+  let pluginModule: any;
+
+  // Check if this is a local development scenario BEFORE attempting any loading
+  const context = detectPluginContext(pluginName);
+
+  if (context.isLocalDevelopment) {
+    // For local development, we should never try to install - just load directly
+    try {
+      pluginModule = await loadPluginModule(pluginName);
+      if (!pluginModule) {
+        logger.error(`Failed to load local plugin ${pluginName}.`);
+        provideLocalPluginGuidance(pluginName, context);
+        return null;
+      }
+    } catch (error) {
+      logger.error(`Error loading local plugin ${pluginName}: ${error}`);
+      provideLocalPluginGuidance(pluginName, context);
+      return null;
+    }
+  } else {
+    // External plugin - use existing logic
+    try {
+      // Use the centralized loader first
+      pluginModule = await loadPluginModule(pluginName);
+
+      if (!pluginModule) {
+        // If loading failed, try installing and then loading again
+        try {
+          await installPlugin(pluginName, process.cwd(), version);
+          // Try loading again after installation using the centralized loader
+          pluginModule = await loadPluginModule(pluginName);
+        } catch (installError) {
+          logger.error(`Failed to install plugin ${pluginName}: ${installError}`);
+          return null; // Installation failed
+        }
+
+        if (!pluginModule) {
+          logger.error(`Failed to load plugin ${pluginName} even after installation.`);
+          return null; // Loading failed post-installation
+        }
+      }
+    } catch (error) {
+      // Catch any unexpected error during the combined load/install/load process
+      logger.error(`An unexpected error occurred while processing plugin ${pluginName}: ${error}`);
+      return null;
+    }
+  }
+
+  if (!pluginModule) {
+    logger.error(`Failed to process plugin ${pluginName} (module is null/undefined unexpectedly)`);
+    return null;
+  }
+
+  // Construct the expected camelCase export name (e.g., @elizaos/plugin-foo-bar -> fooBarPlugin)
+  const expectedFunctionName = `${pluginName
+    .replace(/^@elizaos\/plugin-/, '') // Remove prefix
+    .replace(/^@elizaos-plugins\//, '') // Remove alternative prefix
+    .replace(/-./g, (match) => match[1].toUpperCase())}Plugin`; // Convert kebab-case to camelCase and add 'Plugin' suffix
+
+  // 1. Prioritize the expected named export if it exists
+  const expectedExport = pluginModule[expectedFunctionName];
+  if (isValidPluginShape(expectedExport)) {
+    return expectedExport as Plugin;
+  }
+
+  // 2. Check the default export if the named one wasn't found or valid
+  const defaultExport = pluginModule.default;
+  if (isValidPluginShape(defaultExport)) {
+    if (expectedExport !== defaultExport) {
+      return defaultExport as Plugin;
+    }
+  }
+
+  // 3. If neither primary method worked, search all exports aggressively
+  for (const key of Object.keys(pluginModule)) {
+    if (key === expectedFunctionName || key === 'default') {
+      continue;
+    }
+
+    const potentialPlugin = pluginModule[key];
+    if (isValidPluginShape(potentialPlugin)) {
+      return potentialPlugin as Plugin;
+    }
+  }
+
+  logger.warn(
+    `Could not find a valid plugin export in ${pluginName}. Checked exports: ${expectedFunctionName} (if exists), default (if exists), and others. Available exports: ${Object.keys(pluginModule).join(', ')}`
+  );
+  return null;
 }
 
 // Helper function to check port availability
@@ -527,55 +596,54 @@ const runE2eTests = async (
             if (!pluginUnderTest) {
               throw new Error('Plugin module could not be loaded for testing.');
             }
-
             const defaultElizaCharacter = getElizaCharacter();
 
-            // Gather all plugin names to be loaded, including dependencies
+            // 1. Consolidate all plugin names: dependencies AND default plugins
             const requiredPluginNames = new Set<string>([
-              ...(pluginUnderTest.dependencies || []).map((dep) =>
-                typeof dep === 'string' ? dep : dep.name
-              ),
+              ...(pluginUnderTest.dependencies || []),
               ...(defaultElizaCharacter.plugins || []),
             ]);
 
-            logger.info(`Required plugins for test: ${[...requiredPluginNames].join(', ')}`);
-
-            // Load all required plugins into objects
-            const allPluginsForRuntime: Plugin[] = [pluginUnderTest];
+            // 2. Load all required plugins into objects
+            const dependencyPlugins: Plugin[] = [];
             for (const name of requiredPluginNames) {
               const loadedPlugin = await loadAndPreparePlugin(name);
               if (loadedPlugin) {
-                // Avoid adding the plugin-under-test twice
-                const isAlreadyAdded = allPluginsForRuntime.some(
-                  (p) => p.name === loadedPlugin.name
-                );
-                if (!isAlreadyAdded) {
-                  allPluginsForRuntime.push(loadedPlugin);
-                }
+                dependencyPlugins.push(loadedPlugin);
               } else {
-                logger.warn(`Failed to load dependency plugin: ${name}`);
+                logger.warn(`Failed to load dependency plugin for test: ${name}`);
               }
             }
 
-            logger.info(
-              `Starting test agent with plugins: ${allPluginsForRuntime.map((p) => p.name).join(', ')}`
-            );
+            // 3. Manually create the runtime and register plugins in order
+            const runtime = new AgentRuntime({
+              character: defaultElizaCharacter,
+              // We register manually to control the order precisely
+              settings: {
+                // Pass the server's db config directly to the runtime
+                dataDir: elizaDbDir,
+                postgresUrl,
+              },
+            });
 
-            // Start the agent with the default character and the fully loaded plugins
-            const runtime = await startAgent(
-              defaultElizaCharacter,
-              server,
-              undefined,
-              allPluginsForRuntime,
-              {
-                isPluginTestMode: true,
-              }
-            );
+            // 3a. Register all dependencies FIRST
+            for (const depPlugin of dependencyPlugins) {
+              await runtime.registerPlugin(depPlugin);
+            }
+            logger.info(`Registered ${dependencyPlugins.length} dependency and default plugins.`);
 
+            // 3b. Register the plugin under test SECOND
+            await runtime.registerPlugin(pluginUnderTest);
+            logger.info(`Registered plugin under test: ${pluginUnderTest.name}`);
+
+            // 3c. Initialize the runtime LAST
+            await runtime.initialize();
+
+            server.registerAgent(runtime);
             runtimes.push(runtime);
             projectAgents.push({
               character: defaultElizaCharacter,
-              plugins: runtime.plugins, // Use the final list of plugins from the runtime
+              plugins: runtime.plugins,
             });
 
             logger.info('Default test agent started successfully');
@@ -716,6 +784,9 @@ const runE2eTests = async (
 async function runAllTests(options: { port?: number; name?: string; skipBuild?: boolean }) {
   // Run component tests first
   const projectInfo = getProjectType();
+  if (!options.skipBuild) {
+    await installPluginDependencies(projectInfo);
+  }
   const componentResult = await runComponentTests(options, projectInfo);
 
   // Run e2e tests with the same processed filter name
@@ -816,4 +887,52 @@ test
 // This is the function that registers the command with the CLI
 export default function registerCommand(cli: Command) {
   return cli.addCommand(test);
+}
+
+async function installPluginDependencies(projectInfo: DirectoryInfo) {
+  if (projectInfo.type !== 'elizaos-plugin') {
+    return;
+  }
+  const project = await loadProject(process.cwd());
+  if (project.isPlugin && project.pluginModule?.dependencies?.length > 0) {
+    const pluginsDir = path.join(process.cwd(), '.eliza', 'plugins');
+    if (!fs.existsSync(pluginsDir)) {
+      await fs.promises.mkdir(pluginsDir, { recursive: true });
+    }
+    const packageJsonPath = path.join(pluginsDir, 'package.json');
+    if (!fs.existsSync(packageJsonPath)) {
+      const packageJsonContent = {
+        name: 'test-plugin-dependencies',
+        version: '1.0.0',
+        description: 'A temporary package for installing test plugin dependencies',
+        dependencies: {},
+      };
+      await fs.promises.writeFile(packageJsonPath, JSON.stringify(packageJsonContent, null, 2));
+    }
+
+    for (const dependency of project.pluginModule.dependencies) {
+      await installPlugin(dependency, pluginsDir);
+      const dependencyPath = path.join(pluginsDir, 'node_modules', dependency);
+      if (fs.existsSync(dependencyPath)) {
+        try {
+          const bunPath = await which('bun');
+          await new Promise<void>((resolve, reject) => {
+            const child = spawn(bunPath, ['install'], {
+              cwd: dependencyPath,
+              stdio: 'inherit',
+              env: process.env,
+            });
+            child.on('close', (code) =>
+              code === 0 ? resolve() : reject(`bun install failed with code ${code}`)
+            );
+            child.on('error', reject);
+          });
+        } catch (error) {
+          logger.warn(
+            `[Test Command] Failed to install devDependencies for ${dependency}: ${error}`
+          );
+        }
+      }
+    }
+  }
 }
