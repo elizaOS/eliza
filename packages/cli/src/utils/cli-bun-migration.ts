@@ -51,12 +51,28 @@ async function installCliWithBun(version: string): Promise<void> {
 }
 
 /**
- * Verify the CLI installation works
+ * Verify the CLI installation works and returns expected version
  */
 async function verifyCliInstallation(expectedVersion: string): Promise<boolean> {
   try {
     const { stdout } = await execa('elizaos', ['-v'], { stdio: 'pipe' });
-    return stdout.trim() === expectedVersion;
+    const output = stdout.trim();
+
+    // Extract version using regex pattern (handles v1.0.6, 1.0.6, etc.)
+    const versionMatch = output.match(/(\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?)/);
+
+    if (!versionMatch) {
+      return false;
+    }
+
+    const actualVersion = versionMatch[1];
+
+    // Flexible comparison - exact match or version contained in expected
+    return (
+      actualVersion === expectedVersion ||
+      expectedVersion.includes(actualVersion) ||
+      actualVersion.includes(expectedVersion)
+    );
   } catch {
     return false;
   }
@@ -92,7 +108,7 @@ export async function migrateCliToBun(targetVersion: string): Promise<void> {
 
     logger.info('✅ CLI migration completed successfully! You may need to restart your terminal.');
   } catch (error) {
-    logger.error('❌ CLI migration failed:', error.message);
+    logger.error(`❌ CLI migration failed: ${error.message}`);
     logger.error('Your original npm installation is still intact.');
 
     // Try to clean up failed bun installation
