@@ -25,21 +25,6 @@ describe('ElizaOS Monorepo Commands', () => {
     expectHelpOutput(result, 'monorepo', ['-b', '--branch', '-d', '--dir']);
   });
 
-  test('monorepo command works with help', () => {
-    const result = runCliCommand(context.elizaosCmd, 'monorepo --help');
-    expect(result).toContain('monorepo');
-  });
-
-  test('monorepo shows branch option', () => {
-    const result = runCliCommand(context.elizaosCmd, 'monorepo --help');
-    expect(result).toContain('--branch');
-  });
-
-  test('monorepo shows directory option', () => {
-    const result = runCliCommand(context.elizaosCmd, 'monorepo --help');
-    expect(result).toContain('--dir');
-  });
-
   test('monorepo uses default branch and directory', () => {
     // This would try to clone, so we just test that it recognizes the command
     // without actually performing the network operation
