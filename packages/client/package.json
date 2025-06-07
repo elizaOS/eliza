@@ -6,7 +6,6 @@
   "type": "module",
   "scripts": {
     "start:client": "vite",
-    "dev": "vite --host 0.0.0.0 --port 5173",
     "dev:client": "vite --host 0.0.0.0 --port 5173",
     "build": "vite build",
     "preview": "vite preview",
