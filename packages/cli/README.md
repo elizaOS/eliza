@@ -132,12 +132,12 @@ Manage environment variables and secrets.
 
 ### Monorepo Setup
 
-#### `elizaos setup-monorepo`
+#### `elizaos monorepo`
 
-Clone ElizaOS monorepo from a specific branch (defaults to main).
+Clone ElizaOS monorepo from a specific branch (defaults to develop).
 
 - **Options:**
-  - `-b, --branch <branch>`: Branch to install (default: `main`)
+  - `-b, --branch <branch>`: Branch to install (default: `develop`)
   - `-d, --dir <directory>`: Destination directory (default: `./eliza`)
 
 **Notes:**
@@ -791,5 +791,5 @@ Projects contain agent configurations and code for building agent-based applicat
 For contributing to the ElizaOS CLI, please clone the monorepo using:
 
 ```bash
-elizaos setup-monorepo
+elizaos monorepo
 ```
