@@ -35,6 +35,7 @@ import { v4 } from 'uuid';
 import * as actions from './actions/index.ts';
 import * as evaluators from './evaluators/index.ts';
 import * as providers from './providers/index.ts';
+import { replyAction } from './actions/reply.ts';
 
 import { TaskService } from './services/task.ts';
 import { agentScenariosSuite } from './e2e/scenarios.ts';
@@ -55,6 +56,41 @@ type MediaData = {
 };
 
 const latestResponseIds = new Map<string, Map<string, string>>();
+
+/**
+ * Reorders actions to prioritize reply actions first, then other actions.
+ * Filters out undefined and 'IGNORE' actions.
+ * 
+ * @param responseMessages - Array of response messages containing actions
+ * @param replyActionSimiles - Array of reply action similes from replyAction
+ * @returns Object with replyActionsFound and otherActions arrays, plus hasReplyAction flag
+ */
+function reorderActionsWithReplyPriority(
+  responseMessages: Memory[],
+  replyActionSimiles: string[] = []
+): { replyActionsFound: string[]; otherActions: string[]; hasReplyAction: boolean } {
+  const replyActions = new Set(['REPLY', ...replyActionSimiles]);
+  const replyActionsFound: string[] = [];
+  const otherActions: string[] = [];
+
+  for (const message of responseMessages) {
+    for (const action of message.content.actions || []) {
+      if (action && action !== 'IGNORE') {
+        if (replyActions.has(action)) {
+          replyActionsFound.push(action);
+        } else {
+          otherActions.push(action);
+        }
+      }
+    }
+  }
+
+  return {
+    replyActionsFound,
+    otherActions,
+    hasReplyAction: replyActionsFound.length > 0
+  };
+}
 
 /**
  * Escapes special characters in a string to make it JSON-safe.
@@ -535,14 +571,28 @@ const messageReceivedHandler = async ({
             // without actions there can't be more than one message
             await callback(responseContent);
           } else {
-            await runtime.processActions(
+            console.log({
               message,
               responseMessages,
               state,
-              async (memory: Content) => {
-                return [];
-              }
+              // callback,
+            });
+
+            // Reorder actions to prioritize reply actions
+            const { replyActionsFound, otherActions, hasReplyAction } = reorderActionsWithReplyPriority(
+              responseMessages,
+              replyAction.similes
             );
+
+            const messageWtihActionReorder = {
+              ...message,
+              content: {
+                ...message.content,
+                actions: [...replyActionsFound, ...otherActions],
+              },
+            };
+
+            await runtime.processActions(messageWtihActionReorder, responseMessages, state, callback);
             if (responseMessages.length) {
               // Log provider usage for complex responses
               for (const responseMessage of responseMessages) {
@@ -557,8 +607,12 @@ const messageReceivedHandler = async ({
                 }
               }
 
-              for (const memory of responseMessages) {
-                await callback(memory.content);
+              // Only call callback for messages that weren't already handled by REPLY actions
+              // REPLY actions handle their own callbacks, so we should avoid duplicate calls
+              if (!hasReplyAction) {
+                for (const memory of responseMessages) {
+                  await callback(memory.content);
+                }
               }
             }
           }
@@ -566,9 +620,7 @@ const messageReceivedHandler = async ({
             message,
             state,
             shouldRespond,
-            async (memory: Content) => {
-              return [];
-            },
+            callback,
             responseMessages
           );
         } else {
