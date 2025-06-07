@@ -37,6 +37,7 @@ import * as evaluators from './evaluators/index.ts';
 import * as providers from './providers/index.ts';
 
 import { TaskService } from './services/task.ts';
+import { agentScenariosSuite } from './e2e/scenarios.ts';
 
 export * from './actions/index.ts';
 export * from './evaluators/index.ts';
@@ -1248,6 +1249,7 @@ export const bootstrapPlugin: Plugin = {
     actions.updateRoleAction,
     actions.updateSettingsAction,
   ],
+  tests: [agentScenariosSuite],
   // this is jank, these events are not valid
   events: events as any as PluginEvents,
   evaluators: [evaluators.reflectionEvaluator],
