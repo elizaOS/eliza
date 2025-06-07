@@ -42,7 +42,7 @@ async function cloneRepository(repo: string, branch: string, destination: string
 /**
  * Display next step instructions after cloning
  */
-function displayNextSteps(targetDir: string, originalDir: string): void {
+function displayNextSteps(targetDir: string): void {
   const cdPath = path.relative(process.cwd(), targetDir);
 
   console.log('\nTo complete the ElizaOS setup, follow these steps:\n');
@@ -113,7 +113,7 @@ export const monorepo = new Command()
       await cloneRepository(repo, branch, destinationDir);
 
       // Display instructions for next steps
-      displayNextSteps(destinationDir, dir);
+      displayNextSteps(destinationDir);
     } catch (error) {
       handleError(error);
     }
