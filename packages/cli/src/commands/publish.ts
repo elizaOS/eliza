@@ -343,6 +343,46 @@ async function getNpmUsername(): Promise<string> {
 }
 
 /**
+ * Display appropriate registry publication messaging based on options and user status
+ */
+function displayRegistryPublicationMessage(
+  opts: { skipRegistry?: boolean; npm?: boolean },
+  userIsMaintainer: boolean,
+  registryPrUrl?: string
+): void {
+  // Early returns for clear flow control
+  if (opts.skipRegistry) {
+    console.info('Registry publication skipped as requested with --skip-registry flag');
+    return;
+  }
+
+  if (opts.npm) {
+    // NPM-only publishing with registry enabled
+    console.warn('NPM publishing currently does not update the registry.');
+    console.info('To include this package in the registry:');
+    console.info(`1. Fork the registry repository at ${REGISTRY_GITHUB_URL}`);
+    console.info('2. Add your package metadata');
+    console.info('3. Submit a pull request to the main repository');
+    return;
+  }
+
+  // GitHub + registry publishing
+  if (userIsMaintainer) {
+    // For GitHub publishing, PR is already created by publishToGitHub
+    if (!registryPrUrl) {
+      console.info('Registry publication completed during GitHub publishing process.');
+    }
+  } else {
+    // For non-maintainers, show instructions for registry inclusion
+    console.info("Package published, but you're not a maintainer of this package.");
+    console.info('To include this package in the registry, please:');
+    console.info(`1. Fork the registry repository at ${REGISTRY_GITHUB_URL}`);
+    console.info('2. Add your package metadata');
+    console.info('3. Submit a pull request to the main repository');
+  }
+}
+
+/**
  * Validate plugin requirements
  */
 async function validatePluginRequirements(cwd: string, packageJson: any): Promise<void> {
@@ -560,16 +600,8 @@ export const publish = new Command()
       if (!opts.npm) {
         credentials = await getGitHubCredentials();
         if (!credentials) {
-          console.info('GitHub credentials required for publishing.');
-
-          await new Promise((resolve) => setTimeout(resolve, 10));
-
-          const newCredentials = await getGitHubCredentials();
-          if (!newCredentials) {
-            process.exit(1);
-          }
-
-          credentials = newCredentials;
+          console.error('GitHub credentials required for publishing.');
+          process.exit(1);
         }
       }
 
@@ -811,30 +843,7 @@ export const publish = new Command()
       }
 
       // Handle registry publication messaging
-      if (!opts.skipRegistry && !opts.npm) {
-        if (userIsMaintainer) {
-          // For GitHub publishing, PR is already created by publishToGitHub
-          if (!registryPrUrl) {
-            console.info('Registry publication completed during GitHub publishing process.');
-          }
-        } else {
-          // For non-maintainers, show instructions for registry inclusion
-          console.info("Package published, but you're not a maintainer of this package.");
-          console.info('To include this package in the registry, please:');
-          console.info(`1. Fork the registry repository at ${REGISTRY_GITHUB_URL}`);
-          console.info('2. Add your package metadata');
-          console.info('3. Submit a pull request to the main repository');
-        }
-      } else if (opts.npm && !opts.skipRegistry) {
-        // For npm-only publishing with registry enabled
-        console.warn('NPM publishing currently does not update the registry.');
-        console.info('To include this package in the registry:');
-        console.info(`1. Fork the registry repository at ${REGISTRY_GITHUB_URL}`);
-        console.info('2. Add your package metadata');
-        console.info('3. Submit a pull request to the main repository');
-      } else if (opts.skipRegistry) {
-        console.info('Registry publication skipped as requested with --skip-registry flag');
-      }
+      displayRegistryPublicationMessage(opts, userIsMaintainer, registryPrUrl);
 
       console.log(`Successfully published plugin ${packageJson.name}@${packageJson.version}`);
 
