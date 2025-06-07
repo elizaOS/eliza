@@ -381,7 +381,7 @@ plugins
     // Validate plugin name is not empty or whitespace
     if (!pluginArg || !pluginArg.trim()) {
       logger.error('Plugin name cannot be empty or whitespace-only.');
-      console.log(
+      logger.info(
         'Please provide a valid plugin name (e.g., "openai", "plugin-anthropic", "@elizaos/plugin-sql")'
       );
       process.exit(1);
