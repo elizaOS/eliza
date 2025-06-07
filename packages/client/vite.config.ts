@@ -115,6 +115,52 @@ export default defineConfig(({ mode }): CustomUserConfig => {
     ],
     clearScreen: false,
     envDir,
+    server: {
+      port: 5173,
+      host: '0.0.0.0',
+      strictPort: true,
+      hmr: {
+        port: 5174,
+        host: '0.0.0.0',
+      },
+      watch: {
+        usePolling: false,
+        interval: 100,
+      },
+      cors: true,
+      proxy: {
+        // Proxy all API calls to backend server
+        '/api': {
+          target: 'http://localhost:3000',
+          changeOrigin: true,
+          secure: false,
+        },
+        // Proxy WebSocket connections for real-time features
+        '/socket.io': {
+          target: 'http://localhost:3000',
+          changeOrigin: true,
+          ws: true,
+        },
+        // Proxy any other backend endpoints that might exist
+        '/v1': {
+          target: 'http://localhost:3000',
+          changeOrigin: true,
+          secure: false,
+        },
+        // Proxy health check and ping endpoints
+        '/ping': {
+          target: 'http://localhost:3000',
+          changeOrigin: true,
+          secure: false,
+        },
+        // Proxy any direct server endpoints
+        '/server': {
+          target: 'http://localhost:3000',
+          changeOrigin: true,
+          secure: false,
+        },
+      },
+    },
     define: {
       'import.meta.env.VITE_SERVER_PORT': JSON.stringify(env.SERVER_PORT || '3000'),
       // Add empty shims for Node.js globals
@@ -164,7 +210,7 @@ export default defineConfig(({ mode }): CustomUserConfig => {
         '@elizaos/core': path.resolve(__dirname, '../core/src/index.ts'),
       },
     },
-    logLevel: 'error', // Only show errors, not warnings
+    logLevel: mode === 'development' ? 'info' : 'error',
     // Add Vitest configuration
     test: {
       globals: true, // Or false, depending on your preference

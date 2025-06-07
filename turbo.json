@@ -18,13 +18,11 @@
     "start": {
       "dependsOn": ["@elizaos/core#build"],
       "env": ["LOG_LEVEL"],
-      "persistent": true,
-      "cache": false
+      "persistent": true
     },
     "dev": {
       "dependsOn": ["@elizaos/core#build"],
-      "persistent": true,
-      "cache": false
+      "persistent": true
     },
     "test": {
       "dependsOn": ["^build"],
