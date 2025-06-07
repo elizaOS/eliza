@@ -1,6 +1,7 @@
 // Core utilities
 export * from './audioBuffer';
 export * from './build-project';
+export * from './cli-bun-migration';
 export * from './cli-prompts';
 export * from './config-manager';
 export * from './copy-template';

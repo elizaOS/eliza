@@ -8,9 +8,14 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout main branch
+        uses: actions/checkout@v4
         with:
+          ref: main # Assumes releases are created from main
           fetch-depth: 0
 
       - uses: actions/setup-node@v4
@@ -18,11 +23,6 @@ jobs:
           node-version: '23'
 
       - uses: oven-sh/setup-bun@v2
-
-      - name: Configure Git
-        run: |
-          git config user.name "${{ github.actor }}"
-          git config user.email "${{ github.actor }}@users.noreply.github.com"
 
       - name: 'Setup npm for npmjs'
         run: |
@@ -47,23 +47,37 @@ jobs:
       - name: Publish Packages
         id: publish
         run: |
-          # Get the latest release tag
-          LATEST_TAG=$(git describe --tags `git rev-list --tags --max-count=1`)
-          
-          # Extract version number from tag (remove 'v' prefix if present)
+          # Get version from the release tag that triggered the workflow
+          LATEST_TAG=${{ github.ref_name }}
           VERSION=${LATEST_TAG#v}
-
-          # Force clean the working directory and reset any changes
-          echo "Cleaning working directory and resetting any changes"
-          git clean -fd
-          git reset --hard HEAD
-
-          # Force checkout the latest tag
-          echo "Checking out latest tag: $LATEST_TAG"
-          git checkout -b temp-publish-branch $LATEST_TAG
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
 
           echo "Publishing version: $VERSION"
-          # Use lerna publish directly with the version, which handles both versioning and publishing
+          # Lerna will update versions in package.json files but not commit or tag
           npx lerna publish $VERSION --exact --yes --dist-tag latest --no-private --force-publish --no-git-tag-version --no-push
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Commit and Push Version Bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add **/package.json
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "No version changes to commit."
+          else
+            git commit -m "chore(release): bump versions to v${{ env.VERSION }}"
+            git push origin main
+          fi
+
+      - name: Create Pull Request to develop
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr create \
+            --base "develop" \
+            --head "main" \
+            --title "Release: Sync main to develop for v${{ env.VERSION }}" \
+            --body "Syncs version bump from main to develop." \
+            --label "release,automated-pr"
