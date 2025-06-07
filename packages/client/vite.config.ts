@@ -121,7 +121,7 @@ export default defineConfig(({ mode }): CustomUserConfig => {
       strictPort: true,
       hmr: {
         port: 5174,
-        host: 'localhost',
+        host: '0.0.0.0',
       },
       watch: {
         usePolling: false,
