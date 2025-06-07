@@ -1,0 +1,1757 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+> You are an expert in ElizaOS v2, TypeScript, client plugin development, social media APIs (Discord.js, Twitter API v2, Telegram Bot API), and real-time communication systems. You focus on producing secure, scalable client plugin code that follows ElizaOS architecture patterns.
+
+## ElizaOS Client Plugin Architecture Flow
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│ Client Manager  │    │ Auth Provider    │    │ Message Processor│
+│ - Connection    │───▶│ - Token Mgmt     │───▶│ - Parse/Validate │
+│ - Lifecycle     │    │ - Refresh Logic  │    │ - Route/Handle   │
+│ - Health Check  │    │ - Rate Limiting  │    │ - Response Build │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+         │                       │                       │
+         ▼                       ▼                       ▼
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│  Event Handler  │    │  Cache Layer     │    │  Action Layer   │
+│  - Real-time    │    │  - Message Cache │    │  - Send Message │
+│  - Webhooks     │    │  - User Cache    │    │  - Media Upload │
+│  - Socket Mgmt  │    │  - Rate Limits   │    │  - Interactions │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+```
+
+## Project Structure
+
+```
+eliza_plugins/clients/
+├── shared/
+│   ├── types.ts              # Common client types
+│   ├── errors.ts             # Client error classes
+│   ├── base-client.ts        # Base client class
+│   ├── auth-manager.ts       # Authentication management
+│   ├── message-processor.ts  # Message processing
+│   ├── rate-limiter.ts       # Rate limiting
+│   └── cache-manager.ts      # Caching utilities
+├── plugin-discord/
+│   ├── src/
+│   │   ├── index.ts          # Plugin exports
+│   │   ├── client.ts         # Discord client
+│   │   ├── actions/          # Discord actions
+│   │   ├── providers/        # Discord providers
+│   │   └── types.ts          # Discord types
+├── plugin-twitter/
+│   ├── src/
+│   │   ├── index.ts          # Plugin exports
+│   │   ├── client.ts         # Twitter client
+│   │   ├── actions/          # Twitter actions
+│   │   ├── providers/        # Twitter providers
+│   │   └── types.ts          # Twitter types
+└── plugin-telegram/
+    ├── src/
+    │   ├── index.ts          # Plugin exports
+    │   ├── client.ts         # Telegram client
+    │   ├── actions/          # Telegram actions
+    │   ├── providers/        # Telegram providers
+    │   └── types.ts          # Telegram types
+```
+
+## Core Implementation Patterns
+
+### Base Client Architecture
+
+```typescript
+// ✅ DO: Implement comprehensive base client with lifecycle management
+import { EventEmitter } from "events";
+import { ClientError, AuthenticationError, RateLimitError } from "./errors.js";
+
+export interface ClientConfig {
+  platform: string;
+  credentials: Record<string, string>;
+  rateLimits?: RateLimitConfig;
+  retryConfig?: RetryConfig;
+  cacheConfig?: CacheConfig;
+}
+
+export interface RateLimitConfig {
+  requestsPerSecond: number;
+  requestsPerMinute: number;
+  requestsPerHour: number;
+}
+
+export interface RetryConfig {
+  maxRetries: number;
+  baseDelay: number;
+  maxDelay: number;
+  backoffMultiplier: number;
+}
+
+export interface CacheConfig {
+  ttl: number;
+  maxSize: number;
+  enabled: boolean;
+}
+
+export abstract class BaseClient extends EventEmitter {
+  protected config: ClientConfig;
+  protected isConnected = false;
+  protected authManager: AuthManager;
+  protected rateLimiter: RateLimiter;
+  protected messageProcessor: MessageProcessor;
+  protected cacheManager: CacheManager;
+  protected healthCheckInterval?: NodeJS.Timeout;
+
+  constructor(config: ClientConfig) {
+    super();
+    this.config = this.validateConfig(config);
+    this.initializeComponents();
+  }
+
+  private validateConfig(config: ClientConfig): ClientConfig {
+    if (!config.platform) {
+      throw new ClientError("Platform is required");
+    }
+
+    if (!config.credentials || Object.keys(config.credentials).length === 0) {
+      throw new ClientError("Credentials are required");
+    }
+
+    // Set defaults
+    return {
+      ...config,
+      rateLimits: config.rateLimits || {
+        requestsPerSecond: 1,
+        requestsPerMinute: 60,
+        requestsPerHour: 1000
+      },
+      retryConfig: config.retryConfig || {
+        maxRetries: 3,
+        baseDelay: 1000,
+        maxDelay: 30000,
+        backoffMultiplier: 2
+      },
+      cacheConfig: config.cacheConfig || {
+        ttl: 300000, // 5 minutes
+        maxSize: 1000,
+        enabled: true
+      }
+    };
+  }
+
+  private initializeComponents(): void {
+    this.authManager = new AuthManager(this.config.credentials);
+    this.rateLimiter = new RateLimiter(this.config.rateLimits!);
+    this.messageProcessor = new MessageProcessor(this.config.platform);
+    this.cacheManager = new CacheManager(this.config.cacheConfig!);
+  }
+
+  async connect(): Promise<void> {
+    try {
+      // Authenticate first
+      await this.authManager.authenticate();
+
+      // Establish connection
+      await this.establishConnection();
+
+      // Start health monitoring
+      this.startHealthCheck();
+
+      this.isConnected = true;
+      this.emit('connected');
+
+      console.log(`${this.config.platform} client connected successfully`);
+    } catch (error) {
+      this.emit('error', error);
+      throw new ClientError(`Failed to connect to ${this.config.platform}: ${error.message}`);
+    }
+  }
+
+  async disconnect(): Promise<void> {
+    try {
+      // Stop health check
+      if (this.healthCheckInterval) {
+        clearInterval(this.healthCheckInterval);
+      }
+
+      // Close connection
+      await this.closeConnection();
+
+      // Cleanup components
+      await this.cleanup();
+
+      this.isConnected = false;
+      this.emit('disconnected');
+
+      console.log(`${this.config.platform} client disconnected successfully`);
+    } catch (error) {
+      this.emit('error', error);
+      throw new ClientError(`Failed to disconnect from ${this.config.platform}: ${error.message}`);
+    }
+  }
+
+  protected abstract establishConnection(): Promise<void>;
+  protected abstract closeConnection(): Promise<void>;
+  protected abstract healthCheck(): Promise<boolean>;
+
+  private startHealthCheck(): void {
+    this.healthCheckInterval = setInterval(async () => {
+      try {
+        const isHealthy = await this.healthCheck();
+        if (!isHealthy) {
+          this.emit('unhealthy');
+          console.warn(`${this.config.platform} client health check failed`);
+        }
+      } catch (error) {
+        this.emit('error', new ClientError(`Health check failed: ${error.message}`));
+      }
+    }, 30000); // Every 30 seconds
+  }
+
+  private async cleanup(): Promise<void> {
+    await this.cacheManager.clear();
+    this.removeAllListeners();
+  }
+
+  // Helper method for rate-limited API calls
+  protected async executeWithRateLimit<T>(
+    operation: () => Promise<T>,
+    context?: string
+  ): Promise<T> {
+    await this.rateLimiter.waitForAvailability();
+
+    try {
+      const result = await this.retryWithBackoff(operation);
+      this.rateLimiter.recordRequest(context);
+      return result;
+    } catch (error) {
+      if (error instanceof RateLimitError) {
+        await this.rateLimiter.handleRateLimit(error.retryAfter);
+        throw error;
+      }
+      throw error;
+    }
+  }
+
+  private async retryWithBackoff<T>(
+    operation: () => Promise<T>,
+    attempt = 1
+  ): Promise<T> {
+    try {
+      return await operation();
+    } catch (error) {
+      if (attempt >= this.config.retryConfig!.maxRetries) {
+        throw error;
+      }
+
+      const delay = Math.min(
+        this.config.retryConfig!.baseDelay * Math.pow(this.config.retryConfig!.backoffMultiplier, attempt - 1),
+        this.config.retryConfig!.maxDelay
+      );
+
+      console.log(`Retrying operation in ${delay}ms (attempt ${attempt + 1})`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+
+      return this.retryWithBackoff(operation, attempt + 1);
+    }
+  }
+}
+
+// ❌ DON'T: Use basic client without proper lifecycle management
+class BasicClient {
+  constructor(config: any) {
+    // No validation, no error handling
+    this.config = config;
+  }
+
+  async connect() {
+    // No authentication, no health monitoring
+    this.connected = true;
+  }
+}
+```
+
+### Authentication Management
+
+```typescript
+// ✅ DO: Implement robust authentication with token refresh and validation
+export interface AuthCredentials {
+  token?: string;
+  apiKey?: string;
+  secret?: string;
+  refreshToken?: string;
+  clientId?: string;
+  clientSecret?: string;
+}
+
+export interface AuthToken {
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt: number;
+  tokenType: string;
+  scope?: string[];
+}
+
+export class AuthManager {
+  private credentials: AuthCredentials;
+  private currentToken?: AuthToken;
+  private refreshPromise?: Promise<AuthToken>;
+
+  constructor(credentials: AuthCredentials) {
+    this.credentials = this.validateCredentials(credentials);
+  }
+
+  private validateCredentials(credentials: AuthCredentials): AuthCredentials {
+    if (!credentials.token && !credentials.apiKey && !credentials.clientId) {
+      throw new AuthenticationError("At least one authentication method is required");
+    }
+
+    return credentials;
+  }
+
+  async authenticate(): Promise<AuthToken> {
+    try {
+      // If we already have a valid token, return it
+      if (this.currentToken && this.isTokenValid(this.currentToken)) {
+        return this.currentToken;
+      }
+
+      // If we have a refresh token and the current token is expired, refresh it
+      if (this.currentToken?.refreshToken && this.isTokenExpired(this.currentToken)) {
+        return await this.refreshAccessToken();
+      }
+
+      // Otherwise, get a new token
+      return await this.getNewToken();
+    } catch (error) {
+      throw new AuthenticationError(`Authentication failed: ${error.message}`);
+    }
+  }
+
+  async getValidToken(): Promise<string> {
+    const token = await this.authenticate();
+    return token.accessToken;
+  }
+
+  private async getNewToken(): Promise<AuthToken> {
+    // Handle different authentication flows
+    if (this.credentials.token) {
+      // Direct token (e.g., bot token)
+      return {
+        accessToken: this.credentials.token,
+        tokenType: "Bearer",
+        expiresAt: Date.now() + (24 * 60 * 60 * 1000) // 24 hours default
+      };
+    }
+
+    if (this.credentials.apiKey) {
+      // API key authentication
+      return {
+        accessToken: this.credentials.apiKey,
+        tokenType: "ApiKey",
+        expiresAt: Date.now() + (24 * 60 * 60 * 1000) // 24 hours default
+      };
+    }
+
+    if (this.credentials.clientId && this.credentials.clientSecret) {
+      // OAuth2 client credentials flow
+      return await this.performOAuth2Flow();
+    }
+
+    throw new AuthenticationError("No valid authentication method found");
+  }
+
+  private async performOAuth2Flow(): Promise<AuthToken> {
+    const tokenUrl = this.getTokenUrl();
+    
+    const response = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': `Basic ${Buffer.from(`${this.credentials.clientId}:${this.credentials.clientSecret}`).toString('base64')}`
+      },
+      body: 'grant_type=client_credentials'
+    });
+
+    if (!response.ok) {
+      throw new AuthenticationError(`OAuth2 authentication failed: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+
+    return {
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token,
+      expiresAt: Date.now() + (data.expires_in * 1000),
+      tokenType: data.token_type || 'Bearer',
+      scope: data.scope?.split(' ')
+    };
+  }
+
+  private async refreshAccessToken(): Promise<AuthToken> {
+    // Prevent multiple simultaneous refresh requests
+    if (this.refreshPromise) {
+      return await this.refreshPromise;
+    }
+
+    this.refreshPromise = this.performTokenRefresh();
+
+    try {
+      const newToken = await this.refreshPromise;
+      this.currentToken = newToken;
+      return newToken;
+    } finally {
+      this.refreshPromise = undefined;
+    }
+  }
+
+  private async performTokenRefresh(): Promise<AuthToken> {
+    if (!this.currentToken?.refreshToken) {
+      throw new AuthenticationError("No refresh token available");
+    }
+
+    const tokenUrl = this.getTokenUrl();
+
+    const response = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: this.currentToken.refreshToken,
+        client_id: this.credentials.clientId!,
+        client_secret: this.credentials.clientSecret!
+      })
+    });
+
+    if (!response.ok) {
+      throw new AuthenticationError(`Token refresh failed: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+
+    return {
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token || this.currentToken.refreshToken,
+      expiresAt: Date.now() + (data.expires_in * 1000),
+      tokenType: data.token_type || 'Bearer',
+      scope: data.scope?.split(' ')
+    };
+  }
+
+  private isTokenValid(token: AuthToken): boolean {
+    return !this.isTokenExpired(token);
+  }
+
+  private isTokenExpired(token: AuthToken): boolean {
+    // Add 5 minute buffer to prevent edge cases
+    return Date.now() >= (token.expiresAt - 300000);
+  }
+
+  private getTokenUrl(): string {
+    // This would be platform-specific
+    throw new Error("getTokenUrl must be implemented by platform-specific auth manager");
+  }
+
+  async validateToken(token: string): Promise<boolean> {
+    try {
+      // This would be platform-specific validation
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+}
+
+// ❌ DON'T: Use basic authentication without proper token management
+class BasicAuth {
+  constructor(token: string) {
+    this.token = token; // No validation, no refresh logic
+  }
+
+  getToken() {
+    return this.token; // No expiration check
+  }
+}
+```
+
+### Message Processing Framework
+
+```typescript
+// ✅ DO: Implement comprehensive message processing with validation and routing
+export interface Message {
+  id: string;
+  content: string;
+  author: {
+    id: string;
+    username: string;
+    displayName?: string;
+  };
+  channel: {
+    id: string;
+    name?: string;
+    type: string;
+  };
+  timestamp: number;
+  platform: string;
+  attachments?: Attachment[];
+  mentions?: Mention[];
+  metadata?: Record<string, any>;
+}
+
+export interface Attachment {
+  id: string;
+  url: string;
+  type: 'image' | 'video' | 'audio' | 'document';
+  filename: string;
+  size: number;
+  mimeType?: string;
+}
+
+export interface Mention {
+  id: string;
+  username: string;
+  type: 'user' | 'role' | 'channel';
+}
+
+export interface ProcessedMessage {
+  originalMessage: Message;
+  processedContent: string;
+  intent?: string;
+  entities?: Entity[];
+  sentiment?: number;
+  commands?: Command[];
+  shouldRespond: boolean;
+  responseChannel?: string;
+}
+
+export interface Entity {
+  type: string;
+  value: string;
+  confidence: number;
+  start: number;
+  end: number;
+}
+
+export interface Command {
+  name: string;
+  args: string[];
+  raw: string;
+}
+
+export class MessageProcessor {
+  private platform: string;
+  private commandPrefix: string;
+  private mentionPatterns: RegExp[];
+
+  constructor(platform: string, commandPrefix = '!') {
+    this.platform = platform;
+    this.commandPrefix = commandPrefix;
+    this.mentionPatterns = this.initializeMentionPatterns();
+  }
+
+  private initializeMentionPatterns(): RegExp[] {
+    return [
+      /@(\w+)/g,           // @username
+      /<@!?(\d+)>/g,       // Discord user mention
+      /<@&(\d+)>/g,        // Discord role mention
+      /<#(\d+)>/g,         // Discord channel mention
+    ];
+  }
+
+  async processMessage(rawMessage: any): Promise<ProcessedMessage> {
+    try {
+      // Convert platform-specific message to standard format
+      const message = await this.normalizeMessage(rawMessage);
+
+      // Validate message
+      this.validateMessage(message);
+
+      // Process content
+      const processedContent = this.processContent(message.content);
+
+      // Extract entities and commands
+      const entities = await this.extractEntities(processedContent);
+      const commands = this.extractCommands(processedContent);
+
+      // Determine intent
+      const intent = await this.determineIntent(processedContent, entities);
+
+      // Analyze sentiment
+      const sentiment = await this.analyzeSentiment(processedContent);
+
+      // Determine if we should respond
+      const shouldRespond = this.shouldRespond(message, commands, intent);
+
+      // Determine response channel
+      const responseChannel = this.determineResponseChannel(message);
+
+      return {
+        originalMessage: message,
+        processedContent,
+        intent,
+        entities,
+        sentiment,
+        commands,
+        shouldRespond,
+        responseChannel
+      };
+    } catch (error) {
+      throw new ClientError(`Message processing failed: ${error.message}`);
+    }
+  }
+
+  private async normalizeMessage(rawMessage: any): Promise<Message> {
+    // This would be platform-specific normalization
+    // Each client plugin would override this method
+    throw new Error("normalizeMessage must be implemented by platform-specific processor");
+  }
+
+  private validateMessage(message: Message): void {
+    if (!message.id) {
+      throw new ClientError("Message ID is required");
+    }
+
+    if (!message.content && (!message.attachments || message.attachments.length === 0)) {
+      throw new ClientError("Message must have content or attachments");
+    }
+
+    if (!message.author?.id) {
+      throw new ClientError("Message author is required");
+    }
+
+    if (!message.channel?.id) {
+      throw new ClientError("Message channel is required");
+    }
+  }
+
+  private processContent(content: string): string {
+    if (!content) return '';
+
+    // Clean up content
+    let processed = content.trim();
+
+    // Remove excessive whitespace
+    processed = processed.replace(/\s+/g, ' ');
+
+    // Normalize mentions
+    processed = this.normalizeMentions(processed);
+
+    // Remove or replace platform-specific formatting
+    processed = this.normalizeFormatting(processed);
+
+    return processed;
+  }
+
+  private normalizeMentions(content: string): string {
+    let normalized = content;
+
+    for (const pattern of this.mentionPatterns) {
+      normalized = normalized.replace(pattern, (match, id) => {
+        return `@${id}`;
+      });
+    }
+
+    return normalized;
+  }
+
+  private normalizeFormatting(content: string): string {
+    return content
+      .replace(/\*\*(.*?)\*\*/g, '$1')     // Bold
+      .replace(/\*(.*?)\*/g, '$1')         // Italic
+      .replace(/__(.*?)__/g, '$1')         // Underline
+      .replace(/~~(.*?)~~/g, '$1')         // Strikethrough
+      .replace(/`(.*?)`/g, '$1');          // Code
+  }
+
+  private async extractEntities(content: string): Promise<Entity[]> {
+    const entities: Entity[] = [];
+
+    // Extract URLs
+    const urlPattern = /https?:\/\/[^\s]+/g;
+    let match;
+    while ((match = urlPattern.exec(content)) !== null) {
+      entities.push({
+        type: 'url',
+        value: match[0],
+        confidence: 1.0,
+        start: match.index,
+        end: match.index + match[0].length
+      });
+    }
+
+    // Extract email addresses
+    const emailPattern = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g;
+    while ((match = emailPattern.exec(content)) !== null) {
+      entities.push({
+        type: 'email',
+        value: match[0],
+        confidence: 1.0,
+        start: match.index,
+        end: match.index + match[0].length
+      });
+    }
+
+    // Extract numbers
+    const numberPattern = /\b\d+(?:\.\d+)?\b/g;
+    while ((match = numberPattern.exec(content)) !== null) {
+      entities.push({
+        type: 'number',
+        value: match[0],
+        confidence: 0.9,
+        start: match.index,
+        end: match.index + match[0].length
+      });
+    }
+
+    return entities;
+  }
+
+  private extractCommands(content: string): Command[] {
+    const commands: Command[] = [];
+    
+    if (!content.startsWith(this.commandPrefix)) {
+      return commands;
+    }
+
+    const commandText = content.slice(this.commandPrefix.length).trim();
+    const parts = commandText.split(/\s+/);
+    
+    if (parts.length === 0) {
+      return commands;
+    }
+
+    const commandName = parts[0].toLowerCase();
+    const args = parts.slice(1);
+
+    commands.push({
+      name: commandName,
+      args,
+      raw: commandText
+    });
+
+    return commands;
+  }
+
+  private async determineIntent(content: string, entities: Entity[]): Promise<string | undefined> {
+    // Simple intent detection based on keywords
+    const lowerContent = content.toLowerCase();
+
+    if (lowerContent.includes('hello') || lowerContent.includes('hi')) {
+      return 'greeting';
+    }
+
+    if (lowerContent.includes('help') || lowerContent.includes('?')) {
+      return 'help_request';
+    }
+
+    if (lowerContent.includes('thank')) {
+      return 'gratitude';
+    }
+
+    if (entities.some(e => e.type === 'url')) {
+      return 'sharing_link';
+    }
+
+    return undefined;
+  }
+
+  private async analyzeSentiment(content: string): Promise<number> {
+    // Simple sentiment analysis (-1 to 1)
+    const positiveWords = ['good', 'great', 'awesome', 'love', 'like', 'happy', 'excellent'];
+    const negativeWords = ['bad', 'terrible', 'hate', 'dislike', 'angry', 'sad', 'awful'];
+
+    const words = content.toLowerCase().split(/\s+/);
+    let score = 0;
+
+    for (const word of words) {
+      if (positiveWords.includes(word)) score += 1;
+      if (negativeWords.includes(word)) score -= 1;
+    }
+
+    // Normalize to -1 to 1 range
+    return Math.max(-1, Math.min(1, score / Math.max(1, words.length / 10)));
+  }
+
+  private shouldRespond(message: Message, commands: Command[], intent?: string): boolean {
+    // Respond to commands
+    if (commands.length > 0) {
+      return true;
+    }
+
+    // Respond to direct mentions
+    if (message.mentions?.some(m => m.type === 'user')) {
+      return true;
+    }
+
+    // Respond to help requests
+    if (intent === 'help_request') {
+      return true;
+    }
+
+    // Don't respond to own messages
+    if (message.author.id === 'bot_id') { // This would be dynamic
+      return false;
+    }
+
+    return false;
+  }
+
+  private determineResponseChannel(message: Message): string {
+    // For most platforms, respond in the same channel
+    return message.channel.id;
+  }
+}
+
+// ❌ DON'T: Use basic message processing without proper validation
+class BasicMessageProcessor {
+  processMessage(message: any) {
+    // No validation, no normalization, no entity extraction
+    return {
+      content: message.content,
+      shouldRespond: true
+    };
+  }
+}
+```
+
+## Advanced Patterns
+
+### Rate Limiting System
+
+```typescript
+// ✅ DO: Implement intelligent rate limiting with queue management
+export interface RateLimitBucket {
+  capacity: number;
+  tokens: number;
+  lastRefill: number;
+  refillRate: number; // tokens per millisecond
+}
+
+export class RateLimiter {
+  private buckets = new Map<string, RateLimitBucket>();
+  private globalBucket: RateLimitBucket;
+  private requestQueue: Array<{
+    resolve: () => void;
+    reject: (error: Error) => void;
+    context?: string;
+    priority: number;
+    timestamp: number;
+  }> = [];
+  private processing = false;
+
+  constructor(config: RateLimitConfig) {
+    // Global rate limiting bucket
+    this.globalBucket = {
+      capacity: config.requestsPerSecond,
+      tokens: config.requestsPerSecond,
+      lastRefill: Date.now(),
+      refillRate: config.requestsPerSecond / 1000 // tokens per ms
+    };
+
+    // Start queue processing
+    this.startQueueProcessor();
+  }
+
+  async waitForAvailability(context?: string, priority = 0): Promise<void> {
+    return new Promise((resolve, reject) => {
+      // Add to queue with priority
+      this.requestQueue.push({
+        resolve,
+        reject,
+        context,
+        priority,
+        timestamp: Date.now()
+      });
+
+      // Sort by priority (higher first), then by timestamp
+      this.requestQueue.sort((a, b) => {
+        if (a.priority !== b.priority) {
+          return b.priority - a.priority;
+        }
+        return a.timestamp - b.timestamp;
+      });
+
+      this.processQueue();
+    });
+  }
+
+  recordRequest(context?: string): void {
+    this.consumeToken(this.globalBucket);
+    
+    if (context) {
+      const bucket = this.getOrCreateBucket(context);
+      this.consumeToken(bucket);
+    }
+  }
+
+  async handleRateLimit(retryAfter?: number): Promise<void> {
+    const delay = retryAfter ? retryAfter * 1000 : 60000; // Default 1 minute
+    console.warn(`Rate limit hit, waiting ${delay}ms`);
+    await new Promise(resolve => setTimeout(resolve, delay));
+  }
+
+  private startQueueProcessor(): void {
+    setInterval(() => {
+      this.processQueue();
+    }, 100); // Process every 100ms
+  }
+
+  private async processQueue(): Promise<void> {
+    if (this.processing || this.requestQueue.length === 0) {
+      return;
+    }
+
+    this.processing = true;
+
+    while (this.requestQueue.length > 0) {
+      const request = this.requestQueue[0];
+
+      // Check if we can process this request
+      if (!this.canMakeRequest(request.context)) {
+        // Wait for tokens to refill
+        await new Promise(resolve => setTimeout(resolve, 100));
+        continue;
+      }
+
+      // Remove from queue and resolve
+      this.requestQueue.shift();
+      request.resolve();
+
+      // Small delay between requests
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+
+    this.processing = false;
+  }
+
+  private canMakeRequest(context?: string): boolean {
+    this.refillBucket(this.globalBucket);
+
+    if (this.globalBucket.tokens < 1) {
+      return false;
+    }
+
+    if (context) {
+      const bucket = this.getOrCreateBucket(context);
+      this.refillBucket(bucket);
+      
+      if (bucket.tokens < 1) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  private getOrCreateBucket(context: string): RateLimitBucket {
+    if (!this.buckets.has(context)) {
+      this.buckets.set(context, {
+        capacity: 1, // 1 request per context per second by default
+        tokens: 1,
+        lastRefill: Date.now(),
+        refillRate: 1 / 1000 // 1 token per second
+      });
+    }
+
+    return this.buckets.get(context)!;
+  }
+
+  private refillBucket(bucket: RateLimitBucket): void {
+    const now = Date.now();
+    const timePassed = now - bucket.lastRefill;
+    const tokensToAdd = timePassed * bucket.refillRate;
+
+    bucket.tokens = Math.min(bucket.capacity, bucket.tokens + tokensToAdd);
+    bucket.lastRefill = now;
+  }
+
+  private consumeToken(bucket: RateLimitBucket): void {
+    bucket.tokens = Math.max(0, bucket.tokens - 1);
+  }
+
+  getQueueLength(): number {
+    return this.requestQueue.length;
+  }
+
+  getRemainingTokens(context?: string): number {
+    this.refillBucket(this.globalBucket);
+    
+    if (context) {
+      const bucket = this.getOrCreateBucket(context);
+      this.refillBucket(bucket);
+      return Math.min(this.globalBucket.tokens, bucket.tokens);
+    }
+
+    return this.globalBucket.tokens;
+  }
+}
+```
+
+### Cache Management System
+
+```typescript
+// ✅ DO: Implement intelligent caching with TTL and LRU eviction
+export interface CacheEntry<T> {
+  value: T;
+  timestamp: number;
+  ttl: number;
+  accessCount: number;
+  lastAccess: number;
+}
+
+export class CacheManager {
+  private cache = new Map<string, CacheEntry<any>>();
+  private config: CacheConfig;
+  private cleanupInterval: NodeJS.Timeout;
+
+  constructor(config: CacheConfig) {
+    this.config = config;
+    this.startCleanup();
+  }
+
+  set<T>(key: string, value: T, ttl?: number): void {
+    if (!this.config.enabled) return;
+
+    const entry: CacheEntry<T> = {
+      value,
+      timestamp: Date.now(),
+      ttl: ttl || this.config.ttl,
+      accessCount: 0,
+      lastAccess: Date.now()
+    };
+
+    // Check if we need to evict entries
+    if (this.cache.size >= this.config.maxSize) {
+      this.evictLRU();
+    }
+
+    this.cache.set(key, entry);
+  }
+
+  get<T>(key: string): T | null {
+    if (!this.config.enabled) return null;
+
+    const entry = this.cache.get(key) as CacheEntry<T> | undefined;
+
+    if (!entry) {
+      return null;
+    }
+
+    // Check if expired
+    if (this.isExpired(entry)) {
+      this.cache.delete(key);
+      return null;
+    }
+
+    // Update access statistics
+    entry.accessCount++;
+    entry.lastAccess = Date.now();
+
+    return entry.value;
+  }
+
+  has(key: string): boolean {
+    if (!this.config.enabled) return false;
+
+    const entry = this.cache.get(key);
+    if (!entry) return false;
+
+    if (this.isExpired(entry)) {
+      this.cache.delete(key);
+      return false;
+    }
+
+    return true;
+  }
+
+  delete(key: string): boolean {
+    return this.cache.delete(key);
+  }
+
+  clear(): Promise<void> {
+    this.cache.clear();
+    return Promise.resolve();
+  }
+
+  getStats() {
+    const entries = Array.from(this.cache.values());
+    const now = Date.now();
+
+    return {
+      size: this.cache.size,
+      maxSize: this.config.maxSize,
+      hitRate: this.calculateHitRate(),
+      averageAge: entries.length > 0 
+        ? entries.reduce((sum, entry) => sum + (now - entry.timestamp), 0) / entries.length 
+        : 0,
+      memoryUsage: this.estimateMemoryUsage()
+    };
+  }
+
+  private isExpired(entry: CacheEntry<any>): boolean {
+    return Date.now() - entry.timestamp > entry.ttl;
+  }
+
+  private evictLRU(): void {
+    let oldestKey: string | null = null;
+    let oldestAccess = Date.now();
+
+    for (const [key, entry] of this.cache.entries()) {
+      if (entry.lastAccess < oldestAccess) {
+        oldestAccess = entry.lastAccess;
+        oldestKey = key;
+      }
+    }
+
+    if (oldestKey) {
+      this.cache.delete(oldestKey);
+    }
+  }
+
+  private startCleanup(): void {
+    this.cleanupInterval = setInterval(() => {
+      this.cleanup();
+    }, 60000); // Every minute
+  }
+
+  private cleanup(): void {
+    const now = Date.now();
+    const expiredKeys: string[] = [];
+
+    for (const [key, entry] of this.cache.entries()) {
+      if (this.isExpired(entry)) {
+        expiredKeys.push(key);
+      }
+    }
+
+    for (const key of expiredKeys) {
+      this.cache.delete(key);
+    }
+
+    console.log(`Cache cleanup: removed ${expiredKeys.length} expired entries`);
+  }
+
+  private calculateHitRate(): number {
+    // This would require tracking hits/misses over time
+    // Simplified implementation
+    return 0.85; // Placeholder
+  }
+
+  private estimateMemoryUsage(): number {
+    // Rough estimation of memory usage
+    let size = 0;
+    for (const [key, entry] of this.cache.entries()) {
+      size += key.length * 2; // UTF-16 characters
+      size += JSON.stringify(entry.value).length * 2;
+      size += 64; // Estimated overhead per entry
+    }
+    return size;
+  }
+
+  destroy(): void {
+    clearInterval(this.cleanupInterval);
+    this.cache.clear();
+  }
+}
+```
+
+## Error Handling and Custom Errors
+
+```typescript
+// ✅ DO: Implement comprehensive error classification for client plugins
+export class ClientError extends Error {
+  constructor(
+    message: string,
+    public code: string = "CLIENT_ERROR",
+    public context?: Record<string, any>
+  ) {
+    super(message);
+    this.name = "ClientError";
+  }
+}
+
+export class AuthenticationError extends ClientError {
+  constructor(message: string, context?: Record<string, any>) {
+    super(message, "AUTHENTICATION_ERROR", context);
+    this.name = "AuthenticationError";
+  }
+}
+
+export class RateLimitError extends ClientError {
+  constructor(
+    message: string,
+    public retryAfter?: number,
+    context?: Record<string, any>
+  ) {
+    super(message, "RATE_LIMIT_ERROR", { ...context, retryAfter });
+    this.name = "RateLimitError";
+  }
+}
+
+export class ConnectionError extends ClientError {
+  constructor(message: string, context?: Record<string, any>) {
+    super(message, "CONNECTION_ERROR", context);
+    this.name = "ConnectionError";
+  }
+}
+
+export class MessageError extends ClientError {
+  constructor(message: string, context?: Record<string, any>) {
+    super(message, "MESSAGE_ERROR", context);
+    this.name = "MessageError";
+  }
+}
+
+export class ValidationError extends ClientError {
+  constructor(message: string, public field?: string) {
+    super(message, "VALIDATION_ERROR", { field });
+    this.name = "ValidationError";
+  }
+}
+
+export class PlatformError extends ClientError {
+  constructor(
+    message: string,
+    public platform: string,
+    public statusCode?: number,
+    context?: Record<string, any>
+  ) {
+    super(message, "PLATFORM_ERROR", { ...context, platform, statusCode });
+    this.name = "PlatformError";
+  }
+}
+```
+
+## Testing Patterns
+
+```typescript
+// ✅ DO: Comprehensive testing for client plugin components
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+
+describe("BaseClient", () => {
+  let client: TestClient;
+  let mockConfig: ClientConfig;
+
+  beforeEach(() => {
+    mockConfig = {
+      platform: "test",
+      credentials: { token: "test-token" },
+      rateLimits: {
+        requestsPerSecond: 1,
+        requestsPerMinute: 60,
+        requestsPerHour: 1000
+      }
+    };
+
+    client = new TestClient(mockConfig);
+  });
+
+  afterEach(async () => {
+    if (client.isConnected) {
+      await client.disconnect();
+    }
+  });
+
+  describe("connection lifecycle", () => {
+    it("should connect successfully with valid config", async () => {
+      const connectSpy = vi.fn().mockResolvedValue(undefined);
+      client.establishConnection = connectSpy;
+
+      await client.connect();
+
+      expect(client.isConnected).toBe(true);
+      expect(connectSpy).toHaveBeenCalledOnce();
+    });
+
+    it("should handle connection failures", async () => {
+      const error = new Error("Connection failed");
+      client.establishConnection = vi.fn().mockRejectedValue(error);
+
+      await expect(client.connect()).rejects.toThrow(ClientError);
+      expect(client.isConnected).toBe(false);
+    });
+
+    it("should disconnect cleanly", async () => {
+      const closeSpy = vi.fn().mockResolvedValue(undefined);
+      client.closeConnection = closeSpy;
+
+      await client.connect();
+      await client.disconnect();
+
+      expect(client.isConnected).toBe(false);
+      expect(closeSpy).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe("rate limiting", () => {
+    it("should respect rate limits", async () => {
+      await client.connect();
+
+      const operation = vi.fn().mockResolvedValue("success");
+      
+      // First request should go through immediately
+      const result1 = await client.executeWithRateLimit(operation);
+      expect(result1).toBe("success");
+      expect(operation).toHaveBeenCalledTimes(1);
+
+      // Second request should be delayed
+      const startTime = Date.now();
+      const result2 = await client.executeWithRateLimit(operation);
+      const endTime = Date.now();
+
+      expect(result2).toBe("success");
+      expect(operation).toHaveBeenCalledTimes(2);
+      expect(endTime - startTime).toBeGreaterThan(900); // At least 900ms delay
+    });
+  });
+});
+
+class TestClient extends BaseClient {
+  async establishConnection(): Promise<void> {
+    // Test implementation
+  }
+
+  async closeConnection(): Promise<void> {
+    // Test implementation
+  }
+
+  async healthCheck(): Promise<boolean> {
+    return true;
+  }
+}
+```
+
+## Platform-Specific Implementation Patterns
+
+### Discord Bot Integration
+
+```typescript
+// ✅ DO: Implement Discord client with comprehensive bot features
+import { Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes } from 'discord.js';
+import { BaseClient } from '../shared/base-client.js';
+
+export class DiscordClient extends BaseClient {
+  private discordClient: Client;
+  private rest: REST;
+
+  constructor(config: ClientConfig) {
+    super({ ...config, platform: 'discord' });
+    
+    this.discordClient = new Client({
+      intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildVoiceStates,
+        GatewayIntentBits.DirectMessages
+      ]
+    });
+
+    this.rest = new REST({ version: '10' });
+    this.setupEventHandlers();
+  }
+
+  protected async establishConnection(): Promise<void> {
+    const token = await this.authManager.getValidToken();
+    this.rest.setToken(token);
+    await this.discordClient.login(token);
+  }
+
+  protected async closeConnection(): Promise<void> {
+    await this.discordClient.destroy();
+  }
+
+  protected async healthCheck(): Promise<boolean> {
+    return this.discordClient.readyAt !== null;
+  }
+
+  private setupEventHandlers(): void {
+    this.discordClient.on('ready', () => {
+      console.log(`Discord bot ${this.discordClient.user?.tag} is ready!`);
+    });
+
+    this.discordClient.on('messageCreate', async (message) => {
+      if (message.author.bot) return;
+
+      try {
+        const processedMessage = await this.messageProcessor.processMessage({
+          id: message.id,
+          content: message.content,
+          author: {
+            id: message.author.id,
+            username: message.author.username,
+            displayName: message.author.displayName
+          },
+          channel: {
+            id: message.channel.id,
+            name: message.channel.isDMBased() ? 'DM' : message.channel.name,
+            type: message.channel.type.toString()
+          },
+          timestamp: message.createdTimestamp,
+          platform: 'discord',
+          attachments: message.attachments.map(att => ({
+            id: att.id,
+            url: att.url,
+            type: this.getAttachmentType(att.contentType),
+            filename: att.name || 'unknown',
+            size: att.size,
+            mimeType: att.contentType
+          })),
+          mentions: message.mentions.users.map(user => ({
+            id: user.id,
+            username: user.username,
+            type: 'user'
+          }))
+        });
+
+        if (processedMessage.shouldRespond) {
+          await this.handleResponse(message, processedMessage);
+        }
+      } catch (error) {
+        console.error('Error processing Discord message:', error);
+      }
+    });
+
+    this.discordClient.on('interactionCreate', async (interaction) => {
+      if (!interaction.isChatInputCommand()) return;
+
+      try {
+        await this.handleSlashCommand(interaction);
+      } catch (error) {
+        console.error('Error handling slash command:', error);
+        await interaction.reply({ content: 'An error occurred while processing your command.', ephemeral: true });
+      }
+    });
+  }
+
+  async sendMessage(channelId: string, content: string, options?: any): Promise<string> {
+    return await this.executeWithRateLimit(async () => {
+      const channel = await this.discordClient.channels.fetch(channelId);
+      if (!channel?.isTextBased()) {
+        throw new Error('Channel is not text-based');
+      }
+
+      const message = await channel.send({ content, ...options });
+      return message.id;
+    });
+  }
+
+  async registerSlashCommands(commands: SlashCommandBuilder[]): Promise<void> {
+    const commandData = commands.map(command => command.toJSON());
+    
+    await this.rest.put(
+      Routes.applicationCommands(this.discordClient.user!.id),
+      { body: commandData }
+    );
+  }
+
+  private getAttachmentType(contentType?: string): 'image' | 'video' | 'audio' | 'document' {
+    if (!contentType) return 'document';
+    
+    if (contentType.startsWith('image/')) return 'image';
+    if (contentType.startsWith('video/')) return 'video';
+    if (contentType.startsWith('audio/')) return 'audio';
+    return 'document';
+  }
+}
+```
+
+### Twitter API Integration
+
+```typescript
+// ✅ DO: Implement Twitter client with v2 API patterns
+import { TwitterApi } from 'twitter-api-v2';
+import { BaseClient } from '../shared/base-client.js';
+
+export class TwitterClient extends BaseClient {
+  private twitterClient: TwitterApi;
+
+  constructor(config: ClientConfig) {
+    super({ ...config, platform: 'twitter' });
+    this.initializeTwitterClient();
+  }
+
+  private initializeTwitterClient(): void {
+    this.twitterClient = new TwitterApi({
+      appKey: this.config.credentials.apiKey!,
+      appSecret: this.config.credentials.apiSecret!,
+      accessToken: this.config.credentials.accessToken,
+      accessSecret: this.config.credentials.accessTokenSecret,
+    });
+  }
+
+  protected async establishConnection(): Promise<void> {
+    // Verify credentials
+    const user = await this.twitterClient.v2.me();
+    console.log(`Connected to Twitter as @${user.data.username}`);
+  }
+
+  protected async closeConnection(): Promise<void> {
+    // Twitter API doesn't require explicit disconnection
+  }
+
+  protected async healthCheck(): Promise<boolean> {
+    try {
+      await this.twitterClient.v2.me();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async postTweet(text: string, mediaIds?: string[]): Promise<string> {
+    return await this.executeWithRateLimit(async () => {
+      const tweet = await this.twitterClient.v2.tweet({
+        text,
+        media: mediaIds ? { media_ids: mediaIds } : undefined
+      });
+      return tweet.data.id;
+    });
+  }
+
+  async uploadMedia(mediaPath: string): Promise<string> {
+    return await this.executeWithRateLimit(async () => {
+      const mediaId = await this.twitterClient.v1.uploadMedia(mediaPath);
+      return mediaId;
+    });
+  }
+
+  async searchTweets(query: string, maxResults = 10): Promise<any[]> {
+    return await this.executeWithRateLimit(async () => {
+      const tweets = await this.twitterClient.v2.search(query, {
+        max_results: maxResults,
+        'tweet.fields': ['author_id', 'created_at', 'public_metrics']
+      });
+      return tweets.data.data || [];
+    });
+  }
+
+  async startStream(rules: any[]): Promise<void> {
+    // Add rules for streaming
+    await this.twitterClient.v2.updateStreamRules({
+      add: rules
+    });
+
+    const stream = await this.twitterClient.v2.searchStream({
+      'tweet.fields': ['author_id', 'created_at', 'public_metrics']
+    });
+
+    stream.on('data', async (tweet) => {
+      try {
+        const processedMessage = await this.messageProcessor.processMessage({
+          id: tweet.id,
+          content: tweet.text,
+          author: {
+            id: tweet.author_id,
+            username: 'unknown', // Would need to fetch user details
+          },
+          channel: {
+            id: 'twitter_stream',
+            type: 'stream'
+          },
+          timestamp: new Date(tweet.created_at).getTime(),
+          platform: 'twitter'
+        });
+
+        if (processedMessage.shouldRespond) {
+          await this.handleStreamResponse(tweet, processedMessage);
+        }
+      } catch (error) {
+        console.error('Error processing Twitter stream:', error);
+      }
+    });
+
+    stream.on('error', (error) => {
+      console.error('Twitter stream error:', error);
+      this.emit('error', error);
+    });
+  }
+}
+```
+
+### Telegram Bot Integration
+
+```typescript
+// ✅ DO: Implement Telegram client with bot API patterns
+import TelegramBot from 'node-telegram-bot-api';
+import { BaseClient } from '../shared/base-client.js';
+
+export class TelegramClient extends BaseClient {
+  private telegramBot: TelegramBot;
+
+  constructor(config: ClientConfig) {
+    super({ ...config, platform: 'telegram' });
+    
+    this.telegramBot = new TelegramBot(this.config.credentials.token!, {
+      polling: false // We'll start polling after connection
+    });
+
+    this.setupEventHandlers();
+  }
+
+  protected async establishConnection(): Promise<void> {
+    // Start polling for updates
+    await this.telegramBot.startPolling();
+    
+    // Verify bot info
+    const botInfo = await this.telegramBot.getMe();
+    console.log(`Connected to Telegram as @${botInfo.username}`);
+  }
+
+  protected async closeConnection(): Promise<void> {
+    await this.telegramBot.stopPolling();
+  }
+
+  protected async healthCheck(): Promise<boolean> {
+    try {
+      await this.telegramBot.getMe();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private setupEventHandlers(): void {
+    this.telegramBot.on('message', async (msg) => {
+      try {
+        const processedMessage = await this.messageProcessor.processMessage({
+          id: msg.message_id.toString(),
+          content: msg.text || '',
+          author: {
+            id: msg.from!.id.toString(),
+            username: msg.from!.username || msg.from!.first_name,
+            displayName: `${msg.from!.first_name} ${msg.from!.last_name || ''}`.trim()
+          },
+          channel: {
+            id: msg.chat.id.toString(),
+            name: msg.chat.title || msg.chat.first_name,
+            type: msg.chat.type
+          },
+          timestamp: msg.date * 1000,
+          platform: 'telegram',
+          attachments: this.extractAttachments(msg)
+        });
+
+        if (processedMessage.shouldRespond) {
+          await this.handleResponse(msg, processedMessage);
+        }
+      } catch (error) {
+        console.error('Error processing Telegram message:', error);
+      }
+    });
+
+    this.telegramBot.on('callback_query', async (query) => {
+      try {
+        await this.handleCallbackQuery(query);
+      } catch (error) {
+        console.error('Error handling callback query:', error);
+      }
+    });
+  }
+
+  async sendMessage(chatId: string | number, text: string, options?: any): Promise<string> {
+    return await this.executeWithRateLimit(async () => {
+      const message = await this.telegramBot.sendMessage(chatId, text, options);
+      return message.message_id.toString();
+    });
+  }
+
+  async sendPhoto(chatId: string | number, photo: string, caption?: string): Promise<string> {
+    return await this.executeWithRateLimit(async () => {
+      const message = await this.telegramBot.sendPhoto(chatId, photo, { caption });
+      return message.message_id.toString();
+    });
+  }
+
+  async setCommands(commands: any[]): Promise<void> {
+    await this.telegramBot.setMyCommands(commands);
+  }
+
+  private extractAttachments(msg: any): any[] {
+    const attachments = [];
+
+    if (msg.photo) {
+      const largestPhoto = msg.photo[msg.photo.length - 1];
+      attachments.push({
+        id: largestPhoto.file_id,
+        url: '', // Would need to get file URL
+        type: 'image',
+        filename: 'photo.jpg',
+        size: largestPhoto.file_size || 0
+      });
+    }
+
+    if (msg.document) {
+      attachments.push({
+        id: msg.document.file_id,
+        url: '', // Would need to get file URL
+        type: 'document',
+        filename: msg.document.file_name || 'document',
+        size: msg.document.file_size || 0,
+        mimeType: msg.document.mime_type
+      });
+    }
+
+    if (msg.voice) {
+      attachments.push({
+        id: msg.voice.file_id,
+        url: '', // Would need to get file URL
+        type: 'audio',
+        filename: 'voice.ogg',
+        size: msg.voice.file_size || 0
+      });
+    }
+
+    return attachments;
+  }
+}
+```
+
+## Best Practices Summary
+
+### Architecture
+- Use composition over inheritance for client components
+- Implement proper lifecycle management with connect/disconnect
+- Use event-driven architecture for real-time updates
+- Separate authentication, rate limiting, and message processing concerns
+
+### Authentication
+- Implement token refresh logic for OAuth2 flows
+- Validate tokens before making API calls
+- Handle authentication failures gracefully
+- Use secure storage for credentials
+
+### Message Processing
+- Normalize messages to a standard format across platforms
+- Implement comprehensive entity extraction and intent detection
+- Validate all message data before processing
+- Handle different message types (text, media, commands)
+
+### Performance
+- Use intelligent rate limiting with priority queues
+- Implement caching for frequently accessed data
+- Use connection pooling for API clients
+- Monitor and optimize memory usage
+
+### Error Handling
+- Create specific error types for different failure scenarios
+- Include contextual information in error messages
+- Implement retry logic with exponential backoff
+- Log errors appropriately without exposing sensitive data
+
+### Testing
+- Mock external dependencies for unit tests
+- Test connection lifecycle and error scenarios
+- Validate rate limiting and authentication flows
+- Test message processing with various input types
+
+## References
+- [Discord.js Documentation](mdc:https:/discord.js.org/#/docs)
+- [Twitter API v2 Documentation](mdc:https:/developer.twitter.com/en/docs/twitter-api)
+- [Telegram Bot API Documentation](mdc:https:/core.telegram.org/bots/api)
+- [OAuth 2.0 RFC](mdc:https:/tools.ietf.org/html/rfc6749)
+- [Rate Limiting Best Practices](mdc:https:/cloud.google.com/architecture/rate-limiting-strategies-techniques)

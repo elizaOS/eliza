@@ -1,0 +1,885 @@
+---
+description: ElizaOS v2 - API, HTTP clients, and API integration
+globs: 
+alwaysApply: false
+---
+> You are an expert in ElizaOS v2, TypeScript, HTTP clients, and API integration. You focus on building robust, secure API clients with proper error handling, authentication, and performance optimization.
+
+## API Client Architecture Flow
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│  HTTP Client    │    │  Authentication  │    │  Rate Limiting  │
+│  Configuration  │───▶│   & Security     │───▶│   & Caching     │
+│                 │    │                  │    │                 │
+│ - Base URL      │    │ - API Keys       │    │ - Request Queue │
+│ - Timeout       │    │ - Bearer Tokens  │    │ - Cache Layer   │
+│ - Headers       │    │ - Custom Auth    │    │ - Retry Logic   │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+         │                       │                       │
+         ▼                       ▼                       ▼
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│ Request/Response│    │  Error Handling  │    │   Monitoring    │
+│   Processing    │    │   & Recovery     │    │  & Logging      │
+│                 │    │                  │    │                 │
+│ - Request Prep  │    │ - Status Codes   │    │ - Request Logs  │
+│ - Response Parse│    │ - Retry Strategy │    │ - Performance   │
+│ - Type Validation│   │ - Fallback Logic │    │ - Debug Info    │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+```
+
+## Core API Client Implementation
+
+### Base API Client Class
+
+```typescript
+// ✅ DO: Implement comprehensive API client
+// src/utils/apiClient.ts
+// Reference: /Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza_plugins/api/plugin-openai/src/index.ts
+import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios';
+import { logger } from '@elizaos/core';
+import type { IAgentRuntime } from '@elizaos/core';
+import { ApiPluginError, ApiRequestError, RateLimitError, handleApiError } from '../errors';
+import { getEnvironmentConfig, ApiServiceConfig } from './environment';
+
+/**
+ * Generic API response wrapper
+ */
+export interface ApiResponse<T = any> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  statusCode?: number;
+  headers?: Record<string, string>;
+  metadata?: {
+    requestId?: string;
+    processingTime?: number;
+    tokensUsed?: number;
+    rateLimitRemaining?: number;
+  };
+}
+
+/**
+ * Request options for API calls
+ */
+export interface RequestOptions {
+  timeout?: number;
+  retries?: number;
+  retryDelay?: number;
+  skipCache?: boolean;
+  customHeaders?: Record<string, string>;
+}
+
+/**
+ * Main API client class for ElizaOS v2 plugins
+ */
+export class ApiClient {
+  private readonly axiosInstance: AxiosInstance;
+  private readonly config: ApiServiceConfig;
+  private requestCount = 0;
+  private lastRequestTime = 0;
+
+  constructor(config: ApiServiceConfig) {
+    this.config = config;
+    this.axiosInstance = this.createAxiosInstance();
+    this.setupInterceptors();
+  }
+
+  /**
+   * Factory method to create API client from runtime
+   */
+  static fromRuntime(runtime: IAgentRuntime): ApiClient {
+    const config = getEnvironmentConfig(runtime);
+    return new ApiClient(config);
+  }
+
+  /**
+   * Create configured axios instance
+   */
+  private createAxiosInstance(): AxiosInstance {
+    return axios.create({
+      baseURL: this.config.API_BASE_URL,
+      timeout: this.config.TIMEOUT || 30000,
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'User-Agent': 'ElizaOS-API-Plugin/2.0',
+        ...this.getAuthHeaders(),
+      },
+    });
+  }
+
+  /**
+   * Get authentication headers
+   */
+  private getAuthHeaders(): Record<string, string> {
+    const headers: Record<string, string> = {};
+    
+    if (this.config.API_KEY) {
+      // Support different auth patterns
+      if (this.config.API_KEY.startsWith('Bearer ')) {
+        headers['Authorization'] = this.config.API_KEY;
+      } else if (this.config.API_KEY.startsWith('sk-')) {
+        headers['Authorization'] = `Bearer ${this.config.API_KEY}`;
+      } else {
+        headers['X-API-Key'] = this.config.API_KEY;
+      }
+    }
+    
+    return headers;
+  }
+
+  /**
+   * Setup request/response interceptors
+   */
+  private setupInterceptors(): void {
+    // Request interceptor
+    this.axiosInstance.interceptors.request.use(
+      (config) => {
+        const requestId = this.generateRequestId();
+        config.metadata = { requestId, startTime: Date.now() };
+        
+        if (this.config.DEBUG_MODE) {
+          logger.debug(`API Request [${requestId}]: ${config.method?.toUpperCase()} ${config.url}`, {
+            headers: this.sanitizeHeaders(config.headers),
+            params: config.params,
+          });
+        }
+        
+        return config;
+      },
+      (error) => {
+        logger.error('Request interceptor error:', error);
+        return Promise.reject(error);
+      }
+    );
+
+    // Response interceptor
+    this.axiosInstance.interceptors.response.use(
+      (response) => {
+        const processingTime = Date.now() - response.config.metadata?.startTime;
+        const requestId = response.config.metadata?.requestId;
+        
+        if (this.config.DEBUG_MODE) {
+          logger.debug(`API Response [${requestId}]: ${response.status} (${processingTime}ms)`, {
+            headers: this.sanitizeHeaders(response.headers),
+            dataSize: JSON.stringify(response.data).length,
+          });
+        }
+        
+        return response;
+      },
+      (error) => {
+        const requestId = error.config?.metadata?.requestId;
+        const processingTime = Date.now() - (error.config?.metadata?.startTime || Date.now());
+        
+        logger.error(`API Error [${requestId}]: ${error.message} (${processingTime}ms)`, {
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          url: error.config?.url,
+          method: error.config?.method,
+        });
+        
+        return Promise.reject(error);
+      }
+    );
+  }
+
+  /**
+   * GET request with full error handling
+   */
+  async get<T = any>(
+    endpoint: string, 
+    params?: Record<string, any>, 
+    options?: RequestOptions
+  ): Promise<ApiResponse<T>> {
+    return this.request<T>({
+      method: 'GET',
+      url: endpoint,
+      params,
+    }, options);
+  }
+
+  /**
+   * POST request with full error handling
+   */
+  async post<T = any>(
+    endpoint: string, 
+    data?: any, 
+    options?: RequestOptions
+  ): Promise<ApiResponse<T>> {
+    return this.request<T>({
+      method: 'POST',
+      url: endpoint,
+      data,
+    }, options);
+  }
+
+  /**
+   * PUT request with full error handling
+   */
+  async put<T = any>(
+    endpoint: string, 
+    data?: any, 
+    options?: RequestOptions
+  ): Promise<ApiResponse<T>> {
+    return this.request<T>({
+      method: 'PUT',
+      url: endpoint,
+      data,
+    }, options);
+  }
+
+  /**
+   * DELETE request with full error handling
+   */
+  async delete<T = any>(
+    endpoint: string, 
+    options?: RequestOptions
+  ): Promise<ApiResponse<T>> {
+    return this.request<T>({
+      method: 'DELETE',
+      url: endpoint,
+    }, options);
+  }
+
+  /**
+   * Main request method with retry logic and error handling
+   */
+  private async request<T>(
+    config: AxiosRequestConfig, 
+    options: RequestOptions = {}
+  ): Promise<ApiResponse<T>> {
+    const { retries = 3, retryDelay = 1000, customHeaders } = options;
+    
+    // Apply custom headers
+    if (customHeaders) {
+      config.headers = { ...config.headers, ...customHeaders };
+    }
+    
+    // Rate limiting check
+    await this.checkRateLimit();
+    
+    let lastError: any;
+    
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const response = await this.axiosInstance.request<T>(config);
+        
+        return {
+          success: true,
+          data: response.data,
+          statusCode: response.status,
+          headers: this.extractResponseHeaders(response),
+          metadata: this.extractMetadata(response),
+        };
+      } catch (error) {
+        lastError = error;
+        
+        if (attempt === retries || !this.shouldRetry(error)) {
+          break;
+        }
+        
+        // Calculate backoff delay
+        const delay = retryDelay * Math.pow(2, attempt);
+        
+        if (this.config.DEBUG_MODE) {
+          logger.debug(`Retrying request in ${delay}ms (attempt ${attempt + 1}/${retries})`);
+        }
+        
+        await this.sleep(delay);
+      }
+    }
+    
+    return this.handleError<T>(lastError);
+  }
+
+  /**
+   * Check if request should be retried
+   */
+  private shouldRetry(error: any): boolean {
+    if (!error.response) {
+      // Network errors should be retried
+      return true;
+    }
+    
+    const status = error.response.status;
+    
+    // Retry on server errors and rate limits
+    return status >= 500 || status === 429 || status === 408;
+  }
+
+  /**
+   * Rate limiting implementation
+   */
+  private async checkRateLimit(): Promise<void> {
+    if (!this.config.RATE_LIMIT_PER_MINUTE) {
+      return;
+    }
+    
+    const now = Date.now();
+    const timeSinceLastRequest = now - this.lastRequestTime;
+    const minInterval = 60000 / this.config.RATE_LIMIT_PER_MINUTE;
+    
+    if (timeSinceLastRequest < minInterval) {
+      const delay = minInterval - timeSinceLastRequest;
+      await this.sleep(delay);
+    }
+    
+    this.lastRequestTime = Date.now();
+    this.requestCount++;
+  }
+
+  /**
+   * Health check endpoint
+   */
+  async healthCheck(): Promise<boolean> {
+    try {
+      const response = await this.get('/health', {}, { timeout: 5000, retries: 1 });
+      return response.success;
+    } catch (error) {
+      logger.warn('Health check failed, API might be unavailable:', error.message);
+      return false;
+    }
+  }
+
+  /**
+   * Error handling with proper type conversion
+   */
+  private handleError<T>(error: any): ApiResponse<T> {
+    const apiError = handleApiError(error);
+    
+    return {
+      success: false,
+      error: apiError.message,
+      statusCode: error.response?.status || 0,
+      headers: error.response ? this.extractResponseHeaders(error.response) : {},
+      metadata: {
+        requestId: error.config?.metadata?.requestId,
+        processingTime: Date.now() - (error.config?.metadata?.startTime || Date.now()),
+      },
+    };
+  }
+
+  /**
+   * Extract useful response headers
+   */
+  private extractResponseHeaders(response: AxiosResponse): Record<string, string> {
+    const headers: Record<string, string> = {};
+    
+    // Common headers to extract
+    const importantHeaders = [
+      'x-request-id',
+      'x-ratelimit-remaining',
+      'x-ratelimit-reset',
+      'retry-after',
+      'content-type',
+    ];
+    
+    importantHeaders.forEach(header => {
+      if (response.headers[header]) {
+        headers[header] = response.headers[header];
+      }
+    });
+    
+    return headers;
+  }
+
+  /**
+   * Extract metadata from response
+   */
+  private extractMetadata(response: AxiosResponse): Record<string, any> {
+    const metadata: Record<string, any> = {
+      requestId: response.config.metadata?.requestId,
+      processingTime: Date.now() - response.config.metadata?.startTime,
+    };
+    
+    // Extract rate limit info
+    if (response.headers['x-ratelimit-remaining']) {
+      metadata.rateLimitRemaining = parseInt(response.headers['x-ratelimit-remaining'], 10);
+    }
+    
+    // Extract token usage if available
+    if (response.data?.usage?.total_tokens) {
+      metadata.tokensUsed = response.data.usage.total_tokens;
+    }
+    
+    return metadata;
+  }
+
+  /**
+   * Sanitize headers for logging (remove sensitive data)
+   */
+  private sanitizeHeaders(headers: any): Record<string, string> {
+    if (!headers) return {};
+    
+    const sanitized = { ...headers };
+    const sensitiveHeaders = ['authorization', 'x-api-key', 'cookie'];
+    
+    sensitiveHeaders.forEach(header => {
+      if (sanitized[header]) {
+        sanitized[header] = '[REDACTED]';
+      }
+      if (sanitized[header.toLowerCase()]) {
+        sanitized[header.toLowerCase()] = '[REDACTED]';
+      }
+    });
+    
+    return sanitized;
+  }
+
+  /**
+   * Generate unique request ID
+   */
+  private generateRequestId(): string {
+    return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  /**
+   * Sleep utility for delays
+   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Get client statistics
+   */
+  getStats(): { requestCount: number; lastRequestTime: number } {
+    return {
+      requestCount: this.requestCount,
+      lastRequestTime: this.lastRequestTime,
+    };
+  }
+}
+
+/**
+ * Factory function for creating API client
+ */
+export function createApiClient(runtime: IAgentRuntime): ApiClient {
+  return ApiClient.fromRuntime(runtime);
+}
+
+// ❌ DON'T: Use simple axios without proper error handling
+class BadApiClient {
+  async request(url: string) {
+    const response = await axios.get(url); // No error handling, no configuration
+    return response.data;
+  }
+}
+```
+
+### Authentication Patterns
+
+```typescript
+// ✅ DO: Implement flexible authentication system
+// src/utils/auth.ts
+import { logger } from '@elizaos/core';
+import type { IAgentRuntime } from '@elizaos/core';
+
+export interface AuthConfig {
+  type: 'bearer' | 'api-key' | 'oauth' | 'custom';
+  credentials: Record<string, string>;
+  refreshable?: boolean;
+}
+
+export interface AuthHeaders {
+  [key: string]: string;
+}
+
+/**
+ * Authentication manager for API plugins
+ */
+export class AuthManager {
+  private runtime: IAgentRuntime;
+  private authConfig: AuthConfig;
+
+  constructor(runtime: IAgentRuntime, authConfig: AuthConfig) {
+    this.runtime = runtime;
+    this.authConfig = authConfig;
+  }
+
+  /**
+   * Get authentication headers based on auth type
+   */
+  getAuthHeaders(): AuthHeaders {
+    switch (this.authConfig.type) {
+      case 'bearer':
+        return this.getBearerHeaders();
+      case 'api-key':
+        return this.getApiKeyHeaders();
+      case 'oauth':
+        return this.getOAuthHeaders();
+      case 'custom':
+        return this.getCustomHeaders();
+      default:
+        throw new Error(`Unsupported auth type: ${this.authConfig.type}`);
+    }
+  }
+
+  /**
+   * Bearer token authentication
+   */
+  private getBearerHeaders(): AuthHeaders {
+    const token = this.authConfig.credentials.token;
+    if (!token) {
+      throw new Error('Bearer token not provided');
+    }
+
+    return {
+      'Authorization': `Bearer ${token}`,
+    };
+  }
+
+  /**
+   * API key authentication (various patterns)
+   */
+  private getApiKeyHeaders(): AuthHeaders {
+    const apiKey = this.authConfig.credentials.apiKey;
+    const headerName = this.authConfig.credentials.headerName || 'X-API-Key';
+    
+    if (!apiKey) {
+      throw new Error('API key not provided');
+    }
+
+    return {
+      [headerName]: apiKey,
+    };
+  }
+
+  /**
+   * OAuth authentication
+   */
+  private getOAuthHeaders(): AuthHeaders {
+    const accessToken = this.authConfig.credentials.accessToken;
+    if (!accessToken) {
+      throw new Error('OAuth access token not provided');
+    }
+
+    return {
+      'Authorization': `Bearer ${accessToken}`,
+    };
+  }
+
+  /**
+   * Custom authentication implementation
+   */
+  private getCustomHeaders(): AuthHeaders {
+    // Implementation depends on the specific API requirements
+    const customHeaders: AuthHeaders = {};
+    
+    Object.entries(this.authConfig.credentials).forEach(([key, value]) => {
+      customHeaders[key] = value;
+    });
+    
+    return customHeaders;
+  }
+
+  /**
+   * Validate authentication configuration
+   */
+  validateAuth(): boolean {
+    try {
+      this.getAuthHeaders();
+      return true;
+    } catch (error) {
+      logger.error('Authentication validation failed:', error.message);
+      return false;
+    }
+  }
+
+  /**
+   * Refresh authentication if supported
+   */
+  async refreshAuth(): Promise<boolean> {
+    if (!this.authConfig.refreshable) {
+      return false;
+    }
+
+    try {
+      // Implementation depends on the specific refresh mechanism
+      // This is a placeholder for refresh logic
+      logger.info('Refreshing authentication...');
+      return true;
+    } catch (error) {
+      logger.error('Failed to refresh authentication:', error);
+      return false;
+    }
+  }
+}
+
+/**
+ * Create auth manager from runtime settings
+ */
+export function createAuthManager(runtime: IAgentRuntime): AuthManager {
+  const authType = runtime.getSetting('AUTH_TYPE') || 'bearer';
+  const apiKey = runtime.getSetting('API_KEY') || process.env.API_KEY;
+  
+  let authConfig: AuthConfig;
+  
+  switch (authType) {
+    case 'bearer':
+      authConfig = {
+        type: 'bearer',
+        credentials: { token: apiKey },
+      };
+      break;
+    case 'api-key':
+      authConfig = {
+        type: 'api-key',
+        credentials: { 
+          apiKey: apiKey,
+          headerName: runtime.getSetting('API_KEY_HEADER') || 'X-API-Key'
+        },
+      };
+      break;
+    default:
+      throw new Error(`Unsupported auth type: ${authType}`);
+  }
+  
+  return new AuthManager(runtime, authConfig);
+}
+
+// ❌ DON'T: Hardcode authentication
+class BadAuth {
+  getHeaders() {
+    return {
+      'Authorization': 'Bearer sk-hardcoded-key' // Never do this
+    };
+  }
+}
+```
+
+### Request/Response Processing
+
+```typescript
+// ✅ DO: Implement proper request/response processing
+// src/utils/requestProcessor.ts
+import { logger } from '@elizaos/core';
+import { z } from 'zod';
+
+/**
+ * Request preprocessor for API calls
+ */
+export class RequestProcessor {
+  /**
+   * Prepare request data with validation
+   */
+  static prepareRequest<T>(data: T, schema?: z.ZodSchema<T>): T {
+    if (schema) {
+      try {
+        return schema.parse(data);
+      } catch (error) {
+        logger.error('Request validation failed:', error);
+        throw new Error(`Invalid request data: ${error.message}`);
+      }
+    }
+    
+    return RequestProcessor.sanitizeRequest(data);
+  }
+
+  /**
+   * Sanitize request data
+   */
+  private static sanitizeRequest<T>(data: T): T {
+    if (typeof data !== 'object' || data === null) {
+      return data;
+    }
+
+    // Remove undefined values and sanitize strings
+    const sanitized = JSON.parse(JSON.stringify(data, (key, value) => {
+      if (value === undefined) {
+        return undefined; // Will be removed by JSON.stringify
+      }
+      
+      if (typeof value === 'string') {
+        return value.trim();
+      }
+      
+      return value;
+    }));
+
+    return sanitized;
+  }
+
+  /**
+   * Add request metadata
+   */
+  static addMetadata(data: any): any {
+    return {
+      ...data,
+      metadata: {
+        timestamp: new Date().toISOString(),
+        source: 'elizaos-plugin',
+        version: '2.0',
+      },
+    };
+  }
+}
+
+/**
+ * Response processor for API responses
+ */
+export class ResponseProcessor {
+  /**
+   * Process and validate API response
+   */
+  static processResponse<T>(
+    response: any, 
+    schema?: z.ZodSchema<T>
+  ): T {
+    if (schema) {
+      try {
+        return schema.parse(response);
+      } catch (error) {
+        logger.error('Response validation failed:', error);
+        throw new Error(`Invalid response format: ${error.message}`);
+      }
+    }
+    
+    return ResponseProcessor.sanitizeResponse(response);
+  }
+
+  /**
+   * Sanitize response data
+   */
+  private static sanitizeResponse<T>(data: T): T {
+    if (typeof data !== 'object' || data === null) {
+      return data;
+    }
+
+    // Deep clone and sanitize
+    return JSON.parse(JSON.stringify(data));
+  }
+
+  /**
+   * Extract specific fields from response
+   */
+  static extractFields<T>(
+    response: any, 
+    fields: string[]
+  ): Partial<T> {
+    const extracted: any = {};
+    
+    fields.forEach(field => {
+      const value = ResponseProcessor.getNestedValue(response, field);
+      if (value !== undefined) {
+        extracted[field] = value;
+      }
+    });
+    
+    return extracted;
+  }
+
+  /**
+   * Get nested value from object using dot notation
+   */
+  private static getNestedValue(obj: any, path: string): any {
+    return path.split('.').reduce((current, key) => {
+      return current && current[key] !== undefined ? current[key] : undefined;
+    }, obj);
+  }
+}
+
+// ❌ DON'T: Process requests/responses without validation
+function badProcessing(data: any) {
+  return data; // No validation or sanitization
+}
+```
+
+## Advanced HTTP Client Patterns
+
+### Streaming Response Handling
+
+```typescript
+// ✅ DO: Implement streaming response support
+export class StreamingApiClient extends ApiClient {
+  /**
+   * Handle streaming responses (e.g., for real-time text generation)
+   */
+  async streamRequest<T>(
+    endpoint: string,
+    data: any,
+    onChunk: (chunk: T) => void,
+    onComplete?: () => void,
+    onError?: (error: any) => void
+  ): Promise<void> {
+    try {
+      const response = await this.axiosInstance.post(endpoint, {
+        ...data,
+        stream: true,
+      }, {
+        responseType: 'stream',
+      });
+
+      response.data.on('data', (chunk: Buffer) => {
+        try {
+          const lines = chunk.toString().split('\n').filter(line => line.trim());
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const jsonData = line.slice(6);
+              
+              if (jsonData === '[DONE]') {
+                onComplete?.();
+                return;
+              }
+              
+              const parsed = JSON.parse(jsonData);
+              onChunk(parsed);
+            }
+          }
+        } catch (error) {
+          logger.error('Error processing stream chunk:', error);
+          onError?.(error);
+        }
+      });
+
+      response.data.on('end', () => {
+        onComplete?.();
+      });
+
+      response.data.on('error', (error: any) => {
+        logger.error('Stream error:', error);
+        onError?.(error);
+      });
+
+    } catch (error) {
+      logger.error('Failed to start stream:', error);
+      onError?.(error);
+    }
+  }
+}
+```
+
+## Best Practices Summary
+
+### HTTP Client Configuration
+- Use proper timeout settings and retry logic
+- Implement comprehensive error handling for different scenarios
+- Add request/response interceptors for logging and debugging
+- Support different authentication methods flexibly
+
+### Rate Limiting and Performance
+- Implement client-side rate limiting to respect API limits
+- Use appropriate caching strategies for repeated requests
+- Monitor request performance and log slow requests
+- Implement circuit breaker patterns for failing services
+
+### Security
+- Always sanitize request/response data
+- Never log sensitive authentication information
+- Use secure headers and validate SSL certificates
+- Implement proper token refresh mechanisms
+
+### Error Handling
+- Create specific error types for different failure scenarios
+- Provide meaningful error messages with context
+- Implement proper retry strategies with exponential backoff
+- Log errors appropriately for debugging
+
+## References
+- OpenAI Plugin HTTP Client: [/Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza_plugins/api/plugin-openai/src/index.ts](mdc:Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza_plugins/api/plugin-openai/src/index.ts)
+- Groq Plugin Implementation: [/Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza_plugins/api/plugin-groq/src/index.ts](mdc:Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza_plugins/api/plugin-groq/src/index.ts)
+- ElizaOS Core Logger: [/Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza/packages/core/src/logger.ts](mdc:Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza/packages/core/src/logger.ts)
+- API Plugins Guide: [/Users/ilessio/dev-agents/PROJECTS/cursor_rules/.cursor/rules/elizaos/api_plugins.md](mdc:Users/ilessio/dev-agents/PROJECTS/cursor_rules/.cursor/rules/elizaos/api_plugins.md)
