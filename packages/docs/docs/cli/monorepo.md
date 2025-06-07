@@ -1,26 +1,26 @@
 ---
 sidebar_position: 10
-title: Setup Monorepo Command
+title: Monorepo Command
 description: Clone the ElizaOS monorepo for development or contribution
 keywords: [monorepo, setup, clone, git, development, contribution]
 image: /img/cli.jpg
 ---
 
-# Setup Monorepo Command
+# Monorepo Command
 
-Clone ElizaOS monorepo from a specific branch, defaults to main.
+Clone ElizaOS monorepo from a specific branch, defaults to develop.
 
 ## Usage
 
 ```bash
-elizaos setup-monorepo [options]
+elizaos monorepo [options]
 ```
 
 ## Options
 
 | Option                  | Description           | Default   |
 | ----------------------- | --------------------- | --------- |
-| `-b, --branch <branch>` | Branch to clone       | `main`    |
+| `-b, --branch <branch>` | Branch to clone       | `develop` |
 | `-d, --dir <directory>` | Destination directory | `./eliza` |
 
 ## How It Works
@@ -34,50 +34,50 @@ elizaos setup-monorepo [options]
 ### Basic Usage
 
 ```bash
-# Clone default branch (main) to default directory (./eliza)
-elizaos setup-monorepo
+# Clone default branch (develop) to default directory (./eliza)
+elizaos monorepo
 
 # Clone with verbose output
-elizaos setup-monorepo --dir ./eliza --branch main
+elizaos monorepo --dir ./eliza --branch develop
 ```
 
 ### Custom Branch
 
 ```bash
 # Clone main branch
-elizaos setup-monorepo --branch main
+elizaos monorepo --branch main
 
 # Clone feature branch for testing
-elizaos setup-monorepo --branch feature/new-api
+elizaos monorepo --branch feature/new-api
 
 # Clone release branch
-elizaos setup-monorepo --branch v2.1.0
+elizaos monorepo --branch v2.1.0
 ```
 
 ### Custom Directory
 
 ```bash
 # Clone to custom directory
-elizaos setup-monorepo --dir my-eliza-dev
+elizaos monorepo --dir my-eliza-dev
 
 # Clone to current directory (must be empty)
-elizaos setup-monorepo --dir .
+elizaos monorepo --dir .
 
 # Clone to nested path
-elizaos setup-monorepo --dir ./projects/eliza-fork
+elizaos monorepo --dir ./projects/eliza-fork
 ```
 
 ### Development Workflows
 
 ```bash
 # For contribution development
-elizaos setup-monorepo --branch main --dir ./eliza-contrib
+elizaos monorepo --branch main --dir ./eliza-contrib
 
 # For stable development
-elizaos setup-monorepo --branch main --dir ./eliza-stable
+elizaos monorepo --branch main --dir ./eliza-stable
 
 # For testing specific features
-elizaos setup-monorepo --branch feature/new-plugin-system
+elizaos monorepo --branch feature/new-plugin-system
 ```
 
 ## After Setup
@@ -170,7 +170,7 @@ git config --global credential.helper store
 # If directory is not empty
 ls -la ./eliza              # Check contents
 rm -rf ./eliza              # Remove if safe
-elizaos setup-monorepo      # Retry
+elizaos monorepo            # Retry
 
 # For permission issues
 sudo chown -R $USER:$USER ./eliza
@@ -197,7 +197,7 @@ bun run build
 git ls-remote --heads https://github.com/elizaOS/eliza
 
 # Use correct branch name
-elizaos setup-monorepo --branch main
+elizaos monorepo --branch main
 ```
 
 ## Notes
