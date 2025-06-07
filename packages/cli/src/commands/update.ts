@@ -8,6 +8,7 @@ import {
   isRunningViaBunx,
   isRunningViaNpx,
 } from '@/src/utils';
+import { isCliInstalledViaNpm, migrateCliToBun } from '../utils/cli-bun-migration';
 import { logger } from '@elizaos/core';
 import { Command } from 'commander';
 import { execa } from 'execa';
@@ -254,8 +255,23 @@ export async function performCliUpdate(): Promise<boolean> {
 
     console.log(`Updating CLI from ${currentVersion} to ${latestVersion}...`);
 
-    const packageToInstall = '@elizaos/cli';
-    await executeInstallation(packageToInstall, latestVersion, process.cwd());
+    // Check if CLI is installed via npm and migrate to bun
+    const npmInstallation = await isCliInstalledViaNpm();
+    if (npmInstallation) {
+      logger.info('Detected npm installation, migrating to bun...');
+      try {
+        await migrateCliToBun(latestVersion);
+      } catch (migrationError) {
+        logger.warn('Migration to bun failed, falling back to standard npm update...');
+        logger.debug('Migration error:', migrationError.message);
+        // Fallback to standard installation if migration fails
+        await executeInstallation('@elizaos/cli', latestVersion, process.cwd());
+      }
+    } else {
+      // Standard bun update
+      await executeInstallation('@elizaos/cli', latestVersion, process.cwd());
+    }
+
     console.log(`CLI updated successfully to version ${latestVersion} [✓]`);
     return true;
   } catch (error) {
