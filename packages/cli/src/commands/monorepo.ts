@@ -42,12 +42,14 @@ async function cloneRepository(repo: string, branch: string, destination: string
 /**
  * Display next step instructions after cloning
  */
-function displayNextSteps(dir: string): void {
+function displayNextSteps(targetDir: string): void {
+  const cdPath = path.relative(process.cwd(), targetDir);
+
   console.log('\nTo complete the ElizaOS setup, follow these steps:\n');
 
   // Step 1: Navigate to the project directory
   console.log('1. Navigate to the project directory:');
-  console.log(`   cd ${dir}`);
+  console.log(`   cd ${cdPath}`);
 
   // Step 2: Install dependencies
   console.log('\n2. Install dependencies:');
@@ -81,8 +83,8 @@ function displayNextSteps(dir: string): void {
   console.log('   After installation, restart your terminal');
 }
 
-export const setupMonorepo = new Command()
-  .name('setup-monorepo')
+export const monorepo = new Command()
+  .name('monorepo')
   .description('Clone ElizaOS monorepo from a specific branch, defaults to develop')
   .option('-b, --branch <branch>', 'Branch to install', 'develop')
   .option('-d, --dir <directory>', 'Destination directory', './eliza')
@@ -111,7 +113,7 @@ export const setupMonorepo = new Command()
       await cloneRepository(repo, branch, destinationDir);
 
       // Display instructions for next steps
-      displayNextSteps(dir);
+      displayNextSteps(destinationDir);
     } catch (error) {
       handleError(error);
     }

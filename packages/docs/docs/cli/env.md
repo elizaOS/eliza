@@ -78,7 +78,7 @@ Path: /current/directory/.env
 # Edit local environment variables interactively
 elizaos env edit-local
 
-# Edit with automatic confirmation of prompts
+# Display variables and exit (--yes flag skips interactive editing)
 elizaos env edit-local --yes
 ```
 
@@ -89,14 +89,13 @@ The edit-local command allows you to:
 - Edit existing variables
 - Delete variables
 
+**Note**: The `--yes` flag displays current variables and exits without interactive editing, since variable modification requires user input.
+
 ### Interactive Management
 
 ```bash
 # Start interactive environment manager
 elizaos env interactive
-
-# Interactive mode with automatic confirmations
-elizaos env interactive --yes
 ```
 
 Interactive mode provides a menu with options to:
@@ -104,6 +103,8 @@ Interactive mode provides a menu with options to:
 - List environment variables
 - Edit local environment variables
 - Reset environment variables
+
+**Note**: The `--yes` flag is ignored in interactive mode since it requires user input by design.
 
 ### Resetting Environment and Data
 

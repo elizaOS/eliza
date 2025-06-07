@@ -24,6 +24,7 @@ import {
   getSalt,
   logger,
   messageHandlerTemplate,
+  stringToUuid,
   validateUuid,
 } from '@elizaos/core';
 import express from 'express';
@@ -234,99 +235,6 @@ export function agentRouter(
     }
   });
 
-  // Message handler for POST /:agentId/message - Updated for message store
-  const handleAgentMessage = async (req: CustomRequest, res: express.Response) => {
-    logger.debug(
-      '[AGENT DIRECT MESSAGE API] Received message for agent, routing via central store'
-    );
-    const targetAgentId = validateUuid(req.params.agentId);
-    if (!targetAgentId) {
-      sendError(res, 400, 'INVALID_ID', 'Invalid target agent ID format');
-      return;
-    }
-
-    if (!serverInstance) {
-      sendError(res, 500, 'SERVER_ERROR', 'Central server instance not available');
-      return;
-    }
-
-    const agentRuntime = agents.get(targetAgentId);
-    if (!agentRuntime) {
-      sendError(res, 404, 'NOT_FOUND', 'Target agent runtime not found');
-      return;
-    }
-
-    const {
-      channelId, // GLOBAL central channel ID
-      serverId, // GLOBAL server ID
-      entityId, // GLOBAL ID of the sender of this message
-      text,
-      userName,
-      name,
-      source,
-      messageId, // Optional: client-provided ID for their original message
-    } = req.body;
-
-    const cleanedText = text?.trim();
-
-    if (!validateUuid(channelId)) {
-      sendError(res, 400, 'BAD_REQUEST', 'Missing or invalid global channelId in request body');
-      return;
-    }
-    if (!validateUuid(serverId)) {
-      sendError(res, 400, 'BAD_REQUEST', 'Missing or invalid global serverId in request body');
-      return;
-    }
-    if (!validateUuid(entityId)) {
-      sendError(res, 400, 'BAD_REQUEST', 'Missing or invalid entityId (sender) in request body');
-      return;
-    }
-    if (!cleanedText) {
-      sendError(res, 400, 'BAD_REQUEST', 'Missing text in request body');
-      return;
-    }
-
-    try {
-      const messagePayload = {
-        channelId: channelId as UUID,
-        authorId: entityId as UUID,
-        content: cleanedText,
-        rawMessage: req.body, // Store the original request body
-        sourceType: source || 'direct_agent_api',
-        sourceId: messageId,
-        metadata: {
-          targetAgentId: targetAgentId,
-          senderDisplayName: userName || name || `User-${entityId.substring(0, 8)}`,
-          serverId: serverId, // Pass serverId in metadata for central store
-        },
-      };
-
-      const createdMessage = await serverInstance.createMessage(messagePayload);
-
-      sendSuccess(
-        res,
-        {
-          message: `Message submitted to central store. Target agent ${targetAgentId} will process it.`,
-          messageId: createdMessage.id,
-          targetAgentId: targetAgentId,
-          submittedChannelId: channelId,
-        },
-        202
-      );
-    } catch (error: any) {
-      logger.error(
-        '[AGENT DIRECT MESSAGE API] Error processing direct message centrally:',
-        error.message,
-        error.stack
-      );
-      if (!res.headersSent) {
-        sendError(res, 500, 'PROCESSING_ERROR', 'Error processing direct message', error.message);
-      }
-    }
-  };
-
-  router.post('/:agentId/message', handleAgentMessage);
-
   // List all agents with minimal details
   router.get('/', async (_, res) => {
     try {
@@ -519,12 +427,26 @@ export function agentRouter(
         character.settings.secrets = encryptObjectValues(character.settings.secrets, salt);
       }
 
-      const createdAgent = await db.ensureAgentExists(character);
+      const ensureAgentExists = async (character: Character) => {
+        const agentId = stringToUuid(character.name);
+        let agent = await db.getAgent(agentId);
+        if (!agent) {
+          await db.createAgent({ ...character, id: agentId });
+          agent = await db.getAgent(agentId);
+        }
+        return agent;
+      };
+
+      const newAgent = await ensureAgentExists(character);
+
+      if (!newAgent) {
+        throw new Error(`Failed to create agent ${character.name}`);
+      }
 
       res.status(201).json({
         success: true,
         data: {
-          id: createdAgent.id,
+          id: newAgent.id,
           character: character,
         },
       });

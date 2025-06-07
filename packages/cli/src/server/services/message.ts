@@ -68,7 +68,7 @@ export class MessageBusService extends Service {
 
   private async getChannelParticipants(channelId: UUID): Promise<string[]> {
     try {
-      const serverApiUrl = process.env.CENTRAL_MESSAGE_SERVER_URL || 'http://localhost:3000';
+      const serverApiUrl = this.getCentralMessageServerUrl();
       const response = await fetch(
         `${serverApiUrl}/api/messages/central-channels/${channelId}/participants`
       );
@@ -91,7 +91,7 @@ export class MessageBusService extends Service {
 
   private async fetchAgentServers() {
     try {
-      const serverApiUrl = process.env.CENTRAL_MESSAGE_SERVER_URL || 'http://localhost:3000';
+      const serverApiUrl = this.getCentralMessageServerUrl();
       const response = await fetch(
         `${serverApiUrl}/api/messages/agents/${this.runtime.agentId}/servers`
       );
@@ -409,7 +409,7 @@ export class MessageBusService extends Service {
       );
 
       // Actual fetch to the central server API
-      const baseUrl = process.env.CENTRAL_MESSAGE_SERVER_URL || 'http://localhost:3000';
+      const baseUrl = this.getCentralMessageServerUrl();
       const serverApiUrl = `${baseUrl}/api/messages/submit`;
       const response = await fetch(serverApiUrl, {
         method: 'POST',
@@ -428,6 +428,14 @@ export class MessageBusService extends Service {
         error
       );
     }
+  }
+
+  getCentralMessageServerUrl(): string {
+    const serverPort = process.env.SERVER_PORT;
+    return (
+      process.env.CENTRAL_MESSAGE_SERVER_URL ??
+      (serverPort ? `http://localhost:${serverPort}` : 'http://localhost:3000')
+    );
   }
 
   async stop(): Promise<void> {

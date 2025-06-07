@@ -1,0 +1,1168 @@
+---
+description: ElizaOS CLI configuration management
+globs: 
+alwaysApply: false
+---
+> You are an expert in ElizaOS CLI configuration management, environment variable handling, character file validation, and publishing workflows. You focus on producing secure, maintainable configuration patterns that follow ElizaOS best practices.
+
+## ElizaOS CLI Configuration Management Flow
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Environment   │    │   Character      │    │   Publishing    │
+│   Management    │───▶│   Configuration  │───▶│   Workflow      │
+│                 │    │                  │    │                 │
+│ - Variable Setup│    │ - Validation     │    │ - Registry      │
+│ - Secure Storage│    │ - Loading        │    │ - Versioning    │
+│ - Validation    │    │ - Hot Reload     │    │ - Distribution  │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+         │                       │                       │
+         ▼                       ▼                       ▼
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Secrets       │    │   Schema         │    │   Deployment    │
+│   Management    │    │   Validation     │    │   Pipeline      │
+│   & Encryption  │    │   & Loading      │    │   & Release     │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+```
+
+## Project Structure
+
+```
+elizaos-project/
+├── .env                        # Environment variables (local dev)
+├── .env.local                  # Local overrides (gitignored)
+├── .env.example               # Template with all required variables
+├── elizaos.config.js          # Main configuration file
+├── characters/
+│   ├── default.json           # Default character configuration
+│   ├── [custom].json          # Custom character files
+│   └── schemas/               # Character validation schemas
+├── src/
+│   ├── commands/
+│   │   ├── env.ts             # Environment management
+│   │   └── publish.ts         # Publishing workflow
+│   └── utils/
+│       ├── config-loader.ts   # Configuration loading
+│       ├── env-validator.ts   # Environment validation
+│       └── character-loader.ts # Character file handling
+└── dist/                      # Built output for publishing
+```
+
+## Core Implementation Patterns
+
+### Environment Management Commands
+
+```typescript
+// ✅ DO: Implement comprehensive environment variable management
+import { Command } from 'commander';
+import { z } from 'zod';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import prompts from 'prompts';
+import { encrypt, decrypt } from 'crypto';
+
+// Environment variable schema for validation
+const envSchema = z.object({
+  // AI Model Configuration
+  OPENAI_API_KEY: z.string().optional(),
+  ANTHROPIC_API_KEY: z.string().optional(),
+  GOOGLE_API_KEY: z.string().optional(),
+  
+  // Database Configuration
+  DATABASE_URL: z.string().url().optional(),
+  POSTGRES_URL: z.string().url().optional(),
+  
+  // Server Configuration
+  PORT: z.string().regex(/^\d+$/).transform(Number).optional(),
+  SERVER_URL: z.string().url().optional(),
+  
+  // Plugin Configuration
+  PLUGIN_REGISTRY_URL: z.string().url().optional(),
+  
+  // Security Configuration
+  JWT_SECRET: z.string().min(32).optional(),
+  ENCRYPTION_KEY: z.string().min(32).optional(),
+  
+  // Development Configuration
+  NODE_ENV: z.enum(['development', 'production', 'test']).optional(),
+  LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).optional()
+});
+
+export const env = new Command()
+  .name('env')
+  .description('Manage environment variables and configuration');
+
+// Interactive environment setup
+env
+  .command('interactive')
+  .alias('setup')
+  .description('Interactive setup of environment variables')
+  .option('-f, --force', 'Overwrite existing configuration')
+  .action(async (opts) => {
+    try {
+      console.log('🔧 Setting up ElizaOS environment configuration...\n');
+      
+      const envConfig = await interactiveEnvSetup(opts.force);
+      await writeEnvFile(envConfig);
+      
+      console.log('\n✅ Environment configuration completed!');
+      console.log('📝 Configuration saved to .env file');
+      
+    } catch (error) {
+      handleConfigError(error);
+    }
+  });
+
+// Validate environment configuration
+env
+  .command('validate')
+  .alias('check')
+  .description('Validate current environment configuration')
+  .option('--local', 'Check only local .env files')
+  .action(async (opts) => {
+    try {
+      const envVars = await loadEnvironmentVariables(opts.local);
+      const validation = await validateEnvironment(envVars);
+      
+      if (validation.success) {
+        console.log('✅ Environment configuration is valid');
+        displayConfigSummary(validation.data);
+      } else {
+        console.error('❌ Environment validation failed:');
+        validation.errors.forEach(error => {
+          console.error(`  - ${error.path}: ${error.message}`);
+        });
+        process.exit(1);
+      }
+      
+    } catch (error) {
+      handleConfigError(error);
+    }
+  });
+
+// List current environment variables
+env
+  .command('list')
+  .alias('ls')
+  .description('List current environment configuration')
+  .option('--local', 'Show only local environment variables')
+  .option('--masked', 'Mask sensitive values', true)
+  .option('--json', 'Output as JSON')
+  .action(async (opts) => {
+    try {
+      const envVars = await loadEnvironmentVariables(opts.local);
+      const maskedVars = opts.masked ? maskSensitiveValues(envVars) : envVars;
+      
+      if (opts.json) {
+        console.log(JSON.stringify(maskedVars, null, 2));
+      } else {
+        displayEnvironmentTable(maskedVars);
+      }
+      
+    } catch (error) {
+      handleConfigError(error);
+    }
+  });
+
+// Edit environment configuration
+env
+  .command('edit')
+  .description('Edit environment configuration file')
+  .option('--local', 'Edit local .env file instead of .env.example')
+  .action(async (opts) => {
+    try {
+      const envFile = opts.local ? '.env' : '.env.example';
+      const editor = process.env.EDITOR || 'nano';
+      
+      console.log(`Opening ${envFile} with ${editor}...`);
+      
+      const { execa } = await import('execa');
+      await execa(editor, [envFile], { stdio: 'inherit' });
+      
+      // Validate after editing
+      if (opts.local) {
+        const envVars = await loadEnvironmentVariables(true);
+        await validateEnvironment(envVars);
+        console.log('✅ Environment configuration updated and validated');
+      }
+      
+    } catch (error) {
+      handleConfigError(error);
+    }
+  });
+
+// Interactive environment setup implementation
+async function interactiveEnvSetup(force: boolean = false): Promise<Record<string, string>> {
+  const existingEnv = await loadExistingEnv();
+  const config: Record<string, string> = {};
+  
+  // AI Model Configuration
+  console.log('🤖 AI Model Configuration');
+  const aiModel = await prompts({
+    type: 'select',
+    name: 'provider',
+    message: 'Select your primary AI provider:',
+    choices: [
+      { title: 'OpenAI (GPT-4, GPT-3.5)', value: 'openai' },
+      { title: 'Anthropic (Claude)', value: 'anthropic' },
+      { title: 'Google (Gemini)', value: 'google' },
+      { title: 'Local (Ollama)', value: 'local' },
+      { title: 'Skip for now', value: 'skip' }
+    ]
+  });
+  
+  if (aiModel.provider !== 'skip') {
+    const apiKey = await promptForApiKey(aiModel.provider, existingEnv, force);
+    if (apiKey) {
+      config[getApiKeyName(aiModel.provider)] = apiKey;
+    }
+  }
+  
+  // Database Configuration
+  console.log('\n💾 Database Configuration');
+  const database = await prompts({
+    type: 'select',
+    name: 'type',
+    message: 'Select your database:',
+    choices: [
+      { title: 'PGLite (SQLite compatible)', value: 'pglite' },
+      { title: 'PostgreSQL', value: 'postgres' },
+      { title: 'Skip for now', value: 'skip' }
+    ]
+  });
+  
+  if (database.type === 'postgres') {
+    const dbUrl = await prompts({
+      type: 'text',
+      name: 'url',
+      message: 'Enter PostgreSQL connection URL:',
+      initial: existingEnv.DATABASE_URL || 'postgresql://username:password@localhost:5432/eliza',
+      validate: (value: string) => {
+        try {
+          new URL(value);
+          return true;
+        } catch {
+          return 'Please enter a valid PostgreSQL URL';
+        }
+      }
+    });
+    config.DATABASE_URL = dbUrl.url;
+  }
+  
+  // Server Configuration
+  console.log('\n🌐 Server Configuration');
+  const serverConfig = await prompts([
+    {
+      type: 'number',
+      name: 'port',
+      message: 'Server port:',
+      initial: existingEnv.PORT ? parseInt(existingEnv.PORT) : 3000,
+      min: 1000,
+      max: 65535
+    },
+    {
+      type: 'text',
+      name: 'serverUrl',
+      message: 'Server URL (for production):',
+      initial: existingEnv.SERVER_URL || 'http://localhost:3000',
+      validate: (value: string) => {
+        try {
+          new URL(value);
+          return true;
+        } catch {
+          return 'Please enter a valid URL';
+        }
+      }
+    }
+  ]);
+  
+  config.PORT = serverConfig.port.toString();
+  config.SERVER_URL = serverConfig.serverUrl;
+  
+  // Development Configuration
+  console.log('\n🔧 Development Configuration');
+  const devConfig = await prompts([
+    {
+      type: 'select',
+      name: 'nodeEnv',
+      message: 'Environment:',
+      choices: [
+        { title: 'Development', value: 'development' },
+        { title: 'Production', value: 'production' },
+        { title: 'Test', value: 'test' }
+      ],
+      initial: existingEnv.NODE_ENV === 'production' ? 1 : 0
+    },
+    {
+      type: 'select',
+      name: 'logLevel',
+      message: 'Log level:',
+      choices: [
+        { title: 'Debug', value: 'debug' },
+        { title: 'Info', value: 'info' },
+        { title: 'Warn', value: 'warn' },
+        { title: 'Error', value: 'error' }
+      ],
+      initial: 1
+    }
+  ]);
+  
+  config.NODE_ENV = devConfig.nodeEnv;
+  config.LOG_LEVEL = devConfig.logLevel;
+  
+  return config;
+}
+
+// ❌ DON'T: Handle environment variables without validation or security
+async function badEnvSetup(): Promise<void> {
+  // No validation, no encryption, no error handling
+  const fs = require('fs');
+  fs.writeFileSync('.env', 'API_KEY=secret123\nPORT=3000');
+}
+```
+
+### Character Configuration Management
+
+```typescript
+// ✅ DO: Implement comprehensive character file validation and loading
+import { z } from 'zod';
+
+// Character schema validation
+const characterSchema = z.object({
+  name: z.string().min(1).max(100),
+  bio: z.array(z.string()).min(1),
+  lore: z.array(z.string()).optional().default([]),
+  messageExamples: z.array(z.array(z.object({
+    user: z.string(),
+    content: z.object({
+      text: z.string()
+    })
+  }))).optional().default([]),
+  postExamples: z.array(z.string()).optional().default([]),
+  topics: z.array(z.string()).optional().default([]),
+  style: z.object({
+    all: z.array(z.string()).optional().default([]),
+    chat: z.array(z.string()).optional().default([]),
+    post: z.array(z.string()).optional().default([])
+  }).optional().default({}),
+  adjectives: z.array(z.string()).optional().default([]),
+  clients: z.array(z.string()).optional().default([]),
+  plugins: z.array(z.string()).optional().default([]),
+  settings: z.object({
+    secrets: z.record(z.string(), z.string()).optional().default({}),
+    voice: z.object({
+      model: z.string().optional(),
+      url: z.string().url().optional()
+    }).optional()
+  }).optional().default({})
+});
+
+export type Character = z.infer<typeof characterSchema>;
+
+export class CharacterLoader {
+  private cache = new Map<string, Character>();
+  private watchers = new Map<string, fs.FSWatcher>();
+  
+  async loadCharacter(pathOrUrl: string): Promise<Character> {
+    try {
+      // Check cache first
+      if (this.cache.has(pathOrUrl)) {
+        return this.cache.get(pathOrUrl)!;
+      }
+      
+      let characterData: any;
+      
+      if (pathOrUrl.startsWith('http')) {
+        // Load from URL
+        characterData = await this.loadCharacterFromUrl(pathOrUrl);
+      } else {
+        // Load from file
+        characterData = await this.loadCharacterFromFile(pathOrUrl);
+      }
+      
+      // Validate character data
+      const character = characterSchema.parse(characterData);
+      
+      // Cache the character
+      this.cache.set(pathOrUrl, character);
+      
+      // Setup file watcher for local files
+      if (!pathOrUrl.startsWith('http')) {
+        this.setupFileWatcher(pathOrUrl);
+      }
+      
+      return character;
+      
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        throw new CharacterValidationError(
+          `Character validation failed for ${pathOrUrl}`,
+          error.errors
+        );
+      }
+      throw new CharacterLoadError(`Failed to load character: ${pathOrUrl}`, error);
+    }
+  }
+  
+  async loadCharacterFromFile(filePath: string): Promise<any> {
+    // Resolve relative paths and add .json extension if needed
+    const resolvedPath = this.resolveCharacterPath(filePath);
+    
+    try {
+      const content = await fs.readFile(resolvedPath, 'utf-8');
+      return JSON.parse(content);
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        throw new FileNotFoundError(`Character file not found: ${resolvedPath}`);
+      }
+      if (error instanceof SyntaxError) {
+        throw new CharacterValidationError(
+          `Invalid JSON in character file: ${resolvedPath}`,
+          [{ message: error.message, path: 'JSON' }]
+        );
+      }
+      throw error;
+    }
+  }
+  
+  async loadCharacterFromUrl(url: string): Promise<any> {
+    try {
+      const response = await fetch(url, {
+        timeout: 10000,
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'ElizaOS-CLI/1.0'
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return await response.json();
+      
+    } catch (error) {
+      throw new CharacterLoadError(`Failed to load character from URL: ${url}`, error);
+    }
+  }
+  
+  resolveCharacterPath(input: string): string {
+    let resolvedPath = input;
+    
+    // Add .json extension if missing
+    if (!resolvedPath.endsWith('.json')) {
+      resolvedPath += '.json';
+    }
+    
+    // Resolve relative to current directory
+    if (!path.isAbsolute(resolvedPath)) {
+      resolvedPath = path.resolve(process.cwd(), resolvedPath);
+    }
+    
+    return resolvedPath;
+  }
+  
+  setupFileWatcher(filePath: string): void {
+    if (this.watchers.has(filePath)) {
+      return; // Already watching
+    }
+    
+    try {
+      const watcher = fs.watch(filePath, { encoding: 'utf8' }, (eventType) => {
+        if (eventType === 'change') {
+          console.log(`📝 Character file changed: ${filePath}`);
+          // Clear cache to force reload
+          this.cache.delete(filePath);
+        }
+      });
+      
+      this.watchers.set(filePath, watcher);
+      
+    } catch (error) {
+      console.warn(`Could not setup file watcher for ${filePath}:`, error.message);
+    }
+  }
+  
+  async validateCharacterFile(filePath: string): Promise<ValidationResult> {
+    try {
+      const character = await this.loadCharacter(filePath);
+      return {
+        success: true,
+        data: character,
+        errors: []
+      };
+    } catch (error) {
+      if (error instanceof CharacterValidationError) {
+        return {
+          success: false,
+          data: null,
+          errors: error.validationErrors
+        };
+      }
+      return {
+        success: false,
+        data: null,
+        errors: [{ message: error.message, path: 'file' }]
+      };
+    }
+  }
+  
+  cleanup(): void {
+    // Clean up file watchers
+    for (const [path, watcher] of this.watchers) {
+      watcher.close();
+    }
+    this.watchers.clear();
+    this.cache.clear();
+  }
+}
+
+// Character validation command
+export const characterCmd = new Command()
+  .name('character')
+  .description('Manage character configurations');
+
+characterCmd
+  .command('validate')
+  .description('Validate character file(s)')
+  .argument('[files...]', 'Character files to validate')
+  .option('--all', 'Validate all character files in characters/ directory')
+  .action(async (files: string[], opts) => {
+    try {
+      const loader = new CharacterLoader();
+      let filesToValidate: string[] = files;
+      
+      if (opts.all || filesToValidate.length === 0) {
+        filesToValidate = await findCharacterFiles();
+      }
+      
+      let hasErrors = false;
+      
+      for (const file of filesToValidate) {
+        console.log(`Validating ${file}...`);
+        const result = await loader.validateCharacterFile(file);
+        
+        if (result.success) {
+          console.log(`  ✅ Valid character: ${result.data.name}`);
+        } else {
+          console.log(`  ❌ Validation failed:`);
+          result.errors.forEach(error => {
+            console.log(`    - ${error.path}: ${error.message}`);
+          });
+          hasErrors = true;
+        }
+      }
+      
+      if (hasErrors) {
+        process.exit(1);
+      }
+      
+      console.log('\n✅ All character files are valid');
+      
+    } catch (error) {
+      handleConfigError(error);
+    }
+  });
+
+// ❌ DON'T: Load character files without validation or error handling
+async function badCharacterLoader(file: string): Promise<any> {
+  // No validation, no error handling, no caching
+  const fs = require('fs');
+  return JSON.parse(fs.readFileSync(file, 'utf-8'));
+}
+```
+
+### Publishing Workflow Management
+
+```typescript
+// ✅ DO: Implement comprehensive publishing workflow with validation and security
+export const publish = new Command()
+  .name('publish')
+  .description('Publish ElizaOS projects and plugins to registries');
+
+// Main publishing command
+publish
+  .argument('[target]', 'Target to publish (project, plugin, or character)')
+  .option('--registry <url>', 'Custom registry URL')
+  .option('--npm', 'Publish to npm registry')
+  .option('--test', 'Run in test mode (dry run)')
+  .option('--skip-validation', 'Skip pre-publish validation')
+  .option('--tag <tag>', 'Publish with specific tag (e.g., beta, alpha)')
+  .action(async (target: string = 'auto', opts) => {
+    try {
+      console.log('📦 Starting ElizaOS publishing workflow...\n');
+      
+      // Detect project type
+      const projectType = target === 'auto' ? await detectProjectType() : target;
+      
+      // Pre-publish validation
+      if (!opts.skipValidation) {
+        await runPrePublishValidation(projectType);
+      }
+      
+      // Build project
+      await buildForPublishing(projectType);
+      
+      // Publish based on type and options
+      if (opts.test) {
+        await dryRunPublish(projectType, opts);
+      } else {
+        await executePublish(projectType, opts);
+      }
+      
+      console.log('\n✅ Publishing completed successfully!');
+      
+    } catch (error) {
+      handlePublishError(error);
+    }
+  });
+
+// Pre-publish validation
+async function runPrePublishValidation(projectType: string): Promise<void> {
+  console.log('🔍 Running pre-publish validation...');
+  
+  const validations = [
+    validatePackageJson,
+    validateProjectStructure,
+    validateDependencies,
+    validateSecurity,
+    validateLicense
+  ];
+  
+  if (projectType === 'plugin') {
+    validations.push(validatePluginStructure);
+  }
+  
+  if (projectType === 'character') {
+    validations.push(validateCharacterStructure);
+  }
+  
+  for (const validation of validations) {
+    try {
+      await validation();
+      console.log(`  ✅ ${validation.name}`);
+    } catch (error) {
+      console.error(`  ❌ ${validation.name}: ${error.message}`);
+      throw new ValidationError(`Pre-publish validation failed: ${validation.name}`);
+    }
+  }
+  
+  console.log('✅ Pre-publish validation completed\n');
+}
+
+// Package.json validation
+async function validatePackageJson(): Promise<void> {
+  const packageJsonPath = path.join(process.cwd(), 'package.json');
+  
+  if (!await fs.access(packageJsonPath).then(() => true).catch(() => false)) {
+    throw new Error('package.json not found');
+  }
+  
+  const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf-8'));
+  
+  // Required fields validation
+  const requiredFields = ['name', 'version', 'description', 'main', 'license'];
+  for (const field of requiredFields) {
+    if (!packageJson[field]) {
+      throw new Error(`Missing required field: ${field}`);
+    }
+  }
+  
+  // Version format validation
+  const versionRegex = /^\d+\.\d+\.\d+(-[a-zA-Z0-9.-]+)?$/;
+  if (!versionRegex.test(packageJson.version)) {
+    throw new Error(`Invalid version format: ${packageJson.version}`);
+  }
+  
+  // Plugin-specific validation
+  if (packageJson.name.includes('plugin-') || packageJson.keywords?.includes('elizaos-plugin')) {
+    if (!packageJson.keywords?.includes('elizaos-plugin')) {
+      throw new Error('Plugin must include "elizaos-plugin" in keywords');
+    }
+    
+    if (!packageJson.peerDependencies?.['@elizaos/core']) {
+      throw new Error('Plugin must declare @elizaos/core as peer dependency');
+    }
+  }
+}
+
+// Security validation
+async function validateSecurity(): Promise<void> {
+  // Check for sensitive files
+  const sensitiveFiles = ['.env', '.env.local', 'private.key', 'secret.txt'];
+  const gitignoreContent = await fs.readFile('.gitignore', 'utf-8').catch(() => '');
+  
+  for (const file of sensitiveFiles) {
+    if (await fs.access(file).then(() => true).catch(() => false)) {
+      if (!gitignoreContent.includes(file)) {
+        throw new Error(`Sensitive file ${file} not in .gitignore`);
+      }
+    }
+  }
+  
+  // Check for hardcoded secrets in code
+  const sourceFiles = await findSourceFiles();
+  const secretPatterns = [
+    /api[_-]?key[_-]?=.{10,}/i,
+    /secret[_-]?=.{10,}/i,
+    /password[_-]?=.{6,}/i,
+    /token[_-]?=.{10,}/i
+  ];
+  
+  for (const file of sourceFiles) {
+    const content = await fs.readFile(file, 'utf-8');
+    for (const pattern of secretPatterns) {
+      if (pattern.test(content)) {
+        throw new Error(`Potential hardcoded secret found in ${file}`);
+      }
+    }
+  }
+}
+
+// Build for publishing
+async function buildForPublishing(projectType: string): Promise<void> {
+  console.log('🔨 Building project for publishing...');
+  
+  try {
+    // Clean previous builds
+    await fs.rm('dist', { recursive: true, force: true });
+    
+    // Run TypeScript build
+    const { execa } = await import('execa');
+    
+    if (projectType === 'plugin') {
+      // Plugin-specific build
+      await execa('bun', ['run', 'build:plugin'], { stdio: 'inherit' });
+    } else {
+      // Standard build
+      await execa('bun', ['run', 'build'], { stdio: 'inherit' });
+    }
+    
+    // Validate build output
+    const distPath = path.join(process.cwd(), 'dist');
+    if (!await fs.access(distPath).then(() => true).catch(() => false)) {
+      throw new Error('Build did not produce dist directory');
+    }
+    
+    console.log('✅ Build completed successfully\n');
+    
+  } catch (error) {
+    throw new PublishError('Build failed', error);
+  }
+}
+
+// Execute publishing
+async function executePublish(projectType: string, opts: any): Promise<void> {
+  console.log('🚀 Publishing to registry...');
+  
+  try {
+    const { execa } = await import('execa');
+    
+    if (opts.npm) {
+      // Publish to npm
+      const publishArgs = ['publish'];
+      
+      if (opts.tag) {
+        publishArgs.push('--tag', opts.tag);
+      }
+      
+      if (opts.registry) {
+        publishArgs.push('--registry', opts.registry);
+      }
+      
+      await execa('npm', publishArgs, { stdio: 'inherit' });
+      
+    } else {
+      // Publish to ElizaOS registry
+      await publishToElizaRegistry(projectType, opts);
+    }
+    
+    // Update version tracking
+    await updateVersionTracking(projectType);
+    
+  } catch (error) {
+    throw new PublishError('Publishing failed', error);
+  }
+}
+
+// Dry run publishing
+async function dryRunPublish(projectType: string, opts: any): Promise<void> {
+  console.log('🧪 Running publish dry run...');
+  
+  // Simulate publishing process
+  console.log(`  📦 Would publish ${projectType} to ${opts.npm ? 'npm' : 'ElizaOS registry'}`);
+  
+  if (opts.tag) {
+    console.log(`  🏷️  Would use tag: ${opts.tag}`);
+  }
+  
+  if (opts.registry) {
+    console.log(`  🌐 Would use registry: ${opts.registry}`);
+  }
+  
+  // Show what would be included
+  const files = await getPublishFiles();
+  console.log(`  📁 Would include ${files.length} files`);
+  
+  console.log('✅ Dry run completed - no actual publishing performed');
+}
+
+// ❌ DON'T: Publish without validation or security checks
+async function badPublish(): Promise<void> {
+  // No validation, no security checks, no error handling
+  const { execa } = await import('execa');
+  await execa('npm', ['publish']);
+}
+```
+
+## Error Handling and Custom Classes
+
+### Configuration Error Classes
+
+```typescript
+// ✅ DO: Implement specific error types for configuration scenarios
+export class ConfigurationError extends Error {
+  constructor(message: string, public configType?: string, public details?: any) {
+    super(message);
+    this.name = 'ConfigurationError';
+  }
+}
+
+export class EnvironmentValidationError extends Error {
+  constructor(
+    message: string,
+    public validationErrors: Array<{ path: string; message: string }>
+  ) {
+    super(message);
+    this.name = 'EnvironmentValidationError';
+  }
+}
+
+export class CharacterValidationError extends Error {
+  constructor(
+    message: string,
+    public validationErrors: Array<{ path: string; message: string }>
+  ) {
+    super(message);
+    this.name = 'CharacterValidationError';
+  }
+}
+
+export class CharacterLoadError extends Error {
+  constructor(message: string, public cause?: Error) {
+    super(message);
+    this.name = 'CharacterLoadError';
+  }
+}
+
+export class PublishError extends Error {
+  constructor(message: string, public cause?: Error) {
+    super(message);
+    this.name = 'PublishError';
+  }
+}
+
+export class ValidationError extends Error {
+  constructor(message: string, public validationType?: string) {
+    super(message);
+    this.name = 'ValidationError';
+  }
+}
+
+// Centralized error handler
+export function handleConfigError(error: unknown): never {
+  if (error instanceof EnvironmentValidationError) {
+    console.error('❌ Environment validation failed:');
+    error.validationErrors.forEach(err => {
+      console.error(`  ${err.path}: ${err.message}`);
+    });
+    console.error('\n💡 Run "elizaos env interactive" to fix configuration');
+  } else if (error instanceof CharacterValidationError) {
+    console.error('❌ Character validation failed:');
+    error.validationErrors.forEach(err => {
+      console.error(`  ${err.path}: ${err.message}`);
+    });
+    console.error('\n💡 Check character file format and required fields');
+  } else if (error instanceof PublishError) {
+    console.error(`❌ Publishing failed: ${error.message}`);
+    if (error.cause) {
+      console.error(`Caused by: ${error.cause.message}`);
+    }
+    console.error('\n💡 Run with --test flag to validate before publishing');
+  } else {
+    console.error(`❌ Configuration error: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  
+  process.exit(1);
+}
+```
+
+## Security and Best Practices
+
+### Secure Environment Variable Handling
+
+```typescript
+// ✅ DO: Implement secure environment variable handling with encryption
+import crypto from 'crypto';
+
+export class SecureEnvManager {
+  private encryptionKey: string;
+  
+  constructor(encryptionKey?: string) {
+    this.encryptionKey = encryptionKey || this.generateEncryptionKey();
+  }
+  
+  async storeSecureValue(key: string, value: string): Promise<void> {
+    const encrypted = this.encrypt(value);
+    
+    // Store in secure location (not in plain .env)
+    const secureEnvPath = path.join(process.cwd(), '.env.secure');
+    const existing = await this.loadSecureEnv();
+    
+    existing[key] = encrypted;
+    
+    await fs.writeFile(
+      secureEnvPath,
+      JSON.stringify(existing, null, 2),
+      { mode: 0o600 } // Read/write for owner only
+    );
+  }
+  
+  async getSecureValue(key: string): Promise<string | null> {
+    const secureEnv = await this.loadSecureEnv();
+    const encrypted = secureEnv[key];
+    
+    if (!encrypted) {
+      return null;
+    }
+    
+    return this.decrypt(encrypted);
+  }
+  
+  private encrypt(text: string): string {
+    const algorithm = 'aes-256-gcm';
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipher(algorithm, this.encryptionKey);
+    
+    let encrypted = cipher.update(text, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+    
+    const authTag = cipher.getAuthTag();
+    
+    return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
+  }
+  
+  private decrypt(encryptedData: string): string {
+    const algorithm = 'aes-256-gcm';
+    const [ivHex, authTagHex, encrypted] = encryptedData.split(':');
+    
+    const iv = Buffer.from(ivHex, 'hex');
+    const authTag = Buffer.from(authTagHex, 'hex');
+    
+    const decipher = crypto.createDecipher(algorithm, this.encryptionKey);
+    decipher.setAuthTag(authTag);
+    
+    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    
+    return decrypted;
+  }
+  
+  private generateEncryptionKey(): string {
+    return crypto.randomBytes(32).toString('hex');
+  }
+  
+  private async loadSecureEnv(): Promise<Record<string, string>> {
+    const secureEnvPath = path.join(process.cwd(), '.env.secure');
+    
+    try {
+      const content = await fs.readFile(secureEnvPath, 'utf-8');
+      return JSON.parse(content);
+    } catch {
+      return {};
+    }
+  }
+}
+
+// Mask sensitive values for display
+export function maskSensitiveValues(envVars: Record<string, string>): Record<string, string> {
+  const sensitiveKeys = [
+    'api_key', 'secret', 'password', 'token', 'private', 'key'
+  ];
+  
+  const masked: Record<string, string> = {};
+  
+  for (const [key, value] of Object.entries(envVars)) {
+    const isSensitive = sensitiveKeys.some(sensitive => 
+      key.toLowerCase().includes(sensitive)
+    );
+    
+    if (isSensitive && value) {
+      // Show first 4 and last 4 characters, mask the middle
+      masked[key] = value.length > 8 
+        ? `${value.slice(0, 4)}${'*'.repeat(value.length - 8)}${value.slice(-4)}`
+        : '*'.repeat(value.length);
+    } else {
+      masked[key] = value;
+    }
+  }
+  
+  return masked;
+}
+
+// ❌ DON'T: Store sensitive values in plain text
+function badSecretStorage(key: string, value: string): void {
+  // Storing secrets in plain text .env file
+  const fs = require('fs');
+  fs.appendFileSync('.env', `${key}=${value}\n`);
+}
+```
+
+## Performance Optimization
+
+### Configuration Caching and Loading
+
+```typescript
+// ✅ DO: Implement efficient configuration caching and loading
+export class ConfigurationCache {
+  private cache = new Map<string, { data: any; timestamp: number; ttl: number }>();
+  private watchers = new Map<string, fs.FSWatcher>();
+  
+  async get<T>(
+    key: string, 
+    loader: () => Promise<T>, 
+    ttl: number = 300000 // 5 minutes
+  ): Promise<T> {
+    const cached = this.cache.get(key);
+    const now = Date.now();
+    
+    // Return cached value if still valid
+    if (cached && (now - cached.timestamp) < cached.ttl) {
+      return cached.data as T;
+    }
+    
+    // Load fresh data
+    const data = await loader();
+    
+    // Cache the result
+    this.cache.set(key, {
+      data,
+      timestamp: now,
+      ttl
+    });
+    
+    return data;
+  }
+  
+  invalidate(key: string): void {
+    this.cache.delete(key);
+  }
+  
+  setupFileWatcher(filePath: string, cacheKey: string): void {
+    if (this.watchers.has(filePath)) {
+      return;
+    }
+    
+    try {
+      const watcher = fs.watch(filePath, () => {
+        this.invalidate(cacheKey);
+      });
+      
+      this.watchers.set(filePath, watcher);
+      
+    } catch (error) {
+      console.warn(`Could not setup watcher for ${filePath}:`, error.message);
+    }
+  }
+  
+  cleanup(): void {
+    for (const watcher of this.watchers.values()) {
+      watcher.close();
+    }
+    this.watchers.clear();
+    this.cache.clear();
+  }
+}
+
+// Global configuration cache instance
+export const configCache = new ConfigurationCache();
+
+// Optimized environment loading
+export async function loadEnvironmentVariables(localOnly: boolean = false): Promise<Record<string, string>> {
+  const cacheKey = `env:${localOnly ? 'local' : 'all'}`;
+  
+  return configCache.get(cacheKey, async () => {
+    const envVars: Record<string, string> = {};
+    
+    // Load process environment
+    if (!localOnly) {
+      Object.assign(envVars, process.env);
+    }
+    
+    // Load from .env files
+    const envFiles = localOnly ? ['.env.local'] : ['.env', '.env.local'];
+    
+    for (const envFile of envFiles) {
+      try {
+        const content = await fs.readFile(envFile, 'utf-8');
+        const parsed = parseEnvFile(content);
+        Object.assign(envVars, parsed);
+        
+        // Setup file watcher
+        configCache.setupFileWatcher(envFile, cacheKey);
+        
+      } catch (error) {
+        // File doesn't exist or can't be read - that's okay
+      }
+    }
+    
+    return envVars;
+  });
+}
+
+// ❌ DON'T: Load configuration repeatedly without caching
+async function badConfigLoading(): Promise<any> {
+  // Loads configuration every time, no caching, no file watching
+  const fs = require('fs').promises;
+  return JSON.parse(await fs.readFile('.env', 'utf-8'));
+}
+```
+
+## Best Practices Summary
+
+### Environment Management
+- Use interactive setup for better user experience
+- Validate all environment variables with schemas
+- Mask sensitive values in displays and logs
+- Support both local and production configurations
+
+### Character Handling
+- Validate character files against comprehensive schemas
+- Support both local files and remote URLs
+- Implement file watching for hot reload
+- Provide clear validation error messages
+
+### Publishing Workflow
+- Run comprehensive pre-publish validation
+- Include security checks and dependency validation
+- Support dry run mode for testing
+- Implement proper versioning and tagging
+
+### Security
+- Never store secrets in plain text
+- Use encryption for sensitive configuration
+- Validate against hardcoded secrets in code
+- Implement proper file permissions
+
+### Performance
+- Cache configuration data to avoid repeated I/O
+- Use file watchers for automatic cache invalidation
+- Implement efficient loading strategies
+- Provide progress feedback for long operations
+
+## References
+- [ElizaOS CLI Environment Commands](mdc:Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza/packages/cli/src/commands/env.ts)
+- [Character Configuration Patterns](mdc:Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza/packages/cli/src/utils/character-loader.ts)
+- [Publishing Workflow](mdc:Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza/packages/cli/src/commands/publish.ts)
+- [Configuration Loading Utilities](mdc:Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza/packages/cli/src/utils/config-loader.ts)
+- [Security Best Practices Documentation](mdc:https:/owasp.org/www-project-top-ten)

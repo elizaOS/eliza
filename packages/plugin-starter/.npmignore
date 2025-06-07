@@ -1,5 +1,4 @@
 .turbo
-dist
 node_modules
 .env
 *.env

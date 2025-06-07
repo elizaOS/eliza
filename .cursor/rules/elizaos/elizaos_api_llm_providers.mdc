@@ -1,0 +1,916 @@
+---
+description: ElizaOS v2 - API - LLM integrations, and AI model providers
+globs: 
+alwaysApply: false
+---
+> You are an expert in ElizaOS v2, TypeScript, LLM integrations, and AI model providers. You focus on building robust, efficient LLM provider plugins with proper token management, streaming support, and model optimization.
+
+## LLM Provider Architecture Flow
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│ Model Provider  │    │  Text Generation │    │   Embeddings    │
+│  Registration   │───▶│   & Streaming    │───▶│  & Retrieval    │
+│                 │    │                  │    │                 │
+│ - Model Config  │    │ - Prompt Format  │    │ - Vector Dims   │
+│ - Token Limits  │    │ - Stream Handle  │    │ - Batch Process │
+│ - Cost Tracking │    │ - Response Parse │    │ - Similarity    │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+         │                       │                       │
+         ▼                       ▼                       ▼
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│ Token Management│    │  Error Handling  │    │   Performance   │
+│  & Rate Limits  │    │   & Fallbacks    │    │  Optimization   │
+│                 │    │                  │    │                 │
+│ - Usage Tracking│    │ - Model Errors   │    │ - Caching       │
+│ - Cost Calc     │    │ - Retry Logic    │    │ - Batch Requests│
+│ - Quota Limits  │    │ - Fallback Models│    │ - Load Balancing│
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+```
+
+## LLM Provider Implementation
+
+### Base LLM Provider Pattern
+
+```typescript
+// ✅ DO: Implement comprehensive LLM provider
+// src/providers/llmProvider.ts
+// Reference: /Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza_plugins/api/plugin-openai/src/index.ts
+import type {
+  IAgentRuntime,
+  ModelProvider,
+  GenerateTextParams,
+  TextEmbeddingParams,
+  ModelTypeName,
+  Memory,
+  State,
+} from '@elizaos/core';
+import { logger, ModelType } from '@elizaos/core';
+import { createApiClient } from '../utils/apiClient';
+import { getPluginSetting } from '../utils/environment';
+import { handleApiError, ApiRequestError } from '../errors';
+
+/**
+ * LLM request/response types
+ */
+export interface LLMGenerationRequest {
+  model: string;
+  prompt: string;
+  max_tokens?: number;
+  temperature?: number;
+  top_p?: number;
+  frequency_penalty?: number;
+  presence_penalty?: number;
+  stop?: string[];
+  stream?: boolean;
+}
+
+export interface LLMGenerationResponse {
+  id: string;
+  object: string;
+  created: number;
+  model: string;
+  choices: Array<{
+    index: number;
+    message?: {
+      role: string;
+      content: string;
+    };
+    text?: string;
+    finish_reason: 'stop' | 'length' | 'content_filter' | 'tool_calls';
+    logprobs?: any;
+  }>;
+  usage: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
+}
+
+export interface EmbeddingRequest {
+  model: string;
+  input: string | string[];
+  encoding_format?: 'float' | 'base64';
+  dimensions?: number;
+}
+
+export interface EmbeddingResponse {
+  object: 'list';
+  data: Array<{
+    object: 'embedding';
+    index: number;
+    embedding: number[];
+  }>;
+  model: string;
+  usage: {
+    prompt_tokens: number;
+    total_tokens: number;
+  };
+}
+
+/**
+ * Token cost calculator for usage tracking
+ */
+export class TokenCostCalculator {
+  private readonly modelCosts: Record<string, { input: number; output: number }>;
+
+  constructor(modelCosts: Record<string, { input: number; output: number }>) {
+    this.modelCosts = modelCosts;
+  }
+
+  calculateCost(model: string, inputTokens: number, outputTokens: number): number {
+    const costs = this.modelCosts[model];
+    if (!costs) {
+      logger.warn(`No cost information for model: ${model}`);
+      return 0;
+    }
+
+    const inputCost = (inputTokens / 1000000) * costs.input;
+    const outputCost = (outputTokens / 1000000) * costs.output;
+    
+    return inputCost + outputCost;
+  }
+
+  getModelCosts(): Record<string, { input: number; output: number }> {
+    return { ...this.modelCosts };
+  }
+}
+
+/**
+ * Main LLM Provider implementation
+ */
+export class LLMProvider implements ModelProvider {
+  private runtime: IAgentRuntime;
+  private tokenCalculator: TokenCostCalculator;
+  private requestCount = 0;
+  private totalTokensUsed = 0;
+
+  constructor(runtime: IAgentRuntime, modelCosts: Record<string, { input: number; output: number }>) {
+    this.runtime = runtime;
+    this.tokenCalculator = new TokenCostCalculator(modelCosts);
+  }
+
+  /**
+   * Generate text using the LLM
+   */
+  async generateText(params: GenerateTextParams): Promise<string> {
+    const apiClient = createApiClient(this.runtime);
+    
+    try {
+      const model = params.model || this.getDefaultModel();
+      const request: LLMGenerationRequest = {
+        model,
+        prompt: params.prompt,
+        max_tokens: params.maxTokens || this.getDefaultMaxTokens(),
+        temperature: params.temperature ?? this.getDefaultTemperature(),
+        top_p: params.top_p,
+        frequency_penalty: params.frequency_penalty,
+        presence_penalty: params.presence_penalty,
+        stop: params.stop,
+        stream: false,
+      };
+
+      logger.debug(`Generating text with model: ${model}`, {
+        promptLength: params.prompt.length,
+        maxTokens: request.max_tokens,
+        temperature: request.temperature,
+      });
+
+      const response = await apiClient.post<LLMGenerationResponse>('/chat/completions', request);
+
+      if (!response.success) {
+        throw new ApiRequestError(`Text generation failed: ${response.error}`, response.statusCode);
+      }
+
+      // Extract generated text
+      const choice = response.data.choices[0];
+      const generatedText = choice.message?.content || choice.text || '';
+
+      // Track usage and costs
+      this.trackUsage(response.data.usage, model);
+
+      logger.debug(`Text generation completed`, {
+        model,
+        tokensUsed: response.data.usage.total_tokens,
+        finishReason: choice.finish_reason,
+      });
+
+      return generatedText;
+    } catch (error) {
+      logger.error('Text generation error:', error);
+      throw handleApiError(error);
+    }
+  }
+
+  /**
+   * Generate text with streaming support
+   */
+  async generateTextStream(
+    params: GenerateTextParams,
+    onChunk: (chunk: string) => void,
+    onComplete?: () => void,
+    onError?: (error: any) => void
+  ): Promise<void> {
+    const apiClient = createApiClient(this.runtime);
+    
+    try {
+      const model = params.model || this.getDefaultModel();
+      const request: LLMGenerationRequest = {
+        model,
+        prompt: params.prompt,
+        max_tokens: params.maxTokens || this.getDefaultMaxTokens(),
+        temperature: params.temperature ?? this.getDefaultTemperature(),
+        stream: true,
+      };
+
+      logger.debug(`Starting streaming text generation with model: ${model}`);
+
+      // Use streaming API client if available
+      if ('streamRequest' in apiClient) {
+        await (apiClient as any).streamRequest(
+          '/chat/completions',
+          request,
+          (chunk: any) => {
+            if (chunk.choices && chunk.choices[0]?.delta?.content) {
+              onChunk(chunk.choices[0].delta.content);
+            }
+          },
+          onComplete,
+          onError
+        );
+      } else {
+        // Fallback to non-streaming
+        const text = await this.generateText({ ...params, model });
+        onChunk(text);
+        onComplete?.();
+      }
+    } catch (error) {
+      logger.error('Streaming text generation error:', error);
+      onError?.(error);
+    }
+  }
+
+  /**
+   * Generate embeddings
+   */
+  async generateEmbedding(params: TextEmbeddingParams): Promise<number[]> {
+    const apiClient = createApiClient(this.runtime);
+    
+    try {
+      const model = params.model || this.getDefaultEmbeddingModel();
+      const request: EmbeddingRequest = {
+        model,
+        input: params.text,
+        encoding_format: 'float',
+      };
+
+      logger.debug(`Generating embedding with model: ${model}`, {
+        textLength: params.text.length,
+      });
+
+      const response = await apiClient.post<EmbeddingResponse>('/embeddings', request);
+
+      if (!response.success) {
+        throw new ApiRequestError(`Embedding generation failed: ${response.error}`, response.statusCode);
+      }
+
+      const embedding = response.data.data[0]?.embedding;
+      if (!embedding) {
+        throw new Error('No embedding data in response');
+      }
+
+      // Track usage
+      if (response.data.usage) {
+        this.trackUsage(response.data.usage, model);
+      }
+
+      logger.debug(`Embedding generation completed`, {
+        model,
+        dimensions: embedding.length,
+        tokensUsed: response.data.usage?.total_tokens,
+      });
+
+      return embedding;
+    } catch (error) {
+      logger.error('Embedding generation error:', error);
+      throw handleApiError(error);
+    }
+  }
+
+  /**
+   * Batch embedding generation for efficiency
+   */
+  async generateEmbeddingBatch(texts: string[], model?: string): Promise<number[][]> {
+    const apiClient = createApiClient(this.runtime);
+    
+    try {
+      const embeddingModel = model || this.getDefaultEmbeddingModel();
+      const batchSize = this.getBatchSize();
+      const embeddings: number[][] = [];
+
+      // Process in batches to avoid token limits
+      for (let i = 0; i < texts.length; i += batchSize) {
+        const batch = texts.slice(i, i + batchSize);
+        
+        const request: EmbeddingRequest = {
+          model: embeddingModel,
+          input: batch,
+          encoding_format: 'float',
+        };
+
+        const response = await apiClient.post<EmbeddingResponse>('/embeddings', request);
+
+        if (!response.success) {
+          throw new ApiRequestError(`Batch embedding failed: ${response.error}`, response.statusCode);
+        }
+
+        // Extract embeddings in order
+        const batchEmbeddings = response.data.data
+          .sort((a, b) => a.index - b.index)
+          .map(item => item.embedding);
+
+        embeddings.push(...batchEmbeddings);
+
+        // Track usage
+        if (response.data.usage) {
+          this.trackUsage(response.data.usage, embeddingModel);
+        }
+
+        // Rate limiting between batches
+        if (i + batchSize < texts.length) {
+          await this.sleep(100); // Small delay between batches
+        }
+      }
+
+      logger.debug(`Batch embedding generation completed`, {
+        model: embeddingModel,
+        totalTexts: texts.length,
+        batches: Math.ceil(texts.length / batchSize),
+      });
+
+      return embeddings;
+    } catch (error) {
+      logger.error('Batch embedding generation error:', error);
+      throw handleApiError(error);
+    }
+  }
+
+  /**
+   * Get available models for this provider
+   */
+  async getAvailableModels(): Promise<string[]> {
+    const apiClient = createApiClient(this.runtime);
+    
+    try {
+      const response = await apiClient.get('/models');
+      
+      if (!response.success) {
+        logger.warn('Failed to fetch available models, using defaults');
+        return this.getDefaultModels();
+      }
+
+      const models = response.data.data?.map((model: any) => model.id) || [];
+      return models;
+    } catch (error) {
+      logger.warn('Error fetching available models:', error);
+      return this.getDefaultModels();
+    }
+  }
+
+  /**
+   * Tokenize text for token counting
+   */
+  async tokenizeText(model: ModelTypeName, text: string): Promise<number[]> {
+    // Most providers don't offer tokenization APIs, so we estimate
+    return this.estimateTokens(text);
+  }
+
+  /**
+   * Count tokens in text (estimation)
+   */
+  countTokens(text: string): number {
+    return this.estimateTokens(text).length;
+  }
+
+  /**
+   * Track token usage and costs
+   */
+  private trackUsage(usage: { prompt_tokens: number; completion_tokens?: number; total_tokens: number }, model: string): void {
+    this.requestCount++;
+    this.totalTokensUsed += usage.total_tokens;
+
+    const cost = this.tokenCalculator.calculateCost(
+      model,
+      usage.prompt_tokens,
+      usage.completion_tokens || 0
+    );
+
+    logger.debug(`Token usage tracked`, {
+      model,
+      promptTokens: usage.prompt_tokens,
+      completionTokens: usage.completion_tokens || 0,
+      totalTokens: usage.total_tokens,
+      estimatedCost: cost,
+      totalRequests: this.requestCount,
+      totalTokens: this.totalTokensUsed,
+    });
+  }
+
+  /**
+   * Get provider statistics
+   */
+  getStats(): { requestCount: number; totalTokensUsed: number; estimatedCost: number } {
+    const totalCost = Object.entries(this.tokenCalculator.getModelCosts()).reduce((sum, [model, costs]) => {
+      // This is a simplified calculation - in practice, you'd track per-model usage
+      return sum + this.tokenCalculator.calculateCost(model, this.totalTokensUsed / 2, this.totalTokensUsed / 2);
+    }, 0);
+
+    return {
+      requestCount: this.requestCount,
+      totalTokensUsed: this.totalTokensUsed,
+      estimatedCost: totalCost,
+    };
+  }
+
+  // Configuration getters
+  private getDefaultModel(): string {
+    return getPluginSetting(this.runtime, 'DEFAULT_MODEL', 'gpt-3.5-turbo');
+  }
+
+  private getDefaultEmbeddingModel(): string {
+    return getPluginSetting(this.runtime, 'DEFAULT_EMBEDDING_MODEL', 'text-embedding-ada-002');
+  }
+
+  private getDefaultMaxTokens(): number {
+    const setting = getPluginSetting(this.runtime, 'MAX_TOKENS', '1000');
+    return parseInt(setting, 10);
+  }
+
+  private getDefaultTemperature(): number {
+    const setting = getPluginSetting(this.runtime, 'TEMPERATURE', '0.7');
+    return parseFloat(setting);
+  }
+
+  private getBatchSize(): number {
+    const setting = getPluginSetting(this.runtime, 'EMBEDDING_BATCH_SIZE', '100');
+    return parseInt(setting, 10);
+  }
+
+  private getDefaultModels(): string[] {
+    return ['gpt-3.5-turbo', 'gpt-4', 'text-embedding-ada-002'];
+  }
+
+  /**
+   * Estimate tokens using simple heuristic
+   */
+  private estimateTokens(text: string): number[] {
+    // Rough estimation: ~4 characters per token
+    const tokenCount = Math.ceil(text.length / 4);
+    return new Array(tokenCount).fill(0).map((_, i) => i);
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+}
+
+// ❌ DON'T: Use minimal LLM provider without proper error handling
+class BadLLMProvider {
+  async generateText(prompt: string) {
+    const response = await fetch('https://api.example.com/generate', {
+      method: 'POST',
+      body: JSON.stringify({ prompt }), // No proper request formatting
+    });
+    
+    return response.json(); // No error handling or validation
+  }
+}
+```
+
+### Model Configuration and Registration
+
+```typescript
+// ✅ DO: Implement proper model configuration
+// src/models/modelConfig.ts
+import { ModelType } from '@elizaos/core';
+import type { IAgentRuntime } from '@elizaos/core';
+
+export interface ModelConfig {
+  name: string;
+  type: ModelType;
+  maxTokens: number;
+  contextWindow: number;
+  inputCostPer1M: number;  // Cost per million input tokens
+  outputCostPer1M: number; // Cost per million output tokens
+  supportedFeatures: string[];
+  endpoints: {
+    chat?: string;
+    completion?: string;
+    embedding?: string;
+  };
+}
+
+/**
+ * Model configurations for different providers
+ */
+export const MODEL_CONFIGS: Record<string, ModelConfig> = {
+  'gpt-4': {
+    name: 'gpt-4',
+    type: ModelType.LARGE,
+    maxTokens: 4096,
+    contextWindow: 8192,
+    inputCostPer1M: 30.00,
+    outputCostPer1M: 60.00,
+    supportedFeatures: ['chat', 'function_calling', 'system_messages'],
+    endpoints: {
+      chat: '/chat/completions',
+    },
+  },
+  'gpt-3.5-turbo': {
+    name: 'gpt-3.5-turbo',
+    type: ModelType.MEDIUM,
+    maxTokens: 4096,
+    contextWindow: 4096,
+    inputCostPer1M: 1.50,
+    outputCostPer1M: 2.00,
+    supportedFeatures: ['chat', 'function_calling'],
+    endpoints: {
+      chat: '/chat/completions',
+    },
+  },
+  'text-embedding-ada-002': {
+    name: 'text-embedding-ada-002',
+    type: ModelType.EMBEDDING,
+    maxTokens: 8192,
+    contextWindow: 8192,
+    inputCostPer1M: 0.10,
+    outputCostPer1M: 0.00,
+    supportedFeatures: ['embedding'],
+    endpoints: {
+      embedding: '/embeddings',
+    },
+  },
+};
+
+/**
+ * Model manager for handling different model configurations
+ */
+export class ModelManager {
+  private runtime: IAgentRuntime;
+  private availableModels: Map<string, ModelConfig>;
+
+  constructor(runtime: IAgentRuntime, modelConfigs: Record<string, ModelConfig> = MODEL_CONFIGS) {
+    this.runtime = runtime;
+    this.availableModels = new Map(Object.entries(modelConfigs));
+  }
+
+  /**
+   * Register a new model configuration
+   */
+  registerModel(config: ModelConfig): void {
+    this.availableModels.set(config.name, config);
+  }
+
+  /**
+   * Get model configuration by name
+   */
+  getModelConfig(modelName: string): ModelConfig | undefined {
+    return this.availableModels.get(modelName);
+  }
+
+  /**
+   * Get all available models of a specific type
+   */
+  getModelsByType(type: ModelType): ModelConfig[] {
+    return Array.from(this.availableModels.values()).filter(model => model.type === type);
+  }
+
+  /**
+   * Select best model for a given task and context
+   */
+  selectOptimalModel(
+    type: ModelType,
+    contextLength: number,
+    maxTokens: number,
+    features: string[] = []
+  ): ModelConfig | null {
+    const candidates = this.getModelsByType(type).filter(model => {
+      // Check if model can handle the context
+      if (contextLength > model.contextWindow) return false;
+      
+      // Check if model can generate required tokens
+      if (maxTokens > model.maxTokens) return false;
+      
+      // Check if model supports required features
+      if (features.length > 0) {
+        const hasAllFeatures = features.every(feature => 
+          model.supportedFeatures.includes(feature)
+        );
+        if (!hasAllFeatures) return false;
+      }
+      
+      return true;
+    });
+
+    if (candidates.length === 0) return null;
+
+    // Sort by cost efficiency (prefer lower cost models)
+    candidates.sort((a, b) => {
+      const aCostPer1K = (a.inputCostPer1M + a.outputCostPer1M) / 1000;
+      const bCostPer1K = (b.inputCostPer1M + b.outputCostPer1M) / 1000;
+      return aCostPer1K - bCostPer1K;
+    });
+
+    return candidates[0];
+  }
+
+  /**
+   * Validate if a model supports specific features
+   */
+  validateModelFeatures(modelName: string, requiredFeatures: string[]): boolean {
+    const config = this.getModelConfig(modelName);
+    if (!config) return false;
+
+    return requiredFeatures.every(feature => 
+      config.supportedFeatures.includes(feature)
+    );
+  }
+
+  /**
+   * Calculate estimated cost for a request
+   */
+  calculateRequestCost(modelName: string, inputTokens: number, outputTokens: number): number {
+    const config = this.getModelConfig(modelName);
+    if (!config) return 0;
+
+    const inputCost = (inputTokens / 1000000) * config.inputCostPer1M;
+    const outputCost = (outputTokens / 1000000) * config.outputCostPer1M;
+
+    return inputCost + outputCost;
+  }
+
+  /**
+   * Get model statistics and capabilities summary
+   */
+  getModelSummary(): Array<{
+    name: string;
+    type: string;
+    maxTokens: number;
+    contextWindow: number;
+    costPer1K: number;
+    features: string[];
+  }> {
+    return Array.from(this.availableModels.values()).map(model => ({
+      name: model.name,
+      type: ModelType[model.type],
+      maxTokens: model.maxTokens,
+      contextWindow: model.contextWindow,
+      costPer1K: (model.inputCostPer1M + model.outputCostPer1M) / 1000,
+      features: model.supportedFeatures,
+    }));
+  }
+}
+
+// ❌ DON'T: Hardcode model configurations
+const badModelConfig = {
+  model: 'gpt-4',
+  cost: 0.03, // No distinction between input/output
+  // Missing other important configuration
+};
+```
+
+### Advanced Provider Features
+
+```typescript
+// ✅ DO: Implement advanced provider features
+// src/providers/advancedProvider.ts
+import { LLMProvider } from './llmProvider';
+import { ModelManager } from '../models/modelConfig';
+
+/**
+ * Advanced LLM provider with additional features
+ */
+export class AdvancedLLMProvider extends LLMProvider {
+  private modelManager: ModelManager;
+  private responseCache: Map<string, { response: string; timestamp: number }>;
+  private requestQueue: Array<{ request: any; resolve: any; reject: any }>;
+  private processingQueue = false;
+
+  constructor(runtime: IAgentRuntime, modelCosts: Record<string, { input: number; output: number }>) {
+    super(runtime, modelCosts);
+    this.modelManager = new ModelManager(runtime);
+    this.responseCache = new Map();
+    this.requestQueue = [];
+  }
+
+  /**
+   * Generate text with automatic model selection
+   */
+  async generateTextSmart(params: GenerateTextParams & { features?: string[] }): Promise<string> {
+    const contextLength = params.prompt.length;
+    const maxTokens = params.maxTokens || 1000;
+    const features = params.features || [];
+
+    // Auto-select optimal model
+    const optimalModel = this.modelManager.selectOptimalModel(
+      ModelType.LARGE,
+      contextLength,
+      maxTokens,
+      features
+    );
+
+    if (!optimalModel) {
+      throw new Error('No suitable model found for the given requirements');
+    }
+
+    return this.generateText({
+      ...params,
+      model: optimalModel.name,
+    });
+  }
+
+  /**
+   * Generate text with caching
+   */
+  async generateTextCached(params: GenerateTextParams, cacheTtl = 300000): Promise<string> {
+    const cacheKey = this.generateCacheKey(params);
+    const cached = this.responseCache.get(cacheKey);
+
+    if (cached && Date.now() - cached.timestamp < cacheTtl) {
+      logger.debug('Returning cached response');
+      return cached.response;
+    }
+
+    const response = await this.generateText(params);
+    
+    this.responseCache.set(cacheKey, {
+      response,
+      timestamp: Date.now(),
+    });
+
+    // Clean up old cache entries
+    this.cleanupCache(cacheTtl);
+
+    return response;
+  }
+
+  /**
+   * Generate text with fallback models
+   */
+  async generateTextWithFallback(
+    params: GenerateTextParams,
+    fallbackModels: string[] = []
+  ): Promise<string> {
+    const models = [params.model, ...fallbackModels].filter(Boolean);
+    
+    for (const model of models) {
+      try {
+        return await this.generateText({ ...params, model });
+      } catch (error) {
+        logger.warn(`Model ${model} failed, trying next:`, error.message);
+        
+        // If it's the last model, throw the error
+        if (model === models[models.length - 1]) {
+          throw error;
+        }
+      }
+    }
+
+    throw new Error('All models failed');
+  }
+
+  /**
+   * Queue-based request processing for rate limiting
+   */
+  async generateTextQueued(params: GenerateTextParams): Promise<string> {
+    return new Promise((resolve, reject) => {
+      this.requestQueue.push({
+        request: params,
+        resolve,
+        reject,
+      });
+
+      this.processQueue();
+    });
+  }
+
+  /**
+   * Batch text generation for efficiency
+   */
+  async generateTextBatch(requests: GenerateTextParams[]): Promise<string[]> {
+    const results: string[] = [];
+    const batchSize = 5; // Adjust based on rate limits
+
+    for (let i = 0; i < requests.length; i += batchSize) {
+      const batch = requests.slice(i, i + batchSize);
+      
+      const batchPromises = batch.map(request => 
+        this.generateText(request).catch(error => {
+          logger.error(`Batch request failed:`, error);
+          return `Error: ${error.message}`;
+        })
+      );
+
+      const batchResults = await Promise.all(batchPromises);
+      results.push(...batchResults);
+
+      // Small delay between batches
+      if (i + batchSize < requests.length) {
+        await this.sleep(1000);
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Process request queue
+   */
+  private async processQueue(): Promise<void> {
+    if (this.processingQueue || this.requestQueue.length === 0) {
+      return;
+    }
+
+    this.processingQueue = true;
+
+    while (this.requestQueue.length > 0) {
+      const { request, resolve, reject } = this.requestQueue.shift()!;
+
+      try {
+        const result = await this.generateText(request);
+        resolve(result);
+      } catch (error) {
+        reject(error);
+      }
+
+      // Rate limiting delay
+      await this.sleep(100);
+    }
+
+    this.processingQueue = false;
+  }
+
+  /**
+   * Generate cache key for requests
+   */
+  private generateCacheKey(params: GenerateTextParams): string {
+    const key = {
+      model: params.model,
+      prompt: params.prompt,
+      maxTokens: params.maxTokens,
+      temperature: params.temperature,
+    };
+
+    return Buffer.from(JSON.stringify(key)).toString('base64');
+  }
+
+  /**
+   * Clean up expired cache entries
+   */
+  private cleanupCache(ttl: number): void {
+    const now = Date.now();
+    
+    for (const [key, entry] of this.responseCache.entries()) {
+      if (now - entry.timestamp > ttl) {
+        this.responseCache.delete(key);
+      }
+    }
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+}
+```
+
+## Best Practices Summary
+
+### LLM Provider Development
+- Implement comprehensive token usage tracking and cost calculation
+- Support both streaming and non-streaming text generation
+- Provide batch processing capabilities for efficiency
+- Implement proper model selection and fallback strategies
+
+### Performance Optimization
+- Use request queuing for rate limit compliance
+- Implement response caching for repeated requests
+- Support batch operations for embeddings and text generation
+- Monitor and log performance metrics
+
+### Error Handling
+- Implement model-specific error handling
+- Provide fallback models for reliability
+- Handle rate limiting and quota errors gracefully
+- Log detailed error information for debugging
+
+### Token Management
+- Track token usage across all requests
+- Calculate and monitor costs per model
+- Implement token counting for request planning
+- Support different tokenization methods
+
+## References
+- OpenAI Plugin LLM Provider: [/Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza_plugins/api/plugin-openai/src/index.ts](mdc:Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza_plugins/api/plugin-openai/src/index.ts)
+- ElizaOS Core Model Types: [/Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza/packages/core/src/types.ts](mdc:Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza/packages/core/src/types.ts)
+- Groq Plugin Provider: [/Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza_plugins/api/plugin-groq/src/index.ts](mdc:Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza_plugins/api/plugin-groq/src/index.ts)
+- API Plugins Guide: [/Users/ilessio/dev-agents/PROJECTS/cursor_rules/.cursor/rules/elizaos/api_plugins.md](mdc:Users/ilessio/dev-agents/PROJECTS/cursor_rules/.cursor/rules/elizaos/api_plugins.md)

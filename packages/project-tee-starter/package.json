@@ -45,7 +45,7 @@
     "tsup": "8.4.0",
     "prettier": "3.5.3",
     "vitest": "3.1.4",
-    "@vitest/coverage-v8": "2.1.5"
+    "@vitest/coverage-v8": "3.1.4"
   },
   "scripts": {
     "start": "elizaos start",

@@ -2,17 +2,34 @@
 
 This is an ElizaOS plugin built with the official plugin starter template.
 
+## Getting Started
+
+```bash
+# Create a new plugin (automatically adds "plugin-" prefix)
+elizaos create -t plugin solana
+# This creates: plugin-solana
+# Dependencies are automatically installed and built
+
+# Navigate to the plugin directory
+cd plugin-solana
+
+# Start development immediately
+elizaos dev
+```
+
 ## Development
 
 ```bash
-# Start development with hot-reloading
-npm run dev
+# Start development with hot-reloading (recommended)
+elizaos dev
 
-# Build the plugin
-npm run build
+# OR start without hot-reloading
+elizaos start
+# Note: When using 'start', you need to rebuild after changes:
+# bun run build
 
 # Test the plugin
-npm run test
+elizaos test
 ```
 
 ## Testing
@@ -25,15 +42,15 @@ ElizaOS provides a comprehensive testing structure for plugins:
 
   - **Unit Tests**: Test individual functions/classes in isolation
   - **Integration Tests**: Test how components work together
-  - Run with: `npm run test:component`
+  - Run with: `elizaos test component`
 
 - **End-to-End Tests** (`e2e/` directory):
 
   - Test the plugin within a full ElizaOS runtime
-  - Run with: `npm run test:e2e`
+  - Run with: `elizaos test e2e`
 
 - **Running All Tests**:
-  - `npm run test` runs both component and e2e tests
+  - `elizaos test` runs both component and e2e tests
 
 ### Writing Tests
 
@@ -125,7 +142,7 @@ This command will:
 
    ```bash
    # Edit your plugin code
-   npm run dev  # Test locally with hot-reload
+   elizaos dev  # Test locally with hot-reload
    ```
 
 2. **Test Your Changes**

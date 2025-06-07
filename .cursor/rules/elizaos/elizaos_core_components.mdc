@@ -1,0 +1,1178 @@
+---
+description: ElizaOS v2 - Core, component architecture
+globs: 
+alwaysApply: false
+---
+> You are an expert in ElizaOS v2, TypeScript, component architecture, and AI agent development. You focus on creating robust, testable Action handlers, Provider implementations, and Evaluator patterns with proper validation and error handling.
+
+## Core Components Architecture Flow
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│ Action Handler  │    │ Provider System  │    │ Evaluator Logic │
+│   Validation    │───▶│  Data Retrieval  │───▶│  Assessment     │
+│                 │    │                  │    │                 │
+│ - Input Check   │    │ - Context Build  │    │ - Conversation  │
+│ - Handler Exec  │    │ - Data Format    │    │ - Quality Check │
+│ - Response Gen  │    │ - State Update   │    │ - Score Output  │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+         │                       │                       │
+         ▼                       ▼                       ▼
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│ Service Layer   │    │ Component        │    │ Error Handling  │
+│  Integration    │    │  Registration    │    │  & Monitoring   │
+│                 │    │                  │    │                 │
+│ - External API  │    │ - Runtime Reg    │    │ - Graceful Fail │
+│ - Database      │    │ - Dependencies   │    │ - Logging       │
+│ - Cache         │    │ - Validation     │    │ - Recovery      │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+```
+
+## Project Structure
+
+```
+components/
+├── actions/                    # Action implementations
+│   ├── index.ts               # Action exports
+│   ├── base/                  # Base action classes
+│   │   ├── action.ts         # Abstract action base
+│   │   └── validators.ts     # Common validators
+│   ├── communication/         # Communication actions
+│   │   ├── send-message.ts   # Message sending
+│   │   ├── reply.ts          # Reply handling
+│   │   └── mention.ts        # Mention processing
+│   ├── data/                  # Data manipulation
+│   │   ├── search.ts         # Search operations
+│   │   ├── store.ts          # Data storage
+│   │   └── retrieve.ts       # Data retrieval
+│   └── custom/                # Custom actions
+├── providers/                 # Provider implementations
+│   ├── index.ts              # Provider exports
+│   ├── base/                 # Base provider classes
+│   │   ├── provider.ts       # Abstract provider base
+│   │   └── cache.ts          # Caching utilities
+│   ├── context/              # Context providers
+│   │   ├── conversation.ts   # Conversation context
+│   │   ├── user-profile.ts   # User information
+│   │   └── environment.ts    # Environment data
+│   ├── data/                 # Data providers
+│   │   ├── knowledge.ts      # Knowledge base
+│   │   ├── memory.ts         # Memory retrieval
+│   │   └── external.ts       # External APIs
+│   └── system/               # System providers
+├── evaluators/               # Evaluator implementations
+│   ├── index.ts             # Evaluator exports
+│   ├── base/                # Base evaluator classes
+│   │   ├── evaluator.ts     # Abstract evaluator base
+│   │   └── scoring.ts       # Scoring utilities
+│   ├── conversation/        # Conversation evaluators
+│   │   ├── quality.ts       # Response quality
+│   │   ├── relevance.ts     # Topic relevance
+│   │   └── sentiment.ts     # Sentiment analysis
+│   ├── performance/         # Performance evaluators
+│   │   ├── latency.ts       # Response time
+│   │   ├── accuracy.ts      # Answer accuracy
+│   │   └── completion.ts    # Task completion
+│   └── custom/              # Custom evaluators
+└── services/                # Shared service layer
+    ├── validation.ts        # Component validation
+    ├── registry.ts          # Component registry
+    ├── monitoring.ts        # Performance monitoring
+    └── testing.ts           # Testing utilities
+```
+
+## Action Implementation Patterns
+
+### Action Base Class and Interface
+
+```typescript
+// ✅ DO: Create robust action implementations with validation
+// Reference: /Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza/packages/core/src/types.ts
+import type {
+  Action,
+  Handler,
+  Validator,
+  IAgentRuntime,
+  Memory,
+  State,
+  Content,
+  ActionExample,
+  HandlerCallback,
+  UUID,
+} from '@elizaos/core';
+import { logger } from '@elizaos/core';
+
+/**
+ * Abstract base class for all actions with common functionality
+ */
+export abstract class BaseAction implements Action {
+  abstract name: string;
+  abstract description: string;
+  abstract examples: ActionExample[][];
+  abstract handler: Handler;
+  abstract validate: Validator;
+
+  similes?: string[];
+  protected maxRetries = 3;
+  protected timeout = 30000; // 30 seconds
+
+  /**
+   * Execute action with error handling and retries
+   */
+  async executeWithRetry(
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+    options?: { [key: string]: unknown },
+    callback?: HandlerCallback,
+    responses?: Memory[]
+  ): Promise<unknown> {
+    let lastError: Error | null = null;
+    
+    for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
+      try {
+        logger.debug(`Executing action ${this.name}, attempt ${attempt}/${this.maxRetries}`);
+        
+        // Set timeout for action execution
+        const result = await Promise.race([
+          this.handler(runtime, message, state, options, callback, responses),
+          this.createTimeoutPromise()
+        ]);
+        
+        logger.debug(`Action ${this.name} completed successfully`);
+        return result;
+      } catch (error) {
+        lastError = error as Error;
+        logger.warn(`Action ${this.name} failed on attempt ${attempt}:`, error.message);
+        
+        // Don't retry on validation errors
+        if (error instanceof ActionValidationError) {
+          throw error;
+        }
+        
+        // Add delay before retry (exponential backoff)
+        if (attempt < this.maxRetries) {
+          const delay = Math.pow(2, attempt - 1) * 1000;
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+    
+    throw new ActionExecutionError(
+      `Action ${this.name} failed after ${this.maxRetries} attempts: ${lastError?.message}`,
+      lastError
+    );
+  }
+
+  /**
+   * Create timeout promise for action execution
+   */
+  private createTimeoutPromise(): Promise<never> {
+    return new Promise((_, reject) => {
+      setTimeout(() => {
+        reject(new ActionTimeoutError(`Action ${this.name} timed out after ${this.timeout}ms`));
+      }, this.timeout);
+    });
+  }
+
+  /**
+   * Validate action configuration and dependencies
+   */
+  protected validateActionConfig(runtime: IAgentRuntime): void {
+    if (!this.name || this.name.trim() === '') {
+      throw new ActionValidationError('Action name is required');
+    }
+    
+    if (!this.description || this.description.trim() === '') {
+      throw new ActionValidationError('Action description is required');
+    }
+    
+    if (!this.examples || this.examples.length === 0) {
+      throw new ActionValidationError('Action examples are required');
+    }
+    
+    // Validate examples structure
+    for (let i = 0; i < this.examples.length; i++) {
+      const example = this.examples[i];
+      if (!Array.isArray(example) || example.length === 0) {
+        throw new ActionValidationError(`Example ${i} must be a non-empty array`);
+      }
+      
+      for (let j = 0; j < example.length; j++) {
+        const step = example[j];
+        if (!step.name || !step.content?.text) {
+          throw new ActionValidationError(`Example ${i}, step ${j} must have name and content.text`);
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Comprehensive message sending action
+ */
+export class SendMessageAction extends BaseAction {
+  name = 'SEND_MESSAGE';
+  description = 'Send a message to a specific target with validation and error handling';
+  
+  similes = [
+    'send message',
+    'dispatch message',
+    'deliver message',
+    'transmit message',
+    'post message'
+  ];
+
+  examples: ActionExample[][] = [
+    [
+      {
+        name: 'user',
+        content: {
+          text: 'Send a hello message to the general channel'
+        }
+      },
+      {
+        name: 'assistant',
+        content: {
+          text: 'I\'ll send a hello message to the general channel now.',
+          actions: ['SEND_MESSAGE']
+        }
+      }
+    ],
+    [
+      {
+        name: 'user',
+        content: {
+          text: 'Reply to John with the meeting details'
+        }
+      },
+      {
+        name: 'assistant',
+        content: {
+          text: 'I\'ll send John the meeting details as requested.',
+          actions: ['SEND_MESSAGE']
+        }
+      }
+    ]
+  ];
+
+  validate: Validator = async (runtime: IAgentRuntime, message: Memory, state?: State) => {
+    try {
+      // Validate runtime has send capability
+      if (!runtime.sendMessageToTarget) {
+        logger.error('Runtime does not support message sending');
+        return false;
+      }
+      
+      // Validate message content
+      if (!message.content?.text || message.content.text.trim() === '') {
+        logger.debug('Message validation failed: no text content');
+        return false;
+      }
+      
+      // Check for send intent in message
+      const sendIntents = ['send', 'message', 'tell', 'inform', 'notify', 'reply'];
+      const hasIntent = sendIntents.some(intent => 
+        message.content.text.toLowerCase().includes(intent)
+      );
+      
+      if (!hasIntent) {
+        logger.debug('Message validation failed: no send intent detected');
+        return false;
+      }
+      
+      // Validate state has necessary information
+      if (state && !this.validateStateForSending(state)) {
+        logger.debug('State validation failed for sending');
+        return false;
+      }
+      
+      return true;
+    } catch (error) {
+      logger.error('Send message validation error:', error);
+      return false;
+    }
+  };
+
+  handler: Handler = async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+    options?: { [key: string]: unknown },
+    callback?: HandlerCallback,
+    responses?: Memory[]
+  ) => {
+    try {
+      // Extract message parameters
+      const messageParams = this.extractMessageParams(message, state, options);
+      
+      // Validate extracted parameters
+      this.validateMessageParams(messageParams);
+      
+      // Prepare content
+      const content: Content = {
+        text: messageParams.content,
+        inReplyTo: messageParams.replyTo,
+        attachments: messageParams.attachments,
+      };
+      
+      // Send message using runtime
+      await runtime.sendMessageToTarget(messageParams.target, content);
+      
+      // Create response memory
+      const responseMemory = this.createResponseMemory(messageParams, message.roomId);
+      
+      // Execute callback if provided
+      if (callback) {
+        const callbackResponse = await callback({
+          text: `Message sent successfully to ${messageParams.target.source}`,
+          actions: ['SEND_MESSAGE']
+        });
+        
+        if (callbackResponse && callbackResponse.length > 0) {
+          responses?.push(...callbackResponse);
+        }
+      }
+      
+      logger.info(`Message sent successfully via ${this.name}`, {
+        target: messageParams.target.source,
+        contentLength: content.text?.length || 0
+      });
+      
+      return responseMemory;
+    } catch (error) {
+      logger.error(`Send message action failed:`, error);
+      throw new ActionExecutionError(`Failed to send message: ${error.message}`, error);
+    }
+  };
+
+  /**
+   * Extract message parameters from input
+   */
+  private extractMessageParams(message: Memory, state?: State, options?: any): MessageParams {
+    // Implementation would extract target, content, etc. from message and state
+    return {
+      target: {
+        source: 'discord', // Example - would be extracted from context
+        channelId: state?.channelId || options?.channelId,
+        roomId: message.roomId,
+      },
+      content: this.generateMessageContent(message, state),
+      replyTo: message.inReplyTo,
+      attachments: message.content.attachments,
+    };
+  }
+
+  /**
+   * Generate message content based on context
+   */
+  private generateMessageContent(message: Memory, state?: State): string {
+    // Implementation would intelligently generate content
+    // This is a simplified example
+    if (message.content.text.includes('hello')) {
+      return 'Hello! How can I help you today?';
+    }
+    
+    return 'Message received and processed.';
+  }
+
+  /**
+   * Validate state contains necessary information for sending
+   */
+  private validateStateForSending(state: State): boolean {
+    // Check if state has target information
+    return !!(state.channelId || state.userId || state.roomId);
+  }
+}
+
+// ❌ DON'T: Minimal action without proper validation or error handling
+const badAction: Action = {
+  name: 'BAD_ACTION',
+  description: 'Bad example',
+  examples: [], // Empty examples
+  validate: async () => true, // No real validation
+  handler: async (runtime, message) => {
+    // No error handling, no logging, no validation
+    return message.content.text;
+  }
+};
+```
+
+### Provider Implementation Patterns
+
+```typescript
+// ✅ DO: Create comprehensive providers with caching and error handling
+// Reference: /Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza/packages/core/src/types.ts
+import type {
+  Provider,
+  ProviderResult,
+  IAgentRuntime,
+  Memory,
+  State,
+} from '@elizaos/core';
+
+/**
+ * Abstract base class for providers with caching and error handling
+ */
+export abstract class BaseProvider implements Provider {
+  abstract name: string;
+  abstract description?: string;
+  
+  dynamic?: boolean = false;
+  position?: number = 0;
+  private?: boolean = false;
+  protected cache = new Map<string, CacheEntry>();
+  protected cacheTimeout = 300000; // 5 minutes
+
+  /**
+   * Get provider data with caching
+   */
+  async get(runtime: IAgentRuntime, message: Memory, state: State): Promise<ProviderResult> {
+    const cacheKey = this.generateCacheKey(message, state);
+    
+    try {
+      // Check cache first
+      const cached = this.getFromCache(cacheKey);
+      if (cached) {
+        logger.debug(`Provider ${this.name} returned cached result`);
+        return cached;
+      }
+      
+      // Fetch fresh data
+      const result = await this.fetchData(runtime, message, state);
+      
+      // Validate result
+      this.validateResult(result);
+      
+      // Cache result
+      this.setCache(cacheKey, result);
+      
+      logger.debug(`Provider ${this.name} fetched fresh data`);
+      return result;
+    } catch (error) {
+      logger.error(`Provider ${this.name} failed:`, error);
+      
+      // Try to return stale cache on error
+      const staleCache = this.getFromCache(cacheKey, true);
+      if (staleCache) {
+        logger.warn(`Provider ${this.name} returning stale cache due to error`);
+        return staleCache;
+      }
+      
+      throw new ProviderError(`Provider ${this.name} failed: ${error.message}`, error);
+    }
+  }
+
+  /**
+   * Abstract method for fetching data - implemented by concrete providers
+   */
+  protected abstract fetchData(runtime: IAgentRuntime, message: Memory, state: State): Promise<ProviderResult>;
+
+  /**
+   * Generate cache key for the request
+   */
+  protected generateCacheKey(message: Memory, state: State): string {
+    return `${this.name}:${message.roomId}:${message.entityId}:${Date.now() % 3600000}`; // Hour-based key
+  }
+
+  /**
+   * Get data from cache
+   */
+  private getFromCache(key: string, allowStale = false): ProviderResult | null {
+    const entry = this.cache.get(key);
+    if (!entry) return null;
+    
+    const isExpired = Date.now() - entry.timestamp > this.cacheTimeout;
+    if (isExpired && !allowStale) {
+      this.cache.delete(key);
+      return null;
+    }
+    
+    return entry.data;
+  }
+
+  /**
+   * Set data in cache
+   */
+  private setCache(key: string, data: ProviderResult): void {
+    this.cache.set(key, {
+      data,
+      timestamp: Date.now()
+    });
+    
+    // Clean old entries
+    this.cleanCache();
+  }
+
+  /**
+   * Clean expired cache entries
+   */
+  private cleanCache(): void {
+    const now = Date.now();
+    for (const [key, entry] of this.cache.entries()) {
+      if (now - entry.timestamp > this.cacheTimeout * 2) {
+        this.cache.delete(key);
+      }
+    }
+  }
+
+  /**
+   * Validate provider result
+   */
+  protected validateResult(result: ProviderResult): void {
+    if (!result) {
+      throw new ProviderValidationError('Provider result cannot be null or undefined');
+    }
+    
+    // Validate that at least one field is provided
+    if (!result.text && !result.data && !result.values) {
+      throw new ProviderValidationError('Provider result must contain text, data, or values');
+    }
+  }
+}
+
+/**
+ * Conversation context provider
+ */
+export class ConversationContextProvider extends BaseProvider {
+  name = 'conversation_context';
+  description = 'Provides conversation history and context for the current interaction';
+  dynamic = true;
+  position = -1; // Load early
+
+  protected async fetchData(runtime: IAgentRuntime, message: Memory, state: State): Promise<ProviderResult> {
+    try {
+      // Get recent conversation history
+      const recentMessages = await this.getRecentMessages(runtime, message.roomId, 10);
+      
+      // Extract conversation themes
+      const themes = this.extractConversationThemes(recentMessages);
+      
+      // Get participant information
+      const participants = await this.getParticipants(runtime, message.roomId);
+      
+      // Build context summary
+      const contextSummary = this.buildContextSummary(recentMessages, themes, participants);
+      
+      return {
+        text: contextSummary,
+        data: {
+          recentMessages: recentMessages.map(m => ({
+            id: m.id,
+            entityId: m.entityId,
+            text: m.content.text,
+            timestamp: m.createdAt
+          })),
+          themes,
+          participantCount: participants.length,
+          conversationLength: recentMessages.length
+        },
+        values: {
+          lastMessageTime: recentMessages[0]?.createdAt || Date.now(),
+          messageCount: recentMessages.length,
+          uniqueParticipants: participants.length
+        }
+      };
+    } catch (error) {
+      logger.error('Failed to fetch conversation context:', error);
+      throw new ProviderError(`Conversation context fetch failed: ${error.message}`, error);
+    }
+  }
+
+  /**
+   * Get recent messages from the conversation
+   */
+  private async getRecentMessages(runtime: IAgentRuntime, roomId: UUID, count: number): Promise<Memory[]> {
+    return await runtime.getMemories({
+      entityId: runtime.agentId,
+      roomId,
+      count,
+      tableName: 'messages'
+    });
+  }
+
+  /**
+   * Extract themes from conversation messages
+   */
+  private extractConversationThemes(messages: Memory[]): string[] {
+    const themes = new Set<string>();
+    
+    for (const message of messages) {
+      const text = message.content.text?.toLowerCase() || '';
+      
+      // Simple keyword-based theme extraction
+      if (text.includes('help') || text.includes('assist')) themes.add('assistance');
+      if (text.includes('problem') || text.includes('issue')) themes.add('problem-solving');
+      if (text.includes('question') || text.includes('ask')) themes.add('inquiry');
+      if (text.includes('thank') || text.includes('appreciate')) themes.add('gratitude');
+      
+      // Add more sophisticated theme detection as needed
+    }
+    
+    return Array.from(themes);
+  }
+
+  /**
+   * Get participants in the conversation
+   */
+  private async getParticipants(runtime: IAgentRuntime, roomId: UUID): Promise<UUID[]> {
+    return await runtime.getParticipantsForRoom(roomId);
+  }
+
+  /**
+   * Build a summary of the conversation context
+   */
+  private buildContextSummary(messages: Memory[], themes: string[], participants: UUID[]): string {
+    const messageCount = messages.length;
+    const participantCount = participants.length;
+    const themeList = themes.length > 0 ? themes.join(', ') : 'general discussion';
+    
+    return `Current conversation context: ${messageCount} recent messages with ${participantCount} participants. Main themes: ${themeList}.`;
+  }
+
+  /**
+   * Generate cache key specific to conversation context
+   */
+  protected generateCacheKey(message: Memory, state: State): string {
+    return `${this.name}:${message.roomId}:${Math.floor(Date.now() / 60000)}`; // Minute-based for more frequent updates
+  }
+}
+
+// ❌ DON'T: Simple provider without error handling or caching
+const badProvider: Provider = {
+  name: 'bad_provider',
+  get: async (runtime, message, state) => {
+    // No error handling, no caching, no validation
+    return { text: 'some data' };
+  }
+};
+```
+
+### Evaluator Implementation Patterns
+
+```typescript
+// ✅ DO: Create comprehensive evaluators with scoring and analytics
+// Reference: /Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza/packages/core/src/types.ts
+import type {
+  Evaluator,
+  EvaluationExample,
+  Handler,
+  Validator,
+  IAgentRuntime,
+  Memory,
+  State,
+  HandlerCallback,
+} from '@elizaos/core';
+
+/**
+ * Abstract base class for evaluators with scoring framework
+ */
+export abstract class BaseEvaluator implements Evaluator {
+  abstract name: string;
+  abstract description: string;
+  abstract examples: EvaluationExample[];
+  abstract handler: Handler;
+  abstract validate: Validator;
+
+  alwaysRun?: boolean = false;
+  similes?: string[];
+  protected scoreThreshold = 0.5; // Minimum score to consider evaluation successful
+
+  /**
+   * Execute evaluation with scoring and metrics
+   */
+  async evaluateWithMetrics(
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+    responses?: Memory[]
+  ): Promise<EvaluationResult> {
+    const startTime = Date.now();
+    
+    try {
+      // Run the evaluation
+      const result = await this.handler(runtime, message, state, {}, undefined, responses);
+      
+      // Calculate execution time
+      const executionTime = Date.now() - startTime;
+      
+      // Extract score from result
+      const score = this.extractScore(result);
+      
+      // Determine if evaluation passed
+      const passed = score >= this.scoreThreshold;
+      
+      // Create evaluation result
+      const evaluationResult: EvaluationResult = {
+        evaluatorName: this.name,
+        score,
+        passed,
+        executionTime,
+        details: this.extractDetails(result),
+        timestamp: Date.now(),
+        messageId: message.id,
+        roomId: message.roomId
+      };
+      
+      // Log evaluation result
+      logger.debug(`Evaluator ${this.name} completed`, {
+        score,
+        passed,
+        executionTime: `${executionTime}ms`
+      });
+      
+      return evaluationResult;
+    } catch (error) {
+      logger.error(`Evaluator ${this.name} failed:`, error);
+      
+      return {
+        evaluatorName: this.name,
+        score: 0,
+        passed: false,
+        executionTime: Date.now() - startTime,
+        error: error.message,
+        timestamp: Date.now(),
+        messageId: message.id,
+        roomId: message.roomId
+      };
+    }
+  }
+
+  /**
+   * Extract score from evaluation result (0-1 range)
+   */
+  protected abstract extractScore(result: any): number;
+
+  /**
+   * Extract detailed information from evaluation result
+   */
+  protected extractDetails(result: any): Record<string, any> {
+    if (typeof result === 'object' && result !== null) {
+      return result;
+    }
+    return { result };
+  }
+}
+
+/**
+ * Response quality evaluator
+ */
+export class ResponseQualityEvaluator extends BaseEvaluator {
+  name = 'response_quality';
+  description = 'Evaluates the quality and relevance of agent responses';
+  scoreThreshold = 0.6;
+
+  similes = [
+    'quality check',
+    'response evaluation',
+    'answer assessment',
+    'quality measurement'
+  ];
+
+  examples: EvaluationExample[] = [
+    {
+      prompt: 'Evaluate if the response appropriately answers the user\'s question',
+      messages: [
+        {
+          name: 'user',
+          content: { text: 'What is the weather like today?' }
+        },
+        {
+          name: 'assistant',
+          content: { text: 'I\'m sorry, I don\'t have access to current weather information. You might want to check a weather website or app for accurate, up-to-date weather conditions in your area.' }
+        }
+      ],
+      outcome: 'High quality: Honest about limitations and provides helpful alternative'
+    },
+    {
+      prompt: 'Evaluate if the response is relevant and helpful',
+      messages: [
+        {
+          name: 'user',
+          content: { text: 'How do I fix a leaky faucet?' }
+        },
+        {
+          name: 'assistant',
+          content: { text: 'Cats are wonderful pets and make great companions.' }
+        }
+      ],
+      outcome: 'Low quality: Response is completely irrelevant to the question'
+    }
+  ];
+
+  validate: Validator = async (runtime: IAgentRuntime, message: Memory, state?: State) => {
+    // Always run quality evaluation for responses
+    return message.content?.text?.trim() !== '';
+  };
+
+  handler: Handler = async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+    options?: any,
+    callback?: HandlerCallback,
+    responses?: Memory[]
+  ) => {
+    try {
+      const response = responses?.[responses.length - 1]; // Get latest response
+      if (!response) {
+        return {
+          score: 0,
+          reason: 'No response to evaluate',
+          criteria: {
+            relevance: 0,
+            helpfulness: 0,
+            clarity: 0,
+            completeness: 0
+          }
+        };
+      }
+
+      // Evaluate different quality criteria
+      const criteria = {
+        relevance: await this.evaluateRelevance(message, response, runtime),
+        helpfulness: await this.evaluateHelpfulness(message, response, runtime),
+        clarity: await this.evaluateClarity(response),
+        completeness: await this.evaluateCompleteness(message, response)
+      };
+
+      // Calculate overall score (weighted average)
+      const weights = { relevance: 0.3, helpfulness: 0.3, clarity: 0.2, completeness: 0.2 };
+      const score = Object.entries(criteria).reduce((sum, [key, value]) => {
+        return sum + (value * weights[key as keyof typeof weights]);
+      }, 0);
+
+      // Determine quality level
+      const qualityLevel = this.getQualityLevel(score);
+      
+      // Generate feedback
+      const feedback = this.generateFeedback(criteria, score);
+
+      return {
+        score,
+        qualityLevel,
+        criteria,
+        feedback,
+        messageLength: response.content.text?.length || 0,
+        responseTime: response.createdAt ? response.createdAt - message.createdAt! : null
+      };
+    } catch (error) {
+      logger.error('Response quality evaluation failed:', error);
+      throw new EvaluatorError(`Quality evaluation failed: ${error.message}`, error);
+    }
+  };
+
+  /**
+   * Evaluate relevance of response to the original message
+   */
+  private async evaluateRelevance(message: Memory, response: Memory, runtime: IAgentRuntime): Promise<number> {
+    try {
+      // Use embedding similarity for relevance scoring
+      const messageEmbedding = await runtime.useModel('TEXT_EMBEDDING', {
+        text: message.content.text || ''
+      });
+      
+      const responseEmbedding = await runtime.useModel('TEXT_EMBEDDING', {
+        text: response.content.text || ''
+      });
+      
+      // Calculate cosine similarity
+      const similarity = this.cosineSimilarity(messageEmbedding, responseEmbedding);
+      
+      // Convert to 0-1 score (adjust for typical embedding similarity ranges)
+      return Math.max(0, Math.min(1, (similarity + 1) / 2));
+    } catch (error) {
+      logger.warn('Could not calculate embedding similarity for relevance:', error);
+      
+      // Fallback to keyword-based relevance
+      return this.keywordBasedRelevance(message.content.text || '', response.content.text || '');
+    }
+  }
+
+  /**
+   * Evaluate helpfulness of the response
+   */
+  private async evaluateHelpfulness(message: Memory, response: Memory, runtime: IAgentRuntime): Promise<number> {
+    const responseText = response.content.text || '';
+    let score = 0.5; // Base score
+    
+    // Check for helpful indicators
+    if (responseText.includes('here\'s how') || responseText.includes('you can')) score += 0.2;
+    if (responseText.includes('example') || responseText.includes('for instance')) score += 0.15;
+    if (responseText.match(/\d+\.\s/g)) score += 0.1; // Numbered lists
+    if (responseText.includes('alternative') || responseText.includes('option')) score += 0.1;
+    
+    // Check for unhelpful indicators
+    if (responseText.includes('I don\'t know') && !responseText.includes('but')) score -= 0.3;
+    if (responseText.includes('not sure') && responseText.length < 50) score -= 0.2;
+    
+    return Math.max(0, Math.min(1, score));
+  }
+
+  /**
+   * Evaluate clarity of the response
+   */
+  private async evaluateClarity(response: Memory): Promise<number> {
+    const text = response.content.text || '';
+    let score = 0.5; // Base score
+    
+    // Check sentence structure
+    const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
+    const avgSentenceLength = sentences.reduce((sum, s) => sum + s.length, 0) / sentences.length;
+    
+    // Optimal sentence length (not too short, not too long)
+    if (avgSentenceLength >= 20 && avgSentenceLength <= 150) score += 0.2;
+    
+    // Check for good structure indicators
+    if (text.includes('\n') || text.includes('•') || text.includes('-')) score += 0.1; // Lists/structure
+    if (sentences.length >= 2 && sentences.length <= 10) score += 0.1; // Good paragraph length
+    
+    // Check for clarity issues
+    if (text.length < 10) score -= 0.3; // Too short
+    if (avgSentenceLength > 200) score -= 0.2; // Sentences too long
+    
+    return Math.max(0, Math.min(1, score));
+  }
+
+  /**
+   * Evaluate completeness of the response
+   */
+  private async evaluateCompleteness(message: Memory, response: Memory): Promise<number> {
+    const messageText = message.content.text || '';
+    const responseText = response.content.text || '';
+    
+    let score = 0.5; // Base score
+    
+    // Check if response addresses the question type
+    if (messageText.includes('how') && responseText.includes('by')) score += 0.2;
+    if (messageText.includes('what') && responseText.length > 30) score += 0.2;
+    if (messageText.includes('why') && responseText.includes('because')) score += 0.2;
+    if (messageText.includes('when') && responseText.match(/\d{4}|\b(today|tomorrow|yesterday)\b/)) score += 0.2;
+    
+    // Check response length relative to question complexity
+    const questionWords = messageText.split(/\s+/).length;
+    const responseWords = responseText.split(/\s+/).length;
+    
+    if (questionWords > 10 && responseWords > 20) score += 0.1; // Complex question, detailed answer
+    if (questionWords <= 5 && responseWords >= 10) score += 0.1; // Simple question, adequate answer
+    
+    return Math.max(0, Math.min(1, score));
+  }
+
+  /**
+   * Calculate cosine similarity between two vectors
+   */
+  private cosineSimilarity(a: number[], b: number[]): number {
+    const dotProduct = a.reduce((sum, val, i) => sum + val * b[i], 0);
+    const magnitudeA = Math.sqrt(a.reduce((sum, val) => sum + val * val, 0));
+    const magnitudeB = Math.sqrt(b.reduce((sum, val) => sum + val * val, 0));
+    
+    return magnitudeA && magnitudeB ? dotProduct / (magnitudeA * magnitudeB) : 0;
+  }
+
+  /**
+   * Fallback keyword-based relevance calculation
+   */
+  private keywordBasedRelevance(question: string, answer: string): number {
+    const questionWords = question.toLowerCase().split(/\W+/).filter(w => w.length > 3);
+    const answerWords = answer.toLowerCase().split(/\W+/);
+    
+    const commonWords = questionWords.filter(word => answerWords.includes(word));
+    return commonWords.length / Math.max(questionWords.length, 1);
+  }
+
+  /**
+   * Get quality level description
+   */
+  private getQualityLevel(score: number): string {
+    if (score >= 0.8) return 'excellent';
+    if (score >= 0.6) return 'good';
+    if (score >= 0.4) return 'fair';
+    if (score >= 0.2) return 'poor';
+    return 'very poor';
+  }
+
+  /**
+   * Generate feedback based on criteria scores
+   */
+  private generateFeedback(criteria: Record<string, number>, overallScore: number): string {
+    const improvements = [];
+    
+    if (criteria.relevance < 0.5) improvements.push('address the question more directly');
+    if (criteria.helpfulness < 0.5) improvements.push('provide more actionable guidance');
+    if (criteria.clarity < 0.5) improvements.push('use clearer language and structure');
+    if (criteria.completeness < 0.5) improvements.push('provide more complete information');
+    
+    if (improvements.length === 0) {
+      return 'Response quality is good overall.';
+    }
+    
+    return `To improve response quality, consider: ${improvements.join(', ')}.`;
+  }
+
+  /**
+   * Extract score from evaluation result
+   */
+  protected extractScore(result: any): number {
+    return typeof result === 'object' && result?.score ? result.score : 0;
+  }
+}
+
+// ❌ DON'T: Simple evaluator without proper scoring or analysis
+const badEvaluator: Evaluator = {
+  name: 'bad_evaluator',
+  description: 'Bad example',
+  examples: [],
+  validate: async () => true,
+  handler: async () => 'evaluated' // No scoring, no analysis
+};
+```
+
+## Custom Error Classes
+
+```typescript
+// ✅ DO: Create specific error types for component failures
+export class ActionValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ActionValidationError';
+  }
+}
+
+export class ActionExecutionError extends Error {
+  constructor(message: string, public cause?: Error) {
+    super(message);
+    this.name = 'ActionExecutionError';
+  }
+}
+
+export class ActionTimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ActionTimeoutError';
+  }
+}
+
+export class ProviderError extends Error {
+  constructor(message: string, public cause?: Error) {
+    super(message);
+    this.name = 'ProviderError';
+  }
+}
+
+export class ProviderValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ProviderValidationError';
+  }
+}
+
+export class EvaluatorError extends Error {
+  constructor(message: string, public cause?: Error) {
+    super(message);
+    this.name = 'EvaluatorError';
+  }
+}
+```
+
+## Component Interfaces
+
+```typescript
+// ✅ DO: Define comprehensive interfaces for components
+export interface MessageParams {
+  target: {
+    source: string;
+    channelId?: string;
+    roomId?: UUID;
+    entityId?: UUID;
+  };
+  content: string;
+  replyTo?: UUID;
+  attachments?: any[];
+}
+
+export interface CacheEntry {
+  data: ProviderResult;
+  timestamp: number;
+}
+
+export interface EvaluationResult {
+  evaluatorName: string;
+  score: number;
+  passed: boolean;
+  executionTime: number;
+  details?: Record<string, any>;
+  error?: string;
+  timestamp: number;
+  messageId?: UUID;
+  roomId?: UUID;
+}
+
+export interface ComponentMetrics {
+  executionTime: number;
+  successRate: number;
+  errorCount: number;
+  cacheHitRate?: number;
+  averageScore?: number;
+}
+```
+
+## Best Practices
+
+### Action Development
+- Always validate input parameters and runtime capabilities
+- Implement proper error handling with retries for transient failures
+- Use timeouts to prevent hanging operations
+- Provide comprehensive examples for different use cases
+- Log execution details for monitoring and debugging
+
+### Provider Implementation  
+- Use caching to improve performance and reduce external calls
+- Implement graceful degradation with stale cache on errors
+- Validate all provider results before returning
+- Make providers stateless and reusable
+- Handle rate limiting and API quotas appropriately
+
+### Evaluator Design
+- Use quantitative scoring (0-1 range) for consistent evaluation
+- Combine multiple criteria for comprehensive assessment
+- Provide detailed feedback for improvement
+- Handle edge cases gracefully
+- Make evaluations deterministic when possible
+
+### Component Registration
+- Validate component structure before registration
+- Check for naming conflicts
+- Handle dependency resolution
+- Provide clear error messages for failures
+- Monitor component performance and health
+
+## Anti-patterns
+
+```typescript
+// ❌ DON'T: Skip validation and error handling in components
+const badAction = {
+  handler: async (runtime, message) => {
+    return runtime.sendMessage(message.text); // No validation, no error handling
+  }
+};
+
+// ❌ DON'T: Ignore caching and performance in providers
+const badProvider = {
+  get: async (runtime, message, state) => {
+    const data = await slowExternalAPI.fetch(); // No caching, no error handling
+    return { text: data };
+  }
+};
+
+// ❌ DON'T: Use subjective evaluation without scoring
+const badEvaluator = {
+  handler: async () => 'looks good', // No scoring, no criteria
+};
+```
+
+## References
+1. [ElizaOS Core Types](mdc:Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza/packages/core/src/types.ts)
+2. [ElizaOS Core Framework Guide](mdc:.cursor/rules/elizaos/elizaos_v2_core.md)
+3. [Plugin Development Patterns](mdc:.cursor/rules/elizaos/api_plugins.md)
+4. [AgentRuntime Architecture](mdc:.cursor/rules/elizaos/elizaos_v2_core_runtime.mdc)

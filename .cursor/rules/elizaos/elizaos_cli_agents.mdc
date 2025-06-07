@@ -1,0 +1,1206 @@
+---
+description: ElizaOS CLI agent management
+globs: 
+alwaysApply: false
+---
+> You are an expert in ElizaOS CLI agent management, agent runtime operations, server communication, and process monitoring. You focus on producing reliable, performant agent lifecycle management that follows ElizaOS architectural patterns.
+
+## ElizaOS CLI Agent Management Flow
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Agent         │    │   Runtime        │    │   Monitoring    │
+│   Lifecycle     │───▶│   Communication  │───▶│   & Control     │
+│                 │    │                  │    │                 │
+│ - Start/Stop    │    │ - API Calls      │    │ - Health Check  │
+│ - Deploy        │    │ - Status Query   │    │ - Logs          │
+│ - Configure     │    │ - Control        │    │ - Metrics       │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+         │                       │                       │
+         ▼                       ▼                       ▼
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Agent         │    │   Server         │    │   Process       │
+│   Registry      │    │   Management     │    │   Management    │
+│   & Discovery   │    │   & Proxy        │    │   & Recovery    │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+```
+
+## Project Structure
+
+```
+elizaos-project/
+├── src/
+│   ├── commands/
+│   │   ├── agent.ts           # Agent management commands
+│   │   ├── server.ts          # Server management
+│   │   └── runtime.ts         # Runtime operations
+│   ├── server/
+│   │   ├── api/
+│   │   │   ├── agents.ts      # Agent API endpoints
+│   │   │   └── health.ts      # Health check endpoints
+│   │   └── socketio/
+│   │       └── agent-events.ts # Real-time agent events
+│   └── utils/
+│       ├── agent-client.ts    # Agent runtime client
+│       ├── health-monitor.ts  # Health monitoring
+│       └── process-manager.ts # Process lifecycle
+├── agents/
+│   ├── [agent-id]/           # Individual agent configurations
+│   │   ├── config.json       # Agent-specific config
+│   │   └── logs/             # Agent logs
+├── logs/
+│   ├── server.log            # Server logs
+│   └── agents/               # Agent-specific logs
+└── runtime/
+    ├── processes.json        # Running processes registry
+    └── health.json           # Health status cache
+```
+
+## Core Implementation Patterns
+
+### Agent Lifecycle Commands
+
+```typescript
+// ✅ DO: Implement comprehensive agent lifecycle management
+import { Command } from 'commander';
+import { z } from 'zod';
+
+// Agent configuration schema
+const agentConfigSchema = z.object({
+  id: z.string().uuid().optional(),
+  name: z.string().min(1).max(100),
+  characterPath: z.string().optional(),
+  characterJson: z.record(z.any()).optional(),
+  plugins: z.array(z.string()).default([]),
+  clients: z.array(z.string()).default([]),
+  settings: z.record(z.any()).default({}),
+  autoStart: z.boolean().default(false),
+  restartPolicy: z.enum(['no', 'always', 'on-failure']).default('no'),
+  healthCheck: z.object({
+    enabled: z.boolean().default(true),
+    interval: z.number().min(1000).default(30000),
+    timeout: z.number().min(1000).default(5000),
+    retries: z.number().min(0).default(3)
+  }).default({})
+});
+
+export type AgentConfig = z.infer<typeof agentConfigSchema>;
+
+export const agent = new Command()
+  .name('agent')
+  .description('Manage ElizaOS agents');
+
+// Start agent command
+agent
+  .command('start')
+  .description('Start an agent with specified configuration')
+  .argument('[name]', 'Agent name or ID to start')
+  .option('-c, --character <path>', 'Character file or URL to use')
+  .option('-p, --plugins <plugins...>', 'Plugins to load')
+  .option('--clients <clients...>', 'Client platforms to enable')
+  .option('-r, --remote-url <url>', 'Remote runtime URL')
+  .option('--port <port>', 'Server port for local runtime', parseInt)
+  .option('--auto-restart', 'Enable automatic restart on failure')
+  .option('--daemon', 'Run agent as daemon process')
+  .action(async (name: string | undefined, opts) => {
+    try {
+      console.log('🚀 Starting ElizaOS agent...\n');
+      
+      // Resolve agent configuration
+      const agentConfig = await resolveAgentConfig(name, opts);
+      
+      // Validate configuration
+      const validatedConfig = agentConfigSchema.parse(agentConfig);
+      
+      // Check runtime availability
+      await checkRuntimeAvailability(opts);
+      
+      // Start agent
+      const agentInfo = await startAgent(validatedConfig, opts);
+      
+      // Setup monitoring if not daemon mode
+      if (!opts.daemon) {
+        await setupAgentMonitoring(agentInfo.id, opts);
+      }
+      
+      console.log(`✅ Agent "${agentInfo.name}" started successfully`);
+      console.log(`   ID: ${agentInfo.id}`);
+      console.log(`   Status: ${agentInfo.status}`);
+      console.log(`   Runtime: ${getAgentRuntimeUrl(opts)}`);
+      
+    } catch (error) {
+      handleAgentError(error);
+    }
+  });
+
+// Stop agent command
+agent
+  .command('stop')
+  .description('Stop running agent(s)')
+  .argument('[name]', 'Agent name, ID, or "all" to stop all agents')
+  .option('-f, --force', 'Force stop without graceful shutdown')
+  .option('-r, --remote-url <url>', 'Remote runtime URL')
+  .option('--port <port>', 'Server port', parseInt)
+  .action(async (name: string = 'all', opts) => {
+    try {
+      console.log('🛑 Stopping ElizaOS agent(s)...\n');
+      
+      if (name === 'all') {
+        await stopAllAgents(opts);
+      } else {
+        const agentId = await resolveAgentId(name, opts);
+        await stopAgent(agentId, opts);
+      }
+      
+      console.log('✅ Agent(s) stopped successfully');
+      
+    } catch (error) {
+      handleAgentError(error);
+    }
+  });
+
+// List agents command
+agent
+  .command('list')
+  .alias('ls')
+  .description('List all agents')
+  .option('-j, --json', 'Output as JSON')
+  .option('-r, --remote-url <url>', 'Remote runtime URL')
+  .option('--port <port>', 'Server port', parseInt)
+  .option('--status <status>', 'Filter by status (running, stopped, error)')
+  .action(async (opts) => {
+    try {
+      const agents = await getAgents(opts);
+      
+      // Filter by status if specified
+      const filteredAgents = opts.status 
+        ? agents.filter(agent => agent.status === opts.status)
+        : agents;
+      
+      if (opts.json) {
+        console.log(JSON.stringify(filteredAgents, null, 2));
+      } else {
+        displayAgentsTable(filteredAgents);
+      }
+      
+    } catch (error) {
+      await checkServer(opts);
+      handleAgentError(error);
+    }
+  });
+
+// Get agent details command
+agent
+  .command('get')
+  .alias('show')
+  .description('Get detailed information about an agent')
+  .requiredOption('-n, --name <name>', 'Agent name, ID, or index')
+  .option('-j, --json', 'Display as JSON')
+  .option('-o, --output [file]', 'Save configuration to file')
+  .option('-r, --remote-url <url>', 'Remote runtime URL')
+  .option('--port <port>', 'Server port', parseInt)
+  .action(async (opts) => {
+    try {
+      const agentId = await resolveAgentId(opts.name, opts);
+      const agent = await getAgentDetails(agentId, opts);
+      
+      if (opts.output) {
+        await saveAgentConfig(agent, opts.output);
+        console.log(`✅ Agent configuration saved to ${opts.output}`);
+      } else if (opts.json) {
+        console.log(JSON.stringify(agent, null, 2));
+      } else {
+        displayAgentDetails(agent);
+      }
+      
+    } catch (error) {
+      handleAgentError(error);
+    }
+  });
+
+// Deploy agent command
+agent
+  .command('deploy')
+  .description('Deploy agent to remote runtime')
+  .argument('<config>', 'Agent configuration file or URL')
+  .option('-r, --remote-url <url>', 'Remote runtime URL')
+  .option('--name <name>', 'Override agent name')
+  .option('--replace', 'Replace existing agent with same name')
+  .option('--dry-run', 'Validate configuration without deploying')
+  .action(async (configPath: string, opts) => {
+    try {
+      console.log('📦 Deploying ElizaOS agent...\n');
+      
+      // Load and validate configuration
+      const agentConfig = await loadAgentConfig(configPath);
+      const validatedConfig = agentConfigSchema.parse(agentConfig);
+      
+      if (opts.name) {
+        validatedConfig.name = opts.name;
+      }
+      
+      if (opts.dryRun) {
+        console.log('✅ Agent configuration is valid');
+        console.log('🧪 Dry run completed - no deployment performed');
+        return;
+      }
+      
+      // Check if agent exists and handle replacement
+      if (await agentExists(validatedConfig.name, opts)) {
+        if (!opts.replace) {
+          throw new AgentError(
+            `Agent "${validatedConfig.name}" already exists. Use --replace to overwrite.`
+          );
+        }
+        await stopAgent(validatedConfig.name, opts);
+      }
+      
+      // Deploy agent
+      const deployedAgent = await deployAgent(validatedConfig, opts);
+      
+      console.log(`✅ Agent "${deployedAgent.name}" deployed successfully`);
+      console.log(`   ID: ${deployedAgent.id}`);
+      console.log(`   Runtime: ${getAgentRuntimeUrl(opts)}`);
+      
+    } catch (error) {
+      handleAgentError(error);
+    }
+  });
+
+// ❌ DON'T: Start agents without proper configuration or error handling
+agent
+  .command('bad-start')
+  .action(async () => {
+    // No configuration validation, no error handling, no monitoring
+    const agent = { name: 'test' };
+    await fetch('/api/agents', { method: 'POST', body: JSON.stringify(agent) });
+  });
+```
+
+### Runtime Communication and API Client
+
+```typescript
+// ✅ DO: Implement robust runtime communication with proper error handling
+export class AgentRuntimeClient {
+  private baseUrl: string;
+  private timeout: number;
+  private retryOptions: {
+    attempts: number;
+    delay: number;
+    backoff: number;
+  };
+  
+  constructor(
+    baseUrl: string,
+    options: {
+      timeout?: number;
+      retryAttempts?: number;
+      retryDelay?: number;
+      retryBackoff?: number;
+    } = {}
+  ) {
+    this.baseUrl = baseUrl.replace(/\/$/, '');
+    this.timeout = options.timeout || 10000;
+    this.retryOptions = {
+      attempts: options.retryAttempts || 3,
+      delay: options.retryDelay || 1000,
+      backoff: options.retryBackoff || 2
+    };
+  }
+  
+  async getAgents(): Promise<AgentBasic[]> {
+    const response = await this.request<{ agents: AgentBasic[] }>('GET', '/api/agents');
+    return response.data?.agents || [];
+  }
+  
+  async getAgent(agentId: string): Promise<Agent> {
+    const response = await this.request<Agent>('GET', `/api/agents/${agentId}`);
+    
+    if (!response.data) {
+      throw new AgentNotFoundError(`Agent with ID ${agentId} not found`);
+    }
+    
+    return response.data;
+  }
+  
+  async startAgent(config: AgentStartPayload): Promise<Agent> {
+    const response = await this.request<Agent>('POST', '/api/agents', config);
+    
+    if (!response.data) {
+      throw new AgentError('Failed to start agent: No data returned');
+    }
+    
+    return response.data;
+  }
+  
+  async stopAgent(agentId: string, force: boolean = false): Promise<void> {
+    const endpoint = `/api/agents/${agentId}/stop`;
+    const payload = { force };
+    
+    await this.request('POST', endpoint, payload);
+  }
+  
+  async updateAgent(agentId: string, updates: Partial<Agent>): Promise<Agent> {
+    const response = await this.request<Agent>('PATCH', `/api/agents/${agentId}`, updates);
+    
+    if (!response.data) {
+      throw new AgentError('Failed to update agent: No data returned');
+    }
+    
+    return response.data;
+  }
+  
+  async deleteAgent(agentId: string): Promise<void> {
+    await this.request('DELETE', `/api/agents/${agentId}`);
+  }
+  
+  async getAgentHealth(agentId: string): Promise<HealthStatus> {
+    const response = await this.request<HealthStatus>('GET', `/api/agents/${agentId}/health`);
+    
+    if (!response.data) {
+      throw new AgentError('Failed to get agent health: No data returned');
+    }
+    
+    return response.data;
+  }
+  
+  async getAgentLogs(
+    agentId: string,
+    options: {
+      lines?: number;
+      since?: string;
+      follow?: boolean;
+    } = {}
+  ): Promise<LogEntry[]> {
+    const params = new URLSearchParams();
+    
+    if (options.lines) params.append('lines', options.lines.toString());
+    if (options.since) params.append('since', options.since);
+    if (options.follow) params.append('follow', 'true');
+    
+    const endpoint = `/api/agents/${agentId}/logs?${params.toString()}`;
+    const response = await this.request<LogEntry[]>('GET', endpoint);
+    
+    return response.data || [];
+  }
+  
+  private async request<T>(
+    method: string,
+    endpoint: string,
+    body?: any
+  ): Promise<ApiResponse<T>> {
+    let lastError: Error | null = null;
+    let delay = this.retryOptions.delay;
+    
+    for (let attempt = 1; attempt <= this.retryOptions.attempts; attempt++) {
+      try {
+        const url = `${this.baseUrl}${endpoint}`;
+        const options: RequestInit = {
+          method,
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'ElizaOS-CLI/1.0'
+          },
+          signal: AbortSignal.timeout(this.timeout)
+        };
+        
+        if (body) {
+          options.body = JSON.stringify(body);
+        }
+        
+        const response = await fetch(url, options);
+        
+        if (!response.ok) {
+          if (response.status === 404) {
+            throw new AgentNotFoundError(`Endpoint not found: ${endpoint}`);
+          }
+          
+          let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+          
+          try {
+            const errorData = await response.json();
+            if (errorData.error?.message) {
+              errorMessage = errorData.error.message;
+            }
+          } catch {
+            // Ignore JSON parsing errors, use default message
+          }
+          
+          throw new RuntimeCommunicationError(errorMessage);
+        }
+        
+        return await response.json();
+        
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        
+        // Don't retry on certain errors
+        if (error instanceof AgentNotFoundError || 
+            error instanceof AbortError ||
+            attempt === this.retryOptions.attempts) {
+          throw error;
+        }
+        
+        // Wait before retrying
+        if (attempt < this.retryOptions.attempts) {
+          console.warn(`Request failed (attempt ${attempt}/${this.retryOptions.attempts}), retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          delay *= this.retryOptions.backoff;
+        }
+      }
+    }
+    
+    throw lastError || new Error('All retry attempts failed');
+  }
+}
+
+// Agent resolution utilities
+export async function resolveAgentId(nameOrId: string, opts: any): Promise<string> {
+  const client = new AgentRuntimeClient(getAgentRuntimeUrl(opts));
+  const agents = await client.getAgents();
+  
+  // Try to find by name first
+  const agentByName = agents.find(
+    agent => agent.name.toLowerCase() === nameOrId.toLowerCase()
+  );
+  
+  if (agentByName) {
+    return agentByName.id;
+  }
+  
+  // Try to find by ID
+  const agentById = agents.find(agent => agent.id === nameOrId);
+  
+  if (agentById) {
+    return agentById.id;
+  }
+  
+  // Try to find by index
+  if (!isNaN(Number(nameOrId))) {
+    const indexAgent = agents[Number(nameOrId)];
+    if (indexAgent) {
+      return indexAgent.id;
+    }
+  }
+  
+  throw new AgentNotFoundError(`Agent not found: ${nameOrId}`);
+}
+
+// ❌ DON'T: Make runtime calls without proper error handling or retries
+async function badRuntimeCall(agentId: string): Promise<any> {
+  // No error handling, no retries, no timeouts
+  const response = await fetch(`/api/agents/${agentId}`);
+  return response.json();
+}
+```
+
+### Server Management and Health Monitoring
+
+```typescript
+// ✅ DO: Implement comprehensive server management with health monitoring
+export const server = new Command()
+  .name('server')
+  .description('Manage ElizaOS server runtime');
+
+// Start server command
+server
+  .command('start')
+  .description('Start the ElizaOS server runtime')
+  .option('-p, --port <port>', 'Port to listen on', parseInt, 3000)
+  .option('-h, --host <host>', 'Host to bind to', '0.0.0.0')
+  .option('--daemon', 'Run as daemon process')
+  .option('--log-level <level>', 'Log level (debug, info, warn, error)', 'info')
+  .option('--config <path>', 'Configuration file path')
+  .action(async (opts) => {
+    try {
+      console.log('🚀 Starting ElizaOS server runtime...\n');
+      
+      // Load configuration
+      const config = await loadServerConfiguration(opts.config);
+      
+      // Merge with command line options
+      const serverConfig = {
+        ...config,
+        port: opts.port || config.port || 3000,
+        host: opts.host || config.host || '0.0.0.0',
+        logLevel: opts.logLevel || config.logLevel || 'info',
+        daemon: opts.daemon || false
+      };
+      
+      // Start server
+      const serverInfo = await startServer(serverConfig);
+      
+      console.log(`✅ ElizaOS server started successfully`);
+      console.log(`   URL: http://${serverConfig.host}:${serverConfig.port}`);
+      console.log(`   PID: ${serverInfo.pid}`);
+      console.log(`   Log Level: ${serverConfig.logLevel}`);
+      
+      // Setup signal handlers for graceful shutdown
+      if (!opts.daemon) {
+        setupSignalHandlers(serverInfo.pid);
+      }
+      
+    } catch (error) {
+      handleServerError(error);
+    }
+  });
+
+// Stop server command
+server
+  .command('stop')
+  .description('Stop the ElizaOS server runtime')
+  .option('-f, --force', 'Force stop without graceful shutdown')
+  .option('--timeout <ms>', 'Graceful shutdown timeout', parseInt, 30000)
+  .action(async (opts) => {
+    try {
+      console.log('🛑 Stopping ElizaOS server...\n');
+      
+      await stopServer({
+        force: opts.force,
+        timeout: opts.timeout
+      });
+      
+      console.log('✅ Server stopped successfully');
+      
+    } catch (error) {
+      handleServerError(error);
+    }
+  });
+
+// Server status command
+server
+  .command('status')
+  .description('Check server status and health')
+  .option('-j, --json', 'Output as JSON')
+  .option('--detailed', 'Show detailed health information')
+  .action(async (opts) => {
+    try {
+      const status = await getServerStatus(opts.detailed);
+      
+      if (opts.json) {
+        console.log(JSON.stringify(status, null, 2));
+      } else {
+        displayServerStatus(status);
+      }
+      
+    } catch (error) {
+      handleServerError(error);
+    }
+  });
+
+// Health monitoring implementation
+export class HealthMonitor {
+  private checkInterval: number;
+  private checks: Map<string, HealthCheck>;
+  private status: Map<string, HealthStatus>;
+  private intervalId?: NodeJS.Timeout;
+  
+  constructor(checkInterval: number = 30000) {
+    this.checkInterval = checkInterval;
+    this.checks = new Map();
+    this.status = new Map();
+  }
+  
+  registerCheck(name: string, check: HealthCheck): void {
+    this.checks.set(name, check);
+    this.status.set(name, {
+      name,
+      status: 'unknown',
+      lastCheck: new Date(),
+      message: 'Not checked yet'
+    });
+  }
+  
+  async runCheck(name: string): Promise<HealthStatus> {
+    const check = this.checks.get(name);
+    
+    if (!check) {
+      throw new Error(`Health check not found: ${name}`);
+    }
+    
+    const startTime = Date.now();
+    let status: HealthStatus;
+    
+    try {
+      const result = await Promise.race([
+        check.run(),
+        new Promise<never>((_, reject) => 
+          setTimeout(() => reject(new Error('Health check timeout')), check.timeout || 5000)
+        )
+      ]);
+      
+      status = {
+        name,
+        status: result.healthy ? 'healthy' : 'unhealthy',
+        lastCheck: new Date(),
+        message: result.message || (result.healthy ? 'OK' : 'Failed'),
+        responseTime: Date.now() - startTime,
+        details: result.details
+      };
+      
+    } catch (error) {
+      status = {
+        name,
+        status: 'error',
+        lastCheck: new Date(),
+        message: error instanceof Error ? error.message : String(error),
+        responseTime: Date.now() - startTime
+      };
+    }
+    
+    this.status.set(name, status);
+    return status;
+  }
+  
+  async runAllChecks(): Promise<Map<string, HealthStatus>> {
+    const promises = Array.from(this.checks.keys()).map(name => 
+      this.runCheck(name).catch(error => ({
+        name,
+        status: 'error' as const,
+        lastCheck: new Date(),
+        message: error.message,
+        responseTime: 0
+      }))
+    );
+    
+    const results = await Promise.all(promises);
+    
+    for (const result of results) {
+      this.status.set(result.name, result);
+    }
+    
+    return this.status;
+  }
+  
+  start(): void {
+    if (this.intervalId) {
+      return; // Already running
+    }
+    
+    console.log(`🏥 Starting health monitoring (interval: ${this.checkInterval}ms)`);
+    
+    this.intervalId = setInterval(async () => {
+      try {
+        await this.runAllChecks();
+        
+        // Log unhealthy services
+        for (const [name, status] of this.status) {
+          if (status.status !== 'healthy') {
+            console.warn(`⚠️  Health check failed: ${name} - ${status.message}`);
+          }
+        }
+        
+      } catch (error) {
+        console.error('❌ Health monitoring error:', error);
+      }
+    }, this.checkInterval);
+  }
+  
+  stop(): void {
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = undefined;
+      console.log('🏥 Health monitoring stopped');
+    }
+  }
+  
+  getStatus(name?: string): HealthStatus | Map<string, HealthStatus> | null {
+    if (name) {
+      return this.status.get(name) || null;
+    }
+    return this.status;
+  }
+  
+  getOverallHealth(): 'healthy' | 'degraded' | 'unhealthy' {
+    const statuses = Array.from(this.status.values());
+    
+    if (statuses.length === 0) {
+      return 'unhealthy';
+    }
+    
+    const healthy = statuses.filter(s => s.status === 'healthy').length;
+    const total = statuses.length;
+    
+    if (healthy === total) {
+      return 'healthy';
+    } else if (healthy > 0) {
+      return 'degraded';
+    } else {
+      return 'unhealthy';
+    }
+  }
+}
+
+// Built-in health checks
+export const systemHealthChecks = {
+  database: {
+    name: 'Database Connection',
+    timeout: 5000,
+    run: async () => {
+      try {
+        // Implement database connectivity check
+        const result = await checkDatabaseConnection();
+        return {
+          healthy: result.connected,
+          message: result.message,
+          details: {
+            connectionCount: result.activeConnections,
+            latency: result.latency
+          }
+        };
+      } catch (error) {
+        return {
+          healthy: false,
+          message: error.message
+        };
+      }
+    }
+  },
+  
+  memory: {
+    name: 'Memory Usage',
+    timeout: 1000,
+    run: async () => {
+      const usage = process.memoryUsage();
+      const usedMB = Math.round(usage.heapUsed / 1024 / 1024);
+      const totalMB = Math.round(usage.heapTotal / 1024 / 1024);
+      const usagePercent = (usedMB / totalMB) * 100;
+      
+      return {
+        healthy: usagePercent < 90,
+        message: `Memory usage: ${usedMB}MB / ${totalMB}MB (${usagePercent.toFixed(1)}%)`,
+        details: {
+          heapUsed: usage.heapUsed,
+          heapTotal: usage.heapTotal,
+          external: usage.external,
+          rss: usage.rss
+        }
+      };
+    }
+  },
+  
+  diskSpace: {
+    name: 'Disk Space',
+    timeout: 2000,
+    run: async () => {
+      try {
+        const stats = await checkDiskSpace();
+        const usagePercent = ((stats.total - stats.free) / stats.total) * 100;
+        
+        return {
+          healthy: usagePercent < 90,
+          message: `Disk usage: ${usagePercent.toFixed(1)}%`,
+          details: {
+            total: stats.total,
+            free: stats.free,
+            used: stats.total - stats.free
+          }
+        };
+      } catch (error) {
+        return {
+          healthy: false,
+          message: error.message
+        };
+      }
+    }
+  }
+};
+
+// ❌ DON'T: Start servers without proper health monitoring or graceful shutdown
+async function badServerStart(): Promise<void> {
+  // No health checks, no graceful shutdown, no error handling
+  const server = http.createServer();
+  server.listen(3000);
+}
+```
+
+## Error Handling and Custom Classes
+
+### Agent Management Error Classes
+
+```typescript
+// ✅ DO: Implement specific error types for agent management scenarios
+export class AgentError extends Error {
+  constructor(message: string, public agentId?: string, public cause?: Error) {
+    super(message);
+    this.name = 'AgentError';
+  }
+}
+
+export class AgentNotFoundError extends Error {
+  constructor(message: string, public identifier?: string) {
+    super(message);
+    this.name = 'AgentNotFoundError';
+  }
+}
+
+export class RuntimeCommunicationError extends Error {
+  constructor(message: string, public endpoint?: string, public statusCode?: number) {
+    super(message);
+    this.name = 'RuntimeCommunicationError';
+  }
+}
+
+export class ServerError extends Error {
+  constructor(message: string, public serverPort?: number, public cause?: Error) {
+    super(message);
+    this.name = 'ServerError';
+  }
+}
+
+export class HealthCheckError extends Error {
+  constructor(message: string, public checkName?: string) {
+    super(message);
+    this.name = 'HealthCheckError';
+  }
+}
+
+export class ProcessManagementError extends Error {
+  constructor(message: string, public processId?: number, public cause?: Error) {
+    super(message);
+    this.name = 'ProcessManagementError';
+  }
+}
+
+// Centralized error handler
+export function handleAgentError(error: unknown): never {
+  if (error instanceof AgentNotFoundError) {
+    console.error(`❌ Agent not found: ${error.message}`);
+    if (error.identifier) {
+      console.error(`   Identifier: ${error.identifier}`);
+    }
+    console.error('\n💡 Use "elizaos agent list" to see available agents');
+  } else if (error instanceof RuntimeCommunicationError) {
+    console.error(`❌ Runtime communication failed: ${error.message}`);
+    if (error.endpoint) {
+      console.error(`   Endpoint: ${error.endpoint}`);
+    }
+    console.error('\n💡 Check if the ElizaOS server is running');
+    console.error('   Run "elizaos server status" to verify');
+  } else if (error instanceof AgentError) {
+    console.error(`❌ Agent operation failed: ${error.message}`);
+    if (error.agentId) {
+      console.error(`   Agent ID: ${error.agentId}`);
+    }
+    if (error.cause) {
+      console.error(`   Caused by: ${error.cause.message}`);
+    }
+  } else if (error instanceof ServerError) {
+    console.error(`❌ Server error: ${error.message}`);
+    if (error.serverPort) {
+      console.error(`   Port: ${error.serverPort}`);
+    }
+    if (error.cause) {
+      console.error(`   Caused by: ${error.cause.message}`);
+    }
+  } else {
+    console.error(`❌ Unexpected error: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  
+  process.exit(1);
+}
+
+export function handleServerError(error: unknown): never {
+  if (error instanceof ServerError) {
+    console.error(`❌ Server error: ${error.message}`);
+    if (error.serverPort) {
+      console.error(`   Port: ${error.serverPort}`);
+    }
+    console.error('\n💡 Check server logs for more details');
+  } else if (error instanceof ProcessManagementError) {
+    console.error(`❌ Process management error: ${error.message}`);
+    if (error.processId) {
+      console.error(`   Process ID: ${error.processId}`);
+    }
+    console.error('\n💡 Check system resources and permissions');
+  } else {
+    console.error(`❌ Server error: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  
+  process.exit(1);
+}
+```
+
+## Performance Optimization and Monitoring
+
+### Real-time Agent Monitoring
+
+```typescript
+// ✅ DO: Implement real-time agent monitoring with efficient resource usage
+export class AgentMonitor {
+  private agents: Map<string, AgentMonitorState>;
+  private socketConnection?: WebSocket;
+  private healthCheckInterval?: NodeJS.Timeout;
+  private metricsCollectionInterval?: NodeJS.Timeout;
+  
+  constructor(private runtimeUrl: string) {
+    this.agents = new Map();
+  }
+  
+  async startMonitoring(agentIds: string[]): Promise<void> {
+    console.log('📊 Starting agent monitoring...');
+    
+    // Initialize agent states
+    for (const agentId of agentIds) {
+      this.agents.set(agentId, {
+        id: agentId,
+        status: 'unknown',
+        lastSeen: new Date(),
+        metrics: {
+          memoryUsage: 0,
+          cpuUsage: 0,
+          messagesProcessed: 0,
+          errors: 0,
+          uptime: 0
+        },
+        healthChecks: []
+      });
+    }
+    
+    // Setup WebSocket connection for real-time updates
+    await this.setupWebSocketConnection();
+    
+    // Setup periodic health checks
+    this.setupHealthChecks();
+    
+    // Setup metrics collection
+    this.setupMetricsCollection();
+    
+    console.log(`✅ Monitoring ${agentIds.length} agent(s)`);
+  }
+  
+  async stopMonitoring(): Promise<void> {
+    console.log('📊 Stopping agent monitoring...');
+    
+    // Close WebSocket connection
+    if (this.socketConnection) {
+      this.socketConnection.close();
+      this.socketConnection = undefined;
+    }
+    
+    // Clear intervals
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+      this.healthCheckInterval = undefined;
+    }
+    
+    if (this.metricsCollectionInterval) {
+      clearInterval(this.metricsCollectionInterval);
+      this.metricsCollectionInterval = undefined;
+    }
+    
+    this.agents.clear();
+    console.log('✅ Monitoring stopped');
+  }
+  
+  private async setupWebSocketConnection(): Promise<void> {
+    const wsUrl = this.runtimeUrl.replace('http', 'ws') + '/ws/agents';
+    
+    return new Promise((resolve, reject) => {
+      this.socketConnection = new WebSocket(wsUrl);
+      
+      this.socketConnection.onopen = () => {
+        console.log('🔌 WebSocket connection established');
+        resolve();
+      };
+      
+      this.socketConnection.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          this.handleRealtimeUpdate(message);
+        } catch (error) {
+          console.warn('Failed to parse WebSocket message:', error);
+        }
+      };
+      
+      this.socketConnection.onclose = () => {
+        console.log('🔌 WebSocket connection closed');
+        // Attempt to reconnect after delay
+        setTimeout(() => this.setupWebSocketConnection(), 5000);
+      };
+      
+      this.socketConnection.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        reject(error);
+      };
+    });
+  }
+  
+  private handleRealtimeUpdate(message: any): void {
+    if (message.type === 'agent_status' && message.agentId) {
+      const agent = this.agents.get(message.agentId);
+      if (agent) {
+        agent.status = message.status;
+        agent.lastSeen = new Date();
+        
+        // Update display if in interactive mode
+        this.updateDisplay();
+      }
+    } else if (message.type === 'agent_metrics' && message.agentId) {
+      const agent = this.agents.get(message.agentId);
+      if (agent && message.metrics) {
+        agent.metrics = { ...agent.metrics, ...message.metrics };
+        this.updateDisplay();
+      }
+    }
+  }
+  
+  private setupHealthChecks(): void {
+    this.healthCheckInterval = setInterval(async () => {
+      for (const [agentId, state] of this.agents) {
+        try {
+          const client = new AgentRuntimeClient(this.runtimeUrl);
+          const health = await client.getAgentHealth(agentId);
+          
+          state.healthChecks.push({
+            timestamp: new Date(),
+            status: health.status,
+            message: health.message
+          });
+          
+          // Keep only last 10 health checks
+          if (state.healthChecks.length > 10) {
+            state.healthChecks = state.healthChecks.slice(-10);
+          }
+          
+        } catch (error) {
+          state.healthChecks.push({
+            timestamp: new Date(),
+            status: 'error',
+            message: error instanceof Error ? error.message : String(error)
+          });
+        }
+      }
+    }, 30000); // Every 30 seconds
+  }
+  
+  private setupMetricsCollection(): void {
+    this.metricsCollectionInterval = setInterval(async () => {
+      for (const [agentId] of this.agents) {
+        try {
+          const client = new AgentRuntimeClient(this.runtimeUrl);
+          const agent = await client.getAgent(agentId);
+          
+          // Update metrics from agent data
+          const state = this.agents.get(agentId);
+          if (state && agent.metrics) {
+            state.metrics = { ...state.metrics, ...agent.metrics };
+          }
+          
+        } catch (error) {
+          // Metrics collection failure is not critical
+          console.debug(`Failed to collect metrics for agent ${agentId}:`, error);
+        }
+      }
+    }, 10000); // Every 10 seconds
+  }
+  
+  private updateDisplay(): void {
+    // Clear terminal and redraw monitoring display
+    if (process.stdout.isTTY) {
+      console.clear();
+      this.displayMonitoringDashboard();
+    }
+  }
+  
+  private displayMonitoringDashboard(): void {
+    console.log('📊 ElizaOS Agent Monitoring Dashboard');
+    console.log('='.repeat(60));
+    console.log();
+    
+    for (const [agentId, state] of this.agents) {
+      const statusIcon = this.getStatusIcon(state.status);
+      const uptimeFormatted = this.formatUptime(state.metrics.uptime);
+      const memoryMB = Math.round(state.metrics.memoryUsage / 1024 / 1024);
+      
+      console.log(`${statusIcon} Agent: ${agentId}`);
+      console.log(`   Status: ${state.status}`);
+      console.log(`   Uptime: ${uptimeFormatted}`);
+      console.log(`   Memory: ${memoryMB}MB`);
+      console.log(`   CPU: ${state.metrics.cpuUsage.toFixed(1)}%`);
+      console.log(`   Messages: ${state.metrics.messagesProcessed}`);
+      console.log(`   Errors: ${state.metrics.errors}`);
+      console.log(`   Last Seen: ${state.lastSeen.toISOString()}`);
+      console.log();
+    }
+    
+    console.log('Press Ctrl+C to stop monitoring');
+  }
+  
+  private getStatusIcon(status: string): string {
+    switch (status) {
+      case 'running': return '🟢';
+      case 'stopped': return '🔴';
+      case 'error': return '❌';
+      case 'starting': return '🟡';
+      default: return '⚪';
+    }
+  }
+  
+  private formatUptime(seconds: number): string {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    
+    return `${hours}h ${minutes}m ${secs}s`;
+  }
+}
+
+// ❌ DON'T: Monitor agents without efficient resource usage or proper cleanup
+class BadAgentMonitor {
+  async startMonitoring(agentIds: string[]): Promise<void> {
+    // Polling every second without cleanup, no WebSocket, no error handling
+    setInterval(async () => {
+      for (const agentId of agentIds) {
+        await fetch(`/api/agents/${agentId}`); // No error handling
+      }
+    }, 1000);
+  }
+}
+```
+
+## Best Practices Summary
+
+### Agent Lifecycle Management
+- Implement comprehensive configuration validation before starting agents
+- Support multiple agent resolution methods (name, ID, index)
+- Provide both interactive and daemon modes for different use cases
+- Include proper startup dependencies and health checks
+
+### Runtime Communication
+- Use robust HTTP client with retry logic and proper timeouts
+- Implement comprehensive error handling for different failure scenarios
+- Support both local and remote runtime communication
+- Provide clear error messages with actionable suggestions
+
+### Server Management
+- Include comprehensive health monitoring for all system components
+- Implement graceful shutdown procedures with configurable timeouts
+- Support both foreground and daemon operation modes
+- Provide detailed status information for troubleshooting
+
+### Monitoring and Observability
+- Use WebSocket connections for real-time agent status updates
+- Implement efficient metrics collection with appropriate intervals
+- Provide interactive monitoring dashboards for development
+- Include health checks for all critical system components
+
+### Error Handling
+- Create specific error types for different operational scenarios
+- Provide contextual error messages with suggested recovery actions
+- Implement proper error propagation and logging
+- Include diagnostic information in error messages
+
+### Performance Optimization
+- Use connection pooling for database and runtime communications
+- Implement efficient caching for frequently accessed data
+- Use WebSocket connections to reduce polling overhead
+- Optimize monitoring intervals based on criticality
+
+## References
+- [ElizaOS CLI Agent Commands](mdc:Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza/packages/cli/src/commands/agent.ts)
+- [Server Management Utilities](mdc:Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza/packages/cli/src/commands/server.ts)
+- [Agent Runtime API](mdc:Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza/packages/cli/src/server/api)
+- [Process Management Utils](mdc:Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza/packages/cli/src/utils/process-manager.ts)
+- [Health Monitoring Patterns](mdc:Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza/packages/cli/src/utils/health-monitor.ts)
+</rewritten_file>

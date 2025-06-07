@@ -97,7 +97,7 @@ function AppContent() {
     <TooltipProvider delayDuration={0}>
       <SidebarProvider>
         <AppSidebar refreshHomePage={refreshHomePage} />
-        <SidebarInset className="h-screen flex flex-col">
+        <SidebarInset className="h-screen flex flex-col md:ml-72">
           {/* Mobile menu button */}
           <div className="md:hidden absolute top-4 left-4 z-50">
             <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>

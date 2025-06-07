@@ -299,7 +299,7 @@ export const plugins = new Command()
 export const pluginsCommand = plugins
   .command('list')
   .aliases(['l', 'ls'])
-  .description('List available plugins to install into the project')
+  .description('List available plugins to install into the project (shows v1.x plugins by default)')
   .option('--all', 'List all plugins from the registry with detailed version info')
   .option('--v0', 'List only v0.x compatible plugins')
   .action(async (opts: { all?: boolean; v0?: boolean }) => {
@@ -378,6 +378,15 @@ plugins
   .option('-b, --branch <branchName>', 'Branch to install from when using monorepo source', 'main')
   .option('-T, --tag <tagname>', 'Specify a tag to install (e.g., beta)')
   .action(async (pluginArg, opts) => {
+    // Validate plugin name is not empty or whitespace
+    if (!pluginArg || !pluginArg.trim()) {
+      logger.error('Plugin name cannot be empty or whitespace-only.');
+      logger.info(
+        'Please provide a valid plugin name (e.g., "openai", "plugin-anthropic", "@elizaos/plugin-sql")'
+      );
+      process.exit(1);
+    }
+
     const cwd = process.cwd();
     const directoryInfo = detectDirectoryType(cwd);
 

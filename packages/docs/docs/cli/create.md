@@ -29,13 +29,12 @@ elizaos create --help
 
 ## Options
 
-| Option              | Description                                               |
-| ------------------- | --------------------------------------------------------- |
-| `-d, --dir <dir>`   | Installation directory (default: `.`)                     |
-| `-y, --yes`         | Skip confirmation and use defaults (default: `false`)     |
-| `-t, --type <type>` | Type of template to use (`project`, `plugin`, or `agent`) |
-| `--tee`             | create a TEE starter project (default: `false`)           |
-| `[name]`            | Name for the project, plugin, or agent (optional)         |
+| Option              | Description                                                      |
+| ------------------- | ---------------------------------------------------------------- |
+| `-d, --dir <dir>`   | Installation directory (default: `.`)                            |
+| `-y, --yes`         | Skip confirmation and use defaults (default: `false`)            |
+| `-t, --type <type>` | Type of template to use (`project`, `plugin`, `agent`, or `tee`) |
+| `[name]`            | Name for the project, plugin, or agent (optional)                |
 
 ## Interactive Process
 
@@ -96,6 +95,9 @@ elizaos create -t plugin -y
 
 # Create an agent character file
 elizaos create -t agent my-character-name
+
+# Create a TEE (Trusted Execution Environment) project
+elizaos create -t tee my-tee-project
 ```
 
 ### Custom Directory
@@ -162,6 +164,30 @@ elizaos create -t agent my-character
 ```
 
 This creates a single `.json` file with character configuration.
+
+### TEE (Trusted Execution Environment)
+
+Creates a project with TEE capabilities for secure, decentralized agent deployment:
+
+```bash
+elizaos create -t tee my-tee-project
+```
+
+**TEE project structure:**
+
+```
+my-tee-project/
+├── src/
+│   └── index.ts          # Main character definition
+├── knowledge/            # Knowledge files for RAG
+├── docker-compose.yml    # Docker configuration for TEE deployment
+├── Dockerfile           # Container definition
+├── __tests__/           # Component tests
+├── e2e/                 # End-to-end tests
+├── .elizadb/           # PGLite database (if selected)
+├── package.json
+└── tsconfig.json
+```
 
 ## After Creation
 

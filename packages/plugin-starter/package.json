@@ -33,7 +33,11 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    ".npmignore",
+    "package.json",
+    "tsup.config.ts"
   ],
   "dependencies": {
     "@elizaos/core": "^1.0.0",

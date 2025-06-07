@@ -225,7 +225,6 @@ agent
   .alias('s')
   .description('Start an agent with a character profile')
   .option('-n, --name <name>', 'Name of an existing agent to start')
-  .option('-j, --json <json>', 'Character JSON configuration string')
   .option('--path <path>', 'Path to local character JSON file')
   .option('--remote-character <url>', 'URL to remote character JSON file')
   .option('-r, --remote-url <url>', 'URL of the remote agent runtime')
@@ -242,7 +241,7 @@ To create a new agent:
   $ elizaos create -t agent my-agent-name   Create a new agent using Eliza template
 
 Required configuration:
-  You must provide one of these options: --name, --path, --json, or --remote-character
+  You must provide one of these options: --name, --path, or --remote-character
 `
   )
   .action(async (options) => {
@@ -252,8 +251,7 @@ Required configuration:
       const hasValidInput =
         options.path ||
         options.remoteCharacter ||
-        (options.name && options.name !== true && options.name !== '') ||
-        options.json;
+        (options.name && options.name !== true && options.name !== '');
 
       if (!hasValidInput) {
         // Show error and use commander's built-in help
@@ -326,20 +324,6 @@ Required configuration:
           } catch (error) {
             console.error('Error reading or parsing local JSON file:', error);
             throw new Error(`Failed to read or parse local JSON file: ${error.message}`);
-          }
-        }
-
-        // Then handle other options
-        if (options.json) {
-          try {
-            payload.characterJson = JSON.parse(options.json);
-            characterName = await createCharacter(payload);
-            if (!characterName) {
-              logger.error('Failed to create character from JSON. Check server logs for details.');
-            }
-          } catch (error) {
-            console.error('Error parsing JSON string:', error);
-            throw new Error(`Failed to parse JSON string: ${error.message}`);
           }
         }
 

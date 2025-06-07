@@ -1,0 +1,615 @@
+---
+description: ElizaOS v2 - API, API integration
+globs: 
+alwaysApply: false
+---
+> You are an expert in ElizaOS v2, TypeScript, and API integration. You focus on producing clear, maintainable API plugins that follow ElizaOS v2 architecture patterns and best practices.
+
+## ElizaOS v2 API Plugin Architecture Flow
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Plugin Setup  │    │  Runtime Config  │    │  API Client     │
+│   & Validation  │───▶│  & Environment   │───▶│  & Integration  │
+│                 │    │                  │    │                 │
+│ - Plugin Init   │    │ - getSetting()   │    │ - HTTP Client   │
+│ - Env Validation│    │ - process.env    │    │ - Auth Headers  │
+│ - Error Checks  │    │ - Fallbacks      │    │ - Rate Limiting │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+         │                       │                       │
+         ▼                       ▼                       ▼
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Providers     │    │    Actions       │    │   Services      │
+│   & Models      │    │  & Handlers      │    │ & Background    │
+│                 │    │                  │    │                 │
+│ - Text Generate │    │ - User Actions   │    │ - Monitoring    │
+│ - Embeddings    │    │ - Validation     │    │ - Health Check  │
+│ - Custom Models │    │ - Callbacks      │    │ - Cleanup       │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+```
+
+## Project Structure
+
+```
+plugin-api-service/
+├── src/
+│   ├── index.ts               # Main plugin definition & exports
+│   ├── types/                 # TypeScript type definitions
+│   │   ├── index.ts           # API request/response types
+│   │   ├── config.ts          # Configuration interfaces
+│   │   └── runtime.ts         # Runtime type extensions
+│   ├── utils/                 # Core utilities
+│   │   ├── apiClient.ts       # Centralized API client
+│   │   ├── environment.ts     # Environment validation
+│   │   ├── auth.ts            # Authentication helpers
+│   │   └── validation.ts      # Input/output validation
+│   ├── providers/             # Model & data providers
+│   │   ├── textProvider.ts    # Text generation provider
+│   │   ├── embeddingProvider.ts # Embedding provider
+│   │   └── index.ts           # Provider exports
+│   ├── actions/               # User-facing actions
+│   │   ├── generateAction.ts  # Generation actions
+│   │   └── index.ts           # Action exports
+│   ├── services/              # Background services
+│   │   └── healthService.ts   # Health monitoring
+│   ├── constants.ts           # API endpoints & defaults
+│   └── errors.ts              # Custom error classes
+├── package.json               # Dependencies & metadata
+├── tsconfig.json              # TypeScript configuration
+├── tsconfig.build.json        # Build-specific config
+├── tsup.config.ts             # Build tool configuration
+└── README.md                  # Plugin documentation
+```
+
+## Core Implementation Patterns
+
+### Main Plugin Definition
+
+```typescript
+// ✅ DO: Follow ElizaOS v2 plugin structure pattern
+// Reference: /Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza_plugins/api/plugin-openai/src/index.ts
+import type {
+  AgentRuntime,
+  Plugin,
+  IAgentRuntime,
+  ModelProvider,
+  Action,
+  Provider,
+  Service,
+} from '@elizaos/core';
+import { logger, ModelType } from '@elizaos/core';
+import { validateEnvironment, getEnvironmentConfig } from './utils/environment';
+import { createApiClient } from './utils/apiClient';
+import { textProvider, embeddingProvider } from './providers';
+import { apiActions } from './actions';
+import { healthService } from './services';
+
+/**
+ * Helper function for runtime settings with fallback
+ */
+function getSetting(runtime: IAgentRuntime, key: string, defaultValue?: string): string | undefined {
+  return runtime.getSetting(key) ?? process.env[key] ?? defaultValue;
+}
+
+/**
+ * API Plugin for [Service Name] Integration
+ * Based on ElizaOS v2 plugin architecture patterns
+ */
+export const apiServicePlugin: Plugin = {
+  name: 'api-service-name',
+  description: 'Plugin for [Service Name] API integration with ElizaOS v2',
+  version: '1.0.0',
+  
+  // Plugin initialization - validate environment and setup
+  init: async (config: Record<string, string>, runtime: IAgentRuntime) => {
+    logger.info(`Initializing ${apiServicePlugin.name} plugin`);
+    
+    try {
+      // Validate environment configuration
+      const validation = validateEnvironment(runtime);
+      if (!validation.valid) {
+        logger.error('Environment validation failed:', validation.errors);
+        throw new Error(`Plugin initialization failed: ${validation.errors.join(', ')}`);
+      }
+      
+      // Get validated configuration
+      const envConfig = getEnvironmentConfig(runtime);
+      logger.info(`Plugin initialized with base URL: ${envConfig.API_BASE_URL}`);
+      
+      // Test API connectivity if needed
+      const apiClient = createApiClient(runtime);
+      await apiClient.healthCheck();
+      
+      logger.info(`${apiServicePlugin.name} plugin initialized successfully`);
+    } catch (error) {
+      logger.error(`Failed to initialize ${apiServicePlugin.name} plugin:`, error);
+      throw error;
+    }
+  },
+
+  // Model providers for LLM/AI integration
+  providers: [
+    textProvider,
+    embeddingProvider,
+  ],
+
+  // User-facing actions
+  actions: apiActions,
+  
+  // Data providers (optional)
+  evaluators: [],
+  
+  // Background services
+  services: [healthService],
+};
+
+export default apiServicePlugin;
+
+// ❌ DON'T: Use minimal plugin structure without validation
+export const badPlugin: Plugin = {
+  name: 'bad-plugin',
+  description: 'Minimal plugin without proper setup',
+  // Missing init function, no environment validation
+  providers: [],
+  actions: [],
+  evaluators: [],
+  services: [],
+};
+```
+
+### Environment Configuration Pattern
+
+```typescript
+// ✅ DO: Implement comprehensive environment validation
+// src/utils/environment.ts
+import type { IAgentRuntime } from '@elizaos/core';
+import { logger } from '@elizaos/core';
+
+export interface ApiServiceConfig {
+  API_KEY: string;
+  API_BASE_URL: string;
+  DEFAULT_MODEL?: string;
+  MAX_TOKENS?: number;
+  TEMPERATURE?: number;
+  TIMEOUT?: number;
+  DEBUG_MODE?: boolean;
+  RATE_LIMIT_PER_MINUTE?: number;
+}
+
+export const REQUIRED_ENV_VARS = [
+  'API_KEY',
+  'API_BASE_URL',
+] as const;
+
+export const OPTIONAL_ENV_VARS = [
+  'DEFAULT_MODEL',
+  'MAX_TOKENS', 
+  'TEMPERATURE',
+  'TIMEOUT',
+  'DEBUG_MODE',
+  'RATE_LIMIT_PER_MINUTE',
+] as const;
+
+/**
+ * Get environment configuration with validation
+ */
+export function getEnvironmentConfig(runtime: IAgentRuntime): ApiServiceConfig {
+  const config: Partial<ApiServiceConfig> = {};
+
+  // Validate required environment variables
+  for (const envVar of REQUIRED_ENV_VARS) {
+    const value = runtime.getSetting(envVar) ?? process.env[envVar];
+    if (!value) {
+      throw new Error(`Required environment variable ${envVar} is not set`);
+    }
+    config[envVar] = value;
+  }
+
+  // Set optional variables with defaults
+  config.DEFAULT_MODEL = runtime.getSetting('DEFAULT_MODEL') ?? process.env.DEFAULT_MODEL ?? 'default-model';
+  config.MAX_TOKENS = parseInt(runtime.getSetting('MAX_TOKENS') ?? process.env.MAX_TOKENS ?? '1000', 10);
+  config.TEMPERATURE = parseFloat(runtime.getSetting('TEMPERATURE') ?? process.env.TEMPERATURE ?? '0.7');
+  config.TIMEOUT = parseInt(runtime.getSetting('TIMEOUT') ?? process.env.TIMEOUT ?? '30000', 10);
+  config.DEBUG_MODE = (runtime.getSetting('DEBUG_MODE') ?? process.env.DEBUG_MODE ?? 'false').toLowerCase() === 'true';
+  config.RATE_LIMIT_PER_MINUTE = parseInt(runtime.getSetting('RATE_LIMIT_PER_MINUTE') ?? process.env.RATE_LIMIT_PER_MINUTE ?? '60', 10);
+
+  return config as ApiServiceConfig;
+}
+
+/**
+ * Validate environment configuration
+ */
+export function validateEnvironment(runtime: IAgentRuntime): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+
+  try {
+    const config = getEnvironmentConfig(runtime);
+    
+    // Additional validations
+    if (config.API_KEY && config.API_KEY.length < 10) {
+      errors.push('API_KEY appears to be too short (minimum 10 characters)');
+    }
+
+    if (config.API_BASE_URL && !config.API_BASE_URL.startsWith('http')) {
+      errors.push('API_BASE_URL must start with http:// or https://');
+    }
+
+    if (config.MAX_TOKENS && (config.MAX_TOKENS < 1 || config.MAX_TOKENS > 100000)) {
+      errors.push('MAX_TOKENS must be between 1 and 100000');
+    }
+
+    if (config.TEMPERATURE && (config.TEMPERATURE < 0 || config.TEMPERATURE > 2)) {
+      errors.push('TEMPERATURE must be between 0 and 2');
+    }
+
+    if (config.TIMEOUT && config.TIMEOUT < 1000) {
+      errors.push('TIMEOUT must be at least 1000ms');
+    }
+
+  } catch (error) {
+    errors.push(error.message);
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+  };
+}
+
+// ❌ DON'T: Skip environment validation
+function badGetConfig(runtime: IAgentRuntime) {
+  return {
+    apiKey: process.env.API_KEY, // No validation
+    baseUrl: process.env.API_BASE_URL, // No validation
+  };
+}
+```
+
+### Plugin Settings Helper Pattern
+
+```typescript
+// ✅ DO: Use consistent settings access pattern
+/**
+ * Centralized settings access with fallback chain
+ * Priority: runtime.getSetting() -> process.env -> default
+ */
+export function getPluginSetting(
+  runtime: IAgentRuntime, 
+  key: string, 
+  defaultValue?: string
+): string | undefined {
+  const value = runtime.getSetting(key) ?? process.env[key] ?? defaultValue;
+  
+  if (value === undefined) {
+    logger.warn(`Setting ${key} is not configured`);
+  }
+  
+  return value;
+}
+
+/**
+ * Get required setting with error if missing
+ */
+export function getRequiredSetting(runtime: IAgentRuntime, key: string): string {
+  const value = getPluginSetting(runtime, key);
+  if (!value) {
+    throw new Error(`Required setting ${key} is not configured`);
+  }
+  return value;
+}
+
+/**
+ * Get numeric setting with validation
+ */
+export function getNumericSetting(
+  runtime: IAgentRuntime, 
+  key: string, 
+  defaultValue: number,
+  min?: number,
+  max?: number
+): number {
+  const value = getPluginSetting(runtime, key, defaultValue.toString());
+  const numValue = parseInt(value, 10);
+  
+  if (isNaN(numValue)) {
+    logger.warn(`Invalid numeric value for ${key}: ${value}, using default: ${defaultValue}`);
+    return defaultValue;
+  }
+  
+  if (min !== undefined && numValue < min) {
+    logger.warn(`Value for ${key} (${numValue}) below minimum (${min}), using minimum`);
+    return min;
+  }
+  
+  if (max !== undefined && numValue > max) {
+    logger.warn(`Value for ${key} (${numValue}) above maximum (${max}), using maximum`);
+    return max;
+  }
+  
+  return numValue;
+}
+
+// ❌ DON'T: Access settings inconsistently
+function badSettingsAccess(runtime: IAgentRuntime) {
+  const apiKey = process.env.API_KEY; // Bypasses runtime.getSetting()
+  const timeout = parseInt(process.env.TIMEOUT); // No fallback or validation
+  const model = runtime.getSetting('MODEL'); // No fallback
+}
+```
+
+## Type Safety Patterns
+
+### Plugin Type Definitions
+
+```typescript
+// ✅ DO: Define comprehensive types for API interactions
+// src/types/index.ts
+import type { IAgentRuntime, Memory, State } from '@elizaos/core';
+
+// Base API types following ElizaOS patterns
+export interface BaseApiRequest {
+  model?: string;
+  temperature?: number;
+  max_tokens?: number;
+  stream?: boolean;
+}
+
+export interface BaseApiResponse {
+  id: string;
+  object: string;
+  created: number;
+  model: string;
+}
+
+// Plugin-specific request/response types
+export interface TextGenerationRequest extends BaseApiRequest {
+  prompt: string;
+  stop?: string[];
+  presence_penalty?: number;
+  frequency_penalty?: number;
+}
+
+export interface TextGenerationResponse extends BaseApiResponse {
+  choices: Array<{
+    text: string;
+    index: number;
+    logprobs?: any;
+    finish_reason: 'stop' | 'length' | 'content_filter';
+  }>;
+  usage: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
+}
+
+// ElizaOS runtime integration types
+export interface PluginContext {
+  runtime: IAgentRuntime;
+  message: Memory;
+  state?: State;
+  config: ApiServiceConfig;
+}
+
+export interface PluginResponse {
+  success: boolean;
+  data?: any;
+  error?: string;
+  metadata?: {
+    tokens_used?: number;
+    model_used?: string;
+    processing_time_ms?: number;
+  };
+}
+
+// Type guards for runtime validation
+export function isTextGenerationResponse(obj: any): obj is TextGenerationResponse {
+  return obj && 
+         obj.choices && 
+         Array.isArray(obj.choices) && 
+         obj.choices.length > 0 &&
+         typeof obj.choices[0].text === 'string';
+}
+
+export function isValidPluginContext(obj: any): obj is PluginContext {
+  return obj && 
+         obj.runtime && 
+         obj.message && 
+         typeof obj.runtime.getSetting === 'function';
+}
+
+// ❌ DON'T: Use loose typing
+interface BadApiResponse {
+  data: any; // Too loose
+  status: number;
+}
+```
+
+## Error Handling Patterns
+
+### Custom Error Classes
+
+```typescript
+// ✅ DO: Implement plugin-specific error handling
+// src/errors.ts
+export class ApiPluginError extends Error {
+  constructor(
+    message: string,
+    public code: string,
+    public context?: Record<string, any>
+  ) {
+    super(message);
+    this.name = 'ApiPluginError';
+  }
+}
+
+export class ConfigurationError extends ApiPluginError {
+  constructor(message: string, missingConfig?: string) {
+    super(message, 'CONFIGURATION_ERROR', { missingConfig });
+    this.name = 'ConfigurationError';
+  }
+}
+
+export class ApiRequestError extends ApiPluginError {
+  constructor(
+    message: string, 
+    public statusCode?: number,
+    public apiResponse?: any
+  ) {
+    super(message, 'API_REQUEST_ERROR', { statusCode, apiResponse });
+    this.name = 'ApiRequestError';
+  }
+}
+
+export class RateLimitError extends ApiPluginError {
+  constructor(message: string, public retryAfter?: number) {
+    super(message, 'RATE_LIMIT_ERROR', { retryAfter });
+    this.name = 'RateLimitError';
+  }
+}
+
+export class ValidationError extends ApiPluginError {
+  constructor(message: string, public field?: string) {
+    super(message, 'VALIDATION_ERROR', { field });
+    this.name = 'ValidationError';
+  }
+}
+
+// Error handling utility
+export function handleApiError(error: any): ApiPluginError {
+  if (error instanceof ApiPluginError) {
+    return error;
+  }
+  
+  if (error.response) {
+    // HTTP error response
+    const statusCode = error.response.status;
+    const message = error.response.data?.message || error.message;
+    
+    if (statusCode === 429) {
+      const retryAfter = error.response.headers['retry-after'];
+      return new RateLimitError(message, retryAfter ? parseInt(retryAfter, 10) : undefined);
+    }
+    
+    return new ApiRequestError(message, statusCode, error.response.data);
+  }
+  
+  if (error.request) {
+    // Network error
+    return new ApiRequestError('Network error: No response received', 0);
+  }
+  
+  // Generic error
+  return new ApiPluginError(error.message || 'Unknown error', 'UNKNOWN_ERROR');
+}
+
+// ❌ DON'T: Use generic error handling
+function badErrorHandling(error: any) {
+  throw new Error(error.message); // Loses context and type information
+}
+```
+
+## Anti-patterns and Common Mistakes
+
+### Configuration Anti-patterns
+
+```typescript
+// ❌ DON'T: Hardcode values or skip validation
+const badConfig = {
+  timeout: 5000,           // Magic number
+  retries: 3,              // Magic number
+  endpoint: "http://localhost:8080",  // Hardcoded URL
+  apiKey: "sk-test123"     // Hardcoded API key
+};
+
+// ❌ DON'T: Skip environment validation
+function badInit(runtime: IAgentRuntime) {
+  const apiKey = process.env.API_KEY; // No validation
+  // No error handling if missing
+}
+
+// ✅ DO: Use proper configuration management
+const CONFIG_KEYS = {
+  TIMEOUT_MS: 'API_TIMEOUT',
+  MAX_RETRIES: 'API_MAX_RETRIES',
+  ENDPOINT: 'API_BASE_URL',
+  API_KEY: 'API_KEY',
+} as const;
+
+function goodInit(runtime: IAgentRuntime) {
+  const validation = validateEnvironment(runtime);
+  if (!validation.valid) {
+    throw new ConfigurationError(`Configuration validation failed: ${validation.errors.join(', ')}`);
+  }
+  
+  const config = getEnvironmentConfig(runtime);
+  return config;
+}
+```
+
+### Plugin Structure Anti-patterns
+
+```typescript
+// ❌ DON'T: Export plugin without proper structure
+export const badPlugin = {
+  name: 'my-plugin',
+  // Missing description, version, proper typing
+};
+
+// ❌ DON'T: Skip initialization
+export const pluginWithoutInit: Plugin = {
+  name: 'no-init-plugin',
+  description: 'Plugin without initialization',
+  // Missing init function
+  providers: [],
+  actions: [],
+  evaluators: [],
+  services: [],
+};
+
+// ✅ DO: Follow complete plugin structure
+export const goodPlugin: Plugin = {
+  name: 'properly-structured-plugin',
+  description: 'Plugin with proper ElizaOS v2 structure',
+  version: '1.0.0',
+  init: async (config, runtime) => {
+    // Proper initialization with validation
+  },
+  providers: [...], // Properly defined providers
+  actions: [...],   // Properly defined actions
+  evaluators: [],
+  services: [...],  // Background services if needed
+};
+```
+
+## Best Practices Summary
+
+### Plugin Development
+- Always implement proper initialization with environment validation
+- Use TypeScript for complete type safety
+- Follow ElizaOS v2 plugin structure patterns
+- Implement comprehensive error handling with custom error classes
+
+### Configuration Management
+- Use runtime.getSetting() with process.env fallback
+- Validate all configuration on plugin initialization
+- Provide meaningful defaults for optional settings
+- Create configuration interfaces for type safety
+
+### Error Handling
+- Create specific error types for different failure scenarios
+- Provide context and debugging information in errors
+- Log errors appropriately without exposing sensitive data
+- Handle network, rate limiting, and API errors specifically
+
+### Type Safety
+- Define interfaces for all API request/response types
+- Use type guards for runtime validation
+- Extend ElizaOS core types when needed
+- Avoid 'any' types in favor of specific interfaces
+
+## References
+- ElizaOS Core Types: [/Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza/packages/core/src/types.ts](mdc:Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza/packages/core/src/types.ts)
+- OpenAI Plugin Reference: [/Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza_plugins/api/plugin-openai/src/index.ts](mdc:Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza_plugins/api/plugin-openai/src/index.ts)
+- ElevenLabs Plugin Reference: [/Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza_plugins/api/plugin-elevenlabs/src/index.ts](mdc:Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza_plugins/api/plugin-elevenlabs/src/index.ts)
+- API Plugins Guide: [/Users/ilessio/dev-agents/PROJECTS/cursor_rules/.cursor/rules/elizaos/api_plugins.md](mdc:Users/ilessio/dev-agents/PROJECTS/cursor_rules/.cursor/rules/elizaos/api_plugins.md)

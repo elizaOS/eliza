@@ -18,20 +18,20 @@ elizaos plugins [options] [command]
 
 ## Subcommands
 
-| Subcommand          | Aliases   | Description                                             | Arguments                                                                 | Options                                                                                   |
-| ------------------- | --------- | ------------------------------------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `list`              | `l`       | List available plugins to install into the project      |                                                                           | `--all` (detailed version info), `--v0` (v0.x compatible only)                            |
-| `add`               | `install` | Add a plugin to the project                             | `<plugin>` (plugins name e.g., "abc", "plugin-abc", "elizaos/plugin-abc") | `-n, --no-env-prompt`, `-b, --branch <branchName>` (default: main), `-T, --tag <tagname>` |
-| `update`            | `refresh` | Fetch the latest plugin registry and update local cache |                                                                           |                                                                                           |
-| `installed-plugins` |           | List plugins found in the project dependencies          |                                                                           |                                                                                           |
-| `remove`            | `delete`  | Remove a plugins from the project                       | `<plugin>` (plugins name e.g., "abc", "plugin-abc", "elizaos/plugin-abc") |                                                                                           |
+| Subcommand          | Aliases   | Description                                                                        | Arguments                                                                 | Options                                                                                   |
+| ------------------- | --------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `list`              | `l`       | List available plugins to install into the project (shows v1.x plugins by default) |                                                                           | `--all` (detailed version info), `--v0` (v0.x compatible only)                            |
+| `add`               | `install` | Add a plugin to the project                                                        | `<plugin>` (plugins name e.g., "abc", "plugin-abc", "elizaos/plugin-abc") | `-n, --no-env-prompt`, `-b, --branch <branchName>` (default: main), `-T, --tag <tagname>` |
+| `update`            | `refresh` | Fetch the latest plugin registry and update local cache                            |                                                                           |                                                                                           |
+| `installed-plugins` |           | List plugins found in the project dependencies                                     |                                                                           |                                                                                           |
+| `remove`            | `delete`  | Remove a plugins from the project                                                  | `<plugin>` (plugins name e.g., "abc", "plugin-abc", "elizaos/plugin-abc") |                                                                                           |
 
 ## Examples
 
 ### Listing Available Plugins
 
 ```bash
-# List all available plugins
+# List available v1.x plugins (default behavior)
 elizaos plugins list
 
 # Using alias
