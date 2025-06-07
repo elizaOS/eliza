@@ -504,31 +504,21 @@ export class AgentRuntime implements IAgentRuntime {
         return;
       }
       span.addEvent('initialization_started');
-      const registeredPluginNames = new Set<string>(); // This can be removed if registerPlugin handles duplicates
       const pluginRegistrationPromises = [];
 
-      // Resolve plugin dependencies and get the final list of plugins to load
-      const pluginsToLoad = await this.resolvePluginDependencies(this.characterPlugins);
-      // (this.plugins as Plugin[]) = pluginsToLoad; // This line is removed. this.plugins will be built by registerPlugin calls.
+      // The resolution is now expected to happen in the CLI layer (e.g., startAgent)
+      // The runtime now accepts a pre-resolved, ordered list of plugins.
+      const pluginsToLoad = this.characterPlugins;
       span.setAttributes({ 'plugins.resolved_count': pluginsToLoad.length });
 
       for (const plugin of pluginsToLoad) {
-        // Iterate over the resolved list
-        // The check for registeredPluginNames can be removed if registerPlugin handles its own idempotency by name.
-        // if (plugin && !registeredPluginNames.has(plugin.name)) {
-        //   registeredPluginNames.add(plugin.name);
-        //   pluginRegistrationPromises.push(this.registerPlugin(plugin));
-        // }
         if (plugin) {
-          // Ensure plugin is not null/undefined
           pluginRegistrationPromises.push(this.registerPlugin(plugin));
         }
       }
       await Promise.all(pluginRegistrationPromises);
       span.addEvent('plugins_setup');
-      span.setAttributes({
-        registered_plugins: Array.from(registeredPluginNames).join(','),
-      });
+
       if (!this.adapter) {
         this.logger.error(
           'Database adapter not initialized. Make sure @elizaos/plugin-sql is included in your plugins.'
@@ -1159,7 +1149,8 @@ export class AgentRuntime implements IAgentRuntime {
           metadata: {
             ...entity.metadata,
             [source!]: {
-              ...entity.metadata?.[source!],
+              ...(entity.metadata?.[source!] as Record<string, any>),
+              id: userId,
               name: name,
               userName: userName,
             },

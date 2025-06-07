@@ -1,7 +1,7 @@
 import type { Agent, Character } from './agent';
 import type { Component, Entity, Participant, Relationship, Room, World } from './environment';
 import type { Memory, MemoryMetadata } from './memory';
-import type { UUID } from './primitives';
+import type { Metadata, UUID } from './primitives';
 import type { Task } from './task';
 
 /**
@@ -209,7 +209,7 @@ export interface IDatabaseAdapter {
     sourceEntityId: UUID;
     targetEntityId: UUID;
     tags?: string[];
-    metadata?: { [key: string]: any };
+    metadata?: Metadata;
   }): Promise<boolean>;
 
   /**
@@ -325,14 +325,6 @@ export interface UnifiedSearchOptions extends UnifiedMemoryOptions {
  * This `unknown` type serves as a placeholder in the abstract `IDatabaseAdapter`.
  */
 export type DbConnection = unknown;
-
-/**
- * A generic type for metadata objects, often used in various parts of the system like
- * `Relationship` metadata or other extensible data structures.
- * It allows for arbitrary key-value pairs where values are of `unknown` type,
- * encouraging consumers to perform type checking or casting.
- */
-export type MetadataObject = Record<string, unknown>;
 
 // Allowable vector dimensions
 export const VECTOR_DIMS = {

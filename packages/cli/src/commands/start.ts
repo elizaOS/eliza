@@ -37,16 +37,31 @@ import { validatePort } from '@/src/utils/port-validation';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-/**
- * Attempts to load a plugin module, installing it if necessary.
- * Handles various export patterns (default, named export).
- *
- * @param pluginName The name or path of the plugin.
- * @param version The CLI version, used for installing the plugin.
- * @returns The loaded Plugin object, or null if loading/installation fails.
- */
-async function loadAndPreparePlugin(pluginName: string, version: string): Promise<Plugin | null> {
-  logger.debug(`Processing plugin: ${pluginName}`);
+function isValidPluginShape(obj: any): obj is Plugin {
+  if (!obj || typeof obj !== 'object' || !obj.name) {
+    return false;
+  }
+  // Check for the presence of at least one key functional property
+  return !!(
+    obj.init ||
+    obj.services ||
+    obj.providers ||
+    obj.actions ||
+    obj.memoryManagers ||
+    obj.componentTypes ||
+    obj.evaluators ||
+    obj.adapter ||
+    obj.models ||
+    obj.events ||
+    obj.routes ||
+    obj.tests ||
+    obj.config ||
+    obj.description // description is also mandatory technically
+  );
+}
+
+async function loadAndPreparePlugin(pluginName: string): Promise<Plugin | null> {
+  const version = getCliInstallTag();
   let pluginModule: any;
 
   // Check if this is a local development scenario BEFORE attempting any loading
@@ -110,16 +125,9 @@ async function loadAndPreparePlugin(pluginName: string, version: string): Promis
     .replace(/^@elizaos-plugins\//, '') // Remove alternative prefix
     .replace(/-./g, (match) => match[1].toUpperCase())}Plugin`; // Convert kebab-case to camelCase and add 'Plugin' suffix
 
-  //logger.debug(`Looking for plugin export: ${expectedFunctionName} or default`);
-  //logger.debug(`Available exports: ${Object.keys(pluginModule).join(', ')}`);
-  //logger.debug(`Has default export: ${!!pluginModule.default}`);
-
-  // --- Improved Export Resolution Logic ---
-
   // 1. Prioritize the expected named export if it exists
   const expectedExport = pluginModule[expectedFunctionName];
   if (isValidPluginShape(expectedExport)) {
-    logger.success(`Found valid plugin export using expected name: ${expectedFunctionName}`);
     return expectedExport as Plugin;
   }
 
@@ -128,63 +136,26 @@ async function loadAndPreparePlugin(pluginName: string, version: string): Promis
   if (isValidPluginShape(defaultExport)) {
     // Ensure it's not the same invalid object we might have checked above
     if (expectedExport !== defaultExport) {
-      logger.success('Found valid plugin export using default export');
       return defaultExport as Plugin;
     }
   }
 
   // 3. If neither primary method worked, search all exports aggressively
-  //logger.debug(
-  //`Primary exports (named: ${expectedFunctionName}, default) not found or invalid, searching all exports...`
-  //);
   for (const key of Object.keys(pluginModule)) {
-    // Skip keys we already checked (or might be checking)
     if (key === expectedFunctionName || key === 'default') {
       continue;
     }
 
     const potentialPlugin = pluginModule[key];
     if (isValidPluginShape(potentialPlugin)) {
-      logger.success(
-        `Found alternative valid plugin export under key: ${key}, Name: ${potentialPlugin.name}`
-      );
       return potentialPlugin as Plugin;
     }
   }
-  // --- End of Improved Logic ---
 
   logger.warn(
     `Could not find a valid plugin export in ${pluginName}. Checked exports: ${expectedFunctionName} (if exists), default (if exists), and others. Available exports: ${Object.keys(pluginModule).join(', ')}`
   );
-  return null; // No suitable plugin export found
-}
-
-/**
- * Checks if an object has the basic shape of a Plugin (name + at least one functional property).
- * @param obj The object to check.
- * @returns True if the object has a valid plugin shape, false otherwise.
- */
-function isValidPluginShape(obj: any): obj is Plugin {
-  if (!obj || typeof obj !== 'object' || !obj.name) {
-    return false;
-  }
-  // Check for the presence of at least one key functional property
-  return !!(
-    obj.init ||
-    obj.services ||
-    obj.providers ||
-    obj.actions ||
-    obj.memoryManagers ||
-    obj.componentTypes ||
-    obj.evaluators ||
-    obj.adapter ||
-    obj.models ||
-    obj.events ||
-    obj.routes ||
-    obj.tests ||
-    obj.config ||
-    obj.description // description is also mandatory technically
-  );
+  return null;
 }
 
 /**
@@ -251,86 +222,85 @@ export async function startAgent(
   character: Character,
   server: AgentServer,
   init?: (runtime: IAgentRuntime) => void,
-  plugins: Plugin[] = [],
+  plugins: (Plugin | string)[] = [],
   options: {
     dataDir?: string;
     postgresUrl?: string;
-    isPluginTestMode?: boolean;
+    isTestMode?: boolean;
   } = {}
 ): Promise<IAgentRuntime> {
   character.id ??= stringToUuid(character.name);
 
-  // Ensure character has a plugins array
-  if (!character.plugins) {
-    character.plugins = [];
+  const loadedPlugins = new Map<string, Plugin>();
+  const pluginsToLoad = new Set<string>();
+
+  const addDependencies = (plugin: Plugin) => {
+    if (plugin.dependencies) {
+      for (const dep of plugin.dependencies) {
+        if (!loadedPlugins.has(dep)) {
+          pluginsToLoad.add(dep);
+        }
+      }
+    }
+    if (options.isTestMode && plugin.testDependencies) {
+      for (const dep of plugin.testDependencies) {
+        if (!loadedPlugins.has(dep)) {
+          pluginsToLoad.add(dep);
+        }
+      }
+    }
+  };
+
+  if (character.plugins) {
+    for (const p of character.plugins) {
+      pluginsToLoad.add(p);
+    }
   }
+
+  for (const p of plugins) {
+    if (typeof p === 'string') {
+      pluginsToLoad.add(p);
+    } else if (isValidPluginShape(p)) {
+      if (!loadedPlugins.has(p.name)) {
+        logger.debug(`Registering pre-loaded plugin: ${p.name}`);
+        loadedPlugins.set(p.name, p);
+        addDependencies(p);
+      }
+    }
+  }
+
+  while (pluginsToLoad.size > 0) {
+    const currentBatch = Array.from(pluginsToLoad);
+    pluginsToLoad.clear();
+
+    for (const pluginName of currentBatch) {
+      if (loadedPlugins.has(pluginName)) {
+        continue;
+      }
+
+      const loadedPlugin = await loadAndPreparePlugin(pluginName);
+
+      if (loadedPlugin) {
+        if (!loadedPlugins.has(loadedPlugin.name)) {
+          logger.success(`Successfully loaded plugin: ${loadedPlugin.name}`);
+          loadedPlugins.set(loadedPlugin.name, loadedPlugin);
+          addDependencies(loadedPlugin);
+        }
+      } else {
+        logger.warn(`Failed to load or prepare plugin, and it will be skipped: ${pluginName}`);
+      }
+    }
+  }
+
+  const finalPlugins = Array.from(loadedPlugins.values());
+  logger.info(
+    `Final plugins being loaded into runtime: ${finalPlugins.map((p) => p.name).join(', ')}`
+  );
 
   const encryptedChar = encryptedCharacter(character);
 
   // Determine the appropriate installation tag based on the CLI version
   const installTag = getCliInstallTag();
-
-  const loadedPluginsMap = new Map<string, Plugin>();
-
-  // Pre-load plugins passed directly to the function (these can be Plugin objects)
-  for (const plugin of plugins) {
-    if (isValidPluginShape(plugin)) {
-      // Use isValidPluginShape for broader validation
-      if (!loadedPluginsMap.has(plugin.name)) {
-        logger.debug(`Using pre-provided plugin object: ${plugin.name}`);
-        loadedPluginsMap.set(plugin.name, plugin);
-      } else {
-        logger.debug(`Plugin ${plugin.name} was already pre-loaded, skipping duplicate.`);
-      }
-    } else {
-      logger.warn(
-        `Invalid or non-object plugin skipped in pre-load: ${plugin ? JSON.stringify(plugin) : plugin}`
-      ); // Stringify only if not null/undefined
-    }
-  }
-
-  // Initialize encryptedChar.plugins if it's undefined
-  encryptedChar.plugins = encryptedChar.plugins ?? [];
-
-  const characterPlugins: Plugin[] = [];
-
-  // Process and load plugins specified by name in the character definition
-  // encryptedChar.plugins is guaranteed to be string[] according to Character type
-  for (const pluginName of encryptedChar.plugins) {
-    if (typeof pluginName !== 'string') {
-      logger.warn(
-        `Skipping non-string plugin specifier found in character.plugins: ${JSON.stringify(pluginName)}`
-      );
-      continue; // Should not happen based on type, but good safety check
-    }
-
-    if (!loadedPluginsMap.has(pluginName)) {
-      //logger.debug(`Attempting to load plugin by name from character definition: ${pluginName}`);
-      const loadedPlugin = await loadAndPreparePlugin(pluginName, installTag);
-      if (loadedPlugin) {
-        characterPlugins.push(loadedPlugin);
-        // Double-check name consistency and avoid duplicates
-        if (!loadedPluginsMap.has(loadedPlugin.name)) {
-          loadedPluginsMap.set(loadedPlugin.name, loadedPlugin);
-        } else {
-          logger.debug(
-            `Plugin ${loadedPlugin.name} (loaded as ${pluginName}) was already present in map, skipping.`
-          );
-        }
-      } else {
-        logger.warn(`Failed to load or prepare plugin specified by name: ${pluginName}`);
-      }
-    } else {
-      logger.debug(
-        `Plugin ${pluginName} (specified by name) was already loaded/provided, skipping.`
-      );
-    }
-  }
-
-  // Get the final array of loaded plugins
-  logger.debug(
-    `Final loaded plugins (${loadedPluginsMap.size}): ${[...characterPlugins, ...plugins].map((p) => p.name).join(', ')}`
-  );
 
   async function loadEnvConfig(): Promise<RuntimeSettings> {
     // Only import dotenv in Node.js environment
@@ -404,8 +374,7 @@ export async function startAgent(
 
   const runtime = new AgentRuntime({
     character: encryptedChar,
-    // order matters here: make sure plugins are loaded after so they can interact with tasks (degen-intel)
-    plugins: [...characterPlugins, ...plugins], // Use the deduplicated list
+    plugins: finalPlugins,
     settings: await loadEnvConfig(),
   });
   if (init) {
@@ -731,9 +700,7 @@ const startAgents = async (options: {
 
       // Start the agent with the modified character that includes the plugin in its plugins array
       // AND pass the actual plugin object so it loads from the local source instead of trying to download
-      const runtime = await startAgent(characterWithPlugin, server, undefined, [pluginModule], {
-        isPluginTestMode: true,
-      });
+      const runtime = await startAgent(characterWithPlugin, server, undefined, [pluginModule]);
 
       // Save the modified character to the database so the API returns the correct plugin list
       // Do this AFTER starting the agent so the runtime and database are properly initialized

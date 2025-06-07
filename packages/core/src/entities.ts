@@ -104,7 +104,7 @@ async function getRecentInteractions(
     );
 
     if (relationship?.metadata?.interactions) {
-      interactionScore = relationship.metadata.interactions;
+      interactionScore = relationship.metadata.interactions as number;
     }
 
     // Add bonus points for recent direct replies
@@ -264,7 +264,8 @@ export async function findEntityByName(
       // Check components for username/handle match
       return entity.components?.some(
         (c) =>
-          c.data.username?.toLowerCase() === matchName || c.data.handle?.toLowerCase() === matchName
+          (c.data.username as string)?.toLowerCase() === matchName ||
+          (c.data.handle as string)?.toLowerCase() === matchName
       );
     });
 
@@ -361,7 +362,9 @@ export async function getEntityDetails({
     // Create the entity details
     uniqueEntities.set(entity.id, {
       id: entity.id,
-      name: room?.source ? entity.metadata[room.source]?.name || entity.names[0] : entity.names[0],
+      name: room?.source
+        ? (entity.metadata[room.source] as { name?: string })?.name || entity.names[0]
+        : entity.names[0],
       names: entity.names,
       data: JSON.stringify({ ...mergedData, ...entity.metadata }),
     });

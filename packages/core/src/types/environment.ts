@@ -1,4 +1,4 @@
-import type { UUID } from './primitives';
+import type { Metadata, UUID } from './primitives';
 
 export interface Component {
   id: UUID;
@@ -9,9 +9,7 @@ export interface Component {
   sourceEntityId: UUID;
   type: string;
   createdAt: number;
-  data: {
-    [key: string]: any;
-  };
+  data: Metadata;
 }
 
 /**
@@ -25,7 +23,7 @@ export interface Entity {
   names: string[];
 
   /** Optional additional metadata */
-  metadata?: { [key: string]: any };
+  metadata?: Metadata;
 
   /** Agent ID this account is related to, for agents should be themselves */
   agentId: UUID;
@@ -63,8 +61,6 @@ export type World = {
   };
 };
 
-export type RoomMetadata = Record<string, unknown>;
-
 export enum ChannelType {
   SELF = 'SELF', // Messages to self
   DM = 'DM', // Direct messages between two participants
@@ -88,7 +84,7 @@ export type Room = {
   channelId?: string;
   serverId?: string;
   worldId?: UUID;
-  metadata?: RoomMetadata;
+  metadata?: Metadata;
 };
 
 /**
@@ -122,18 +118,8 @@ export interface Relationship {
   tags: string[];
 
   /** Additional metadata about the relationship */
-  metadata: {
-    [key: string]: any;
-  };
+  metadata: Metadata;
 
   /** Optional creation timestamp */
   createdAt?: string;
 }
-
-/**
- * A generic type for the `data` field within a `Component`.
- * While `Record<string, unknown>` allows for flexibility, developers are encouraged
- * to define more specific types for component data where possible to improve type safety
- * and code maintainability. This type serves as a base for various component implementations.
- */
-export type ComponentData = Record<string, unknown>;

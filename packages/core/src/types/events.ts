@@ -2,7 +2,7 @@ import type { HandlerCallback } from './components';
 import type { Entity, Room, World } from './environment';
 import type { Memory } from './memory';
 import type { ModelTypeName } from './model';
-import type { UUID } from './primitives';
+import type { Metadata, UUID } from './primitives';
 import type { IAgentRuntime } from './runtime';
 
 /**
@@ -206,17 +206,9 @@ export type EventHandler<T extends keyof EventPayloadMap> = (
 ) => Promise<void>;
 
 /**
- * Represents a generic data object that can be passed as a payload in an event.
- * This type is often used in `TypedEventHandler` to provide a flexible yet somewhat
- * structured way to handle event data. Specific event handlers might cast this to a
- * more concrete type based on the event being processed.
- */
-export type EventDataObject = Record<string, unknown>;
-
-/**
- * Defines a more specific type for event handlers, expecting an `EventDataObject`.
+ * Defines a more specific type for event handlers, expecting an `Metadata`.
  * This aims to improve upon generic 'any' type handlers, providing a clearer contract
  * for functions that respond to events emitted within the agent runtime (see `emitEvent` in `AgentRuntime`).
  * Handlers can be synchronous or asynchronous.
  */
-export type TypedEventHandler = (data: EventDataObject) => Promise<void> | void;
+export type TypedEventHandler = (data: Metadata) => Promise<void> | void;

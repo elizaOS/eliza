@@ -1,3 +1,18 @@
+import { Service } from './service';
+
+/**
+ * A standardized representation of a token holding.
+ */
+export interface TokenBalance {
+  address: string; // Token mint address, or a native identifier like 'SOL' or 'ETH'
+  balance: string; // Raw balance as a string to handle large numbers with precision
+  decimals: number;
+  uiAmount?: number; // User-friendly balance, adjusted for decimals
+  name?: string;
+  symbol?: string;
+  logoURI?: string;
+}
+
 /**
  * Generic representation of token data that can be provided by various services.
  */
@@ -32,11 +47,9 @@ export interface TokenData {
 /**
  * Interface for a generic service that provides token data.
  */
-export interface ITokenDataService {
-  /**
-   * A unique identifier for the service, matching how it's registered.
-   */
-  readonly serviceName: string;
+export abstract class ITokenDataService extends Service {
+  static override readonly serviceType = 'token_data';
+  public readonly capabilityDescription = 'Provides standardized access to token market data.';
 
   /**
    * Fetches detailed information for a single token.
@@ -44,7 +57,7 @@ export interface ITokenDataService {
    * @param chain The blockchain the token resides on.
    * @returns A Promise resolving to TokenData or null if not found.
    */
-  getTokenDetails(address: string, chain: string): Promise<TokenData | null>;
+  abstract getTokenDetails(address: string, chain: string): Promise<TokenData | null>;
 
   /**
    * Fetches a list of trending tokens.
@@ -53,7 +66,11 @@ export interface ITokenDataService {
    * @param timePeriod Optional: Time period for trending data (e.g., '24h', '7d'). Defaults to service-specific.
    * @returns A Promise resolving to an array of TokenData.
    */
-  getTrendingTokens(chain?: string, limit?: number, timePeriod?: string): Promise<TokenData[]>;
+  abstract getTrendingTokens(
+    chain?: string,
+    limit?: number,
+    timePeriod?: string
+  ): Promise<TokenData[]>;
 
   /**
    * Searches for tokens based on a query string.
@@ -62,7 +79,7 @@ export interface ITokenDataService {
    * @param limit Optional: Number of results to return.
    * @returns A Promise resolving to an array of TokenData.
    */
-  searchTokens(query: string, chain?: string, limit?: number): Promise<TokenData[]>;
+  abstract searchTokens(query: string, chain?: string, limit?: number): Promise<TokenData[]>;
 
   /**
    * Fetches data for multiple tokens by their addresses on a specific chain.
@@ -70,15 +87,9 @@ export interface ITokenDataService {
    * @param chain The blockchain the tokens reside on.
    * @returns A Promise resolving to an array of TokenData. May not include all requested if some are not found.
    */
-  getTokensByAddresses(addresses: string[], chain: string): Promise<TokenData[]>;
+  abstract getTokensByAddresses(addresses: string[], chain: string): Promise<TokenData[]>;
 
   // Future potential methods:
   // getHistoricalPriceData(address: string, chain: string, timeFrame: string): Promise<any[]>;
   // getTokenMarketChart(address: string, chain: string, days: number): Promise<any[]>;
 }
-
-/**
- * Constant for the TokenDataService name.
- * Ideally, this would be part of a shared enum in @elizaos/core.
- */
-export const TOKEN_DATA_SERVICE_NAME = 'TokenDataService';

@@ -1,18 +1,13 @@
 import { Service } from './service';
+import type { TokenBalance } from './token';
 
 /**
- * Represents a single asset holding within a wallet.
- * This provides a standardized view of a token or native currency.
+ * Represents a single asset holding within a wallet, including its value.
+ * This extends a generic TokenBalance with wallet-specific valuation.
  */
-export interface WalletAsset {
-  name: string;
-  symbol: string;
-  address: string; // Token mint address, or a native identifier like 'SOL' or 'ETH'
-  decimals: number;
-  balance: string; // Raw balance as a string to handle large numbers with precision
-  uiAmount: number; // User-friendly balance, adjusted for decimals
-  priceUsd?: number; // Optional price per unit in USD
-  valueUsd?: number; // Optional total value in USD (uiAmount * priceUsd)
+export interface WalletAsset extends TokenBalance {
+  priceUsd?: number;
+  valueUsd?: number;
 }
 
 /**

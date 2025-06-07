@@ -1,18 +1,7 @@
 import { Keypair } from '@solana/web3.js';
+import type { Metadata } from './primitives';
 import { Service } from './service';
-
-/**
- * A standardized representation of a token balance.
- */
-export type TokenBalance = {
-  mintAddress: string;
-  amount: string; // Raw amount in the smallest unit (e.g., lamports) as a string for precision.
-  uiAmount?: number; // User-friendly decimal-adjusted amount.
-  decimals: number;
-  symbol?: string;
-  name?: string;
-  logoURI?: string;
-};
+import type { TokenBalance } from './token';
 
 /**
  * A standardized representation of a liquidity pool from any DEX.
@@ -38,7 +27,7 @@ export type PoolInfo = {
   apy?: number; // Annual Percentage Yield.
   tvl?: number; // Total Value Locked in USD.
   fee?: number; // Trading fee percentage.
-  metadata?: Record<string, any>; // For DEX-specific extra data.
+  metadata?: Metadata; // For DEX-specific extra data.
 };
 
 /**
@@ -52,7 +41,7 @@ export type LpPositionDetails = {
   valueUsd?: number;
   accruedFees?: TokenBalance[];
   rewards?: TokenBalance[];
-  metadata?: Record<string, any>; // For additional DEX-specific position data.
+  metadata?: Metadata; // For additional DEX-specific position data.
 };
 
 /**
