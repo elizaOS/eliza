@@ -7,12 +7,12 @@
     "node": "23.3.0"
   },
   "scripts": {
-    "start": "turbo run start --filter=./packages/cli --log-prefix=none --force",
+    "start": "turbo run start --filter=./packages/cli --log-prefix=none",
     "start:debug": "cross-env NODE_NO_WARNINGS=1 LOG_LEVEL=debug elizaos start",
     "start:app": "turbo run start --filter=./packages/app",
     "dev": "bun run scripts/dev-watch.js",
     "build:docs": "turbo run build --filter=@elizaos/docs",
-    "build": "turbo run build --filter=!@elizaos/docs --force",
+    "build": "turbo run build --filter=!@elizaos/docs",
     "build:client": "turbo run build --filter=@elizaos/client",
     "format": "turbo run format --filter=./packages/*",
     "format:check": "turbo run format:check --filter=./packages/*",
