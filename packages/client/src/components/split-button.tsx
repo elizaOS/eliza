@@ -9,6 +9,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { cn } from "@/lib/utils"
 
 export interface SplitButtonOption {
   label: string
@@ -80,13 +81,21 @@ export default function SplitButton({
 
   // Determine divider classes based on variant
   const dividerClasses = variant === "destructive"
-    ? "divide-destructive-foreground/20"
+    ? "divide-white/20"
     : "divide-primary-foreground/30"
 
   return (
-    <div className={`${dividerClasses} inline-flex divide-x rounded-md shadow-xs rtl:space-x-reverse ${className}`}>
+    <div className={cn(
+      "inline-flex divide-x rounded-md shadow-xs rtl:space-x-reverse",
+      dividerClasses,
+      className
+    )}>
       <Button
-        className={`rounded-none shadow-none first:rounded-s-md last:rounded-e-md focus-visible:z-10 ${buttonClassName}`}
+        className={cn(
+          "rounded-none shadow-none first:rounded-s-md last:rounded-e-md focus-visible:z-10",
+          buttonClassName
+        )}
+        variant={variant}
         disabled={disabled}
         onClick={handleMainButtonClick}
       >
@@ -95,7 +104,11 @@ export default function SplitButton({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
-            className={`rounded-none shadow-none first:rounded-s-md last:rounded-e-md focus-visible:z-10 ${buttonClassName}`}
+            className={cn(
+              "rounded-none shadow-none first:rounded-s-md last:rounded-e-md focus-visible:z-10",
+              buttonClassName
+            )}
+            variant={variant}
             size="icon"
             aria-label={ariaLabel}
             disabled={disabled}
@@ -104,7 +117,7 @@ export default function SplitButton({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
-          className={`max-w-64 md:max-w-xs ${dropdownClassName}`}
+          className={cn("max-w-64 md:max-w-xs", dropdownClassName)}
           side="bottom"
           sideOffset={4}
           align="end"
