@@ -1,32 +1,225 @@
 ---
-description: ElizaOS v2 - Core, Runtime 
+description: ElizaOS Core Runtime and AgentRuntime information
 globs: 
 alwaysApply: false
 ---
 > You are an expert in ElizaOS v2, TypeScript, agent architecture, and AI agent development. You focus on producing robust, scalable agent runtime implementations with proper character configuration, plugin management, and service lifecycle patterns.
 
-## AgentRuntime Architecture Flow
+## AgentRuntime Architecture
 
+The `AgentRuntime` is the core of any ElizaOS agent. It is responsible for loading the agent's character, managing its lifecycle, registering plugins and services, and orchestrating all interactions.
+
+### Core Implementation: `AgentRuntime`
+
+```typescript
+// ✅ DO: Implement a robust AgentRuntime initialization and lifecycle
+// Reference: packages/core/src/runtime.ts
+// Reference: packages/core/src/types.ts
+
+import {
+  AgentRuntime,
+  type IAgentRuntime,
+  type Character,
+  type Plugin,
+  type Service,
+  type IDatabaseAdapter,
+  type AgentRuntimeOptions,
+  LogLevel,
+} from '@elizaos/core';
+import { PGLiteDatabaseAdapter } from '@elizaos/plugin-sql';
+import { bootstrapPlugin } from '@elizaos/plugin-bootstrap';
+import { logger } from '@elizaos/core';
+
+// Example of creating and starting a runtime
+async function initializeAgent(character: Character, dbAdapter: IDatabaseAdapter): Promise<IAgentRuntime> {
+  logger.info(`Initializing runtime for character: ${character.name}`);
+
+  // 1. Define Runtime Options
+  const runtimeOptions: AgentRuntimeOptions = {
+    character,
+    database: dbAdapter,
+    logLevel: LogLevel.INFO,
+    plugins: [bootstrapPlugin], // Start with essential plugins
+  };
+
+  // 2. Instantiate the Runtime
+  const runtime = new AgentRuntime(runtimeOptions);
+
+  try {
+    // 3. Initialize the runtime (connects to DB, sets up services)
+    await runtime.initialize();
+    logger.info('Runtime initialized successfully.');
+
+    // 4. Start the runtime (begins processing, opens connections)
+    await runtime.start();
+    logger.info('Runtime started and is now active.');
+
+    // 5. Register custom services or perform post-start tasks
+    // Example: runtime.registerService(MyCustomService);
+
+    return runtime;
+  } catch (error) {
+    logger.error('Failed to initialize or start runtime:', error);
+    throw error;
+  }
+}
+
+// Example of a graceful shutdown
+async function shutdownAgent(runtime: IAgentRuntime): Promise<void> {
+  if (runtime) {
+    logger.info('Shutting down AgentRuntime...');
+    await runtime.stop();
+    logger.info('AgentRuntime shutdown complete.');
+  }
+}
 ```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│ Character Config│    │  Runtime Init    │    │ Plugin Registry │
-│   & Validation  │───▶│  & Services      │───▶│  & Actions      │
-│                 │    │                  │    │                 │
-│ - Bio & Style   │    │ - AgentRuntime   │    │ - registerPlugin│
-│ - Examples      │    │ - Database       │    │ - Actions List  │
-│ - Settings      │    │ - Models         │    │ - Providers     │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-         │                       │                       │
-         ▼                       ▼                       ▼
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│ Entity & Room   │    │ State Management │    │ Event System    │
-│  Management     │    │   & Memory       │    │ & Monitoring    │
-│                 │    │                  │    │                 │
-│ - ensureConnection │ │ - composeState   │    │ - Event Emitter │
-│ - Room Creation │    │ - Memory Context │    │ - Lifecycle     │
-│ - Participants  │    │ - Knowledge      │    │ - Error Handling│
-└─────────────────┘    └──────────────────┘    └─────────────────┘
+
+### Character Configuration
+
+The `Character` configuration is a plain object that defines the agent's identity, personality, and capabilities. It is passed directly to the `AgentRuntime` constructor.
+
+```typescript
+// ✅ DO: Define a comprehensive and valid Character configuration
+// Reference: packages/core/src/types.ts
+
+import { type Character, ModelType } from '@elizaos/core';
+
+export const exampleCharacter: Character = {
+  name: "TechSupportBot",
+  bio: "An AI assistant specializing in technical support for ElizaOS.",
+  system: "You are a helpful and patient technical support assistant.",
+  
+  // Examples guide the LLM's behavior and response style
+  messageExamples: [
+    [
+      { name: "user", content: { text: "How do I install a plugin?" } },
+      { name: "TechSupportBot", content: { text: "You can install a plugin using the `elizaos plugins install <plugin-name>` command." } }
+    ]
+  ],
+
+  // Personality traits
+  topics: ["ElizaOS", "plugins", "troubleshooting", "TypeScript"],
+  adjectives: ["patient", "knowledgeable", "clear"],
+  
+  // Style guides for different contexts
+  style: {
+    all: ["Be concise and clear.", "Use markdown for code snippets."],
+    chat: ["Use a friendly and helpful tone."],
+  },
+
+  // Agent settings, including model choices and secrets
+  settings: {
+    model: ModelType.TEXT_LARGE,
+    temperature: 0.5,
+    secrets: {
+      OPENAI_API_KEY: "your-api-key-here"
+    }
+  },
+
+  // List of plugins to be loaded by the runtime
+  plugins: [
+    "@elizaos/plugin-sql",
+    "@elizaos/plugin-openai",
+    // Add custom plugins here
+  ],
+};
+
+// ❌ DON'T: Use a minimal or invalid character configuration
+const badCharacter: Partial<Character> = {
+  // `name` and `bio` are essential for a functional character.
+  // Missing these will lead to poor performance or errors.
+  settings: {
+    model: ModelType.TEXT_SMALL
+  }
+};
 ```
+
+### Plugin and Service Management
+
+Plugins and Services are the primary way to extend the `AgentRuntime`. They are registered and their lifecycle is managed by the runtime.
+
+```typescript
+// ✅ DO: Register plugins and services correctly with the runtime
+// Reference: packages/core/src/runtime.ts
+
+import {
+  type Plugin,
+  type Action,
+  type Provider,
+  Service,
+  ServiceStatus,
+  type IAgentRuntime
+} from '@elizaos/core';
+
+// --- Example Custom Action ---
+const myCustomAction: Action = {
+  name: 'CUSTOM_ACTION',
+  description: 'A custom action for testing.',
+  examples: [[{ name: 'user', content: { text: 'run custom' } }]],
+  handler: async (runtime, message) => {
+    logger.info('Custom action executed!');
+    // business logic here
+    return true;
+  }
+};
+
+// --- Example Custom Plugin ---
+const myCustomPlugin: Plugin = {
+  name: 'MyCustomPlugin',
+  description: 'A plugin that adds custom functionality.',
+  actions: [myCustomAction],
+  // You can also add providers, evaluators, etc.
+};
+
+// --- Example Custom Service ---
+class MyCustomService extends Service {
+  public static serviceName = "MyCustomService";
+
+  async start(runtime: IAgentRuntime): Promise<void> {
+    this.status = ServiceStatus.RUNNING;
+    logger.info('MyCustomService has started.');
+    // Add service-specific startup logic (e.g., connect to an external API)
+  }
+
+  async stop(): Promise<void> {
+    this.status = ServiceStatus.STOPPED;
+    logger.info('MyCustomService has stopped.');
+    // Add service-specific cleanup logic
+  }
+}
+
+// --- Registration with the Runtime ---
+async function setupExtensions(runtime: IAgentRuntime) {
+  // Register a plugin
+  // The runtime automatically handles dependency resolution and initialization
+  await runtime.registerPlugin(myCustomPlugin);
+  logger.info(`Action '${myCustomAction.name}' is now available.`);
+
+  // Register a service
+  // The runtime manages the service's lifecycle (start/stop)
+  const service = await runtime.registerService(MyCustomService);
+  if (service.status === ServiceStatus.RUNNING) {
+    logger.info(`Service '${MyCustomService.serviceName}' is running.`);
+  }
+}
+
+// ❌ DON'T: Manually manage service lifecycle or ignore registration methods
+function badPractice(runtime: IAgentRuntime) {
+  // This bypasses the runtime's management and can lead to an inconsistent state.
+  const myService = new MyCustomService();
+  // The service is not started or tracked by the runtime.
+  // myService.start(runtime); // This should be handled by runtime.registerService()
+}
+```
+
+## Best Practices
+
+*   **Configuration over Code**: Define agent personality and capabilities in the `Character` JSON/object rather than hardcoding it in actions or services.
+*   **Centralized Runtime**: Pass the `IAgentRuntime` instance to components that need it. Avoid creating multiple runtime instances.
+*   **Lifecycle Management**: Always use the `initialize`, `start`, and `stop` methods to manage the runtime's state. Ensure `stop` is called for a graceful shutdown.
+*   **Plugin Dependencies**: Let the `AgentRuntime` handle plugin dependency resolution automatically by correctly defining the `dependencies` array in your `Plugin` interface.
+*   **Service Registration**: Register `Service` classes with the runtime using `registerService` and let the runtime manage their lifecycle. Do not instantiate or call `start()`/`stop()` on services manually.
+*   **Error Handling**: Wrap runtime initialization in a try/catch block to handle potential errors during setup (e.g., database connection failures, invalid character config).
 
 ## Project Structure
 

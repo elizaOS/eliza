@@ -1,239 +1,239 @@
 ---
-description: ElizaOS CLI project management
+description: ElizaOS CLI Project and Project Loading
 globs: 
 alwaysApply: false
 ---
-> You are an expert in ElizaOS CLI project management, TypeScript, Commander.js, and agent development workflows. You focus on producing clear, maintainable CLI commands that follow ElizaOS architecture patterns and provide excellent developer experience.
+> You are an expert in the ElizaOS CLI, focusing on project management, configuration, and development workflows. You produce clear, comprehensive documentation and examples using the latest CLI features and best practices.
 
-## ElizaOS CLI Project Management Flow
+## ElizaOS Project Architecture
 
-```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Project       │    │   Plugin         │    │   Development   │
-│   Creation      │───▶│   Management     │───▶│   Workflow      │
-│                 │    │                  │    │                 │
-│ - Type Selection│    │ - Installation   │    │ - Hot Reload    │
-│ - Scaffolding   │    │ - Registry       │    │ - Building      │
-│ - Configuration │    │ - Dependencies   │    │ - Testing       │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-         │                       │                       │
-         ▼                       ▼                       ▼
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Template      │    │   Registry       │    │   Build         │
-│   Processing    │    │   Management     │    │   Pipeline      │
-│   & Setup       │    │   & Discovery    │    │   & Deployment  │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
+```mermaid
+graph TD
+    A[Start: elizaos create] --> B{Project Type?};
+    B -->|Project| C[Create Project Directory];
+    B -->|Plugin| D[Create Plugin Directory];
+    B -->|Agent| E[Create Character .json];
+
+    C --> F{Database?};
+    F -->|PGLite| G[Setup PGLite in .elizadb];
+    F -->|Postgres| H[Prompt for POSTGRES_URL];
+    
+    C --> I{AI Model?};
+    I -->|Local| J[Use Local AI];
+    I -->|OpenAI| K[Prompt for OPENAI_API_KEY];
+    I -->|Claude| L[Prompt for ANTHROPIC_API_KEY];
+
+    subgraph "Project Setup"
+        direction LR
+        G --> M[Copy project-starter template];
+        H --> M;
+        J --> M;
+        K --> M;
+        L --> M;
+        M --> N[Install Dependencies];
+        N --> O[Build Project];
+    end
+    
+    D --> P[Copy plugin-starter template];
+    P --> Q[Install Dependencies];
+    Q --> R[Build Plugin];
+
+    subgraph "Execution"
+        direction LR
+        S[elizaos start] --> T{Detect Dir Type};
+        T -->|Project| U[Load Project Agents];
+        T -->|Plugin| V[Load Default Agent + Plugin];
+        U --> W[Start AgentServer];
+        V --> W;
+        E --> X[elizaos agent start --path <file>];
+        X --> W;
+    end
+    
+    O --> S;
+    R --> S;
 ```
 
 ## Project Structure
 
+A standard ElizaOS project has the following structure, created by `elizaos create`.
+
 ```
-elizaos-project/
+my-project/
+├── .env                  # Environment variables (API keys, DB URLs)
+├── .gitignore            # Standard git ignore for Node.js projects
+├── .elizadb/             # PGLite database files (if using PGLite)
+├── bun.lockb             # Bun lockfile
+├── package.json          # Project definition and dependencies
+├── tsconfig.json         # TypeScript configuration
 ├── src/
-│   ├── commands/
-│   │   ├── create.ts          # Project creation logic
-│   │   ├── plugins.ts         # Plugin management
-│   │   ├── dev.ts             # Development server
-│   │   └── start.ts           # Production start
-│   └── utils/
-│       ├── plugin-discovery.ts # Plugin registry
-│       ├── registry.ts        # Registry management
-│       └── directory-detection.ts # Project detection
-├── characters/
-│   └── [character].json       # Agent character files
-├── knowledge/
-│   └── [documents]/           # Knowledge base files
-├── package.json
-├── tsconfig.json
-├── elizaos.config.js
-└── .env                       # Environment variables
+│   ├── index.ts          # Main project entry point
+│   ├── agents/           # Agent character definitions
+│   │   └── my-agent.ts
+│   └── plugins/          # Project-specific plugins
+│       └── my-plugin.ts
+├── knowledge/            # Knowledge files for agents
+└── dist/                 # Compiled output
 ```
 
 ## Core Implementation Patterns
 
-### Project Creation Commands
+### Creating a New Project
 
-```typescript
-// ✅ DO: Implement comprehensive project creation with proper validation
-import { Command } from 'commander';
-import { z } from 'zod';
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import prompts from 'prompts';
+The `elizaos create` command is the unified entry point for creating projects, plugins, or standalone agent character files.
 
-const initOptionsSchema = z.object({
-  dir: z.string().default('.'),
-  yes: z.boolean().default(false),
-  type: z.enum(['project', 'plugin', 'agent']).default('project'),
-});
+```bash
+# ✅ DO: Use the interactive `create` command
+elizaos create
 
-export const create = new Command()
-  .name('create')
-  .description('Initialize a new project, plugin, or agent')
-  .argument('[name]', 'Name for the project, plugin, or agent')
-  .option('-d, --dir <dir>', 'Installation directory', '.')
-  .option('-y, --yes', 'Skip confirmation and use defaults', false)
-  .option('-t, --type <type>', 'Type to create: project, plugin, or agent', 'project')
-  .action(async (name: string | undefined, rawOptions) => {
-    try {
-      const options = initOptionsSchema.parse(rawOptions);
-      
-      // Interactive type selection if not specified
-      if (!name && !options.yes) {
-        const response = await prompts({
-          type: 'select',
-          name: 'type',
-          message: 'What would you like to create?',
-          choices: [
-            { title: 'Project - Full ElizaOS application', value: 'project' },
-            { title: 'Plugin - Extend ElizaOS functionality', value: 'plugin' },
-            { title: 'Agent - Character definition file', value: 'agent' }
-          ]
-        });
-        options.type = response.type;
-      }
-      
-      switch (options.type) {
-        case 'project':
-          await createProject(name, options);
-          break;
-        case 'plugin':
-          await createPlugin(name, options);
-          break;
-        case 'agent':
-          await createAgent(name, options);
-          break;
-      }
-    } catch (error) {
-      handleCreateError(error);
-    }
-  });
+# ✅ DO: Create a new project non-interactively
+elizaos create my-new-project --type project --yes
 
-// Project creation with AI model and database selection
-async function createProject(name: string | undefined, options: any): Promise<void> {
-  let projectName = name;
-  
-  if (!projectName && !options.yes) {
-    const response = await prompts({
-      type: 'text',
-      name: 'name',
-      message: 'Enter project name:',
-      validate: validateProjectName
-    });
-    projectName = response.name;
-  }
-  
-  const targetDir = path.resolve(options.dir, projectName);
-  
-  // AI model selection
-  const aiModel = await selectAIModel(options.yes);
-  
-  // Database selection
-  const database = await selectDatabase(options.yes);
-  
-  // Create project structure
-  await createProjectStructure(targetDir, projectName, {
-    aiModel,
-    database,
-    includeKnowledge: true
-  });
-  
-  // Setup configuration
-  await setupProjectConfiguration(targetDir, {
-    aiModel,
-    database,
-    isNonInteractive: options.yes
-  });
-  
-  // Install dependencies
-  await installDependencies(targetDir);
-  
-  logProjectCreationSuccess(projectName, targetDir);
-}
+# ✅ DO: Create a new plugin
+elizaos create my-new-plugin --type plugin
 
-// ❌ DON'T: Create projects without proper validation or configuration
-async function badCreateProject(name: string): Promise<void> {
-  // No validation, no interactive setup, no error handling
-  const dir = `./${name}`;
-  await fs.mkdir(dir);
-  await fs.writeFile(`${dir}/package.json`, '{}');
-}
+# ✅ DO: Create a project in the current directory
+elizaos create .
+
+# ❌ DON'T: Manually create project directories and files.
+# The `create` command handles templates, dependencies, and initial configuration.
 ```
 
-### Plugin Management System
+The interactive `create` command will guide you through:
+1.  **Choosing a type**: Project, Plugin, or Agent.
+2.  **Naming**: Providing a valid npm package name.
+3.  **Database Selection**: Choosing between PGLite (development) and PostgreSQL (production).
+4.  **AI Model Selection**: Choosing between Local AI, OpenAI, or Anthropic.
+
+### Starting a Project
+
+The `elizaos start` command is used to run your project or test your plugin. It automatically detects the context (project or plugin) in the current directory.
+
+```bash
+# ✅ DO: Start the project from its root directory
+cd my-new-project
+elizaos start
+
+# ✅ DO: Start and automatically build the project first
+elizaos start --build
+
+# ✅ DO: Specify a port for the server
+elizaos start --port 4000
+
+# ❌ DON'T: Run start from outside a project/plugin directory.
+# It relies on the local `package.json` and file structure to work correctly.
+```
+
+### Building a Project
+
+Projects need to be built (transpiled from TypeScript to JavaScript) before they can be run in production. The build step is often handled automatically by `start`, but can be run manually.
+
+```bash
+# ✅ DO: Manually build a project
+elizaos build
+
+# ✅ DO: Manually build a plugin
+# The command is the same, it detects the context.
+elizaos build
+
+# The `build` command is a wrapper around `tsup` or a similar bundler
+# defined in your project's `package.json`.
+```
+
+### Managing Dependencies
+
+Project dependencies, including plugins, are managed in `package.json`. Use `bun` to manage them. Core ElizaOS plugins are scoped under `@elizaos`.
+
+```bash
+# ✅ DO: Add a new ElizaOS plugin to your project
+bun add @elizaos/plugin-openai
+
+# ✅ DO: Add a local plugin using a file path
+bun add ../path/to/my-local-plugin
+
+# After adding a plugin to package.json, you must register it
+# with an agent in your project's main entry point (e.g., `src/index.ts`).
+# The `start` command will handle installing any missing plugins.
+
+# ❌ DON'T: Manually edit `bun.lockb`. Use the `bun` command.
+```
+
+## Advanced Patterns
+
+### Project Entry Point (`src/index.ts`)
+
+The project entry point is where you define your agents and associate them with plugins. The `start` command executes this file.
 
 ```typescript
-// ✅ DO: Implement comprehensive plugin management with registry support
-import { fetchPluginRegistry } from '@/src/utils/plugin-discovery';
-import { normalizePluginName } from '@/src/utils/registry';
-import { detectDirectoryType } from '@/src/utils/directory-detection';
+// src/index.ts
 
-export const plugins = new Command()
-  .name('plugins')
-  .description('Manage ElizaOS plugins')
-  .action(function () {
-    this.help({ showGlobals: false });
-  });
+import { myAgentCharacter } from './agents/my-agent';
+import { myProjectPlugin } from './plugins/my-plugin';
+import { type Project } from '@elizaos/core';
 
-// Plugin listing with filtering and detailed information
-plugins
-  .command('list')
-  .aliases(['l', 'ls'])
-  .description('List available plugins to install into the project')
-  .option('--all', 'List all plugins with detailed version info')
-  .option('--v0', 'List only v0.x compatible plugins')
-  .action(async (opts: { all?: boolean; v0?: boolean }) => {
-    try {
-      const cachedRegistry = await fetchPluginRegistry();
-      
-      if (!cachedRegistry?.registry || Object.keys(cachedRegistry.registry).length === 0) {
-        console.log('Plugin cache is empty. Run "elizaos plugins update" to fetch registry.');
-        return;
-      }
-      
-      const allPlugins = Object.entries(cachedRegistry.registry);
-      let filteredPlugins: string[];
-      let displayTitle: string;
-      
-      if (opts.all) {
-        displayTitle = 'All plugins in local cache (detailed view)';
-        displayDetailedPluginList(allPlugins);
-        return;
-      } else if (opts.v0) {
-        displayTitle = 'Available v0.x plugins';
-        filteredPlugins = allPlugins
-          .filter(([, info]) => info.supports.v0)
-          .map(([name]) => name);
-      } else {
-        displayTitle = 'Available v1.x plugins';
-        filteredPlugins = allPlugins
-          .filter(([, info]) => info.supports.v1)
-          .map(([name]) => name);
-      }
-      
-      logHeader(displayTitle);
-      filteredPlugins.forEach(plugin => console.log(plugin));
-      
-    } catch (error) {
-      handleError(error);
-    }
-  });
+// ✅ DO: Define a project with one or more agents
+const project: Project = {
+  agents: [
+    {
+      character: myAgentCharacter,
+      // List all plugins the agent should use
+      plugins: [
+        '@elizaos/plugin-sql',
+        '@elizaos/plugin-openai',
+        myProjectPlugin, // A local plugin
+      ],
+      // Optional init function for the agent
+      init: (runtime) => {
+        console.log(`Agent ${runtime.character.name} initialized!`);
+      },
+    },
+  ],
+};
 
-// Plugin installation with dependency resolution
-plugins
-  .command('add')
-  .alias('install')
-  .description('Add a plugin to the project')
-  .argument('<plugin>', 'Plugin name (e.g., "abc", "plugin-abc", "@elizaos/plugin-abc")')
-  .option('-n, --no-env-prompt', 'Skip prompting for environment variables')
-  .option('-b, --branch <branch>', 'Branch to install from', 'main')
-  .option('-T, --tag <tag>', 'Specify a tag to install (e.g., beta)')
-  .action(async (pluginArg: string, opts) => {
-    const cwd = process.cwd();
-    const directoryInfo = detectDirectoryType(cwd);
-    
-    // Validate project structure
-    if (!directoryInfo.hasPackageJson) {
+// ✅ DO: Export the project as the default export
+export default project;
+```
+
+### Loading Multiple Characters
+
+The `start` command can load one or more standalone character files, overriding the project's default agents. This is useful for testing or running different agent configurations without changing the code.
+
+```bash
+# ✅ DO: Load a single character file
+elizaos start --character ./path/to/my-agent.json
+
+# ✅ DO: Load multiple character files
+elizaos start --character ./agent1.json ./agent2.json
+
+# ✅ DO: Load characters using comma-separated values
+elizaos start --character="./agent1.json, ./agent2.json"
+
+# Note: When using --character, the agents defined in your
+# project's `src/index.ts` will be ignored.
+```
+
+### Non-Interactive Mode
+
+For CI/CD or automated environments, use the `-y` (`--yes`) flag with `create` to skip all interactive prompts and use default values.
+
+```bash
+# ✅ DO: Create a project non-interactively
+elizaos create my-ci-project --type project --yes
+
+# ✅ DO: Create a plugin non-interactively
+elizaos create my-ci-plugin --type plugin --yes
+```
+
+This will create a project/plugin with default settings:
+*   **Database**: PGLite
+*   **AI Model**: Local AI
+
+Placeholders for API keys will be added to the `.env` file, which you can then populate using environment variables in your CI/CD system.
+
+## References
+- [ElizaOS CLI Documentation](mdc:https:/eliza.how/docs/cli)
+- [Managing Agents](mdc:elizaos_v2_cli_agents.mdc)
+- [Project Configuration](mdc:elizaos_v2_cli_config.mdc)
+
       throw new ProjectValidationError(
         `Command must be run inside an ElizaOS project directory. ` +
         `Current directory: ${getDirectoryTypeDescription(directoryInfo)}`
