@@ -262,13 +262,21 @@ export async function performCliUpdate(): Promise<boolean> {
       try {
         await migrateCliToBun(latestVersion);
       } catch (migrationError) {
-        logger.warn('Migration to bun failed, falling back to standard npm update...');
+        logger.warn('Migration to bun failed, falling back to npm update...');
         logger.debug('Migration error:', migrationError.message);
-        // Fallback to standard installation if migration fails
-        await executeInstallation('@elizaos/cli', latestVersion, process.cwd());
+        // Fallback to npm installation since bun failed
+        try {
+          await execa('npm', ['install', '-g', `@elizaos/cli@${latestVersion}`], {
+            stdio: 'inherit',
+          });
+        } catch (npmError) {
+          throw new Error(
+            `Both bun migration and npm fallback failed. Bun: ${migrationError.message}, npm: ${npmError.message}`
+          );
+        }
       }
     } else {
-      // Standard bun update
+      // Standard bun installation (no npm installation detected)
       await executeInstallation('@elizaos/cli', latestVersion, process.cwd());
     }
 
