@@ -302,48 +302,43 @@ interface LoggerWithClear extends pino.Logger {
 
 // Enhance logger with custom destination in Node.js environment
 if (typeof process !== 'undefined') {
-  // Create the destination with in-memory logging
-  // Instead of async initialization, initialize synchronously to avoid race conditions
+  // Always create the InMemoryDestination to ensure logs are stored in memory
   let stream = null;
+  let destination: InMemoryDestination;
 
   if (!raw) {
-    // If we're in a Node.js environment where require is available, use require for pino-pretty
-    // This will ensure synchronous loading
+    // Try to load pino-pretty synchronously first
     try {
       const pretty = require('pino-pretty');
       stream = pretty.default ? pretty.default(createPrettyConfig()) : null;
     } catch (e) {
-      // Fall back to async loading if synchronous loading fails
-      createStream().then((prettyStream) => {
-        const destination = new InMemoryDestination(prettyStream);
-        logger = pino(options, destination);
-        (logger as unknown)[Symbol.for('pino-destination')] = destination;
-
-        // Add clear method to logger
-        (logger as unknown as LoggerWithClear).clear = () => {
-          const destination = (logger as unknown)[Symbol.for('pino-destination')];
-          if (destination instanceof InMemoryDestination) {
-            destination.clear();
+      // If synchronous loading fails, set up async loading but don't wait for it
+      createStream()
+        .then((prettyStream) => {
+          // Update the existing destination's stream once pino-pretty loads
+          if (destination) {
+            (destination as any).stream = prettyStream;
           }
-        };
-      });
+        })
+        .catch((error) => {
+          // Silently handle async loading errors - logger will work without pretty printing
+          console.warn('Failed to load pino-pretty asynchronously:', error.message);
+        });
     }
   }
 
-  // If stream was created synchronously, use it now
-  if (stream !== null || raw) {
-    const destination = new InMemoryDestination(stream);
-    logger = pino(options, destination);
-    (logger as unknown)[Symbol.for('pino-destination')] = destination;
+  // Always create the InMemoryDestination, regardless of whether pino-pretty loaded
+  destination = new InMemoryDestination(stream);
+  logger = pino(options, destination);
+  (logger as unknown)[Symbol.for('pino-destination')] = destination;
 
-    // Add clear method to logger
-    (logger as unknown as LoggerWithClear).clear = () => {
-      const destination = (logger as unknown)[Symbol.for('pino-destination')];
-      if (destination instanceof InMemoryDestination) {
-        destination.clear();
-      }
-    };
-  }
+  // Add clear method to logger
+  (logger as unknown as LoggerWithClear).clear = () => {
+    const destination = (logger as unknown)[Symbol.for('pino-destination')];
+    if (destination instanceof InMemoryDestination) {
+      destination.clear();
+    }
+  };
 }
 
 export { createLogger, logger };

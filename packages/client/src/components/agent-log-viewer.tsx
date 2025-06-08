@@ -247,7 +247,7 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
   } = useQuery<LogResponse>({
     queryKey: ['logs', selectedLevel, selectedAgentName],
     queryFn: () =>
-      apiClient.getLogs({
+      apiClient.getGlobalLogs({
         level: selectedLevel === 'all' ? '' : selectedLevel,
         agentName: selectedAgentName === 'all' ? undefined : selectedAgentName,
       }),
@@ -326,7 +326,22 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
 
   // Combine API logs and WebSocket logs
   const apiLogs = logResponse?.logs || [];
-  const combinedLogs = useWebSocket && isLive ? wsLogs : apiLogs;
+
+  // Smart fallback: If WebSocket has significantly fewer logs than API, use API logs
+  // This handles cases where WebSocket streaming isn't working properly
+  let combinedLogs;
+  if (useWebSocket && isLive) {
+    // If WebSocket has less than 50% of the API logs, fall back to API
+    const wsLogRatio = apiLogs.length > 0 ? (wsLogs.length / apiLogs.length) : 1;
+    if (wsLogRatio < 0.5 && apiLogs.length > 10) {
+      combinedLogs = apiLogs;
+    } else {
+      combinedLogs = wsLogs;
+    }
+  } else {
+    combinedLogs = apiLogs;
+  }
+
   const logs = combinedLogs;
   const levels = logResponse?.levels || [];
   const agentNames = agents?.data?.agents?.map((agent) => agent.name) || [];
@@ -363,7 +378,7 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
     ) {
       try {
         setIsClearing(true);
-        await apiClient.deleteLogs();
+        await apiClient.deleteGlobalLogs();
         queryClient.invalidateQueries({ queryKey: ['logs'] });
 
         // Also clear WebSocket logs if in WebSocket mode
