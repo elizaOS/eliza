@@ -2,7 +2,7 @@ import { logger } from '@elizaos/core';
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadPluginModule } from './load-plugin';
-import { executeInstallation, executeInstallationWithFallback, removeFromBunLock } from './package-manager';
+import { executeInstallation, executeInstallationWithFallback } from './package-manager';
 import { fetchPluginRegistry } from './plugin-discovery';
 import { normalizePluginName } from './registry';
 import { detectPluginContext } from './plugin-context';
