@@ -58,14 +58,17 @@ jobs:
         run: bun run build
 
       - name: Clean eliza projects cache
+        shell: bash
         run: rm -rf ~/.eliza/projects
 
       - name: Create .env file for tests
+        shell: bash
         run: |
           echo "OPENAI_API_KEY=$OPENAI_API_KEY" > .env
           echo "LOG_LEVEL=info" >> .env
 
       - name: Download models
+        shell: bash
         run: |
           MODEL_DIR="$HOME/.eliza/models"
           mkdir -p "$MODEL_DIR"
