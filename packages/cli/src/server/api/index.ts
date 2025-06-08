@@ -821,6 +821,17 @@ export function createApiRouter(
       const recentLogs: LogEntry[] = destination.recentLogs();
       const requestedLevelValue = LOG_LEVELS[requestedLevel] || LOG_LEVELS.info;
 
+      // Calculate population rates once for efficiency
+      const logsWithAgentNames = recentLogs.filter((l) => l.agentName).length;
+      const logsWithAgentIds = recentLogs.filter((l) => l.agentId).length;
+      const totalLogs = recentLogs.length;
+      const agentNamePopulationRate = totalLogs > 0 ? logsWithAgentNames / totalLogs : 0;
+      const agentIdPopulationRate = totalLogs > 0 ? logsWithAgentIds / totalLogs : 0;
+
+      // If less than 10% of logs have agent metadata, be lenient with filtering
+      const isAgentNameDataSparse = agentNamePopulationRate < 0.1;
+      const isAgentIdDataSparse = agentIdPopulationRate < 0.1;
+
       const filtered = recentLogs
         .filter((log) => {
           // Filter by time always
@@ -833,16 +844,29 @@ export function createApiRouter(
           }
 
           // Filter by agentName if provided - return all if 'all'
-          const agentNameMatch =
-            !requestedAgentName || requestedAgentName === 'all'
-              ? true
-              : log.agentName === requestedAgentName;
+          let agentNameMatch = true;
+          if (requestedAgentName && requestedAgentName !== 'all') {
+            if (log.agentName) {
+              // If the log has an agentName, match it exactly
+              agentNameMatch = log.agentName === requestedAgentName;
+            } else {
+              // If log has no agentName but most logs lack agentNames, show all logs
+              // This handles the case where logs aren't properly tagged with agent names
+              agentNameMatch = isAgentNameDataSparse;
+            }
+          }
 
           // Filter by agentId if provided - return all if 'all'
-          const agentIdMatch =
-            !requestedAgentId || requestedAgentId === 'all'
-              ? true
-              : log.agentId === requestedAgentId;
+          let agentIdMatch = true;
+          if (requestedAgentId && requestedAgentId !== 'all') {
+            if (log.agentId) {
+              // If the log has an agentId, match it exactly
+              agentIdMatch = log.agentId === requestedAgentId;
+            } else {
+              // If log has no agentId but most logs lack agentIds, show all logs
+              agentIdMatch = isAgentIdDataSparse;
+            }
+          }
 
           return timeMatch && levelMatch && agentNameMatch && agentIdMatch;
         })
@@ -856,11 +880,18 @@ export function createApiRouter(
         requestedAgentId,
         filteredCount: filtered.length,
         totalLogs: recentLogs.length,
+        logsWithAgentNames,
+        logsWithAgentIds,
+        agentNamePopulationRate: Math.round(agentNamePopulationRate * 100) + '%',
+        agentIdPopulationRate: Math.round(agentIdPopulationRate * 100) + '%',
+        isAgentNameDataSparse,
+        isAgentIdDataSparse,
         sampleLogAgentNames: recentLogs.slice(0, 5).map((log) => log.agentName),
         uniqueAgentNamesInLogs: [...new Set(recentLogs.map((log) => log.agentName))].filter(
           Boolean
         ),
-        agentNameMatches: recentLogs.filter((log) => log.agentName === requestedAgentName).length,
+        exactAgentNameMatches: recentLogs.filter((log) => log.agentName === requestedAgentName)
+          .length,
       });
 
       res.json({
