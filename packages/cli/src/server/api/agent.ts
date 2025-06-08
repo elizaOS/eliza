@@ -814,7 +814,7 @@ export function agentRouter(
   // Get Agent Logs
   router.get('/:agentId/logs', async (req, res) => {
     const agentId = validateUuid(req.params.agentId);
-    const { roomId, type, count, offset } = req.query;
+    const { roomId, type, count, offset, excludeTypes } = req.query;
     if (!agentId) {
       sendError(res, 400, 'INVALID_ID', 'Invalid agent ID format');
       return;
@@ -841,7 +841,38 @@ export function agentRouter(
         count: count ? Number(count) : undefined,
         offset: offset ? Number(offset) : undefined,
       });
-      sendSuccess(res, logs);
+
+      // Filter out excluded types if specified
+      let filteredLogs = logs;
+      if (excludeTypes) {
+        const excludeTypesArray = Array.isArray(excludeTypes)
+          ? (excludeTypes as string[])
+          : [excludeTypes as string];
+
+        filteredLogs = logs.filter((log) => {
+          // Check the log type
+          if (log.type && excludeTypesArray.includes(log.type)) {
+            return false;
+          }
+
+          // Check the modelType in the log body for model-related operations
+          if (log.body && typeof log.body === 'object') {
+            const body = log.body as any;
+            if (
+              body.modelType &&
+              excludeTypesArray.some((excludeType) =>
+                body.modelType.toLowerCase().includes(excludeType.toLowerCase())
+              )
+            ) {
+              return false;
+            }
+          }
+
+          return true;
+        });
+      }
+
+      sendSuccess(res, filteredLogs);
     } catch (error) {
       logger.error(`[AGENT LOGS] Error retrieving logs for agent ${agentId}:`, error);
       sendError(res, 500, 'LOG_ERROR', 'Error retrieving agent logs', error.message);
