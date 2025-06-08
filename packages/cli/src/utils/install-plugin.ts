@@ -218,18 +218,10 @@ export async function installPlugin(
     }
   }
 
-  // If npm approaches failed but we have GitHub repo, try direct GitHub installation
-  if (info.git?.repo) {
+  // If both npm approaches failed, try direct GitHub installation as final fallback
+  if (info.git?.repo && cliDir) {
     const spec = `github:${info.git.repo}${githubVersion ? `#${githubVersion}` : ''}`;
-
-    if (await attemptInstallation(spec, '', cwd, '')) {
-      return true;
-    }
-
-    // Try installing in CLI directory as final fallback
-    if (cliDir) {
-      return await attemptInstallation(spec, '', cliDir, 'in CLI directory');
-    }
+    return await attemptInstallation(spec, '', cliDir, 'in CLI directory');
   }
 
   logger.error(`Failed to install plugin ${packageName}`);
