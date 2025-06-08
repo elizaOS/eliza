@@ -2,7 +2,7 @@ import { logger } from '@elizaos/core';
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadPluginModule } from './load-plugin';
-import { executeInstallation } from './package-manager';
+import { executeInstallation, executeInstallationWithFallback, removeFromBunLock } from './package-manager';
 import { fetchPluginRegistry } from './plugin-discovery';
 import { normalizePluginName } from './registry';
 import { detectPluginContext } from './plugin-context';
@@ -187,26 +187,46 @@ export async function installPlugin(
   }
 
   const info = cache!.registry[key];
-  // Prefer npm installation if repository is available
+
+  // Extract GitHub fallback information if available
+  const githubFallback = info.git?.repo;
+  const githubVersion = info.git?.v1?.branch || info.git?.v1?.version || '';
+
+  // Prefer npm installation with GitHub fallback if repository is available
   if (info.npm?.repo) {
     const ver = versionSpecifier || info.npm.v1 || '';
-    if (await attemptInstallation(info.npm.repo, ver, cwd, '')) {
+    const result = await executeInstallationWithFallback(info.npm.repo, ver, cwd, githubFallback);
+
+    if (result.success) {
+      // Verify import if not a GitHub install
+      if (!info.npm.repo.startsWith('github:') && !process.env.ELIZA_SKIP_PLUGIN_VERIFY) {
+        const importSuccess = await verifyPluginImport(result.installedIdentifier || info.npm.repo, 'from npm with potential GitHub fallback');
+        return importSuccess;
+      }
       return true;
     }
   } else if (info.npm?.v1) {
-    if (await attemptInstallation(key, info.npm.v1, cwd, '')) {
+    const result = await executeInstallationWithFallback(key, info.npm.v1, cwd, githubFallback);
+
+    if (result.success) {
+      // Verify import if not a GitHub install
+      if (!process.env.ELIZA_SKIP_PLUGIN_VERIFY) {
+        const importSuccess = await verifyPluginImport(result.installedIdentifier || key, 'from npm registry with potential GitHub fallback');
+        return importSuccess;
+      }
       return true;
     }
   }
 
+  // If npm approaches failed but we have GitHub repo, try direct GitHub installation
   if (info.git?.repo) {
-    const branchOrTag = info.git.v1?.version || info.git.v1?.branch || '';
-    const spec = `github:${info.git.repo}${branchOrTag ? `#${branchOrTag}` : ''}`;
+    const spec = `github:${info.git.repo}${githubVersion ? `#${githubVersion}` : ''}`;
 
     if (await attemptInstallation(spec, '', cwd, '')) {
       return true;
     }
 
+    // Try installing in CLI directory as final fallback
     if (cliDir) {
       return await attemptInstallation(spec, '', cliDir, 'in CLI directory');
     }
