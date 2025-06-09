@@ -81,7 +81,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.eliza/models
-          key: ${{ runner.os }}-models-${{ hashFiles('.github/workflows/cli-tests.yml') }}
+          key: ${{ runner.os }}-models-${{ hashFiles('models/**') }}
           restore-keys: |
             ${{ runner.os }}-models-
 
