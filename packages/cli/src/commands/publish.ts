@@ -19,7 +19,7 @@ import { execa } from 'execa';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import prompts from 'prompts';
+import * as clack from '@clack/prompts';
 // Import performCliUpdate directly from update instead of update-cli
 import { performCliUpdate } from './update';
 
@@ -86,12 +86,15 @@ async function checkCliVersion() {
     if (latestVersion && latestVersion !== currentVersion) {
       console.warn(`CLI update available: ${currentVersion} → ${latestVersion}`);
 
-      const { update } = await prompts({
-        type: 'confirm',
-        name: 'update',
+      const update = await clack.confirm({
         message: 'Update CLI before publishing?',
-        initial: false,
+        initialValue: false,
       });
+
+      if (clack.isCancel(update)) {
+        clack.cancel('Operation cancelled.');
+        process.exit(0);
+      }
 
       if (update) {
         console.info('Updating CLI...');
@@ -304,12 +307,15 @@ async function getNpmUsername(): Promise<string> {
     console.info(`Found existing NPM login: ${currentUser}`);
 
     // Ask if they want to use this account or login with a different one
-    const { useExisting } = await prompts({
-      type: 'confirm',
-      name: 'useExisting',
+    const useExisting = await clack.confirm({
       message: `Use NPM account "${currentUser}" for package naming?`,
-      initial: true,
+      initialValue: true,
     });
+
+    if (clack.isCancel(useExisting)) {
+      clack.cancel('Operation cancelled.');
+      process.exit(0);
+    }
 
     if (useExisting) {
       return currentUser;
@@ -440,12 +446,15 @@ async function validatePluginRequirements(cwd: string, packageJson: any): Promis
     warnings.forEach((warning) => console.warn(`  - ${warning}`));
     console.warn('Your plugin may get rejected if you submit without addressing these issues.');
 
-    const { proceed } = await prompts({
-      type: 'confirm',
-      name: 'proceed',
+    const proceed = await clack.confirm({
       message: 'Do you wish to continue anyway?',
-      initial: false,
+      initialValue: false,
     });
+
+    if (clack.isCancel(proceed)) {
+      clack.cancel('Operation cancelled.');
+      process.exit(0);
+    }
 
     if (!proceed) {
       console.info('Publishing cancelled. Please address the warnings and try again.');
@@ -581,12 +590,15 @@ export const publish = new Command()
         console.warn(
           "This doesn't appear to be an ElizaOS plugin. Package name should include 'plugin-'."
         );
-        const { proceed } = await prompts({
-          type: 'confirm',
-          name: 'proceed',
+        const proceed = await clack.confirm({
           message: 'Proceed anyway?',
-          initial: false,
+          initialValue: false,
         });
+
+        if (clack.isCancel(proceed)) {
+          clack.cancel('Operation cancelled.');
+          process.exit(0);
+        }
 
         if (!proceed) {
           process.exit(0);

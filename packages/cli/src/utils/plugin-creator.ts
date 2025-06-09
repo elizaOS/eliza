@@ -8,7 +8,7 @@ import { dirname } from 'path';
 import simpleGit, { SimpleGit } from 'simple-git';
 import { fileURLToPath } from 'url';
 import * as os from 'os';
-import inquirer from 'inquirer';
+import * as clack from '@clack/prompts';
 import { runBunCommand } from './run-bun';
 
 const __filename = fileURLToPath(import.meta.url);
