@@ -14,6 +14,7 @@ import { SpanStatusCode } from '@opentelemetry/api';
 import bodyParser from 'body-parser';
 import cors from 'cors';
 import express from 'express';
+import helmet from 'helmet';
 import crypto from 'node:crypto';
 import http from 'node:http';
 import { match, MatchFunction } from 'path-to-regexp';
@@ -30,6 +31,7 @@ import { teeRouter } from './tee';
 import { systemRouter } from './system';
 // NOTE: world router has been removed - functionality moved to messaging/spaces
 import { SocketIORouter } from '../socketio';
+import { securityMiddleware, validateContentTypeMiddleware } from './shared/middleware';
 import fs from 'fs';
 import path from 'path';
 
@@ -698,10 +700,47 @@ export function createApiRouter(
 ): express.Router {
   const router = express.Router();
 
-  // Setup middleware
-  router.use(cors());
-  router.use(bodyParser.json());
-  router.use(bodyParser.urlencoded({ extended: true }));
+  // API-specific security headers (supplementing main app helmet)
+  router.use(helmet({
+    // More restrictive CSP for API endpoints
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'none'"], // API should not load resources
+        scriptSrc: ["'none'"],  // No scripts in API responses
+        objectSrc: ["'none'"],
+        baseUri: ["'none'"],
+        formAction: ["'none'"],
+      },
+    },
+    // API-specific headers
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    referrerPolicy: { policy: "no-referrer" },
+  }));
+
+  // API-specific CORS configuration
+  router.use(cors({
+    origin: process.env.API_CORS_ORIGIN || process.env.CORS_ORIGIN || false, // More restrictive for API
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-API-KEY'],
+    exposedHeaders: ['X-Total-Count'],
+    maxAge: 86400, // Cache preflight for 24 hours
+  }));
+
+  // Additional security middleware
+  router.use(securityMiddleware());
+  
+  // Content type validation for write operations
+  router.use(validateContentTypeMiddleware());
+
+  // Body parsing middleware
+  router.use(bodyParser.json({
+    limit: process.env.EXPRESS_MAX_PAYLOAD || '100kb'
+  }));
+  router.use(bodyParser.urlencoded({ 
+    extended: true,
+    limit: process.env.EXPRESS_MAX_PAYLOAD || '100kb'
+  }));
   router.use(
     express.json({
       limit: process.env.EXPRESS_MAX_PAYLOAD || '100kb',

@@ -74,5 +74,7 @@
     "protobufjs",
     "utf-8-validate"
   ],
-  "dependencies": {}
+  "dependencies": {
+    "helmet": "^8.1.0"
+  }
 }
