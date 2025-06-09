@@ -5,6 +5,11 @@ import { PGliteClientManager } from './pglite/manager';
 import { PgDatabaseAdapter } from './pg/adapter';
 import { PostgresConnectionManager } from './pg/manager';
 import { resolvePgliteDir } from './utils';
+import * as schema from './schema';
+import { sql } from 'drizzle-orm';
+import { migrate } from 'drizzle-orm/node-postgres/migrator';
+import { runPluginMigrations } from './custom-migrator';
+import { DatabaseMigrationService } from './migration-service';
 
 /**
  * Global Singleton Instances (Package-scoped)
@@ -68,7 +73,7 @@ export function createDatabaseAdapter(
 }
 
 /**
- * SQL plugin for database adapter using Drizzle ORM
+ * SQL plugin for database adapter using Drizzle ORM with dynamic plugin schema migrations
  *
  * @typedef {Object} Plugin
  * @property {string} name - The name of the plugin
@@ -77,24 +82,41 @@ export function createDatabaseAdapter(
  * @param {any} _ - Input parameter
  * @param {IAgentRuntime} runtime - The runtime environment for the agent
  */
-const sqlPlugin: Plugin = {
-  name: 'sql',
-  description: 'SQL database adapter plugin using Drizzle ORM',
+export const plugin: Plugin = {
+  name: '@elizaos/plugin-sql',
+  description: 'A plugin for SQL database access with dynamic schema migrations',
+  priority: 0,
+  schema,
   init: async (_, runtime: IAgentRuntime) => {
-    const config = {
-      dataDir: resolvePgliteDir(runtime.getSetting('PGLITE_DATA_DIR') as string | undefined),
-      postgresUrl: runtime.getSetting('POSTGRES_URL'),
-    };
+    logger.info('plugin-sql init starting...');
 
+    // Get database configuration from runtime settings
+    const postgresUrl = runtime.getSetting('POSTGRES_URL') || runtime.getSetting('DATABASE_URL');
+    const dataDir = runtime.getSetting('DATABASE_PATH') || './.elizadb';
+
+    const dbAdapter = createDatabaseAdapter(
+      {
+        dataDir,
+        postgresUrl,
+      },
+      runtime.agentId
+    );
+
+    runtime.registerDatabaseAdapter(dbAdapter);
+    logger.info('Database adapter created and registered');
+
+    // Register the migration service
     try {
-      const db = createDatabaseAdapter(config, runtime.agentId);
-      logger.success('Database connection established successfully');
-      runtime.registerDatabaseAdapter(db);
-    } catch (error) {
-      logger.error('Failed to initialize database:', error);
-      throw error;
+      logger.info(
+        'Attempting to register DatabaseMigrationService with serviceType:',
+        DatabaseMigrationService.serviceType
+      );
+      runtime.registerService(DatabaseMigrationService);
+      logger.info('DatabaseMigrationService base initialization complete');
+    } catch (e) {
+      logger.error('Failed to register DatabaseMigrationService', e);
     }
   },
 };
 
-export default sqlPlugin;
+export default plugin;

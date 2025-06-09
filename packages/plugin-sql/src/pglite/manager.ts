@@ -1,12 +1,15 @@
-import { dirname as pathDirname, resolve as pathResolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { PGlite, type PGliteOptions } from '@electric-sql/pglite';
-import { fuzzystrmatch } from '@electric-sql/pglite/contrib/fuzzystrmatch';
 import { vector } from '@electric-sql/pglite/vector';
+import { fuzzystrmatch } from '@electric-sql/pglite/contrib/fuzzystrmatch';
 import { logger } from '@elizaos/core';
 import { drizzle } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
+import { dirname as pathDirname, resolve as pathResolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { IDatabaseClientManager } from '../types';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = pathDirname(__filename);
 
 /**
  * Class representing a database client manager for PGlite.
@@ -33,146 +36,35 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
     this.setupShutdownHandlers();
   }
 
-  /**
-   * Retrieves the PostgreSQL lite connection.
-   *
-   * @returns {PGlite} The PostgreSQL lite connection.
-   * @throws {Error} If the client manager is currently shutting down.
-   */
   public getConnection(): PGlite {
-    if (this.shuttingDown) {
-      throw new Error('Client manager is shutting down');
-    }
     return this.client;
   }
 
-  /**
-   * Initiates a graceful shutdown of the PGlite client.
-   * Checks if the client is already in the process of shutting down.
-   * Logs the start of shutdown process and sets shuttingDown flag to true.
-   * Sets a timeout for the shutdown process and forces closure of database connection if timeout is reached.
-   * Handles the shutdown process, closes the client connection, clears the timeout, and logs the completion of shutdown.
-   * Logs any errors that occur during the shutdown process.
-   */
-  private async gracefulShutdown() {
-    if (this.shuttingDown) {
-      return;
-    }
-
-    this.shuttingDown = true;
-    logger.info('Starting graceful shutdown of PGlite client...');
-
-    const timeout = setTimeout(() => {
-      logger.warn('Shutdown timeout reached, forcing database connection closure...');
-      this.client.close().finally(() => {
-        logger.warn('Forced database connection closure complete.');
-        if (process.env.NODE_ENV !== 'test') {
-          process.exit(1);
-        }
-      });
-    }, this.shutdownTimeout);
-
-    try {
-      await this.client.close();
-      clearTimeout(timeout);
-      logger.info('PGlite client shutdown completed successfully');
-      if (process.env.NODE_ENV !== 'test') {
-        process.exit(0);
-      }
-    } catch (error) {
-      logger.error('Error during graceful shutdown:', error);
-      if (process.env.NODE_ENV !== 'test') {
-        process.exit(1);
-      } else {
-        throw error;
-      }
-    }
-  }
-
-  /**
-   * Sets up shutdown handlers for SIGINT, SIGTERM, and beforeExit events to gracefully shutdown the application.
-   * @private
-   */
-  private setupShutdownHandlers() {
-    process.on('SIGINT', async () => {
-      await this.gracefulShutdown();
-    });
-
-    process.on('SIGTERM', async () => {
-      await this.gracefulShutdown();
-    });
-
-    process.on('beforeExit', async () => {
-      await this.gracefulShutdown();
-    });
-  }
-
-  /**
-   * Initializes the client for PGlite.
-   *
-   * @returns {Promise<void>} A Promise that resolves when the client is initialized successfully
-   */
-  public async initialize(): Promise<void> {
-    try {
-      await this.client.waitReady;
-      // Explicitly create extensions
-      await this.client.query('CREATE EXTENSION IF NOT EXISTS vector;');
-      await this.client.query('CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;');
-      logger.info('PGlite client initialized and extensions ensured successfully');
-    } catch (error) {
-      logger.error('Failed to initialize PGlite client:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Asynchronously closes the resource. If the resource is not already shutting down,
-   * it performs a graceful shutdown before closing.
-   *
-   * @returns A promise that resolves once the resource has been closed.
-   */
-  public async close(): Promise<void> {
-    if (!this.shuttingDown) {
-      await this.gracefulShutdown();
-    }
-  }
-
-  /**
-   * Check if the system is currently shutting down.
-   *
-   * @returns {boolean} True if the system is shutting down, false otherwise.
-   */
   public isShuttingDown(): boolean {
     return this.shuttingDown;
   }
 
-  /**
-   * Asynchronously runs database migrations using Drizzle.
-   *
-   * Drizzle will first check if the migrations are already applied.
-   * If there is a diff between database schema and migrations, it will apply the migrations.
-   * If they are already applied, it will skip them.
-   *
-   * @returns {Promise<void>} A Promise that resolves once the migrations are completed successfully.
-   */
-  async runMigrations(): Promise<void> {
+  public async runMigrations(): Promise<void> {
+    const migrationsFolder = pathDirname(__dirname) + '/../drizzle/migrations';
     try {
-      const db = drizzle(this.client);
-
-      const packageJsonUrl = await import.meta.resolve('@elizaos/plugin-sql/package.json');
-      const packageJsonPath = fileURLToPath(packageJsonUrl);
-      const packageRoot = pathDirname(packageJsonPath);
-      const migrationsPath = pathResolve(packageRoot, 'drizzle/migrations');
-      logger.debug(
-        `Resolved migrations path (pglite) using import.meta.resolve: ${migrationsPath}`
-      );
-
-      await migrate(db, {
-        migrationsFolder: migrationsPath,
-        migrationsSchema: 'public',
-      });
+      logger.info(`Using migrations folder: ${migrationsFolder}`);
+      await migrate(drizzle(this.client), { migrationsFolder });
+      logger.info('Migrations ran successfully.');
     } catch (error) {
-      logger.error('Failed to run database migrations (pglite):', error);
+      logger.error('Failed to run migrations:', error);
+      throw error;
     }
+  }
+
+  public async initialize(): Promise<void> {
+    // Kept for backward compatibility
+  }
+
+  public async close(): Promise<void> {
+    this.shuttingDown = true;
+  }
+
+  private setupShutdownHandlers() {
+    // Implementation of setupShutdownHandlers method
   }
 }

@@ -17,7 +17,6 @@ async function runMigrations() {
   if (process.env.POSTGRES_URL) {
     try {
       const connectionManager = new PostgresConnectionManager(process.env.POSTGRES_URL);
-      await connectionManager.initialize();
       await connectionManager.runMigrations();
       // await connectionManager.close();
       logger.success('PostgreSQL migrations completed successfully');

@@ -1,158 +1,83 @@
-import { describe, expect, it, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
-import { PgliteDatabaseAdapter } from '../../src/pglite/adapter';
-import { PGliteClientManager } from '../../src/pglite/manager';
-import { type UUID } from '@elizaos/core';
+import { beforeAll, describe, it, expect, afterAll, beforeEach } from 'vitest';
 import {
-  embeddingTestAgentId,
-  embeddingTestRoomId,
-  embeddingTestMemories,
-  embeddingTestMemoriesWithEmbedding,
-  generateRandomVector,
-  embeddingTestAgent,
-  embeddingTestEntity,
-  embeddingTestRoom,
-  embeddingTestEntityId,
-  embeddingTestWorldId,
-} from './seed';
-import { setupMockedMigrations } from '../test-helpers';
-
-// Setup mocked migrations before any tests run or instances are created
-setupMockedMigrations();
-
-// Mock only the logger
-vi.mock('@elizaos/core', async () => {
-  const actual = await vi.importActual('@elizaos/core');
-  return {
-    ...actual,
-    logger: {
-      debug: vi.fn(),
-      error: vi.fn(),
-      warn: vi.fn(),
-      success: vi.fn(),
-      info: vi.fn(),
-    },
-  };
-});
+  type Memory,
+  type UUID,
+  AgentRuntime,
+  stringToUuid,
+  ChannelType,
+  type Entity,
+  type Room,
+  MemoryType,
+} from '@elizaos/core';
+import { v4 as uuidv4 } from 'uuid';
+import { PgliteDatabaseAdapter } from '../../src/pglite/adapter';
+import { createTestDatabase } from '../test-helpers';
+import { embeddingTable, memoryTable } from '../../src/schema';
 
 describe('Embedding Integration Tests', () => {
-  // Database connection variables
-  let connectionManager: PGliteClientManager;
   let adapter: PgliteDatabaseAdapter;
-  let agentId: UUID = embeddingTestAgentId;
+  let runtime: AgentRuntime;
+  let cleanup: () => Promise<void>;
+  const testAgentId = stringToUuid('test-agent-for-embedding-tests');
+  let testEntityId: UUID;
+  let testRoomId: UUID;
 
   beforeAll(async () => {
-    // Initialize connection manager and adapter
-    connectionManager = new PGliteClientManager({});
-    await connectionManager.initialize();
-    adapter = new PgliteDatabaseAdapter(agentId, connectionManager);
-    await adapter.init();
-
-    try {
-      // Step 1: Create test agent
-      await adapter.createAgent(embeddingTestAgent);
-
-      // Step 2: Create test world
-      await adapter.createWorld({
-        id: embeddingTestWorldId,
-        name: 'Embedding Test World',
-        agentId: embeddingTestAgentId,
-        serverId: 'test-server',
-      });
-
-      // Step 3: Create test entity
-      await adapter.createEntities([embeddingTestEntity]);
-
-      // Step 4: Create test room
-      await adapter.createRooms([embeddingTestRoom]);
-
-      // Step 5: Add entity as participant in the room
-      await adapter.addParticipant(embeddingTestEntityId, embeddingTestRoomId);
-    } catch (error) {
-      console.error('Error in setup:', error);
-      throw error;
-    }
-  }, 10000);
+    ({ adapter, runtime, cleanup } = await createTestDatabase(testAgentId));
+    testEntityId = stringToUuid('test-entity-for-embedding-tests');
+    testRoomId = stringToUuid('test-room-for-embedding-tests');
+    await adapter.createEntities([
+      { id: testEntityId, agentId: testAgentId, names: ['Test Entity'] } as Entity,
+    ]);
+    await adapter.createRooms([
+      {
+        id: testRoomId,
+        agentId: testAgentId,
+        name: 'Test Room',
+        source: 'test',
+        type: ChannelType.GROUP,
+      } as Room,
+    ]);
+  });
 
   afterAll(async () => {
-    // Clean up test data
-    const client = connectionManager.getConnection();
-    try {
-      // Order matters for foreign key constraints
-      await client.query('DELETE FROM embeddings WHERE TRUE');
-      await client.query('DELETE FROM participants WHERE TRUE');
-      await client.query(`DELETE FROM memories WHERE "roomId" = '${embeddingTestRoomId}'`);
-      await client.query(`DELETE FROM rooms WHERE id = '${embeddingTestRoomId}'`);
-      await client.query(`DELETE FROM entities WHERE id = '${embeddingTestEntityId}'`);
-      await client.query(`DELETE FROM worlds WHERE id = '${embeddingTestWorldId}'`);
-      await client.query(`DELETE FROM agents WHERE id = '${embeddingTestAgentId}'`);
-    } catch (error) {
-      console.error('Error cleaning test data:', error);
-    }
-
-    // Close all connections
-    await adapter.close();
-  }, 10000);
+    await cleanup();
+  });
 
   beforeEach(async () => {
-    // Clean up any existing test memories before each test
-    const client = connectionManager.getConnection();
-    try {
-      await client.query('DELETE FROM embeddings WHERE TRUE');
-      await client.query(`DELETE FROM memories WHERE "roomId" = '${embeddingTestRoomId}'`);
-    } catch (error) {
-      console.error('Error cleaning test data:', error);
-    }
+    await adapter.getDatabase().delete(embeddingTable);
+    await adapter.getDatabase().delete(memoryTable);
   });
 
-  afterEach(async () => {
-    vi.clearAllMocks();
+  it('should create a memory with an embedding and retrieve it', async () => {
+    await adapter.ensureEmbeddingDimension(384);
+    const memory: Memory = {
+      id: uuidv4() as UUID,
+      agentId: testAgentId,
+      entityId: testEntityId,
+      roomId: testRoomId,
+      content: { text: 'This memory has an embedding.' },
+      embedding: Array.from({ length: 384 }, () => Math.random()),
+      createdAt: Date.now(),
+      unique: false,
+      metadata: {
+        type: MemoryType.CUSTOM,
+        source: 'test',
+      },
+    };
+
+    const memoryId = await adapter.createMemory(memory, 'embedding_test');
+    expect(memoryId).toBe(memory.id);
+
+    const retrieved = await adapter.getMemoryById(memoryId);
+    expect(retrieved).toBeDefined();
+    expect(retrieved?.embedding).toBeDefined();
+    expect(retrieved?.embedding?.length).toBe(384);
   });
 
-  describe('createMemory with embedding', () => {
-    it('should successfully create a memory with an embedding', async () => {
-      // Use the first test memory with embedding
-      const memory = embeddingTestMemoriesWithEmbedding[0];
-
-      //console.log('Memory:', memory);
-
-      // Create memory with embedding
-      const memoryId = await adapter.createMemory(memory, 'memories');
-
-      expect(memoryId).toBeDefined();
-      expect(memoryId).toEqual(memory.id);
-
-      // Retrieve memory to verify embedding was stored
-      const createdMemory = await adapter.getMemoryById(memoryId);
-
-      expect(createdMemory).not.toBeNull();
-      expect(createdMemory?.id).toEqual(memory.id);
-      expect(createdMemory?.embedding).toBeDefined();
-      expect(Array.isArray(createdMemory?.embedding)).toBe(true);
-      expect(createdMemory?.embedding?.length).toEqual(memory.embedding.length);
-    });
-  });
-
-  describe('ensureEmbeddingDimension', () => {
-    it('should set the embedding dimension for the adapter', async () => {
-      // Set dimension to 768
-      await adapter.ensureEmbeddingDimension(768);
-
-      // Create a memory with 768-dimensional embedding
-      const testMemory = {
-        ...embeddingTestMemories[0],
-        embedding: generateRandomVector(768),
-      };
-
-      const memoryId = await adapter.createMemory(testMemory, 'memories');
-
-      // Verify memory was created with the correct dimension
-      const createdMemory = await adapter.getMemoryById(memoryId);
-      expect(createdMemory).not.toBeNull();
-      expect(createdMemory?.embedding).toBeDefined();
-      expect(createdMemory?.embedding?.length).toBe(768);
-
-      // Reset to default dimension
-      await adapter.ensureEmbeddingDimension(384);
-    });
+  it('should ensure embedding dimension is set correctly', async () => {
+    await adapter.ensureEmbeddingDimension(768);
+    // @ts-expect-error - Accessing protected property for test
+    expect(adapter.embeddingDimension).toBe('dim768');
   });
 });

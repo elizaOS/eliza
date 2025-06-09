@@ -30,7 +30,7 @@
     "@elizaos/core": "workspace:*",
     "@types/pg": "8.11.10",
     "drizzle-kit": "^0.30.4",
-    "drizzle-orm": "^0.39.1",
+    "drizzle-orm": "^0.44.2",
     "pg": "^8.13.3"
   },
   "devDependencies": {

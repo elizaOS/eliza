@@ -12,11 +12,6 @@ import { type Pool as PgPool } from 'pg';
 export class PgDatabaseAdapter extends BaseDrizzleAdapter<NodePgDatabase> {
   protected embeddingDimension: EmbeddingDimensionColumn = DIMENSION_MAP[384];
 
-  /**
-   * Constructor for creating a new instance of a class.
-   * @param {UUID} agentId - The unique identifier for the agent.
-   * @param {PostgresConnectionManager} manager - The Postgres connection manager for the instance.
-   */
   constructor(
     agentId: UUID,
     private manager: PostgresConnectionManager
@@ -53,13 +48,32 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter<NodePgDatabase> {
    * @returns {Promise<void>} A promise that resolves when initialization is complete.
    */
   async init(): Promise<void> {
-    try {
+    logger.debug('PgDatabaseAdapter initialized, skipping automatic migrations.');
+  }
+
+  async runMigrations(schemaOrPaths?: any, pluginName?: string): Promise<void> {
+    if (Array.isArray(schemaOrPaths)) {
+      await this.manager.runMigrations(schemaOrPaths[0]);
+    } else if (schemaOrPaths && pluginName) {
+      const client = await this.manager.getClient();
+      try {
+        const _drizzle = this.db || drizzle(client);
+        const { runPluginMigrations } = await import('../custom-migrator');
+        await runPluginMigrations(_drizzle, pluginName, schemaOrPaths);
+      } finally {
+        client.release();
+      }
+    } else {
       await this.manager.runMigrations();
-      logger.debug('PgDatabaseAdapter initialized successfully');
-    } catch (error) {
-      logger.error('Failed to initialize PgDatabaseAdapter:', error);
-      throw error;
     }
+  }
+
+  /**
+   * Checks if the database connection is ready and active.
+   * @returns {Promise<boolean>} A Promise that resolves to true if the connection is healthy.
+   */
+  async isReady(): Promise<boolean> {
+    return this.manager.testConnection();
   }
 
   /**
@@ -74,7 +88,7 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter<NodePgDatabase> {
   /**
    * Asynchronously retrieves the connection from the manager.
    *
-   * @returns {Promise<PgPool>} A Promise that resolves with the connection.
+   * @returns {Promise<Pool>} A Promise that resolves with the connection.
    */
   async getConnection() {
     return this.manager.getConnection();
