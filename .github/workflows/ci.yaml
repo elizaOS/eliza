@@ -79,11 +79,6 @@ jobs:
       - name: Run tests
         run: cd packages/core && bun test:coverage
 
-      - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-
   # Lint and format job - runs in parallel
   lint-and-format:
     # Skip duplicate runs: run on push to main, or on pull_request events only
