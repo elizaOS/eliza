@@ -2586,6 +2586,7 @@ export abstract class BaseDrizzleAdapter<
           updatedAt: now,
           agentId: this.agentId as UUID,
         };
+        
         const result = await this.db.insert(taskTable).values(values).returning();
 
         return result[0].id as UUID;
@@ -2711,24 +2712,12 @@ export abstract class BaseDrizzleAdapter<
         if (task.worldId !== undefined) updateValues.worldId = task.worldId;
         if (task.tags !== undefined) updateValues.tags = task.tags;
 
-        task.updatedAt = Date.now();
+        // Always update the updatedAt timestamp as a Date
+        (updateValues as any).updatedAt = new Date();
 
-        // Handle metadata updates
-        if (task.metadata) {
-          // Get current task to merge metadata
-          const currentTask = await this.getTask(id);
-          if (currentTask) {
-            const currentMetadata = currentTask.metadata || {};
-            const newMetadata = {
-              ...currentMetadata,
-              ...task.metadata,
-            };
-            updateValues.metadata = newMetadata;
-          } else {
-            updateValues.metadata = {
-              ...task.metadata,
-            };
-          }
+        // Handle metadata updates - just set it directly without merging
+        if (task.metadata !== undefined) {
+          updateValues.metadata = task.metadata;
         }
 
         await this.db

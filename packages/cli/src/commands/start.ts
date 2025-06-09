@@ -33,6 +33,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { detectDirectoryType, getDirectoryTypeDescription } from '@/src/utils/directory-detection';
 import { validatePort } from '@/src/utils/port-validation';
+import { plugin as sqlPlugin } from '@elizaos/plugin-sql';
+import dotenv from 'dotenv';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -41,36 +43,22 @@ function isValidPluginShape(obj: any): obj is Plugin {
   if (!obj || typeof obj !== 'object' || !obj.name) {
     return false;
   }
-  // Check for the presence of at least one key functional property
   return !!(
     obj.init ||
     obj.services ||
     obj.providers ||
     obj.actions ||
-    obj.memoryManagers ||
-    obj.componentTypes ||
     obj.evaluators ||
-    obj.adapter ||
-    obj.models ||
-    obj.events ||
-    obj.routes ||
-    obj.tests ||
-    obj.config ||
-    obj.description // description is also mandatory technically
+    obj.description
   );
 }
 
 async function loadAndPreparePlugin(pluginName: string): Promise<Plugin | null> {
   const version = getCliInstallTag();
   let pluginModule: any;
-
-  // Check if this is a local development scenario BEFORE attempting any loading
   const context = detectPluginContext(pluginName);
 
   if (context.isLocalDevelopment) {
-    logger.debug(`Local plugin development detected for: ${pluginName}`);
-
-    // For local development, we should never try to install - just load directly
     try {
       pluginModule = await loadPluginModule(pluginName);
       if (!pluginModule) {
@@ -84,774 +72,240 @@ async function loadAndPreparePlugin(pluginName: string): Promise<Plugin | null> 
       return null;
     }
   } else {
-    // External plugin - use existing logic
     try {
-      // Use the centralized loader first
       pluginModule = await loadPluginModule(pluginName);
-
       if (!pluginModule) {
-        // If loading failed, try installing and then loading again
-        logger.info(`Plugin ${pluginName} not available, installing into ${process.cwd()}...`);
-        try {
-          await installPlugin(pluginName, process.cwd(), version);
-          // Try loading again after installation using the centralized loader
-          pluginModule = await loadPluginModule(pluginName);
-        } catch (installError) {
-          logger.error(`Failed to install plugin ${pluginName}: ${installError}`);
-          return null; // Installation failed
-        }
-
-        if (!pluginModule) {
-          logger.error(`Failed to load plugin ${pluginName} even after installation.`);
-          return null; // Loading failed post-installation
-        }
+        logger.info(`Plugin ${pluginName} not available, installing...`);
+        await installPlugin(pluginName, process.cwd(), version);
+        pluginModule = await loadPluginModule(pluginName);
       }
     } catch (error) {
-      // Catch any unexpected error during the combined load/install/load process
-      logger.error(`An unexpected error occurred while processing plugin ${pluginName}: ${error}`);
+      logger.error(`Failed to process plugin ${pluginName}: ${error}`);
       return null;
     }
   }
 
   if (!pluginModule) {
-    // This check might be redundant now, but kept for safety.
-    logger.error(`Failed to process plugin ${pluginName} (module is null/undefined unexpectedly)`);
+    logger.error(`Failed to load module for plugin ${pluginName}.`);
     return null;
   }
 
-  // Construct the expected camelCase export name (e.g., @elizaos/plugin-foo-bar -> fooBarPlugin)
   const expectedFunctionName = `${pluginName
-    .replace(/^@elizaos\/plugin-/, '') // Remove prefix
-    .replace(/^@elizaos-plugins\//, '') // Remove alternative prefix
-    .replace(/-./g, (match) => match[1].toUpperCase())}Plugin`; // Convert kebab-case to camelCase and add 'Plugin' suffix
+    .replace(/^@elizaos\/plugin-/, '')
+    .replace(/^@elizaos\//, '')
+    .replace(/-./g, (match) => match[1].toUpperCase())}Plugin`;
 
-  // 1. Prioritize the expected named export if it exists
-  const expectedExport = pluginModule[expectedFunctionName];
-  if (isValidPluginShape(expectedExport)) {
-    return expectedExport as Plugin;
-  }
+  const exportsToCheck = [
+    pluginModule[expectedFunctionName],
+    pluginModule.default,
+    ...Object.values(pluginModule),
+  ];
 
-  // 2. Check the default export if the named one wasn't found or valid
-  const defaultExport = pluginModule.default;
-  if (isValidPluginShape(defaultExport)) {
-    // Ensure it's not the same invalid object we might have checked above
-    if (expectedExport !== defaultExport) {
-      return defaultExport as Plugin;
-    }
-  }
-
-  // 3. If neither primary method worked, search all exports aggressively
-  for (const key of Object.keys(pluginModule)) {
-    if (key === expectedFunctionName || key === 'default') {
-      continue;
-    }
-
-    const potentialPlugin = pluginModule[key];
+  for (const potentialPlugin of exportsToCheck) {
     if (isValidPluginShape(potentialPlugin)) {
       return potentialPlugin as Plugin;
     }
   }
 
-  logger.warn(
-    `Could not find a valid plugin export in ${pluginName}. Checked exports: ${expectedFunctionName} (if exists), default (if exists), and others. Available exports: ${Object.keys(pluginModule).join(', ')}`
-  );
+  logger.warn(`Could not find a valid plugin export in ${pluginName}.`);
   return null;
 }
 
-/**
- * Analyzes project agents and their plugins to determine which environment variables to prompt for
- */
-export async function promptForProjectPlugins(
-  project: any,
-  pluginToLoad?: { name: string }
-): Promise<void> {
-  // Set to track unique plugin names to avoid duplicate prompts
-  const pluginsToPrompt = new Set<string>();
-
-  // If we have a specific plugin to load, add it
-  if (pluginToLoad?.name) {
-    pluginsToPrompt.add(pluginToLoad.name.toLowerCase());
-  }
-
-  // If we have a project, scan all its agents for plugins
-  if (project) {
-    // Handle both formats: project with agents array and project with single agent
-    const agents = Array.isArray(project.agents)
-      ? project.agents
-      : project.agent
-        ? [project.agent]
-        : [];
-
-    // Check each agent's plugins
-    for (const agent of agents) {
-      if (agent.plugins?.length) {
-        for (const plugin of agent.plugins) {
-          const pluginName = typeof plugin === 'string' ? plugin : plugin.name;
-
-          if (pluginName) {
-            // Extract just the plugin name from the package name if needed
-            const simpleName = pluginName.split('/').pop()?.replace('plugin-', '') || pluginName;
-            pluginsToPrompt.add(simpleName.toLowerCase());
-          }
-        }
-      }
-    }
-  }
-
-  // Prompt for each identified plugin
-  for (const pluginName of pluginsToPrompt) {
-    try {
-      await promptForEnvVars(pluginName);
-    } catch (error) {
-      logger.warn(`Failed to prompt for ${pluginName} environment variables: ${error}`);
-    }
-  }
-}
-
-/**
- * Starts an agent with the given character, agent server, initialization function, plugins, and options.
- *
- * @param character The character object representing the agent.
- * @param server The agent server where the agent will be registered.
- * @param init Optional initialization function to be called with the agent runtime.
- * @param plugins An array of plugins to be used by the agent.
- * @param options Additional options for starting the agent, such as data directory and postgres URL.
- * @returns A promise that resolves to the agent runtime object.
- */
 export async function startAgent(
   character: Character,
   server: AgentServer,
-  init?: (runtime: IAgentRuntime) => void,
+  init?: (runtime: IAgentRuntime) => Promise<void>,
   plugins: (Plugin | string)[] = [],
-  options: {
-    dataDir?: string;
-    postgresUrl?: string;
-    isTestMode?: boolean;
-  } = {}
+  options: { isTestMode?: boolean } = {}
 ): Promise<IAgentRuntime> {
   character.id ??= stringToUuid(character.name);
 
   const loadedPlugins = new Map<string, Plugin>();
-  const pluginsToLoad = new Set<string>();
+  loadedPlugins.set(sqlPlugin.name, sqlPlugin); // Always include sqlPlugin
 
-  const addDependencies = (plugin: Plugin) => {
-    if (plugin.dependencies) {
-      for (const dep of plugin.dependencies) {
-        if (!loadedPlugins.has(dep)) {
-          pluginsToLoad.add(dep);
-        }
-      }
-    }
-    if (options.isTestMode && plugin.testDependencies) {
-      for (const dep of plugin.testDependencies) {
-        if (!loadedPlugins.has(dep)) {
-          pluginsToLoad.add(dep);
-        }
-      }
-    }
-  };
-
-  if (character.plugins) {
-    for (const p of character.plugins) {
-      pluginsToLoad.add(p);
-    }
-  }
-
+  const pluginsToLoad = new Set<string>(character.plugins || []);
   for (const p of plugins) {
     if (typeof p === 'string') {
       pluginsToLoad.add(p);
-    } else if (isValidPluginShape(p)) {
-      if (!loadedPlugins.has(p.name)) {
-        logger.debug(`Registering pre-loaded plugin: ${p.name}`);
-        loadedPlugins.set(p.name, p);
-        addDependencies(p);
+    } else if (isValidPluginShape(p) && !loadedPlugins.has(p.name)) {
+      loadedPlugins.set(p.name, p);
+      (p.dependencies || []).forEach((dep) => pluginsToLoad.add(dep));
+      if (options.isTestMode) {
+        (p.testDependencies || []).forEach((dep) => pluginsToLoad.add(dep));
       }
     }
   }
 
-  while (pluginsToLoad.size > 0) {
-    const currentBatch = Array.from(pluginsToLoad);
-    pluginsToLoad.clear();
+  const resolutionOrder: string[] = [];
+  const visited = new Set<string>();
+  const visiting = new Set<string>();
 
-    for (const pluginName of currentBatch) {
-      if (loadedPlugins.has(pluginName)) {
-        continue;
-      }
-
-      const loadedPlugin = await loadAndPreparePlugin(pluginName);
-
-      if (loadedPlugin) {
-        if (!loadedPlugins.has(loadedPlugin.name)) {
-          logger.success(`Successfully loaded plugin: ${loadedPlugin.name}`);
-          loadedPlugins.set(loadedPlugin.name, loadedPlugin);
-          addDependencies(loadedPlugin);
-        }
-      } else {
-        logger.warn(`Failed to load or prepare plugin, and it will be skipped: ${pluginName}`);
+  const allAvailablePlugins = new Map<string, Plugin>();
+  for (const p of loadedPlugins.values()) {
+    allAvailablePlugins.set(p.name, p);
+  }
+  for (const name of pluginsToLoad) {
+    if (!allAvailablePlugins.has(name)) {
+      const loaded = await loadAndPreparePlugin(name);
+      if (loaded) {
+        allAvailablePlugins.set(loaded.name, loaded);
       }
     }
   }
 
-  const finalPlugins = Array.from(loadedPlugins.values());
-  logger.info(
-    `Final plugins being loaded into runtime: ${finalPlugins.map((p) => p.name).join(', ')}`
-  );
+  function visit(pluginName: string) {
+    if (!allAvailablePlugins.has(pluginName)) {
+      logger.warn(`Plugin dependency "${pluginName}" not found and will be skipped.`);
+      return;
+    }
+    if (visited.has(pluginName)) return;
+    if (visiting.has(pluginName)) {
+      logger.error(`Circular dependency detected involving plugin: ${pluginName}`);
+      return;
+    }
 
-  const encryptedChar = encryptedCharacter(character);
-
-  // Determine the appropriate installation tag based on the CLI version
-  const installTag = getCliInstallTag();
-
-  async function loadEnvConfig(): Promise<RuntimeSettings> {
-    // Only import dotenv in Node.js environment
-    let dotenv = null;
-    try {
-      // This code block will only execute in Node.js environments
-      if (typeof process !== 'undefined' && process.versions && process.versions.node) {
-        dotenv = require('dotenv');
+    visiting.add(pluginName);
+    const plugin = allAvailablePlugins.get(pluginName);
+    if (plugin) {
+      const deps = [...(plugin.dependencies || [])];
+      if (options.isTestMode) {
+        deps.push(...(plugin.testDependencies || []));
       }
-    } catch (err) {
-      // Silently fail if require is not available (e.g., in browser environments)
-      logger.debug('dotenv module not available');
-    }
-
-    // Node.js environment: load from .env file
-    const envInfo = await UserEnvironment.getInstanceInfo();
-    const envPath = envInfo.paths.envFilePath;
-    if (envPath) {
-      console.log(`[elizaos] Resolved .env file from: ${envPath}`);
-    } else {
-      console.log('[elizaos] No .env file found in any parent directory.');
-    }
-
-    // Load the .env file into process.env synchronously
-    try {
-      if (dotenv) {
-        const result = dotenv.config(envPath ? { path: envPath } : {});
-        if (!result.error && envPath) {
-          logger.log(`Loaded .env file from: ${envPath}`);
-        }
-      }
-    } catch (err) {
-      logger.warn('Failed to load .env file:', err);
-    }
-
-    // Parse namespaced settings
-    const env = typeof process !== 'undefined' ? process.env : (import.meta as any).env;
-    const namespacedSettings = parseNamespacedSettings(env as RuntimeSettings);
-
-    // Attach to process.env for backward compatibility if available
-    if (typeof process !== 'undefined') {
-      for (const [namespace, settings] of Object.entries(namespacedSettings)) {
-        process.env[`__namespaced_${namespace}`] = JSON.stringify(settings);
+      for (const dep of deps) {
+        visit(dep);
       }
     }
-
-    return env as RuntimeSettings;
+    visiting.delete(pluginName);
+    visited.add(pluginName);
+    resolutionOrder.push(pluginName);
   }
 
-  interface NamespacedSettings {
-    [namespace: string]: RuntimeSettings;
-  }
-
-  // Add this function to parse namespaced settings
-  function parseNamespacedSettings(env: RuntimeSettings): NamespacedSettings {
-    const namespaced: NamespacedSettings = {};
-
-    for (const [key, value] of Object.entries(env)) {
-      if (!value) continue;
-
-      const [namespace, ...rest] = key.split('.');
-      if (!namespace || rest.length === 0) continue;
-
-      const settingKey = rest.join('.');
-      namespaced[namespace] = namespaced[namespace] || {};
-      namespaced[namespace][settingKey] = value;
+  for (const name of allAvailablePlugins.keys()) {
+    if (!visited.has(name)) {
+      visit(name);
     }
-
-    return namespaced;
   }
+
+  const finalPlugins = resolutionOrder
+    .map((name) => allAvailablePlugins.get(name))
+    .filter((p) => p) as Plugin[];
+
+  logger.info(`Final plugins being loaded: ${finalPlugins.map((p) => p.name).join(', ')}`);
 
   const runtime = new AgentRuntime({
-    character: encryptedChar,
+    character: encryptedCharacter(character),
     plugins: finalPlugins,
     settings: await loadEnvConfig(),
   });
-  if (init) {
-    init(runtime);
-  }
 
-  // start services/plugins/process knowledge
+  // Pass the server's database adapter to the runtime before plugin initialization
+  const initWrapper = async (runtime: IAgentRuntime) => {
+    // Register the server's database adapter with the runtime
+    runtime.registerDatabaseAdapter(server.database);
+    if (init) {
+      await init(runtime);
+    }
+  };
+
+  await initWrapper(runtime);
+
   await runtime.initialize();
 
-  // add to container
+  // Discover and run plugin schema migrations
+  try {
+    const migrationService = runtime.getService('database_migration');
+    if (migrationService) {
+      logger.info('Discovering plugin schemas for dynamic migration...');
+      (migrationService as any).discoverAndRegisterPluginSchemas(finalPlugins);
+
+      logger.info('Running all plugin migrations...');
+      await (migrationService as any).runAllPluginMigrations();
+      logger.info('All plugin migrations completed successfully');
+    } else {
+      logger.warn('DatabaseMigrationService not found - plugin schema migrations skipped');
+    }
+  } catch (error) {
+    logger.error('Failed to run plugin migrations:', error);
+    throw error;
+  }
+
   server.registerAgent(runtime);
-
-  // report to console
   logger.log(`Started ${runtime.character.name} as ${runtime.agentId}`);
-
   return runtime;
 }
 
-/**
- * Stops the agent by closing the database adapter and unregistering the agent from the server.
- *
- * @param {IAgentRuntime} runtime - The runtime of the agent.
- * @param {AgentServer} server - The server that the agent is registered with.
- * @returns {Promise<void>} - A promise that resolves once the agent is stopped.
- */
 async function stopAgent(runtime: IAgentRuntime, server: AgentServer) {
   await runtime.close();
   server.unregisterAgent(runtime.agentId);
   logger.success(`Agent ${runtime.character.name} stopped successfully!`);
 }
 
-/**
- * Function that starts the agents.
- *
- * @param {Object} options - Command options
- * @returns {Promise<void>} A promise that resolves when the agents are successfully started.
- */
-const startAgents = async (options: {
+async function startAgents(options: {
   configure?: boolean;
   port?: number;
   characters?: Character[];
-}) => {
-  // Load existing configuration
-  const existingConfig = await loadConfig();
-
-  // Configure database settings - pass reconfigure option to potentially force reconfiguration
+}) {
   const postgresUrl = await configureDatabaseSettings(options.configure);
-
-  // Ensure POSTGRES_URL is set in environment for runtime to access
-  if (postgresUrl) {
-    process.env.POSTGRES_URL = postgresUrl;
-  }
-
-  // Conditionally resolve PGLite directory only if PostgreSQL URL is not provided
+  if (postgresUrl) process.env.POSTGRES_URL = postgresUrl;
   const pgliteDataDir = postgresUrl ? undefined : await resolvePgliteDir();
 
-  // Check if we should reconfigure based on command-line option or if using default config
-  const shouldConfigure = options.configure || existingConfig.isDefault;
-
-  // Handle service and model selection
-  if (shouldConfigure) {
-    // First-time setup or reconfiguration requested
-    if (existingConfig.isDefault) {
-      logger.info("First time setup. Let's configure your Eliza agent.");
-    } else {
-      logger.info('Reconfiguration requested.');
-    }
-
-    // Save the configuration AFTER user has made selections
-    saveConfig({
-      lastUpdated: new Date().toISOString(),
-    });
-  }
-
-  // Create server instance
   const server = new AgentServer();
-  // Initialize server with appropriate database settings
-  await server.initialize({
-    dataDir: pgliteDataDir,
-    postgresUrl,
-  });
+  await server.initialize({ dataDir: pgliteDataDir, postgresUrl });
 
-  // Set up server properties
-  server.startAgent = async (character) => {
-    logger.debug(`Starting agent for character ${character.name}`);
-    const runtime = await startAgent(character, server);
-    logger.success(`Agent ${character.name} has been successfully started!`);
-    // Add direct console log for higher visibility
-    console.log(`\x1b[32m[√] Agent ${character.name} started successfully!\x1b[0m`);
-    return runtime;
-  };
-  server.stopAgent = (runtime: IAgentRuntime) => {
-    logger.debug(`Stopping agent ${runtime.character.name}`);
-    stopAgent(runtime, server);
-    // Add direct console log for higher visibility
-    console.log(`\x1b[32m[√] Agent ${runtime.character.name} stopped successfully!\x1b[0m`);
-  };
+  server.startAgent = (character) => startAgent(character, server);
+  server.stopAgent = (runtime) => stopAgent(runtime, server);
   server.loadCharacterTryPath = loadCharacterTryPath;
   server.jsonToCharacter = jsonToCharacter;
 
-  // Inside your startAgents function
   const desiredPort = options.port || Number.parseInt(process.env.SERVER_PORT || '3000');
-  logger.debug(`Attempting to start server on port: ${desiredPort}`);
   const serverPort = await findNextAvailablePort(desiredPort);
-
   if (serverPort !== desiredPort) {
     logger.warn(`Port ${desiredPort} is in use, using port ${serverPort} instead`);
   }
-
   process.env.SERVER_PORT = serverPort.toString();
-
-  // Try to find a project or plugin in the current directory
-  let isProject = false;
-  let isPlugin = false;
-  let pluginModule: Plugin | null = null;
-  let projectModule: any = null;
-
-  const currentDir = process.cwd();
-  try {
-    // Use standardized directory detection
-    const directoryInfo = detectDirectoryType(currentDir);
-
-    // Determine if this is a project or plugin
-    isProject = directoryInfo.type === 'elizaos-project';
-    isPlugin = directoryInfo.type === 'elizaos-plugin';
-
-    if (isProject) {
-      logger.debug('Found ElizaOS project using standardized directory detection');
-    } else if (isPlugin) {
-      logger.debug('Found ElizaOS plugin using standardized directory detection');
-    }
-
-    // If we found a plugin or project, try to load it
-    if ((isProject || isPlugin) && directoryInfo.hasPackageJson) {
-      const packageJsonPath = path.join(currentDir, 'package.json');
-      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-
-      // If we found a main entry in package.json, try to load it
-      const mainEntry = packageJson.main;
-      if (mainEntry) {
-        const mainPath = path.resolve(currentDir, mainEntry);
-
-        if (fs.existsSync(mainPath)) {
-          try {
-            // Try to import the module
-            const importedModule = await import(mainPath);
-
-            if (isPlugin) {
-              // Look for plugin object
-              if (
-                importedModule.default &&
-                typeof importedModule.default === 'object' &&
-                importedModule.default.name &&
-                typeof importedModule.default.init === 'function'
-              ) {
-                pluginModule = importedModule.default;
-                logger.debug(`Loaded plugin: ${pluginModule?.name || 'unnamed'}`);
-              } else {
-                logger.warn(
-                  'Plugin detected but no valid plugin export found, looking for other exports'
-                );
-
-                // Try to find any exported plugin object
-                for (const key in importedModule) {
-                  if (
-                    importedModule[key] &&
-                    typeof importedModule[key] === 'object' &&
-                    importedModule[key].name &&
-                    typeof importedModule[key].init === 'function'
-                  ) {
-                    pluginModule = importedModule[key];
-                    logger.debug(`Found plugin export under key: ${key}`);
-                    break;
-                  }
-                }
-              }
-            } else if (isProject) {
-              // Look for project object
-              if (
-                importedModule.default &&
-                typeof importedModule.default === 'object' &&
-                importedModule.default.agents
-              ) {
-                projectModule = importedModule;
-                logger.debug('Loaded project module');
-              }
-            }
-          } catch (importError) {
-            logger.error(`Error importing module: ${importError}`);
-          }
-        } else {
-          logger.error(`Main entry point ${mainPath} does not exist`);
-        }
-      }
-    }
-  } catch (error) {
-    logger.error(`Error checking for project/plugin: ${error}`);
-  }
-
   server.start(serverPort);
 
-  // If characters are provided, start the agents with the characters
   if (options.characters && options.characters.length > 0) {
     for (const character of options.characters) {
-      // Initialize plugins as an empty array if undefined
-      character.plugins = character.plugins || [];
-
-      // make sure character has sql plugin
-      const hasSqlPlugin = character.plugins.some(
-        (plugin) => plugin.includes('plugin-sql') || plugin.includes('plugin-mysql')
-      );
-      if (!hasSqlPlugin) {
-        character.plugins.push('@elizaos/plugin-sql');
-      }
-
-      // make sure character has at least one ai provider
-      if (process.env.OPENAI_API_KEY) {
-        const hasOpenAiPlugin = character.plugins.some((plugin) =>
-          plugin.includes('plugin-openai')
-        );
-        if (!hasOpenAiPlugin) {
-          character.plugins.push('@elizaos/plugin-openai');
-        }
-      } else if (process.env.ANTHROPIC_API_KEY) {
-        const hasAnthropicPlugin = character.plugins.some((plugin) =>
-          plugin.includes('plugin-anthropic')
-        );
-        if (!hasAnthropicPlugin) {
-          character.plugins.push('@elizaos/plugin-anthropic');
-        }
-      } else {
-        const hasLocalAiPlugin = character.plugins.some((plugin) =>
-          plugin.includes('plugin-local-ai')
-        );
-        if (!hasLocalAiPlugin) {
-          character.plugins.push('@elizaos/plugin-local-ai');
-        }
-      }
-
       await startAgent(character, server);
     }
   } else {
-    // Start agents based on project, plugin, or custom configuration
-    if (isProject && projectModule?.default) {
-      // Load all project agents, call their init and register their plugins
-      const project = projectModule.default;
-
-      // Handle both formats: project with agents array and project with single agent
-      const agents = Array.isArray(project.agents)
-        ? project.agents
-        : project.agent
-          ? [project.agent]
-          : [];
-
-      if (agents.length > 0) {
-        logger.debug(`Found ${agents.length} agents in project`);
-
-        // Prompt for environment variables for all plugins in the project
-        try {
-          await promptForProjectPlugins(project);
-        } catch (error) {
-          logger.warn(`Failed to prompt for project environment variables: ${error}`);
-        }
-
-        const startedAgents = [];
-        const results = await Promise.allSettled(
-          agents.map(async (agent) => {
-            logger.debug(`Starting agent: ${agent.character.name}`);
-            const runtime = await startAgent(
-              agent.character,
-              server,
-              agent.init,
-              agent.plugins || []
-            );
-            return runtime;
-          })
-        );
-
-        startedAgents.push(...results.filter(Boolean));
-
-        if (startedAgents.length === 0) {
-          logger.info('No project agents started - falling back to default Eliza character');
-          const elizaCharacter = getElizaCharacter();
-          await startAgent(elizaCharacter, server);
-        } else {
-          logger.info(`Successfully started ${startedAgents.length} agents from project`);
-        }
-      } else {
-        logger.info('Project found but no agents defined, falling back to default Eliza character');
-        const elizaCharacter = getElizaCharacter();
-        await startAgent(elizaCharacter, server);
-      }
-    } else if (isPlugin && pluginModule) {
-      // Before starting with the plugin, prompt for any environment variables it needs
-      if (pluginModule.name) {
-        try {
-          await promptForEnvVars(pluginModule.name);
-        } catch (error) {
-          logger.warn(`Failed to prompt for plugin environment variables: ${error}`);
-        }
-      }
-
-      // Load the default character with all its default plugins, then add the test plugin
-      logger.debug(
-        `Starting default Eliza character with plugin: ${pluginModule.name || 'unnamed plugin'}`
-      );
-
-      // Get the default character with environment-aware plugins
-      const defaultElizaCharacter = getElizaCharacter();
-
-      // Clone the character and add the plugin to its plugins array for GUI display
-      const characterWithPlugin = {
-        ...defaultElizaCharacter,
-        plugins: [...defaultElizaCharacter.plugins, `@elizaos/${pluginModule.name}`],
-      };
-
-      logger.debug(
-        `Using default character with plugins: ${characterWithPlugin.plugins.join(', ')}`
-      );
-      logger.debug(
-        `Plugin test mode: Loading local plugin (${pluginModule.name}) as pre-provided plugin object and in character plugins array`
-      );
-
-      // Start the agent with the modified character that includes the plugin in its plugins array
-      // AND pass the actual plugin object so it loads from the local source instead of trying to download
-      const runtime = await startAgent(characterWithPlugin, server, undefined, [pluginModule]);
-
-      // Save the modified character to the database so the API returns the correct plugin list
-      // Do this AFTER starting the agent so the runtime and database are properly initialized
-      try {
-        await runtime.updateAgent(runtime.agentId, { plugins: characterWithPlugin.plugins });
-        logger.debug(`Updated agent plugins in database: ${pluginModule.name}`);
-      } catch (error) {
-        logger.warn(`Failed to update agent plugins in database: ${error.message}`);
-      }
-    } else {
-      // When not in a project or plugin, use the environment-aware character
-      const elizaCharacter = getElizaCharacter();
-      logger.debug(
-        `Using default Eliza character with plugins: ${elizaCharacter.plugins.join(', ')}`
-      );
-      await startAgent(elizaCharacter, server);
-    }
-
-    // Display link to the client UI
-    // First try to find it in the CLI package dist/client directory
-    let clientPath = path.join(__dirname, '../../client');
-
-    // If not found, fall back to the old relative path for development
-    if (!fs.existsSync(clientPath)) {
-      clientPath = path.join(__dirname, '../../../..', 'client/dist');
-    }
+    const elizaCharacter = getElizaCharacter();
+    await startAgent(elizaCharacter, server);
   }
-};
-// Create command that can be imported directly
+}
+
+async function loadEnvConfig(): Promise<RuntimeSettings> {
+  const envInfo = await UserEnvironment.getInstanceInfo();
+  if (envInfo.paths.envFilePath) {
+    dotenv.config({ path: envInfo.paths.envFilePath });
+  }
+  return process.env as RuntimeSettings;
+}
+
 export const start = new Command()
   .name('start')
-  .description('Start the Eliza agent with configurable plugins and services')
-  .option(
-    '-c, --configure',
-    'Force reconfiguration of services and AI models (bypasses saved configuration)'
-  )
-  .option('-char, --character [paths...]', 'Character file(s) to use - accepts paths or URLs')
-  .option('-b, --build', 'Build the project before starting')
-  .option('-p, --port <port>', 'Port to listen on (default: 3000)', validatePort)
+  .description('Start the Eliza agent server')
+  .option('-c, --configure', 'Reconfigure services and AI models')
+  .option('-p, --port <port>', 'Port to listen on', validatePort)
+  .option('-char, --character [paths...]', 'Character file(s) to use')
   .hook('preAction', async () => {
     await displayBanner();
   })
   .action(async (options) => {
     try {
-      // Build the project first unless skip-build is specified
-      if (options.build) {
-        await buildProject(process.cwd());
-      }
-
-      // Store characters in a new array to avoid issues with commander
-      let loadedCharacters: Character[] = [];
-      let failedCharacters: string[] = [];
-
-      // Process character(s) from options.character
+      let characters: Character[] = [];
       if (options.character) {
-        const characterPaths: string[] = [];
-
-        // Handle both array and single string inputs
-        if (Array.isArray(options.character)) {
-          for (const item of options.character) {
-            // Split by commas in case user provided comma-separated list
-            // Strip quotes if present (handles both single and double quotes)
-            const parts = item
-              .trim()
-              .split(',')
-              .map((part) => part.trim())
-              .map((part) => part.replace(/^['"](.*)['"]$/, '$1'));
-
-            // Validate each part before adding to characterPaths
-            for (const part of parts) {
-              if (!part.trim()) {
-                logger.warn(`Skipping empty character path`);
-              } else {
-                characterPaths.push(part);
-              }
-            }
+        for (const path of options.character) {
+          try {
+            characters.push(await loadCharacterTryPath(path));
+          } catch (e) {
+            logger.error(`Failed to load character from ${path}:`, e);
           }
-        } else if (typeof options.character === 'string') {
-          // Split by commas in case user provided comma-separated list
-          // Strip quotes if present (handles both single and double quotes)
-          const parts = options.character
-            .trim()
-            .split(',')
-            .map((part) => part.trim())
-            .map((part) => part.replace(/^['"](.*)['"]$/, '$1'));
-
-          // Validate each part before adding to characterPaths
-          for (const part of parts) {
-            if (!part.trim()) {
-              logger.warn(`Skipping empty character path`);
-            } else {
-              characterPaths.push(part);
-            }
-          }
-        } else if (options.character === true) {
-          // Handle the case where flag is provided without arguments
-          logger.warn('--character flag provided without any paths. No characters will be loaded.');
-        }
-
-        // If no valid paths remain after filtering, show error
-        if (characterPaths.length === 0) {
-          logger.error(
-            `All provided character paths are empty or invalid. Starting with default character...`
-          );
-        } else {
-          // Load each character path
-          for (const path of characterPaths) {
-            try {
-              logger.debug(`Loading character from ${path}`);
-              // Try with the exact path first
-              let characterData;
-              try {
-                characterData = await loadCharacterTryPath(path);
-              } catch (error) {
-                // If that fails and there's no extension, try adding .json
-                if (!path.includes('.')) {
-                  logger.debug(`Trying with .json extension: ${path}.json`);
-                  characterData = await loadCharacterTryPath(`${path}.json`);
-                } else {
-                  throw error;
-                }
-              }
-              loadedCharacters.push(characterData);
-            } catch (error) {
-              failedCharacters.push(path);
-              logger.error(`Failed to load character from ${path}: ${error}`);
-            }
-          }
-        }
-
-        // If we have both successes and failures, log a message
-        if (loadedCharacters.length > 0 && failedCharacters.length > 0) {
-          logger.warn(
-            `${failedCharacters.length} character(s) failed to load, but ${loadedCharacters.length} succeeded. Starting server with valid characters.`
-          );
-        }
-        // If all characters failed, log error and handle gracefully
-        else if (loadedCharacters.length === 0 && characterPaths.length > 0) {
-          logger.error(
-            `All ${failedCharacters.length} character(s) failed to load. Starting server with default character...`
-          );
         }
       }
-
-      // Start the agents with loaded characters
-      await startAgents({
-        configure: options.configure,
-        port: options.port,
-        characters: loadedCharacters,
-      });
-    } catch (error) {
-      handleError(error);
+      await startAgents({ ...options, characters });
+    } catch (e: any) {
+      handleError(e);
     }
   });

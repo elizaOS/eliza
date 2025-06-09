@@ -46,7 +46,7 @@ TELEGRAM_ACCOUNT_SYSTEM_VERSION="1.0"   # System version to show in Telegram
 To install the plugin to your ElizaOS agent:
 
 ```bash
-npm install @elizaos-plugins/client-telegram-account
+npm install @elizaos/client-telegram-account
 ```
 
 ### 4. Add the Plugin to Your Agent Configuration

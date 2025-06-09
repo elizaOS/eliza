@@ -17,13 +17,13 @@ A plugin for ElizaOS that enables interaction with Story Protocol - a comprehens
 Install via npm:
 
 ```bash
-npm install @elizaos-plugins/plugin-story
+npm install @elizaos/plugin-story
 ```
 
 Or using bun:
 
 ```bash
-bun add @elizaos-plugins/plugin-story
+bun add @elizaos/plugin-story
 ```
 
 ## Configuration

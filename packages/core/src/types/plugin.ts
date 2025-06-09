@@ -62,6 +62,8 @@ export interface Plugin {
   testDependencies?: string[];
 
   priority?: number;
+
+  schema?: any;
 }
 
 export interface ProjectAgent {

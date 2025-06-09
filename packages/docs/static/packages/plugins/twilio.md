@@ -12,7 +12,7 @@ A Twilio plugin for ElizaOS that enables SMS and voice call capabilities.
 ## Installation
 
 ```bash
-bun add @elizaos-plugins/plugin-twilio
+bun add @elizaos/plugin-twilio
 ```
 
 ## Configuration

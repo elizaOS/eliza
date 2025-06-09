@@ -53,14 +53,14 @@ export const findPluginPackageName = (
     : pluginInput;
   normalizedBase = normalizedBase.replace(/^plugin-/, ''); // Remove prefix if present
 
-  // Potential package names to check (prioritize @elizaos/ over @elizaos-plugins/)
+  // Potential package names to check (prioritize @elizaos/ over @elizaos/)
   const possibleNames = [
     pluginInput, // Check the raw input first
     `@elizaos/plugin-${normalizedBase}`, // Prioritize @elizaos/ scope
     `@elizaos/${normalizedBase}`, // Might be needed if input was 'plugin-abc' -> base 'abc' -> check '@elizaos/abc'
-    `@elizaos-plugins/plugin-${normalizedBase}`, // Check alternative scope
+    `@elizaos/plugin-${normalizedBase}`, // Check alternative scope
     `plugin-${normalizedBase}`,
-    `@elizaos-plugins/${normalizedBase}`,
+    `@elizaos/${normalizedBase}`,
   ];
 
   for (const name of possibleNames) {
@@ -89,7 +89,7 @@ export const extractPackageName = (pluginInput: string): string => {
   if (githubUrlMatch) {
     const [, owner, repo] = githubUrlMatch;
     // For GitHub repos, we typically expect the package name to be scoped
-    // e.g., github:elizaos-plugins/plugin-discord -> @elizaos-plugins/plugin-discord
+    // e.g., github:elizaos-plugins/plugin-discord -> @elizaos/plugin-discord
     return `@${owner}/${repo}`;
   }
 

@@ -1,12 +1,12 @@
-# `@elizaos-plugins/plugin-d.a.t.a`
+# `@elizaos/plugin-d.a.t.a`
 
-The **`@elizaos-plugins/plugin-d.a.t.a`** (Data Authentication, Trust, and Attestation framework) plugin is a plugin from CARV. It enhances the Eliza Agent Framework with powerful data processing capabilities, enabling agents to analyze, transform, and derive insights from various data sources.
+The **`@elizaos/plugin-d.a.t.a`** (Data Authentication, Trust, and Attestation framework) plugin is a plugin from CARV. It enhances the Eliza Agent Framework with powerful data processing capabilities, enabling agents to analyze, transform, and derive insights from various data sources.
 
 - **Comprehensive Data Processing:** Transform raw data into actionable insights through advanced analysis techniques.
 - **Flexible Data Handling:** Support for multiple data formats and sources, from CSV to JSON and APIs.
 - **Intelligent Analysis:** Leverage statistical methods and machine learning techniques for deeper understanding.
 
-Integrate **`@elizaos-plugins/plugin-d.a.t.a`** to empower your AI agents with sophisticated data analysis capabilities.
+Integrate **`@elizaos/plugin-d.a.t.a`** to empower your AI agents with sophisticated data analysis capabilities.
 
 ## Use Cases
 
@@ -131,4 +131,4 @@ Logs:
   }
 ```
 
-Start leveraging the power of data analysis in your AI applications with **`@elizaos-plugins/plugin-d.a.t.a`** and unlock new possibilities for your Eliza agents.
+Start leveraging the power of data analysis in your AI applications with **`@elizaos/plugin-d.a.t.a`** and unlock new possibilities for your Eliza agents.

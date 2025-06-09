@@ -20,7 +20,7 @@ A SQLite database adapter for ElizaOS that provides persistent storage capabilit
 ## Installation
 
 ```bash
-npm install @elizaos-plugins/adapter-sqlite
+npm install @elizaos/adapter-sqlite
 ```
 
 ## Dependencies
@@ -32,7 +32,7 @@ npm install @elizaos-plugins/adapter-sqlite
 ## Usage
 
 ```typescript
-import sqlitePlugin from '@elizaos-plugins/adapter-sqlite';
+import sqlitePlugin from '@elizaos/adapter-sqlite';
 import { IAgentRuntime } from '@elizaos/core';
 
 // Initialize with ElizaOS runtime
@@ -42,7 +42,7 @@ function initializeAgent(runtime: IAgentRuntime) {
 
 // Or initialize directly
 import Database from 'better-sqlite3';
-import { SqliteDatabaseAdapter } from '@elizaos-plugins/adapter-sqlite';
+import { SqliteDatabaseAdapter } from '@elizaos/adapter-sqlite';
 
 const db = new Database('path/to/database.db');
 const adapter = new SqliteDatabaseAdapter(db);

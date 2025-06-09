@@ -1,4 +1,4 @@
-# @elizaos-plugins/plugin-compass
+# @elizaos/plugin-compass
 
 ## Purpose
 
@@ -12,7 +12,7 @@ A plugin that integrates the Compass API into the ElizaOS ecosystem to execute o
 ## Installation
 
 ```
-npx elizaos plugins add @elizaos-plugins/plugin-compass
+npx elizaos plugins add @elizaos/plugin-compass
 bun run build
 ```
 
@@ -29,7 +29,7 @@ These can also be set directly in the character configuration under settings.sec
 
 ## Integration
 
-Added to the character configuration in the "plugins" array as "@elizaos-plugins/plugin-compass".
+Added to the character configuration in the "plugins" array as "@elizaos/plugin-compass".
 
 ## Links
 

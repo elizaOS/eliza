@@ -1,4 +1,4 @@
-import { Service } from './service';
+import { Service, ServiceType } from './service';
 import type { TokenBalance } from './token';
 
 /**
@@ -24,7 +24,7 @@ export interface WalletPortfolio {
  * It provides a standardized way for other plugins to query the state of a wallet.
  */
 export abstract class IWalletService extends Service {
-  static override readonly serviceType = 'wallet';
+  static override readonly serviceType = ServiceType.WALLET;
 
   public readonly capabilityDescription =
     'Provides standardized access to wallet balances and portfolios.';
@@ -43,4 +43,14 @@ export abstract class IWalletService extends Service {
    * @returns A promise that resolves to the user-friendly (decimal-adjusted) balance of the asset held.
    */
   abstract getBalance(assetAddress: string, owner?: string): Promise<number>;
+
+  /**
+   * Transfers SOL from a specified keypair to a given public key.
+   * This is a low-level function primarily for Solana-based wallet services.
+   * @param from - The Keypair of the sender.
+   * @param to - The PublicKey of the recipient.
+   * @param lamports - The amount in lamports to transfer.
+   * @returns A promise that resolves with the transaction signature.
+   */
+  abstract transferSol(from: any, to: any, lamports: number): Promise<string>;
 }

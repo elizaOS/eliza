@@ -109,12 +109,10 @@ describe('Task Integration Tests', () => {
       };
       await adapter.createTask(originalTask);
 
-      const updatedTask = {
-        ...originalTask,
+      await adapter.updateTask(taskId, {
         description: 'Updated Description',
-        metadata: { ...originalTask.metadata, status: 'completed' },
-      };
-      await adapter.updateTask(taskId, updatedTask);
+        metadata: { status: 'completed' },
+      });
 
       const retrieved = await adapter.getTask(taskId);
       expect(retrieved?.description).toBe('Updated Description');

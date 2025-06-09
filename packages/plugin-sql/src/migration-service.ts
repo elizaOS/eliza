@@ -1,15 +1,13 @@
-import { Service, ServiceType, type IAgentRuntime, logger, type Plugin } from '@elizaos/core';
+import { logger, type Plugin } from '@elizaos/core';
 import { runPluginMigrations } from './custom-migrator';
 import type { DrizzleDatabase } from './types';
 
-export class DatabaseMigrationService extends Service {
-  static serviceType: string = ServiceType.DATABASE_MIGRATION;
-  capabilityDescription: string = 'Database Migration Service';
+export class DatabaseMigrationService {
   private db: DrizzleDatabase | null = null;
   private registeredSchemas = new Map<string, any>();
 
-  constructor(runtime?: IAgentRuntime) {
-    super(runtime);
+  constructor() {
+    // No longer extending Service, so no need to call super
   }
 
   async initializeWithDatabase(db: DrizzleDatabase): Promise<void> {
@@ -47,13 +45,5 @@ export class DatabaseMigrationService extends Service {
     }
 
     logger.info('All plugin migrations completed.');
-  }
-
-  async start(): Promise<void> {
-    logger.info('DatabaseMigrationService started');
-  }
-
-  async stop(): Promise<void> {
-    logger.info('DatabaseMigrationService stopped');
   }
 }

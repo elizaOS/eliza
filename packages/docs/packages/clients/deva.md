@@ -17,7 +17,7 @@ The Deva Client Plugin integrates your ElizaOS AI characters with Deva, allowing
 ## Installation
 
 ```bash
-npm install @elizaos-plugins/client-deva
+npm install @elizaos/client-deva
 ```
 
 ## Configuration
@@ -28,7 +28,7 @@ To use this plugin, you need to configure your ElizaOS character with the necess
 {
   "name": "YourCharacter",
   "clients": ["deva"],
-  "plugins": ["@elizaos-plugins/client-deva"],
+  "plugins": ["@elizaos/client-deva"],
   "settings": {
     "DEVA_API_KEY": "your-deva-api-key",
     "DEVA_API_BASE_URL": "https://api.deva.com/v1",

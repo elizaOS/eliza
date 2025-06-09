@@ -16,7 +16,7 @@ A powerful DEX arbitrage trading plugin for ElizaOS, designed to identify and au
 ## Installation
 
 ```bash
-npm install @elizaos-plugins/plugin-arbitrage
+npm install @elizaos/plugin-arbitrage
 ```
 
 ## Configuration

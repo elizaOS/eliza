@@ -57,9 +57,9 @@ export async function createTestDatabase(
     // Drop schema if it exists to ensure clean state
     await db.execute(sql.raw(`DROP SCHEMA IF EXISTS ${schemaName} CASCADE`));
     await db.execute(sql.raw(`CREATE SCHEMA IF NOT EXISTS ${schemaName}`));
-    await db.execute(sql.raw(`SET search_path TO ${schemaName}`));
+    await db.execute(sql.raw(`SET search_path TO ${schemaName}, public`));
 
-    const migrationService = new DatabaseMigrationService(runtime);
+    const migrationService = new DatabaseMigrationService();
     await migrationService.initializeWithDatabase(db);
     migrationService.discoverAndRegisterPluginSchemas([sqlPlugin, ...testPlugins]);
     await migrationService.runAllPluginMigrations();
@@ -90,7 +90,7 @@ export async function createTestDatabase(
     });
     runtime.registerDatabaseAdapter(adapter);
 
-    const migrationService = new DatabaseMigrationService(runtime);
+    const migrationService = new DatabaseMigrationService();
     await migrationService.initializeWithDatabase(adapter.getDatabase());
     migrationService.discoverAndRegisterPluginSchemas([sqlPlugin, ...testPlugins]);
     await migrationService.runAllPluginMigrations();
@@ -150,10 +150,11 @@ export async function createIsolatedTestDatabase(
     
     // Create isolated schema
     await db.execute(sql.raw(`CREATE SCHEMA ${schemaName}`));
+    // Include public in search path so we can access the vector extension
     await db.execute(sql.raw(`SET search_path TO ${schemaName}, public`));
 
     // Run migrations in isolated schema
-    const migrationService = new DatabaseMigrationService(runtime);
+    const migrationService = new DatabaseMigrationService();
     await migrationService.initializeWithDatabase(db);
     migrationService.discoverAndRegisterPluginSchemas([sqlPlugin, ...testPlugins]);
     await migrationService.runAllPluginMigrations();
@@ -192,7 +193,7 @@ export async function createIsolatedTestDatabase(
     runtime.registerDatabaseAdapter(adapter);
 
     // Run migrations
-    const migrationService = new DatabaseMigrationService(runtime);
+    const migrationService = new DatabaseMigrationService();
     await migrationService.initializeWithDatabase(adapter.getDatabase());
     migrationService.discoverAndRegisterPluginSchemas([sqlPlugin, ...testPlugins]);
     await migrationService.runAllPluginMigrations();

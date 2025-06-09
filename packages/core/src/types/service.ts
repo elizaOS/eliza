@@ -28,6 +28,7 @@ export interface ServiceTypeRegistry {
   WALLET: 'wallet';
   LP_POOL: 'lp_pool';
   TOKEN_DATA: 'token_data';
+  DATABASE_MIGRATION: 'database_migration';
 }
 
 /**
@@ -95,6 +96,7 @@ export const ServiceType = {
   WALLET: 'wallet',
   LP_POOL: 'lp_pool',
   TOKEN_DATA: 'token_data',
+  DATABASE_MIGRATION: 'database_migration',
 } as const satisfies ServiceTypeRegistry;
 
 /**

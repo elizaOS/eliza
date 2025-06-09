@@ -11,7 +11,7 @@ The Alexa Client Plugin enables ElizaOS agents to integrate with Amazon Alexa, a
 ## Installation
 
 ```bash
-npm install @elizaos-plugins/client-alexa
+npm install @elizaos/client-alexa
 ```
 
 ## Prerequisites

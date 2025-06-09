@@ -1,15 +1,7 @@
 import { PGlite, type PGliteOptions } from '@electric-sql/pglite';
-import { vector } from '@electric-sql/pglite/vector';
 import { fuzzystrmatch } from '@electric-sql/pglite/contrib/fuzzystrmatch';
-import { logger } from '@elizaos/core';
-import { drizzle } from 'drizzle-orm/pglite';
-import { migrate } from 'drizzle-orm/pglite/migrator';
-import { dirname as pathDirname, resolve as pathResolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { vector } from '@electric-sql/pglite/vector';
 import type { IDatabaseClientManager } from '../types';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = pathDirname(__filename);
 
 /**
  * Class representing a database client manager for PGlite.
@@ -42,18 +34,6 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
 
   public isShuttingDown(): boolean {
     return this.shuttingDown;
-  }
-
-  public async runMigrations(): Promise<void> {
-    const migrationsFolder = pathDirname(__dirname) + '/../drizzle/migrations';
-    try {
-      logger.info(`Using migrations folder: ${migrationsFolder}`);
-      await migrate(drizzle(this.client), { migrationsFolder });
-      logger.info('Migrations ran successfully.');
-    } catch (error) {
-      logger.error('Failed to run migrations:', error);
-      throw error;
-    }
   }
 
   public async initialize(): Promise<void> {

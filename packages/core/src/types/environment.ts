@@ -87,6 +87,10 @@ export type Room = {
   metadata?: Metadata;
 };
 
+export type RoomMetadata = {
+  [key: string]: unknown;
+};
+
 /**
  * Room participant with account details
  */

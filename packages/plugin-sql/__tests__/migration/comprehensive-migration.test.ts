@@ -120,7 +120,7 @@ describe('Comprehensive Dynamic Migration Tests', () => {
     pgLite = new PGlite(':memory:', {
       extensions: { vector: vectorExtension, fuzzystrmatch: fuzzystrmatchExtension },
     });
-    db = drizzle(pgLite);
+    db = drizzle(pgLite as any);
 
     // Install required extensions
     await db.execute(sql`CREATE EXTENSION IF NOT EXISTS "vector"`);
@@ -382,12 +382,16 @@ describe('Comprehensive Dynamic Migration Tests', () => {
   describe('Data Integrity', () => {
     it('should enforce foreign key constraints', async () => {
       // Try to insert dependent entity with non-existent base_id
-      await expect(
-        db.execute(
+      let errorThrown = false;
+      try {
+        await db.execute(
           sql`INSERT INTO test_plugin.dependent_entities (base_id, type) VALUES 
               ('99999999-9999-9999-9999-999999999999', 'test')`
-        )
-      ).rejects.toThrow();
+        );
+      } catch (error) {
+        errorThrown = true;
+      }
+      expect(errorThrown).toBe(true);
     });
 
     it('should enforce unique constraints', async () => {
@@ -398,12 +402,16 @@ describe('Comprehensive Dynamic Migration Tests', () => {
       );
 
       // Try to insert another with the same name
-      await expect(
-        db.execute(
+      let errorThrown = false;
+      try {
+        await db.execute(
           sql`INSERT INTO test_plugin.base_entities (id, name) VALUES 
               ('550e8400-e29b-41d4-a716-446655440002', 'unique-test')`
-        )
-      ).rejects.toThrow();
+        );
+      } catch (error) {
+        errorThrown = true;
+      }
+      expect(errorThrown).toBe(true);
     });
 
     it('should enforce check constraints', async () => {
@@ -414,19 +422,29 @@ describe('Comprehensive Dynamic Migration Tests', () => {
       );
 
       // Try to insert dependent with negative value (should fail)
-      await expect(
-        db.execute(
+      let errorThrown = false;
+      try {
+        await db.execute(
           sql`INSERT INTO test_plugin.dependent_entities (base_id, type, value) VALUES 
               ('550e8400-e29b-41d4-a716-446655440003', 'test', -1)`
-        )
-      ).rejects.toThrow();
+        );
+      } catch (error) {
+        errorThrown = true;
+      }
+      expect(errorThrown).toBe(true);
     });
   });
 
   describe('Edge Cases', () => {
     it('should handle idempotent migrations (running same migration twice)', async () => {
       // Run migration again - should not fail
-      await expect(runPluginMigrations(db, 'test-plugin', testSchema)).resolves.not.toThrow();
+      let errorThrown = false;
+      try {
+        await runPluginMigrations(db, 'test-plugin', testSchema);
+      } catch (error) {
+        errorThrown = true;
+      }
+      expect(errorThrown).toBe(false);
 
       // Tables should still exist
       const result = await db.execute(
@@ -436,7 +454,13 @@ describe('Comprehensive Dynamic Migration Tests', () => {
     });
 
     it('should handle empty schema gracefully', async () => {
-      await expect(runPluginMigrations(db, 'empty-plugin', {})).resolves.not.toThrow();
+      let errorThrown = false;
+      try {
+        await runPluginMigrations(db, 'empty-plugin', {});
+      } catch (error) {
+        errorThrown = true;
+      }
+      expect(errorThrown).toBe(false);
     });
 
     it('should handle schema with non-table exports', async () => {
@@ -447,7 +471,13 @@ describe('Comprehensive Dynamic Migration Tests', () => {
         someObject: { notATable: true },
       };
 
-      await expect(runPluginMigrations(db, 'mixed-plugin', mixedSchema)).resolves.not.toThrow();
+      let errorThrown = false;
+      try {
+        await runPluginMigrations(db, 'mixed-plugin', mixedSchema);
+      } catch (error) {
+        errorThrown = true;
+      }
+      expect(errorThrown).toBe(false);
 
       // Should only create the actual table
       const result = await db.execute(

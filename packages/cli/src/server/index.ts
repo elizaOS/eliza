@@ -26,7 +26,7 @@ import type {
   CentralRootMessage,
   MessageServiceStructure,
 } from './types';
-import { createDatabaseAdapter } from '@elizaos/plugin-sql';
+import { createDatabaseAdapter, DatabaseMigrationService, plugin as sqlPlugin } from '@elizaos/plugin-sql';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -122,6 +122,27 @@ export class AgentServer {
       await this.database.init();
       logger.success('Consolidated database initialized successfully');
 
+      // Run migrations for the SQL plugin schema
+      logger.info('[INIT] Running database migrations for messaging tables...');
+      try {
+        const migrationService = new DatabaseMigrationService();
+        
+        // Get the underlying database instance
+        const db = (this.database as any).getDatabase();
+        await migrationService.initializeWithDatabase(db);
+        
+        // Register the SQL plugin schema
+        migrationService.discoverAndRegisterPluginSchemas([sqlPlugin]);
+        
+        // Run the migrations
+        await migrationService.runAllPluginMigrations();
+        
+        logger.success('[INIT] Database migrations completed successfully');
+      } catch (migrationError) {
+        logger.error('[INIT] Failed to run database migrations:', migrationError);
+        throw new Error(`Database migration failed: ${migrationError instanceof Error ? migrationError.message : String(migrationError)}`);
+      }
+
       // Add a small delay to ensure database is fully ready
       await new Promise((resolve) => setTimeout(resolve, 500));
 
@@ -129,6 +150,8 @@ export class AgentServer {
       logger.info('[INIT] Ensuring default server exists...');
       await this.ensureDefaultServer();
       logger.success('[INIT] Default server setup complete');
+
+      await this.ensureDefaultAgent();
 
       await this.initializeServer(options);
       await new Promise((resolve) => setTimeout(resolve, 250));
@@ -213,6 +236,46 @@ export class AgentServer {
     } catch (error) {
       logger.error('[AgentServer] Error ensuring default server:', error);
       throw error; // Re-throw to prevent startup if default server can't be created
+    }
+  }
+
+  private async ensureDefaultAgent(): Promise<void> {
+    try {
+      const DEFAULT_AGENT_ID = '00000000-0000-0000-0000-000000000002';
+      
+      // Check if the default agent exists
+      logger.info('[AgentServer] Checking for default agent...');
+      const agent = await this.database.getAgent(DEFAULT_AGENT_ID as UUID);
+      
+      if (!agent) {
+        logger.info('[AgentServer] Creating default agent...');
+        
+        // Create default agent
+        const defaultAgent = {
+          id: DEFAULT_AGENT_ID as UUID,
+          name: 'Default Message Bus Agent',
+          email: 'messagebus@eliza.ai',
+          description: 'Default agent for message bus operations',
+          personas: ['messagebus'],
+          settings: {},
+          modelProvider: 'none',
+          modelName: 'none',
+          createdAt: new Date()
+        };
+        
+        const created = await this.database.createAgent(defaultAgent as any);
+        
+        if (created) {
+          logger.success('[AgentServer] Default agent created successfully');
+        } else {
+          throw new Error('Failed to create default agent');
+        }
+      } else {
+        logger.info('[AgentServer] Default agent already exists');
+      }
+    } catch (error) {
+      logger.error('[AgentServer] Error ensuring default agent:', error);
+      throw error;
     }
   }
 

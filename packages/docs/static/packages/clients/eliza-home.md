@@ -22,7 +22,7 @@ Enables agents to control smart home devices, scenes, and rooms through SmartThi
 ## Installation
 
 ```bash
-npm install @elizaos-plugins/client-eliza-home
+npm install @elizaos/client-eliza-home
 ```
 
 ## Configuration

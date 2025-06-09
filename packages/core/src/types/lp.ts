@@ -1,4 +1,3 @@
-import { Keypair } from '@solana/web3.js';
 import type { Metadata } from './primitives';
 import { Service } from './service';
 import type { TokenBalance } from './token';
@@ -84,7 +83,7 @@ export abstract class ILpService extends Service {
    * @returns A promise resolving to a transaction result, including the LP tokens received.
    */
   abstract addLiquidity(params: {
-    userVault: Keypair;
+    userVault: any;
     poolId: string;
     tokenAAmountLamports: string;
     tokenBAmountLamports?: string;
@@ -99,7 +98,7 @@ export abstract class ILpService extends Service {
    * @returns A promise resolving to a transaction result, including the tokens received.
    */
   abstract removeLiquidity(params: {
-    userVault: Keypair;
+    userVault: any;
     poolId: string;
     lpTokenAmountLamports: string;
     slippageBps: number;

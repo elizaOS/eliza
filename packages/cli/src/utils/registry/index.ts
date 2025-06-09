@@ -195,32 +195,31 @@ interface PluginMetadata {
 
 // Default registry data for offline use or when GitHub is unavailable
 const DEFAULT_REGISTRY: Record<string, string> = {
-  '@elizaos-plugins/plugin-anthropic': 'github:elizaos-plugins/plugin-anthropic',
-  '@elizaos-plugins/plugin-bootstrap': 'github:elizaos-plugins/plugin-bootstrap',
-  '@elizaos-plugins/plugin-browser': 'github:elizaos-plugins/plugin-browser',
-  '@elizaos-plugins/plugin-discord': 'github:elizaos-plugins/plugin-discord',
-  '@elizaos-plugins/plugin-elevenlabs': 'github:elizaos-plugins/plugin-elevenlabs',
-  '@elizaos-plugins/plugin-evm': 'github:elizaos-plugins/plugin-evm',
-  '@elizaos-plugins/plugin-farcaster': 'github:elizaos-plugins/plugin-farcaster',
-  '@elizaos-plugins/plugin-groq': 'github:elizaos-plugins/plugin-groq',
-  '@elizaos-plugins/plugin-local-ai': 'github:elizaos-plugins/plugin-local-ai',
-  '@elizaos-plugins/plugin-mcp': 'github:elizaos-plugins/plugin-mcp',
-  '@elizaos-plugins/plugin-messari-ai-toolkit': 'github:messari/plugin-messari-ai-toolkit',
-  '@elizaos-plugins/plugin-morpheus': 'github:bowtiedbluefin/plugin-morpheus',
-  '@elizaos-plugins/plugin-node': 'github:elizaos-plugins/plugin-node',
-  '@elizaos-plugins/plugin-ollama': 'github:elizaos-plugins/plugin-ollama',
-  '@elizaos-plugins/plugin-openai': 'github:elizaos-plugins/plugin-openai',
-  '@elizaos-plugins/plugin-pdf': 'github:elizaos-plugins/plugin-pdf',
-  '@elizaos-plugins/plugin-redpill': 'github:elizaos-plugins/plugin-redpill',
-  '@elizaos-plugins/plugin-solana': 'github:elizaos-plugins/plugin-solana',
-  '@elizaos-plugins/plugin-sql': 'github:elizaos-plugins/plugin-sql',
-  '@elizaos-plugins/plugin-storage-s3': 'github:elizaos-plugins/plugin-storage-s3',
-  '@elizaos-plugins/plugin-tee': 'github:elizaos-plugins/plugin-tee',
-  '@elizaos-plugins/plugin-telegram': 'github:elizaos-plugins/plugin-telegram',
-  '@elizaos-plugins/plugin-twitter': 'github:elizaos-plugins/plugin-twitter',
-  '@elizaos-plugins/plugin-venice': 'github:elizaos-plugins/plugin-venice',
-  '@elizaos-plugins/plugin-video-understanding':
-    'github:elizaos-plugins/plugin-video-understanding',
+  '@elizaos/plugin-anthropic': 'github:elizaos-plugins/plugin-anthropic',
+  '@elizaos/plugin-bootstrap': 'github:elizaos-plugins/plugin-bootstrap',
+  '@elizaos/plugin-browser': 'github:elizaos-plugins/plugin-browser',
+  '@elizaos/plugin-discord': 'github:elizaos-plugins/plugin-discord',
+  '@elizaos/plugin-elevenlabs': 'github:elizaos-plugins/plugin-elevenlabs',
+  '@elizaos/plugin-evm': 'github:elizaos-plugins/plugin-evm',
+  '@elizaos/plugin-farcaster': 'github:elizaos-plugins/plugin-farcaster',
+  '@elizaos/plugin-groq': 'github:elizaos-plugins/plugin-groq',
+  '@elizaos/plugin-local-ai': 'github:elizaos-plugins/plugin-local-ai',
+  '@elizaos/plugin-mcp': 'github:elizaos-plugins/plugin-mcp',
+  '@elizaos/plugin-messari-ai-toolkit': 'github:messari/plugin-messari-ai-toolkit',
+  '@elizaos/plugin-morpheus': 'github:bowtiedbluefin/plugin-morpheus',
+  '@elizaos/plugin-node': 'github:elizaos-plugins/plugin-node',
+  '@elizaos/plugin-ollama': 'github:elizaos-plugins/plugin-ollama',
+  '@elizaos/plugin-openai': 'github:elizaos-plugins/plugin-openai',
+  '@elizaos/plugin-pdf': 'github:elizaos-plugins/plugin-pdf',
+  '@elizaos/plugin-redpill': 'github:elizaos-plugins/plugin-redpill',
+  '@elizaos/plugin-solana': 'github:elizaos-plugins/plugin-solana',
+  '@elizaos/plugin-sql': 'github:elizaos-plugins/plugin-sql',
+  '@elizaos/plugin-storage-s3': 'github:elizaos-plugins/plugin-storage-s3',
+  '@elizaos/plugin-tee': 'github:elizaos-plugins/plugin-tee',
+  '@elizaos/plugin-telegram': 'github:elizaos-plugins/plugin-telegram',
+  '@elizaos/plugin-twitter': 'github:elizaos-plugins/plugin-twitter',
+  '@elizaos/plugin-venice': 'github:elizaos-plugins/plugin-venice',
+  '@elizaos/plugin-video-understanding': 'github:elizaos-plugins/plugin-video-understanding',
 };
 
 /**
@@ -388,8 +387,8 @@ export function normalizePluginName(pluginName: string): string[] {
     `plugin-${baseName}`, // With plugin- prefix
     `@elizaos/${baseName}`, // Scoped with elizaos
     `@elizaos/plugin-${baseName}`, // Scoped with elizaos and plugin prefix
-    `@elizaos-plugins/${baseName}`, // Scoped with elizaos-plugins
-    `@elizaos-plugins/plugin-${baseName}`, // Scoped with elizaos-plugins and plugin prefix
+    `@elizaos/${baseName}`, // Scoped with elizaos-plugins
+    `@elizaos/plugin-${baseName}`, // Scoped with elizaos-plugins and plugin prefix
   ];
 }
 

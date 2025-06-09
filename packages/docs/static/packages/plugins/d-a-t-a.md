@@ -1,4 +1,4 @@
-# @elizaos-plugins/plugin-d.a.t.a
+# @elizaos/plugin-d.a.t.a
 
 ## Purpose
 

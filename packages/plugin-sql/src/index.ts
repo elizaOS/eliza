@@ -90,6 +90,18 @@ export const plugin: Plugin = {
   init: async (_, runtime: IAgentRuntime) => {
     logger.info('plugin-sql init starting...');
 
+    // Check if a database adapter is already registered
+    try {
+      // Try to access the database adapter to see if one exists
+      const existingAdapter = (runtime as any).databaseAdapter;
+      if (existingAdapter) {
+        logger.info('Database adapter already registered, skipping creation');
+        return;
+      }
+    } catch (error) {
+      // No adapter exists, continue with creation
+    }
+
     // Get database configuration from runtime settings
     const postgresUrl = runtime.getSetting('POSTGRES_URL') || runtime.getSetting('DATABASE_URL');
     const dataDir = runtime.getSetting('DATABASE_PATH') || './.elizadb';
@@ -105,18 +117,13 @@ export const plugin: Plugin = {
     runtime.registerDatabaseAdapter(dbAdapter);
     logger.info('Database adapter created and registered');
 
-    // Register the migration service
-    try {
-      logger.info(
-        'Attempting to register DatabaseMigrationService with serviceType:',
-        DatabaseMigrationService.serviceType
-      );
-      runtime.registerService(DatabaseMigrationService);
-      logger.info('DatabaseMigrationService base initialization complete');
-    } catch (e) {
-      logger.error('Failed to register DatabaseMigrationService', e);
-    }
+    // Note: DatabaseMigrationService is not registered as a runtime service
+    // because migrations are handled at the server level before agents are loaded
   },
 };
 
 export default plugin;
+
+// Export additional utilities that may be needed by consumers
+export { DatabaseMigrationService } from './migration-service';
+export { schema };

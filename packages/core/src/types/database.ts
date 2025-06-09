@@ -35,7 +35,16 @@ export interface IDatabaseAdapter {
   db: any;
 
   /** Initialize database connection */
+  initialize(config?: any): Promise<void>;
+
+  /** Initialize database connection */
   init(): Promise<void>;
+
+  /** Run database migrations */
+  runMigrations(schema?: any, pluginName?: string): Promise<void>;
+
+  /** Check if the database connection is ready */
+  isReady(): Promise<boolean>;
 
   /** Close database connection */
   close(): Promise<void>;

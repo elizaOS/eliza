@@ -1,22 +1,23 @@
 import type { Character } from './agent';
 import type { Action, Evaluator, Provider } from './components';
+import { HandlerCallback } from './components';
 import type { IDatabaseAdapter } from './database';
-import type { Room, World, Entity } from './environment';
-import type { ModelHandler, ModelParamsMap, ModelResultMap, ModelTypeName } from './model';
+import type { Entity, Room, World } from './environment';
+import { Memory } from './memory';
 import type { SendHandlerFunction, TargetInfo } from './messaging';
+import type { ModelParamsMap, ModelResultMap, ModelTypeName } from './model';
 import type { Plugin, Route } from './plugin';
 import type { Content, UUID } from './primitives';
 import type { Service, ServiceTypeName } from './service';
 import type { State } from './state';
 import type { TaskWorker } from './task';
-import { HandlerCallback } from './components';
-import { Memory } from './memory';
 
 /**
  * Represents the core runtime environment for an agent.
  * Defines methods for database interaction, plugin management, event handling,
  * state composition, model usage, and task management.
  */
+
 export interface IAgentRuntime extends IDatabaseAdapter {
   // Properties
   agentId: UUID;
@@ -115,14 +116,6 @@ export interface IAgentRuntime extends IDatabaseAdapter {
     skipCache?: boolean
   ): Promise<State>;
 
-  /**
-   * Use a model with strongly typed parameters and return values based on model type
-   * @template T - The model type to use
-   * @template R - The expected return type, defaults to the type defined in ModelResultMap[T]
-   * @param {T} modelType - The type of model to use
-   * @param {ModelParamsMap[T] | any} params - The parameters for the model, typed based on model type
-   * @returns {Promise<R>} - The model result, typed based on the provided generic type parameter
-   */
   useModel<T extends ModelTypeName, R = ModelResultMap[T]>(
     modelType: T,
     params: Omit<ModelParamsMap[T], 'runtime'> | any
@@ -145,7 +138,6 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 
   emitEvent(event: string | string[], params: any): Promise<void>;
 
-  // In-memory task definition methods
   registerTaskWorker(taskHandler: TaskWorker): void;
   getTaskWorker(name: string): TaskWorker | undefined;
 
@@ -153,7 +145,6 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 
   addEmbeddingToMemory(memory: Memory): Promise<Memory>;
 
-  // easy/compat wrappers
   getEntityById(entityId: UUID): Promise<Entity | null>;
   getRoom(roomId: UUID): Promise<Room | null>;
   createEntity(entity: Entity): Promise<boolean>;
@@ -161,18 +152,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   addParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
   getRooms(worldId: UUID): Promise<Room[]>;
 
-  /**
-   * Registers a handler function responsible for sending messages to a specific source/platform.
-   * @param source - The unique identifier string for the source (e.g., 'discord', 'telegram').
-   * @param handler - The SendHandlerFunction to be called for this source.
-   */
   registerSendHandler(source: string, handler: SendHandlerFunction): void;
 
-  /**
-   * Sends a message to a specified target using the appropriate registered handler.
-   * @param target - Information describing the target recipient and platform.
-   * @param content - The message content to send.
-   * @returns Promise resolving when the message sending process is initiated or completed.
-   */
   sendMessageToTarget(target: TargetInfo, content: Content): Promise<void>;
 }

@@ -35,41 +35,42 @@ interface TableDefinition {
   foreignKeys: ForeignKeyDefinition[];
   checkConstraints: { name: string; expression: string }[];
   dependencies: string[]; // Tables this table depends on
+  compositePrimaryKey?: { name: string; columns: string[] }; // Add composite primary key support
 }
+
+// Known composite primary keys for tables that don't have proper metadata
+const KNOWN_COMPOSITE_PRIMARY_KEYS: Record<string, { columns: string[] }> = {
+  'cache': { columns: ['key', 'agent_id'] },
+  // Add other tables with composite primary keys here if needed
+};
 
 export class DrizzleSchemaIntrospector {
   parseTableDefinition(table: any, exportKey?: string): TableDefinition {
     const tableName = this.getTableName(table, exportKey);
-    const columns = this.parseColumnsFallback(table);
+    
+    const columns = this.parseColumns(table);
+    const foreignKeys = this.parseForeignKeys(table);
+    const indexes = this.parseIndexes(table);
+    const checkConstraints = this.parseCheckConstraints(table);
+    let compositePrimaryKey = this.parseCompositePrimaryKey(table);
+    
+    // Fallback to known composite primary keys if not found
+    if (!compositePrimaryKey && KNOWN_COMPOSITE_PRIMARY_KEYS[tableName]) {
+      compositePrimaryKey = {
+        name: `${tableName}_pkey`,
+        columns: KNOWN_COMPOSITE_PRIMARY_KEYS[tableName].columns,
+      };
+      logger.debug(`[INTROSPECTOR] Using known composite primary key for ${tableName}`);
+    }
 
-    // Re-enable constraint parsing
-    const indexes: IndexDefinition[] = this.parseIndexes(table);
-    const foreignKeys: ForeignKeyDefinition[] = this.parseForeignKeys(table);
-    const checkConstraints: { name: string; expression: string }[] =
-      this.parseCheckConstraints(table);
-
-    // Extract dependencies from foreign keys
-    const dependencies: string[] = foreignKeys
-      .map((fk) => {
-        // If referencedTable is a table object, extract the name
-        if (typeof fk.referencedTable === 'object' && fk.referencedTable !== null) {
-          return this.getTableName(fk.referencedTable, '');
-        }
-        // Otherwise it should already be a string
-        return fk.referencedTable;
-      })
-      .filter((ref) => ref && ref !== 'unknown_table');
-
-    // logger.debug(`[INTROSPECTOR] Parsed table ${exportKey}:`, {
-    //   extractedName: tableName,
-    //   tableStructure: Object.keys(table),
-    //   hasMetadata: !!(table && table._),
-    //   metadataKeys: table._ ? Object.keys(table._) : [],
-    //   actualTableName: table._ && table._.name,
-    //   foreignKeysFound: foreignKeys.length,
-    //   checkConstraintsFound: checkConstraints.length,
-    //   dependsOn: dependencies,
-    // });
+    // Build dependencies list from foreign keys, excluding self-references
+    const dependencies = Array.from(
+      new Set(
+        foreignKeys
+          .map((fk) => fk.referencedTable)
+          .filter((refTable) => refTable !== tableName) // Exclude self-references
+      )
+    );
 
     return {
       name: tableName,
@@ -78,6 +79,7 @@ export class DrizzleSchemaIntrospector {
       foreignKeys,
       checkConstraints,
       dependencies,
+      compositePrimaryKey,
     };
   }
 
@@ -651,6 +653,82 @@ export class DrizzleSchemaIntrospector {
     return checkConstraints;
   }
 
+  private parseCompositePrimaryKey(table: any): { name: string; columns: string[] } | undefined {
+    let tableConfig = table._;
+    const tableName = this.getTableName(table, '');
+    
+    // If no direct _ property, check symbols
+    if (!tableConfig) {
+      const symbols = Object.getOwnPropertySymbols(table);
+      for (const sym of symbols) {
+        // Look for the TableConfig symbol which contains extraConfigBuilder
+        if (sym.toString().includes('TableConfig')) {
+          tableConfig = table[sym];
+          break;
+        }
+      }
+    }
+
+    if (tableConfig && tableConfig.extraConfigBuilder) {
+      try {
+        const extraConfig = tableConfig.extraConfigBuilder(table);
+        
+        // Handle both array and object extraConfig
+        if (Array.isArray(extraConfig)) {
+          for (const item of extraConfig) {
+            if (item && item._ && item._.name && item._.type === 'PrimaryKeyBuilder') {
+              // Extract column names from the primary key definition
+              const columnNames = item._.columns?.map((col: any) => col.name || col) || [];
+              logger.debug(
+                `[INTROSPECTOR] Found composite primary key: ${item._.name}, columns: ${columnNames}`
+              );
+              return {
+                name: item._.name,
+                columns: columnNames,
+              };
+            }
+          }
+        } else if (extraConfig && typeof extraConfig === 'object') {
+          // Handle object form of extraConfig (e.g., { pk: primaryKey(...) })
+          for (const [key, value] of Object.entries(extraConfig)) {
+            // Check if this is a primary key definition
+            if (value && typeof value === 'object' && (value as any)._) {
+              const config = (value as any)._;
+              
+              if (config.name && config.columns) {
+                // Extract column names from the primary key definition
+                const columnNames = config.columns.map((col: any) => {
+                  // Handle column objects that have a name property
+                  if (col && typeof col === 'object' && col.name) {
+                    return col.name;
+                  }
+                  // Handle string column names
+                  if (typeof col === 'string') {
+                    return col;
+                  }
+                  // Fallback
+                  return col?.toString() || 'unknown';
+                });
+                
+                logger.debug(
+                  `[INTROSPECTOR] Found composite primary key: ${config.name}, columns: ${columnNames}`
+                );
+                return {
+                  name: config.name || `${tableName}_pkey`,
+                  columns: columnNames,
+                };
+              }
+            }
+          }
+        }
+      } catch (error) {
+        logger.debug(`[INTROSPECTOR] Could not parse composite primary key:`, error);
+      }
+    }
+
+    return undefined;
+  }
+
   private getSQLType(column: any, columnName: string): string {
     const dataType = column.dataType || column._?.dataType;
     return this.getSQLTypeFromDataType(dataType, columnName);
@@ -803,7 +881,8 @@ export class DrizzleSchemaIntrospector {
     const columnDefs = tableDef.columns
       .map((col) => {
         let def = `"${col.name}" ${col.type}`;
-        if (col.primaryKey) def += ' PRIMARY KEY';
+        // Only add PRIMARY KEY for single column primary keys if no composite primary key exists
+        if (col.primaryKey && !tableDef.compositePrimaryKey) def += ' PRIMARY KEY';
         if (col.notNull && !col.primaryKey) def += ' NOT NULL';
         if (col.unique) def += ' UNIQUE';
         if (col.defaultValue) {
@@ -828,13 +907,25 @@ export class DrizzleSchemaIntrospector {
       .join(',\n    ');
 
     // Add unique constraints (but not foreign keys)
+    const constraints: string[] = [];
+    
+    // Add composite primary key if it exists
+    if (tableDef.compositePrimaryKey) {
+      constraints.push(
+        `CONSTRAINT "${tableDef.compositePrimaryKey.name}" PRIMARY KEY ("${tableDef.compositePrimaryKey.columns.join('", "')}")`
+      );
+    }
+    
+    // Add unique constraints
     const uniqueConstraints = tableDef.indexes
       .filter((idx) => idx.unique)
       .map((idx) => `CONSTRAINT "${idx.name}" UNIQUE ("${idx.columns.join('", "')}")`);
+    
+    constraints.push(...uniqueConstraints);
 
     const allConstraints =
-      uniqueConstraints.length > 0
-        ? `${columnDefs},\n    ${uniqueConstraints.join(',\n    ')}`
+      constraints.length > 0
+        ? `${columnDefs},\n    ${constraints.join(',\n    ')}`
         : columnDefs;
 
     return `CREATE TABLE "${schemaName}"."${tableDef.name}" (\n    ${allConstraints}\n)`;
@@ -893,41 +984,110 @@ export class PluginNamespaceManager {
     return (res.rows as any[]).map((row) => row.table_name);
   }
 
+  async foreignKeyExists(
+    schemaName: string,
+    tableName: string,
+    constraintName: string
+  ): Promise<boolean> {
+    try {
+      const res = await this.db.execute(
+        sql.raw(
+          `SELECT constraint_name 
+           FROM information_schema.table_constraints 
+           WHERE table_schema = '${schemaName}' 
+           AND table_name = '${tableName}' 
+           AND constraint_name = '${constraintName}' 
+           AND constraint_type = 'FOREIGN KEY'`
+        )
+      );
+      return res.rows.length > 0;
+    } catch (error) {
+      // If the query fails, assume the constraint doesn't exist
+      return false;
+    }
+  }
+
+  async checkConstraintExists(
+    schemaName: string,
+    tableName: string,
+    constraintName: string
+  ): Promise<boolean> {
+    try {
+      const res = await this.db.execute(
+        sql.raw(
+          `SELECT constraint_name 
+           FROM information_schema.table_constraints 
+           WHERE table_schema = '${schemaName}' 
+           AND table_name = '${tableName}' 
+           AND constraint_name = '${constraintName}' 
+           AND constraint_type = 'CHECK'`
+        )
+      );
+      return res.rows.length > 0;
+    } catch (error) {
+      // If the query fails, assume the constraint doesn't exist
+      return false;
+    }
+  }
+
+  async uniqueConstraintExists(
+    schemaName: string,
+    tableName: string,
+    constraintName: string
+  ): Promise<boolean> {
+    try {
+      const res = await this.db.execute(
+        sql.raw(
+          `SELECT constraint_name 
+           FROM information_schema.table_constraints 
+           WHERE table_schema = '${schemaName}' 
+           AND table_name = '${tableName}' 
+           AND constraint_name = '${constraintName}' 
+           AND constraint_type = 'UNIQUE'`
+        )
+      );
+      return res.rows.length > 0;
+    } catch (error) {
+      // If the query fails, assume the constraint doesn't exist
+      return false;
+    }
+  }
+
   async createTable(tableDef: TableDefinition, schemaName: string): Promise<void> {
     const introspector = new DrizzleSchemaIntrospector();
     const createTableSQL = introspector.generateCreateTableSQL(tableDef, schemaName);
-    // logger.debug(`[NAMESPACE MANAGER] Creating table ${tableDef.name} with SQL:`, createTableSQL);
+    
     await this.db.execute(sql.raw(createTableSQL));
     logger.info(`Created table: ${tableDef.name}`);
   }
 
   async addConstraints(tableDef: TableDefinition, schemaName: string): Promise<void> {
-    // logger.debug(
-    //   `[CUSTOM MIGRATOR] Adding constraints for table: ${tableDef.name} { foreignKeys: ${tableDef.foreignKeys.length}, checkConstraints: ${tableDef.checkConstraints.length} }`
-    // );
-
     // Add foreign key constraints
     if (tableDef.foreignKeys.length > 0) {
-      // logger.debug(`[CUSTOM MIGRATOR] Adding constraints for table: ${tableDef.name}`);
-      // logger.debug(
-      //   `[CUSTOM MIGRATOR] Adding ${tableDef.foreignKeys.length} foreign key constraints`
-      // );
       const introspector = new DrizzleSchemaIntrospector();
       const constraintSQLs = introspector.generateForeignKeySQL(tableDef, schemaName);
-      for (const constraintSQL of constraintSQLs) {
+      for (let i = 0; i < tableDef.foreignKeys.length; i++) {
+        const fk = tableDef.foreignKeys[i];
+        const constraintSQL = constraintSQLs[i];
+        
         try {
-          // logger.debug(`[CUSTOM MIGRATOR] Executing constraint SQL: ${constraintSQL}`);
+          // Check if foreign key already exists
+          const exists = await this.foreignKeyExists(schemaName, tableDef.name, fk.name);
+          if (exists) {
+            logger.debug(`[CUSTOM MIGRATOR] Foreign key constraint ${fk.name} already exists, skipping`);
+            continue;
+          }
+
           await this.db.execute(sql.raw(constraintSQL));
-          // logger.debug(`[CUSTOM MIGRATOR] Successfully added foreign key constraint`);
+          logger.debug(`[CUSTOM MIGRATOR] Successfully added foreign key constraint: ${fk.name}`);
         } catch (error: any) {
           // Log the error but continue processing other constraints
           if (error.message?.includes('already exists')) {
-            logger.debug(`[CUSTOM MIGRATOR] Foreign key constraint already exists, skipping`);
+            logger.debug(`[CUSTOM MIGRATOR] Foreign key constraint already exists: ${fk.name}`);
           } else {
             logger.warn(
               `[CUSTOM MIGRATOR] Could not add foreign key constraint (may already exist): ${error.message}`
             );
-            // Continue processing other constraints instead of failing completely
           }
         }
       }
@@ -935,19 +1095,24 @@ export class PluginNamespaceManager {
 
     // Add check constraints
     if (tableDef.checkConstraints.length > 0) {
-      // logger.debug(`[CUSTOM MIGRATOR] Adding ${tableDef.checkConstraints.length} check constraints`);
       for (const checkConstraint of tableDef.checkConstraints) {
         try {
+          // Check if check constraint already exists
+          const exists = await this.checkConstraintExists(schemaName, tableDef.name, checkConstraint.name);
+          if (exists) {
+            logger.debug(`[CUSTOM MIGRATOR] Check constraint ${checkConstraint.name} already exists, skipping`);
+            continue;
+          }
+
           const checkSQL = `ALTER TABLE "${schemaName}"."${tableDef.name}" ADD CONSTRAINT "${checkConstraint.name}" CHECK (${checkConstraint.expression})`;
-          // logger.debug(`[CUSTOM MIGRATOR] Executing check constraint SQL: ${checkSQL}`);
           await this.db.execute(sql.raw(checkSQL));
-          // logger.debug(
-          //   `[CUSTOM MIGRATOR] Successfully added check constraint: ${checkConstraint.name}`
-          // );
+          logger.debug(
+            `[CUSTOM MIGRATOR] Successfully added check constraint: ${checkConstraint.name}`
+          );
         } catch (error: any) {
           if (error.message?.includes('already exists')) {
             logger.debug(
-              `[CUSTOM MIGRATOR] Check constraint already exists, skipping: ${checkConstraint.name}`
+              `[CUSTOM MIGRATOR] Check constraint already exists: ${checkConstraint.name}`
             );
           } else {
             logger.warn(
@@ -1103,25 +1268,6 @@ export async function runPluginMigrations(
         checkConstraints: tableDef.checkConstraints.length,
       });
       await namespaceManager.addConstraints(tableDef, schemaName);
-    }
-  }
-
-  // Phase 3: Special handling for cache table unique constraint
-  if (tableDefinitions.has('cache')) {
-    try {
-      logger.debug('[CUSTOM MIGRATOR] Adding cache table unique constraint');
-      await db.execute(
-        sql.raw(
-          'ALTER TABLE "public"."cache" ADD CONSTRAINT cache_key_agent_unique UNIQUE (key, "agent_id")'
-        )
-      );
-    } catch (error: any) {
-      // If constraint already exists, that's fine - ignore the error
-      if (error.message?.includes('already exists') || error.message?.includes('unique')) {
-        logger.debug('[CUSTOM MIGRATOR] Cache unique constraint already exists, skipping');
-      } else {
-        logger.debug(`[CUSTOM MIGRATOR] Could not add unique constraint to cache table: ${error}`);
-      }
     }
   }
 

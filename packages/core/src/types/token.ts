@@ -1,4 +1,4 @@
-import { Service } from './service';
+import { Service, ServiceType } from './service';
 
 /**
  * A standardized representation of a token holding.
@@ -48,8 +48,9 @@ export interface TokenData {
  * Interface for a generic service that provides token data.
  */
 export abstract class ITokenDataService extends Service {
-  static override readonly serviceType = 'token_data';
-  public readonly capabilityDescription = 'Provides standardized access to token market data.';
+  static override readonly serviceType = ServiceType.TOKEN_DATA;
+  public readonly capabilityDescription =
+    'Provides standardized access to token market data.' as string;
 
   /**
    * Fetches detailed information for a single token.

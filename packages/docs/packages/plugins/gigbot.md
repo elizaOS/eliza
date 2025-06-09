@@ -79,7 +79,7 @@ export async function initializeClients(character: Character, runtime: IAgentRun
   if (character.plugins?.length > 0) {
     for (const plugin of character.plugins) {
       // Check if current plugin is GigBot
-      let isGigbot = plugin.name === '@elizaos-plugins/plugin-gigbot';
+      let isGigbot = plugin.name === '@elizaos/plugin-gigbot';
 
       if (plugin.clients) {
         for (const client of plugin.clients) {

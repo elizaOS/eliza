@@ -16,7 +16,7 @@ A SQLite database adapter for ElizaOS that provides persistent storage capabilit
 ## Installation
 
 ```bash
-npm install @elizaos-plugins/adapter-sqlite
+npm install @elizaos/adapter-sqlite
 ```
 
 ## Configuration
@@ -31,7 +31,7 @@ Implements the `IDatabaseAdapter` interface and extends the `DatabaseAdapter` ba
 ## Example Usage
 
 ```typescript
-import sqlitePlugin from '@elizaos-plugins/adapter-sqlite';
+import sqlitePlugin from '@elizaos/adapter-sqlite';
 import { IAgentRuntime } from '@elizaos/core';
 
 // Initialize with ElizaOS runtime

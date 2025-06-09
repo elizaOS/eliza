@@ -34,7 +34,17 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter<PgliteDatabase> {
   constructor(agentId: UUID, manager: PGliteClientManager) {
     super(agentId);
     this.manager = manager;
-    this.db = drizzle(this.manager.getConnection());
+    this.db = drizzle(this.manager.getConnection() as any);
+  }
+
+  /**
+   * Runs database migrations. For PGLite, migrations are handled by the
+   * migration service, not the adapter itself.
+   * @returns {Promise<void>}
+   */
+  async runMigrations(): Promise<void> {
+    logger.debug('PgliteDatabaseAdapter: Migrations are handled by the migration service');
+    // Migrations are handled by the migration service, not the adapter
   }
 
   /**
@@ -59,21 +69,6 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter<PgliteDatabase> {
    */
   async init(): Promise<void> {
     logger.debug('PGliteDatabaseAdapter initialized, skipping automatic migrations.');
-  }
-
-  async runMigrations(schemaOrPaths?: any, pluginName?: string): Promise<void> {
-    if (Array.isArray(schemaOrPaths)) {
-      await this.manager.runMigrations();
-    } else if (schemaOrPaths && pluginName) {
-      const drizzleInstance = this.db;
-      if (!drizzleInstance) {
-        throw new Error('Drizzle instance not found on database adapter');
-      }
-      const { runPluginMigrations } = await import('../custom-migrator');
-      await runPluginMigrations(drizzleInstance, pluginName, schemaOrPaths);
-    } else {
-      await this.manager.runMigrations();
-    }
   }
 
   /**

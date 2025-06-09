@@ -180,7 +180,7 @@ const importStrategies: ImportStrategy[] = [
  * Determines if a plugin is from the ElizaOS ecosystem
  */
 function isElizaOSPlugin(repository: string): boolean {
-  return repository.startsWith('@elizaos/') || repository.startsWith('@elizaos-plugins/');
+  return repository.startsWith('@elizaos/') || repository.startsWith('@elizaos/');
 }
 
 /**

@@ -11,7 +11,7 @@ import {
   type World,
 } from '@elizaos/core';
 import { v4 } from 'uuid';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { PgliteDatabaseAdapter } from '../../src/pglite/adapter';
 import { PgDatabaseAdapter } from '../../src/pg/adapter';
 import {
@@ -28,33 +28,6 @@ import {
   memoryTestMemories,
   memoryTestMemoriesWithEmbedding
 } from './seed';
-
-// Mock only the logger
-vi.mock('@elizaos/core', async () => {
-  const actual = await vi.importActual('@elizaos/core');
-  return {
-    ...actual,
-    logger: {
-      debug: vi.fn(),
-      error: vi.fn(),
-      warn: vi.fn(),
-      success: vi.fn(),
-      info: vi.fn(),
-      trace: vi.fn(),
-    },
-  };
-});
-
-// Helper to create a memory with some variance
-/*
-const createTestMemory = (type: string, text: string, embedding?: number[]): Memory => ({
-  id: uuidv4() as UUID,
-  type,
-  content: { text },
-  createdAt: new Date().getTime(),
-  embedding,
-});
-*/
 
 describe('Memory Integration Tests', () => {
   let adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
@@ -144,7 +117,6 @@ describe('Memory Integration Tests', () => {
   });
 
   afterEach(async () => {
-    vi.clearAllMocks();
     // Clean up memories after each test to ensure isolation
     const db = adapter.getDatabase();
     // Delete in correct order to avoid foreign key constraint violations

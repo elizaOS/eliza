@@ -1,6 +1,5 @@
 import { Pool, type PoolClient } from 'pg';
 import { logger } from '@elizaos/core';
-import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 export class PostgresConnectionManager {
@@ -9,7 +8,7 @@ export class PostgresConnectionManager {
 
   constructor(connectionString: string) {
     this.pool = new Pool({ connectionString });
-    this.db = drizzle(this.pool);
+    this.db = drizzle(this.pool as any);
   }
 
   public getDatabase(): NodePgDatabase {
@@ -22,16 +21,6 @@ export class PostgresConnectionManager {
 
   public async getClient(): Promise<PoolClient> {
     return this.pool.connect();
-  }
-
-  public async runMigrations(migrationsFolder = './drizzle'): Promise<void> {
-    try {
-      await migrate(this.db, { migrationsFolder });
-      logger.info('Migrations ran successfully.');
-    } catch (error) {
-      logger.error('Failed to run migrations:', error);
-      throw error;
-    }
   }
 
   public async testConnection(): Promise<boolean> {

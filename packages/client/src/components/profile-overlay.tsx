@@ -194,7 +194,7 @@ export default function ProfileOverlay({ isOpen, onClose, agentId }: ProfileOver
                     // Extract plugin name by removing the prefix
                     const pluginName = plugin
                       .replace('@elizaos/plugin-', '')
-                      .replace('@elizaos-plugins/plugin-', '');
+                      .replace('@elizaos/plugin-', '');
                     return (
                       <span
                         key={index}
