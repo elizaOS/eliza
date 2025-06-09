@@ -31,8 +31,9 @@ jobs:
   test:
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        os: ${{ github.event_name == 'push' && fromJSON('["ubuntu-latest", "macos-latest", "windows-latest"]') || fromJSON('["ubuntu-latest"]') }}
+        os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
       - name: Checkout code
@@ -81,7 +82,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.eliza/models
-          key: ${{ runner.os }}-models-${{ hashFiles('models/**') }}
+          key: ${{ runner.os }}-models-${{ hashFiles('.github/workflows/cli-tests.yml') }}
           restore-keys: |
             ${{ runner.os }}-models-
 
