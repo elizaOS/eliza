@@ -1,4 +1,10 @@
 name: ci
+
+# Cancel previous runs for the same PR/branch
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: [main]
@@ -7,6 +13,8 @@ on:
 jobs:
   # Setup job - installs dependencies once and caches them
   setup:
+    # Skip duplicate runs: run on push to main, or on pull_request events only
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref_name == 'main')
     runs-on: ubuntu-latest
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
@@ -40,6 +48,8 @@ jobs:
 
   # Test job - runs in parallel
   test:
+    # Skip duplicate runs: run on push to main, or on pull_request events only
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref_name == 'main')
     needs: setup
     runs-on: ubuntu-latest
     env:
@@ -76,6 +86,8 @@ jobs:
 
   # Lint and format job - runs in parallel
   lint-and-format:
+    # Skip duplicate runs: run on push to main, or on pull_request events only
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref_name == 'main')
     needs: setup
     runs-on: ubuntu-latest
     env:
@@ -103,6 +115,8 @@ jobs:
 
   # Build job - runs in parallel
   build:
+    # Skip duplicate runs: run on push to main, or on pull_request events only
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref_name == 'main')
     needs: setup
     runs-on: ubuntu-latest
     env:

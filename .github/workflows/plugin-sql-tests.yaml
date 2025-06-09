@@ -1,4 +1,10 @@
 name: Plugin SQL Integration Tests
+
+# Cancel previous runs for the same PR/branch
+concurrency:
+  group: plugin-sql-tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches:

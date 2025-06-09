@@ -1,5 +1,10 @@
 name: PR Title Check
 
+# Cancel previous runs for the same PR
+concurrency:
+  group: pr-title-check-${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 on:
   pull_request:
     types: [opened, edited, synchronize]
