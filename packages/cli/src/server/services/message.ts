@@ -12,6 +12,7 @@ import {
   type UUID,
 } from '@elizaos/core';
 import internalMessageBus from '../bus'; // Import the bus
+import { sendError } from '../api/shared';
 
 // This interface defines the structure of messages coming from the server
 export interface MessageServiceMessage {
@@ -69,6 +70,10 @@ export class MessageBusService extends Service {
   private async getChannelParticipants(channelId: UUID): Promise<string[]> {
     try {
       const serverApiUrl = this.getCentralMessageServerUrl();
+
+      if (!validateUuid(channelId)) {
+        return [];
+      }
       const response = await fetch(
         `${serverApiUrl}/api/messaging/central-channels/${channelId}/participants`
       );
@@ -433,7 +438,7 @@ export class MessageBusService extends Service {
   getCentralMessageServerUrl(): string {
     const serverPort = process.env.SERVER_PORT;
     const envUrl = process.env.CENTRAL_MESSAGE_SERVER_URL;
-    
+
     // Validate and sanitize server port
     let validatedPort: number | null = null;
     if (serverPort) {
@@ -444,27 +449,27 @@ export class MessageBusService extends Service {
         logger.warn(`[MessageBusService] Invalid SERVER_PORT value: ${serverPort}`);
       }
     }
-    
+
     const defaultUrl = validatedPort ? `http://localhost:${validatedPort}` : 'http://localhost:3000';
     const baseUrl = envUrl ?? defaultUrl;
-    
+
     // Strict validation to prevent SSRF attacks
     try {
       const url = new URL(baseUrl);
-      
+
       // Only allow HTTP/HTTPS protocols
       if (!['http:', 'https:'].includes(url.protocol)) {
         logger.warn(`[MessageBusService] Unsafe protocol in CENTRAL_MESSAGE_SERVER_URL: ${url.protocol}`);
         return defaultUrl;
       }
-      
+
       // Only allow safe localhost variants and block private/internal IPs
       const allowedHosts = ['localhost', '127.0.0.1', '::1'];
       if (!allowedHosts.includes(url.hostname)) {
         logger.warn(`[MessageBusService] Unsafe hostname in CENTRAL_MESSAGE_SERVER_URL: ${url.hostname}`);
         return defaultUrl;
       }
-      
+
       // Validate port range
       if (url.port) {
         const portNum = parseInt(url.port, 10);
@@ -473,12 +478,12 @@ export class MessageBusService extends Service {
           return defaultUrl;
         }
       }
-      
+
       // Remove any potentially dangerous URL components
       url.username = '';
       url.password = '';
       url.hash = '';
-      
+
       return url.toString().replace(/\/$/, ''); // Remove trailing slash
     } catch (error) {
       logger.error(`[MessageBusService] Invalid URL format in CENTRAL_MESSAGE_SERVER_URL: ${baseUrl}`);
