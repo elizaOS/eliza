@@ -7,7 +7,7 @@ import type { AgentServer } from '../../index';
  */
 export function createDebugRouter(
   agents: Map<UUID, IAgentRuntime>,
-  serverInstance?: AgentServer
+  serverInstance: AgentServer
 ): express.Router {
   const router = express.Router();
 

@@ -9,7 +9,7 @@ import { sendError, sendSuccess } from '../shared/response-utils';
  */
 export function createAgentPanelsRouter(
   agents: Map<UUID, IAgentRuntime>,
-  serverInstance?: AgentServer
+  serverInstance: AgentServer
 ): express.Router {
   const router = express.Router();
 

@@ -10,16 +10,16 @@ import { createDebugRouter } from './debug';
  */
 export function runtimeRouter(
   agents: Map<UUID, IAgentRuntime>,
-  serverInstance?: AgentServer
+  serverInstance: AgentServer
 ): express.Router {
   const router = express.Router();
 
   // Mount health endpoints at root level
   router.use('/', createHealthRouter(agents, serverInstance));
-  
+
   // Mount logging endpoints
   router.use('/', createLoggingRouter(agents, serverInstance));
-  
+
   // Mount debug endpoints under /debug
   router.use('/debug', createDebugRouter(agents, serverInstance));
 

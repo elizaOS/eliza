@@ -10,16 +10,16 @@ import { createConversationRouter } from './conversation';
  */
 export function audioRouter(
   agents: Map<UUID, IAgentRuntime>,
-  serverInstance?: AgentServer
+  serverInstance: AgentServer
 ): express.Router {
   const router = express.Router();
 
   // Mount audio processing (upload, transcription)
   router.use('/', createAudioProcessingRouter(agents, serverInstance));
-  
+
   // Mount text-to-speech synthesis
   router.use('/', createSynthesisRouter(agents, serverInstance));
-  
+
   // Mount speech conversation functionality
   router.use('/', createConversationRouter(agents, serverInstance));
 

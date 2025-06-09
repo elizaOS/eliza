@@ -1,12 +1,12 @@
 import type { IAgentRuntime, UUID, Content, Memory } from '@elizaos/core';
-import { 
-  validateUuid, 
-  logger, 
-  ModelType, 
-  ChannelType, 
+import {
+  validateUuid,
+  logger,
+  ModelType,
+  ChannelType,
   createUniqueUuid,
   composePrompt,
-  messageHandlerTemplate 
+  messageHandlerTemplate
 } from '@elizaos/core';
 import express from 'express';
 import type { AgentServer } from '../../index';
@@ -18,7 +18,7 @@ import { convertToAudioBuffer } from '@/src/utils';
  */
 export function createConversationRouter(
   agents: Map<UUID, IAgentRuntime>,
-  serverInstance?: AgentServer
+  serverInstance: AgentServer
 ): express.Router {
   const router = express.Router();
 

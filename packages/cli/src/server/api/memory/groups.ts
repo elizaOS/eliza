@@ -9,7 +9,7 @@ import { sendError, getRuntime } from '../shared';
  */
 export function createGroupMemoryRouter(
   agents: Map<UUID, IAgentRuntime>,
-  serverInstance?: AgentServer
+  serverInstance: AgentServer
 ): express.Router {
   const router = express.Router();
   const db = serverInstance?.database;
@@ -98,7 +98,7 @@ export function createGroupMemoryRouter(
     if (!db) {
       return sendError(res, 500, 'DB_ERROR', 'Database not available');
     }
-    
+
     try {
       await db.deleteRoomsByWorldId(worldId);
       res.status(204).send();
@@ -117,7 +117,7 @@ export function createGroupMemoryRouter(
     if (!db) {
       return sendError(res, 500, 'DB_ERROR', 'Database not available');
     }
-    
+
     try {
       const memories = await db.getMemoriesByWorldId({ worldId, tableName: 'messages' });
       for (const memory of memories) {

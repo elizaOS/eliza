@@ -1,11 +1,11 @@
 import type { Agent, Character, IAgentRuntime, UUID } from '@elizaos/core';
-import { 
-  validateUuid, 
-  logger, 
-  stringToUuid, 
-  getSalt, 
+import {
+  validateUuid,
+  logger,
+  stringToUuid,
+  getSalt,
   encryptObjectValues,
-  encryptStringValue 
+  encryptStringValue
 } from '@elizaos/core';
 import express from 'express';
 import type { AgentServer } from '../../index';
@@ -16,7 +16,7 @@ import { sendError, sendSuccess } from '../shared/response-utils';
  */
 export function createAgentCrudRouter(
   agents: Map<UUID, IAgentRuntime>,
-  serverInstance?: AgentServer
+  serverInstance: AgentServer
 ): express.Router {
   const router = express.Router();
   const db = serverInstance?.database;
@@ -62,7 +62,7 @@ export function createAgentCrudRouter(
     if (!db) {
       return sendError(res, 500, 'DB_ERROR', 'Database not available');
     }
-    
+
     try {
       const agent = await db.getAgent(agentId);
       if (!agent) {
@@ -89,7 +89,7 @@ export function createAgentCrudRouter(
     if (!db) {
       return sendError(res, 500, 'DB_ERROR', 'Database not available');
     }
-    
+
     try {
       let character: Character;
 
@@ -159,7 +159,7 @@ export function createAgentCrudRouter(
     if (!db) {
       return sendError(res, 500, 'DB_ERROR', 'Database not available');
     }
-    
+
     const updates = req.body;
 
     try {
@@ -212,7 +212,7 @@ export function createAgentCrudRouter(
     if (!db) {
       return sendError(res, 500, 'DB_ERROR', 'Database not available');
     }
-    
+
     logger.debug(`[AGENT DELETE] Validated agent ID: ${agentId}, proceeding with deletion`);
 
     try {

@@ -10,7 +10,7 @@ import { createChannelsRouter } from './channels';
  */
 export function messagingRouter(
   agents: Map<UUID, IAgentRuntime>,
-  serverInstance?: AgentServer
+  serverInstance: AgentServer
 ): express.Router {
   const router = express.Router();
 
@@ -20,10 +20,10 @@ export function messagingRouter(
 
   // Mount core messaging functionality at root level
   router.use('/', createMessagingCoreRouter(serverInstance));
-  
+
   // Mount server management functionality
   router.use('/', createServersRouter(serverInstance));
-  
+
   // Mount channel management functionality
   router.use('/', createChannelsRouter(serverInstance));
 

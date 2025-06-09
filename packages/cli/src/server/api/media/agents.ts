@@ -21,7 +21,7 @@ interface AgentMediaRequest extends express.Request {
  */
 export function createAgentMediaRouter(
   agents: Map<UUID, IAgentRuntime>,
-  serverInstance?: AgentServer
+  serverInstance: AgentServer
 ): express.Router {
   const router = express.Router();
 

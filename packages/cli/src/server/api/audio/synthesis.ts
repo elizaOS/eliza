@@ -10,7 +10,7 @@ import { convertToAudioBuffer } from '@/src/utils';
  */
 export function createSynthesisRouter(
   agents: Map<UUID, IAgentRuntime>,
-  serverInstance?: AgentServer
+  serverInstance: AgentServer
 ): express.Router {
   const router = express.Router();
 

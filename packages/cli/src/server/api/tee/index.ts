@@ -8,7 +8,7 @@ import { createTeeRouter } from './tee';
  */
 export function teeRouter(
   agents: Map<UUID, IAgentRuntime>,
-  serverInstance?: AgentServer
+  serverInstance: AgentServer
 ): express.Router {
   const router = express.Router();
 

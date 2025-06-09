@@ -16,7 +16,7 @@ interface ChannelMediaRequest extends express.Request {
 /**
  * Channel media upload functionality
  */
-export function createChannelMediaRouter(serverInstance?: AgentServer): express.Router {
+export function createChannelMediaRouter(serverInstance: AgentServer): express.Router {
   const router = express.Router();
 
   // Upload media to channel

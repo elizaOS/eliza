@@ -301,8 +301,8 @@ async function processSocketMessage(
             source: `${source}:agent`,
             ...(content.providers &&
               content.providers.length > 0 && {
-                providers: content.providers,
-              }),
+              providers: content.providers,
+            }),
           },
           roomId: uniqueChannelId,
           createdAt: Date.now(),
@@ -694,7 +694,7 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
  */
 export function createApiRouter(
   agents: Map<UUID, IAgentRuntime>,
-  serverInstance?: AgentServer // AgentServer is already serverInstance here
+  serverInstance: AgentServer // AgentServer is already serverInstance here
 ): express.Router {
   const router = express.Router();
 
@@ -718,9 +718,9 @@ export function createApiRouter(
   router.use('/runtime', runtimeRouter(agents, serverInstance));
   router.use('/tee', teeRouter(agents, serverInstance));
   router.use('/system', systemRouter(agents, serverInstance));
-  
+
   // NOTE: /world routes have been removed - functionality moved to messaging/spaces
-  
+
   // NOTE: Legacy route aliases removed to prevent duplicates
   // Use proper domain routes: /messaging, /system, /tee
 

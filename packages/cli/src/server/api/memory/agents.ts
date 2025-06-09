@@ -10,7 +10,7 @@ import { sendError, sendSuccess } from '../shared/response-utils';
  */
 export function createAgentMemoryRouter(
   agents: Map<UUID, IAgentRuntime>,
-  serverInstance?: AgentServer
+  serverInstance: AgentServer
 ): express.Router {
   const router = express.Router();
 
@@ -47,9 +47,9 @@ export function createAgentMemoryRouter(
       const cleanMemories = includeEmbedding
         ? memories
         : memories.map((memory) => ({
-            ...memory,
-            embedding: undefined,
-          }));
+          ...memory,
+          embedding: undefined,
+        }));
 
       sendSuccess(res, { memories: cleanMemories });
     } catch (error) {
@@ -70,7 +70,7 @@ export function createAgentMemoryRouter(
     if (!runtime) {
       return sendError(res, 404, 'NOT_FOUND', 'Agent not found');
     }
-    
+
     try {
       const tableName = (req.query.tableName as string) || 'messages';
       const includeEmbedding = req.query.includeEmbedding === 'true';
@@ -89,9 +89,9 @@ export function createAgentMemoryRouter(
       const cleanMemories = includeEmbedding
         ? memories
         : memories.map((memory) => ({
-            ...memory,
-            embedding: undefined,
-          }));
+          ...memory,
+          embedding: undefined,
+        }));
       sendSuccess(res, { memories: cleanMemories });
     } catch (error) {
       logger.error(`[AGENT MEMORIES] Error retrieving memories for agent ${agentId}:`, error);

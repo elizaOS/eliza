@@ -56,7 +56,7 @@ interface AudioRequest extends express.Request {
  */
 export function createAudioProcessingRouter(
   agents: Map<UUID, IAgentRuntime>,
-  serverInstance?: AgentServer
+  serverInstance: AgentServer
 ): express.Router {
   const router = express.Router();
 

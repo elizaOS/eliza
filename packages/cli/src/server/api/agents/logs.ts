@@ -9,7 +9,7 @@ import { sendError, sendSuccess } from '../shared/response-utils';
  */
 export function createAgentLogsRouter(
   agents: Map<UUID, IAgentRuntime>,
-  serverInstance?: AgentServer
+  serverInstance: AgentServer
 ): express.Router {
   const router = express.Router();
 
@@ -32,7 +32,7 @@ export function createAgentLogsRouter(
         return sendError(res, 400, 'INVALID_ID', 'Invalid room ID format');
       }
     }
-    
+
     try {
       const logs: Log[] = await runtime.getLogs({
         entityId: agentId,
@@ -91,7 +91,7 @@ export function createAgentLogsRouter(
     if (!runtime) {
       return sendError(res, 404, 'NOT_FOUND', 'Agent not found');
     }
-    
+
     try {
       await runtime.deleteLog(logId);
       res.status(204).send();

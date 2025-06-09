@@ -13,25 +13,25 @@ import { createAgentMemoryRouter } from '../memory/agents';
  */
 export function agentsRouter(
   agents: Map<UUID, IAgentRuntime>,
-  serverInstance?: AgentServer
+  serverInstance: AgentServer
 ): express.Router {
   const router = express.Router();
 
   // Mount CRUD operations at root level
   router.use('/', createAgentCrudRouter(agents, serverInstance));
-  
+
   // Mount lifecycle operations
   router.use('/', createAgentLifecycleRouter(agents, serverInstance));
-  
+
   // Mount world management operations
   router.use('/', createAgentWorldsRouter(agents, serverInstance));
-  
+
   // Mount panels operations
   router.use('/', createAgentPanelsRouter(agents, serverInstance));
-  
+
   // Mount logs operations
   router.use('/', createAgentLogsRouter(agents, serverInstance));
-  
+
   // Mount memory operations
   router.use('/', createAgentMemoryRouter(agents, serverInstance));
 

@@ -8,7 +8,7 @@ import { createEnvironmentRouter } from './environment';
  */
 export function systemRouter(
   agents: Map<UUID, IAgentRuntime>,
-  serverInstance?: AgentServer
+  serverInstance: AgentServer
 ): express.Router {
   const router = express.Router();
 

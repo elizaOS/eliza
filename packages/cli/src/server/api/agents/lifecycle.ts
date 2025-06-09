@@ -9,7 +9,7 @@ import { sendError, sendSuccess } from '../shared/response-utils';
  */
 export function createAgentLifecycleRouter(
   agents: Map<UUID, IAgentRuntime>,
-  serverInstance?: AgentServer
+  serverInstance: AgentServer
 ): express.Router {
   const router = express.Router();
   const db = serverInstance?.database;
@@ -23,7 +23,7 @@ export function createAgentLifecycleRouter(
     if (!db) {
       return sendError(res, 500, 'DB_ERROR', 'Database not available');
     }
-    
+
     try {
       const agent = await db.getAgent(agentId);
 
@@ -58,7 +58,7 @@ export function createAgentLifecycleRouter(
       });
     } catch (error) {
       logger.error('[AGENT START] Error starting agent:', error);
-      sendError(res, 500, 'START_ERROR', 'Error starting agent', 
+      sendError(res, 500, 'START_ERROR', 'Error starting agent',
         error instanceof Error ? error.message : String(error));
     }
   });

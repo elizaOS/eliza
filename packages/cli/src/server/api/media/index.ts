@@ -9,13 +9,13 @@ import { createChannelMediaRouter } from './channels';
  */
 export function mediaRouter(
   agents: Map<UUID, IAgentRuntime>,
-  serverInstance?: AgentServer
+  serverInstance: AgentServer
 ): express.Router {
   const router = express.Router();
 
   // Mount agent media uploads under /agents
   router.use('/agents', createAgentMediaRouter(agents, serverInstance));
-  
+
   // Mount channel media uploads under /channels
   router.use('/channels', createChannelMediaRouter(serverInstance));
 

@@ -16,7 +16,7 @@ interface CustomRequest extends express.Request {
  */
 export function createRoomManagementRouter(
   agents: Map<UUID, IAgentRuntime>,
-  serverInstance?: AgentServer
+  serverInstance: AgentServer
 ): express.Router {
   const router = express.Router();
 
