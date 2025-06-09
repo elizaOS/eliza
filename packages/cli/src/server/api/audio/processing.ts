@@ -7,42 +7,7 @@ import type { AgentServer } from '../../index';
 import { cleanupFile } from '../shared/file-utils';
 import { sendError, sendSuccess } from '../shared/response-utils';
 import { agentUpload } from '../shared/uploads';
-
-// Enhanced rate limiting per IP for file uploads with more restrictions
-const uploadAttempts = new Map<string, { count: number; resetTime: number; blockedUntil?: number }>();
-const RATE_LIMIT_WINDOW = 60000; // 1 minute
-const MAX_UPLOADS_PER_WINDOW = 5; // Reduced to 5 uploads per minute per IP
-const BLOCK_DURATION = 300000; // 5 minutes block for excessive attempts
-
-function checkRateLimit(req: express.Request): boolean {
-  const forwarded = req.headers['x-forwarded-for'];
-  const clientIP = forwarded
-    ? forwarded.toString().split(',')[0]
-    : req.ip || req.connection.remoteAddress || 'unknown';
-  const now = Date.now();
-  const limit = uploadAttempts.get(clientIP);
-
-  // Check if IP is currently blocked
-  if (limit?.blockedUntil && now < limit.blockedUntil) {
-    logger.warn(`[RATE_LIMIT] Blocked IP ${clientIP} attempted access`);
-    return false;
-  }
-
-  if (!limit || now > limit.resetTime) {
-    uploadAttempts.set(clientIP, { count: 1, resetTime: now + RATE_LIMIT_WINDOW });
-    return true;
-  }
-
-  if (limit.count >= MAX_UPLOADS_PER_WINDOW) {
-    // Block the IP for repeated violations
-    limit.blockedUntil = now + BLOCK_DURATION;
-    logger.warn(`[RATE_LIMIT] IP ${clientIP} blocked for ${BLOCK_DURATION}ms due to excessive requests`);
-    return false;
-  }
-
-  limit.count++;
-  return true;
-}
+import { createFileSystemRateLimit, createUploadRateLimit } from '../shared/middleware';
 
 // Using Express.Multer.File type instead of importing from multer directly
 type MulterFile = Express.Multer.File;
@@ -63,16 +28,15 @@ export function createAudioProcessingRouter(
 ): express.Router {
   const router = express.Router();
 
+  // Apply rate limiting to all audio processing routes
+  router.use(createUploadRateLimit());
+  router.use(createFileSystemRateLimit());
+
   // Audio messages endpoints
   router.post(
     '/:agentId/audio-messages',
     agentUpload.single('file'), // Use agentUpload
     async (req: AudioRequest, res) => {
-      // Check rate limit
-      if (!checkRateLimit(req)) {
-        return sendError(res, 429, 'RATE_LIMIT_EXCEEDED', 'Too many upload attempts. Please try again later.');
-      }
-
       logger.debug('[AUDIO MESSAGE] Processing audio message');
       const agentId = validateUuid(req.params.agentId);
       if (!agentId) {
@@ -93,7 +57,8 @@ export function createAudioProcessingRouter(
       try {
         // Additional file validation
         const stats = await fs.promises.stat(audioFile.path);
-        if (stats.size > 50 * 1024 * 1024) { // 50MB limit
+        if (stats.size > 50 * 1024 * 1024) {
+          // 50MB limit
           cleanupFile(audioFile.path);
           return sendError(res, 413, 'FILE_TOO_LARGE', 'Audio file too large (max 50MB)');
         }
@@ -118,11 +83,6 @@ export function createAudioProcessingRouter(
     '/:agentId/transcriptions',
     agentUpload.single('file'), // Use agentUpload
     async (req: AudioRequest, res) => {
-      // Check rate limit
-      if (!checkRateLimit(req)) {
-        return sendError(res, 429, 'RATE_LIMIT_EXCEEDED', 'Too many upload attempts. Please try again later.');
-      }
-
       logger.debug('[TRANSCRIPTION] Request to transcribe audio');
       const agentId = validateUuid(req.params.agentId);
       if (!agentId) {
@@ -149,7 +109,8 @@ export function createAudioProcessingRouter(
         }
 
         const stats = await fs.promises.stat(audioFile.path);
-        if (stats.size > 50 * 1024 * 1024) { // 50MB limit
+        if (stats.size > 50 * 1024 * 1024) {
+          // 50MB limit
           cleanupFile(audioFile.path);
           return sendError(res, 413, 'FILE_TOO_LARGE', 'Audio file too large (max 50MB)');
         }

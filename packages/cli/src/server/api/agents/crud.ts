@@ -5,7 +5,7 @@ import {
   stringToUuid,
   getSalt,
   encryptObjectValues,
-  encryptStringValue
+  encryptStringValue,
 } from '@elizaos/core';
 import express from 'express';
 import type { AgentServer } from '../../index';

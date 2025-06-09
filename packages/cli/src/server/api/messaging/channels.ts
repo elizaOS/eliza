@@ -4,6 +4,7 @@ import internalMessageBus from '../../bus';
 import type { AgentServer } from '../../index';
 import type { MessageServiceStructure as MessageService } from '../../types';
 import { channelUpload } from '../../upload';
+import { createUploadRateLimit, createFileSystemRateLimit } from '../shared/middleware';
 
 const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
 
@@ -500,6 +501,8 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
   // Upload media to channel
   router.post(
     '/channels/:channelId/upload-media',
+    createUploadRateLimit(),
+    createFileSystemRateLimit(),
     channelUpload.single('file'),
     async (req: ChannelUploadRequest, res) => {
       const channelId = validateUuid(req.params.channelId);
@@ -536,7 +539,11 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
       }
 
       // Additional filename security validation
-      if (!mediaFile.filename || mediaFile.filename.includes('..') || mediaFile.filename.includes('/')) {
+      if (
+        !mediaFile.filename ||
+        mediaFile.filename.includes('..') ||
+        mediaFile.filename.includes('/')
+      ) {
         res.status(400).json({ success: false, error: 'Invalid filename detected' });
         return;
       }

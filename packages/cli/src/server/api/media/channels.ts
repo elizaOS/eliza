@@ -62,7 +62,6 @@ export function createChannelMediaRouter(serverInstance: AgentServer): express.R
         'text/plain',
       ];
 
-
       if (!validMimeTypes.includes(mediaFile.mimetype)) {
         try {
           const UPLOADS_ROOT = path.resolve('/media/uploads/channels');

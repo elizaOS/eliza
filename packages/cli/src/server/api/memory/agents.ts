@@ -47,9 +47,9 @@ export function createAgentMemoryRouter(
       const cleanMemories = includeEmbedding
         ? memories
         : memories.map((memory) => ({
-          ...memory,
-          embedding: undefined,
-        }));
+            ...memory,
+            embedding: undefined,
+          }));
 
       sendSuccess(res, { memories: cleanMemories });
     } catch (error) {
@@ -89,9 +89,9 @@ export function createAgentMemoryRouter(
       const cleanMemories = includeEmbedding
         ? memories
         : memories.map((memory) => ({
-          ...memory,
-          embedding: undefined,
-        }));
+            ...memory,
+            embedding: undefined,
+          }));
       sendSuccess(res, { memories: cleanMemories });
     } catch (error) {
       logger.error(`[AGENT MEMORIES] Error retrieving memories for agent ${agentId}:`, error);
@@ -185,8 +185,13 @@ export function createAgentMemoryRouter(
       res.status(204).send();
     } catch (error) {
       logger.error('[DELETE ALL MEMORIES] Error deleting all memories:', error);
-      sendError(res, 500, 'DELETE_ERROR', 'Error deleting all memories',
-        error instanceof Error ? error.message : String(error));
+      sendError(
+        res,
+        500,
+        'DELETE_ERROR',
+        'Error deleting all memories',
+        error instanceof Error ? error.message : String(error)
+      );
     }
   });
 

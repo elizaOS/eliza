@@ -450,7 +450,9 @@ export class MessageBusService extends Service {
       }
     }
 
-    const defaultUrl = validatedPort ? `http://localhost:${validatedPort}` : 'http://localhost:3000';
+    const defaultUrl = validatedPort
+      ? `http://localhost:${validatedPort}`
+      : 'http://localhost:3000';
     const baseUrl = envUrl ?? defaultUrl;
 
     // Strict validation to prevent SSRF attacks
@@ -459,14 +461,18 @@ export class MessageBusService extends Service {
 
       // Only allow HTTP/HTTPS protocols
       if (!['http:', 'https:'].includes(url.protocol)) {
-        logger.warn(`[MessageBusService] Unsafe protocol in CENTRAL_MESSAGE_SERVER_URL: ${url.protocol}`);
+        logger.warn(
+          `[MessageBusService] Unsafe protocol in CENTRAL_MESSAGE_SERVER_URL: ${url.protocol}`
+        );
         return defaultUrl;
       }
 
       // Only allow safe localhost variants and block private/internal IPs
       const allowedHosts = ['localhost', '127.0.0.1', '::1'];
       if (!allowedHosts.includes(url.hostname)) {
-        logger.warn(`[MessageBusService] Unsafe hostname in CENTRAL_MESSAGE_SERVER_URL: ${url.hostname}`);
+        logger.warn(
+          `[MessageBusService] Unsafe hostname in CENTRAL_MESSAGE_SERVER_URL: ${url.hostname}`
+        );
         return defaultUrl;
       }
 
@@ -474,7 +480,9 @@ export class MessageBusService extends Service {
       if (url.port) {
         const portNum = parseInt(url.port, 10);
         if (isNaN(portNum) || portNum <= 0 || portNum > 65535) {
-          logger.warn(`[MessageBusService] Invalid port in CENTRAL_MESSAGE_SERVER_URL: ${url.port}`);
+          logger.warn(
+            `[MessageBusService] Invalid port in CENTRAL_MESSAGE_SERVER_URL: ${url.port}`
+          );
           return defaultUrl;
         }
       }
@@ -486,7 +494,9 @@ export class MessageBusService extends Service {
 
       return url.toString().replace(/\/$/, ''); // Remove trailing slash
     } catch (error) {
-      logger.error(`[MessageBusService] Invalid URL format in CENTRAL_MESSAGE_SERVER_URL: ${baseUrl}`);
+      logger.error(
+        `[MessageBusService] Invalid URL format in CENTRAL_MESSAGE_SERVER_URL: ${baseUrl}`
+      );
       return defaultUrl;
     }
   }

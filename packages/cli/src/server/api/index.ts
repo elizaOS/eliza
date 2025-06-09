@@ -31,10 +31,13 @@ import { teeRouter } from './tee';
 import { systemRouter } from './system';
 // NOTE: world router has been removed - functionality moved to messaging/spaces
 import { SocketIORouter } from '../socketio';
-import { securityMiddleware, validateContentTypeMiddleware } from './shared/middleware';
+import {
+  securityMiddleware,
+  validateContentTypeMiddleware,
+  createApiRateLimit,
+} from './shared/middleware';
 import fs from 'fs';
 import path from 'path';
-
 
 /**
  * Processes attachments to convert localhost URLs to base64 data URIs
@@ -303,8 +306,8 @@ async function processSocketMessage(
             source: `${source}:agent`,
             ...(content.providers &&
               content.providers.length > 0 && {
-              providers: content.providers,
-            }),
+                providers: content.providers,
+              }),
           },
           roomId: uniqueChannelId,
           createdAt: Date.now(),
@@ -701,52 +704,62 @@ export function createApiRouter(
   const router = express.Router();
 
   // API-specific security headers (supplementing main app helmet)
-  router.use(helmet({
-    // More restrictive CSP for API endpoints
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'none'"], // API should not load resources
-        scriptSrc: ["'none'"],  // No scripts in API responses
-        objectSrc: ["'none'"],
-        baseUri: ["'none'"],
-        formAction: ["'none'"],
+  router.use(
+    helmet({
+      // More restrictive CSP for API endpoints
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'none'"], // API should not load resources
+          scriptSrc: ["'none'"], // No scripts in API responses
+          objectSrc: ["'none'"],
+          baseUri: ["'none'"],
+          formAction: ["'none'"],
+        },
       },
-    },
-    // API-specific headers
-    crossOriginResourcePolicy: { policy: "cross-origin" },
-    referrerPolicy: { policy: "no-referrer" },
-  }));
+      // API-specific headers
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+      referrerPolicy: { policy: 'no-referrer' },
+    })
+  );
 
   // API-specific CORS configuration
-  router.use(cors({
-    origin: process.env.API_CORS_ORIGIN || process.env.CORS_ORIGIN || false, // More restrictive for API
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-API-KEY'],
-    exposedHeaders: ['X-Total-Count'],
-    maxAge: 86400, // Cache preflight for 24 hours
-  }));
+  router.use(
+    cors({
+      origin: process.env.API_CORS_ORIGIN || process.env.CORS_ORIGIN || false, // More restrictive for API
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-API-KEY'],
+      exposedHeaders: ['X-Total-Count'],
+      maxAge: 86400, // Cache preflight for 24 hours
+    })
+  );
+
+  // Rate limiting - should be early in middleware chain
+  router.use(createApiRateLimit());
 
   // Additional security middleware
   router.use(securityMiddleware());
-  
+
   // Content type validation for write operations
   router.use(validateContentTypeMiddleware());
 
   // Body parsing middleware
-  router.use(bodyParser.json({
-    limit: process.env.EXPRESS_MAX_PAYLOAD || '100kb'
-  }));
-  router.use(bodyParser.urlencoded({ 
-    extended: true,
-    limit: process.env.EXPRESS_MAX_PAYLOAD || '100kb'
-  }));
+  router.use(
+    bodyParser.json({
+      limit: process.env.EXPRESS_MAX_PAYLOAD || '100kb',
+    })
+  );
+  router.use(
+    bodyParser.urlencoded({
+      extended: true,
+      limit: process.env.EXPRESS_MAX_PAYLOAD || '100kb',
+    })
+  );
   router.use(
     express.json({
       limit: process.env.EXPRESS_MAX_PAYLOAD || '100kb',
     })
   );
-
 
   // Setup new domain-based routes
   router.use('/agents', agentsRouter(agents, serverInstance));
@@ -765,7 +778,6 @@ export function createApiRouter(
 
   // Add the plugin routes middleware AFTER specific routers
   router.use(createPluginRouteHandler(agents));
-
 
   return router;
 }

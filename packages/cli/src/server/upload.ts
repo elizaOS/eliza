@@ -15,13 +15,13 @@ export const agentStorage = multer.diskStorage({
       if (!validateUuid(agentId)) {
         return cb(new Error('Invalid agent ID format'), '');
       }
-      
+
       const uploadDir = createSecureUploadDir(process.cwd(), agentId, 'agents');
-      
+
       if (!fs.existsSync(uploadDir)) {
         fs.mkdirSync(uploadDir, { recursive: true });
       }
-      
+
       logger.debug(`[UPLOAD] Secure agent upload directory created: ${uploadDir}`);
       cb(null, uploadDir);
     } catch (error) {
@@ -34,7 +34,7 @@ export const agentStorage = multer.diskStorage({
       const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
       const sanitizedName = sanitizeFilename(file.originalname);
       const filename = `${uniqueSuffix}-${sanitizedName}`;
-      
+
       logger.debug(`[UPLOAD] Generated secure agent filename: ${filename}`);
       cb(null, filename);
     } catch (error) {
@@ -44,25 +44,33 @@ export const agentStorage = multer.diskStorage({
   },
 });
 
-export const agentUpload = multer({ 
+export const agentUpload = multer({
   storage: agentStorage,
   limits: {
     fileSize: 50 * 1024 * 1024, // 50MB max file size
-    files: 1 // Only allow 1 file per request
+    files: 1, // Only allow 1 file per request
   },
   fileFilter: (req, file, cb) => {
     // Only allow specific file types for security
     const allowedMimeTypes = [
-      'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/ogg', 'audio/webm',
-      'audio/mp4', 'audio/aac', 'audio/flac', 'audio/x-wav', 'audio/wave'
+      'audio/mpeg',
+      'audio/mp3',
+      'audio/wav',
+      'audio/ogg',
+      'audio/webm',
+      'audio/mp4',
+      'audio/aac',
+      'audio/flac',
+      'audio/x-wav',
+      'audio/wave',
     ];
-    
+
     if (allowedMimeTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {
       cb(new Error(`Invalid file type. Only audio files are allowed. Received: ${file.mimetype}`));
     }
-  }
+  },
 });
 
 // --- Channel-Specific Upload Storage ---
@@ -76,13 +84,13 @@ export const channelStorage = multer.diskStorage({
       if (!validateUuid(channelId)) {
         return cb(new Error('Invalid channel ID format'), '');
       }
-      
+
       const uploadDir = createSecureUploadDir(process.cwd(), channelId, 'channels');
-      
+
       if (!fs.existsSync(uploadDir)) {
         fs.mkdirSync(uploadDir, { recursive: true });
       }
-      
+
       logger.debug(`[UPLOAD] Secure channel upload directory created: ${uploadDir}`);
       cb(null, uploadDir);
     } catch (error) {
@@ -95,7 +103,7 @@ export const channelStorage = multer.diskStorage({
       const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
       const sanitizedName = sanitizeFilename(file.originalname);
       const filename = `${uniqueSuffix}-${sanitizedName}`;
-      
+
       logger.debug(`[UPLOAD] Generated secure channel filename: ${filename}`);
       cb(null, filename);
     } catch (error) {
@@ -105,27 +113,39 @@ export const channelStorage = multer.diskStorage({
   },
 });
 
-export const channelUpload = multer({ 
+export const channelUpload = multer({
   storage: channelStorage,
   limits: {
     fileSize: 50 * 1024 * 1024, // 50MB max file size
-    files: 1 // Only allow 1 file per request
+    files: 1, // Only allow 1 file per request
   },
   fileFilter: (req, file, cb) => {
     // Only allow specific file types for security
     const allowedMimeTypes = [
-      'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/ogg', 'audio/webm',
-      'audio/mp4', 'audio/aac', 'audio/flac', 'audio/x-wav', 'audio/wave',
-      'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-      'application/pdf', 'text/plain'
+      'audio/mpeg',
+      'audio/mp3',
+      'audio/wav',
+      'audio/ogg',
+      'audio/webm',
+      'audio/mp4',
+      'audio/aac',
+      'audio/flac',
+      'audio/x-wav',
+      'audio/wave',
+      'image/jpeg',
+      'image/png',
+      'image/gif',
+      'image/webp',
+      'application/pdf',
+      'text/plain',
     ];
-    
+
     if (allowedMimeTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {
       cb(new Error(`Invalid file type. Received: ${file.mimetype}`));
     }
-  }
+  },
 });
 
 // --- Generic Upload Storage (if ever needed, less specific) ---
@@ -136,7 +156,7 @@ export const genericStorage = multer.diskStorage({
       if (!fs.existsSync(uploadDir)) {
         fs.mkdirSync(uploadDir, { recursive: true });
       }
-      
+
       logger.debug(`[UPLOAD] Generic upload directory created: ${uploadDir}`);
       cb(null, uploadDir);
     } catch (error) {
@@ -149,7 +169,7 @@ export const genericStorage = multer.diskStorage({
       const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
       const sanitizedName = sanitizeFilename(file.originalname);
       const filename = `${uniqueSuffix}-${sanitizedName}`;
-      
+
       logger.debug(`[UPLOAD] Generated secure generic filename: ${filename}`);
       cb(null, filename);
     } catch (error) {
