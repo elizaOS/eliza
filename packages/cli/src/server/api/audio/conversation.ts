@@ -149,7 +149,8 @@ export function createConversationRouter(
       );
     } catch (error) {
       logger.error('[SPEECH CONVERSATION] Error processing conversation:', error);
-      sendError(res, 500, 'PROCESSING_ERROR', 'Error processing conversation', error.message);
+      sendError(res, 500, 'PROCESSING_ERROR', 'Error processing conversation',
+        error instanceof Error ? error.message : String(error));
     }
   });
 
