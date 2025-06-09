@@ -115,11 +115,11 @@ export async function executeInstallation(
 
     const installedIdentifier = packageName.startsWith('github:')
       ? (() => {
-          const spec = packageName.replace(/^github:/, '');
-          const [owner, repoWithRef] = spec.split('/');
-          const repo = repoWithRef.split('#')[0];
-          return `@${owner}/${repo}`;
-        })()
+        const spec = packageName.replace(/^github:/, '');
+        const [owner, repoWithRef] = spec.split('/');
+        const repo = repoWithRef.split('#')[0];
+        return `@${owner}/${repo}`;
+      })()
       : packageName;
 
     return { success: true, installedIdentifier };
@@ -134,6 +134,23 @@ export async function executeInstallation(
     }
     return { success: false, installedIdentifier: null };
   }
+}
+
+/**
+ * Builds a GitHub specifier string for package installation.
+ * 
+ * @param githubSpec - The GitHub specifier (e.g., "github:owner/repo")
+ * @param versionOrTag - Optional version or tag to append
+ * @returns The complete GitHub specifier string
+ */
+export function buildGitHubSpecifier(githubSpec: string, versionOrTag?: string): string {
+  if (!versionOrTag) {
+    return githubSpec;
+  }
+
+  // If the spec already has a fragment (#), replace it
+  const baseSpec = githubSpec.split('#')[0];
+  return `${baseSpec}#${versionOrTag}`;
 }
 
 /**
