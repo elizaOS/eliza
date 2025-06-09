@@ -128,7 +128,7 @@ export const validateContentTypeMiddleware = () => {
     if (['POST', 'PUT', 'PATCH'].includes(req.method)) {
       const contentType = req.get('Content-Type');
       const contentLength = req.get('Content-Length');
-      
+
       // Skip validation if request has no body (Content-Length is 0 or undefined)
       if (!contentLength || contentLength === '0') {
         return next();

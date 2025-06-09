@@ -3,6 +3,7 @@ import { logger, ModelType, validateUuid } from '@elizaos/core';
 import express from 'express';
 import fs from 'node:fs';
 import os from 'node:os';
+import path from 'node:path';
 import type { AgentServer } from '../../index';
 import { cleanupFile } from '../shared/file-utils';
 import { sendError, sendSuccess } from '../shared/response-utils';
@@ -17,6 +18,51 @@ interface AudioRequest extends express.Request {
   params: {
     agentId: string;
   };
+}
+
+/**
+ * Securely validates a file path to prevent path traversal attacks
+ */
+function validateSecureFilePath(filePath: string): string {
+  if (!filePath) {
+    throw new Error('File path is required');
+  }
+
+  // Resolve and normalize the path
+  const resolvedPath = path.resolve(filePath);
+  const normalizedPath = path.normalize(resolvedPath);
+
+  // Ensure the path doesn't contain directory traversal attempts
+  if (normalizedPath.includes('..') || normalizedPath !== resolvedPath) {
+    throw new Error('Invalid file path: path traversal detected');
+  }
+
+  // Ensure the path is within the current working directory or system temp
+  const allowedBasePaths = [
+    process.cwd(),
+    os.tmpdir(),
+    os.homedir()
+  ];
+
+  const isPathAllowed = allowedBasePaths.some(basePath => 
+    normalizedPath.startsWith(path.resolve(basePath))
+  );
+
+  if (!isPathAllowed) {
+    throw new Error('Invalid file path: path outside allowed directories');
+  }
+
+  // Additional security: ensure file exists and is a regular file
+  try {
+    const stats = fs.statSync(normalizedPath);
+    if (!stats.isFile()) {
+      throw new Error('Path does not point to a regular file');
+    }
+  } catch (error) {
+    throw new Error(`File access error: ${error.message}`);
+  }
+
+  return normalizedPath;
 }
 
 /**
@@ -55,15 +101,24 @@ export function createAudioProcessingRouter(
       }
 
       try {
-        // Additional file validation
-        const stats = await fs.promises.stat(audioFile.path);
+        // Validate file path security before any file operations
+        let securePath: string;
+        try {
+          securePath = validateSecureFilePath(audioFile.path);
+        } catch (pathError) {
+          cleanupFile(audioFile.path);
+          return sendError(res, 403, 'INVALID_PATH', `Invalid file path: ${pathError.message}`);
+        }
+
+        // Additional file validation using secure path
+        const stats = await fs.promises.stat(securePath);
         if (stats.size > 50 * 1024 * 1024) {
           // 50MB limit
           cleanupFile(audioFile.path);
           return sendError(res, 413, 'FILE_TOO_LARGE', 'Audio file too large (max 50MB)');
         }
 
-        const audioBuffer = await fs.promises.readFile(audioFile.path);
+        const audioBuffer = await fs.promises.readFile(securePath);
         const transcription = await runtime.useModel(ModelType.TRANSCRIPTION, audioBuffer);
 
         // Placeholder: This part needs to be updated to align with message creation.
@@ -103,19 +158,23 @@ export function createAudioProcessingRouter(
       try {
         logger.debug('[TRANSCRIPTION] Reading audio file');
 
-        if (!audioFile.path.startsWith(os.homedir())) {
+        // Validate file path security before any file operations
+        let securePath: string;
+        try {
+          securePath = validateSecureFilePath(audioFile.path);
+        } catch (pathError) {
           cleanupFile(audioFile.path);
-          return sendError(res, 403, 'INVALID_PATH', 'Invalid file path');
+          return sendError(res, 403, 'INVALID_PATH', `Invalid file path: ${pathError.message}`);
         }
 
-        const stats = await fs.promises.stat(audioFile.path);
+        const stats = await fs.promises.stat(securePath);
         if (stats.size > 50 * 1024 * 1024) {
           // 50MB limit
           cleanupFile(audioFile.path);
           return sendError(res, 413, 'FILE_TOO_LARGE', 'Audio file too large (max 50MB)');
         }
 
-        const audioBuffer = await fs.promises.readFile(audioFile.path);
+        const audioBuffer = await fs.promises.readFile(securePath);
 
         logger.debug('[TRANSCRIPTION] Transcribing audio');
         const transcription = await runtime.useModel(ModelType.TRANSCRIPTION, audioBuffer);
