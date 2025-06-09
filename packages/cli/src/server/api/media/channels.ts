@@ -1,5 +1,6 @@
 import { validateUuid, logger, type UUID } from '@elizaos/core';
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import type { AgentServer } from '../../index';
 import { channelUpload } from '../shared/uploads';
 import fs from 'fs';
@@ -20,9 +21,17 @@ interface ChannelMediaRequest extends express.Request {
 export function createChannelMediaRouter(serverInstance: AgentServer): express.Router {
   const router = express.Router();
 
+  // Define rate limiter: maximum 100 requests per 15 minutes
+  const uploadMediaRateLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // Limit each IP to 100 requests per windowMs
+    message: { success: false, error: 'Too many requests, please try again later.' },
+  });
+
   // Upload media to channel
   router.post(
     '/:channelId/upload-media',
+    uploadMediaRateLimiter, // Apply rate limiter
     channelUpload.single('file'),
     async (req: ChannelMediaRequest, res) => {
       const channelId = validateUuid(req.params.channelId);

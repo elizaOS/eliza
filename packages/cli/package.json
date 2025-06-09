@@ -99,6 +99,7 @@
     "semver": "^7.7.2",
     "sharp": "^0.34.2",
     "socket.io": "^4.8.1",
-    "zod": "3.24.2"
+    "zod": "3.24.2",
+    "express-rate-limit": "^7.5.0"
   }
 }
