@@ -38,13 +38,9 @@ function validateSecureFilePath(filePath: string): string {
   }
 
   // Ensure the path is within the current working directory or system temp
-  const allowedBasePaths = [
-    process.cwd(),
-    os.tmpdir(),
-    os.homedir()
-  ];
+  const allowedBasePaths = [process.cwd(), os.tmpdir(), os.homedir()];
 
-  const isPathAllowed = allowedBasePaths.some(basePath => 
+  const isPathAllowed = allowedBasePaths.some((basePath) =>
     normalizedPath.startsWith(path.resolve(basePath))
   );
 
