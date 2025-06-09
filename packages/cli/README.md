@@ -219,7 +219,7 @@ Publish a plugin to the registry.
 
 - **Options:**
   - `-t, --test`: Test publish process without making changes
-  - `-n, --npm`: Publish to npm instead of GitHub
+  - `--npm`: Publish to npm instead of GitHub
   - `-sr, --skip-registry`: Skip publishing to the registry
   - `-d, --dry-run`: Generate registry files locally without publishing
 

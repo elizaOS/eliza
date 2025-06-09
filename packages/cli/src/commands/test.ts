@@ -231,25 +231,40 @@ const runE2eTests = async (
 
     // Set up standard paths and load .env
     const elizaDir = path.join(process.cwd(), '.eliza');
-    const elizaDbDir = await resolvePgliteDir();
+    // Create unique database directory for each test run to avoid conflicts
+    const packageName = path.basename(process.cwd());
+    const timestamp = Date.now();
+    const uniqueDbDir = path.join(process.cwd(), '.elizadb-test', `${packageName}-${timestamp}`);
+    const elizaDbDir = uniqueDbDir;
     const envInfo = await UserEnvironment.getInstanceInfo();
     const envFilePath = envInfo.paths.envFilePath;
 
-    logger.info('Setting up environment...');
-    logger.info(`Eliza directory: ${elizaDir}`);
-    logger.info(`Database directory: ${elizaDbDir}`);
-    logger.info(`Environment file: ${envFilePath}`);
+    console.info('Setting up environment...');
+    console.info(`Eliza directory: ${elizaDir}`);
+    console.info(`Database directory: ${elizaDbDir}`);
+    console.info(`Environment file: ${envFilePath}`);
+    console.info(`Package name: ${packageName}, Timestamp: ${timestamp}`);
 
-    // Create db directory if it doesn't exist
-    if (!fs.existsSync(elizaDbDir)) {
-      logger.info(`Creating database directory: ${elizaDbDir}`);
-      fs.mkdirSync(elizaDbDir, { recursive: true });
-      logger.info(`Created database directory: ${elizaDbDir}`);
+    // Clean up any existing database directory to prevent corruption
+    if (fs.existsSync(elizaDbDir)) {
+      console.info(`Cleaning up existing database directory: ${elizaDbDir}`);
+      try {
+        fs.rmSync(elizaDbDir, { recursive: true, force: true });
+        console.info(`Successfully cleaned up existing database directory`);
+      } catch (error) {
+        console.warn(`Failed to clean up existing database directory: ${error}`);
+        // Continue anyway, the initialization might handle it
+      }
     }
 
-    // Set the database directory in environment variables
+    // Create fresh db directory
+    console.info(`Creating fresh database directory: ${elizaDbDir}`);
+    fs.mkdirSync(elizaDbDir, { recursive: true });
+    console.info(`Created database directory: ${elizaDbDir}`);
+
+    // Set the database directory in environment variables to ensure it's used
     process.env.PGLITE_DATA_DIR = elizaDbDir;
-    logger.info(`Using database directory: ${elizaDbDir}`);
+    console.info(`Set PGLITE_DATA_DIR to: ${elizaDbDir}`);
 
     // Load environment variables from project .env if it exists
     if (fs.existsSync(envFilePath)) {
@@ -481,6 +496,23 @@ const runE2eTests = async (
           }
         }
         return { failed: true };
+      } finally {
+        // Clean up database directory after tests complete
+        try {
+          if (fs.existsSync(elizaDbDir)) {
+            console.info(`Cleaning up test database directory: ${elizaDbDir}`);
+            fs.rmSync(elizaDbDir, { recursive: true, force: true });
+            console.info(`Successfully cleaned up test database directory`);
+          }
+          // Also clean up the parent test directory if it's empty
+          const testDir = path.dirname(elizaDbDir);
+          if (fs.existsSync(testDir) && fs.readdirSync(testDir).length === 0) {
+            fs.rmSync(testDir, { recursive: true, force: true });
+          }
+        } catch (cleanupError) {
+          console.warn(`Failed to clean up test database directory: ${cleanupError}`);
+          // Don't fail the test run due to cleanup issues
+        }
       }
     } catch (error) {
       logger.error('Error in runE2eTests:', error);

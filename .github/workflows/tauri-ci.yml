@@ -18,7 +18,53 @@ on:
       - '.github/workflows/**'
 
 jobs:
+  # Setup job - builds packages once to share across platforms
+  setup:
+    runs-on: ubuntu-latest
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ secrets.TURBO_TEAM }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '23'
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            $HOME/.bun/install/cache
+            node_modules
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install dependencies
+        run: bun install
+        env:
+          NPM_CONFIG_IGNORE_SCRIPTS: true
+
+      - name: Build packages
+        run: bun run build
+
+      - name: Cache build artifacts
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            packages/*/dist
+            packages/*/build
+          key: tauri-build-${{ github.sha }}
+
+  # Platform-specific builds run in parallel
   test-build:
+    needs: setup
     strategy:
       fail-fast: false
       matrix:
@@ -40,6 +86,33 @@ jobs:
 
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Verify Bun installation
+        run: |
+          bun --version
+          which bun
+          file $(which bun) || true
+        shell: bash
+
+      - name: Restore build artifacts
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            packages/*/dist
+            packages/*/build
+          key: tauri-build-${{ github.sha }}
+
+      - name: Cache Bun dependencies (platform-specific)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
 
       - name: Setup Rust
         run: |
@@ -70,18 +143,18 @@ jobs:
           # echo "Chocolatey and VS Build tools setup might be needed if not available"
         shell: pwsh
 
-      - name: Install dependencies
+      - name: Install dependencies (platform-specific)
         run: bun install
         env:
           NPM_CONFIG_IGNORE_SCRIPTS: true
 
-      - name: Build packages
-        run: bun run build
-
       - name: Run TypeScript check
         run: |
           cd packages/app
+          # Verify bun is working before running typecheck
+          bun --version
           bun run typecheck
+        shell: bash
 
       - name: Install Tauri CLI
         run: |
@@ -91,4 +164,8 @@ jobs:
       - name: Test build (verify it compiles)
         run: |
           cd packages/app
+          # Ensure bun is in PATH and working
+          export PATH="$HOME/.bun/bin:$PATH"
+          bun --version
           bun run tauri build --debug
+        shell: bash

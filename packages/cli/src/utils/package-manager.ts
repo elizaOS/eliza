@@ -2,9 +2,10 @@ import { logger } from '@elizaos/core';
 import { spawn } from 'node:child_process';
 import { UserEnvironment } from './user-environment';
 import { displayBunInstallationTipCompact } from './bun-installation-helper';
-import fs from 'node:fs/promises';
-import path from 'node:path';
 import which from 'which';
+import fs from 'node:fs';
+import path from 'node:path';
+import { execa } from 'execa';
 
 /**
  * Always returns 'bun' as the package manager for ElizaOS CLI.
@@ -50,6 +51,36 @@ export async function isRunningViaBunx(): Promise<boolean> {
  */
 export function getInstallCommand(isGlobal: boolean): string[] {
   return ['add', ...(isGlobal ? ['-g'] : [])];
+}
+
+/**
+ * Removes a package from bun.lock file to prevent circular dependency issues
+ * @param packageName - The package name to remove from lockfile
+ * @param directory - The directory containing the bun.lock file
+ */
+export async function removeFromBunLock(packageName: string, directory: string): Promise<void> {
+  const lockFilePath = path.join(directory, 'bun.lock');
+
+  if (!fs.existsSync(lockFilePath)) {
+    logger.debug(`No bun.lock file found at ${lockFilePath}, skipping removal`);
+    return;
+  }
+
+  try {
+    // Use bun remove to cleanly remove the package from lockfile
+    await execa('bun', ['remove', packageName], {
+      cwd: directory,
+      stdio: 'pipe', // Don't show output for cleanup operation
+    });
+    logger.debug(`Successfully removed ${packageName} from bun.lock`);
+  } catch (error: any) {
+    // If the package isn't in the lockfile, that's fine - we just want to ensure it's not there
+    if (error.message?.includes('not found') || error.message?.includes('No such package')) {
+      logger.debug(`Package ${packageName} not found in lockfile (expected for cleanup)`);
+    } else {
+      logger.warn(`Failed to remove ${packageName} from bun.lock: ${error.message}`);
+    }
+  }
 }
 
 /**
@@ -121,4 +152,37 @@ export async function executeInstallation(
     }
     return { success: false, installedIdentifier: null };
   }
+}
+
+/**
+ * Enhanced installation function that supports GitHub fallback with lockfile cleanup.
+ *
+ * @param packageName - The name of the package to install
+ * @param versionOrTag - Optional version or tag to install
+ * @param directory - The directory in which to run the installation
+ * @param githubFallback - Optional GitHub repository path for fallback (e.g., "owner/repo")
+ * @returns A promise resolving to an object indicating success and installed identifier
+ */
+export async function executeInstallationWithFallback(
+  packageName: string,
+  versionOrTag = '',
+  directory: string = process.cwd(),
+  githubFallback?: string
+): Promise<{ success: boolean; installedIdentifier: string | null }> {
+  // First try normal installation
+  const result = await executeInstallation(packageName, versionOrTag, directory);
+
+  if (result.success || !githubFallback) {
+    return result;
+  }
+
+  // If npm installation failed and we have a GitHub fallback, try GitHub installation
+  logger.debug(`npm installation failed, attempting GitHub fallback: ${githubFallback}`);
+
+  // Remove package from lockfile to prevent circular dependencies
+  await removeFromBunLock(packageName, directory);
+
+  // Try GitHub installation
+  const githubSpecifier = `github:${githubFallback}${versionOrTag ? `#${versionOrTag}` : ''}`;
+  return await executeInstallation(githubSpecifier, '', directory);
 }

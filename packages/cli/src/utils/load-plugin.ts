@@ -177,17 +177,17 @@ const importStrategies: ImportStrategy[] = [
 ];
 
 /**
- * Determines if a plugin is from the ElizaOS ecosystem
+ * Determines if a package name is from the ElizaOS ecosystem
  */
-function isElizaOSPlugin(repository: string): boolean {
-  return repository.startsWith('@elizaos/') || repository.startsWith('@elizaos/');
+function isElizaOSPackageName(repository: string): boolean {
+  return repository.startsWith('@elizaos/') || repository.startsWith('@elizaos-plugins/');
 }
 
 /**
  * Get relevant import strategies based on plugin type
  */
 function getStrategiesForPlugin(repository: string): ImportStrategy[] {
-  const isElizaOS = isElizaOSPlugin(repository);
+  const isElizaOS = isElizaOSPackageName(repository);
 
   if (isElizaOS) {
     // ElizaOS ecosystem plugins: try all strategies
@@ -212,7 +212,7 @@ function getStrategiesForPlugin(repository: string): ImportStrategy[] {
  * @returns The loaded plugin module or null if loading fails after all attempts.
  */
 export async function loadPluginModule(repository: string): Promise<any | null> {
-  const isElizaOS = isElizaOSPlugin(repository);
+  const isElizaOS = isElizaOSPackageName(repository);
   const strategies = getStrategiesForPlugin(repository);
 
   logger.debug(

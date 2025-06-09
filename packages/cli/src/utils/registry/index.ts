@@ -1,9 +1,5 @@
-import {
-  getGitHubCredentials,
-  getLocalPackages,
-  isMonorepoContext,
-  resolveEnvFile,
-} from '@/src/utils';
+import { getGitHubCredentials, getLocalPackages, resolveEnvFile } from '@/src/utils';
+import { detectDirectoryType } from '@/src/utils/directory-detection';
 import { logger } from '@elizaos/core';
 import dotenv from 'dotenv';
 import { execa } from 'execa';
@@ -284,7 +280,8 @@ export async function getLocalRegistryIndex(): Promise<Record<string, string>> {
   }
 
   // If we're in a monorepo context, try to discover local plugins
-  if (await isMonorepoContext()) {
+  const directoryInfo = detectDirectoryType(process.cwd());
+  if (directoryInfo.monorepoRoot) {
     try {
       const localPackages = await getLocalPackages();
       const localRegistry: Record<string, string> = {};

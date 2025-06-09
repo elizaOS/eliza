@@ -11,7 +11,15 @@ import { exportCharacterAsJson } from '@/lib/export-utils';
 import { compressImage } from '@/lib/utils';
 import type { Agent } from '@elizaos/core';
 import type React from 'react';
-import { type FormEvent, type ReactNode, useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import {
+  type FormEvent,
+  type ReactNode,
+  useState,
+  useMemo,
+  useCallback,
+  useRef,
+  useEffect,
+} from 'react';
 import {
   Select,
   SelectContent,
@@ -438,7 +446,7 @@ export default function CharacterForm({
                 {field.title}
                 {field.name in FIELD_REQUIREMENTS &&
                   (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.name] ===
-                  FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
+                    FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
               </Label>
             </TooltipTrigger>
             {field.tooltip && (
@@ -513,7 +521,7 @@ export default function CharacterForm({
                 {field.title}
                 {field.path in FIELD_REQUIREMENTS &&
                   (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.path] ===
-                  FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
+                    FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
               </Label>
             </TooltipTrigger>
             {field.tooltip && (
@@ -602,13 +610,13 @@ export default function CharacterForm({
   // Define import/export options
   const importExportOptions = [
     {
-      label: "Export JSON",
-      description: "Export current agent configuration as a JSON file",
+      label: 'Export JSON',
+      description: 'Export current agent configuration as a JSON file',
       onClick: handleExportJSON,
     },
     {
-      label: "Import JSON",
-      description: "Import agent configuration from a JSON file",
+      label: 'Import JSON',
+      description: 'Import agent configuration from a JSON file',
       onClick: handleImportClick,
     },
   ];
@@ -619,8 +627,8 @@ export default function CharacterForm({
 
     if (stopAgentButton) {
       options.push({
-        label: "Stop Agent",
-        description: "Stop the agent from running",
+        label: 'Stop Agent',
+        description: 'Stop the agent from running',
         onClick: () => {
           // The stopAgentButton should handle its own click logic
           // We'll trigger it by finding and clicking the button
@@ -634,8 +642,8 @@ export default function CharacterForm({
 
     if (onDelete) {
       options.push({
-        label: "Delete Agent",
-        description: "Permanently delete this agent and all its data",
+        label: 'Delete Agent',
+        description: 'Permanently delete this agent and all its data',
         onClick: () => onDelete(),
       });
     }
@@ -736,22 +744,19 @@ export default function CharacterForm({
             )}
 
             {/* Tabs container */}
-            <div
-              ref={tabsContainerRef}
-              className="overflow-x-auto scrollbar-hide"
-            >
+            <div ref={tabsContainerRef} className="overflow-x-auto scrollbar-hide">
               <TabsList className="inline-flex h-10 items-center justify-start rounded-md bg-muted p-1 text-muted-foreground w-max min-w-full">
                 {allTabs.map((tab) => (
                   <TabsTrigger
                     key={tab.value}
                     value={tab.value}
                     className={cn(
-                      "inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
-                      "data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm",
-                      !showLabels && "px-2" // Smaller padding on mobile
+                      'inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
+                      'data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm',
+                      !showLabels && 'px-2' // Smaller padding on mobile
                     )}
                   >
-                    <span className={cn("block", !showLabels && "text-xs")}>
+                    <span className={cn('block', !showLabels && 'text-xs')}>
                       {showLabels ? tab.label : tab.shortLabel}
                     </span>
                   </TabsTrigger>
@@ -840,10 +845,7 @@ export default function CharacterForm({
             </TooltipProvider>
 
             {/* Import/Export Split Button */}
-            <SplitButton
-              options={importExportOptions}
-              defaultValue="0"
-            />
+            <SplitButton options={importExportOptions} defaultValue="0" />
 
             <TooltipProvider>
               <Tooltip>

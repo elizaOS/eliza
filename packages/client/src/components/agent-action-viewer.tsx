@@ -36,7 +36,6 @@ const ITEMS_PER_PAGE = 15;
 enum ActionType {
   all = 'all',
   llm = 'llm',
-  embedding = 'embedding',
   transcription = 'transcription',
   image = 'image',
   other = 'other',
@@ -507,7 +506,10 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
   const [loadingMore, setLoadingMore] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  const { data: actions = [], isLoading, error } = useAgentActions(agentId, roomId);
+  // Exclude embedding operations by default
+  const excludeTypes = ['embedding', 'text_embedding'];
+
+  const { data: actions = [], isLoading, error } = useAgentActions(agentId, roomId, excludeTypes);
   const { mutate: deleteLog } = useDeleteLog();
 
   // Filter and search actions
@@ -520,9 +522,6 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
       switch (selectedType) {
         case ActionType.llm:
           if (usageType !== 'LLM') return false;
-          break;
-        case ActionType.embedding:
-          if (usageType !== 'Embedding') return false;
           break;
         case ActionType.transcription:
           if (usageType !== 'Transcription') return false;
@@ -671,7 +670,6 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
             <SelectContent>
               <SelectItem value={ActionType.all}>All Actions</SelectItem>
               <SelectItem value={ActionType.llm}>LLM Calls</SelectItem>
-              <SelectItem value={ActionType.embedding}>Embeddings</SelectItem>
               <SelectItem value={ActionType.transcription}>Transcriptions</SelectItem>
               <SelectItem value={ActionType.image}>Image Operations</SelectItem>
               <SelectItem value={ActionType.other}>Other</SelectItem>
