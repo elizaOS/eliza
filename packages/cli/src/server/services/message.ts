@@ -409,13 +409,13 @@ export class MessageBusService extends Service {
       };
 
       logger.info(
-        `[${this.runtime.character.name}] MessageBusService: Sending payload to central server API endpoint (/api/messages/submit):`,
+        `[${this.runtime.character.name}] MessageBusService: Sending payload to central server API endpoint (/api/messagingsubmit):`,
         payloadToServer
       );
 
       // Actual fetch to the central server API
       const baseUrl = this.getCentralMessageServerUrl();
-      const serverApiUrl = `${baseUrl}/api/messages/submit`;
+      const serverApiUrl = `${baseUrl}/api/messaging/submit`;
       const response = await fetch(serverApiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' /* TODO: Add Auth if needed */ },

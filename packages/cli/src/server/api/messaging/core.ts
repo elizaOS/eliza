@@ -28,11 +28,19 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
     // Special handling for default server ID "0"
     const isValidServerId = server_id === DEFAULT_SERVER_ID || validateUuid(server_id);
 
-    if (!validateUuid(channel_id) || !validateUuid(author_id) || !content || !isValidServerId || !validateUuid(in_reply_to_message_id) || !source_type || !raw_message
+    if (!validateUuid(channel_id) || !validateUuid(author_id) || !content || !isValidServerId || !source_type || !raw_message
     ) {
       return res.status(400).json({
         success: false,
-        error: 'Missing required fields: channel_id, server_id, author_id, content',
+        error: 'Missing required fields: channel_id, server_id, author_id, content, source_type, raw_message',
+      });
+    }
+
+    // Validate in_reply_to_message_id only if it's provided
+    if (in_reply_to_message_id && !validateUuid(in_reply_to_message_id)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid in_reply_to_message_id format',
       });
     }
 
