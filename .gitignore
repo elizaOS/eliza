@@ -38,8 +38,6 @@ models/*
 tsup.config.bundled_*.mjs
 
 .turbo
-.cursorrules
-
 instructions.md
 wallet_data.txt
 
@@ -151,6 +149,3 @@ playwright-report/
 *.temp
 temp/
 tmp/
-
-
-*.cursor*
