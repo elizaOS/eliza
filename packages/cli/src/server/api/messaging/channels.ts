@@ -514,7 +514,7 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
         return;
       }
 
-      // Basic validation (can be expanded)
+      // Enhanced security validation
       const validMimeTypes = [
         'image/jpeg',
         'image/png',
@@ -529,20 +529,31 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
         'text/plain',
       ];
 
+      // Validate MIME type
       if (!validMimeTypes.includes(mediaFile.mimetype)) {
-        // fs.unlinkSync(mediaFile.path); // Clean up multer's temp file if invalid
         res.status(400).json({ success: false, error: `Invalid file type: ${mediaFile.mimetype}` });
         return;
       }
 
+      // Additional filename security validation
+      if (!mediaFile.filename || mediaFile.filename.includes('..') || mediaFile.filename.includes('/')) {
+        res.status(400).json({ success: false, error: 'Invalid filename detected' });
+        return;
+      }
+
+      // Validate file size (additional check beyond multer limits)
+      const maxFileSize = 50 * 1024 * 1024; // 50MB
+      if (mediaFile.size > maxFileSize) {
+        res.status(400).json({ success: false, error: 'File too large' });
+        return;
+      }
+
       try {
-        // Construct file URL based on where channelUpload saves files
-        // e.g., /media/uploads/channels/:channelId/:filename
-        // This requires a static serving route for /media/uploads/channels too.
+        // Construct secure file URL - channelId is already validated as UUID
         const fileUrl = `/media/uploads/channels/${channelId}/${mediaFile.filename}`;
 
         logger.info(
-          `[MessagesRouter /upload-media] File uploaded for channel ${channelId}: ${mediaFile.filename}. URL: ${fileUrl}`
+          `[MessagesRouter /upload-media] Secure file uploaded for channel ${channelId}: ${mediaFile.filename}. URL: ${fileUrl}`
         );
 
         res.json({
@@ -560,7 +571,6 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
           `[MessagesRouter /upload-media] Error processing upload for channel ${channelId}: ${error.message}`,
           error
         );
-        // fs.unlinkSync(mediaFile.path); // Attempt cleanup on error
         res.status(500).json({ success: false, error: 'Failed to process media upload' });
       }
     }
