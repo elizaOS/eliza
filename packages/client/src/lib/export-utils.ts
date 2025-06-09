@@ -7,11 +7,7 @@ export interface ExportResult {
 }
 
 export interface ToastFunction {
-  (options: {
-    title: string;
-    description: string;
-    variant?: 'default' | 'destructive';
-  }): void;
+  (options: { title: string; description: string; variant?: 'default' | 'destructive' }): void;
 }
 
 /**
@@ -95,7 +91,7 @@ export function exportCharacterAsJson(agent: Agent, toast?: ToastFunction): Expo
   try {
     const characterData = agentToCharacterData(agent);
     const filename = generateExportFilename(agent.name);
-    
+
     downloadJsonFile(characterData, filename);
 
     // Success notification
@@ -109,7 +105,7 @@ export function exportCharacterAsJson(agent: Agent, toast?: ToastFunction): Expo
     return { success: true, filename };
   } catch (error) {
     console.error('Failed to export character:', error);
-    
+
     // Error notification
     if (toast) {
       toast({
@@ -119,9 +115,9 @@ export function exportCharacterAsJson(agent: Agent, toast?: ToastFunction): Expo
       });
     }
 
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
-} 
+}
