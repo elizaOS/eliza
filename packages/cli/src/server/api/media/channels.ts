@@ -51,8 +51,17 @@ export function createChannelMediaRouter(serverInstance: AgentServer): express.R
         'text/plain',
       ];
 
+// At the top of packages/cli/src/server/api/media/channels.ts
+import fs from 'fs';
+
+…
+
       if (!validMimeTypes.includes(mediaFile.mimetype)) {
-        // fs.unlinkSync(mediaFile.path); // Clean up multer's temp file if invalid
+        try {
+          await fs.promises.unlink(mediaFile.path);
+        } catch (cleanupError) {
+          logger.error('[Channel Media Upload] Failed to clean up invalid file:', cleanupError);
+        }
         res.status(400).json({ success: false, error: `Invalid file type: ${mediaFile.mimetype}` });
         return;
       }

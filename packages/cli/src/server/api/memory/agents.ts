@@ -183,9 +183,10 @@ export function createAgentMemoryRouter(
       await runtime.deleteAllMemories(roomId, MemoryType.DOCUMENT);
 
       res.status(204).send();
-    } catch (e) {
-      logger.error('[DELETE ALL MEMORIES] Error deleting all memories:', e);
-      sendError(res, 500, 'DELETE_ERROR', 'Error deleting all memories', e.message);
+    } catch (error) {
+      logger.error('[DELETE ALL MEMORIES] Error deleting all memories:', error);
+      sendError(res, 500, 'DELETE_ERROR', 'Error deleting all memories',
+        error instanceof Error ? error.message : String(error));
     }
   });
 

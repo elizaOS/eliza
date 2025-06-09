@@ -7,7 +7,7 @@ import { validateUuid } from '@elizaos/core';
 export const getRuntime = (agents: Map<UUID, IAgentRuntime>, agentId: UUID) => {
   const runtime = agents.get(agentId);
   if (!runtime) {
-    throw new Error('Agent not found');
+    throw new Error(`Agent not found: ${agentId}`);
   }
   return runtime;
 };

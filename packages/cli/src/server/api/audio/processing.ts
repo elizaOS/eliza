@@ -15,7 +15,10 @@ const MAX_UPLOADS_PER_WINDOW = 5; // Reduced to 5 uploads per minute per IP
 const BLOCK_DURATION = 300000; // 5 minutes block for excessive attempts
 
 function checkRateLimit(req: express.Request): boolean {
-  const clientIP = req.ip || req.connection.remoteAddress || 'unknown';
+  const forwarded = req.headers['x-forwarded-for'];
+  const clientIP = forwarded
+    ? forwarded.toString().split(',')[0]
+    : req.ip || req.connection.remoteAddress || 'unknown';
   const now = Date.now();
   const limit = uploadAttempts.get(clientIP);
 

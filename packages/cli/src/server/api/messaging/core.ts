@@ -38,8 +38,8 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
 
     try {
       const newRootMessageData = {
-        channelId: channel_id as UUID,
-        authorId: author_id as UUID,
+        channelId: validateUuid(channel_id)!,
+        authorId: validateUuid(author_id)!,
         content: content as string,
         rawMessage: raw_message,
         sourceType: source_type || 'agent_response',
