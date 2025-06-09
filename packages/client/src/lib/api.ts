@@ -210,9 +210,9 @@ export const apiClient = {
   createAgent: (params: { characterPath?: string; characterJson?: Character }) =>
     fetcher({ url: '/agents/', method: 'POST', body: params }),
   startAgent: (agentId: UUID): Promise<{ data: { id: UUID; name: string; status: string } }> =>
-    fetcher({ url: `/agents/${agentId}`, method: 'POST', body: { start: true } }),
+    fetcher({ url: `/agents/${agentId}/start`, method: 'POST' }),
   stopAgent: (agentId: string): Promise<{ data: { message: string } }> =>
-    fetcher({ url: `/agents/${agentId}`, method: 'PUT' }),
+    fetcher({ url: `/agents/${agentId}/stop`, method: 'POST' }),
   getAgentPanels: (agentId: string): Promise<{ success: boolean; data: AgentPanel[] }> =>
     fetcher({ url: `/agents/${agentId}/panels`, method: 'GET' }),
 
