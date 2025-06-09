@@ -528,78 +528,76 @@ const startAgents = async (options: {
     // Use standardized directory detection
     const directoryInfo = detectDirectoryType(currentDir);
 
-    if (directoryInfo) {
-      // Determine if this is a project or plugin
-      isProject = directoryInfo.type === 'elizaos-project';
-      isPlugin = directoryInfo.type === 'elizaos-plugin';
+    // Determine if this is a project or plugin
+    isProject = directoryInfo.type === 'elizaos-project';
+    isPlugin = directoryInfo.type === 'elizaos-plugin';
 
-      if (isProject) {
-        logger.debug('Found ElizaOS project using standardized directory detection');
-      } else if (isPlugin) {
-        logger.debug('Found ElizaOS plugin using standardized directory detection');
-      }
+    if (isProject) {
+      logger.debug('Found ElizaOS project using standardized directory detection');
+    } else if (isPlugin) {
+      logger.debug('Found ElizaOS plugin using standardized directory detection');
+    }
 
-      // If we found a plugin or project, try to load it
-      if ((isProject || isPlugin) && directoryInfo.hasPackageJson) {
-        const packageJsonPath = path.join(currentDir, 'package.json');
-        const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+    // If we found a plugin or project, try to load it
+    if ((isProject || isPlugin) && directoryInfo.hasPackageJson) {
+      const packageJsonPath = path.join(currentDir, 'package.json');
+      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
 
-        // If we found a main entry in package.json, try to load it
-        const mainEntry = packageJson.main;
-        if (mainEntry) {
-          const mainPath = path.resolve(currentDir, mainEntry);
+      // If we found a main entry in package.json, try to load it
+      const mainEntry = packageJson.main;
+      if (mainEntry) {
+        const mainPath = path.resolve(currentDir, mainEntry);
 
-          if (fs.existsSync(mainPath)) {
-            try {
-              // Try to import the module
-              const importedModule = await import(mainPath);
+        if (fs.existsSync(mainPath)) {
+          try {
+            // Try to import the module
+            const importedModule = await import(mainPath);
 
-              if (isPlugin) {
-                // Look for plugin object
-                if (
-                  importedModule.default &&
-                  typeof importedModule.default === 'object' &&
-                  importedModule.default.name &&
-                  typeof importedModule.default.init === 'function'
-                ) {
-                  pluginModule = importedModule.default;
-                  logger.debug(`Loaded plugin: ${pluginModule?.name || 'unnamed'}`);
-                } else {
-                  logger.warn(
-                    'Plugin detected but no valid plugin export found, looking for other exports'
-                  );
+            if (isPlugin) {
+              // Look for plugin object
+              if (
+                importedModule.default &&
+                typeof importedModule.default === 'object' &&
+                importedModule.default.name &&
+                typeof importedModule.default.init === 'function'
+              ) {
+                pluginModule = importedModule.default;
+                logger.debug(`Loaded plugin: ${pluginModule?.name || 'unnamed'}`);
+              } else {
+                logger.warn(
+                  'Plugin detected but no valid plugin export found, looking for other exports'
+                );
 
-                  // Try to find any exported plugin object
-                  for (const key in importedModule) {
-                    if (
-                      importedModule[key] &&
-                      typeof importedModule[key] === 'object' &&
-                      importedModule[key].name &&
-                      typeof importedModule[key].init === 'function'
-                    ) {
-                      pluginModule = importedModule[key];
-                      logger.debug(`Found plugin export under key: ${key}`);
-                      break;
-                    }
+                // Try to find any exported plugin object
+                for (const key in importedModule) {
+                  if (
+                    importedModule[key] &&
+                    typeof importedModule[key] === 'object' &&
+                    importedModule[key].name &&
+                    typeof importedModule[key].init === 'function'
+                  ) {
+                    pluginModule = importedModule[key];
+                    logger.debug(`Found plugin export under key: ${key}`);
+                    break;
                   }
                 }
-              } else if (isProject) {
-                // Look for project object
-                if (
-                  importedModule.default &&
-                  typeof importedModule.default === 'object' &&
-                  importedModule.default.agents
-                ) {
-                  projectModule = importedModule;
-                  logger.debug('Loaded project module');
-                }
               }
-            } catch (importError) {
-              logger.error(`Error importing module: ${importError}`);
+            } else if (isProject) {
+              // Look for project object
+              if (
+                importedModule.default &&
+                typeof importedModule.default === 'object' &&
+                importedModule.default.agents
+              ) {
+                projectModule = importedModule;
+                logger.debug('Loaded project module');
+              }
             }
-          } else {
-            logger.error(`Main entry point ${mainPath} does not exist`);
+          } catch (importError) {
+            logger.error(`Error importing module: ${importError}`);
           }
+        } else {
+          logger.error(`Main entry point ${mainPath} does not exist`);
         }
       }
     }
