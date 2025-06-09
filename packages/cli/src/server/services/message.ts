@@ -70,7 +70,7 @@ export class MessageBusService extends Service {
     try {
       const serverApiUrl = this.getCentralMessageServerUrl();
       const response = await fetch(
-        `${serverApiUrl}/api/messages/central-channels/${channelId}/participants`
+        `${serverApiUrl}/api/messaging/central-channels/${channelId}/participants`
       );
 
       if (response.ok) {

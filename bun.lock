@@ -887,9 +887,9 @@
 
     "@elizaos/plugin-bootstrap": ["@elizaos/plugin-bootstrap@workspace:packages/plugin-bootstrap"],
 
-    "@elizaos/plugin-local-ai": ["@elizaos/plugin-local-ai@1.0.1", "", { "dependencies": { "@elizaos/core": "^1.0.0", "@huggingface/transformers": "^3.5.1", "node-llama-cpp": "3.8.1", "nodejs-whisper": "0.2.9", "stream-browserify": "^3.0.0", "tsup": "8.5.0", "undici": "^7.10.0", "uuid": "11.1.0", "whisper-node": "^1.1.1", "zod": "3.25.23" } }, "sha512-9l1dOtfs5ni3tbeA5pOzA1hCefZ9QvB4NVwAL2T6zQAmQN3Ga/5GgWDzE1ErcyH/ijrijewHD/lfoMjDnQ3IDQ=="],
+    "@elizaos/plugin-local-ai": ["@elizaos/plugin-local-ai@1.0.4", "", { "dependencies": { "@elizaos/core": "^1.0.0", "@huggingface/transformers": "^3.5.1", "node-llama-cpp": "3.8.1", "nodejs-whisper": "0.2.9", "stream-browserify": "^3.0.0", "tsup": "8.5.0", "undici": "^7.10.0", "uuid": "11.1.0", "whisper-node": "^1.1.1", "zod": "3.25.23" } }, "sha512-flBgh/v7MBCn2kXhkkMsHbzILMtHBEabwaS9a+Fh5CXMVD3u6+aePRg68GXY9aLRGxAENW+4wt5UP51v861Dmg=="],
 
-    "@elizaos/plugin-openai": ["@elizaos/plugin-openai@1.0.0", "", { "dependencies": { "@ai-sdk/openai": "^1.3.20", "@elizaos/core": "^1.0.0", "ai": "^4.3.16", "js-tiktoken": "^1.0.18", "tsup": "8.5.0", "undici": "^7.10.0" } }, "sha512-4IyqQ/NjHquNQnRpOhUB9cmXidndUAb7375CuB5wlQxlwlk5/UhlNT4aybHvRMmWQrqtW8oeR0VBW+x3/aRnqw=="],
+    "@elizaos/plugin-openai": ["@elizaos/plugin-openai@1.0.3", "", { "dependencies": { "@ai-sdk/openai": "^1.3.20", "@elizaos/core": "^1.0.0", "ai": "^4.3.16", "js-tiktoken": "^1.0.18", "tsup": "8.5.0", "undici": "^7.10.0" } }, "sha512-Ish3MM/KivXojLVvvBT4tG7Jrr1VFkCnj6NyrqQKMTbXeamSmtpp5ds4nTVQuxAWCvsqeU9oT776j3GBVNJeWA=="],
 
     "@elizaos/plugin-sql": ["@elizaos/plugin-sql@workspace:packages/plugin-sql"],
 
