@@ -113,8 +113,9 @@ export default function ProfileOverlay({ isOpen, onClose, agentId }: ProfileOver
                     )}
                   </div>
                   <div
-                    className={`absolute bottom-1 right-1 w-4 h-4 rounded-full border-2 border-background ${isActive ? 'bg-emerald-500' : 'bg-muted-foreground'
-                      }`}
+                    className={`absolute bottom-1 right-1 w-4 h-4 rounded-full border-2 border-background ${
+                      isActive ? 'bg-emerald-500' : 'bg-muted-foreground'
+                    }`}
                   />
                 </div>
                 <div className="flex flex-col justify-center mr-4">
@@ -184,7 +185,6 @@ export default function ProfileOverlay({ isOpen, onClose, agentId }: ProfileOver
                 {agent?.createdAt ? moment(agent.createdAt).format('LLL') : moment().format('LLL')}
               </p>
             </div>
-
 
             <div>
               <p className="font-medium text-sm mb-2">Plugins</p>

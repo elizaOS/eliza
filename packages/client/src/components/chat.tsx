@@ -266,10 +266,10 @@ export default function Chat({
   // Convert AgentWithStatus to Agent, ensuring required fields have defaults
   const targetAgentData: Agent | undefined = agentDataResponse?.data
     ? ({
-      ...agentDataResponse.data,
-      createdAt: agentDataResponse.data.createdAt || Date.now(),
-      updatedAt: agentDataResponse.data.updatedAt || Date.now(),
-    } as Agent)
+        ...agentDataResponse.data,
+        createdAt: agentDataResponse.data.createdAt || Date.now(),
+        updatedAt: agentDataResponse.data.updatedAt || Date.now(),
+      } as Agent)
     : undefined;
 
   // Use the new hooks for DM channel management
@@ -841,8 +841,8 @@ export default function Chat({
                                 <span className="text-xs text-muted-foreground">
                                   {moment(
                                     channel.metadata?.createdAt ||
-                                    channel.updatedAt ||
-                                    channel.createdAt
+                                      channel.updatedAt ||
+                                      channel.createdAt
                                   ).fromNow()}
                                 </span>
                               </div>
