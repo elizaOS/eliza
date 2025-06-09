@@ -33,8 +33,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Only run full matrix on main branch pushes, PRs get ubuntu only
-        os: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') && fromJSON('["ubuntu-latest", "macos-latest", "windows-latest"]') || fromJSON('["ubuntu-latest"]') }}
+        os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
       - name: Checkout code
