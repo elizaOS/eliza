@@ -1,3 +1,4 @@
+import type { Metadata } from './primitives';
 import type { IAgentRuntime } from './runtime';
 
 /**
@@ -27,6 +28,7 @@ export interface ServiceTypeRegistry {
   WALLET: 'wallet';
   LP_POOL: 'lp_pool';
   TOKEN_DATA: 'token_data';
+  DATABASE_MIGRATION: 'database_migration';
 }
 
 /**
@@ -94,6 +96,7 @@ export const ServiceType = {
   WALLET: 'wallet',
   LP_POOL: 'lp_pool',
   TOKEN_DATA: 'token_data',
+  DATABASE_MIGRATION: 'database_migration',
 } as const satisfies ServiceTypeRegistry;
 
 /**
@@ -118,7 +121,7 @@ export abstract class Service {
   abstract capabilityDescription: string;
 
   /** Service configuration */
-  config?: { [key: string]: any };
+  config?: Metadata;
 
   /** Start service connection */
   static async start(_runtime: IAgentRuntime): Promise<Service> {
@@ -136,10 +139,8 @@ export abstract class Service {
  * @template ConfigType The configuration type for this service
  * @template ResultType The result type returned by the service operations
  */
-export interface TypedService<
-  ConfigType extends { [key: string]: any } = { [key: string]: any },
-  ResultType = unknown,
-> extends Service {
+export interface TypedService<ConfigType extends Metadata = Metadata, ResultType = unknown>
+  extends Service {
   /**
    * The configuration for this service instance
    */
@@ -193,11 +194,3 @@ export function createServiceError(error: unknown, code = 'UNKNOWN_ERROR'): Serv
     message: String(error),
   };
 }
-
-/**
- * A generic type for service configurations.
- * Services (like `IVideoService`, `IBrowserService`) can have their own specific configuration
- * structures. This type allows for a flexible way to pass configuration objects,
- * typically used during service initialization within a plugin or the `AgentRuntime`.
- */
-export type ServiceConfig = Record<string, unknown>;

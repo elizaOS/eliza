@@ -1,3 +1,5 @@
+import type { Metadata } from './primitives';
+
 // Represents an agent in the TeeAgent table, containing details about the agent.
 /**
  * Represents an agent's registration details within a Trusted Execution Environment (TEE) context.
@@ -93,16 +95,6 @@ export enum TeeType {
 }
 
 /**
- * Configuration options specific to a particular Trusted Execution Environment (TEE) vendor.
- * This allows for vendor-specific settings to be passed to the TEE plugin or service.
- * The structure is a generic key-value map, as configurations can vary widely between vendors.
- */
-export interface TeeVendorConfig {
-  // Add vendor-specific configuration options here
-  [key: string]: unknown;
-}
-
-/**
  * Configuration for a TEE (Trusted Execution Environment) plugin.
  * This allows specifying the TEE vendor and any vendor-specific configurations.
  * It's used to initialize and configure TEE-related functionalities within the agent system.
@@ -111,5 +103,5 @@ export interface TeePluginConfig {
   /** Optional. The name or identifier of the TEE vendor (e.g., 'tdx_dstack' from `TeeType`). */
   vendor?: string;
   /** Optional. Vendor-specific configuration options, conforming to `TeeVendorConfig`. */
-  vendorConfig?: TeeVendorConfig;
+  vendorConfig?: Metadata;
 }
