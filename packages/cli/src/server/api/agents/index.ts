@@ -6,6 +6,7 @@ import { createAgentLifecycleRouter } from './lifecycle';
 import { createAgentWorldsRouter } from './worlds';
 import { createAgentPanelsRouter } from './panels';
 import { createAgentLogsRouter } from './logs';
+import { createAgentMemoryRouter } from '../memory/agents';
 
 /**
  * Creates the agents router for agent lifecycle and management operations
@@ -30,6 +31,9 @@ export function agentsRouter(
   
   // Mount logs operations
   router.use('/', createAgentLogsRouter(agents, serverInstance));
+  
+  // Mount memory operations
+  router.use('/', createAgentMemoryRouter(agents, serverInstance));
 
   return router;
 }
