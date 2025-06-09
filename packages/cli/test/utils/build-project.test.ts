@@ -5,10 +5,10 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 // 1. Define mock functions using vi.hoisted to ensure they are initialized before vi.mock calls
-const { mockRunBunCommand, mockIsMonorepoContext, mockExeca, mockLogger } = vi.hoisted(() => {
+const { mockRunBunCommand, mockDetectDirectoryType, mockExeca, mockLogger } = vi.hoisted(() => {
   return {
     mockRunBunCommand: vi.fn(),
-    mockIsMonorepoContext: vi.fn(),
+    mockDetectDirectoryType: vi.fn(),
     mockExeca: vi.fn(), // For npm/tsc fallbacks
     mockLogger: {
       info: vi.fn(),
@@ -25,8 +25,10 @@ vi.mock('@elizaos/core', () => ({ logger: mockLogger }));
 vi.mock('execa', () => ({ execa: mockExeca }));
 // Path from test/utils/build-project.test.ts to src/utils/run-bun.ts
 vi.mock('../../src/utils/run-bun', () => ({ runBunCommand: mockRunBunCommand }));
-// Path from test/utils/build-project.test.ts to src/utils/get-package-info.ts
-vi.mock('../../src/utils/get-package-info', () => ({ isMonorepoContext: mockIsMonorepoContext }));
+// Path from test/utils/build-project.test.ts to src/utils/directory-detection.ts
+vi.mock('../../src/utils/directory-detection', () => ({
+  detectDirectoryType: mockDetectDirectoryType,
+}));
 
 // 3. Import the SUT (System Under Test) AFTER mocks are defined
 import { buildProject } from '../../src/utils/build-project';
@@ -40,7 +42,13 @@ describe('build-project', () => {
 
     // Reset mocks (their history and any specific implementations)
     mockRunBunCommand.mockReset().mockResolvedValue(undefined);
-    mockIsMonorepoContext.mockReset().mockResolvedValue(false);
+    mockDetectDirectoryType.mockReset().mockReturnValue({
+      type: 'non-elizaos-dir',
+      hasPackageJson: true,
+      hasElizaOSDependencies: false,
+      elizaPackageCount: 0,
+      monorepoRoot: undefined, // Default to not in monorepo
+    });
     mockExeca.mockReset().mockResolvedValue({ stdout: '', stderr: '' }); // Default success for execa
 
     // Reset logger mock functions
@@ -319,7 +327,13 @@ describe('build-project', () => {
     });
 
     it('should handle monorepo projects', async () => {
-      mockIsMonorepoContext.mockResolvedValue(true);
+      mockDetectDirectoryType.mockReturnValue({
+        type: 'elizaos-project',
+        hasPackageJson: true,
+        hasElizaOSDependencies: true,
+        elizaPackageCount: 3,
+        monorepoRoot: '/mock/monorepo/root',
+      });
       const projectDir = join(tempDir, 'monorepo-project');
       await mkdir(projectDir, { recursive: true });
       await writeFile(

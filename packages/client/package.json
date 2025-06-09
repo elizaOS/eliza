@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "start:client": "vite",
-    "dev:client": "node --max-old-space-size=4096 node_modules/.bin/vite",
+    "dev:client": "vite --host 0.0.0.0 --port 5173",
     "build": "vite build",
     "preview": "vite preview",
     "lint": "prettier --write ./src",
