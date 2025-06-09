@@ -135,7 +135,7 @@ describe("ElizaOS Create Commands", () => {
   });
 
   test("rejects creating project in existing directory", async () => {
-    execSync(`rm -rf existing-app && mkdir existing-app`, { stdio: "ignore" });
+    execSync(`rm -rf existing-app && mkdir existing-app && echo "test" > existing-app/file.txt`, { stdio: "ignore" });
     
     const result = expectCliCommandToFail(elizaosCmd, "create existing-app --yes");
     
