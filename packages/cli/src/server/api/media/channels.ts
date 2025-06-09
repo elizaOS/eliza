@@ -2,6 +2,7 @@ import { validateUuid, logger, type UUID } from '@elizaos/core';
 import express from 'express';
 import type { AgentServer } from '../../index';
 import { channelUpload } from '../shared/uploads';
+import fs from 'fs';
 
 // Using Express.Multer.File type instead of importing from multer directly
 type MulterFile = Express.Multer.File;
@@ -51,10 +52,6 @@ export function createChannelMediaRouter(serverInstance: AgentServer): express.R
         'text/plain',
       ];
 
-// At the top of packages/cli/src/server/api/media/channels.ts
-import fs from 'fs';
-
-…
 
       if (!validMimeTypes.includes(mediaFile.mimetype)) {
         try {
