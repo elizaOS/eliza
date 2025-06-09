@@ -23,13 +23,13 @@ Before using this plugin, you'll need:
 Install the plugin via npm:
 
 ```bash
-npm install @elizaos/plugin-story
+npm install @elizaos-plugins/plugin-story
 ```
 
 Or using bun:
 
 ```bash
-bun add @elizaos/plugin-story
+bun add @elizaos-plugins/plugin-story
 ```
 
 ## Configuration

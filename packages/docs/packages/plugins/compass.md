@@ -1,6 +1,6 @@
-# @elizaos/plugin-compass
+# @elizaos-plugins/plugin-compass
 
-The `@elizaos/plugin-compass` is a powerful plugin designed to seamlessly integrate the [Compass API](https://api.compasslabs.ai/) into the ElizaOS ecosystem. This integration facilitates the execution of operations on DeFi protocols supported by the Compass API.
+The `@elizaos-plugins/plugin-compass` is a powerful plugin designed to seamlessly integrate the [Compass API](https://api.compasslabs.ai/) into the ElizaOS ecosystem. This integration facilitates the execution of operations on DeFi protocols supported by the Compass API.
 
 ## Overview
 
@@ -41,7 +41,7 @@ For a comprehensive list of supported protocols and available actions, please vi
 To install the plugin:
 
 ```
-npx elizaos plugins add @elizaos/plugin-compass
+npx elizaos plugins add @elizaos-plugins/plugin-compass
 bun run build
 ```
 
@@ -67,6 +67,6 @@ Here are some secrets that need to be set if the plugin was to be used together 
         }
     },
 ...
-"plugins": ["@elizaos/plugin-compass"],
+"plugins": ["@elizaos-plugins/plugin-compass"],
 ...
 ```

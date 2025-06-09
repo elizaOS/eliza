@@ -1,4 +1,4 @@
-# @elizaos/plugin-flow-advanced
+# @elizaos-plugins/plugin-flow-advanced
 
 The advanced Eliza plugin for Flow Blockchain
 
@@ -16,9 +16,9 @@ This plugin provides advanced functionality for the Flow Blockchain. It includes
 To install the plugin, use the following command in your Eliza project:
 
 ```bash
-npx elizaos plugins add @elizaos/plugin-di
-npx elizaos plugins add @elizaos/plugin-flow
-npx elizaos plugins add @elizaos/plugin-flow-advanced
+npx elizaos plugins add @elizaos-plugins/plugin-di
+npx elizaos plugins add @elizaos-plugins/plugin-flow
+npx elizaos plugins add @elizaos-plugins/plugin-flow-advanced
 ```
 
 ## Configuration
@@ -37,7 +37,7 @@ FLOW_ENDPOINT_URL=<Custom RPC endpoint URL (optional)>
 ### Basic Integration
 
 ```typescript
-import { advancedFlowPlugin } from '@elizaos/plugin-flow-advanced';
+import { advancedFlowPlugin } from '@elizaos-plugins/plugin-flow-advanced';
 ```
 
 ### Example Usage

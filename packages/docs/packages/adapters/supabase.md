@@ -20,7 +20,7 @@ npm install github:elizaos-plugins/adapter-supabase
 
 ```json
 {
-  "plugins": ["@elizaos/adapter-supabase"],
+  "plugins": ["@elizaos-plugins/adapter-supabase"],
   "settings": {
     "secrets": {
       "SUPABASE_URL": "your-supabase-project-url",

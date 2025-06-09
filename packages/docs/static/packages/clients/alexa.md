@@ -13,7 +13,7 @@ Enables ElizaOS agents to integrate with Amazon Alexa, allowing your ElizaOS cha
 ## Installation
 
 ```bash
-npm install @elizaos/client-alexa
+npm install @elizaos-plugins/client-alexa
 ```
 
 ## Configuration

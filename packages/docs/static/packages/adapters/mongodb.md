@@ -19,7 +19,7 @@ A robust MongoDB adapter for ElizaOS that provides persistence, vector search ca
 ## Installation
 
 ```bash
-npm install @elizaos/adapter-mongodb
+npm install @elizaos-plugins/adapter-mongodb
 ```
 
 ## Configuration
@@ -28,7 +28,7 @@ Add the adapter to your ElizaOS configuration:
 
 ```json
 {
-  "plugins": ["@elizaos/adapter-mongodb"],
+  "plugins": ["@elizaos-plugins/adapter-mongodb"],
   "settings": {
     "MONGODB_CONNECTION_STRING": "your_mongodb_connection_string",
     "MONGODB_DATABASE": "your_database_name" // Optional, defaults to "elizaAgent"

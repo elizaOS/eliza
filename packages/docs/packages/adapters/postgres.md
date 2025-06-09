@@ -22,13 +22,13 @@ A database adapter plugin for ElizaOS that provides PostgreSQL connectivity with
 Install the adapter via npm:
 
 ```bash
-npm install @elizaos/adapter-postgres
+npm install @elizaos-plugins/adapter-postgres
 ```
 
 Or using bun:
 
 ```bash
-bun add @elizaos/adapter-postgres
+bun add @elizaos-plugins/adapter-postgres
 ```
 
 ## Configuration

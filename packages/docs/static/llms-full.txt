@@ -10130,7 +10130,7 @@ import { fileURLToPath } from 'node:url';
 async function loadAndPreparePlugin(pluginName: string, version: string): Promise<Plugin | null>
 ⋮----
 .replace(/^@elizaos\/plugin-/, '') // Remove prefix
-.replace(/^@elizaos\//, '') // Remove alternative prefix
+.replace(/^@elizaos-plugins\//, '') // Remove alternative prefix
 ⋮----
 function isValidPluginShape(obj: any): obj is Plugin
 export async function promptForProjectPlugins(

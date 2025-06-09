@@ -26,7 +26,7 @@ The ElizaOS Arbitrage Plugin monitors multiple decentralized exchanges (DEXs) li
 ## Installation
 
 ```bash
-npm install @elizaos/plugin-arbitrage
+npm install @elizaos-plugins/plugin-arbitrage
 ```
 
 ## Configuration

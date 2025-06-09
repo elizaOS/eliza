@@ -7349,7 +7349,7 @@ Bossu is an AI agent platform specialized for Web3 applications, bridging autono
 - Developer access through Eliza's plugin marketplace:
 
 ```typescript
-import { BossuWeb3 } from '@elizaos/bossu-integration';
+import { BossuWeb3 } from '@elizaos-plugins/bossu-integration';
 const agent = new BossuWeb3({ network: 'arbitrum' });
 ```
 
@@ -9897,7 +9897,7 @@ A robust MongoDB adapter for ElizaOS that provides persistence, vector search ca
 ## Installation
 
 ```bash
-npm install @elizaos/adapter-mongodb
+npm install @elizaos-plugins/adapter-mongodb
 ```
 
 ## Configuration
@@ -9906,7 +9906,7 @@ Add the adapter to your ElizaOS configuration:
 
 ```json
 {
-  "plugins": ["@elizaos/adapter-mongodb"],
+  "plugins": ["@elizaos-plugins/adapter-mongodb"],
   "settings": {
     "MONGODB_CONNECTION_STRING": "your_mongodb_connection_string",
     "MONGODB_DATABASE": "your_database_name" // Optional, defaults to "elizaAgent"
@@ -9952,7 +9952,7 @@ A lightweight PostgreSQL-compatible database adapter for ElizaOS, providing vect
 ## Installation
 
 ```bash
-npm install @elizaos/adapter-sqlite
+npm install @elizaos-plugins/adapter-sqlite
 ```
 
 ## Configuration
@@ -9961,7 +9961,7 @@ Add the adapter to your ElizaOS configuration:
 
 ```json
 {
-  "plugins": ["@elizaos/adapter-sqlite"],
+  "plugins": ["@elizaos-plugins/adapter-sqlite"],
   "settings": {
     "SQLITE_DATA_DIR": "/path/to/data/directory" // Required setting
   }
@@ -10001,13 +10001,13 @@ A database adapter plugin for ElizaOS that provides PostgreSQL connectivity with
 Install the adapter via npm:
 
 ```bash
-npm install @elizaos/adapter-postgres
+npm install @elizaos-plugins/adapter-postgres
 ```
 
 Or using bun:
 
 ```bash
-bun add @elizaos/adapter-postgres
+bun add @elizaos-plugins/adapter-postgres
 ```
 
 ## Configuration
@@ -10055,7 +10055,7 @@ A vector database adapter for ElizaOS that provides efficient similarity search 
 ## Installation
 
 ```bash
-npm install @elizaos/adapter-qdrant
+npm install @elizaos-plugins/adapter-qdrant
 ```
 
 ## Configuration
@@ -10064,7 +10064,7 @@ Add the adapter to your ElizaOS configuration:
 
 ```json
 {
-  "plugins": ["@elizaos/adapter-qdrant"],
+  "plugins": ["@elizaos-plugins/adapter-qdrant"],
   "settings": {
     "QDRANT_URL": "your-qdrant-server-url",
     "QDRANT_KEY": "your-qdrant-api-key",
@@ -10106,7 +10106,7 @@ A SQLite database adapter for ElizaOS that provides persistent storage capabilit
 ## Installation
 
 ```bash
-npm install @elizaos/adapter-sqlite
+npm install @elizaos-plugins/adapter-sqlite
 ```
 
 ## Configuration
@@ -10121,7 +10121,7 @@ Implements the `IDatabaseAdapter` interface and extends the `DatabaseAdapter` ba
 ## Example Usage
 
 ```typescript
-import sqlitePlugin from '@elizaos/adapter-sqlite';
+import sqlitePlugin from '@elizaos-plugins/adapter-sqlite';
 import { IAgentRuntime } from '@elizaos/core';
 
 // Initialize with ElizaOS runtime
@@ -10166,7 +10166,7 @@ npm install github:elizaos-plugins/adapter-supabase
 
 ```json
 {
-  "plugins": ["@elizaos/adapter-supabase"],
+  "plugins": ["@elizaos-plugins/adapter-supabase"],
   "settings": {
     "secrets": {
       "SUPABASE_URL": "your-supabase-project-url",
@@ -10213,7 +10213,7 @@ Enables ElizaOS agents to integrate with Amazon Alexa, allowing your ElizaOS cha
 ## Installation
 
 ```bash
-npm install @elizaos/client-alexa
+npm install @elizaos-plugins/client-alexa
 ```
 
 ## Configuration
@@ -10271,7 +10271,7 @@ A client plugin for ElizaOS that enables AI characters to seamlessly post conten
 ## Installation
 
 ```bash
-npm install @elizaos/client-deva
+npm install @elizaos-plugins/client-deva
 ```
 
 ## Configuration
@@ -10399,7 +10399,7 @@ Enables agents to control smart home devices, scenes, and rooms through SmartThi
 ## Installation
 
 ```bash
-npm install @elizaos/client-eliza-home
+npm install @elizaos-plugins/client-eliza-home
 ```
 
 ## Configuration
@@ -10453,7 +10453,7 @@ A plugin for ElizaOS that enables agent integration with the Farcaster social ne
 ## Installation
 
 ```bash
-npm install @elizaos/client-farcaster
+npm install @elizaos-plugins/client-farcaster
 ```
 
 ## Configuration
@@ -10474,7 +10474,7 @@ Various parameters available including dry run mode, polling intervals, and post
 
 ```typescript
 import { ElizaOS } from '@elizaos/core';
-import farcasterPlugin from '@elizaos/client-farcaster';
+import farcasterPlugin from '@elizaos-plugins/client-farcaster';
 
 // Initialize ElizaOS
 const elizaOs = new ElizaOS({
@@ -10769,7 +10769,7 @@ The Telegram Account Plugin allows ElizaOS agents to connect and operate through
 ## Installation
 
 ```bash
-npm install @elizaos/client-telegram-account
+npm install @elizaos-plugins/client-telegram-account
 ```
 
 ## Configuration
@@ -11505,7 +11505,7 @@ A powerful DEX arbitrage trading plugin for ElizaOS, designed to identify and au
 ## Installation
 
 ```bash
-npm install @elizaos/plugin-arbitrage
+npm install @elizaos-plugins/plugin-arbitrage
 ```
 
 ## Configuration
@@ -12485,7 +12485,7 @@ The plugin responds to natural language queries about cryptocurrency prices, pro
 
 ## File: packages/docs/static/packages/plugins/compass.md
 `````markdown
-# @elizaos/plugin-compass
+# @elizaos-plugins/plugin-compass
 
 ## Purpose
 
@@ -12499,7 +12499,7 @@ A plugin that integrates the Compass API into the ElizaOS ecosystem to execute o
 ## Installation
 
 ```
-npx elizaos plugins add @elizaos/plugin-compass
+npx elizaos plugins add @elizaos-plugins/plugin-compass
 bun run build
 ```
 
@@ -12516,7 +12516,7 @@ These can also be set directly in the character configuration under settings.sec
 
 ## Integration
 
-Added to the character configuration in the "plugins" array as "@elizaos/plugin-compass".
+Added to the character configuration in the "plugins" array as "@elizaos-plugins/plugin-compass".
 
 ## Links
 
@@ -12752,7 +12752,7 @@ import { cronosZkEVMPlugin } from '@elizaos/plugin-cronoszkevm';
 
 ## File: packages/docs/static/packages/plugins/d-a-t-a.md
 `````markdown
-# @elizaos/plugin-d.a.t.a
+# @elizaos-plugins/plugin-d.a.t.a
 
 ## Purpose
 
@@ -13595,7 +13595,7 @@ Add to your character file:
 
 ## File: packages/docs/static/packages/plugins/flow-advanced.md
 `````markdown
-# @elizaos/plugin-flow-advanced
+# @elizaos-plugins/plugin-flow-advanced
 
 ## Purpose
 
@@ -13611,9 +13611,9 @@ This plugin provides advanced functionality for the Flow Blockchain.
 ## Installation
 
 ```bash
-npx elizaos plugins add @elizaos/plugin-di
-npx elizaos plugins add @elizaos/plugin-flow
-npx elizaos plugins add @elizaos/plugin-flow-advanced
+npx elizaos plugins add @elizaos-plugins/plugin-di
+npx elizaos plugins add @elizaos-plugins/plugin-flow
+npx elizaos plugins add @elizaos-plugins/plugin-flow-advanced
 ```
 
 ## Configuration
@@ -13630,7 +13630,7 @@ FLOW_ENDPOINT_URL=<Custom RPC endpoint URL (optional)>
 ## Integration
 
 ```typescript
-import { advancedFlowPlugin } from '@elizaos/plugin-flow-advanced';
+import { advancedFlowPlugin } from '@elizaos-plugins/plugin-flow-advanced';
 ```
 
 ## Example Usage
@@ -17457,13 +17457,13 @@ A plugin for ElizaOS that enables interaction with Story Protocol - a comprehens
 Install via npm:
 
 ```bash
-npm install @elizaos/plugin-story
+npm install @elizaos-plugins/plugin-story
 ```
 
 Or using bun:
 
 ```bash
-bun add @elizaos/plugin-story
+bun add @elizaos-plugins/plugin-story
 ```
 
 ## Configuration
@@ -18138,7 +18138,7 @@ A Twilio plugin for ElizaOS that enables SMS and voice call capabilities.
 ## Installation
 
 ```bash
-bun add @elizaos/plugin-twilio
+bun add @elizaos-plugins/plugin-twilio
 ```
 
 ## Configuration

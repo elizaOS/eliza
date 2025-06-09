@@ -62,9 +62,9 @@ function processRegistryEntry(name, repoUrl) {
   const repoPath = repoUrl.replace('github:', '');
 
   const displayName = name
-    .replace('@elizaos/plugin-', '')
-    .replace('@elizaos/client-', '')
-    .replace('@elizaos/adapter-', '')
+    .replace('@elizaos-plugins/plugin-', '')
+    .replace('@elizaos-plugins/client-', '')
+    .replace('@elizaos-plugins/adapter-', '')
     .replace(/-/g, ' ')
     .split(' ')
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
@@ -208,9 +208,9 @@ function generateUsersFile(plugins, customData) {
     if (!registryPluginNames.includes(pluginId)) {
       // Create plugin data for missing plugins
       const displayName = pluginId
-        .replace('@elizaos/plugin-', '')
-        .replace('@elizaos/client-', '')
-        .replace('@elizaos/adapter-', '')
+        .replace('@elizaos-plugins/plugin-', '')
+        .replace('@elizaos-plugins/client-', '')
+        .replace('@elizaos-plugins/adapter-', '')
         .replace(/-/g, ' ')
         .split(' ')
         .map((word) => word.charAt(0).toUpperCase() + word.slice(1))

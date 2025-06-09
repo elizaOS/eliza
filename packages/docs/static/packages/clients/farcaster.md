@@ -16,7 +16,7 @@ A plugin for ElizaOS that enables agent integration with the Farcaster social ne
 ## Installation
 
 ```bash
-npm install @elizaos/client-farcaster
+npm install @elizaos-plugins/client-farcaster
 ```
 
 ## Configuration
@@ -37,7 +37,7 @@ Various parameters available including dry run mode, polling intervals, and post
 
 ```typescript
 import { ElizaOS } from '@elizaos/core';
-import farcasterPlugin from '@elizaos/client-farcaster';
+import farcasterPlugin from '@elizaos-plugins/client-farcaster';
 
 // Initialize ElizaOS
 const elizaOs = new ElizaOS({

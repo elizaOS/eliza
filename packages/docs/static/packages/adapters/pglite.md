@@ -17,7 +17,7 @@ A lightweight PostgreSQL-compatible database adapter for ElizaOS, providing vect
 ## Installation
 
 ```bash
-npm install @elizaos/adapter-pglite
+npm install @elizaos-plugins/adapter-pglite
 ```
 
 ## Configuration
@@ -26,7 +26,7 @@ Add the adapter to your ElizaOS configuration:
 
 ```json
 {
-  "plugins": ["@elizaos/adapter-pglite"],
+  "plugins": ["@elizaos-plugins/adapter-pglite"],
   "settings": {
     "PGLITE_DATA_DIR": "/path/to/data/directory" // Required setting
   }

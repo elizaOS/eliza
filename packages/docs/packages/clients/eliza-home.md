@@ -45,7 +45,7 @@ SMARTTHINGS_TOKEN="your_smartthings_personal_access_token"
 To install the plugin to your ElizaOS agent:
 
 ```bash
-npm install @elizaos/client-eliza-home
+npm install @elizaos-plugins/client-eliza-home
 ```
 
 ### 4. Add the Plugin to Your Agent Configuration

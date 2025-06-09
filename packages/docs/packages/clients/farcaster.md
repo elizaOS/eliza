@@ -25,7 +25,7 @@ This client leverages the [Neynar API](https://neynar.com) to interact with Farc
 ## Installation
 
 ```bash
-npm install @elizaos/client-farcaster
+npm install @elizaos-plugins/client-farcaster
 ```
 
 ## Configuration
@@ -62,7 +62,7 @@ The client requires the following configurations, which can be set via environme
 
 ```typescript
 import { ElizaOS } from '@elizaos/core';
-import farcasterPlugin from '@elizaos/client-farcaster';
+import farcasterPlugin from '@elizaos-plugins/client-farcaster';
 
 // Initialize ElizaOS
 const elizaOs = new ElizaOS({
