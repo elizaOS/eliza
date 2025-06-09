@@ -498,6 +498,33 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
     }
   });
 
+  // Update channel
+  router.patch('/central-channels/:channelId', async (req, res) => {
+    const channelId = validateUuid(req.params.channelId);
+    if (!channelId) {
+      return res.status(400).json({ success: false, error: 'Invalid channelId' });
+    }
+    const { name, participantCentralUserIds, metadata } = req.body;
+    try {
+      const updatedChannel = await serverInstance.updateChannel(channelId, {
+        name,
+        participantCentralUserIds,
+        metadata,
+      });
+      // Emit an event via SocketIO to inform clients about the channel update
+      if (serverInstance.socketIO) {
+        serverInstance.socketIO.to(channelId).emit('channelUpdated', {
+          channelId: channelId,
+          updates: updatedChannel,
+        });
+      }
+      res.json({ success: true, data: updatedChannel });
+    } catch (error) {
+      logger.error(`[Messages Router] Error updating channel ${channelId}:`, error);
+      res.status(500).json({ success: false, error: 'Failed to update channel' });
+    }
+  });
+
   // Delete entire channel
   router.delete('/central-channels/:channelId', async (req, res) => {
     const channelId = validateUuid(req.params.channelId);

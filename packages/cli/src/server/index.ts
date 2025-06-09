@@ -789,6 +789,17 @@ export class AgentServer {
     return (this.database as any).deleteMessage(messageId);
   }
 
+  async updateChannel(
+    channelId: UUID,
+    updates: { name?: string; participantCentralUserIds?: UUID[]; metadata?: any }
+  ): Promise<MessageChannel> {
+    return (this.database as any).updateChannel(channelId, updates);
+  }
+
+  async deleteChannel(channelId: UUID): Promise<void> {
+    return (this.database as any).deleteChannel(channelId);
+  }
+
   async clearChannelMessages(channelId: UUID): Promise<void> {
     // Get all messages for the channel and delete them one by one
     const messages = await (this.database as any).getMessagesForChannel(channelId, 1000);
