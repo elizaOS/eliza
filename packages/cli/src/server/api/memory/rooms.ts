@@ -71,20 +71,17 @@ export function createRoomManagementRouter(
       await runtime.ensureParticipantInRoom(runtime.agentId, roomId);
       await runtime.setParticipantUserState(roomId, runtime.agentId, 'FOLLOWED');
 
-      res.status(201).json({
-        success: true,
-        data: {
-          id: roomId,
-          name: name,
-          agentId: agentId,
-          createdAt: Date.now(),
-          source: source,
-          type: type,
-          worldId: resolvedWorldId,
-          serverId: serverId,
-          metadata: metadata,
-        },
-      });
+      sendSuccess(res, {
+        id: roomId,
+        name: name,
+        agentId: agentId,
+        createdAt: Date.now(),
+        source: source,
+        type: type,
+        worldId: resolvedWorldId,
+        serverId: serverId,
+        metadata: metadata,
+      }, 201);
     } catch (error) {
       logger.error(`[ROOM CREATE] Error creating room for agent ${agentId}:`, error);
       sendError(res, 500, 'CREATE_ERROR', 'Failed to create room', error.message);
