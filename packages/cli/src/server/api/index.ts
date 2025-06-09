@@ -767,7 +767,7 @@ export function createApiRouter(
   router.use('/media', mediaRouter(agents, serverInstance));
   router.use('/memory', memoryRouter(agents, serverInstance));
   router.use('/audio', audioRouter(agents, serverInstance));
-  router.use('/runtime', runtimeRouter(agents, serverInstance));
+  router.use('/server', runtimeRouter(agents, serverInstance));
   router.use('/tee', teeRouter(agents, serverInstance));
   router.use('/system', systemRouter(agents, serverInstance));
 

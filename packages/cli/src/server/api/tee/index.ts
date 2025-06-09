@@ -12,8 +12,8 @@ export function teeRouter(
 ): express.Router {
   const router = express.Router();
 
-  // Mount TEE functionality under /tee
-  router.use('/tee', createTeeRouter(agents));
+  // Mount TEE functionality at root level
+  router.use('/', createTeeRouter(agents));
 
   return router;
 }
