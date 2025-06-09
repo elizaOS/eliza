@@ -351,7 +351,7 @@ Required configuration:
         if (characterName) {
           try {
             const agentId = await resolveAgentId(characterName, options);
-            return await fetch(`${baseUrl}/${agentId}`, {
+            return await fetch(`${baseUrl}/${agentId}/start`, {
               method: 'POST',
               headers,
             });
@@ -454,8 +454,8 @@ agent
 
       console.info(`Stopping agent ${resolvedAgentId}`);
 
-      // API Endpoint: PUT /agents/:agentId (not /agents/:agentId/stop)
-      const response = await fetch(`${baseUrl}/${resolvedAgentId}`, { method: 'PUT' });
+      // API Endpoint: POST /agents/:agentId/stop
+      const response = await fetch(`${baseUrl}/${resolvedAgentId}/stop`, { method: 'POST' });
 
       if (!response.ok) {
         const errorData = (await response.json()) as ApiResponse<unknown>;
