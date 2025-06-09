@@ -7,6 +7,29 @@ import { sendError, sendSuccess } from '../shared/response-utils';
 import { cleanupFile } from '../shared/file-utils';
 import { agentUpload } from '../shared/uploads';
 
+// Simple rate limiting per IP for file uploads
+const uploadAttempts = new Map<string, { count: number; resetTime: number }>();
+const RATE_LIMIT_WINDOW = 60000; // 1 minute
+const MAX_UPLOADS_PER_WINDOW = 10; // Max 10 uploads per minute per IP
+
+function checkRateLimit(req: express.Request): boolean {
+  const clientIP = req.ip || req.connection.remoteAddress || 'unknown';
+  const now = Date.now();
+  const limit = uploadAttempts.get(clientIP);
+  
+  if (!limit || now > limit.resetTime) {
+    uploadAttempts.set(clientIP, { count: 1, resetTime: now + RATE_LIMIT_WINDOW });
+    return true;
+  }
+  
+  if (limit.count >= MAX_UPLOADS_PER_WINDOW) {
+    return false;
+  }
+  
+  limit.count++;
+  return true;
+}
+
 // Using Express.Multer.File type instead of importing from multer directly
 type MulterFile = Express.Multer.File;
 
@@ -31,6 +54,11 @@ export function createAudioProcessingRouter(
     '/:agentId/audio-messages',
     agentUpload.single('file'), // Use agentUpload
     async (req: AudioRequest, res) => {
+      // Check rate limit
+      if (!checkRateLimit(req)) {
+        return sendError(res, 429, 'RATE_LIMIT_EXCEEDED', 'Too many upload attempts. Please try again later.');
+      }
+      
       logger.debug('[AUDIO MESSAGE] Processing audio message');
       const agentId = validateUuid(req.params.agentId);
       if (!agentId) {
@@ -69,6 +97,11 @@ export function createAudioProcessingRouter(
     '/:agentId/transcriptions',
     agentUpload.single('file'), // Use agentUpload
     async (req: AudioRequest, res) => {
+      // Check rate limit
+      if (!checkRateLimit(req)) {
+        return sendError(res, 429, 'RATE_LIMIT_EXCEEDED', 'Too many upload attempts. Please try again later.');
+      }
+      
       logger.debug('[TRANSCRIPTION] Request to transcribe audio');
       const agentId = validateUuid(req.params.agentId);
       if (!agentId) {

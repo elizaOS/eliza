@@ -93,7 +93,7 @@ export class MessageBusService extends Service {
     try {
       const serverApiUrl = this.getCentralMessageServerUrl();
       const response = await fetch(
-        `${serverApiUrl}/api/messages/agents/${this.runtime.agentId}/servers`
+        `${serverApiUrl}/api/messaging/agents/${this.runtime.agentId}/servers`
       );
 
       if (response.ok) {
@@ -432,10 +432,23 @@ export class MessageBusService extends Service {
 
   getCentralMessageServerUrl(): string {
     const serverPort = process.env.SERVER_PORT;
-    return (
-      process.env.CENTRAL_MESSAGE_SERVER_URL ??
-      (serverPort ? `http://localhost:${serverPort}` : 'http://localhost:3000')
-    );
+    const baseUrl = process.env.CENTRAL_MESSAGE_SERVER_URL ??
+      (serverPort ? `http://localhost:${serverPort}` : 'http://localhost:3000');
+    
+    // Validate URL to prevent SSRF attacks
+    try {
+      const url = new URL(baseUrl);
+      // Only allow localhost, 127.0.0.1, and ::1 for security
+      const allowedHosts = ['localhost', '127.0.0.1', '::1'];
+      if (!allowedHosts.includes(url.hostname)) {
+        logger.warn(`[MessageBusService] Potentially unsafe hostname in CENTRAL_MESSAGE_SERVER_URL: ${url.hostname}`);
+        return 'http://localhost:3000'; // Fallback to safe default
+      }
+      return baseUrl;
+    } catch (error) {
+      logger.error(`[MessageBusService] Invalid URL format in CENTRAL_MESSAGE_SERVER_URL: ${baseUrl}`);
+      return 'http://localhost:3000'; // Fallback to safe default
+    }
   }
 
   async stop(): Promise<void> {
