@@ -425,11 +425,11 @@
   "overrides": {
     "@nrwl/devkit": "19.8.4",
     "@nrwl/tao": "19.8.4",
+    "@types/react": "19.1.5",
     "react": "19.1.0",
     "react-dom": "19.1.0",
-    "@types/react": "19.1.5",
-    "typedoc-plugin-markdown": "4.2.10",
     "typedoc": "0.27.9",
+    "typedoc-plugin-markdown": "4.2.10",
   },
   "packages": {
     "3d-force-graph": ["3d-force-graph@1.77.0", "", { "dependencies": { "accessor-fn": "1", "kapsule": "^1.16", "three": ">=0.118 <1", "three-forcegraph": "1", "three-render-objects": "^1.35" } }, "sha512-w2MlrCeMJxXwhz5gtRZ7mLU4xW5DD2U6VSEfFv8pvnvSNPYPuAIKjbJoZekfv7yFmMaWnNy/2RfRcgC5oGr2KQ=="],

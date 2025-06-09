@@ -607,6 +607,10 @@ export class AgentRuntime implements IAgentRuntime {
     return this._runtime.deleteMemory(memoryId);
   }
 
+  async deleteManyMemories(memoryIds: UUID[]): Promise<void> {
+    return this._runtime.deleteManyMemories(memoryIds);
+  }
+
   async deleteAllMemories(roomId: UUID, tableName: string): Promise<void> {
     return this._runtime.deleteAllMemories(roomId, tableName);
   }

@@ -120,9 +120,12 @@ export function createGroupMemoryRouter(
 
     try {
       const memories = await db.getMemoriesByWorldId({ worldId, tableName: 'messages' });
-      for (const memory of memories) {
-        await db.deleteMemory(memory.id as UUID);
+      const memoryIds = memories.map((memory) => memory.id as UUID);
+
+      if (memoryIds.length > 0) {
+        await (db as any).deleteManyMemories(memoryIds);
       }
+      
       res.status(204).send();
     } catch (error) {
       logger.error('[GROUP MEMORIES DELETE] Error clearing memories:', error);
