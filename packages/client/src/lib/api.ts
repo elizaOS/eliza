@@ -307,7 +307,7 @@ export const apiClient = {
   ping: (): Promise<{ pong: boolean; timestamp: number }> => fetcher({ url: '/runtime/ping' }),
   ttsStream: (agentId: string, text: string): Promise<Blob> =>
     fetcher({
-      url: `/agents/${agentId}/speech/generate`,
+      url: `/audio/${agentId}/speech/generate`,
       method: 'POST',
       body: { text },
       headers: {
@@ -321,7 +321,7 @@ export const apiClient = {
   ): Promise<{ success: boolean; data: { text: string } }> => {
     const formData = new FormData();
     formData.append('file', audioBlob, 'recording.wav');
-    return fetcher({ url: `/agents/${agentId}/transcriptions`, method: 'POST', body: formData });
+    return fetcher({ url: `/audio/${agentId}/transcriptions`, method: 'POST', body: formData });
   },
   uploadAgentMedia: async (
     agentId: string,
