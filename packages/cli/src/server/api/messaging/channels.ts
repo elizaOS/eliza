@@ -5,6 +5,7 @@ import type { AgentServer } from '../../index';
 import type { MessageServiceStructure as MessageService } from '../../types';
 import { channelUpload } from '../../upload';
 import { createUploadRateLimit, createFileSystemRateLimit } from '../shared/middleware';
+import { MAX_FILE_SIZE, ALLOWED_MEDIA_MIME_TYPES } from '../shared/constants';
 
 const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
 
@@ -566,22 +567,8 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
       }
 
       // Enhanced security validation
-      const validMimeTypes = [
-        'image/jpeg',
-        'image/png',
-        'image/gif',
-        'image/webp',
-        'video/mp4',
-        'video/webm',
-        'audio/mpeg',
-        'audio/wav',
-        'audio/ogg',
-        'application/pdf',
-        'text/plain',
-      ];
-
       // Validate MIME type
-      if (!validMimeTypes.includes(mediaFile.mimetype)) {
+      if (!ALLOWED_MEDIA_MIME_TYPES.includes(mediaFile.mimetype as any)) {
         res.status(400).json({ success: false, error: `Invalid file type: ${mediaFile.mimetype}` });
         return;
       }

@@ -3,6 +3,7 @@ import path from 'node:path';
 import multer from 'multer';
 import { validateUuid, logger } from '@elizaos/core';
 import { createSecureUploadDir, sanitizeFilename } from './api/shared/file-utils';
+import { MAX_FILE_SIZE, ALLOWED_AUDIO_MIME_TYPES, ALLOWED_MEDIA_MIME_TYPES } from './api/shared/constants';
 
 // --- Agent-Specific Upload Storage ---
 export const agentStorage = multer.diskStorage({
@@ -47,25 +48,12 @@ export const agentStorage = multer.diskStorage({
 export const agentUpload = multer({
   storage: agentStorage,
   limits: {
-    fileSize: 50 * 1024 * 1024, // 50MB max file size
+    fileSize: MAX_FILE_SIZE, // 50MB max file size
     files: 1, // Only allow 1 file per request
   },
   fileFilter: (req, file, cb) => {
     // Only allow specific file types for security
-    const allowedMimeTypes = [
-      'audio/mpeg',
-      'audio/mp3',
-      'audio/wav',
-      'audio/ogg',
-      'audio/webm',
-      'audio/mp4',
-      'audio/aac',
-      'audio/flac',
-      'audio/x-wav',
-      'audio/wave',
-    ];
-
-    if (allowedMimeTypes.includes(file.mimetype)) {
+    if (ALLOWED_AUDIO_MIME_TYPES.includes(file.mimetype as any)) {
       cb(null, true);
     } else {
       cb(new Error(`Invalid file type. Only audio files are allowed. Received: ${file.mimetype}`));
@@ -116,31 +104,12 @@ export const channelStorage = multer.diskStorage({
 export const channelUpload = multer({
   storage: channelStorage,
   limits: {
-    fileSize: 50 * 1024 * 1024, // 50MB max file size
+    fileSize: MAX_FILE_SIZE, // 50MB max file size
     files: 1, // Only allow 1 file per request
   },
   fileFilter: (req, file, cb) => {
     // Only allow specific file types for security
-    const allowedMimeTypes = [
-      'audio/mpeg',
-      'audio/mp3',
-      'audio/wav',
-      'audio/ogg',
-      'audio/webm',
-      'audio/mp4',
-      'audio/aac',
-      'audio/flac',
-      'audio/x-wav',
-      'audio/wave',
-      'image/jpeg',
-      'image/png',
-      'image/gif',
-      'image/webp',
-      'application/pdf',
-      'text/plain',
-    ];
-
-    if (allowedMimeTypes.includes(file.mimetype)) {
+    if (ALLOWED_MEDIA_MIME_TYPES.includes(file.mimetype as any)) {
       cb(null, true);
     } else {
       cb(new Error(`Invalid file type. Received: ${file.mimetype}`));

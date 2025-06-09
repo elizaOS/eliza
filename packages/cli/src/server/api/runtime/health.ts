@@ -55,13 +55,8 @@ export function createHealthRouter(
 
   // Server stop endpoint
   router.post('/stop', (_req, res) => {
+    logger.log({ apiRoute: '/stop' }, 'Server stopping...');
     serverInstance?.stop(); // Use optional chaining in case server is undefined
-    logger.log(
-      {
-        apiRoute: '/stop',
-      },
-      'Server stopping...'
-    );
     res.json({ message: 'Server stopping...' });
   });
 

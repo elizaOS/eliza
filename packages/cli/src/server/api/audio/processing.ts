@@ -1,4 +1,4 @@
-import type { IAgentRuntime, UUID } from '@elizaos/core';
+  import type { IAgentRuntime, UUID } from '@elizaos/core';
 import { logger, ModelType, validateUuid } from '@elizaos/core';
 import express from 'express';
 import fs from 'node:fs';
@@ -9,6 +9,7 @@ import { cleanupFile } from '../shared/file-utils';
 import { sendError, sendSuccess } from '../shared/response-utils';
 import { agentUpload } from '../shared/uploads';
 import { createFileSystemRateLimit, createUploadRateLimit } from '../shared/middleware';
+import { MAX_FILE_SIZE, MAX_FILE_SIZE_DISPLAY } from '../shared/constants';
 
 // Using Express.Multer.File type instead of importing from multer directly
 type MulterFile = Express.Multer.File;
@@ -108,10 +109,9 @@ export function createAudioProcessingRouter(
 
         // Additional file validation using secure path
         const stats = await fs.promises.stat(securePath);
-        if (stats.size > 50 * 1024 * 1024) {
-          // 50MB limit
+        if (stats.size > MAX_FILE_SIZE) {
           cleanupFile(audioFile.path);
-          return sendError(res, 413, 'FILE_TOO_LARGE', 'Audio file too large (max 50MB)');
+          return sendError(res, 413, 'FILE_TOO_LARGE', `Audio file too large (max ${MAX_FILE_SIZE_DISPLAY})`);
         }
 
         const audioBuffer = await fs.promises.readFile(securePath);
@@ -164,10 +164,9 @@ export function createAudioProcessingRouter(
         }
 
         const stats = await fs.promises.stat(securePath);
-        if (stats.size > 50 * 1024 * 1024) {
-          // 50MB limit
+        if (stats.size > MAX_FILE_SIZE) {
           cleanupFile(audioFile.path);
-          return sendError(res, 413, 'FILE_TOO_LARGE', 'Audio file too large (max 50MB)');
+          return sendError(res, 413, 'FILE_TOO_LARGE', `Audio file too large (max ${MAX_FILE_SIZE_DISPLAY})`);
         }
 
         const audioBuffer = await fs.promises.readFile(securePath);
