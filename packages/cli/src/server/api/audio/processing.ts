@@ -7,15 +7,23 @@ import { sendError, sendSuccess } from '../shared/response-utils';
 import { cleanupFile } from '../shared/file-utils';
 import { agentUpload } from '../shared/uploads';
 
-// Simple rate limiting per IP for file uploads
-const uploadAttempts = new Map<string, { count: number; resetTime: number }>();
+// Enhanced rate limiting per IP for file uploads with more restrictions
+const uploadAttempts = new Map<string, { count: number; resetTime: number; blockedUntil?: number }>();
 const RATE_LIMIT_WINDOW = 60000; // 1 minute
-const MAX_UPLOADS_PER_WINDOW = 10; // Max 10 uploads per minute per IP
+const MAX_UPLOADS_PER_WINDOW = 5; // Reduced to 5 uploads per minute per IP
+const BLOCK_DURATION = 300000; // 5 minutes block for excessive attempts
+const MAX_VIOLATIONS = 3; // Block after 3 violations
 
 function checkRateLimit(req: express.Request): boolean {
   const clientIP = req.ip || req.connection.remoteAddress || 'unknown';
   const now = Date.now();
   const limit = uploadAttempts.get(clientIP);
+  
+  // Check if IP is currently blocked
+  if (limit?.blockedUntil && now < limit.blockedUntil) {
+    logger.warn(`[RATE_LIMIT] Blocked IP ${clientIP} attempted access`);
+    return false;
+  }
   
   if (!limit || now > limit.resetTime) {
     uploadAttempts.set(clientIP, { count: 1, resetTime: now + RATE_LIMIT_WINDOW });
@@ -23,6 +31,9 @@ function checkRateLimit(req: express.Request): boolean {
   }
   
   if (limit.count >= MAX_UPLOADS_PER_WINDOW) {
+    // Block the IP for repeated violations
+    limit.blockedUntil = now + BLOCK_DURATION;
+    logger.warn(`[RATE_LIMIT] IP ${clientIP} blocked for ${BLOCK_DURATION}ms due to excessive requests`);
     return false;
   }
   
@@ -77,6 +88,13 @@ export function createAudioProcessingRouter(
       }
 
       try {
+        // Additional file validation
+        const stats = await fs.promises.stat(audioFile.path);
+        if (stats.size > 50 * 1024 * 1024) { // 50MB limit
+          cleanupFile(audioFile.path);
+          return sendError(res, 413, 'FILE_TOO_LARGE', 'Audio file too large (max 50MB)');
+        }
+        
         const audioBuffer = await fs.promises.readFile(audioFile.path);
         const transcription = await runtime.useModel(ModelType.TRANSCRIPTION, audioBuffer);
 
@@ -121,6 +139,14 @@ export function createAudioProcessingRouter(
 
       try {
         logger.debug('[TRANSCRIPTION] Reading audio file');
+        
+        // Additional file validation
+        const stats = await fs.promises.stat(audioFile.path);
+        if (stats.size > 50 * 1024 * 1024) { // 50MB limit
+          cleanupFile(audioFile.path);
+          return sendError(res, 413, 'FILE_TOO_LARGE', 'Audio file too large (max 50MB)');
+        }
+        
         const audioBuffer = await fs.promises.readFile(audioFile.path);
 
         logger.debug('[TRANSCRIPTION] Transcribing audio');

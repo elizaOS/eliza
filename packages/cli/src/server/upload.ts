@@ -25,7 +25,26 @@ export const agentStorage = multer.diskStorage({
   },
 });
 
-export const agentUpload = multer({ storage: agentStorage });
+export const agentUpload = multer({ 
+  storage: agentStorage,
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB max file size
+    files: 1 // Only allow 1 file per request
+  },
+  fileFilter: (req, file, cb) => {
+    // Only allow specific file types for security
+    const allowedMimeTypes = [
+      'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/ogg', 'audio/webm',
+      'audio/mp4', 'audio/aac', 'audio/flac', 'audio/x-wav', 'audio/wave'
+    ];
+    
+    if (allowedMimeTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Invalid file type. Only audio files are allowed. Received: ${file.mimetype}`));
+    }
+  }
+});
 
 // --- Channel-Specific Upload Storage ---
 export const channelStorage = multer.diskStorage({
@@ -50,7 +69,28 @@ export const channelStorage = multer.diskStorage({
   },
 });
 
-export const channelUpload = multer({ storage: channelStorage });
+export const channelUpload = multer({ 
+  storage: channelStorage,
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB max file size
+    files: 1 // Only allow 1 file per request
+  },
+  fileFilter: (req, file, cb) => {
+    // Only allow specific file types for security
+    const allowedMimeTypes = [
+      'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/ogg', 'audio/webm',
+      'audio/mp4', 'audio/aac', 'audio/flac', 'audio/x-wav', 'audio/wave',
+      'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+      'application/pdf', 'text/plain'
+    ];
+    
+    if (allowedMimeTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Invalid file type. Received: ${file.mimetype}`));
+    }
+  }
+});
 
 // --- Generic Upload Storage (if ever needed, less specific) ---
 export const genericStorage = multer.diskStorage({

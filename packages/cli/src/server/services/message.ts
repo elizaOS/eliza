@@ -432,22 +432,57 @@ export class MessageBusService extends Service {
 
   getCentralMessageServerUrl(): string {
     const serverPort = process.env.SERVER_PORT;
-    const baseUrl = process.env.CENTRAL_MESSAGE_SERVER_URL ??
-      (serverPort ? `http://localhost:${serverPort}` : 'http://localhost:3000');
+    const envUrl = process.env.CENTRAL_MESSAGE_SERVER_URL;
     
-    // Validate URL to prevent SSRF attacks
+    // Validate and sanitize server port
+    let validatedPort: number | null = null;
+    if (serverPort) {
+      const portNum = parseInt(serverPort, 10);
+      if (!isNaN(portNum) && portNum > 0 && portNum <= 65535) {
+        validatedPort = portNum;
+      } else {
+        logger.warn(`[MessageBusService] Invalid SERVER_PORT value: ${serverPort}`);
+      }
+    }
+    
+    const defaultUrl = validatedPort ? `http://localhost:${validatedPort}` : 'http://localhost:3000';
+    const baseUrl = envUrl ?? defaultUrl;
+    
+    // Strict validation to prevent SSRF attacks
     try {
       const url = new URL(baseUrl);
-      // Only allow localhost, 127.0.0.1, and ::1 for security
+      
+      // Only allow HTTP/HTTPS protocols
+      if (!['http:', 'https:'].includes(url.protocol)) {
+        logger.warn(`[MessageBusService] Unsafe protocol in CENTRAL_MESSAGE_SERVER_URL: ${url.protocol}`);
+        return defaultUrl;
+      }
+      
+      // Only allow safe localhost variants and block private/internal IPs
       const allowedHosts = ['localhost', '127.0.0.1', '::1'];
       if (!allowedHosts.includes(url.hostname)) {
-        logger.warn(`[MessageBusService] Potentially unsafe hostname in CENTRAL_MESSAGE_SERVER_URL: ${url.hostname}`);
-        return 'http://localhost:3000'; // Fallback to safe default
+        logger.warn(`[MessageBusService] Unsafe hostname in CENTRAL_MESSAGE_SERVER_URL: ${url.hostname}`);
+        return defaultUrl;
       }
-      return baseUrl;
+      
+      // Validate port range
+      if (url.port) {
+        const portNum = parseInt(url.port, 10);
+        if (isNaN(portNum) || portNum <= 0 || portNum > 65535) {
+          logger.warn(`[MessageBusService] Invalid port in CENTRAL_MESSAGE_SERVER_URL: ${url.port}`);
+          return defaultUrl;
+        }
+      }
+      
+      // Remove any potentially dangerous URL components
+      url.username = '';
+      url.password = '';
+      url.hash = '';
+      
+      return url.toString().replace(/\/$/, ''); // Remove trailing slash
     } catch (error) {
       logger.error(`[MessageBusService] Invalid URL format in CENTRAL_MESSAGE_SERVER_URL: ${baseUrl}`);
-      return 'http://localhost:3000'; // Fallback to safe default
+      return defaultUrl;
     }
   }
 
