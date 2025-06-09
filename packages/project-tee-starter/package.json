@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/project-tee-starter",
   "description": "Project starter for elizaOS with TEE capabilities",
-  "version": "1.0.0",
+  "version": "1.0.6",
   "type": "module",
   "private": true,
   "main": "dist/index.js",
@@ -45,7 +45,7 @@
     "tsup": "8.4.0",
     "prettier": "3.5.3",
     "vitest": "3.1.4",
-    "@vitest/coverage-v8": "2.1.5"
+    "@vitest/coverage-v8": "3.1.4"
   },
   "scripts": {
     "start": "elizaos start",

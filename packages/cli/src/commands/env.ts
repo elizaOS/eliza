@@ -179,15 +179,19 @@ async function editEnvVars(scope: 'local', fromMainMenu = false, yes = false): P
     console.info(`  No ${scope} environment variables set`);
 
     // If no variables exist, offer to add new ones
-    const { addNew } = await prompts({
-      type: 'confirm',
-      name: 'addNew',
-      message: 'Would you like to add a new environment variable?',
-      initial: true,
-    });
+    let addNew = true;
+    if (!yes) {
+      const resp = await prompts({
+        type: 'confirm',
+        name: 'addNew',
+        message: 'Would you like to add a new environment variable?',
+        initial: true,
+      });
+      addNew = resp.addNew;
+    }
 
     if (addNew) {
-      await addNewVariable(envPath, envVars);
+      await addNewVariable(envPath, envVars, yes);
     }
 
     return fromMainMenu; // Return to main menu if we came from there
@@ -196,6 +200,12 @@ async function editEnvVars(scope: 'local', fromMainMenu = false, yes = false): P
   // Keep looping until the user chooses to exit
   let exit = false;
   let returnToMain = false;
+
+  // If -y flag is used, just exit successfully without user interaction
+  if (yes) {
+    console.log('✅ Environment variables displayed. Use interactive mode without -y to edit.');
+    return fromMainMenu;
+  }
 
   while (!exit) {
     // Create menu choices from the environment variables
@@ -231,7 +241,7 @@ async function editEnvVars(scope: 'local', fromMainMenu = false, yes = false): P
     }
 
     if (selection === 'add_new') {
-      await addNewVariable(envPath, envVars);
+      await addNewVariable(envPath, envVars, yes);
       continue;
     }
 
@@ -290,8 +300,20 @@ async function editEnvVars(scope: 'local', fromMainMenu = false, yes = false): P
  * Helper function to add a new environment variable
  * @param envPath Path to the .env file
  * @param envVars Current environment variables
+ * @param yes Whether to auto-confirm prompts
  */
-async function addNewVariable(envPath: string, envVars: Record<string, string>): Promise<void> {
+async function addNewVariable(
+  envPath: string,
+  envVars: Record<string, string>,
+  yes = false
+): Promise<void> {
+  if (yes) {
+    console.log(
+      'Auto-confirmation mode enabled - skipping variable addition in edit-local -y mode'
+    );
+    return;
+  }
+
   const { key } = await prompts({
     type: 'text',
     name: 'key',
@@ -588,13 +610,16 @@ env
           `  Package Manager: ${colors.cyan(envInfo.packageManager.name)}${envInfo.packageManager.version ? ` v${envInfo.packageManager.version}` : ''}`
         );
       } else if (options.local) {
+        // Show ONLY local environment variables, no system information
+        console.info(colors.bold('\nLocal Environment Variables:'));
         const localEnvPath = await getLocalEnvPath();
-        if (!localEnvPath) {
-          console.error('No local .env file found in the current directory');
+
+        if (!localEnvPath || !existsSync(localEnvPath)) {
+          console.info('  No local .env file found in the current directory');
           return;
         }
+
         const localEnvVars = await parseEnvFile(localEnvPath);
-        console.info(colors.bold('\nLocal environment variables (.env):'));
         if (Object.keys(localEnvVars).length === 0) {
           console.info('  No local environment variables set');
         } else {
@@ -670,30 +695,28 @@ env.action(() => {
  * Display the main menu for environment variables
  */
 async function showMainMenu(yes = false): Promise<void> {
+  // Interactive mode always requires user input, so ignore the -y flag
   let exit = false;
 
   while (!exit) {
-    let action: string | undefined;
-    if (yes) {
-      action = 'list'; // default to 'list' in non-interactive mode
-    } else {
-      const resp = await prompts({
-        type: 'select',
-        name: 'action',
-        message: 'Select an action:',
-        choices: [
-          { title: 'List environment variables', value: 'list' },
-          { title: 'Edit local environment variables', value: 'edit_local' },
-          { title: 'Reset environment variables', value: 'reset' },
-          { title: 'Exit', value: 'exit' },
-        ],
-      });
-      action = resp.action;
-    }
+    const resp = await prompts({
+      type: 'select',
+      name: 'action',
+      message: 'Select an action:',
+      choices: [
+        { title: 'List environment variables', value: 'list' },
+        { title: 'Edit local environment variables', value: 'edit_local' },
+        { title: 'Reset environment variables', value: 'reset' },
+        { title: 'Exit', value: 'exit' },
+      ],
+    });
+
+    const action = resp.action;
     if (!action || action === 'exit') {
       exit = true;
       continue;
     }
+
     switch (action) {
       case 'list':
         await listEnvVars();

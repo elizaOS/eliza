@@ -1,16 +1,5 @@
-import AgentAvatarStack from '@/components/agent-avatar-stack';
 import ConnectionStatus from '@/components/connection-status';
-// ServerManagement hidden - using single default server
-// import { ServerManagement } from '@/components/server-management';
-// GroupPanel needs to be re-evaluated for central channel creation/editing
-// import GroupPanel from '@/components/group-panel';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import {
   Sidebar,
   SidebarContent,
@@ -25,29 +14,29 @@ import {
 } from '@/components/ui/sidebar';
 
 import {
-  useAgentsWithDetails,
+  useAgentsWithDetails, // New hook
+  useChannels,
   useServers, // New hook
-  useChannels, // New hook
 } from '@/hooks/use-query-hooks';
 import info from '@/lib/info.json';
-import { cn, formatAgentName, getAgentAvatar, getEntityId, generateGroupName } from '@/lib/utils';
-import {
-  AgentStatus as CoreAgentStatus,
-  type Agent,
-  type UUID,
-  ChannelType as CoreChannelType,
-} from '@elizaos/core';
+import { cn, generateGroupName, getAgentAvatar, getEntityId } from '@/lib/utils';
 import type {
   MessageChannel as ClientMessageChannel,
   MessageServer as ClientMessageServer,
 } from '@/types';
+import {
+  AgentStatus as CoreAgentStatus,
+  ChannelType as CoreChannelType,
+  type Agent,
+  type UUID,
+} from '@elizaos/core';
 
-import { Book, ChevronDown, Cog, Plus, TerminalIcon, Users, Trash2 } from 'lucide-react'; // Added Users icon for groups
-import { useEffect, useMemo, useState } from 'react';
-import { NavLink, useLocation, useNavigate } from 'react-router-dom'; // Added useNavigate
+import { useDeleteChannel } from '@/hooks/use-query-hooks';
 import clientLogger from '@/lib/logger'; // Added import
 import { useQueryClient } from '@tanstack/react-query'; // Import useQueryClient
-import { useDeleteChannel } from '@/hooks/use-query-hooks';
+import { Book, Cog, Hash, Plus, TerminalIcon, Trash2, Users } from 'lucide-react'; // Added Users icon for groups and Hash for channels
+import { useMemo, useState } from 'react';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'; // Added useNavigate
 
 /* ---------- helpers ---------- */
 const partition = <T,>(src: T[], pred: (v: T) => boolean): [T[], T[]] => {
@@ -127,6 +116,34 @@ const AgentRow = ({
   </SidebarMenuItem>
 );
 
+const GroupRow = ({
+  channel,
+  serverId,
+  active,
+}: {
+  channel: ClientMessageChannel;
+  serverId: UUID;
+  active: boolean;
+}) => {
+  const currentClientId = getEntityId();
+
+  return (
+    <SidebarMenuItem className="h-12">
+      <NavLink to={`/group/${channel.id}?serverId=${serverId}`}>
+        <SidebarMenuButton isActive={active} className="px-4 py-2 my-1 h-full rounded-md">
+          <div className="flex items-center gap-3">
+            <Hash className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm truncate max-w-32">
+              {channel.name ||
+                generateGroupName(channel, (channel as any).participants || [], currentClientId)}
+            </span>
+          </div>
+        </SidebarMenuButton>
+      </NavLink>
+    </SidebarMenuItem>
+  );
+};
+
 const AgentListSection = ({
   title,
   agents,
@@ -149,6 +166,59 @@ const AgentListSection = ({
     ))}
   </SidebarSection>
 );
+
+const GroupListSection = ({
+  servers,
+  isLoadingServers,
+  activePath,
+  className = '',
+}: {
+  servers: ClientMessageServer[] | undefined;
+  isLoadingServers: boolean;
+  activePath: string;
+  className?: string;
+}) => {
+  const navigate = useNavigate();
+
+  const handleCreateGroup = () => {
+    navigate('/group/new');
+  };
+
+  return (
+    <>
+      <div className="flex items-center justify-between px-4 pt-1 pb-0">
+        <SectionHeader className="px-0 py-0">Groups</SectionHeader>
+        <Button variant="ghost" size="icon" onClick={handleCreateGroup} aria-label="Create Group">
+          <Plus className="h-4 w-4" />
+        </Button>
+      </div>
+      <SidebarGroup>
+        <SidebarGroupContent className="px-1 mt-0">
+          <SidebarMenu>
+            {isLoadingServers &&
+              Array.from({ length: 3 }).map((_, i) => (
+                <SidebarMenuItem key={`skel-group-${i}`}>
+                  <SidebarMenuSkeleton />
+                </SidebarMenuItem>
+              ))}
+            {servers?.map((server) => (
+              <GroupChannelsForServer
+                key={server.id}
+                serverId={server.id}
+                activePath={activePath}
+              />
+            ))}
+            {(!servers || servers.length === 0) && !isLoadingServers && (
+              <SidebarMenuItem>
+                <div className="p-4 text-xs text-muted-foreground">No groups found.</div>
+              </SidebarMenuItem>
+            )}
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
+    </>
+  );
+};
 
 // Updated RoomListSection to GroupChannelListSection
 const GroupChannelListSection = ({
@@ -282,6 +352,46 @@ const ChannelsForServer = ({
   );
 };
 
+const GroupChannelsForServer = ({
+  serverId,
+  activePath,
+}: {
+  serverId: UUID;
+  activePath: string;
+}) => {
+  const { data: channelsData, isLoading: isLoadingChannels } = useChannels(serverId);
+
+  const groupChannels = useMemo(
+    () => channelsData?.data?.channels?.filter((ch) => ch.type === CoreChannelType.GROUP) || [],
+    [channelsData]
+  );
+
+  if (isLoadingChannels) {
+    return (
+      <SidebarMenuItem>
+        <SidebarMenuSkeleton />
+      </SidebarMenuItem>
+    );
+  }
+
+  if (!groupChannels.length) {
+    return null; // Don't render if no group channels for this server
+  }
+
+  return (
+    <>
+      {groupChannels.map((channel) => (
+        <GroupRow
+          key={channel.id}
+          channel={channel}
+          serverId={serverId}
+          active={activePath.includes(`/group/${channel.id}`)}
+        />
+      ))}
+    </>
+  );
+};
+
 // Updated CreateButton: Removed DropdownMenu, simplified to a single action (Create Agent)
 // For "Create Group", users will use the button in the "Groups" section header.
 const CreateAgentButton = ({ onClick }: { onClick: () => void }) => {
@@ -360,7 +470,7 @@ export function AppSidebar({
     <>
       <Sidebar
         className={cn(
-          'bg-background border-r min-h-screen',
+          'bg-background border-r h-screen overflow-hidden fixed left-0 top-0 z-40',
           isMobile ? 'p-4 pt-0' : 'p-4 w-72',
           !isMobile && 'hidden md:flex md:flex-col'
         )}
@@ -391,7 +501,7 @@ export function AppSidebar({
         </SidebarHeader>
 
         {/* ---------- content ---------- */}
-        <SidebarContent>
+        <SidebarContent className="flex-1 overflow-y-auto">
           {/* create agent button - moved from old CreateButton dropdown */}
           {/* This section is for the "Agents" list.
               The "Create Agent" button should ideally be next to the "Agents" title.
@@ -436,12 +546,12 @@ export function AppSidebar({
               <CreateButton onCreateGroupChannel={handleCreateGroupChannel} />
             </div>
           */}
-          {/* <GroupChannelListSection
+          <GroupListSection
             servers={servers}
             isLoadingServers={isLoadingServers}
+            activePath={location.pathname}
             className="mt-2"
-            onManageServers={() => { }} // Server management hidden
-          /> */}
+          />
         </SidebarContent>
 
         {/* ---------- footer ---------- */}

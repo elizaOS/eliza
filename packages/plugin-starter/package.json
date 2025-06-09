@@ -1,7 +1,7 @@
 {
   "name": "@npm-username/plugin-name",
   "description": "${PLUGINDESCRIPTION}",
-  "version": "1.0.0",
+  "version": "1.0.6",
   "type": "module",
   "private": true,
   "main": "dist/index.js",
@@ -33,7 +33,11 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    ".npmignore",
+    "package.json",
+    "tsup.config.ts"
   ],
   "dependencies": {
     "@elizaos/core": "^1.0.0",

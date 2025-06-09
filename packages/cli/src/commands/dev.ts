@@ -1,5 +1,6 @@
-import { buildProject, handleError, isMonorepoContext, UserEnvironment } from '@/src/utils';
-import { detectDirectoryType, getDirectoryTypeDescription } from '@/src/utils/directory-detection';
+import { buildProject, handleError, UserEnvironment } from '@/src/utils';
+import { detectDirectoryType } from '@/src/utils/directory-detection';
+import { validatePort } from '@/src/utils/port-validation';
 import { Command, Option } from 'commander';
 import chokidar from 'chokidar';
 import type { ChildProcess } from 'node:child_process';
@@ -203,21 +204,30 @@ export const dev = new Command()
   .option('-char, --character [paths...]', 'Character file(s) to use - accepts paths or URLs')
   .option('-b, --build', 'Build the project before starting')
   .addOption(
-    new Option('-p, --port <port>', 'Port to listen on').argParser((val) => Number.parseInt(val))
+    new Option('-p, --port <port>', 'Port to listen on (default: 3000)').argParser(validatePort)
   )
   .action(async (options) => {
     try {
       const cwd = process.cwd();
       const directoryInfo = detectDirectoryType(cwd);
 
-      // Determine if this is a project or plugin based on directory detection
+      if (!directoryInfo) {
+        console.error('Cannot start development mode in this directory.');
+        console.info('This directory is not accessible or does not exist.');
+        process.exit(1);
+      }
+
+      // Determine if this is a project, plugin, or monorepo based on directory detection
       const isProject = directoryInfo.type === 'elizaos-project';
       const isPlugin = directoryInfo.type === 'elizaos-plugin';
+      const isMonorepo = directoryInfo.type === 'elizaos-monorepo';
 
       if (isProject) {
         console.info('Identified as an ElizaOS project package');
       } else if (isPlugin) {
         console.info('Identified as an ElizaOS plugin package');
+      } else if (isMonorepo) {
+        console.info('Identified as an ElizaOS monorepo');
       }
 
       // Prepare CLI arguments for the start command
@@ -255,9 +265,11 @@ export const dev = new Command()
 
           console.info('Rebuilding...');
 
-          const isMonorepo = await isMonorepoContext();
+          const currentDirInfo = detectDirectoryType(cwd);
+          const isInMonorepo =
+            currentDirInfo?.monorepoRoot || currentDirInfo?.type === 'elizaos-monorepo';
 
-          if (isMonorepo) {
+          if (isInMonorepo) {
             const { monorepoRoot } = await UserEnvironment.getInstance().getPathInfo();
             if (monorepoRoot) {
               const corePackages = [
@@ -308,28 +320,35 @@ export const dev = new Command()
         }
       };
 
-      if (!isProject && !isPlugin) {
+      if (!isProject && !isPlugin && !isMonorepo) {
         console.warn(
-          `Not in a recognized ElizaOS project or plugin directory. Current directory is: ${getDirectoryTypeDescription(directoryInfo)}. Running in standalone mode.`
+          `Not in a recognized ElizaOS project, plugin, or monorepo directory. Current directory is: ${directoryInfo.type}. Running in standalone mode.`
         );
       } else {
-        console.info(`Running in ${isProject ? 'project' : 'plugin'} mode`);
+        const modeDescription = isMonorepo ? 'monorepo' : isProject ? 'project' : 'plugin';
+        console.info(`Running in ${modeDescription} mode`);
 
-        // Ensure initial build is performed
-        console.info('Building project...');
-        try {
-          await buildProject(cwd, isPlugin);
-        } catch (error) {
-          console.error(`Initial build failed: ${error.message}`);
-          console.info('Continuing with dev mode anyway...');
+        // Ensure initial build is performed (skip for monorepo as it may have multiple projects)
+        if (!isMonorepo) {
+          console.info('Building project...');
+          try {
+            await buildProject(cwd, isPlugin);
+          } catch (error) {
+            console.error(`Initial build failed: ${error.message}`);
+            console.info('Continuing with dev mode anyway...');
+          }
+        } else {
+          console.info(
+            'Monorepo detected - skipping automatic build. Use specific package build commands as needed.'
+          );
         }
       }
 
       // Start the server initially
       await startServer(cliArgs);
 
-      // Set up file watching only if we're in a project or plugin directory
-      if (isProject || isPlugin) {
+      // Set up file watching if we're in a project, plugin, or monorepo directory
+      if (isProject || isPlugin || isMonorepo) {
         // Pass the rebuildAndRestart function as the onChange callback
         await watchDirectory(cwd, rebuildAndRestart);
 

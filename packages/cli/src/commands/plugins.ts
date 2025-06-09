@@ -1,7 +1,7 @@
 import { handleError, installPlugin, logHeader } from '@/src/utils';
 import { fetchPluginRegistry } from '@/src/utils/plugin-discovery';
 import { normalizePluginName } from '@/src/utils/registry';
-import { detectDirectoryType, getDirectoryTypeDescription } from '@/src/utils/directory-detection';
+import { detectDirectoryType } from '@/src/utils/directory-detection';
 import { promptForEnvVars } from '@/src/utils/env-prompt';
 import { logger } from '@elizaos/core';
 import { Command } from 'commander';
@@ -299,7 +299,7 @@ export const plugins = new Command()
 export const pluginsCommand = plugins
   .command('list')
   .aliases(['l', 'ls'])
-  .description('List available plugins to install into the project')
+  .description('List available plugins to install into the project (shows v1.x plugins by default)')
   .option('--all', 'List all plugins from the registry with detailed version info')
   .option('--v0', 'List only v0.x compatible plugins')
   .action(async (opts: { all?: boolean; v0?: boolean }) => {
@@ -378,12 +378,21 @@ plugins
   .option('-b, --branch <branchName>', 'Branch to install from when using monorepo source', 'main')
   .option('-T, --tag <tagname>', 'Specify a tag to install (e.g., beta)')
   .action(async (pluginArg, opts) => {
+    // Validate plugin name is not empty or whitespace
+    if (!pluginArg || !pluginArg.trim()) {
+      logger.error('Plugin name cannot be empty or whitespace-only.');
+      logger.info(
+        'Please provide a valid plugin name (e.g., "openai", "plugin-anthropic", "@elizaos/plugin-sql")'
+      );
+      process.exit(1);
+    }
+
     const cwd = process.cwd();
     const directoryInfo = detectDirectoryType(cwd);
 
-    if (!directoryInfo.hasPackageJson) {
+    if (!directoryInfo || !directoryInfo.hasPackageJson) {
       logger.error(
-        `Command must be run inside an ElizaOS project directory. This directory is: ${getDirectoryTypeDescription(directoryInfo)}`
+        `Command must be run inside an ElizaOS project directory. This directory is: ${directoryInfo?.type || 'invalid or inaccessible'}`
       );
       process.exit(1);
     }
@@ -517,9 +526,9 @@ plugins
       const cwd = process.cwd();
       const directoryInfo = detectDirectoryType(cwd);
 
-      if (!directoryInfo.hasPackageJson) {
+      if (!directoryInfo || !directoryInfo.hasPackageJson) {
         console.error(
-          `Could not read or parse package.json. This directory is: ${getDirectoryTypeDescription(directoryInfo)}`
+          `Could not read or parse package.json. This directory is: ${directoryInfo?.type || 'invalid or inaccessible'}`
         );
         console.info('Please run this command from the root of an ElizaOS project.');
         process.exit(1);
@@ -564,9 +573,9 @@ plugins
       const cwd = process.cwd();
       const directoryInfo = detectDirectoryType(cwd);
 
-      if (!directoryInfo.hasPackageJson) {
+      if (!directoryInfo || !directoryInfo.hasPackageJson) {
         console.error(
-          `Could not read or parse package.json. This directory is: ${getDirectoryTypeDescription(directoryInfo)}`
+          `Could not read or parse package.json. This directory is: ${directoryInfo?.type || 'invalid or inaccessible'}`
         );
         process.exit(1);
       }

@@ -1,22 +1,32 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { UserEnvironment } from './user-environment';
 
 export interface DirectoryInfo {
-  type: 'elizaos-project' | 'elizaos-plugin' | 'empty' | 'non-elizaos-project' | 'invalid';
+  type:
+    | 'elizaos-project'
+    | 'elizaos-plugin'
+    | 'elizaos-monorepo'
+    | 'elizaos-subdir'
+    | 'non-elizaos-dir';
   hasPackageJson: boolean;
   hasElizaOSDependencies: boolean;
-  isEmpty: boolean;
   packageName?: string;
   elizaPackageCount: number;
+  monorepoRoot?: string;
 }
 
 interface PackageJson {
   name?: string;
   keywords?: string[];
+  main?: string;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
-  eliza?: {
-    type?: string;
+  workspaces?: string[] | { packages?: string[] };
+  packageType?: string;
+  agentConfig?: {
+    pluginType?: string;
+    [key: string]: any;
   };
 }
 
@@ -26,40 +36,65 @@ interface PackageJson {
  * @returns DirectoryInfo object with detection results
  */
 export function detectDirectoryType(dir: string): DirectoryInfo {
-  const result: DirectoryInfo = {
-    type: 'invalid',
-    hasPackageJson: false,
-    hasElizaOSDependencies: false,
-    isEmpty: false,
-    elizaPackageCount: 0,
-  };
-
-  // Check if directory exists
+  // Check if directory exists and is readable
   if (!fs.existsSync(dir)) {
-    return result;
+    return {
+      type: 'non-elizaos-dir',
+      hasPackageJson: false,
+      hasElizaOSDependencies: false,
+      elizaPackageCount: 0,
+    };
   }
 
-  // Check if directory is empty
   try {
-    const files = fs.readdirSync(dir);
-    const visibleFiles = files.filter((file) => !file.startsWith('.'));
-    result.isEmpty = visibleFiles.length === 0;
-
-    if (result.isEmpty) {
-      result.type = 'empty';
-      return result;
-    }
+    fs.readdirSync(dir);
   } catch (error) {
-    return result; // Cannot read directory
+    return {
+      type: 'non-elizaos-dir',
+      hasPackageJson: false,
+      hasElizaOSDependencies: false,
+      elizaPackageCount: 0,
+    };
   }
+
+  // Check for monorepo root
+  const monorepoRoot = UserEnvironment.getInstance().findMonorepoRoot(dir);
 
   // Check for package.json
   const packageJsonPath = path.join(dir, 'package.json');
-  result.hasPackageJson = fs.existsSync(packageJsonPath);
+  const hasPackageJson = fs.existsSync(packageJsonPath);
 
-  if (!result.hasPackageJson) {
-    result.type = 'invalid';
-    return result;
+  if (monorepoRoot) {
+    // If the current directory IS the monorepo root, classify as monorepo
+    if (path.resolve(dir) === path.resolve(monorepoRoot)) {
+      return {
+        type: 'elizaos-monorepo',
+        hasPackageJson,
+        hasElizaOSDependencies: false,
+        elizaPackageCount: 0,
+        monorepoRoot,
+      };
+    }
+
+    // If we're inside the monorepo but don't have package.json, it's a subdirectory
+    if (!hasPackageJson) {
+      return {
+        type: 'elizaos-subdir',
+        hasPackageJson: false,
+        hasElizaOSDependencies: false,
+        elizaPackageCount: 0,
+        monorepoRoot,
+      };
+    }
+  } else if (!hasPackageJson) {
+    // Not in monorepo and no package.json
+    return {
+      type: 'non-elizaos-dir',
+      hasPackageJson: false,
+      hasElizaOSDependencies: false,
+      elizaPackageCount: 0,
+      monorepoRoot,
+    };
   }
 
   // Parse package.json
@@ -67,11 +102,25 @@ export function detectDirectoryType(dir: string): DirectoryInfo {
   try {
     const packageJsonContent = fs.readFileSync(packageJsonPath, 'utf8');
     packageJson = JSON.parse(packageJsonContent);
-    result.packageName = packageJson.name;
   } catch (error) {
-    result.type = 'invalid';
-    return result;
+    return {
+      type: 'non-elizaos-dir',
+      hasPackageJson: true,
+      hasElizaOSDependencies: false,
+      elizaPackageCount: 0,
+      monorepoRoot,
+    };
   }
+
+  // Create result object
+  const result: DirectoryInfo = {
+    type: 'non-elizaos-dir', // Default, will be updated below
+    hasPackageJson: true,
+    hasElizaOSDependencies: false,
+    elizaPackageCount: 0,
+    packageName: packageJson.name,
+    monorepoRoot,
+  };
 
   // Check for ElizaOS dependencies
   const dependencies = { ...packageJson.dependencies, ...packageJson.devDependencies };
@@ -87,21 +136,20 @@ export function detectDirectoryType(dir: string): DirectoryInfo {
   }
 
   // Determine if this is an ElizaOS project
-  const isProject = isElizaOSProject(packageJson, dir);
+  const isProject = isElizaOSProject(packageJson, dir, monorepoRoot);
   if (isProject) {
     result.type = 'elizaos-project';
     return result;
   }
 
-  // If it has ElizaOS dependencies but isn't clearly a project or plugin,
-  // it might still be an ElizaOS project with non-standard structure
-  if (result.hasElizaOSDependencies) {
-    result.type = 'elizaos-project';
-    return result;
+  // If inside monorepo and not a project or plugin → elizaos-subdir
+  // If outside monorepo and not a project or plugin → non-elizaos-dir
+  if (monorepoRoot) {
+    result.type = 'elizaos-subdir';
+  } else {
+    result.type = 'non-elizaos-dir';
   }
 
-  // Otherwise, it's a non-ElizaOS project
-  result.type = 'non-elizaos-project';
   return result;
 }
 
@@ -109,50 +157,46 @@ export function detectDirectoryType(dir: string): DirectoryInfo {
  * Checks if a package.json indicates an ElizaOS plugin
  */
 function isElizaOSPlugin(packageJson: PackageJson): boolean {
-  // Check keywords (primary detection method)
+  // 1. EXPLICIT indicators first (most reliable)
+
+  // Check packageType field (used in plugin templates)
+  if (packageJson.packageType === 'plugin') {
+    return true;
+  }
+
+  // Check keywords
   const keywords = packageJson.keywords || [];
   if (keywords.includes('plugin')) {
     return true;
   }
 
-  // Check package name patterns
-  if (packageJson.name?.startsWith('@elizaos/plugin-') || packageJson.name?.includes('plugin-')) {
+  // Check agentConfig.pluginType field
+  if (packageJson.agentConfig?.pluginType?.includes('plugin')) {
     return true;
   }
 
-  return false;
-}
-
-/**
- * Checks if a package.json and directory structure indicates an ElizaOS project
- */
-function isElizaOSProject(packageJson: PackageJson, dir: string): boolean {
-  // Check keywords (primary detection method)
-  const keywords = packageJson.keywords || [];
-  if (keywords.includes('project')) {
+  // 2. FALLBACK to package name patterns
+  const packageName = packageJson.name || '';
+  if (
+    packageName.startsWith('@elizaos/plugin-') ||
+    packageName.startsWith('plugin-') ||
+    packageName.includes('/plugin-') ||
+    (packageName.includes('plugin') && packageName.includes('eliza'))
+  ) {
     return true;
   }
 
-  // Check for project-like structure
-  const srcIndexPath = path.join(dir, 'src', 'index.ts');
-  if (fs.existsSync(srcIndexPath)) {
-    try {
-      const indexContent = fs.readFileSync(srcIndexPath, 'utf8');
-      if (
-        indexContent.includes('export const project') ||
-        (indexContent.includes('export default') && indexContent.includes('Project'))
-      ) {
-        return true;
-      }
-    } catch {
-      // Ignore read errors
-    }
-  }
-
-  // Check for character files (common in ElizaOS projects)
-  const characterFiles = ['character.json', 'characters.json'];
-  for (const file of characterFiles) {
-    if (fs.existsSync(path.join(dir, file))) {
+  // 3. OTHER heuristics (least reliable)
+  if (
+    packageJson.main &&
+    (packageJson.main.includes('plugin') ||
+      packageJson.main === 'src/index.ts' ||
+      packageJson.main === 'dist/index.js')
+  ) {
+    // Additional check for plugin-like dependencies
+    const allDeps = { ...packageJson.dependencies, ...packageJson.devDependencies };
+    const hasElizaCore = Object.keys(allDeps).some((dep) => dep.startsWith('@elizaos/core'));
+    if (hasElizaCore && keywords.length > 0) {
       return true;
     }
   }
@@ -161,28 +205,98 @@ function isElizaOSProject(packageJson: PackageJson, dir: string): boolean {
 }
 
 /**
- * Gets a user-friendly description of the directory type
+ * Checks if a package.json and directory structure indicates an ElizaOS project
  */
-export function getDirectoryTypeDescription(info: DirectoryInfo): string {
-  switch (info.type) {
-    case 'elizaos-project':
-      return 'ElizaOS project';
-    case 'elizaos-plugin':
-      return 'ElizaOS plugin';
-    case 'empty':
-      return 'empty directory';
-    case 'non-elizaos-project':
-      return 'non-ElizaOS project';
-    case 'invalid':
-      return 'invalid or inaccessible directory';
-    default:
-      return 'unknown directory type';
+function isElizaOSProject(packageJson: PackageJson, dir: string, monorepoRoot?: string): boolean {
+  // 1. EXPLICIT indicators first (most reliable)
+
+  // Check packageType field (used in project templates)
+  if (packageJson.packageType === 'project') {
+    return true;
   }
+
+  // Check keywords
+  const keywords = packageJson.keywords || [];
+  if (keywords.includes('project')) {
+    return true;
+  }
+
+  // Check agentConfig for project indicators
+  if (packageJson.agentConfig?.pluginType?.includes('project')) {
+    return true;
+  }
+
+  // 2. FALLBACK to package name patterns
+  const packageName = packageJson.name || '';
+  if (
+    packageName.startsWith('@elizaos/project-') ||
+    packageName.startsWith('project-') ||
+    packageName.includes('/project-') ||
+    (packageName.includes('project') && packageName.includes('eliza'))
+  ) {
+    return true;
+  }
+
+  // 3. OTHER heuristics (only when outside monorepo to avoid false positives)
+  if (!monorepoRoot) {
+    // Check src/index.ts content
+    const srcIndexPath = path.join(dir, 'src', 'index.ts');
+    if (fs.existsSync(srcIndexPath)) {
+      try {
+        const indexContent = fs.readFileSync(srcIndexPath, 'utf8');
+        if (
+          indexContent.includes('export const project') ||
+          indexContent.includes('Project') ||
+          indexContent.includes('agents')
+        ) {
+          return true;
+        }
+      } catch {
+        // Ignore read errors
+      }
+    }
+
+    // Check for character files (common in ElizaOS projects)
+    const characterFiles = ['character.json', 'characters.json', 'characters'];
+    for (const file of characterFiles) {
+      if (fs.existsSync(path.join(dir, file))) {
+        return true;
+      }
+    }
+
+    // Check for project-specific directories
+    const projectDirs = ['characters', 'agents', '.eliza'];
+    for (const dirName of projectDirs) {
+      if (fs.existsSync(path.join(dir, dirName))) {
+        const stat = fs.statSync(path.join(dir, dirName));
+        if (stat.isDirectory()) {
+          return true;
+        }
+      }
+    }
+
+    // Check for project dependencies pattern
+    const allDeps = { ...packageJson.dependencies, ...packageJson.devDependencies };
+    const hasElizaCore = Object.keys(allDeps).some((dep) => dep.startsWith('@elizaos/core'));
+    const hasMultipleElizaPackages =
+      Object.keys(allDeps).filter((dep) => dep.startsWith('@elizaos/')).length >= 2;
+
+    if (hasElizaCore && hasMultipleElizaPackages) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /**
  * Checks if the directory is suitable for ElizaOS package updates
  */
 export function isValidForUpdates(info: DirectoryInfo): boolean {
-  return info.type === 'elizaos-project' || info.type === 'elizaos-plugin';
+  return (
+    info.type === 'elizaos-project' ||
+    info.type === 'elizaos-plugin' ||
+    info.type === 'elizaos-monorepo' ||
+    info.type === 'elizaos-subdir'
+  );
 }

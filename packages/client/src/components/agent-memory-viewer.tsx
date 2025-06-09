@@ -437,14 +437,10 @@ export function AgentMemoryViewer({ agentId, agentName }: AgentMemoryViewerProps
             className="h-8 px-3"
           >
             {viewMode === 'graph' ? (
-              <>
-                <List className="h-4 w-4 mr-1" />
-                List View
-              </>
+              <List className="h-4 w-4 mr-1" />
             ) : (
               <>
                 <BarChart3 className="h-4 w-4 mr-1" />
-                Graph View
               </>
             )}
           </Button>
@@ -455,7 +451,7 @@ export function AgentMemoryViewer({ agentId, agentName }: AgentMemoryViewerProps
               placeholder="Search memories..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 w-64"
+              className="pl-10 w-full min-w-0 max-w-64"
             />
           </div>
           {/* Filter */}

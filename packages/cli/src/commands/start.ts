@@ -31,7 +31,8 @@ import { Command } from 'commander';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { detectDirectoryType, getDirectoryTypeDescription } from '@/src/utils/directory-detection';
+import { detectDirectoryType } from '@/src/utils/directory-detection';
+import { validatePort } from '@/src/utils/port-validation';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -771,13 +772,7 @@ export const start = new Command()
   )
   .option('-char, --character [paths...]', 'Character file(s) to use - accepts paths or URLs')
   .option('-b, --build', 'Build the project before starting')
-  .option('-p, --port <port>', 'Port to listen on (default: 3000)', (v) => {
-    const n = Number.parseInt(v, 10);
-    if (Number.isNaN(n) || n <= 0 || n > 65535) {
-      throw new Error('Port must be a number between 1 and 65535');
-    }
-    return n;
-  })
+  .option('-p, --port <port>', 'Port to listen on (default: 3000)', validatePort)
   .hook('preAction', async () => {
     await displayBanner();
   })
@@ -805,9 +800,16 @@ export const start = new Command()
               .trim()
               .split(',')
               .map((part) => part.trim())
-              .map((part) => part.replace(/^['"](.*)['"]$/, '$1'))
-              .filter(Boolean);
-            characterPaths.push(...parts);
+              .map((part) => part.replace(/^['"](.*)['"]$/, '$1'));
+
+            // Validate each part before adding to characterPaths
+            for (const part of parts) {
+              if (!part.trim()) {
+                logger.warn(`Skipping empty character path`);
+              } else {
+                characterPaths.push(part);
+              }
+            }
           }
         } else if (typeof options.character === 'string') {
           // Split by commas in case user provided comma-separated list
@@ -816,35 +818,49 @@ export const start = new Command()
             .trim()
             .split(',')
             .map((part) => part.trim())
-            .map((part) => part.replace(/^['"](.*)['"]$/, '$1'))
-            .filter(Boolean);
-          characterPaths.push(...parts);
+            .map((part) => part.replace(/^['"](.*)['"]$/, '$1'));
+
+          // Validate each part before adding to characterPaths
+          for (const part of parts) {
+            if (!part.trim()) {
+              logger.warn(`Skipping empty character path`);
+            } else {
+              characterPaths.push(part);
+            }
+          }
         } else if (options.character === true) {
           // Handle the case where flag is provided without arguments
           logger.warn('--character flag provided without any paths. No characters will be loaded.');
         }
 
-        // Load each character path
-        for (const path of characterPaths) {
-          try {
-            logger.debug(`Loading character from ${path}`);
-            // Try with the exact path first
-            let characterData;
+        // If no valid paths remain after filtering, show error
+        if (characterPaths.length === 0) {
+          logger.error(
+            `All provided character paths are empty or invalid. Starting with default character...`
+          );
+        } else {
+          // Load each character path
+          for (const path of characterPaths) {
             try {
-              characterData = await loadCharacterTryPath(path);
-            } catch (error) {
-              // If that fails and there's no extension, try adding .json
-              if (!path.includes('.')) {
-                logger.debug(`Trying with .json extension: ${path}.json`);
-                characterData = await loadCharacterTryPath(`${path}.json`);
-              } else {
-                throw error;
+              logger.debug(`Loading character from ${path}`);
+              // Try with the exact path first
+              let characterData;
+              try {
+                characterData = await loadCharacterTryPath(path);
+              } catch (error) {
+                // If that fails and there's no extension, try adding .json
+                if (!path.includes('.')) {
+                  logger.debug(`Trying with .json extension: ${path}.json`);
+                  characterData = await loadCharacterTryPath(`${path}.json`);
+                } else {
+                  throw error;
+                }
               }
+              loadedCharacters.push(characterData);
+            } catch (error) {
+              failedCharacters.push(path);
+              logger.error(`Failed to load character from ${path}: ${error}`);
             }
-            loadedCharacters.push(characterData);
-          } catch (error) {
-            failedCharacters.push(path);
-            logger.error(`Failed to load character from ${path}: ${error}`);
           }
         }
 

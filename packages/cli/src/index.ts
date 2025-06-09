@@ -8,7 +8,7 @@ import { dev } from '@/src/commands/dev';
 import { env } from '@/src/commands/env';
 import { plugins } from '@/src/commands/plugins';
 import { publish } from '@/src/commands/publish';
-import { setupMonorepo } from '@/src/commands/setup-monorepo';
+import { monorepo } from '@/src/commands/monorepo';
 import { start } from '@/src/commands/start';
 import { teeCommand as tee } from '@/src/commands/tee';
 import { test } from '@/src/commands/test';
@@ -104,7 +104,7 @@ async function main() {
 
   program
     .addCommand(create)
-    .addCommand(setupMonorepo)
+    .addCommand(monorepo)
     .addCommand(plugins)
     .addCommand(agent)
     .addCommand(tee)

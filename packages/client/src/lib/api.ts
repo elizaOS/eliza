@@ -370,6 +370,7 @@ export const apiClient = {
       type?: string;
       count?: number;
       offset?: number;
+      excludeTypes?: string[];
     }
   ): Promise<{ success: boolean; data: AgentLog[] }> => {
     const queryParams = new URLSearchParams();
@@ -377,6 +378,11 @@ export const apiClient = {
     if (options?.type) queryParams.append('type', options.type);
     if (options?.count) queryParams.append('count', String(options.count));
     if (options?.offset) queryParams.append('offset', String(options.offset));
+    if (options?.excludeTypes) {
+      options.excludeTypes.forEach((excludeType) => {
+        queryParams.append('excludeTypes', excludeType);
+      });
+    }
     return fetcher({
       url: `/agents/${agentId}/logs${queryParams.toString() ? `?${queryParams.toString()}` : ''}`,
     });

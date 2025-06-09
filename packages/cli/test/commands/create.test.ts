@@ -19,7 +19,7 @@ const {
   mockRunBunCommand,
   mockSetupPgLite,
   mockResolveEnvFile,
-  mockIsMonorepoContext,
+  mockDetectDirectoryType,
   mockCommanderInstance, // Renamed for clarity
   MockCommanderClass, // Renamed for clarity
   mockUserEnvironmentGetInstance, // For UserEnvironment.getInstance()
@@ -106,7 +106,7 @@ const {
     mockRunBunCommand: vi.fn(),
     mockSetupPgLite: vi.fn(),
     mockResolveEnvFile: vi.fn(),
-    mockIsMonorepoContext: vi.fn(),
+    mockDetectDirectoryType: vi.fn(),
     mockCommanderInstance: instance, // Store the instance
     MockCommanderClass: MockCmd, // Export the class itself
     mockUserEnvironmentGetInstance: vi.fn().mockReturnValue(userEnvInstanceMock),
@@ -138,7 +138,7 @@ vi.mock('@/src/utils', () => ({
   runBunCommand: mockRunBunCommand,
   setupPgLite: mockSetupPgLite,
   resolveEnvFile: mockResolveEnvFile, // This is the problematic one
-  isMonorepoContext: mockIsMonorepoContext,
+  detectDirectoryType: mockDetectDirectoryType,
   UserEnvironment: { getInstance: mockUserEnvironmentGetInstance }, // Mock the class with static method
   expandTildePath: vi.fn((p) => p), // from resolve-utils
   resolvePgliteDir: vi.fn().mockResolvedValue('/mock/.elizadb'), // from resolve-utils
@@ -224,7 +224,13 @@ describe('create command', () => {
     mockRunBunCommand.mockReset().mockResolvedValue({ success: true, stdout: '', stderr: '' });
     mockSetupPgLite.mockReset().mockResolvedValue(undefined);
     mockResolveEnvFile.mockReset().mockReturnValue(join(tempDir, '.env'));
-    mockIsMonorepoContext.mockReset().mockResolvedValue(false);
+    mockDetectDirectoryType.mockReset().mockReturnValue({
+      type: 'non-elizaos-dir',
+      hasPackageJson: true,
+      hasElizaOSDependencies: false,
+      elizaPackageCount: 0,
+      monorepoRoot: undefined,
+    });
   });
 
   afterEach(async () => {

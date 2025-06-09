@@ -533,15 +533,17 @@ export function useGroupChannelMessages(channelId: UUID | null, initialServerId?
  * Custom hook to fetch agent actions for a specific agent and room.
  * @param {UUID} agentId - The ID of the agent.
  * @param {UUID} roomId - The ID of the room.
+ * @param {string[]} excludeTypes - Optional array of types to exclude from results.
  * @returns {QueryResult} The result of the query containing agent actions.
  */
-export function useAgentActions(agentId: UUID, roomId?: UUID) {
+export function useAgentActions(agentId: UUID, roomId?: UUID, excludeTypes?: string[]) {
   return useQuery({
-    queryKey: ['agentActions', agentId, roomId],
+    queryKey: ['agentActions', agentId, roomId, excludeTypes],
     queryFn: async () => {
       const response = await apiClient.getAgentLogs(agentId, {
         roomId,
         count: 50,
+        excludeTypes,
       });
       return response.data || [];
     },

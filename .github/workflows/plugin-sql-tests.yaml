@@ -1,4 +1,10 @@
 name: Plugin SQL Integration Tests
+
+# Cancel previous runs for the same PR/branch
+concurrency:
+  group: plugin-sql-tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches:
@@ -9,6 +15,8 @@ on:
 
 jobs:
   databaseIntegrationTests:
+    # Skip duplicate runs: run on push to main/develop branches, or on pull_request_target events only
+    if: github.event_name == 'pull_request_target' || (github.event_name == 'push' && contains(fromJson('["main", "develop"]'), github.ref_name))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

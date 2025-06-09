@@ -8,6 +8,7 @@ import {
   isRunningViaBunx,
   isRunningViaNpx,
 } from '@/src/utils';
+import { isCliInstalledViaNpm, migrateCliToBun } from '../utils/cli-bun-migration';
 import { logger } from '@elizaos/core';
 import { Command } from 'commander';
 import { execa } from 'execa';
@@ -17,7 +18,6 @@ import prompts from 'prompts';
 import * as semver from 'semver';
 import {
   detectDirectoryType,
-  getDirectoryTypeDescription,
   isValidForUpdates,
   type DirectoryInfo,
 } from '../utils/directory-detection';
@@ -254,8 +254,31 @@ export async function performCliUpdate(): Promise<boolean> {
 
     console.log(`Updating CLI from ${currentVersion} to ${latestVersion}...`);
 
-    const packageToInstall = '@elizaos/cli';
-    await executeInstallation(packageToInstall, latestVersion, process.cwd());
+    // Check if CLI is installed via npm and migrate to bun
+    const npmInstallation = await isCliInstalledViaNpm();
+    if (npmInstallation) {
+      logger.info('Detected npm installation, migrating to bun...');
+      try {
+        await migrateCliToBun(latestVersion);
+      } catch (migrationError) {
+        logger.warn('Migration to bun failed, falling back to npm update...');
+        logger.debug('Migration error:', migrationError.message);
+        // Fallback to npm installation since bun failed
+        try {
+          await execa('npm', ['install', '-g', `@elizaos/cli@${latestVersion}`], {
+            stdio: 'inherit',
+          });
+        } catch (npmError) {
+          throw new Error(
+            `Both bun migration and npm fallback failed. Bun: ${migrationError.message}, npm: ${npmError.message}`
+          );
+        }
+      }
+    } else {
+      // Standard bun installation (no npm installation detected)
+      await executeInstallation('@elizaos/cli', latestVersion, process.cwd());
+    }
+
     console.log(`CLI updated successfully to version ${latestVersion} [✓]`);
     return true;
   } catch (error) {
@@ -267,16 +290,10 @@ export async function performCliUpdate(): Promise<boolean> {
 // Handle invalid directory scenarios
 function handleInvalidDirectory(directoryInfo: DirectoryInfo) {
   const messages = {
-    empty: [
-      'This appears to be an empty directory.',
-      'To create a new ElizaOS project or plugin, use:',
-      '  elizaos create <project-name>          # Create a new project',
-      '  elizaos create -t plugin <plugin-name> # Create a new plugin',
-    ],
-    'non-elizaos-project': [
-      "This directory contains a project, but it doesn't appear to be an ElizaOS project.",
+    'non-elizaos-dir': [
+      "This directory doesn't appear to be an ElizaOS project.",
       directoryInfo.packageName && `Found package: ${directoryInfo.packageName}`,
-      'ElizaOS update only works in ElizaOS projects and plugins.',
+      'ElizaOS update only works in ElizaOS projects, plugins, the ElizaOS monorepo, and ElizaOS infrastructure packages (e.g. client, cli).',
       'To create a new ElizaOS project, use: elizaos create <project-name>',
     ].filter(Boolean),
     invalid: [
@@ -344,7 +361,14 @@ export const update = new Command()
         const cwd = process.cwd();
         const directoryInfo = detectDirectoryType(cwd);
 
-        logger.debug(`Detected ${getDirectoryTypeDescription(directoryInfo)}`);
+        if (!directoryInfo) {
+          console.error('Cannot update packages in this directory.');
+          console.info('This directory is not accessible or does not exist.');
+          console.info('To create a new ElizaOS project, use: elizaos create <project-name>');
+          return;
+        }
+
+        logger.debug(`Detected ${directoryInfo.type}`);
 
         if (!isValidForUpdates(directoryInfo)) {
           handleInvalidDirectory(directoryInfo);

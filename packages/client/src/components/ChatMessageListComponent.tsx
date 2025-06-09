@@ -24,6 +24,7 @@ interface ChatMessageListComponentProps {
   getAgentInMessage?: (agentId: UUID) => Partial<Agent> | undefined;
   agentAvatarMap?: Record<UUID, string | null>;
   onDeleteMessage: (messageId: string) => void;
+  onRetryMessage: (messageText: string) => void;
   selectedGroupAgentId?: UUID | null;
 }
 
@@ -43,6 +44,7 @@ export const ChatMessageListComponent: React.FC<ChatMessageListComponentProps> =
   getAgentInMessage,
   agentAvatarMap,
   onDeleteMessage,
+  onRetryMessage,
   selectedGroupAgentId,
 }) => {
   // Filter messages based on selected agent in group chat
@@ -119,6 +121,7 @@ export const ChatMessageListComponent: React.FC<ChatMessageListComponentProps> =
                 }
                 shouldAnimate={shouldAnimate}
                 onDelete={onDeleteMessage}
+                onRetry={onRetryMessage}
                 isUser={isUser}
                 getAgentInMessage={chatType === ChannelType.GROUP ? getAgentInMessage : undefined}
                 agentAvatarMap={chatType === ChannelType.GROUP ? agentAvatarMap : undefined}

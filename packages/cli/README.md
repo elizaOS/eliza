@@ -13,14 +13,16 @@ bun install -g @elizaos/cli
 The ElizaOS CLI requires [Bun](https://bun.sh) as its package manager. If Bun is not installed when you run the CLI, it will attempt to automatically install it for you.
 
 **Auto-installation features:**
+
 - ✅ Detects when Bun is missing
-- ✅ Downloads and installs Bun automatically on Windows, macOS, and Linux  
+- ✅ Downloads and installs Bun automatically on Windows, macOS, and Linux
 - ✅ Updates PATH for the current session
 - ✅ Falls back to manual installation instructions if auto-install fails
 - ✅ Skips auto-installation in CI environments
 - ✅ Can be disabled with `--no-auto-install` flag
 
 **To disable auto-installation:**
+
 ```bash
 # Global flag (applies to all commands)
 elizaos --no-auto-install create my-project
@@ -49,6 +51,7 @@ The following options are available for all ElizaOS CLI commands:
 - `-h, --help`: Display help information
 
 **Example usage:**
+
 ```bash
 # Disable auto-installation and emojis
 elizaos --no-auto-install --no-emoji create my-project
@@ -70,8 +73,7 @@ Initialize a new project, plugin, or agent.
 - **Options:**
   - `-d, --dir <dir>`: Installation directory (default: `.`)
   - `-y, --yes`: Skip confirmation and use defaults (default: `false`)
-  - `-t, --type <type>`: Type to create: 'project', 'plugin', or 'agent' (default: 'project')
-  - `--tee`: create a TEE starter project (default: `false`)
+  - `-t, --type <type>`: Type to create: 'project', 'plugin', 'agent', or 'tee' (default: 'project')
 
 **Important notes:**
 
@@ -130,12 +132,12 @@ Manage environment variables and secrets.
 
 ### Monorepo Setup
 
-#### `elizaos setup-monorepo`
+#### `elizaos monorepo`
 
-Clone ElizaOS monorepo from a specific branch (defaults to main).
+Clone ElizaOS monorepo from a specific branch (defaults to develop).
 
 - **Options:**
-  - `-b, --branch <branch>`: Branch to install (default: `main`)
+  - `-b, --branch <branch>`: Branch to install (default: `develop`)
   - `-d, --dir <directory>`: Destination directory (default: `./eliza`)
 
 **Notes:**
@@ -150,7 +152,7 @@ Clone ElizaOS monorepo from a specific branch (defaults to main).
 Manage an ElizaOS plugin.
 
 - **Subcommands:**
-  - `list` (alias: `l`): List all available plugins
+  - `list` (alias: `l`): List available plugins (shows v1.x plugins by default)
   - `add <plugin>` (alias: `install`): Add a plugin to the project
     - Arguments: `<plugin>` (plugin name)
     - Options: `-n, --no-env-prompt`, `-b, --branch <branchName>`, `-T, --tag <tagname>`
@@ -185,7 +187,6 @@ Manage ElizaOS agents.
   - `start` (alias: `s`): Start an agent
     - Options:
       - `-n, --name <name>`: Name of an existing agent to start
-      - `-j, --json <json>`: Character JSON configuration string
       - `--path <path>`: Local path to character JSON file
       - `--remote-character <url>`: URL to remote character JSON file
       - `-r, --remote-url <url>`: URL of the remote agent runtime
@@ -218,7 +219,7 @@ Publish a plugin to the registry.
 
 - **Options:**
   - `-t, --test`: Test publish process without making changes
-  - `-n, --npm`: Publish to npm instead of GitHub
+  - `--npm`: Publish to npm instead of GitHub
   - `-sr, --skip-registry`: Skip publishing to the registry
   - `-d, --dry-run`: Generate registry files locally without publishing
 
@@ -447,7 +448,7 @@ elizaos tee phala <command> [options]
 
    ```bash
    # Create a TEE project starter template
-   elizaos create tee-agent --tee
+   elizaos create -t tee tee-agent
 
    # cd into directory and authenticate your Phala Cloud API Key
    cd tee-agent
@@ -790,5 +791,5 @@ Projects contain agent configurations and code for building agent-based applicat
 For contributing to the ElizaOS CLI, please clone the monorepo using:
 
 ```bash
-elizaos setup-monorepo
+elizaos monorepo
 ```
