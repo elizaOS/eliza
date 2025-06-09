@@ -2,6 +2,7 @@ import type { IAgentRuntime, UUID } from '@elizaos/core';
 import { validateUuid, logger, ModelType } from '@elizaos/core';
 import express from 'express';
 import fs from 'node:fs';
+import path from 'node:path';
 import type { AgentServer } from '../../index';
 import { sendError, sendSuccess } from '../shared/response-utils';
 import { cleanupFile } from '../shared/file-utils';
@@ -141,13 +142,20 @@ export function createAudioProcessingRouter(
         logger.debug('[TRANSCRIPTION] Reading audio file');
         
         // Additional file validation
-        const stats = await fs.promises.stat(audioFile.path);
+        const rootDir = '/safe/root/directory'; // Define a safe root directory
+        const resolvedPath = fs.realpathSync(path.resolve(rootDir, audioFile.path));
+        if (!resolvedPath.startsWith(rootDir)) {
+          cleanupFile(audioFile.path);
+          return sendError(res, 403, 'INVALID_PATH', 'Invalid file path');
+        }
+        
+        const stats = await fs.promises.stat(resolvedPath);
         if (stats.size > 50 * 1024 * 1024) { // 50MB limit
           cleanupFile(audioFile.path);
           return sendError(res, 413, 'FILE_TOO_LARGE', 'Audio file too large (max 50MB)');
         }
         
-        const audioBuffer = await fs.promises.readFile(audioFile.path);
+        const audioBuffer = await fs.promises.readFile(resolvedPath);
 
         logger.debug('[TRANSCRIPTION] Transcribing audio');
         const transcription = await runtime.useModel(ModelType.TRANSCRIPTION, audioBuffer);
