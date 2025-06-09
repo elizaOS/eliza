@@ -165,6 +165,6 @@ export async function executeInstallationWithFallback(
   await removeFromBunLock(packageName, directory);
   
   // Try GitHub installation
-  const githubSpecifier = `github:${githubFallback}${versionOrTag ? `#${versionOrTag}` : ''}`;
+  const githubSpecifier = buildGitHubSpecifier(`github:${githubFallback}`, versionOrTag);
   return await executeInstallation(githubSpecifier, '', directory);
 }
