@@ -12,6 +12,8 @@ import {
   SidebarMenuItem,
   SidebarMenuSkeleton,
 } from '@/components/ui/sidebar';
+import ConfirmationDialog from '@/components/confirmation-dialog';
+import { useConfirmation } from '@/hooks/use-confirmation';
 
 import {
   useAgentsWithDetails, // New hook
@@ -287,28 +289,35 @@ const ChannelsForServer = ({
   const currentClientId = getEntityId(); // Get current client/user ID
   const deleteChannelMutation = useDeleteChannel();
   const [deletingChannelId, setDeletingChannelId] = useState<UUID | null>(null);
+  const { confirm, isOpen, onOpenChange, onConfirm, options } = useConfirmation();
 
   const groupChannels = useMemo(
     () => channelsData?.data?.channels?.filter((ch) => ch.type === CoreChannelType.GROUP) || [],
     [channelsData]
   );
 
-  const handleDeleteChannel = async (e: React.MouseEvent, channelId: UUID) => {
+  const handleDeleteChannel = (e: React.MouseEvent, channelId: UUID) => {
     e.preventDefault();
     e.stopPropagation();
 
-    if (
-      window.confirm('Are you sure you want to delete this group? This action cannot be undone.')
-    ) {
-      setDeletingChannelId(channelId);
-      try {
-        await deleteChannelMutation.mutateAsync({ channelId, serverId });
-      } catch (error) {
-        console.error('Failed to delete channel:', error);
-      } finally {
-        setDeletingChannelId(null);
+    confirm(
+      {
+        title: 'Delete Group',
+        description: 'Are you sure you want to delete this group? This action cannot be undone.',
+        confirmText: 'Delete',
+        variant: 'destructive',
+      },
+      async () => {
+        setDeletingChannelId(channelId);
+        try {
+          await deleteChannelMutation.mutateAsync({ channelId, serverId });
+        } catch (error) {
+          console.error('Failed to delete channel:', error);
+        } finally {
+          setDeletingChannelId(null);
+        }
       }
-    }
+    );
   };
 
   if (isLoadingChannels) {
@@ -323,40 +332,54 @@ const ChannelsForServer = ({
   }
 
   return (
-    <SidebarGroupContent className="px-1 mt-0">
-      <SidebarMenu>
-        {groupChannels.map((channel) => (
-          <SidebarMenuItem key={channel.id} className="h-12 group">
-            <div className="flex items-center gap-1 w-full">
-              <NavLink to={`/group/${channel.id}?serverId=${serverId}`} className="flex-1">
-                <SidebarMenuButton className="px-4 py-2 my-1 h-full rounded-md">
-                  <div className="flex items-center gap-3">
-                    <Users className="h-5 w-5 text-muted-foreground" /> {/* Group icon */}
-                    <span className="text-sm truncate max-w-32">
-                      {/* Use generateGroupName - assumes channel.participants exists or will be added */}
-                      {generateGroupName(
-                        channel,
-                        (channel as any).participants || [],
-                        currentClientId
-                      )}
-                    </span>
-                  </div>
-                </SidebarMenuButton>
-              </NavLink>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
-                onClick={(e) => handleDeleteChannel(e, channel.id)}
-                disabled={deletingChannelId === channel.id}
-              >
-                <Trash2 className="h-4 w-4 text-destructive" />
-              </Button>
-            </div>
-          </SidebarMenuItem>
-        ))}
-      </SidebarMenu>
-    </SidebarGroupContent>
+    <>
+      <SidebarGroupContent className="px-1 mt-0">
+        <SidebarMenu>
+          {groupChannels.map((channel) => (
+            <SidebarMenuItem key={channel.id} className="h-12 group">
+              <div className="flex items-center gap-1 w-full">
+                <NavLink to={`/group/${channel.id}?serverId=${serverId}`} className="flex-1">
+                  <SidebarMenuButton className="px-4 py-2 my-1 h-full rounded-md">
+                    <div className="flex items-center gap-3">
+                      <Users className="h-5 w-5 text-muted-foreground" /> {/* Group icon */}
+                      <span className="text-sm truncate max-w-32">
+                        {/* Use generateGroupName - assumes channel.participants exists or will be added */}
+                        {generateGroupName(
+                          channel,
+                          (channel as any).participants || [],
+                          currentClientId
+                        )}
+                      </span>
+                    </div>
+                  </SidebarMenuButton>
+                </NavLink>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={(e) => handleDeleteChannel(e, channel.id)}
+                  disabled={deletingChannelId === channel.id}
+                >
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
+              </div>
+            </SidebarMenuItem>
+          ))}
+        </SidebarMenu>
+      </SidebarGroupContent>
+
+      {/* Confirmation Dialog */}
+      <ConfirmationDialog
+        open={isOpen}
+        onOpenChange={onOpenChange}
+        title={options?.title || ''}
+        description={options?.description || ''}
+        confirmText={options?.confirmText}
+        cancelText={options?.cancelText}
+        variant={options?.variant}
+        onConfirm={onConfirm}
+      />
+    </>
   );
 };
 
