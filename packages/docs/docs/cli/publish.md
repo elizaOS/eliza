@@ -20,7 +20,7 @@ elizaos publish [options]
 
 | Option                 | Description                                        |
 | ---------------------- | -------------------------------------------------- |
-| `-n, --npm`            | Publish to npm instead of GitHub                   |
+| `--npm`                | Publish to npm instead of GitHub                   |
 | `-t, --test`           | Test publish process without making changes        |
 | `-d, --dry-run`        | Generate registry files locally without publishing |
 | `-sr, --skip-registry` | Skip publishing to the registry                    |

@@ -1,0 +1,142 @@
+---
+description: ElizaOS on-chain plugins and TEE
+globs: 
+alwaysApply: false
+---
+> You are an expert in ElizaOS v2, TypeScript, blockchain development, and Trusted Execution Environments (TEE). You focus on creating secure, verifiable onchain plugins that leverage TEEs for attestable agent operations.
+
+## ElizaOS TEE & Onchain Architecture
+
+ElizaOS enables agents to perform secure and verifiable onchain actions through a TEE (Trusted Execution Environment) model. Instead of generic DeFi plugins, the core architecture focuses on providing a cryptographic guarantee that a specific, unaltered agent is performing an action. This is achieved through an attestation process.
+
+### TEE Attestation Flow
+
+The core of ElizaOS's onchain capability is the `TeeAgent` interface and its attestation workflow. This allows an external service to verify the agent's identity and integrity before trusting it with sensitive operations.
+
+```mermaid
+sequenceDiagram
+    participant Requester as External Service/DApp
+    participant TeeAgent as ElizaOS Agent
+    participant TeeProvider as TEE Provider (e.g., Phala)
+    
+    Requester->>TeeAgent: Request Attestation(challenge)
+    TeeAgent->>TeeProvider: getAttestation(challenge)
+    TeeProvider-->>TeeAgent: Returns Signed Attestation
+    TeeAgent-->>Requester: Responds with Attestation
+    
+    Requester->>TeeProvider: Verify Attestation(attestation, challenge)
+    TeeProvider-->>Requester: Verification Result (Success/Fail)
+    
+    alt Verification Successful
+        Requester->>TeeAgent: Trust Established; Send Secure Command (e.g., sign transaction)
+        TeeAgent->>TeeAgent: sign(txData)
+        TeeAgent-->>Requester: Returns Signed Transaction
+    else Verification Failed
+        Requester->>Requester: Reject Interaction
+    end
+```
+
+### `TeeAgent` Implementation Pattern
+
+To create an onchain-capable agent, you implement the `TeeAgent` interface. This is typically done within a custom plugin that manages the connection to the TEE provider and exposes onchain actions.
+
+```typescript
+// ✅ DO: Implement the TeeAgent interface for secure onchain operations.
+// Reference: packages/core/src/types.ts
+
+import {
+  type Action,
+  type IAgentRuntime,
+  type TeeAgent,
+  type Attestation,
+  type SignedGenericData,
+  logger,
+} from '@elizaos/core';
+
+// Assume a TEE provider service is available for interacting with the TEE.
+// This would likely be registered as a Service in the AgentRuntime.
+interface ITeeProviderService {
+  getAttestation(challenge: Uint8Array): Promise<Attestation>;
+  signGenericData(data: Uint8Array): Promise<SignedGenericData>;
+}
+
+// This action exposes the agent's ability to generate an attestation.
+export const getAttestationAction: Action = {
+  name: 'GET_ATTESTATION',
+  description: 'Generates a TEE attestation to prove the agent\'s identity and integrity.',
+  examples: [[
+    { name: 'user', content: { text: 'Please provide an attestation with this challenge: 0x123...' } },
+    { name: 'assistant', content: { text: 'Here is the signed attestation.', actions: ['GET_ATTESTATION'] } }
+  ]],
+  handler: async (runtime, message) => {
+    const teeService = runtime.getService<ITeeProviderService>('TeeProviderService');
+    const challengeHex = message.content.text?.split(':')[1]?.trim(); // simplified parsing
+
+    if (!teeService || !challengeHex) {
+      logger.error('TEE Service not available or challenge not provided.');
+      return false;
+    }
+
+    // Convert hex challenge to Uint8Array
+    const challenge = new Uint8Array(challengeHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
+    
+    const attestation = await teeService.getAttestation(challenge);
+
+    // The response would typically be sent back to the requester via a secure channel
+    logger.info('Generated Attestation:', attestation);
+    // In a real scenario, you would send this back, e.g., runtime.sendMessage(...)
+    
+    return true;
+  }
+};
+
+// This action allows the verified agent to sign data.
+export const signDataAction: Action = {
+  name: 'SIGN_DATA',
+  description: 'Signs generic data using the TEE-protected key.',
+  examples: [[
+    { name: 'user', content: { text: 'Sign this data for me: 0xabc...' } },
+    { name: 'assistant', content: { text: 'I have signed the data.', actions: ['SIGN_DATA'] } }
+  ]],
+  handler: async (runtime, message) => {
+    // This action should only be enabled or validated AFTER an attestation has been verified.
+    const teeService = runtime.getService<ITeeProviderService>('TeeProviderService');
+    const dataToSignHex = message.content.text?.split(':')[1]?.trim(); // simplified parsing
+
+    if (!teeService || !dataToSignHex) {
+      logger.error('TEE Service not available or data not provided.');
+      return false;
+    }
+    
+    const dataToSign = new Uint8Array(dataToSignHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
+
+    const signedData = await teeService.signGenericData(dataToSign);
+    
+    logger.info('Signed Data:', signedData);
+    // Send back the signature
+    
+    return true;
+  }
+};
+
+// ❌ DON'T: Handle private keys or signing directly in agent logic.
+// All cryptographic operations must be delegated to a secure TEE service.
+async function badSigningHandler(runtime: IAgentRuntime, message: Memory) {
+  // const privateKey = runtime.character.settings.secrets.MY_PRIVATE_KEY; // ANTI-PATTERN
+  // const signature = sign(message.content.text, privateKey); // ANTI-PATTERN
+  return true;
+}
+```
+
+## Best Practices
+
+*   **Delegate Crypto to TEE**: Never handle private keys or perform signing operations directly within an Action or standard Service. All cryptographic functions should be delegated to a `TeeAgent` implementation or a secure TEE service.
+*   **Attestation First**: Before performing any sensitive onchain action, an external party MUST request and verify an attestation from the agent to establish trust.
+*   **Secure Challenge**: The `challenge` used in the attestation process should be a random, single-use nonce provided by the party requesting the attestation to prevent replay attacks.
+*   **Minimalist Actions**: Keep onchain actions focused and simple. For example, have a single `signTransaction` action rather than separate actions for `transfer`, `swap`, etc. The transaction payload itself should be constructed by the trusted external service.
+*   **TEE Service Abstraction**: Abstract the specifics of the TEE provider (e.g., Phala, Intel SGX) into a dedicated `Service` that the `TeeAgent` actions can consume. This keeps the agent logic clean and provider-agnostic.
+
+## References
+- [Solana @solana/web3.js Docs](mdc:https:/solana-labs.github.io/solana-web3.js)
+- [Core Plugin Architecture](mdc:elizaos_v2_api_plugins_core.mdc)
+- [Agent Actions](mdc:elizaos_v2_core_components.mdc)

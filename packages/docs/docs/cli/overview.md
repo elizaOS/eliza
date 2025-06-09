@@ -26,20 +26,20 @@ elizaos [command]
 
 ## Available Commands
 
-| Command                                 | Description                                                                                                    |
-| --------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| [`create`](./create.md)                 | Initialize a new project, plugin, or agent                                                                     |
-| [`setup-monorepo`](./setup-monorepo.md) | Clone ElizaOS monorepo from a specific branch (defaults to main)                                               |
-| [`plugins`](./plugins.md)               | Manage ElizaOS plugins                                                                                         |
-| [`agent`](./agent.md)                   | Manage ElizaOS agents                                                                                          |
-| [`tee`](./tee.md)                       | Manage TEE deployments                                                                                         |
-| [`start`](./start.md)                   | Start the Eliza agent with configurable plugins and services                                                   |
-| [`update`](./update.md)                 | Update ElizaOS CLI and project dependencies                                                                    |
-| [`test`](./test.md)                     | Run tests for Eliza agent projects and plugins                                                                 |
-| [`env`](./env.md)                       | Manage environment variables and secrets                                                                       |
-| [`dev`](./dev.md)                       | Start the project or plugin in development mode with auto-rebuild, detailed logging, and file change detection |
-| [`publish`](./publish.md)               | Publish a plugin to the registry                                                                               |
-| [`stop`](./stop.md)                     | Stop all running ElizaOS agents running locally                                                                |
+| Command                     | Description                                                                                                    |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| [`create`](./create.md)     | Initialize a new project, plugin, or agent                                                                     |
+| [`monorepo`](./monorepo.md) | Clone ElizaOS monorepo from a specific branch (defaults to develop)                                            |
+| [`plugins`](./plugins.md)   | Manage ElizaOS plugins                                                                                         |
+| [`agent`](./agent.md)       | Manage ElizaOS agents                                                                                          |
+| [`tee`](./tee.md)           | Manage TEE deployments                                                                                         |
+| [`start`](./start.md)       | Start the Eliza agent with configurable plugins and services                                                   |
+| [`update`](./update.md)     | Update ElizaOS CLI and project dependencies                                                                    |
+| [`test`](./test.md)         | Run tests for Eliza agent projects and plugins                                                                 |
+| [`env`](./env.md)           | Manage environment variables and secrets                                                                       |
+| [`dev`](./dev.md)           | Start the project or plugin in development mode with auto-rebuild, detailed logging, and file change detection |
+| [`publish`](./publish.md)   | Publish a plugin to the registry                                                                               |
+| [`stop`](./stop.md)         | Stop all running ElizaOS agents running locally                                                                |
 
 ## Global Options
 

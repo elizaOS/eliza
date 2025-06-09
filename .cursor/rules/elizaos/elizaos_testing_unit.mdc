@@ -1,0 +1,182 @@
+---
+description: elizaos unit testing procedure and help
+globs: 
+alwaysApply: false
+---
+> You are an expert in ElizaOS testing, specializing in writing effective and maintainable unit tests using Vitest. You focus on testing individual components in isolation to ensure their correctness.
+
+## Unit Testing Architecture
+
+Unit testing in ElizaOS focuses on testing individual pieces of functionality—a single action's handler, a specific provider's logic, or a utility function—in isolation from the rest of the system. This is achieved by using a testing framework like Vitest and creating mock objects to stand in for complex dependencies like the `AgentRuntime`.
+
+```mermaid
+graph TD
+    A[Vitest Test Runner] --> B(Executes *.test.ts files);
+    B --> C{Describes a Component};
+    C --> D(For each test case...);
+    D --> E[Create Mock AgentRuntime];
+    D --> F[Create Component Instance];
+    F -->|Interacts with| E;
+    E -->|Returns Mock Data| F;
+    D --> G[Assert on Outcome];
+    
+    subgraph "Test Scope"
+        H(Component being tested);
+        I(Mock Dependencies);
+        H --> I;
+    end
+```
+
+## Unit Test Structure
+
+Unit tests should be placed in a `__tests__` directory alongside the source code they are testing. This co-location makes them easy to find and maintain.
+
+```
+my-plugin/
+├── src/
+│   ├── __tests__/
+│   │   ├── my-action.test.ts  # Tests for my-action.ts
+│   │   └── my-service.test.ts # Tests for my-service.ts
+│   ├── index.ts
+│   ├── my-action.ts
+│   └── my-service.ts
+└── ...
+```
+
+A typical unit test file uses `describe` to group related tests and `it` to define individual test cases.
+
+```typescript
+// src/__tests__/my-action.test.ts
+import { describe, it, expect, vi } from 'vitest';
+import { myAction } from '../my-action';
+import { createMockRuntime } from './test-utils'; // A helper to create mocks
+
+describe('myAction', () => {
+  it('should return a successful response with valid input', async () => {
+    // Arrange: Set up the mock runtime and input message
+    const mockRuntime = createMockRuntime();
+    const message = { content: { text: 'valid input' } };
+
+    // Act: Call the action's handler
+    const result = await myAction.handler(mockRuntime, message);
+
+    // Assert: Check if the result is what we expect
+    expect(result.text).toContain('Success');
+  });
+
+  it('should throw an error with invalid input', async () => {
+    // Arrange
+    const mockRuntime = createMockRuntime();
+    const message = { content: { text: '' } }; // Invalid empty input
+
+    // Act & Assert: Expect the handler to throw an error
+    await expect(myAction.handler(mockRuntime, message)).rejects.toThrow('Input cannot be empty');
+  });
+});
+```
+
+## Core Implementation Patterns
+
+### Mocking the `IAgentRuntime`
+
+The biggest challenge in unit testing is dealing with the `IAgentRuntime`, which has many dependencies. The solution is to create a mock version that provides just enough functionality for the component under test.
+
+```typescript
+// __tests__/test-utils.ts
+import { vi } from 'vitest';
+import { type IAgentRuntime } from '@elizaos/core';
+
+// ✅ DO: Create a reusable mock runtime factory
+export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgentRuntime {
+  const mockRuntime = {
+    getSetting: vi.fn().mockReturnValue('mock-api-key'),
+    getService: vi.fn().mockImplementation((serviceName) => {
+      if (serviceName === 'my-mock-service') {
+        return {
+          doSomething: vi.fn().mockResolvedValue('mock service response'),
+        };
+      }
+      return null;
+    }),
+    useModel: vi.fn().mockResolvedValue('mock model response'),
+    createMemory: vi.fn().mockResolvedValue(true),
+    logger: {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+    },
+    // Add other methods and properties as needed by your tests
+    ...overrides,
+  };
+
+  return mockRuntime as IAgentRuntime;
+}
+```
+
+### Testing an Action
+
+When testing an `Action`, you want to test its `handler` and `validate` functions independently.
+
+```typescript
+// src/__tests__/my-action.test.ts
+import { describe, it, expect } from 'vitest';
+import { myAction } from '../my-action';
+import { createMockRuntime } from './test-utils';
+
+describe('myAction.handler', () => {
+  it('should call the correct service with the correct parameters', async () => {
+    // Arrange
+    const mockRuntime = createMockRuntime();
+    const mockService = mockRuntime.getService('my-mock-service');
+    const message = { content: { text: 'do the thing' } };
+
+    // Act
+    await myAction.handler(mockRuntime, message);
+
+    // Assert
+    expect(mockService.doSomething).toHaveBeenCalledOnce();
+    expect(mockService.doSomething).toHaveBeenCalledWith('do the thing');
+  });
+});
+
+describe('myAction.validate', () => {
+  it('should return true when the required service is available', async () => {
+    // Arrange
+    const mockRuntime = createMockRuntime(); // This mock provides the service
+
+    // Act
+    const isValid = await myAction.validate(mockRuntime, {});
+
+    // Assert
+    expect(isValid).toBe(true);
+  });
+
+  it('should return false when the required service is NOT available', async () => {
+    // Arrange
+    const mockRuntime = createMockRuntime({
+      getService: () => null, // Override the mock to return null
+    });
+
+    // Act
+    const isValid = await myAction.validate(mockRuntime, {});
+
+    // Assert
+    expect(isValid).toBe(false);
+  });
+});
+```
+
+## Best Practices
+
+-   **Test One Thing**: Each `it` block should test a single concept or path through your code.
+-   **Arrange, Act, Assert**: Structure your tests clearly with these three sections.
+-   **Use Mocks**: Use `vitest.vi.fn()` to mock functions and services. This allows you to spy on calls and control return values without depending on the real implementation.
+-   **Test Edge Cases**: Test how your component behaves with invalid input, empty strings, null values, and error conditions.
+-   **Keep it Fast**: Unit tests should be fast. Avoid real network calls, database connections, or file system operations. Mock these dependencies instead.
+-   **Distinguish from E2E**: Unit tests verify that a single piece of code works correctly in isolation. E2E tests verify that multiple pieces work correctly together in a live environment. Do not start a real server or runtime in a unit test.
+
+## References
+- [Vitest Documentation](mdc:https:/vitest.dev)
+- [E2E Testing Guide](mdc:elizaos_v2_testing_e2e.mdc)
+- [Example Plugin Starter Tests](mdc:packages/plugin-starter/__tests__/plugin.test.ts)

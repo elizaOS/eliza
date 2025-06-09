@@ -343,6 +343,46 @@ async function getNpmUsername(): Promise<string> {
 }
 
 /**
+ * Display appropriate registry publication messaging based on options and user status
+ */
+function displayRegistryPublicationMessage(
+  opts: { skipRegistry?: boolean; npm?: boolean },
+  userIsMaintainer: boolean,
+  registryPrUrl?: string
+): void {
+  // Early returns for clear flow control
+  if (opts.skipRegistry) {
+    console.info('Registry publication skipped as requested with --skip-registry flag');
+    return;
+  }
+
+  if (opts.npm) {
+    // NPM-only publishing with registry enabled
+    console.warn('NPM publishing currently does not update the registry.');
+    console.info('To include this package in the registry:');
+    console.info(`1. Fork the registry repository at ${REGISTRY_GITHUB_URL}`);
+    console.info('2. Add your package metadata');
+    console.info('3. Submit a pull request to the main repository');
+    return;
+  }
+
+  // GitHub + registry publishing
+  if (userIsMaintainer) {
+    // For GitHub publishing, PR is already created by publishToGitHub
+    if (!registryPrUrl) {
+      console.info('Registry publication completed during GitHub publishing process.');
+    }
+  } else {
+    // For non-maintainers, show instructions for registry inclusion
+    console.info("Package published, but you're not a maintainer of this package.");
+    console.info('To include this package in the registry, please:');
+    console.info(`1. Fork the registry repository at ${REGISTRY_GITHUB_URL}`);
+    console.info('2. Add your package metadata');
+    console.info('3. Submit a pull request to the main repository');
+  }
+}
+
+/**
  * Validate plugin requirements
  */
 async function validatePluginRequirements(cwd: string, packageJson: any): Promise<void> {
@@ -417,7 +457,7 @@ async function validatePluginRequirements(cwd: string, packageJson: any): Promis
 export const publish = new Command()
   .name('publish')
   .description('Publish a plugin to npm, GitHub, and the registry')
-  .option('-n, --npm', 'publish to npm only (skip GitHub and registry)', false)
+  .option('--npm', 'publish to npm only (skip GitHub and registry)', false)
   .option('-t, --test', 'test publish process without making changes', false)
   .option('-d, --dry-run', 'generate registry files locally without publishing', false)
   .option('-sr, --skip-registry', 'skip publishing to the registry', false)
@@ -451,30 +491,32 @@ export const publish = new Command()
         process.exit(1);
       }
 
-      // Validate data directory and settings
-      const isValid = await validateDataDir();
-      if (!isValid) {
-        console.info('\nGitHub credentials required for publishing.');
-        console.info("You'll need a GitHub Personal Access Token with these scopes:");
-        console.info('  * repo (for repository access)');
-        console.info('  * read:org (for organization access)');
-        console.info('  * workflow (for workflow access)\n');
+      // Validate data directory and settings only if we need GitHub publishing
+      if (!opts.npm) {
+        const isValid = await validateDataDir();
+        if (!isValid) {
+          console.info('\nGitHub credentials required for publishing.');
+          console.info("You'll need a GitHub Personal Access Token with these scopes:");
+          console.info('  * repo (for repository access)');
+          console.info('  * read:org (for organization access)');
+          console.info('  * workflow (for workflow access)\n');
 
-        // Initialize data directory first
-        await initializeDataDir();
+          // Initialize data directory first
+          await initializeDataDir();
 
-        // Use the built-in credentials function
-        const credentials = await getGitHubCredentials();
-        if (!credentials) {
-          console.error('GitHub credentials setup cancelled.');
-          process.exit(1);
-        }
+          // Use the built-in credentials function
+          const credentials = await getGitHubCredentials();
+          if (!credentials) {
+            console.error('GitHub credentials setup cancelled.');
+            process.exit(1);
+          }
 
-        // Revalidate after saving credentials
-        const revalidated = await validateDataDir();
-        if (!revalidated) {
-          console.error('Failed to validate credentials after saving.');
-          process.exit(1);
+          // Revalidate after saving credentials
+          const revalidated = await validateDataDir();
+          if (!revalidated) {
+            console.error('Failed to validate credentials after saving.');
+            process.exit(1);
+          }
         }
       }
 
@@ -553,19 +595,14 @@ export const publish = new Command()
         }
       }
 
-      // Get or prompt for GitHub credentials
-      let credentials = await getGitHubCredentials();
-      if (!credentials) {
-        console.info('GitHub credentials required for publishing.');
-
-        await new Promise((resolve) => setTimeout(resolve, 10));
-
-        const newCredentials = await getGitHubCredentials();
-        if (!newCredentials) {
+      // Get GitHub credentials only if we need them (not npm-only mode)
+      let credentials = null;
+      if (!opts.npm) {
+        credentials = await getGitHubCredentials();
+        if (!credentials) {
+          console.error('GitHub credentials required for publishing.');
           process.exit(1);
         }
-
-        credentials = newCredentials;
       }
 
       // Get NPM username for registry compliance
@@ -600,9 +637,11 @@ export const publish = new Command()
             console.info(`Set description: ${packageJson.description}`);
           },
         },
-        // Repository URL placeholder
+        // Repository URL placeholder (only for GitHub publishing)
         '${REPO_URL}': {
           check: () =>
+            !opts.npm &&
+            credentials &&
             packageJson.repository &&
             (packageJson.repository.url === '${REPO_URL}' || packageJson.repository.url === ''),
           replace: () => {
@@ -613,17 +652,19 @@ export const publish = new Command()
             console.info(`Set repository: ${packageJson.repository.url}`);
           },
         },
-        // Author placeholder
+        // Author placeholder (only for GitHub publishing)
         '${GITHUB_USERNAME}': {
-          check: () => packageJson.author === '${GITHUB_USERNAME}',
+          check: () => !opts.npm && credentials && packageJson.author === '${GITHUB_USERNAME}',
           replace: () => {
             packageJson.author = credentials.username;
             console.info(`Set author: ${packageJson.author}`);
           },
         },
-        // Bugs URL placeholder
+        // Bugs URL placeholder (only for GitHub publishing)
         'bugs-placeholder': {
           check: () =>
+            !opts.npm &&
+            credentials &&
             packageJson.bugs &&
             packageJson.bugs.url &&
             packageJson.bugs.url.includes('${GITHUB_USERNAME}'),
@@ -656,9 +697,10 @@ export const publish = new Command()
 
       // Update registry settings
       const settings = await getRegistrySettings();
+      const publishUsername = credentials ? credentials.username : npmUsername;
       settings.publishConfig = {
         registry: settings.defaultRegistry,
-        username: credentials.username,
+        username: publishUsername,
         useNpm: opts.npm,
         platform: packageJson.platform,
       };
@@ -668,14 +710,14 @@ export const publish = new Command()
       const packageMetadata = await generatePackageMetadata(
         packageJson,
         cliVersion,
-        credentials.username
+        publishUsername
       );
       console.debug('Generated package metadata:', packageMetadata);
 
       // Check if user is a maintainer
-      const userIsMaintainer = isMaintainer(packageJson, credentials.username);
+      const userIsMaintainer = isMaintainer(packageJson, publishUsername);
       console.info(
-        `User ${credentials.username} is ${userIsMaintainer ? 'a maintainer' : 'not a maintainer'} of this package`
+        `User ${publishUsername} is ${userIsMaintainer ? 'a maintainer' : 'not a maintainer'} of this package`
       );
 
       // Handle dry run mode (create local registry files)
@@ -737,8 +779,9 @@ export const publish = new Command()
         return;
       }
 
-      // Variable to store PR URL if one is created during GitHub publishing
+      // Track what was actually published for accurate messaging
       let publishResult: boolean | { success: boolean; prUrl?: string } = false;
+      let publishedToGitHub = false;
       let registryPrUrl: string = null;
 
       // Step 1: Publish to npm (always, unless we add a --skip-npm flag later)
@@ -784,6 +827,7 @@ export const publish = new Command()
           process.exit(1);
         }
 
+        publishedToGitHub = true;
         console.log(
           `[√] Successfully published plugin ${packageJson.name}@${packageJson.version} to GitHub`
         );
@@ -791,52 +835,34 @@ export const publish = new Command()
         // Add GitHub repo info to metadata
         packageMetadata.githubRepo = `${credentials.username}/${finalPluginName}`;
 
-        // Store PR URL if returned from publishToGitHub
-        if (typeof publishResult === 'object' && publishResult.prUrl) {
+        // Store PR URL if returned from publishToGitHub (only show if registry not skipped)
+        if (typeof publishResult === 'object' && publishResult.prUrl && !opts.skipRegistry) {
           registryPrUrl = publishResult.prUrl;
           console.log(`[√] Registry pull request created: ${registryPrUrl}`);
         }
       }
 
-      // Handle registry publication
-      if (!opts.skipRegistry) {
-        console.info('Publishing to registry...');
-
-        if (userIsMaintainer) {
-          if (!opts.npm) {
-            // For GitHub publishing, PR is already created by publishToGitHub
-            console.info('Registry PR was created during GitHub publishing process.');
-          } else {
-            // For npm publishing, we need to use the npm-specific publishing flow
-            console.warn('NPM publishing currently does not update the registry.');
-            console.info('To include this package in the registry:');
-            console.info(`1. Fork the registry repository at ${REGISTRY_GITHUB_URL}`);
-            console.info('2. Add your package metadata');
-            console.info('3. Submit a pull request to the main repository');
-          }
-        } else {
-          // For non-maintainers, just show a message about how to request inclusion
-          console.info("Package published, but you're not a maintainer of this package.");
-          console.info('To include this package in the registry, please:');
-          console.info(`1. Fork the registry repository at ${REGISTRY_GITHUB_URL}`);
-          console.info('2. Add your package metadata');
-          console.info('3. Submit a pull request to the main repository');
-        }
-      } else {
-        console.info('Skipping registry publication as requested with --skip-registry flag');
-      }
+      // Handle registry publication messaging
+      displayRegistryPublicationMessage(opts, userIsMaintainer, registryPrUrl);
 
       console.log(`Successfully published plugin ${packageJson.name}@${packageJson.version}`);
 
+      // Show availability URLs only for platforms where we actually published
       console.log('\nYour plugin is now available at:');
-      console.log(`https://github.com/${credentials.username}/${finalPluginName}`);
+      console.log(`NPM: https://www.npmjs.com/package/${packageJson.name}`);
+
+      if (publishedToGitHub && credentials) {
+        console.log(`GitHub: https://github.com/${credentials.username}/${finalPluginName}`);
+      }
 
       console.log('\n[📝] Important: For future updates to your plugin:');
       console.log('   Use standard npm and git workflows, not the ElizaOS CLI:');
       console.log('   1. Make your changes and test locally');
       console.log('   2. Update version: npm version patch|minor|major');
       console.log('   3. Publish to npm: npm publish');
-      console.log('   4. Push to GitHub: git push origin main && git push --tags');
+      if (publishedToGitHub) {
+        console.log('   4. Push to GitHub: git push origin main && git push --tags');
+      }
       console.log('\n   The ElizaOS registry will automatically sync with npm updates.');
       console.log('   Only use "elizaos publish" for initial publishing of new plugins.');
     } catch (error) {

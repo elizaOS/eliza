@@ -21,9 +21,12 @@ import {
 } from '@/components/ui/select';
 import { getAllVoiceModels, getVoiceModelByValue, providerPluginMap } from '../config/voice-models';
 import { useElevenLabsVoices } from '@/hooks/use-elevenlabs-voices';
-import { Trash, Loader2, RotateCcw, Download, Upload, Save } from 'lucide-react';
+import { Trash, Loader2, RotateCcw, Download, Upload, Save, StopCircle } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { agentTemplates, getTemplateById } from '@/config/agent-templates';
+import { cn } from '@/lib/utils';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import SplitButton from '@/components/split-button';
 
 export type InputField = {
   name: string;
@@ -118,9 +121,48 @@ export default function CharacterForm({
   const { data: elevenlabsVoices, isLoading: isLoadingVoices } = useElevenLabsVoices();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<string>('none');
+  const [activeTab, setActiveTab] = useState('basic');
+  const tabsContainerRef = useRef<HTMLDivElement>(null);
+  const [showLeftScroll, setShowLeftScroll] = useState(false);
+  const [showRightScroll, setShowRightScroll] = useState(false);
 
   // Use the custom hook to detect container width
   const { containerRef, showLabels } = useContainerWidth(640); // Adjust threshold as needed
+
+  // Check if tabs need scroll buttons
+  const checkScrollButtons = useCallback(() => {
+    const container = tabsContainerRef.current;
+    if (!container) return;
+
+    const { scrollLeft, scrollWidth, clientWidth } = container;
+    setShowLeftScroll(scrollLeft > 0);
+    setShowRightScroll(scrollLeft + clientWidth < scrollWidth - 1);
+  }, []);
+
+  useEffect(() => {
+    const container = tabsContainerRef.current;
+    if (!container) return;
+
+    checkScrollButtons();
+    container.addEventListener('scroll', checkScrollButtons);
+    window.addEventListener('resize', checkScrollButtons);
+
+    return () => {
+      container.removeEventListener('scroll', checkScrollButtons);
+      window.removeEventListener('resize', checkScrollButtons);
+    };
+  }, [checkScrollButtons, customComponents.length]);
+
+  const scrollTabs = (direction: 'left' | 'right') => {
+    const container = tabsContainerRef.current;
+    if (!container) return;
+
+    const scrollAmount = container.clientWidth * 0.8;
+    container.scrollBy({
+      left: direction === 'left' ? -scrollAmount : scrollAmount,
+      behavior: 'smooth',
+    });
+  };
 
   // Get all voice models, using the dynamic ElevenLabs voices when available
   const allVoiceModels = useMemo(() => {
@@ -490,6 +532,10 @@ export default function CharacterForm({
     </div>
   );
 
+  const handleExportJSON = () => {
+    exportCharacterAsJson(characterValue, toast);
+  };
+
   const handleImportJSON = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -546,9 +592,56 @@ export default function CharacterForm({
     }
   };
 
-  const handleExportJSON = () => {
-    exportCharacterAsJson(characterValue, toast);
+  // File input ref for import functionality
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
   };
+
+  // Define import/export options
+  const importExportOptions = [
+    {
+      label: "Export JSON",
+      description: "Export current agent configuration as a JSON file",
+      onClick: handleExportJSON,
+    },
+    {
+      label: "Import JSON",
+      description: "Import agent configuration from a JSON file",
+      onClick: handleImportClick,
+    },
+  ];
+
+  // Define stop/delete options (only if both are available)
+  const stopDeleteOptions = useMemo(() => {
+    const options = [];
+
+    if (stopAgentButton) {
+      options.push({
+        label: "Stop Agent",
+        description: "Stop the agent from running",
+        onClick: () => {
+          // The stopAgentButton should handle its own click logic
+          // We'll trigger it by finding and clicking the button
+          const stopButton = document.querySelector('[data-stop-agent]') as HTMLButtonElement;
+          if (stopButton) {
+            stopButton.click();
+          }
+        },
+      });
+    }
+
+    if (onDelete) {
+      options.push({
+        label: "Delete Agent",
+        description: "Permanently delete this agent and all its data",
+        onClick: () => onDelete(),
+      });
+    }
+
+    return options;
+  }, [stopAgentButton, onDelete]);
 
   /**
    * Handle template selection
@@ -572,6 +665,20 @@ export default function CharacterForm({
     },
     [onReset, setCharacterValue]
   );
+
+  // Create all tabs data
+  const allTabs = [
+    ...AGENT_FORM_SCHEMA.map((section) => ({
+      value: section.sectionValue,
+      label: section.sectionTitle,
+      shortLabel: section.sectionTitle.substring(0, 8), // For mobile
+    })),
+    ...customComponents.map((component) => ({
+      value: `custom-${component.name}`,
+      label: component.name,
+      shortLabel: (component as any).shortLabel || component.name.substring(0, 8), // Use provided shortLabel or first 4 chars
+    })),
+  ];
 
   return (
     <div ref={containerRef} className="container w-full mx-auto p-6">
@@ -613,24 +720,58 @@ export default function CharacterForm({
       </div>
 
       <form onSubmit={handleFormSubmit}>
-        <Tabs defaultValue="basic" className="w-full">
-          <TabsList
-            className={'grid w-full mb-6 tabs-list'}
-            style={{
-              gridTemplateColumns: `repeat(${customComponents.length + 3}, minmax(0, 1fr))`,
-            }}
-          >
-            {AGENT_FORM_SCHEMA.map((section) => (
-              <TabsTrigger key={section.sectionValue} value={section.sectionValue}>
-                {section.sectionTitle}
-              </TabsTrigger>
-            ))}
-            {customComponents.map((component) => (
-              <TabsTrigger key={`custom-${component.name}`} value={`custom-${component.name}`}>
-                {component.name}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <div className="relative mb-6">
+            {/* Scroll button left */}
+            {showLeftScroll && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="absolute left-0 top-1/2 -translate-y-1/2 z-10 h-8 w-8 p-0 bg-background/80 backdrop-blur-sm shadow-md"
+                onClick={() => scrollTabs('left')}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+            )}
+
+            {/* Tabs container */}
+            <div
+              ref={tabsContainerRef}
+              className="overflow-x-auto scrollbar-hide"
+            >
+              <TabsList className="inline-flex h-10 items-center justify-start rounded-md bg-muted p-1 text-muted-foreground w-max min-w-full">
+                {allTabs.map((tab) => (
+                  <TabsTrigger
+                    key={tab.value}
+                    value={tab.value}
+                    className={cn(
+                      "inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+                      "data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm",
+                      !showLabels && "px-2" // Smaller padding on mobile
+                    )}
+                  >
+                    <span className={cn("block", !showLabels && "text-xs")}>
+                      {showLabels ? tab.label : tab.shortLabel}
+                    </span>
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </div>
+
+            {/* Scroll button right */}
+            {showRightScroll && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="absolute right-0 top-1/2 -translate-y-1/2 z-10 h-8 w-8 p-0 bg-background/80 backdrop-blur-sm shadow-md"
+                onClick={() => scrollTabs('right')}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
 
           <Card>
             <CardContent className="p-6">
@@ -656,49 +797,25 @@ export default function CharacterForm({
 
         <div className="flex justify-between gap-4 mt-6">
           <div className="flex gap-4">
-            {onDelete && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        onDelete?.();
-                      }}
-                      disabled={isDeleting}
-                    >
-                      {isDeleting ? (
-                        <>
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          {showLabels && <span className="ml-2">Deleting...</span>}
-                        </>
-                      ) : (
-                        <>
-                          <Trash className="h-4 w-4" />
-                          {showLabels && <span className="ml-2">Delete Agent</span>}
-                        </>
-                      )}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Permanently delete this agent and all its data</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+            {/* Stop/Delete Split Button - only show if we have options */}
+            {stopDeleteOptions.length > 0 && (
+              <SplitButton
+                options={stopDeleteOptions}
+                variant="destructive"
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                buttonClassName="bg-destructive text-destructive-foreground hover:bg-destructive/90 border-destructive"
+                disabled={isDeleting}
+              />
             )}
-            {stopAgentButton && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div>{stopAgentButton}</div>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Stop the agent from running</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
+
+            {/* Hidden file input for import */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json"
+              onChange={handleImportJSON}
+              className="hidden"
+            />
           </div>
 
           <div className="flex gap-4">
@@ -721,40 +838,13 @@ export default function CharacterForm({
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="relative">
-                    <input
-                      type="file"
-                      accept=".json"
-                      onChange={handleImportJSON}
-                      className="absolute inset-0 opacity-0 cursor-pointer"
-                    />
-                    <Button type="button" variant="outline">
-                      <Upload className="h-4 w-4" />
-                      {showLabels && <span className="ml-2">Import JSON</span>}
-                    </Button>
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Import agent configuration from a JSON file</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button type="button" variant="outline" onClick={handleExportJSON}>
-                    <Download className="h-4 w-4" />
-                    {showLabels && <span className="ml-2">Export JSON</span>}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Export current agent configuration as a JSON file</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+
+            {/* Import/Export Split Button */}
+            <SplitButton
+              options={importExportOptions}
+              defaultValue="0"
+            />
+
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>

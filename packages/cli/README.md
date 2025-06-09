@@ -132,12 +132,12 @@ Manage environment variables and secrets.
 
 ### Monorepo Setup
 
-#### `elizaos setup-monorepo`
+#### `elizaos monorepo`
 
-Clone ElizaOS monorepo from a specific branch (defaults to main).
+Clone ElizaOS monorepo from a specific branch (defaults to develop).
 
 - **Options:**
-  - `-b, --branch <branch>`: Branch to install (default: `main`)
+  - `-b, --branch <branch>`: Branch to install (default: `develop`)
   - `-d, --dir <directory>`: Destination directory (default: `./eliza`)
 
 **Notes:**
@@ -152,7 +152,7 @@ Clone ElizaOS monorepo from a specific branch (defaults to main).
 Manage an ElizaOS plugin.
 
 - **Subcommands:**
-  - `list` (alias: `l`): List all available plugins
+  - `list` (alias: `l`): List available plugins (shows v1.x plugins by default)
   - `add <plugin>` (alias: `install`): Add a plugin to the project
     - Arguments: `<plugin>` (plugin name)
     - Options: `-n, --no-env-prompt`, `-b, --branch <branchName>`, `-T, --tag <tagname>`
@@ -219,7 +219,7 @@ Publish a plugin to the registry.
 
 - **Options:**
   - `-t, --test`: Test publish process without making changes
-  - `-n, --npm`: Publish to npm instead of GitHub
+  - `--npm`: Publish to npm instead of GitHub
   - `-sr, --skip-registry`: Skip publishing to the registry
   - `-d, --dry-run`: Generate registry files locally without publishing
 
@@ -791,5 +791,5 @@ Projects contain agent configurations and code for building agent-based applicat
 For contributing to the ElizaOS CLI, please clone the monorepo using:
 
 ```bash
-elizaos setup-monorepo
+elizaos monorepo
 ```

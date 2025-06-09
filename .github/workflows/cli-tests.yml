@@ -29,7 +29,10 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: ${{ github.event_name == 'push' && fromJSON('["ubuntu-latest", "macos-latest", "windows-latest"]') || fromJSON('["ubuntu-latest"]') }}
 
     steps:
       - name: Checkout code
@@ -50,27 +53,22 @@ jobs:
 
       - name: Install dependencies
         run: bun install
-
-      - name: Setup Turbo Cache
-        uses: actions/cache@v3
-        with:
-          path: .turbo
-          key: ${{ runner.os }}-turbo-${{ github.event.pull_request.head.sha || github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-turbo-
-
+        
       - name: Build all packages
-        run: bun turbo run build --filter=!@elizaos/docs
+        run: bun run build
 
       - name: Clean eliza projects cache
+        shell: bash
         run: rm -rf ~/.eliza/projects
 
       - name: Create .env file for tests
+        shell: bash
         run: |
           echo "OPENAI_API_KEY=$OPENAI_API_KEY" > .env
           echo "LOG_LEVEL=info" >> .env
 
       - name: Download models
+        shell: bash
         run: |
           MODEL_DIR="$HOME/.eliza/models"
           mkdir -p "$MODEL_DIR"
