@@ -193,20 +193,10 @@ export function createAgentCrudRouter(
       const runtime = agents.get(agentId);
       const status = runtime ? 'active' : 'inactive';
 
-      res.json({
-        success: true,
-        data: { ...updatedAgent, status },
-      });
+      sendSuccess(res, { ...updatedAgent, status });
     } catch (error) {
       logger.error('[AGENT UPDATE] Error updating agent:', error);
-      res.status(500).json({
-        success: false,
-        error: {
-          code: 'UPDATE_ERROR',
-          message: 'Error updating agent',
-          details: error.message,
-        },
-      });
+      sendError(res, 500, 'UPDATE_ERROR', 'Error updating agent', error.message);
     }
   });
 
