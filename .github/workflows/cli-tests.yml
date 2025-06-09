@@ -51,6 +51,16 @@ jobs:
       - name: Mention Bun version
         run: bun --version
 
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
       - name: Install dependencies
         run: bun install
         
@@ -66,6 +76,14 @@ jobs:
         run: |
           echo "OPENAI_API_KEY=$OPENAI_API_KEY" > .env
           echo "LOG_LEVEL=info" >> .env
+
+      - name: Cache models
+        uses: actions/cache@v4
+        with:
+          path: ~/.eliza/models
+          key: ${{ runner.os }}-models-${{ hashFiles('.github/workflows/cli-tests.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-models-
 
       - name: Download models
         shell: bash
