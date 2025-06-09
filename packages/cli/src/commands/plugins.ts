@@ -1,7 +1,7 @@
 import { handleError, installPlugin, logHeader } from '@/src/utils';
 import { fetchPluginRegistry } from '@/src/utils/plugin-discovery';
 import { normalizePluginName } from '@/src/utils/registry';
-import { detectDirectoryType, getDirectoryTypeDescription } from '@/src/utils/directory-detection';
+import { detectDirectoryType } from '@/src/utils/directory-detection';
 import { promptForEnvVars } from '@/src/utils/env-prompt';
 import { logger } from '@elizaos/core';
 import { Command } from 'commander';
@@ -390,9 +390,9 @@ plugins
     const cwd = process.cwd();
     const directoryInfo = detectDirectoryType(cwd);
 
-    if (!directoryInfo.hasPackageJson) {
+    if (!directoryInfo || !directoryInfo.hasPackageJson) {
       logger.error(
-        `Command must be run inside an ElizaOS project directory. This directory is: ${getDirectoryTypeDescription(directoryInfo)}`
+        `Command must be run inside an ElizaOS project directory. This directory is: ${directoryInfo?.type || 'invalid or inaccessible'}`
       );
       process.exit(1);
     }
@@ -526,9 +526,9 @@ plugins
       const cwd = process.cwd();
       const directoryInfo = detectDirectoryType(cwd);
 
-      if (!directoryInfo.hasPackageJson) {
+      if (!directoryInfo || !directoryInfo.hasPackageJson) {
         console.error(
-          `Could not read or parse package.json. This directory is: ${getDirectoryTypeDescription(directoryInfo)}`
+          `Could not read or parse package.json. This directory is: ${directoryInfo?.type || 'invalid or inaccessible'}`
         );
         console.info('Please run this command from the root of an ElizaOS project.');
         process.exit(1);
@@ -573,9 +573,9 @@ plugins
       const cwd = process.cwd();
       const directoryInfo = detectDirectoryType(cwd);
 
-      if (!directoryInfo.hasPackageJson) {
+      if (!directoryInfo || !directoryInfo.hasPackageJson) {
         console.error(
-          `Could not read or parse package.json. This directory is: ${getDirectoryTypeDescription(directoryInfo)}`
+          `Could not read or parse package.json. This directory is: ${directoryInfo?.type || 'invalid or inaccessible'}`
         );
         process.exit(1);
       }

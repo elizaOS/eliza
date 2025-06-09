@@ -4,7 +4,7 @@ import path from 'node:path';
 import * as semver from 'semver';
 import { fileURLToPath } from 'node:url';
 import { logger } from '@elizaos/core';
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, statSync, readFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { resolveEnvFile } from './resolve-utils';
 import { emoji } from './emoji-handler';
@@ -231,16 +231,27 @@ export class UserEnvironment {
    * @param startDir The directory to start searching from.
    * @returns The path to the monorepo root if found, otherwise null.
    */
-  private findMonorepoRoot(startDir: string): string | null {
+  public findMonorepoRoot(startDir: string): string | null {
     let currentDir = path.resolve(startDir);
-    while (true) {
+    let levels = 0;
+    const MAX_LEVELS = 10; // Limit traversal to prevent excessive filesystem searching
+
+    while (levels < MAX_LEVELS) {
       const corePackagePath = path.join(currentDir, 'packages', 'core');
       if (existsSync(corePackagePath)) {
-        // Check if 'packages/core' itself exists and is a directory
         try {
           const stats = statSync(corePackagePath);
           if (stats.isDirectory()) {
-            return currentDir; // Found the root containing 'packages/core'
+            // Additional validation: check if this looks like the ElizaOS monorepo
+            const packageJsonPath = path.join(currentDir, 'package.json');
+            if (existsSync(packageJsonPath)) {
+              const packageJsonContent = readFileSync(packageJsonPath, 'utf8');
+              const packageJson = JSON.parse(packageJsonContent);
+              // Verify this is actually the ElizaOS monorepo
+              if (packageJson.name?.includes('eliza') || packageJson.workspaces) {
+                return currentDir;
+              }
+            }
           }
         } catch (e) {
           // Ignore errors like permission denied, continue search
@@ -249,11 +260,12 @@ export class UserEnvironment {
 
       const parentDir = path.dirname(currentDir);
       if (parentDir === currentDir) {
-        // Reached the filesystem root
-        return null;
+        return null; // Reached filesystem root
       }
       currentDir = parentDir;
+      levels++;
     }
+    return null;
   }
 
   public async getPathInfo(): Promise<PathInfo> {

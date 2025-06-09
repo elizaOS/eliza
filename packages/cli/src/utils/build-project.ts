@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { logger } from '@elizaos/core';
 import { execa } from 'execa';
-import { isMonorepoContext } from './get-package-info';
+import { detectDirectoryType } from './directory-detection';
 import { runBunCommand } from './run-bun';
 
 /**
@@ -37,8 +37,8 @@ export async function buildProject(cwd: string, isPlugin = false) {
   }
 
   // Check if we're in a monorepo
-  const inMonorepo = await isMonorepoContext();
-  if (inMonorepo) {
+  const directoryInfo = detectDirectoryType(cwd);
+  if (directoryInfo.monorepoRoot) {
     logger.debug('Detected monorepo structure, skipping install');
   }
 

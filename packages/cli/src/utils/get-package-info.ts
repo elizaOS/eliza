@@ -15,14 +15,6 @@ export async function getPackageVersion(packageName: string): Promise<string> {
 }
 
 /**
- * Check if we're inside a monorepo
- */
-export async function isMonorepoContext(): Promise<boolean> {
-  const { monorepoRoot } = await UserEnvironment.getInstance().getPathInfo();
-  return monorepoRoot !== null;
-}
-
-/**
  * Get local packages available in the monorepo
  */
 export async function getLocalPackages(): Promise<string[]> {

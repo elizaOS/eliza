@@ -31,7 +31,7 @@ import { Command } from 'commander';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { detectDirectoryType, getDirectoryTypeDescription } from '@/src/utils/directory-detection';
+import { detectDirectoryType } from '@/src/utils/directory-detection';
 import { validatePort } from '@/src/utils/port-validation';
 
 const __filename = fileURLToPath(import.meta.url);

@@ -12,7 +12,7 @@ import {
   saveRegistrySettings,
   validateDataDir,
 } from '@/src/utils/registry/index';
-import { detectDirectoryType, getDirectoryTypeDescription } from '@/src/utils/directory-detection';
+import { detectDirectoryType } from '@/src/utils/directory-detection';
 import { REGISTRY_REPO, REGISTRY_GITHUB_URL } from '@/src/utils/registry/constants';
 import { Command } from 'commander';
 import { execa } from 'execa';
@@ -472,9 +472,9 @@ export const publish = new Command()
       const directoryInfo = detectDirectoryType(cwd);
 
       // Validate that we're in a valid directory with package.json
-      if (!directoryInfo.hasPackageJson) {
+      if (!directoryInfo || !directoryInfo.hasPackageJson) {
         console.error(
-          `No package.json found in current directory. This directory is: ${getDirectoryTypeDescription(directoryInfo)}`
+          `No package.json found in current directory. This directory is: ${directoryInfo?.type || 'invalid or inaccessible'}`
         );
         process.exit(1);
       }
@@ -556,9 +556,7 @@ export const publish = new Command()
           detectedType = 'project';
           console.info('Detected project from package.json packageType field');
         } else {
-          console.info(
-            `Defaulting to plugin type. Directory detected as: ${getDirectoryTypeDescription(directoryInfo)}`
-          );
+          console.info(`Defaulting to plugin type. Directory detected as: ${directoryInfo.type}`);
         }
       }
 
