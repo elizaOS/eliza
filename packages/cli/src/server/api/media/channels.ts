@@ -4,6 +4,7 @@ import rateLimit from 'express-rate-limit';
 import type { AgentServer } from '../../index';
 import { channelUpload } from '../shared/uploads';
 import fs from 'fs';
+import path from 'path';
 
 // Using Express.Multer.File type instead of importing from multer directly
 type MulterFile = Express.Multer.File;
@@ -64,7 +65,12 @@ export function createChannelMediaRouter(serverInstance: AgentServer): express.R
 
       if (!validMimeTypes.includes(mediaFile.mimetype)) {
         try {
-          await fs.promises.unlink(mediaFile.path);
+          const UPLOADS_ROOT = path.resolve('/media/uploads/channels');
+          const normalizedPath = path.resolve(mediaFile.path);
+          if (!normalizedPath.startsWith(UPLOADS_ROOT)) {
+            throw new Error('Invalid file path detected during cleanup');
+          }
+          await fs.promises.unlink(normalizedPath);
         } catch (cleanupError) {
           logger.error('[Channel Media Upload] Failed to clean up invalid file:', cleanupError);
         }
