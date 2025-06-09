@@ -498,6 +498,27 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
     }
   });
 
+  // Delete entire channel
+  router.delete('/central-channels/:channelId', async (req, res) => {
+    const channelId = validateUuid(req.params.channelId);
+    if (!channelId) {
+      return res.status(400).json({ success: false, error: 'Invalid channelId' });
+    }
+    try {
+      await serverInstance.deleteChannel(channelId);
+      // Emit an event via SocketIO to inform clients about the channel deletion
+      if (serverInstance.socketIO) {
+        serverInstance.socketIO.to(channelId).emit('channelDeleted', {
+          channelId: channelId,
+        });
+      }
+      res.status(204).send();
+    } catch (error) {
+      logger.error(`[Messages Router] Error deleting channel ${channelId}:`, error);
+      res.status(500).json({ success: false, error: 'Failed to delete channel' });
+    }
+  });
+
   // Upload media to channel
   router.post(
     '/channels/:channelId/upload-media',

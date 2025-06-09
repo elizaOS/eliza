@@ -401,7 +401,7 @@ export const apiClient = {
   // PLACEHOLDER - Implement actual backend and uncomment
   deleteChannelMessage: async (channelId: UUID, messageId: UUID): Promise<void> => {
     await fetcher({
-      url: `/messaging/central-channels/${channelId}/messaging/${messageId}`,
+      url: `/messaging/central-channels/${channelId}/messages/${messageId}`,
       method: 'DELETE',
     });
   },
@@ -486,7 +486,7 @@ export const apiClient = {
   // Group chat management
   deleteGroupMemory: (serverId: UUID, memoryId: UUID): Promise<void> =>
     fetcher({
-      url: `/messaging/central-channels/${serverId}/messaging/${memoryId}`,
+      url: `/messaging/central-channels/${serverId}/messages/${memoryId}`,
       method: 'DELETE',
     }),
   clearGroupChat: (serverId: UUID): Promise<void> =>

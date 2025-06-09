@@ -1,5 +1,5 @@
 import type { TestSuite, IAgentRuntime } from '@elizaos/core';
-import { mrTeeCharacter } from '../src/character';
+import { character as mrTeeCharacter } from '../dist/index.js';
 
 export class MrTeeProjectTestSuite implements TestSuite {
   name = 'mr-tee-project';

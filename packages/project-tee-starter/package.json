@@ -35,6 +35,7 @@
   "dependencies": {
     "@elizaos/cli": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-redpill": "1.0.0",
     "@elizaos/plugin-sql": "workspace:*",
     "@phala/dstack-sdk": "0.1.11",
     "@solana/web3.js": "1.98.2",
