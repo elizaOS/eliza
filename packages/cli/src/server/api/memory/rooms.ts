@@ -149,17 +149,17 @@ export function createRoomManagementRouter(
         return sendError(res, 404, 'NOT_FOUND', 'Room not found');
       }
 
-      // Optionally, enrich room data with world name if needed
-      // This depends on whether getRoom returns worldId and if you want to include worldName
-      let worldName = 'N/A';
+      // Enrich room data with world name
+      let worldName: string | undefined;
       if (room.worldId) {
         const world = await runtime.getWorld(room.worldId);
-        if (world) {
-          worldName = world.name;
-        }
+        worldName = world?.name;
       }
 
-      sendSuccess(res, { ...room, worldName });
+      sendSuccess(res, {
+        ...room,
+        ...(worldName && { worldName }),
+      });
     } catch (error) {
       logger.error(`[ROOM DETAILS] Error retrieving room ${roomId} for agent ${agentId}:`, error);
       sendError(res, 500, 'RETRIEVAL_ERROR', 'Failed to retrieve room details', error.message);
