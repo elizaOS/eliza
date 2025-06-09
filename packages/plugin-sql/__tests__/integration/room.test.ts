@@ -1,110 +1,123 @@
-import { type Room, type UUID, AgentRuntime, ChannelType, stringToUuid, type World } from '@elizaos/core';
+import { beforeAll, describe, it, expect, afterAll, beforeEach } from 'vitest';
+import { type UUID, type World, type Room, AgentRuntime, stringToUuid, ChannelType } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { PgliteDatabaseAdapter } from '../../src/pglite/adapter';
+import { createIsolatedTestDatabase } from '../test-helpers';
 import { roomTable } from '../../src/schema';
-import { createTestDatabase } from '../test-helpers';
+import { PgliteDatabaseAdapter } from '../../src/pglite/adapter';
+import { PgDatabaseAdapter } from '../../src/pg/adapter';
 
 describe('Room Integration Tests', () => {
-  let adapter: PgliteDatabaseAdapter;
+  let adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
   let runtime: AgentRuntime;
   let cleanup: () => Promise<void>;
   let testAgentId: UUID;
   let testWorldId: UUID;
 
   beforeAll(async () => {
-    testAgentId = stringToUuid('test-agent-for-room-tests');
-    testWorldId = stringToUuid('test-world-for-room-tests');
-    ({ adapter, runtime, cleanup } = await createTestDatabase(testAgentId));
+    const setup = await createIsolatedTestDatabase('room-tests');
+    adapter = setup.adapter;
+    runtime = setup.runtime;
+    cleanup = setup.cleanup;
+    testAgentId = setup.testAgentId;
 
-    await runtime.createWorld({
+    // Create a test world
+    testWorldId = uuidv4() as UUID;
+    await adapter.createWorld({
       id: testWorldId,
       agentId: testAgentId,
       name: 'Test World',
       serverId: 'test-server',
-    } as World);
+    });
   }, 30000);
 
-  beforeEach(async () => {
-    await adapter.getDatabase().delete(roomTable);
-  });
-
   afterAll(async () => {
-    await cleanup();
-  });
-
-  it('should create and retrieve a room', async () => {
-    const room: Room = {
-      id: uuidv4() as UUID,
-      agentId: testAgentId,
-      worldId: testWorldId,
-      name: 'Test Room',
-      source: 'test',
-      type: ChannelType.GROUP,
-    };
-    await adapter.createRooms([room]);
-
-    const retrieved = await adapter.getRoomsByIds([room.id]);
-    expect(retrieved).not.toBeNull();
-    expect(retrieved?.[0].id).toBe(room.id);
-    expect(retrieved?.[0].name).toBe('Test Room');
-  });
-
-  it('should get all rooms for a world', async () => {
-    for (let i = 0; i < 3; i++) {
-      await adapter.createRooms([
-        {
-          id: uuidv4() as UUID,
-          agentId: testAgentId,
-          worldId: testWorldId,
-          name: `Room ${i}`,
-          source: 'test',
-          type: ChannelType.GROUP,
-        } as Room,
-      ]);
+    if (cleanup) {
+      await cleanup();
     }
-    const rooms = await adapter.getRoomsByWorld(testWorldId);
-    expect(rooms).toHaveLength(3);
   });
 
-  it('should update a room', async () => {
-    const roomId = uuidv4() as UUID;
-    const room = {
-      id: roomId,
-      agentId: testAgentId,
-      worldId: testWorldId,
-      source: 'test',
-      type: ChannelType.GROUP,
-      name: 'Original Room Name',
-    };
-    await adapter.createRooms([room as Room]);
+  describe('Room Tests', () => {
+    beforeEach(async () => {
+      await adapter.getDatabase().delete(roomTable);
+    });
 
-    const updatedRoom = { ...room, name: 'Updated Room Name' };
-    await adapter.updateRoom(updatedRoom);
+    it('should create and retrieve a room', async () => {
+      const roomId = uuidv4() as UUID;
+      const room: Room = {
+        id: roomId,
+        agentId: testAgentId,
+        worldId: testWorldId,
+        source: 'test',
+        type: ChannelType.GROUP,
+        name: 'Test Room',
+      };
+      await adapter.createRooms([room]);
+      const retrieved = await adapter.getRoomsByIds([roomId]);
+      expect(retrieved).not.toBeNull();
+      expect(retrieved?.[0]?.id).toBe(roomId);
+    });
 
-    const retrievedRooms = await adapter.getRoomsByIds([room.id]);
-    expect(retrievedRooms).not.toBeNull();
-    expect(retrievedRooms?.[0].name).toBe('Updated Room Name');
-  });
+    it('should get all rooms for a world', async () => {
+      const room1: Room = {
+        id: uuidv4() as UUID,
+        agentId: testAgentId,
+        worldId: testWorldId,
+        source: 'test',
+        type: ChannelType.GROUP,
+        name: 'Room 1',
+      };
+      const room2: Room = {
+        id: uuidv4() as UUID,
+        agentId: testAgentId,
+        worldId: testWorldId,
+        source: 'test',
+        type: ChannelType.GROUP,
+        name: 'Room 2',
+      };
+      await adapter.createRooms([room1, room2]);
+      const rooms = await adapter.getRoomsByWorld(testWorldId);
+      expect(rooms).toHaveLength(2);
+    });
 
-  it('should delete a room', async () => {
-    const roomId = uuidv4() as UUID;
-    const room = {
-      id: roomId,
-      agentId: testAgentId,
-      worldId: testWorldId,
-      source: 'test',
-      type: ChannelType.GROUP,
-      name: 'To Be Deleted',
-    };
-    await adapter.createRooms([room as Room]);
+    it('should update a room', async () => {
+      const roomId = uuidv4() as UUID;
+      const room = {
+        id: roomId,
+        agentId: testAgentId,
+        worldId: testWorldId,
+        source: 'test',
+        type: ChannelType.GROUP,
+        name: 'Original Room Name',
+      };
+      await adapter.createRooms([room as Room]);
 
-    let retrieved = await adapter.getRoomsByIds([room.id]);
-    expect(retrieved).toHaveLength(1);
+      const updatedRoom = { ...room, name: 'Updated Room Name' };
+      await adapter.updateRoom(updatedRoom);
 
-    await adapter.deleteRoom(room.id);
+      const retrieved = await adapter.getRoomsByIds([roomId]);
+      expect(retrieved).not.toBeNull();
+      expect(retrieved?.[0]?.name).toBe('Updated Room Name');
+    });
 
-    retrieved = await adapter.getRoomsByIds([room.id]);
-    expect(retrieved).toEqual([]);
+    it('should delete a room', async () => {
+      const roomId = uuidv4() as UUID;
+      const room = {
+        id: roomId,
+        agentId: testAgentId,
+        worldId: testWorldId,
+        source: 'test',
+        type: ChannelType.GROUP,
+        name: 'To Be Deleted',
+      };
+      await adapter.createRooms([room as Room]);
+
+      let retrieved = await adapter.getRoomsByIds([room.id]);
+      expect(retrieved).toHaveLength(1);
+
+      await adapter.deleteRoom(room.id);
+
+      retrieved = await adapter.getRoomsByIds([room.id]);
+      expect(retrieved).toEqual([]);
+    });
   });
 });

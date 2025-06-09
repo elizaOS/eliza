@@ -18,6 +18,7 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter<NodePgDatabase> {
   ) {
     super(agentId);
     this.manager = manager;
+    this.db = this.manager.getDatabase();
   }
 
   /**

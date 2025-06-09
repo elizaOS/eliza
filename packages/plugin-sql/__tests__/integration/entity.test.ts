@@ -1,130 +1,139 @@
 import { beforeAll, describe, it, expect, afterAll, beforeEach } from 'vitest';
 import { type Entity, type UUID, AgentRuntime, stringToUuid } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
-import { PgliteDatabaseAdapter } from '../../src/pglite/adapter';
-import { createTestDatabase } from '../test-helpers';
+import { createIsolatedTestDatabase } from '../test-helpers';
 import { entityTable } from '../../src/schema';
+import { PgliteDatabaseAdapter } from '../../src/pglite/adapter';
+import { PgDatabaseAdapter } from '../../src/pg/adapter';
 
 describe('Entity Integration Tests', () => {
-  let adapter: PgliteDatabaseAdapter;
+  let adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
   let runtime: AgentRuntime;
   let cleanup: () => Promise<void>;
-  const testAgentId = stringToUuid('test-agent-for-entity-tests');
+  let testAgentId: UUID;
 
   beforeAll(async () => {
-    ({ adapter, runtime, cleanup } = await createTestDatabase(testAgentId));
+    const setup = await createIsolatedTestDatabase('entity-tests');
+    adapter = setup.adapter;
+    runtime = setup.runtime;
+    cleanup = setup.cleanup;
+    testAgentId = setup.testAgentId;
   }, 30000);
 
   afterAll(async () => {
-    await cleanup();
+    if (cleanup) {
+      await cleanup();
+    }
   });
 
-  beforeEach(async () => {
-    // Clear entities before each test to ensure a clean slate
-    const db = adapter.getDatabase();
-    await db.delete(entityTable);
-  });
+  describe('Entity Tests', () => {
+    beforeEach(async () => {
+      // Clear entities before each test to ensure a clean slate
+      const db = adapter.getDatabase();
+      await db.delete(entityTable);
+    });
 
-  it('should create and retrieve a basic entity', async () => {
-    const entityId = uuidv4() as UUID;
-    const entity: Entity = {
-      id: entityId,
-      agentId: testAgentId,
-      names: ['Test Entity'],
-      metadata: { type: 'test' },
-    };
-
-    const result = await adapter.createEntities([entity]);
-    expect(result).toBe(true);
-
-    const retrieved = await adapter.getEntityByIds([entityId]);
-    expect(retrieved).not.toBeNull();
-    expect(retrieved?.[0]?.id).toBe(entityId);
-  });
-
-  it('should return empty array when retrieving non-existent entities', async () => {
-    const nonExistentId = uuidv4() as UUID;
-    const retrieved = await adapter.getEntityByIds([nonExistentId]);
-    expect(retrieved).toEqual([]);
-  });
-
-  it('should update an existing entity', async () => {
-    const entityId = uuidv4() as UUID;
-    const entity: Entity = {
-      id: entityId,
-      agentId: testAgentId,
-      names: ['Original Name'],
-      metadata: { original: 'data' },
-    };
-
-    const createResult = await adapter.createEntities([entity]);
-    expect(createResult).toBe(true);
-
-    const updatedEntity = { ...entity, names: ['Updated Name'], metadata: { updated: 'data' } };
-    await adapter.updateEntity(updatedEntity);
-
-    const retrieved = await adapter.getEntityByIds([entityId]);
-    expect(retrieved).not.toBeNull();
-    expect(retrieved?.[0]?.names).toEqual(['Updated Name']);
-    expect(retrieved?.[0]?.metadata).toEqual({ updated: 'data' });
-  });
-
-  it('should handle multiple entities creation', async () => {
-    const entity1Id = uuidv4() as UUID;
-    const entity2Id = uuidv4() as UUID;
-    const entities: Entity[] = [
-      {
-        id: entity1Id,
+    it('should create and retrieve a basic entity', async () => {
+      const entityId = uuidv4() as UUID;
+      const entity: Entity = {
+        id: entityId,
         agentId: testAgentId,
-        names: ['Entity One'],
-        metadata: { type: 'type1' },
-      },
-      {
-        id: entity2Id,
+        names: ['Test Entity'],
+        metadata: { type: 'test' },
+      };
+
+      const result = await adapter.createEntities([entity]);
+      expect(result).toBe(true);
+
+      const retrieved = await adapter.getEntityByIds([entityId]);
+      expect(retrieved).not.toBeNull();
+      expect(retrieved?.[0]?.id).toBe(entityId);
+    });
+
+    it('should return empty array when retrieving non-existent entities', async () => {
+      const nonExistentId = uuidv4() as UUID;
+      const retrieved = await adapter.getEntityByIds([nonExistentId]);
+      expect(retrieved).toEqual([]);
+    });
+
+    it('should update an existing entity', async () => {
+      const entityId = uuidv4() as UUID;
+      const entity: Entity = {
+        id: entityId,
         agentId: testAgentId,
-        names: ['Entity Two'],
-        metadata: { type: 'type2' },
-      },
-    ];
+        names: ['Original Name'],
+        metadata: { original: 'data' },
+      };
 
-    const result = await adapter.createEntities(entities);
-    expect(result).toBe(true);
+      const createResult = await adapter.createEntities([entity]);
+      expect(createResult).toBe(true);
 
-    const retrieved = await adapter.getEntityByIds([entity1Id, entity2Id]);
-    expect(retrieved).not.toBeNull();
-    expect(retrieved?.length).toBe(2);
-  });
+      const updatedEntity = { ...entity, names: ['Updated Name'], metadata: { updated: 'data' } };
+      await adapter.updateEntity(updatedEntity);
 
-  it('should handle entities with multiple names', async () => {
-    const entityId = uuidv4() as UUID;
-    const entity: Entity = {
-      id: entityId,
-      agentId: testAgentId,
-      names: ['Primary Name', 'Alias 1', 'Alias 2'],
-      metadata: { hasAliases: true },
-    };
+      const retrieved = await adapter.getEntityByIds([entityId]);
+      expect(retrieved).not.toBeNull();
+      expect(retrieved?.[0]?.names).toEqual(['Updated Name']);
+      expect(retrieved?.[0]?.metadata).toEqual({ updated: 'data' });
+    });
 
-    const result = await adapter.createEntities([entity]);
-    expect(result).toBe(true);
+    it('should handle multiple entities creation', async () => {
+      const entity1Id = uuidv4() as UUID;
+      const entity2Id = uuidv4() as UUID;
+      const entities: Entity[] = [
+        {
+          id: entity1Id,
+          agentId: testAgentId,
+          names: ['Entity One'],
+          metadata: { type: 'type1' },
+        },
+        {
+          id: entity2Id,
+          agentId: testAgentId,
+          names: ['Entity Two'],
+          metadata: { type: 'type2' },
+        },
+      ];
 
-    const retrieved = await adapter.getEntityByIds([entityId]);
-    expect(retrieved).not.toBeNull();
-    expect(retrieved?.[0]?.names).toEqual(['Primary Name', 'Alias 1', 'Alias 2']);
-  });
+      const result = await adapter.createEntities(entities);
+      expect(result).toBe(true);
 
-  it('should handle entities with no metadata', async () => {
-    const entityId = uuidv4() as UUID;
-    const entity: Entity = {
-      id: entityId,
-      agentId: testAgentId,
-      names: ['Simple Entity'],
-    };
+      const retrieved = await adapter.getEntityByIds([entity1Id, entity2Id]);
+      expect(retrieved).not.toBeNull();
+      expect(retrieved?.length).toBe(2);
+    });
 
-    const result = await adapter.createEntities([entity]);
-    expect(result).toBe(true);
+    it('should handle entities with multiple names', async () => {
+      const entityId = uuidv4() as UUID;
+      const entity: Entity = {
+        id: entityId,
+        agentId: testAgentId,
+        names: ['Primary Name', 'Alias 1', 'Alias 2'],
+        metadata: { hasAliases: true },
+      };
 
-    const retrieved = await adapter.getEntityByIds([entityId]);
-    expect(retrieved).not.toBeNull();
-    expect(retrieved?.[0]?.metadata).toEqual({}); // Assuming default is an empty object
+      const result = await adapter.createEntities([entity]);
+      expect(result).toBe(true);
+
+      const retrieved = await adapter.getEntityByIds([entityId]);
+      expect(retrieved).not.toBeNull();
+      expect(retrieved?.[0]?.names).toEqual(['Primary Name', 'Alias 1', 'Alias 2']);
+    });
+
+    it('should handle entities with no metadata', async () => {
+      const entityId = uuidv4() as UUID;
+      const entity: Entity = {
+        id: entityId,
+        agentId: testAgentId,
+        names: ['Simple Entity'],
+      };
+
+      const result = await adapter.createEntities([entity]);
+      expect(result).toBe(true);
+
+      const retrieved = await adapter.getEntityByIds([entityId]);
+      expect(retrieved).not.toBeNull();
+      expect(retrieved?.[0]?.metadata).toEqual({}); // Assuming default is an empty object
+    });
   });
 });

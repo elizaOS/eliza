@@ -1,54 +1,22 @@
-import path from 'node:path';
-import fs from 'node:fs';
-import os from 'node:os';
-import { fileURLToPath } from 'node:url';
-import { vi } from 'vitest';
+import type { Plugin, UUID } from '@elizaos/core';
+import { AgentRuntime } from '@elizaos/core';
+import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
-import { PGliteClientManager } from '../src/pglite/manager';
-import { PgliteDatabaseAdapter } from '../src/pglite/adapter';
-import { DatabaseMigrationService } from '../src/migration-service';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { vi } from 'vitest';
 import { plugin as sqlPlugin } from '../src/index';
-import type { Plugin, UUID } from '@elizaos/core';
-import { AgentRuntime, stringToUuid } from '@elizaos/core';
+import { DatabaseMigrationService } from '../src/migration-service';
+import { PgDatabaseAdapter } from '../src/pg/adapter';
+import { PostgresConnectionManager } from '../src/pg/manager';
+import { PgliteDatabaseAdapter } from '../src/pglite/adapter';
+import { PGliteClientManager } from '../src/pglite/manager';
 import { mockCharacter } from './fixtures';
+import { v4 } from 'uuid';
 
-export function setupMockedMigrations(): void {
-  vi.spyOn(PGliteClientManager.prototype, 'runMigrations').mockImplementation(async function () {
-    // 'this' refers to the instance of PGliteClientManager.
-    const pgliteInstance = (this as any).client;
-
-    console.log('[TEST MOCK HELPER] PGliteClientManager.runMigrations: Starting mocked migration.');
-
-    try {
-      const db = drizzle(pgliteInstance);
-
-      const helperFilePath = fileURLToPath(import.meta.url);
-      const testsDir = path.dirname(helperFilePath);
-      const packageRoot = path.resolve(testsDir, '..');
-      const migrationsPath = path.resolve(packageRoot, 'drizzle/migrations');
-
-      console.log(
-        `[TEST MOCK HELPER] PGliteClientManager.runMigrations: Resolved migrations path to: ${migrationsPath}`
-      );
-
-      await migrate(db, {
-        migrationsFolder: migrationsPath,
-        migrationsSchema: 'public',
-      });
-
-      console.log(
-        '[TEST MOCK HELPER] PGliteClientManager.runMigrations: Mocked migration successful.'
-      );
-    } catch (error) {
-      console.error(
-        '[TEST MOCK HELPER] PGliteClientManager.runMigrations: Error during mocked migration:',
-        error
-      );
-      throw error;
-    }
-  });
-}
 
 /**
  * Creates a fully initialized, in-memory PGlite database adapter and a corresponding
@@ -65,96 +33,185 @@ export async function createTestDatabase(
   testAgentId: UUID,
   testPlugins: Plugin[] = []
 ): Promise<{
-  adapter: PgliteDatabaseAdapter;
+  adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
   runtime: AgentRuntime;
   cleanup: () => Promise<void>;
 }> {
-  console.log('[TEST] Starting createTestDatabase for agent:', testAgentId);
+  if (process.env.POSTGRES_URL) {
+    // PostgreSQL testing
+    console.log('[TEST] Using PostgreSQL for test database');
+    const connectionManager = new PostgresConnectionManager(process.env.POSTGRES_URL);
+    const adapter = new PgDatabaseAdapter(testAgentId, connectionManager);
+    await adapter.init();
 
-  // Create a unique temporary directory for each test run to ensure isolation.
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'eliza-test-'));
-  const connectionManager = new PGliteClientManager({ dataDir: tempDir });
-  await connectionManager.initialize();
-  console.log('[TEST] Connection manager initialized in:', tempDir);
-
-  // Initialize the adapter with the test agent's ID.
-  const adapter = new PgliteDatabaseAdapter(testAgentId, connectionManager);
-  await adapter.init();
-  console.log('[TEST] Adapter initialized');
-
-  // Create a character that won't override the provided agentId.
-  const testCharacter = { ...mockCharacter, id: undefined };
-
-  // Create a runtime with the specific agentId and register the adapter.
-  const runtime = new AgentRuntime({
-    character: testCharacter,
-    agentId: testAgentId,
-    plugins: [sqlPlugin, ...testPlugins],
-  });
-  runtime.registerDatabaseAdapter(adapter);
-  console.log('[TEST] Runtime created and adapter registered');
-
-  try {
-    // Manually run the dynamic migrations.
-    console.log('[TEST] Starting dynamic migration system...');
-    const migrationService = new DatabaseMigrationService(runtime);
-    console.log('[TEST] Migration service created');
-
-    await migrationService.initializeWithDatabase(adapter.getDatabase());
-    console.log('[TEST] Migration service initialized with database');
-
-    migrationService.discoverAndRegisterPluginSchemas([sqlPlugin, ...testPlugins]);
-    console.log('[TEST] Plugin schemas discovered and registered');
-
-    await migrationService.runAllPluginMigrations();
-    console.log('[TEST] All plugin migrations completed');
-  } catch (error) {
-    console.error('[TEST] Error during migration:', error);
-    throw error;
-  }
-
-  try {
-    // Create an agent record in the database to satisfy foreign key constraints
-    console.log('[TEST] Creating agent record...');
-    const agentCreated = await adapter.createAgent({
-      id: testAgentId,
-      name: testCharacter.name,
-      settings: testCharacter.settings || {},
-      bio: testCharacter.bio || 'Test agent',
-      messageExamples: testCharacter.messageExamples || [],
-      postExamples: testCharacter.postExamples || [],
-      topics: testCharacter.topics || [],
-      adjectives: testCharacter.adjectives || [],
-      knowledge: testCharacter.knowledge || [],
-      plugins: testCharacter.plugins || [],
-      createdAt: new Date().getTime(),
-      updatedAt: new Date().getTime(),
+    const runtime = new AgentRuntime({
+      character: { ...mockCharacter, id: undefined },
+      agentId: testAgentId,
+      plugins: [sqlPlugin, ...testPlugins],
     });
+    runtime.registerDatabaseAdapter(adapter);
 
-    if (agentCreated) {
-      console.log('[TEST] Agent record created successfully');
-    } else {
-      console.log('[TEST] Agent already exists (expected in some test scenarios)');
-      // Verify the agent exists in the database
-      const existingAgent = await adapter.getAgent(testAgentId);
-      if (!existingAgent) {
-        throw new Error(
-          `Agent creation failed and agent does not exist in database: ${testAgentId}`
-        );
-      }
-    }
-  } catch (error) {
-    console.error('[TEST] Error creating agent record:', error);
-    throw error;
+    const schemaName = `test_${testAgentId.replace(/-/g, '_')}`;
+    const db = connectionManager.getDatabase();
+    
+    // Drop schema if it exists to ensure clean state
+    await db.execute(sql.raw(`DROP SCHEMA IF EXISTS ${schemaName} CASCADE`));
+    await db.execute(sql.raw(`CREATE SCHEMA IF NOT EXISTS ${schemaName}`));
+    await db.execute(sql.raw(`SET search_path TO ${schemaName}`));
+
+    const migrationService = new DatabaseMigrationService(runtime);
+    await migrationService.initializeWithDatabase(db);
+    migrationService.discoverAndRegisterPluginSchemas([sqlPlugin, ...testPlugins]);
+    await migrationService.runAllPluginMigrations();
+
+    await adapter.createAgent({
+      id: testAgentId,
+      ...mockCharacter,
+    } as any);
+
+    const cleanup = async () => {
+      await db.execute(sql.raw(`DROP SCHEMA IF EXISTS ${schemaName} CASCADE`));
+      await adapter.close();
+    };
+
+    return { adapter, runtime, cleanup };
+  } else {
+    // PGlite testing
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'eliza-test-'));
+    const connectionManager = new PGliteClientManager({ dataDir: tempDir });
+    await connectionManager.initialize();
+    const adapter = new PgliteDatabaseAdapter(testAgentId, connectionManager);
+    await adapter.init();
+
+    const runtime = new AgentRuntime({
+      character: { ...mockCharacter, id: undefined },
+      agentId: testAgentId,
+      plugins: [sqlPlugin, ...testPlugins],
+    });
+    runtime.registerDatabaseAdapter(adapter);
+
+    const migrationService = new DatabaseMigrationService(runtime);
+    await migrationService.initializeWithDatabase(adapter.getDatabase());
+    migrationService.discoverAndRegisterPluginSchemas([sqlPlugin, ...testPlugins]);
+    await migrationService.runAllPluginMigrations();
+
+    await adapter.createAgent({
+      id: testAgentId,
+      ...mockCharacter,
+    } as any);
+
+    const cleanup = async () => {
+      await adapter.close();
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    };
+
+    return { adapter, runtime, cleanup };
   }
+}
 
-  console.log('[TEST] createTestDatabase completed successfully');
+/**
+ * Creates a properly isolated test database with automatic cleanup.
+ * This function ensures each test has its own isolated database state.
+ * 
+ * @param testName - A unique name for this test to ensure isolation
+ * @param testPlugins - Additional plugins to load
+ * @returns Database adapter, runtime, and cleanup function
+ */
+export async function createIsolatedTestDatabase(
+  testName: string,
+  testPlugins: Plugin[] = []
+): Promise<{
+  adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
+  runtime: AgentRuntime;
+  cleanup: () => Promise<void>;
+  testAgentId: UUID;
+}> {
+  // Generate a unique agent ID for this test
+  const testAgentId = v4() as UUID;
+  const testId = testName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+  
+  if (process.env.POSTGRES_URL) {
+    // PostgreSQL - use unique schema per test
+    const schemaName = `test_${testId}_${Date.now()}`;
+    console.log(`[TEST] Creating isolated PostgreSQL schema: ${schemaName}`);
+    
+    const connectionManager = new PostgresConnectionManager(process.env.POSTGRES_URL);
+    const adapter = new PgDatabaseAdapter(testAgentId, connectionManager);
+    await adapter.init();
 
-  const cleanup = async () => {
-    await adapter.close();
-    fs.rmSync(tempDir, { recursive: true, force: true });
-    console.log('[TEST] Cleaned up temporary database directory:', tempDir);
-  };
+    const runtime = new AgentRuntime({
+      character: { ...mockCharacter, id: undefined },
+      agentId: testAgentId,
+      plugins: [sqlPlugin, ...testPlugins],
+    });
+    runtime.registerDatabaseAdapter(adapter);
 
-  return { adapter, runtime, cleanup };
+    const db = connectionManager.getDatabase();
+    
+    // Create isolated schema
+    await db.execute(sql.raw(`CREATE SCHEMA ${schemaName}`));
+    await db.execute(sql.raw(`SET search_path TO ${schemaName}, public`));
+
+    // Run migrations in isolated schema
+    const migrationService = new DatabaseMigrationService(runtime);
+    await migrationService.initializeWithDatabase(db);
+    migrationService.discoverAndRegisterPluginSchemas([sqlPlugin, ...testPlugins]);
+    await migrationService.runAllPluginMigrations();
+
+    // Create test agent
+    await adapter.createAgent({
+      id: testAgentId,
+      ...mockCharacter,
+    } as any);
+
+    const cleanup = async () => {
+      try {
+        await db.execute(sql.raw(`DROP SCHEMA IF EXISTS ${schemaName} CASCADE`));
+      } catch (error) {
+        console.error(`[TEST] Failed to drop schema ${schemaName}:`, error);
+      }
+      await adapter.close();
+    };
+
+    return { adapter, runtime, cleanup, testAgentId };
+  } else {
+    // PGLite - use unique directory per test
+    const tempDir = path.join(os.tmpdir(), `eliza-test-${testId}-${Date.now()}`);
+    console.log(`[TEST] Creating isolated PGLite database: ${tempDir}`);
+    
+    const connectionManager = new PGliteClientManager({ dataDir: tempDir });
+    await connectionManager.initialize();
+    const adapter = new PgliteDatabaseAdapter(testAgentId, connectionManager);
+    await adapter.init();
+
+    const runtime = new AgentRuntime({
+      character: { ...mockCharacter, id: undefined },
+      agentId: testAgentId,
+      plugins: [sqlPlugin, ...testPlugins],
+    });
+    runtime.registerDatabaseAdapter(adapter);
+
+    // Run migrations
+    const migrationService = new DatabaseMigrationService(runtime);
+    await migrationService.initializeWithDatabase(adapter.getDatabase());
+    migrationService.discoverAndRegisterPluginSchemas([sqlPlugin, ...testPlugins]);
+    await migrationService.runAllPluginMigrations();
+
+    // Create test agent
+    await adapter.createAgent({
+      id: testAgentId,
+      ...mockCharacter,
+    } as any);
+
+    const cleanup = async () => {
+      await adapter.close();
+      try {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      } catch (error) {
+        console.error(`[TEST] Failed to remove temp directory ${tempDir}:`, error);
+      }
+    };
+
+    return { adapter, runtime, cleanup, testAgentId };
+  }
 }

@@ -9,11 +9,13 @@ import {
   type Room,
   type World,
 } from '@elizaos/core';
+import { createIsolatedTestDatabase } from '../test-helpers';
 import { PgliteDatabaseAdapter } from '../../src/pglite/adapter';
-import { createTestDatabase } from '../test-helpers';
+import { PgDatabaseAdapter } from '../../src/pg/adapter';
+import { v4 as uuidv4 } from 'uuid';
 
 describe('Component Integration Tests', () => {
-  let adapter: PgliteDatabaseAdapter;
+  let adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
   let runtime: AgentRuntime;
   let cleanup: () => Promise<void>;
   let testAgentId: UUID;
@@ -23,13 +25,17 @@ describe('Component Integration Tests', () => {
   let testSourceEntityId: UUID;
 
   beforeAll(async () => {
-    testAgentId = stringToUuid('test-agent-for-component-tests');
-    ({ adapter, runtime, cleanup } = await createTestDatabase(testAgentId));
+    const setup = await createIsolatedTestDatabase('component-tests');
+    adapter = setup.adapter;
+    runtime = setup.runtime;
+    cleanup = setup.cleanup;
+    testAgentId = setup.testAgentId;
 
-    testWorldId = stringToUuid('00000000-0000-0000-0000-000000000001');
-    testRoomId = stringToUuid('00000000-0000-0000-0000-000000000002');
-    testEntityId = stringToUuid('00000000-0000-0000-0000-000000000003');
-    testSourceEntityId = stringToUuid('00000000-0000-0000-0000-000000000004');
+    // Generate random UUIDs for test data
+    testWorldId = uuidv4() as UUID;
+    testRoomId = uuidv4() as UUID;
+    testEntityId = uuidv4() as UUID;
+    testSourceEntityId = uuidv4() as UUID;
 
     await adapter.createWorld({
       id: testWorldId,
@@ -53,72 +59,76 @@ describe('Component Integration Tests', () => {
   }, 30000);
 
   afterAll(async () => {
-    await cleanup();
+    if (cleanup) {
+      await cleanup();
+    }
   });
 
-  it('should create and retrieve a basic component', async () => {
-    const component: Component = {
-      id: stringToUuid('a0000000-0000-0000-0000-000000000001'),
-      entityId: testEntityId,
-      agentId: testAgentId,
-      roomId: testRoomId,
-      type: 'test_component',
-      data: { value: 'test' },
-      worldId: testWorldId,
-      sourceEntityId: testSourceEntityId,
-      createdAt: Date.now(),
-    };
+  describe('Component Tests', () => {
+    it('should create and retrieve a basic component', async () => {
+      const component: Component = {
+        id: stringToUuid('a0000000-0000-0000-0000-000000000001'),
+        entityId: testEntityId,
+        agentId: testAgentId,
+        roomId: testRoomId,
+        type: 'test_component',
+        data: { value: 'test' },
+        worldId: testWorldId,
+        sourceEntityId: testSourceEntityId,
+        createdAt: Date.now(),
+      };
 
-    await adapter.createComponent(component);
-    const retrieved = await adapter.getComponent(testEntityId, 'test_component');
-    expect(retrieved).toBeDefined();
-    expect(retrieved?.id).toBe(component.id);
-    expect(retrieved?.data).toEqual({ value: 'test' });
-  });
+      await adapter.createComponent(component);
+      const retrieved = await adapter.getComponent(testEntityId, 'test_component');
+      expect(retrieved).toBeDefined();
+      expect(retrieved?.id).toBe(component.id);
+      expect(retrieved?.data).toEqual({ value: 'test' });
+    });
 
-  it('should update an existing component', async () => {
-    const originalComponent: Component = {
-      id: stringToUuid('a0000000-0000-0000-0000-000000000002'),
-      entityId: testEntityId,
-      agentId: testAgentId,
-      roomId: testRoomId,
-      type: 'updatable_component',
-      data: { value: 'original' },
-      worldId: testWorldId,
-      sourceEntityId: testSourceEntityId,
-      createdAt: Date.now(),
-    };
-    await adapter.createComponent(originalComponent);
+    it('should update an existing component', async () => {
+      const originalComponent: Component = {
+        id: stringToUuid('a0000000-0000-0000-0000-000000000002'),
+        entityId: testEntityId,
+        agentId: testAgentId,
+        roomId: testRoomId,
+        type: 'updatable_component',
+        data: { value: 'original' },
+        worldId: testWorldId,
+        sourceEntityId: testSourceEntityId,
+        createdAt: Date.now(),
+      };
+      await adapter.createComponent(originalComponent);
 
-    const updatedComponent: Component = {
-      ...originalComponent,
-      data: { value: 'updated' },
-    };
-    await adapter.updateComponent(updatedComponent);
+      const updatedComponent: Component = {
+        ...originalComponent,
+        data: { value: 'updated' },
+      };
+      await adapter.updateComponent(updatedComponent);
 
-    const retrieved = await adapter.getComponent(testEntityId, 'updatable_component');
-    expect(retrieved).toBeDefined();
-    expect(retrieved?.data).toEqual({ value: 'updated' });
-  });
+      const retrieved = await adapter.getComponent(testEntityId, 'updatable_component');
+      expect(retrieved).toBeDefined();
+      expect(retrieved?.data).toEqual({ value: 'updated' });
+    });
 
-  it('should delete a component', async () => {
-    const component: Component = {
-      id: stringToUuid('a0000000-0000-0000-0000-000000000003'),
-      entityId: testEntityId,
-      agentId: testAgentId,
-      roomId: testRoomId,
-      type: 'deletable_component',
-      data: { value: 'original' },
-      worldId: testWorldId,
-      sourceEntityId: testSourceEntityId,
-      createdAt: Date.now(),
-    };
-    await adapter.createComponent(component);
-    let retrieved = await adapter.getComponent(testEntityId, 'deletable_component');
-    expect(retrieved).toBeDefined();
+    it('should delete a component', async () => {
+      const component: Component = {
+        id: stringToUuid('a0000000-0000-0000-0000-000000000003'),
+        entityId: testEntityId,
+        agentId: testAgentId,
+        roomId: testRoomId,
+        type: 'deletable_component',
+        data: { value: 'original' },
+        worldId: testWorldId,
+        sourceEntityId: testSourceEntityId,
+        createdAt: Date.now(),
+      };
+      await adapter.createComponent(component);
+      let retrieved = await adapter.getComponent(testEntityId, 'deletable_component');
+      expect(retrieved).toBeDefined();
 
-    await adapter.deleteComponent(component.id);
-    retrieved = await adapter.getComponent(testEntityId, 'deletable_component');
-    expect(retrieved).toBeNull();
+      await adapter.deleteComponent(component.id);
+      retrieved = await adapter.getComponent(testEntityId, 'deletable_component');
+      expect(retrieved).toBeNull();
+    });
   });
 });

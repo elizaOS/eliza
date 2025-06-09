@@ -1,24 +1,22 @@
 import {
+  AgentRuntime,
   ChannelType,
+  MemoryType,
+  stringToUuid,
   type Entity,
   type Memory,
+  type MemoryMetadata,
   type Room,
   type UUID,
   type World,
-  type MemoryMetadata,
-  AgentRuntime,
-  stringToUuid,
-  MemoryType,
 } from '@elizaos/core';
-import { v4 as uuidv4 } from 'uuid';
+import { v4 } from 'uuid';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PgliteDatabaseAdapter } from '../../src/pglite/adapter';
+import { PgDatabaseAdapter } from '../../src/pg/adapter';
 import {
   embeddingTable,
-  entityTable,
-  memoryTable,
-  roomTable,
-  worldTable,
+  memoryTable
 } from '../../src/schema';
 import { createTestDatabase } from '../test-helpers';
 import {
@@ -59,7 +57,7 @@ const createTestMemory = (type: string, text: string, embedding?: number[]): Mem
 */
 
 describe('Memory Integration Tests', () => {
-  let adapter: PgliteDatabaseAdapter;
+  let adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
   let runtime: AgentRuntime;
   let cleanup: () => Promise<void>;
   let testAgentId: UUID;
@@ -68,36 +66,47 @@ describe('Memory Integration Tests', () => {
   let testWorldId: UUID;
 
   beforeAll(async () => {
-    testAgentId = stringToUuid('test-agent-for-memory-tests');
-    testRoomId = stringToUuid('test-room-for-memory-tests');
-    testEntityId = stringToUuid('test-entity-for-memory-tests');
-    testWorldId = stringToUuid('test-world-for-memory-tests');
-    ({ adapter, runtime, cleanup } = await createTestDatabase(testAgentId));
+    try {
+      // Use random UUIDs to avoid conflicts
+      testAgentId = v4() as UUID;
+      testRoomId = v4() as UUID;
+      testEntityId = v4() as UUID;
+      testWorldId = v4() as UUID;
+      
+      ({ adapter, runtime, cleanup } = await createTestDatabase(testAgentId));
 
-    await adapter.createWorld({
-      id: testWorldId,
-      agentId: testAgentId,
-      name: 'Test World',
-      serverId: 'test-server',
-    } as World);
-    await adapter.createRooms([
-      {
-        id: testRoomId,
+      console.log("ADAPTER IS", adapter)
+
+      await adapter.createWorld({
+        id: testWorldId,
         agentId: testAgentId,
-        worldId: testWorldId,
-        name: 'Test Room',
-        source: 'test',
-        type: ChannelType.GROUP,
-      } as Room,
-    ]);
-    await adapter.createEntities([
-      { id: testEntityId, agentId: testAgentId, names: ['Test Entity'] } as Entity,
-    ]);
-    await adapter.addParticipant(testEntityId, testRoomId);
+        name: 'Test World',
+        serverId: 'test-server',
+      } as World);
+      await adapter.createRooms([
+        {
+          id: testRoomId,
+          agentId: testAgentId,
+          worldId: testWorldId,
+          name: 'Test Room',
+          source: 'test',
+          type: ChannelType.GROUP,
+        } as Room,
+      ]);
+      await adapter.createEntities([
+        { id: testEntityId, agentId: testAgentId, names: ['Test Entity'] } as Entity,
+      ]);
+      await adapter.addParticipant(testEntityId, testRoomId);
+    } catch (error) {
+      console.error('Failed to create test database for memory tests:', error);
+      throw error; // Fail the test instead of continuing
+    }
   }, 30000);
 
   afterAll(async () => {
-    await cleanup();
+    if (cleanup) {
+      await cleanup();
+    }
   });
 
   beforeEach(async () => {
@@ -112,7 +121,7 @@ describe('Memory Integration Tests', () => {
     content: Record<string, any>,
     embedding?: number[]
   ): Memory & { metadata: MemoryMetadata } => ({
-    id: uuidv4() as UUID,
+    id: v4() as UUID,
     agentId: testAgentId,
     roomId: testRoomId,
     entityId: testEntityId,
@@ -132,11 +141,6 @@ describe('Memory Integration Tests', () => {
     const retrieved = await adapter.getMemoryById(memoryId);
     expect(retrieved).toBeDefined();
     expect(retrieved?.embedding?.length).toEqual(384);
-  });
-
-  afterAll(async () => {
-    // Close all connections
-    await adapter.close();
   });
 
   afterEach(async () => {
@@ -180,7 +184,7 @@ describe('Memory Integration Tests', () => {
 
     it('should create a memory with embedding', async () => {
       const memory: Memory = {
-        id: uuidv4() as UUID,
+        id: v4() as UUID,
         agentId: testAgentId,
         entityId: testEntityId,
         roomId: testRoomId,
@@ -397,7 +401,7 @@ describe('Memory Integration Tests', () => {
     it('should search memories by embedding similarity', async () => {
       const baseEmbedding = Array.from({ length: 384 }, () => Math.random());
       const memory1: Partial<Memory> = {
-        id: uuidv4() as UUID,
+        id: v4() as UUID,
         content: { text: 'memory 1' },
         createdAt: new Date().getTime(),
         embedding: baseEmbedding,
@@ -587,60 +591,27 @@ describe('Memory Integration Tests', () => {
     });
 
     it('should retrieve memories by multiple room IDs', async () => {
-      // Create a second world with its own agent ID
-      const secondWorldId = testEntityId as UUID; // Using a known UUID
-      const secondRoomId = memoryTestEntityId; // Using a known UUID
-
-      // Create the second world with the test agent ID
-      await adapter.createWorld({
-        id: secondWorldId,
-        name: 'Memory Test World 2',
-        agentId: testAgentId, // Use the test agent instead of non-existent agent
-        serverId: 'test-server-2',
-      });
-
-      // Create the second room
+      const secondRoomId = v4() as UUID;
       await adapter.createRooms([
         {
           id: secondRoomId,
           name: 'Memory Test Room 2',
-          agentId: testAgentId, // Use the test agent instead of memoryTestAgentId
+          agentId: testAgentId,
           source: 'test',
           type: ChannelType.GROUP,
-          worldId: secondWorldId,
+          worldId: testWorldId,
         },
       ]);
 
-      // Create the required entity first
-      await adapter.createEntities([
-        {
-          id: memoryTestEntityId,
-          agentId: testAgentId,
-          names: ['Test Entity'],
-        } as Entity,
-      ]);
+      // Create memories in the first room
+      await adapter.createMemory(createTestMemory({ text: 'mem1-room1' }), 'memories');
+      await adapter.createMemory(createTestMemory({ text: 'mem2-room1' }), 'memories');
 
-      // Create memories in first room with correct entity IDs
-      for (const memory of memoryTestMemories.slice(0, 2)) {
-        const testMemory = {
-          ...memory,
-          agentId: testAgentId,
-          entityId: memoryTestEntityId,
-          roomId: testRoomId,
-        };
-        await adapter.createMemory(testMemory, 'memories');
-      }
-
-      // Create memories in second room with correct entity IDs
-      for (const memory of memoryTestMemories.slice(2)) {
-        const testMemory = {
-          ...memory,
-          agentId: testAgentId,
-          entityId: memoryTestEntityId,
-          roomId: secondRoomId,
-        };
-        await adapter.createMemory(testMemory, 'memories');
-      }
+      // Create memories in the second room
+      await adapter.createMemory(
+        { ...createTestMemory({ text: 'mem3-room2' }), roomId: secondRoomId },
+        'memories'
+      );
 
       // Retrieve memories from both rooms
       const memories = await adapter.getMemoriesByRoomIds({
@@ -648,7 +619,7 @@ describe('Memory Integration Tests', () => {
         tableName: 'memories',
       });
 
-      expect(memories.length).toEqual(memoryTestMemories.length);
+      expect(memories.length).toEqual(3);
     });
   });
 });

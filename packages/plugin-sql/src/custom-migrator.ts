@@ -856,8 +856,26 @@ export class DrizzleSchemaIntrospector {
 export class PluginNamespaceManager {
   constructor(private db: DrizzleDB) {}
 
-  getNamespace(pluginName: string): string {
-    if (pluginName === '@elizaos/plugin-sql') return 'public';
+  async getPluginSchema(pluginName: string): Promise<string> {
+    if (pluginName === '@elizaos/plugin-sql') {
+      // For the core SQL plugin, try to use the current schema if available (for PG)
+      // Otherwise, default to public.
+      try {
+        const result = await this.db.execute(sql.raw('SHOW search_path'));
+        if (result.rows && result.rows.length > 0) {
+          const searchPath = (result.rows[0] as any).search_path;
+          // The search_path can be a comma-separated list, take the first one.
+          const firstSchema = searchPath.split(',')[0].trim();
+          if (firstSchema && firstSchema !== '"$user"') {
+            return firstSchema;
+          }
+        }
+      } catch (e) {
+        // This query might fail on PGLite if not supported, fallback to public
+        logger.debug('Could not determine search_path, defaulting to public schema.');
+      }
+      return 'public';
+    }
     return pluginName.replace(/@elizaos\/plugin-|\W/g, '_').toLowerCase();
   }
 
@@ -1017,7 +1035,7 @@ export async function runPluginMigrations(
   const extensionManager = new ExtensionManager(db);
 
   await extensionManager.installRequiredExtensions();
-  const schemaName = namespaceManager.getNamespace(pluginName);
+  const schemaName = await namespaceManager.getPluginSchema(pluginName);
   await namespaceManager.ensureNamespace(schemaName);
   const existingTables = await namespaceManager.introspectExistingTables(schemaName);
 

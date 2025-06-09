@@ -17,7 +17,7 @@ import {
   type UUID,
   type World,
 } from '@elizaos/core';
-import { and, cosineDistance, count, desc, eq, gte, inArray, lt, lte, or, sql } from 'drizzle-orm';
+import { and, cosineDistance, count, desc, eq, gte, inArray, lt, lte, or, SQL, sql } from 'drizzle-orm';
 import { v4 } from 'uuid';
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from './schema/embedding';
 import {
@@ -35,12 +35,12 @@ import {
   participantTable,
   relationshipTable,
   roomTable,
+  serverAgentsTable,
   taskTable,
   worldTable,
 } from './schema/index';
 
 import type { DrizzleDatabase } from './types';
-import { serverUserTable } from './schema/serverUser';
 
 // Define the metadata type inline since we can't import it
 /**
@@ -236,7 +236,7 @@ export abstract class BaseDrizzleAdapter<
       try {
         // Check for existing agent with the same ID or name
         // Check for existing agent with the same ID or name
-        const conditions = [];
+        const conditions: (SQL<unknown> | undefined)[] = [];
         if (agent.id) {
           conditions.push(eq(agentTable.id, agent.id));
         }
@@ -2335,44 +2335,33 @@ export abstract class BaseDrizzleAdapter<
     targetEntityId: UUID;
   }): Promise<Relationship | null> {
     return this.withDatabase(async () => {
-      try {
-        const result = await this.db
-          .select()
-          .from(relationshipTable)
-          .where(
-            and(
-              eq(relationshipTable.sourceEntityId, params.sourceEntityId),
-              eq(relationshipTable.targetEntityId, params.targetEntityId),
-              eq(relationshipTable.agentId, this.agentId)
-            )
+      const { sourceEntityId, targetEntityId } = params;
+      const result = await this.db
+        .select()
+        .from(relationshipTable)
+        .where(
+          and(
+            eq(relationshipTable.sourceEntityId, sourceEntityId),
+            eq(relationshipTable.targetEntityId, targetEntityId)
           )
-          .limit(1);
-
-        if (result.length === 0) {
-          return null;
-        }
-
-        return {
-          id: result[0].id as UUID,
-          sourceEntityId: result[0].sourceEntityId as UUID,
-          targetEntityId: result[0].targetEntityId as UUID,
-          agentId: result[0].agentId as UUID,
-          tags: result[0].tags || [],
-          metadata: result[0].metadata || {},
-          createdAt: result[0].createdAt?.toString(),
-        };
-      } catch (error) {
-        logger.error('Error getting relationship:', {
-          error: error instanceof Error ? error.message : String(error),
-          params,
-        });
-        return null;
-      }
+        );
+      if (result.length === 0) return null;
+      const relationship = result[0];
+      return {
+        ...relationship,
+        id: relationship.id as UUID,
+        sourceEntityId: relationship.sourceEntityId as UUID,
+        targetEntityId: relationship.targetEntityId as UUID,
+        agentId: relationship.agentId as UUID,
+        tags: relationship.tags ?? [],
+        metadata: (relationship.metadata as { [key: string]: unknown }) ?? {},
+        createdAt: relationship.createdAt.toISOString(),
+      };
     });
   }
 
   /**
-   * Asynchronously retrieves all relationships from the database based on the provided parameters.
+   * Asynchronously retrieves relationships from the database based on the provided parameters.
    * @param {Object} params - The parameters for retrieving relationships.
    * @param {UUID} params.entityId - The ID of the entity to retrieve relationships for.
    * @param {string[]} [params.tags] - The tags to filter relationships by.
@@ -2380,34 +2369,38 @@ export abstract class BaseDrizzleAdapter<
    */
   async getRelationships(params: { entityId: UUID; tags?: string[] }): Promise<Relationship[]> {
     return this.withDatabase(async () => {
-      const conditions = [
-        or(
-          eq(relationshipTable.sourceEntityId, params.entityId),
-          eq(relationshipTable.targetEntityId, params.entityId)
-        ),
-        eq(relationshipTable.agentId, this.agentId),
-        ...(params.tags && params.tags.length > 0
-          ? [
-              sql`${relationshipTable.tags} @> ARRAY[${sql.raw(
-                params.tags.map((tag) => `'${tag.replace(/'/g, "''")}'`).join(', ')
-              )}]::text[]`,
-            ]
-          : []),
-      ];
+      const { entityId, tags } = params;
 
-      const results = await this.db
-        .select()
-        .from(relationshipTable)
-        .where(and(...conditions));
+      let query: SQL;
 
-      return results.map((row) => ({
-        id: row.id as UUID,
-        sourceEntityId: row.sourceEntityId as UUID,
-        targetEntityId: row.targetEntityId as UUID,
-        agentId: row.agentId as UUID,
-        tags: row.tags || [],
-        metadata: row.metadata || {},
-        createdAt: row.createdAt?.toString(),
+      if (tags && tags.length > 0) {
+        query = sql`
+          SELECT * FROM ${relationshipTable}
+          WHERE (${relationshipTable.sourceEntityId} = ${entityId} OR ${relationshipTable.targetEntityId} = ${entityId})
+          AND ${relationshipTable.tags} && CAST(ARRAY[${sql.join(tags, sql`, `)}] AS text[])
+        `;
+      } else {
+        query = sql`
+          SELECT * FROM ${relationshipTable}
+          WHERE ${relationshipTable.sourceEntityId} = ${entityId} OR ${relationshipTable.targetEntityId} = ${entityId}
+        `;
+      }
+
+      const result = await this.db.execute(query);
+
+      return result.rows.map((relationship: any) => ({
+        ...relationship,
+        id: relationship.id as UUID,
+        sourceEntityId: relationship.sourceEntityId as UUID,
+        targetEntityId: relationship.targetEntityId as UUID,
+        agentId: relationship.agentId as UUID,
+        tags: relationship.tags ?? [],
+        metadata: (relationship.metadata as { [key: string]: unknown }) ?? {},
+        createdAt: relationship.createdAt 
+          ? (relationship.createdAt instanceof Date 
+            ? relationship.createdAt.toISOString() 
+            : new Date(relationship.createdAt).toISOString())
+          : new Date().toISOString(),
       }));
     });
   }
@@ -2527,7 +2520,7 @@ export abstract class BaseDrizzleAdapter<
   async getWorld(id: UUID): Promise<World | null> {
     return this.withDatabase(async () => {
       const result = await this.db.select().from(worldTable).where(eq(worldTable.id, id));
-      return result[0] as World | null;
+      return result.length > 0 ? (result[0] as World) : null;
     });
   }
 
@@ -3232,10 +3225,10 @@ export abstract class BaseDrizzleAdapter<
   async addAgentToServer(serverId: UUID, agentId: UUID): Promise<void> {
     return this.withDatabase(async () => {
       await this.db
-        .insert(serverUserTable)
+        .insert(serverAgentsTable)
         .values({
-          serverId: serverId,
-          agentId: agentId,
+          serverId,
+          agentId,
         })
         .onConflictDoNothing();
     });
@@ -3247,9 +3240,9 @@ export abstract class BaseDrizzleAdapter<
   async getAgentsForServer(serverId: UUID): Promise<UUID[]> {
     return this.withDatabase(async () => {
       const results = await this.db
-        .select({ agentId: serverUserTable.agentId })
-        .from(serverUserTable)
-        .where(eq(serverUserTable.serverId, serverId));
+        .select({ agentId: serverAgentsTable.agentId })
+        .from(serverAgentsTable)
+        .where(eq(serverAgentsTable.serverId, serverId));
 
       return results.map((r) => r.agentId as UUID);
     });
@@ -3261,8 +3254,8 @@ export abstract class BaseDrizzleAdapter<
   async removeAgentFromServer(serverId: UUID, agentId: UUID): Promise<void> {
     return this.withDatabase(async () => {
       await this.db
-        .delete(serverUserTable)
-        .where(and(eq(serverUserTable.serverId, serverId), eq(serverUserTable.userId, agentId)));
+        .delete(serverAgentsTable)
+        .where(and(eq(serverAgentsTable.serverId, serverId), eq(serverAgentsTable.agentId, agentId)));
     });
   }
 

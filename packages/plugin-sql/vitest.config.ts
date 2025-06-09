@@ -5,17 +5,35 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    // Increase timeout for all tests
-    testTimeout: 30000, // 30 seconds
-    // Increase hook timeout specifically
-    hookTimeout: 40000, // 40 seconds
-    // Set up environment variables for tests
-    env: {
-      // This will be merged with process.env
-      NODE_ENV: 'test',
+    setupFiles: ['./__tests__/test-setup.ts'],
+    testTimeout: 30000,
+    hookTimeout: 30000,
+    pool: 'forks',
+    poolOptions: {
+      forks: {
+        singleFork: true, // Run tests sequentially to avoid database conflicts
+      },
     },
-    // Define test environment setup
-    setupFiles: ['dotenv/config'],
-    fileParallelism: false,
+    sequence: {
+      hooks: 'list', // Run hooks sequentially
+    },
+    reporters: ['verbose'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html'],
+      exclude: [
+        'node_modules/',
+        'dist/',
+        '**/*.test.ts',
+        '**/*.spec.ts',
+        '**/test-*.ts',
+        '**/__tests__/**',
+      ],
+    },
+  },
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
   },
 });

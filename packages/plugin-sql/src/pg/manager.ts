@@ -12,6 +12,10 @@ export class PostgresConnectionManager {
     this.db = drizzle(this.pool);
   }
 
+  public getDatabase(): NodePgDatabase {
+    return this.db;
+  }
+
   public getConnection(): Pool {
     return this.pool;
   }

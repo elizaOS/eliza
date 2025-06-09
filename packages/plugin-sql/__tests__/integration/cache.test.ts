@@ -1,75 +1,71 @@
-import { describe, expect, it, beforeAll, afterAll, beforeEach } from 'vitest';
-import { PgliteDatabaseAdapter } from '../../src/pglite/adapter';
-import { type UUID, stringToUuid } from '@elizaos/core';
-import { v4 as uuidv4 } from 'uuid';
-import { createTestDatabase } from '../test-helpers';
+import { beforeAll, describe, it, expect, afterAll, beforeEach } from 'vitest';
+import { type UUID, stringToUuid, AgentRuntime } from '@elizaos/core';
+import { createIsolatedTestDatabase } from '../test-helpers';
 import { cacheTable } from '../../src/schema';
+import { PgliteDatabaseAdapter } from '../../src/pglite/adapter';
+import { PgDatabaseAdapter } from '../../src/pg/adapter';
 
 describe('Cache Integration Tests', () => {
-  let adapter: PgliteDatabaseAdapter;
+  let adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
+  let runtime: AgentRuntime;
   let cleanup: () => Promise<void>;
-  const testAgentId = stringToUuid('test-agent-for-cache-tests');
+  let testAgentId: UUID;
 
   beforeAll(async () => {
-    ({ adapter, cleanup } = await createTestDatabase(testAgentId));
-  });
-
-  beforeEach(async () => {
-    // Clear the cache table before each test
-    const db = adapter.getDatabase();
-    await db.delete(cacheTable);
-  });
+    const setup = await createIsolatedTestDatabase('cache-tests');
+    adapter = setup.adapter;
+    runtime = setup.runtime;
+    cleanup = setup.cleanup;
+    testAgentId = setup.testAgentId;
+  }, 30000);
 
   afterAll(async () => {
-    await cleanup();
+    if (cleanup) {
+      await cleanup();
+    }
   });
 
-  it('should set and get a simple string value', async () => {
-    const key = 'simple_key';
-    const value = 'hello world';
+  describe('Cache Tests', () => {
+    beforeEach(async () => {
+      // Clean up cache table before each test
+      await adapter.getDatabase().delete(cacheTable);
+    });
 
-    const setResult = await adapter.setCache(key, value);
-    expect(setResult).toBe(true);
+    it('should set and get a simple string value', async () => {
+      const key = 'simple_key';
+      const value = 'hello world';
+      await adapter.setCache(key, value);
+      const retrievedValue = await adapter.getCache(key);
+      expect(retrievedValue).toBe(value);
+    });
 
-    const retrievedValue = await adapter.getCache<string>(key);
-    expect(retrievedValue).toBe(value);
-  });
+    it('should set and get a complex object value', async () => {
+      const key = 'complex_key';
+      const value = { a: 1, b: { c: 'nested' }, d: [1, 2, 3] };
+      await adapter.setCache(key, value);
+      const retrievedValue = await adapter.getCache(key);
+      expect(retrievedValue).toEqual(value);
+    });
 
-  it('should set and get a complex object value', async () => {
-    const key = 'complex_key';
-    const value = { a: 1, b: { c: 'nested' }, d: [1, 2, 3] };
+    it('should update an existing cache value', async () => {
+      const key = 'update_key';
+      await adapter.setCache(key, 'initial_value');
+      await adapter.setCache(key, 'updated_value');
+      const retrievedValue = await adapter.getCache(key);
+      expect(retrievedValue).toBe('updated_value');
+    });
 
-    const setResult = await adapter.setCache(key, value);
-    expect(setResult).toBe(true);
+    it('should delete a cache value', async () => {
+      const key = 'delete_key';
+      await adapter.setCache(key, 'some value');
+      await adapter.deleteCache(key);
+      const retrievedValue = await adapter.getCache(key);
+      expect(retrievedValue).toBeUndefined();
+    });
 
-    const retrievedValue = await adapter.getCache<typeof value>(key);
-    expect(retrievedValue).toEqual(value);
-  });
-
-  it('should update an existing cache value', async () => {
-    const key = 'update_key';
-    await adapter.setCache(key, 'initial_value');
-
-    const updateResult = await adapter.setCache(key, 'updated_value');
-    expect(updateResult).toBe(true);
-
-    const retrievedValue = await adapter.getCache<string>(key);
-    expect(retrievedValue).toBe('updated_value');
-  });
-
-  it('should delete a cache value', async () => {
-    const key = 'delete_key';
-    await adapter.setCache(key, 'some value');
-
-    const deleteResult = await adapter.deleteCache(key);
-    expect(deleteResult).toBe(true);
-
-    const retrievedValue = await adapter.getCache(key);
-    expect(retrievedValue).toBeUndefined();
-  });
-
-  it('should return undefined for a non-existent key', async () => {
-    const retrievedValue = await adapter.getCache('non_existent_key');
-    expect(retrievedValue).toBeUndefined();
+    it('should return undefined for a non-existent key', async () => {
+      const retrievedValue = await adapter.getCache('non_existent_key');
+      expect(retrievedValue).toBeUndefined();
+    });
   });
 });

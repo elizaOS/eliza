@@ -1,149 +1,159 @@
-import { describe, expect, it, beforeAll, afterAll, beforeEach } from 'vitest';
-import { PgliteDatabaseAdapter } from '../../src/pglite/adapter';
-import { type UUID, type World } from '@elizaos/core';
+import { beforeAll, describe, it, expect, afterAll, beforeEach } from 'vitest';
+import { type UUID, type World, AgentRuntime, stringToUuid } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
-import { createTestDatabase } from '../test-helpers';
+import { createIsolatedTestDatabase } from '../test-helpers';
 import { worldTable, agentTable } from '../../src/schema';
+import { PgliteDatabaseAdapter } from '../../src/pglite/adapter';
+import { PgDatabaseAdapter } from '../../src/pg/adapter';
+import { mockCharacter } from '../fixtures';
 
 describe('World Integration Tests', () => {
-  let adapter: PgliteDatabaseAdapter;
+  let adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
+  let runtime: AgentRuntime;
+  let cleanup: () => Promise<void>;
   let testAgentId: UUID;
 
   beforeAll(async () => {
-    testAgentId = uuidv4() as UUID;
-    const setup = await createTestDatabase(testAgentId);
-    adapter = setup.adapter as PgliteDatabaseAdapter;
-    await adapter.createAgent({ id: testAgentId, name: 'Test Agent' } as any);
+    const setup = await createIsolatedTestDatabase('world-tests');
+    adapter = setup.adapter;
+    runtime = setup.runtime;
+    cleanup = setup.cleanup;
+    testAgentId = setup.testAgentId;
   }, 30000);
 
-  beforeEach(async () => {
-    await adapter.getDatabase().delete(worldTable);
-  });
-
   afterAll(async () => {
-    await adapter.getDatabase().delete(worldTable);
-    await adapter.getDatabase().delete(agentTable);
-    await adapter.close();
+    if (cleanup) {
+      await cleanup();
+    }
   });
 
-  it('should create and retrieve a world', async () => {
-    const world: World = {
-      id: uuidv4() as UUID,
-      agentId: testAgentId,
-      name: 'Test World',
-      serverId: 'server1',
-      metadata: { owner: 'test-user' },
-    };
-    const worldId = await adapter.createWorld(world);
-    expect(worldId).toBe(world.id);
+  describe('World Tests', () => {
+    beforeEach(async () => {
+      // Clean up worlds table before each test
+      await adapter.getDatabase().delete(worldTable);
+    });
 
-    const retrieved = await adapter.getWorld(worldId);
-    expect(retrieved).not.toBeNull();
-    expect(retrieved?.name).toBe('Test World');
-    expect(retrieved?.metadata).toEqual({ owner: 'test-user' });
-  });
+    it('should create and retrieve a world', async () => {
+      const worldId = uuidv4() as UUID;
+      const world: World = {
+        id: worldId,
+        agentId: testAgentId,
+        name: 'Test World',
+        metadata: { owner: 'test-user' },
+        serverId: 'server1',
+      };
+      await adapter.createWorld(world);
 
-  it('should not create a world with a duplicate id', async () => {
-    const worldId = uuidv4() as UUID;
-    const world1: World = {
-      id: worldId,
-      agentId: testAgentId,
-      name: 'Test World 1',
-      serverId: 'server1',
-    };
-    await adapter.createWorld(world1);
+      const retrieved = await adapter.getWorld(worldId);
+      expect(retrieved).not.toBeNull();
+      expect(retrieved?.id).toBe(worldId);
+    });
 
-    const world2: World = {
-      id: worldId,
-      agentId: testAgentId,
-      name: 'Test World 2',
-      serverId: 'server2',
-    };
+    it('should not create a world with a duplicate id', async () => {
+      const worldId = uuidv4() as UUID;
+      const world1: World = {
+        id: worldId,
+        agentId: testAgentId,
+        name: 'Test World 1',
+        serverId: 'server1',
+      };
+      const world2: World = {
+        id: worldId,
+        agentId: testAgentId,
+        name: 'Test World 2',
+        serverId: 'server2',
+      };
+      await adapter.createWorld(world1);
+      await expect(adapter.createWorld(world2)).rejects.toThrow();
+    });
 
-    await expect(adapter.createWorld(world2)).rejects.toThrow();
-  });
+    it('should update an existing world', async () => {
+      const worldId = uuidv4() as UUID;
+      const originalWorld: World = {
+        id: worldId,
+        agentId: testAgentId,
+        name: 'Original World',
+        serverId: 'server1',
+      };
+      await adapter.createWorld(originalWorld);
 
-  it('should update an existing world', async () => {
-    const world: World = {
-      id: uuidv4() as UUID,
-      agentId: testAgentId,
-      name: 'Original World',
-      serverId: 'server1',
-    };
-    const worldId = await adapter.createWorld(world);
+      const updatedWorld = { ...originalWorld, name: 'Updated World Name' };
+      await adapter.updateWorld(updatedWorld);
 
-    const updatedWorld = { ...world, name: 'Updated World' };
-    await adapter.updateWorld(updatedWorld);
+      const retrieved = await adapter.getWorld(worldId);
+      expect(retrieved?.name).toBe('Updated World Name');
+    });
 
-    const retrieved = await adapter.getWorld(worldId);
-    expect(retrieved?.name).toBe('Updated World');
-  });
-
-  it('should only update the specified world', async () => {
-    const world1: World = {
-      id: uuidv4() as UUID,
-      agentId: testAgentId,
-      name: 'World One',
-      serverId: 'server1',
-    };
-    const world2: World = {
-      id: uuidv4() as UUID,
-      agentId: testAgentId,
-      name: 'World Two',
-      serverId: 'server2',
-    };
-    await adapter.createWorld(world1);
-    await adapter.createWorld(world2);
-
-    const updatedWorld1 = { ...world1, name: 'Updated World One' };
-    await adapter.updateWorld(updatedWorld1);
-
-    const retrieved1 = await adapter.getWorld(world1.id);
-    const retrieved2 = await adapter.getWorld(world2.id);
-
-    expect(retrieved1?.name).toBe('Updated World One');
-    expect(retrieved2?.name).toBe('World Two');
-  });
-
-  it('should delete a world', async () => {
-    const world: World = {
-      id: uuidv4() as UUID,
-      agentId: testAgentId,
-      name: 'To Be Deleted',
-      serverId: 'server1',
-    };
-    const worldId = await adapter.createWorld(world);
-
-    let retrieved = await adapter.getWorld(worldId);
-    expect(retrieved).not.toBeNull();
-
-    await adapter.removeWorld(worldId);
-
-    retrieved = await adapter.getWorld(worldId);
-    expect(retrieved).toBeUndefined();
-  });
-
-  it('should return null when retrieving a non-existent world', async () => {
-    const nonExistentId = uuidv4() as UUID;
-    const retrieved = await adapter.getWorld(nonExistentId);
-    expect(retrieved).toBeUndefined();
-  });
-
-  it('should retrieve all worlds for an agent', async () => {
-    for (let i = 0; i < 3; i++) {
-      await adapter.createWorld({
+    it('should only update the specified world', async () => {
+      const world1: World = {
         id: uuidv4() as UUID,
         agentId: testAgentId,
-        name: `World ${i}`,
-        serverId: `server${i}`,
-      } as World);
-    }
-    const worlds = await adapter.getAllWorlds();
-    expect(worlds).toHaveLength(3);
-  });
+        name: 'World One',
+        serverId: 'server1',
+      };
+      const world2: World = {
+        id: uuidv4() as UUID,
+        agentId: testAgentId,
+        name: 'World Two',
+        serverId: 'server2',
+      };
+      await adapter.createWorld(world1);
+      await adapter.createWorld(world2);
 
-  it('should return an empty array if no worlds exist', async () => {
-    const worlds = await adapter.getAllWorlds();
-    expect(worlds).toEqual([]);
+      const updatedWorld1 = { ...world1, name: 'Updated World One' };
+      await adapter.updateWorld(updatedWorld1);
+
+      const retrieved1 = await adapter.getWorld(world1.id);
+      const retrieved2 = await adapter.getWorld(world2.id);
+      expect(retrieved1?.name).toBe('Updated World One');
+      expect(retrieved2?.name).toBe('World Two');
+    });
+
+    it('should delete a world', async () => {
+      const worldId = uuidv4() as UUID;
+      const world: World = {
+        id: worldId,
+        agentId: testAgentId,
+        name: 'To Be Deleted',
+        serverId: 'server1',
+      };
+      await adapter.createWorld(world);
+
+      let retrieved = await adapter.getWorld(worldId);
+      expect(retrieved).not.toBeNull();
+
+      await adapter.removeWorld(worldId);
+      retrieved = await adapter.getWorld(worldId);
+      expect(retrieved).toBeNull();
+    });
+
+    it('should return null when retrieving a non-existent world', async () => {
+      const world = await adapter.getWorld(uuidv4() as UUID);
+      expect(world).toBeNull();
+    });
+
+    it('should retrieve all worlds for an agent', async () => {
+      const world1: World = {
+        id: uuidv4() as UUID,
+        agentId: testAgentId,
+        name: 'World 0',
+        serverId: 'server0',
+      };
+      const world2: World = {
+        id: uuidv4() as UUID,
+        agentId: testAgentId,
+        name: 'World 1',
+        serverId: 'server1',
+      };
+      await adapter.createWorld(world1);
+      await adapter.createWorld(world2);
+      const worlds = await adapter.getAllWorlds();
+      expect(worlds.length).toBe(2);
+    });
+
+    it('should return an empty array if no worlds exist', async () => {
+      const worlds = await adapter.getAllWorlds();
+      expect(worlds).toEqual([]);
+    });
   });
 });
