@@ -1,11 +1,11 @@
 import type { IAgentRuntime, UUID } from '@elizaos/core';
-import { validateUuid, logger, ModelType } from '@elizaos/core';
+import { logger, ModelType, validateUuid } from '@elizaos/core';
 import express from 'express';
 import fs from 'node:fs';
-import path from 'node:path';
+import os from 'node:os';
 import type { AgentServer } from '../../index';
-import { sendError, sendSuccess } from '../shared/response-utils';
 import { cleanupFile } from '../shared/file-utils';
+import { sendError, sendSuccess } from '../shared/response-utils';
 import { agentUpload } from '../shared/uploads';
 
 // Enhanced rate limiting per IP for file uploads with more restrictions
@@ -13,31 +13,30 @@ const uploadAttempts = new Map<string, { count: number; resetTime: number; block
 const RATE_LIMIT_WINDOW = 60000; // 1 minute
 const MAX_UPLOADS_PER_WINDOW = 5; // Reduced to 5 uploads per minute per IP
 const BLOCK_DURATION = 300000; // 5 minutes block for excessive attempts
-const MAX_VIOLATIONS = 3; // Block after 3 violations
 
 function checkRateLimit(req: express.Request): boolean {
   const clientIP = req.ip || req.connection.remoteAddress || 'unknown';
   const now = Date.now();
   const limit = uploadAttempts.get(clientIP);
-  
+
   // Check if IP is currently blocked
   if (limit?.blockedUntil && now < limit.blockedUntil) {
     logger.warn(`[RATE_LIMIT] Blocked IP ${clientIP} attempted access`);
     return false;
   }
-  
+
   if (!limit || now > limit.resetTime) {
     uploadAttempts.set(clientIP, { count: 1, resetTime: now + RATE_LIMIT_WINDOW });
     return true;
   }
-  
+
   if (limit.count >= MAX_UPLOADS_PER_WINDOW) {
     // Block the IP for repeated violations
     limit.blockedUntil = now + BLOCK_DURATION;
     logger.warn(`[RATE_LIMIT] IP ${clientIP} blocked for ${BLOCK_DURATION}ms due to excessive requests`);
     return false;
   }
-  
+
   limit.count++;
   return true;
 }
@@ -70,7 +69,7 @@ export function createAudioProcessingRouter(
       if (!checkRateLimit(req)) {
         return sendError(res, 429, 'RATE_LIMIT_EXCEEDED', 'Too many upload attempts. Please try again later.');
       }
-      
+
       logger.debug('[AUDIO MESSAGE] Processing audio message');
       const agentId = validateUuid(req.params.agentId);
       if (!agentId) {
@@ -95,7 +94,7 @@ export function createAudioProcessingRouter(
           cleanupFile(audioFile.path);
           return sendError(res, 413, 'FILE_TOO_LARGE', 'Audio file too large (max 50MB)');
         }
-        
+
         const audioBuffer = await fs.promises.readFile(audioFile.path);
         const transcription = await runtime.useModel(ModelType.TRANSCRIPTION, audioBuffer);
 
@@ -120,7 +119,7 @@ export function createAudioProcessingRouter(
       if (!checkRateLimit(req)) {
         return sendError(res, 429, 'RATE_LIMIT_EXCEEDED', 'Too many upload attempts. Please try again later.');
       }
-      
+
       logger.debug('[TRANSCRIPTION] Request to transcribe audio');
       const agentId = validateUuid(req.params.agentId);
       if (!agentId) {
@@ -140,22 +139,19 @@ export function createAudioProcessingRouter(
 
       try {
         logger.debug('[TRANSCRIPTION] Reading audio file');
-        
-        // Additional file validation
-        const rootDir = '/safe/root/directory'; // Define a safe root directory
-        const resolvedPath = fs.realpathSync(path.resolve(rootDir, audioFile.path));
-        if (!resolvedPath.startsWith(rootDir)) {
+
+        if (!audioFile.path.startsWith(os.homedir())) {
           cleanupFile(audioFile.path);
           return sendError(res, 403, 'INVALID_PATH', 'Invalid file path');
         }
-        
-        const stats = await fs.promises.stat(resolvedPath);
+
+        const stats = await fs.promises.stat(audioFile.path);
         if (stats.size > 50 * 1024 * 1024) { // 50MB limit
           cleanupFile(audioFile.path);
           return sendError(res, 413, 'FILE_TOO_LARGE', 'Audio file too large (max 50MB)');
         }
-        
-        const audioBuffer = await fs.promises.readFile(resolvedPath);
+
+        const audioBuffer = await fs.promises.readFile(audioFile.path);
 
         logger.debug('[TRANSCRIPTION] Transcribing audio');
         const transcription = await runtime.useModel(ModelType.TRANSCRIPTION, audioBuffer);
