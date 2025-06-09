@@ -1,0 +1,204 @@
+---
+id: upload-channel-media
+title: 'Upload media to channel'
+description: 'Upload media files to a specific channel'
+sidebar_label: 'Upload media to channel'
+hide_title: true
+hide_table_of_contents: true
+api: eJytVcFu2zAM/RWBZzfOtt5+SFcEwwwMaLF2OGw9MDJjq5UlTaLTZob/faDspm3adoe4kmXx8T3ykUcwNgmqe8hmJNzgfQk1JZ1MYOMdVPCdcw5NjdpCy84FOIRSN8o6BfvatdYJGxmSIYV/NlbY0FrJGCtMXGDwmTPWBL5dLfX1N/h3vq9wLFAFL+xF8xSjs2aid2+yPhqwmpY70pWcEmOLYfvARqXEpGLEziFfnDM1fAYsk6xvsEB+Is3rReK/W+M9jvMosGNpwykd5SVpscKSoi3bU3aZs56TFq/BPjmssBWJVVm6YMi1IUv1eblc4vcKf9VrqHnPLsSOvcDMhON9gdYfhklvlUnd2tnfBN+uYXW1ecO0utpAHUyvJFOFYBcSvDzZr18sF8sLcrEluIAV7Bw/2a1jIF9DNuRIN6sNUKMydo46PoT0uLjzd/6mtVmjgs1Qc7aN5xokwJahz1zDwUoLBFOy7gip9976Jojek2PY3aI9KkjdQfWVTzKQc+EwKTSJSaxvizvfkadGl5Mm64UTGb2b+Z+1ZZA2hb7RiN/X1zczckeFN1igtuGuyFnGJxuRmWzk9QLo4+tb1bZd58071nrfIi4A0WGm0AAAAABJRUErkJggg==
+sidebar_class_name: 'post api-method'
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
+
+<Heading as={'h1'} className={'openapi__heading'} children={'Upload media to channel'}></Heading>
+
+<MethodEndpoint
+  method={'post'}
+  path={'/api/media/channels/{channelId}/upload-media'}
+  context={'endpoint'}
+></MethodEndpoint>
+
+Upload media files to a specific channel for sharing and communication
+
+<Heading
+  id={'request'}
+  as={'h2'}
+  className={'openapi-tabs__heading'}
+  children={'Request'}
+></Heading>
+
+<ParamsDetails
+  parameters={[
+    {
+      name: 'channelId',
+      in: 'path',
+      required: true,
+      schema: { type: 'string', format: 'uuid' },
+      description: 'ID of the channel',
+    },
+  ]}
+></ParamsDetails>
+
+<RequestSchema
+  title={'Body'}
+  body={{
+    required: true,
+    content: {
+      'multipart/form-data': {
+        schema: {
+          type: 'object',
+          properties: {
+            file: { 
+              type: 'string', 
+              format: 'binary', 
+              description: 'Media file to upload' 
+            },
+          },
+          required: ['file'],
+        },
+      },
+    },
+  }}
+></RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{
+    '200': {
+      description: 'Media uploaded successfully',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: true },
+              data: {
+                type: 'object',
+                properties: {
+                  url: { 
+                    type: 'string', 
+                    description: 'URL path to access the uploaded media',
+                    example: '/media/uploads/channels/12345678-1234-1234-1234-123456789abc/document.pdf'
+                  },
+                  type: { 
+                    type: 'string', 
+                    description: 'MIME type of the uploaded file',
+                    example: 'image/jpeg'
+                  },
+                  filename: { 
+                    type: 'string', 
+                    description: 'Generated filename on server' 
+                  },
+                  originalName: { 
+                    type: 'string', 
+                    description: 'Original filename from upload' 
+                  },
+                  size: { 
+                    type: 'integer', 
+                    description: 'File size in bytes' 
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '400': {
+      description: 'Invalid request - bad channel ID or unsupported file type',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: { 
+                type: 'string', 
+                description: 'Error message describing the issue' 
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '429': {
+      description: 'Rate limit exceeded',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: { 
+                type: 'string', 
+                example: 'Too many requests, please try again later.' 
+              },
+            },
+            title: 'Rate Limit Error',
+          },
+        },
+      },
+    },
+    '500': {
+      description: 'Server error during upload processing',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: { 
+                type: 'string', 
+                example: 'Failed to process media upload' 
+              },
+            },
+            title: 'Server Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>
+
+## Supported File Types
+
+### Images
+- JPEG (`image/jpeg`)
+- PNG (`image/png`)
+- GIF (`image/gif`)
+- WebP (`image/webp`)
+
+### Videos
+- MP4 (`video/mp4`)
+- WebM (`video/webm`)
+
+### Audio
+- MP3 (`audio/mpeg`)
+- WAV (`audio/wav`)
+- OGG (`audio/ogg`)
+
+### Documents
+- PDF (`application/pdf`)
+- Plain Text (`text/plain`)
+
+## Rate Limiting
+
+This endpoint is rate limited to **100 requests per 15 minutes** per IP address to prevent abuse.
+
+## Notes
+
+- Uploaded files are stored in channel-specific directories
+- The returned URL is relative and should be combined with the server base URL
+- Files are automatically cleaned up if upload fails or file type validation fails
+- Maximum file size limits may apply based on server configuration
