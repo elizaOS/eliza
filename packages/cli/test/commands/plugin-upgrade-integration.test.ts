@@ -13,7 +13,7 @@ describe('Plugin Upgrade Command Integration', () => {
     // Mock the migrator module
     const mockMigrate = vi.fn().mockResolvedValue({
       success: true,
-      branchName: '1.x-claude',
+      branchName: '1.x-codex',
       repoPath: '/test/path',
     });
 
@@ -31,7 +31,7 @@ describe('Plugin Upgrade Command Integration', () => {
     const result = await migrator.migrate('https://github.com/test/plugin');
 
     expect(result.success).toBe(true);
-    expect(result.branchName).toBe('1.x-claude');
+    expect(result.branchName).toBe('1.x-codex');
     expect(mockMigrate).toHaveBeenCalledWith('https://github.com/test/plugin');
 
     // Clean up

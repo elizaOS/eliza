@@ -651,7 +651,7 @@ plugins
   .command('upgrade')
   .description('Upgrade a plugin from version 0.x to 1.x using AI-powered migration')
   .argument('<path>', 'GitHub repository URL or local folder path')
-  .option('--api-key <key>', 'Anthropic API key (or use ANTHROPIC_API_KEY env var)')
+  .option('--api-key <key>', 'OpenAI API key (or use OPENAI_API_KEY env var)')
   .option('--skip-tests', 'Skip test validation loop')
   .option('--skip-validation', 'Skip production readiness validation')
   .action(async (pluginPath, opts) => {
@@ -661,13 +661,14 @@ plugins
 
       // Set API key if provided
       if (opts.apiKey) {
-        process.env.ANTHROPIC_API_KEY = opts.apiKey;
+        process.env.OPENAI_API_KEY = opts.apiKey;
       }
 
       // Check for API key
-      if (!process.env.ANTHROPIC_API_KEY) {
-        logger.error('ANTHROPIC_API_KEY is required for plugin upgrade.');
-        console.log('\nPlease set ANTHROPIC_API_KEY environment variable or use --api-key option.');
+      if (!process.env.OPENAI_API_KEY) {
+        logger.error('OPENAI_API_KEY is required for plugin upgrade.');
+        console.log('\nPlease set OPENAI_API_KEY environment variable or use --api-key option.');
+        console.log('Get your API key from: https://platform.openai.com/api-keys');
         process.exit(1);
       }
 
@@ -692,6 +693,7 @@ plugins
         console.log(`3. Test the upgraded plugin thoroughly`);
         console.log(`4. Push to GitHub and create a pull request when ready`);
       } else {
+        console.log(result);
         logger.error(`Plugin upgrade failed: ${result.error?.message}`);
         process.exit(1);
       }
@@ -704,7 +706,7 @@ plugins
 plugins
   .command('generate')
   .description('Generate a new plugin using AI-powered code generation')
-  .option('--api-key <key>', 'Anthropic API key (or use ANTHROPIC_API_KEY env var)')
+  .option('--api-key <key>', 'OpenAI API key (or use OPENAI_API_KEY env var)')
   .option('--skip-tests', 'Skip test validation loop')
   .option('--skip-validation', 'Skip production readiness validation')
   .option('--skip-prompts', 'Skip interactive prompts (requires --spec-file)')
@@ -716,13 +718,14 @@ plugins
 
       // Set API key if provided
       if (opts.apiKey) {
-        process.env.ANTHROPIC_API_KEY = opts.apiKey;
+        process.env.OPENAI_API_KEY = opts.apiKey;
       }
 
       // Check for API key
-      if (!process.env.ANTHROPIC_API_KEY) {
-        logger.error('ANTHROPIC_API_KEY is required for plugin generation.');
-        console.log('\nPlease set ANTHROPIC_API_KEY environment variable or use --api-key option.');
+      if (!process.env.OPENAI_API_KEY) {
+        logger.error('OPENAI_API_KEY is required for plugin generation.');
+        console.log('\nPlease set OPENAI_API_KEY environment variable or use --api-key option.');
+        console.log('Get your API key from: https://platform.openai.com/api-keys');
         process.exit(1);
       }
 

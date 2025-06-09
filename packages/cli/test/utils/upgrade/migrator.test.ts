@@ -36,9 +36,9 @@ describe('PluginMigrator - Basic Tests', () => {
     );
   });
 
-  it('should have correct Claude 4 model', async () => {
+  it('should have correct OpenAI model', async () => {
     // This is more of a smoke test to ensure the model name is correct
-    const modelName = 'claude-opus-4-20250514';
-    expect(modelName).toBe('claude-opus-4-20250514');
+    const modelName = 'gpt-4o';
+    expect(modelName).toBe('gpt-4o');
   });
 });

@@ -19,7 +19,7 @@ const MAX_TOKENS = 100000;
 const MAX_BUILD_ITERATIONS = 5;
 const MAX_TEST_ITERATIONS = 5;
 const MAX_REVISION_ITERATIONS = 3;
-const CLAUDE_CODE_TIMEOUT = 15 * 60 * 1000; // 15 minutes
+const CODEX_TIMEOUT = 15 * 60 * 1000; // 15 minutes
 const MIN_DISK_SPACE_GB = 2;
 
 interface CreationResult {
@@ -55,7 +55,7 @@ export class PluginCreator {
   private git: SimpleGit;
   private pluginPath: string | null = null;
   private anthropic: Anthropic | null = null;
-  private activeClaudeProcess: any = null;
+  private activeCodexProcess: any = null;
   private options: CreatorOptions;
 
   constructor(options: CreatorOptions = {}) {
@@ -68,14 +68,14 @@ export class PluginCreator {
     const cleanup = async () => {
       logger.info('Cleaning up plugin creation process...');
 
-      if (this.activeClaudeProcess) {
-        try {
-          this.activeClaudeProcess.kill();
-          logger.info('Terminated active Claude Code process');
-        } catch (error) {
-          logger.error('Failed to terminate Claude Code process:', error);
-        }
+          if (this.activeCodexProcess) {
+      try {
+        this.activeCodexProcess.kill();
+        logger.info('Terminated active Codex process');
+      } catch (error) {
+        logger.error('Failed to terminate Codex process:', error);
       }
+    }
 
       process.exit(1);
     };
@@ -108,12 +108,12 @@ export class PluginCreator {
       spinner.info('Checking disk space...');
       await this.checkDiskSpace();
 
-      // Check for Claude Code
+      // Check for OpenAI Codex
       try {
-        await execa('claude', ['--version'], { stdio: 'pipe' });
+        await execa('codex', ['--version'], { stdio: 'pipe' });
       } catch {
         throw new Error(
-          'Claude Code is required for plugin generation. Install with: bun install -g @anthropic-ai/claude-code'
+          'OpenAI Codex is required for plugin generation. Install with: npm install -g @openai/codex'
         );
       }
 
@@ -716,7 +716,7 @@ Remember: Database compatibility is MANDATORY - the plugin MUST work with both P
 
   private async runGenerationWithValidation(): Promise<boolean> {
     // Initial code generation
-    await this.runClaudeCode();
+          await this.runCodex();
 
     // Build loop
     if (!(await this.runBuildLoop())) {
@@ -823,9 +823,9 @@ Remember: Database compatibility is MANDATORY - the plugin MUST work with both P
     return productionReady;
   }
 
-  private async runClaudeCode(): Promise<void> {
+  private async runCodex(): Promise<void> {
     const prompt = `Please read the PLUGIN_SPEC.md file in this repository and implement the complete plugin as specified. Create all components, tests, and ensure everything is production-ready with no stubs or incomplete code.`;
-    await this.runClaudeCodeWithPrompt(prompt);
+    await this.runCodexWithPrompt(prompt);
   }
 
   private async runClaudeCodeWithContext(context: string): Promise<void> {
@@ -846,14 +846,14 @@ Make all necessary changes to fix the issues and ensure the plugin builds and al
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => {
         reject(
-          new Error(`Claude Code execution timed out after ${CLAUDE_CODE_TIMEOUT / 1000} seconds`)
+          new Error(`OpenAI Codex execution timed out after ${CODEX_TIMEOUT / 1000} seconds`)
         );
-      }, CLAUDE_CODE_TIMEOUT);
+      }, CODEX_TIMEOUT);
     });
 
     const executePromise = (async () => {
       try {
-        const claudeArgs = [
+        const codexArgs = [
           '--print',
           '--max-turns',
           '30',
@@ -864,23 +864,23 @@ Make all necessary changes to fix the issues and ensure the plugin builds and al
           prompt,
         ];
 
-        logger.info(`🚀 Executing: claude ${claudeArgs.join(' ')}`);
+        logger.info(`🚀 Executing: codex ${codexArgs.join(' ')}`);
 
-        this.activeClaudeProcess = execa('claude', claudeArgs, {
+        this.activeCodexProcess = execa('codex', codexArgs, {
           stdio: 'inherit',
           cwd: this.pluginPath!,
         });
 
-        await this.activeClaudeProcess;
-        this.activeClaudeProcess = null;
+        await this.activeCodexProcess;
+        this.activeCodexProcess = null;
 
-        logger.info('✅ Claude Code execution completed successfully');
+        logger.info('✅ OpenAI Codex execution completed successfully');
       } catch (error: any) {
-        this.activeClaudeProcess = null;
+        this.activeCodexProcess = null;
 
         if (error.code === 'ENOENT') {
           throw new Error(
-            'Claude Code not found! Install with: bun install -g @anthropic-ai/claude-code'
+            'OpenAI Codex not found! Install with: npm install -g @openai/codex'
           );
         }
         throw error;
@@ -890,17 +890,17 @@ Make all necessary changes to fix the issues and ensure the plugin builds and al
     try {
       await Promise.race([executePromise, timeoutPromise]);
     } catch (error) {
-      if (this.activeClaudeProcess) {
+      if (this.activeCodexProcess) {
         try {
-          this.activeClaudeProcess.kill();
-          this.activeClaudeProcess = null;
-          logger.warn('🛑 Claude Code process terminated due to timeout');
+          this.activeCodexProcess.kill();
+          this.activeCodexProcess = null;
+          logger.warn('🛑 OpenAI Codex process terminated due to timeout');
         } catch (killError) {
           logger.error('Failed to kill timed-out process:', killError);
         }
       }
 
-      logger.error('❌ Claude Code execution failed:', error);
+      logger.error('❌ OpenAI Codex execution failed:', error);
       throw error;
     }
   }
