@@ -113,9 +113,8 @@ export default function ProfileOverlay({ isOpen, onClose, agentId }: ProfileOver
                     )}
                   </div>
                   <div
-                    className={`absolute bottom-1 right-1 w-4 h-4 rounded-full border-2 border-background ${
-                      isActive ? 'bg-emerald-500' : 'bg-muted-foreground'
-                    }`}
+                    className={`absolute bottom-1 right-1 w-4 h-4 rounded-full border-2 border-background ${isActive ? 'bg-emerald-500' : 'bg-muted-foreground'
+                      }`}
                   />
                 </div>
                 <div className="flex flex-col justify-center mr-4">
@@ -194,7 +193,7 @@ export default function ProfileOverlay({ isOpen, onClose, agentId }: ProfileOver
                     // Extract plugin name by removing the prefix
                     const pluginName = plugin
                       .replace('@elizaos/plugin-', '')
-                      .replace('@elizaos/plugin-', '');
+                      .replace('@elizaos-plugins/plugin-', '');
                     return (
                       <span
                         key={index}

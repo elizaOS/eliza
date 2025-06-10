@@ -749,8 +749,9 @@ const postGeneratedHandler = async ({
 
   // get twitterUserName
   const entity = await runtime.getEntityById(runtime.agentId);
-  if (entity?.metadata?.userName) {
-    state.values.twitterUserName = entity?.metadata?.userName;
+  if ((entity?.metadata?.twitter as any)?.userName || entity?.metadata?.userName) {
+    state.values.twitterUserName =
+      (entity?.metadata?.twitter as any)?.userName || entity?.metadata?.userName;
   }
 
   const prompt = composePromptFromState({
