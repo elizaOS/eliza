@@ -24,7 +24,6 @@ export interface ServiceTypeRegistry {
   EMAIL: 'email';
   TEE: 'tee';
   TASK: 'task';
-  INSTRUMENTATION: 'instrumentation';
   WALLET: 'wallet';
   LP_POOL: 'lp_pool';
   TOKEN_DATA: 'token_data';
@@ -78,7 +77,7 @@ export type ServiceRegistry<T extends ServiceTypeName = ServiceTypeName> = Map<T
  * Enumerates the recognized types of services that can be registered and used by the agent runtime.
  * Services provide specialized functionalities like audio transcription, video processing,
  * web browsing, PDF handling, file storage (e.g., AWS S3), web search, email integration,
- * secure execution via TEE (Trusted Execution Environment), task management, and instrumentation.
+ * secure execution via TEE (Trusted Execution Environment), and task management.
  * This constant is used in `AgentRuntime` for service registration and retrieval (e.g., `getService`).
  * Each service typically implements the `Service` abstract class or a more specific interface like `IVideoService`.
  */
@@ -92,7 +91,6 @@ export const ServiceType = {
   EMAIL: 'email',
   TEE: 'tee',
   TASK: 'task',
-  INSTRUMENTATION: 'instrumentation',
   WALLET: 'wallet',
   LP_POOL: 'lp_pool',
   TOKEN_DATA: 'token_data',
