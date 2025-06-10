@@ -416,6 +416,19 @@ export default function Chat({
   // Effect to handle initial DM channel selection or creation
   useEffect(() => {
     if (chatType === ChannelType.DM && targetAgentData?.id) {
+      // First, check if current channel belongs to the current agent
+      // If not, clear it immediately (handles agent switching)
+      const currentChannelBelongsToAgent = !chatState.currentDmChannelId || 
+        agentDmChannels.some((c) => c.id === chatState.currentDmChannelId);
+      
+      if (!currentChannelBelongsToAgent && !isLoadingAgentDmChannels) {
+        clientLogger.info(
+          `[Chat] Current DM channel ${chatState.currentDmChannelId} doesn't belong to agent ${targetAgentData.id}, clearing it`
+        );
+        updateChatState({ currentDmChannelId: null });
+        return; // Exit early, let the effect run again with cleared state
+      }
+
       if (
         !isLoadingAgentDmChannels &&
         !createDmChannelMutation.isPending &&
