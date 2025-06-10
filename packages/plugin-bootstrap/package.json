@@ -33,7 +33,7 @@
     "@elizaos/cli": "workspace:*",
     "@types/node": "^22.15.3",
     "prettier": "3.5.3",
-    "tsup": "8.4.0",
+    "tsup": "8.5.0",
     "vitest": "3.1.4",
     "zod": "^3.22.4"
   },

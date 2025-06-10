@@ -70,7 +70,7 @@
     "simple-git": "^3.27.0",
     "tiktoken": "^1.0.18",
     "tsconfig-paths": "^4.2.0",
-    "tsup": "^8.2.3",
+    "tsup": "8.5.0",
     "tsx": "^4.7.1",
     "type-fest": "^3.8.0",
     "typescript": "^5.5.4",
