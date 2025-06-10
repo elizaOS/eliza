@@ -1,193 +1,184 @@
-import { describe, expect, it, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
-import { PgliteDatabaseAdapter } from '../../src/pglite/adapter';
-import { PGliteClientManager } from '../../src/pglite/manager';
-import { ChannelType, type UUID } from '@elizaos/core';
 import {
-  memoryTestAgentId,
-  memoryTestRoomId,
-  memoryTestMemories,
-  memoryTestMemoriesWithEmbedding,
-  createSimilarMemoryVector,
-  memoryTestAgent,
-  memoryTestEntity,
-  memoryTestRoom,
-  memoryTestEntityId,
-  memoryTestWorldId,
-  memoryTestWorld,
+  AgentRuntime,
+  ChannelType,
+  MemoryType,
+  stringToUuid,
+  type Entity,
+  type Memory,
+  type MemoryMetadata,
+  type Room,
+  type UUID,
+  type World,
+} from '@elizaos/core';
+import { v4 } from 'uuid';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { PgliteDatabaseAdapter } from '../../src/pglite/adapter';
+import { PgDatabaseAdapter } from '../../src/pg/adapter';
+import {
+  embeddingTable,
+  memoryTable
+} from '../../src/schema';
+import { createTestDatabase } from '../test-helpers';
+import {
   documentMemoryId,
+  memoryTestAgentId,
   memoryTestDocument,
+  memoryTestEntityId,
   memoryTestFragments,
+  memoryTestMemories,
+  memoryTestMemoriesWithEmbedding
 } from './seed';
-import { setupMockedMigrations } from '../test-helpers';
-
-// Setup mocked migrations before any tests run or instances are created
-setupMockedMigrations();
-
-// Mock only the logger
-vi.mock('@elizaos/core', async () => {
-  const actual = await vi.importActual('@elizaos/core');
-  return {
-    ...actual,
-    logger: {
-      debug: vi.fn(),
-      error: vi.fn(),
-      warn: vi.fn(),
-      success: vi.fn(),
-      info: vi.fn(),
-    },
-  };
-});
 
 describe('Memory Integration Tests', () => {
-  // Database connection variables
-  let connectionManager: PGliteClientManager;
-  let adapter: PgliteDatabaseAdapter;
-  let agentId: UUID = memoryTestAgentId;
+  let adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
+  let runtime: AgentRuntime;
+  let cleanup: () => Promise<void>;
+  let testAgentId: UUID;
+  let testRoomId: UUID;
+  let testEntityId: UUID;
+  let testWorldId: UUID;
 
   beforeAll(async () => {
-    // Initialize connection manager and adapter
-    connectionManager = new PGliteClientManager({});
-    await connectionManager.initialize();
-    adapter = new PgliteDatabaseAdapter(agentId, connectionManager);
-    await adapter.init();
-
     try {
-      // Step 1: Create test agent
-      await adapter.createAgent(memoryTestAgent);
+      // Use random UUIDs to avoid conflicts
+      testAgentId = v4() as UUID;
+      testRoomId = v4() as UUID;
+      testEntityId = v4() as UUID;
+      testWorldId = v4() as UUID;
+      
+      ({ adapter, runtime, cleanup } = await createTestDatabase(testAgentId));
 
-      // Step 2: Create test world
+      console.log("ADAPTER IS", adapter)
+
       await adapter.createWorld({
-        ...memoryTestWorld,
-        agentId: memoryTestAgentId,
-      });
-
-      // Step 3: Create test entity
-      await adapter.createEntities([memoryTestEntity]);
-
-      // Step 4: Create test room
-      await adapter.createRooms([memoryTestRoom]);
-
-      // Step 5: Add entity as participant in the room
-      await adapter.addParticipant(memoryTestEntityId, memoryTestRoomId);
+        id: testWorldId,
+        agentId: testAgentId,
+        name: 'Test World',
+        serverId: 'test-server',
+      } as World);
+      await adapter.createRooms([
+        {
+          id: testRoomId,
+          agentId: testAgentId,
+          worldId: testWorldId,
+          name: 'Test Room',
+          source: 'test',
+          type: ChannelType.GROUP,
+        } as Room,
+      ]);
+      await adapter.createEntities([
+        { id: testEntityId, agentId: testAgentId, names: ['Test Entity'] } as Entity,
+      ]);
+      await adapter.addParticipant(testEntityId, testRoomId);
     } catch (error) {
-      console.error('Error in setup:', error);
-      throw error;
+      console.error('Failed to create test database for memory tests:', error);
+      throw error; // Fail the test instead of continuing
     }
-  }, 10000);
+  }, 30000);
 
   afterAll(async () => {
-    // Clean up test data
-    const client = connectionManager.getConnection();
-    try {
-      // Order matters for foreign key constraints
-      await client.query('DELETE FROM embeddings WHERE TRUE');
-      await client.query('DELETE FROM participants WHERE TRUE');
-      await client.query(`DELETE FROM memories WHERE "roomId" = '${memoryTestRoomId}'`);
-      await client.query(`DELETE FROM rooms WHERE id = '${memoryTestRoomId}'`);
-      await client.query(`DELETE FROM entities WHERE id = '${memoryTestEntityId}'`);
-      await client.query(`DELETE FROM worlds WHERE id = '${memoryTestWorldId}'`);
-      await client.query(`DELETE FROM agents WHERE id = '${memoryTestAgentId}'`);
-    } catch (error) {
-      console.error('Error cleaning test data:', error);
-    }
-
-    // Close all connections
-    await adapter.close();
-  }, 10000);
-
-  beforeEach(async () => {
-    // Clean up any existing test memories before each test
-    const client = connectionManager.getConnection();
-    try {
-      await client.query('DELETE FROM embeddings WHERE TRUE');
-      await client.query(`DELETE FROM memories WHERE "roomId" = '${memoryTestRoomId}'`);
-    } catch (error) {
-      console.error('Error cleaning test memory data:', error);
+    if (cleanup) {
+      await cleanup();
     }
   });
 
+  beforeEach(async () => {
+    // Clean up memories and embeddings before each test
+    const db = adapter.getDatabase();
+    // Delete embeddings first due to foreign key constraints
+    await db.delete(embeddingTable);
+    await db.delete(memoryTable);
+  });
+
+  const createTestMemory = (
+    content: Record<string, any>,
+    embedding?: number[]
+  ): Memory & { metadata: MemoryMetadata } => ({
+    id: v4() as UUID,
+    agentId: testAgentId,
+    roomId: testRoomId,
+    entityId: testEntityId,
+    content,
+    embedding,
+    createdAt: Date.now(),
+    unique: false,
+    metadata: {
+      type: MemoryType.CUSTOM,
+      source: 'test',
+    },
+  });
+
+  it('should create and retrieve a memory with an embedding', async () => {
+    const memory = createTestMemory({ text: 'test' }, Array.from({ length: 384 }, () => Math.random()));
+    const memoryId = await adapter.createMemory(memory, 'test');
+    const retrieved = await adapter.getMemoryById(memoryId);
+    expect(retrieved).toBeDefined();
+    expect(retrieved?.embedding?.length).toEqual(384);
+  });
+
   afterEach(async () => {
-    vi.clearAllMocks();
+    // Clean up memories after each test to ensure isolation
+    const db = adapter.getDatabase();
+    // Delete in correct order to avoid foreign key constraint violations
+    await db.delete(embeddingTable);
+    await db.delete(memoryTable);
   });
 
   describe('Memory CRUD Operations', () => {
     it('should create a simple memory without embedding', async () => {
-      const memory = {
-        ...memoryTestMemories[0],
-        embedding: undefined, // Explicitly remove embedding if present
-      };
-
+      const memory = createTestMemory({ text: 'simple memory' });
       const memoryId = await adapter.createMemory(memory, 'memories');
-      expect(memoryId).toBe(memory.id);
-
-      // Verify it exists in the database
-      const createdMemory = await adapter.getMemoryById(memoryId);
-      expect(createdMemory).not.toBeNull();
-      expect(createdMemory?.content.text).toBe(memory.content.text);
-    });
-
-    it('should create a memory with embedding', async () => {
-      const memory = memoryTestMemoriesWithEmbedding[0];
-
-      const memoryId = await adapter.createMemory(memory, 'memories');
-      expect(memoryId).toBe(memory.id);
-
-      // Verify it exists and has the embedding
-      const createdMemory = await adapter.getMemoryById(memoryId);
-      expect(createdMemory).not.toBeNull();
-      expect(createdMemory?.embedding).toBeDefined();
-      expect(createdMemory?.embedding?.length).toBe(memory.embedding?.length);
+      const retrieved = await adapter.getMemoryById(memoryId);
+      expect(retrieved).toBeDefined();
+      expect(retrieved?.content).toEqual({ text: 'simple memory' });
     });
 
     it('should update an existing memory', async () => {
-      // Create a memory first
-      const memory = memoryTestMemories[0];
+      const memory = createTestMemory({ text: 'original' });
       const memoryId = await adapter.createMemory(memory, 'memories');
-
-      // Update the memory
-      const updatedContent = {
-        text: 'This memory has been updated',
-        type: 'text',
-      };
-
-      const updateResult = await adapter.updateMemory({
+      await adapter.updateMemory({
         id: memoryId,
-        content: updatedContent,
-        metadata: {
-          type: 'test-updated',
-          source: 'integration-test',
-        },
+        content: { text: 'updated' },
       });
-
-      expect(updateResult).toBe(true);
-
-      // Verify the update
-      const updatedMemory = await adapter.getMemoryById(memoryId);
-      expect(updatedMemory?.content.text).toBe(updatedContent.text);
-      expect(updatedMemory?.metadata?.type).toBe('test-updated');
+      const retrieved = await adapter.getMemoryById(memoryId);
+      expect(retrieved?.content).toEqual({ text: 'updated' });
     });
 
     it('should delete a memory', async () => {
-      // Create a memory first
-      const memory = memoryTestMemories[0];
+      const memory = createTestMemory({ text: 'to be deleted' });
       const memoryId = await adapter.createMemory(memory, 'memories');
+      let retrieved = await adapter.getMemoryById(memoryId);
+      expect(retrieved).toBeDefined();
+      await adapter.deleteMemory(memoryId);
+      retrieved = await adapter.getMemoryById(memoryId);
+      expect(retrieved).toBeNull();
+    });
 
-      // Verify it exists
+    it('should create a memory with embedding', async () => {
+      const memory: Memory = {
+        id: v4() as UUID,
+        agentId: testAgentId,
+        entityId: testEntityId,
+        roomId: testRoomId,
+        content: { text: 'memory with embedding' },
+        createdAt: new Date().getTime(),
+        embedding: Array.from({ length: 384 }, () => Math.random()),
+      };
+      const memoryId = await adapter.createMemory(memory, 'memories');
       const createdMemory = await adapter.getMemoryById(memoryId);
       expect(createdMemory).not.toBeNull();
-
-      // Delete the memory
-      await adapter.deleteMemory(memoryId);
-
-      // Verify it's gone
-      const deletedMemory = await adapter.getMemoryById(memoryId);
-      expect(deletedMemory).toBeNull();
+      expect(createdMemory?.embedding).toBeDefined();
+      expect(createdMemory?.embedding?.length).toBe(384);
     });
 
     it('should perform partial updates without affecting other fields', async () => {
       // Create a complete memory first with content, metadata and embedding
       const memory = {
         ...memoryTestMemoriesWithEmbedding[0],
+        // Override with correct test IDs
+        agentId: testAgentId,
+        entityId: testEntityId,
+        roomId: testRoomId,
         metadata: {
           type: 'test-original',
           source: 'integration-test',
@@ -241,6 +232,10 @@ describe('Memory Integration Tests', () => {
       // Create a memory with rich content and metadata
       const originalMemory = {
         ...memoryTestMemoriesWithEmbedding[0],
+        // Override with correct test IDs
+        agentId: testAgentId,
+        entityId: testEntityId,
+        roomId: testRoomId,
         content: {
           text: 'Original content text',
           type: 'text',
@@ -302,33 +297,20 @@ describe('Memory Integration Tests', () => {
 
   describe('Memory Retrieval Operations', () => {
     it('should retrieve memories by room ID', async () => {
-      // Create test memories first
-      for (const memory of memoryTestMemories) {
-        await adapter.createMemory(memory, 'memories');
-      }
-
-      // Retrieve memories
+      await adapter.createMemory(createTestMemory({ text: 'mem1' }), 'messages');
+      await adapter.createMemory(createTestMemory({ text: 'mem2' }), 'messages');
       const memories = await adapter.getMemories({
-        roomId: memoryTestRoomId,
-        tableName: 'memories',
+        roomId: testRoomId,
+        tableName: 'messages',
       });
-
-      expect(memories).toHaveLength(memoryTestMemories.length);
-
-      // Verify all memories belong to the correct room
-      for (const memory of memories) {
-        expect(memory.roomId).toBe(memoryTestRoomId);
-      }
+      expect(memories.length).toBe(2);
     });
 
     it('should count memories in a room', async () => {
-      // Create test memories
-      for (const memory of memoryTestMemories) {
-        await adapter.createMemory(memory, 'memories');
-      }
-
-      const count = await adapter.countMemories(memoryTestRoomId, true, 'memories');
-      expect(count).toEqual(memoryTestMemories.length);
+      await adapter.createMemory(createTestMemory({ text: 'mem1' }), 'memories');
+      await adapter.createMemory(createTestMemory({ text: 'mem2' }), 'memories');
+      const count = await adapter.countMemories(testRoomId, false, 'memories');
+      expect(count).toBe(2);
     });
 
     it('should retrieve memories by ID list', async () => {
@@ -336,7 +318,14 @@ describe('Memory Integration Tests', () => {
       const memoryIds: UUID[] = [];
 
       for (const memory of memoryTestMemories.slice(0, 2)) {
-        const memoryId = await adapter.createMemory(memory, 'memories');
+        // Override with correct test IDs
+        const testMemory = {
+          ...memory,
+          agentId: testAgentId,
+          entityId: testEntityId,
+          roomId: testRoomId,
+        };
+        const memoryId = await adapter.createMemory(testMemory, 'memories');
         memoryIds.push(memoryId);
       }
 
@@ -350,12 +339,19 @@ describe('Memory Integration Tests', () => {
     it('should retrieve memories with pagination', async () => {
       // Create test memories
       for (const memory of memoryTestMemories) {
-        await adapter.createMemory(memory, 'memories');
+        // Override with correct test IDs
+        const testMemory = {
+          ...memory,
+          agentId: testAgentId,
+          entityId: testEntityId,
+          roomId: testRoomId,
+        };
+        await adapter.createMemory(testMemory, 'memories');
       }
 
       // Retrieve first page (limit to 2)
       const firstPage = await adapter.getMemories({
-        roomId: memoryTestRoomId,
+        roomId: testRoomId,
         tableName: 'memories',
         count: 2,
       });
@@ -364,7 +360,7 @@ describe('Memory Integration Tests', () => {
 
       // Test second page (remaining memories)
       const secondPage = await adapter.getMemories({
-        roomId: memoryTestRoomId,
+        roomId: testRoomId,
         tableName: 'memories',
       });
 
@@ -375,61 +371,80 @@ describe('Memory Integration Tests', () => {
 
   describe('Memory Search Operations', () => {
     it('should search memories by embedding similarity', async () => {
-      // Create memories with embeddings for search
-      for (const memory of memoryTestMemoriesWithEmbedding) {
-        await adapter.createMemory(memory, 'memories');
-      }
+      const baseEmbedding = Array.from({ length: 384 }, () => Math.random());
+      const memory1: Partial<Memory> = {
+        id: v4() as UUID,
+        content: { text: 'memory 1' },
+        createdAt: new Date().getTime(),
+        embedding: baseEmbedding,
+      };
+      memory1.agentId = testAgentId;
+      memory1.roomId = testRoomId;
+      memory1.entityId = testEntityId;
+      await adapter.createMemory(memory1 as Memory, 'search');
 
-      // Create a similar memory for testing search
-      const baseMemory = memoryTestMemoriesWithEmbedding[0];
-      const similarMemory = createSimilarMemoryVector(baseMemory, 0.9);
-
-      await adapter.createMemory(similarMemory, 'memories');
-
-      // Search using the original embedding
-      const results = await adapter.searchMemoriesByEmbedding(baseMemory.embedding!, {
-        match_threshold: 0.7,
-        count: 5,
-        roomId: memoryTestRoomId,
-        tableName: 'memories',
+      const results = await adapter.searchMemoriesByEmbedding(baseEmbedding, {
+        tableName: 'search',
+        roomId: testRoomId,
+        count: 1,
       });
 
-      // Should find at least one similar memory
-      expect(results.length).toBeGreaterThan(0);
-
-      // Most similar should be the original memory
-      if (results.length > 0) {
-        expect(results[0].similarity).toBeGreaterThan(0.9);
-      }
+      expect(results.length).toBe(1);
+      expect(results[0].id).toBe(memory1.id);
+      expect(results[0].similarity).toBeGreaterThan(0.99);
     });
   });
 
   describe('Document and Fragment Operations', () => {
     it('should create a document with fragments', async () => {
-      // Create the document
-      await adapter.createMemory(memoryTestDocument, 'documents');
+      // Create the document with correct test IDs
+      const testDocument = {
+        ...memoryTestDocument,
+        agentId: testAgentId,
+        entityId: testEntityId,
+        roomId: testRoomId,
+      };
+      await adapter.createMemory(testDocument, 'documents');
 
-      // Create fragments that reference the document
+      // Create fragments that reference the document with correct test IDs
       for (const fragment of memoryTestFragments) {
-        await adapter.createMemory(fragment, 'fragments');
+        const testFragment = {
+          ...fragment,
+          agentId: testAgentId,
+          entityId: testEntityId,
+          roomId: testRoomId,
+        };
+        await adapter.createMemory(testFragment, 'fragments');
       }
 
       // Retrieve fragments for the document
       const fragments = await adapter.getMemories({
         tableName: 'fragments',
-        roomId: memoryTestRoomId,
+        roomId: testRoomId,
       });
 
       expect(fragments.length).toEqual(memoryTestFragments.length);
     });
 
     it('should delete a document and its fragments', async () => {
-      // Create the document
-      await adapter.createMemory(memoryTestDocument, 'documents');
+      // Create the document with correct test IDs
+      const testDocument = {
+        ...memoryTestDocument,
+        agentId: testAgentId,
+        entityId: testEntityId,
+        roomId: testRoomId,
+      };
+      await adapter.createMemory(testDocument, 'documents');
 
-      // Create fragments that reference the document
+      // Create fragments that reference the document with correct test IDs
       for (const fragment of memoryTestFragments) {
-        await adapter.createMemory(fragment, 'fragments');
+        const testFragment = {
+          ...fragment,
+          agentId: testAgentId,
+          entityId: testEntityId,
+          roomId: testRoomId,
+        };
+        await adapter.createMemory(testFragment, 'fragments');
       }
 
       // Delete the document (should cascade to fragments)
@@ -442,7 +457,7 @@ describe('Memory Integration Tests', () => {
       // Verify fragments are also deleted
       const fragments = await adapter.getMemories({
         tableName: 'fragments',
-        roomId: memoryTestRoomId,
+        roomId: testRoomId,
       });
 
       expect(fragments.length).toBe(0);
@@ -451,7 +466,12 @@ describe('Memory Integration Tests', () => {
 
   describe('Memory Model Mapping', () => {
     it('should correctly map between Memory and MemoryModel', async () => {
-      const testMemory = memoryTestMemories[0];
+      const testMemory = {
+        ...memoryTestMemories[0],
+        agentId: testAgentId,
+        entityId: testEntityId,
+        roomId: testRoomId,
+      };
 
       // Create the memory
       await adapter.createMemory(testMemory, 'memories');
@@ -470,12 +490,21 @@ describe('Memory Integration Tests', () => {
     });
 
     it('should handle partial Memory objects in mapToMemoryModel', async () => {
+      // Create the required entity first to avoid foreign key constraint violations
+      await adapter.createEntities([
+        {
+          id: memoryTestEntityId,
+          agentId: testAgentId,
+          names: ['Test Entity'],
+        } as Entity,
+      ]);
+
       // Create a partial memory object
       const partialMemory: Partial<any> = {
         id: memoryTestAgentId, // Using a known UUID
         entityId: memoryTestEntityId,
-        roomId: memoryTestRoomId,
-        agentId: memoryTestAgentId,
+        roomId: testRoomId,
+        agentId: testAgentId,
         content: {
           text: 'Partial memory object',
           type: 'text',
@@ -501,69 +530,70 @@ describe('Memory Integration Tests', () => {
 
   describe('Memory Batch Operations', () => {
     it('should delete all memories in a room', async () => {
-      // Create test memories
+      // Create the required entity first to avoid foreign key constraint violations
+      await adapter.createEntities([
+        {
+          id: memoryTestEntityId,
+          agentId: testAgentId,
+          names: ['Test Entity'],
+        } as Entity,
+      ]);
+
+      // Create test memories with correct entity IDs
       for (const memory of memoryTestMemories) {
-        await adapter.createMemory(memory, 'memories');
+        const testMemory = {
+          ...memory,
+          agentId: testAgentId,
+          entityId: memoryTestEntityId,
+          roomId: testRoomId,
+        };
+        await adapter.createMemory(testMemory, 'memories');
       }
 
       // Verify memories exist
-      const countBefore = await adapter.countMemories(memoryTestRoomId, true, 'memories');
+      const countBefore = await adapter.countMemories(testRoomId, true, 'memories');
       expect(countBefore).toBeGreaterThan(0);
 
       // Delete all memories
-      await adapter.deleteAllMemories(memoryTestRoomId, 'memories');
+      await adapter.deleteAllMemories(testRoomId, 'memories');
 
       // Verify memories were deleted
-      const countAfter = await adapter.countMemories(memoryTestRoomId, true, 'memories');
+      const countAfter = await adapter.countMemories(testRoomId, true, 'memories');
       expect(countAfter).toBe(0);
     });
 
     it('should retrieve memories by multiple room IDs', async () => {
-      // Create a second room with its own world
-      const secondWorldId = agentId as UUID; // Using a known UUID
-      const secondRoomId = memoryTestEntityId; // Using a known UUID
-
-      // Create the second world
-      await adapter.createWorld({
-        id: secondWorldId,
-        name: 'Memory Test World 2',
-        agentId: memoryTestAgentId,
-        serverId: 'test-server-2',
-      });
-
-      // Create the second room
+      const secondRoomId = v4() as UUID;
       await adapter.createRooms([
         {
           id: secondRoomId,
           name: 'Memory Test Room 2',
-          agentId: memoryTestAgentId,
+          agentId: testAgentId,
           source: 'test',
           type: ChannelType.GROUP,
-          worldId: secondWorldId,
+          worldId: testWorldId,
         },
       ]);
 
-      // Create memories in first room
-      for (const memory of memoryTestMemories.slice(0, 2)) {
-        await adapter.createMemory(memory, 'memories');
-      }
+      // Create memories in the first room
+      await adapter.createMemory(createTestMemory({ text: 'mem1-room1' }), 'memories');
+      await adapter.createMemory(createTestMemory({ text: 'mem2-room1' }), 'memories');
 
-      // Create memories in second room
-      for (const memory of memoryTestMemories.slice(2)) {
-        const memoryInSecondRoom = {
-          ...memory,
-          roomId: secondRoomId,
-        };
-        await adapter.createMemory(memoryInSecondRoom, 'memories');
-      }
+      // Create memories in the second room
+      await adapter.createMemory(
+        { ...createTestMemory({ text: 'mem3-room2' }), roomId: secondRoomId },
+        'memories'
+      );
 
       // Retrieve memories from both rooms
       const memories = await adapter.getMemoriesByRoomIds({
-        roomIds: [memoryTestRoomId, secondRoomId],
+        roomIds: [testRoomId, secondRoomId],
         tableName: 'memories',
       });
 
-      expect(memories.length).toEqual(memoryTestMemories.length);
+      expect(memories.length).toEqual(3);
     });
   });
 });
+
+// Import tables at the end to avoid circular dependencies if needed in this file

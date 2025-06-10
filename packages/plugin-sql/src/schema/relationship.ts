@@ -1,8 +1,16 @@
 import { sql } from 'drizzle-orm';
-import { foreignKey, index, jsonb, pgTable, text, unique, uuid } from 'drizzle-orm/pg-core';
+import {
+  foreignKey,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { agentTable } from './agent';
 import { entityTable } from './entity';
-import { numberTimestamp } from './types';
 
 /**
  * Defines the relationshipTable containing information about relationships between entities and agents.
@@ -15,7 +23,7 @@ export const relationshipTable = pgTable(
       .notNull()
       .primaryKey()
       .default(sql`gen_random_uuid()`),
-    createdAt: numberTimestamp('createdAt')
+    createdAt: timestamp('created_at', { withTimezone: true })
       .default(sql`now()`)
       .notNull(),
     sourceEntityId: uuid('sourceEntityId')

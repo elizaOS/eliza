@@ -1521,6 +1521,7 @@ export enum ServiceType {
   WEB_SEARCH = 'web_search',
   EMAIL_AUTOMATION = 'email_automation',
   NKN_CLIENT_SERVICE = 'nkn_client_service',
+  DATABASE_MIGRATION = 'database_migration',
 }
 
 export enum LoggingLevel {

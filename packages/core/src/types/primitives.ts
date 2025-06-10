@@ -34,6 +34,9 @@ export interface Content {
   /** Optional source/origin of the content */
   source?: string;
 
+  /** Optional target/destination for responses */
+  target?: string;
+  
   /** URL of the original message/post (e.g. tweet URL, Discord message link) */
   url?: string;
 
@@ -86,3 +89,9 @@ export enum ContentType {
   DOCUMENT = 'document',
   LINK = 'link',
 }
+
+/**
+ * A generic type for metadata objects, allowing for arbitrary key-value pairs.
+ * This encourages consumers to perform type checking or casting.
+ */
+export type Metadata = Record<string, unknown>;

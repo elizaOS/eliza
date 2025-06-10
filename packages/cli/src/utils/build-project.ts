@@ -15,8 +15,8 @@ import { runBunCommand } from './run-bun';
  *
  * @throws {Error} If no build method can be determined or if all build attempts fail.
  */
-export async function buildProject(cwd: string, isPlugin = false) {
-  logger.info(`Building ${isPlugin ? 'plugin' : 'project'}...`);
+export async function buildProject(cwd: string = process.cwd(), isPlugin = false) {
+  logger.info(`Building ${isPlugin ? 'plugin' : 'project'} in ${cwd}...`);
 
   // Validate that the project directory exists
   if (!fs.existsSync(cwd)) {

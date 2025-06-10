@@ -749,8 +749,9 @@ const postGeneratedHandler = async ({
 
   // get twitterUserName
   const entity = await runtime.getEntityById(runtime.agentId);
-  if (entity?.metadata?.twitter?.userName) {
-    state.values.twitterUserName = entity?.metadata?.twitter?.userName;
+  if ((entity?.metadata?.twitter as any)?.userName || entity?.metadata?.userName) {
+    state.values.twitterUserName =
+      (entity?.metadata?.twitter as any)?.userName || entity?.metadata?.userName;
   }
 
   const prompt = composePromptFromState({
@@ -831,10 +832,7 @@ const postGeneratedHandler = async ({
     // Fix newlines
     cleanedText = cleanedText.replaceAll(/\\n/g, '\n\n');
     cleanedText = cleanedText.replace(/([^\n])\n([^\n])/g, '$1\n\n$2');
-    // Truncate to Twitter's character limit (280)
-    if (cleanedText.length > 280) {
-      cleanedText = truncateToCompleteSentence(cleanedText, 280);
-    }
+
     return cleanedText;
   }
 
@@ -968,7 +966,7 @@ const syncSingleUser = async (
 ) => {
   try {
     const entity = await runtime.getEntityById(entityId);
-    logger.info(`[Bootstrap] Syncing user: ${entity?.metadata?.[source]?.username || entityId}`);
+    logger.info(`[Bootstrap] Syncing user: ${entity?.metadata?.username || entityId}`);
 
     // Ensure we're not using WORLD type and that we have a valid channelId
     if (!channelId) {
@@ -982,9 +980,9 @@ const syncSingleUser = async (
     await runtime.ensureConnection({
       entityId,
       roomId,
-      userName: entity?.metadata?.[source].username || entityId,
-      name:
-        entity?.metadata?.[source].name || entity?.metadata?.[source].username || `User${entityId}`,
+      name: (entity?.metadata?.name || entity?.metadata?.username || `User${entityId}`) as
+        | undefined
+        | string,
       source,
       channelId,
       serverId,

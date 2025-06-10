@@ -1,8 +1,7 @@
 import { sql } from 'drizzle-orm';
-import { check, foreignKey, index, pgTable, uuid, vector } from 'drizzle-orm/pg-core';
+import { check, foreignKey, index, pgTable, timestamp, uuid, vector } from 'drizzle-orm/pg-core';
 import { VECTOR_DIMS } from '@elizaos/core';
 import { memoryTable } from './memory';
-import { numberTimestamp } from './types';
 
 export const DIMENSION_MAP = {
   [VECTOR_DIMS.SMALL]: 'dim384',
@@ -22,7 +21,7 @@ export const embeddingTable = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom().notNull(),
     memoryId: uuid('memory_id').references(() => memoryTable.id),
-    createdAt: numberTimestamp('created_at')
+    createdAt: timestamp('created_at')
       .default(sql`now()`)
       .notNull(),
     dim384: vector('dim_384', { dimensions: VECTOR_DIMS.SMALL }),
