@@ -1131,9 +1131,8 @@ export function useDeleteChannelMessage() {
     onSuccess: (_data, variables) => {
       toast({
         title: 'Message Deleted',
-        description: `Message ${variables.messageId} removed from channel ${variables.channelId}.`,
+        description: 'Message removed successfully.',
       });
-      queryClient.invalidateQueries({ queryKey: ['messages', variables.channelId] });
     },
     onError: (error) => {
       toast({
