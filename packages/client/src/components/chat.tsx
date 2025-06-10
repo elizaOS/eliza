@@ -111,6 +111,7 @@ export function MessageContent({
   isUser,
   getAgentInMessage,
   agentAvatarMap,
+  chatType,
 }: {
   message: UiMessage;
   agentForTts?: Agent | Partial<Agent> | null;
@@ -120,6 +121,7 @@ export function MessageContent({
   isUser: boolean;
   getAgentInMessage?: (agentId: UUID) => Partial<Agent> | undefined;
   agentAvatarMap?: Record<UUID, string | null>;
+  chatType?: ChannelType;
 }) {
   const agentData =
     !isUser && getAgentInMessage ? getAgentInMessage(message.senderId) : agentForTts;
@@ -492,6 +494,7 @@ export default function Chat({
     addMessage,
     updateMessage,
     removeMessage,
+    clearMessages,
   } = useChannelMessages(finalChannelIdForHooks, finalServerIdForHooks);
 
   const { mutate: deleteMessageCentral } = useDeleteChannelMessage();
@@ -539,12 +542,7 @@ export default function Chat({
     },
     onClearMessages: () => {
       // Clear the local message list immediately for instant UI response
-      queryClient.setQueryData(['channelMessages', finalChannelIdForHooks, finalServerIdForHooks], []);
-      
-      // Also invalidate to ensure fresh data next time
-      queryClient.invalidateQueries({
-        queryKey: ['channelMessages', finalChannelIdForHooks, finalServerIdForHooks],
-      });
+      clearMessages();
     },
     onInputDisabledChange: (disabled: boolean) => updateChatState({ inputDisabled: disabled }),
   });
@@ -900,80 +898,32 @@ export default function Chat({
                 </Button>
               </div>
             )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={chatType === ChannelType.DM ? handleDeleteCurrentDmChannel : handleClearChat}
-              disabled={
-                !messages ||
-                messages.length === 0 ||
-                (chatType === ChannelType.DM && !chatState.currentDmChannelId)
-              }
-              title={
-                chatType === ChannelType.DM ? 'Delete current chat session' : 'Clear all messages'
-              }
-              className="xl:px-3"
-            >
-              <Trash2 className="size-4" />
-              <span className="hidden xl:inline xl:ml-2">
-                {chatType === ChannelType.DM ? 'Delete' : 'Clear'}
-              </span>
-            </Button>
-            
-            {/* Clear Messages Button - Available for both DM and GROUP */}
+            {/* Clear Messages Button for DM */}
             <Button
               variant="outline"
               size="sm"
               onClick={handleClearChat}
               disabled={!messages || messages.length === 0}
-              title="Clear all messages"
+              title="Clear all messages in this conversation"
               className="xl:px-3"
             >
               <Eraser className="size-4" />
-              <span className="hidden xl:inline xl:ml-2">Clear</span>
+              <span className="hidden xl:inline xl:ml-2">Clear Messages</span>
             </Button>
             
-            {/* Delete Channel/Chat Button - Available for both DM and GROUP */}
+            {/* Delete Channel Button for DM */}
             <Button
               variant="outline"
               size="sm"
-              onClick={() => {
-                if (!finalChannelIdForHooks || !finalServerIdForHooks) return;
-                const isGroup = chatType === ChannelType.GROUP;
-                confirm(
-                  {
-                    title: isGroup ? 'Delete Group' : 'Delete Chat',
-                    description: `Are you sure you want to delete this ${isGroup ? 'group' : 'chat'}? This action cannot be undone.`,
-                    confirmText: 'Delete',
-                    variant: 'destructive',
-                  },
-                  async () => {
-                    try {
-                      await apiClient.deleteChannel(finalChannelIdForHooks);
-                      toast({ 
-                        title: isGroup ? 'Group Deleted' : 'Chat Deleted', 
-                        description: `The ${isGroup ? 'group' : 'chat'} has been successfully deleted.` 
-                      });
-                      // Navigate back to home after deletion
-                      window.location.href = '/';
-                    } catch (error) {
-                      clientLogger.error('[Chat] Error deleting channel:', error);
-                      toast({
-                        title: 'Error',
-                        description: `Could not delete ${isGroup ? 'group' : 'chat'}.`,
-                        variant: 'destructive',
-                      });
-                    }
-                  }
-                );
-              }}
-              disabled={!finalChannelIdForHooks || !finalServerIdForHooks}
-              title={chatType === ChannelType.GROUP ? 'Delete group' : 'Delete chat'}
+              onClick={handleDeleteCurrentDmChannel}
+              disabled={!chatState.currentDmChannelId}
+              title="Delete this entire chat session"
               className="xl:px-3"
             >
               <Trash2 className="size-4" />
-              <span className="hidden xl:inline xl:ml-2">Delete</span>
+              <span className="hidden xl:inline xl:ml-2">Delete Chat</span>
             </Button>
+            
             <Separator orientation="vertical" className="h-8" />
             <Tooltip>
               <TooltipTrigger asChild>

@@ -125,6 +125,7 @@ export const ChatMessageListComponent: React.FC<ChatMessageListComponentProps> =
                 isUser={isUser}
                 getAgentInMessage={chatType === ChannelType.GROUP ? getAgentInMessage : undefined}
                 agentAvatarMap={chatType === ChannelType.GROUP ? agentAvatarMap : undefined}
+                chatType={chatType}
               />
             </ChatBubble>
           </div>
