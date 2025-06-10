@@ -200,7 +200,10 @@ export async function installPlugin(
     if (result.success) {
       // Verify import if not a GitHub install
       if (!info.npm.repo.startsWith('github:') && !process.env.ELIZA_SKIP_PLUGIN_VERIFY) {
-        const importSuccess = await verifyPluginImport(result.installedIdentifier || info.npm.repo, 'from npm with potential GitHub fallback');
+        const importSuccess = await verifyPluginImport(
+          result.installedIdentifier || info.npm.repo,
+          'from npm with potential GitHub fallback'
+        );
         return importSuccess;
       }
       return true;
@@ -211,7 +214,10 @@ export async function installPlugin(
     if (result.success) {
       // Verify import if not a GitHub install
       if (!process.env.ELIZA_SKIP_PLUGIN_VERIFY) {
-        const importSuccess = await verifyPluginImport(result.installedIdentifier || key, 'from npm registry with potential GitHub fallback');
+        const importSuccess = await verifyPluginImport(
+          result.installedIdentifier || key,
+          'from npm registry with potential GitHub fallback'
+        );
         return importSuccess;
       }
       return true;

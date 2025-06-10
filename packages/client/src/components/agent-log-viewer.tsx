@@ -332,7 +332,7 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
   let combinedLogs;
   if (useWebSocket && isLive) {
     // If WebSocket has less than 50% of the API logs, fall back to API
-    const wsLogRatio = apiLogs.length > 0 ? (wsLogs.length / apiLogs.length) : 1;
+    const wsLogRatio = apiLogs.length > 0 ? wsLogs.length / apiLogs.length : 1;
     if (wsLogRatio < 0.5 && apiLogs.length > 10) {
       combinedLogs = apiLogs;
     } else {

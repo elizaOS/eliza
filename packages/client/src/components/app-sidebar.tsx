@@ -134,11 +134,8 @@ const GroupRow = ({
           <div className="flex items-center gap-3">
             <Hash className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm truncate max-w-32">
-              {channel.name || generateGroupName(
-                channel,
-                (channel as any).participants || [],
-                currentClientId
-              )}
+              {channel.name ||
+                generateGroupName(channel, (channel as any).participants || [], currentClientId)}
             </span>
           </div>
         </SidebarMenuButton>
@@ -191,12 +188,7 @@ const GroupListSection = ({
     <>
       <div className="flex items-center justify-between px-4 pt-1 pb-0">
         <SectionHeader className="px-0 py-0">Groups</SectionHeader>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={handleCreateGroup}
-          aria-label="Create Group"
-        >
+        <Button variant="ghost" size="icon" onClick={handleCreateGroup} aria-label="Create Group">
           <Plus className="h-4 w-4" />
         </Button>
       </div>
