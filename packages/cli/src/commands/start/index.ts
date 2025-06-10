@@ -8,6 +8,7 @@ import { startAgents } from './actions/server-start';
 import { StartOptions } from './types';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { loadEnvConfig } from './utils/config-utils';
 
 export const start = new Command()
   .name('start')
@@ -22,7 +23,7 @@ export const start = new Command()
     try {
       let characters: Character[] = [];
       let projectAgents: ProjectAgent[] = [];
-      
+
       if (options.character) {
         // Load characters from provided paths
         for (const path of options.character) {
@@ -37,16 +38,19 @@ export const start = new Command()
         try {
           const cwd = process.cwd();
           const packageJsonPath = path.join(cwd, 'package.json');
-          
+
+          // Load env config first to populate plugins.
+          await loadEnvConfig();
+
           // Check if we're in a project directory
           if (fs.existsSync(packageJsonPath)) {
             logger.info('No character files specified, attempting to load project agents...');
             const project = await loadProject(cwd);
-            
+
             if (project.agents && project.agents.length > 0) {
               logger.info(`Found ${project.agents.length} agent(s) in project configuration`);
               projectAgents = project.agents;
-              
+
               // Log loaded agent names
               for (const agent of project.agents) {
                 if (agent.character) {
@@ -59,7 +63,7 @@ export const start = new Command()
           logger.debug('Failed to load project agents, will use default character:', e);
         }
       }
-      
+
       await startAgents({ ...options, characters, projectAgents });
     } catch (e: any) {
       handleError(e);
