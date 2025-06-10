@@ -226,7 +226,7 @@ export async function getElizaDirectories(targetProjectDir?: string) {
     targetProjectDir: targetProjectDir || 'none',
   });
 
-  const defaultElizaDbDir = path.resolve(projectRoot, '.elizadb');
+  const defaultElizaDbDir = path.resolve(projectRoot, '.eliza', '.elizadb');
   const elizaDbDir = await resolvePgliteDir(undefined, defaultElizaDbDir);
 
   return { elizaDir, elizaDbDir, envFilePath };

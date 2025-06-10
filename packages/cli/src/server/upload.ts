@@ -125,7 +125,7 @@ export const channelUpload = multer({
 export const genericStorage = multer.diskStorage({
   destination: (_req, _file, cb) => {
     try {
-      const uploadDir = path.resolve(process.cwd(), 'data', 'uploads', 'generic');
+      const uploadDir = path.resolve(process.cwd(), '.eliza', 'data', 'uploads', 'generic');
       if (!fs.existsSync(uploadDir)) {
         fs.mkdirSync(uploadDir, { recursive: true });
       }
