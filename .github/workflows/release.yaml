@@ -90,4 +90,4 @@ jobs:
             --head "main" \
             --title "Release: Sync main to develop for v${{ env.VERSION }}" \
             --body "Syncs version bump from main to develop." \
-            --label "release,automated-pr"
+            --label "1.x"
