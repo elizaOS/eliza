@@ -256,7 +256,8 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
       if (existingRelationship) {
         const updatedMetadata = {
           ...existingRelationship.metadata,
-          interactions: (existingRelationship.metadata?.interactions || 0) + 1,
+          interactions:
+            ((existingRelationship.metadata?.interactions as number | undefined) || 0) + 1,
         };
 
         const updatedTags = Array.from(

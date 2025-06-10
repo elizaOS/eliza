@@ -15,7 +15,7 @@ import { Command } from 'commander';
 import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import prompts from 'prompts';
+import * as clack from '@clack/prompts';
 import colors from 'yoctocolors';
 import { z } from 'zod';
 import { logger } from '@elizaos/core';
@@ -71,7 +71,7 @@ function getAvailableAIModels() {
       title: 'Local AI (free to use, no API key required)',
       value: 'local',
       description:
-        'Use local AI models without external API requirements. Will download model to run locally - recommended if you have good internet connection.',
+        'Use local AI models without external API requirements. Will download model to run locally.',
     },
     {
       title: 'OpenAI (ChatGPT)',
@@ -219,19 +219,22 @@ async function selectDatabase(isYes: boolean): Promise<string> {
     return database;
   }
 
-  const response = await prompts({
-    type: 'select',
-    name: 'database',
+  const database = await clack.select({
     message: 'Select your database:',
-    choices: availableDatabases,
-    initial: 0, // Default to Pglite
+    options: availableDatabases.map((choice, index) => ({
+      value: choice.value,
+      label: choice.title,
+      hint: choice.description
+    })),
+    initialValue: availableDatabases[0]?.value
   });
 
-  if (!response.database) {
-    throw new Error('No database selected or provided');
+  if (clack.isCancel(database)) {
+    clack.cancel('Operation cancelled.');
+    process.exit(0);
   }
 
-  return response.database;
+  return database;
 }
 
 /**
@@ -246,19 +249,22 @@ async function selectAIModel(isYes: boolean): Promise<string> {
     return aiModel;
   }
 
-  const response = await prompts({
-    type: 'select',
-    name: 'aiModel',
+  const aiModel = await clack.select({
     message: 'Select your AI model:',
-    choices: availableAIModels,
-    initial: 0, // Default to local
+    options: availableAIModels.map((choice, index) => ({
+      value: choice.value,
+      label: choice.title,
+      hint: choice.description
+    })),
+    initialValue: availableAIModels[0]?.value
   });
 
-  if (!response.aiModel) {
-    throw new Error('No AI model selected or provided');
+  if (clack.isCancel(aiModel)) {
+    clack.cancel('Operation cancelled.');
+    process.exit(0);
   }
 
-  return response.aiModel;
+  return aiModel;
 }
 
 /**
@@ -586,30 +592,29 @@ export const create = new Command()
           projectType = 'project';
         } else {
           // Prompt the user if -y is not used
-          const { type } = await prompts({
-            type: 'select',
-            name: 'type',
+          const type = await clack.select({
             message: 'What would you like to create?',
-            choices: [
-              { title: 'Project - Contains agents and plugins', value: 'project' },
+            options: [
+              { value: 'project', label: 'Project - Contains agents and plugins' },
               {
-                title: 'Plugin - Can be added to the registry and installed by others',
                 value: 'plugin',
+                label: 'Plugin - Can be added to the registry and installed by others',
               },
               {
-                title: 'Agent - Character definition file for an agent',
                 value: 'agent',
+                label: 'Agent - Character definition file for an agent',
               },
               {
-                title: 'TEE - Trusted Execution Environment project',
                 value: 'tee',
+                label: 'TEE - Trusted Execution Environment project',
               },
             ],
-            initial: 0,
+            initialValue: 'project',
           });
 
-          if (!type) {
-            return;
+          if (clack.isCancel(type)) {
+            clack.cancel('Operation cancelled.');
+            process.exit(0);
           }
           projectType = type;
         }
@@ -636,15 +641,14 @@ export const create = new Command()
           projectName = options.type === 'plugin' ? 'myplugin' : 'myproject';
           console.info(`Using default name: ${projectName}`);
         } else {
-          const { nameResponse } = await prompts({
-            type: 'text',
-            name: 'nameResponse',
+          const nameResponse = await clack.text({
             message: `What would you like to name your ${options.type}?`,
-            validate: (value) => value.length > 0 || `${options.type} name is required`,
+            validate: (value) => value.length > 0 ? undefined : `${options.type} name is required`,
           });
 
-          if (!nameResponse) {
-            return;
+          if (clack.isCancel(nameResponse)) {
+            clack.cancel('Operation cancelled.');
+            process.exit(0);
           }
           projectName = nameResponse;
         }

@@ -185,7 +185,6 @@ export default function ProfileOverlay({ isOpen, onClose, agentId }: ProfileOver
               </p>
             </div>
 
-
             <div>
               <p className="font-medium text-sm mb-2">Plugins</p>
               <div className="flex flex-wrap gap-2">

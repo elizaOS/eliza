@@ -12,8 +12,6 @@ node_modules
 .DS_Store
 
 dist/
-# Allow models directory but ignore model files
-db/
 
 *.gguf
 *.onnx
@@ -38,8 +36,6 @@ models/*
 tsup.config.bundled_*.mjs
 
 .turbo
-.cursorrules
-
 instructions.md
 wallet_data.txt
 
@@ -151,6 +147,3 @@ playwright-report/
 *.temp
 temp/
 tmp/
-
-
-*.cursor*

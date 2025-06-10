@@ -1,7 +1,6 @@
 import type { MessageExample } from '@elizaos/core';
 import { sql } from 'drizzle-orm';
-import { boolean, jsonb, pgTable, text, unique, uuid } from 'drizzle-orm/pg-core';
-import { numberTimestamp } from './types';
+import { boolean, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
 
 /**
  * Represents a table for storing agent data.
@@ -13,11 +12,11 @@ export const agentTable = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     enabled: boolean('enabled').default(true).notNull(),
-    createdAt: numberTimestamp('createdAt')
+    createdAt: timestamp('created_at', { withTimezone: true })
       .default(sql`now()`)
       .notNull(),
 
-    updatedAt: numberTimestamp('updatedAt')
+    updatedAt: timestamp('updated_at', { withTimezone: true })
       .default(sql`now()`)
       .notNull(),
 

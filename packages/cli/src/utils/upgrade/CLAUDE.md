@@ -157,7 +157,7 @@ Update dependencies and scripts:
   },
   "devDependencies": {
     "vitest": "^1.3.1",
-    "tsup": "^8.4.0"
+    "tsup": "8.5.0"
   }
 }
 ```

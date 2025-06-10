@@ -10,55 +10,42 @@ import {
   type Content,
   type KnowledgeItem,
   type MemoryMetadata,
+  type Character,
+  type Action,
+  type Evaluator,
+  type Provider,
+  type HandlerCallback,
+  type IDatabaseAdapter,
+  type Entity,
+  type Room,
+  type World,
+  type SendHandlerFunction,
+  type TargetInfo,
+  type ModelParamsMap,
+  type ModelResultMap,
+  type ModelTypeName,
+  type Plugin,
+  type Route,
+  type UUID,
+  type Service,
+  type ServiceTypeName,
+  type State,
+  type TaskWorker,
+  type Agent,
+  type Log,
+  type Participant,
+  type Relationship,
+  type Task,
+  type Memory,
+  type ModelHandler,
+  type RuntimeSettings,
+  type Component,
+  IAgentRuntime,
 } from './types';
 
 import { BM25 } from './search';
-import type {
-  Action,
-  Agent,
-  Character,
-  Component,
-  Entity,
-  Evaluator,
-  HandlerCallback,
-  IAgentRuntime,
-  IDatabaseAdapter,
-  Log,
-  Memory,
-  ModelHandler,
-  ModelParamsMap,
-  ModelResultMap,
-  ModelTypeName,
-  Participant,
-  Plugin,
-  Provider,
-  Relationship,
-  Room,
-  Route,
-  RuntimeSettings,
-  SendHandlerFunction,
-  Service,
-  ServiceTypeName,
-  State,
-  TargetInfo,
-  Task,
-  TaskWorker,
-  UUID,
-  World,
-} from './types';
 import { EventType, type MessagePayload } from './types';
 import { stringToUuid } from './utils';
-
-// Minimal interface for RagService to ensure type safety for delegation
-// This avoids a direct import cycle if RagService imports from core.
-interface RagServiceDelegator extends Service {
-  getKnowledge(
-    message: Memory,
-    scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID }
-  ): Promise<KnowledgeItem[]>;
-  // Assuming _internalAddKnowledge is the method in RagService that takes these params
-  _internalAddKnowledge(item: KnowledgeItem, options?: any, scope?: any): Promise<void>;
-}
 
 const environmentSettings: RuntimeSettings = {};
 
@@ -280,12 +267,13 @@ export class AgentRuntime implements IAgentRuntime {
       }
 
       // Check if a plugin with the same name is already registered.
-      if (this.plugins.some((p) => p.name === plugin.name)) {
+      const existingPlugin = this.plugins.find((p) => p.name === plugin.name);
+      if (existingPlugin) {
         this.logger.warn(
           `${this.character.name}(${this.agentId}) - Plugin ${plugin.name} is already registered. Skipping re-registration.`
         );
         span.addEvent('plugin_already_registered_skipped');
-        return; // Do not proceed further
+        return; // Do not proceed further with other registration steps
       }
 
       // Add the plugin to the runtime's list of active plugins
@@ -504,31 +492,21 @@ export class AgentRuntime implements IAgentRuntime {
         return;
       }
       span.addEvent('initialization_started');
-      const registeredPluginNames = new Set<string>(); // This can be removed if registerPlugin handles duplicates
       const pluginRegistrationPromises = [];
 
-      // Resolve plugin dependencies and get the final list of plugins to load
-      const pluginsToLoad = await this.resolvePluginDependencies(this.characterPlugins);
-      // (this.plugins as Plugin[]) = pluginsToLoad; // This line is removed. this.plugins will be built by registerPlugin calls.
+      // The resolution is now expected to happen in the CLI layer (e.g., startAgent)
+      // The runtime now accepts a pre-resolved, ordered list of plugins.
+      const pluginsToLoad = this.characterPlugins;
       span.setAttributes({ 'plugins.resolved_count': pluginsToLoad.length });
 
       for (const plugin of pluginsToLoad) {
-        // Iterate over the resolved list
-        // The check for registeredPluginNames can be removed if registerPlugin handles its own idempotency by name.
-        // if (plugin && !registeredPluginNames.has(plugin.name)) {
-        //   registeredPluginNames.add(plugin.name);
-        //   pluginRegistrationPromises.push(this.registerPlugin(plugin));
-        // }
         if (plugin) {
-          // Ensure plugin is not null/undefined
           pluginRegistrationPromises.push(this.registerPlugin(plugin));
         }
       }
       await Promise.all(pluginRegistrationPromises);
       span.addEvent('plugins_setup');
-      span.setAttributes({
-        registered_plugins: Array.from(registeredPluginNames).join(','),
-      });
+
       if (!this.adapter) {
         this.logger.error(
           'Database adapter not initialized. Make sure @elizaos/plugin-sql is included in your plugins.'
@@ -540,6 +518,13 @@ export class AgentRuntime implements IAgentRuntime {
       try {
         await this.adapter.init();
         span.addEvent('adapter_initialized');
+
+        // Run migrations for all loaded plugins
+        this.logger.info('Running plugin migrations...');
+        await this.runPluginMigrations();
+        this.logger.info('Plugin migrations completed.');
+        span.addEvent('plugin_migrations_completed');
+
         const existingAgent = await this.ensureAgentExists(this.character as Partial<Agent>);
         span.addEvent('agent_exists_verified');
         if (!existingAgent) {
@@ -647,6 +632,34 @@ export class AgentRuntime implements IAgentRuntime {
       this.isInitialized = true;
       span.addEvent('initialization_completed');
     });
+  }
+
+  async runPluginMigrations(): Promise<void> {
+    const drizzle = (this.adapter as any)?.db;
+    if (!drizzle) {
+      this.logger.warn('Drizzle instance not found on adapter, skipping plugin migrations.');
+      return;
+    }
+
+    const pluginsWithSchemas = this.plugins.filter((p) => p.schema);
+    this.logger.info(`Found ${pluginsWithSchemas.length} plugins with schemas to migrate.`);
+
+    for (const p of pluginsWithSchemas) {
+      if (p.schema) {
+        this.logger.info(`Running migrations for plugin: ${p.name}`);
+        try {
+          // You might need a more generic way to run migrations if they are not all Drizzle-based
+          // For now, assuming a function on the adapter or a utility function
+          if (this.adapter && 'runMigrations' in this.adapter) {
+            await (this.adapter as any).runMigrations(p.schema, p.name);
+            this.logger.info(`Successfully migrated plugin: ${p.name}`);
+          }
+        } catch (error) {
+          this.logger.error(`Failed to migrate plugin ${p.name}:`, error);
+          // Decide if you want to throw or continue
+        }
+      }
+    }
   }
 
   async getConnection(): Promise<unknown> {
@@ -1159,7 +1172,8 @@ export class AgentRuntime implements IAgentRuntime {
           metadata: {
             ...entity.metadata,
             [source!]: {
-              ...entity.metadata?.[source!],
+              ...(entity.metadata?.[source!] as Record<string, any>),
+              id: userId,
               name: name,
               userName: userName,
             },
@@ -2291,5 +2305,19 @@ export class AgentRuntime implements IAgentRuntime {
     tableName?: string;
   }): Promise<Memory[]> {
     return await this.adapter.getMemoriesByWorldId(params);
+  }
+  async runMigrations(migrationsPaths?: string[]): Promise<void> {
+    if (this.adapter && 'runMigrations' in this.adapter) {
+      await (this.adapter as any).runMigrations(migrationsPaths);
+    } else {
+      this.logger.warn('Database adapter does not support migrations.');
+    }
+  }
+
+  async isReady(): Promise<boolean> {
+    if (!this.adapter) {
+      throw new Error('Database adapter not registered');
+    }
+    return await this.adapter.isReady();
   }
 }

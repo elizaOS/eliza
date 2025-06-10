@@ -17,8 +17,8 @@ export const memoryTestAgent: Agent = {
       short_description: 'Test agent for memory integration tests',
     },
   },
-  createdAt: Date.now(),
-  updatedAt: Date.now(),
+  createdAt: new Date().getTime(),
+  updatedAt: new Date().getTime(),
 };
 
 export const memoryTestEntity: Entity = {
@@ -67,7 +67,7 @@ export const memoryTestMemories: Memory[] = [
     entityId: memoryTestEntityId,
     roomId: memoryTestRoomId,
     agentId: memoryTestAgentId,
-    createdAt: Date.now() - 3600000, // 1 hour ago
+    createdAt: new Date().getTime() - 3600000, // 1 hour ago
     unique: true,
     content: {
       text: 'This is a test memory for integration testing #1',
@@ -83,7 +83,7 @@ export const memoryTestMemories: Memory[] = [
     entityId: memoryTestEntityId,
     roomId: memoryTestRoomId,
     agentId: memoryTestAgentId,
-    createdAt: Date.now() - 7200000, // 2 hours ago
+    createdAt: new Date().getTime() - 7200000, // 2 hours ago
     unique: true,
     content: {
       text: 'This is a test memory for integration testing #2',
@@ -99,7 +99,7 @@ export const memoryTestMemories: Memory[] = [
     entityId: memoryTestEntityId,
     roomId: memoryTestRoomId,
     agentId: memoryTestAgentId,
-    createdAt: Date.now() - 10800000, // 3 hours ago
+    createdAt: new Date().getTime() - 10800000, // 3 hours ago
     unique: true,
     content: {
       text: 'This is a test memory for integration testing #3',
@@ -150,7 +150,7 @@ export const memoryTestDocument: Memory = {
   entityId: memoryTestEntityId,
   roomId: memoryTestRoomId,
   agentId: memoryTestAgentId,
-  createdAt: Date.now(),
+  createdAt: new Date().getTime(),
   unique: true,
   content: {
     text: 'This is a test document memory',
@@ -173,7 +173,7 @@ export const memoryTestFragments: Memory[] = Array(3)
     entityId: memoryTestEntityId,
     roomId: memoryTestRoomId,
     agentId: memoryTestAgentId,
-    createdAt: Date.now(),
+    createdAt: new Date().getTime(),
     unique: true,
     content: {
       text: `This is fragment ${index + 1} of the test document`,

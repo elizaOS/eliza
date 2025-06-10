@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import prompts from 'prompts';
+import * as clack from '@clack/prompts';
 import { rimraf } from 'rimraf';
 import colors from 'yoctocolors';
 
@@ -157,13 +157,17 @@ async function editEnvVars(scope: 'local', fromMainMenu = false, yes = false): P
   if (scope === 'local' && !envPath) {
     let createLocal = true;
     if (!yes) {
-      const resp = await prompts({
-        type: 'confirm',
-        name: 'createLocal',
+      const respCreateLocal = await clack.confirm({
         message: 'No local .env file found. Create one?',
-        initial: true,
+        initialValue: true,
       });
-      createLocal = resp.createLocal;
+      
+      if (clack.isCancel(respCreateLocal)) {
+        clack.cancel('Operation cancelled.');
+        process.exit(0);
+      }
+      
+      createLocal = respCreateLocal;
     }
     if (!createLocal) {
       return false;
@@ -181,13 +185,17 @@ async function editEnvVars(scope: 'local', fromMainMenu = false, yes = false): P
     // If no variables exist, offer to add new ones
     let addNew = true;
     if (!yes) {
-      const resp = await prompts({
-        type: 'confirm',
-        name: 'addNew',
+      const respAddNew = await clack.confirm({
         message: 'Would you like to add a new environment variable?',
-        initial: true,
+        initialValue: true,
       });
-      addNew = resp.addNew;
+      
+      if (clack.isCancel(respAddNew)) {
+        clack.cancel('Operation cancelled.');
+        process.exit(0);
+      }
+      
+      addNew = respAddNew;
     }
 
     if (addNew) {
@@ -222,12 +230,18 @@ async function editEnvVars(scope: 'local', fromMainMenu = false, yes = false): P
     ];
 
     // Prompt user to select a variable or action
-    const { selection } = await prompts({
-      type: 'select',
-      name: 'selection',
+    const selection = await clack.select({
       message: 'Select a variable to edit or an action:',
-      choices,
+      options: choices.map(choice => ({
+        value: choice.value,
+        label: choice.title
+      })),
     });
+    
+    if (clack.isCancel(selection)) {
+      clack.cancel('Operation cancelled.');
+      process.exit(0);
+    }
 
     if (!selection) {
       // If user cancels (Ctrl+C), go back to main menu if we came from there
@@ -246,28 +260,34 @@ async function editEnvVars(scope: 'local', fromMainMenu = false, yes = false): P
     }
 
     // User selected a variable, prompt for action
-    const { action } = await prompts({
-      type: 'select',
-      name: 'action',
+    const action = await clack.select({
       message: `What would you like to do with ${selection}?`,
-      choices: [
-        { title: 'Edit', value: 'edit' },
-        { title: 'Delete', value: 'delete' },
-        { title: 'Back', value: 'back' },
+      options: [
+        { label: 'Edit', value: 'edit' },
+        { label: 'Delete', value: 'delete' },
+        { label: 'Back', value: 'back' },
       ],
     });
 
+    if (clack.isCancel(action)) {
+      clack.cancel('Operation cancelled.');
+      process.exit(0);
+    }
+    
     if (!action || action === 'back') {
       continue;
     }
 
     if (action === 'edit') {
-      const { value } = await prompts({
-        type: 'text',
-        name: 'value',
+      const value = await clack.text({
         message: `Enter the new value for ${selection}:`,
-        initial: envVars[selection],
+        defaultValue: envVars[selection],
       });
+      
+      if (clack.isCancel(value)) {
+        clack.cancel('Operation cancelled.');
+        process.exit(0);
+      }
 
       if (value !== undefined) {
         envVars[selection] = value;
@@ -277,13 +297,17 @@ async function editEnvVars(scope: 'local', fromMainMenu = false, yes = false): P
     } else if (action === 'delete') {
       let confirm = true;
       if (!yes) {
-        const resp = await prompts({
-          type: 'confirm',
-          name: 'confirm',
+        const resp = await clack.confirm({
           message: `Are you sure you want to delete ${selection}?`,
-          initial: false,
+          initialValue: false,
         });
-        confirm = resp.confirm;
+        
+        if (clack.isCancel(resp)) {
+          clack.cancel('Operation cancelled.');
+          process.exit(0);
+        }
+        
+        confirm = resp;
       }
       if (confirm) {
         delete envVars[selection];
@@ -314,20 +338,26 @@ async function addNewVariable(
     return;
   }
 
-  const { key } = await prompts({
-    type: 'text',
-    name: 'key',
+  const key = await clack.text({
     message: 'Enter the variable name:',
-    validate: (value) => (value.trim() !== '' ? true : 'Variable name cannot be empty'),
+    validate: (value) => (value.trim() !== '' ? undefined : 'Variable name cannot be empty'),
   });
 
+  if (clack.isCancel(key)) {
+    clack.cancel('Operation cancelled.');
+    process.exit(0);
+  }
+  
   if (!key) return;
 
-  const { value } = await prompts({
-    type: 'text',
-    name: 'value',
+  const value = await clack.text({
     message: `Enter the value for ${key}:`,
   });
+  
+  if (clack.isCancel(value)) {
+    clack.cancel('Operation cancelled.');
+    process.exit(0);
+  }
 
   if (value !== undefined) {
     envVars[key] = value;
@@ -493,15 +523,16 @@ async function resetEnv(yes = false): Promise<void> {
     }
   } else {
     // Prompt user to select items with styling matching interactive mode
-    const { selections } = await prompts({
-      type: 'multiselect',
-      name: 'selections',
+    const selections = await clack.multiselect({
       message: colors.cyan(colors.bold('Select items to reset:')),
-      choices: resetItems,
-      instructions: false,
-      hint: '- Space to select, Enter to confirm',
-      min: 1,
+      options: resetItems.map(item => ({ value: item.value, label: item.title })),
+      required: true,
     });
+
+    if (clack.isCancel(selections)) {
+      clack.cancel('Operation cancelled.');
+      process.exit(0);
+    }
 
     if (!selections || selections.length === 0) {
       console.log('No items selected. Reset cancelled.');
@@ -518,12 +549,15 @@ async function resetEnv(yes = false): Promise<void> {
     }
 
     // Final confirmation
-    const { confirm } = await prompts({
-      type: 'confirm',
-      name: 'confirm',
+    const confirm = await clack.confirm({
       message: 'Are you sure you want to reset the selected items?',
-      initial: false,
+      initialValue: false,
     });
+
+    if (clack.isCancel(confirm)) {
+      clack.cancel('Operation cancelled.');
+      process.exit(0);
+    }
 
     if (!confirm) {
       console.log('Reset cancelled.');
@@ -699,19 +733,20 @@ async function showMainMenu(yes = false): Promise<void> {
   let exit = false;
 
   while (!exit) {
-    const resp = await prompts({
-      type: 'select',
-      name: 'action',
+    const action = await clack.select({
       message: 'Select an action:',
-      choices: [
-        { title: 'List environment variables', value: 'list' },
-        { title: 'Edit local environment variables', value: 'edit_local' },
-        { title: 'Reset environment variables', value: 'reset' },
-        { title: 'Exit', value: 'exit' },
+      options: [
+        { label: 'List environment variables', value: 'list' },
+        { label: 'Edit local environment variables', value: 'edit_local' },
+        { label: 'Reset environment variables', value: 'reset' },
+        { label: 'Exit', value: 'exit' },
       ],
     });
 
-    const action = resp.action;
+    if (clack.isCancel(action)) {
+      clack.cancel('Operation cancelled.');
+      process.exit(0);
+    }
     if (!action || action === 'exit') {
       exit = true;
       continue;

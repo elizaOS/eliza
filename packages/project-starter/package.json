@@ -35,7 +35,7 @@
     "zod": "3.24.2"
   },
   "devDependencies": {
-    "tsup": "8.4.0",
+    "tsup": "8.5.0",
     "prettier": "3.5.3",
     "vitest": "3.1.4",
     "@vitest/coverage-v8": "3.1.4"

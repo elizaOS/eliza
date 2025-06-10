@@ -14,7 +14,7 @@ import { Command } from 'commander';
 import { execa } from 'execa';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
-import prompts from 'prompts';
+import * as clack from '@clack/prompts';
 import * as semver from 'semver';
 import {
   detectDirectoryType,
@@ -202,12 +202,15 @@ async function updateDependencies(
   );
 
   if (hasMajorUpdates) {
-    const { confirmMajor } = await prompts({
-      type: 'confirm',
-      name: 'confirmMajor',
+    const confirmMajor = await clack.confirm({
       message: 'This update includes major version changes. Continue?',
-      initial: false,
+      initialValue: false,
     });
+
+    if (clack.isCancel(confirmMajor)) {
+      clack.cancel('Operation cancelled.');
+      process.exit(0);
+    }
 
     if (!confirmMajor) {
       console.log('Update cancelled');

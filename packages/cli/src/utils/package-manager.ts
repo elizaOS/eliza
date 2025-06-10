@@ -1,9 +1,11 @@
 import { logger } from '@elizaos/core';
-import { execa } from 'execa';
+import { spawn } from 'node:child_process';
 import { UserEnvironment } from './user-environment';
 import { displayBunInstallationTipCompact } from './bun-installation-helper';
+import which from 'which';
 import fs from 'node:fs';
 import path from 'node:path';
+import { execa } from 'execa';
 
 /**
  * Always returns 'bun' as the package manager for ElizaOS CLI.
@@ -58,7 +60,7 @@ export function getInstallCommand(isGlobal: boolean): string[] {
  */
 export async function removeFromBunLock(packageName: string, directory: string): Promise<void> {
   const lockFilePath = path.join(directory, 'bun.lock');
-  
+
   if (!fs.existsSync(lockFilePath)) {
     logger.debug(`No bun.lock file found at ${lockFilePath}, skipping removal`);
     return;
@@ -99,19 +101,35 @@ export async function executeInstallation(
 ): Promise<{ success: boolean; installedIdentifier: string | null }> {
   const installCommand = getInstallCommand(false);
 
-  logger.debug(`Attempting to install package: ${packageName} using bun`);
-
   const finalSpecifier = packageName.startsWith('github:')
     ? `${packageName}${versionOrTag ? `#${versionOrTag}` : ''}`
     : versionOrTag
       ? `${packageName}@${versionOrTag}`
       : packageName;
+
   try {
-    await execa('bun', [...installCommand, finalSpecifier], {
-      cwd: directory,
-      stdio: 'inherit',
+    const bunPath = await which('bun');
+    const args = [...installCommand, finalSpecifier];
+
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn(bunPath, args, {
+        cwd: directory,
+        stdio: 'inherit',
+        env: process.env,
+      });
+
+      child.on('close', (code) => {
+        if (code === 0) {
+          resolve();
+        } else {
+          reject(new Error(`Installation process exited with code ${code}`));
+        }
+      });
+
+      child.on('error', (err) => {
+        reject(err);
+      });
     });
-    logger.debug(`Successfully installed ${finalSpecifier}.`);
 
     const installedIdentifier = packageName.startsWith('github:')
       ? (() => {
@@ -137,8 +155,25 @@ export async function executeInstallation(
 }
 
 /**
+ * Builds a GitHub specifier string for package installation.
+ *
+ * @param githubSpec - The GitHub specifier (e.g., "github:owner/repo")
+ * @param versionOrTag - Optional version or tag to append
+ * @returns The complete GitHub specifier string
+ */
+export function buildGitHubSpecifier(githubSpec: string, versionOrTag?: string): string {
+  if (!versionOrTag) {
+    return githubSpec;
+  }
+
+  // If the spec already has a fragment (#), replace it
+  const baseSpec = githubSpec.split('#')[0];
+  return `${baseSpec}#${versionOrTag}`;
+}
+
+/**
  * Enhanced installation function that supports GitHub fallback with lockfile cleanup.
- * 
+ *
  * @param packageName - The name of the package to install
  * @param versionOrTag - Optional version or tag to install
  * @param directory - The directory in which to run the installation
@@ -153,18 +188,18 @@ export async function executeInstallationWithFallback(
 ): Promise<{ success: boolean; installedIdentifier: string | null }> {
   // First try normal installation
   const result = await executeInstallation(packageName, versionOrTag, directory);
-  
+
   if (result.success || !githubFallback) {
     return result;
   }
-  
+
   // If npm installation failed and we have a GitHub fallback, try GitHub installation
   logger.debug(`npm installation failed, attempting GitHub fallback: ${githubFallback}`);
-  
+
   // Remove package from lockfile to prevent circular dependencies
   await removeFromBunLock(packageName, directory);
-  
+
   // Try GitHub installation
-  const githubSpecifier = buildGitHubSpecifier(`github:${githubFallback}`, versionOrTag);
+  const githubSpecifier = `github:${githubFallback}${versionOrTag ? `#${versionOrTag}` : ''}`;
   return await executeInstallation(githubSpecifier, '', directory);
 }

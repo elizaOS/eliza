@@ -1,53 +1,45 @@
 import {
   type Agent,
+  ChannelType,
   type Component,
   DatabaseAdapter,
   type Entity,
+  type Log,
+  logger,
   type Memory,
   type MemoryMetadata,
   type Participant,
   type Relationship,
   type Room,
+  RoomMetadata,
   type Task,
+  TaskMetadata,
   type UUID,
   type World,
-  type Log,
-  logger,
-  stringToUuid,
-  TaskMetadata,
-  ChannelType,
-  RoomMetadata,
 } from '@elizaos/core';
-import {
-  and,
-  cosineDistance,
-  count,
-  desc,
-  eq,
-  gte,
-  inArray,
-  lte,
-  lt,
-  or,
-  sql,
-  not,
-} from 'drizzle-orm';
+import { and, cosineDistance, count, desc, eq, gte, inArray, lt, lte, or, SQL, sql } from 'drizzle-orm';
 import { v4 } from 'uuid';
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from './schema/embedding';
 import {
   agentTable,
   cacheTable,
+  channelParticipantsTable,
+  channelTable,
   componentTable,
   embeddingTable,
   entityTable,
   logTable,
   memoryTable,
+  messageServerTable,
+  messageTable,
   participantTable,
   relationshipTable,
   roomTable,
+  serverAgentsTable,
   taskTable,
   worldTable,
 } from './schema/index';
+
 import type { DrizzleDatabase } from './types';
 
 // Define the metadata type inline since we can't import it
@@ -89,6 +81,20 @@ export abstract class BaseDrizzleAdapter<
   protected abstract withDatabase<T>(operation: () => Promise<T>): Promise<T>;
   public abstract init(): Promise<void>;
   public abstract close(): Promise<void>;
+
+  /**
+   * Initialize method that can be overridden by implementations
+   */
+  public async initialize(): Promise<void> {
+    await this.init();
+  }
+
+  /**
+   * Get the underlying database instance for testing purposes
+   */
+  public getDatabase(): TDrizzleDatabase {
+    return this.db;
+  }
 
   protected agentId: UUID;
 
@@ -192,6 +198,8 @@ export abstract class BaseDrizzleAdapter<
         id: row.id as UUID,
         system: !row.system ? undefined : row.system,
         bio: !row.bio ? '' : row.bio,
+        createdAt: row.createdAt.getTime(),
+        updatedAt: row.updatedAt.getTime(),
       };
     });
   }
@@ -226,9 +234,38 @@ export abstract class BaseDrizzleAdapter<
   async createAgent(agent: Agent): Promise<boolean> {
     return this.withDatabase(async () => {
       try {
+        // Check for existing agent with the same ID or name
+        // Check for existing agent with the same ID or name
+        const conditions: (SQL<unknown> | undefined)[] = [];
+        if (agent.id) {
+          conditions.push(eq(agentTable.id, agent.id));
+        }
+        if (agent.name) {
+          conditions.push(eq(agentTable.name, agent.name));
+        }
+
+        const existing =
+          conditions.length > 0
+            ? await this.db
+                .select({ id: agentTable.id })
+                .from(agentTable)
+                .where(or(...conditions))
+                .limit(1)
+            : [];
+
+        if (existing.length > 0) {
+          logger.warn('Attempted to create an agent with a duplicate ID or name.', {
+            id: agent.id,
+            name: agent.name,
+          });
+          return false;
+        }
+
         await this.db.transaction(async (tx) => {
           await tx.insert(agentTable).values({
             ...agent,
+            createdAt: new Date(agent.createdAt || Date.now()),
+            updatedAt: new Date(agent.updatedAt || Date.now()),
           });
         });
 
@@ -270,7 +307,7 @@ export abstract class BaseDrizzleAdapter<
             .update(agentTable)
             .set({
               ...agent,
-              updatedAt: Date.now(),
+              updatedAt: new Date(),
             })
             .where(eq(agentTable.id, agentId));
         });
@@ -300,7 +337,7 @@ export abstract class BaseDrizzleAdapter<
    * @private
    */
   private async mergeAgentSettings(
-    tx: TDrizzleDatabase,
+    tx: DrizzleDatabase,
     agentId: UUID,
     updatedSettings: any
   ): Promise<any> {
@@ -693,7 +730,7 @@ export abstract class BaseDrizzleAdapter<
         .leftJoin(componentTable, eq(componentTable.entityId, entityTable.id))
         .where(inArray(entityTable.id, entityIds));
 
-      if (result.length === 0) return null;
+      if (result.length === 0) return [];
 
       // Group components by entity
       const entities: Record<UUID, Entity> = {};
@@ -879,6 +916,7 @@ export abstract class BaseDrizzleAdapter<
         worldId: (component.worldId ?? '') as UUID,
         sourceEntityId: (component.sourceEntityId ?? '') as UUID,
         data: component.data as { [key: string]: any },
+        createdAt: component.createdAt.getTime(),
       };
     });
   }
@@ -928,6 +966,7 @@ export abstract class BaseDrizzleAdapter<
         worldId: (component.worldId ?? '') as UUID,
         sourceEntityId: (component.sourceEntityId ?? '') as UUID,
         data: component.data as { [key: string]: any },
+        createdAt: component.createdAt.getTime(),
       }));
 
       return components;
@@ -941,7 +980,10 @@ export abstract class BaseDrizzleAdapter<
    */
   async createComponent(component: Component): Promise<boolean> {
     return this.withDatabase(async () => {
-      await this.db.insert(componentTable).values(component);
+      await this.db.insert(componentTable).values({
+        ...component,
+        createdAt: new Date(component.createdAt),
+      });
       return true;
     });
   }
@@ -955,7 +997,10 @@ export abstract class BaseDrizzleAdapter<
     return this.withDatabase(async () => {
       await this.db
         .update(componentTable)
-        .set(component)
+        .set({
+          ...component,
+          createdAt: new Date(component.createdAt),
+        })
         .where(eq(componentTable.id, component.id));
     });
   }
@@ -996,15 +1041,12 @@ export abstract class BaseDrizzleAdapter<
     const { entityId, agentId, roomId, worldId, tableName, count, unique, start, end } = params;
 
     if (!tableName) throw new Error('tableName is required');
-    // Allow filtering by any combination now
-    // if (!roomId && !entityId && !agentId && !worldId)
-    //   throw new Error('roomId, entityId, agentId, or worldId is required');
 
     return this.withDatabase(async () => {
       const conditions = [eq(memoryTable.type, tableName)];
 
       if (start) {
-        conditions.push(gte(memoryTable.createdAt, start));
+        conditions.push(gte(memoryTable.createdAt, new Date(start)));
       }
 
       if (entityId) {
@@ -1021,7 +1063,7 @@ export abstract class BaseDrizzleAdapter<
       }
 
       if (end) {
-        conditions.push(lte(memoryTable.createdAt, end));
+        conditions.push(lte(memoryTable.createdAt, new Date(end)));
       }
 
       if (unique) {
@@ -1057,7 +1099,7 @@ export abstract class BaseDrizzleAdapter<
       return rows.map((row) => ({
         id: row.memory.id as UUID,
         type: row.memory.type,
-        createdAt: row.memory.createdAt,
+        createdAt: row.memory.createdAt.getTime(),
         content:
           typeof row.memory.content === 'string'
             ? JSON.parse(row.memory.content)
@@ -1115,7 +1157,7 @@ export abstract class BaseDrizzleAdapter<
 
       return rows.map((row) => ({
         id: row.id as UUID,
-        createdAt: row.createdAt,
+        createdAt: row.createdAt.getTime(),
         content: typeof row.content === 'string' ? JSON.parse(row.content) : row.content,
         entityId: row.entityId as UUID,
         agentId: row.agentId as UUID,
@@ -1148,7 +1190,7 @@ export abstract class BaseDrizzleAdapter<
       const row = result[0];
       return {
         id: row.memory.id as UUID,
-        createdAt: row.memory.createdAt,
+        createdAt: row.memory.createdAt.getTime(),
         content:
           typeof row.memory.content === 'string'
             ? JSON.parse(row.memory.content)
@@ -1192,7 +1234,7 @@ export abstract class BaseDrizzleAdapter<
 
       return rows.map((row) => ({
         id: row.memory.id as UUID,
-        createdAt: row.memory.createdAt,
+        createdAt: row.memory.createdAt.getTime(),
         content:
           typeof row.memory.content === 'string'
             ? JSON.parse(row.memory.content)
@@ -1548,7 +1590,7 @@ export abstract class BaseDrizzleAdapter<
       return results.map((row) => ({
         id: row.memory.id as UUID,
         type: row.memory.type,
-        createdAt: row.memory.createdAt,
+        createdAt: row.memory.createdAt.getTime(),
         content:
           typeof row.memory.content === 'string'
             ? JSON.parse(row.memory.content)
@@ -1620,7 +1662,7 @@ export abstract class BaseDrizzleAdapter<
           worldId: memory.worldId, // Include worldId
           agentId: this.agentId,
           unique: memory.unique ?? isUnique,
-          createdAt: memory.createdAt,
+          createdAt: memory.createdAt ? new Date(memory.createdAt) : new Date(),
         },
       ]);
 
@@ -1628,7 +1670,7 @@ export abstract class BaseDrizzleAdapter<
         const embeddingValues: Record<string, unknown> = {
           id: v4(),
           memoryId: memoryId,
-          createdAt: memory.createdAt,
+          createdAt: memory.createdAt ? new Date(memory.createdAt) : new Date(),
         };
 
         const cleanVector = memory.embedding.map((n) =>
@@ -1709,7 +1751,7 @@ export abstract class BaseDrizzleAdapter<
               const embeddingValues: Record<string, unknown> = {
                 id: v4(),
                 memoryId: memory.id,
-                createdAt: Date.now(),
+                createdAt: new Date().getTime(),
               };
               embeddingValues[this.embeddingDimension] = cleanVector;
 
@@ -2331,44 +2373,33 @@ export abstract class BaseDrizzleAdapter<
     targetEntityId: UUID;
   }): Promise<Relationship | null> {
     return this.withDatabase(async () => {
-      try {
-        const result = await this.db
-          .select()
-          .from(relationshipTable)
-          .where(
-            and(
-              eq(relationshipTable.sourceEntityId, params.sourceEntityId),
-              eq(relationshipTable.targetEntityId, params.targetEntityId),
-              eq(relationshipTable.agentId, this.agentId)
-            )
+      const { sourceEntityId, targetEntityId } = params;
+      const result = await this.db
+        .select()
+        .from(relationshipTable)
+        .where(
+          and(
+            eq(relationshipTable.sourceEntityId, sourceEntityId),
+            eq(relationshipTable.targetEntityId, targetEntityId)
           )
-          .limit(1);
-
-        if (result.length === 0) {
-          return null;
-        }
-
-        return {
-          id: result[0].id as UUID,
-          sourceEntityId: result[0].sourceEntityId as UUID,
-          targetEntityId: result[0].targetEntityId as UUID,
-          agentId: result[0].agentId as UUID,
-          tags: result[0].tags || [],
-          metadata: result[0].metadata || {},
-          createdAt: result[0].createdAt?.toString(),
-        };
-      } catch (error) {
-        logger.error('Error getting relationship:', {
-          error: error instanceof Error ? error.message : String(error),
-          params,
-        });
-        return null;
-      }
+        );
+      if (result.length === 0) return null;
+      const relationship = result[0];
+      return {
+        ...relationship,
+        id: relationship.id as UUID,
+        sourceEntityId: relationship.sourceEntityId as UUID,
+        targetEntityId: relationship.targetEntityId as UUID,
+        agentId: relationship.agentId as UUID,
+        tags: relationship.tags ?? [],
+        metadata: (relationship.metadata as { [key: string]: unknown }) ?? {},
+        createdAt: relationship.createdAt.toISOString(),
+      };
     });
   }
 
   /**
-   * Asynchronously retrieves all relationships from the database based on the provided parameters.
+   * Asynchronously retrieves relationships from the database based on the provided parameters.
    * @param {Object} params - The parameters for retrieving relationships.
    * @param {UUID} params.entityId - The ID of the entity to retrieve relationships for.
    * @param {string[]} [params.tags] - The tags to filter relationships by.
@@ -2376,34 +2407,38 @@ export abstract class BaseDrizzleAdapter<
    */
   async getRelationships(params: { entityId: UUID; tags?: string[] }): Promise<Relationship[]> {
     return this.withDatabase(async () => {
-      const conditions = [
-        or(
-          eq(relationshipTable.sourceEntityId, params.entityId),
-          eq(relationshipTable.targetEntityId, params.entityId)
-        ),
-        eq(relationshipTable.agentId, this.agentId),
-        ...(params.tags && params.tags.length > 0
-          ? [
-              sql`${relationshipTable.tags} @> ARRAY[${sql.raw(
-                params.tags.map((tag) => `'${tag.replace(/'/g, "''")}'`).join(', ')
-              )}]::text[]`,
-            ]
-          : []),
-      ];
+      const { entityId, tags } = params;
 
-      const results = await this.db
-        .select()
-        .from(relationshipTable)
-        .where(and(...conditions));
+      let query: SQL;
 
-      return results.map((row) => ({
-        id: row.id as UUID,
-        sourceEntityId: row.sourceEntityId as UUID,
-        targetEntityId: row.targetEntityId as UUID,
-        agentId: row.agentId as UUID,
-        tags: row.tags || [],
-        metadata: row.metadata || {},
-        createdAt: row.createdAt?.toString(),
+      if (tags && tags.length > 0) {
+        query = sql`
+          SELECT * FROM ${relationshipTable}
+          WHERE (${relationshipTable.sourceEntityId} = ${entityId} OR ${relationshipTable.targetEntityId} = ${entityId})
+          AND ${relationshipTable.tags} && CAST(ARRAY[${sql.join(tags, sql`, `)}] AS text[])
+        `;
+      } else {
+        query = sql`
+          SELECT * FROM ${relationshipTable}
+          WHERE ${relationshipTable.sourceEntityId} = ${entityId} OR ${relationshipTable.targetEntityId} = ${entityId}
+        `;
+      }
+
+      const result = await this.db.execute(query);
+
+      return result.rows.map((relationship: any) => ({
+        ...relationship,
+        id: relationship.id as UUID,
+        sourceEntityId: relationship.sourceEntityId as UUID,
+        targetEntityId: relationship.targetEntityId as UUID,
+        agentId: relationship.agentId as UUID,
+        tags: relationship.tags ?? [],
+        metadata: (relationship.metadata as { [key: string]: unknown }) ?? {},
+        createdAt: relationship.createdAt 
+          ? (relationship.createdAt instanceof Date 
+            ? relationship.createdAt.toISOString() 
+            : new Date(relationship.createdAt).toISOString())
+          : new Date().toISOString(),
       }));
     });
   }
@@ -2417,11 +2452,16 @@ export abstract class BaseDrizzleAdapter<
     return this.withDatabase(async () => {
       try {
         const result = await this.db
-          .select()
+          .select({ value: cacheTable.value })
           .from(cacheTable)
-          .where(and(eq(cacheTable.agentId, this.agentId), eq(cacheTable.key, key)));
+          .where(and(eq(cacheTable.agentId, this.agentId), eq(cacheTable.key, key)))
+          .limit(1);
 
-        return result[0]?.value as T | undefined;
+        if (result && result.length > 0 && result[0]) {
+          return result[0].value as T | undefined;
+        }
+
+        return undefined;
       } catch (error) {
         logger.error('Error fetching cache', {
           error: error instanceof Error ? error.message : String(error),
@@ -2442,21 +2482,20 @@ export abstract class BaseDrizzleAdapter<
   async setCache<T>(key: string, value: T): Promise<boolean> {
     return this.withDatabase(async () => {
       try {
-        await this.db.transaction(async (tx) => {
-          await tx
-            .insert(cacheTable)
-            .values({
-              key: key,
-              agentId: this.agentId,
+        await this.db
+          .insert(cacheTable)
+          .values({
+            key: key,
+            agentId: this.agentId,
+            value: value,
+          })
+          .onConflictDoUpdate({
+            target: [cacheTable.key, cacheTable.agentId],
+            set: {
               value: value,
-            })
-            .onConflictDoUpdate({
-              target: [cacheTable.key, cacheTable.agentId],
-              set: {
-                value: value,
-              },
-            });
-        });
+            },
+          });
+
         return true;
       } catch (error) {
         logger.error('Error setting cache', {
@@ -2519,7 +2558,7 @@ export abstract class BaseDrizzleAdapter<
   async getWorld(id: UUID): Promise<World | null> {
     return this.withDatabase(async () => {
       const result = await this.db.select().from(worldTable).where(eq(worldTable.id, id));
-      return result[0] as World | null;
+      return result.length > 0 ? (result[0] as World) : null;
     });
   }
 
@@ -2585,6 +2624,7 @@ export abstract class BaseDrizzleAdapter<
           updatedAt: now,
           agentId: this.agentId as UUID,
         };
+        
         const result = await this.db.insert(taskTable).values(values).returning();
 
         return result[0].id as UUID;
@@ -2710,24 +2750,12 @@ export abstract class BaseDrizzleAdapter<
         if (task.worldId !== undefined) updateValues.worldId = task.worldId;
         if (task.tags !== undefined) updateValues.tags = task.tags;
 
-        task.updatedAt = Date.now();
+        // Always update the updatedAt timestamp as a Date
+        (updateValues as any).updatedAt = new Date();
 
-        // Handle metadata updates
-        if (task.metadata) {
-          // Get current task to merge metadata
-          const currentTask = await this.getTask(id);
-          if (currentTask) {
-            const currentMetadata = currentTask.metadata || {};
-            const newMetadata = {
-              ...currentMetadata,
-              ...task.metadata,
-            };
-            updateValues.metadata = newMetadata;
-          } else {
-            updateValues.metadata = {
-              ...task.metadata,
-            };
-          }
+        // Handle metadata updates - just set it directly without merging
+        if (task.metadata !== undefined) {
+          updateValues.metadata = task.metadata;
         }
 
         await this.db
@@ -3226,8 +3254,8 @@ export abstract class BaseDrizzleAdapter<
       await this.db
         .insert(serverAgentsTable)
         .values({
-          serverId: serverId,
-          agentId: agentId,
+          serverId,
+          agentId,
         })
         .onConflictDoNothing();
     });
@@ -3254,9 +3282,7 @@ export abstract class BaseDrizzleAdapter<
     return this.withDatabase(async () => {
       await this.db
         .delete(serverAgentsTable)
-        .where(
-          and(eq(serverAgentsTable.serverId, serverId), eq(serverAgentsTable.agentId, agentId))
-        );
+        .where(and(eq(serverAgentsTable.serverId, serverId), eq(serverAgentsTable.agentId, agentId)));
     });
   }
 
@@ -3325,10 +3351,3 @@ export abstract class BaseDrizzleAdapter<
 }
 
 // Import tables at the end to avoid circular dependencies
-import {
-  messageServerTable,
-  channelTable,
-  messageTable,
-  channelParticipantsTable,
-  serverAgentsTable,
-} from './schema';

@@ -1,7 +1,6 @@
 import { sql } from 'drizzle-orm';
-import { jsonb, pgTable, text, uuid } from 'drizzle-orm/pg-core';
+import { jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { agentTable } from './agent';
-import { numberTimestamp } from './types';
 import { worldTable } from './world';
 
 /**
@@ -37,7 +36,7 @@ export const roomTable = pgTable('rooms', {
   name: text('name'),
   metadata: jsonb('metadata'),
   channelId: text('channelId'),
-  createdAt: numberTimestamp('createdAt')
+  createdAt: timestamp('createdAt')
     .default(sql`now()`)
     .notNull(),
 });

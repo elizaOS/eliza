@@ -15,8 +15,8 @@ export const worldTestAgent: Agent = {
       short_description: 'Test agent for world integration tests',
     },
   },
-  createdAt: Date.now(),
-  updatedAt: Date.now(),
+  createdAt: new Date().getTime(),
+  updatedAt: new Date().getTime(),
 };
 
 export const worldTestEntity: Entity = {
