@@ -210,9 +210,9 @@ export const apiClient = {
   createAgent: (params: { characterPath?: string; characterJson?: Character }) =>
     fetcher({ url: '/agents/', method: 'POST', body: params }),
   startAgent: (agentId: UUID): Promise<{ data: { id: UUID; name: string; status: string } }> =>
-    fetcher({ url: `/agents/${agentId}`, method: 'POST', body: { start: true } }),
+    fetcher({ url: `/agents/${agentId}/start`, method: 'POST' }),
   stopAgent: (agentId: string): Promise<{ data: { message: string } }> =>
-    fetcher({ url: `/agents/${agentId}`, method: 'PUT' }),
+    fetcher({ url: `/agents/${agentId}/stop`, method: 'POST' }),
   getAgentPanels: (agentId: string): Promise<{ success: boolean; data: AgentPanel[] }> =>
     fetcher({ url: `/agents/${agentId}/panels`, method: 'GET' }),
 
@@ -246,16 +246,16 @@ export const apiClient = {
 
   // Message System Endpoints
   getServers: (): Promise<{ data: { servers: MessageServer[] } }> =>
-    fetcher({ url: '/messages/central-servers' }),
+    fetcher({ url: '/messaging/central-servers' }),
   createServer: (payload: {
     name: string;
     sourceType: string;
     sourceId?: string;
     metadata?: any;
   }): Promise<{ data: { server: MessageServer } }> =>
-    fetcher({ url: '/messages/servers', method: 'POST', body: payload }),
+    fetcher({ url: '/messaging/servers', method: 'POST', body: payload }),
   getChannelsForServer: (serverId: UUID): Promise<{ data: { channels: MessageChannel[] } }> =>
-    fetcher({ url: `/messages/central-servers/${serverId}/channels` }),
+    fetcher({ url: `/messaging/central-servers/${serverId}/channels` }),
   getChannelMessages: (
     channelId: UUID,
     options?: {
@@ -267,7 +267,7 @@ export const apiClient = {
     if (options?.limit) queryParams.append('limit', String(options.limit));
     if (options?.before) queryParams.append('before', String(options.before));
     return fetcher({
-      url: `/messages/central-channels/${channelId}/messages?${queryParams.toString()}`,
+      url: `/messaging/central-channels/${channelId}/messages?${queryParams.toString()}`,
     });
   },
   postMessageToChannel: (
@@ -283,7 +283,7 @@ export const apiClient = {
     }
   ): Promise<{ success: boolean; data: ServerMessage }> =>
     fetcher({
-      url: `/messages/central-channels/${channelId}/messages`,
+      url: `/messaging/central-channels/${channelId}/messages`,
       method: 'POST',
       body: payload,
     }),
@@ -292,7 +292,7 @@ export const apiClient = {
     currentUserId: UUID
   ): Promise<{ success: boolean; data: MessageChannel }> =>
     fetcher({
-      url: `/messages/dm-channel?targetUserId=${targetCentralUserId}&currentUserId=${currentUserId}`,
+      url: `/messaging/dm-channel?targetUserId=${targetCentralUserId}&currentUserId=${currentUserId}`,
     }),
   createCentralGroupChat: (payload: {
     name: string;
@@ -301,13 +301,13 @@ export const apiClient = {
     server_id?: UUID;
     metadata?: any;
   }): Promise<{ data: MessageChannel }> =>
-    fetcher({ url: '/messages/central-channels', method: 'POST', body: payload }),
+    fetcher({ url: '/messaging/central-channels', method: 'POST', body: payload }),
 
   // Ping, TTS, Transcription, Media Upload, Knowledge (agent-specific or global services)
-  ping: (): Promise<{ pong: boolean; timestamp: number }> => fetcher({ url: '/ping' }),
+  ping: (): Promise<{ pong: boolean; timestamp: number }> => fetcher({ url: '/runtime/ping' }),
   ttsStream: (agentId: string, text: string): Promise<Blob> =>
     fetcher({
-      url: `/agents/${agentId}/speech/generate`,
+      url: `/audio/${agentId}/speech/generate`,
       method: 'POST',
       body: { text },
       headers: {
@@ -321,7 +321,7 @@ export const apiClient = {
   ): Promise<{ success: boolean; data: { text: string } }> => {
     const formData = new FormData();
     formData.append('file', audioBlob, 'recording.wav');
-    return fetcher({ url: `/agents/${agentId}/transcriptions`, method: 'POST', body: formData });
+    return fetcher({ url: `/audio/${agentId}/transcriptions`, method: 'POST', body: formData });
   },
   uploadAgentMedia: async (
     agentId: string,
@@ -358,11 +358,11 @@ export const apiClient = {
     if (params.level) queryParams.append('level', params.level);
     if (params.agentName) queryParams.append('agentName', params.agentName);
     if (params.agentId) queryParams.append('agentId', params.agentId);
-    return fetcher({ url: `/logs${queryParams.toString() ? `?${queryParams.toString()}` : ''}` });
+    return fetcher({ url: `/runtime/logs${queryParams.toString() ? `?${queryParams.toString()}` : ''}` });
   },
   deleteGlobalLogs: (): Promise<{ status: string; message: string }> =>
-    fetcher({ url: '/logs', method: 'DELETE' }),
-  deleteLog: (logId: string): Promise<void> => fetcher({ url: `/logs/${logId}`, method: 'DELETE' }),
+    fetcher({ url: '/runtime/logs', method: 'DELETE' }),
+  deleteLog: (logId: string): Promise<void> => fetcher({ url: `/runtime/logs/${logId}`, method: 'DELETE' }),
   getAgentLogs: (
     agentId: string,
     options?: {
@@ -392,16 +392,16 @@ export const apiClient = {
 
   // ENV vars
   getLocalEnvs: (): Promise<{ success: boolean; data: Record<string, string> }> =>
-    fetcher({ url: `/envs/local` }),
+    fetcher({ url: `/system/local` }),
   updateLocalEnvs: (envs: Record<string, string>): Promise<{ success: boolean; message: string }> =>
-    fetcher({ url: `/envs/local`, method: 'POST', body: { content: envs } }),
+    fetcher({ url: `/system/local`, method: 'POST', body: { content: envs } }),
 
   testEndpoint: (endpoint: string): Promise<any> => fetcher({ url: endpoint }),
 
   // PLACEHOLDER - Implement actual backend and uncomment
   deleteChannelMessage: async (channelId: UUID, messageId: UUID): Promise<void> => {
     await fetcher({
-      url: `/messages/central-channels/${channelId}/messages/${messageId}`,
+      url: `/messaging/central-channels/${channelId}/messages/${messageId}`,
       method: 'DELETE',
     });
   },
@@ -409,14 +409,14 @@ export const apiClient = {
   // PLACEHOLDER - Implement actual backend and uncomment
   clearChannelMessages: async (channelId: UUID): Promise<void> => {
     await fetcher({
-      url: `/messages/central-channels/${channelId}/messages`,
+      url: `/messaging/central-channels/${channelId}/messages`,
       method: 'DELETE',
     });
   },
 
   deleteChannel: async (channelId: UUID): Promise<void> => {
     await fetcher({
-      url: `/messages/central-channels/${channelId}`,
+      url: `/messaging/central-channels/${channelId}`,
       method: 'DELETE',
     });
   },
@@ -426,7 +426,7 @@ export const apiClient = {
     updates: { name?: string; participantCentralUserIds?: UUID[]; metadata?: any }
   ): Promise<{ success: boolean; data: MessageChannel }> =>
     fetcher({
-      url: `/messages/central-channels/${channelId}`,
+      url: `/messaging/central-channels/${channelId}`,
       method: 'PATCH',
       body: updates,
     }),
@@ -434,15 +434,15 @@ export const apiClient = {
   createCentralGroupChannel: (payload: {
     /* ... */
   }): Promise<{ success: boolean; data: MessageChannel }> =>
-    fetcher({ url: '/messages/central-channels', method: 'POST', body: payload }),
+    fetcher({ url: '/messaging/central-channels', method: 'POST', body: payload }),
 
   getChannelDetails: (
     channelId: UUID
   ): Promise<{ success: boolean; data: MessageChannel | null }> =>
-    fetcher({ url: `/messages/central-channels/${channelId}/details` }),
+    fetcher({ url: `/messaging/central-channels/${channelId}/details` }),
 
   getChannelParticipants: (channelId: UUID): Promise<{ success: boolean; data: UUID[] }> => {
-    return fetcher({ url: `/messages/central-channels/${channelId}/participants` });
+    return fetcher({ url: `/messaging/central-channels/${channelId}/participants` });
   },
 
   uploadChannelMedia: async (
@@ -455,7 +455,7 @@ export const apiClient = {
     const formData = new FormData();
     formData.append('file', file);
     return fetcher({
-      url: `/messages/channels/${channelId}/upload-media`,
+      url: `/messaging/channels/${channelId}/upload-media`,
       method: 'POST',
       body: formData,
     });
@@ -486,11 +486,11 @@ export const apiClient = {
   // Group chat management
   deleteGroupMemory: (serverId: UUID, memoryId: UUID): Promise<void> =>
     fetcher({
-      url: `/messages/central-channels/${serverId}/messages/${memoryId}`,
+      url: `/messaging/central-channels/${serverId}/messages/${memoryId}`,
       method: 'DELETE',
     }),
   clearGroupChat: (serverId: UUID): Promise<void> =>
-    fetcher({ url: `/messages/central-channels/${serverId}/messages`, method: 'DELETE' }),
+    fetcher({ url: `/messaging/central-channels/${serverId}/messages`, method: 'DELETE' }),
 
   // Agent internal memories (admin/debug)
   getAgentInternalMemories: (
@@ -514,21 +514,21 @@ export const apiClient = {
     serverId: UUID,
     agentId: UUID
   ): Promise<{ success: boolean; data: { serverId: UUID; agentId: UUID; message: string } }> =>
-    fetcher({ url: `/messages/servers/${serverId}/agents`, method: 'POST', body: { agentId } }),
+    fetcher({ url: `/messaging/servers/${serverId}/agents`, method: 'POST', body: { agentId } }),
 
   removeAgentFromServer: (
     serverId: UUID,
     agentId: UUID
   ): Promise<{ success: boolean; data: { serverId: UUID; agentId: UUID; message: string } }> =>
-    fetcher({ url: `/messages/servers/${serverId}/agents/${agentId}`, method: 'DELETE' }),
+    fetcher({ url: `/messaging/servers/${serverId}/agents/${agentId}`, method: 'DELETE' }),
 
   getAgentsForServer: (
     serverId: UUID
   ): Promise<{ success: boolean; data: { serverId: UUID; agents: UUID[] } }> =>
-    fetcher({ url: `/messages/servers/${serverId}/agents` }),
+    fetcher({ url: `/messaging/servers/${serverId}/agents` }),
 
   getServersForAgent: (
     agentId: UUID
   ): Promise<{ success: boolean; data: { agentId: UUID; servers: UUID[] } }> =>
-    fetcher({ url: `/messages/agents/${agentId}/servers` }),
+    fetcher({ url: `/messaging/agents/${agentId}/servers` }),
 };

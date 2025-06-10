@@ -7,6 +7,8 @@ import ProfileOverlay from '@/components/profile-overlay';
 import { Avatar, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import ConfirmationDialog from '@/components/confirmation-dialog';
+import { useConfirmation } from '@/hooks/use-confirmation';
 import { ChatBubbleMessage, ChatBubbleTimestamp } from '@/components/ui/chat/chat-bubble';
 import ChatTtsButton from '@/components/ui/chat/chat-tts-button';
 import { useAutoScroll } from '@/components/ui/chat/hooks/useAutoScroll';
@@ -246,6 +248,9 @@ export default function Chat({
     isCreatingDM: false,
   });
 
+  // Confirmation dialogs
+  const { confirm, isOpen, onOpenChange, onConfirm, options } = useConfirmation();
+
   // Helper to update chat state
   const updateChatState = useCallback((updates: Partial<ChatUIState>) => {
     setChatState((prev) => ({ ...prev, ...updates }));
@@ -368,46 +373,45 @@ export default function Chat({
   );
 
   // Handle DM channel deletion
-  const handleDeleteCurrentDmChannel = useCallback(async () => {
+  const handleDeleteCurrentDmChannel = useCallback(() => {
     if (chatType !== ChannelType.DM || !chatState.currentDmChannelId || !targetAgentData?.id)
       return;
     const channelToDelete = agentDmChannels.find((ch) => ch.id === chatState.currentDmChannelId);
     if (!channelToDelete) return;
-    const confirm = window.confirm(
-      `Are you sure you want to delete the chat "${channelToDelete.name}" with ${targetAgentData.name}? This action cannot be undone.`
-    );
-    if (!confirm) return;
-    clientLogger.info(`[Chat] Deleting DM channel ${chatState.currentDmChannelId}`);
-    try {
-      await apiClient.deleteChannel(chatState.currentDmChannelId); // This API call might 404 if server endpoint not present
-      toast({ title: 'Chat Deleted', description: `"${channelToDelete.name}" was deleted.` });
-      const remainingChannels = agentDmChannels.filter(
-        (ch) => ch.id !== chatState.currentDmChannelId
-      );
-      if (remainingChannels.length > 0) {
-        updateChatState({ currentDmChannelId: remainingChannels[0].id });
-        clientLogger.info('[Chat] Switched to DM channel:', remainingChannels[0].id);
-      } else {
-        clientLogger.info('[Chat] No DM channels left after deletion, creating an initial one.');
-        handleNewDmChannel(targetAgentData.id);
-      }
-    } catch (error) {
-      clientLogger.error('[Chat] Error deleting DM channel:', error);
-      toast({
-        title: 'Error',
-        description: 'Could not delete chat. The server might not support this action yet.',
+
+    confirm(
+      {
+        title: 'Delete Chat',
+        description: `Are you sure you want to delete the chat "${channelToDelete.name}" with ${targetAgentData.name}? This action cannot be undone.`,
+        confirmText: 'Delete',
         variant: 'destructive',
-      });
-    }
-  }, [
-    chatType,
-    chatState.currentDmChannelId,
-    targetAgentData,
-    agentDmChannels,
-    toast,
-    updateChatState,
-    handleNewDmChannel,
-  ]);
+      },
+      async () => {
+        clientLogger.info(`[Chat] Deleting DM channel ${channelToDelete.id}`);
+        try {
+          await apiClient.deleteChannel(channelToDelete.id);
+          toast({ title: 'Chat Deleted', description: `"${channelToDelete.name}" was deleted.` });
+          const remainingChannels = agentDmChannels.filter(
+            (ch) => ch.id !== channelToDelete.id
+          );
+          if (remainingChannels.length > 0) {
+            updateChatState({ currentDmChannelId: remainingChannels[0].id });
+            clientLogger.info('[Chat] Switched to DM channel:', remainingChannels[0].id);
+          } else {
+            clientLogger.info('[Chat] No DM channels left after deletion, creating an initial one.');
+            handleNewDmChannel(targetAgentData.id);
+          }
+        } catch (error) {
+          clientLogger.error('[Chat] Error deleting DM channel:', error);
+          toast({
+            title: 'Error',
+            description: 'Could not delete chat. The server might not support this action yet.',
+            variant: 'destructive',
+          });
+        }
+      }
+    );
+  }, [chatType, chatState.currentDmChannelId, targetAgentData, agentDmChannels, confirm, toast, updateChatState, handleNewDmChannel]);
 
   // Effect to handle initial DM channel selection or creation
   useEffect(() => {
@@ -709,10 +713,19 @@ export default function Chat({
     const confirmMessage =
       chatType === ChannelType.DM
         ? `Clear all messages in this chat with ${targetAgentData?.name}?`
-        : `Clear all messages in this group chat?`;
-    if (window.confirm(confirmMessage)) {
-      clearMessagesCentral(finalChannelIdForHooks);
-    }
+        : 'Clear all messages in this group chat?';
+
+    confirm(
+      {
+        title: 'Clear Chat',
+        description: `${confirmMessage} This action cannot be undone.`,
+        confirmText: 'Clear',
+        variant: 'destructive',
+      },
+      () => {
+        clearMessagesCentral(finalChannelIdForHooks);
+      }
+    );
   };
 
   if (
@@ -1105,6 +1118,18 @@ export default function Chat({
           agentId={targetAgentData.id}
         />
       )}
+
+      {/* Confirmation Dialogs */}
+      <ConfirmationDialog
+        open={isOpen}
+        onOpenChange={onOpenChange}
+        title={options?.title || ''}
+        description={options?.description || ''}
+        confirmText={options?.confirmText}
+        cancelText={options?.cancelText}
+        variant={options?.variant}
+        onConfirm={onConfirm}
+      />
     </>
   );
 }

@@ -3,14 +3,12 @@ import { ServiceType, logger } from '@elizaos/core';
 import express from 'express';
 
 /**
- * Creates and configures an Express Router for TEE related endpoints.
- *
- * @param {Map<string, IAgentRuntime>} agents - A map of agent runtimes keyed by agent ID.
- * @returns {express.Router} - The configured Express Router.
+ * TEE (Trusted Execution Environment) security functionality
  */
-export function teeRouter(agents: Map<string, IAgentRuntime>): express.Router {
+export function createTeeRouter(agents: Map<string, IAgentRuntime>): express.Router {
   const router = express.Router();
 
+  // Get all TEE agents
   router.get('/agents', async (_req, res) => {
     try {
       const allAgents = [];
@@ -34,6 +32,7 @@ export function teeRouter(agents: Map<string, IAgentRuntime>): express.Router {
     }
   });
 
+  // Get specific TEE agent
   router.get('/agents/:agentId', async (req, res) => {
     try {
       const agentId = req.params.agentId;
@@ -56,6 +55,7 @@ export function teeRouter(agents: Map<string, IAgentRuntime>): express.Router {
     }
   });
 
+  // Query TEE logs
   router.post('/logs', async (req: express.Request, res: express.Response) => {
     try {
       const query = req.body.query || {};

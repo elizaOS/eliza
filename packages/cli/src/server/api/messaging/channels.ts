@@ -1,13 +1,16 @@
 import { ChannelType, logger, validateUuid, type UUID } from '@elizaos/core';
 import express from 'express';
-import internalMessageBus from '../bus'; // Import the bus
-import type { AgentServer } from '../index'; // To access db and internal bus
-import type { MessageServiceStructure as MessageService } from '../types'; // Renamed to avoid conflict if MessageService class exists
-import { channelUpload } from '../upload'; // Import channelUpload
+import internalMessageBus from '../../bus';
+import type { AgentServer } from '../../index';
+import type { MessageServiceStructure as MessageService } from '../../types';
+import { channelUpload } from '../../upload';
+import { createUploadRateLimit, createFileSystemRateLimit } from '../shared/middleware';
+import { MAX_FILE_SIZE, ALLOWED_MEDIA_MIME_TYPES } from '../shared/constants';
+
+const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
+
 // Using Express.Multer.File type instead of importing from multer directly
 type MulterFile = Express.Multer.File;
-
-const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID; // Single default server
 
 interface ChannelUploadRequest extends express.Request {
   file?: MulterFile;
@@ -16,153 +19,13 @@ interface ChannelUploadRequest extends express.Request {
   };
 }
 
-export function MessagesRouter(serverInstance: AgentServer): express.Router {
+/**
+ * Channel management functionality
+ */
+export function createChannelsRouter(serverInstance: AgentServer): express.Router {
   const router = express.Router();
-  // const db = serverInstance.database; // Direct db access for inserts should be via adapter methods
-
-  // Endpoint for AGENT REPLIES or direct submissions to the central bus FROM AGENTS/SYSTEM
-  // @ts-expect-error
-  router.post('/submit', async (req, res) => {
-    const {
-      channel_id,
-      server_id, // This is the server_id
-      author_id, // This should be the agent's runtime.agentId or a dedicated central ID for the agent
-      content,
-      in_reply_to_message_id, // This is a root_message.id
-      source_type,
-      raw_message,
-      metadata, // Should include agent_name if author_id is agent's runtime.agentId
-    } = req.body;
-
-    // Special handling for default server ID "0"
-    const isValidServerId = server_id === DEFAULT_SERVER_ID || validateUuid(server_id);
-
-    if (!validateUuid(channel_id) || !validateUuid(author_id) || !content || !isValidServerId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing required fields: channel_id, server_id, author_id, content',
-      });
-    }
-
-    try {
-      const newRootMessageData = {
-        channelId: channel_id as UUID,
-        authorId: author_id as UUID,
-        content: content as string,
-        rawMessage: raw_message,
-        sourceType: source_type || 'agent_response',
-        inReplyToRootMessageId: in_reply_to_message_id
-          ? validateUuid(in_reply_to_message_id)
-          : undefined,
-        metadata,
-      };
-      // Use AgentServer's method to create the message in the DB
-      const createdMessage = await serverInstance.createMessage(newRootMessageData);
-
-      // Emit to SocketIO for real-time GUI updates
-      if (serverInstance.socketIO) {
-        serverInstance.socketIO.to(channel_id).emit('messageBroadcast', {
-          senderId: author_id, // This is the agent's ID
-          senderName: metadata?.agentName || 'Agent',
-          text: content,
-          roomId: channel_id, // For SocketIO, room is the central channel_id
-          serverId: server_id, // Client layer uses serverId
-          createdAt: new Date(createdMessage.createdAt).getTime(),
-          source: createdMessage.sourceType,
-          id: createdMessage.id, // Central message ID
-          thought: raw_message?.thought,
-          actions: raw_message?.actions,
-          attachments: metadata?.attachments,
-        });
-      }
-      // NO broadcast to internalMessageBus here, this endpoint is for messages ALREADY PROCESSED by an agent
-      // or system messages that don't need further agent processing via the bus.
-
-      res.status(201).json({ success: true, data: createdMessage });
-    } catch (error) {
-      logger.error('[Messages Router /submit] Error submitting agent message:', error);
-      res.status(500).json({ success: false, error: 'Failed to submit agent message' });
-    }
-  });
-
-  // Endpoint for INGESTING messages from EXTERNAL platforms (e.g., Discord plugin)
-  // @ts-expect-error - this is a valid express route
-  router.post('/ingest-external', async (req, res) => {
-    const messagePayload = req.body as Partial<MessageService>; // Partial because ID, created_at will be generated
-
-    if (
-      !messagePayload.channel_id ||
-      !messagePayload.server_id ||
-      !messagePayload.author_id ||
-      !messagePayload.content
-    ) {
-      return res.status(400).json({ success: false, error: 'Invalid external message payload' });
-    }
-
-    try {
-      const messageToCreate = {
-        channelId: messagePayload.channel_id as UUID,
-        authorId: messagePayload.author_id as UUID, // This is the original author's ID from the platform (needs mapping to central user ID later)
-        content: messagePayload.content as string,
-        rawMessage: messagePayload.raw_message,
-        sourceId: messagePayload.source_id, // Original platform message ID
-        sourceType: messagePayload.source_type,
-        inReplyToRootMessageId: messagePayload.in_reply_to_message_id
-          ? validateUuid(messagePayload.in_reply_to_message_id)
-          : undefined,
-        metadata: messagePayload.metadata,
-      };
-      const createdRootMessage = await serverInstance.createMessage(messageToCreate);
-
-      // Prepare message for the internal bus (for agents to consume)
-      const messageForBus: MessageService = {
-        id: createdRootMessage.id!,
-        channel_id: createdRootMessage.channelId,
-        server_id: messagePayload.server_id as UUID, // Pass through the original server_id
-        author_id: createdRootMessage.authorId, // This is the central ID used for storage
-        author_display_name: messagePayload.author_display_name, // Pass through display name
-        content: createdRootMessage.content,
-        raw_message: createdRootMessage.rawMessage,
-        source_id: createdRootMessage.sourceId,
-        source_type: createdRootMessage.sourceType,
-        in_reply_to_message_id: createdRootMessage.inReplyToRootMessageId,
-        created_at: new Date(createdRootMessage.createdAt).getTime(),
-        metadata: createdRootMessage.metadata,
-      };
-
-      internalMessageBus.emit('new_message', messageForBus);
-      logger.info(
-        '[Messages Router /ingest-external] Published to internal message bus:',
-        createdRootMessage.id
-      );
-
-      // Also emit to SocketIO for real-time GUI updates if anyone is watching this channel
-      if (serverInstance.socketIO) {
-        serverInstance.socketIO.to(messageForBus.channel_id).emit('messageBroadcast', {
-          senderId: messageForBus.author_id,
-          senderName: messageForBus.author_display_name || 'User',
-          text: messageForBus.content,
-          roomId: messageForBus.channel_id,
-          serverId: messageForBus.server_id, // Client layer uses serverId
-          createdAt: messageForBus.created_at,
-          source: messageForBus.source_type,
-          id: messageForBus.id,
-        });
-      }
-
-      res.status(202).json({
-        success: true,
-        message: 'Message ingested and published to bus',
-        data: { messageId: createdRootMessage.id },
-      });
-    } catch (error) {
-      logger.error('[Messages Router /ingest-external] Error ingesting external message:', error);
-      res.status(500).json({ success: false, error: 'Failed to ingest message' });
-    }
-  });
 
   // GUI posts NEW messages from a user here
-  // @ts-expect-error - this is a valid express route
   router.post('/central-channels/:channelId/messages', async (req, res) => {
     const channelIdParam = validateUuid(req.params.channelId);
     const {
@@ -347,7 +210,6 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
   });
 
   // GET messages for a central channel
-  // @ts-expect-error - this is a valid express route
   router.get('/central-channels/:channelId/messages', async (req, res) => {
     const channelId = validateUuid(req.params.channelId);
     const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
@@ -389,45 +251,7 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
     }
   });
 
-  // GET /api/central-servers
-  router.get('/central-servers', async (_req, res) => {
-    try {
-      const servers = await serverInstance.getServers();
-      res.json({ success: true, data: { servers } });
-    } catch (error) {
-      logger.error('[Messages Router /central-servers] Error fetching servers:', error);
-      res.status(500).json({ success: false, error: 'Failed to fetch servers' });
-    }
-  });
-
-  // POST /api/messages/servers - Create a new server
-  // @ts-expect-error - this is a valid express route
-  router.post('/servers', async (req, res) => {
-    const { name, sourceType, sourceId, metadata } = req.body;
-
-    if (!name || !sourceType) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing required fields: name, sourceType',
-      });
-    }
-
-    try {
-      const server = await serverInstance.createServer({
-        name,
-        sourceType,
-        sourceId,
-        metadata,
-      });
-      res.status(201).json({ success: true, data: { server } });
-    } catch (error) {
-      logger.error('[Messages Router /servers] Error creating server:', error);
-      res.status(500).json({ success: false, error: 'Failed to create server' });
-    }
-  });
-
-  // GET /api/central-servers/:serverId/channels
-  // @ts-expect-error - this is a valid express route
+  // GET /central-servers/:serverId/channels
   router.get('/central-servers/:serverId/channels', async (req, res) => {
     const serverId =
       req.params.serverId === DEFAULT_SERVER_ID
@@ -448,8 +272,7 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
     }
   });
 
-  // POST /api/messages/channels - Create a new central channel
-  // @ts-expect-error - this is a valid express route
+  // POST /channels - Create a new central channel
   router.post('/channels', async (req, res) => {
     const { messageServerId, name, type, sourceType, sourceId, topic, metadata } = req.body;
 
@@ -484,7 +307,7 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
     }
   });
 
-  // GET /api/dm-channel?targetUserId=<target_user_id>
+  // GET /dm-channel?targetUserId=<target_user_id>
   router.get('/dm-channel', async (req, res) => {
     const targetUserId = validateUuid(req.query.targetUserId as string);
     const currentUserId = validateUuid(req.query.currentUserId as string);
@@ -539,8 +362,7 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
     }
   });
 
-  // POST /api/messages/central-channels (for creating group channels)
-  // @ts-expect-error - this is a valid express route
+  // POST /central-channels (for creating group channels)
   router.post('/central-channels', async (req, res) => {
     const {
       name,
@@ -565,11 +387,6 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
           'Invalid payload. Required: name, server_id (UUID or "0"), participantCentralUserIds (array of UUIDs). Optional: type, metadata.',
       });
     }
-    // Ensure current user is part of participants if not implicitly added by serverInstance.createChannel logic
-    // const currentUserId = req.auth?.userId; // Example: if you have auth middleware adding userId
-    // if (currentUserId && !participantCentralUserIds.includes(currentUserId)) {
-    //     participantCentralUserIds.push(currentUserId);
-    // }
 
     try {
       const channelData = {
@@ -599,8 +416,7 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
     }
   });
 
-  // --- NEW ENDPOINTS ---
-  // @ts-expect-error - this is a valid express route
+  // Get channel details
   router.get('/central-channels/:channelId/details', async (req, res) => {
     const channelId = validateUuid(req.params.channelId);
     if (!channelId) {
@@ -618,7 +434,7 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
     }
   });
 
-  // @ts-expect-error - this is a valid express route
+  // Get channel participants
   router.get('/central-channels/:channelId/participants', async (req, res) => {
     const channelId = validateUuid(req.params.channelId);
     if (!channelId) {
@@ -636,7 +452,7 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
     }
   });
 
-  // @ts-expect-error - this is a valid express route
+  // Delete single message
   router.delete('/central-channels/:channelId/messages/:messageId', async (req, res) => {
     const channelId = validateUuid(req.params.channelId);
     const messageId = validateUuid(req.params.messageId);
@@ -662,7 +478,7 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
     }
   });
 
-  // @ts-expect-error - this is a valid express route
+  // Clear all messages in channel
   router.delete('/central-channels/:channelId/messages', async (req, res) => {
     const channelId = validateUuid(req.params.channelId);
     if (!channelId) {
@@ -683,9 +499,59 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
     }
   });
 
-  // NEW Endpoint for uploading media to a specific channel
+  // Update channel
+  router.patch('/central-channels/:channelId', async (req, res) => {
+    const channelId = validateUuid(req.params.channelId);
+    if (!channelId) {
+      return res.status(400).json({ success: false, error: 'Invalid channelId' });
+    }
+    const { name, participantCentralUserIds, metadata } = req.body;
+    try {
+      const updatedChannel = await serverInstance.updateChannel(channelId, {
+        name,
+        participantCentralUserIds,
+        metadata,
+      });
+      // Emit an event via SocketIO to inform clients about the channel update
+      if (serverInstance.socketIO) {
+        serverInstance.socketIO.to(channelId).emit('channelUpdated', {
+          channelId: channelId,
+          updates: updatedChannel,
+        });
+      }
+      res.json({ success: true, data: updatedChannel });
+    } catch (error) {
+      logger.error(`[Messages Router] Error updating channel ${channelId}:`, error);
+      res.status(500).json({ success: false, error: 'Failed to update channel' });
+    }
+  });
+
+  // Delete entire channel
+  router.delete('/central-channels/:channelId', async (req, res) => {
+    const channelId = validateUuid(req.params.channelId);
+    if (!channelId) {
+      return res.status(400).json({ success: false, error: 'Invalid channelId' });
+    }
+    try {
+      await serverInstance.deleteChannel(channelId);
+      // Emit an event via SocketIO to inform clients about the channel deletion
+      if (serverInstance.socketIO) {
+        serverInstance.socketIO.to(channelId).emit('channelDeleted', {
+          channelId: channelId,
+        });
+      }
+      res.status(204).send();
+    } catch (error) {
+      logger.error(`[Messages Router] Error deleting channel ${channelId}:`, error);
+      res.status(500).json({ success: false, error: 'Failed to delete channel' });
+    }
+  });
+
+  // Upload media to channel
   router.post(
     '/channels/:channelId/upload-media',
+    createUploadRateLimit(),
+    createFileSystemRateLimit(),
     channelUpload.single('file'),
     async (req: ChannelUploadRequest, res) => {
       const channelId = validateUuid(req.params.channelId);
@@ -700,35 +566,36 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
         return;
       }
 
-      // Basic validation (can be expanded)
-      const validMimeTypes = [
-        'image/jpeg',
-        'image/png',
-        'image/gif',
-        'image/webp',
-        'video/mp4',
-        'video/webm',
-        'audio/mpeg',
-        'audio/wav',
-        'audio/ogg',
-        'application/pdf',
-        'text/plain',
-      ];
-
-      if (!validMimeTypes.includes(mediaFile.mimetype)) {
-        // fs.unlinkSync(mediaFile.path); // Clean up multer's temp file if invalid
+      // Enhanced security validation
+      // Validate MIME type
+      if (!ALLOWED_MEDIA_MIME_TYPES.includes(mediaFile.mimetype as any)) {
         res.status(400).json({ success: false, error: `Invalid file type: ${mediaFile.mimetype}` });
         return;
       }
 
+      // Additional filename security validation
+      if (
+        !mediaFile.filename ||
+        mediaFile.filename.includes('..') ||
+        mediaFile.filename.includes('/')
+      ) {
+        res.status(400).json({ success: false, error: 'Invalid filename detected' });
+        return;
+      }
+
+      // Validate file size (additional check beyond multer limits)
+      const maxFileSize = 50 * 1024 * 1024; // 50MB
+      if (mediaFile.size > maxFileSize) {
+        res.status(400).json({ success: false, error: 'File too large' });
+        return;
+      }
+
       try {
-        // Construct file URL based on where channelUpload saves files
-        // e.g., /media/uploads/channels/:channelId/:filename
-        // This requires a static serving route for /media/uploads/channels too.
+        // Construct secure file URL - channelId is already validated as UUID
         const fileUrl = `/media/uploads/channels/${channelId}/${mediaFile.filename}`;
 
         logger.info(
-          `[MessagesRouter /upload-media] File uploaded for channel ${channelId}: ${mediaFile.filename}. URL: ${fileUrl}`
+          `[MessagesRouter /upload-media] Secure file uploaded for channel ${channelId}: ${mediaFile.filename}. URL: ${fileUrl}`
         );
 
         res.json({
@@ -746,159 +613,10 @@ export function MessagesRouter(serverInstance: AgentServer): express.Router {
           `[MessagesRouter /upload-media] Error processing upload for channel ${channelId}: ${error.message}`,
           error
         );
-        // fs.unlinkSync(mediaFile.path); // Attempt cleanup on error
         res.status(500).json({ success: false, error: 'Failed to process media upload' });
       }
     }
   );
-
-  // ===============================
-  // Server-Agent Association Endpoints
-  // ===============================
-
-  // POST /api/messages/servers/:serverId/agents - Add agent to server
-  // @ts-expect-error - this is a valid express route
-  router.post('/servers/:serverId/agents', async (req, res) => {
-    const serverId =
-      req.params.serverId === DEFAULT_SERVER_ID
-        ? DEFAULT_SERVER_ID
-        : validateUuid(req.params.serverId);
-    const { agentId } = req.body;
-
-    if (!serverId || !validateUuid(agentId)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid serverId or agentId format',
-      });
-    }
-
-    try {
-      // Add agent to server association
-      await serverInstance.addAgentToServer(serverId, agentId as UUID);
-
-      // Notify the agent's message bus service to start listening for this server
-      const messageForBus = {
-        type: 'agent_added_to_server',
-        serverId,
-        agentId,
-      };
-      internalMessageBus.emit('server_agent_update', messageForBus);
-
-      res.status(201).json({
-        success: true,
-        data: {
-          serverId,
-          agentId,
-          message: 'Agent added to server successfully',
-        },
-      });
-    } catch (error) {
-      logger.error(`[MessagesRouter] Error adding agent ${agentId} to server ${serverId}:`, error);
-      res.status(500).json({ success: false, error: 'Failed to add agent to server' });
-    }
-  });
-
-  // DELETE /api/messages/servers/:serverId/agents/:agentId - Remove agent from server
-  // @ts-expect-error - this is a valid express route
-  router.delete('/servers/:serverId/agents/:agentId', async (req, res) => {
-    const serverId =
-      req.params.serverId === DEFAULT_SERVER_ID
-        ? DEFAULT_SERVER_ID
-        : validateUuid(req.params.serverId);
-    const agentId = validateUuid(req.params.agentId);
-
-    if (!serverId || !agentId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid serverId or agentId format',
-      });
-    }
-
-    try {
-      // Remove agent from server association
-      await serverInstance.removeAgentFromServer(serverId, agentId);
-
-      // Notify the agent's message bus service to stop listening for this server
-      const messageForBus = {
-        type: 'agent_removed_from_server',
-        serverId,
-        agentId,
-      };
-      internalMessageBus.emit('server_agent_update', messageForBus);
-
-      res.status(200).json({
-        success: true,
-        data: {
-          serverId,
-          agentId,
-          message: 'Agent removed from server successfully',
-        },
-      });
-    } catch (error) {
-      logger.error(
-        `[MessagesRouter] Error removing agent ${agentId} from server ${serverId}:`,
-        error
-      );
-      res.status(500).json({ success: false, error: 'Failed to remove agent from server' });
-    }
-  });
-
-  // GET /api/messages/servers/:serverId/agents - List agents in server
-  // @ts-expect-error - this is a valid express route
-  router.get('/servers/:serverId/agents', async (req, res) => {
-    const serverId =
-      req.params.serverId === DEFAULT_SERVER_ID
-        ? DEFAULT_SERVER_ID
-        : validateUuid(req.params.serverId);
-
-    if (!serverId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid serverId format',
-      });
-    }
-
-    try {
-      const agents = await serverInstance.getAgentsForServer(serverId);
-      res.json({
-        success: true,
-        data: {
-          serverId,
-          agents, // Array of agent IDs
-        },
-      });
-    } catch (error) {
-      logger.error(`[MessagesRouter] Error fetching agents for server ${serverId}:`, error);
-      res.status(500).json({ success: false, error: 'Failed to fetch server agents' });
-    }
-  });
-
-  // GET /api/messages/agents/:agentId/servers - List servers agent belongs to
-  // @ts-expect-error - this is a valid express route
-  router.get('/agents/:agentId/servers', async (req, res) => {
-    const agentId = validateUuid(req.params.agentId);
-
-    if (!agentId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid agentId format',
-      });
-    }
-
-    try {
-      const servers = await serverInstance.getServersForAgent(agentId);
-      res.json({
-        success: true,
-        data: {
-          agentId,
-          servers, // Array of server IDs
-        },
-      });
-    } catch (error) {
-      logger.error(`[MessagesRouter] Error fetching servers for agent ${agentId}:`, error);
-      res.status(500).json({ success: false, error: 'Failed to fetch agent servers' });
-    }
-  });
 
   return router;
 }

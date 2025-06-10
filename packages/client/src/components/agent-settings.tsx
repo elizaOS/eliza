@@ -1,6 +1,8 @@
 import CharacterForm from '@/components/character-form';
 import StopAgentButton from '@/components/stop-agent-button';
 import { useAgentUpdate } from '@/hooks/use-agent-update';
+import ConfirmationDialog from '@/components/confirmation-dialog';
+import { useConfirmation } from '@/hooks/use-confirmation';
 import { useToast } from '@/hooks/use-toast';
 import { apiClient } from '@/lib/api';
 import type { Agent, UUID } from '@elizaos/core';
@@ -17,6 +19,7 @@ export default function AgentSettings({ agent, agentId }: { agent: Agent; agentI
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isDeleting, setIsDeleting] = useState(false);
+  const { confirm, isOpen, onOpenChange, onConfirm, options } = useConfirmation();
   const isActive = agent?.status === AgentStatus.ACTIVE;
 
   // Use our enhanced agent update hook for more intelligent handling of JSONb fields
@@ -70,19 +73,22 @@ export default function AgentSettings({ agent, agentId }: { agent: Agent; agentI
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (isDeleting) return; // Prevent multiple clicks
+    
+    confirm(
+      {
+        title: 'Delete Agent',
+        description: `Are you sure you want to delete the agent "${agent.name}"? This action cannot be undone.`,
+        confirmText: 'Delete',
+        variant: 'destructive',
+      },
+      confirmDelete
+    );
+  };
 
+  const confirmDelete = async () => {
     try {
-      // Add confirmation dialog
-      const confirmDelete = window.confirm(
-        `Are you sure you want to delete the agent "${agent.name}"? This action cannot be undone.`
-      );
-
-      if (!confirmDelete) {
-        return;
-      }
-
       // Set deleting state
       setIsDeleting(true);
 
@@ -208,7 +214,8 @@ export default function AgentSettings({ agent, agentId }: { agent: Agent; agentI
   };
 
   return (
-    <CharacterForm
+    <>
+      <CharacterForm
       characterValue={agentState.agent}
       setCharacterValue={agentState}
       title="Agent Settings"
@@ -259,6 +266,19 @@ export default function AgentSettings({ agent, agentId }: { agent: Agent; agentI
           ),
         },
       ]}
-    />
+      />
+
+      {/* Confirmation Dialog */}
+      <ConfirmationDialog
+        open={isOpen}
+        onOpenChange={onOpenChange}
+        title={options?.title || ''}
+        description={options?.description || ''}
+        confirmText={options?.confirmText}
+        cancelText={options?.cancelText}
+        variant={options?.variant}
+        onConfirm={onConfirm}
+      />
+    </>
   );
 }

@@ -14,52 +14,30 @@ import { SpanStatusCode } from '@opentelemetry/api';
 import bodyParser from 'body-parser';
 import cors from 'cors';
 import express from 'express';
+import helmet from 'helmet';
 import crypto from 'node:crypto';
 import http from 'node:http';
 import { match, MatchFunction } from 'path-to-regexp';
 import { Server as SocketIOServer } from 'socket.io';
 import type { AgentServer } from '../index';
-import { agentRouter } from './agent';
-import { envRouter } from './env';
+// Import new domain routers
+import { agentsRouter } from './agents';
+import { messagingRouter } from './messaging';
+import { mediaRouter } from './media';
+import { memoryRouter } from './memory';
+import { audioRouter } from './audio';
+import { runtimeRouter } from './runtime';
 import { teeRouter } from './tee';
-import { worldRouter } from './world';
-import { MessagesRouter } from './messages';
+import { systemRouter } from './system';
+// NOTE: world router has been removed - functionality moved to messaging/spaces
 import { SocketIORouter } from '../socketio';
+import {
+  securityMiddleware,
+  validateContentTypeMiddleware,
+  createApiRateLimit,
+} from './shared/middleware';
 import fs from 'fs';
 import path from 'path';
-
-// Custom levels from @elizaos/core logger
-const LOG_LEVELS = {
-  fatal: 60,
-  error: 50,
-  warn: 40,
-  info: 30,
-  log: 29,
-  progress: 28,
-  success: 27,
-  debug: 20,
-  trace: 10,
-} as const;
-
-/**
- * Defines a type `LogLevel` as the keys of the `LOG_LEVELS` object.
- */
-type LogLevel = keyof typeof LOG_LEVELS | 'all';
-
-/**
- * Represents a log entry with specific properties.
- * @typedef {Object} LogEntry
- * @property {number} level - The level of the log entry.
- * @property {number} time - The time the log entry was created.
- * @property {string} msg - The message of the log entry.
- * @property {string | number | boolean | null | undefined} [key] - Additional key-value pairs for the log entry.
- */
-interface LogEntry {
-  level: number;
-  time: number;
-  msg: string;
-  [key: string]: string | number | boolean | null | undefined;
-}
 
 /**
  * Processes attachments to convert localhost URLs to base64 data URIs
@@ -721,243 +699,85 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
  */
 export function createApiRouter(
   agents: Map<UUID, IAgentRuntime>,
-  serverInstance?: AgentServer // AgentServer is already serverInstance here
+  serverInstance: AgentServer // AgentServer is already serverInstance here
 ): express.Router {
   const router = express.Router();
 
-  // Setup middleware
-  router.use(cors());
-  router.use(bodyParser.json());
-  router.use(bodyParser.urlencoded({ extended: true }));
+  // API-specific security headers (supplementing main app helmet)
+  router.use(
+    helmet({
+      // More restrictive CSP for API endpoints
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'none'"], // API should not load resources
+          scriptSrc: ["'none'"], // No scripts in API responses
+          objectSrc: ["'none'"],
+          baseUri: ["'none'"],
+          formAction: ["'none'"],
+        },
+      },
+      // API-specific headers
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+      referrerPolicy: { policy: 'no-referrer' },
+    })
+  );
+
+  // API-specific CORS configuration
+  router.use(
+    cors({
+      origin: process.env.API_CORS_ORIGIN || process.env.CORS_ORIGIN || false, // More restrictive for API
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-API-KEY'],
+      exposedHeaders: ['X-Total-Count'],
+      maxAge: 86400, // Cache preflight for 24 hours
+    })
+  );
+
+  // Rate limiting - should be early in middleware chain
+  router.use(createApiRateLimit());
+
+  // Additional security middleware
+  router.use(securityMiddleware());
+
+  // Content type validation for write operations
+  router.use(validateContentTypeMiddleware());
+
+  // Body parsing middleware
+  router.use(
+    bodyParser.json({
+      limit: process.env.EXPRESS_MAX_PAYLOAD || '100kb',
+    })
+  );
+  router.use(
+    bodyParser.urlencoded({
+      extended: true,
+      limit: process.env.EXPRESS_MAX_PAYLOAD || '100kb',
+    })
+  );
   router.use(
     express.json({
       limit: process.env.EXPRESS_MAX_PAYLOAD || '100kb',
     })
   );
 
-  // Explicitly define the hello endpoint with strict JSON response
-  router.get('/hello', (_req, res) => {
-    logger.info('Hello endpoint hit');
-    res.setHeader('Content-Type', 'application/json');
-    res.send(JSON.stringify({ message: 'Hello World!' }));
-  });
+  // Setup new domain-based routes
+  router.use('/agents', agentsRouter(agents, serverInstance));
+  router.use('/messaging', messagingRouter(agents, serverInstance));
+  router.use('/media', mediaRouter(agents, serverInstance));
+  router.use('/memory', memoryRouter(agents, serverInstance));
+  router.use('/audio', audioRouter(agents, serverInstance));
+  router.use('/server', runtimeRouter(agents, serverInstance));
+  router.use('/tee', teeRouter(agents, serverInstance));
+  router.use('/system', systemRouter(agents, serverInstance));
 
-  // Add a basic API test endpoint that returns the agent count
-  router.get('/status', (_req, res) => {
-    logger.info('Status endpoint hit');
-    res.setHeader('Content-Type', 'application/json');
-    res.send(
-      JSON.stringify({
-        status: 'ok',
-        agentCount: agents.size,
-        timestamp: new Date().toISOString(),
-      })
-    );
-  });
+  // NOTE: /world routes have been removed - functionality moved to messaging/spaces
 
-  // Health check
-  router.get('/ping', (req, res) => {
-    res.json({ pong: true, timestamp: Date.now() });
-  });
-
-  // Debug endpoint to check message servers (temporary)
-  router.get('/debug/servers', async (req, res) => {
-    try {
-      const servers = await serverInstance?.getServers();
-      res.json({
-        success: true,
-        servers: servers || [],
-        count: servers?.length || 0,
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
-  });
-
-  // Setup routes
-  router.use('/agents', agentRouter(agents, serverInstance));
-  router.use('/world', worldRouter(serverInstance));
-  router.use('/envs', envRouter());
-  router.use('/tee', teeRouter(agents));
-  router.use('/messages', MessagesRouter(serverInstance));
+  // NOTE: Legacy route aliases removed to prevent duplicates
+  // Use proper domain routes: /messaging, /system, /tee
 
   // Add the plugin routes middleware AFTER specific routers
   router.use(createPluginRouteHandler(agents));
-
-  router.get('/stop', (_req, res) => {
-    serverInstance?.stop(); // Use optional chaining in case server is undefined
-    logger.log(
-      {
-        apiRoute: '/stop',
-      },
-      'Server stopping...'
-    );
-    res.json({ message: 'Server stopping...' });
-  });
-
-  // Logs endpoint
-  const logsHandler = (req, res) => {
-    const since = req.query.since ? Number(req.query.since) : Date.now() - 3600000; // Default 1 hour
-    const requestedLevel = (req.query.level?.toString().toLowerCase() || 'all') as LogLevel;
-    const requestedAgentName = req.query.agentName?.toString() || 'all';
-    const requestedAgentId = req.query.agentId?.toString() || 'all'; // Add support for agentId parameter
-    const limit = Math.min(Number(req.query.limit) || 100, 1000); // Max 1000 entries
-
-    // Access the underlying logger instance
-    const destination = (logger as any)[Symbol.for('pino-destination')];
-
-    if (!destination?.recentLogs) {
-      return res.status(500).json({
-        error: 'Logger destination not available',
-        message: 'The logger is not configured to maintain recent logs',
-      });
-    }
-
-    try {
-      // Get logs from the destination's buffer
-      const recentLogs: LogEntry[] = destination.recentLogs();
-      const requestedLevelValue = LOG_LEVELS[requestedLevel] || LOG_LEVELS.info;
-
-      // Calculate population rates once for efficiency
-      const logsWithAgentNames = recentLogs.filter((l) => l.agentName).length;
-      const logsWithAgentIds = recentLogs.filter((l) => l.agentId).length;
-      const totalLogs = recentLogs.length;
-      const agentNamePopulationRate = totalLogs > 0 ? logsWithAgentNames / totalLogs : 0;
-      const agentIdPopulationRate = totalLogs > 0 ? logsWithAgentIds / totalLogs : 0;
-
-      // If less than 10% of logs have agent metadata, be lenient with filtering
-      const isAgentNameDataSparse = agentNamePopulationRate < 0.1;
-      const isAgentIdDataSparse = agentIdPopulationRate < 0.1;
-
-      const filtered = recentLogs
-        .filter((log) => {
-          // Filter by time always
-          const timeMatch = log.time >= since;
-
-          // Filter by level - return all logs if requestedLevel is 'all'
-          let levelMatch = true;
-          if (requestedLevel && requestedLevel !== 'all') {
-            levelMatch = log.level === requestedLevelValue;
-          }
-
-          // Filter by agentName if provided - return all if 'all'
-          let agentNameMatch = true;
-          if (requestedAgentName && requestedAgentName !== 'all') {
-            if (log.agentName) {
-              // If the log has an agentName, match it exactly
-              agentNameMatch = log.agentName === requestedAgentName;
-            } else {
-              // If log has no agentName but most logs lack agentNames, show all logs
-              // This handles the case where logs aren't properly tagged with agent names
-              agentNameMatch = isAgentNameDataSparse;
-            }
-          }
-
-          // Filter by agentId if provided - return all if 'all'
-          let agentIdMatch = true;
-          if (requestedAgentId && requestedAgentId !== 'all') {
-            if (log.agentId) {
-              // If the log has an agentId, match it exactly
-              agentIdMatch = log.agentId === requestedAgentId;
-            } else {
-              // If log has no agentId but most logs lack agentIds, show all logs
-              agentIdMatch = isAgentIdDataSparse;
-            }
-          }
-
-          return timeMatch && levelMatch && agentNameMatch && agentIdMatch;
-        })
-        .slice(-limit);
-
-      // Add debug log to help troubleshoot
-      logger.debug('Logs request processed', {
-        requestedLevel,
-        requestedLevelValue,
-        requestedAgentName,
-        requestedAgentId,
-        filteredCount: filtered.length,
-        totalLogs: recentLogs.length,
-        logsWithAgentNames,
-        logsWithAgentIds,
-        agentNamePopulationRate: Math.round(agentNamePopulationRate * 100) + '%',
-        agentIdPopulationRate: Math.round(agentIdPopulationRate * 100) + '%',
-        isAgentNameDataSparse,
-        isAgentIdDataSparse,
-        sampleLogAgentNames: recentLogs.slice(0, 5).map((log) => log.agentName),
-        uniqueAgentNamesInLogs: [...new Set(recentLogs.map((log) => log.agentName))].filter(
-          Boolean
-        ),
-        exactAgentNameMatches: recentLogs.filter((log) => log.agentName === requestedAgentName)
-          .length,
-      });
-
-      res.json({
-        logs: filtered,
-        count: filtered.length,
-        total: recentLogs.length,
-        requestedLevel: requestedLevel,
-        agentName: requestedAgentName,
-        agentId: requestedAgentId,
-        levels: Object.keys(LOG_LEVELS),
-      });
-    } catch (error) {
-      res.status(500).json({
-        error: 'Failed to retrieve logs',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
-  };
-
-  router.get('/logs', logsHandler);
-  router.post('/logs', logsHandler);
-
-  // Handler for clearing logs
-  const logsClearHandler = (_req, res) => {
-    try {
-      // Access the underlying logger instance
-      const destination = (logger as any)[Symbol.for('pino-destination')];
-
-      if (!destination?.clear) {
-        return res.status(500).json({
-          error: 'Logger clear method not available',
-          message: 'The logger is not configured to clear logs',
-        });
-      }
-
-      // Clear the logs
-      destination.clear();
-
-      logger.debug('Logs cleared via API endpoint');
-      res.json({ status: 'success', message: 'Logs cleared successfully' });
-    } catch (error) {
-      res.status(500).json({
-        error: 'Failed to clear logs',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
-  };
-
-  // Add DELETE endpoint for clearing logs
-  router.delete('/logs', logsClearHandler);
-
-  // Health check endpoints
-  router.get('/health', (_req, res) => {
-    logger.log({ apiRoute: '/health' }, 'Health check route hit');
-    const healthcheck = {
-      status: 'OK',
-      version: process.env.APP_VERSION || 'unknown',
-      timestamp: new Date().toISOString(),
-      dependencies: {
-        agents: agents.size > 0 ? 'healthy' : 'no_agents',
-      },
-    };
-
-    const statusCode = healthcheck.dependencies.agents === 'healthy' ? 200 : 503;
-    res.status(statusCode).json(healthcheck);
-  });
 
   return router;
 }

@@ -1799,6 +1799,44 @@ export abstract class BaseDrizzleAdapter<
   }
 
   /**
+   * Asynchronously deletes multiple memories from the database in a single batch operation.
+   * @param {UUID[]} memoryIds - An array of UUIDs of the memories to delete.
+   * @returns {Promise<void>} A Promise that resolves when all memories are deleted.
+   */
+  async deleteManyMemories(memoryIds: UUID[]): Promise<void> {
+    if (memoryIds.length === 0) {
+      return;
+    }
+
+    return this.withDatabase(async () => {
+      await this.db.transaction(async (tx) => {
+        // Process in smaller batches to avoid query size limits
+        const BATCH_SIZE = 100;
+        for (let i = 0; i < memoryIds.length; i += BATCH_SIZE) {
+          const batch = memoryIds.slice(i, i + BATCH_SIZE);
+
+          // Delete any fragments for document memories in this batch
+          await Promise.all(
+            batch.map(async (memoryId) => {
+              await this.deleteMemoryFragments(tx, memoryId);
+            })
+          );
+
+          // Delete embeddings for the batch
+          await tx.delete(embeddingTable).where(inArray(embeddingTable.memoryId, batch));
+
+          // Delete the memories themselves
+          await tx.delete(memoryTable).where(inArray(memoryTable.id, batch));
+        }
+      });
+
+      logger.debug('Batch memory deletion completed successfully:', {
+        count: memoryIds.length,
+      });
+    });
+  }
+
+  /**
    * Deletes all memory fragments that reference a specific document memory
    * @param tx The database transaction
    * @param documentId The UUID of the document memory whose fragments should be deleted

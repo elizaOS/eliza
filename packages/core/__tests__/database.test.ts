@@ -245,6 +245,15 @@ class MockDatabaseAdapter extends DatabaseAdapter {
     throw new Error('Method not implemented.');
   }
   /**
+   * Removes multiple memories from the database in a single batch operation.
+   *
+   * @param {UUID[]} _memoryIds - An array of UUIDs of the memories to remove.
+   * @returns {Promise<void>} A promise that resolves when all memories are successfully removed.
+   */
+  deleteManyMemories(_memoryIds: UUID[]): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
+  /**
    * Remove all memories associated with a specific room and table.
    *
    * @param {UUID} _roomId - The unique identifier of the room.
@@ -346,6 +355,58 @@ class MockDatabaseAdapter extends DatabaseAdapter {
   removeParticipant(_entityId: UUID, _roomId: UUID): Promise<boolean> {
     throw new Error('Method not implemented.');
   }
+  
+  getConnection(): Promise<any> {
+    throw new Error('Method not implemented.');
+  }
+  
+  getEntityByIds(_entityIds: UUID[]): Promise<Entity[]> {
+    throw new Error('Method not implemented.');
+  }
+  
+  createEntities(_entities: Entity[]): Promise<boolean> {
+    throw new Error('Method not implemented.');
+  }
+  
+  updateMemory(_memory: Partial<Memory> & { id: UUID }): Promise<boolean> {
+    throw new Error('Method not implemented.');
+  }
+  
+  getMemoriesByWorldId(_params: { worldId: UUID; tableName?: string }): Promise<Memory[]> {
+    throw new Error('Method not implemented.');
+  }
+  
+  getMemoriesByEntities(_params: { entityIds: UUID[]; tableName?: string }): Promise<Memory[]> {
+    throw new Error('Method not implemented.');
+  }
+  
+  searchMemoriesByEmbedding(_embedding: number[], _params?: { tableName?: string; roomId?: UUID; match_threshold?: number; match_count?: number; unique?: boolean }): Promise<Memory[]> {
+    throw new Error('Method not implemented.');
+  }
+  
+  deleteEntity(_entityId: UUID): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
+  
+  getRoomsByIds(_roomIds: UUID[]): Promise<Room[]> {
+    throw new Error('Method not implemented.');
+  }
+  
+  getRoomsByWorld(_worldId: UUID): Promise<Room[]> {
+    throw new Error('Method not implemented.');
+  }
+  
+  createRooms(_rooms: Room[]): Promise<UUID[]> {
+    throw new Error('Method not implemented.');
+  }
+  
+  addParticipantsRoom(_entityIds: UUID[], _roomId: UUID): Promise<boolean> {
+    throw new Error('Method not implemented.');
+  }
+  
+  deleteRoomsByWorldId(_worldId: UUID): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
   /**
    * Retrieve a list of participants associated with the specified account user ID.
    *
@@ -359,7 +420,7 @@ class MockDatabaseAdapter extends DatabaseAdapter {
    * @param {unknown} _entityId - The ID of the user account to retrieve participants for.
    * @returns {Promise<import("../src/types.ts").Participant[]>} A Promise that resolves to an array of participants.
    */
-  getParticipantsForAccount(_entityId: unknown): Promise<import('../src/types.ts').Participant[]> {
+  getParticipantsForAccount(_entityId: unknown): Promise<Participant[]> {
     throw new Error('Method not implemented.');
   }
   /**

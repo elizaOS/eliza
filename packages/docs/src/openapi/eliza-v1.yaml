@@ -32,7 +32,7 @@ tags:
     description: Trusted Execution Environment operations
 
 paths:
-  /api/hello:
+  /api/server/hello:
     get:
       tags:
         - system
@@ -51,7 +51,7 @@ paths:
                     type: string
                     example: 'Hello World!'
 
-  /api/status:
+  /api/server/status:
     get:
       tags:
         - system
@@ -77,7 +77,7 @@ paths:
                     format: date-time
                     description: Current timestamp
 
-  /api/health:
+  /api/server/health:
     get:
       tags:
         - system
@@ -113,7 +113,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /api/logs:
+  /api/server/logs:
     get:
       tags:
         - logs
@@ -232,8 +232,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /api/stop:
-    get:
+  /api/server/stop:
+    post:
       tags:
         - system
       summary: Stop the server
@@ -1489,7 +1489,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /api/agents/{agentId}/transcriptions:
+  /api/audio/{agentId}/transcriptions:
     post:
       tags:
         - speech

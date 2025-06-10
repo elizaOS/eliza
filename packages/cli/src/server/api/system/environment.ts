@@ -15,9 +15,13 @@ function getLocalEnvPath(): string | null {
   return existsSync(envPath) ? envPath : null;
 }
 
-export function envRouter(): express.Router {
+/**
+ * Environment configuration management
+ */
+export function createEnvironmentRouter(): express.Router {
   const router = express.Router();
 
+  // Get local environment variables
   router.get('/local', async (req, res) => {
     try {
       const localEnvPath = getLocalEnvPath();
@@ -40,6 +44,7 @@ export function envRouter(): express.Router {
     }
   });
 
+  // Update local environment variables
   router.post('/local', async (req, res) => {
     try {
       const { content } = req.body;

@@ -274,6 +274,13 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
   abstract deleteMemory(memoryId: UUID): Promise<void>;
 
   /**
+   * Removes multiple memories from the database in a single batch operation.
+   * @param memoryIds An array of UUIDs of the memories to remove.
+   * @returns A Promise that resolves when all memories have been removed.
+   */
+  abstract deleteManyMemories(memoryIds: UUID[]): Promise<void>;
+
+  /**
    * Removes all memories associated with a specific room.
    * @param roomId The UUID of the room whose memories should be removed.
    * @param tableName The table from which the memories should be removed.

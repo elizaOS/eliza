@@ -935,6 +935,8 @@ export interface IDatabaseAdapter {
 
   deleteMemory(memoryId: UUID): Promise<void>;
 
+  deleteManyMemories(memoryIds: UUID[]): Promise<void>;
+
   deleteAllMemories(roomId: UUID, tableName: string): Promise<void>;
 
   countMemories(roomId: UUID, unique?: boolean, tableName?: string): Promise<number>;
