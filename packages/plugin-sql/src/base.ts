@@ -303,12 +303,29 @@ export abstract class BaseDrizzleAdapter<
             agent.settings = await this.mergeAgentSettings(tx, agentId, agent.settings);
           }
 
+          // Convert numeric timestamps to Date objects for database storage
+          // The Agent interface uses numbers, but the database schema expects Date objects
+          const updateData: any = { ...agent };
+          if (updateData.createdAt) {
+            if (typeof updateData.createdAt === 'number') {
+              updateData.createdAt = new Date(updateData.createdAt);
+            } else {
+              delete updateData.createdAt; // Don't update createdAt if it's not a valid timestamp
+            }
+          }
+          if (updateData.updatedAt) {
+            if (typeof updateData.updatedAt === 'number') {
+              updateData.updatedAt = new Date(updateData.updatedAt);
+            } else {
+              updateData.updatedAt = new Date(); // Use current time if invalid
+            }
+          } else {
+            updateData.updatedAt = new Date(); // Always set updatedAt to current time
+          }
+
           await tx
             .update(agentTable)
-            .set({
-              ...agent,
-              updatedAt: new Date(),
-            })
+            .set(updateData)
             .where(eq(agentTable.id, agentId));
         });
 
