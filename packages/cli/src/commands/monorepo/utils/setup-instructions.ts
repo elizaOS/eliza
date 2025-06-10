@@ -17,11 +17,11 @@ function getBunInstallInstructions(): PlatformInstructions {
   } else {
     const commands = ['curl -fsSL https://bun.sh/install | bash'];
     const alternatives: string[] = [];
-    
+
     if (platform === 'darwin') {
       alternatives.push('brew install bun (if you have Homebrew)');
     }
-    
+
     return {
       platform: platform === 'darwin' ? 'macOS' : 'Linux',
       commands,
@@ -67,33 +67,33 @@ function displayPrerequisites(): void {
  */
 function displayBunInstructions(): void {
   console.log(`\n${emoji.rocket("If you don't have Bun installed:")}`);
-  
+
   const instructions = getBunInstallInstructions();
-  
+
   // Display primary installation commands
-  instructions.commands.forEach(command => {
+  instructions.commands.forEach((command) => {
     console.log(`   ${command}`);
   });
-  
+
   // Display alternatives if any
   if (instructions.alternatives) {
-    instructions.alternatives.forEach(alt => {
+    instructions.alternatives.forEach((alt) => {
       console.log(`   Alternative: ${alt}`);
     });
   }
-  
+
   console.log('   More options: https://bun.sh/docs/installation');
   console.log('   After installation, restart your terminal');
 }
 
 /**
  * Display complete next step instructions after cloning
- * 
+ *
  * Shows setup steps, prerequisites, and platform-specific installation guidance.
  */
 export function displayNextSteps(targetDir: string): void {
   const cdPath = path.relative(process.cwd(), targetDir);
-  
+
   displayBasicSteps(cdPath);
   displayPrerequisites();
   displayBunInstructions();

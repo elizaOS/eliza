@@ -6,7 +6,11 @@ import { PackageJson } from '../types';
 /**
  * Build and publish package to npm
  */
-export async function publishToNpm(cwd: string, packageJson: PackageJson, npmUsername: string): Promise<void> {
+export async function publishToNpm(
+  cwd: string,
+  packageJson: PackageJson,
+  npmUsername: string
+): Promise<void> {
   console.info(`Publishing as npm user: ${npmUsername}`);
 
   // Update npmPackage field if it's a placeholder or not set

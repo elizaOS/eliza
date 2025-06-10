@@ -1,5 +1,11 @@
 import { beforeAll, describe, it, expect, afterAll, beforeEach } from 'vitest';
-import { type UUID, type Entity, type Relationship, AgentRuntime, stringToUuid } from '@elizaos/core';
+import {
+  type UUID,
+  type Entity,
+  type Relationship,
+  AgentRuntime,
+  stringToUuid,
+} from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
 import { createIsolatedTestDatabase } from '../test-helpers';
 import { relationshipTable, entityTable } from '../../src/schema';
@@ -52,7 +58,10 @@ describe('Relationship Integration Tests', () => {
       const result = await adapter.createRelationship(relationshipData);
       expect(result).toBe(true);
 
-      const retrieved = await adapter.getRelationship({ sourceEntityId: testEntityId, targetEntityId: testTargetEntityId });
+      const retrieved = await adapter.getRelationship({
+        sourceEntityId: testEntityId,
+        targetEntityId: testTargetEntityId,
+      });
       expect(retrieved).toBeDefined();
       expect(retrieved?.tags).toContain('friend');
     });
@@ -65,7 +74,10 @@ describe('Relationship Integration Tests', () => {
       };
       await adapter.createRelationship(relationshipData);
 
-      const retrieved = await adapter.getRelationship({ sourceEntityId: testEntityId, targetEntityId: testTargetEntityId });
+      const retrieved = await adapter.getRelationship({
+        sourceEntityId: testEntityId,
+        targetEntityId: testTargetEntityId,
+      });
       expect(retrieved).toBeDefined();
 
       const updatedRelationship = {
@@ -75,7 +87,10 @@ describe('Relationship Integration Tests', () => {
       };
       await adapter.updateRelationship(updatedRelationship);
 
-      const updatedRetrieved = await adapter.getRelationship({ sourceEntityId: testEntityId, targetEntityId: testTargetEntityId });
+      const updatedRetrieved = await adapter.getRelationship({
+        sourceEntityId: testEntityId,
+        targetEntityId: testTargetEntityId,
+      });
       expect(updatedRetrieved?.tags).toContain('best_friend');
       expect(updatedRetrieved?.metadata).toEqual({ since: '2023' });
     });

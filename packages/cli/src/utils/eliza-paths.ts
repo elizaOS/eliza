@@ -31,4 +31,4 @@ export function getElizaGeneratedDir(cwd: string = process.cwd()): string {
 
 export function getElizaCharactersDir(cwd: string = process.cwd()): string {
   return path.join(getElizaDataDir(cwd), 'characters');
-} 
+}

@@ -29,10 +29,10 @@ export const test = new Command()
   })
   .action(async (testPath: string | undefined, options: TestCommandOptions) => {
     logger.info('Starting tests...');
-    
+
     try {
       const projectInfo = getProjectType(testPath);
-      
+
       switch (options.type) {
         case 'component':
           logger.info('Running component tests only...');
@@ -43,7 +43,7 @@ export const test = new Command()
           }
           logger.success('Component tests passed successfully!');
           break;
-          
+
         case 'e2e':
           logger.info('Running e2e tests only...');
           const e2eResult = await runE2eTests(testPath, options, projectInfo);
@@ -53,14 +53,14 @@ export const test = new Command()
           }
           logger.success('E2E tests passed successfully!');
           break;
-          
+
         case 'all':
         default:
           logger.info('Running all tests...');
           await runAllTests(testPath, options);
           break;
       }
-      
+
       process.exit(0);
     } catch (error) {
       handleError(error);

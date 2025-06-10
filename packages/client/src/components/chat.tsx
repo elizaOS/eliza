@@ -417,17 +417,18 @@ export default function Chat({
 
           toast({ title: 'Chat Deleted', description: `"${channelToDelete.name}" was deleted.` });
 
-          const remainingChannels = (queryClient.getQueryData([
-            'dmChannels',
-            targetAgentData.id,
-            currentClientEntityId,
-          ]) as MessageChannel[] | undefined) || [];
+          const remainingChannels =
+            (queryClient.getQueryData(['dmChannels', targetAgentData.id, currentClientEntityId]) as
+              | MessageChannel[]
+              | undefined) || [];
 
           if (remainingChannels.length > 0) {
             updateChatState({ currentDmChannelId: remainingChannels[0].id });
             clientLogger.info('[Chat] Switched to DM channel:', remainingChannels[0].id);
           } else {
-            clientLogger.info('[Chat] No DM channels left after deletion. Will create a fresh chat once.');
+            clientLogger.info(
+              '[Chat] No DM channels left after deletion. Will create a fresh chat once.'
+            );
             // Clear the current DM so the effect can handle creating exactly one new chat
             updateChatState({ currentDmChannelId: null });
             // Allow the auto-create logic to run again
@@ -443,16 +444,28 @@ export default function Chat({
         }
       }
     );
-  }, [chatType, chatState.currentDmChannelId, targetAgentData, agentDmChannels, confirm, toast, updateChatState, handleNewDmChannel, queryClient, currentClientEntityId]);
+  }, [
+    chatType,
+    chatState.currentDmChannelId,
+    targetAgentData,
+    agentDmChannels,
+    confirm,
+    toast,
+    updateChatState,
+    handleNewDmChannel,
+    queryClient,
+    currentClientEntityId,
+  ]);
 
   // Effect to handle initial DM channel selection or creation
   useEffect(() => {
     if (chatType === ChannelType.DM && targetAgentData?.id) {
       // First, check if current channel belongs to the current agent
       // If not, clear it immediately (handles agent switching)
-      const currentChannelBelongsToAgent = !chatState.currentDmChannelId || 
+      const currentChannelBelongsToAgent =
+        !chatState.currentDmChannelId ||
         agentDmChannels.some((c) => c.id === chatState.currentDmChannelId);
-      
+
       if (!currentChannelBelongsToAgent && !isLoadingAgentDmChannels) {
         clientLogger.info(
           `[Chat] Current DM channel ${chatState.currentDmChannelId} doesn't belong to agent ${targetAgentData.id}, clearing it`
@@ -483,13 +496,21 @@ export default function Chat({
         if (agentDmChannels.length > 0) {
           const currentValid = agentDmChannels.some((c) => c.id === chatState.currentDmChannelId);
           if (!currentValid) {
-            clientLogger.info('[Chat] Selecting first available DM channel:', agentDmChannels[0].id);
+            clientLogger.info(
+              '[Chat] Selecting first available DM channel:',
+              agentDmChannels[0].id
+            );
             updateChatState({ currentDmChannelId: agentDmChannels[0].id });
             autoCreatedDmRef.current = false;
           }
         }
 
-        if (!autoCreatedDmRef.current && !chatState.isCreatingDM && !createDmChannelMutation.isPending && agentDmChannels.length === 0) {
+        if (
+          !autoCreatedDmRef.current &&
+          !chatState.isCreatingDM &&
+          !createDmChannelMutation.isPending &&
+          agentDmChannels.length === 0
+        ) {
           clientLogger.info('[Chat] No DM channels available, creating fresh DM immediately.');
           autoCreatedDmRef.current = true;
           handleNewDmChannel(targetAgentData.id);
@@ -641,7 +662,9 @@ export default function Chat({
     if (chatType === ChannelType.DM && !channelIdToUse && targetAgentData?.id) {
       // If a DM channel is already being (auto) created, abort to prevent duplicate creations.
       if (chatState.isCreatingDM || createDmChannelMutation.isPending) {
-        clientLogger.info('[Chat] DM channel creation already in progress; will wait for it to finish instead of creating another.');
+        clientLogger.info(
+          '[Chat] DM channel creation already in progress; will wait for it to finish instead of creating another.'
+        );
         // Early return so the user can try sending again once the channel is ready.
         return;
       }
@@ -987,7 +1010,7 @@ export default function Chat({
               <Eraser className="size-4" />
               <span className="hidden xl:inline xl:ml-2">Clear Messages</span>
             </Button>
-            
+
             {/* Delete Channel Button for DM */}
             <Button
               variant="outline"
@@ -1000,7 +1023,7 @@ export default function Chat({
               <Trash2 className="size-4" />
               <span className="hidden xl:inline xl:ml-2">Delete Chat</span>
             </Button>
-            
+
             <Separator orientation="vertical" className="h-8" />
             <Tooltip>
               <TooltipTrigger asChild>
@@ -1066,14 +1089,18 @@ export default function Chat({
                   confirm(
                     {
                       title: 'Delete Group',
-                      description: 'Are you sure you want to delete this group? This action cannot be undone.',
+                      description:
+                        'Are you sure you want to delete this group? This action cannot be undone.',
                       confirmText: 'Delete',
                       variant: 'destructive',
                     },
                     async () => {
                       try {
                         await apiClient.deleteChannel(finalChannelIdForHooks);
-                        toast({ title: 'Group Deleted', description: 'The group has been successfully deleted.' });
+                        toast({
+                          title: 'Group Deleted',
+                          description: 'The group has been successfully deleted.',
+                        });
                         // Navigate back to home after deletion
                         window.location.href = '/';
                       } catch (error) {

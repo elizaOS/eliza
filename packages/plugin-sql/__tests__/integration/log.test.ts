@@ -28,7 +28,7 @@ describe('Log Integration Tests', () => {
     runtime = setup.runtime;
     cleanup = setup.cleanup;
     testAgentId = setup.testAgentId;
-    
+
     // Generate random UUIDs for test data
     testEntityId = uuidv4() as UUID;
     testRoomId = uuidv4() as UUID;

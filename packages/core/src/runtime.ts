@@ -152,10 +152,8 @@ export class AgentRuntime implements IAgentRuntime {
       }
     }
 
-
     this.logger.debug(`Success: Agent ID: ${this.agentId}`);
   }
-
 
   async registerPlugin(plugin: Plugin): Promise<void> {
     if (!plugin?.name) {
@@ -406,9 +404,7 @@ export class AgentRuntime implements IAgentRuntime {
         agentEntity = await this.getEntityById(this.agentId);
         if (!agentEntity) throw new Error(`Agent entity not found for ${this.agentId}`);
 
-        this.logger.debug(
-          `Success: Agent entity created successfully for ${this.character.name}`
-        );
+        this.logger.debug(`Success: Agent entity created successfully for ${this.character.name}`);
       }
     } catch (error: any) {
       const errorMsg = error instanceof Error ? error.message : String(error);
@@ -1048,9 +1044,7 @@ export class AgentRuntime implements IAgentRuntime {
       data: {},
       text: '',
     } as State;
-    const cachedState = skipCache
-      ? emptyObj
-      : (await this.stateCache.get(message.id)) || emptyObj;
+    const cachedState = skipCache ? emptyObj : (await this.stateCache.get(message.id)) || emptyObj;
     const existingProviderNames = cachedState.data.providers
       ? Object.keys(cachedState.data.providers)
       : [];
@@ -1111,11 +1105,7 @@ export class AgentRuntime implements IAgentRuntime {
     for (const providerName in currentProviderResults) {
       if (!providersToGet.some((p) => p.name === providerName)) {
         const providerResult = currentProviderResults[providerName];
-        if (
-          providerResult &&
-          providerResult.values &&
-          typeof providerResult.values === 'object'
-        ) {
+        if (providerResult && providerResult.values && typeof providerResult.values === 'object') {
           Object.assign(aggregatedStateValues, providerResult.values);
         }
       }

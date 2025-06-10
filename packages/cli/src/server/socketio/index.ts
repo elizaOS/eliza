@@ -1,5 +1,13 @@
 import type { IAgentRuntime } from '@elizaos/core';
-import { logger, SOCKET_MESSAGE_TYPE, validateUuid, ChannelType, type UUID, EventType, createUniqueUuid } from '@elizaos/core';
+import {
+  logger,
+  SOCKET_MESSAGE_TYPE,
+  validateUuid,
+  ChannelType,
+  type UUID,
+  EventType,
+  createUniqueUuid,
+} from '@elizaos/core';
 import type { Socket, Server as SocketIOServer } from 'socket.io';
 import type { AgentServer } from '../index';
 
@@ -116,14 +124,17 @@ export class SocketIORouter {
   private handleChannelJoining(socket: Socket, payload: any) {
     const channelId = payload.channelId || payload.roomId; // Support both for backward compatibility
     const { agentId, entityId, serverId, metadata } = payload;
-    
-    logger.debug(`[SocketIO] handleChannelJoining called with payload:`, JSON.stringify(payload, null, 2));
-    
+
+    logger.debug(
+      `[SocketIO] handleChannelJoining called with payload:`,
+      JSON.stringify(payload, null, 2)
+    );
+
     if (!channelId) {
       this.sendErrorResponse(socket, `channelId is required for joining.`);
       return;
     }
-    
+
     if (agentId) {
       const agentUuid = validateUuid(agentId);
       if (agentUuid) {
@@ -131,17 +142,19 @@ export class SocketIORouter {
         logger.info(`[SocketIO] Socket ${socket.id} associated with agent ${agentUuid}`);
       }
     }
-    
+
     socket.join(channelId);
     logger.info(`[SocketIO] Socket ${socket.id} joined Socket.IO channel: ${channelId}`);
-    
+
     // Emit ENTITY_JOINED event for bootstrap plugin to handle world/entity creation
     if (entityId && (serverId || DEFAULT_SERVER_ID)) {
       const finalServerId = serverId || DEFAULT_SERVER_ID;
       const isDm = metadata?.isDm || metadata?.channelType === ChannelType.DM;
-      
-      logger.info(`[SocketIO] Emitting ENTITY_JOINED event for entityId: ${entityId}, serverId: ${finalServerId}, isDm: ${isDm}`);
-      
+
+      logger.info(
+        `[SocketIO] Emitting ENTITY_JOINED event for entityId: ${entityId}, serverId: ${finalServerId}, isDm: ${isDm}`
+      );
+
       // Get the first available runtime (there should typically be one)
       const runtime = Array.from(this.agents.values())[0];
       if (runtime) {
@@ -157,15 +170,17 @@ export class SocketIORouter {
           },
           source: 'socketio',
         });
-        
+
         logger.info(`[SocketIO] ENTITY_JOINED event emitted successfully for ${entityId}`);
       } else {
         logger.warn(`[SocketIO] No runtime available to emit ENTITY_JOINED event`);
       }
     } else {
-      logger.debug(`[SocketIO] Missing entityId (${entityId}) or serverId (${serverId || DEFAULT_SERVER_ID}) - not emitting ENTITY_JOINED event`);
+      logger.debug(
+        `[SocketIO] Missing entityId (${entityId}) or serverId (${serverId || DEFAULT_SERVER_ID}) - not emitting ENTITY_JOINED event`
+      );
     }
-    
+
     const successMessage = `Socket ${socket.id} successfully joined channel ${channelId}.`;
     const responsePayload = {
       message: successMessage,
@@ -205,8 +220,10 @@ export class SocketIORouter {
       // Check if this is a DM channel and emit ENTITY_JOINED for proper world setup
       const isDmForWorldSetup = metadata?.isDm || metadata?.channelType === ChannelType.DM;
       if (isDmForWorldSetup && senderId) {
-        logger.info(`[SocketIO] Detected DM channel during message submission, emitting ENTITY_JOINED for proper world setup`);
-        
+        logger.info(
+          `[SocketIO] Detected DM channel during message submission, emitting ENTITY_JOINED for proper world setup`
+        );
+
         const runtime = Array.from(this.agents.values())[0];
         if (runtime) {
           runtime.emitEvent(EventType.ENTITY_JOINED as any, {
@@ -221,7 +238,7 @@ export class SocketIORouter {
             },
             source: 'socketio_message',
           });
-          
+
           logger.info(`[SocketIO] ENTITY_JOINED event emitted for DM channel setup: ${senderId}`);
         }
       }
@@ -262,7 +279,7 @@ export class SocketIORouter {
             return;
           }
 
-              // Determine if this is likely a DM based on the context
+          // Determine if this is likely a DM based on the context
           const isDmChannel =
             metadata?.isDm ||
             metadata?.channelType === ChannelType.DM ||

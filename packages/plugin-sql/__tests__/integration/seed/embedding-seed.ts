@@ -1,12 +1,4 @@
-import {
-  Agent,
-  AgentStatus,
-  ChannelType,
-  Entity,
-  Memory,
-  Room,
-  UUID,
-} from '@elizaos/core';
+import { Agent, AgentStatus, ChannelType, Entity, Memory, Room, UUID } from '@elizaos/core';
 
 // Generate fixed UUIDs for testing to avoid type issues
 const fixedUuid = (n: number): UUID =>

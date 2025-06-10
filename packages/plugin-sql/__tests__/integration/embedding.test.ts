@@ -89,7 +89,7 @@ describe('Embedding Integration Tests', () => {
     it('should handle different embedding dimensions', async () => {
       // Test with 768 dimensions
       await adapter.ensureEmbeddingDimension(768);
-      
+
       const memory768: Memory = {
         id: uuidv4() as UUID,
         agentId: testAgentId,

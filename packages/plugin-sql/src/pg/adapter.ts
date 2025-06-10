@@ -62,7 +62,7 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter<NodePgDatabase> {
   async init(): Promise<void> {
     logger.debug('PgDatabaseAdapter initialized, skipping automatic migrations.');
   }
-  
+
   /**
    * Checks if the database connection is ready and active.
    * @returns {Promise<boolean>} A Promise that resolves to true if the connection is healthy.

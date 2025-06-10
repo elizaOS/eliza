@@ -14,10 +14,7 @@ import { v4 } from 'uuid';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { PgliteDatabaseAdapter } from '../../src/pglite/adapter';
 import { PgDatabaseAdapter } from '../../src/pg/adapter';
-import {
-  embeddingTable,
-  memoryTable
-} from '../../src/schema';
+import { embeddingTable, memoryTable } from '../../src/schema';
 import { createTestDatabase } from '../test-helpers';
 import {
   documentMemoryId,
@@ -26,7 +23,7 @@ import {
   memoryTestEntityId,
   memoryTestFragments,
   memoryTestMemories,
-  memoryTestMemoriesWithEmbedding
+  memoryTestMemoriesWithEmbedding,
 } from './seed';
 
 describe('Memory Integration Tests', () => {
@@ -45,10 +42,10 @@ describe('Memory Integration Tests', () => {
       testRoomId = v4() as UUID;
       testEntityId = v4() as UUID;
       testWorldId = v4() as UUID;
-      
+
       ({ adapter, runtime, cleanup } = await createTestDatabase(testAgentId));
 
-      console.log("ADAPTER IS", adapter)
+      console.log('ADAPTER IS', adapter);
 
       await adapter.createWorld({
         id: testWorldId,
@@ -109,7 +106,10 @@ describe('Memory Integration Tests', () => {
   });
 
   it('should create and retrieve a memory with an embedding', async () => {
-    const memory = createTestMemory({ text: 'test' }, Array.from({ length: 384 }, () => Math.random()));
+    const memory = createTestMemory(
+      { text: 'test' },
+      Array.from({ length: 384 }, () => Math.random())
+    );
     const memoryId = await adapter.createMemory(memory, 'test');
     const retrieved = await adapter.getMemoryById(memoryId);
     expect(retrieved).toBeDefined();

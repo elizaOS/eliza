@@ -36,10 +36,7 @@ import {
 } from './shared/middleware';
 import fs from 'fs';
 import path from 'path';
-import {
-  SpanStatusCode,
-  type Tracer,
-} from '@opentelemetry/api';
+import { SpanStatusCode, type Tracer } from '@opentelemetry/api';
 
 /**
  * Processes attachments to convert localhost URLs to base64 data URIs

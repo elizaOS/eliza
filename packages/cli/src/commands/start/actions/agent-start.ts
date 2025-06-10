@@ -16,7 +16,7 @@ import { loadEnvConfig } from '../utils/config-utils';
 
 /**
  * Start an agent with the given configuration
- * 
+ *
  * Creates and initializes an agent runtime with plugins, handles dependency resolution, runs database migrations, and registers the agent with the server.
  */
 export async function startAgent(

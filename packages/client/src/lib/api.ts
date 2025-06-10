@@ -358,11 +358,14 @@ export const apiClient = {
     if (params.level) queryParams.append('level', params.level);
     if (params.agentName) queryParams.append('agentName', params.agentName);
     if (params.agentId) queryParams.append('agentId', params.agentId);
-    return fetcher({ url: `/runtime/logs${queryParams.toString() ? `?${queryParams.toString()}` : ''}` });
+    return fetcher({
+      url: `/runtime/logs${queryParams.toString() ? `?${queryParams.toString()}` : ''}`,
+    });
   },
   deleteGlobalLogs: (): Promise<{ status: string; message: string }> =>
     fetcher({ url: '/runtime/logs', method: 'DELETE' }),
-  deleteLog: (logId: string): Promise<void> => fetcher({ url: `/runtime/logs/${logId}`, method: 'DELETE' }),
+  deleteLog: (logId: string): Promise<void> =>
+    fetcher({ url: `/runtime/logs/${logId}`, method: 'DELETE' }),
   getAgentLogs: (
     agentId: string,
     options?: {

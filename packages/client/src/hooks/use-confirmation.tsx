@@ -45,11 +45,11 @@ export function useConfirmation() {
     handleOpenChange(false);
   }, [confirmationState.onConfirm, handleOpenChange]);
 
-  return { 
-    confirm, 
+  return {
+    confirm,
     isOpen: confirmationState.open,
     onOpenChange: handleOpenChange,
     onConfirm: handleConfirm,
-    options: confirmationState.options
+    options: confirmationState.options,
   };
 }

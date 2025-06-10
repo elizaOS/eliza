@@ -4,7 +4,13 @@ import { execa } from 'execa';
 import { logger } from '@elizaos/core';
 import { getPackageManager } from '@/src/utils';
 import { UpdateCheckResult, PackageUpdate } from '../types';
-import { checkVersionNeedsUpdate, fetchLatestVersion, ELIZAOS_ORG, isWorkspaceVersion, isMajorUpdate } from './version-utils';
+import {
+  checkVersionNeedsUpdate,
+  fetchLatestVersion,
+  ELIZAOS_ORG,
+  isWorkspaceVersion,
+  isMajorUpdate,
+} from './version-utils';
 
 /**
  * Check for available updates

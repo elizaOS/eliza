@@ -3,12 +3,17 @@ import * as clack from '@clack/prompts';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { UpdateOptions } from '../types';
-import { checkForUpdates, displayUpdateSummary, installDependencies, updatePackageJson } from '../utils/package-utils';
+import {
+  checkForUpdates,
+  displayUpdateSummary,
+  installDependencies,
+  updatePackageJson,
+} from '../utils/package-utils';
 import { isMajorUpdate } from '../utils/version-utils';
 
 /**
  * Main dependency update function
- * 
+ *
  * Updates ElizaOS dependencies in a project or plugin, with support for dry-run mode, major version confirmation, and optional build step.
  */
 export async function updateDependencies(
@@ -17,7 +22,7 @@ export async function updateDependencies(
   options: UpdateOptions = {}
 ): Promise<void> {
   const { dryRun = false, skipBuild = false } = options;
-  
+
   const packageJsonPath = path.join(cwd, 'package.json');
   const content = await fs.readFile(packageJsonPath, 'utf8');
   const packageJson = JSON.parse(content);

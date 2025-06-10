@@ -8,7 +8,7 @@ import { BuildResult, DevContext } from '../types';
  */
 async function buildPackage(packagePath: string, isPlugin: boolean): Promise<BuildResult> {
   const startTime = Date.now();
-  
+
   try {
     await buildProject(packagePath, isPlugin);
     const duration = Date.now() - startTime;
@@ -46,13 +46,13 @@ async function buildCorePackages(monorepoRoot: string): Promise<BuildResult[]> {
   for (const pkg of corePackages) {
     console.info(`Building ${pkg.name}...`);
     const result = await buildPackage(pkg.path, pkg.isPlugin);
-    
+
     if (!result.success) {
       console.error(`Error building ${pkg.name}: ${result.error?.message}`);
     } else {
       console.info(`✓ Built ${pkg.name} (${result.duration}ms)`);
     }
-    
+
     results.push(result);
   }
 
@@ -61,7 +61,7 @@ async function buildCorePackages(monorepoRoot: string): Promise<BuildResult[]> {
 
 /**
  * Perform a full rebuild based on the development context
- * 
+ *
  * Handles building in different contexts: monorepo, project, or plugin.
  */
 export async function performRebuild(context: DevContext): Promise<void> {
@@ -82,7 +82,7 @@ export async function performRebuild(context: DevContext): Promise<void> {
 
   // Build the current project/plugin
   const result = await buildPackage(directory, isPlugin);
-  
+
   if (result.success) {
     console.log(`✓ Rebuild successful (${result.duration}ms)`);
   } else {
@@ -121,13 +121,15 @@ export async function performInitialBuild(context: DevContext): Promise<void> {
  */
 export function createDevContext(cwd: string): DevContext {
   const directoryType = detectDirectoryType(cwd);
-  
+
   if (!directoryType) {
-    throw new Error('Cannot start development mode in this directory. Directory is not accessible or does not exist.');
+    throw new Error(
+      'Cannot start development mode in this directory. Directory is not accessible or does not exist.'
+    );
   }
 
   const srcDir = path.join(cwd, 'src');
-  
+
   return {
     directory: cwd,
     directoryType,

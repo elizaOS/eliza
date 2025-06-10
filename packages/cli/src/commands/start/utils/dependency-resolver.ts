@@ -2,7 +2,7 @@ import { logger, type Plugin } from '@elizaos/core';
 
 /**
  * Resolve plugin dependencies with circular dependency detection
- * 
+ *
  * Performs topological sorting of plugins to ensure dependencies are loaded in the correct order, with support for test dependencies.
  */
 export function resolvePluginDependencies(

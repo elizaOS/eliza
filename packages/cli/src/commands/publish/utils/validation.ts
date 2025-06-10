@@ -6,7 +6,10 @@ import { PackageJson } from '../types';
 /**
  * Validate plugin requirements
  */
-export async function validatePluginRequirements(cwd: string, packageJson: PackageJson): Promise<void> {
+export async function validatePluginRequirements(
+  cwd: string,
+  packageJson: PackageJson
+): Promise<void> {
   const errors: string[] = [];
   const warnings: string[] = [];
 

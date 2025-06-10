@@ -31,7 +31,8 @@ export const isWorkspaceVersion = (version: string): boolean =>
 /**
  * Check if version is a special tag
  */
-export const isSpecialVersionTag = (version: string): boolean => SPECIAL_VERSION_TAGS.includes(version);
+export const isSpecialVersionTag = (version: string): boolean =>
+  SPECIAL_VERSION_TAGS.includes(version);
 
 /**
  * Version comparison helper

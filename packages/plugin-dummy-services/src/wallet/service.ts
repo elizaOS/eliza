@@ -17,7 +17,8 @@ interface DummyAssetDetail {
 
 export class DummyWalletService extends Service implements IWalletService {
   public static override readonly serviceType = ServiceType.WALLET;
-  public readonly capabilityDescription = 'Provides standardized access to wallet balances and portfolios.';
+  public readonly capabilityDescription =
+    'Provides standardized access to wallet balances and portfolios.';
 
   private balances: Map<string, number>; // assetSymbolOrAddress -> quantity
   private positions: Map<string, DummyAssetDetail>; // assetSymbolOrAddress -> details for owned non-quote assets
@@ -35,19 +36,19 @@ export class DummyWalletService extends Service implements IWalletService {
     console.log(
       `[${DummyWalletService.serviceType}] Mock transfer: ${lamports} lamports from ${from} to ${to}`
     );
-    
+
     // For dummy wallet, we just simulate the transfer
     const solSymbol = 'SOL';
     const solAmount = lamports / 1e9; // Convert lamports to SOL
-    
+
     const currentBalance = this.balances.get(solSymbol) || 0;
     if (currentBalance < solAmount) {
       throw new Error(`Insufficient SOL balance. Have ${currentBalance}, need ${solAmount}`);
     }
-    
+
     // Deduct from balance
     this.balances.set(solSymbol, currentBalance - solAmount);
-    
+
     // Return a dummy transaction signature
     return `dummy-tx-${Date.now()}-${Math.random().toString(36).substring(7)}`;
   }
@@ -127,17 +128,17 @@ export class DummyWalletService extends Service implements IWalletService {
   async getPortfolio(_walletAddress?: string): Promise<WalletPortfolio> {
     const assets: any[] = [];
     let totalValueUsd = 0;
-    
+
     for (const [symbol, balance] of this.balances) {
       const positionDetail = this.positions.get(symbol);
       const isQuoteAsset = symbol === this.quoteAssetSymbol;
       const averagePrice = positionDetail?.averagePrice || (isQuoteAsset ? 1 : 0);
-      const value = isQuoteAsset 
-        ? balance 
-        : positionDetail 
-          ? balance * positionDetail.averagePrice 
+      const value = isQuoteAsset
+        ? balance
+        : positionDetail
+          ? balance * positionDetail.averagePrice
           : 0;
-      
+
       // WalletAsset structure
       assets.push({
         address: symbol, // Using symbol as address for dummy wallet
@@ -150,13 +151,13 @@ export class DummyWalletService extends Service implements IWalletService {
         value,
         assetAddress: symbol,
       });
-      
+
       totalValueUsd += value;
     }
-    
+
     return {
       totalValueUsd,
-      assets
+      assets,
     };
   }
 }
