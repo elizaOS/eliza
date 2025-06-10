@@ -64,7 +64,6 @@
     "https-proxy-agent": "^6.2.0",
     "ora": "^8.1.1",
     "prettier": "3.5.3",
-    "prompts": "^2.4.2",
     "recast": "^0.23.2",
     "rimraf": "6.0.1",
     "simple-git": "^3.27.0",
@@ -82,6 +81,7 @@
   },
   "gitHead": "d5bd5c43bfebeb7ac02f9e029f924cb6cd5c2ec7",
   "dependencies": {
+    "@clack/prompts": "^0.11.0",
     "@electric-sql/pglite": "^0.3.2",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-bootstrap": "1.0.5",
