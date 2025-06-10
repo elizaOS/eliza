@@ -16,8 +16,8 @@ export const relationshipTestAgent: Agent = {
       short_description: 'Test agent for relationship integration tests',
     },
   },
-  createdAt: Date.now(),
-  updatedAt: Date.now(),
+  createdAt: new Date().getTime(),
+  updatedAt: new Date().getTime(),
 };
 
 export const relationshipTestSourceEntity: Entity = {
@@ -52,7 +52,7 @@ export const relationshipTestRelationships: Relationship[] = [
       type: 'social',
       strength: 'high',
     },
-    createdAt: Date.now().toString(),
+    createdAt: new Date().getTime().toString(),
   },
   {
     id: uuidv4() as UUID,
@@ -64,7 +64,7 @@ export const relationshipTestRelationships: Relationship[] = [
       type: 'professional',
       strength: 'medium',
     },
-    createdAt: Date.now().toString(),
+    createdAt: new Date().getTime().toString(),
   },
 ];
 
@@ -82,6 +82,6 @@ export const createTestRelationship = (
     agentId: relationshipTestAgentId,
     tags,
     metadata,
-    createdAt: Date.now().toString(),
+    createdAt: new Date().getTime().toString(),
   };
 };

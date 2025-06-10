@@ -30,7 +30,7 @@
     "@elizaos/core": "workspace:*",
     "@types/pg": "8.11.10",
     "drizzle-kit": "^0.30.4",
-    "drizzle-orm": "^0.39.1",
+    "drizzle-orm": "^0.44.2",
     "pg": "^8.13.3"
   },
   "devDependencies": {
@@ -46,14 +46,17 @@
     "dev": "tsup --watch",
     "migrate:generate": "drizzle-kit generate",
     "migrate": "tsup src/migrate.ts --format esm --clean=false --onSuccess=\"node dist/migrate.js\"",
-    "lint": "prettier --write ./src",
+    "lint": "eslint .",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
-    "format": "prettier --write ./src",
+    "format": "prettier --check .",
     "format:check": "prettier --check ./src",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:integration": "vitest run __tests__/integration"
+    "test:integration": "vitest run __tests__/integration",
+    "test:postgres": "POSTGRES_URL=postgresql://postgres:cT5nfCeebBS8R0q3@db.mwyntrazuakaieibjuvo.supabase.co:5432/postgres vitest run",
+    "build:clean": "rm -rf dist",
+    "lint:fix": "eslint . --fix"
   },
   "peerDependencies": {
     "typescript": "5.8.2",

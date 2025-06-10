@@ -18,8 +18,8 @@ export const roomTestAgent: Agent = {
       short_description: 'Test agent for room integration tests',
     },
   },
-  createdAt: Date.now(),
-  updatedAt: Date.now(),
+  createdAt: new Date().getTime(),
+  updatedAt: new Date().getTime(),
 };
 
 export const roomTestEntity: Entity = {

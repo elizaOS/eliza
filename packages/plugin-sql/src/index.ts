@@ -5,6 +5,11 @@ import { PGliteClientManager } from './pglite/manager';
 import { PgDatabaseAdapter } from './pg/adapter';
 import { PostgresConnectionManager } from './pg/manager';
 import { resolvePgliteDir } from './utils';
+import * as schema from './schema';
+import { sql } from 'drizzle-orm';
+import { migrate } from 'drizzle-orm/node-postgres/migrator';
+import { runPluginMigrations } from './custom-migrator';
+import { DatabaseMigrationService } from './migration-service';
 
 /**
  * Global Singleton Instances (Package-scoped)
@@ -68,7 +73,7 @@ export function createDatabaseAdapter(
 }
 
 /**
- * SQL plugin for database adapter using Drizzle ORM
+ * SQL plugin for database adapter using Drizzle ORM with dynamic plugin schema migrations
  *
  * @typedef {Object} Plugin
  * @property {string} name - The name of the plugin
@@ -77,24 +82,48 @@ export function createDatabaseAdapter(
  * @param {any} _ - Input parameter
  * @param {IAgentRuntime} runtime - The runtime environment for the agent
  */
-const sqlPlugin: Plugin = {
-  name: 'sql',
-  description: 'SQL database adapter plugin using Drizzle ORM',
+export const plugin: Plugin = {
+  name: '@elizaos/plugin-sql',
+  description: 'A plugin for SQL database access with dynamic schema migrations',
+  priority: 0,
+  schema,
   init: async (_, runtime: IAgentRuntime) => {
-    const config = {
-      dataDir: resolvePgliteDir(runtime.getSetting('PGLITE_DATA_DIR') as string | undefined),
-      postgresUrl: runtime.getSetting('POSTGRES_URL'),
-    };
+    logger.info('plugin-sql init starting...');
 
+    // Check if a database adapter is already registered
     try {
-      const db = createDatabaseAdapter(config, runtime.agentId);
-      logger.success('Database connection established successfully');
-      runtime.registerDatabaseAdapter(db);
+      // Try to access the database adapter to see if one exists
+      const existingAdapter = (runtime as any).databaseAdapter;
+      if (existingAdapter) {
+        logger.info('Database adapter already registered, skipping creation');
+        return;
+      }
     } catch (error) {
-      logger.error('Failed to initialize database:', error);
-      throw error;
+      // No adapter exists, continue with creation
     }
+
+    // Get database configuration from runtime settings
+    const postgresUrl = runtime.getSetting('POSTGRES_URL') || runtime.getSetting('DATABASE_URL');
+    const dataDir = runtime.getSetting('DATABASE_PATH') || './.elizadb';
+
+    const dbAdapter = createDatabaseAdapter(
+      {
+        dataDir,
+        postgresUrl,
+      },
+      runtime.agentId
+    );
+
+    runtime.registerDatabaseAdapter(dbAdapter);
+    logger.info('Database adapter created and registered');
+
+    // Note: DatabaseMigrationService is not registered as a runtime service
+    // because migrations are handled at the server level before agents are loaded
   },
 };
 
-export default sqlPlugin;
+export default plugin;
+
+// Export additional utilities that may be needed by consumers
+export { DatabaseMigrationService } from './migration-service';
+export { schema };

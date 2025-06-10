@@ -1,7 +1,6 @@
 import { sql } from 'drizzle-orm';
-import { jsonb, pgTable, text, unique, uuid } from 'drizzle-orm/pg-core';
+import { jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
 import { agentTable } from './agent';
-import { numberTimestamp } from './types';
 
 /**
  * Represents an entity table in the database.
@@ -11,12 +10,12 @@ export const entityTable = pgTable(
   'entities',
   {
     id: uuid('id').notNull().primaryKey(),
-    agentId: uuid('agentId')
+    agentId: uuid('agent_id')
       .notNull()
       .references(() => agentTable.id, {
         onDelete: 'cascade',
       }),
-    createdAt: numberTimestamp('createdAt')
+    createdAt: timestamp('created_at')
       .default(sql`now()`)
       .notNull(),
     names: text('names')

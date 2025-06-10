@@ -116,14 +116,6 @@ export interface IAgentRuntime extends IDatabaseAdapter {
     skipCache?: boolean
   ): Promise<State>;
 
-  /**
-   * Use a model with strongly typed parameters and return values based on model type
-   * @template T - The model type to use
-   * @template R - The expected return type, defaults to the type defined in ModelResultMap[T]
-   * @param {T} modelType - The type of model to use
-   * @param {ModelParamsMap[T] | any} params - The parameters for the model, typed based on model type
-   * @returns {Promise<R>} - The model result, typed based on the provided generic type parameter
-   */
   useModel<T extends ModelTypeName, R = ModelResultMap[T]>(
     modelType: T,
     params: Omit<ModelParamsMap[T], 'runtime'> | any
@@ -162,18 +154,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   addParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
   getRooms(worldId: UUID): Promise<Room[]>;
 
-  /**
-   * Registers a handler function responsible for sending messages to a specific source/platform.
-   * @param source - The unique identifier string for the source (e.g., 'discord', 'telegram').
-   * @param handler - The SendHandlerFunction to be called for this source.
-   */
   registerSendHandler(source: string, handler: SendHandlerFunction): void;
 
-  /**
-   * Sends a message to a specified target using the appropriate registered handler.
-   * @param target - Information describing the target recipient and platform.
-   * @param content - The message content to send.
-   * @returns Promise resolving when the message sending process is initiated or completed.
-   */
   sendMessageToTarget(target: TargetInfo, content: Content): Promise<void>;
 }

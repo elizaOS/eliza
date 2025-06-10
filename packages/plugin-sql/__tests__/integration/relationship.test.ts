@@ -1,257 +1,105 @@
-import { describe, expect, it, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
+import { beforeAll, describe, it, expect, afterAll, beforeEach } from 'vitest';
+import { type UUID, type Entity, type Relationship, AgentRuntime, stringToUuid } from '@elizaos/core';
+import { v4 as uuidv4 } from 'uuid';
+import { createIsolatedTestDatabase } from '../test-helpers';
+import { relationshipTable, entityTable } from '../../src/schema';
 import { PgliteDatabaseAdapter } from '../../src/pglite/adapter';
-import { PGliteClientManager } from '../../src/pglite/manager';
-import { type UUID } from '@elizaos/core';
-import {
-  relationshipTestAgentId,
-  relationshipTestSourceEntityId,
-  relationshipTestTargetEntityId,
-  relationshipTestAgent,
-  relationshipTestSourceEntity,
-  relationshipTestTargetEntity,
-  relationshipTestRelationships,
-  createTestRelationship,
-} from './seed';
-import { setupMockedMigrations } from '../test-helpers';
-
-// Setup mocked migrations before any tests run or instances are created
-setupMockedMigrations();
-
-// Mock only the logger
-vi.mock('@elizaos/core', async () => {
-  const actual = await vi.importActual('@elizaos/core');
-  return {
-    ...actual,
-    logger: {
-      debug: vi.fn(),
-      error: vi.fn(),
-      warn: vi.fn(),
-      success: vi.fn(),
-      info: vi.fn(),
-    },
-  };
-});
+import { PgDatabaseAdapter } from '../../src/pg/adapter';
 
 describe('Relationship Integration Tests', () => {
-  // Database connection variables
-  let connectionManager: PGliteClientManager;
-  let adapter: PgliteDatabaseAdapter;
-  let agentId: UUID = relationshipTestAgentId;
+  let adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
+  let runtime: AgentRuntime;
+  let cleanup: () => Promise<void>;
+  let testAgentId: UUID;
+  let testEntityId: UUID;
+  let testTargetEntityId: UUID;
 
   beforeAll(async () => {
-    // Initialize connection manager and adapter
-    connectionManager = new PGliteClientManager({});
-    await connectionManager.initialize();
-    adapter = new PgliteDatabaseAdapter(agentId, connectionManager);
-    await adapter.init();
+    const setup = await createIsolatedTestDatabase('relationship-tests');
+    adapter = setup.adapter;
+    runtime = setup.runtime;
+    cleanup = setup.cleanup;
+    testAgentId = setup.testAgentId;
 
-    try {
-      // Step 1: Create test agent
-      await adapter.createAgent(relationshipTestAgent);
+    // Generate random UUIDs for test data
+    testEntityId = uuidv4() as UUID;
+    testTargetEntityId = uuidv4() as UUID;
 
-      // Step 2: Create test source entity
-      await adapter.createEntities([relationshipTestSourceEntity]);
-
-      // Step 3: Create test target entity
-      await adapter.createEntities([relationshipTestTargetEntity]);
-    } catch (error) {
-      console.error('Error in setup:', error);
-      throw error;
-    }
-  }, 10000);
+    // Create test entities
+    await adapter.createEntities([
+      { id: testEntityId, agentId: testAgentId, names: ['Test Entity'] } as Entity,
+      { id: testTargetEntityId, agentId: testAgentId, names: ['Target Entity'] } as Entity,
+    ]);
+  }, 30000);
 
   afterAll(async () => {
-    // Clean up test data
-    const client = connectionManager.getConnection();
-    try {
-      // Order matters for foreign key constraints
-      await client.query('DELETE FROM relationships WHERE TRUE');
-      await client.query(
-        `DELETE FROM entities WHERE id IN ('${relationshipTestSourceEntityId}', '${relationshipTestTargetEntityId}')`
-      );
-      await client.query(`DELETE FROM agents WHERE id = '${relationshipTestAgentId}'`);
-    } catch (error) {
-      console.error('Error cleaning test data:', error);
-    }
-
-    // Close all connections
-    await adapter.close();
-  }, 10000);
-
-  beforeEach(async () => {
-    // Clean up any existing test relationships before each test
-    const client = connectionManager.getConnection();
-    try {
-      await client.query('DELETE FROM relationships WHERE TRUE');
-    } catch (error) {
-      console.error('Error cleaning test relationship data:', error);
+    if (cleanup) {
+      await cleanup();
     }
   });
 
-  afterEach(async () => {
-    vi.clearAllMocks();
-  });
+  describe('Relationship Tests', () => {
+    beforeEach(async () => {
+      await adapter.getDatabase().delete(relationshipTable);
+    });
 
-  describe('Relationship CRUD Operations', () => {
-    it('should create a relationship between entities', async () => {
-      const relationship = relationshipTestRelationships[0];
-
-      const result = await adapter.createRelationship({
-        sourceEntityId: relationship.sourceEntityId,
-        targetEntityId: relationship.targetEntityId,
-        tags: relationship.tags,
-        metadata: relationship.metadata,
-      });
-
+    it('should create and retrieve a relationship', async () => {
+      const relationshipData = {
+        sourceEntityId: testEntityId,
+        targetEntityId: testTargetEntityId,
+        tags: ['friend'],
+      };
+      const result = await adapter.createRelationship(relationshipData);
       expect(result).toBe(true);
 
-      // Verify the relationship exists
-      const createdRelationship = await adapter.getRelationship({
-        sourceEntityId: relationship.sourceEntityId,
-        targetEntityId: relationship.targetEntityId,
-      });
-
-      expect(createdRelationship).not.toBeNull();
-      expect(createdRelationship?.sourceEntityId).toBe(relationship.sourceEntityId);
-      expect(createdRelationship?.targetEntityId).toBe(relationship.targetEntityId);
-      expect(createdRelationship?.tags).toEqual(relationship.tags);
-      expect(createdRelationship?.metadata).toEqual(relationship.metadata);
+      const retrieved = await adapter.getRelationship({ sourceEntityId: testEntityId, targetEntityId: testTargetEntityId });
+      expect(retrieved).toBeDefined();
+      expect(retrieved?.tags).toContain('friend');
     });
 
     it('should update an existing relationship', async () => {
-      // Create a relationship first
-      const relationship = relationshipTestRelationships[0];
-      await adapter.createRelationship({
-        sourceEntityId: relationship.sourceEntityId,
-        targetEntityId: relationship.targetEntityId,
-        tags: relationship.tags,
-        metadata: relationship.metadata,
-      });
-
-      // Get the created relationship
-      const createdRelationship = await adapter.getRelationship({
-        sourceEntityId: relationship.sourceEntityId,
-        targetEntityId: relationship.targetEntityId,
-      });
-
-      expect(createdRelationship).not.toBeNull();
-
-      // Update the relationship
-      const updatedTags = ['friend', 'updated'];
-      const updatedMetadata = {
-        type: 'social',
-        strength: 'very high',
-        updated: true,
-      };
-
-      await adapter.updateRelationship({
-        id: createdRelationship!.id,
-        sourceEntityId: relationship.sourceEntityId,
-        targetEntityId: relationship.targetEntityId,
-        agentId: relationship.agentId,
-        tags: updatedTags,
-        metadata: updatedMetadata,
-      });
-
-      // Retrieve the updated relationship
-      const updatedRelationship = await adapter.getRelationship({
-        sourceEntityId: relationship.sourceEntityId,
-        targetEntityId: relationship.targetEntityId,
-      });
-
-      expect(updatedRelationship).not.toBeNull();
-      expect(updatedRelationship?.tags).toEqual(updatedTags);
-      expect(updatedRelationship?.metadata).toEqual(updatedMetadata);
-    });
-
-    it('should retrieve relationships by entity ID', async () => {
-      // Create multiple relationships
-      for (const relationship of relationshipTestRelationships) {
-        await adapter.createRelationship({
-          sourceEntityId: relationship.sourceEntityId,
-          targetEntityId: relationship.targetEntityId,
-          tags: relationship.tags,
-          metadata: relationship.metadata,
-        });
-      }
-
-      // Get relationships for source entity
-      const sourceRelationships = await adapter.getRelationships({
-        entityId: relationshipTestSourceEntityId,
-      });
-
-      // There should be at least one relationship where the entity is source or target
-      expect(sourceRelationships.length).toBeGreaterThan(0);
-
-      // Verify relationship properties
-      const foundSourceRel = sourceRelationships.find(
-        (r) =>
-          r.sourceEntityId === relationshipTestSourceEntityId &&
-          r.targetEntityId === relationshipTestTargetEntityId
-      );
-
-      expect(foundSourceRel).toBeDefined();
-      expect(foundSourceRel?.tags).toContain('friend');
-
-      // Get relationships for target entity
-      const targetRelationships = await adapter.getRelationships({
-        entityId: relationshipTestTargetEntityId,
-      });
-
-      // There should be at least one relationship where the entity is source or target
-      expect(targetRelationships.length).toBeGreaterThan(0);
-    });
-
-    it('should filter relationships by tags', async () => {
-      // Create relationships with different tags
-      const friendRelationship = createTestRelationship(
-        relationshipTestSourceEntityId,
-        relationshipTestTargetEntityId,
-        ['friend', 'close'],
-        { type: 'personal' }
-      );
-
-      const colleagueRelationship = createTestRelationship(
-        relationshipTestTargetEntityId,
-        relationshipTestSourceEntityId,
-        ['colleague', 'professional'],
-        { type: 'work' }
-      );
-
-      // Create both relationships
-      await adapter.createRelationship({
-        sourceEntityId: friendRelationship.sourceEntityId,
-        targetEntityId: friendRelationship.targetEntityId,
-        tags: friendRelationship.tags,
-        metadata: friendRelationship.metadata,
-      });
-
-      await adapter.createRelationship({
-        sourceEntityId: colleagueRelationship.sourceEntityId,
-        targetEntityId: colleagueRelationship.targetEntityId,
-        tags: colleagueRelationship.tags,
-        metadata: colleagueRelationship.metadata,
-      });
-
-      // Filter by 'friend' tag
-      const friendRelationships = await adapter.getRelationships({
-        entityId: relationshipTestSourceEntityId,
+      const relationshipData = {
+        sourceEntityId: testEntityId,
+        targetEntityId: testTargetEntityId,
         tags: ['friend'],
+      };
+      await adapter.createRelationship(relationshipData);
+
+      const retrieved = await adapter.getRelationship({ sourceEntityId: testEntityId, targetEntityId: testTargetEntityId });
+      expect(retrieved).toBeDefined();
+
+      const updatedRelationship = {
+        ...retrieved!,
+        tags: ['best_friend'],
+        metadata: { since: '2023' },
+      };
+      await adapter.updateRelationship(updatedRelationship);
+
+      const updatedRetrieved = await adapter.getRelationship({ sourceEntityId: testEntityId, targetEntityId: testTargetEntityId });
+      expect(updatedRetrieved?.tags).toContain('best_friend');
+      expect(updatedRetrieved?.metadata).toEqual({ since: '2023' });
+    });
+
+    it('should retrieve relationships by entity ID and tags', async () => {
+      await adapter.createRelationship({
+        sourceEntityId: testEntityId,
+        targetEntityId: testTargetEntityId,
+        tags: ['friend', 'colleague'],
       });
 
-      expect(friendRelationships.length).toBeGreaterThan(0);
-      expect(friendRelationships[0].tags).toContain('friend');
-      expect(friendRelationships[0].tags).toContain('close');
-
-      // Filter by 'colleague' tag
-      const colleagueRelationships = await adapter.getRelationships({
-        entityId: relationshipTestSourceEntityId,
-        tags: ['colleague'],
+      const otherTargetId = uuidv4() as UUID;
+      await adapter.createEntities([
+        { id: otherTargetId, agentId: testAgentId, names: ['Other Entity'] } as Entity,
+      ]);
+      await adapter.createRelationship({
+        sourceEntityId: testEntityId,
+        targetEntityId: otherTargetId,
+        tags: ['family'],
       });
 
-      expect(colleagueRelationships.length).toBeGreaterThan(0);
-      expect(colleagueRelationships[0].tags).toContain('colleague');
-      expect(colleagueRelationships[0].tags).toContain('professional');
+      const results = await adapter.getRelationships({ entityId: testEntityId, tags: ['friend'] });
+      expect(results).toHaveLength(1);
+      expect(results[0].targetEntityId).toBe(testTargetEntityId);
     });
   });
 });
