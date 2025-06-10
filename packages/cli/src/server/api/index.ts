@@ -495,6 +495,11 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
       return next();
     }
 
+    // Skip messages API routes - these should be handled by MessagesRouter
+    if (req.path.startsWith('/api/messages/')) {
+      return next();
+    }
+
     // Debug output for JavaScript requests
     if (
       req.path.endsWith('.js') ||

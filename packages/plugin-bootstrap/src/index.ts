@@ -6,9 +6,9 @@ import {
   type Content,
   ContentType,
   createUniqueUuid,
-  type Entity,
   type EntityPayload,
   type EvaluatorEventPayload,
+  type EventPayload,
   EventType,
   type IAgentRuntime,
   imageDescriptionTemplate,
@@ -689,6 +689,84 @@ const reactionReceivedHandler = async ({
 };
 
 /**
+ * Handles message deletion events by removing the corresponding memory from the agent's memory store.
+ *
+ * @param {Object} params - The parameters for the function.
+ * @param {IAgentRuntime} params.runtime - The agent runtime object.
+ * @param {Memory} params.message - The message memory that was deleted.
+ * @returns {void}
+ */
+const messageDeletedHandler = async ({
+  runtime,
+  message,
+}: {
+  runtime: IAgentRuntime;
+  message: Memory;
+}) => {
+  try {
+    if (!message.id) {
+      logger.error('[Bootstrap] Cannot delete memory: message ID is missing');
+      return;
+    }
+
+    logger.info('[Bootstrap] Deleting memory for message', message.id, 'from room', message.roomId);
+    await runtime.deleteMemory(message.id);
+    logger.debug('[Bootstrap] Successfully deleted memory for message', message.id);
+  } catch (error: unknown) {
+    logger.error('[Bootstrap] Error in message deleted handler:', error);
+  }
+};
+
+/**
+ * Handles channel cleared events by removing all message memories from the specified room.
+ *
+ * @param {Object} params - The parameters for the function.
+ * @param {IAgentRuntime} params.runtime - The agent runtime object.
+ * @param {UUID} params.roomId - The room ID to clear message memories from.
+ * @param {string} params.channelId - The original channel ID.
+ * @param {number} params.memoryCount - Number of memories found.
+ * @returns {void}
+ */
+const channelClearedHandler = async ({
+  runtime,
+  roomId,
+  channelId,
+  memoryCount,
+}: {
+  runtime: IAgentRuntime;
+  roomId: UUID;
+  channelId: string;
+  memoryCount: number;
+}) => {
+  try {
+    logger.info(`[Bootstrap] Clearing ${memoryCount} message memories from channel ${channelId} -> room ${roomId}`);
+    
+    // Get all message memories for this room
+    const memories = await runtime.getMemoriesByRoomIds({
+      tableName: 'messages',
+      roomIds: [roomId]
+    });
+    
+    // Delete each message memory
+    let deletedCount = 0;
+    for (const memory of memories) {
+      if (memory.id) {
+        try {
+          await runtime.deleteMemory(memory.id);
+          deletedCount++;
+        } catch (error) {
+          logger.warn(`[Bootstrap] Failed to delete message memory ${memory.id}:`, error);
+        }
+      }
+    }
+    
+    logger.info(`[Bootstrap] Successfully cleared ${deletedCount}/${memories.length} message memories from channel ${channelId}`);
+  } catch (error: unknown) {
+    logger.error('[Bootstrap] Error in channel cleared handler:', error);
+  }
+};
+
+/**
  * Handles the generation of a post (like a Tweet) and creates a memory for it.
  *
  * @param {Object} params - The parameters for the function.
@@ -1135,6 +1213,26 @@ const events = {
   [EventType.MESSAGE_SENT]: [
     async (payload: MessagePayload) => {
       logger.debug(`[Bootstrap] Message sent: ${payload.message.content.text}`);
+    },
+  ],
+
+  [EventType.MESSAGE_DELETED]: [
+    async (payload: MessagePayload) => {
+      await messageDeletedHandler({
+        runtime: payload.runtime,
+        message: payload.message,
+      });
+    },
+  ],
+
+  [EventType.CHANNEL_CLEARED]: [
+    async (payload: EventPayload & { roomId: UUID; channelId: string; memoryCount: number }) => {
+      await channelClearedHandler({
+        runtime: payload.runtime,
+        roomId: payload.roomId,
+        channelId: payload.channelId,
+        memoryCount: payload.memoryCount,
+      });
     },
   ],
 

@@ -36,12 +36,16 @@ export class MessageBusService extends Service {
 
   private boundHandleIncomingMessage: (message: MessageServiceMessage) => Promise<void>;
   private boundHandleServerAgentUpdate: (data: any) => void;
+  private boundHandleMessageDeleted: (data: any) => Promise<void>;
+  private boundHandleChannelCleared: (data: any) => Promise<void>;
   private subscribedServers: Set<UUID> = new Set();
 
   constructor(runtime: IAgentRuntime) {
     super(runtime);
     this.boundHandleIncomingMessage = this.handleIncomingMessage.bind(this);
     this.boundHandleServerAgentUpdate = this.handleServerAgentUpdate.bind(this);
+    this.boundHandleMessageDeleted = this.handleMessageDeleted.bind(this);
+    this.boundHandleChannelCleared = this.handleChannelCleared.bind(this);
     // Don't connect here - let start() handle it
   }
 
@@ -58,10 +62,12 @@ export class MessageBusService extends Service {
 
   private connectToMessageBus() {
     logger.info(
-      `[${this.runtime.character.name}] MessageBusService: Subscribing to internal message bus for 'new_message' events.`
+      `[${this.runtime.character.name}] MessageBusService: Subscribing to internal message bus for 'new_message', 'message_deleted', and 'channel_cleared' events.`
     );
     internalMessageBus.on('new_message', this.boundHandleIncomingMessage);
     internalMessageBus.on('server_agent_update', this.boundHandleServerAgentUpdate);
+    internalMessageBus.on('message_deleted', this.boundHandleMessageDeleted);
+    internalMessageBus.on('channel_cleared', this.boundHandleChannelCleared);
 
     // Initialize by fetching servers this agent belongs to
     this.fetchAgentServers();
@@ -344,6 +350,81 @@ export class MessageBusService extends Service {
     }
   }
 
+  private async handleMessageDeleted(data: any) {
+    try {
+      logger.info(
+        `[${this.runtime.character.name}] MessageBusService: Received message_deleted event for message ${data.messageId}`
+      );
+
+      // Convert the central message ID to the agent's unique memory ID
+      const agentMemoryId = createUniqueUuid(this.runtime, data.messageId);
+      
+      // Try to find and delete the existing memory
+      const existingMemory = await this.runtime.getMemoryById(agentMemoryId);
+      
+      if (existingMemory) {
+        // Emit MESSAGE_DELETED event with the existing memory
+        await this.runtime.emitEvent(EventType.MESSAGE_DELETED, {
+          runtime: this.runtime,
+          message: existingMemory,
+          source: 'message-bus-service',
+        });
+        
+        logger.debug(
+          `[${this.runtime.character.name}] MessageBusService: Successfully processed message deletion for ${data.messageId}`
+        );
+      } else {
+        logger.warn(
+          `[${this.runtime.character.name}] MessageBusService: No memory found for deleted message ${data.messageId}`
+        );
+      }
+    } catch (error) {
+      logger.error(
+        `[${this.runtime.character.name}] MessageBusService: Error handling message deletion:`,
+        error
+      );
+    }
+  }
+
+  private async handleChannelCleared(data: any) {
+    try {
+      logger.info(
+        `[${this.runtime.character.name}] MessageBusService: Received channel_cleared event for channel ${data.channelId}`
+      );
+
+      // Convert the central channel ID to the agent's unique room ID
+      const agentRoomId = createUniqueUuid(this.runtime, data.channelId);
+      
+      // Get all memories for this room and emit deletion events for each
+      const memories = await this.runtime.getMemoriesByRoomIds({
+        tableName: 'messages',
+        roomIds: [agentRoomId]
+      });
+      
+      logger.info(
+        `[${this.runtime.character.name}] MessageBusService: Found ${memories.length} memories to delete for channel ${data.channelId}`
+      );
+
+      // Emit CHANNEL_CLEARED event to bootstrap which will handle bulk deletion
+      await this.runtime.emitEvent(EventType.CHANNEL_CLEARED, {
+        runtime: this.runtime,
+        source: 'message-bus-service',
+        roomId: agentRoomId,
+        channelId: data.channelId,
+        memoryCount: memories.length,
+      });
+      
+      logger.info(
+        `[${this.runtime.character.name}] MessageBusService: Successfully processed channel clear for ${data.channelId} -> room ${agentRoomId}`
+      );
+    } catch (error) {
+      logger.error(
+        `[${this.runtime.character.name}] MessageBusService: Error handling channel clear:`,
+        error
+      );
+    }
+  }
+
   private async sendAgentResponseToBus(
     agentRoomId: UUID,
     agentWorldId: UUID,
@@ -505,6 +586,8 @@ export class MessageBusService extends Service {
     logger.info(`[${this.runtime.character.name}] MessageBusService stopping...`);
     internalMessageBus.off('new_message', this.boundHandleIncomingMessage);
     internalMessageBus.off('server_agent_update', this.boundHandleServerAgentUpdate);
+    internalMessageBus.off('message_deleted', this.boundHandleMessageDeleted);
+    internalMessageBus.off('channel_cleared', this.boundHandleChannelCleared);
   }
 }
 
