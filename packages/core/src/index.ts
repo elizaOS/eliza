@@ -9,7 +9,6 @@ export * from './logger';
 export * from './prompts';
 export * from './roles';
 export * from './runtime';
-// search doesn't need to be exported
 export * from './settings';
 export * from './utils';
 export * from './services';
