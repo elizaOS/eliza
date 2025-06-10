@@ -24,6 +24,7 @@ import {
   type Plugin,
   PluginEvents,
   postCreationTemplate,
+  Role,
   type Room,
   shouldRespondTemplate,
   truncateToCompleteSentence,
@@ -1055,6 +1056,19 @@ const syncSingleUser = async (
     const roomId = createUniqueUuid(runtime, channelId);
     const worldId = createUniqueUuid(runtime, serverId);
 
+    // Create world with ownership metadata for DM connections (onboarding)
+    const worldMetadata = type === ChannelType.DM ? {
+      ownership: {
+        ownerId: entityId,
+      },
+      roles: {
+        [entityId]: Role.OWNER,
+      },
+      settings: {}, // Initialize empty settings for onboarding
+    } : undefined;
+
+    logger.info(`[Bootstrap] syncSingleUser - type: ${type}, isDM: ${type === ChannelType.DM}, worldMetadata: ${JSON.stringify(worldMetadata)}`);
+
     await runtime.ensureConnection({
       entityId,
       roomId,
@@ -1066,7 +1080,16 @@ const syncSingleUser = async (
       serverId,
       type,
       worldId,
+      metadata: worldMetadata,
     });
+
+    // Verify the world was created with proper metadata
+    try {
+      const createdWorld = await runtime.getWorld(worldId);
+      logger.info(`[Bootstrap] Created world check - ID: ${worldId}, metadata: ${JSON.stringify(createdWorld?.metadata)}`);
+    } catch (error) {
+      logger.error(`[Bootstrap] Failed to verify created world: ${error}`);
+    }
 
     logger.success(`[Bootstrap] Successfully synced user: ${entity?.id}`);
   } catch (error) {
@@ -1250,8 +1273,10 @@ const events = {
 
   [EventType.ENTITY_JOINED]: [
     async (payload: EntityPayload) => {
+      logger.debug(`[Bootstrap] ENTITY_JOINED event received for entity ${payload.entityId}`);
+      
       if (!payload.worldId) {
-        logger.error('[Bootstrap] No callback provided for entity joined');
+        logger.error('[Bootstrap] No worldId provided for entity joined');
         return;
       }
       if (!payload.roomId) {
