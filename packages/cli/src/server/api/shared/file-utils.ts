@@ -18,7 +18,7 @@ export function createSecureUploadDir(
     throw new Error(`Invalid ${type.slice(0, -1)} ID: contains illegal characters`);
   }
 
-  const basePath = path.resolve(process.cwd(), 'data', 'uploads', type);
+  const basePath = path.resolve(process.cwd(), '.eliza', 'data', 'uploads', type);
   const targetPath = path.join(basePath, id);
 
   // Ensure the resolved path is still within the expected base directory
