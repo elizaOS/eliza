@@ -13,8 +13,8 @@ import { logger, type IAgentRuntime, type ProjectAgent } from '@elizaos/core';
 import * as dotenv from 'dotenv';
 import * as fs from 'node:fs';
 import path from 'node:path';
-import { getElizaCharacter } from '../../characters/eliza';
-import { startAgent } from '../start';
+import { getElizaCharacter } from '@/src/characters/eliza';
+import { startAgent } from '@/src/commands/start';
 import { E2ETestOptions, TestResult } from '../types';
 import { findMonorepoRoot, processFilterName } from '../utils/project-utils';
 

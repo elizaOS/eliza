@@ -101,3 +101,12 @@ plugins
   .action(async (opts: GeneratePluginOptions) => {
     await generatePlugin(opts);
   });
+
+// Re-export for backward compatibility
+export * from './actions/install';
+export * from './actions/remove'; 
+export * from './actions/list';
+export * from './actions/upgrade';
+export * from './actions/generate';
+export * from './types';
+export * from './utils/naming';

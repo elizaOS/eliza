@@ -431,3 +431,13 @@ export const publish = new Command()
       handleError(error);
     }
   });
+
+// Re-export for backward compatibility
+export * from './actions/npm-publish';
+export * from './actions/github-publish'; 
+export * from './actions/registry-publish';
+export * from './utils/validation';
+export * from './utils/metadata';
+export * from './utils/authentication';
+export * from './utils/version-check';
+export * from './types';

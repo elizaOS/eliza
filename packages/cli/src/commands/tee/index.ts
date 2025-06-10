@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { phalaCliCommand } from './tee/phala-wrapper';
+import { phalaCliCommand } from './phala-wrapper';
 
 export const teeCommand = new Command('tee')
   .description('Manage TEE deployments')
