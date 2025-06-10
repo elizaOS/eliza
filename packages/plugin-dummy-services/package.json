@@ -1,0 +1,80 @@
+{
+  "name": "@elizaos/plugin-dummy-services",
+  "version": "1.0.7",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-dummy-services.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "uuid": "^9.0.0",
+    "typescript": "^5.8.3"
+  },
+  "devDependencies": {
+    "prettier": "3.5.3",
+    "tsup": "8.5.0",
+    "vitest": "1.6.1"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "elizaos test",
+    "lint": "prettier --write ./src",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src"
+  },
+  "peerDependencies": {
+    "whatwg-url": "7.1.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460",
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "DISCORD_APPLICATION_ID": {
+        "type": "string",
+        "description": "Discord application/client ID used for authenticating the bot with Discord API.",
+        "required": true
+      },
+      "DISCORD_API_TOKEN": {
+        "type": "string",
+        "description": "Discord bot token used to authenticate and connect to Discord API.",
+        "required": true
+      },
+      "CHANNEL_IDS": {
+        "type": "string",
+        "description": "Optional comma-separated list of Discord channel IDs the bot is allowed to operate in; if unset the bot works in all channels.",
+        "required": false
+      },
+      "DISCORD_TEST_CHANNEL_ID": {
+        "type": "string",
+        "description": "Discord channel ID for running tests; used if not supplied in runtime settings.",
+        "required": false
+      },
+      "DISCORD_VOICE_CHANNEL_ID": {
+        "type": "string",
+        "description": "Specifies the Discord voice channel ID that the bot should attempt to join before scanning for other available channels.",
+        "required": false
+      }
+    }
+  }
+}
