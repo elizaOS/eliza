@@ -71,7 +71,7 @@ jobs:
 
       - name: Install dependencies
         run: bun install
-        
+
       - name: Build all packages
         run: bun run build
 

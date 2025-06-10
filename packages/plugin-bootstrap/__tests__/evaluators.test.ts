@@ -533,7 +533,7 @@ describe('Multiple Prompt Evaluator Factory', () => {
     });
 
     // Spy on logger
-    vi.spyOn(logger, 'warn').mockImplementation(() => { });
+    vi.spyOn(logger, 'warn').mockImplementation(() => {});
 
     // Call the handler - should not throw even with one prompt failing
     const result = await testEvaluator.handler(

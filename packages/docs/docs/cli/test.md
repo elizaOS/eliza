@@ -128,7 +128,7 @@ If you encounter "command not found: bun" or similar errors:
 # For macOS (using curl)
 curl -fsSL https://bun.sh/install | bash
 
-# For macOS (using Homebrew)  
+# For macOS (using Homebrew)
 brew install bun
 
 # For Linux (using curl)

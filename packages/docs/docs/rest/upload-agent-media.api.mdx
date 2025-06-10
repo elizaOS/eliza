@@ -57,10 +57,10 @@ Upload images or videos for a specific agent
         schema: {
           type: 'object',
           properties: {
-            file: { 
-              type: 'string', 
-              format: 'binary', 
-              description: 'Media file to upload (image or video)' 
+            file: {
+              type: 'string',
+              format: 'binary',
+              description: 'Media file to upload (image or video)',
             },
           },
           required: ['file'],
@@ -85,27 +85,27 @@ Upload images or videos for a specific agent
               data: {
                 type: 'object',
                 properties: {
-                  url: { 
-                    type: 'string', 
+                  url: {
+                    type: 'string',
                     description: 'URL path to access the uploaded media',
-                    example: '/media/uploads/agents/12345678-1234-1234-1234-123456789abc/image.jpg'
+                    example: '/media/uploads/agents/12345678-1234-1234-1234-123456789abc/image.jpg',
                   },
-                  type: { 
-                    type: 'string', 
+                  type: {
+                    type: 'string',
                     enum: ['image', 'video'],
-                    description: 'Type of media uploaded' 
+                    description: 'Type of media uploaded',
                   },
-                  filename: { 
-                    type: 'string', 
-                    description: 'Generated filename on server' 
+                  filename: {
+                    type: 'string',
+                    description: 'Generated filename on server',
                   },
-                  originalName: { 
-                    type: 'string', 
-                    description: 'Original filename from upload' 
+                  originalName: {
+                    type: 'string',
+                    description: 'Original filename from upload',
                   },
-                  size: { 
-                    type: 'integer', 
-                    description: 'File size in bytes' 
+                  size: {
+                    type: 'integer',
+                    description: 'File size in bytes',
                   },
                 },
               },
@@ -164,6 +164,7 @@ Upload images or videos for a specific agent
 ## Supported File Types
 
 ### Images
+
 - JPEG (`image/jpeg`)
 - PNG (`image/png`)
 - GIF (`image/gif`)
@@ -172,6 +173,7 @@ Upload images or videos for a specific agent
 - BMP (`image/bmp`)
 
 ### Videos
+
 - MP4 (`video/mp4`)
 - WebM (`video/webm`)
 - MOV (`video/mov`)

@@ -191,50 +191,50 @@ bun run pre-commit
 
 Eliza is organized as a monorepo using Bun, Lerna, and Turbo for efficient package management and build orchestration. Here's a detailed overview of the project structure:
 
--   **`/` (Root)**:
-    -   `.github/`: GitHub Actions workflows for CI/CD pipelines and issue templates
-    -   `.husky/`: Git hooks configuration, including pre-commit formatting
-    -   `.devcontainer/`: Development container configurations for consistent environments
-    -   `packages/`: Core packages and modules (detailed below)
-    -   `scripts/`: Build, development, and utility scripts
-    -   `data/`: Application and user data storage
-    -   `AGENTS.md`: Comprehensive agent documentation and specifications
-    -   `CHANGELOG.md`: Detailed version history and changes
-    -   `Dockerfile`, `docker-compose.yaml`: Container configurations for deployment
-    -   `lerna.json`, `package.json`, `turbo.json`: Monorepo configuration and workspace definitions
+- **`/` (Root)**:
 
--   **`/packages/`**: Core components of the Eliza framework:
-    -   `core/`: The foundational package (@elizaos/core) implementing:
-        - OpenTelemetry instrumentation for tracing and monitoring
-        - LangChain integration for AI model interactions
-        - PDF processing capabilities
-        - Logging and error handling infrastructure
-    -   `app/`: Tauri-based cross-platform application (@elizaos/app)
-        - React-based UI implementation
-        - Tauri plugins for system integration
-        - Desktop and mobile builds support
-    -   `autodoc/`: Documentation automation tool (@elizaos/autodoc)
-        - LangChain-powered documentation generation
-        - TypeScript parsing and analysis
-        - GitHub integration via Octokit
-    -   `cli/`: Command-line interface for Eliza management
-    -   `client/`: Client libraries for web interfaces
-    -   `create-eliza/`: Project scaffolding tool
-    -   `docs/`: Official documentation source files
-    -   `plugin-bootstrap/`: Core agent initialization (@elizaos/plugin-bootstrap)
-        - Provides fundamental agent actions (reply, follow/unfollow, mute/unmute)
-        - Implements core evaluators and providers
-        - Handles message processing and world events
-    -   `plugin-sql/`: Database integration (@elizaos/plugin-sql)
-        - PostgreSQL integration with PGLite support
-        - Drizzle ORM for type-safe queries
-        - Migration management tools
-        - Integration testing support
-    -   `plugin-starter/`: Template for creating new plugins
-    -   `project-starter/`, `project-tee-starter/`: Project templates
+  - `.github/`: GitHub Actions workflows for CI/CD pipelines and issue templates
+  - `.husky/`: Git hooks configuration, including pre-commit formatting
+  - `.devcontainer/`: Development container configurations for consistent environments
+  - `packages/`: Core packages and modules (detailed below)
+  - `scripts/`: Build, development, and utility scripts
+  - `data/`: Application and user data storage
+  - `AGENTS.md`: Comprehensive agent documentation and specifications
+  - `CHANGELOG.md`: Detailed version history and changes
+  - `Dockerfile`, `docker-compose.yaml`: Container configurations for deployment
+  - `lerna.json`, `package.json`, `turbo.json`: Monorepo configuration and workspace definitions
+
+- **`/packages/`**: Core components of the Eliza framework:
+  - `core/`: The foundational package (@elizaos/core) implementing:
+    - OpenTelemetry instrumentation for tracing and monitoring
+    - LangChain integration for AI model interactions
+    - PDF processing capabilities
+    - Logging and error handling infrastructure
+  - `app/`: Tauri-based cross-platform application (@elizaos/app)
+    - React-based UI implementation
+    - Tauri plugins for system integration
+    - Desktop and mobile builds support
+  - `autodoc/`: Documentation automation tool (@elizaos/autodoc)
+    - LangChain-powered documentation generation
+    - TypeScript parsing and analysis
+    - GitHub integration via Octokit
+  - `cli/`: Command-line interface for Eliza management
+  - `client/`: Client libraries for web interfaces
+  - `create-eliza/`: Project scaffolding tool
+  - `docs/`: Official documentation source files
+  - `plugin-bootstrap/`: Core agent initialization (@elizaos/plugin-bootstrap)
+    - Provides fundamental agent actions (reply, follow/unfollow, mute/unmute)
+    - Implements core evaluators and providers
+    - Handles message processing and world events
+  - `plugin-sql/`: Database integration (@elizaos/plugin-sql)
+    - PostgreSQL integration with PGLite support
+    - Drizzle ORM for type-safe queries
+    - Migration management tools
+    - Integration testing support
+  - `plugin-starter/`: Template for creating new plugins
+  - `project-starter/`, `project-tee-starter/`: Project templates
 
 This architecture enables modular development, clear separation of concerns, and scalable feature implementation across the Eliza ecosystem.
-
 
 ## Tauri Application CI/CD and Signing
 

@@ -732,7 +732,14 @@
             "url": {
               "raw": "{{baseUrl}}/api/messaging/central-channels/{{channelId}}/messages/{{messageId}}",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "messaging", "central-channels", "{{channelId}}", "messages", "{{messageId}}"]
+              "path": [
+                "api",
+                "messaging",
+                "central-channels",
+                "{{channelId}}",
+                "messages",
+                "{{messageId}}"
+              ]
             },
             "description": "Delete a specific message from a channel"
           }
