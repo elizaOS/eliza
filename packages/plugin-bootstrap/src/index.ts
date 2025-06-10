@@ -831,10 +831,7 @@ const postGeneratedHandler = async ({
     // Fix newlines
     cleanedText = cleanedText.replaceAll(/\\n/g, '\n\n');
     cleanedText = cleanedText.replace(/([^\n])\n([^\n])/g, '$1\n\n$2');
-    // Truncate to Twitter's character limit (280)
-    if (cleanedText.length > 280) {
-      cleanedText = truncateToCompleteSentence(cleanedText, 280);
-    }
+
     return cleanedText;
   }
 
