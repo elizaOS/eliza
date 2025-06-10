@@ -15,11 +15,7 @@ export const create = new Command('create')
   .argument('[name]', 'name of the project/plugin/agent to create')
   .option('--dir <dir>', 'directory to create the project in', '.')
   .option('--yes, -y', 'skip prompts and use defaults')
-  .option(
-    '--type <type>',
-    'type of project to create (project, plugin, agent, tee)',
-    'project'
-  )
+  .option('--type <type>', 'type of project to create (project, plugin, agent, tee)', 'project')
   .action(async (name?: string, opts?: any) => {
     try {
       // Set non-interactive mode if environment variable is set or if -y/--yes flag is present in process.argv
@@ -35,7 +31,7 @@ export const create = new Command('create')
           opts = { yes: true };
         }
       }
-      
+
       // Validate and parse options
       const options: CreateOptions = validateCreateOptions(opts || {});
       const isNonInteractive = options.yes;
@@ -77,14 +73,13 @@ export const create = new Command('create')
             ],
             initialValue: 'project',
           });
-          
+
           if (clack.isCancel(selectedType)) {
             clack.cancel('Operation cancelled.');
             process.exit(0);
           }
-          
-          projectType = selectedType as 'project' | 'plugin' | 'agent' | 'tee';
 
+          projectType = selectedType as 'project' | 'plugin' | 'agent' | 'tee';
         }
 
         // Prompt for name
@@ -94,12 +89,12 @@ export const create = new Command('create')
             placeholder: `my-${projectType}`,
             validate: (value) => {
               if (!value) return 'Name is required';
-              
+
               // Validate project/plugin names differently than agent names
               if (projectType === 'agent') {
                 return value.length > 0 ? undefined : 'Agent name cannot be empty';
               }
-              
+
               const validation = validateProjectName(value);
               return validation.isValid ? undefined : validation.error;
             },
@@ -109,7 +104,7 @@ export const create = new Command('create')
             clack.cancel('Operation cancelled.');
             process.exit(0);
           }
-          
+
           projectName = nameInput as string;
         } else {
           throw new Error(`Project name is required. Usage: elizaos create [name]`);

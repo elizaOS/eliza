@@ -58,7 +58,7 @@ Required configuration:
     } catch (error) {
       if (error instanceof Error) {
         const errorMsg = error.message;
-        
+
         if (errorMsg === 'MISSING_CHARACTER_CONFIG') {
           // Use commander's built-in help
           const cmd = agent.commands.find((cmd) => cmd.name() === 'start');

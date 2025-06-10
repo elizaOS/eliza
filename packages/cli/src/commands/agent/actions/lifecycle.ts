@@ -143,9 +143,7 @@ export async function startAgent(options: OptionValues): Promise<void> {
         throw new Error(`Failed to start agent: ${response.statusText}`);
       }
 
-      throw new Error(
-        errorData?.error?.message || `Failed to start agent: ${response.statusText}`
-      );
+      throw new Error(errorData?.error?.message || `Failed to start agent: ${response.statusText}`);
     }
 
     // Type assertion to handle the specific structure returned by the start endpoint

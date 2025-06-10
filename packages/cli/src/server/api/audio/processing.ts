@@ -1,4 +1,4 @@
-  import type { IAgentRuntime, UUID } from '@elizaos/core';
+import type { IAgentRuntime, UUID } from '@elizaos/core';
 import { logger, ModelType, validateUuid } from '@elizaos/core';
 import express from 'express';
 import fs from 'node:fs';
@@ -111,7 +111,12 @@ export function createAudioProcessingRouter(
         const stats = await fs.promises.stat(securePath);
         if (stats.size > MAX_FILE_SIZE) {
           cleanupFile(audioFile.path);
-          return sendError(res, 413, 'FILE_TOO_LARGE', `Audio file too large (max ${MAX_FILE_SIZE_DISPLAY})`);
+          return sendError(
+            res,
+            413,
+            'FILE_TOO_LARGE',
+            `Audio file too large (max ${MAX_FILE_SIZE_DISPLAY})`
+          );
         }
 
         const audioBuffer = await fs.promises.readFile(securePath);
@@ -166,7 +171,12 @@ export function createAudioProcessingRouter(
         const stats = await fs.promises.stat(securePath);
         if (stats.size > MAX_FILE_SIZE) {
           cleanupFile(audioFile.path);
-          return sendError(res, 413, 'FILE_TOO_LARGE', `Audio file too large (max ${MAX_FILE_SIZE_DISPLAY})`);
+          return sendError(
+            res,
+            413,
+            'FILE_TOO_LARGE',
+            `Audio file too large (max ${MAX_FILE_SIZE_DISPLAY})`
+          );
         }
 
         const audioBuffer = await fs.promises.readFile(securePath);

@@ -27,7 +27,11 @@ import type {
   CentralRootMessage,
   MessageServiceStructure,
 } from './types';
-import { createDatabaseAdapter, DatabaseMigrationService, plugin as sqlPlugin } from '@elizaos/plugin-sql';
+import {
+  createDatabaseAdapter,
+  DatabaseMigrationService,
+  plugin as sqlPlugin,
+} from '@elizaos/plugin-sql';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -127,21 +131,23 @@ export class AgentServer {
       logger.info('[INIT] Running database migrations for messaging tables...');
       try {
         const migrationService = new DatabaseMigrationService();
-        
+
         // Get the underlying database instance
         const db = (this.database as any).getDatabase();
         await migrationService.initializeWithDatabase(db);
-        
+
         // Register the SQL plugin schema
         migrationService.discoverAndRegisterPluginSchemas([sqlPlugin]);
-        
+
         // Run the migrations
         await migrationService.runAllPluginMigrations();
-        
+
         logger.success('[INIT] Database migrations completed successfully');
       } catch (migrationError) {
         logger.error('[INIT] Failed to run database migrations:', migrationError);
-        throw new Error(`Database migration failed: ${migrationError instanceof Error ? migrationError.message : String(migrationError)}`);
+        throw new Error(
+          `Database migration failed: ${migrationError instanceof Error ? migrationError.message : String(migrationError)}`
+        );
       }
 
       // Add a small delay to ensure database is fully ready
@@ -243,14 +249,14 @@ export class AgentServer {
   private async ensureDefaultAgent(): Promise<void> {
     try {
       const DEFAULT_AGENT_ID = '00000000-0000-0000-0000-000000000002';
-      
+
       // Check if the default agent exists
       logger.info('[AgentServer] Checking for default agent...');
       const agent = await this.database.getAgent(DEFAULT_AGENT_ID as UUID);
-      
+
       if (!agent) {
         logger.info('[AgentServer] Creating default agent...');
-        
+
         // Create default agent
         const defaultAgent = {
           id: DEFAULT_AGENT_ID as UUID,
@@ -261,11 +267,11 @@ export class AgentServer {
           settings: {},
           modelProvider: 'none',
           modelName: 'none',
-          createdAt: new Date()
+          createdAt: new Date(),
         };
-        
+
         const created = await this.database.createAgent(defaultAgent as any);
-        
+
         if (created) {
           logger.success('[AgentServer] Default agent created successfully');
         } else {

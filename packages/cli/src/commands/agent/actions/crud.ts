@@ -79,9 +79,7 @@ export async function removeAgent(opts: OptionValues): Promise<void> {
 
     if (!response.ok) {
       const errorData = (await response.json()) as ApiResponse<unknown>;
-      throw new Error(
-        errorData.error?.message || `Failed to remove agent: ${response.statusText}`
-      );
+      throw new Error(errorData.error?.message || `Failed to remove agent: ${response.statusText}`);
     }
 
     // Server returns 204 No Content for successful deletion, no need to parse response
@@ -116,9 +114,7 @@ export async function setAgentConfig(opts: OptionValues): Promise<void> {
         throw new Error(`Failed to read or parse config file: ${error.message}`);
       }
     } else {
-      throw new Error(
-        'Please provide either a config JSON string (-c) or a config file path (-f)'
-      );
+      throw new Error('Please provide either a config JSON string (-c) or a config file path (-f)');
     }
 
     // API Endpoint: PATCH /agents/:agentId

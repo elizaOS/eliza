@@ -43,4 +43,4 @@ export const ALLOWED_MEDIA_MIME_TYPES = [
   'video/webm',
   'application/pdf',
   'text/plain',
-] as const; 
+] as const;

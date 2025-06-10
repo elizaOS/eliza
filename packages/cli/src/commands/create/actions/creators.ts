@@ -22,7 +22,11 @@ export async function createPlugin(
   }
 
   const processedName = nameResult.processedName!;
-  const pluginTargetDir = join(targetDir, processedName);
+  // Add prefix to ensure plugin directory name follows convention
+  const pluginDirName = processedName.startsWith('plugin-')
+    ? processedName
+    : `plugin-${processedName}`;
+  const pluginTargetDir = join(targetDir, pluginDirName);
 
   // Validate target directory
   const dirResult = await validateTargetDirectory(pluginTargetDir);
@@ -32,7 +36,7 @@ export async function createPlugin(
 
   if (!isNonInteractive) {
     const confirmCreate = await clack.confirm({
-      message: `Create plugin "${processedName}" in ${pluginTargetDir}?`,
+      message: `Create plugin "${pluginDirName}" in ${pluginTargetDir}?`,
     });
 
     if (clack.isCancel(confirmCreate) || !confirmCreate) {
@@ -42,14 +46,14 @@ export async function createPlugin(
   }
 
   // Copy plugin template
-  await copyTemplateUtil('plugin', pluginTargetDir, processedName);
+  await copyTemplateUtil('plugin', pluginTargetDir, pluginDirName);
 
   // Install dependencies
   await installDependencies(pluginTargetDir);
 
-  console.info(`\n${colors.green('✓')} Plugin "${processedName}" created successfully!`);
+  console.info(`\n${colors.green('✓')} Plugin "${pluginDirName}" created successfully!`);
   console.info(`\nNext steps:`);
-  console.info(`  cd ${processedName}`);
+  console.info(`  cd ${pluginDirName}`);
   console.info(`  bun run build`);
   console.info(`  bun run test\n`);
 }
@@ -163,7 +167,8 @@ export async function createProject(
   aiModel: string,
   isNonInteractive = false
 ): Promise<void> {
-  const projectTargetDir = join(targetDir, projectName);
+  // Handle current directory case
+  const projectTargetDir = projectName === '.' ? targetDir : join(targetDir, projectName);
 
   // Validate target directory
   const dirResult = await validateTargetDirectory(projectTargetDir);
@@ -183,7 +188,10 @@ export async function createProject(
   }
 
   // Copy project template
-  await copyTemplateUtil('project-starter', projectTargetDir, projectName);
+  // For current directory projects, use the directory name as the project name
+  const templateName =
+    projectName === '.' ? targetDir.split('/').pop() || 'eliza-project' : projectName;
+  await copyTemplateUtil('project-starter', projectTargetDir, templateName);
 
   // Set up project environment
   await setupProjectEnvironment(projectTargetDir, database, aiModel, isNonInteractive);
@@ -194,7 +202,8 @@ export async function createProject(
   // Build the project
   await buildProject(projectTargetDir);
 
-  console.info(`\n${colors.green('✓')} Project "${projectName}" created successfully!`);
+  const displayName = projectName === '.' ? 'Project' : `Project "${projectName}"`;
+  console.info(`\n${colors.green('✓')} ${displayName} initialized successfully!`);
   console.info(`\nNext steps:`);
   console.info(`  cd ${projectName}`);
   console.info(`  bun run dev\n`);

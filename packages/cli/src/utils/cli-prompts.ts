@@ -21,17 +21,19 @@ export async function promptWithNav(
     message: msg,
     placeholder: initial,
     defaultValue: initial,
-    validate: validate ? (val) => {
-      const result = validate(val);
-      return typeof result === 'string' ? result : undefined;
-    } : undefined,
+    validate: validate
+      ? (val) => {
+          const result = validate(val);
+          return typeof result === 'string' ? result : undefined;
+        }
+      : undefined,
   });
-  
+
   if (clack.isCancel(input)) {
     clack.cancel('Operation cancelled.');
     process.exit(0);
   }
-  
+
   const trimmedInput = input.trim();
   if (trimmedInput.toLowerCase() === 'cancel') return 'cancel';
   if (trimmedInput.toLowerCase() === 'back') return NAV_BACK;
@@ -87,11 +89,11 @@ export async function confirmAction(message: string): Promise<boolean> {
     message,
     initialValue: false,
   });
-  
+
   if (clack.isCancel(response)) {
     clack.cancel('Operation cancelled.');
     process.exit(0);
   }
-  
+
   return Boolean(response);
 }

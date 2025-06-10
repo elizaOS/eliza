@@ -161,12 +161,12 @@ async function editEnvVars(scope: 'local', fromMainMenu = false, yes = false): P
         message: 'No local .env file found. Create one?',
         initialValue: true,
       });
-      
+
       if (clack.isCancel(respCreateLocal)) {
         clack.cancel('Operation cancelled.');
         process.exit(0);
       }
-      
+
       createLocal = respCreateLocal;
     }
     if (!createLocal) {
@@ -189,12 +189,12 @@ async function editEnvVars(scope: 'local', fromMainMenu = false, yes = false): P
         message: 'Would you like to add a new environment variable?',
         initialValue: true,
       });
-      
+
       if (clack.isCancel(respAddNew)) {
         clack.cancel('Operation cancelled.');
         process.exit(0);
       }
-      
+
       addNew = respAddNew;
     }
 
@@ -232,12 +232,12 @@ async function editEnvVars(scope: 'local', fromMainMenu = false, yes = false): P
     // Prompt user to select a variable or action
     const selection = await clack.select({
       message: 'Select a variable to edit or an action:',
-      options: choices.map(choice => ({
+      options: choices.map((choice) => ({
         value: choice.value,
-        label: choice.title
+        label: choice.title,
       })),
     });
-    
+
     if (clack.isCancel(selection)) {
       clack.cancel('Operation cancelled.');
       process.exit(0);
@@ -273,7 +273,7 @@ async function editEnvVars(scope: 'local', fromMainMenu = false, yes = false): P
       clack.cancel('Operation cancelled.');
       process.exit(0);
     }
-    
+
     if (!action || action === 'back') {
       continue;
     }
@@ -283,7 +283,7 @@ async function editEnvVars(scope: 'local', fromMainMenu = false, yes = false): P
         message: `Enter the new value for ${selection}:`,
         defaultValue: envVars[selection],
       });
-      
+
       if (clack.isCancel(value)) {
         clack.cancel('Operation cancelled.');
         process.exit(0);
@@ -301,12 +301,12 @@ async function editEnvVars(scope: 'local', fromMainMenu = false, yes = false): P
           message: `Are you sure you want to delete ${selection}?`,
           initialValue: false,
         });
-        
+
         if (clack.isCancel(resp)) {
           clack.cancel('Operation cancelled.');
           process.exit(0);
         }
-        
+
         confirm = resp;
       }
       if (confirm) {
@@ -347,13 +347,13 @@ async function addNewVariable(
     clack.cancel('Operation cancelled.');
     process.exit(0);
   }
-  
+
   if (!key) return;
 
   const value = await clack.text({
     message: `Enter the value for ${key}:`,
   });
-  
+
   if (clack.isCancel(value)) {
     clack.cancel('Operation cancelled.');
     process.exit(0);
@@ -525,7 +525,7 @@ async function resetEnv(yes = false): Promise<void> {
     // Prompt user to select items with styling matching interactive mode
     const selections = await clack.multiselect({
       message: colors.cyan(colors.bold('Select items to reset:')),
-      options: resetItems.map(item => ({ value: item.value, label: item.title })),
+      options: resetItems.map((item) => ({ value: item.value, label: item.title })),
       required: true,
     });
 

@@ -4,17 +4,21 @@ import type { AgentBasic, ApiResponse } from '../../shared';
 import { getAgentsBaseUrl } from '../../shared';
 
 // Zod schemas for validation
-export const AgentBasicSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  status: z.string().optional(),
-}).passthrough(); // Allow additional properties
+export const AgentBasicSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    status: z.string().optional(),
+  })
+  .passthrough(); // Allow additional properties
 
 export const AgentsListResponseSchema = z.object({
   success: z.boolean(),
-  data: z.object({
-    agents: z.array(AgentBasicSchema),
-  }).optional(),
+  data: z
+    .object({
+      agents: z.array(AgentBasicSchema),
+    })
+    .optional(),
 });
 
 /**
