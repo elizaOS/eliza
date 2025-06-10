@@ -14,7 +14,4 @@ export * from './utils';
 export * from './services';
 export * from './specs';
 
-// Export instrumentation types and service
-export * from './instrumentation/types';
-export * from './instrumentation/service';
 export * from './sentry/instrument';
