@@ -6,7 +6,7 @@ import {
   findNextAvailablePort,
   resolvePgliteDir,
 } from '@/src/utils';
-import { logger, type Character } from '@elizaos/core';
+import { logger, type Character, type ProjectAgent } from '@elizaos/core';
 import { startAgent, stopAgent } from './agent-start';
 
 /**
@@ -16,6 +16,7 @@ export interface ServerStartOptions {
   configure?: boolean;
   port?: number;
   characters?: Character[];
+  projectAgents?: ProjectAgent[];
 }
 
 /**
@@ -45,11 +46,25 @@ export async function startAgents(options: ServerStartOptions): Promise<void> {
   process.env.SERVER_PORT = serverPort.toString();
   server.start(serverPort);
 
-  if (options.characters && options.characters.length > 0) {
+  // If we have project agents, start them with their init functions
+  if (options.projectAgents && options.projectAgents.length > 0) {
+    for (const projectAgent of options.projectAgents) {
+      await startAgent(
+        projectAgent.character, 
+        server, 
+        projectAgent.init, 
+        projectAgent.plugins || []
+      );
+    }
+  }
+  // If we have standalone characters, start them
+  else if (options.characters && options.characters.length > 0) {
     for (const character of options.characters) {
       await startAgent(character, server);
     }
-  } else {
+  } 
+  // Default fallback to Eliza character
+  else {
     const elizaCharacter = getElizaCharacter();
     await startAgent(elizaCharacter, server);
   }
