@@ -76,6 +76,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useCreateDmChannel, useDmChannelsForAgent } from '@/hooks/use-dm-channels';
 import relativeTime from 'dayjs/plugin/relativeTime';
+import type { MessageChannel } from '@/types';
 moment.extend(relativeTime);
 
 const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
@@ -334,6 +335,10 @@ export default function Chat({
     }
   }, [scrollToBottom, scrollRef]);
 
+  // Prevent repeated auto-creation of a DM channel when none exist
+  const autoCreatedDmRef = useRef(false);
+  const autoCreateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   // Handle DM channel creation
   const handleNewDmChannel = useCallback(
     async (agentIdForNewChannel: UUID | undefined) => {
@@ -344,6 +349,9 @@ export default function Chat({
       );
       updateChatState({ isCreatingDM: true });
       try {
+        // Mark as auto-created so the effect doesn't attempt a duplicate.
+        autoCreatedDmRef.current = true;
+
         const newChannel = await createDmChannelMutation.mutateAsync({
           agentId: agentIdForNewChannel,
           channelName: newChatName, // Provide a unique name
@@ -393,16 +401,37 @@ export default function Chat({
         clientLogger.info(`[Chat] Deleting DM channel ${channelToDelete.id}`);
         try {
           await apiClient.deleteChannel(channelToDelete.id);
-          toast({ title: 'Chat Deleted', description: `"${channelToDelete.name}" was deleted.` });
-          const remainingChannels = agentDmChannels.filter(
-            (ch) => ch.id !== channelToDelete.id
+
+          // --- Optimistically update the React-Query cache so UI refreshes instantly ---
+          queryClient.setQueryData<MessageChannel[] | undefined>(
+            ['dmChannels', targetAgentData.id, currentClientEntityId],
+            (old) => old?.filter((ch) => ch.id !== channelToDelete.id)
           );
+
+          // Force a refetch to stay in sync with the server
+          queryClient.invalidateQueries({
+            queryKey: ['dmChannels', targetAgentData.id, currentClientEntityId],
+          });
+          // Also keep the broader channels cache in sync
+          queryClient.invalidateQueries({ queryKey: ['channels'] });
+
+          toast({ title: 'Chat Deleted', description: `"${channelToDelete.name}" was deleted.` });
+
+          const remainingChannels = (queryClient.getQueryData([
+            'dmChannels',
+            targetAgentData.id,
+            currentClientEntityId,
+          ]) as MessageChannel[] | undefined) || [];
+
           if (remainingChannels.length > 0) {
             updateChatState({ currentDmChannelId: remainingChannels[0].id });
             clientLogger.info('[Chat] Switched to DM channel:', remainingChannels[0].id);
           } else {
-            clientLogger.info('[Chat] No DM channels left after deletion, creating an initial one.');
-            handleNewDmChannel(targetAgentData.id);
+            clientLogger.info('[Chat] No DM channels left after deletion. Will create a fresh chat once.');
+            // Clear the current DM so the effect can handle creating exactly one new chat
+            updateChatState({ currentDmChannelId: null });
+            // Allow the auto-create logic to run again
+            autoCreatedDmRef.current = false;
           }
         } catch (error) {
           clientLogger.error('[Chat] Error deleting DM channel:', error);
@@ -414,7 +443,7 @@ export default function Chat({
         }
       }
     );
-  }, [chatType, chatState.currentDmChannelId, targetAgentData, agentDmChannels, confirm, toast, updateChatState, handleNewDmChannel]);
+  }, [chatType, chatState.currentDmChannelId, targetAgentData, agentDmChannels, confirm, toast, updateChatState, handleNewDmChannel, queryClient, currentClientEntityId]);
 
   // Effect to handle initial DM channel selection or creation
   useEffect(() => {
@@ -437,27 +466,33 @@ export default function Chat({
         !createDmChannelMutation.isPending &&
         !chatState.isCreatingDM
       ) {
-        // Prioritize initialDmChannelId from props if it's valid and belongs to the current agent's DMs
-        if (initialDmChannelId && agentDmChannels.some((c) => c.id === initialDmChannelId)) {
-          if (chatState.currentDmChannelId !== initialDmChannelId) {
-            clientLogger.info(
-              `[Chat] Aligning with DM channel from URL/prop: ${initialDmChannelId}`
-            );
-            updateChatState({ currentDmChannelId: initialDmChannelId });
-          }
-        } else if (agentDmChannels.length > 0) {
-          const currentChannelIsValid = agentDmChannels.some(
-            (c) => c.id === chatState.currentDmChannelId
-          );
-          if (!chatState.currentDmChannelId || !currentChannelIsValid) {
-            clientLogger.info('[Chat] Selecting most recent DM channel:', agentDmChannels[0].id);
+        if (
+          agentDmChannels.length === 0 &&
+          !initialDmChannelId &&
+          !autoCreatedDmRef.current &&
+          !chatState.isCreatingDM &&
+          !createDmChannelMutation.isPending
+        ) {
+          // No channels at all and none expected via URL -> create exactly one
+          clientLogger.info('[Chat] No existing DM channels found; auto-creating a fresh one.');
+          autoCreatedDmRef.current = true;
+          handleNewDmChannel(targetAgentData.id);
+        }
+
+        // If we now have channels, ensure one is selected
+        if (agentDmChannels.length > 0) {
+          const currentValid = agentDmChannels.some((c) => c.id === chatState.currentDmChannelId);
+          if (!currentValid) {
+            clientLogger.info('[Chat] Selecting first available DM channel:', agentDmChannels[0].id);
             updateChatState({ currentDmChannelId: agentDmChannels[0].id });
+            autoCreatedDmRef.current = false;
           }
-        } else {
-          clientLogger.info(
-            '[Chat] No DM channels found for agent, creating initial distinct DM channel'
-          );
-          handleNewDmChannel(targetAgentData.id); // This will navigate and set currentDmChannelId
+        }
+
+        if (!autoCreatedDmRef.current && !chatState.isCreatingDM && !createDmChannelMutation.isPending && agentDmChannels.length === 0) {
+          clientLogger.info('[Chat] No DM channels available, creating fresh DM immediately.');
+          autoCreatedDmRef.current = true;
+          handleNewDmChannel(targetAgentData.id);
         }
       }
     } else if (chatType !== ChannelType.DM && chatState.currentDmChannelId !== null) {
@@ -475,7 +510,23 @@ export default function Chat({
     initialDmChannelId,
     updateChatState,
     handleNewDmChannel,
+    autoCreatedDmRef,
+    agentDmChannels.length,
   ]);
+
+  // Cleanup timeout on unmount or when agentDmChannels appears
+  useEffect(() => {
+    if (agentDmChannels.length > 0 && autoCreateTimeoutRef.current) {
+      clearTimeout(autoCreateTimeoutRef.current);
+      autoCreateTimeoutRef.current = null;
+    }
+    return () => {
+      if (autoCreateTimeoutRef.current) {
+        clearTimeout(autoCreateTimeoutRef.current);
+        autoCreateTimeoutRef.current = null;
+      }
+    };
+  }, [agentDmChannels]);
 
   // Auto-select single agent in group
   useEffect(() => {
@@ -588,8 +639,18 @@ export default function Chat({
     // For DM chats, ensure we have a channel before sending
     let channelIdToUse = finalChannelIdForHooks;
     if (chatType === ChannelType.DM && !channelIdToUse && targetAgentData?.id) {
+      // If a DM channel is already being (auto) created, abort to prevent duplicate creations.
+      if (chatState.isCreatingDM || createDmChannelMutation.isPending) {
+        clientLogger.info('[Chat] DM channel creation already in progress; will wait for it to finish instead of creating another.');
+        // Early return so the user can try sending again once the channel is ready.
+        return;
+      }
+
       clientLogger.info('[Chat] No DM channel selected, creating one before sending message');
       try {
+        // Mark as auto-created so the effect doesn't attempt a duplicate.
+        autoCreatedDmRef.current = true;
+
         const newChannel = await createDmChannelMutation.mutateAsync({
           agentId: targetAgentData.id,
           channelName: `Chat - ${moment().format('MMM D, HH:mm')}`,
