@@ -5,8 +5,8 @@ import * as clack from '@clack/prompts';
 import colors from 'yoctocolors';
 import { logger } from '@elizaos/core';
 
-import { validateCreateOptions, validateProjectName } from './manage';
-import { selectDatabase, selectAIModel } from './manage';
+import { validateCreateOptions, validateProjectName } from './utils';
+import { selectDatabase, selectAIModel } from './utils';
 import { createProject, createPlugin, createAgent, createTEEProject } from './actions';
 import type { CreateOptions } from './types';
 

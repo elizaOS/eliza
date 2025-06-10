@@ -6,7 +6,7 @@ import path from 'node:path';
 import { checkServer, displayAgent, handleError } from '@/src/utils';
 import type { ApiResponse } from '../../shared';
 import { getAgentsBaseUrl } from '../../shared';
-import { resolveAgentId } from '../manage';
+import { resolveAgentId } from '../utils';
 
 /**
  * Get command implementation - retrieves and displays agent details

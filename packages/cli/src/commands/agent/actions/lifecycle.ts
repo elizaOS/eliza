@@ -6,7 +6,7 @@ import { checkServer, handleError } from '@/src/utils';
 import type { ApiResponse } from '../../shared';
 import { getAgentsBaseUrl } from '../../shared';
 import type { AgentStartPayload } from '../types';
-import { getAgents, resolveAgentId } from '../manage';
+import { getAgents, resolveAgentId } from '../utils';
 
 /**
  * Start command implementation - starts an agent with character configuration

@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { getAgent, removeAgent, setAgentConfig, startAgent, stopAgent } from './actions';
-import { listAgents, getAgents, resolveAgentId } from './manage';
+import { listAgents, getAgents, resolveAgentId } from './utils';
 
 // Export utilities for backward compatibility
 export { getAgents, resolveAgentId };

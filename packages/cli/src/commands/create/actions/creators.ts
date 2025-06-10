@@ -4,7 +4,7 @@ import { join } from 'path';
 import fs from 'node:fs/promises';
 import * as clack from '@clack/prompts';
 import colors from 'yoctocolors';
-import { processPluginName, validateTargetDirectory } from '../manage';
+import { processPluginName, validateTargetDirectory } from '../utils';
 import { installDependencies, setupProjectEnvironment } from './setup';
 
 /**
