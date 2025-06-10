@@ -9,8 +9,6 @@ import {
   SOCKET_MESSAGE_TYPE,
   validateUuid,
 } from '@elizaos/core';
-import type { Tracer } from '@opentelemetry/api';
-import { SpanStatusCode } from '@opentelemetry/api';
 import bodyParser from 'body-parser';
 import cors from 'cors';
 import express from 'express';
@@ -494,6 +492,11 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
     const agentApiRoutePattern = /^\/agents\/[a-f0-9-]{36}\/(?!plugins\/)/i;
     if (agentApiRoutePattern.test(req.path)) {
       logger.debug(`Skipping agent API route in plugin handler: ${req.path}`);
+      return next();
+    }
+
+    // Skip messages API routes - these should be handled by MessagesRouter
+    if (req.path.startsWith('/api/messages/')) {
       return next();
     }
 

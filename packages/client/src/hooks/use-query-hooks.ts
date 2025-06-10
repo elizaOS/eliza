@@ -310,6 +310,7 @@ export function useChannelMessages(
   addMessage: (newMessage: UiMessage) => void;
   updateMessage: (messageId: string, updates: Partial<UiMessage>) => void;
   removeMessage: (messageId: string) => void;
+  clearMessages: () => void;
 } {
   const currentClientCentralId = getEntityId(); // Central ID of the currently logged-in user
 
@@ -501,6 +502,13 @@ export function useChannelMessages(
     setMessages((prev) => prev.filter((m) => m.id !== messageId));
   }, []);
 
+  // Add method to clear all messages
+  const clearMessages = useCallback(() => {
+    setMessages([]);
+    setOldestMessageTimestamp(null);
+    setHasMoreMessages(true);
+  }, []);
+
   // This hook now manages its own state for messages
   // To integrate with React Query for caching of initial load or background updates:
   // One could use useInfiniteQuery, but given the manual state management already here for append/prepend,
@@ -518,6 +526,7 @@ export function useChannelMessages(
     addMessage,
     updateMessage,
     removeMessage,
+    clearMessages,
   };
 }
 
@@ -1131,9 +1140,8 @@ export function useDeleteChannelMessage() {
     onSuccess: (_data, variables) => {
       toast({
         title: 'Message Deleted',
-        description: `Message ${variables.messageId} removed from channel ${variables.channelId}.`,
+        description: 'Message removed successfully.',
       });
-      queryClient.invalidateQueries({ queryKey: ['messages', variables.channelId] });
     },
     onError: (error) => {
       toast({

@@ -303,12 +303,29 @@ export abstract class BaseDrizzleAdapter<
             agent.settings = await this.mergeAgentSettings(tx, agentId, agent.settings);
           }
 
+          // Convert numeric timestamps to Date objects for database storage
+          // The Agent interface uses numbers, but the database schema expects Date objects
+          const updateData: any = { ...agent };
+          if (updateData.createdAt) {
+            if (typeof updateData.createdAt === 'number') {
+              updateData.createdAt = new Date(updateData.createdAt);
+            } else {
+              delete updateData.createdAt; // Don't update createdAt if it's not a valid timestamp
+            }
+          }
+          if (updateData.updatedAt) {
+            if (typeof updateData.updatedAt === 'number') {
+              updateData.updatedAt = new Date(updateData.updatedAt);
+            } else {
+              updateData.updatedAt = new Date(); // Use current time if invalid
+            }
+          } else {
+            updateData.updatedAt = new Date(); // Always set updatedAt to current time
+          }
+
           await tx
             .update(agentTable)
-            .set({
-              ...agent,
-              updatedAt: new Date(),
-            })
+            .set(updateData)
             .where(eq(agentTable.id, agentId));
         });
 
@@ -3210,6 +3227,83 @@ export abstract class BaseDrizzleAdapter<
   async deleteMessage(messageId: UUID): Promise<void> {
     return this.withDatabase(async () => {
       await this.db.delete(messageTable).where(eq(messageTable.id, messageId));
+    });
+  }
+
+  /**
+   * Updates a channel
+   */
+  async updateChannel(
+    channelId: UUID,
+    updates: { name?: string; participantCentralUserIds?: UUID[]; metadata?: any }
+  ): Promise<{
+    id: UUID;
+    messageServerId: UUID;
+    name: string;
+    type: string;
+    sourceType?: string;
+    sourceId?: string;
+    topic?: string;
+    metadata?: any;
+    createdAt: Date;
+    updatedAt: Date;
+  }> {
+    return this.withDatabase(async () => {
+      const now = new Date();
+      
+      await this.db.transaction(async (tx) => {
+        // Update channel details
+        const updateData: any = { updatedAt: now };
+        if (updates.name !== undefined) updateData.name = updates.name;
+        if (updates.metadata !== undefined) updateData.metadata = updates.metadata;
+        
+        await tx.update(channelTable)
+          .set(updateData)
+          .where(eq(channelTable.id, channelId));
+
+        // Update participants if provided
+        if (updates.participantCentralUserIds !== undefined) {
+          // Remove existing participants
+          await tx.delete(channelParticipantsTable)
+            .where(eq(channelParticipantsTable.channelId, channelId));
+          
+          // Add new participants
+          if (updates.participantCentralUserIds.length > 0) {
+            const participantValues = updates.participantCentralUserIds.map((userId) => ({
+              channelId: channelId,
+              userId: userId,
+            }));
+            await tx.insert(channelParticipantsTable)
+              .values(participantValues)
+              .onConflictDoNothing();
+          }
+        }
+      });
+      
+      // Return updated channel details
+      const updatedChannel = await this.getChannelDetails(channelId);
+      if (!updatedChannel) {
+        throw new Error(`Channel ${channelId} not found after update`);
+      }
+      return updatedChannel;
+    });
+  }
+
+  /**
+   * Deletes a channel and all its associated data
+   */
+  async deleteChannel(channelId: UUID): Promise<void> {
+    return this.withDatabase(async () => {
+      await this.db.transaction(async (tx) => {
+        // Delete all messages in the channel (cascade delete will handle this, but explicit is better)
+        await tx.delete(messageTable).where(eq(messageTable.channelId, channelId));
+        
+        // Delete all participants (cascade delete will handle this, but explicit is better)
+        await tx.delete(channelParticipantsTable).where(eq(channelParticipantsTable.channelId, channelId));
+        
+        // Delete the channel itself
+        await tx.delete(channelTable).where(eq(channelTable.id, channelId));
+      });
     });
   }
 

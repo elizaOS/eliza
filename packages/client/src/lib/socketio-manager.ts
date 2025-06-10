@@ -34,6 +34,28 @@ export type ControlMessageData = {
   [key: string]: any;
 };
 
+// Define type for message deletion events
+export type MessageDeletedData = {
+  messageId: string;
+  channelId: string;
+  roomId?: string; // Deprecated - for backward compatibility only
+  [key: string]: any;
+};
+
+// Define type for channel cleared events
+export type ChannelClearedData = {
+  channelId: string;
+  roomId?: string; // Deprecated - for backward compatibility only
+  [key: string]: any;
+};
+
+// Define type for channel deleted events
+export type ChannelDeletedData = {
+  channelId: string;
+  roomId?: string; // Deprecated - for backward compatibility only
+  [key: string]: any;
+};
+
 // Define type for log stream messages
 export type LogStreamData = {
   level: number;
@@ -55,6 +77,9 @@ class EventAdapter {
     this.events.messageBroadcast = Evt.create<MessageBroadcastData>();
     this.events.messageComplete = Evt.create<MessageCompleteData>();
     this.events.controlMessage = Evt.create<ControlMessageData>();
+    this.events.messageDeleted = Evt.create<MessageDeletedData>();
+    this.events.channelCleared = Evt.create<ChannelClearedData>();
+    this.events.channelDeleted = Evt.create<ChannelDeletedData>();
     this.events.logStream = Evt.create<LogStreamData>();
   }
 
@@ -135,6 +160,18 @@ export class SocketIOManager extends EventAdapter {
     return this._getEvt('controlMessage') as Evt<ControlMessageData>;
   }
 
+  public get evtMessageDeleted() {
+    return this._getEvt('messageDeleted') as Evt<MessageDeletedData>;
+  }
+
+  public get evtChannelCleared() {
+    return this._getEvt('channelCleared') as Evt<ChannelClearedData>;
+  }
+
+  public get evtChannelDeleted() {
+    return this._getEvt('channelDeleted') as Evt<ChannelDeletedData>;
+  }
+
   public get evtLogStream() {
     return this._getEvt('logStream') as Evt<LogStreamData>;
   }
@@ -166,7 +203,7 @@ export class SocketIOManager extends EventAdapter {
     this.clientEntityId = clientEntityId;
 
     if (this.socket) {
-      clientLogger.warn('[SocketIO] Socket already initialized');
+      clientLogger.debug('[SocketIO] Socket already initialized');
       return;
     }
 
@@ -187,7 +224,14 @@ export class SocketIOManager extends EventAdapter {
       clientLogger.info('[SocketIO] Connected to server');
       this.isConnected = true;
       this.resolveConnect?.();
-
+      
+      // Add debug listener for all incoming events
+      if (process.env.NODE_ENV === 'development' && this.socket) {
+        this.socket.onAny((event, ...args) => {
+          clientLogger.debug(`[SocketIO DEBUG] Received event '${event}':`, args);
+        });
+      }
+      
       this.emit('connect');
 
       // CRITICAL: Ensure this loop remains commented out or removed.
@@ -269,6 +313,76 @@ export class SocketIOManager extends EventAdapter {
       } else {
         clientLogger.warn(
           `[SocketIO] Received control message for inactive channel ${channelId}, active channels:`,
+          Array.from(this.activeChannelIds)
+        );
+      }
+    });
+
+    // Listen for message deletion events
+    this.socket.on('messageDeleted', (data) => {
+      clientLogger.debug(`[SocketIO] Message deleted event received:`, data);
+
+      // Check if this is for one of our active channels
+      const channelId = data.channelId || data.roomId; // Handle both new and old message format
+      if (channelId && this.activeChannelIds.has(channelId)) {
+        clientLogger.info(`[SocketIO] Handling message deletion for active channel ${channelId}`);
+
+        // Emit the message deleted event
+        this.emit('messageDeleted', {
+          ...data,
+          channelId: channelId, // Ensure channelId is always set
+          roomId: channelId, // Deprecated: Retained for backward compatibility with older clients  
+
+        });
+      } else {
+        clientLogger.warn(
+          `[SocketIO] Received message deleted event for inactive channel ${channelId}, active channels:`,
+          Array.from(this.activeChannelIds)
+        );
+      }
+    });
+
+    // Listen for channel cleared events
+    this.socket.on('channelCleared', (data) => {
+      clientLogger.info(`[SocketIO] Channel cleared event received:`, data);
+
+      // Check if this is for one of our active channels
+      const channelId = data.channelId || data.roomId; // Handle both new and old message format
+      if (channelId && this.activeChannelIds.has(channelId)) {
+        clientLogger.info(`[SocketIO] Handling channel cleared for active channel ${channelId}`);
+
+        // Emit the channel cleared event
+        this.emit('channelCleared', {
+          ...data,
+          channelId: channelId, // Ensure channelId is always set
+          roomId: channelId, // Keep roomId for backward compatibility
+        });
+      } else {
+        clientLogger.warn(
+          `[SocketIO] Received channel cleared event for inactive channel ${channelId}, active channels:`,
+          Array.from(this.activeChannelIds)
+        );
+      }
+    });
+
+    // Listen for channel deleted events
+    this.socket.on('channelDeleted', (data) => {
+      clientLogger.info(`[SocketIO] Channel deleted event received:`, data);
+
+      // Check if this is for one of our active channels
+      const channelId = data.channelId || data.roomId; // Handle both new and old message format
+      if (channelId && this.activeChannelIds.has(channelId)) {
+        clientLogger.info(`[SocketIO] Handling channel deleted for active channel ${channelId}`);
+
+        // Emit the channel deleted event (same as cleared for now)
+        this.emit('channelDeleted', {
+          ...data,
+          channelId: channelId, // Ensure channelId is always set
+          roomId: channelId, // Keep roomId for backward compatibility
+        });
+      } else {
+        clientLogger.warn(
+          `[SocketIO] Received channel deleted event for inactive channel ${channelId}, active channels:`,
           Array.from(this.activeChannelIds)
         );
       }

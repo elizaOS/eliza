@@ -6,9 +6,9 @@ import {
   type Content,
   ContentType,
   createUniqueUuid,
-  type Entity,
   type EntityPayload,
   type EvaluatorEventPayload,
+  type EventPayload,
   EventType,
   type IAgentRuntime,
   imageDescriptionTemplate,
@@ -24,6 +24,7 @@ import {
   type Plugin,
   PluginEvents,
   postCreationTemplate,
+  Role,
   type Room,
   shouldRespondTemplate,
   truncateToCompleteSentence,
@@ -689,6 +690,84 @@ const reactionReceivedHandler = async ({
 };
 
 /**
+ * Handles message deletion events by removing the corresponding memory from the agent's memory store.
+ *
+ * @param {Object} params - The parameters for the function.
+ * @param {IAgentRuntime} params.runtime - The agent runtime object.
+ * @param {Memory} params.message - The message memory that was deleted.
+ * @returns {void}
+ */
+const messageDeletedHandler = async ({
+  runtime,
+  message,
+}: {
+  runtime: IAgentRuntime;
+  message: Memory;
+}) => {
+  try {
+    if (!message.id) {
+      logger.error('[Bootstrap] Cannot delete memory: message ID is missing');
+      return;
+    }
+
+    logger.info('[Bootstrap] Deleting memory for message', message.id, 'from room', message.roomId);
+    await runtime.deleteMemory(message.id);
+    logger.debug('[Bootstrap] Successfully deleted memory for message', message.id);
+  } catch (error: unknown) {
+    logger.error('[Bootstrap] Error in message deleted handler:', error);
+  }
+};
+
+/**
+ * Handles channel cleared events by removing all message memories from the specified room.
+ *
+ * @param {Object} params - The parameters for the function.
+ * @param {IAgentRuntime} params.runtime - The agent runtime object.
+ * @param {UUID} params.roomId - The room ID to clear message memories from.
+ * @param {string} params.channelId - The original channel ID.
+ * @param {number} params.memoryCount - Number of memories found.
+ * @returns {void}
+ */
+const channelClearedHandler = async ({
+  runtime,
+  roomId,
+  channelId,
+  memoryCount,
+}: {
+  runtime: IAgentRuntime;
+  roomId: UUID;
+  channelId: string;
+  memoryCount: number;
+}) => {
+  try {
+    logger.info(`[Bootstrap] Clearing ${memoryCount} message memories from channel ${channelId} -> room ${roomId}`);
+    
+    // Get all message memories for this room
+    const memories = await runtime.getMemoriesByRoomIds({
+      tableName: 'messages',
+      roomIds: [roomId]
+    });
+    
+    // Delete each message memory
+    let deletedCount = 0;
+    for (const memory of memories) {
+      if (memory.id) {
+        try {
+          await runtime.deleteMemory(memory.id);
+          deletedCount++;
+        } catch (error) {
+          logger.warn(`[Bootstrap] Failed to delete message memory ${memory.id}:`, error);
+        }
+      }
+    }
+    
+    logger.info(`[Bootstrap] Successfully cleared ${deletedCount}/${memories.length} message memories from channel ${channelId}`);
+  } catch (error: unknown) {
+    logger.error('[Bootstrap] Error in channel cleared handler:', error);
+  }
+};
+
+/**
  * Handles the generation of a post (like a Tweet) and creates a memory for it.
  *
  * @param {Object} params - The parameters for the function.
@@ -977,6 +1056,19 @@ const syncSingleUser = async (
     const roomId = createUniqueUuid(runtime, channelId);
     const worldId = createUniqueUuid(runtime, serverId);
 
+    // Create world with ownership metadata for DM connections (onboarding)
+    const worldMetadata = type === ChannelType.DM ? {
+      ownership: {
+        ownerId: entityId,
+      },
+      roles: {
+        [entityId]: Role.OWNER,
+      },
+      settings: {}, // Initialize empty settings for onboarding
+    } : undefined;
+
+    logger.info(`[Bootstrap] syncSingleUser - type: ${type}, isDM: ${type === ChannelType.DM}, worldMetadata: ${JSON.stringify(worldMetadata)}`);
+
     await runtime.ensureConnection({
       entityId,
       roomId,
@@ -988,7 +1080,16 @@ const syncSingleUser = async (
       serverId,
       type,
       worldId,
+      metadata: worldMetadata,
     });
+
+    // Verify the world was created with proper metadata
+    try {
+      const createdWorld = await runtime.getWorld(worldId);
+      logger.info(`[Bootstrap] Created world check - ID: ${worldId}, metadata: ${JSON.stringify(createdWorld?.metadata)}`);
+    } catch (error) {
+      logger.error(`[Bootstrap] Failed to verify created world: ${error}`);
+    }
 
     logger.success(`[Bootstrap] Successfully synced user: ${entity?.id}`);
   } catch (error) {
@@ -1138,6 +1239,26 @@ const events = {
     },
   ],
 
+  [EventType.MESSAGE_DELETED]: [
+    async (payload: MessagePayload) => {
+      await messageDeletedHandler({
+        runtime: payload.runtime,
+        message: payload.message,
+      });
+    },
+  ],
+
+  [EventType.CHANNEL_CLEARED]: [
+    async (payload: EventPayload & { roomId: UUID; channelId: string; memoryCount: number }) => {
+      await channelClearedHandler({
+        runtime: payload.runtime,
+        roomId: payload.roomId,
+        channelId: payload.channelId,
+        memoryCount: payload.memoryCount,
+      });
+    },
+  ],
+
   [EventType.WORLD_JOINED]: [
     async (payload: WorldPayload) => {
       await handleServerSync(payload);
@@ -1152,8 +1273,10 @@ const events = {
 
   [EventType.ENTITY_JOINED]: [
     async (payload: EntityPayload) => {
+      logger.debug(`[Bootstrap] ENTITY_JOINED event received for entity ${payload.entityId}`);
+      
       if (!payload.worldId) {
-        logger.error('[Bootstrap] No callback provided for entity joined');
+        logger.error('[Bootstrap] No worldId provided for entity joined');
         return;
       }
       if (!payload.roomId) {
