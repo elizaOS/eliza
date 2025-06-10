@@ -342,7 +342,7 @@ bun test
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
-## Ressources
+## Resources
 
 - [Irys Documentation](https://docs.irys.xyz/)
 - [A Decentralized Framework for Multi-Agent Systems Using Datachain Technology](https://trophe.net/article/A_Decentralized_Framework_for_Multi-Agent_Systems_Using_Datachain_Technology.pdf)

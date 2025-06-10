@@ -9,8 +9,6 @@ import {
   SOCKET_MESSAGE_TYPE,
   validateUuid,
 } from '@elizaos/core';
-import type { Tracer } from '@opentelemetry/api';
-import { SpanStatusCode } from '@opentelemetry/api';
 import bodyParser from 'body-parser';
 import cors from 'cors';
 import express from 'express';

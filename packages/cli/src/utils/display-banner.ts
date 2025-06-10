@@ -119,7 +119,7 @@ export function showUpdateNotification(currentVersion: string, latestVersion: st
     `${blue}│${orange} ${bold}Update available:${reset}${orange} ${currentVersion} → ${green}${bold}${latestVersion}${reset}${orange}${' '.repeat(width - 2 - ` Update available: ${currentVersion} → ${latestVersion}`.length)}${blue}│${reset}`
   );
   console.log(
-    `${blue}│${orange} Run ${green}${bold}elizaos update${reset}${orange} to get the latest features and improvements${' '.repeat(width - 2 - ` Run elizaos update to get the latest features and improvements`.length)}${blue}│${reset}`
+    `${blue}│${orange} Run ${green}${bold}bun i -g @elizaos/cli@latest${reset}${orange} to get the latest features${' '.repeat(width - 2 - ` Run bun i -g @elizaos/cli@latest to get the latest features`.length)}${blue}│${reset}`
   );
   console.log(border);
   console.log('');

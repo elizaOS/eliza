@@ -326,7 +326,7 @@ export const update = new Command()
   .option('--packages', 'Update only packages')
   .hook('preAction', async () => {
     try {
-      await displayBanner();
+      await displayBanner(true); // Skip update check since we're about to update
     } catch {
       logger.debug('Banner display failed, continuing with update');
     }

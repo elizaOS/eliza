@@ -30,9 +30,6 @@ export default defineConfig({
     '@solana/web3.js',
     'zod',
     '@hapi/shot',
-    '@opentelemetry/api',
-    '@opentelemetry/context-async-hooks',
-    '@opentelemetry/sdk-trace-node',
   ],
   sourcemap: false,
 });
