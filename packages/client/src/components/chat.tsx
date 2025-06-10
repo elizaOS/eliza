@@ -701,6 +701,9 @@ export default function Chat({
     if (!finalChannelIdForHooks || !messageId) return;
     const validMessageId = validateUuid(messageId);
     if (validMessageId) {
+      // Immediately remove message from UI for optimistic update
+      removeMessage(messageId);
+      // Call server mutation to delete on backend
       deleteMessageCentral({ channelId: finalChannelIdForHooks, messageId: validMessageId });
     }
   };
