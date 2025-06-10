@@ -1942,6 +1942,15 @@ export interface MessagePayload extends EventPayload {
 }
 
 /**
+ * Payload for channel cleared events
+ */
+export interface ChannelClearedPayload extends EventPayload {
+  roomId: UUID;
+  channelId: string;  
+  memoryCount: number;
+}
+
+/**
  * Payload for events that are invoked without a message
  */
 export interface InvokePayload extends EventPayload {
@@ -2041,7 +2050,7 @@ export interface EventPayloadMap {
   [EventType.EVALUATOR_STARTED]: EvaluatorEventPayload;
   [EventType.EVALUATOR_COMPLETED]: EvaluatorEventPayload;
   [EventType.MODEL_USED]: ModelEventPayload;
-  [EventType.CHANNEL_CLEARED]: MessagePayload;
+  [EventType.CHANNEL_CLEARED]: ChannelClearedPayload;
 }
 
 /**

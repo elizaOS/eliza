@@ -28,6 +28,9 @@ export enum EventType {
   MESSAGE_SENT = 'MESSAGE_SENT',
   MESSAGE_DELETED = 'MESSAGE_DELETED',
 
+  // Channel events
+  CHANNEL_CLEARED = 'CHANNEL_CLEARED',
+
   // Voice events
   VOICE_MESSAGE_RECEIVED = 'VOICE_MESSAGE_RECEIVED',
   VOICE_MESSAGE_SENT = 'VOICE_MESSAGE_SENT',
@@ -103,6 +106,15 @@ export interface MessagePayload extends EventPayload {
   message: Memory;
   callback?: HandlerCallback;
   onComplete?: () => void;
+}
+
+/**
+ * Payload for channel cleared events
+ */
+export interface ChannelClearedPayload extends EventPayload {
+  roomId: UUID;
+  channelId: string;  
+  memoryCount: number;
 }
 
 /**
@@ -187,6 +199,7 @@ export interface EventPayloadMap {
   [EventType.MESSAGE_RECEIVED]: MessagePayload;
   [EventType.MESSAGE_SENT]: MessagePayload;
   [EventType.MESSAGE_DELETED]: MessagePayload;
+  [EventType.CHANNEL_CLEARED]: ChannelClearedPayload;
   [EventType.REACTION_RECEIVED]: MessagePayload;
   [EventType.POST_GENERATED]: InvokePayload;
   [EventType.INTERACTION_RECEIVED]: MessagePayload;
