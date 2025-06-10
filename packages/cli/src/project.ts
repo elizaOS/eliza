@@ -137,7 +137,8 @@ export async function loadProject(dir: string): Promise<Project> {
     const packageJson = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
     const main = packageJson.main;
     if (!main) {
-      throw new Error('No main field in package.json');
+      logger.warn('No main field found in package.json, using default character');
+      return;
     }
 
     // Try to find the project's entry point
