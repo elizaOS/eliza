@@ -1,5 +1,9 @@
 # @elizaos/plugin-twitter
 
+> **⚠️ DEPRECATION NOTICE**  
+> **This plugin is deprecated.**  
+> We recommend migrating to alternative social media platforms like Farcaster or Discord.
+
 A plugin for Twitter/X integration, providing automated tweet posting capabilities with character-aware content generation.
 
 ## Overview

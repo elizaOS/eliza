@@ -4,6 +4,10 @@
 
 #### v0.25.9 Release Notes
 
+#### Breaking Changes
+
+- **Twitter/X integration undergoing maintenance**
+
 #### Features
 
 - CLI install improvements #3697
