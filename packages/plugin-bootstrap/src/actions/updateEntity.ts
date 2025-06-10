@@ -19,6 +19,7 @@ import {
   ModelType,
   type State,
   type UUID,
+  asUUID,
 } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -177,7 +178,7 @@ export const updateEntityAction: Action = {
 
       // Handle initial responses
       for (const response of responses) {
-        await callback(response.content);
+        // Don't process these initial responses anymore since we're pushing to responses array
       }
 
       const sourceEntityId = message.entityId;
@@ -190,11 +191,19 @@ export const updateEntityAction: Action = {
       const entity = await findEntityByName(runtime, message, state);
 
       if (!entity) {
-        await callback({
-          text: "I'm not sure which entity you're trying to update. Could you please specify who you're talking about?",
-          actions: ['UPDATE_ENTITY_ERROR'],
-          source: message.content.source,
-        });
+        const errorMessage = {
+          id: asUUID(uuidv4()),
+          entityId: runtime.agentId,
+          agentId: runtime.agentId,
+          content: {
+            text: "I'm not sure which entity you're trying to update. Could you please specify who you're talking about?",
+            actions: ['UPDATE_ENTITY_ERROR'],
+            source: message.content.source,
+          },
+          roomId: message.roomId,
+          createdAt: Date.now(),
+        };
+        responses?.push(errorMessage);
         return;
       }
 
@@ -227,11 +236,19 @@ export const updateEntityAction: Action = {
         }
       } catch (error: any) {
         logger.error(`Failed to parse component data: ${error.message}`);
-        await callback({
-          text: "I couldn't properly understand the component information. Please try again with more specific information.",
-          actions: ['UPDATE_ENTITY_ERROR'],
-          source: message.content.source,
-        });
+        const errorMessage = {
+          id: asUUID(uuidv4()),
+          entityId: runtime.agentId,
+          agentId: runtime.agentId,
+          content: {
+            text: "I couldn't properly understand the component information. Please try again with more specific information.",
+            actions: ['UPDATE_ENTITY_ERROR'],
+            source: message.content.source,
+          },
+          roomId: message.roomId,
+          createdAt: Date.now(),
+        };
+        responses?.push(errorMessage);
         return;
       }
 
@@ -260,11 +277,19 @@ export const updateEntityAction: Action = {
           createdAt: existingComponent.createdAt,
         });
 
-        await callback({
-          text: `I've updated the ${componentType} information for ${entity.names[0]}.`,
-          actions: ['UPDATE_ENTITY'],
-          source: message.content.source,
-        });
+        const successMessage = {
+          id: asUUID(uuidv4()),
+          entityId: runtime.agentId,
+          agentId: runtime.agentId,
+          content: {
+            text: `I've updated the ${componentType} information for ${entity.names[0]}.`,
+            actions: ['UPDATE_ENTITY'],
+            source: message.content.source,
+          },
+          roomId: message.roomId,
+          createdAt: Date.now(),
+        };
+        responses?.push(successMessage);
       } else {
         await runtime.createComponent({
           id: uuidv4() as UUID,
@@ -278,19 +303,35 @@ export const updateEntityAction: Action = {
           createdAt: Date.now(),
         });
 
-        await callback({
-          text: `I've added new ${componentType} information for ${entity.names[0]}.`,
-          actions: ['UPDATE_ENTITY'],
-          source: message.content.source,
-        });
+        const successMessage = {
+          id: asUUID(uuidv4()),
+          entityId: runtime.agentId,
+          agentId: runtime.agentId,
+          content: {
+            text: `I've added new ${componentType} information for ${entity.names[0]}.`,
+            actions: ['UPDATE_ENTITY'],
+            source: message.content.source,
+          },
+          roomId: message.roomId,
+          createdAt: Date.now(),
+        };
+        responses?.push(successMessage);
       }
     } catch (error) {
       logger.error(`Error in updateEntity handler: ${error}`);
-      await callback?.({
-        text: 'There was an error processing the entity information.',
-        actions: ['UPDATE_ENTITY_ERROR'],
-        source: message.content.source,
-      });
+      const errorMessage = {
+        id: asUUID(uuidv4()),
+        entityId: runtime.agentId,
+        agentId: runtime.agentId,
+        content: {
+          text: 'There was an error processing the entity information.',
+          actions: ['UPDATE_ENTITY_ERROR'],
+          source: message.content.source,
+        },
+        roomId: message.roomId,
+        createdAt: Date.now(),
+      };
+      responses?.push(errorMessage);
     }
   },
 

@@ -13,7 +13,9 @@ import {
   ModelType,
   parseJSONObjectFromText,
   type State,
+  asUUID,
 } from '@elizaos/core';
+import { v4 } from 'uuid';
 
 /**
  * Task: Extract Target and Source Information
@@ -205,7 +207,7 @@ export const sendMessageAction: Action = {
 
       // Handle initial responses
       for (const response of responses) {
-        await callback(response.content);
+        // Don't process these initial responses anymore since we're pushing to responses array
       }
 
       const sourceEntityId = message.entityId;
@@ -225,11 +227,19 @@ export const sendMessageAction: Action = {
 
       const targetData = parseJSONObjectFromText(targetResult);
       if (!targetData?.targetType || !targetData?.source) {
-        await callback({
-          text: "I couldn't determine where you want me to send the message. Could you please specify the target (user or room) and platform?",
-          actions: ['SEND_MESSAGE_ERROR'],
-          source: message.content.source,
-        });
+        const errorMessage = {
+          id: asUUID(v4()),
+          entityId: runtime.agentId,
+          agentId: runtime.agentId,
+          content: {
+            text: "I couldn't determine where you want me to send the message. Could you please specify the target (user or room) and platform?",
+            actions: ['SEND_MESSAGE_ERROR'],
+            source: message.content.source,
+          },
+          roomId: message.roomId,
+          createdAt: Date.now(),
+        };
+        responses?.push(errorMessage);
         return;
       }
 
@@ -240,11 +250,19 @@ export const sendMessageAction: Action = {
         const targetEntity = await findEntityByName(runtime, message, state);
 
         if (!targetEntity) {
-          await callback({
-            text: "I couldn't find the user you want me to send a message to. Could you please provide more details about who they are?",
-            actions: ['SEND_MESSAGE_ERROR'],
-            source: message.content.source,
-          });
+          const errorMessage = {
+            id: asUUID(v4()),
+            entityId: runtime.agentId,
+            agentId: runtime.agentId,
+            content: {
+              text: "I couldn't find the user you want me to send a message to. Could you please provide more details about who they are?",
+              actions: ['SEND_MESSAGE_ERROR'],
+              source: message.content.source,
+            },
+            roomId: message.roomId,
+            createdAt: Date.now(),
+          };
+          responses?.push(errorMessage);
           return;
         }
 
@@ -257,40 +275,83 @@ export const sendMessageAction: Action = {
         );
 
         if (!userComponent) {
-          await callback({
-            text: `I couldn't find ${source} information for that user. Could you please provide their ${source} details?`,
-            actions: ['SEND_MESSAGE_ERROR'],
-            source: message.content.source,
-          });
+          const errorMessage = {
+            id: asUUID(v4()),
+            entityId: runtime.agentId,
+            agentId: runtime.agentId,
+            content: {
+              text: `I couldn't find ${source} information for that user. Could you please provide their ${source} details?`,
+              actions: ['SEND_MESSAGE_ERROR'],
+              source: message.content.source,
+            },
+            roomId: message.roomId,
+            createdAt: Date.now(),
+          };
+          responses?.push(errorMessage);
           return;
         }
 
         const sendDirectMessage = (runtime.getService(source) as any)?.sendDirectMessage;
 
         if (!sendDirectMessage) {
-          await callback({
-            text: "I couldn't find the user you want me to send a message to. Could you please provide more details about who they are?",
-            actions: ['SEND_MESSAGE_ERROR'],
-            source: message.content.source,
-          });
+          const errorMessage = {
+            id: asUUID(v4()),
+            entityId: runtime.agentId,
+            agentId: runtime.agentId,
+            content: {
+              text: "I couldn't find the user you want me to send a message to. Could you please provide more details about who they are?",
+              actions: ['SEND_MESSAGE_ERROR'],
+              source: message.content.source,
+            },
+            roomId: message.roomId,
+            createdAt: Date.now(),
+          };
+          responses?.push(errorMessage);
           return;
         }
         // Send the message using the appropriate client
         try {
           await sendDirectMessage(runtime, targetEntity.id!, source, message.content.text, worldId);
 
-          await callback({
-            text: `Message sent to ${targetEntity.names[0]} on ${source}.`,
-            actions: ['SEND_MESSAGE'],
-            source: message.content.source,
-          });
+          const successMessage = {
+            id: asUUID(v4()),
+            entityId: runtime.agentId,
+            agentId: runtime.agentId,
+            content: {
+              text: `Message sent to ${targetEntity.names[0]} on ${source}.`,
+              source: message.content.source,
+            },
+            roomId: message.roomId,
+            createdAt: Date.now(),
+          };
+
+          await runtime.createMemory(
+            {
+              ...successMessage,
+              content: {
+                ...successMessage.content,
+                actions: ['SEND_MESSAGE'],
+              },
+            },
+            'messages'
+          );
+
+          responses?.push(successMessage);
         } catch (error: any) {
           logger.error(`Failed to send direct message: ${error.message}`);
-          await callback({
-            text: 'I encountered an error trying to send the message. Please try again.',
-            actions: ['SEND_MESSAGE_ERROR'],
-            source: message.content.source,
-          });
+          const errorMessage = {
+            id: asUUID(v4()),
+            entityId: runtime.agentId,
+            agentId: runtime.agentId,
+            content: {
+              text: 'I encountered an error trying to send the message. Please try again.',
+              actions: ['SEND_MESSAGE_ERROR'],
+              source: message.content.source,
+            },
+            roomId: message.roomId,
+            createdAt: Date.now(),
+          };
+          responses?.push(errorMessage);
         }
       } else if (targetData.targetType === 'room') {
         // Try to find the target room
@@ -301,22 +362,38 @@ export const sendMessageAction: Action = {
         });
 
         if (!targetRoom) {
-          await callback({
-            text: "I couldn't find the room you want me to send a message to. Could you please specify the exact room name?",
-            actions: ['SEND_MESSAGE_ERROR'],
-            source: message.content.source,
-          });
+          const errorMessage = {
+            id: asUUID(v4()),
+            entityId: runtime.agentId,
+            agentId: runtime.agentId,
+            content: {
+              text: "I couldn't find the room you want me to send a message to. Could you please specify the exact room name?",
+              actions: ['SEND_MESSAGE_ERROR'],
+              source: message.content.source,
+            },
+            roomId: message.roomId,
+            createdAt: Date.now(),
+          };
+          responses?.push(errorMessage);
           return;
         }
 
         const sendRoomMessage = (runtime.getService(source) as any)?.sendRoomMessage;
 
         if (!sendRoomMessage) {
-          await callback({
-            text: "I couldn't find the room you want me to send a message to. Could you please specify the exact room name?",
-            actions: ['SEND_MESSAGE_ERROR'],
-            source: message.content.source,
-          });
+          const errorMessage = {
+            id: asUUID(v4()),
+            entityId: runtime.agentId,
+            agentId: runtime.agentId,
+            content: {
+              text: "I couldn't find the room you want me to send a message to. Could you please specify the exact room name?",
+              actions: ['SEND_MESSAGE_ERROR'],
+              source: message.content.source,
+            },
+            roomId: message.roomId,
+            createdAt: Date.now(),
+          };
+          responses?.push(errorMessage);
           return;
         }
 
@@ -324,27 +401,51 @@ export const sendMessageAction: Action = {
         try {
           await sendRoomMessage(runtime, targetRoom.id, source, message.content.text, worldId);
 
-          await callback({
-            text: `Message sent to ${targetRoom.name} on ${source}.`,
-            actions: ['SEND_MESSAGE'],
-            source: message.content.source,
-          });
+          const successMessage = {
+            id: asUUID(v4()),
+            entityId: runtime.agentId,
+            agentId: runtime.agentId,
+            content: {
+              text: `Message sent to ${targetRoom.name} on ${source}.`,
+              actions: ['SEND_MESSAGE'],
+              source: message.content.source,
+            },
+            roomId: message.roomId,
+            createdAt: Date.now(),
+          };
+          responses?.push(successMessage);
         } catch (error: any) {
           logger.error(`Failed to send room message: ${error.message}`);
-          await callback({
-            text: 'I encountered an error trying to send the message to the room. Please try again.',
-            actions: ['SEND_MESSAGE_ERROR'],
-            source: message.content.source,
-          });
+          const errorMessage = {
+            id: asUUID(v4()),
+            entityId: runtime.agentId,
+            agentId: runtime.agentId,
+            content: {
+              text: 'I encountered an error trying to send the message to the room. Please try again.',
+              actions: ['SEND_MESSAGE_ERROR'],
+              source: message.content.source,
+            },
+            roomId: message.roomId,
+            createdAt: Date.now(),
+          };
+          responses?.push(errorMessage);
         }
       }
     } catch (error) {
       logger.error(`Error in sendMessage handler: ${error}`);
-      await callback?.({
-        text: 'There was an error processing your message request.',
-        actions: ['SEND_MESSAGE_ERROR'],
-        source: message.content.source,
-      });
+      const errorMessage = {
+        id: asUUID(v4()),
+        entityId: runtime.agentId,
+        agentId: runtime.agentId,
+        content: {
+          text: 'There was an error processing your message request.',
+          actions: ['SEND_MESSAGE_ERROR'],
+          source: message.content.source,
+        },
+        roomId: message.roomId,
+        createdAt: Date.now(),
+      };
+      responses?.push(errorMessage);
     }
   },
 
