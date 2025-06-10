@@ -58,7 +58,7 @@ export function getInstallCommand(isGlobal: boolean): string[] {
  */
 export async function removeFromBunLock(packageName: string, directory: string): Promise<void> {
   const lockFilePath = path.join(directory, 'bun.lock');
-  
+
   if (!fs.existsSync(lockFilePath)) {
     logger.debug(`No bun.lock file found at ${lockFilePath}, skipping removal`);
     return;
@@ -137,8 +137,25 @@ export async function executeInstallation(
 }
 
 /**
+ * Builds a GitHub specifier string for package installation.
+ *
+ * @param githubSpec - The GitHub specifier (e.g., "github:owner/repo")
+ * @param versionOrTag - Optional version or tag to append
+ * @returns The complete GitHub specifier string
+ */
+export function buildGitHubSpecifier(githubSpec: string, versionOrTag?: string): string {
+  if (!versionOrTag) {
+    return githubSpec;
+  }
+
+  // If the spec already has a fragment (#), replace it
+  const baseSpec = githubSpec.split('#')[0];
+  return `${baseSpec}#${versionOrTag}`;
+}
+
+/**
  * Enhanced installation function that supports GitHub fallback with lockfile cleanup.
- * 
+ *
  * @param packageName - The name of the package to install
  * @param versionOrTag - Optional version or tag to install
  * @param directory - The directory in which to run the installation
@@ -153,17 +170,17 @@ export async function executeInstallationWithFallback(
 ): Promise<{ success: boolean; installedIdentifier: string | null }> {
   // First try normal installation
   const result = await executeInstallation(packageName, versionOrTag, directory);
-  
+
   if (result.success || !githubFallback) {
     return result;
   }
-  
+
   // If npm installation failed and we have a GitHub fallback, try GitHub installation
   logger.debug(`npm installation failed, attempting GitHub fallback: ${githubFallback}`);
-  
+
   // Remove package from lockfile to prevent circular dependencies
   await removeFromBunLock(packageName, directory);
-  
+
   // Try GitHub installation
   const githubSpecifier = buildGitHubSpecifier(`github:${githubFallback}`, versionOrTag);
   return await executeInstallation(githubSpecifier, '', directory);

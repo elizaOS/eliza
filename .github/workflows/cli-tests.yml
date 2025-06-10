@@ -1,5 +1,10 @@
 name: Eliza CLI Tests
 
+# Cancel previous runs for the same PR/branch
+concurrency:
+  group: cli-tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   GH_TOKEN: ${{ secrets.GH_TOKEN }}
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -29,6 +34,8 @@ on:
 
 jobs:
   test:
+    # Skip duplicate runs: run on push to main/develop, or on pull_request events only
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && contains(fromJson('["main", "develop"]'), github.ref_name))
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

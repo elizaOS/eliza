@@ -437,13 +437,10 @@ export function AgentMemoryViewer({ agentId, agentName }: AgentMemoryViewerProps
             className="h-8 px-3"
           >
             {viewMode === 'graph' ? (
-
               <List className="h-4 w-4 mr-1" />
-
             ) : (
               <>
                 <BarChart3 className="h-4 w-4 mr-1" />
-
               </>
             )}
           </Button>

@@ -491,7 +491,7 @@ function EmptyState({
             : `No ${selectedType} actions found.`}
       </p>
       {searchQuery && (
-        <Button variant="outline" onClick={() => { }}>
+        <Button variant="outline" onClick={() => {}}>
           Clear Search
         </Button>
       )}
