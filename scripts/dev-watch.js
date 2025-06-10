@@ -114,7 +114,10 @@ function startCliServer() {
         const serverProcess = await startActualCliServer();
         if (serverProcess) {
           // Wait for server to be ready before starting frontend
-          const ready = await waitForServer();
+          
+          const port = process.env.SERVER_PORT || 3000;
+          const url = `http://localhost:${port}/api/ping`;
+          const ready = await waitForServer(url);
           if (ready && !isShuttingDown) {
             serverReady = true;
             log('DEV', '🔧 Backend server is ready!');
