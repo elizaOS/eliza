@@ -586,8 +586,9 @@ export async function getGitHubCredentials(): Promise<{
 
   // No valid credentials found, prompt the user
   clack.intro('🔐 GitHub Authentication Required');
-  
-  clack.note(`To create a GitHub Personal Access Token (Classic):
+
+  clack.note(
+    `To create a GitHub Personal Access Token (Classic):
 1. Go to https://github.com/settings/tokens/new
 2. Give your token a descriptive name (e.g., "ElizaOS CLI")
 3. Select "No expiration" or any expiration date
@@ -598,7 +599,9 @@ export async function getGitHubCredentials(): Promise<{
 5. Click "Generate token" at the bottom of the page
 6. Copy the displayed token (you won't be able to see it again!)
 
-NOTE: You must use a Classic token, not a Fine-grained token`, 'Setup Instructions');
+NOTE: You must use a Classic token, not a Fine-grained token`,
+    'Setup Instructions'
+  );
 
   // Then prompt for the username with a simple message
   const promptedUsername = await clack.text({

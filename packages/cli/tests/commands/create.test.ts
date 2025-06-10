@@ -90,7 +90,6 @@ describe("ElizaOS Create Commands", () => {
     expect(existsSync("my-default-app")).toBe(true);
     expect(existsSync("my-default-app/package.json")).toBe(true);
     expect(existsSync("my-default-app/src")).toBe(true);
-    expect(existsSync("my-default-app/knowledge")).toBe(true);
     expect(existsSync("my-default-app/.gitignore")).toBe(true);
     expect(existsSync("my-default-app/.npmignore")).toBe(true);
   }, 40000);

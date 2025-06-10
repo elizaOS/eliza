@@ -125,7 +125,7 @@ export function createGroupMemoryRouter(
       if (memoryIds.length > 0) {
         await (db as any).deleteManyMemories(memoryIds);
       }
-      
+
       res.status(204).send();
     } catch (error) {
       logger.error('[GROUP MEMORIES DELETE] Error clearing memories:', error);

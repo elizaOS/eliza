@@ -3,7 +3,11 @@ import path from 'node:path';
 import multer from 'multer';
 import { validateUuid, logger } from '@elizaos/core';
 import { createSecureUploadDir, sanitizeFilename } from './api/shared/file-utils';
-import { MAX_FILE_SIZE, ALLOWED_AUDIO_MIME_TYPES, ALLOWED_MEDIA_MIME_TYPES } from './api/shared/constants';
+import {
+  MAX_FILE_SIZE,
+  ALLOWED_AUDIO_MIME_TYPES,
+  ALLOWED_MEDIA_MIME_TYPES,
+} from './api/shared/constants';
 
 // --- Agent-Specific Upload Storage ---
 export const agentStorage = multer.diskStorage({

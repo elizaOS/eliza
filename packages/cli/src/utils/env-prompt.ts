@@ -238,7 +238,7 @@ async function promptForEnvVar(config: EnvVarConfig): Promise<string | null> {
     console.log(colors.blue(`Get it here: ${config.url}`));
   }
 
-  const value = await (config.secret 
+  const value = await (config.secret
     ? clack.password({
         message: `Enter your ${config.name}:`,
         validate: (input: string) => {
