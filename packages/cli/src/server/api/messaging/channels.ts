@@ -563,7 +563,21 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
       return res.status(400).json({ success: false, error: 'Invalid channelId' });
     }
     try {
+      // Get messages count before deletion for logging
+      const messages = await serverInstance.getMessagesForChannel(channelId);
+      const messageCount = messages.length;
+      
+      // Delete the entire channel
       await serverInstance.deleteChannel(channelId);
+      logger.info(`[Messages Router] Deleted channel ${channelId} with ${messageCount} messages from central database`);
+      
+      // Emit to internal bus for agent memory cleanup (same as clear messages)
+      const channelClearedPayload = {
+        channelId: channelId,
+      };
+      internalMessageBus.emit('channel_cleared', channelClearedPayload);
+      logger.info(`[Messages Router] Emitted channel_cleared event to internal bus for deleted channel ${channelId}`);
+      
       // Emit an event via SocketIO to inform clients about the channel deletion
       if (serverInstance.socketIO) {
         serverInstance.socketIO.to(channelId).emit('channelDeleted', {

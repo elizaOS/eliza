@@ -3214,6 +3214,83 @@ export abstract class BaseDrizzleAdapter<
   }
 
   /**
+   * Updates a channel
+   */
+  async updateChannel(
+    channelId: UUID,
+    updates: { name?: string; participantCentralUserIds?: UUID[]; metadata?: any }
+  ): Promise<{
+    id: UUID;
+    messageServerId: UUID;
+    name: string;
+    type: string;
+    sourceType?: string;
+    sourceId?: string;
+    topic?: string;
+    metadata?: any;
+    createdAt: Date;
+    updatedAt: Date;
+  }> {
+    return this.withDatabase(async () => {
+      const now = new Date();
+      
+      await this.db.transaction(async (tx) => {
+        // Update channel details
+        const updateData: any = { updatedAt: now };
+        if (updates.name !== undefined) updateData.name = updates.name;
+        if (updates.metadata !== undefined) updateData.metadata = updates.metadata;
+        
+        await tx.update(channelTable)
+          .set(updateData)
+          .where(eq(channelTable.id, channelId));
+
+        // Update participants if provided
+        if (updates.participantCentralUserIds !== undefined) {
+          // Remove existing participants
+          await tx.delete(channelParticipantsTable)
+            .where(eq(channelParticipantsTable.channelId, channelId));
+          
+          // Add new participants
+          if (updates.participantCentralUserIds.length > 0) {
+            const participantValues = updates.participantCentralUserIds.map((userId) => ({
+              channelId: channelId,
+              userId: userId,
+            }));
+            await tx.insert(channelParticipantsTable)
+              .values(participantValues)
+              .onConflictDoNothing();
+          }
+        }
+      });
+      
+      // Return updated channel details
+      const updatedChannel = await this.getChannelDetails(channelId);
+      if (!updatedChannel) {
+        throw new Error(`Channel ${channelId} not found after update`);
+      }
+      return updatedChannel;
+    });
+  }
+
+  /**
+   * Deletes a channel and all its associated data
+   */
+  async deleteChannel(channelId: UUID): Promise<void> {
+    return this.withDatabase(async () => {
+      await this.db.transaction(async (tx) => {
+        // Delete all messages in the channel (cascade delete will handle this, but explicit is better)
+        await tx.delete(messageTable).where(eq(messageTable.channelId, channelId));
+        
+        // Delete all participants (cascade delete will handle this, but explicit is better)
+        await tx.delete(channelParticipantsTable).where(eq(channelParticipantsTable.channelId, channelId));
+        
+        // Delete the channel itself
+        await tx.delete(channelTable).where(eq(channelTable.id, channelId));
+      });
+    });
+  }
+
+  /**
    * Adds participants to a channel
    */
   async addChannelParticipants(channelId: UUID, userIds: UUID[]): Promise<void> {

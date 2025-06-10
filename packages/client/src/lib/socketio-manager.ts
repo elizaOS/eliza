@@ -49,6 +49,13 @@ export type ChannelClearedData = {
   [key: string]: any;
 };
 
+// Define type for channel deleted events
+export type ChannelDeletedData = {
+  channelId: string;
+  roomId?: string; // Deprecated - for backward compatibility only
+  [key: string]: any;
+};
+
 // Define type for log stream messages
 export type LogStreamData = {
   level: number;
@@ -72,6 +79,7 @@ class EventAdapter {
     this.events.controlMessage = Evt.create<ControlMessageData>();
     this.events.messageDeleted = Evt.create<MessageDeletedData>();
     this.events.channelCleared = Evt.create<ChannelClearedData>();
+    this.events.channelDeleted = Evt.create<ChannelDeletedData>();
     this.events.logStream = Evt.create<LogStreamData>();
   }
 
@@ -158,6 +166,10 @@ export class SocketIOManager extends EventAdapter {
 
   public get evtChannelCleared() {
     return this._getEvt('channelCleared') as Evt<ChannelClearedData>;
+  }
+
+  public get evtChannelDeleted() {
+    return this._getEvt('channelDeleted') as Evt<ChannelDeletedData>;
   }
 
   public get evtLogStream() {
@@ -348,6 +360,29 @@ export class SocketIOManager extends EventAdapter {
       } else {
         clientLogger.warn(
           `[SocketIO] Received channel cleared event for inactive channel ${channelId}, active channels:`,
+          Array.from(this.activeChannelIds)
+        );
+      }
+    });
+
+    // Listen for channel deleted events
+    this.socket.on('channelDeleted', (data) => {
+      clientLogger.info(`[SocketIO] Channel deleted event received:`, data);
+
+      // Check if this is for one of our active channels
+      const channelId = data.channelId || data.roomId; // Handle both new and old message format
+      if (channelId && this.activeChannelIds.has(channelId)) {
+        clientLogger.info(`[SocketIO] Handling channel deleted for active channel ${channelId}`);
+
+        // Emit the channel deleted event (same as cleared for now)
+        this.emit('channelDeleted', {
+          ...data,
+          channelId: channelId, // Ensure channelId is always set
+          roomId: channelId, // Keep roomId for backward compatibility
+        });
+      } else {
+        clientLogger.warn(
+          `[SocketIO] Received channel deleted event for inactive channel ${channelId}, active channels:`,
           Array.from(this.activeChannelIds)
         );
       }

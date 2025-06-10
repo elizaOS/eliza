@@ -50,6 +50,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/r
 import { useQueryClient } from '@tanstack/react-query';
 import {
   ChevronRight,
+  Eraser,
   Info,
   Loader2,
   MessageSquarePlus,
@@ -537,9 +538,10 @@ export default function Chat({
       removeMessage(messageId);
     },
     onClearMessages: () => {
-      // Clear the local message list to prevent UI flicker during refetch
-      setMessages([]);
-      // Invalidate the query to trigger a refetch
+      // Clear the local message list immediately for instant UI response
+      queryClient.setQueryData(['channelMessages', finalChannelIdForHooks, finalServerIdForHooks], []);
+      
+      // Also invalidate to ensure fresh data next time
       queryClient.invalidateQueries({
         queryKey: ['channelMessages', finalChannelIdForHooks, finalServerIdForHooks],
       });
@@ -917,6 +919,61 @@ export default function Chat({
                 {chatType === ChannelType.DM ? 'Delete' : 'Clear'}
               </span>
             </Button>
+            
+            {/* Clear Messages Button - Available for both DM and GROUP */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleClearChat}
+              disabled={!messages || messages.length === 0}
+              title="Clear all messages"
+              className="xl:px-3"
+            >
+              <Eraser className="size-4" />
+              <span className="hidden xl:inline xl:ml-2">Clear</span>
+            </Button>
+            
+            {/* Delete Channel/Chat Button - Available for both DM and GROUP */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (!finalChannelIdForHooks || !finalServerIdForHooks) return;
+                const isGroup = chatType === ChannelType.GROUP;
+                confirm(
+                  {
+                    title: isGroup ? 'Delete Group' : 'Delete Chat',
+                    description: `Are you sure you want to delete this ${isGroup ? 'group' : 'chat'}? This action cannot be undone.`,
+                    confirmText: 'Delete',
+                    variant: 'destructive',
+                  },
+                  async () => {
+                    try {
+                      await apiClient.deleteChannel(finalChannelIdForHooks);
+                      toast({ 
+                        title: isGroup ? 'Group Deleted' : 'Chat Deleted', 
+                        description: `The ${isGroup ? 'group' : 'chat'} has been successfully deleted.` 
+                      });
+                      // Navigate back to home after deletion
+                      window.location.href = '/';
+                    } catch (error) {
+                      clientLogger.error('[Chat] Error deleting channel:', error);
+                      toast({
+                        title: 'Error',
+                        description: `Could not delete ${isGroup ? 'group' : 'chat'}.`,
+                        variant: 'destructive',
+                      });
+                    }
+                  }
+                );
+              }}
+              disabled={!finalChannelIdForHooks || !finalServerIdForHooks}
+              title={chatType === ChannelType.GROUP ? 'Delete group' : 'Delete chat'}
+              className="xl:px-3"
+            >
+              <Trash2 className="size-4" />
+              <span className="hidden xl:inline xl:ml-2">Delete</span>
+            </Button>
             <Separator orientation="vertical" className="h-8" />
             <Tooltip>
               <TooltipTrigger asChild>
@@ -968,10 +1025,47 @@ export default function Chat({
                 size="sm"
                 onClick={handleClearChat}
                 disabled={!messages || messages.length === 0}
+                title="Clear all messages"
+                className="xl:px-3"
+              >
+                <Eraser className="size-4" />
+                <span className="hidden xl:inline xl:ml-2">Clear</span>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (!finalChannelIdForHooks || !finalServerIdForHooks) return;
+                  confirm(
+                    {
+                      title: 'Delete Group',
+                      description: 'Are you sure you want to delete this group? This action cannot be undone.',
+                      confirmText: 'Delete',
+                      variant: 'destructive',
+                    },
+                    async () => {
+                      try {
+                        await apiClient.deleteChannel(finalChannelIdForHooks);
+                        toast({ title: 'Group Deleted', description: 'The group has been successfully deleted.' });
+                        // Navigate back to home after deletion
+                        window.location.href = '/';
+                      } catch (error) {
+                        clientLogger.error('[Chat] Error deleting group:', error);
+                        toast({
+                          title: 'Error',
+                          description: 'Could not delete group.',
+                          variant: 'destructive',
+                        });
+                      }
+                    }
+                  );
+                }}
+                disabled={!finalChannelIdForHooks || !finalServerIdForHooks}
+                title="Delete group"
                 className="xl:px-3"
               >
                 <Trash2 className="size-4" />
-                <span className="hidden xl:inline xl:ml-2">Clear</span>
+                <span className="hidden xl:inline xl:ml-2">Delete</span>
               </Button>
               <Button
                 variant="ghost"

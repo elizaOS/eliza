@@ -718,11 +718,11 @@ const messageDeletedHandler = async ({
 };
 
 /**
- * Handles channel cleared events by removing all memories from the specified room.
+ * Handles channel cleared events by removing all message memories from the specified room.
  *
  * @param {Object} params - The parameters for the function.
  * @param {IAgentRuntime} params.runtime - The agent runtime object.
- * @param {UUID} params.roomId - The room ID to clear memories from.
+ * @param {UUID} params.roomId - The room ID to clear message memories from.
  * @param {string} params.channelId - The original channel ID.
  * @param {number} params.memoryCount - Number of memories found.
  * @returns {void}
@@ -739,15 +739,15 @@ const channelClearedHandler = async ({
   memoryCount: number;
 }) => {
   try {
-    logger.info(`[Bootstrap] Clearing ${memoryCount} memories from channel ${channelId} -> room ${roomId}`);
+    logger.info(`[Bootstrap] Clearing ${memoryCount} message memories from channel ${channelId} -> room ${roomId}`);
     
-    // Get all memories for this room
+    // Get all message memories for this room
     const memories = await runtime.getMemoriesByRoomIds({
       tableName: 'messages',
       roomIds: [roomId]
     });
     
-    // Delete each memory
+    // Delete each message memory
     let deletedCount = 0;
     for (const memory of memories) {
       if (memory.id) {
@@ -755,12 +755,12 @@ const channelClearedHandler = async ({
           await runtime.deleteMemory(memory.id);
           deletedCount++;
         } catch (error) {
-          logger.warn(`[Bootstrap] Failed to delete memory ${memory.id}:`, error);
+          logger.warn(`[Bootstrap] Failed to delete message memory ${memory.id}:`, error);
         }
       }
     }
     
-    logger.info(`[Bootstrap] Successfully cleared ${deletedCount}/${memories.length} memories from channel ${channelId}`);
+    logger.info(`[Bootstrap] Successfully cleared ${deletedCount}/${memories.length} message memories from channel ${channelId}`);
   } catch (error: unknown) {
     logger.error('[Bootstrap] Error in channel cleared handler:', error);
   }

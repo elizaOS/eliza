@@ -396,7 +396,10 @@ export class MessageBusService extends Service {
       const agentRoomId = createUniqueUuid(this.runtime, data.channelId);
       
       // Get all memories for this room and emit deletion events for each
-      const memories = await this.runtime.getMemoriesByRoomId(agentRoomId);
+      const memories = await this.runtime.getMemoriesByRoomIds({
+        tableName: 'messages',
+        roomIds: [agentRoomId]
+      });
       
       logger.info(
         `[${this.runtime.character.name}] MessageBusService: Found ${memories.length} memories to delete for channel ${data.channelId}`
