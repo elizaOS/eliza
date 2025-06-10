@@ -15,8 +15,8 @@ export const logTestAgentSettings = {
   bio: 'An agent for testing log operations',
   enabled: true,
   status: AgentStatus.ACTIVE,
-  createdAt: Date.now(),
-  updatedAt: Date.now(),
+  createdAt: new Date().getTime(),
+  updatedAt: new Date().getTime(),
   messageExamples: [],
   postExamples: [],
   topics: [],
@@ -78,7 +78,7 @@ export const logTestLogs = {
     roomId: logTestRoom.id,
     body: { message: 'Test log message', data: { key: 'value' } },
     type: 'test_log',
-    createdAt: new Date(),
+    createdAt: new Date().getTime(),
   } as Log,
   withMetadata: {
     id: v4() as UUID,
@@ -92,6 +92,6 @@ export const logTestLogs = {
       },
     },
     type: 'metadata_log',
-    createdAt: new Date(),
+    createdAt: new Date().getTime(),
   } as Log,
 };

@@ -1,36 +1,38 @@
 import { sql } from 'drizzle-orm';
-import { jsonb, pgTable, text, uuid } from 'drizzle-orm/pg-core';
+import { jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { agentTable } from './agent';
 import { entityTable } from './entity';
 import { roomTable } from './room';
-import { numberTimestamp } from './types';
 import { worldTable } from './world';
 
 /**
- * Definition of a table representing components in the database.
- *
- * @type {Table}
+ * Represents a component table in the database.
  */
 export const componentTable = pgTable('components', {
-  id: uuid('id').primaryKey().defaultRandom(),
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`)
+    .notNull(),
+
+  // Foreign keys
   entityId: uuid('entityId')
-    .notNull()
-    .references(() => entityTable.id, { onDelete: 'cascade' }),
+    .references(() => entityTable.id, { onDelete: 'cascade' })
+    .notNull(),
   agentId: uuid('agentId')
-    .notNull()
-    .references(() => agentTable.id, { onDelete: 'cascade' }),
+    .references(() => agentTable.id, { onDelete: 'cascade' })
+    .notNull(),
   roomId: uuid('roomId')
-    .notNull()
-    .references(() => roomTable.id, { onDelete: 'cascade' }),
-  worldId: uuid('worldId').references(() => worldTable.id, {
-    onDelete: 'cascade',
-  }),
-  sourceEntityId: uuid('sourceEntityId').references(() => entityTable.id, {
-    onDelete: 'cascade',
-  }),
+    .references(() => roomTable.id, { onDelete: 'cascade' })
+    .notNull(),
+  worldId: uuid('worldId').references(() => worldTable.id, { onDelete: 'cascade' }),
+  sourceEntityId: uuid('sourceEntityId').references(() => entityTable.id, { onDelete: 'cascade' }),
+
+  // Data
   type: text('type').notNull(),
   data: jsonb('data').default(sql`'{}'::jsonb`),
-  createdAt: numberTimestamp('createdAt')
+
+  // Timestamps
+  createdAt: timestamp('createdAt')
     .default(sql`now()`)
     .notNull(),
 });

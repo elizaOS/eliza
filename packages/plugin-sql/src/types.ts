@@ -13,6 +13,5 @@ export type DrizzleDatabase = NodePgDatabase | PgliteDatabase;
 export interface IDatabaseClientManager<T> {
   initialize(): Promise<void>;
   getConnection(): T;
-  runMigrations(): Promise<void>;
   close(): Promise<void>;
 }

@@ -66,7 +66,7 @@
     "rollup": "2.79.2",
     "ts-node": "10.9.2",
     "tslib": "2.8.1",
-    "tsup": "^8.4.0",
+    "tsup": "8.5.0",
     "typescript": "5.8.2"
   },
   "dependencies": {

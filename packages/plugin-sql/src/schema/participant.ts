@@ -1,9 +1,8 @@
 import { sql } from 'drizzle-orm';
-import { foreignKey, index, pgTable, text, unique, uuid } from 'drizzle-orm/pg-core';
+import { foreignKey, index, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
 import { agentTable } from './agent';
 import { entityTable } from './entity';
 import { roomTable } from './room';
-import { numberTimestamp } from './types';
 
 /**
  * Defines the schema for the "participants" table in the database.
@@ -17,7 +16,7 @@ export const participantTable = pgTable(
       .notNull()
       .primaryKey()
       .default(sql`gen_random_uuid()`),
-    createdAt: numberTimestamp('createdAt')
+    createdAt: timestamp('created_at', { withTimezone: true })
       .default(sql`now()`)
       .notNull(),
     entityId: uuid('entityId').references(() => entityTable.id, {

@@ -2444,7 +2444,7 @@ COINGECKO_API_KEY=
     "vite": "5.4.12",
     "vitest": "3.0.5",
     "@types/uuid": "^9.0.8",
-    "tsup": "8.4.0"
+    "tsup": "8.5.0"
   },
   "bun": {
     "overrides": {

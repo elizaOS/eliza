@@ -407,7 +407,7 @@ export async function publishToGitHub(
   // Update package metadata
   const packageName = packageJson.name.replace(/^@[^/]+\//, '');
 
-  // Use the actual npm package name from package.json (not @elizaos-plugins/ prefix)
+  // Use the actual npm package name from package.json (not @elizaos/ prefix)
   const registryPackageName = packageJson.name;
 
   if (!isTest) {

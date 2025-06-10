@@ -48,7 +48,7 @@
     "@elizaos/cli": "^1.0.0",
     "dotenv": "16.4.5",
     "prettier": "3.5.3",
-    "tsup": "8.4.0",
+    "tsup": "8.5.0",
     "typescript": "5.8.2",
     "vitest": "3.1.4"
   },

@@ -12,17 +12,23 @@ import { type Pool as PgPool } from 'pg';
 export class PgDatabaseAdapter extends BaseDrizzleAdapter<NodePgDatabase> {
   protected embeddingDimension: EmbeddingDimensionColumn = DIMENSION_MAP[384];
 
-  /**
-   * Constructor for creating a new instance of a class.
-   * @param {UUID} agentId - The unique identifier for the agent.
-   * @param {PostgresConnectionManager} manager - The Postgres connection manager for the instance.
-   */
   constructor(
     agentId: UUID,
     private manager: PostgresConnectionManager
   ) {
     super(agentId);
     this.manager = manager;
+    this.db = this.manager.getDatabase();
+  }
+
+  /**
+   * Runs database migrations. For PostgreSQL, migrations should be handled
+   * externally or during deployment, so this is a no-op.
+   * @returns {Promise<void>}
+   */
+  async runMigrations(): Promise<void> {
+    logger.debug('PgDatabaseAdapter: Migrations should be handled externally');
+    // Migrations are handled by the migration service, not the adapter
   }
 
   /**
@@ -36,7 +42,8 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter<NodePgDatabase> {
     return await this.withRetry(async () => {
       const client = await this.manager.getClient();
       try {
-        const db = drizzle(client);
+        // Cast to any to avoid type conflicts between different pg versions
+        const db = drizzle(client as any);
         this.db = db;
 
         return await operation();
@@ -53,13 +60,15 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter<NodePgDatabase> {
    * @returns {Promise<void>} A promise that resolves when initialization is complete.
    */
   async init(): Promise<void> {
-    try {
-      await this.manager.runMigrations();
-      logger.debug('PgDatabaseAdapter initialized successfully');
-    } catch (error) {
-      logger.error('Failed to initialize PgDatabaseAdapter:', error);
-      throw error;
-    }
+    logger.debug('PgDatabaseAdapter initialized, skipping automatic migrations.');
+  }
+  
+  /**
+   * Checks if the database connection is ready and active.
+   * @returns {Promise<boolean>} A Promise that resolves to true if the connection is healthy.
+   */
+  async isReady(): Promise<boolean> {
+    return this.manager.testConnection();
   }
 
   /**
@@ -74,7 +83,7 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter<NodePgDatabase> {
   /**
    * Asynchronously retrieves the connection from the manager.
    *
-   * @returns {Promise<PgPool>} A Promise that resolves with the connection.
+   * @returns {Promise<Pool>} A Promise that resolves with the connection.
    */
   async getConnection() {
     return this.manager.getConnection();
