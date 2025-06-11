@@ -26,23 +26,23 @@ Create or edit `.env` file in your project root:
 
 ```bash
 # Twitter API Credentials
-TWITTER_USERNAME=           # Your Twitter/X username
-TWITTER_PASSWORD=           # Your Twitter/X password
-TWITTER_EMAIL=              # Your Twitter/X email
-TWITTER_2FA_SECRET=         # Optional: 2FA secret for login
+TWITTER_API_KEY=your_api_key                      # Your Twitter API v2 key
+TWITTER_API_SECRET_KEY=your_api_secret_key        # Your Twitter API v2 secret key  
+TWITTER_ACCESS_TOKEN=your_access_token            # Your OAuth access token
+TWITTER_ACCESS_TOKEN_SECRET=your_access_token_secret # Your OAuth access token secret
 
 # Twitter Client Configuration
 TWITTER_DRY_RUN=false      # Set to true for testing without posting
 MAX_TWEET_LENGTH=280       # Default tweet length limit
-TWITTER_SEARCH_ENABLE=false # Enable search functionality
+TWITTER_SEARCH_ENABLE=true # Enable search functionality
 TWITTER_RETRY_LIMIT=5      # Login retry attempts
 TWITTER_POLL_INTERVAL=120  # Poll interval in seconds
-TWITTER_TARGET_USERS=      # Comma-separated list of target users
+TWITTER_TARGET_USERS=username1,username2          # Comma-separated list of target users
 
 # Post Generation Settings
-TWITTER_ENABLE_POST_GENERATION=true
-TWITTER_POST_INTERVAL_MIN=90       # Minimum interval between posts (minutes)
-TWITTER_POST_INTERVAL_MAX=180      # Maximum interval between posts (minutes)
+TWITTER_ENABLE_POST_GENERATION=false
+TWITTER_POST_INTERVAL_MIN=90                     # Minimum minutes between posts
+TWITTER_POST_INTERVAL_MAX=180                    # Maximum minutes between posts
 TWITTER_POST_IMMEDIATELY=false     # Skip approval workflow
 
 # Action Processing

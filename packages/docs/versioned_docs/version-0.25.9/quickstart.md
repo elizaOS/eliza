@@ -296,9 +296,10 @@ Watch the commas to make sure it's valid json! Here's a few more config tips:
 Add to your `.env`:
 
 ```bash
-TWITTER_USERNAME=  # Account username
-TWITTER_PASSWORD=  # Account password
-TWITTER_EMAIL=    # Account email
+TWITTER_API_KEY=  # Twitter API v2 key
+TWITTER_API_SECRET_KEY=  # Twitter API v2 secret key
+TWITTER_ACCESS_TOKEN=  # OAuth access token
+TWITTER_ACCESS_TOKEN_SECRET=  # OAuth access token secret
 TWITTER_2FA_SECRET=    # In order to avoid X preventing the login, it is better to activate 2fa in the target account, copy the 2fa secret and paste it here
 ```
 

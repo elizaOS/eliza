@@ -14,6 +14,35 @@ ElizaOS enables the deployment of AI agents capable of automated posting and int
 
 {/* truncate */}
 
+## Environment Variables
+
+First, set up your Twitter API credentials in your `.env` file:
+
+```bash
+# Twitter API Credentials (Required)
+TWITTER_API_KEY=your_api_key
+TWITTER_API_SECRET_KEY=your_api_secret_key
+TWITTER_ACCESS_TOKEN=your_access_token
+TWITTER_ACCESS_TOKEN_SECRET=your_access_token_secret
+
+# Optional Twitter Configuration
+TWITTER_TARGET_USERS=username1,username2  # Comma-separated list of target users
+TWITTER_DRY_RUN=false                     # Set to true to simulate actions without posting
+TWITTER_POST_ENABLE=false                 # Enable autonomous tweet posting
+TWITTER_SEARCH_ENABLE=true                # Enable timeline monitoring
+TWITTER_POST_INTERVAL_MIN=90              # Minimum minutes between posts
+TWITTER_POST_INTERVAL_MAX=180             # Maximum minutes between posts
+```
+
+## Getting Twitter API Keys
+
+To get your Twitter API credentials:
+
+1. Go to the [Twitter Developer Portal](https://developer.twitter.com/en/portal/dashboard)
+2. Create a new app or use an existing one
+3. Generate your API Key, API Secret Key, Access Token, and Access Token Secret
+4. Make sure your app has read and write permissions
+
 ## Getting Started with ElizaOS
 
 Follow these steps to set up your Twitter agent.
@@ -74,10 +103,10 @@ Add the following lines to the `.env` file, replacing placeholder values with yo
 # OpenAI API Key (Optional, if using OpenAI features)
 OPENAI_API_KEY=your_openai_api_key_here
 
-# Twitter Configuration (Required for agent authentication)
-TWITTER_USERNAME=your_twitter_username
-TWITTER_PASSWORD=your_twitter_password
-TWITTER_EMAIL=your_twitter_email # Required for login, can sometimes be the same as username
+# Twitter API Configuration (Required for agent authentication)
+# Note: The new Twitter plugin uses API-based authentication
+# Set these credentials in the Environment Variables section above
+# TWITTER_API_KEY, TWITTER_API_SECRET_KEY, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_TOKEN_SECRET
 
 # Automated Post Generation (Optional)
 # Enable this feature to have your agent automatically create and publish tweets.
@@ -125,7 +154,12 @@ export const character: Character = {
     // List of enabled plugins
     '@elizaos/plugin-sql',
     ...(process.env.OPENAI_API_KEY ? ['@elizaos/plugin-openai'] : []),
-    ...(process.env.TWITTER_USERNAME ? ['@elizaos/plugin-twitter'] : []),
+    ...(process.env.TWITTER_API_KEY &&
+    process.env.TWITTER_API_SECRET_KEY &&
+    process.env.TWITTER_ACCESS_TOKEN &&
+    process.env.TWITTER_ACCESS_TOKEN_SECRET
+      ? ['@elizaos/plugin-twitter']
+      : []),
     // Add other plugins as needed
   ],
   settings: {
@@ -203,35 +237,15 @@ ELEVENLABS_XI_API_KEY=your_elevenlabs_api_key_here # Required for TTS in Spaces.
 
 **Note on Advanced Spaces Configuration:** While `TWITTER_SPACES_ENABLE` turns the feature on/off, more detailed configurations for how the agent behaves in Spaces (e.g., whether it tries to host, maximum speakers it allows if hosting, typical duration, idle timeouts) are typically managed within your project's `src/index.ts` file, under the `character.settings.twitter.spaces` object. Refer to the plugin's documentation for specific details on configuring these behaviors.
 
-### Advanced: Server Deployment with Twitter Cookies
+### Advanced: Server Deployment Notes
 
-When deploying the agent to a server environment, standard username/password authentication might be insufficient due to Twitter's security measures. Using authentication cookies is often necessary.
+When deploying the agent to a server environment, the Twitter API credentials provide secure authentication without needing to handle cookies or passwords. Make sure your Twitter Developer App has the correct permissions:
 
-#### Obtaining Twitter Cookies for Server Deployment
+- **Read and Write permissions** for posting tweets
+- **Access to Twitter API v2** for enhanced functionality
 
-Follow these steps to extract the required cookies. Note that Twitter may flag logins from unfamiliar IP addresses, so performing these steps from an IP similar to your server's (e.g., via VPN) is recommended if possible.
-
-1.  **Log in** to Twitter via a web browser (Chrome, Firefox, Edge).
-2.  **Open Developer Tools** (usually F12).
-3.  Navigate to the **Network** tab.
-4.  **Refresh** the Twitter page (F5).
-5.  In the list of network requests, click on any request made to `twitter.com`.
-6.  Go to the **Cookies** tab within the request details.
-7.  Locate and copy the values for the following cookies:
-
-    - `auth_token`
-    - `ct0`
-    - `guest_id` (This might be under a different domain like `x.com` or `twitter.com` depending on browser/timing).
-
-8.  **Add the copied values** to your `.env` file:
-
-```
-# Twitter Cookies for Server Deployment
-TWITTER_COOKIES_AUTH_TOKEN=your_auth_token_here
-TWITTER_COOKIES_CT0=your_ct0_token_here
-TWITTER_COOKIES_GUEST_ID=your_guest_id_here
-```
-
-With these variables set, the agent running on your server should be able to authenticate using cookies.
-
-**Security Note:** Remember to store your `.env` file securely and never commit it to version control, especially when containing sensitive cookie data. Ensure `.env` is listed in your `.gitignore` file.
+**Security Best Practices:**
+- Store your `.env` file securely and never commit it to version control
+- Ensure `.env` is listed in your `.gitignore` file
+- Rotate your API keys periodically for enhanced security
+- Monitor your API usage in the Twitter Developer Dashboard
