@@ -6,8 +6,6 @@ import type {
   HandlerCallback,
   State,
 } from '@elizaos/core';
-import { asUUID } from '@elizaos/core';
-import { v4 } from 'uuid';
 
 /**
  * Action representing the IGNORE action. This action is used when ignoring the user in a conversation.
@@ -41,35 +39,19 @@ export const ignoreAction: Action = {
   description:
     'Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodbye, use this action instead of saying bye again. Use IGNORE any time the conversation has naturally ended. Do not use IGNORE if the user has engaged directly, or if something went wrong an you need to tell them. Only ignore if the user should be ignored.',
   handler: async (
-    runtime: IAgentRuntime,
-    message: Memory,
+    _runtime: IAgentRuntime,
+    _message: Memory,
     _state: State,
     _options: any,
     callback: HandlerCallback,
     responses?: Memory[]
   ) => {
-    // If there's already a response with the IGNORE action, use it
-    if (responses && responses.length > 0 && responses[0]?.content) {
-      // The response is already in the responses array, no need to add another
-      return true;
+    // If a callback and the agent's response content are available, call the callback
+    if (callback && responses?.[0]?.content) {
+      // Pass the agent's original response content (thought, IGNORE action, etc.)
+      await callback(responses[0].content);
     }
-
-    // Otherwise create a minimal ignore response
-    const ignoreMessage = {
-      id: asUUID(v4()),
-      entityId: runtime.agentId,
-      agentId: runtime.agentId,
-      content: {
-        text: '',
-        actions: ['IGNORE'],
-        source: message.content.source,
-      },
-      roomId: message.roomId,
-      createdAt: Date.now(),
-    };
-
-    await runtime.createMemory(ignoreMessage, 'messages');
-
+    // Still return true to indicate the action handler succeeded
     return true;
   },
   examples: [
@@ -103,7 +85,7 @@ export const ignoreAction: Action = {
       {
         name: '{{name2}}',
         content: {
-          text: "Uh, don't let the volatility sway your long-term strategy",
+          text: 'Uh, don’t let the volatility sway your long-term strategy',
         },
       },
       {
