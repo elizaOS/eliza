@@ -178,7 +178,6 @@ TWITTER_API_SECRET_KEY= # Twitter API v2 secret key
 TWITTER_ACCESS_TOKEN= # OAuth access token
 TWITTER_ACCESS_TOKEN_SECRET= # OAuth access token secret
 TWITTER_TARGET_USERS= # Comma-separated list of target users
-TWITTER_DRY_RUN=false # Set to true to simulate actions without posting
 TWITTER_POLL_INTERVAL=120 # Check interval (sec)
 TWITTER_SEARCH_ENABLE=FALSE # Enable timeline search
 TWITTER_TARGET_USERS= # Usernames to interact with
