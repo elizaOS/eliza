@@ -9,7 +9,9 @@ import {
   type Memory,
   ModelType,
   type State,
+  asUUID,
 } from '@elizaos/core';
+import { v4 } from 'uuid';
 
 /**
  * Template for determining if an agent should unmute a previously muted room.
@@ -59,7 +61,7 @@ export const unmuteRoomAction: Action = {
     state?: State,
     _options?: { [key: string]: unknown },
     _callback?: HandlerCallback,
-    _responses?: Memory[]
+    responses?: Memory[]
   ) => {
     async function _shouldUnmute(state: State): Promise<boolean> {
       const shouldUnmutePrompt = composePromptFromState({
@@ -157,6 +159,21 @@ export const unmuteRoomAction: Action = {
       },
       'messages'
     );
+
+    // Push a response message to responses array
+    const unmuteMessage = {
+      id: asUUID(v4()),
+      entityId: runtime.agentId,
+      agentId: runtime.agentId,
+      content: {
+        text: '', // Empty text since this is just an action
+        thought: `I unmuted the room ${room.name}`,
+        source: message.content.source,
+      },
+      roomId: message.roomId,
+      createdAt: Date.now(),
+    };
+    responses?.push(unmuteMessage);
   },
   examples: [
     [

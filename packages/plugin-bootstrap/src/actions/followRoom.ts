@@ -9,7 +9,9 @@ import {
   type Memory,
   ModelType,
   type State,
+  asUUID,
 } from '@elizaos/core';
+import { v4 } from 'uuid';
 
 /**
  * Template for deciding if {{agentName}} should start following a room.
@@ -65,7 +67,7 @@ export const followRoomAction: Action = {
     state?: State,
     _options?: { [key: string]: unknown },
     _callback?: HandlerCallback,
-    _responses?: Memory[]
+    responses?: Memory[]
   ) => {
     if (!state) {
       logger.error('State is required for followRoomAction');
@@ -163,6 +165,33 @@ export const followRoomAction: Action = {
       },
       'messages'
     );
+
+    // Push a response message to responses array
+    const followMessage = {
+      id: asUUID(v4()),
+      entityId: runtime.agentId,
+      agentId: runtime.agentId,
+      content: {
+        text: '', // Empty text since this is just an action
+        thought: `I followed the room ${room.name}`,
+        source: message.content.source,
+      },
+      roomId: message.roomId,
+      createdAt: Date.now(),
+    };
+
+    await runtime.createMemory(
+      {
+        ...followMessage,
+        content: {
+          ...followMessage.content,
+          actions: ['FOLLOW_ROOM'],
+        },
+      },
+      'messages'
+    );
+
+    responses?.push(followMessage);
   },
   examples: [
     [

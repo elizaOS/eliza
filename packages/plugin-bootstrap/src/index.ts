@@ -504,16 +504,17 @@ const messageReceivedHandler = async ({
 
             responseContent.simple = isSimple;
 
-            const responseMesssage = {
+            const agentPlan = {
               id: asUUID(v4()),
               entityId: runtime.agentId,
               agentId: runtime.agentId,
               content: responseContent,
               roomId: message.roomId,
+              isPlan: true,
               createdAt: Date.now(),
             };
 
-            responseMessages = [responseMesssage];
+            responseMessages = [agentPlan];
           }
 
           // Clean up the response ID
@@ -558,6 +559,13 @@ const messageReceivedHandler = async ({
               }
 
               for (const memory of responseMessages) {
+                // Skip the agent plan - it should never be sent to the user.
+                // Unless it's simple response but that was already triggered before
+                // we reach this part of the code.
+                if ('isPlan' in memory && memory.isPlan) {
+                  logger.debug('[Bootstrap] Skipping agent plan in callback - internal use only');
+                  continue;
+                }
                 await callback(memory.content);
               }
             }
