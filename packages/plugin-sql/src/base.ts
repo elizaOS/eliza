@@ -1649,7 +1649,7 @@ export abstract class BaseDrizzleAdapter<
       embeddingLength: memory.embedding?.length,
       contentLength: memory.content?.text?.length,
     });
-    
+
     const memoryId = memory.id ?? (v4() as UUID);
 
     const existing = await this.getMemoryById(memoryId);
