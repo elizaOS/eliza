@@ -1,5 +1,6 @@
 import { buildProject, UserEnvironment } from '@/src/utils';
 import { detectDirectoryType } from '@/src/utils/directory-detection';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { BuildResult, DevContext } from '../types';
 
@@ -133,7 +134,7 @@ export function createDevContext(cwd: string): DevContext {
   return {
     directory: cwd,
     directoryType,
-    watchDirectory: path.existsSync(srcDir) ? srcDir : cwd,
+    watchDirectory: existsSync(srcDir) ? srcDir : cwd,
     buildRequired: directoryType.type !== 'elizaos-monorepo',
   };
 }
