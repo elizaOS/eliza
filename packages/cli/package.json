@@ -38,8 +38,7 @@
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
-    "test": "vitest run",
-    "test:cli": "bun test tests/commands/"
+    "test": "bun test tests/commands/"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.40.0",
@@ -74,7 +73,6 @@
     "type-fest": "^3.8.0",
     "typescript": "^5.5.4",
     "vite": "^5.4.1",
-    "vitest": "^3.0.0",
     "which": "^4.0.0",
     "ws": "^8.18.0",
     "yoctocolors": "^2.1.1"
