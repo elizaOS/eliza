@@ -1687,7 +1687,7 @@ export abstract class BaseDrizzleAdapter<
           entityId: memory.entityId,
           roomId: memory.roomId,
           worldId: memory.worldId, // Include worldId
-          agentId: this.agentId,
+          agentId: memory.agentId || this.agentId,
           unique: memory.unique ?? isUnique,
           createdAt: memory.createdAt ? new Date(memory.createdAt) : new Date(),
         },
