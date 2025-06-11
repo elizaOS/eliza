@@ -20,7 +20,7 @@ function log(prefix, message) {
 }
 
 // Health check function to verify server is responding
-async function waitForServer(url = 'http://localhost:3000/api/ping', maxAttempts = 30) {
+async function waitForServer(url = 'http://localhost:3000/api/server/ping', maxAttempts = 30) {
   log('HEALTH', `Waiting for server to be ready at ${url}...`);
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -115,7 +115,7 @@ function startCliServer() {
         if (serverProcess) {
           // Wait for server to be ready before starting frontend
           const port = process.env.SERVER_PORT || 3000;
-          const url = `http://localhost:${port}/api/ping`;
+          const url = `http://localhost:${port}/api/server/ping`;
           const ready = await waitForServer(url);
 
           if (ready && !isShuttingDown) {
@@ -153,7 +153,7 @@ function startActualCliServer() {
   return new Promise((resolve) => {
     log('CLI', 'Starting CLI server process...');
 
-    const child = spawn('node', ['dist/index.js', 'start'], {
+    const child = spawn('bun', ['dist/index.js', 'start'], {
       cwd: cliDir,
       stdio: 'inherit',
       shell: false,
