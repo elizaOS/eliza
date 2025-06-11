@@ -12,10 +12,8 @@ import {
   type State,
   type UUID,
   World,
-  asUUID,
 } from '@elizaos/core';
 import dedent from 'dedent';
-import { v4 } from 'uuid';
 
 /**
  * Determines if the user with the current role can modify the role to the new role.
@@ -130,8 +128,7 @@ export const updateRoleAction: Action = {
     message: Memory,
     state?: State,
     _options?: any,
-    callback?: HandlerCallback,
-    responses?: Memory[]
+    callback?: HandlerCallback
   ): Promise<void> => {
     if (!state) {
       logger.error('State is required for role assignment');
@@ -152,18 +149,9 @@ export const updateRoleAction: Action = {
 
     if (!world) {
       logger.error('World not found');
-      const errorMessage = {
-        id: asUUID(v4()),
-        entityId: runtime.agentId,
-        agentId: runtime.agentId,
-        content: {
-          text: "I couldn't find the world. This action only works in a world.",
-          source: message.content.source,
-        },
-        roomId: message.roomId,
-        createdAt: Date.now(),
-      };
-      responses?.push(errorMessage);
+      await callback?.({
+        text: "I couldn't find the world. This action only works in a world.",
+      });
       return;
     }
 
@@ -241,18 +229,11 @@ export const updateRoleAction: Action = {
     );
 
     if (!result?.length) {
-      const noAssignmentsMessage = {
-        id: asUUID(v4()),
-        entityId: runtime.agentId,
-        agentId: runtime.agentId,
-        content: {
-          text: 'No valid role assignments found in the request.',
-          source: 'discord',
-        },
-        roomId: message.roomId,
-        createdAt: Date.now(),
-      };
-      responses?.push(noAssignmentsMessage);
+      await callback?.({
+        text: 'No valid role assignments found in the request.',
+        actions: ['UPDATE_ROLE'],
+        source: 'discord',
+      });
       return;
     }
 
@@ -269,18 +250,11 @@ export const updateRoleAction: Action = {
 
       // Validate role modification permissions
       if (!canModifyRole(requesterRole, currentRole, assignment.newRole)) {
-        const permissionErrorMessage = {
-          id: asUUID(v4()),
-          entityId: runtime.agentId,
-          agentId: runtime.agentId,
-          content: {
-            text: `You don't have permission to change ${targetEntity?.names[0]}'s role to ${assignment.newRole}.`,
-            source: 'discord',
-          },
-          roomId: message.roomId,
-          createdAt: Date.now(),
-        };
-        responses?.push(permissionErrorMessage);
+        await callback?.({
+          text: `You don't have permission to change ${targetEntity?.names[0]}'s role to ${assignment.newRole}.`,
+          actions: ['UPDATE_ROLE'],
+          source: 'discord',
+        });
         continue;
       }
 
@@ -289,28 +263,11 @@ export const updateRoleAction: Action = {
 
       worldUpdated = true;
 
-      const successMessage = {
-        id: asUUID(v4()),
-        entityId: runtime.agentId,
-        agentId: runtime.agentId,
-        content: {
-          text: `Updated ${targetEntity?.names[0]}'s role to ${assignment.newRole}.`,
-          source: 'discord',
-        },
-        roomId: message.roomId,
-        createdAt: Date.now(),
-      };
-
-      await runtime.createMemory(
-        {
-          ...successMessage,
-          content: {
-            ...successMessage.content,
-            actions: ['UPDATE_ROLE'],
-          },
-        },
-        'messages'
-      );
+      await callback?.({
+        text: `Updated ${targetEntity?.names[0]}'s role to ${assignment.newRole}.`,
+        actions: ['UPDATE_ROLE'],
+        source: 'discord',
+      });
     }
 
     // Save updated world metadata if any changes were made

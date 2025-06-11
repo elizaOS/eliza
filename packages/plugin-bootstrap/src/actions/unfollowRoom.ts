@@ -9,9 +9,7 @@ import {
   ModelType,
   parseBooleanFromText,
   type State,
-  asUUID,
 } from '@elizaos/core';
-import { v4 } from 'uuid';
 
 /**
  * Template for deciding if an agent should stop closely following a previously followed room
@@ -64,7 +62,7 @@ export const unfollowRoomAction: Action = {
     state?: State,
     _options?: { [key: string]: unknown },
     _callback?: HandlerCallback,
-    responses?: Memory[]
+    _responses?: Memory[]
   ) => {
     async function _shouldUnfollow(state: State): Promise<boolean> {
       const shouldUnfollowPrompt = composePromptFromState({
@@ -98,21 +96,6 @@ export const unfollowRoomAction: Action = {
         },
         'messages'
       );
-
-      // Push a response message to responses array
-      const unfollowMessage = {
-        id: asUUID(v4()),
-        entityId: runtime.agentId,
-        agentId: runtime.agentId,
-        content: {
-          text: '', // Empty text since this is just an action
-          thought: `I unfollowed the room ${room.name}`,
-          source: message.content.source,
-        },
-        roomId: message.roomId,
-        createdAt: Date.now(),
-      };
-      responses?.push(unfollowMessage);
     } else {
       await runtime.createMemory(
         {

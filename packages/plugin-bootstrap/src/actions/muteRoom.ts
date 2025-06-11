@@ -9,9 +9,7 @@ import {
   type Memory,
   ModelType,
   type State,
-  asUUID,
 } from '@elizaos/core';
-import { v4 } from 'uuid';
 
 /**
  * Template string for deciding if the agent should mute a room and stop responding unless explicitly mentioned.
@@ -67,7 +65,7 @@ export const muteRoomAction: Action = {
     state?: State,
     _options?: { [key: string]: unknown },
     _callback?: HandlerCallback,
-    responses?: Memory[]
+    _responses?: Memory[]
   ) => {
     if (!state) {
       logger.error('State is required for muting a room');
@@ -164,23 +162,6 @@ export const muteRoomAction: Action = {
       },
       'messages'
     );
-
-    // Push a response message to responses array
-    const muteMessage = {
-      id: asUUID(v4()),
-      entityId: runtime.agentId,
-      agentId: runtime.agentId,
-      content: {
-        text: '', // Empty text since this is just an action
-        thought: `I muted the room ${room.name}`,
-        actions: ['MUTE_ROOM'],
-        source: message.content.source,
-      },
-      roomId: message.roomId,
-      createdAt: Date.now(),
-    };
-
-    await runtime.createMemory(muteMessage, 'messages');
   },
   examples: [
     [

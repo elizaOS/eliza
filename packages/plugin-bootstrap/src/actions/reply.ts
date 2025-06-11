@@ -1,4 +1,4 @@
-import { asUUID, Content } from '@elizaos/core';
+import { Content } from '@elizaos/core';
 import {
   type Action,
   type ActionExample,
@@ -9,7 +9,6 @@ import {
   ModelType,
   type State,
 } from '@elizaos/core';
-import { v4 } from 'uuid';
 
 /**
  * Template for generating dialog and actions for a character.
@@ -47,11 +46,6 @@ function getFirstAvailableField(obj: Record<string, any>, fields: string[]): str
 }
 
 function extractReplyContent(response: Memory, replyFieldKeys: string[]): Content | null {
-  // Skip agent plans - they are internal and should not be processed as replies
-  if ('isPlan' in response && response.isPlan) {
-    return null;
-  }
-
   const hasReplyAction = response.content.actions?.includes('REPLY');
   const text = getFirstAvailableField(response.content, replyFieldKeys);
 
@@ -126,33 +120,10 @@ export const replyAction = {
     const responseContent = {
       thought: response.thought,
       text: (response.message as string) || '',
-      // IF we would add actions: ['REPLY'],
-      // here that would cause a loop in this action.
-      // So never add this to responses unless this is decided
-      // by the agent and you want to try loop.
+      actions: ['REPLY'],
     };
 
-    const replyMessage = {
-      id: asUUID(v4()),
-      entityId: runtime.agentId,
-      agentId: runtime.agentId,
-      content: responseContent,
-      roomId: message.roomId,
-      createdAt: Date.now(),
-    };
-
-    await runtime.createMemory(
-      {
-        ...replyMessage,
-        content: {
-          ...replyMessage.content,
-          actions: ['REPLY'],
-        },
-      },
-      'messages'
-    );
-
-    return true;
+    await callback(responseContent);
   },
   examples: [
     [
