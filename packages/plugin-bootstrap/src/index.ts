@@ -510,7 +510,6 @@ const messageReceivedHandler = async ({
               agentId: runtime.agentId,
               content: responseContent,
               roomId: message.roomId,
-              isPlan: true,
               createdAt: Date.now(),
             };
 
@@ -536,39 +535,7 @@ const messageReceivedHandler = async ({
             // without actions there can't be more than one message
             await callback(responseContent);
           } else {
-            await runtime.processActions(
-              message,
-              responseMessages,
-              state,
-              async (memory: Content) => {
-                return [];
-              }
-            );
-            if (responseMessages.length) {
-              // Log provider usage for complex responses
-              for (const responseMessage of responseMessages) {
-                if (
-                  responseMessage.content.providers &&
-                  responseMessage.content.providers.length > 0
-                ) {
-                  logger.debug(
-                    '[Bootstrap] Complex response used providers',
-                    responseMessage.content.providers
-                  );
-                }
-              }
-
-              for (const memory of responseMessages) {
-                // Skip the agent plan - it should never be sent to the user.
-                // Unless it's simple response but that was already triggered before
-                // we reach this part of the code.
-                if ('isPlan' in memory && memory.isPlan) {
-                  logger.debug('[Bootstrap] Skipping agent plan in callback - internal use only');
-                  continue;
-                }
-                await callback(memory.content);
-              }
-            }
+            await runtime.processActions(message, responseMessages, state, callback);
           }
           await runtime.evaluate(
             message,
