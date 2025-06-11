@@ -1,6 +1,4 @@
-import { UUID, Agent, Memory, Entity, Room, ChannelType } from '@elizaos/core';
-import { AgentStatus } from '@elizaos/core';
-import { type Embedding } from '../../../src/schema/embedding';
+import { Agent, AgentStatus, ChannelType, Entity, Memory, Room, UUID } from '@elizaos/core';
 
 // Generate fixed UUIDs for testing to avoid type issues
 const fixedUuid = (n: number): UUID =>
@@ -25,8 +23,8 @@ export const embeddingTestAgent = {
   bio: 'An agent for testing embedding functionality',
   enabled: true,
   status: AgentStatus.ACTIVE,
-  createdAt: Date.now(),
-  updatedAt: Date.now(),
+  createdAt: new Date().getTime(),
+  updatedAt: new Date().getTime(),
   messageExamples: [],
   postExamples: [],
   topics: [],
@@ -75,7 +73,7 @@ export const embeddingTestMemories: TestMemory[] = [
     entityId: embeddingTestEntityId,
     agentId: embeddingTestAgentId,
     roomId: embeddingTestRoomId,
-    createdAt: Date.now(),
+    createdAt: new Date().getTime(),
     content: {
       text: 'This is test memory 1',
       type: 'text',
@@ -89,7 +87,7 @@ export const embeddingTestMemories: TestMemory[] = [
     entityId: embeddingTestEntityId,
     agentId: embeddingTestAgentId,
     roomId: embeddingTestRoomId,
-    createdAt: Date.now(),
+    createdAt: new Date().getTime(),
     content: {
       text: 'This is test memory 2',
       type: 'text',
@@ -103,7 +101,7 @@ export const embeddingTestMemories: TestMemory[] = [
     entityId: embeddingTestEntityId,
     agentId: embeddingTestAgentId,
     roomId: embeddingTestRoomId,
-    createdAt: Date.now(),
+    createdAt: new Date().getTime(),
     content: {
       text: 'This is test memory 3',
       type: 'text',
@@ -115,23 +113,23 @@ export const embeddingTestMemories: TestMemory[] = [
 ];
 
 // Sample embeddings of different dimensions
-export const embeddingTestData: Embedding[] = [
+export const embeddingTestData: any[] = [
   {
     id: fixedUuid(30),
     memoryId: embeddingTestMemories[0].id as UUID,
-    createdAt: Date.now(),
+    createdAt: new Date().getTime(),
     dim384: generateRandomVector(384),
   },
   {
     id: fixedUuid(31),
     memoryId: embeddingTestMemories[1].id as UUID,
-    createdAt: Date.now(),
+    createdAt: new Date().getTime(),
     dim512: generateRandomVector(512),
   },
   {
     id: fixedUuid(32),
     memoryId: embeddingTestMemories[2].id as UUID,
-    createdAt: Date.now(),
+    createdAt: new Date().getTime(),
     dim768: generateRandomVector(768),
   },
 ];

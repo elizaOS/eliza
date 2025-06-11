@@ -1,0 +1,239 @@
+---
+id: process-audio-message
+title: 'Process audio message'
+description: 'Upload and process an audio file as a message through an agent'
+sidebar_label: 'Process audio message'
+hide_title: true
+hide_table_of_contents: true
+api: eJytVk1v2zAM/SsCz26cbTffsiFYAwxYsXbYoe2BkRlbrSxpEp00M/zfB9ppl7WX6aKvp8dH8mlAoSZjdYv5mIU7vC+w5mySjWKDxwqvbRcdQ8vOBTiE5GoQzgLs6xisFywwRE6k8E2NFTYslwrGAhPnGHzmjNWAH5ZLnf5lvzyjfUZjgSZ4YS+KpxidNRN9+ZD10YDZtNyRruQYGSsM2wc2KiUmFSN2DtlxztTwGTBLsr7BAvmJNK8XCT9Vwjsc51Fgx9KGUzrKS9JihSVFW7an7DKnPSct3oB9clhhKxKrsnTBkGtDlurjcrnE1xX9qtdQ855diB17gZkJx/sCrd+FSa+VSd3a2d8E365hdbV5w7S62kAdTK8kU4VgFxK8PNm/XywXywtysSW4gBXsHD/ZrWMgX0M25Eg3qw1QozJ2iTo+hPS4uPN3/qa1WaOCzVBzto3nGiTAlqHPXMPBSgsEU7LuCKn33vrmFN36LOQNL2B98kkGci4cJoUmMYn1TXHnO/LU6HLSZL1wIqN3M/+ztgzSptA3GvH7+vpmRu7I8AIL1DbMFTnL+GQjMpONPHX/lPNz6LreWzlicda8XJVlY6XttwsTupIVHfI8o9oihiwd+TPGT5StgZbJSQumZfP4uk3DXzv/z286OVX4ScroyHocTxKHkw1vkaLFAmcj3heoXtPjYdhS5h/JjaMe/+o5HbG6vS9wT8lqs3U36kuqOU3OfeSjOskYjhp9T67X8G++nZrz5VN8Wd/gOP4Bu7h17Q==
+sidebar_class_name: 'post api-method'
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
+
+<Heading as={'h1'} className={'openapi__heading'} children={'Process audio message'}></Heading>
+
+<MethodEndpoint
+  method={'post'}
+  path={'/api/audio/{agentId}/audio-messages'}
+  context={'endpoint'}
+></MethodEndpoint>
+
+Upload and process an audio file as a message through a specific agent
+
+<Heading
+  id={'request'}
+  as={'h2'}
+  className={'openapi-tabs__heading'}
+  children={'Request'}
+></Heading>
+
+<ParamsDetails
+  parameters={[
+    {
+      name: 'agentId',
+      in: 'path',
+      required: true,
+      schema: { type: 'string', format: 'uuid' },
+      description: 'ID of the agent to process the audio message',
+    },
+  ]}
+></ParamsDetails>
+
+<RequestSchema
+  title={'Body'}
+  body={{
+    required: true,
+    content: {
+      'multipart/form-data': {
+        schema: {
+          type: 'object',
+          properties: {
+            file: {
+              type: 'string',
+              format: 'binary',
+              description: 'Audio file to process as a message',
+            },
+          },
+          required: ['file'],
+        },
+      },
+    },
+  }}
+></RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{
+    '200': {
+      description: 'Audio message processed successfully',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: true },
+              data: {
+                type: 'object',
+                properties: {
+                  transcription: {
+                    type: 'string',
+                    description: 'Transcribed text from the audio file',
+                  },
+                  message: {
+                    type: 'string',
+                    example: 'Audio transcribed, further processing TBD.',
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '400': {
+      description: 'Invalid request - bad agent ID or missing audio file',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '403': {
+      description: 'Invalid file path detected',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', example: 'INVALID_PATH' },
+                  message: { type: 'string', description: 'File path security validation failed' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Security Error',
+          },
+        },
+      },
+    },
+    '404': {
+      description: 'Agent not found',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', example: 'NOT_FOUND' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '413': {
+      description: 'File too large',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', example: 'FILE_TOO_LARGE' },
+                  message: { type: 'string', example: 'Audio file too large (max 50MB)' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'File Size Error',
+          },
+        },
+      },
+    },
+    '500': {
+      description: 'Error processing audio message',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', example: 'PROCESSING_ERROR' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Processing Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>
+
+## File Requirements
+
+- **Maximum file size**: 50MB
+- **File format**: Audio files (specific formats depend on agent's transcription model capabilities)
+- **Security**: Files are validated for path traversal attacks and must be regular files
+
+## Rate Limiting
+
+This endpoint is subject to upload rate limiting and file system rate limiting to prevent abuse.
+
+## Processing Flow
+
+1. Audio file is uploaded and validated
+2. File path security checks are performed
+3. Audio file is read and processed by the agent's transcription model
+4. Transcribed text is returned
+5. File is automatically cleaned up after processing
+
+## Notes
+
+- This endpoint handles the complete flow from audio upload to transcription
+- Files are automatically deleted after processing for security
+- The agent must have transcription capabilities enabled
+- Further message processing may be implemented in future versions

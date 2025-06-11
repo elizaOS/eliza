@@ -61,6 +61,14 @@ export const actionsProvider: Provider = {
     const actions =
       actionsData.length > 0 ? addHeader('# Available Actions', formatActions(actionsData)) : '';
 
+    const actionDescriptions =
+      actionsData.length > 0
+        ? addHeader(
+            '# Action Descriptions',
+            actionsData.map((action) => `- **${action.name}**: ${action.description}`).join('\n')
+          )
+        : '';
+
     const actionExamples =
       actionsData.length > 0
         ? addHeader('# Action Examples', composeActionExamples(actionsData, 10))
@@ -73,11 +81,14 @@ export const actionsProvider: Provider = {
     const values = {
       actions,
       actionNames,
+      actionDescriptions,
       actionExamples,
     };
 
     // Combine all text sections
-    const text = [actionNames, actionExamples, actions].filter(Boolean).join('\n\n');
+    const text = [actionNames, actionDescriptions, actionExamples, actions]
+      .filter(Boolean)
+      .join('\n\n');
 
     return {
       data,

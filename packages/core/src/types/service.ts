@@ -1,3 +1,4 @@
+import type { Metadata } from './primitives';
 import type { IAgentRuntime } from './runtime';
 
 /**
@@ -23,10 +24,10 @@ export interface ServiceTypeRegistry {
   EMAIL: 'email';
   TEE: 'tee';
   TASK: 'task';
-  INSTRUMENTATION: 'instrumentation';
   WALLET: 'wallet';
   LP_POOL: 'lp_pool';
   TOKEN_DATA: 'token_data';
+  DATABASE_MIGRATION: 'database_migration';
 }
 
 /**
@@ -76,7 +77,7 @@ export type ServiceRegistry<T extends ServiceTypeName = ServiceTypeName> = Map<T
  * Enumerates the recognized types of services that can be registered and used by the agent runtime.
  * Services provide specialized functionalities like audio transcription, video processing,
  * web browsing, PDF handling, file storage (e.g., AWS S3), web search, email integration,
- * secure execution via TEE (Trusted Execution Environment), task management, and instrumentation.
+ * secure execution via TEE (Trusted Execution Environment), and task management.
  * This constant is used in `AgentRuntime` for service registration and retrieval (e.g., `getService`).
  * Each service typically implements the `Service` abstract class or a more specific interface like `IVideoService`.
  */
@@ -90,10 +91,10 @@ export const ServiceType = {
   EMAIL: 'email',
   TEE: 'tee',
   TASK: 'task',
-  INSTRUMENTATION: 'instrumentation',
   WALLET: 'wallet',
   LP_POOL: 'lp_pool',
   TOKEN_DATA: 'token_data',
+  DATABASE_MIGRATION: 'database_migration',
 } as const satisfies ServiceTypeRegistry;
 
 /**
@@ -118,7 +119,7 @@ export abstract class Service {
   abstract capabilityDescription: string;
 
   /** Service configuration */
-  config?: { [key: string]: any };
+  config?: Metadata;
 
   /** Start service connection */
   static async start(_runtime: IAgentRuntime): Promise<Service> {
@@ -136,10 +137,8 @@ export abstract class Service {
  * @template ConfigType The configuration type for this service
  * @template ResultType The result type returned by the service operations
  */
-export interface TypedService<
-  ConfigType extends { [key: string]: any } = { [key: string]: any },
-  ResultType = unknown,
-> extends Service {
+export interface TypedService<ConfigType extends Metadata = Metadata, ResultType = unknown>
+  extends Service {
   /**
    * The configuration for this service instance
    */
@@ -193,11 +192,3 @@ export function createServiceError(error: unknown, code = 'UNKNOWN_ERROR'): Serv
     message: String(error),
   };
 }
-
-/**
- * A generic type for service configurations.
- * Services (like `IVideoService`, `IBrowserService`) can have their own specific configuration
- * structures. This type allows for a flexible way to pass configuration objects,
- * typically used during service initialization within a plugin or the `AgentRuntime`.
- */
-export type ServiceConfig = Record<string, unknown>;

@@ -14,8 +14,8 @@ export default function ChatTtsButton({ agentId, text }: { agentId: string; text
 
   const mutation = useMutation({
     mutationKey: ['tts', text],
-    mutationFn: () => apiClient.tts(agentId, text),
-    onSuccess: (data) => {
+    mutationFn: () => apiClient.ttsStream(agentId, text),
+    onSuccess: (data: Blob) => {
       setAudioBlob(data);
       play();
     },
@@ -61,7 +61,7 @@ export default function ChatTtsButton({ agentId, text }: { agentId: string; text
     mutation.mutate();
   };
 
-  const iconClass = 'text-muted-foreground size-2';
+  const iconClass = 'text-muted-foreground size-4';
 
   return (
     <div>

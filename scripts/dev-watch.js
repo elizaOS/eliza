@@ -20,14 +20,14 @@ function log(prefix, message) {
 }
 
 // Health check function to verify server is responding
-async function waitForServer(url = 'http://localhost:3000/api/ping', maxAttempts = 30) {
+async function waitForServer(url = 'http://localhost:3000/api/server/ping', maxAttempts = 30) {
   log('HEALTH', `Waiting for server to be ready at ${url}...`);
-  
+
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const response = await fetch(url, { 
+      const response = await fetch(url, {
         method: 'GET',
-        signal: AbortSignal.timeout(2000) // 2 second timeout
+        signal: AbortSignal.timeout(2000), // 2 second timeout
       });
       if (response.ok) {
         log('HEALTH', `✅ Server is ready! (attempt ${attempt})`);
@@ -39,22 +39,22 @@ async function waitForServer(url = 'http://localhost:3000/api/ping', maxAttempts
         log('HEALTH', `Still waiting for server... (attempt ${attempt}/${maxAttempts})`);
       }
     }
-    
+
     // Wait 1 second between attempts
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
     if (isShuttingDown) {
       return false;
     }
   }
-  
+
   log('HEALTH', `❌ Server failed to respond after ${maxAttempts} attempts`);
   return false;
 }
 
 function startViteDevServer() {
   log('CLIENT', 'Starting Vite dev server with HMR...');
-  
+
   const child = spawn('bun', ['run', 'dev:client'], {
     cwd: clientDir,
     stdio: 'inherit',
@@ -85,7 +85,7 @@ function startViteDevServer() {
 
 function startCliServer() {
   log('CLI', 'Starting CLI server build...');
-  
+
   // Run CLI build first, then start the server directly
   const child = spawn('bun', ['run', 'build'], {
     cwd: cliDir,
@@ -114,7 +114,10 @@ function startCliServer() {
         const serverProcess = await startActualCliServer();
         if (serverProcess) {
           // Wait for server to be ready before starting frontend
-          const ready = await waitForServer();
+          const port = process.env.SERVER_PORT || 3000;
+          const url = `http://localhost:${port}/api/server/ping`;
+          const ready = await waitForServer(url);
+
           if (ready && !isShuttingDown) {
             serverReady = true;
             log('DEV', '🔧 Backend server is ready!');
@@ -149,16 +152,16 @@ function startCliServer() {
 function startActualCliServer() {
   return new Promise((resolve) => {
     log('CLI', 'Starting CLI server process...');
-    
-    const child = spawn('node', ['dist/index.js', 'start'], {
+
+    const child = spawn('bun', ['dist/index.js', 'start'], {
       cwd: cliDir,
       stdio: 'inherit',
       shell: false,
       detached: false,
       env: {
         ...process.env,
-        NODE_ENV: 'development'
-      }
+        NODE_ENV: 'development',
+      },
     });
 
     child.on('close', (code, signal) => {
@@ -180,13 +183,13 @@ function startActualCliServer() {
     });
 
     // Replace the build process with the server process
-    const buildIndex = processes.findIndex(p => p.name === 'CLI-BUILD');
+    const buildIndex = processes.findIndex((p) => p.name === 'CLI-BUILD');
     if (buildIndex !== -1) {
       processes[buildIndex] = { name: 'CLI-SERVER', child, type: 'server' };
     } else {
       processes.push({ name: 'CLI-SERVER', child, type: 'server' });
     }
-    
+
     resolve(child);
   });
 }
@@ -194,9 +197,9 @@ function startActualCliServer() {
 function cleanup(signal = 'SIGTERM') {
   if (isShuttingDown) return; // Prevent multiple cleanup calls
   isShuttingDown = true;
-  
+
   log('DEV', `Received ${signal}, shutting down...`);
-  
+
   if (processes.length === 0) {
     log('DEV', 'No processes to clean up, exiting...');
     process.exit(0);
@@ -208,10 +211,10 @@ function cleanup(signal = 'SIGTERM') {
     return new Promise((resolve) => {
       if (child && !child.killed) {
         log('DEV', `Terminating ${name}...`);
-        
+
         // Different timeout based on process type
         const timeout = type === 'server' ? 1000 : 500;
-        
+
         // Set up a timeout for force kill
         const forceKillTimeout = setTimeout(() => {
           if (child && !child.killed) {
@@ -224,14 +227,14 @@ function cleanup(signal = 'SIGTERM') {
           }
           resolve();
         }, timeout);
-        
+
         // Listen for the process to exit
         child.on('exit', () => {
           clearTimeout(forceKillTimeout);
           log('DEV', `${name} stopped`);
           resolve();
         });
-        
+
         // For CLI server, try SIGINT first (more graceful for Node.js apps)
         try {
           if (type === 'server') {
@@ -288,17 +291,16 @@ async function main() {
   try {
     log('DEV', 'Starting development environment...');
     log('DEV', '🔧 Step 1: Building and starting backend server...');
-    
+
     // Start CLI server first and wait for it to be ready
     startCliServer();
-    
+
     // Frontend will be started automatically after server is ready
     log('DEV', 'Press Ctrl+C to stop all services.');
-    
   } catch (error) {
     log('DEV', `Failed to start development environment: ${error.message}`);
     cleanup('startup-error');
   }
 }
 
-main(); 
+main();

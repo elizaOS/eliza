@@ -62,7 +62,7 @@ export function resolveEnvFile(startDir: string = process.cwd(), boundaryDir?: s
  * 1. The `dir` argument if provided.
  * 2. The `PGLITE_DATA_DIR` environment variable.
  * 3. The `fallbackDir` argument if provided.
- * 4. `./.elizadb` relative to the current working directory.
+ * 4. `./.eliza/.elizadb` relative to the current working directory.
  *
  * @param dir - Optional directory preference.
  * @param fallbackDir - Optional fallback directory when env var is not set.
@@ -81,10 +81,18 @@ export async function resolvePgliteDir(dir?: string, fallbackDir?: string): Prom
   // The fallbackDir passed from getElizaDirectories will be monorepoRoot + '.elizadb' or similar.
   // If fallbackDir is not provided (e.g. direct call to resolvePgliteDir),
   // then we construct the default path using projectRoot.
-  const defaultBaseDir = path.join(projectRoot, '.elizadb');
+  const defaultBaseDir = path.join(projectRoot, '.eliza', '.elizadb');
 
   const base = dir ?? process.env.PGLITE_DATA_DIR ?? fallbackDir ?? defaultBaseDir;
 
-  // Pass projectRoot for tilde expansion, assuming ~ means project root.
-  return expandTildePath(base, projectRoot);
+  // Resolve and migrate legacy default (<projectRoot>/.elizadb) if detected
+  const resolved = expandTildePath(base, projectRoot);
+  const legacyPath = path.join(projectRoot, '.elizadb');
+  if (resolved === legacyPath) {
+    const newPath = path.join(projectRoot, '.eliza', '.elizadb');
+    process.env.PGLITE_DATA_DIR = newPath;
+    return newPath;
+  }
+
+  return resolved;
 }

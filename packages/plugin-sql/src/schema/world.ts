@@ -1,7 +1,6 @@
 import { sql } from 'drizzle-orm';
-import { jsonb, pgTable, text, uuid } from 'drizzle-orm/pg-core';
+import { jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { agentTable } from './agent';
-import { numberTimestamp } from './types';
 
 /**
  * Represents a table schema for worlds in the database.
@@ -19,8 +18,8 @@ export const worldTable = pgTable('worlds', {
     .references(() => agentTable.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   metadata: jsonb('metadata'),
-  serverId: text('serverId').notNull(),
-  createdAt: numberTimestamp('createdAt')
+  serverId: text('serverId').notNull().default('local'),
+  createdAt: timestamp('createdAt')
     .default(sql`now()`)
     .notNull(),
 });

@@ -1,4 +1,4 @@
-import prompts from 'prompts';
+import * as clack from '@clack/prompts';
 import { logger } from '@elizaos/core';
 
 export const NAV_BACK = '__back__';
@@ -17,23 +17,33 @@ export async function promptWithNav(
   validate?: (val: string) => true | string
 ): Promise<string> {
   const msg = `${label}${initial ? ` (current: ${initial})` : ''}`;
-  const res = await prompts({
-    type: 'text',
-    name: 'value',
+  const input = await clack.text({
     message: msg,
-    initial,
-    validate,
+    placeholder: initial,
+    defaultValue: initial,
+    validate: validate
+      ? (val) => {
+          const result = validate(val);
+          return typeof result === 'string' ? result : undefined;
+        }
+      : undefined,
   });
-  const input = res.value !== undefined ? res.value.trim() : '';
-  if (input.toLowerCase() === 'cancel') return 'cancel';
-  if (input.toLowerCase() === 'back') return NAV_BACK;
-  if (input.toLowerCase() === 'quit' || input.toLowerCase() === 'exit') {
+
+  if (clack.isCancel(input)) {
+    clack.cancel('Operation cancelled.');
+    process.exit(0);
+  }
+
+  const trimmedInput = input.trim();
+  if (trimmedInput.toLowerCase() === 'cancel') return 'cancel';
+  if (trimmedInput.toLowerCase() === 'back') return NAV_BACK;
+  if (trimmedInput.toLowerCase() === 'quit' || trimmedInput.toLowerCase() === 'exit') {
     logger.info('Exiting...');
     process.exit(0);
   }
-  if (input === '' && initial) return initial; // Return initial if empty and exists
-  if (input === '' || input.toLowerCase() === 'next') return NAV_NEXT;
-  return input;
+  if (trimmedInput === '' && initial) return initial; // Return initial if empty and exists
+  if (trimmedInput === '' || trimmedInput.toLowerCase() === 'next') return NAV_NEXT;
+  return trimmedInput;
 }
 
 /**
@@ -75,11 +85,15 @@ export async function promptForMultipleItems(
  */
 
 export async function confirmAction(message: string): Promise<boolean> {
-  const response = await prompts({
-    type: 'confirm',
-    name: 'confirm',
+  const response = await clack.confirm({
     message,
-    initial: false,
+    initialValue: false,
   });
-  return Boolean(response.confirm);
+
+  if (clack.isCancel(response)) {
+    clack.cancel('Operation cancelled.');
+    process.exit(0);
+  }
+
+  return Boolean(response);
 }

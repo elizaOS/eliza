@@ -282,6 +282,15 @@ class MockDatabaseAdapter extends DatabaseAdapter {
     throw new Error('Method not implemented.');
   }
   /**
+   * Removes multiple memories from the database in a single batch operation.
+   *
+   * @param {UUID[]} _memoryIds - An array of UUIDs of the memories to remove.
+   * @returns {Promise<void>} A promise that resolves when all memories are successfully removed.
+   */
+  deleteManyMemories(_memoryIds: UUID[]): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
+  /**
    * Remove all memories associated with a specific room and table.
    *
    * @param {UUID} _roomId - The unique identifier of the room.

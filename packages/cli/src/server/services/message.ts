@@ -12,6 +12,7 @@ import {
   type UUID,
 } from '@elizaos/core';
 import internalMessageBus from '../bus'; // Import the bus
+import { sendError } from '../api/shared';
 
 // This interface defines the structure of messages coming from the server
 export interface MessageServiceMessage {
@@ -35,12 +36,16 @@ export class MessageBusService extends Service {
 
   private boundHandleIncomingMessage: (message: MessageServiceMessage) => Promise<void>;
   private boundHandleServerAgentUpdate: (data: any) => void;
+  private boundHandleMessageDeleted: (data: any) => Promise<void>;
+  private boundHandleChannelCleared: (data: any) => Promise<void>;
   private subscribedServers: Set<UUID> = new Set();
 
   constructor(runtime: IAgentRuntime) {
     super(runtime);
     this.boundHandleIncomingMessage = this.handleIncomingMessage.bind(this);
     this.boundHandleServerAgentUpdate = this.handleServerAgentUpdate.bind(this);
+    this.boundHandleMessageDeleted = this.handleMessageDeleted.bind(this);
+    this.boundHandleChannelCleared = this.handleChannelCleared.bind(this);
     // Don't connect here - let start() handle it
   }
 
@@ -57,10 +62,12 @@ export class MessageBusService extends Service {
 
   private connectToMessageBus() {
     logger.info(
-      `[${this.runtime.character.name}] MessageBusService: Subscribing to internal message bus for 'new_message' events.`
+      `[${this.runtime.character.name}] MessageBusService: Subscribing to internal message bus for 'new_message', 'message_deleted', and 'channel_cleared' events.`
     );
     internalMessageBus.on('new_message', this.boundHandleIncomingMessage);
     internalMessageBus.on('server_agent_update', this.boundHandleServerAgentUpdate);
+    internalMessageBus.on('message_deleted', this.boundHandleMessageDeleted);
+    internalMessageBus.on('channel_cleared', this.boundHandleChannelCleared);
 
     // Initialize by fetching servers this agent belongs to
     this.fetchAgentServers();
@@ -69,8 +76,12 @@ export class MessageBusService extends Service {
   private async getChannelParticipants(channelId: UUID): Promise<string[]> {
     try {
       const serverApiUrl = this.getCentralMessageServerUrl();
+
+      if (!validateUuid(channelId)) {
+        return [];
+      }
       const response = await fetch(
-        `${serverApiUrl}/api/messages/central-channels/${channelId}/participants`
+        `${serverApiUrl}/api/messaging/central-channels/${channelId}/participants`
       );
 
       if (response.ok) {
@@ -93,7 +104,7 @@ export class MessageBusService extends Service {
     try {
       const serverApiUrl = this.getCentralMessageServerUrl();
       const response = await fetch(
-        `${serverApiUrl}/api/messages/agents/${this.runtime.agentId}/servers`
+        `${serverApiUrl}/api/messaging/agents/${this.runtime.agentId}/servers`
       );
 
       if (response.ok) {
@@ -339,6 +350,81 @@ export class MessageBusService extends Service {
     }
   }
 
+  private async handleMessageDeleted(data: any) {
+    try {
+      logger.info(
+        `[${this.runtime.character.name}] MessageBusService: Received message_deleted event for message ${data.messageId}`
+      );
+
+      // Convert the central message ID to the agent's unique memory ID
+      const agentMemoryId = createUniqueUuid(this.runtime, data.messageId);
+
+      // Try to find and delete the existing memory
+      const existingMemory = await this.runtime.getMemoryById(agentMemoryId);
+
+      if (existingMemory) {
+        // Emit MESSAGE_DELETED event with the existing memory
+        await this.runtime.emitEvent(EventType.MESSAGE_DELETED, {
+          runtime: this.runtime,
+          message: existingMemory,
+          source: 'message-bus-service',
+        });
+
+        logger.debug(
+          `[${this.runtime.character.name}] MessageBusService: Successfully processed message deletion for ${data.messageId}`
+        );
+      } else {
+        logger.warn(
+          `[${this.runtime.character.name}] MessageBusService: No memory found for deleted message ${data.messageId}`
+        );
+      }
+    } catch (error) {
+      logger.error(
+        `[${this.runtime.character.name}] MessageBusService: Error handling message deletion:`,
+        error
+      );
+    }
+  }
+
+  private async handleChannelCleared(data: any) {
+    try {
+      logger.info(
+        `[${this.runtime.character.name}] MessageBusService: Received channel_cleared event for channel ${data.channelId}`
+      );
+
+      // Convert the central channel ID to the agent's unique room ID
+      const agentRoomId = createUniqueUuid(this.runtime, data.channelId);
+
+      // Get all memories for this room and emit deletion events for each
+      const memories = await this.runtime.getMemoriesByRoomIds({
+        tableName: 'messages',
+        roomIds: [agentRoomId],
+      });
+
+      logger.info(
+        `[${this.runtime.character.name}] MessageBusService: Found ${memories.length} memories to delete for channel ${data.channelId}`
+      );
+
+      // Emit CHANNEL_CLEARED event to bootstrap which will handle bulk deletion
+      await this.runtime.emitEvent(EventType.CHANNEL_CLEARED, {
+        runtime: this.runtime,
+        source: 'message-bus-service',
+        roomId: agentRoomId,
+        channelId: data.channelId,
+        memoryCount: memories.length,
+      });
+
+      logger.info(
+        `[${this.runtime.character.name}] MessageBusService: Successfully processed channel clear for ${data.channelId} -> room ${agentRoomId}`
+      );
+    } catch (error) {
+      logger.error(
+        `[${this.runtime.character.name}] MessageBusService: Error handling channel clear:`,
+        error
+      );
+    }
+  }
+
   private async sendAgentResponseToBus(
     agentRoomId: UUID,
     agentWorldId: UUID,
@@ -404,13 +490,13 @@ export class MessageBusService extends Service {
       };
 
       logger.info(
-        `[${this.runtime.character.name}] MessageBusService: Sending payload to central server API endpoint (/api/messages/submit):`,
+        `[${this.runtime.character.name}] MessageBusService: Sending payload to central server API endpoint (/api/messagingsubmit):`,
         payloadToServer
       );
 
       // Actual fetch to the central server API
       const baseUrl = this.getCentralMessageServerUrl();
-      const serverApiUrl = `${baseUrl}/api/messages/submit`;
+      const serverApiUrl = `${baseUrl}/api/messaging/submit`;
       const response = await fetch(serverApiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' /* TODO: Add Auth if needed */ },
@@ -432,16 +518,76 @@ export class MessageBusService extends Service {
 
   getCentralMessageServerUrl(): string {
     const serverPort = process.env.SERVER_PORT;
-    return (
-      process.env.CENTRAL_MESSAGE_SERVER_URL ??
-      (serverPort ? `http://localhost:${serverPort}` : 'http://localhost:3000')
-    );
+    const envUrl = process.env.CENTRAL_MESSAGE_SERVER_URL;
+
+    // Validate and sanitize server port
+    let validatedPort: number | null = null;
+    if (serverPort) {
+      const portNum = parseInt(serverPort, 10);
+      if (!isNaN(portNum) && portNum > 0 && portNum <= 65535) {
+        validatedPort = portNum;
+      } else {
+        logger.warn(`[MessageBusService] Invalid SERVER_PORT value: ${serverPort}`);
+      }
+    }
+
+    const defaultUrl = validatedPort
+      ? `http://localhost:${validatedPort}`
+      : 'http://localhost:3000';
+    const baseUrl = envUrl ?? defaultUrl;
+
+    // Strict validation to prevent SSRF attacks
+    try {
+      const url = new URL(baseUrl);
+
+      // Only allow HTTP/HTTPS protocols
+      if (!['http:', 'https:'].includes(url.protocol)) {
+        logger.warn(
+          `[MessageBusService] Unsafe protocol in CENTRAL_MESSAGE_SERVER_URL: ${url.protocol}`
+        );
+        return defaultUrl;
+      }
+
+      // Only allow safe localhost variants and block private/internal IPs
+      const allowedHosts = ['localhost', '127.0.0.1', '::1'];
+      if (!allowedHosts.includes(url.hostname)) {
+        logger.warn(
+          `[MessageBusService] Unsafe hostname in CENTRAL_MESSAGE_SERVER_URL: ${url.hostname}`
+        );
+        return defaultUrl;
+      }
+
+      // Validate port range
+      if (url.port) {
+        const portNum = parseInt(url.port, 10);
+        if (isNaN(portNum) || portNum <= 0 || portNum > 65535) {
+          logger.warn(
+            `[MessageBusService] Invalid port in CENTRAL_MESSAGE_SERVER_URL: ${url.port}`
+          );
+          return defaultUrl;
+        }
+      }
+
+      // Remove any potentially dangerous URL components
+      url.username = '';
+      url.password = '';
+      url.hash = '';
+
+      return url.toString().replace(/\/$/, ''); // Remove trailing slash
+    } catch (error) {
+      logger.error(
+        `[MessageBusService] Invalid URL format in CENTRAL_MESSAGE_SERVER_URL: ${baseUrl}`
+      );
+      return defaultUrl;
+    }
   }
 
   async stop(): Promise<void> {
     logger.info(`[${this.runtime.character.name}] MessageBusService stopping...`);
     internalMessageBus.off('new_message', this.boundHandleIncomingMessage);
     internalMessageBus.off('server_agent_update', this.boundHandleServerAgentUpdate);
+    internalMessageBus.off('message_deleted', this.boundHandleMessageDeleted);
+    internalMessageBus.off('channel_cleared', this.boundHandleChannelCleared);
   }
 }
 

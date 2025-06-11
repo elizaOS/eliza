@@ -4,7 +4,17 @@ import path from 'path';
 
 export default defineConfig({
   clean: true,
-  entry: ['src/index.ts', 'src/commands/*.ts'],
+  entry: [
+    'src/index.ts',
+    'src/commands/*.ts',
+    'src/commands/agent/index.ts',
+    'src/commands/agent/actions/index.ts',
+    'src/commands/agent/manage/index.ts',
+    'src/commands/create/index.ts',
+    'src/commands/create/actions/index.ts',
+    'src/commands/create/manage/index.ts',
+    'src/commands/shared/index.ts',
+  ],
   format: ['esm'],
   dts: true,
   sourcemap: false,

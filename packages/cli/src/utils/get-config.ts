@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 import path from 'node:path';
 import { UserEnvironment } from './user-environment';
 import { existsSync, promises as fs } from 'node:fs';
-import prompts from 'prompts';
+import * as clack from '@clack/prompts';
 import { z } from 'zod';
 import { resolveEnvFile, resolvePgliteDir } from './resolve-utils';
 // Database config schemas
@@ -226,7 +226,7 @@ export async function getElizaDirectories(targetProjectDir?: string) {
     targetProjectDir: targetProjectDir || 'none',
   });
 
-  const defaultElizaDbDir = path.resolve(projectRoot, '.elizadb');
+  const defaultElizaDbDir = path.resolve(projectRoot, '.eliza', '.elizadb');
   const elizaDbDir = await resolvePgliteDir(undefined, defaultElizaDbDir);
 
   return { elizaDir, elizaDbDir, envFilePath };
@@ -436,10 +436,11 @@ export async function storePgliteDataDir(dataDir: string, envFilePath: string): 
  * @returns The configured Postgres URL or null if user cancels
  */
 export async function promptAndStorePostgresUrl(envFilePath: string): Promise<string | null> {
-  const response = await prompts({
-    type: 'text',
-    name: 'postgresUrl',
+  clack.intro('🗄️  PostgreSQL Configuration');
+
+  const response = await clack.text({
     message: 'Enter your Postgres URL:',
+    placeholder: 'postgresql://user:password@host:port/dbname',
     validate: (value) => {
       if (value.trim() === '') return 'Postgres URL cannot be empty';
 
@@ -447,19 +448,29 @@ export async function promptAndStorePostgresUrl(envFilePath: string): Promise<st
       if (!isValid) {
         return 'Invalid URL format. Expected: postgresql://user:password@host:port/dbname.';
       }
-      return true;
+      return undefined;
     },
   });
 
-  // Handle user cancellation (Ctrl+C)
-  if (!response.postgresUrl) {
+  if (clack.isCancel(response)) {
+    clack.cancel('Operation cancelled.');
     return null;
   }
 
   // Store the URL in the .env file
-  await storePostgresUrl(response.postgresUrl, envFilePath);
+  const spinner = clack.spinner();
+  spinner.start('Saving PostgreSQL configuration...');
 
-  return response.postgresUrl;
+  try {
+    await storePostgresUrl(response, envFilePath);
+    spinner.stop('PostgreSQL configuration saved successfully!');
+    clack.outro('\u2713 Database connection configured');
+    return response;
+  } catch (error) {
+    spinner.stop('Failed to save configuration');
+    clack.log.error(`Error: ${error.message}`);
+    return null;
+  }
 }
 
 /**
@@ -550,33 +561,44 @@ export async function storeAnthropicKey(key: string, envFilePath: string): Promi
  * @returns The configured OpenAI API key or null if user cancels
  */
 export async function promptAndStoreOpenAIKey(envFilePath: string): Promise<string | null> {
-  const response = await prompts({
-    type: 'password',
-    name: 'openaiKey',
+  clack.intro('🤖 OpenAI API Configuration');
+
+  clack.note('Get your API key from: https://platform.openai.com/api-keys', 'API Key Information');
+
+  const response = await clack.password({
     message: 'Enter your OpenAI API key:',
     validate: (value) => {
       if (value.trim() === '') return 'OpenAI API key cannot be empty';
-      return true; // Always return true to allow continuation
+      return undefined;
     },
   });
 
-  // Handle user cancellation (Ctrl+C)
-  if (!response.openaiKey) {
+  if (clack.isCancel(response)) {
+    clack.cancel('Operation cancelled.');
     return null;
   }
 
   // Check if the API key format is valid and warn if not
-  const isValid = isValidOpenAIKey(response.openaiKey);
+  const isValid = isValidOpenAIKey(response);
   if (!isValid) {
-    logger.warn('[!] Invalid API key format detected. Expected format: sk-...');
-    logger.warn('   You can get your API key from: https://platform.openai.com/api-keys');
-    logger.warn('   The key has been saved but may not work correctly.');
+    clack.log.warn('Invalid API key format detected. Expected format: sk-...');
+    clack.log.warn('The key has been saved but may not work correctly.');
   }
 
   // Store the key in the .env file (even if invalid)
-  await storeOpenAIKey(response.openaiKey, envFilePath);
+  const spinner = clack.spinner();
+  spinner.start('Saving OpenAI API key...');
 
-  return response.openaiKey;
+  try {
+    await storeOpenAIKey(response, envFilePath);
+    spinner.stop('OpenAI API key saved successfully!');
+    clack.outro('\u2713 OpenAI integration configured');
+    return response;
+  } catch (error) {
+    spinner.stop('Failed to save API key');
+    clack.log.error(`Error: ${error.message}`);
+    return null;
+  }
 }
 
 /**
@@ -585,33 +607,47 @@ export async function promptAndStoreOpenAIKey(envFilePath: string): Promise<stri
  * @returns The configured Anthropic API key or null if user cancels
  */
 export async function promptAndStoreAnthropicKey(envFilePath: string): Promise<string | null> {
-  const response = await prompts({
-    type: 'password',
-    name: 'anthropicKey',
+  clack.intro('🤖 Anthropic Claude Configuration');
+
+  clack.note(
+    'Get your API key from: https://console.anthropic.com/settings/keys',
+    'API Key Information'
+  );
+
+  const response = await clack.password({
     message: 'Enter your Anthropic API key:',
     validate: (value) => {
       if (value.trim() === '') return 'Anthropic API key cannot be empty';
-      return true; // Always return true to allow continuation
+      return undefined;
     },
   });
 
-  // Handle user cancellation (Ctrl+C)
-  if (!response.anthropicKey) {
+  if (clack.isCancel(response)) {
+    clack.cancel('Operation cancelled.');
     return null;
   }
 
   // Check if the API key format is valid and warn if not
-  const isValid = isValidAnthropicKey(response.anthropicKey);
+  const isValid = isValidAnthropicKey(response);
   if (!isValid) {
-    logger.warn('[!] Invalid API key format detected. Expected format: sk-ant-...');
-    logger.warn('   You can get your API key from: https://console.anthropic.com/');
-    logger.warn('   The key has been saved but may not work correctly.');
+    clack.log.warn('Invalid API key format detected. Expected format: sk-ant-...');
+    clack.log.warn('The key has been saved but may not work correctly.');
   }
 
   // Store the key in the .env file (even if invalid)
-  await storeAnthropicKey(response.anthropicKey, envFilePath);
+  const spinner = clack.spinner();
+  spinner.start('Saving Anthropic API key...');
 
-  return response.anthropicKey;
+  try {
+    await storeAnthropicKey(response, envFilePath);
+    spinner.stop('Anthropic API key saved successfully!');
+    clack.outro('\u2713 Claude integration configured');
+    return response;
+  } catch (error) {
+    spinner.stop('Failed to save API key');
+    clack.log.error(`Error: ${error.message}`);
+    return null;
+  }
 }
 
 /**

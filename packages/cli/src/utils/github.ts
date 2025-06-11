@@ -4,6 +4,7 @@ import { logger } from '@elizaos/core';
 import { existsSync } from 'node:fs';
 import { execa } from 'execa';
 import { UserEnvironment } from './user-environment';
+import * as clack from '@clack/prompts';
 
 const GITHUB_API_URL = 'https://api.github.com';
 
@@ -584,47 +585,42 @@ export async function getGitHubCredentials(): Promise<{
   }
 
   // No valid credentials found, prompt the user
-  const prompt = await import('prompts');
+  clack.intro('🔐 GitHub Authentication Required');
 
-  // First display the instructions separately
-  console.log('\n====== GitHub Authentication Required ======');
-  console.log('To create a GitHub Personal Access Token (Classic):');
-  console.log('1. Go to https://github.com/settings/tokens/new');
-  console.log('2. Give your token a descriptive name (e.g., "ElizaOS CLI")');
-  console.log('3. Select "No expiration" or any expiration date');
-  console.log('4. Select the following scopes (all are required):');
-  console.log('   - repo (Full control of private repositories)');
-  console.log('   - read:org (Read org and team membership, read org projects)');
-  console.log('   - workflow (Update GitHub Action workflows)');
-  console.log('5. Click "Generate token" at the bottom of the page');
-  console.log("6. Copy the displayed token (you won't be able to see it again!)");
-  console.log('');
-  console.log('\u001b[33mNOTE: You must use a Classic token, not a Fine-grained token\u001b[0m');
-  console.log('======================================\n');
+  clack.note(
+    `To create a GitHub Personal Access Token (Classic):
+1. Go to https://github.com/settings/tokens/new
+2. Give your token a descriptive name (e.g., "ElizaOS CLI")
+3. Select "No expiration" or any expiration date
+4. Select the following scopes (all are required):
+   - repo (Full control of private repositories)
+   - read:org (Read org and team membership, read org projects)
+   - workflow (Update GitHub Action workflows)
+5. Click "Generate token" at the bottom of the page
+6. Copy the displayed token (you won't be able to see it again!)
 
-  // Wait a moment to ensure output is flushed
-  await new Promise((resolve) => setTimeout(resolve, 100));
+NOTE: You must use a Classic token, not a Fine-grained token`,
+    'Setup Instructions'
+  );
 
   // Then prompt for the username with a simple message
-  const { promptedUsername } = await prompt.default({
-    type: 'text',
-    name: 'promptedUsername',
+  const promptedUsername = await clack.text({
     message: 'Enter your GitHub username:',
-    validate: (value) => (value ? true : 'Username is required'),
+    validate: (value) => (value ? undefined : 'Username is required'),
   });
 
-  if (!promptedUsername) {
+  if (clack.isCancel(promptedUsername)) {
+    clack.cancel('Operation cancelled.');
     return null;
   }
 
-  const { promptedToken } = await prompt.default({
-    type: 'password',
-    name: 'promptedToken',
+  const promptedToken = await clack.password({
     message: 'Enter your GitHub Personal Access Token (with repo, read:org, and workflow scopes):',
-    validate: (value) => (value ? true : 'Token is required'),
+    validate: (value) => (value ? undefined : 'Token is required'),
   });
 
-  if (!promptedToken) {
+  if (clack.isCancel(promptedToken)) {
+    clack.cancel('Operation cancelled.');
     return null;
   }
 

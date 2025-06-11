@@ -174,7 +174,19 @@ export const settingsProvider: Provider = {
 
       if (isOnboarding) {
         // In onboarding mode, use the user's world directly
-        world = userWorlds?.find((world) => world.metadata?.settings);
+        // Look for worlds with settings metadata, or create one if none exists
+        world = userWorlds?.find((world) => world.metadata?.settings !== undefined);
+
+        if (!world && userWorlds && userWorlds.length > 0) {
+          // If user has worlds but none have settings, use the first one and initialize settings
+          world = userWorlds[0];
+          if (!world.metadata) {
+            world.metadata = {};
+          }
+          world.metadata.settings = {};
+          await runtime.updateWorld(world);
+          logger.info(`Initialized settings for user's world ${world.id}`);
+        }
 
         if (!world) {
           logger.error('No world found for user during onboarding');

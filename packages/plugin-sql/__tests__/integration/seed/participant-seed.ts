@@ -17,8 +17,8 @@ export const participantTestAgent: Agent = {
       short_description: 'Test agent for participant integration tests',
     },
   },
-  createdAt: Date.now(),
-  updatedAt: Date.now(),
+  createdAt: new Date().getTime(),
+  updatedAt: new Date().getTime(),
 };
 
 export const participantTestEntity: Entity = {

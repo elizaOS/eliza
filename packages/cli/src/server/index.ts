@@ -10,6 +10,7 @@ import {
 import bodyParser from 'body-parser';
 import cors from 'cors';
 import express, { Request, Response } from 'express';
+import helmet from 'helmet';
 import * as fs from 'node:fs';
 import http from 'node:http';
 import * as path from 'node:path';
@@ -26,7 +27,11 @@ import type {
   CentralRootMessage,
   MessageServiceStructure,
 } from './types';
-import { createDatabaseAdapter } from '@elizaos/plugin-sql';
+import {
+  createDatabaseAdapter,
+  DatabaseMigrationService,
+  plugin as sqlPlugin,
+} from '@elizaos/plugin-sql';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -122,6 +127,29 @@ export class AgentServer {
       await this.database.init();
       logger.success('Consolidated database initialized successfully');
 
+      // Run migrations for the SQL plugin schema
+      logger.info('[INIT] Running database migrations for messaging tables...');
+      try {
+        const migrationService = new DatabaseMigrationService();
+
+        // Get the underlying database instance
+        const db = (this.database as any).getDatabase();
+        await migrationService.initializeWithDatabase(db);
+
+        // Register the SQL plugin schema
+        migrationService.discoverAndRegisterPluginSchemas([sqlPlugin]);
+
+        // Run the migrations
+        await migrationService.runAllPluginMigrations();
+
+        logger.success('[INIT] Database migrations completed successfully');
+      } catch (migrationError) {
+        logger.error('[INIT] Failed to run database migrations:', migrationError);
+        throw new Error(
+          `Database migration failed: ${migrationError instanceof Error ? migrationError.message : String(migrationError)}`
+        );
+      }
+
       // Add a small delay to ensure database is fully ready
       await new Promise((resolve) => setTimeout(resolve, 500));
 
@@ -129,6 +157,8 @@ export class AgentServer {
       logger.info('[INIT] Ensuring default server exists...');
       await this.ensureDefaultServer();
       logger.success('[INIT] Default server setup complete');
+
+      await this.ensureDefaultAgent();
 
       await this.initializeServer(options);
       await new Promise((resolve) => setTimeout(resolve, 250));
@@ -216,6 +246,46 @@ export class AgentServer {
     }
   }
 
+  private async ensureDefaultAgent(): Promise<void> {
+    try {
+      const DEFAULT_AGENT_ID = '00000000-0000-0000-0000-000000000002';
+
+      // Check if the default agent exists
+      logger.info('[AgentServer] Checking for default agent...');
+      const agent = await this.database.getAgent(DEFAULT_AGENT_ID as UUID);
+
+      if (!agent) {
+        logger.info('[AgentServer] Creating default agent...');
+
+        // Create default agent
+        const defaultAgent = {
+          id: DEFAULT_AGENT_ID as UUID,
+          name: 'Default Message Bus Agent',
+          email: 'messagebus@eliza.ai',
+          description: 'Default agent for message bus operations',
+          personas: ['messagebus'],
+          settings: {},
+          modelProvider: 'none',
+          modelName: 'none',
+          createdAt: new Date(),
+        };
+
+        const created = await this.database.createAgent(defaultAgent as any);
+
+        if (created) {
+          logger.success('[AgentServer] Default agent created successfully');
+        } else {
+          throw new Error('Failed to create default agent');
+        }
+      } else {
+        logger.info('[AgentServer] Default agent already exists');
+      }
+    } catch (error) {
+      logger.error('[AgentServer] Error ensuring default agent:', error);
+      throw error;
+    }
+  }
+
   /**
    * Initializes the server with the provided options.
    *
@@ -227,6 +297,52 @@ export class AgentServer {
       // Initialize middleware and database
       this.app = express();
 
+      // Security headers first - before any other middleware
+      logger.debug('Setting up security headers...');
+      this.app.use(
+        helmet({
+          // Content Security Policy - more permissive for the main app to handle UI
+          contentSecurityPolicy: {
+            directives: {
+              defaultSrc: ["'self'"],
+              styleSrc: ["'self'", "'unsafe-inline'", 'https:'], // Allow inline styles for UI
+              scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"], // Allow inline scripts for UI frameworks
+              imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'], // Allow images from various sources
+              fontSrc: ["'self'", 'https:', 'data:'],
+              connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'], // Allow WebSocket connections
+              mediaSrc: ["'self'", 'blob:', 'data:'],
+              objectSrc: ["'none'"],
+              frameSrc: ["'none'"],
+              baseUri: ["'self'"],
+              formAction: ["'self'"],
+            },
+          },
+          // Cross-Origin Embedder Policy - disabled for compatibility
+          crossOriginEmbedderPolicy: false,
+          // Cross-Origin Resource Policy
+          crossOriginResourcePolicy: { policy: 'cross-origin' },
+          // Frame Options
+          frameguard: { action: 'deny' },
+          // Hide Powered-By header
+          hidePoweredBy: true,
+          // HTTP Strict Transport Security - only in production
+          hsts:
+            process.env.NODE_ENV === 'production'
+              ? {
+                  maxAge: 31536000, // 1 year
+                  includeSubDomains: true,
+                  preload: true,
+                }
+              : false,
+          // No Sniff
+          noSniff: true,
+          // Referrer Policy
+          referrerPolicy: { policy: 'no-referrer-when-downgrade' },
+          // X-XSS-Protection
+          xssFilter: true,
+        })
+      );
+
       // Apply custom middlewares if provided
       if (options?.middlewares) {
         logger.debug('Applying custom middlewares...');
@@ -237,8 +353,19 @@ export class AgentServer {
 
       // Setup middleware for all requests
       logger.debug('Setting up standard middlewares...');
-      this.app.use(cors()); // Enable CORS first
-      this.app.use(bodyParser.json()); // Parse JSON bodies
+      this.app.use(
+        cors({
+          origin: process.env.CORS_ORIGIN || true,
+          credentials: true,
+          methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+          allowedHeaders: ['Content-Type', 'Authorization', 'X-API-KEY'],
+        })
+      ); // Enable CORS
+      this.app.use(
+        bodyParser.json({
+          limit: process.env.EXPRESS_MAX_PAYLOAD || '100kb',
+        })
+      ); // Parse JSON bodies
 
       // Optional Authentication Middleware
       const serverAuthToken = process.env.ELIZA_SERVER_AUTH_TOKEN;
@@ -254,8 +381,8 @@ export class AgentServer {
         );
       }
 
-      const uploadsBasePath = path.join(process.cwd(), 'data/uploads');
-      const generatedBasePath = path.join(process.cwd(), 'data/generated');
+      const uploadsBasePath = path.join(process.cwd(), '.eliza', 'data', 'uploads');
+      const generatedBasePath = path.join(process.cwd(), '.eliza', 'data', 'generated');
       fs.mkdirSync(uploadsBasePath, { recursive: true });
       fs.mkdirSync(generatedBasePath, { recursive: true });
 
@@ -733,6 +860,17 @@ export class AgentServer {
 
   async deleteMessage(messageId: UUID): Promise<void> {
     return (this.database as any).deleteMessage(messageId);
+  }
+
+  async updateChannel(
+    channelId: UUID,
+    updates: { name?: string; participantCentralUserIds?: UUID[]; metadata?: any }
+  ): Promise<MessageChannel> {
+    return (this.database as any).updateChannel(channelId, updates);
+  }
+
+  async deleteChannel(channelId: UUID): Promise<void> {
+    return (this.database as any).deleteChannel(channelId);
   }
 
   async clearChannelMessages(channelId: UUID): Promise<void> {

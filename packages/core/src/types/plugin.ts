@@ -57,9 +57,13 @@ export interface Plugin {
   routes?: Route[];
   tests?: TestSuite[];
 
-  dependencies?: string[]; // Names of plugins this plugin depends on
+  dependencies?: string[];
+
+  testDependencies?: string[];
 
   priority?: number;
+
+  schema?: any;
 }
 
 export interface ProjectAgent {

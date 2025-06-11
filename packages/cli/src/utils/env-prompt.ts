@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { logger } from '@elizaos/core';
-import prompts from 'prompts';
+import * as clack from '@clack/prompts';
 import colors from 'yoctocolors';
 import { UserEnvironment } from './user-environment';
 
@@ -238,19 +238,30 @@ async function promptForEnvVar(config: EnvVarConfig): Promise<string | null> {
     console.log(colors.blue(`Get it here: ${config.url}`));
   }
 
-  const response = await prompts({
-    type: config.secret ? 'password' : 'text',
-    name: 'value',
-    message: `Enter your ${config.name}:`,
-    validate: (input: string) => {
-      if (config.required && (!input || input.trim() === '')) {
-        return 'This field is required';
-      }
-      return true;
-    },
-  });
+  const value = await (config.secret
+    ? clack.password({
+        message: `Enter your ${config.name}:`,
+        validate: (input: string) => {
+          if (config.required && (!input || input.trim() === '')) {
+            return 'This field is required';
+          }
+          return undefined;
+        },
+      })
+    : clack.text({
+        message: `Enter your ${config.name}:`,
+        validate: (input: string) => {
+          if (config.required && (!input || input.trim() === '')) {
+            return 'This field is required';
+          }
+          return undefined;
+        },
+      }));
 
-  const value = response.value;
+  if (clack.isCancel(value)) {
+    clack.cancel('Operation cancelled.');
+    process.exit(0);
+  }
 
   // For optional fields, an empty string means skip
   if (!config.required && (!value || value.trim() === '')) {
