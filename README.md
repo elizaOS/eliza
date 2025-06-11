@@ -35,14 +35,161 @@ A framework for multi-agent development and deployment
 
 > **Note for Windows Users:** [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual) is required.
 
-### Use the Starter (Recommended)
+### Use the CLI (Recommended)
+
+The ElizaOS CLI provides the fastest and most reliable way to create, configure, and run agents. It handles all the complex setup automatically.
+
+#### 1. Install the CLI
 
 ```bash
-git clone https://github.com/elizaos/eliza-starter.git
-cd eliza-starter
-cp .env.example .env
-bun i && bun run build && bun start
+# Install the ElizaOS CLI globally
+bun install -g @elizaos/cli
+
+# Verify installation
+elizaos --version
+
+# Get help with available commands
+elizaos --help
 ```
+
+#### 2. Create Your First Project
+
+```bash
+# Create a new project with interactive setup
+elizaos create my-agent
+
+# Or create with specific options (skips prompts)
+elizaos create my-agent --yes --type project
+```
+
+**Recommended Options for Beginners:**
+
+- **Database**: `pglite` (lightweight, no setup required)  
+- **Model Provider**: `openai` (most reliable and well-tested)
+- **Project Type**: `project` (full ElizaOS application with runtime and agents)
+
+#### 3. Configure Your Agent
+
+```bash
+cd my-agent
+
+# Edit your agent's character file
+elizaos env edit-local
+
+# Or manually edit the .env file with your preferred editor
+nano .env
+```
+
+**Essential Environment Variables:**
+
+```bash
+# Required: Your model API key
+OPENAI_API_KEY=your_api_key_here
+
+# Optional: Logging level (info, debug, error)
+LOG_LEVEL=info
+
+# Optional: Discord bot token (if using Discord)
+DISCORD_APPLICATION_ID=your_discord_app_id
+DISCORD_API_TOKEN=your_discord_bot_token
+```
+
+#### 4. Start Your Agent
+
+```bash
+# Build and start your agent
+elizaos start
+
+# Or start with debug logging for development
+LOG_LEVEL=debug elizaos start
+```
+
+After starting, your agent will be available at:
+- **Web Interface**: http://localhost:3000
+- **API Endpoint**: http://localhost:3000/api
+
+#### 5. Development Workflow
+
+```bash
+# Make changes to your agent code
+# Then rebuild and restart
+bun run build
+elizaos start
+
+# Run tests to verify your changes
+elizaos test
+```
+
+#### Advanced CLI Commands
+
+```bash
+# Create specific components
+elizaos create my-plugin --type plugin    # Create a new plugin
+elizaos create my-agent --type agent      # Create a new agent character
+elizaos create my-tee --type tee          # Create a TEE project
+
+# Environment management
+elizaos env list            # Show all environment variables
+elizaos env reset           # Reset to default .env.example
+
+# Testing options
+elizaos test --name "my-test"    # Run specific tests
+elizaos test e2e                 # Run end-to-end tests only
+elizaos test component           # Run component tests only
+
+# Agent management
+elizaos agent list                      # List all available agents
+elizaos agent start --name "Agent"     # Start a specific agent by name
+elizaos agent stop --name "Agent"      # Stop a running agent
+elizaos agent get --name "Agent"       # Get agent details
+elizaos agent set --name "Agent" --file config.json  # Update agent configuration
+```
+
+#### Debugging and Logging
+
+ElizaOS uses comprehensive logging to help you understand what your agent is doing:
+
+```bash
+# Different log levels
+LOG_LEVEL=error elizaos start    # Only errors
+LOG_LEVEL=info elizaos start     # General information (default)
+LOG_LEVEL=debug elizaos start    # Detailed debugging info
+LOG_LEVEL=verbose elizaos start  # Everything (very detailed)
+
+# Advanced debugging (combine with LOG_LEVEL=debug)
+ELIZA_DEBUG=true elizaos start          # Enable ElizaOS debug output
+NODE_ENV=development elizaos start      # Development mode with extra logging
+```
+
+**Pro Tips:**
+- Use `elizaos --help` to see all available commands and global options
+- Use `elizaos <command> --help` for detailed help on any specific command
+- Use `LOG_LEVEL=debug` during development to see detailed execution flow
+- Check the web interface at http://localhost:3000 for real-time agent status
+- Use `elizaos test` frequently to catch issues early
+- Keep your `.env` file secure and never commit it to version control
+
+#### Available Commands Reference
+
+**All CLI Commands:**
+```bash
+elizaos create     # Create new projects, plugins, agents, or TEE projects
+elizaos start      # Start the agent server with character profiles
+elizaos agent      # Manage agents (list, start, stop, get, set)
+elizaos test       # Run tests (component, e2e, or all)
+elizaos env        # Manage environment variables and configuration
+elizaos dev        # Start in development mode with auto-rebuild
+elizaos update     # Update CLI and project dependencies
+elizaos stop       # Stop all running ElizaOS agents
+elizaos publish    # Publish plugins to registry
+elizaos plugins    # Manage and discover plugins
+elizaos monorepo   # Monorepo development utilities
+elizaos tee        # Trusted Execution Environment commands
+
+# Get help for any specific command
+elizaos <command> --help    # e.g., elizaos create --help, elizaos agent --help
+```
+
 
 ### Manually Start Eliza (Only recommended if you know what you are doing)
 
@@ -50,20 +197,7 @@ bun i && bun run build && bun start
 
 - **Node.js** (v18+ recommended)
 - **bun** (for CLI and dependencies)
-- **bats** (shell test runner, install globally via npm or bun)
 - **git** (for project/plugin tests)
-
-#### Install Bats (Test Runner)
-
-You need the [bats-core](https://github.com/bats-core/bats-core) test runner for shell tests.
-
-To install globally:
-
-```bash
-npm install -g bats
-# or, if you use bun:
-bun add -g bats
-```
 
 #### Checkout the latest release
 
@@ -94,8 +228,8 @@ https://bun.sh/docs/installation
 
 ```bash
 bun install
-bun run build # npm will work too
-bun start # npm will work too
+bun run build 
+bun start 
 ```
 
 ### Interact via Browser
@@ -110,47 +244,9 @@ Once Eliza is running, access the modern web interface at http://localhost:3000.
 - Comprehensive memory and conversation history.
 - Responsive design for an optimal experience on various screen sizes.
 
-### OpenTelemetry Instrumentation (Optional)
 
-Eliza supports OpenTelemetry for tracing and monitoring agent behavior. This allows you to gain insights into the performance and execution flow of your agents.
 
-**Enabling Instrumentation:**
 
-Set the following environment variable:
-
-```bash
-INSTRUMENTATION_ENABLED=true
-```
-
-When enabled, Eliza will:
-
-- Initialize an OpenTelemetry tracer.
-- Automatically trace key operations within the core `AgentRuntime` and supported plugins (e.g., the `plugin-openai`).
-
-**Service Name:**
-
-The default service name for traces will be `agent-<character_name>-<agent_id>`.
-
-**PostgreSQL Exporter Setup (Example):**
-
-If you plan to export traces to a PostgreSQL database (e.g., using a compatible OpenTelemetry exporter), you can start a local instance using Docker:
-
-```bash
-docker run -d --name postgres-tracing -p 5432:5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=eliza_tracing postgres:15
-```
-
-You will also need to configure the connection URL via the following environment variable, adjusting it based on your database setup:
-
-```bash
-INSTRUMENTATION_ENABLED=true
-POSTGRES_URL_INSTRUMENTATION="postgresql://postgres:postgres@localhost:5432/eliza_tracing"
-```
-
----
-
-### Automatically Start Eliza
-
-The start script provides an automated way to set up and run Eliza:
 
 ## Citation
 
@@ -206,7 +302,6 @@ Eliza is organized as a monorepo using Bun, Lerna, and Turbo for efficient packa
 
 - **`/packages/`**: Core components of the Eliza framework:
   - `core/`: The foundational package (@elizaos/core) implementing:
-    - OpenTelemetry instrumentation for tracing and monitoring
     - LangChain integration for AI model interactions
     - PDF processing capabilities
     - Logging and error handling infrastructure
