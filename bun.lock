@@ -317,7 +317,6 @@
         "@elizaos/plugin-sql": "workspace:*",
       },
       "devDependencies": {
-        "@elizaos/cli": "workspace:*",
         "@types/node": "^22.15.3",
         "prettier": "3.5.3",
         "tsup": "8.5.0",
