@@ -8,6 +8,7 @@ import {
   expectHelpOutput,
   type TestContext,
 } from './test-utils';
+import { TEST_TIMEOUTS } from '../test-timeouts';
 
 describe('ElizaOS Monorepo Commands', () => {
   let context: TestContext;
@@ -38,7 +39,7 @@ describe('ElizaOS Monorepo Commands', () => {
     await writeFile('not-empty-dir/placeholder', '');
 
     const result = expectCliCommandToFail(context.elizaosCmd, 'monorepo --dir not-empty-dir', {
-      timeout: 10000,
+      timeout: TEST_TIMEOUTS.QUICK_COMMAND,
     });
     expect(result.status).not.toBe(0);
     expect(result.output).toMatch(/not empty/);
