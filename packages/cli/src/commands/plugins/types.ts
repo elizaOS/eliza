@@ -86,14 +86,6 @@ export interface GenerationResult {
 }
 
 /**
- * Directory information from detection
- */
-export interface DirectoryInfo {
-  type: string;
-  hasPackageJson: boolean;
-}
-
-/**
  * Package.json dependencies
  */
 export type Dependencies = Record<string, string>;

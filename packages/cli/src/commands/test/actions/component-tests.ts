@@ -20,9 +20,8 @@ export async function runComponentTests(
   if (!options.skipBuild) {
     try {
       const cwd = process.cwd();
-      const isPlugin = projectInfo.type === 'elizaos-plugin';
-      logger.info(`Building ${isPlugin ? 'plugin' : 'project'}...`);
-      await buildProject(cwd, isPlugin);
+      logger.info(`Building ${projectInfo.isPlugin ? 'plugin' : 'project'}...`);
+      await buildProject(cwd, projectInfo.isPlugin);
       logger.info(`Build completed successfully`);
     } catch (buildError) {
       logger.error(`Build error: ${buildError}`);

@@ -69,10 +69,8 @@ export async function performRebuild(context: DevContext): Promise<void> {
   console.info('Rebuilding...');
 
   const { directory, directoryType } = context;
-  const isPlugin = directoryType.type === 'elizaos-plugin';
-  const isMonorepo = directoryType.type === 'elizaos-monorepo';
 
-  if (isMonorepo || directoryType.monorepoRoot) {
+  if (directoryType.isMonorepo || directoryType.isSubdir) {
     const { monorepoRoot } = await UserEnvironment.getInstance().getPathInfo();
     if (monorepoRoot) {
       await buildCorePackages(monorepoRoot);
@@ -82,7 +80,7 @@ export async function performRebuild(context: DevContext): Promise<void> {
   }
 
   // Build the current project/plugin
-  const result = await buildPackage(directory, isPlugin);
+  const result = await buildPackage(directory, directoryType.isPlugin);
 
   if (result.success) {
     console.log(`✓ Rebuild successful (${result.duration}ms)`);
@@ -97,9 +95,6 @@ export async function performRebuild(context: DevContext): Promise<void> {
  */
 export async function performInitialBuild(context: DevContext): Promise<void> {
   const { directoryType, directory } = context;
-  const isPlugin = directoryType.type === 'elizaos-plugin';
-  const isMonorepo = directoryType.type === 'elizaos-monorepo';
-
 
   if (process.env.ELIZA_TEST_MODE) {
     console.info('Skipping initial build in test mode');
@@ -107,10 +102,10 @@ export async function performInitialBuild(context: DevContext): Promise<void> {
   }
 
   // Ensure initial build is performed (skip for monorepo as it may have multiple projects)
-  if (!isMonorepo) {
+  if (!directoryType.isMonorepo) {
     console.info('Building project...');
     try {
-      await buildProject(directory, isPlugin);
+      await buildProject(directory, directoryType.isPlugin);
       console.info('✓ Initial build completed');
     } catch (error) {
       console.error(`Initial build failed: ${error.message}`);
@@ -141,6 +136,6 @@ export function createDevContext(cwd: string): DevContext {
     directory: cwd,
     directoryType,
     watchDirectory: existsSync(srcDir) ? srcDir : cwd,
-    buildRequired: directoryType.type !== 'elizaos-monorepo',
+    buildRequired: !directoryType.isMonorepo,
   };
 }

@@ -11,7 +11,7 @@ import {
   saveRegistrySettings,
   validateDataDir,
 } from '@/src/utils/registry/index';
-import { detectDirectoryType } from '@/src/utils/directory-detection';
+import { detectDirectoryType, type DirectoryInfo } from '@/src/utils/directory-detection';
 import { Command } from 'commander';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -33,13 +33,7 @@ import { getNpmUsername } from './utils/authentication';
 import { checkCliVersion } from './utils/version-check';
 
 // Import types
-import {
-  PublishOptions,
-  PackageJson,
-  Credentials,
-  DirectoryInfo,
-  PlaceholderReplacement,
-} from './types';
+import { PublishOptions, PackageJson, Credentials, PlaceholderReplacement } from './types';
 
 // Constants
 const LOCAL_REGISTRY_PATH = 'packages/registry';
@@ -75,9 +69,9 @@ export const publish = new Command()
       // Get the plugin directory name (should be plugin-*)
       const pluginDirName = path.basename(process.cwd());
 
-      // Validate we're in a plugin directory
-      if (!pluginDirName.startsWith('plugin-')) {
-        console.error('This command must be run from a plugin directory (plugin-*)');
+      // Validate we're in a plugin directory using proper detection logic
+      if (!directoryInfo.isPlugin) {
+        console.error('This command must be run from a plugin directory');
         process.exit(1);
       }
 
@@ -121,29 +115,28 @@ export const publish = new Command()
       }
 
       // Use standardized directory detection for type determination
-      let detectedType: string;
+      const detectedType = directoryInfo.isPlugin
+        ? 'plugin'
+        : directoryInfo.isProject
+          ? 'project'
+          : 'plugin'; // fallback
 
-      if (directoryInfo.type === 'elizaos-plugin') {
-        detectedType = 'plugin';
+      if (detectedType === 'plugin') {
         console.info('Detected ElizaOS plugin using standardized directory detection');
-      } else if (directoryInfo.type === 'elizaos-project') {
-        detectedType = 'project';
-        console.info('Detected ElizaOS project using standardized directory detection');
       } else {
-        // Fallback for backwards compatibility - check package.json fields
-        detectedType = 'plugin'; // Default to plugin
+        console.info('Detected ElizaOS project using standardized directory detection');
+      }
 
+      // Fallback for backwards compatibility - check package.json fields
+      if (!directoryInfo.isPlugin && !directoryInfo.isProject) {
         if (packageJson.agentConfig?.pluginType) {
           const pluginType = packageJson.agentConfig.pluginType.toLowerCase();
           if (pluginType.includes('project')) {
-            detectedType = 'project';
             console.info('Detected project from package.json agentConfig.pluginType');
           }
         } else if (packageJson.eliza?.type === 'project') {
-          detectedType = 'project';
           console.info('Detected project from package.json eliza.type (legacy format)');
         } else if (packageJson.packageType === 'project') {
-          detectedType = 'project';
           console.info('Detected project from package.json packageType field');
         } else {
           console.info(`Defaulting to plugin type. Directory detected as: ${directoryInfo.type}`);

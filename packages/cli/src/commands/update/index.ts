@@ -70,8 +70,6 @@ export const update = new Command()
           return;
         }
 
-        const isPlugin = directoryInfo.type === 'elizaos-plugin';
-
         if (directoryInfo.elizaPackageCount === 0) {
           console.info('No ElizaOS packages found in this project.');
           console.info(
@@ -90,6 +88,7 @@ export const update = new Command()
           skipBuild: options.skipBuild,
         };
 
+        const isPlugin = directoryInfo.isPlugin;
         await updateDependencies(cwd, isPlugin, updateOptions);
 
         if (options.check) {

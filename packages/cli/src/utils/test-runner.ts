@@ -19,8 +19,8 @@ interface TestStats {
 
 interface TestOptions {
   filter?: string;
-  skipPlugins?: boolean;
-  skipProjectTests?: boolean;
+  runPluginTests?: boolean;
+  runProjectTests?: boolean;
   skipE2eTests?: boolean;
 }
 
@@ -115,7 +115,7 @@ export class TestRunner {
    * Runs project agent tests
    */
   private async runProjectTests(options: TestOptions) {
-    if (!this.projectAgent?.tests || options.skipProjectTests || this.isDirectPluginTest) {
+    if (!this.projectAgent?.tests || !options.runProjectTests || this.isDirectPluginTest) {
       if (this.isDirectPluginTest) {
         logger.info('Skipping project tests when directly testing a plugin');
       }
@@ -151,7 +151,7 @@ export class TestRunner {
    */
   private async runPluginTests(options: TestOptions) {
     // Skip plugin tests if we're not in a plugin directory
-    if (options.skipPlugins) {
+    if (!options.runPluginTests) {
       return;
     }
 
@@ -352,14 +352,18 @@ export const myPlugin = {
    * @param options Test options
    */
   async runTests(options: TestOptions = {}): Promise<TestStats> {
+    // Set default values for test flags
+    const { runPluginTests = true, runProjectTests = true, ...restOptions } = options;
+    const optionsWithDefaults = { runPluginTests, runProjectTests, ...restOptions };
+
     // Run project tests first (unless this is a direct plugin test)
-    await this.runProjectTests(options);
+    await this.runProjectTests(optionsWithDefaults);
 
     // Then run plugin tests
-    await this.runPluginTests(options);
+    await this.runPluginTests(optionsWithDefaults);
 
     // Then run e2e tests
-    await this.runE2eTests(options);
+    await this.runE2eTests(optionsWithDefaults);
 
     // Log summary
     if (!this.stats.hasTests) {

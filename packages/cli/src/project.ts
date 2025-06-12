@@ -11,6 +11,7 @@ import * as fs from 'node:fs';
 import path from 'node:path';
 import { v4 as uuidv4 } from 'uuid';
 import { character as elizaCharacter } from '@/src/characters/eliza';
+import { detectDirectoryType } from '@/src/utils/directory-detection';
 
 /**
  * Interface for a project module that can be loaded.
@@ -133,12 +134,127 @@ function extractPlugin(module: any): Plugin {
  */
 export async function loadProject(dir: string): Promise<Project> {
   try {
-    // TODO: Get the package.json and get the main field
+    // First, use centralized directory detection to check if we're in a plugin directory
+    const directoryInfo = detectDirectoryType(dir);
+    logger.debug(`Directory detection: ${directoryInfo.type}, isPlugin: ${directoryInfo.isPlugin}`);
+
+    // If it's a plugin directory, handle it first
+    if (directoryInfo.isPlugin) {
+      logger.info('Detected plugin directory - loading as plugin');
+
+      // Try to find the plugin's entry point
+      const entryPoints = [
+        ...(directoryInfo.packageInfo?.main
+          ? [path.join(dir, directoryInfo.packageInfo.main)]
+          : []),
+        path.join(dir, 'dist/index.js'),
+        path.join(dir, 'src/index.ts'),
+        path.join(dir, 'src/index.js'),
+        path.join(dir, 'index.ts'),
+        path.join(dir, 'index.js'),
+      ];
+
+      let pluginModule: any = null;
+      for (const entryPoint of entryPoints) {
+        if (fs.existsSync(entryPoint)) {
+          try {
+            const importPath = path.resolve(entryPoint);
+            pluginModule = await import(importPath);
+            logger.info(`Loaded plugin from ${entryPoint}`);
+            break;
+          } catch (error) {
+            logger.warn(`Failed to import plugin from ${entryPoint}:`, error);
+          }
+        }
+      }
+
+      if (!pluginModule) {
+        // If we can't find the plugin entry point, use the default Eliza character
+        logger.warn('Could not find plugin entry point, using default character');
+        const testCharacter: Character = {
+          ...elizaCharacter,
+          id: uuidv4() as UUID,
+          name: 'Eliza (Test Agent)',
+          system: `${elizaCharacter.system} Testing the plugin: ${directoryInfo.packageName || 'unknown'}.`,
+        };
+
+        const testAgent: ProjectAgent = {
+          character: testCharacter,
+          plugins: [], // No plugins since we couldn't load any
+          init: async (runtime: IAgentRuntime) => {
+            logger.info(
+              `Initializing Eliza test agent for plugin: ${directoryInfo.packageName || 'unknown'}`
+            );
+          },
+        };
+
+        return {
+          agents: [testAgent],
+          dir,
+          isPlugin: true,
+        };
+      }
+
+      try {
+        // Extract the plugin object
+        const plugin = extractPlugin(pluginModule);
+        logger.debug(`Found plugin: ${plugin.name} - ${plugin.description}`);
+
+        // Log plugin structure for debugging
+        logger.debug(`Plugin has the following properties: ${Object.keys(plugin).join(', ')}`);
+
+        // Create a more complete plugin object with all required properties
+        const completePlugin: Plugin = {
+          name: plugin.name || 'unknown-plugin',
+          description: plugin.description || 'No description',
+          init:
+            plugin.init ||
+            (async (config, runtime) => {
+              logger.info(`Dummy init for plugin: ${plugin.name}`);
+            }),
+          // Copy all other properties from the original plugin
+          ...plugin,
+        };
+
+        // Use the Eliza character as our test agent
+        const testCharacter: Character = {
+          ...elizaCharacter,
+          id: uuidv4() as UUID,
+          name: 'Eliza (Test Agent)',
+          system: `${elizaCharacter.system} Testing the plugin: ${completePlugin.name}.`,
+        };
+
+        logger.info(`Using Eliza character as test agent for plugin: ${completePlugin.name}`);
+
+        // Create a test agent with the plugin included
+        const testAgent: ProjectAgent = {
+          character: testCharacter,
+          plugins: [completePlugin], // Only include the plugin being tested
+          init: async (runtime: IAgentRuntime) => {
+            logger.info(`Initializing Eliza test agent for plugin: ${completePlugin.name}`);
+            // The plugin will be registered automatically in runtime.initialize()
+          },
+        };
+
+        return {
+          agents: [testAgent],
+          dir,
+          isPlugin: true,
+          pluginModule: completePlugin,
+        };
+      } catch (error) {
+        logger.error('Error extracting plugin from module:', error);
+        throw error;
+      }
+    }
+
+    // If not a plugin, try to load as a project
     const packageJson = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
     const main = packageJson.main;
     if (!main) {
-      logger.warn('No main field found in package.json, using default character');
-      return;
+      throw new Error(
+        `Project at ${dir} is missing required 'main' field in package.json. Please specify the entry point file in package.json.`
+      );
     }
 
     // Try to find the project's entry point
@@ -179,71 +295,6 @@ export async function loadProject(dir: string): Promise<Project> {
 
     if (!projectModule) {
       throw new Error('Could not find project entry point');
-    }
-
-    // Check if it's a plugin using our improved detection
-    const moduleIsPlugin = isPlugin(projectModule);
-    logger.debug(`Is this a plugin? ${moduleIsPlugin}`);
-
-    if (moduleIsPlugin) {
-      logger.info('Detected plugin module instead of project');
-
-      try {
-        // Extract the plugin object
-        const plugin = extractPlugin(projectModule);
-        logger.debug(`Found plugin: ${plugin.name} - ${plugin.description}`);
-
-        // Log plugin structure for debugging
-        logger.debug(`Plugin has the following properties: ${Object.keys(plugin).join(', ')}`);
-
-        // Create a more complete plugin object with all required properties
-        const completePlugin: Plugin = {
-          name: plugin.name || 'unknown-plugin',
-          description: plugin.description || 'No description',
-          init:
-            plugin.init ||
-            (async (config, runtime) => {
-              logger.info(`Dummy init for plugin: ${plugin.name}`);
-            }),
-          // Copy all other properties from the original plugin
-          ...plugin,
-        };
-
-        // Use the Eliza character as our test agent
-        const testCharacter: Character = {
-          ...elizaCharacter,
-          id: uuidv4() as UUID,
-          name: 'Eliza (Test Mode)',
-          system: `${elizaCharacter.system} Testing the plugin: ${completePlugin.name}.`,
-        };
-
-        logger.info(`Using Eliza character as test agent for plugin: ${completePlugin.name}`);
-
-        // Create a test agent with the plugin included
-        const testAgent: ProjectAgent = {
-          character: testCharacter,
-          plugins: [completePlugin], // Only include the plugin being tested
-          init: async (runtime: IAgentRuntime) => {
-            logger.info(`Initializing Eliza test agent for plugin: ${completePlugin.name}`);
-            // The plugin will be registered automatically in runtime.initialize()
-          },
-        };
-
-        // Since we're in test mode, Eliza (our test agent) needs to already exist in the database
-        // before any entity is created, but we can't do this in the init function because
-        // the adapter might not be ready. Let's ensure this is handled properly in the runtime's
-        // initialize method or by initializing the agent in the database separately.
-
-        return {
-          agents: [testAgent],
-          dir,
-          isPlugin: true,
-          pluginModule: completePlugin,
-        };
-      } catch (error) {
-        logger.error('Error extracting plugin from module:', error);
-        throw error;
-      }
     }
 
     // Extract agents from the project module

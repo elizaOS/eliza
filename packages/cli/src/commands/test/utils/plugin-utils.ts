@@ -11,7 +11,7 @@ import path from 'node:path';
  * @returns An array of loaded plugin modules.
  */
 export async function loadPluginDependencies(projectInfo: DirectoryInfo): Promise<Plugin[]> {
-  if (projectInfo.type !== 'elizaos-plugin') {
+  if (!projectInfo.isPlugin) {
     return [];
   }
   const project = await loadProject(process.cwd());

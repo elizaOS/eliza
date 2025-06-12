@@ -32,9 +32,8 @@ export async function runE2eTests(
   if (!options.skipBuild) {
     try {
       const cwd = process.cwd();
-      const isPlugin = projectInfo.type === 'elizaos-plugin';
-      logger.info(`Building ${isPlugin ? 'plugin' : 'project'}...`);
-      await buildProject(cwd, isPlugin);
+      logger.info(`Building ${projectInfo.isPlugin ? 'plugin' : 'project'}...`);
+      await buildProject(cwd, projectInfo.isPlugin);
       logger.info(`Build completed successfully`);
     } catch (buildError) {
       logger.error(`Build error: ${buildError}`);
@@ -284,10 +283,9 @@ export async function runE2eTests(
 
           const results = await testRunner.runTests({
             filter: processedFilter,
-            // Only run plugin tests if we're actually in a plugin directory
-            skipPlugins: currentDirInfo.type !== 'elizaos-plugin',
-            // Only run project tests if we're actually in a project directory
-            skipProjectTests: currentDirInfo.type !== 'elizaos-project',
+            // Use positive flags that match the directory type
+            runPluginTests: currentDirInfo.isPlugin,
+            runProjectTests: currentDirInfo.isProject,
             skipE2eTests: false, // Always allow E2E tests
           });
           totalFailed += results.failed;

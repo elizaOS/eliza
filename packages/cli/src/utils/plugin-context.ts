@@ -3,13 +3,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { buildProject } from './build-project';
 import { normalizePluginName } from './registry';
-import { detectDirectoryType } from './directory-detection';
+import { detectDirectoryType, type PackageJson } from './directory-detection';
 
-interface PackageInfo {
-  name: string;
+interface PackageInfo extends PackageJson {
   main?: string;
   scripts?: Record<string, string>;
-  [key: string]: any;
 }
 
 interface PluginContext {
@@ -33,54 +31,43 @@ function normalizeForComparison(name: string): string {
  */
 export function detectPluginContext(pluginName: string): PluginContext {
   const cwd = process.cwd();
-
-  // Use existing directory detection to check if we're in a plugin
   const directoryInfo = detectDirectoryType(cwd);
 
-  if (directoryInfo.type !== 'elizaos-plugin' || !directoryInfo.hasPackageJson) {
+  // If it's not a plugin directory, we're done
+  if (!directoryInfo.isPlugin) {
     return { isLocalDevelopment: false };
   }
 
-  // Get package info from directory detection result
-  const packageJsonPath = path.join(cwd, 'package.json');
-  let packageInfo: PackageInfo;
-  try {
-    packageInfo = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-  } catch (error) {
-    logger.debug(`Failed to parse package.json: ${error}`);
-    return { isLocalDevelopment: false };
-  }
-
-  // Check if the requested plugin matches the current package
+  // Now we know we're in a plugin directory, just check if it's the right one
   const normalizedRequestedPlugin = normalizeForComparison(pluginName);
-  const normalizedCurrentPackage = normalizeForComparison(packageInfo.name);
-
-  // Also check directory name as fallback
-  const dirName = path.basename(cwd);
-  const normalizedDirName = normalizeForComparison(dirName);
+  const normalizedCurrentPackage = normalizeForComparison(directoryInfo.packageName || '');
+  const normalizedDirName = normalizeForComparison(path.basename(cwd));
 
   const isCurrentPlugin =
     normalizedRequestedPlugin === normalizedCurrentPackage ||
     normalizedRequestedPlugin === normalizedDirName;
 
-  if (isCurrentPlugin) {
-    const mainEntry = packageInfo.main || 'dist/index.js';
-    const localPath = path.resolve(cwd, mainEntry);
-    const needsBuild = !fs.existsSync(localPath);
-
-    logger.debug(`Detected local plugin development: ${pluginName}`);
-    logger.debug(`Expected output: ${localPath}`);
-    logger.debug(`Needs build: ${needsBuild}`);
-
-    return {
-      isLocalDevelopment: true,
-      localPath,
-      packageInfo,
-      needsBuild,
-    };
+  if (!isCurrentPlugin) {
+    return { isLocalDevelopment: false };
   }
 
-  return { isLocalDevelopment: false };
+  // We're in the right plugin directory, now handle local dev specifics
+  const mainEntry =
+    directoryInfo.packageInfo?.main ||
+    (fs.existsSync(path.join(cwd, 'dist/index.js')) ? 'dist/index.js' : 'src/index.ts');
+  const localPath = path.resolve(cwd, mainEntry);
+  const needsBuild = !fs.existsSync(localPath);
+
+  logger.debug(`Detected local plugin development: ${pluginName}`);
+  logger.debug(`Expected output: ${localPath}`);
+  logger.debug(`Needs build: ${needsBuild}`);
+
+  return {
+    isLocalDevelopment: true,
+    localPath,
+    packageInfo: directoryInfo.packageInfo as PackageInfo,
+    needsBuild,
+  };
 }
 
 /**

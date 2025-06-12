@@ -38,14 +38,6 @@ export interface Credentials {
 }
 
 /**
- * Directory information from detection
- */
-export interface DirectoryInfo {
-  type: string;
-  hasPackageJson: boolean;
-}
-
-/**
  * Registry settings interface
  */
 export interface RegistrySettings {

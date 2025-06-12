@@ -2,6 +2,7 @@ import { detectDirectoryType, type DirectoryInfo } from '@/src/utils/directory-d
 import { loadProject } from '@/src/project';
 import { runBunCommand } from '@/src/utils/run-bun';
 import { logger } from '@elizaos/core';
+import { UserEnvironment } from '@/src/utils/user-environment';
 import * as fs from 'node:fs';
 import path from 'node:path';
 
@@ -14,20 +15,17 @@ export function getProjectType(testPath?: string): DirectoryInfo {
 }
 
 /**
- * Find the monorepo root by looking for lerna.json
+ * Find the monorepo root using UserEnvironment's detection.
+ * Throws an error if not found since this is used in test contexts.
  */
 export function findMonorepoRoot(startDir: string): string {
-  let currentDir = startDir;
-  while (currentDir !== path.parse(currentDir).root) {
-    if (fs.existsSync(path.join(currentDir, 'lerna.json'))) {
-      return currentDir;
-    }
-    currentDir = path.dirname(currentDir);
+  const root = UserEnvironment.getInstance().findMonorepoRoot(startDir);
+  if (!root) {
+    throw new Error(
+      'Could not find monorepo root. Make sure to run tests from within the Eliza project.'
+    );
   }
-
-  throw new Error(
-    'Could not find monorepo root. Make sure to run tests from within the Eliza project.'
-  );
+  return root;
 }
 
 /**
@@ -64,7 +62,7 @@ export function processFilterName(name?: string): string | undefined {
  * Install plugin dependencies for testing
  */
 export async function installPluginDependencies(projectInfo: DirectoryInfo): Promise<void> {
-  if (projectInfo.type !== 'elizaos-plugin') {
+  if (!projectInfo.isPlugin) {
     return;
   }
 
