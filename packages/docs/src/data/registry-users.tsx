@@ -98,7 +98,7 @@ export const registryUsers: User[] = [
     preview: '/logos/farcaster.jpg',
     website: 'https://github.com/elizaos-plugins/client-farcaster',
     source: 'https://github.com/elizaos-plugins/client-farcaster',
-    tags: ['client'],
+    tags: ['client', 'favorite'],
   },
   {
     title: 'Github',
@@ -138,7 +138,7 @@ export const registryUsers: User[] = [
     preview: '/logos/x.jpg',
     website: 'https://github.com/elizaos-plugins/client-twitter',
     source: 'https://github.com/elizaos-plugins/client-twitter',
-    tags: ['client', 'favorite'],
+    tags: ['client'],
   },
   {
     title: 'Tako',
