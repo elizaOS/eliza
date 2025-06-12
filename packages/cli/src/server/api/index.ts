@@ -708,19 +708,13 @@ export function createApiRouter(
   const router = express.Router();
 
   // API-specific security headers (supplementing main app helmet)
+  // Let the main app's environment-aware CSP handle all routes
+  // Only add non-CSP security headers for API routes
   router.use(
     helmet({
-      // More restrictive CSP for API endpoints
-      contentSecurityPolicy: {
-        directives: {
-          defaultSrc: ["'none'"], // API should not load resources
-          scriptSrc: ["'none'"], // No scripts in API responses
-          objectSrc: ["'none'"],
-          baseUri: ["'none'"],
-          formAction: ["'none'"],
-        },
-      },
-      // API-specific headers
+      // Disable CSP here - let main app handle it with environment awareness
+      contentSecurityPolicy: false,
+      // API-specific headers only
       crossOriginResourcePolicy: { policy: 'cross-origin' },
       referrerPolicy: { policy: 'no-referrer' },
     })
