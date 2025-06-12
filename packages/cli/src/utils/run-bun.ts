@@ -18,7 +18,7 @@ export async function runBunCommand(
     
     // In CI environments, prefer offline mode for install commands to use cached packages
     if (options?.preferOffline && 
-        (process.env.CI === 'true' || process.env.ELIZA_TEST_MODE === 'true') &&
+        (process.env.CI || process.env.ELIZA_TEST_MODE === 'true') &&
         args[0] === 'install') {
       finalArgs.push('--offline');
       console.info('Using offline mode for faster installation from cache...');
