@@ -13,31 +13,28 @@ export async function runBunCommand(
   cwd: string, 
   options?: { preferOffline?: boolean }
 ): Promise<void> {
+  const finalArgs = [...args];
+  
+  // In CI environments, automatically use offline mode for install-related commands
+  const isInstallCommand = args[0] === 'install' || args[0] === 'add';
+  const isCI = process.env.CI || process.env.ELIZA_TEST_MODE === 'true';
+  
+  if (isCI && isInstallCommand && !finalArgs.includes('--prefer-offline')) {
+    finalArgs.push('--prefer-offline');
+    console.info('Using prefer-offline mode for faster installation from cache...');
+  }
+
   try {
-    const finalArgs = [...args];
-    
-    // In CI environments, prefer offline mode for install commands to use cached packages
-    if (options?.preferOffline && 
-        (process.env.CI || process.env.ELIZA_TEST_MODE === 'true') &&
-        args[0] === 'install') {
-      finalArgs.push('--offline');
-      console.info('Using offline mode for faster installation from cache...');
-      console.debug(`CI: ${process.env.CI}, ELIZA_TEST_MODE: ${process.env.ELIZA_TEST_MODE}, args[0]: ${args[0]}`);
-    } else if (options?.preferOffline && args[0] === 'install') {
-      console.debug(`Offline mode not used - CI: ${process.env.CI}, ELIZA_TEST_MODE: ${process.env.ELIZA_TEST_MODE}, args[0]: ${args[0]}`);
-    }
-    
     await execa('bun', finalArgs, { cwd, stdio: 'inherit' });
   } catch (error: any) {
     if (error.code === 'ENOENT' || error.message?.includes('bun: command not found')) {
       throw new Error(`Bun command not found. ${displayBunInstallationTipCompact()}`);
     }
     
-    // If offline mode fails, try again without offline flag
-    if (options?.preferOffline && 
-        args[0] === 'install' && 
-        error.message?.includes('offline')) {
-      console.warn('Offline install failed, retrying with network access...');
+    // If prefer-offline mode fails, try again without prefer-offline flag
+    if (isCI && isInstallCommand && 
+        (error.message?.includes('offline') || error.message?.includes('prefer-offline'))) {
+      console.warn('Prefer-offline install failed, retrying with network access...');
       await execa('bun', args, { cwd, stdio: 'inherit' });
     } else {
       throw error;
