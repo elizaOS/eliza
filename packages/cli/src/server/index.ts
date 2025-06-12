@@ -295,7 +295,7 @@ export class AgentServer {
                   connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
                   mediaSrc: ["'self'", 'blob:', 'data:'],
                   objectSrc: ["'none'"],
-                  frameSrc: ["'none'"],
+                  frameSrc: ["'self'", "data:"],
                   baseUri: ["'self'"],
                   formAction: ["'self'"],
                   // Note: upgrade-insecure-requests is intentionally omitted for Safari compatibility
@@ -306,8 +306,8 @@ export class AgentServer {
           crossOriginEmbedderPolicy: false,
           // Cross-Origin Resource Policy
           crossOriginResourcePolicy: { policy: 'cross-origin' },
-          // Frame Options
-          frameguard: { action: 'deny' },
+          // Frame Options - allow same-origin iframes to align with frameSrc CSP
+          frameguard: { action: 'sameorigin' },
           // Hide Powered-By header
           hidePoweredBy: true,
           // HTTP Strict Transport Security - only in production
