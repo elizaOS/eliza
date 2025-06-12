@@ -21,7 +21,7 @@ describe('ElizaOS Start Commands', () => {
     testServerPort = 3000;
     try {
       execSync(`lsof -t -i :${testServerPort} | xargs kill -9`, { stdio: 'ignore' });
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
     } catch (e) {
       // Ignore if no processes found
     }
@@ -45,7 +45,7 @@ describe('ElizaOS Start Commands', () => {
     for (const proc of runningProcesses) {
       try {
         proc.kill();
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
       } catch (e) {
         // Ignore cleanup errors
       }
@@ -73,7 +73,7 @@ describe('ElizaOS Start Commands', () => {
   const startServerAndWait = async (
     args: string,
     logFile: string,
-    waitTime: number = 6000
+    waitTime: number = TEST_TIMEOUTS.MEDIUM_WAIT
   ): Promise<any> => {
     await mkdir(join(testTmpDir, 'elizadb'), { recursive: true });
 
@@ -121,7 +121,7 @@ describe('ElizaOS Start Commands', () => {
 
     try {
       // Wait a bit more for agent to register
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+      await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
 
       // Test that agent list shows Ada
       const result = execSync(
@@ -136,7 +136,7 @@ describe('ElizaOS Start Commands', () => {
     } finally {
       // Clean up server
       serverProcess.kill();
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
     }
   }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
 
@@ -174,14 +174,14 @@ describe('ElizaOS Start Commands', () => {
 
     try {
       // Wait for server to start
-      await new Promise((resolve) => setTimeout(resolve, 6000));
+      await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.MEDIUM_WAIT));
 
       // Try to connect to the custom port
       const response = await fetch(`http://localhost:${newPort}/api/agents`);
       expect(response.ok).toBe(true);
     } finally {
       serverProcess.kill();
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
     }
   }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
 
@@ -251,13 +251,13 @@ describe('ElizaOS Start Commands', () => {
 
     try {
       // Wait for configuration to start
-      await new Promise((resolve) => setTimeout(resolve, 4000));
+      await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.MEDIUM_WAIT));
 
       // Check if process started (configure option was accepted)
       expect(serverProcess.pid).toBeDefined();
     } finally {
       serverProcess.kill();
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
     }
   }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
 
@@ -274,14 +274,14 @@ describe('ElizaOS Start Commands', () => {
 
     try {
       // Wait for server to be fully ready
-      await new Promise((resolve) => setTimeout(resolve, 5000));
+      await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.MEDIUM_WAIT));
 
       // Health check
       const response = await fetch(`http://localhost:${testServerPort}/api/agents`);
       expect(response.ok).toBe(true);
     } finally {
       serverProcess.kill();
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
     }
   }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
 });
