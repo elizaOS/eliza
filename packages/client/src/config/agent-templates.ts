@@ -222,11 +222,7 @@ export const agentTemplates: AgentTemplate[] = [
         TWITTER_ENABLE_POST_GENERATION: true,
         TWITTER_POST_INTERVAL_MIN: 90,
         TWITTER_POST_INTERVAL_MAX: 180,
-        secrets: {
-          TWITTER_USERNAME: 'process.env.TWITTER_USERNAME',
-          TWITTER_PASSWORD: 'process.env.TWITTER_PASSWORD',
-          TWITTER_EMAIL: 'process.env.TWITTER_EMAIL',
-        },
+        secrets: {},
       },
     },
   },
