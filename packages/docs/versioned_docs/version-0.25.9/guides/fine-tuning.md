@@ -74,8 +74,10 @@ npm install
 
 ```properties
 # (Required) Twitter Authentication
-TWITTER_USERNAME=     # your twitter username
-TWITTER_PASSWORD=     # your twitter password
+TWITTER_API_KEY=      # your twitter api key
+TWITTER_API_SECRET_KEY=  # your twitter api secret key
+TWITTER_ACCESS_TOKEN=    # your twitter access token
+TWITTER_ACCESS_TOKEN_SECRET=  # your twitter access token secret
 
 # (Optional) Blog Configuration
 BLOG_URLS_FILE=      # path to file containing blog URLs

@@ -173,13 +173,12 @@ TELEGRAM_ACCOUNT_SYSTEM_VERSION= # System version
 
 # Twitter/X
 TWITTER_DRY_RUN=false # Simulate without posting
-TWITTER_USERNAME= # Account username
-TWITTER_PASSWORD= # Account password
-TWITTER_EMAIL= # Account email
-TWITTER_2FA_SECRET= # 2FA secret
-TWITTER_COOKIES_AUTH_TOKEN= # Auth token
-TWITTER_COOKIES_CT0= # Cookie CT0
-TWITTER_COOKIES_GUEST_ID= # Guest ID cookie
+TWITTER_API_KEY= # Twitter API v2 key
+TWITTER_API_SECRET_KEY= # Twitter API v2 secret key  
+TWITTER_ACCESS_TOKEN= # OAuth access token
+TWITTER_ACCESS_TOKEN_SECRET= # OAuth access token secret
+TWITTER_TARGET_USERS= # Comma-separated list of target users
+TWITTER_DRY_RUN=false # Set to true to simulate actions without posting
 TWITTER_POLL_INTERVAL=120 # Check interval (sec)
 TWITTER_SEARCH_ENABLE=FALSE # Enable timeline search
 TWITTER_TARGET_USERS= # Usernames to interact with

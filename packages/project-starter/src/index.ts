@@ -21,7 +21,12 @@ export const character: Character = {
     ...(process.env.OPENAI_API_KEY ? ['@elizaos/plugin-openai'] : []),
     ...(!process.env.OPENAI_API_KEY ? ['@elizaos/plugin-local-ai'] : []),
     ...(process.env.DISCORD_API_TOKEN ? ['@elizaos/plugin-discord'] : []),
-    ...(process.env.TWITTER_USERNAME ? ['@elizaos/plugin-twitter'] : []),
+    ...(process.env.TWITTER_API_KEY &&
+    process.env.TWITTER_API_SECRET_KEY &&
+    process.env.TWITTER_ACCESS_TOKEN &&
+    process.env.TWITTER_ACCESS_TOKEN_SECRET
+      ? ['@elizaos/plugin-twitter']
+      : []),
     ...(process.env.TELEGRAM_BOT_TOKEN ? ['@elizaos/plugin-telegram'] : []),
     ...(!process.env.IGNORE_BOOTSTRAP ? ['@elizaos/plugin-bootstrap'] : []),
   ],

@@ -145,7 +145,7 @@ export const postTweetAction: Action = {
   name: 'POST_TWEET',
   similes: [],
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
-    const hasCredentials = !!process.env.TWITTER_USERNAME && !!process.env.TWITTER_PASSWORD;
+    const hasCredentials = !!process.env.TWITTER_API_KEY && !!process.env.TWITTER_API_SECRET_KEY && !!process.env.TWITTER_ACCESS_TOKEN && !!process.env.TWITTER_ACCESS_TOKEN_SECRET;
     elizaLogger.log(`Has credentials: ${hasCredentials}`);
 
     return hasCredentials;
