@@ -4,6 +4,7 @@ import { mkdtemp, rm, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { safeChangeDirectory } from './test-utils';
+import { TEST_TIMEOUTS } from '../test-timeouts';
 
 describe('ElizaOS Start Commands', () => {
   let testTmpDir: string;
@@ -127,7 +128,7 @@ describe('ElizaOS Start Commands', () => {
         `${elizaosCmd} agent list --remote-url http://localhost:${testServerPort}`,
         {
           encoding: 'utf8',
-          timeout: 10000,
+          timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
         }
       );
 
@@ -137,7 +138,7 @@ describe('ElizaOS Start Commands', () => {
       serverProcess.kill();
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
-  }, 30000);
+  }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
 
   // Custom port flag (-p)
   test('custom port spin-up works', async () => {
@@ -182,7 +183,7 @@ describe('ElizaOS Start Commands', () => {
       serverProcess.kill();
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
-  }, 30000);
+  }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
 
   // Multiple character input formats
   test('multiple character formats parse', () => {
@@ -258,7 +259,7 @@ describe('ElizaOS Start Commands', () => {
       serverProcess.kill();
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
-  }, 20000);
+  }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
 
   // Basic server startup test without advanced features that require models
   test('server starts and responds to health check', async () => {
@@ -282,5 +283,5 @@ describe('ElizaOS Start Commands', () => {
       serverProcess.kill();
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
-  }, 30000);
+  }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
 });
