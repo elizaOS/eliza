@@ -1,4 +1,4 @@
-import { asUUID, Content } from '@elizaos/core';
+import { Content } from '@elizaos/core';
 import {
   type Action,
   type ActionExample,
@@ -9,7 +9,6 @@ import {
   ModelType,
   type State,
 } from '@elizaos/core';
-import { v4 } from 'uuid';
 
 /**
  * Template for generating dialog and actions for a character.

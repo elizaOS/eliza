@@ -16,10 +16,8 @@ import {
   type Setting,
   type State,
   type WorldSettings,
-  asUUID,
 } from '@elizaos/core';
 import dedent from 'dedent';
-import { v4 } from 'uuid';
 
 /**
  * Interface representing the structure of a setting update object.
@@ -517,8 +515,7 @@ async function handleOnboardingComplete(
   runtime: IAgentRuntime,
   worldSettings: WorldSettings,
   state: State,
-  callback: HandlerCallback,
-  responses?: Memory[]
+  callback: HandlerCallback
 ): Promise<void> {
   try {
     // Generate completion message
@@ -535,34 +532,18 @@ async function handleOnboardingComplete(
 
     const responseContent = parseJSONObjectFromText(response) as Content;
 
-    const completionMessage = {
-      id: asUUID(v4()),
-      entityId: runtime.agentId,
-      agentId: runtime.agentId,
-      content: {
-        text: responseContent.text,
-        actions: ['ONBOARDING_COMPLETE'],
-        source: 'discord',
-      },
-      roomId: state.roomId || '',
-      createdAt: Date.now(),
-    };
-    responses?.push(completionMessage);
+    await callback({
+      text: responseContent.text,
+      actions: ['ONBOARDING_COMPLETE'],
+      source: 'discord',
+    });
   } catch (error) {
     logger.error(`Error handling settings completion: ${error}`);
-    const errorMessage = {
-      id: asUUID(v4()),
-      entityId: runtime.agentId,
-      agentId: runtime.agentId,
-      content: {
-        text: 'Great! All required settings have been configured. Your server is now fully set up and ready to use.',
-        actions: ['ONBOARDING_COMPLETE'],
-        source: 'discord',
-      },
-      roomId: state.roomId || '',
-      createdAt: Date.now(),
-    };
-    responses?.push(errorMessage);
+    await callback({
+      text: 'Great! All required settings have been configured. Your server is now fully set up and ready to use.',
+      actions: ['ONBOARDING_COMPLETE'],
+      source: 'discord',
+    });
   }
 }
 
@@ -574,8 +555,7 @@ async function generateSuccessResponse(
   worldSettings: WorldSettings,
   state: State,
   messages: string[],
-  callback: HandlerCallback,
-  responses?: Memory[]
+  callback: HandlerCallback
 ): Promise<void> {
   try {
     // Check if all required settings are now configured
@@ -583,7 +563,7 @@ async function generateSuccessResponse(
 
     if (requiredUnconfigured.length === 0) {
       // All required settings are configured, complete settings
-      await handleOnboardingComplete(runtime, worldSettings, state, callback, responses);
+      await handleOnboardingComplete(runtime, worldSettings, state, callback);
       return;
     }
 
@@ -607,45 +587,18 @@ async function generateSuccessResponse(
 
     const responseContent = parseJSONObjectFromText(response) as Content;
 
-    const successMessage = {
-      id: asUUID(v4()),
-      entityId: runtime.agentId,
-      agentId: runtime.agentId,
-      content: {
-        text: responseContent.text,
-        source: 'discord',
-      },
-      roomId: state.roomId || '',
-      createdAt: Date.now(),
-    };
-
-    await runtime.createMemory(
-      {
-        ...successMessage,
-        content: {
-          ...successMessage.content,
-          actions: ['SETTING_UPDATED'],
-        },
-      },
-      'messages'
-    );
-
-    responses?.push(successMessage);
+    await callback({
+      text: responseContent.text,
+      actions: ['SETTING_UPDATED'],
+      source: 'discord',
+    });
   } catch (error) {
     logger.error(`Error generating success response: ${error}`);
-    const errorMessage = {
-      id: asUUID(v4()),
-      entityId: runtime.agentId,
-      agentId: runtime.agentId,
-      content: {
-        text: 'Settings updated successfully. Please continue with the remaining configuration.',
-        actions: ['SETTING_UPDATED'],
-        source: 'discord',
-      },
-      roomId: state.roomId || '',
-      createdAt: Date.now(),
-    };
-    responses?.push(errorMessage);
+    await callback({
+      text: 'Settings updated successfully. Please continue with the remaining configuration.',
+      actions: ['SETTING_UPDATED'],
+      source: 'discord',
+    });
   }
 }
 
@@ -656,8 +609,7 @@ async function generateFailureResponse(
   runtime: IAgentRuntime,
   worldSettings: WorldSettings,
   state: State,
-  callback: HandlerCallback,
-  responses?: Memory[]
+  callback: HandlerCallback
 ): Promise<void> {
   try {
     // Get next required setting
@@ -665,7 +617,7 @@ async function generateFailureResponse(
 
     if (requiredUnconfigured.length === 0) {
       // All required settings are configured, complete settings
-      await handleOnboardingComplete(runtime, worldSettings, state, callback, responses);
+      await handleOnboardingComplete(runtime, worldSettings, state, callback);
       return;
     }
 
@@ -688,34 +640,18 @@ async function generateFailureResponse(
 
     const responseContent = parseJSONObjectFromText(response) as Content;
 
-    const failureMessage = {
-      id: asUUID(v4()),
-      entityId: runtime.agentId,
-      agentId: runtime.agentId,
-      content: {
-        text: responseContent.text,
-        actions: ['SETTING_UPDATE_FAILED'],
-        source: 'discord',
-      },
-      roomId: state.roomId || '',
-      createdAt: Date.now(),
-    };
-    responses?.push(failureMessage);
+    await callback({
+      text: responseContent.text,
+      actions: ['SETTING_UPDATE_FAILED'],
+      source: 'discord',
+    });
   } catch (error) {
     logger.error(`Error generating failure response: ${error}`);
-    const errorMessage = {
-      id: asUUID(v4()),
-      entityId: runtime.agentId,
-      agentId: runtime.agentId,
-      content: {
-        text: "I couldn't understand your settings update. Please try again with a clearer format.",
-        actions: ['SETTING_UPDATE_FAILED'],
-        source: 'discord',
-      },
-      roomId: state.roomId || '',
-      createdAt: Date.now(),
-    };
-    responses?.push(errorMessage);
+    await callback({
+      text: "I couldn't understand your settings update. Please try again with a clearer format.",
+      actions: ['SETTING_UPDATE_FAILED'],
+      source: 'discord',
+    });
   }
 }
 
@@ -725,8 +661,7 @@ async function generateFailureResponse(
 async function generateErrorResponse(
   runtime: IAgentRuntime,
   state: State,
-  callback: HandlerCallback,
-  responses?: Memory[]
+  callback: HandlerCallback
 ): Promise<void> {
   try {
     const prompt = composePromptFromState({
@@ -740,34 +675,18 @@ async function generateErrorResponse(
 
     const responseContent = parseJSONObjectFromText(response) as Content;
 
-    const errorMessage = {
-      id: asUUID(v4()),
-      entityId: runtime.agentId,
-      agentId: runtime.agentId,
-      content: {
-        text: responseContent.text,
-        actions: ['SETTING_UPDATE_ERROR'],
-        source: 'discord',
-      },
-      roomId: state.roomId || '',
-      createdAt: Date.now(),
-    };
-    responses?.push(errorMessage);
+    await callback({
+      text: responseContent.text,
+      actions: ['SETTING_UPDATE_ERROR'],
+      source: 'discord',
+    });
   } catch (error) {
     logger.error(`Error generating error response: ${error}`);
-    const defaultErrorMessage = {
-      id: asUUID(v4()),
-      entityId: runtime.agentId,
-      agentId: runtime.agentId,
-      content: {
-        text: "I'm sorry, but I encountered an error while processing your request. Please try again or contact support if the issue persists.",
-        actions: ['SETTING_UPDATE_ERROR'],
-        source: 'discord',
-      },
-      roomId: state.roomId || '',
-      createdAt: Date.now(),
-    };
-    responses?.push(defaultErrorMessage);
+    await callback({
+      text: "I'm sorry, but I encountered an error while processing your request. Please try again or contact support if the issue persists.",
+      actions: ['SETTING_UPDATE_ERROR'],
+      source: 'discord',
+    });
   }
 }
 
@@ -818,8 +737,7 @@ export const updateSettingsAction: Action = {
     message: Memory,
     state?: State,
     _options?: any,
-    callback?: HandlerCallback,
-    responses?: Memory[]
+    callback?: HandlerCallback
   ): Promise<void> => {
     try {
       if (!state) {
@@ -843,7 +761,7 @@ export const updateSettingsAction: Action = {
       const serverOwnership = worlds?.find((world) => world.metadata?.settings);
       if (!serverOwnership) {
         logger.error(`No server found for user ${message.entityId} in handler`);
-        await generateErrorResponse(runtime, state, callback, responses);
+        await generateErrorResponse(runtime, state, callback);
         return;
       }
 
@@ -860,7 +778,7 @@ export const updateSettingsAction: Action = {
 
       if (!worldSettings) {
         logger.error(`No settings state found for server ${serverId} in handler`);
-        await generateErrorResponse(runtime, state, callback, responses);
+        await generateErrorResponse(runtime, state, callback);
         return;
       }
 
@@ -885,7 +803,7 @@ export const updateSettingsAction: Action = {
         const updatedWorldSettings = await getWorldSettings(runtime, serverId);
         if (!updatedWorldSettings) {
           logger.error('Failed to retrieve updated settings state');
-          await generateErrorResponse(runtime, state, callback, responses);
+          await generateErrorResponse(runtime, state, callback);
           return;
         }
 
@@ -894,17 +812,16 @@ export const updateSettingsAction: Action = {
           updatedWorldSettings,
           state,
           updateResults.messages,
-          callback,
-          responses
+          callback
         );
       } else {
         logger.info('No settings were updated');
-        await generateFailureResponse(runtime, worldSettings, state, callback, responses);
+        await generateFailureResponse(runtime, worldSettings, state, callback);
       }
     } catch (error) {
       logger.error(`Error in settings handler: ${error}`);
       if (state && callback) {
-        await generateErrorResponse(runtime, state, callback, responses);
+        await generateErrorResponse(runtime, state, callback);
       }
     }
   },

@@ -1,6 +1,4 @@
 import type { Action, ActionExample, IAgentRuntime, Memory } from '@elizaos/core';
-import { asUUID } from '@elizaos/core';
-import { v4 } from 'uuid';
 
 /**
  * Represents the none action.
@@ -22,36 +20,7 @@ export const noneAction: Action = {
   },
   description:
     'Respond but perform no additional action. This is the default if the agent is speaking and not doing anything additional.',
-  handler: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    _state?: any,
-    _options?: any,
-    _callback?: any,
-    responses?: Memory[]
-  ): Promise<boolean> => {
-    // Check if there's already a response in the array
-    if (responses && responses.length > 0) {
-      // The response is already in the responses array, no need to add another
-      return true;
-    }
-
-    // Otherwise create a minimal none response
-    const noneMessage = {
-      id: asUUID(v4()),
-      entityId: runtime.agentId,
-      agentId: runtime.agentId,
-      content: {
-        text: '',
-        actions: ['NONE'],
-        source: message.content.source,
-      },
-      roomId: message.roomId,
-      createdAt: Date.now(),
-    };
-
-    await runtime.createMemory(noneMessage, 'messages');
-
+  handler: async (_runtime: IAgentRuntime, _message: Memory): Promise<boolean> => {
     return true;
   },
   examples: [

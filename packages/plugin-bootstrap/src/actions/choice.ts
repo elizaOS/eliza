@@ -10,9 +10,7 @@ import {
   ModelType,
   parseJSONObjectFromText,
   type State,
-  asUUID,
 } from '@elizaos/core';
-import { v4 } from 'uuid';
 
 /**
  * Task: Extract selected task and option from user message
@@ -239,18 +237,11 @@ export const choiceAction: Action = {
       const taskInfo = taskMap.get(taskId);
 
       if (!taskInfo) {
-        const errorMessage = {
-          id: asUUID(v4()),
-          entityId: runtime.agentId,
-          agentId: runtime.agentId,
-          content: {
-            text: `Could not find a task matching ID: ${taskId}. Please try again.`,
-            source: message.content.source,
-          },
-          roomId: message.roomId,
-          createdAt: Date.now(),
-        };
-        responses?.push(errorMessage);
+        await callback?.({
+          text: `Could not find a task matching ID: ${taskId}. Please try again.`,
+          actions: ['SELECT_OPTION_ERROR'],
+          source: message.content.source,
+        });
         return;
       }
 
@@ -258,84 +249,49 @@ export const choiceAction: Action = {
       const selectedTask = tasksWithOptions.find((task) => task.id === taskInfo.fullId);
 
       if (!selectedTask) {
-        const errorMessage = {
-          id: asUUID(v4()),
-          entityId: runtime.agentId,
-          agentId: runtime.agentId,
-          content: {
-            text: 'Error locating the selected task. Please try again.',
-            source: message.content.source,
-          },
-          roomId: message.roomId,
-          createdAt: Date.now(),
-        };
-        responses?.push(errorMessage);
+        await callback?.({
+          text: 'Error locating the selected task. Please try again.',
+          actions: ['SELECT_OPTION_ERROR'],
+          source: message.content.source,
+        });
         return;
       }
 
       if (selectedOption === 'ABORT') {
         if (!selectedTask?.id) {
-          const errorMessage = {
-            id: asUUID(v4()),
-            entityId: runtime.agentId,
-            agentId: runtime.agentId,
-            content: {
-              text: 'Error locating the selected task. Please try again.',
-              source: message.content.source,
-            },
-            roomId: message.roomId,
-            createdAt: Date.now(),
-          };
-          responses?.push(errorMessage);
+          await callback?.({
+            text: 'Error locating the selected task. Please try again.',
+            actions: ['SELECT_OPTION_ERROR'],
+            source: message.content.source,
+          });
           return;
         }
 
         await runtime.deleteTask(selectedTask.id);
-        const cancelMessage = {
-          id: asUUID(v4()),
-          entityId: runtime.agentId,
-          agentId: runtime.agentId,
-          content: {
-            text: `Task "${selectedTask.name}" has been cancelled.`,
-            source: message.content.source,
-          },
-          roomId: message.roomId,
-          createdAt: Date.now(),
-        };
-        responses?.push(cancelMessage);
+        await callback?.({
+          text: `Task "${selectedTask.name}" has been cancelled.`,
+          actions: ['CHOOSE_OPTION_CANCELLED'],
+          source: message.content.source,
+        });
         return;
       }
 
       try {
         const taskWorker = runtime.getTaskWorker(selectedTask.name);
         await taskWorker?.execute(runtime, { option: selectedOption }, selectedTask);
-        const successMessage = {
-          id: asUUID(v4()),
-          entityId: runtime.agentId,
-          agentId: runtime.agentId,
-          content: {
-            text: `Selected option: ${selectedOption} for task: ${selectedTask.name}`,
-            source: message.content.source,
-          },
-          roomId: message.roomId,
-          createdAt: Date.now(),
-        };
-        responses?.push(successMessage);
+        await callback?.({
+          text: `Selected option: ${selectedOption} for task: ${selectedTask.name}`,
+          actions: ['CHOOSE_OPTION'],
+          source: message.content.source,
+        });
         return;
       } catch (error) {
         logger.error('Error executing task with option:', error);
-        const errorMessage = {
-          id: asUUID(v4()),
-          entityId: runtime.agentId,
-          agentId: runtime.agentId,
-          content: {
-            text: 'There was an error processing your selection.',
-            source: message.content.source,
-          },
-          roomId: message.roomId,
-          createdAt: Date.now(),
-        };
-        responses?.push(errorMessage);
+        await callback?.({
+          text: 'There was an error processing your selection.',
+          actions: ['SELECT_OPTION_ERROR'],
+          source: message.content.source,
+        });
         return;
       }
     }
@@ -356,30 +312,11 @@ export const choiceAction: Action = {
       optionsText += '\n\n';
     });
 
-    const invalidMessage = {
-      id: asUUID(v4()),
-      entityId: runtime.agentId,
-      agentId: runtime.agentId,
-      content: {
-        text: optionsText,
-        source: message.content.source,
-      },
-      roomId: message.roomId,
-      createdAt: Date.now(),
-    };
-
-    await runtime.createMemory(
-      {
-        ...invalidMessage,
-        content: {
-          ...invalidMessage.content,
-          actions: ['SELECT_OPTION_INVALID'],
-        },
-      },
-      'messages'
-    );
-
-    responses?.push(invalidMessage);
+    await callback?.({
+      text: optionsText,
+      actions: ['SELECT_OPTION_INVALID'],
+      source: message.content.source,
+    });
   },
 
   examples: [
