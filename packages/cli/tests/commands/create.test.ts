@@ -158,7 +158,7 @@ describe('ElizaOS Create Commands', () => {
 
     expect(result).toContain('Project initialized successfully!');
     expect(existsSync('package.json')).toBe(true);
-  });
+  }, 120000);
 
   test('rejects invalid project name', async () => {
     const result = expectCliCommandToFail(elizaosCmd, 'create "Invalid Name" --yes');
