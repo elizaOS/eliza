@@ -249,10 +249,10 @@ elizaos agent list --port 4000
 
 ```bash
 # Create character file
-elizaos create -t agent eliza
+elizaos create -type agent eliza
 
 # Or create project with character
-elizaos create -t project my-project
+elizaos create -type project my-project
 ```
 
 ### 2. Start Agent Runtime
