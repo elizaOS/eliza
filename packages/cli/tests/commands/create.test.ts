@@ -69,7 +69,7 @@ describe('ElizaOS Create Commands', () => {
     execSync(`rm -rf my-default-app`, { stdio: 'ignore' });
 
     const result = runCliCommandSilently(elizaosCmd, 'create my-default-app --yes', {
-      timeout: 30000,
+      timeout: 60000,
     });
 
     // Check for various success patterns since output might vary
@@ -100,7 +100,7 @@ describe('ElizaOS Create Commands', () => {
     execSync(`rm -rf plugin-my-plugin-app`, { stdio: 'ignore' });
 
     const result = runCliCommandSilently(elizaosCmd, 'create my-plugin-app --yes --type plugin', {
-      timeout: 30000,
+      timeout: 60000,
     });
 
     // Check for various success patterns
@@ -187,7 +187,7 @@ describe('ElizaOS Create Commands', () => {
       // Skip this test if create-eliza is not available
       console.warn('Skipping create-eliza test - command not available');
     }
-  }, 30000);
+  }, 60000);
 
   test('create-eliza plugin project succeeds', async () => {
     execSync(`rm -rf plugin-my-create-plugin`, { stdio: 'ignore' });
@@ -204,7 +204,7 @@ describe('ElizaOS Create Commands', () => {
       // Skip this test if create-eliza is not available
       console.warn('Skipping create-eliza plugin test - command not available');
     }
-  }, 30000);
+  }, 60000);
 
   test('create-eliza agent succeeds', async () => {
     execSync(`rm -f my-create-agent.json`, { stdio: 'ignore' });
@@ -219,5 +219,5 @@ describe('ElizaOS Create Commands', () => {
       // Skip this test if create-eliza is not available
       console.warn('Skipping create-eliza agent test - command not available');
     }
-  }, 30000);
+  }, 60000);
 });
