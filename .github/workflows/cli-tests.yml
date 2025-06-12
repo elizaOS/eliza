@@ -16,22 +16,10 @@ on:
     branches:
       - 'main'
       - 'develop'
-    paths:
-      - 'packages/cli/**'
-      - 'packages/core/**'
-      - 'packages/plugin-bootstrap/**'
-      - 'packages/plugin-sql/**'
-      - '.github/workflows/cli-tests.yml'
   pull_request:
     branches:
       - 'main'
       - 'develop'
-    paths:
-      - 'packages/cli/**'
-      - 'packages/core/**'
-      - 'packages/plugin-bootstrap/**'
-      - 'packages/plugin-sql/**'
-      - '.github/workflows/cli-tests.yml'
 
 jobs:
   test:
