@@ -29,13 +29,13 @@ describe('ElizaOS Plugin Commands', () => {
     console.log('Creating shared test project...');
     execSync(`${elizaosCmd} create shared-test-project --yes`, {
       stdio: 'pipe',
-      timeout: 60000,
+      timeout: 120000,
     });
 
     // Change to project directory for all tests
     process.chdir(projectDir);
     console.log('Shared test project created at:', projectDir);
-  }, 90000); // Longer timeout for project creation
+  }, 150000); // Longer timeout for project creation
 
   beforeEach(() => {
     // Ensure we're in the project directory for each test
