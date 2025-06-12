@@ -113,7 +113,7 @@ export interface MessagePayload extends EventPayload {
  */
 export interface ChannelClearedPayload extends EventPayload {
   roomId: UUID;
-  channelId: string;  
+  channelId: string;
   memoryCount: number;
 }
 

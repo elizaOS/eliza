@@ -21,7 +21,7 @@ const DEFAULT_WATCHER_CONFIG: WatcherConfig = {
  */
 function findTsFiles(dir: string, watchDir: string): string[] {
   let results: string[] = [];
-  
+
   try {
     const entries = fs.readdirSync(dir, { withFileTypes: true });
 
@@ -47,17 +47,17 @@ function findTsFiles(dir: string, watchDir: string): string[] {
   } catch (error) {
     // Ignore errors for directories we can't read
   }
-  
+
   return results;
 }
 
 /**
  * Sets up file watching for the given directory
- * 
+ *
  * Watches for changes to TypeScript and JavaScript files, with debouncing to prevent rapid rebuilds.
  */
 export async function watchDirectory(
-  dir: string, 
+  dir: string,
   onChange: () => void,
   config: Partial<WatcherConfig> = {}
 ): Promise<void> {
@@ -139,17 +139,14 @@ export async function watchDirectory(
 /**
  * Create a debounced file change handler
  */
-export function createDebouncedHandler(
-  handler: () => void,
-  delay: number = 300
-): () => void {
+export function createDebouncedHandler(handler: () => void, delay: number = 300): () => void {
   let timer: any = null;
-  
+
   return () => {
     if (timer) {
       clearTimeout(timer);
     }
-    
+
     timer = setTimeout(() => {
       handler();
       timer = null;

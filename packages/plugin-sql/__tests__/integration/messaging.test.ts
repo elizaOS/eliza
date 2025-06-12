@@ -113,4 +113,4 @@ describe('Messaging Integration Tests', () => {
       expect(agents).toContain(agent2);
     });
   });
-}); 
+});

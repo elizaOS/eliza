@@ -36,6 +36,7 @@ import {
 } from './shared/middleware';
 import fs from 'fs';
 import path from 'path';
+import { SpanStatusCode, type Tracer } from '@opentelemetry/api';
 
 /**
  * Processes attachments to convert localhost URLs to base64 data URIs
@@ -77,8 +78,8 @@ async function processAttachments(attachments: any[], agentId?: string): Promise
 
         // Try multiple possible paths based on where the server might be running from
         const possiblePaths = [
+          path.join(process.cwd(), '.eliza', 'data', 'uploads', agentIdFromUrl, filename),
           path.join(process.cwd(), 'data', 'uploads', agentIdFromUrl, filename),
-          path.join(process.cwd(), 'uploads', agentIdFromUrl, filename),
           path.join(
             process.cwd(),
             'packages',
@@ -360,7 +361,7 @@ async function processSocketMessage(
   };
 
   // Handle instrumentation if tracer is provided and enabled
-  if (tracer && (runtime as AgentRuntime).instrumentationService?.isEnabled?.()) {
+  if (tracer && (runtime as any).instrumentationService?.isEnabled?.()) {
     logger.debug('[SOCKET MESSAGE] Instrumentation enabled. Starting span.', {
       agentId,
       entityId,

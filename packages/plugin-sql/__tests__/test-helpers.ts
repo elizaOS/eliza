@@ -17,7 +17,6 @@ import { PGliteClientManager } from '../src/pglite/manager';
 import { mockCharacter } from './fixtures';
 import { v4 } from 'uuid';
 
-
 /**
  * Creates a fully initialized, in-memory PGlite database adapter and a corresponding
  * AgentRuntime instance for testing purposes. It uses the dynamic migration system
@@ -53,7 +52,7 @@ export async function createTestDatabase(
 
     const schemaName = `test_${testAgentId.replace(/-/g, '_')}`;
     const db = connectionManager.getDatabase();
-    
+
     // Drop schema if it exists to ensure clean state
     await db.execute(sql.raw(`DROP SCHEMA IF EXISTS ${schemaName} CASCADE`));
     await db.execute(sql.raw(`CREATE SCHEMA IF NOT EXISTS ${schemaName}`));
@@ -112,7 +111,7 @@ export async function createTestDatabase(
 /**
  * Creates a properly isolated test database with automatic cleanup.
  * This function ensures each test has its own isolated database state.
- * 
+ *
  * @param testName - A unique name for this test to ensure isolation
  * @param testPlugins - Additional plugins to load
  * @returns Database adapter, runtime, and cleanup function
@@ -129,12 +128,12 @@ export async function createIsolatedTestDatabase(
   // Generate a unique agent ID for this test
   const testAgentId = v4() as UUID;
   const testId = testName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
-  
+
   if (process.env.POSTGRES_URL) {
     // PostgreSQL - use unique schema per test
     const schemaName = `test_${testId}_${Date.now()}`;
     console.log(`[TEST] Creating isolated PostgreSQL schema: ${schemaName}`);
-    
+
     const connectionManager = new PostgresConnectionManager(process.env.POSTGRES_URL);
     const adapter = new PgDatabaseAdapter(testAgentId, connectionManager);
     await adapter.init();
@@ -147,7 +146,7 @@ export async function createIsolatedTestDatabase(
     runtime.registerDatabaseAdapter(adapter);
 
     const db = connectionManager.getDatabase();
-    
+
     // Create isolated schema
     await db.execute(sql.raw(`CREATE SCHEMA ${schemaName}`));
     // Include public in search path so we can access the vector extension
@@ -179,7 +178,7 @@ export async function createIsolatedTestDatabase(
     // PGLite - use unique directory per test
     const tempDir = path.join(os.tmpdir(), `eliza-test-${testId}-${Date.now()}`);
     console.log(`[TEST] Creating isolated PGLite database: ${tempDir}`);
-    
+
     const connectionManager = new PGliteClientManager({ dataDir: tempDir });
     await connectionManager.initialize();
     const adapter = new PgliteDatabaseAdapter(testAgentId, connectionManager);

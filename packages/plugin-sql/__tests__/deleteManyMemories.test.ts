@@ -72,8 +72,9 @@ describe('deleteManyMemories', () => {
 
   it('should handle large arrays by batching', async () => {
     // Create an array of 250 memory IDs (more than the 100 batch size)
-    const memoryIds: UUID[] = Array.from({ length: 250 }, (_, i) => 
-      `${i.toString().padStart(8, '0')}-1111-1111-1111-111111111111` as UUID
+    const memoryIds: UUID[] = Array.from(
+      { length: 250 },
+      (_, i) => `${i.toString().padStart(8, '0')}-1111-1111-1111-111111111111` as UUID
     );
 
     await adapter.deleteManyMemories(memoryIds);
@@ -81,4 +82,4 @@ describe('deleteManyMemories', () => {
     // Should call transaction multiple times for batching
     expect(adapter.db.transaction).toHaveBeenCalled();
   });
-}); 
+});

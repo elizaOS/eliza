@@ -252,7 +252,7 @@ function commaSeparatedStringToArray(commaSeparated: string): string[] {
  */
 async function readCharactersFromStorage(characterPaths: string[]): Promise<string[]> {
   try {
-    const uploadDir = path.join(process.cwd(), 'data', 'characters');
+    const uploadDir = path.join(process.cwd(), '.eliza', 'data', 'characters');
     await fs.promises.mkdir(uploadDir, { recursive: true });
     const fileNames = await fs.promises.readdir(uploadDir);
     for (const fileName of fileNames) {

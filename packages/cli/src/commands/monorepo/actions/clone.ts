@@ -13,7 +13,11 @@ import { CloneInfo } from '../types';
  * @throws {Error} If the specified branch does not exist in the repository.
  * @throws {Error} If cloning fails for any other reason.
  */
-export async function cloneRepository(repo: string, branch: string, destination: string): Promise<void> {
+export async function cloneRepository(
+  repo: string,
+  branch: string,
+  destination: string
+): Promise<void> {
   try {
     const repoUrl = `https://github.com/${repo}`;
 
@@ -39,7 +43,7 @@ export async function cloneRepository(repo: string, branch: string, destination:
 
 /**
  * Prepares the destination directory for cloning
- * 
+ *
  * Creates the directory if it doesn't exist, or validates that it's empty if it does exist.
  */
 export function prepareDestination(dir: string): string {
@@ -49,9 +53,7 @@ export function prepareDestination(dir: string): string {
   if (fs.existsSync(destinationDir)) {
     const files = fs.readdirSync(destinationDir);
     if (files.length > 0) {
-      throw new Error(
-        `Destination directory ${destinationDir} already exists and is not empty`
-      );
+      throw new Error(`Destination directory ${destinationDir} already exists and is not empty`);
     }
   } else {
     fs.mkdirSync(destinationDir, { recursive: true });
@@ -62,17 +64,17 @@ export function prepareDestination(dir: string): string {
 
 /**
  * Main monorepo cloning action
- * 
+ *
  * Handles the complete cloning process including directory preparation and error handling.
  */
 export async function cloneMonorepo(cloneInfo: CloneInfo): Promise<void> {
   const { repo, branch, destination } = cloneInfo;
-  
+
   // Prepare the destination directory
   const destinationDir = prepareDestination(destination);
-  
+
   // Clone the repository
   await cloneRepository(repo, branch, destinationDir);
-  
+
   return;
 }

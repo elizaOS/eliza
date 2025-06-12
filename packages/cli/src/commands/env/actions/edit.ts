@@ -7,9 +7,9 @@ import { maskedValue } from '../utils/validation';
 
 /**
  * Interactive environment variable editor for local .env files.
- * 
+ *
  * Provides an interactive menu to edit existing variables, add new variables, and delete variables from the local .env file. Supports auto-confirmation mode for non-interactive usage.
- * 
+ *
  * @param options - Edit command options
  * @param fromMainMenu - Whether this command was called from the main menu (affects return behavior)
  * @returns Promise<boolean> - Whether to return to main menu
@@ -39,12 +39,14 @@ export async function editEnvVars(options: EditEnvOptions, fromMainMenu = false)
   // Handle empty .env file
   if (Object.keys(envVars).length === 0) {
     console.log('Local .env file is empty.');
-    
+
     // Offer to add a new variable if not in auto-confirm mode
-    const addNew = yes ? false : await clack.confirm({
-      message: 'Would you like to add a new environment variable?',
-      initialValue: true,
-    });
+    const addNew = yes
+      ? false
+      : await clack.confirm({
+          message: 'Would you like to add a new environment variable?',
+          initialValue: true,
+        });
 
     if (clack.isCancel(addNew)) {
       clack.cancel('Operation cancelled.');
@@ -179,11 +181,7 @@ export async function editEnvVars(options: EditEnvOptions, fromMainMenu = false)
  * @param envVars Current environment variables
  * @param yes Whether to auto-confirm prompts
  */
-async function addNewVariable(
-  envPath: string,
-  envVars: EnvVars,
-  yes = false
-): Promise<void> {
+async function addNewVariable(envPath: string, envVars: EnvVars, yes = false): Promise<void> {
   if (yes) {
     console.log(
       'Auto-confirmation mode enabled - skipping variable addition in edit-local -y mode'

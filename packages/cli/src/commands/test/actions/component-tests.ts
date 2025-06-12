@@ -8,7 +8,7 @@ import { processFilterName } from '../utils/project-utils';
 
 /**
  * Run component tests using Vitest
- * 
+ *
  * Executes component tests for the project using Vitest as the test runner. Supports filtering by test name and can optionally skip the build step for faster iteration.
  */
 export async function runComponentTests(

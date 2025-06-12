@@ -268,10 +268,11 @@ export default function PluginsPanel({
                             variant="ghost"
                             size="sm"
                             key={plugin}
-                            className={`inline-flex items-center rounded-full ${isEssential
-                              ? 'bg-blue-800 text-blue-700 hover:bg-blue-600'
-                              : 'bg-primary/10 text-primary hover:bg-primary/20'
-                              } px-2.5 py-0.5 text-xs font-medium h-auto`}
+                            className={`inline-flex items-center rounded-full ${
+                              isEssential
+                                ? 'bg-blue-800 text-blue-700 hover:bg-blue-600'
+                                : 'bg-primary/10 text-primary hover:bg-primary/20'
+                            } px-2.5 py-0.5 text-xs font-medium h-auto`}
                             onClick={() => {
                               // Don't allow removing if it's required by the voice model
                               if (isRequiredByVoice) {

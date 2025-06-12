@@ -36,7 +36,7 @@ export interface Content {
 
   /** Optional target/destination for responses */
   target?: string;
-  
+
   /** URL of the original message/post (e.g. tweet URL, Discord message link) */
   url?: string;
 

@@ -1,5 +1,12 @@
 import { beforeAll, describe, it, expect, afterAll, beforeEach } from 'vitest';
-import { type UUID, type World, type Room, AgentRuntime, stringToUuid, ChannelType } from '@elizaos/core';
+import {
+  type UUID,
+  type World,
+  type Room,
+  AgentRuntime,
+  stringToUuid,
+  ChannelType,
+} from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
 import { createIsolatedTestDatabase } from '../test-helpers';
 import { roomTable } from '../../src/schema';

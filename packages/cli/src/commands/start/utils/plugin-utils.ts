@@ -1,8 +1,4 @@
-import {
-  getCliInstallTag,
-  installPlugin,
-  loadPluginModule,
-} from '@/src/utils';
+import { getCliInstallTag, installPlugin, loadPluginModule } from '@/src/utils';
 import { detectPluginContext, provideLocalPluginGuidance } from '@/src/utils/plugin-context';
 import { logger, type Plugin } from '@elizaos/core';
 import { PluginValidation } from '../types';
@@ -26,7 +22,7 @@ export function isValidPluginShape(obj: any): obj is Plugin {
 
 /**
  * Load and prepare a plugin for use
- * 
+ *
  * Handles both local development plugins and published plugins, with automatic installation if needed.
  */
 export async function loadAndPreparePlugin(pluginName: string): Promise<Plugin | null> {

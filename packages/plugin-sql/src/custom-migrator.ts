@@ -40,20 +40,20 @@ interface TableDefinition {
 
 // Known composite primary keys for tables that don't have proper metadata
 const KNOWN_COMPOSITE_PRIMARY_KEYS: Record<string, { columns: string[] }> = {
-  'cache': { columns: ['key', 'agent_id'] },
+  cache: { columns: ['key', 'agent_id'] },
   // Add other tables with composite primary keys here if needed
 };
 
 export class DrizzleSchemaIntrospector {
   parseTableDefinition(table: any, exportKey?: string): TableDefinition {
     const tableName = this.getTableName(table, exportKey);
-    
+
     const columns = this.parseColumns(table);
     const foreignKeys = this.parseForeignKeys(table);
     const indexes = this.parseIndexes(table);
     const checkConstraints = this.parseCheckConstraints(table);
     let compositePrimaryKey = this.parseCompositePrimaryKey(table);
-    
+
     // Fallback to known composite primary keys if not found
     if (!compositePrimaryKey && KNOWN_COMPOSITE_PRIMARY_KEYS[tableName]) {
       compositePrimaryKey = {
@@ -66,9 +66,7 @@ export class DrizzleSchemaIntrospector {
     // Build dependencies list from foreign keys, excluding self-references
     const dependencies = Array.from(
       new Set(
-        foreignKeys
-          .map((fk) => fk.referencedTable)
-          .filter((refTable) => refTable !== tableName) // Exclude self-references
+        foreignKeys.map((fk) => fk.referencedTable).filter((refTable) => refTable !== tableName) // Exclude self-references
       )
     );
 
@@ -656,7 +654,7 @@ export class DrizzleSchemaIntrospector {
   private parseCompositePrimaryKey(table: any): { name: string; columns: string[] } | undefined {
     let tableConfig = table._;
     const tableName = this.getTableName(table, '');
-    
+
     // If no direct _ property, check symbols
     if (!tableConfig) {
       const symbols = Object.getOwnPropertySymbols(table);
@@ -672,7 +670,7 @@ export class DrizzleSchemaIntrospector {
     if (tableConfig && tableConfig.extraConfigBuilder) {
       try {
         const extraConfig = tableConfig.extraConfigBuilder(table);
-        
+
         // Handle both array and object extraConfig
         if (Array.isArray(extraConfig)) {
           for (const item of extraConfig) {
@@ -694,7 +692,7 @@ export class DrizzleSchemaIntrospector {
             // Check if this is a primary key definition
             if (value && typeof value === 'object' && (value as any)._) {
               const config = (value as any)._;
-              
+
               if (config.name && config.columns) {
                 // Extract column names from the primary key definition
                 const columnNames = config.columns.map((col: any) => {
@@ -709,7 +707,7 @@ export class DrizzleSchemaIntrospector {
                   // Fallback
                   return col?.toString() || 'unknown';
                 });
-                
+
                 logger.debug(
                   `[INTROSPECTOR] Found composite primary key: ${config.name}, columns: ${columnNames}`
                 );
@@ -908,25 +906,23 @@ export class DrizzleSchemaIntrospector {
 
     // Add unique constraints (but not foreign keys)
     const constraints: string[] = [];
-    
+
     // Add composite primary key if it exists
     if (tableDef.compositePrimaryKey) {
       constraints.push(
         `CONSTRAINT "${tableDef.compositePrimaryKey.name}" PRIMARY KEY ("${tableDef.compositePrimaryKey.columns.join('", "')}")`
       );
     }
-    
+
     // Add unique constraints
     const uniqueConstraints = tableDef.indexes
       .filter((idx) => idx.unique)
       .map((idx) => `CONSTRAINT "${idx.name}" UNIQUE ("${idx.columns.join('", "')}")`);
-    
+
     constraints.push(...uniqueConstraints);
 
     const allConstraints =
-      constraints.length > 0
-        ? `${columnDefs},\n    ${constraints.join(',\n    ')}`
-        : columnDefs;
+      constraints.length > 0 ? `${columnDefs},\n    ${constraints.join(',\n    ')}` : columnDefs;
 
     return `CREATE TABLE "${schemaName}"."${tableDef.name}" (\n    ${allConstraints}\n)`;
   }
@@ -1056,7 +1052,7 @@ export class PluginNamespaceManager {
   async createTable(tableDef: TableDefinition, schemaName: string): Promise<void> {
     const introspector = new DrizzleSchemaIntrospector();
     const createTableSQL = introspector.generateCreateTableSQL(tableDef, schemaName);
-    
+
     await this.db.execute(sql.raw(createTableSQL));
     logger.info(`Created table: ${tableDef.name}`);
   }
@@ -1069,12 +1065,14 @@ export class PluginNamespaceManager {
       for (let i = 0; i < tableDef.foreignKeys.length; i++) {
         const fk = tableDef.foreignKeys[i];
         const constraintSQL = constraintSQLs[i];
-        
+
         try {
           // Check if foreign key already exists
           const exists = await this.foreignKeyExists(schemaName, tableDef.name, fk.name);
           if (exists) {
-            logger.debug(`[CUSTOM MIGRATOR] Foreign key constraint ${fk.name} already exists, skipping`);
+            logger.debug(
+              `[CUSTOM MIGRATOR] Foreign key constraint ${fk.name} already exists, skipping`
+            );
             continue;
           }
 
@@ -1098,9 +1096,15 @@ export class PluginNamespaceManager {
       for (const checkConstraint of tableDef.checkConstraints) {
         try {
           // Check if check constraint already exists
-          const exists = await this.checkConstraintExists(schemaName, tableDef.name, checkConstraint.name);
+          const exists = await this.checkConstraintExists(
+            schemaName,
+            tableDef.name,
+            checkConstraint.name
+          );
           if (exists) {
-            logger.debug(`[CUSTOM MIGRATOR] Check constraint ${checkConstraint.name} already exists, skipping`);
+            logger.debug(
+              `[CUSTOM MIGRATOR] Check constraint ${checkConstraint.name} already exists, skipping`
+            );
             continue;
           }
 

@@ -1861,7 +1861,7 @@ export enum EventType {
 
   // Channel events
   CHANNEL_CLEARED = 'CHANNEL_CLEARED',
-  
+
   // Voice events
   VOICE_MESSAGE_RECEIVED = 'VOICE_MESSAGE_RECEIVED',
   VOICE_MESSAGE_SENT = 'VOICE_MESSAGE_SENT',
@@ -1944,7 +1944,7 @@ export interface MessagePayload extends EventPayload {
  */
 export interface ChannelClearedPayload extends EventPayload {
   roomId: UUID;
-  channelId: string;  
+  channelId: string;
   memoryCount: number;
 }
 

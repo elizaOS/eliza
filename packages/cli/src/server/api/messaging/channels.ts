@@ -137,7 +137,8 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
             `[Messages Router] Auto-created ${isDmChannel ? ChannelType.DM : ChannelType.GROUP} channel ${channelIdParam} for message submission with ${participants.length} participants`
           );
         } catch (createError: unknown) {
-          const errorMessage = createError instanceof Error ? createError.message : String(createError);
+          const errorMessage =
+            createError instanceof Error ? createError.message : String(createError);
           logger.error(
             `[Messages Router] Failed to auto-create channel ${channelIdParam}:`,
             createError
@@ -359,12 +360,15 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
       );
       res.json({ success: true, data: channel });
     } catch (error: unknown) {
-      const errorDetails = error instanceof Error ? {
-        message: error.message,
-        stack: error.stack,
-        originalError: error,
-      } : { message: String(error) };
-      
+      const errorDetails =
+        error instanceof Error
+          ? {
+              message: error.message,
+              stack: error.stack,
+              originalError: error,
+            }
+          : { message: String(error) };
+
       logger.error('Error finding/creating DM channel:', errorDetails);
       res.status(500).json({ success: false, error: 'Failed to find or create DM channel' });
     }
@@ -472,16 +476,18 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
       // First, delete the message from central database
       await serverInstance.deleteMessage(messageId);
       logger.info(`[Messages Router] Deleted message ${messageId} from central database`);
-      
+
       // Then emit message_deleted event to internal bus for agent memory cleanup
       const deletedMessagePayload = {
         messageId: messageId,
         channelId: channelId,
       };
-      
+
       internalMessageBus.emit('message_deleted', deletedMessagePayload);
-      logger.info(`[Messages Router] Emitted message_deleted event to internal bus for message ${messageId}`);
-      
+      logger.info(
+        `[Messages Router] Emitted message_deleted event to internal bus for message ${messageId}`
+      );
+
       // Also, emit an event via SocketIO to inform clients about the deletion
       if (serverInstance.socketIO) {
         serverInstance.socketIO.to(channelId).emit('messageDeleted', {
@@ -508,14 +514,16 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
     try {
       // Clear all messages from central database
       await serverInstance.clearChannelMessages(channelId);
-      
-      // Emit to internal bus for agent memory cleanup  
+
+      // Emit to internal bus for agent memory cleanup
       const channelClearedPayload = {
         channelId: channelId,
       };
       internalMessageBus.emit('channel_cleared', channelClearedPayload);
-      logger.info(`[Messages Router] Emitted channel_cleared event to internal bus for channel ${channelId}`);
-      
+      logger.info(
+        `[Messages Router] Emitted channel_cleared event to internal bus for channel ${channelId}`
+      );
+
       // Also, emit an event via SocketIO to inform clients about the channel clear
       if (serverInstance.socketIO) {
         serverInstance.socketIO.to(channelId).emit('channelCleared', {
@@ -566,18 +574,22 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
       // Get messages count before deletion for logging
       const messages = await serverInstance.getMessagesForChannel(channelId);
       const messageCount = messages.length;
-      
+
       // Delete the entire channel
       await serverInstance.deleteChannel(channelId);
-      logger.info(`[Messages Router] Deleted channel ${channelId} with ${messageCount} messages from central database`);
-      
+      logger.info(
+        `[Messages Router] Deleted channel ${channelId} with ${messageCount} messages from central database`
+      );
+
       // Emit to internal bus for agent memory cleanup (same as clear messages)
       const channelClearedPayload = {
         channelId: channelId,
       };
       internalMessageBus.emit('channel_cleared', channelClearedPayload);
-      logger.info(`[Messages Router] Emitted channel_cleared event to internal bus for deleted channel ${channelId}`);
-      
+      logger.info(
+        `[Messages Router] Emitted channel_cleared event to internal bus for deleted channel ${channelId}`
+      );
+
       // Emit an event via SocketIO to inform clients about the channel deletion
       if (serverInstance.socketIO) {
         serverInstance.socketIO.to(channelId).emit('channelDeleted', {
@@ -612,7 +624,11 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
 
       // Enhanced security validation
       // Validate MIME type
-      if (!ALLOWED_MEDIA_MIME_TYPES.includes(mediaFile.mimetype as typeof ALLOWED_MEDIA_MIME_TYPES[number])) {
+      if (
+        !ALLOWED_MEDIA_MIME_TYPES.includes(
+          mediaFile.mimetype as (typeof ALLOWED_MEDIA_MIME_TYPES)[number]
+        )
+      ) {
         res.status(400).json({ success: false, error: `Invalid file type: ${mediaFile.mimetype}` });
         return;
       }

@@ -381,8 +381,8 @@ export class AgentServer {
         );
       }
 
-      const uploadsBasePath = path.join(process.cwd(), 'data/uploads');
-      const generatedBasePath = path.join(process.cwd(), 'data/generated');
+      const uploadsBasePath = path.join(process.cwd(), '.eliza', 'data', 'uploads');
+      const generatedBasePath = path.join(process.cwd(), '.eliza', 'data', 'generated');
       fs.mkdirSync(uploadsBasePath, { recursive: true });
       fs.mkdirSync(generatedBasePath, { recursive: true });
 

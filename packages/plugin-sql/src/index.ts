@@ -42,7 +42,7 @@ const globalSingletons = globalSymbols[GLOBAL_SINGLETONS];
  * If no postgresUrl is provided, a PgliteDatabaseAdapter is initialized using PGliteClientManager with the dataDir from the config.
  *
  * @param {object} config - The configuration object.
- * @param {string} [config.dataDir] - The directory where data is stored. Defaults to "./.elizadb".
+ * @param {string} [config.dataDir] - The directory where data is stored. Defaults to "./.eliza/.elizadb".
  * @param {string} [config.postgresUrl] - The URL for the PostgreSQL database.
  * @param {UUID} agentId - The unique identifier for the agent.
  * @returns {IDatabaseAdapter} The created database adapter.
@@ -105,7 +105,9 @@ export const plugin: Plugin = {
     // Get database configuration from runtime settings
     const postgresUrl = runtime.getSetting('POSTGRES_URL');
     const dataDir =
-      runtime.getSetting('PGLITE_PATH') || runtime.getSetting('DATABASE_PATH') || './.elizadb';
+      runtime.getSetting('PGLITE_PATH') ||
+      runtime.getSetting('DATABASE_PATH') ||
+      './.eliza/.elizadb';
 
     const dbAdapter = createDatabaseAdapter(
       {

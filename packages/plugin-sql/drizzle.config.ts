@@ -8,7 +8,7 @@ export default defineConfig({
   schema: './src/schema/index.ts',
   out: './drizzle/migrations',
   dbCredentials: {
-    url: process.env.POSTGRES_URL || 'file:../../.elizadb',
+    url: process.env.POSTGRES_URL || 'file:../../.eliza/.elizadb',
   },
   breakpoints: true,
 });

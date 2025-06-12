@@ -23,13 +23,23 @@ import { publishToGitHubAction } from './actions/github-publish';
 import { savePackageToRegistry } from './actions/registry-publish';
 
 // Import utilities
-import { validatePluginRequirements, isMaintainer, displayRegistryPublicationMessage } from './utils/validation';
+import {
+  validatePluginRequirements,
+  isMaintainer,
+  displayRegistryPublicationMessage,
+} from './utils/validation';
 import { generatePackageMetadata } from './utils/metadata';
 import { getNpmUsername } from './utils/authentication';
 import { checkCliVersion } from './utils/version-check';
 
 // Import types
-import { PublishOptions, PackageJson, Credentials, DirectoryInfo, PlaceholderReplacement } from './types';
+import {
+  PublishOptions,
+  PackageJson,
+  Credentials,
+  DirectoryInfo,
+  PlaceholderReplacement,
+} from './types';
 
 // Constants
 const LOCAL_REGISTRY_PATH = 'packages/registry';
@@ -334,7 +344,11 @@ export const publish = new Command()
         }
 
         console.info('\nTesting GitHub publishing:');
-        const githubTestSuccess = await testPublishToGitHub(cwd, packageJson, credentials?.username || '');
+        const githubTestSuccess = await testPublishToGitHub(
+          cwd,
+          packageJson,
+          credentials?.username || ''
+        );
 
         if (!githubTestSuccess) {
           console.error('GitHub publishing test failed');
@@ -434,7 +448,7 @@ export const publish = new Command()
 
 // Re-export for backward compatibility
 export * from './actions/npm-publish';
-export * from './actions/github-publish'; 
+export * from './actions/github-publish';
 export * from './actions/registry-publish';
 export * from './utils/validation';
 export * from './utils/metadata';

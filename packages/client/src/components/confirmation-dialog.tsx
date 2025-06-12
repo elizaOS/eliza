@@ -44,9 +44,11 @@ export default function ConfirmationDialog({
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>{cancelText}</AlertDialogCancel>
-          <AlertDialogAction 
+          <AlertDialogAction
             onClick={handleConfirm}
-            className={variant === 'destructive' ? 'bg-destructive text-destructive-foreground' : undefined}
+            className={
+              variant === 'destructive' ? 'bg-destructive text-destructive-foreground' : undefined
+            }
           >
             {confirmText}
           </AlertDialogAction>

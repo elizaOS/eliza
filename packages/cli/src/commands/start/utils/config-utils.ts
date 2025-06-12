@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 
 /**
  * Load environment configuration for runtime
- * 
+ *
  * Loads environment variables from the project's .env file and returns them as runtime settings.
  */
 export async function loadEnvConfig(): Promise<RuntimeSettings> {

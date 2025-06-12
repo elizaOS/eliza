@@ -71,7 +71,7 @@ jobs:
 
       - name: Install dependencies
         run: bun install
-        
+
       - name: Build all packages
         run: bun run build
 
@@ -117,5 +117,5 @@ jobs:
           done
 
       - name: Run CLI TypeScript tests
-        run: bun run test:cli
+        run: bun run test
         working-directory: packages/cli

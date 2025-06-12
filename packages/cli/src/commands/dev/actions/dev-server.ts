@@ -7,7 +7,7 @@ import { getServerManager } from '../utils/server-manager';
 
 /**
  * Start development mode with file watching and auto-restart
- * 
+ *
  * Sets up a development environment with automatic rebuilding and server restarting when files change.
  */
 export async function startDevMode(options: DevOptions): Promise<void> {

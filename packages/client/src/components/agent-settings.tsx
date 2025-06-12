@@ -75,7 +75,7 @@ export default function AgentSettings({ agent, agentId }: { agent: Agent; agentI
 
   const handleDelete = () => {
     if (isDeleting) return; // Prevent multiple clicks
-    
+
     confirm(
       {
         title: 'Delete Agent',
@@ -216,56 +216,56 @@ export default function AgentSettings({ agent, agentId }: { agent: Agent; agentI
   return (
     <>
       <CharacterForm
-      characterValue={agentState.agent}
-      setCharacterValue={agentState}
-      title="Agent Settings"
-      description="Configure your AI agent's behavior and capabilities"
-      onSubmit={handleSubmit}
-      onReset={agentState.reset}
-      onDelete={handleDelete}
-      stopAgentButton={
-        isActive ? <StopAgentButton agent={agent} redirectToHome={true} /> : undefined
-      }
-      isAgent={true}
-      isDeleting={isDeleting}
-      customComponents={[
-        {
-          name: 'Plugins',
-          component: (
-            <PluginsPanel
-              characterValue={agentState.agent}
-              setCharacterValue={agentState}
-              initialPlugins={agent.plugins}
-            />
-          ),
-        },
-        {
-          name: 'Secret',
-          component: (
-            <SecretPanel
-              characterValue={agentState.agent}
-              onChange={(updatedAgent) => {
-                if (updatedAgent.settings?.secrets) {
-                  // Create a new settings object with the updated secrets
-                  const updatedSettings = {
-                    ...agentState.agent.settings,
-                    secrets: updatedAgent.settings.secrets,
-                  };
+        characterValue={agentState.agent}
+        setCharacterValue={agentState}
+        title="Agent Settings"
+        description="Configure your AI agent's behavior and capabilities"
+        onSubmit={handleSubmit}
+        onReset={agentState.reset}
+        onDelete={handleDelete}
+        stopAgentButton={
+          isActive ? <StopAgentButton agent={agent} redirectToHome={true} /> : undefined
+        }
+        isAgent={true}
+        isDeleting={isDeleting}
+        customComponents={[
+          {
+            name: 'Plugins',
+            component: (
+              <PluginsPanel
+                characterValue={agentState.agent}
+                setCharacterValue={agentState}
+                initialPlugins={agent.plugins}
+              />
+            ),
+          },
+          {
+            name: 'Secret',
+            component: (
+              <SecretPanel
+                characterValue={agentState.agent}
+                onChange={(updatedAgent) => {
+                  if (updatedAgent.settings?.secrets) {
+                    // Create a new settings object with the updated secrets
+                    const updatedSettings = {
+                      ...agentState.agent.settings,
+                      secrets: updatedAgent.settings.secrets,
+                    };
 
-                  // Use updateSettings to properly handle the secrets
-                  agentState.updateSettings(updatedSettings);
-                }
-              }}
-            />
-          ),
-        },
-        {
-          name: 'Avatar',
-          component: (
-            <AvatarPanel characterValue={agentState.agent} setCharacterValue={agentState} />
-          ),
-        },
-      ]}
+                    // Use updateSettings to properly handle the secrets
+                    agentState.updateSettings(updatedSettings);
+                  }
+                }}
+              />
+            ),
+          },
+          {
+            name: 'Avatar',
+            component: (
+              <AvatarPanel characterValue={agentState.agent} setCharacterValue={agentState} />
+            ),
+          },
+        ]}
       />
 
       {/* Confirmation Dialog */}

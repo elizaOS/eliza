@@ -358,10 +358,10 @@ export class MessageBusService extends Service {
 
       // Convert the central message ID to the agent's unique memory ID
       const agentMemoryId = createUniqueUuid(this.runtime, data.messageId);
-      
+
       // Try to find and delete the existing memory
       const existingMemory = await this.runtime.getMemoryById(agentMemoryId);
-      
+
       if (existingMemory) {
         // Emit MESSAGE_DELETED event with the existing memory
         await this.runtime.emitEvent(EventType.MESSAGE_DELETED, {
@@ -369,7 +369,7 @@ export class MessageBusService extends Service {
           message: existingMemory,
           source: 'message-bus-service',
         });
-        
+
         logger.debug(
           `[${this.runtime.character.name}] MessageBusService: Successfully processed message deletion for ${data.messageId}`
         );
@@ -394,13 +394,13 @@ export class MessageBusService extends Service {
 
       // Convert the central channel ID to the agent's unique room ID
       const agentRoomId = createUniqueUuid(this.runtime, data.channelId);
-      
+
       // Get all memories for this room and emit deletion events for each
       const memories = await this.runtime.getMemoriesByRoomIds({
         tableName: 'messages',
-        roomIds: [agentRoomId]
+        roomIds: [agentRoomId],
       });
-      
+
       logger.info(
         `[${this.runtime.character.name}] MessageBusService: Found ${memories.length} memories to delete for channel ${data.channelId}`
       );
@@ -413,7 +413,7 @@ export class MessageBusService extends Service {
         channelId: data.channelId,
         memoryCount: memories.length,
       });
-      
+
       logger.info(
         `[${this.runtime.character.name}] MessageBusService: Successfully processed channel clear for ${data.channelId} -> room ${agentRoomId}`
       );
@@ -490,7 +490,7 @@ export class MessageBusService extends Service {
       };
 
       logger.info(
-        `[${this.runtime.character.name}] MessageBusService: Sending payload to central server API endpoint (/api/messagingsubmit):`,
+        `[${this.runtime.character.name}] MessageBusService: Sending payload to central server API endpoint (/api/messaging/submit):`,
         payloadToServer
       );
 

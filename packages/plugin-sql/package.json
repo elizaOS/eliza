@@ -34,10 +34,15 @@
     "pg": "^8.13.3"
   },
   "devDependencies": {
+    "@eslint/js": "^9.28.0",
     "@types/node": "^22.15.3",
+    "@typescript-eslint/eslint-plugin": "^8.26.0",
+    "@typescript-eslint/parser": "^8.26.0",
     "dockerode": "^4.0.4",
+    "eslint": "^9.28.0",
     "prettier": "3.5.3",
     "tsup": "8.5.0",
+    "typescript-eslint": "^8.26.0",
     "vitest": "3.1.4",
     "zod": "^3.22.4"
   },

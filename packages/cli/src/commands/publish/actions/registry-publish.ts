@@ -9,7 +9,10 @@ const LOCAL_REGISTRY_PATH = 'packages/registry';
 /**
  * Update the registry index with the package information
  */
-export async function updateRegistryIndex(packageMetadata: PackageMetadata, dryRun = false): Promise<boolean> {
+export async function updateRegistryIndex(
+  packageMetadata: PackageMetadata,
+  dryRun = false
+): Promise<boolean> {
   try {
     const indexPath = dryRun
       ? path.join(process.cwd(), LOCAL_REGISTRY_PATH, 'index.json')
@@ -100,7 +103,10 @@ export async function updateRegistryIndex(packageMetadata: PackageMetadata, dryR
 /**
  * Save package metadata to registry
  */
-export async function savePackageToRegistry(packageMetadata: PackageMetadata, dryRun = false): Promise<boolean> {
+export async function savePackageToRegistry(
+  packageMetadata: PackageMetadata,
+  dryRun = false
+): Promise<boolean> {
   try {
     // Define paths
     const packageDir = dryRun

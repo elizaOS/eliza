@@ -224,14 +224,14 @@ export class SocketIOManager extends EventAdapter {
       clientLogger.info('[SocketIO] Connected to server');
       this.isConnected = true;
       this.resolveConnect?.();
-      
+
       // Add debug listener for all incoming events
       if (process.env.NODE_ENV === 'development' && this.socket) {
         this.socket.onAny((event, ...args) => {
           clientLogger.debug(`[SocketIO DEBUG] Received event '${event}':`, args);
         });
       }
-      
+
       this.emit('connect');
 
       // CRITICAL: Ensure this loop remains commented out or removed.
@@ -331,8 +331,7 @@ export class SocketIOManager extends EventAdapter {
         this.emit('messageDeleted', {
           ...data,
           channelId: channelId, // Ensure channelId is always set
-          roomId: channelId, // Deprecated: Retained for backward compatibility with older clients  
-
+          roomId: channelId, // Deprecated: Retained for backward compatibility with older clients
         });
       } else {
         clientLogger.warn(
