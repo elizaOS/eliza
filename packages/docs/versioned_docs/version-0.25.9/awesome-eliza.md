@@ -70,7 +70,6 @@ A curated list of awesome things related to the [eliza framework](https://github
 
 ## 🛠️ Tools
 
-- [twitter-scraper-finetune](https://github.com/elizaOS/twitter-scraper-finetune) - Scrape twitter accounts for fine tuning
 - [elizagen](https://elizagen.howieduhzit.best/) - Easy eliza characterfile generator, add your own API keys
 - [Fleek.xyz](https://fleek.xyz/eliza/) - Deploy Eliza agents in one click on a hosted platform
 
