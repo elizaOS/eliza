@@ -127,3 +127,5 @@ jobs:
       - name: Run CLI TypeScript tests
         run: bun run test:cli
         working-directory: packages/cli
+        env:
+          ELIZA_TEST_MODE: true

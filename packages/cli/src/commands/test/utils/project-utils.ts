@@ -1,5 +1,6 @@
 import { detectDirectoryType, type DirectoryInfo } from '@/src/utils/directory-detection';
 import { loadProject } from '@/src/project';
+import { runBunCommand } from '@/src/utils/run-bun';
 import { logger } from '@elizaos/core';
 import * as fs from 'node:fs';
 import path from 'node:path';
@@ -86,26 +87,13 @@ export async function installPluginDependencies(projectInfo: DirectoryInfo): Pro
     }
 
     const { installPlugin } = await import('@/src/utils');
-    const { spawn } = await import('node:child_process');
-    const which = (await import('which')).default;
 
     for (const dependency of project.pluginModule.dependencies) {
       await installPlugin(dependency, pluginsDir);
       const dependencyPath = path.join(pluginsDir, 'node_modules', dependency);
       if (fs.existsSync(dependencyPath)) {
         try {
-          const bunPath = await which('bun');
-          await new Promise<void>((resolve, reject) => {
-            const child = spawn(bunPath, ['install'], {
-              cwd: dependencyPath,
-              stdio: 'inherit',
-              env: process.env,
-            });
-            child.on('close', (code) =>
-              code === 0 ? resolve() : reject(`bun install failed with code ${code}`)
-            );
-            child.on('error', reject);
-          });
+          await runBunCommand(['install'], dependencyPath);
         } catch (error) {
           logger.warn(
             `[Test Command] Failed to install devDependencies for ${dependency}: ${error}`

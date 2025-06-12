@@ -99,7 +99,6 @@ export async function setupAIModelConfig(
 export async function installDependencies(targetDir: string): Promise<void> {
   console.info('Installing dependencies...');
 
-  // First just install basic dependencies
   await runBunCommand(['install'], targetDir);
 }
 
