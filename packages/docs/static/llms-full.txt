@@ -48,12 +48,6 @@ ElizaOS Developer Context - Core technical components and implementation details
 packages/
   cli/
     src/
-      commands/
-        agent.ts
-        create.ts
-        env.ts
-        start.ts
-        test.ts
       index.ts
   client/
     src/
@@ -71,7 +65,6 @@ packages/
       logger.ts
       prompts.ts
       runtime.ts
-      types.ts
   docs/
     docs/
       core/
@@ -100,50 +93,6 @@ README.md
 
 # Files
 
-## File: packages/cli/src/commands/agent.ts
-````typescript
-import { checkServer, displayAgent, handleError } from '@/src/utils';
-import type { Agent } from '@elizaos/core';
-import { logger } from '@elizaos/core';
-import { Command, OptionValues, Option } from 'commander';
-import fs from 'node:fs';
-import path from 'node:path';
-export function getAgentRuntimeUrl(opts: OptionValues): string
-⋮----
-opts.remoteUrl?.replace(/\/$/, '') || // Use the flag if provided
-process.env.AGENT_RUNTIME_URL?.replace(/\/$/, '') || // Fallback to env var
-`http://localhost:${opts.port || process.env.SERVER_PORT || '3000'}` // Use port flag or env var, default to 3000
-⋮----
-// Helper function to get the agents base API URL
-export function getAgentsBaseUrl(opts: OptionValues): string
-interface AgentBasic {
-  id: string;
-  name: string;
-  status?: string;
-  [key: string]: unknown;
-}
-export async function getAgents(opts: OptionValues): Promise<AgentBasic[]>
-async function resolveAgentId(idOrNameOrIndex: string, opts: OptionValues): Promise<string>
-⋮----
-interface AgentStartPayload {
-  characterPath?: string;
-  characterJson?: Record<string, unknown>;
-}
-interface ApiResponse<T> {
-  success: boolean;
-  data?: T;
-  error?: {
-    code: string;
-    message: string;
-    details?: unknown;
-  };
-}
-⋮----
-// Show error and use commander's built-in help
-⋮----
-async function createCharacter(payload)
-````
-
 ## File: packages/cli/src/index.ts
 ````typescript
 import { agent } from '@/src/commands/agent';
@@ -152,17 +101,18 @@ import { dev } from '@/src/commands/dev';
 import { env } from '@/src/commands/env';
 import { plugins } from '@/src/commands/plugins';
 import { publish } from '@/src/commands/publish';
-import { setupMonorepo } from '@/src/commands/setup-monorepo';
+import { monorepo } from '@/src/commands/monorepo';
 import { start } from '@/src/commands/start';
 import { teeCommand as tee } from '@/src/commands/tee';
 import { test } from '@/src/commands/test';
 import { update } from '@/src/commands/update';
-import { displayBanner } from '@/src/utils';
+import { displayBanner, getVersion, checkAndShowUpdateNotification } from '@/src/utils';
 import { logger } from '@elizaos/core';
-import { Command, Option } from 'commander';
+import { Command } from 'commander';
 import fs from 'node:fs';
 import path, { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { configureEmojis } from '@/src/utils/emoji-handler';
 ⋮----
 async function main()
 ````
@@ -185,28 +135,18 @@ const isAgentStopping = (agentId: UUID | undefined | null) =>
 
 ## File: packages/client/src/lib/api.ts
 ````typescript
-import type { Agent, Character, UUID, Memory } from '@elizaos/core';
-export type AgentWithStatus = Omit<Agent, 'status'> & { status: 'active' | 'inactive' };
-export interface AgentPanel {
-  name: string;
-  path: string;
-}
-import { WorldManager } from './world-manager';
+import type { Agent, Character, UUID, Memory as CoreMemory, Room as CoreRoom } from '@elizaos/core';
 import clientLogger from './logger';
 import { connectionStatusActions } from '../context/ConnectionContext';
-⋮----
-const getLocalStorageApiKey = () => `eliza-api-key-$
-const fetcher = async ({
-  url,
-  method,
-  body,
-  headers,
-}: {
-  url: string;
-  method?: 'GET' | 'POST' | 'DELETE' | 'PUT' | 'PATCH';
-  body?: object | FormData;
-  headers?: HeadersInit;
-}) =>
+import {
+  ServerMessage,
+  MessageServer,
+  MessageChannel,
+  AgentWithStatus,
+  AgentPanel,
+} from '../types';
+interface ClientMemory extends CoreMemory {
+}
 interface LogEntry {
   level: number;
   time: number;
@@ -220,15 +160,40 @@ interface LogResponse {
   level: string;
   levels: string[];
 }
-interface AgentLog {
+type AgentLog = {
   id?: string;
   type?: string;
   timestamp?: number;
   message?: string;
   details?: string;
   roomId?: string;
+  body?: {
+    modelType?: string;
+    modelKey?: string;
+    params?: any;
+    response?: any;
+    usage?: {
+      prompt_tokens?: number;
+      completion_tokens?: number;
+      total_tokens?: number;
+    };
+  };
+  createdAt?: number;
   [key: string]: any;
-}
+};
+⋮----
+const getLocalStorageApiKey = () => `eliza-api-key-$
+const fetcher = async ({
+  url,
+  method,
+  body,
+  headers,
+}: {
+  url: string;
+  method?: 'GET' | 'POST' | 'DELETE' | 'PUT' | 'PATCH';
+  body?: object | FormData;
+  headers?: HeadersInit;
+}) =>
 ````
 
 ## File: packages/client/src/types/index.ts
@@ -245,6 +210,10 @@ export interface IAttachment {
 import { names, uniqueNamesGenerator } from 'unique-names-generator';
 import type { Action, ActionExample } from './types';
 export const composeActionExamples = (actionsData: Action[], count: number): string =>
+⋮----
+// Filter out actions without examples
+⋮----
+// If no actions have examples, return empty string
 ⋮----
 // Create a working copy of the examples
 ⋮----
@@ -289,2021 +258,9 @@ export function formatActions(actions: Action[]): string
 // Create a shuffled copy instead of mutating the original array
 ````
 
-## File: packages/core/src/database.ts
-````typescript
-import type {
-  Agent,
-  Component,
-  Entity,
-  IDatabaseAdapter,
-  Log,
-  Memory,
-  MemoryMetadata,
-  Participant,
-  Relationship,
-  Room,
-  Task,
-  UUID,
-  World,
-} from './types';
-import { type Pool as PgPool } from 'pg';
-import { PGlite } from '@electric-sql/sqlite';
-export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter
-⋮----
-abstract init(): Promise<void>;
-abstract close(): Promise<void>;
-abstract getConnection(): Promise<PGlite | PgPool>;
-abstract getEntityById(entityId: UUID): Promise<Entity | null>;
-abstract getEntitiesForRoom(roomId: UUID, includeComponents?: boolean): Promise<Entity[]>;
-abstract createEntity(entity: Entity): Promise<boolean>;
-abstract updateEntity(entity: Entity): Promise<void>;
-abstract getComponent(
-    entityId: UUID,
-    type: string,
-    worldId?: UUID,
-    sourceEntityId?: UUID
-  ): Promise<Component | null>;
-abstract getComponents(
-    entityId: UUID,
-    worldId?: UUID,
-    sourceEntityId?: UUID
-  ): Promise<Component[]>;
-abstract createComponent(component: Component): Promise<boolean>;
-abstract updateComponent(component: Component): Promise<void>;
-abstract deleteComponent(componentId: UUID): Promise<void>;
-abstract getMemories(params: {
-    entityId?: UUID;
-    agentId?: UUID;
-    count?: number;
-    unique?: boolean;
-    tableName: string;
-    start?: number;
-    end?: number;
-    roomId?: UUID;
-    worldId?: UUID;
-  }): Promise<Memory[]>;
-abstract getMemoriesByRoomIds(params: {
-    roomIds: UUID[];
-    tableName: string;
-    limit?: number;
-  }): Promise<Memory[]>;
-abstract getMemoryById(id: UUID): Promise<Memory | null>;
-abstract getMemoriesByIds(memoryIds: UUID[], tableName?: string): Promise<Memory[]>;
-abstract getCachedEmbeddings(
-abstract log(params: {
-    body: { [key: string]: unknown };
-    entityId: UUID;
-    roomId: UUID;
-    type: string;
-  }): Promise<void>;
-abstract getLogs(params: {
-    entityId: UUID;
-    roomId?: UUID;
-    type?: string;
-    count?: number;
-    offset?: number;
-  }): Promise<Log[]>;
-abstract deleteLog(logId: UUID): Promise<void>;
-abstract searchMemories(params: {
-    tableName: string;
-    embedding: number[];
-    match_threshold?: number;
-    count?: number;
-    unique?: boolean;
-    query?: string;
-    roomId?: UUID;
-    worldId?: UUID;
-    entityId?: UUID;
-  }): Promise<Memory[]>;
-abstract createMemory(memory: Memory, tableName: string, unique?: boolean): Promise<UUID>;
-abstract updateMemory(
-    memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }
-  ): Promise<boolean>;
-abstract deleteMemory(memoryId: UUID): Promise<void>;
-abstract deleteAllMemories(roomId: UUID, tableName: string): Promise<void>;
-abstract countMemories(roomId: UUID, unique?: boolean, tableName?: string): Promise<number>;
-abstract getWorld(id: UUID): Promise<World | null>;
-abstract getAllWorlds(): Promise<World[]>;
-abstract createWorld(world: World): Promise<UUID>;
-abstract updateWorld(world: World): Promise<void>;
-abstract removeWorld(id: UUID): Promise<void>;
-abstract getRoom(roomId: UUID): Promise<Room | null>;
-abstract getRooms(worldId: UUID): Promise<Room[]>;
-abstract createRoom(
-abstract updateRoom(room: Room): Promise<void>;
-abstract deleteRoom(roomId: UUID): Promise<void>;
-abstract deleteRoomsByServerId(serverId: UUID): Promise<void>;
-abstract getRoomsForParticipant(entityId: UUID): Promise<UUID[]>;
-abstract getRoomsForParticipants(userIds: UUID[]): Promise<UUID[]>;
-abstract addParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
-abstract removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
-abstract getParticipantsForEntity(entityId: UUID): Promise<Participant[]>;
-abstract getParticipantsForRoom(roomId: UUID): Promise<UUID[]>;
-abstract getParticipantUserState(
-    roomId: UUID,
-    entityId: UUID
-  ): Promise<'FOLLOWED' | 'MUTED' | null>;
-abstract setParticipantUserState(
-    roomId: UUID,
-    entityId: UUID,
-    state: 'FOLLOWED' | 'MUTED' | null
-  ): Promise<void>;
-abstract createRelationship(params: {
-    sourceEntityId: UUID;
-    targetEntityId: UUID;
-    tags?: string[];
-    metadata?: Record<string, unknown>;
-  }): Promise<boolean>;
-abstract getRelationship(params: {
-    sourceEntityId: UUID;
-    targetEntityId: UUID;
-  }): Promise<Relationship | null>;
-abstract getRelationships(params:
-abstract updateRelationship(params: {
-    sourceEntityId: UUID;
-    targetEntityId: UUID;
-    tags?: string[];
-    metadata?: Record<string, unknown>;
-  }): Promise<void>;
-abstract getAgent(agentId: UUID): Promise<Agent | null>;
-abstract getAgents(): Promise<Partial<Agent>[]>;
-abstract createAgent(agent: Partial<Agent>): Promise<boolean>;
-abstract updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean>;
-abstract deleteAgent(agentId: UUID): Promise<boolean>;
-abstract ensureAgentExists(agent: Partial<Agent>): Promise<Agent>;
-abstract ensureEmbeddingDimension(dimension: number): Promise<void>;
-abstract getCache<T>(key: string): Promise<T | undefined>;
-abstract setCache<T>(key: string, value: T): Promise<boolean>;
-abstract deleteCache(key: string): Promise<boolean>;
-abstract createTask(task: Task): Promise<UUID>;
-abstract getTasks(params:
-abstract getTask(id: UUID): Promise<Task | null>;
-abstract getTasksByName(name: string): Promise<Task[]>;
-abstract updateTask(id: UUID, task: Partial<Task>): Promise<void>;
-abstract deleteTask(id: UUID): Promise<void>;
-````
-
-## File: packages/core/src/entities.ts
-````typescript
-import { logger, stringToUuid } from './index';
-import { composePrompt, parseJSONObjectFromText } from './utils';
-import {
-  type Entity,
-  type IAgentRuntime,
-  type Memory,
-  ModelType,
-  type Relationship,
-  type State,
-  type UUID,
-} from './types';
-⋮----
-async function getRecentInteractions(
-  runtime: IAgentRuntime,
-  sourceEntityId: UUID,
-  candidateEntities: Entity[],
-  roomId: UUID,
-  relationships: Relationship[]
-): Promise<
-export async function findEntityByName(
-  runtime: IAgentRuntime,
-  message: Memory,
-  state: State
-): Promise<Entity | null>
-export const createUniqueUuid = (runtime, baseUserId: UUID | string): UUID =>
-export async function getEntityDetails({
-  runtime,
-  roomId,
-}: {
-  runtime: IAgentRuntime;
-  roomId: UUID;
-})
-export function formatEntities(
-````
-
-## File: packages/core/src/logger.ts
-````typescript
-import pino, { type DestinationStream, type LogFn } from 'pino';
-import { Sentry } from './sentry/instrument';
-import { parseBooleanFromText } from './utils';
-interface LogEntry {
-  time?: number;
-  [key: string]: unknown;
-}
-class InMemoryDestination implements DestinationStream
-⋮----
-constructor(stream: DestinationStream | null)
-write(data: string | LogEntry): void
-⋮----
-// Filter only service/agent registration logs, not all agent logs
-⋮----
-recentLogs(): LogEntry[]
-clear(): void
-⋮----
-const createPrettyConfig = () => (
-const createStream = async () =>
-⋮----
-logMethod(inputArgs: [string | Record<string, unknown>, ...unknown[]], method: LogFn): void
-⋮----
-const formatError = (err: Error) => (
-⋮----
-interface LoggerWithClear extends pino.Logger {
-  clear: () => void;
-}
-````
-
 ## File: packages/core/src/prompts.ts
 ````typescript
 
-````
-
-## File: packages/core/src/runtime.ts
-````typescript
-import { type Context, type Span, SpanStatusCode, context, trace } from '@opentelemetry/api';
-import { v4 as uuidv4 } from 'uuid';
-import { createUniqueUuid } from './entities';
-import { decryptSecret, getSalt, safeReplacer } from './index';
-import { InstrumentationService } from './instrumentation/service';
-import logger from './logger';
-import { splitChunks } from './utils';
-import {
-  ChannelType,
-  MemoryType,
-  ModelType,
-  type Content,
-} from './types';
-import { BM25 } from './search';
-import type {
-  Action,
-  Agent,
-  Character,
-  Component,
-  Entity,
-  Evaluator,
-  HandlerCallback,
-  IAgentRuntime,
-  IDatabaseAdapter,
-  KnowledgeItem,
-  Log,
-  Memory,
-  MemoryMetadata,
-  ModelParamsMap,
-  ModelResultMap,
-  ModelTypeName,
-  Participant,
-  Plugin,
-  Provider,
-  Relationship,
-  Room,
-  Route,
-  RuntimeSettings,
-  Service,
-  ServiceTypeName,
-  State,
-  Task,
-  TaskWorker,
-  UUID,
-  World,
-  TargetInfo,
-  SendHandlerFunction,
-  ModelHandler,
-} from './types';
-import { EventType, type MessagePayload } from './types';
-import { stringToUuid } from './utils';
-import { PGlite } from '@electric-sql/sqlite';
-import { Pool } from 'pg';
-⋮----
-export class Semaphore
-⋮----
-constructor(count: number)
-async acquire(): Promise<void>
-release(): void
-⋮----
-export class AgentRuntime implements IAgentRuntime
-⋮----
-constructor(opts: {
-    conversationLength?: number;
-    agentId?: UUID;
-    character?: Character;
-    plugins?: Plugin[];
-    fetch?: typeof fetch;
-    adapter?: IDatabaseAdapter;
-    settings?: RuntimeSettings;
-events?:
-async startSpan<T>(
-    name: string,
-    fn: (span: Span) => Promise<T>,
-    parentContext?: Context
-): Promise<T>
-⋮----
-// Otherwise, use the real tracer to create a span
-⋮----
-// Set default attributes for all spans
-⋮----
-endSpan(ctx: Context | undefined, name: string): void
-startActiveSpan(name: string, options: any =
-⋮----
-// Create real span if instrumentation is enabled
-⋮----
-/**
-   * Registers a plugin with the runtime and initializes its components
-   * @param plugin The plugin to register
-   */
-async registerPlugin(plugin: Plugin): Promise<void>
-getAllServices(): Map<ServiceTypeName, Service>
-async stop()
-async initialize(): Promise<void>
-async getConnection(): Promise<PGlite | Pool>
-private async handleProcessingError(error: any, context: string)
-private async checkExistingKnowledge(knowledgeId: UUID): Promise<boolean>
-async getKnowledge(
-    message: Memory,
-    scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID }
-): Promise<KnowledgeItem[]>
-async addKnowledge(
-    item: KnowledgeItem,
-    options = {
-      targetTokens: 1500,
-      overlap: 200,
-      modelContextSize: 4096,
-    },
-    scope = {
-      roomId: this.agentId,
-      entityId: this.agentId,
-      worldId: this.agentId,
-    }
-)
-async processCharacterKnowledge(items: string[])
-⋮----
-// Add knowledge with agent-specific scope
-⋮----
-undefined, // Default options
-⋮----
-// Scope to the agent itself
-⋮----
-setSetting(key: string, value: string | boolean | null | any, secret = false)
-getSetting(key: string): string | boolean | null | any
-/**
-   * Get the number of messages that are kept in the conversation buffer.
-   * @returns The number of recent messages to be kept in memory.
-   */
-getConversationLength()
-registerDatabaseAdapter(adapter: IDatabaseAdapter)
-/**
-   * Register a provider for the agent to use.
-   * @param provider The provider to register.
-   */
-registerProvider(provider: Provider)
-/**
-   * Register an action for the agent to perform.
-   * @param action The action to register.
-   */
-registerAction(action: Action)
-⋮----
-// if an action with the same name already exists, throw a warning and don't add the new action
-⋮----
-/**
-   * Register an evaluator to assess and guide the agent's responses.
-   * @param evaluator The evaluator to register.
-   */
-registerEvaluator(evaluator: Evaluator)
-/**
-   * Register a context provider to provide context for message generation.
-   * @param provider The context provider to register.
-   */
-registerContextProvider(provider: Provider)
-/**
-   * Process the actions of a message.
-   * @param message The message to process.
-   * @param responses The array of response memories to process actions from.
-   * @param state Optional state object for the action processing.
-   * @param callback Optional callback handler for action results.
-   */
-async processActions(
-    message: Memory,
-    responses: Memory[],
-    state?: State,
-    callback?: HandlerCallback
-): Promise<void>
-⋮----
-function normalizeAction(action: string)
-⋮----
-normalizeAction(a.name).includes(normalizedResponseAction) || // the || is kind of a fuzzy match
-normalizedResponseAction.includes(normalizeAction(a.name)) //
-⋮----
-// Wrap individual action handler invocation in its own span
-⋮----
-'parent_span.id': span.spanContext().spanId, // Link to parent processActions span
-⋮----
-// Log input parameters (avoid logging potentially large state)
-⋮----
-options: JSON.stringify({}), // Hardcoded empty options for now
-⋮----
-// Execute the action handler and capture the result
-⋮----
-// Log the result in the output event
-⋮----
-result: JSON.stringify(result, safeReplacer()), // Log stringified result
-⋮----
-// Re-throw the error to be caught by the outer try/catch
-⋮----
-}); // End of Action.${action.name} span
-⋮----
-// log to database
-⋮----
-/**
-   * Evaluate the message and state using the registered evaluators.
-   * @param message The message to evaluate.
-   * @param state The state of the agent.
-   * @param didRespond Whether the agent responded to the message.~
-   * @param callback The handler callback
-   * @returns The results of the evaluation.
-   */
-async evaluate(
-    message: Memory,
-    state: State,
-    didRespond?: boolean,
-    callback?: HandlerCallback,
-    responses?: Memory[]
-)
-⋮----
-// Start root span for evaluation
-⋮----
-// get the evaluators that were chosen by the response handler
-⋮----
-// Note: composeState is already instrumented, will be nested automatically
-⋮----
-// TODO: Instrument individual evaluator handlers if needed (potentially in plugins)
-⋮----
-// log to database
-⋮----
-state, // Consider if state should be logged here, can be large
-⋮----
-async ensureConnection({
-    entityId,
-    roomId,
-    worldId,
-    worldName,
-    userName,
-    name,
-    source,
-    type,
-    channelId,
-    serverId,
-    userId,
-    metadata,
-  }: {
-    entityId: UUID;
-    roomId: UUID;
-    worldId: UUID;
-    worldName?: string;
-    userName?: string;
-    name?: string;
-    source?: string;
-    type?: ChannelType;
-    channelId?: string;
-    serverId?: string;
-    userId?: UUID;
-    metadata?: Record<string, any>;
-})
-⋮----
-// if (entityId === this.agentId) {
-//   throw new Error('Agent should not connect to itself');
-// }
-⋮----
-// Step 1: Handle entity creation/update with proper error handling
-⋮----
-// First check if the entity exists
-⋮----
-// Try to create the entity
-⋮----
-// If we get a duplicate key error, the entity exists in the database but isn't
-// associated with this agent - this is expected in multi-agent scenarios
-⋮----
-// For any other errors, re-throw
-⋮----
-// Entity exists for this agent, update if needed
-⋮----
-// Step 2: Ensure world exists
-⋮----
-// Step 3: Ensure room exists
-⋮----
-// Step 4: Add participants to the room
-// For the user entity, we'll try even if we couldn't retrieve it
-⋮----
-// If the normal flow fails because the entity isn't found,
-// try direct participant addition as a clean fallback
-⋮----
-async ensureParticipantInRoom(entityId: UUID, roomId: UUID)
-async removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean>
-async getParticipantsForEntity(entityId: UUID): Promise<Participant[]>
-async getParticipantsForRoom(roomId: UUID): Promise<UUID[]>
-async addParticipant(entityId: UUID, roomId: UUID): Promise<boolean>
-async ensureWorldExists(
-async ensureRoomExists(
-async composeState(
-    message: Memory,
-    includeList: string[] | null = null,
-    onlyInclude = false,
-    skipCache = false
-): Promise<State>
-⋮----
-// Get cached state for this message ID first
-⋮----
-// Get existing provider names from cache (if any)
-⋮----
-cached_state_exists: !!cachedState.data.providers, // More specific check
-⋮----
-existing_providers: JSON.stringify(existingProviderNames), // Add list of existing providers
-⋮----
-// Step 1: Determine base set of providers to fetch
-⋮----
-// If filter list provided, start with just those providers
-⋮----
-// Otherwise, when onlyInclude is false, fetch all non-private, non-dynamic providers.
-// This ensures their state is refreshed alongside any includeList providers.
-⋮----
-// Step 2: Always add providers from include list
-⋮----
-// Get the actual provider objects and sort by position
-⋮----
-providers_to_get: JSON.stringify(providerNamesToGet), // Log names as JSON array
-⋮----
-return { values: {}, text: '', data: {}, providerName: provider.name }; // ensure data is also present
-⋮----
-// This map will store the full result object for each provider,
-// combining cached data with freshly fetched data.
-// Assumes cachedState.data.providers stores { providerName: { text, values, data, providerName }, ... }
-⋮----
-// Update the map with the full results from newly fetched providerData
-⋮----
-// freshResult is { text, values, data, providerName }
-⋮----
-// Aggregate text from all providers in their intended order.
-// providersToGet is already sorted by position and contains all providers for the current state composition.
-⋮----
-getService<T extends Service>(service: ServiceTypeName): T | null
-async registerService(service: typeof Service): Promise<void>
-registerModel(
-    modelType: ModelTypeName,
-    handler: (params: any) => Promise<any>,
-    provider: string,
-    priority?: number
-)
-getModel(
-    modelType: ModelTypeName,
-    provider?: string
-): ((runtime: IAgentRuntime, params: any) => Promise<any>) | undefined
-async useModel<T extends ModelTypeName, R = ModelResultMap[T]>(
-    modelType: T,
-    params: Omit<ModelParamsMap[T], 'runtime'> | any,
-    provider?: string
-): Promise<R>
-registerEvent(event: string, handler: (params: any) => Promise<void>)
-getEvent(event: string): ((params: any) => Promise<void>)[] | undefined
-async emitEvent(event: string | string[], params: any)
-async ensureEmbeddingDimension()
-registerTaskWorker(taskHandler: TaskWorker): void
-getTaskWorker(name: string): TaskWorker | undefined
-get db(): any
-async init(): Promise<void>
-async close(): Promise<void>
-async getAgent(agentId: UUID): Promise<Agent | null>
-async getAgents(): Promise<Partial<Agent>[]>
-async createAgent(agent: Partial<Agent>): Promise<boolean>
-async updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean>
-async deleteAgent(agentId: UUID): Promise<boolean>
-async ensureAgentExists(agent: Partial<Agent>): Promise<Agent>
-async getEntityById(entityId: UUID): Promise<Entity | null>
-async getEntitiesForRoom(roomId: UUID, includeComponents?: boolean): Promise<Entity[]>
-async createEntity(entity: Entity): Promise<boolean>
-async updateEntity(entity: Entity): Promise<void>
-async getComponent(
-    entityId: UUID,
-    type: string,
-    worldId?: UUID,
-    sourceEntityId?: UUID
-): Promise<Component | null>
-async getComponents(entityId: UUID, worldId?: UUID, sourceEntityId?: UUID): Promise<Component[]>
-async createComponent(component: Component): Promise<boolean>
-async updateComponent(component: Component): Promise<void>
-async deleteComponent(componentId: UUID): Promise<void>
-async addEmbeddingToMemory(memory: Memory): Promise<Memory>
-async getMemories(params: {
-    entityId?: UUID;
-    agentId?: UUID;
-    roomId?: UUID;
-    count?: number;
-    unique?: boolean;
-    tableName: string;
-    start?: number;
-    end?: number;
-}): Promise<Memory[]>
-async getMemoryById(id: UUID): Promise<Memory | null>
-async getMemoriesByIds(ids: UUID[], tableName?: string): Promise<Memory[]>
-async getMemoriesByRoomIds(params: {
-    tableName: string;
-    roomIds: UUID[];
-    limit?: number;
-}): Promise<Memory[]>
-async getCachedEmbeddings(params: {
-    query_table_name: string;
-    query_threshold: number;
-    query_input: string;
-    query_field_name: string;
-    query_field_sub_name: string;
-    query_match_count: number;
-}): Promise<
-async log(params: {
-    body: { [key: string]: unknown };
-    entityId: UUID;
-    roomId: UUID;
-    type: string;
-}): Promise<void>
-async searchMemories(params: {
-    embedding: number[];
-    query?: string;
-    match_threshold?: number;
-    count?: number;
-    roomId?: UUID;
-    unique?: boolean;
-    worldId?: UUID;
-    entityId?: UUID;
-    tableName: string;
-}): Promise<Memory[]>
-async rerankMemories(query: string, memories: Memory[]): Promise<Memory[]>
-async createMemory(memory: Memory, tableName: string, unique?: boolean): Promise<UUID>
-async updateMemory(
-    memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }
-): Promise<boolean>
-async deleteMemory(memoryId: UUID): Promise<void>
-async deleteAllMemories(roomId: UUID, tableName: string): Promise<void>
-async countMemories(roomId: UUID, unique?: boolean, tableName?: string): Promise<number>
-async getLogs(params: {
-    entityId: UUID;
-    roomId?: UUID;
-    type?: string;
-    count?: number;
-    offset?: number;
-}): Promise<Log[]>
-async deleteLog(logId: UUID): Promise<void>
-async createWorld(world: World): Promise<UUID>
-async getWorld(id: UUID): Promise<World | null>
-async removeWorld(worldId: UUID): Promise<void>
-async getAllWorlds(): Promise<World[]>
-async updateWorld(world: World): Promise<void>
-async getRoom(roomId: UUID): Promise<Room | null>
-async createRoom(
-async deleteRoom(roomId: UUID): Promise<void>
-async deleteRoomsByServerId(serverId: UUID): Promise<void>
-async updateRoom(room: Room): Promise<void>
-async getRoomsForParticipant(entityId: UUID): Promise<UUID[]>
-async getRoomsForParticipants(userIds: UUID[]): Promise<UUID[]>
-async getRooms(worldId: UUID): Promise<Room[]>
-async getParticipantUserState(
-    roomId: UUID,
-    entityId: UUID
-): Promise<'FOLLOWED' | 'MUTED' | null>
-async setParticipantUserState(
-    roomId: UUID,
-    entityId: UUID,
-    state: 'FOLLOWED' | 'MUTED' | null
-): Promise<void>
-async createRelationship(params: {
-    sourceEntityId: UUID;
-    targetEntityId: UUID;
-    tags?: string[];
-    metadata?: { [key: string]: any };
-}): Promise<boolean>
-async updateRelationship(relationship: Relationship): Promise<void>
-async getRelationship(params: {
-    sourceEntityId: UUID;
-    targetEntityId: UUID;
-}): Promise<Relationship | null>
-async getRelationships(params:
-async getCache<T>(key: string): Promise<T | undefined>
-async setCache<T>(key: string, value: T): Promise<boolean>
-async deleteCache(key: string): Promise<boolean>
-async createTask(task: Task): Promise<UUID>
-async getTasks(params:
-async getTask(id: UUID): Promise<Task | null>
-async getTasksByName(name: string): Promise<Task[]>
-async updateTask(id: UUID, task: Partial<Task>): Promise<void>
-async deleteTask(id: UUID): Promise<void>
-on(event: string, callback: (data: any) => void): void
-off(event: string, callback: (data: any) => void): void
-emit(event: string, data: any): void
-async sendControlMessage(params: {
-    roomId: UUID;
-    action: 'enable_input' | 'disable_input';
-    target?: string;
-}): Promise<void>
-registerSendHandler(source: string, handler: SendHandlerFunction): void
-async sendMessageToTarget(target: TargetInfo, content: Content): Promise<void>
-````
-
-## File: packages/core/src/types.ts
-````typescript
-import { type Pool as PgPool } from 'pg';
-import { PGlite } from '@electric-sql/sqlite';
-export type UUID = `${string}-${string}-${string}-${string}-${string}`;
-export function asUUID(id: string): UUID
-export interface Content {
-  thought?: string;
-  text?: string;
-  actions?: string[];
-  providers?: string[];
-  source?: string;
-  url?: string;
-  inReplyTo?: UUID;
-  attachments?: Media[];
-  [key: string]: unknown;
-}
-export interface ActionExample {
-  name: string;
-  content: Content;
-}
-export type ModelTypeName = (typeof ModelType)[keyof typeof ModelType] | string;
-⋮----
-export type ServiceTypeName = (typeof ServiceType)[keyof typeof ServiceType];
-⋮----
-export interface State {
-  [key: string]: any;
-  values: {
-    [key: string]: any;
-  };
-  data: {
-    [key: string]: any;
-  };
-  text: string;
-}
-export type MemoryTypeAlias = string;
-export enum MemoryType {
-  DOCUMENT = 'document',
-  FRAGMENT = 'fragment',
-  MESSAGE = 'message',
-  DESCRIPTION = 'description',
-  CUSTOM = 'custom',
-}
-export type MemoryScope = 'shared' | 'private' | 'room';
-export interface BaseMetadata {
-  type: MemoryTypeAlias;
-  source?: string;
-  sourceId?: UUID;
-  scope?: MemoryScope;
-  timestamp?: number;
-  tags?: string[];
-}
-export interface DocumentMetadata extends BaseMetadata {
-  type: MemoryType.DOCUMENT;
-}
-export interface FragmentMetadata extends BaseMetadata {
-  type: MemoryType.FRAGMENT;
-  documentId: UUID;
-  position: number;
-}
-export interface MessageMetadata extends BaseMetadata {
-  type: MemoryType.MESSAGE;
-}
-export interface DescriptionMetadata extends BaseMetadata {
-  type: MemoryType.DESCRIPTION;
-}
-export interface CustomMetadata extends BaseMetadata {
-  [key: string]: unknown;
-}
-export type MemoryMetadata =
-  | DocumentMetadata
-  | FragmentMetadata
-  | MessageMetadata
-  | DescriptionMetadata
-  | CustomMetadata;
-export interface Memory {
-  id?: UUID;
-  entityId: UUID;
-  agentId?: UUID;
-  createdAt?: number;
-  content: Content;
-  embedding?: number[];
-  roomId: UUID;
-  worldId?: UUID;
-  unique?: boolean;
-  similarity?: number;
-  metadata?: MemoryMetadata;
-}
-export interface Log {
-  id?: UUID;
-  entityId: UUID;
-  roomId?: UUID;
-  body: { [key: string]: unknown };
-  type: string;
-  createdAt: Date;
-}
-export interface MessageExample {
-  name: string;
-  content: Content;
-}
-export type Handler = (
-  runtime: IAgentRuntime,
-  message: Memory,
-  state?: State,
-  options?: { [key: string]: unknown },
-  callback?: HandlerCallback,
-  responses?: Memory[]
-) => Promise<unknown>;
-export type HandlerCallback = (response: Content, files?: any) => Promise<Memory[]>;
-export type Validator = (
-  runtime: IAgentRuntime,
-  message: Memory,
-  state?: State
-) => Promise<boolean>;
-export interface Action {
-  similes?: string[];
-  description: string;
-  examples?: ActionExample[][];
-  handler: Handler;
-  name: string;
-  validate: Validator;
-}
-export interface EvaluationExample {
-  prompt: string;
-  messages: Array<ActionExample>;
-  outcome: string;
-}
-export interface Evaluator {
-  alwaysRun?: boolean;
-  description: string;
-  similes?: string[];
-  examples: EvaluationExample[];
-  handler: Handler;
-  name: string;
-  validate: Validator;
-}
-export interface ProviderResult {
-  values?: {
-    [key: string]: any;
-  };
-  data?: {
-    [key: string]: any;
-  };
-  text?: string;
-}
-export interface Provider {
-  name: string;
-  description?: string;
-  dynamic?: boolean;
-  position?: number;
-  private?: boolean;
-  get: (runtime: IAgentRuntime, message: Memory, state: State) => Promise<ProviderResult>;
-}
-export interface Relationship {
-  id: UUID;
-  sourceEntityId: UUID;
-  targetEntityId: UUID;
-  agentId: UUID;
-  tags: string[];
-  metadata: {
-    [key: string]: any;
-  };
-  createdAt?: string;
-}
-export interface Component {
-  id: UUID;
-  entityId: UUID;
-  agentId: UUID;
-  roomId: UUID;
-  worldId: UUID;
-  sourceEntityId: UUID;
-  type: string;
-  createdAt: number;
-  data: {
-    [key: string]: any;
-  };
-}
-export interface Entity {
-  id?: UUID;
-  names: string[];
-  metadata?: { [key: string]: any };
-  agentId: UUID;
-  components?: Component[];
-}
-export type World = {
-  id: UUID;
-  name?: string;
-  agentId: UUID;
-  serverId: string;
-  metadata?: {
-    ownership?: {
-      ownerId: string;
-    };
-    roles?: {
-      [entityId: UUID]: Role;
-    };
-    [key: string]: unknown;
-  };
-};
-export type RoomMetadata = Record<string, unknown>;
-export type Room = {
-  id: UUID;
-  name?: string;
-  agentId?: UUID;
-  source: string;
-  type: ChannelType;
-  channelId?: string;
-  serverId?: string;
-  worldId?: UUID;
-  metadata?: RoomMetadata;
-};
-export interface Participant {
-  id: UUID;
-  entity: Entity;
-}
-export type Media = {
-  id: string;
-  url: string;
-  title: string;
-  source: string;
-  description: string;
-  text: string;
-  contentType?: string;
-};
-export enum ChannelType {
-  SELF = 'SELF',
-  DM = 'DM',
-  GROUP = 'GROUP',
-  VOICE_DM = 'VOICE_DM',
-  VOICE_GROUP = 'VOICE_GROUP',
-  FEED = 'FEED',
-  THREAD = 'THREAD',
-  WORLD = 'WORLD',
-  FORUM = 'FORUM',
-  API = 'API',
-}
-export abstract class Service
-⋮----
-constructor(runtime?: IAgentRuntime)
-abstract stop(): Promise<void>;
-⋮----
-static async start(_runtime: IAgentRuntime): Promise<Service>
-static async stop(_runtime: IAgentRuntime): Promise<unknown>
-⋮----
-export type Route = {
-  type: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'STATIC';
-  path: string;
-  filePath?: string;
-  public?: boolean;
-  name: string extends { public: true } ? string : string | undefined;
-  handler?: (req: any, res: any, runtime: IAgentRuntime) => Promise<void>;
-};
-export type PluginEvents = {
-  [K in keyof EventPayloadMap]?: EventHandler<K>[];
-} & {
-  [key: string]: ((params: EventPayload) => Promise<any>)[];
-};
-export interface Plugin {
-  name: string;
-  description: string;
-  init?: (config: Record<string, string>, runtime: IAgentRuntime) => Promise<void>;
-  config?: { [key: string]: any };
-  services?: (typeof Service)[];
-  componentTypes?: {
-    name: string;
-    schema: Record<string, unknown>;
-    validator?: (data: any) => boolean;
-  }[];
-  actions?: Action[];
-  providers?: Provider[];
-  evaluators?: Evaluator[];
-  adapter?: IDatabaseAdapter;
-  models?: {
-    [key: string]: (...args: any[]) => Promise<any>;
-  };
-  events?: PluginEvents;
-  routes?: Route[];
-  tests?: TestSuite[];
-  priority?: number;
-}
-export interface ProjectAgent {
-  character: Character;
-  init?: (runtime: IAgentRuntime) => Promise<void>;
-  plugins?: Plugin[];
-  tests?: TestSuite | TestSuite[];
-}
-export interface Project {
-  agents: ProjectAgent[];
-}
-export type TemplateType =
-  | string
-  | ((options: { state: State | { [key: string]: string } }) => string);
-export interface Character {
-  id?: UUID;
-  name: string;
-  username?: string;
-  system?: string;
-  templates?: {
-    [key: string]: TemplateType;
-  };
-  bio: string | string[];
-  messageExamples?: MessageExample[][];
-  postExamples?: string[];
-  topics?: string[];
-  adjectives?: string[];
-  knowledge?: (
-    | string
-    | { path: string; shared?: boolean }
-    | { directory: string; shared?: boolean }
-  )[];
-  plugins?: string[];
-  settings?: {
-    [key: string]: any | string | boolean | number;
-  };
-  secrets?: {
-    [key: string]: string | boolean | number;
-  };
-  style?: {
-    all?: string[];
-    chat?: string[];
-    post?: string[];
-  };
-}
-export enum AgentStatus {
-  ACTIVE = 'active',
-  INACTIVE = 'inactive',
-}
-export interface Agent extends Character {
-  enabled?: boolean;
-  status?: AgentStatus;
-  createdAt: number;
-  updatedAt: number;
-}
-export interface IDatabaseAdapter {
-  db: any;
-  init(): Promise<void>;
-  close(): Promise<void>;
-  getConnection(): Promise<PGlite | PgPool>;
-  getAgent(agentId: UUID): Promise<Agent | null>;
-  getAgents(): Promise<Partial<Agent>[]>;
-  createAgent(agent: Partial<Agent>): Promise<boolean>;
-  updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean>;
-  deleteAgent(agentId: UUID): Promise<boolean>;
-  ensureAgentExists(agent: Partial<Agent>): Promise<Agent>;
-  ensureEmbeddingDimension(dimension: number): Promise<void>;
-  getEntityById(entityId: UUID): Promise<Entity | null>;
-  getEntitiesForRoom(roomId: UUID, includeComponents?: boolean): Promise<Entity[]>;
-  createEntity(entity: Entity): Promise<boolean>;
-  updateEntity(entity: Entity): Promise<void>;
-  getComponent(
-    entityId: UUID,
-    type: string,
-    worldId?: UUID,
-    sourceEntityId?: UUID
-  ): Promise<Component | null>;
-  getComponents(entityId: UUID, worldId?: UUID, sourceEntityId?: UUID): Promise<Component[]>;
-  createComponent(component: Component): Promise<boolean>;
-  updateComponent(component: Component): Promise<void>;
-  deleteComponent(componentId: UUID): Promise<void>;
-  getMemories(params: {
-    entityId?: UUID;
-    agentId?: UUID;
-    count?: number;
-    unique?: boolean;
-    tableName: string;
-    start?: number;
-    end?: number;
-    roomId?: UUID;
-    worldId?: UUID;
-  }): Promise<Memory[]>;
-  getMemoryById(id: UUID): Promise<Memory | null>;
-  getMemoriesByIds(ids: UUID[], tableName?: string): Promise<Memory[]>;
-  getMemoriesByRoomIds(params: {
-    tableName: string;
-    roomIds: UUID[];
-    limit?: number;
-  }): Promise<Memory[]>;
-  getCachedEmbeddings(params: {
-    query_table_name: string;
-    query_threshold: number;
-    query_input: string;
-    query_field_name: string;
-    query_field_sub_name: string;
-    query_match_count: number;
-  }): Promise<{ embedding: number[]; levenshtein_score: number }[]>;
-  log(params: {
-    body: { [key: string]: unknown };
-    entityId: UUID;
-    roomId: UUID;
-    type: string;
-  }): Promise<void>;
-  getLogs(params: {
-    entityId: UUID;
-    roomId?: UUID;
-    type?: string;
-    count?: number;
-    offset?: number;
-  }): Promise<Log[]>;
-  deleteLog(logId: UUID): Promise<void>;
-  searchMemories(params: {
-    embedding: number[];
-    match_threshold?: number;
-    count?: number;
-    unique?: boolean;
-    tableName: string;
-    query?: string;
-    roomId?: UUID;
-    worldId?: UUID;
-    entityId?: UUID;
-  }): Promise<Memory[]>;
-  createMemory(memory: Memory, tableName: string, unique?: boolean): Promise<UUID>;
-  updateMemory(memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }): Promise<boolean>;
-  deleteMemory(memoryId: UUID): Promise<void>;
-  deleteAllMemories(roomId: UUID, tableName: string): Promise<void>;
-  countMemories(roomId: UUID, unique?: boolean, tableName?: string): Promise<number>;
-  createWorld(world: World): Promise<UUID>;
-  getWorld(id: UUID): Promise<World | null>;
-  removeWorld(id: UUID): Promise<void>;
-  getAllWorlds(): Promise<World[]>;
-  updateWorld(world: World): Promise<void>;
-  getRoom(roomId: UUID): Promise<Room | null>;
-  createRoom({ id, name, source, type, channelId, serverId, worldId }: Room): Promise<UUID>;
-  deleteRoom(roomId: UUID): Promise<void>;
-  deleteRoomsByServerId(serverId: UUID): Promise<void>;
-  updateRoom(room: Room): Promise<void>;
-  getRoomsForParticipant(entityId: UUID): Promise<UUID[]>;
-  getRoomsForParticipants(userIds: UUID[]): Promise<UUID[]>;
-  getRooms(worldId: UUID): Promise<Room[]>;
-  addParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
-  removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
-  getParticipantsForEntity(entityId: UUID): Promise<Participant[]>;
-  getParticipantsForRoom(roomId: UUID): Promise<UUID[]>;
-  getParticipantUserState(roomId: UUID, entityId: UUID): Promise<'FOLLOWED' | 'MUTED' | null>;
-  setParticipantUserState(
-    roomId: UUID,
-    entityId: UUID,
-    state: 'FOLLOWED' | 'MUTED' | null
-  ): Promise<void>;
-  createRelationship(params: {
-    sourceEntityId: UUID;
-    targetEntityId: UUID;
-    tags?: string[];
-    metadata?: { [key: string]: any };
-  }): Promise<boolean>;
-  updateRelationship(relationship: Relationship): Promise<void>;
-  getRelationship(params: {
-    sourceEntityId: UUID;
-    targetEntityId: UUID;
-  }): Promise<Relationship | null>;
-  getRelationships(params: { entityId: UUID; tags?: string[] }): Promise<Relationship[]>;
-  ensureEmbeddingDimension(dimension: number): Promise<void>;
-  getCache<T>(key: string): Promise<T | undefined>;
-  setCache<T>(key: string, value: T): Promise<boolean>;
-  deleteCache(key: string): Promise<boolean>;
-  createTask(task: Task): Promise<UUID>;
-  getTasks(params: { roomId?: UUID; tags?: string[]; entityId?: UUID }): Promise<Task[]>;
-  getTask(id: UUID): Promise<Task | null>;
-  getTasksByName(name: string): Promise<Task[]>;
-  updateTask(id: UUID, task: Partial<Task>): Promise<void>;
-  deleteTask(id: UUID): Promise<void>;
-}
-⋮----
-init(): Promise<void>;
-close(): Promise<void>;
-getConnection(): Promise<PGlite | PgPool>;
-getAgent(agentId: UUID): Promise<Agent | null>;
-getAgents(): Promise<Partial<Agent>[]>;
-createAgent(agent: Partial<Agent>): Promise<boolean>;
-updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean>;
-deleteAgent(agentId: UUID): Promise<boolean>;
-ensureAgentExists(agent: Partial<Agent>): Promise<Agent>;
-ensureEmbeddingDimension(dimension: number): Promise<void>;
-getEntityById(entityId: UUID): Promise<Entity | null>;
-getEntitiesForRoom(roomId: UUID, includeComponents?: boolean): Promise<Entity[]>;
-createEntity(entity: Entity): Promise<boolean>;
-updateEntity(entity: Entity): Promise<void>;
-getComponent(
-    entityId: UUID,
-    type: string,
-    worldId?: UUID,
-    sourceEntityId?: UUID
-  ): Promise<Component | null>;
-getComponents(entityId: UUID, worldId?: UUID, sourceEntityId?: UUID): Promise<Component[]>;
-createComponent(component: Component): Promise<boolean>;
-updateComponent(component: Component): Promise<void>;
-deleteComponent(componentId: UUID): Promise<void>;
-getMemories(params: {
-    entityId?: UUID;
-    agentId?: UUID;
-    count?: number;
-    unique?: boolean;
-    tableName: string;
-    start?: number;
-    end?: number;
-    roomId?: UUID;
-    worldId?: UUID;
-  }): Promise<Memory[]>;
-getMemoryById(id: UUID): Promise<Memory | null>;
-getMemoriesByIds(ids: UUID[], tableName?: string): Promise<Memory[]>;
-getMemoriesByRoomIds(params: {
-    tableName: string;
-    roomIds: UUID[];
-    limit?: number;
-  }): Promise<Memory[]>;
-getCachedEmbeddings(params: {
-    query_table_name: string;
-    query_threshold: number;
-    query_input: string;
-    query_field_name: string;
-    query_field_sub_name: string;
-    query_match_count: number;
-}): Promise<
-log(params: {
-    body: { [key: string]: unknown };
-    entityId: UUID;
-    roomId: UUID;
-    type: string;
-  }): Promise<void>;
-getLogs(params: {
-    entityId: UUID;
-    roomId?: UUID;
-    type?: string;
-    count?: number;
-    offset?: number;
-  }): Promise<Log[]>;
-deleteLog(logId: UUID): Promise<void>;
-searchMemories(params: {
-    embedding: number[];
-    match_threshold?: number;
-    count?: number;
-    unique?: boolean;
-    tableName: string;
-    query?: string;
-    roomId?: UUID;
-    worldId?: UUID;
-    entityId?: UUID;
-  }): Promise<Memory[]>;
-createMemory(memory: Memory, tableName: string, unique?: boolean): Promise<UUID>;
-updateMemory(memory: Partial<Memory> &
-deleteMemory(memoryId: UUID): Promise<void>;
-deleteAllMemories(roomId: UUID, tableName: string): Promise<void>;
-countMemories(roomId: UUID, unique?: boolean, tableName?: string): Promise<number>;
-createWorld(world: World): Promise<UUID>;
-getWorld(id: UUID): Promise<World | null>;
-removeWorld(id: UUID): Promise<void>;
-getAllWorlds(): Promise<World[]>;
-updateWorld(world: World): Promise<void>;
-getRoom(roomId: UUID): Promise<Room | null>;
-createRoom(
-deleteRoom(roomId: UUID): Promise<void>;
-deleteRoomsByServerId(serverId: UUID): Promise<void>;
-updateRoom(room: Room): Promise<void>;
-getRoomsForParticipant(entityId: UUID): Promise<UUID[]>;
-getRoomsForParticipants(userIds: UUID[]): Promise<UUID[]>;
-getRooms(worldId: UUID): Promise<Room[]>;
-addParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
-removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
-getParticipantsForEntity(entityId: UUID): Promise<Participant[]>;
-getParticipantsForRoom(roomId: UUID): Promise<UUID[]>;
-getParticipantUserState(roomId: UUID, entityId: UUID): Promise<'FOLLOWED' | 'MUTED' | null>;
-setParticipantUserState(
-    roomId: UUID,
-    entityId: UUID,
-    state: 'FOLLOWED' | 'MUTED' | null
-  ): Promise<void>;
-createRelationship(params: {
-    sourceEntityId: UUID;
-    targetEntityId: UUID;
-    tags?: string[];
-    metadata?: { [key: string]: any };
-  }): Promise<boolean>;
-updateRelationship(relationship: Relationship): Promise<void>;
-getRelationship(params: {
-    sourceEntityId: UUID;
-    targetEntityId: UUID;
-  }): Promise<Relationship | null>;
-getRelationships(params:
-⋮----
-getCache<T>(key: string): Promise<T | undefined>;
-setCache<T>(key: string, value: T): Promise<boolean>;
-deleteCache(key: string): Promise<boolean>;
-createTask(task: Task): Promise<UUID>;
-getTasks(params:
-getTask(id: UUID): Promise<Task | null>;
-getTasksByName(name: string): Promise<Task[]>;
-updateTask(id: UUID, task: Partial<Task>): Promise<void>;
-deleteTask(id: UUID): Promise<void>;
-⋮----
-export interface EmbeddingSearchResult {
-  embedding: number[];
-  levenshtein_score: number;
-}
-export interface MemoryRetrievalOptions {
-  roomId: UUID;
-  count?: number;
-  unique?: boolean;
-  start?: number;
-  end?: number;
-  agentId?: UUID;
-}
-export interface MemorySearchOptions {
-  embedding: number[];
-  match_threshold?: number;
-  count?: number;
-  roomId: UUID;
-  agentId?: UUID;
-  unique?: boolean;
-  metadata?: Partial<MemoryMetadata>;
-}
-export interface MultiRoomMemoryOptions {
-  roomIds: UUID[];
-  limit?: number;
-  agentId?: UUID;
-}
-export interface UnifiedMemoryOptions {
-  roomId: UUID;
-  limit?: number;
-  agentId?: UUID;
-  unique?: boolean;
-  start?: number;
-  end?: number;
-}
-export interface UnifiedSearchOptions extends UnifiedMemoryOptions {
-  embedding: number[];
-  similarity?: number;
-}
-export interface TargetInfo {
-  source: string;
-  roomId?: UUID;
-  channelId?: string;
-  serverId?: string;
-  entityId?: UUID;
-  threadId?: string;
-}
-export type SendHandlerFunction = (
-  runtime: IAgentRuntime,
-  target: TargetInfo,
-  content: Content
-) => Promise<void>;
-export interface IAgentRuntime extends IDatabaseAdapter {
-  agentId: UUID;
-  character: Character;
-  providers: Provider[];
-  actions: Action[];
-  evaluators: Evaluator[];
-  plugins: Plugin[];
-  services: Map<ServiceTypeName, Service>;
-  events: Map<string, ((params: any) => Promise<void>)[]>;
-  fetch?: typeof fetch | null;
-  routes: Route[];
-  registerPlugin(plugin: Plugin): Promise<void>;
-  initialize(): Promise<void>;
-  getConnection(): Promise<PGlite | PgPool>;
-  getKnowledge(
-    message: Memory,
-    scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID }
-  ): Promise<KnowledgeItem[]>;
-  addKnowledge(
-    item: KnowledgeItem,
-    options: {
-      targetTokens: number;
-      overlap: number;
-      modelContextSize: number;
-    },
-    scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID }
-  ): Promise<void>;
-  getService<T extends Service>(service: ServiceTypeName | string): T | null;
-  getAllServices(): Map<ServiceTypeName, Service>;
-  registerService(service: typeof Service): Promise<void>;
-  registerDatabaseAdapter(adapter: IDatabaseAdapter): void;
-  setSetting(key: string, value: string | boolean | null | any, secret?: boolean): void;
-  getSetting(key: string): string | boolean | null | any;
-  getConversationLength(): number;
-  processActions(
-    message: Memory,
-    responses: Memory[],
-    state?: State,
-    callback?: HandlerCallback
-  ): Promise<void>;
-  evaluate(
-    message: Memory,
-    state?: State,
-    didRespond?: boolean,
-    callback?: HandlerCallback,
-    responses?: Memory[]
-  ): Promise<Evaluator[] | null>;
-  registerProvider(provider: Provider): void;
-  registerAction(action: Action): void;
-  registerEvaluator(evaluator: Evaluator): void;
-  ensureConnection({
-    entityId,
-    roomId,
-    metadata,
-    userName,
-    worldName,
-    name,
-    source,
-    channelId,
-    serverId,
-    type,
-    worldId,
-    userId,
-  }: {
-    entityId: UUID;
-    roomId: UUID;
-    userName?: string;
-    name?: string;
-    worldName?: string;
-    source?: string;
-    channelId?: string;
-    serverId?: string;
-    type: ChannelType;
-    worldId: UUID;
-    userId?: UUID;
-    metadata?: Record<string, any>;
-  }): Promise<void>;
-  ensureParticipantInRoom(entityId: UUID, roomId: UUID): Promise<void>;
-  ensureWorldExists(world: World): Promise<void>;
-  ensureRoomExists(room: Room): Promise<void>;
-  composeState(
-    message: Memory,
-    includeList?: string[],
-    onlyInclude?: boolean,
-    skipCache?: boolean
-  ): Promise<State>;
-  useModel<T extends ModelTypeName, R = ModelResultMap[T]>(
-    modelType: T,
-    params: Omit<ModelParamsMap[T], 'runtime'> | any
-  ): Promise<R>;
-  registerModel(
-    modelType: ModelTypeName | string,
-    handler: (params: any) => Promise<any>,
-    provider: string,
-    priority?: number
-  ): void;
-  getModel(
-    modelType: ModelTypeName | string
-  ): ((runtime: IAgentRuntime, params: any) => Promise<any>) | undefined;
-  registerEvent(event: string, handler: (params: any) => Promise<void>): void;
-  getEvent(event: string): ((params: any) => Promise<void>)[] | undefined;
-  emitEvent(event: string | string[], params: any): Promise<void>;
-  registerTaskWorker(taskHandler: TaskWorker): void;
-  getTaskWorker(name: string): TaskWorker | undefined;
-  stop(): Promise<void>;
-  addEmbeddingToMemory(memory: Memory): Promise<Memory>;
-  registerSendHandler(source: string, handler: SendHandlerFunction): void;
-  sendMessageToTarget(target: TargetInfo, content: Content): Promise<void>;
-}
-⋮----
-registerPlugin(plugin: Plugin): Promise<void>;
-initialize(): Promise<void>;
-⋮----
-getKnowledge(
-    message: Memory,
-    scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID }
-  ): Promise<KnowledgeItem[]>;
-addKnowledge(
-    item: KnowledgeItem,
-    options: {
-      targetTokens: number;
-      overlap: number;
-      modelContextSize: number;
-    },
-    scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID }
-  ): Promise<void>;
-getService<T extends Service>(service: ServiceTypeName | string): T | null;
-getAllServices(): Map<ServiceTypeName, Service>;
-registerService(service: typeof Service): Promise<void>;
-registerDatabaseAdapter(adapter: IDatabaseAdapter): void;
-setSetting(key: string, value: string | boolean | null | any, secret?: boolean): void;
-getSetting(key: string): string | boolean | null | any;
-getConversationLength(): number;
-processActions(
-    message: Memory,
-    responses: Memory[],
-    state?: State,
-    callback?: HandlerCallback
-  ): Promise<void>;
-evaluate(
-    message: Memory,
-    state?: State,
-    didRespond?: boolean,
-    callback?: HandlerCallback,
-    responses?: Memory[]
-  ): Promise<Evaluator[] | null>;
-registerProvider(provider: Provider): void;
-registerAction(action: Action): void;
-registerEvaluator(evaluator: Evaluator): void;
-ensureConnection({
-    entityId,
-    roomId,
-    metadata,
-    userName,
-    worldName,
-    name,
-    source,
-    channelId,
-    serverId,
-    type,
-    worldId,
-    userId,
-  }: {
-    entityId: UUID;
-    roomId: UUID;
-    userName?: string;
-    name?: string;
-    worldName?: string;
-    source?: string;
-    channelId?: string;
-    serverId?: string;
-    type: ChannelType;
-    worldId: UUID;
-    userId?: UUID;
-    metadata?: Record<string, any>;
-  }): Promise<void>;
-ensureParticipantInRoom(entityId: UUID, roomId: UUID): Promise<void>;
-ensureWorldExists(world: World): Promise<void>;
-ensureRoomExists(room: Room): Promise<void>;
-composeState(
-    message: Memory,
-    includeList?: string[],
-    onlyInclude?: boolean,
-    skipCache?: boolean
-  ): Promise<State>;
-useModel<T extends ModelTypeName, R = ModelResultMap[T]>(
-    modelType: T,
-    params: Omit<ModelParamsMap[T], 'runtime'> | any
-  ): Promise<R>;
-registerModel(
-    modelType: ModelTypeName | string,
-    handler: (params: any) => Promise<any>,
-    provider: string,
-    priority?: number
-  ): void;
-getModel(
-    modelType: ModelTypeName | string
-): ((runtime: IAgentRuntime, params: any)
-registerEvent(event: string, handler: (params: any)
-getEvent(event: string): ((params: any)
-emitEvent(event: string | string[], params: any): Promise<void>;
-registerTaskWorker(taskHandler: TaskWorker): void;
-getTaskWorker(name: string): TaskWorker | undefined;
-stop(): Promise<void>;
-addEmbeddingToMemory(memory: Memory): Promise<Memory>;
-registerSendHandler(source: string, handler: SendHandlerFunction): void;
-sendMessageToTarget(target: TargetInfo, content: Content): Promise<void>;
-⋮----
-export interface RuntimeSettings {
-  [key: string]: string | undefined;
-}
-export type KnowledgeItem = {
-  id: UUID;
-  content: Content;
-  metadata?: MemoryMetadata;
-};
-export enum KnowledgeScope {
-  SHARED = 'shared',
-  PRIVATE = 'private',
-}
-export enum CacheKeyPrefix {
-  KNOWLEDGE = 'knowledge',
-}
-export interface DirectoryItem {
-  directory: string;
-  shared?: boolean;
-}
-export interface ChunkRow {
-  id: string;
-}
-export type GenerateTextParams = {
-  runtime: IAgentRuntime;
-  prompt: string;
-  modelType: ModelTypeName;
-  maxTokens?: number;
-  temperature?: number;
-  frequencyPenalty?: number;
-  presencePenalty?: number;
-  stopSequences?: string[];
-};
-export interface TokenizeTextParams {
-  prompt: string;
-  modelType: ModelTypeName;
-}
-export interface DetokenizeTextParams {
-  tokens: number[];
-  modelType: ModelTypeName;
-}
-export interface TestCase {
-  name: string;
-  fn: (runtime: IAgentRuntime) => Promise<void> | void;
-}
-export interface TestSuite {
-  name: string;
-  tests: TestCase[];
-}
-export interface TeeAgent {
-  id: string;
-  agentId: string;
-  agentName: string;
-  createdAt: number;
-  publicKey: string;
-  attestation: string;
-}
-export enum TEEMode {
-  OFF = 'OFF',
-  LOCAL = 'LOCAL',
-  DOCKER = 'DOCKER',
-  PRODUCTION = 'PRODUCTION',
-}
-export interface RemoteAttestationQuote {
-  quote: string;
-  timestamp: number;
-}
-export interface DeriveKeyAttestationData {
-  agentId: string;
-  publicKey: string;
-  subject?: string;
-}
-export interface RemoteAttestationMessage {
-  agentId: string;
-  timestamp: number;
-  message: {
-    entityId: string;
-    roomId: string;
-    content: string;
-  };
-}
-export enum TeeType {
-  TDX_DSTACK = 'tdx_dstack',
-}
-export interface TeeVendorConfig {
-  [key: string]: unknown;
-}
-export interface TeePluginConfig {
-  vendor?: string;
-  vendorConfig?: TeeVendorConfig;
-}
-export interface TaskWorker {
-  name: string;
-  execute: (
-    runtime: IAgentRuntime,
-    options: { [key: string]: unknown },
-    task: Task
-  ) => Promise<void>;
-  validate?: (runtime: IAgentRuntime, message: Memory, state: State) => Promise<boolean>;
-}
-export type TaskMetadata = {
-  updateInterval?: number;
-  options?: {
-    name: string;
-    description: string;
-  }[];
-  [key: string]: unknown;
-};
-export interface Task {
-  id?: UUID;
-  name: string;
-  updatedAt?: number;
-  metadata?: TaskMetadata;
-  description: string;
-  roomId?: UUID;
-  worldId?: UUID;
-  entityId?: UUID;
-  tags: string[];
-}
-export enum Role {
-  OWNER = 'OWNER',
-  ADMIN = 'ADMIN',
-  NONE = 'NONE',
-}
-export interface Setting {
-  name: string;
-  description: string;
-  usageDescription: string;
-  value: string | boolean | null;
-  required: boolean;
-  public?: boolean;
-  secret?: boolean;
-  validation?: (value: any) => boolean;
-  dependsOn?: string[];
-  onSetAction?: (value: any) => string;
-  visibleIf?: (settings: { [key: string]: Setting }) => boolean;
-}
-export interface WorldSettings {
-  [key: string]: Setting;
-}
-export interface OnboardingConfig {
-  settings: {
-    [key: string]: Omit<Setting, 'value'>;
-  };
-}
-export interface BaseModelParams {
-  runtime: IAgentRuntime;
-}
-export interface TextGenerationParams extends BaseModelParams {
-  prompt: string;
-  temperature?: number;
-  maxTokens?: number;
-  stopSequences?: string[];
-  frequencyPenalty?: number;
-  presencePenalty?: number;
-}
-export interface TextEmbeddingParams extends BaseModelParams {
-  text: string;
-}
-export interface TokenizeTextParams extends BaseModelParams {
-  prompt: string;
-  modelType: ModelTypeName;
-}
-export interface ImageGenerationParams extends BaseModelParams {
-  prompt: string;
-  size?: string;
-  count?: number;
-}
-export interface ImageDescriptionParams extends BaseModelParams {
-  imageUrl: string;
-  prompt?: string;
-}
-export interface TranscriptionParams extends BaseModelParams {
-  audioUrl: string;
-  prompt?: string;
-}
-export interface TextToSpeechParams extends BaseModelParams {
-  text: string;
-  voice?: string;
-  speed?: number;
-}
-export interface AudioProcessingParams extends BaseModelParams {
-  audioUrl: string;
-  processingType: string;
-}
-export interface VideoProcessingParams extends BaseModelParams {
-  videoUrl: string;
-  processingType: string;
-}
-export type JSONSchema = {
-  type: string;
-  properties?: Record<string, any>;
-  required?: string[];
-  items?: JSONSchema;
-  [key: string]: any;
-};
-export interface ObjectGenerationParams<T = any> extends BaseModelParams {
-  prompt: string;
-  schema?: JSONSchema;
-  output?: 'object' | 'array' | 'enum';
-  enumValues?: string[];
-  modelType?: ModelTypeName;
-  temperature?: number;
-  stopSequences?: string[];
-}
-export interface ModelParamsMap {
-  [ModelType.TEXT_SMALL]: TextGenerationParams;
-  [ModelType.TEXT_LARGE]: TextGenerationParams;
-  [ModelType.TEXT_EMBEDDING]: TextEmbeddingParams | string | null;
-  [ModelType.TEXT_TOKENIZER_ENCODE]: TokenizeTextParams;
-  [ModelType.TEXT_TOKENIZER_DECODE]: DetokenizeTextParams;
-  [ModelType.TEXT_REASONING_SMALL]: TextGenerationParams;
-  [ModelType.TEXT_REASONING_LARGE]: TextGenerationParams;
-  [ModelType.IMAGE]: ImageGenerationParams;
-  [ModelType.IMAGE_DESCRIPTION]: ImageDescriptionParams | string;
-  [ModelType.TRANSCRIPTION]: TranscriptionParams | Buffer | string;
-  [ModelType.TEXT_TO_SPEECH]: TextToSpeechParams | string;
-  [ModelType.AUDIO]: AudioProcessingParams;
-  [ModelType.VIDEO]: VideoProcessingParams;
-  [ModelType.OBJECT_SMALL]: ObjectGenerationParams<any>;
-  [ModelType.OBJECT_LARGE]: ObjectGenerationParams<any>;
-  [key: string]: BaseModelParams | any;
-}
-export interface ModelResultMap {
-  [ModelType.TEXT_SMALL]: string;
-  [ModelType.TEXT_LARGE]: string;
-  [ModelType.TEXT_EMBEDDING]: number[];
-  [ModelType.TEXT_TOKENIZER_ENCODE]: number[];
-  [ModelType.TEXT_TOKENIZER_DECODE]: string;
-  [ModelType.TEXT_REASONING_SMALL]: string;
-  [ModelType.TEXT_REASONING_LARGE]: string;
-  [ModelType.IMAGE]: { url: string }[];
-  [ModelType.IMAGE_DESCRIPTION]: { title: string; description: string };
-  [ModelType.TRANSCRIPTION]: string;
-  [ModelType.TEXT_TO_SPEECH]: any | Buffer;
-  [ModelType.AUDIO]: any;
-  [ModelType.VIDEO]: any;
-  [ModelType.OBJECT_SMALL]: any;
-  [ModelType.OBJECT_LARGE]: any;
-  [key: string]: any;
-}
-export enum EventType {
-  WORLD_JOINED = 'WORLD_JOINED',
-  WORLD_CONNECTED = 'WORLD_CONNECTED',
-  WORLD_LEFT = 'WORLD_LEFT',
-  ENTITY_JOINED = 'ENTITY_JOINED',
-  ENTITY_LEFT = 'ENTITY_LEFT',
-  ENTITY_UPDATED = 'ENTITY_UPDATED',
-  ROOM_JOINED = 'ROOM_JOINED',
-  ROOM_LEFT = 'ROOM_LEFT',
-  MESSAGE_RECEIVED = 'MESSAGE_RECEIVED',
-  MESSAGE_SENT = 'MESSAGE_SENT',
-  VOICE_MESSAGE_RECEIVED = 'VOICE_MESSAGE_RECEIVED',
-  VOICE_MESSAGE_SENT = 'VOICE_MESSAGE_SENT',
-  REACTION_RECEIVED = 'REACTION_RECEIVED',
-  POST_GENERATED = 'POST_GENERATED',
-  INTERACTION_RECEIVED = 'INTERACTION_RECEIVED',
-  RUN_STARTED = 'RUN_STARTED',
-  RUN_ENDED = 'RUN_ENDED',
-  RUN_TIMEOUT = 'RUN_TIMEOUT',
-  ACTION_STARTED = 'ACTION_STARTED',
-  ACTION_COMPLETED = 'ACTION_COMPLETED',
-  EVALUATOR_STARTED = 'EVALUATOR_STARTED',
-  EVALUATOR_COMPLETED = 'EVALUATOR_COMPLETED',
-  MODEL_USED = 'MODEL_USED',
-}
-export enum PlatformPrefix {
-  DISCORD = 'DISCORD',
-  TELEGRAM = 'TELEGRAM',
-  TWITTER = 'TWITTER',
-}
-export interface EventPayload {
-  runtime: IAgentRuntime;
-  source: string;
-  onComplete?: () => void;
-}
-export interface WorldPayload extends EventPayload {
-  world: World;
-  rooms: Room[];
-  entities: Entity[];
-}
-export interface EntityPayload extends EventPayload {
-  entityId: UUID;
-  worldId?: UUID;
-  roomId?: UUID;
-  metadata?: {
-    orginalId: string;
-    username: string;
-    displayName?: string;
-    [key: string]: any;
-  };
-}
-export interface MessagePayload extends EventPayload {
-  message: Memory;
-  callback?: HandlerCallback;
-  onComplete?: () => void;
-}
-export interface InvokePayload extends EventPayload {
-  worldId: UUID;
-  userId: string;
-  roomId: UUID;
-  callback?: HandlerCallback;
-  source: string;
-}
-export interface RunEventPayload extends EventPayload {
-  runId: UUID;
-  messageId: UUID;
-  roomId: UUID;
-  entityId: UUID;
-  startTime: number;
-  status: 'started' | 'completed' | 'timeout';
-  endTime?: number;
-  duration?: number;
-  error?: string;
-}
-export interface ActionEventPayload extends EventPayload {
-  actionId: UUID;
-  actionName: string;
-  startTime?: number;
-  completed?: boolean;
-  error?: Error;
-}
-export interface EvaluatorEventPayload extends EventPayload {
-  evaluatorId: UUID;
-  evaluatorName: string;
-  startTime?: number;
-  completed?: boolean;
-  error?: Error;
-}
-export interface ModelEventPayload extends EventPayload {
-  provider: string;
-  type: ModelTypeName;
-  prompt: string;
-  tokens?: {
-    prompt: number;
-    completion: number;
-    total: number;
-  };
-}
-export type MessageReceivedHandlerParams = {
-  runtime: IAgentRuntime;
-  message: Memory;
-  callback: HandlerCallback;
-  onComplete?: () => void;
-};
-export interface EventPayloadMap {
-  [EventType.WORLD_JOINED]: WorldPayload;
-  [EventType.WORLD_CONNECTED]: WorldPayload;
-  [EventType.WORLD_LEFT]: WorldPayload;
-  [EventType.ENTITY_JOINED]: EntityPayload;
-  [EventType.ENTITY_LEFT]: EntityPayload;
-  [EventType.ENTITY_UPDATED]: EntityPayload;
-  [EventType.MESSAGE_RECEIVED]: MessagePayload;
-  [EventType.MESSAGE_SENT]: MessagePayload;
-  [EventType.REACTION_RECEIVED]: MessagePayload;
-  [EventType.POST_GENERATED]: InvokePayload;
-  [EventType.INTERACTION_RECEIVED]: MessagePayload;
-  [EventType.RUN_STARTED]: RunEventPayload;
-  [EventType.RUN_ENDED]: RunEventPayload;
-  [EventType.RUN_TIMEOUT]: RunEventPayload;
-  [EventType.ACTION_STARTED]: ActionEventPayload;
-  [EventType.ACTION_COMPLETED]: ActionEventPayload;
-  [EventType.EVALUATOR_STARTED]: EvaluatorEventPayload;
-  [EventType.EVALUATOR_COMPLETED]: EvaluatorEventPayload;
-  [EventType.MODEL_USED]: ModelEventPayload;
-}
-export type EventHandler<T extends keyof EventPayloadMap> = (
-  payload: EventPayloadMap[T]
-) => Promise<void>;
-export enum SOCKET_MESSAGE_TYPE {
-  ROOM_JOINING = 1,
-  SEND_MESSAGE = 2,
-  MESSAGE = 3,
-  ACK = 4,
-  THINKING = 5,
-  CONTROL = 6,
-}
-export interface MessageMemory extends Memory {
-  metadata: MessageMetadata;
-  content: Content & {
-    text: string;
-  };
-}
-export function createMessageMemory(params: {
-  id?: UUID;
-  entityId: UUID;
-  agentId?: UUID;
-  roomId: UUID;
-  content: Content & { text: string };
-  embedding?: number[];
-}): MessageMemory
-export interface TypedService<ConfigType = unknown, ResultType = unknown> extends Service {
-  config: ConfigType;
-  process(input: unknown): Promise<ResultType>;
-}
-⋮----
-process(input: unknown): Promise<ResultType>;
-⋮----
-export function getTypedService<T extends TypedService<any, any>>(
-  runtime: IAgentRuntime,
-  serviceType: ServiceTypeName
-): T | null
-export function isDocumentMetadata(metadata: MemoryMetadata): metadata is DocumentMetadata
-export function isFragmentMetadata(metadata: MemoryMetadata): metadata is FragmentMetadata
-export function isMessageMetadata(metadata: MemoryMetadata): metadata is MessageMetadata
-export function isDescriptionMetadata(metadata: MemoryMetadata): metadata is DescriptionMetadata
-export function isCustomMetadata(metadata: MemoryMetadata): metadata is CustomMetadata
-export interface ServiceError {
-  code: string;
-  message: string;
-  details?: unknown;
-  cause?: Error;
-}
-export function isDocumentMemory(
-  memory: Memory
-): memory is Memory &
-export function isFragmentMemory(
-  memory: Memory
-): memory is Memory &
-export function getMemoryText(memory: Memory, defaultValue = ''): string
-/**
- * Safely create a ServiceError from any caught error
- */
-export function createServiceError(error: unknown, code = 'UNKNOWN_ERROR'): ServiceError
-export type StateValue = string | number | boolean | null | StateObject | StateArray;
-export interface StateObject {
-  [key: string]: StateValue;
-}
-export type StateArray = StateValue[];
-export interface EnhancedState {
-  values: StateObject;
-  data: StateObject;
-  text: string;
-  [key: string]: StateValue;
-}
-export type ComponentData = Record<string, unknown>;
-export type EventDataObject = Record<string, unknown>;
-export type TypedEventHandler = (data: EventDataObject) => Promise<void> | void;
-export type DbConnection = unknown;
-export type MetadataObject = Record<string, unknown>;
-export interface ModelHandler {
-  handler: (runtime: IAgentRuntime, params: Record<string, unknown>) => Promise<unknown>;
-  provider: string;
-  priority?: number;
-  registrationOrder?: number;
-}
-export type ServiceConfig = Record<string, unknown>;
-⋮----
-export interface ControlMessage {
-  type: 'control';
-  payload: {
-    action: 'disable_input' | 'enable_input';
-    target?: string;
-    [key: string]: unknown;
-  };
-  roomId: UUID;
-}
 ````
 
 ## File: packages/docs/docs/core/actions.md
@@ -5007,992 +2964,6 @@ ElizaOS is highly extensible through its plugin system. You can create custom ac
 - [Package Showcase](/packages) - Explore available plugins and extensions
 ````
 
-## File: packages/docs/docs/core/plugins.md
-````markdown
----
-sidebar_position: 8
-title: Plugin System
-description: Learn about ElizaOS plugins - modular extensions that enhance agent capabilities
-keywords: [plugins, extensions, modules, development, publishing, registry, npm, GitHub]
-image: /img/plugins.png
----
-
-# Plugins
-
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
-
-Plugins are modular extensions that enhance the capabilities of ElizaOS agents. They provide a flexible way to add new functionality, integrate external services, and customize agent behavior across different platforms.
-
-:::info
-Key Improvements in V2
-
-1. **Unified API**: Almost everything is accessible via `runtime.methodName()` in the agent runtime for simpler development
-2. **Enhanced Model System**: The new `useModel` approach allows for flexible model provider registration
-3. **Events System**: Formal support for event-based programming
-4. **Plugin Creation Workflow**: Simplified creation and testing via CLI
-5. **Testing Infrastructure**: Built-in support for plugin testing
-6. **No Monorepo Required**: Complete plugin development without touching the core codebase
-7. **Plugin Registry**: Manages the catalog of available plugins and handles their registration with the runtime
-8. **Bootstrap Plugin**: Initializes core functionality required for all agents to operate
-   :::
-
-The ElizaOS plugin system maintains the same basic concept as previous versions, with several new extension points (events, routes, tests, models) and features that significantly improve the developer experience.
-
-**Browse plugins the elizaOS community made here: [Package Showcase](/packages)**
-
-[![](/img/plugins.png)](/packages)
-
-> elizaOS maintains an official package registry at [github.com/elizaos-plugins/registry](https://github.com/elizaos-plugins/registry).
-
----
-
-## Quick Start
-
-The new CLI tool introduces a streamlined workflow for plugin development without ever needing to touch the ElizaOS monorepo directly:
-
-1. **Create**: `npm create eliza` - Initialize a new plugin project with proper structure
-2. **Develop**: Edit the plugin code in the generated project structure
-3. **Test**: `elizaos test` - Test the plugin functionality
-4. **Run**: `elizaos start` - Run the plugin with a default agent
-5. **Publish**: `elizaos publish` - Share your plugin with others
-
-> Note: at time of publishing, use `npm create eliza` until main version is uploaded
-
-### Creating a New Plugin
-
-You can create a new ElizaOS plugin using the CLI:
-
-```bash
-# Using npm
-npm create eliza
-
-# Or using npx
-npx create-eliza
-```
-
-When prompted, select "Plugin" as the type to create. The CLI will guide you through the setup process, creating a plugin with the proper structure and dependencies.
-
----
-
-### Managing Plugins
-
-There are several ways to add plugins to your ElizaOS project:
-
-<Tabs>
-  <TabItem value="package" label="Via package.json">
-    ```json
-    {
-      "dependencies": {
-        "@elizaos/plugin-solana": "github:elizaos-plugins/plugin-solana",
-        "@elizaos/plugin-twitter": "github:elizaos-plugins/plugin-twitter"
-      }
-    }
-    ```
-  </TabItem>
-  <TabItem value="character" label="Via Character Definition">
-    ```typescript
-    // In src/index.ts
-    export const character: Character = {
-      name: 'MyAgent',
-      plugins: ['@elizaos/plugin-twitter', '@elizaos/plugin-example'],
-      // ...
-    };
-    ```
-  </TabItem>
-  <TabItem value="cli" label="Via CLI Commands">
-    ```bash
-    # Add a plugin
-    elizaos plugins add @elizaos/plugin-twitter
-
-    # Remove a plugin
-    elizaos plugins remove @elizaos/plugin-twitter
-
-    # List available plugins
-    elizaos plugins list
-    ```
-
-  </TabItem>
-</Tabs>
-
----
-
-### Plugin Configuration
-
-Configure plugin settings in your character definition:
-
-```json
-{
-  "name": "MyAgent",
-  "plugins": ["@elizaos/plugin-example"],
-  "settings": {
-    "example": {
-      "enableFeatureX": true
-      // Plugin-specific configuration
-    }
-  }
-}
-```
-
-### Plugin Loading Process
-
-The AgentRuntime automatically loads the Bootstrap Plugin during initialization, before any other plugins:
-
-```typescript
-async initialize() {
-  // Register bootstrap plugin
-  await this.registerPlugin(bootstrapPlugin);
-
-  // Then register additional plugins
-  for (const plugin of this.plugins) {
-    await this.registerPlugin(plugin);
-  }
-
-  // Initialize other components
-  // ...
-}
-```
-
----
-
-### Publishing Plugins
-
-If you're a plugin developer, you can publish your plugin to make it available to others. The ElizaOS CLI provides several options for publishing your plugin depending on your needs.
-
-First, make sure your plugin is built and ready for distribution:
-
-```bash
-# Navigate to your plugin directory
-cd my-eliza-plugin
-
-# Build your plugin
-npm run build
-```
-
-<Tabs>
-  <TabItem value="github" label="GitHub Publishing">
-    Publishing to GitHub is the recommended approach for sharing your plugin with the ElizaOS community:
-
-    ```bash
-    # Publish to GitHub
-    elizaos publish
-    ```
-
-    This will:
-    1. Build and package your plugin
-    2. Create or update a GitHub repository in the elizaos-plugins organization
-    3. Add your plugin to the ElizaOS registry (if you're a registry maintainer)
-
-    For first-time publishers, the CLI will guide you through setting up GitHub credentials for publishing.
-
-    GitHub publishing is ideal for open-source plugins that you want to share with the community and have listed in the official registry.
-
-  </TabItem>
-
-  <TabItem value="npm" label="npm Publishing">
-    You can also publish your plugin to npm:
-
-    ```bash
-    # Publish to npm
-    elizaos publish --npm
-    ```
-
-    This allows users to install your plugin using standard npm commands:
-
-    ```bash
-    npm install @your-scope/plugin-name
-    ```
-
-    npm publishing is useful when you want to:
-    - Maintain your own package namespace
-    - Integrate with existing npm workflows
-    - Set up automated versioning and releases
-
-    Make sure your package.json is properly configured with the correct name, version, and access permissions.
-
-  </TabItem>
-
-  <TabItem value="testing" label="Test Mode">
-    Before publishing, you can validate the process without making any external changes:
-
-    ```bash
-    # Test the publish process
-    elizaos publish --test
-    ```
-
-    This runs through all the packaging and validation steps without actually publishing anything.
-
-    Test mode is helpful for:
-    - Verifying your plugin structure is correct
-    - Ensuring all required files are present
-    - Checking that dependencies are properly configured
-    - Validating that your plugin can be built successfully
-
-    Always run in test mode before your first public release to avoid issues.
-
-  </TabItem>
-
-  <TabItem value="customizing" label="Additional Options">
-    The publish command supports several additional options to customize the publishing process:
-
-    ```bash
-    # Specify platform compatibility
-    elizaos publish --platform node
-
-    # Set custom version number
-    elizaos publish --version 1.2.3
-
-    # Provide a custom registry URL
-    elizaos publish --registry https://custom-registry.com
-
-    # Publish with public access
-    elizaos publish --access public
-    ```
-
-    These options give you fine-grained control over how and where your plugin is published. Refer to `elizaos publish --help` for a complete list of options.
-
-  </TabItem>
-</Tabs>
-
-:::info
-When submitting a plugin to the [elizaOS Registry](https://github.com/elizaos-plugins/registry), include:
-
-1. **Working Demo**: Screenshots or video of your plugin in action
-2. **Test Results**: Evidence of successful integration and error handling
-3. **Configuration Example**: Show how to properly configure your plugin
-   :::
-
----
-
-## Plugin Architecture
-
-Eliza uses a unified plugin architecture where everything is a plugin - including services, adapters, actions, evaluators, and providers. This approach ensures consistent behavior and better extensibility.
-
-### Plugin Components
-
-Each plugin can provide one or more of the following components:
-
-| Component          | Purpose                                                                         |
-| ------------------ | ------------------------------------------------------------------------------- |
-| **Services**       | Platform integrations (Discord, Twitter, etc.) or specialized capabilities      |
-| **Actions**        | Executable functions triggered by the agent (reply, generate content, etc.)     |
-| **Providers**      | Context providers that supply info to the agent during decision making          |
-| **Evaluators**     | Analyze conversations to extract insights and improve future interactions       |
-| **Adapters**       | Database or storage system integrations                                         |
-| **Model Handlers** | Register handlers for different model types (text generation, embeddings, etc.) |
-| **Event Handlers** | React to system events like messages, connections, or actions                   |
-| **API Routes**     | Add custom REST endpoints to the agent's HTTP interface                         |
-| **Tests**          | Include test suites to verify plugin functionality                              |
-
-### Plugin Interface
-
-All plugins implement the core Plugin interface:
-
-```typescript
-interface Plugin {
-  name: string;
-  description: string;
-  config?: { [key: string]: any };
-
-  // Optional initialization method
-  init?: (config: Record<string, string>, runtime: IAgentRuntime) => Promise<void>;
-
-  // Components
-  services?: (typeof Service)[];
-  actions?: Action[];
-  providers?: Provider[];
-  evaluators?: Evaluator[];
-  adapters?: Adapter[];
-
-  // Additional features
-  routes?: Route[];
-  tests?: TestSuite[];
-  events?: { [key: string]: ((params: any) => Promise<any>)[] };
-}
-```
-
-### Service Implementation
-
-Services are the core integration points for external platforms. A properly implemented service:
-
-```typescript
-import { Service, IAgentRuntime } from '@elizaos/core';
-
-export class ExampleService extends Service {
-  // Required: Define the service type (used for runtime registration)
-  static serviceType = 'example';
-
-  // Required: Describe what this service enables the agent to do
-  capabilityDescription = 'Enables the agent to interact with the Example platform';
-
-  // Store runtime for service operations
-  constructor(protected runtime: IAgentRuntime) {
-    super();
-    // Initialize connections, setup event handlers, etc.
-  }
-
-  // Required: Static method to create and initialize service instance
-  static async start(runtime: IAgentRuntime): Promise<ExampleService> {
-    const service = new ExampleService(runtime);
-    // Additional initialization if needed
-    return service;
-  }
-
-  // Required: Clean up resources when service is stopped
-  async stop(): Promise<void> {
-    // Close connections, release resources
-  }
-
-  // Optional: Custom methods for your service functionality
-  async sendMessage(content: string, channelId: string): Promise<void> {
-    // Implementation
-  }
-}
-```
-
-## Plugin Structure
-
-Each plugin repository should follow this structure:
-
-```
-plugin-name/
-├── images/                # Branding assets
-│   ├── logo.png           # Square logo (400x400px)
-│   ├── banner.png         # Banner image (1280x640px)
-│   └── screenshots/       # Feature screenshots
-├── src/
-│   ├── index.ts           # Main plugin entry point
-│   ├── service.ts         # Service implementation
-│   ├── actions/           # Plugin-specific actions
-│   ├── providers/         # Data providers
-│   ├── types.ts           # Type definitions
-│   └── environment.ts     # Configuration validation
-├── tests/                 # Test suite
-├── package.json           # Plugin configuration and dependencies
-└── README.md              # Plugin documentation
-```
-
-### Plugin Entry Point
-
-Your plugin's `index.ts` should export a Plugin object:
-
-```typescript
-// Example plugin implementation
-import { type Plugin } from '@elizaos/core';
-import { ExampleService } from './service';
-import { searchAction } from './actions/search';
-import { statusProvider } from './providers/status';
-
-const examplePlugin: Plugin = {
-  name: 'example',
-  description: 'Example platform integration for ElizaOS',
-  services: [ExampleService],
-  actions: [searchAction],
-  providers: [statusProvider],
-  init: async (config, runtime) => {
-    // Perform any necessary initialization
-    const apiKey = runtime.getSetting('EXAMPLE_API_KEY');
-    if (!apiKey) {
-      console.warn('EXAMPLE_API_KEY not provided');
-    }
-  },
-};
-
-export default examplePlugin;
-```
-
-### Plugin Configuration
-
-Your plugin's `package.json` should include an `agentConfig` section:
-
-```json
-{
-  "name": "@elizaos/plugin-example",
-  "version": "1.0.0",
-  "agentConfig": {
-    "pluginType": "elizaos:plugin:1.0.0",
-    "pluginParameters": {
-      "API_KEY": {
-        "type": "string",
-        "description": "API key for the Example service"
-      }
-    }
-  }
-}
-```
-
-### Environment Variables and Secrets
-
-Plugins access configuration through the runtime with the following precedence:
-
-1. Character settings secrets (highest priority)
-2. Character settings
-3. Global environment settings
-
-#### Access Pattern
-
-```typescript
-// In your service implementation
-const apiKey = runtime.getSetting('EXAMPLE_API_KEY');
-const debugMode = runtime.getSetting('EXAMPLE_DEBUG_MODE'); // Returns boolean for "true"/"false" strings
-```
-
-#### Configuration in Character File
-
-```json
-{
-  "name": "MyAgent",
-  "plugins": ["@elizaos/plugin-example"],
-  "settings": {
-    "example": {
-      "enableFeatureX": true
-    },
-    "secrets": {
-      "EXAMPLE_API_KEY": "your-api-key-here"
-    }
-  }
-}
-```
-
----
-
-## Bootstrap Plugin
-
-The Bootstrap Plugin is a foundational component of ElizaOS that initializes the core functionality required for agents to operate. It's automatically loaded as part of the initialization process, establishing the minimum viable capabilities that all agents need.
-
-```typescript
-export const bootstrapPlugin: Plugin = {
-  name: 'bootstrap',
-  description: 'Agent bootstrap with basic actions and evaluators',
-  actions: [...],
-  events: {...},
-  evaluators: [...],
-  providers: [...],
-  services: [TaskService, ScenarioService],
-};
-```
-
-The Bootstrap Plugin registers essential components across several categories to provide a foundation for all agents. These components can be extended by custom plugins.
-
-<Tabs>
-  <TabItem value="actions" label="Actions">
-    | Action                 | Description                                     |
-    | ---------------------- | ----------------------------------------------- |
-    | `replyAction`          | Generates and sends a response to a message     |
-    | `followRoomAction`     | Enables an agent to actively follow a room      |
-    | `unfollowRoomAction`   | Stops an agent from following a room            |
-    | `muteRoomAction`       | Mutes notifications from a room                 |
-    | `unmuteRoomAction`     | Unmutes notifications from a room               |
-    | `sendMessageAction`    | Sends a message to a specific room              |
-    | `ignoreAction`         | Explicitly ignores a message                    |
-    | `noneAction`           | Acknowledges a message without taking action    |
-    | `updateEntityAction`   | Updates properties of an entity                 |
-    | `choiceAction`         | Presents choices to users and handles responses |
-    | `updateRoleAction`     | Updates a user's role in a world                |
-    | `updateSettingsAction` | Updates agent or world settings                 |
-  </TabItem>
-  
-  <TabItem value="providers" label="Providers">
-    | Provider                 | Description                                                |
-    | ------------------------ | ---------------------------------------------------------- |
-    | `characterProvider`      | Provides the agent's personality and configuration         |
-    | `recentMessagesProvider` | Retrieves recent conversation history                      |
-    | `knowledgeProvider`      | Supplies factual information from the knowledge base       |
-    | `timeProvider`           | Provides awareness of current time and date                |
-    | `entitiesProvider`       | Supplies information about entities in the current context |
-    | `relationshipsProvider`  | Provides information about entity relationships            |
-    | `factsProvider`          | Retrieves relevant facts from memory                       |
-    | `roleProvider`           | Provides role information within worlds                    |
-    | `settingsProvider`       | Supplies configured settings                               |
-    | `anxietyProvider`        | Informs agent of potential issues to be careful about      |
-    | `attachmentsProvider`    | Handles media and file attachments                         |
-    | `providersProvider`      | Meta-provider with information about available providers   |
-    | `actionsProvider`        | Meta-provider with information about available actions     |
-    | `evaluatorsProvider`     | Meta-provider with information about available evaluators  |
-    | `choiceProvider`         | Manages choice-based interactions                          |
-    | `capabilitiesProvider`   | Provides information about agent capabilities              |
-  </TabItem>
-  
-  <TabItem value="services" label="Services & Evaluators">
-    **Services:**
-
-    | Service           | Purpose                                          |
-    | ----------------- | ------------------------------------------------ |
-    | `TaskService`     | Manages deferred, scheduled, and repeating tasks |
-    | `ScenarioService` | Handles scenario-based interactions and testing  |
-
-    **Evaluators:**
-
-    | Evaluator             | Description                                           |
-    | --------------------- | ----------------------------------------------------- |
-    | `reflectionEvaluator` | Enables self-awareness and learning from interactions |
-
-  </TabItem>
-  
-  <TabItem value="events" label="Event Handlers">
-    The Bootstrap Plugin registers handlers for key system events that enable the core message processing flow:
-
-    **Core Events:**
-    - `MESSAGE_RECEIVED` - Processes new messages and generates responses
-    - `REACTION_RECEIVED` - Tracks reactions to messages
-    - `VOICE_MESSAGE_RECEIVED` - Handles audio messages
-    - `POST_GENERATED` - Creates social media content
-    - `MESSAGE_SENT` - Logs outgoing messages
-
-    **World Events:**
-    - `WORLD_JOINED` / `WORLD_CONNECTED` - Synchronizes data when joining worlds
-    - `ENTITY_JOINED` / `ENTITY_LEFT` - Manages entity presence
-
-    **Lifecycle Events:**
-    - `ACTION_STARTED` / `ACTION_COMPLETED` - Tracks action execution
-    - `EVALUATOR_STARTED` / `EVALUATOR_COMPLETED` - Monitors evaluator processing
-    - `RUN_STARTED` / `RUN_ENDED` / `RUN_TIMEOUT` - Manages message processing lifecycle
-
-    The message processing flow follows these steps:
-    1. Receive message via `MESSAGE_RECEIVED` event
-    2. Save message to memory
-    3. Check if agent should respond
-    4. If responding, compose state from providers
-    5. Generate a response using the language model
-    6. Process any actions specified in the response
-    7. Run evaluators on the conversation
-    8. Emit lifecycle events throughout the process
-
-  </TabItem>
-</Tabs>
-
-### Extending Bootstrap Functionality
-
-While the Bootstrap Plugin provides core functionality, it's designed to be extended by other plugins. Custom plugins can:
-
-1. **Add new actions** - Extend the agent's capabilities
-2. **Register additional providers** - Supply more contextual information
-3. **Add evaluators** - Create new ways to analyze and learn from interactions
-4. **Handle additional events** - React to more system events
-5. **Initialize custom services** - Provide new functionality
-
-When working with plugins in relation to the Bootstrap Plugin:
-
-1. **Don't modify bootstrap directly** - Instead, create custom plugins to extend functionality
-2. **Understand provider contribution** - Know how each provider contributes to the agent's context
-3. **Learn the core actions** - Become familiar with the actions that all agents can perform
-4. **Leverage event handlers** - Use the event system for reactive behavior
-5. **Extend, don't replace** - Build on top of bootstrap functionality rather than replacing it
-
----
-
-## Developing a Plugin
-
-When developing a new plugin, focus on these key aspects:
-
-1. **Service Implementation**: Create a solid service class following the pattern above
-2. **Proper Error Handling**: Handle API failures gracefully
-3. **Type Definitions**: Define clear interfaces and types
-4. **Documentation**: Include detailed setup instructions
-5. **Tests**: Add test cases for your functionality
-
-### Testing Your Plugin
-
-During development, you can test your plugin locally:
-
-```bash
-# Start with your plugin
-elizaos start --plugins=./path/to/plugin
-
-# Or with a specific character
-elizaos start --character=./characters/test.character.json --plugins=./path/to/plugin
-```
-
-### Distribution & PR Requirements
-
-When submitting a plugin to the [elizaOS Registry](https://github.com/elizaos-plugins/registry), include:
-
-1. **Working Demo**: Screenshots or video of your plugin in action
-2. **Test Results**: Evidence of successful integration and error handling
-3. **Configuration Example**: Show how to properly configure your plugin
-4. **Quality Checklist**:
-   - [ ] Plugin follows the standard structure
-   - [ ] Required branding assets are included
-   - [ ] Documentation is complete
-   - [ ] GitHub topics properly set
-   - [ ] Tests are passing
-   - [ ] Includes error handling
-
----
-
-## FAQ
-
-### What exactly is a plugin in ElizaOS?
-
-A plugin is a modular extension that adds new capabilities to ElizaOS agents, such as API integrations, custom actions, or platform connections. Plugins allow you to expand agent functionality and share reusable components with other developers.
-
-### When should I create a plugin versus using existing ones?
-
-Create a plugin when you need custom functionality not available in existing plugins, want to integrate with external services, or plan to share reusable agent capabilities with the community.
-
-### How do I manage plugin dependencies?
-
-Plugin dependencies are managed through your project's `package.json`. You can add plugins directly using npm or the ElizaOS CLI, and they will be automatically loaded when your project starts.
-
-### Can I use a plugin in development before publishing?
-
-Yes, you can use the `--plugins` flag with the `start` command to include local plugins during development:
-
-```bash
-elizaos start --plugins=./path/to/plugin
-```
-
-### What's the difference between Actions and Services?
-
-Actions handle specific agent responses or behaviors, while Services provide platform integrations (like Discord or Twitter) or ongoing background functionality that multiple actions might use.
-
-### How do I handle rate limits with external APIs?
-
-Implement proper backoff strategies in your service implementation and consider using a queue system for message handling to respect platform rate limits.
-
-## Additional Resources
-
-- [ElizaOS Registry](https://github.com/elizaos-plugins/registry)
-- [Example Plugins](https://github.com/elizaos-plugins)
-- [Discord Community](https://discord.gg/elizaos)
-````
-
-## File: packages/docs/docs/core/project.md
-````markdown
----
-sidebar_position: 2
-title: Project System
-description: Understanding ElizaOS projects - organizational structure for creating and deploying AI agents
-keywords: [projects, organization, configuration, character, agents, deployment]
-image: /img/project.jpg
----
-
-# 📝 ElizaOS Projects
-
-Projects are the main organizational structure in ElizaOS, containing all the necessary components to create and deploy AI agents. A project can include one or more agents, each with their own character definition, plugins, and configurations.
-
-## Project Structure
-
-A typical ElizaOS project structure:
-
-```
-my-eliza-project/
-├── src/
-│   └── index.ts        # Main entry point
-├── knowledge/          # Knowledge base files
-├── package.json        # Dependencies and scripts
-└── tsconfig.json       # TypeScript configuration
-```
-
-## Creating a New Project
-
-You can create a new ElizaOS project using:
-
-```bash
-# Using npm
-npm create eliza
-
-# Or using npx
-npx @elizaos/cli create
-```
-
-The CLI will guide you through the setup process, including:
-
-- Project name
-- Database selection (sqlite, postgres, etc.)
-- Initial configuration
-
-## Project Configuration
-
-The main project file (`src/index.ts`) exports a default project object:
-
-```typescript
-import type { Character, IAgentRuntime, Project, ProjectAgent } from '@elizaos/core';
-import customPlugin from './plugin';
-
-// Define the character
-export const character: Character = {
-  name: 'Agent Name',
-  plugins: ['@elizaos/plugin-discord', '@elizaos/plugin-direct'],
-  // Other character properties
-};
-
-// Create a ProjectAgent that includes the character
-export const projectAgent: ProjectAgent = {
-  character,
-  init: async (runtime: IAgentRuntime) => {
-    // Initialize agent-specific functionality
-    console.log('Initializing agent:', character.name);
-  },
-  plugins: [customPlugin],
-  tests: [], // Optional tests for your agent
-};
-
-// Export the full project with all agents
-const project: Project = {
-  agents: [projectAgent],
-};
-
-export default project;
-```
-
-## Character Configuration
-
-Each agent in your project requires a character definition that controls its personality, knowledge, and behavior.
-
-### Required Character Fields
-
-```typescript
-{
-  name: "agentName", // Character's display name
-  plugins: ["@elizaos/plugin-discord"], // Example plugins
-  settings: {
-    // Configuration settings
-    secrets: {}, // API keys and sensitive data
-    voice: {}, // Voice configuration
-  },
-  bio: [], // Character background as a string or array of statements
-  style: {
-    // Interaction style guide
-    all: [], // General style rules
-    chat: [], // Chat-specific style
-    post: [] // Post-specific style
-  }
-}
-```
-
-### Plugins
-
-Plugins provide your agent with capabilities and integrations:
-
-- `@elizaos/plugin-discord`: Discord integration
-- `@elizaos/plugin-telegram`: Telegram integration
-- `@elizaos/plugin-twitter`: Twitter/X integration
-- `@elizaos/plugin-slack`: Slack integration
-- `@elizaos/plugin-direct`: Direct chat interface
-- `@elizaos/plugin-simsai`: SimsAI platform integration
-
-View all available plugins: https://github.com/elizaos-plugins/registry
-
-### Settings Configuration
-
-The `settings` object supports various configurations:
-
-```typescript
-{
-  "settings": {
-    "ragKnowledge": false, // Enable RAG knowledge mode
-    "voice": {
-      "model": "string", // Voice synthesis model
-      "url": "string" // Optional voice API URL
-    },
-    "secrets": {
-      // API keys (use env vars in production)
-      "API_KEY": "string"
-    },
-  }
-}
-```
-
-### Bio & Style
-
-Define your agent's personality and communication style:
-
-```typescript
-{
-  "bio": ["Expert in blockchain development", "Specializes in DeFi protocols"],
-  "style": {
-    "all": [
-      // Applied to all interactions
-      "Keep responses clear",
-      "Maintain professional tone"
-    ],
-    "chat": [
-      // Chat-specific style
-      "Engage with curiosity",
-      "Provide explanations"
-    ],
-    "post": [
-      // Social post style
-      "Keep posts informative",
-      "Focus on key points"
-    ]
-  }
-}
-```
-
-**Style Tips**
-
-- Be specific about tone and mannerisms
-- Include platform-specific guidance
-- Define clear boundaries and limitations
-
-### Optional Character Fields
-
-```typescript
-{
-  "username": "handle", // Character's username/handle
-  "system": "System prompt text", // Custom system prompt
-  "lore": [], // Additional background/history
-  "knowledge": [
-    // Knowledge base entries
-    "Direct string knowledge",
-    { "path": "file/path.md", "shared": false },
-    { "directory": "knowledge/path", "shared": false }
-  ],
-  "messageExamples": [], // Example conversations
-  "postExamples": [], // Example social posts
-  "topics": [], // Areas of expertise
-  "adjectives": [] // Character traits
-}
-```
-
-## Knowledge Management
-
-ElizaOS supports two knowledge modes:
-
-### Classic Mode (Default)
-
-- Direct string knowledge added to character's context
-- No chunking or semantic search
-- Enabled by default (`settings.ragKnowledge: false`)
-- Only processes string knowledge entries
-- Simpler but less sophisticated
-
-### RAG Mode
-
-- Advanced knowledge processing with semantic search
-- Chunks content and uses embeddings
-- Must be explicitly enabled (`settings.ragKnowledge: true`)
-- Supports three knowledge types:
-  1. Direct string knowledge
-  2. Single file references: `{ "path": "path/to/file.md", "shared": false }`
-  3. Directory references: `{ "directory": "knowledge/dir", "shared": false }`
-- Supported file types: .md, .txt, .pdf
-- Optional `shared` flag for knowledge reuse across characters
-
-### Knowledge Path Configuration
-
-- Knowledge files are relative to the project's `knowledge` directory
-- Paths should not contain `../` (sanitized for security)
-- Both shared and private knowledge supported
-- Files automatically reloaded if content changes
-
-## Example Project
-
-Here's a complete example of a project configuration:
-
-```typescript
-import type { Character, IAgentRuntime, Project, ProjectAgent } from '@elizaos/core';
-
-export const character: Character = {
-  name: 'Tech Helper',
-  plugins: ['@elizaos/plugin-discord', '@elizaos/plugin-direct'],
-  settings: {
-    ragKnowledge: true,
-    voice: {
-      model: 'en_US-male-medium',
-    },
-    discord: {
-      shouldRespondOnlyToMentions: false,
-      allowedChannelIds: ['123456789012345678'],
-    },
-  },
-  bio: ['Friendly technical assistant', 'Specializes in explaining complex topics simply'],
-  lore: ['Pioneer in open-source AI development', 'Advocate for AI accessibility'],
-  messageExamples: [
-    [
-      {
-        name: 'user1',
-        content: { text: 'Can you explain how AI models work?' },
-      },
-      {
-        name: 'TechAI',
-        content: {
-          text: 'Think of AI models like pattern recognition systems.',
-        },
-      },
-    ],
-  ],
-  topics: ['artificial intelligence', 'machine learning', 'technology education'],
-  knowledge: [
-    {
-      directory: 'tech_guides',
-      shared: true,
-    },
-  ],
-  style: {
-    all: ['Clear', 'Patient', 'Educational'],
-    chat: ['Interactive', 'Supportive'],
-    post: ['Concise', 'Informative'],
-  },
-};
-
-export const projectAgent: ProjectAgent = {
-  character,
-  init: async (runtime: IAgentRuntime) => {
-    console.log('Initializing Tech Helper agent');
-  },
-  plugins: [], // Project-specific plugins
-};
-
-const project: Project = {
-  agents: [projectAgent],
-};
-
-export default project;
-```
-
-## Character File Export
-
-While projects are the primary structure in ElizaOS, you can still export standalone character files for compatibility with other systems or sharing character definitions:
-
-```typescript
-import fs from 'fs';
-import { character } from './src/index';
-
-// Export character to JSON file
-fs.writeFileSync('character.json', JSON.stringify(character, null, 2));
-```
-
-## Managing Multiple Agents
-
-A project can contain multiple agents, each with its own character and plugins:
-
-```typescript
-const project: Project = {
-  agents: [
-    {
-      character: technicalSupportCharacter,
-      init: async (runtime) => {
-        /* init code */
-      },
-      plugins: [customSupportPlugin],
-    },
-    {
-      character: communityManagerCharacter,
-      init: async (runtime) => {
-        /* init code */
-      },
-      plugins: [communityPlugin],
-    },
-  ],
-};
-```
-
-Each agent operates independently but can share the same database and resources.
-
-## Running Your Project
-
-After configuring your project, you can run it using:
-
-```bash
-elizaos start
-```
-
-This will start your agents according to your project configuration.
-````
-
 ## File: packages/docs/docs/core/providers.md
 ````markdown
 ---
@@ -7733,14 +4704,23 @@ elizaos plugins add @elizaos/plugin-discord
 
 ### Working with Character Files
 
-You can import or export character files using the CLI:
+You can work with character files using the agent commands:
 
 ```bash
-# Export character to a JSON file
-elizaos character export --output my-character.json
+# Create a new character file
+elizaos create -t agent my-character
 
-# Import character from a JSON file
-elizaos character import --file my-character.json
+# Start an agent with a character file
+elizaos agent start --path ./my-character.json
+
+# Get agent details and save to file
+elizaos agent get --name eliza --output my-exported-character.json
+
+# Start agent with JSON configuration directly
+elizaos agent start --json '{"name":"Eliza","system":"You are a helpful assistant","bio":["Helpful AI assistant"],...}'
+
+# Load character from remote URL
+elizaos agent start --remote-character https://example.com/characters/assistant.json
 ```
 
 This is particularly useful for those migrating from v1 who are used to working with standalone character files.
@@ -7760,18 +4740,18 @@ Develop your plugin following the structure in your generated project:
 # Test your plugin
 elizaos start
 # Publish your plugin when ready
-elizaos plugins publish
+elizaos publish
 ```
 
 ### Publishing options:
 
 ```bash
 # Test publish without making changes
-elizaos plugins publish --test
-# Publish to npm
-elizaos plugins publish --npm
-# Specify platform compatibility
-elizaos plugins publish --platform node
+elizaos publish --test
+# Publish to npm instead of GitHub
+elizaos publish --npm
+# Generate files locally without publishing
+elizaos publish --dry-run
 ```
 
 ---
@@ -7822,10 +4802,10 @@ If your agent fails to start on the first attempt:
 
 Once you have your agent running, explore:
 
-- 🤖 [Understand Agents](./core/agents.md)
-- ⚡ [Add Custom Actions](./core/actions.md)
-- 🧠 [Configure Knowledge](./core/knowledge.md)
-- 🔌 [Add Services](./core/services.md)
+- [Understand Agents](./core/agents.md)
+- [Add Custom Actions](./core/actions.md)
+- [Configure Knowledge](./core/knowledge.md)
+- [Add Services](./core/services.md)
 
 Join the [Discord community](https://discord.gg/elizaOS) for support and to share what you're building!
 ````
@@ -7864,7 +4844,7 @@ tags:
   - name: tee
     description: Trusted Execution Environment operations
 paths:
-  /api/hello:
+  /api/server/hello:
     get:
       tags:
         - system
@@ -7882,7 +4862,7 @@ paths:
                   message:
                     type: string
                     example: 'Hello World!'
-  /api/status:
+  /api/server/status:
     get:
       tags:
         - system
@@ -7907,7 +4887,7 @@ paths:
                     type: string
                     format: date-time
                     description: Current timestamp
-  /api/health:
+  /api/server/health:
     get:
       tags:
         - system
@@ -7942,7 +4922,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  /api/logs:
+  /api/server/logs:
     get:
       tags:
         - logs
@@ -8060,8 +5040,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  /api/stop:
-    get:
+  /api/server/stop:
+    post:
       tags:
         - system
       summary: Stop the server
@@ -9302,7 +6282,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  /api/agents/{agentId}/transcriptions:
+  /api/audio/{agentId}/transcriptions:
     post:
       tags:
         - speech
@@ -9685,60 +6665,1095 @@ components:
           description: TEE attestation data
 ````
 
+## File: packages/core/src/entities.ts
+````typescript
+import { logger, stringToUuid } from './index';
+import { composePrompt, parseJSONObjectFromText } from './utils';
+import {
+  type Entity,
+  type IAgentRuntime,
+  type Memory,
+  ModelType,
+  type Relationship,
+  type State,
+  type UUID,
+} from './types';
+⋮----
+async function getRecentInteractions(
+  runtime: IAgentRuntime,
+  sourceEntityId: UUID,
+  candidateEntities: Entity[],
+  roomId: UUID,
+  relationships: Relationship[]
+): Promise<
+export async function findEntityByName(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State
+): Promise<Entity | null>
+export const createUniqueUuid = (runtime, baseUserId: UUID | string): UUID =>
+export async function getEntityDetails({
+  runtime,
+  roomId,
+}: {
+  runtime: IAgentRuntime;
+  roomId: UUID;
+})
+export function formatEntities(
+````
+
+## File: packages/core/src/logger.ts
+````typescript
+import pino, { type DestinationStream, type LogFn } from 'pino';
+import { Sentry } from './sentry/instrument';
+import { parseBooleanFromText } from './utils';
+interface LogEntry {
+  time?: number;
+  [key: string]: unknown;
+}
+class InMemoryDestination implements DestinationStream
+⋮----
+constructor(stream: DestinationStream | null)
+write(data: string | LogEntry): void
+⋮----
+// Filter only service/agent registration logs, not all agent logs
+⋮----
+recentLogs(): LogEntry[]
+clear(): void
+⋮----
+const createPrettyConfig = () => (
+const createStream = async () =>
+⋮----
+logMethod(inputArgs: [string | Record<string, unknown>, ...unknown[]], method: LogFn): void
+⋮----
+const formatError = (err: Error) => (
+⋮----
+const createLogger = (bindings: any | boolean = false) =>
+⋮----
+interface LoggerWithClear extends pino.Logger {
+  clear: () => void;
+}
+````
+
+## File: packages/docs/docs/core/plugins.md
+````markdown
+---
+sidebar_position: 8
+title: Plugin System
+description: Learn about ElizaOS plugins - modular extensions that enhance agent capabilities
+keywords: [plugins, extensions, modules, development, publishing, registry, npm, GitHub]
+image: /img/plugins.png
+---
+
+# Plugins
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+Plugins are modular extensions that enhance the capabilities of ElizaOS agents. They provide a flexible way to add new functionality, integrate external services, and customize agent behavior across different platforms.
+
+:::info
+Key Improvements in V2
+
+1. **Unified API**: Almost everything is accessible via `runtime.methodName()` in the agent runtime for simpler development
+2. **Enhanced Model System**: The new `useModel` approach allows for flexible model provider registration
+3. **Events System**: Formal support for event-based programming
+4. **Plugin Creation Workflow**: Simplified creation and testing via CLI
+5. **Testing Infrastructure**: Built-in support for plugin testing
+6. **No Monorepo Required**: Complete plugin development without touching the core codebase
+7. **Plugin Registry**: Manages the catalog of available plugins and handles their registration with the runtime
+8. **Bootstrap Plugin**: Initializes core functionality required for all agents to operate
+   :::
+
+The ElizaOS plugin system maintains the same basic concept as previous versions, with several new extension points (events, routes, tests, models) and features that significantly improve the developer experience.
+
+**Browse plugins the elizaOS community made here: [Package Showcase](/packages)**
+
+[![](/img/plugins.png)](/packages)
+
+> elizaOS maintains an official package registry at [github.com/elizaos-plugins/registry](https://github.com/elizaos-plugins/registry).
+
+---
+
+## Quick Start
+
+The new CLI tool introduces a streamlined workflow for plugin development without ever needing to touch the ElizaOS monorepo directly:
+
+1. **Create**: `bun create eliza` - Initialize a new plugin project with proper structure
+2. **Develop**: Edit the plugin code in the generated project structure
+3. **Test**: `elizaos test` - Test the plugin functionality
+4. **Run**: `elizaos start` - Run the plugin with a default agent
+5. **Publish**: `elizaos publish` - Share your plugin with others
+
+### Creating a New Plugin
+
+You can create a new ElizaOS plugin using the CLI:
+
+```bash
+# Using bun (recommended)
+bun create eliza
+
+# Or using bunx
+bunx create-eliza
+```
+
+When prompted, select "Plugin" as the type to create. The CLI will guide you through the setup process, creating a plugin with the proper structure and dependencies.
+
+---
+
+### Managing Plugins
+
+There are several ways to add plugins to your ElizaOS project:
+
+<Tabs>
+  <TabItem value="package" label="Via package.json">
+    ```json
+    {
+      "dependencies": {
+        "@elizaos/plugin-solana": "github:elizaos-plugins/plugin-solana",
+        "@elizaos/plugin-farcaster": "github:elizaos-plugins/plugin-farcaster"
+      }
+    }
+    ```
+  </TabItem>
+  <TabItem value="character" label="Via Character Definition">
+    ```typescript
+    // In src/index.ts
+    export const character: Character = {
+      name: 'MyAgent',
+      plugins: ['@elizaos/plugin-farcaster', '@elizaos/plugin-example'],
+      // ...
+    };
+    ```
+  </TabItem>
+  <TabItem value="cli" label="Via CLI Commands">
+    ```bash
+    # Add a plugin
+    elizaos plugins add @elizaos/plugin-farcaster
+
+    # Remove a plugin
+    elizaos plugins remove @elizaos/plugin-farcaster
+
+    # List available plugins
+    elizaos plugins list
+    ```
+
+  </TabItem>
+</Tabs>
+
+---
+
+### Plugin Configuration
+
+Configure plugin settings in your character definition:
+
+```json
+{
+  "name": "MyAgent",
+  "plugins": ["@elizaos/plugin-example"],
+  "settings": {
+    "example": {
+      "enableFeatureX": true
+    }
+  }
+}
+```
+
+### Plugin Loading Process
+
+The AgentRuntime automatically loads the Bootstrap Plugin during initialization, before any other plugins:
+
+```typescript
+async initialize() {
+  // Register bootstrap plugin
+  await this.registerPlugin(bootstrapPlugin);
+
+  // Then register additional plugins
+  for (const plugin of this.plugins) {
+    await this.registerPlugin(plugin);
+  }
+
+  // Initialize other components
+  // ...
+}
+```
+
+---
+
+### Publishing Plugins
+
+If you're a plugin developer, you can publish your plugin to make it available to others. The ElizaOS CLI provides several options for publishing your plugin depending on your needs.
+
+First, make sure your plugin is built and ready for distribution:
+
+```bash
+# Navigate to your plugin directory
+cd my-eliza-plugin
+
+# Build your plugin
+npm run build
+```
+
+<Tabs>
+  <TabItem value="github" label="GitHub Publishing">
+    Publishing to GitHub is the recommended approach for sharing your plugin with the ElizaOS community:
+
+    ```bash
+    # Publish to GitHub
+    elizaos publish
+    ```
+
+    This will:
+    1. Build and package your plugin
+    2. Create or update a GitHub repository in the elizaos-plugins organization
+    3. Add your plugin to the ElizaOS registry (if you're a registry maintainer)
+
+    For first-time publishers, the CLI will guide you through setting up GitHub credentials for publishing.
+
+    GitHub publishing is ideal for open-source plugins that you want to share with the community and have listed in the official registry.
+
+  </TabItem>
+
+  <TabItem value="npm" label="npm Publishing">
+    You can also publish your plugin to npm:
+
+    ```bash
+    # Publish to npm
+    elizaos publish --npm
+    ```
+
+    This allows users to install your plugin using standard npm commands:
+
+    ```bash
+    npm install @your-scope/plugin-name
+    ```
+
+    npm publishing is useful when you want to:
+    - Maintain your own package namespace
+    - Integrate with existing npm workflows
+    - Set up automated versioning and releases
+
+    Make sure your package.json is properly configured with the correct name, version, and access permissions.
+
+  </TabItem>
+
+  <TabItem value="testing" label="Test Mode">
+    Before publishing, you can validate the process without making any external changes:
+
+    ```bash
+    # Test the publish process
+    elizaos publish --test
+    ```
+
+    This runs through all the packaging and validation steps without actually publishing anything.
+
+    Test mode is helpful for:
+    - Verifying your plugin structure is correct
+    - Ensuring all required files are present
+    - Checking that dependencies are properly configured
+    - Validating that your plugin can be built successfully
+
+    Always run in test mode before your first public release to avoid issues.
+
+  </TabItem>
+
+  <TabItem value="customizing" label="Additional Options">
+    The publish command supports several additional options to customize the publishing process:
+
+    ```bash
+    # Specify platform compatibility
+    elizaos publish --platform node
+
+    # Set custom version number
+    elizaos publish --version 1.2.3
+
+    # Provide a custom registry URL
+    elizaos publish --registry https://custom-registry.com
+
+    # Publish with public access
+    elizaos publish --access public
+    ```
+
+    These options give you fine-grained control over how and where your plugin is published. Refer to `elizaos publish --help` for a complete list of options.
+
+  </TabItem>
+</Tabs>
+
+:::info
+When submitting a plugin to the [elizaOS Registry](https://github.com/elizaos-plugins/registry), include:
+
+1. **Working Demo**: Screenshots or video of your plugin in action
+2. **Test Results**: Evidence of successful integration and error handling
+3. **Configuration Example**: Show how to properly configure your plugin
+   :::
+
+---
+
+## Plugin Architecture
+
+Eliza uses a unified plugin architecture where everything is a plugin - including services, adapters, actions, evaluators, and providers. This approach ensures consistent behavior and better extensibility.
+
+### Plugin Components
+
+Each plugin can provide one or more of the following components:
+
+| Component          | Purpose                                                                         |
+| ------------------ | ------------------------------------------------------------------------------- |
+| **Services**       | Platform integrations (Discord, Telegram, etc.) or specialized capabilities      |
+| **Actions**        | Executable functions triggered by the agent (reply, generate content, etc.)     |
+| **Providers**      | Context providers that supply info to the agent during decision making          |
+| **Evaluators**     | Analyze conversations to extract insights and improve future interactions       |
+| **Adapters**       | Database or storage system integrations                                         |
+| **Model Handlers** | Register handlers for different model types (text generation, embeddings, etc.) |
+| **Event Handlers** | React to system events like messages, connections, or actions                   |
+| **API Routes**     | Add custom REST endpoints to the agent's HTTP interface                         |
+| **Tests**          | Include test suites to verify plugin functionality                              |
+
+### Plugin Interface
+
+All plugins implement the core Plugin interface:
+
+```typescript
+interface Plugin {
+  name: string;
+  description: string;
+  config?: { [key: string]: any };
+
+  // Optional initialization method
+  init?: (config: Record<string, string>, runtime: IAgentRuntime) => Promise<void>;
+
+  // Components
+  services?: (typeof Service)[];
+  actions?: Action[];
+  providers?: Provider[];
+  evaluators?: Evaluator[];
+  adapters?: Adapter[];
+
+  // Additional features
+  routes?: Route[];
+  tests?: TestSuite[];
+  events?: { [key: string]: ((params: any) => Promise<any>)[] };
+}
+```
+
+### Service Implementation
+
+Services are the core integration points for external platforms. A properly implemented service:
+
+```typescript
+import { Service, IAgentRuntime } from '@elizaos/core';
+
+export class ExampleService extends Service {
+  // Required: Define the service type (used for runtime registration)
+  static serviceType = 'example';
+
+  // Required: Describe what this service enables the agent to do
+  capabilityDescription = 'Enables the agent to interact with the Example platform';
+
+  // Store runtime for service operations
+  constructor(protected runtime: IAgentRuntime) {
+    super();
+    // Initialize connections, setup event handlers, etc.
+  }
+
+  // Required: Static method to create and initialize service instance
+  static async start(runtime: IAgentRuntime): Promise<ExampleService> {
+    const service = new ExampleService(runtime);
+    // Additional initialization if needed
+    return service;
+  }
+
+  // Required: Clean up resources when service is stopped
+  async stop(): Promise<void> {
+    // Close connections, release resources
+  }
+
+  // Optional: Custom methods for your service functionality
+  async sendMessage(content: string, channelId: string): Promise<void> {
+    // Implementation
+  }
+}
+```
+
+## Plugin Structure
+
+Each plugin repository should follow this structure:
+
+```
+plugin-name/
+├── images/                # Branding assets
+│   ├── logo.png           # Square logo (400x400px)
+│   ├── banner.png         # Banner image (1280x640px)
+│   └── screenshots/       # Feature screenshots
+├── src/
+│   ├── index.ts           # Main plugin entry point
+│   ├── service.ts         # Service implementation
+│   ├── actions/           # Plugin-specific actions
+│   ├── providers/         # Data providers
+│   ├── types.ts           # Type definitions
+│   └── environment.ts     # Configuration validation
+├── tests/                 # Test suite
+├── package.json           # Plugin configuration and dependencies
+└── README.md              # Plugin documentation
+```
+
+### Plugin Entry Point
+
+Your plugin's `index.ts` should export a Plugin object:
+
+```typescript
+// Example plugin implementation
+import { type Plugin } from '@elizaos/core';
+import { ExampleService } from './service';
+import { searchAction } from './actions/search';
+import { statusProvider } from './providers/status';
+
+const examplePlugin: Plugin = {
+  name: 'example',
+  description: 'Example platform integration for ElizaOS',
+  services: [ExampleService],
+  actions: [searchAction],
+  providers: [statusProvider],
+  init: async (config, runtime) => {
+    // Perform any necessary initialization
+    const apiKey = runtime.getSetting('EXAMPLE_API_KEY');
+    if (!apiKey) {
+      console.warn('EXAMPLE_API_KEY not provided');
+    }
+  },
+};
+
+export default examplePlugin;
+```
+
+### Plugin Configuration
+
+Your plugin's `package.json` should include an `agentConfig` section:
+
+```json
+{
+  "name": "@elizaos/plugin-example",
+  "version": "1.0.0",
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "API_KEY": {
+        "type": "string",
+        "description": "API key for the Example service"
+      }
+    }
+  }
+}
+```
+
+### Environment Variables and Secrets
+
+Plugins access configuration through the runtime with the following precedence:
+
+1. Character settings secrets (highest priority)
+2. Character settings
+3. Global environment settings
+
+#### Access Pattern
+
+```typescript
+// In your service implementation
+const apiKey = runtime.getSetting('EXAMPLE_API_KEY');
+const debugMode = runtime.getSetting('EXAMPLE_DEBUG_MODE'); // Returns boolean for "true"/"false" strings
+```
+
+#### Configuration in Character File
+
+```json
+{
+  "name": "MyAgent",
+  "plugins": ["@elizaos/plugin-example"],
+  "settings": {
+    "example": {
+      "enableFeatureX": true
+    },
+    "secrets": {
+      "EXAMPLE_API_KEY": "your-api-key-here"
+    }
+  }
+}
+```
+
+---
+
+## Bootstrap Plugin
+
+The Bootstrap Plugin is a foundational component of ElizaOS that initializes the core functionality required for agents to operate. It's automatically loaded as part of the initialization process, establishing the minimum viable capabilities that all agents need.
+
+```typescript
+export const bootstrapPlugin: Plugin = {
+  name: 'bootstrap',
+  description: 'Agent bootstrap with basic actions and evaluators',
+  actions: [...],
+  events: {...},
+  evaluators: [...],
+  providers: [...],
+  services: [TaskService, ScenarioService],
+};
+```
+
+The Bootstrap Plugin registers essential components across several categories to provide a foundation for all agents. These components can be extended by custom plugins.
+
+<Tabs>
+  <TabItem value="actions" label="Actions">
+    | Action                 | Description                                     |
+    | ---------------------- | ----------------------------------------------- |
+    | `replyAction`          | Generates and sends a response to a message     |
+    | `followRoomAction`     | Enables an agent to actively follow a room      |
+    | `unfollowRoomAction`   | Stops an agent from following a room            |
+    | `muteRoomAction`       | Mutes notifications from a room                 |
+    | `unmuteRoomAction`     | Unmutes notifications from a room               |
+    | `sendMessageAction`    | Sends a message to a specific room              |
+    | `ignoreAction`         | Explicitly ignores a message                    |
+    | `noneAction`           | Acknowledges a message without taking action    |
+    | `updateEntityAction`   | Updates properties of an entity                 |
+    | `choiceAction`         | Presents choices to users and handles responses |
+    | `updateRoleAction`     | Updates a user's role in a world                |
+    | `updateSettingsAction` | Updates agent or world settings                 |
+  </TabItem>
+  
+  <TabItem value="providers" label="Providers">
+    | Provider                 | Description                                                |
+    | ------------------------ | ---------------------------------------------------------- |
+    | `characterProvider`      | Provides the agent's personality and configuration         |
+    | `recentMessagesProvider` | Retrieves recent conversation history                      |
+    | `knowledgeProvider`      | Supplies factual information from the knowledge base       |
+    | `timeProvider`           | Provides awareness of current time and date                |
+    | `entitiesProvider`       | Supplies information about entities in the current context |
+    | `relationshipsProvider`  | Provides information about entity relationships            |
+    | `factsProvider`          | Retrieves relevant facts from memory                       |
+    | `roleProvider`           | Provides role information within worlds                    |
+    | `settingsProvider`       | Supplies configured settings                               |
+    | `anxietyProvider`        | Informs agent of potential issues to be careful about      |
+    | `attachmentsProvider`    | Handles media and file attachments                         |
+    | `providersProvider`      | Meta-provider with information about available providers   |
+    | `actionsProvider`        | Meta-provider with information about available actions     |
+    | `evaluatorsProvider`     | Meta-provider with information about available evaluators  |
+    | `choiceProvider`         | Manages choice-based interactions                          |
+    | `capabilitiesProvider`   | Provides information about agent capabilities              |
+  </TabItem>
+  
+  <TabItem value="services" label="Services & Evaluators">
+    **Services:**
+
+    | Service           | Purpose                                          |
+    | ----------------- | ------------------------------------------------ |
+    | `TaskService`     | Manages deferred, scheduled, and repeating tasks |
+    | `ScenarioService` | Handles scenario-based interactions and testing  |
+
+    **Evaluators:**
+
+    | Evaluator             | Description                                           |
+    | --------------------- | ----------------------------------------------------- |
+    | `reflectionEvaluator` | Enables self-awareness and learning from interactions |
+
+  </TabItem>
+  
+  <TabItem value="events" label="Event Handlers">
+    The Bootstrap Plugin registers handlers for key system events that enable the core message processing flow:
+
+    **Core Events:**
+    - `MESSAGE_RECEIVED` - Processes new messages and generates responses
+    - `REACTION_RECEIVED` - Tracks reactions to messages
+    - `VOICE_MESSAGE_RECEIVED` - Handles audio messages
+    - `POST_GENERATED` - Creates social media content
+    - `MESSAGE_SENT` - Logs outgoing messages
+
+    **World Events:**
+    - `WORLD_JOINED` / `WORLD_CONNECTED` - Synchronizes data when joining worlds
+    - `ENTITY_JOINED` / `ENTITY_LEFT` - Manages entity presence
+
+    **Lifecycle Events:**
+    - `ACTION_STARTED` / `ACTION_COMPLETED` - Tracks action execution
+    - `EVALUATOR_STARTED` / `EVALUATOR_COMPLETED` - Monitors evaluator processing
+    - `RUN_STARTED` / `RUN_ENDED` / `RUN_TIMEOUT` - Manages message processing lifecycle
+
+    The message processing flow follows these steps:
+    1. Receive message via `MESSAGE_RECEIVED` event
+    2. Save message to memory
+    3. Check if agent should respond
+    4. If responding, compose state from providers
+    5. Generate a response using the language model
+    6. Process any actions specified in the response
+    7. Run evaluators on the conversation
+    8. Emit lifecycle events throughout the process
+
+  </TabItem>
+</Tabs>
+
+### Extending Bootstrap Functionality
+
+While the Bootstrap Plugin provides core functionality, it's designed to be extended by other plugins. Custom plugins can:
+
+1. **Add new actions** - Extend the agent's capabilities
+2. **Register additional providers** - Supply more contextual information
+3. **Add evaluators** - Create new ways to analyze and learn from interactions
+4. **Handle additional events** - React to more system events
+5. **Initialize custom services** - Provide new functionality
+
+When working with plugins in relation to the Bootstrap Plugin:
+
+1. **Don't modify bootstrap directly** - Instead, create custom plugins to extend functionality
+2. **Understand provider contribution** - Know how each provider contributes to the agent's context
+3. **Learn the core actions** - Become familiar with the actions that all agents can perform
+4. **Leverage event handlers** - Use the event system for reactive behavior
+5. **Extend, don't replace** - Build on top of bootstrap functionality rather than replacing it
+
+---
+
+## Developing a Plugin
+
+When developing a new plugin, focus on these key aspects:
+
+1. **Service Implementation**: Create a solid service class following the pattern above
+2. **Proper Error Handling**: Handle API failures gracefully
+3. **Type Definitions**: Define clear interfaces and types
+4. **Documentation**: Include detailed setup instructions
+5. **Tests**: Add test cases for your functionality
+
+### Testing Your Plugin
+
+During development, you can test your plugin locally:
+
+```bash
+# Start with your plugin
+elizaos start --plugins=./path/to/plugin
+
+# Or with a specific character
+elizaos start --character=./characters/test.character.json --plugins=./path/to/plugin
+```
+
+### Distribution & PR Requirements
+
+When submitting a plugin to the [elizaOS Registry](https://github.com/elizaos-plugins/registry), include:
+
+1. **Working Demo**: Screenshots or video of your plugin in action
+2. **Test Results**: Evidence of successful integration and error handling
+3. **Configuration Example**: Show how to properly configure your plugin
+4. **Quality Checklist**:
+   - [ ] Plugin follows the standard structure
+   - [ ] Required branding assets are included
+   - [ ] Documentation is complete
+   - [ ] GitHub topics properly set
+   - [ ] Tests are passing
+   - [ ] Includes error handling
+
+---
+
+## FAQ
+
+### What exactly is a plugin in ElizaOS?
+
+A plugin is a modular extension that adds new capabilities to ElizaOS agents, such as API integrations, custom actions, or platform connections. Plugins allow you to expand agent functionality and share reusable components with other developers.
+
+### When should I create a plugin versus using existing ones?
+
+Create a plugin when you need custom functionality not available in existing plugins, want to integrate with external services, or plan to share reusable agent capabilities with the community.
+
+### How do I manage plugin dependencies?
+
+Plugin dependencies are managed through your project's `package.json`. You can add plugins directly using npm or the ElizaOS CLI, and they will be automatically loaded when your project starts.
+
+### Can I use a plugin in development before publishing?
+
+Yes, you can use the `--plugins` flag with the `start` command to include local plugins during development:
+
+```bash
+elizaos start --plugins=./path/to/plugin
+```
+
+### What's the difference between Actions and Services?
+
+Actions handle specific agent responses or behaviors, while Services provide platform integrations (like Discord or Telegram) or ongoing background functionality that multiple actions might use.
+
+### How do I handle rate limits with external APIs?
+
+Implement proper backoff strategies in your service implementation and consider using a queue system for message handling to respect platform rate limits.
+
+## Additional Resources
+
+- [ElizaOS Registry](https://github.com/elizaos-plugins/registry)
+- [Example Plugins](https://github.com/elizaos-plugins)
+- [Discord Community](https://discord.gg/elizaos)
+````
+
+## File: packages/docs/docs/core/project.md
+````markdown
+---
+sidebar_position: 2
+title: Project System
+description: Understanding ElizaOS projects - organizational structure for creating and deploying AI agents
+keywords: [projects, organization, configuration, character, agents, deployment]
+image: /img/project.jpg
+---
+
+# 📝 ElizaOS Projects
+
+Projects are the main organizational structure in ElizaOS, containing all the necessary components to create and deploy AI agents. A project can include one or more agents, each with their own character definition, plugins, and configurations.
+
+## Project Structure
+
+A typical ElizaOS project structure:
+
+```
+my-eliza-project/
+├── src/
+│   └── index.ts        # Main entry point
+├── knowledge/          # Knowledge base files
+├── package.json        # Dependencies and scripts
+└── tsconfig.json       # TypeScript configuration
+```
+
+## Creating a New Project
+
+You can create a new ElizaOS project using:
+
+```bash
+# Using bun (recommended)
+bun create eliza
+
+# Or using bunx
+bunx @elizaos/cli create
+```
+
+The CLI will guide you through the setup process, including:
+
+- Project name
+- Database selection (sqlite, postgres, etc.)
+- Initial configuration
+
+## Project Configuration
+
+The main project file (`src/index.ts`) exports a default project object:
+
+```typescript
+import type { Character, IAgentRuntime, Project, ProjectAgent } from '@elizaos/core';
+import customPlugin from './plugin';
+
+// Define the character
+export const character: Character = {
+  name: 'Agent Name',
+  plugins: ['@elizaos/plugin-discord', '@elizaos/plugin-direct'],
+  // Other character properties
+};
+
+// Create a ProjectAgent that includes the character
+export const projectAgent: ProjectAgent = {
+  character,
+  init: async (runtime: IAgentRuntime) => {
+    // Initialize agent-specific functionality
+    console.log('Initializing agent:', character.name);
+  },
+  plugins: [customPlugin],
+  tests: [], // Optional tests for your agent
+};
+
+// Export the full project with all agents
+const project: Project = {
+  agents: [projectAgent],
+};
+
+export default project;
+```
+
+## Character Configuration
+
+Each agent in your project requires a character definition that controls its personality, knowledge, and behavior.
+
+### Required Character Fields
+
+```typescript
+{
+  name: "agentName", // Character's display name
+  plugins: ["@elizaos/plugin-discord"], // Example plugins
+  settings: {
+    // Configuration settings
+    secrets: {}, // API keys and sensitive data
+    voice: {}, // Voice configuration
+  },
+  bio: [], // Character background as a string or array of statements
+  style: {
+    // Interaction style guide
+    all: [], // General style rules
+    chat: [], // Chat-specific style
+    post: [] // Post-specific style
+  }
+}
+```
+
+### Plugins
+
+Plugins provide your agent with capabilities and integrations:
+
+- `@elizaos/plugin-discord`: Discord integration
+- `@elizaos/plugin-telegram`: Telegram integration
+- `@elizaos/plugin-farcaster`: Farcaster integration
+- `@elizaos/plugin-slack`: Slack integration
+- `@elizaos/plugin-direct`: Direct chat interface
+- `@elizaos/plugin-simsai`: SimsAI platform integration
+
+View all available plugins: https://github.com/elizaos-plugins/registry
+
+### Settings Configuration
+
+The `settings` object supports various configurations:
+
+```typescript
+{
+  "settings": {
+    "ragKnowledge": false, // Enable RAG knowledge mode
+    "voice": {
+      "model": "string", // Voice synthesis model
+      "url": "string" // Optional voice API URL
+    },
+    "secrets": {
+      // API keys (use env vars in production)
+      "API_KEY": "string"
+    },
+  }
+}
+```
+
+### Bio & Style
+
+Define your agent's personality and communication style:
+
+```typescript
+{
+  "bio": ["Expert in blockchain development", "Specializes in DeFi protocols"],
+  "style": {
+    "all": [
+      // Applied to all interactions
+      "Keep responses clear",
+      "Maintain professional tone"
+    ],
+    "chat": [
+      // Chat-specific style
+      "Engage with curiosity",
+      "Provide explanations"
+    ],
+    "post": [
+      // Social post style
+      "Keep posts informative",
+      "Focus on key points"
+    ]
+  }
+}
+```
+
+**Style Tips**
+
+- Be specific about tone and mannerisms
+- Include platform-specific guidance
+- Define clear boundaries and limitations
+
+### Optional Character Fields
+
+```typescript
+{
+  "username": "handle", // Character's username/handle
+  "system": "System prompt text", // Custom system prompt
+  "lore": [], // Additional background/history
+  "knowledge": [
+    // Knowledge base entries
+    "Direct string knowledge",
+    { "path": "file/path.md", "shared": false },
+    { "directory": "knowledge/path", "shared": false }
+  ],
+  "messageExamples": [], // Example conversations
+  "postExamples": [], // Example social posts
+  "topics": [], // Areas of expertise
+  "adjectives": [] // Character traits
+}
+```
+
+## Knowledge Management
+
+ElizaOS supports two knowledge modes:
+
+### Classic Mode (Default)
+
+- Direct string knowledge added to character's context
+- No chunking or semantic search
+- Enabled by default (`settings.ragKnowledge: false`)
+- Only processes string knowledge entries
+- Simpler but less sophisticated
+
+### RAG Mode
+
+- Advanced knowledge processing with semantic search
+- Chunks content and uses embeddings
+- Must be explicitly enabled (`settings.ragKnowledge: true`)
+- Supports three knowledge types:
+  1. Direct string knowledge
+  2. Single file references: `{ "path": "path/to/file.md", "shared": false }`
+  3. Directory references: `{ "directory": "knowledge/dir", "shared": false }`
+- Supported file types: .md, .txt, .pdf
+- Optional `shared` flag for knowledge reuse across characters
+
+### Knowledge Path Configuration
+
+- Knowledge files are relative to the project's `knowledge` directory
+- Paths should not contain `../` (sanitized for security)
+- Both shared and private knowledge supported
+- Files automatically reloaded if content changes
+
+## Example Project
+
+Here's a complete example of a project configuration:
+
+```typescript
+import type { Character, IAgentRuntime, Project, ProjectAgent } from '@elizaos/core';
+
+export const character: Character = {
+  name: 'Tech Helper',
+  plugins: ['@elizaos/plugin-discord', '@elizaos/plugin-direct'],
+  settings: {
+    ragKnowledge: true,
+    voice: {
+      model: 'en_US-male-medium',
+    },
+    discord: {
+      shouldRespondOnlyToMentions: false,
+      allowedChannelIds: ['123456789012345678'],
+    },
+  },
+  bio: ['Friendly technical assistant', 'Specializes in explaining complex topics simply'],
+  lore: ['Pioneer in open-source AI development', 'Advocate for AI accessibility'],
+  messageExamples: [
+    [
+      {
+        name: 'user1',
+        content: { text: 'Can you explain how AI models work?' },
+      },
+      {
+        name: 'TechAI',
+        content: {
+          text: 'Think of AI models like pattern recognition systems.',
+        },
+      },
+    ],
+  ],
+  topics: ['artificial intelligence', 'machine learning', 'technology education'],
+  knowledge: [
+    {
+      directory: 'tech_guides',
+      shared: true,
+    },
+  ],
+  style: {
+    all: ['Clear', 'Patient', 'Educational'],
+    chat: ['Interactive', 'Supportive'],
+    post: ['Concise', 'Informative'],
+  },
+};
+
+export const projectAgent: ProjectAgent = {
+  character,
+  init: async (runtime: IAgentRuntime) => {
+    console.log('Initializing Tech Helper agent');
+  },
+  plugins: [], // Project-specific plugins
+};
+
+const project: Project = {
+  agents: [projectAgent],
+};
+
+export default project;
+```
+
+## Character File Export
+
+While projects are the primary structure in ElizaOS, you can still export standalone character files for compatibility with other systems or sharing character definitions:
+
+```typescript
+import fs from 'fs';
+import { character } from './src/index';
+
+// Export character to JSON file
+fs.writeFileSync('character.json', JSON.stringify(character, null, 2));
+```
+
+## Managing Multiple Agents
+
+A project can contain multiple agents, each with its own character and plugins:
+
+```typescript
+const project: Project = {
+  agents: [
+    {
+      character: technicalSupportCharacter,
+      init: async (runtime) => {
+        /* init code */
+      },
+      plugins: [customSupportPlugin],
+    },
+    {
+      character: communityManagerCharacter,
+      init: async (runtime) => {
+        /* init code */
+      },
+      plugins: [communityPlugin],
+    },
+  ],
+};
+```
+
+Each agent operates independently but can share the same database and resources.
+
+## Running Your Project
+
+After configuring your project, you can run it using:
+
+```bash
+elizaos start
+```
+
+This will start your agents according to your project configuration.
+````
+
 ## File: .env.example
 ````
-# Logging Configuration (supported: fatal, error, warn, info, debug, trace | default: info)
-LOG_LEVEL=
+### elizaOS Environment Variables ###
+# To get started, copy this file to .env, or make a .env and add the settings you'd like to override
+# Please read the comments for each of the configurations
 
-SENTRY_LOGGING=true
-SENTRY_DSN=
-SENTRY_ENVIRONMENT=
-SENTRY_TRACES_SAMPLE_RATE=
-SENTRY_SEND_DEFAULT_PII=
+# The only thing you ABSOLUTELY NEED to get up and running is one of the model provider keys, 
+# i.e. OPENAI_API_KEY or ANTHROPIC_API_KEY, or setup the local-ai plugin
+# Everything else is optional, and most settings and secrets can be configured in your agent or through the GUI
+# For multi-agent, each agent will need keys for the various services it is connected to
+# You can use the .env or environment variables generally for shared keys, such as to model providers, 
+# database, etc, with scoped keys for services such as Telegram, Discord, etc
+
+### MODEL PROVIDER KEYS ###
+# Eliza is compatible with a wide array of model providers. Many have OpenAI compatible APIs, 
+# and you can use them by overriding the base URL
+
+# NOTE: You will need a provider that provides embeddings. So even if you use Claude, you will 
+# need to get embeddings using another provider, for example openai or our local-ai plugin
 
 # OpenAI Configuration
 OPENAI_API_KEY=
+# Use this to override the openai endpoint, for example for using together.ai, fireworks or other providers
+# OPENAI_BASE_URL=
 
 # Anthropic Configuration
+# By default in most of our starter kits, Anthropic will take precedence over OpenAI in handling requests
+# Anthropic does not handle embeddings, so you may wish to use OpenAI for that, even while Claude is handling text generation
 ANTHROPIC_API_KEY=
 
 # Cloudflare AI
-CLOUDFLARE_GW_ENABLED= # Enable Cloudflare AI Gateway
-CLOUDFLARE_AI_ACCOUNT_ID= # Account ID
-CLOUDFLARE_AI_GATEWAY_ID= # Gateway ID
+CLOUDFLARE_GW_ENABLED=
+CLOUDFLARE_AI_ACCOUNT_ID=
+CLOUDFLARE_AI_GATEWAY_ID=
 
-# Fill these out if you want to use Discord
-DISCORD_APPLICATION_ID=
-DISCORD_API_TOKEN=
-
-# Fill these out if you want to use Postgres
-POSTGRES_URL=
-
-# Fill these out if you want to use Telegram
-TELEGRAM_BOT_TOKEN=
-
-# Fill these out if you want to use Twitter
-TWITTER_USERNAME=
-TWITTER_PASSWORD=
-TWITTER_EMAIL=
-TWITTER_ENABLE_POST_GENERATION=
-TWITTER_INTERACTION_ENABLE=
-TWITTER_TIMELINE_ENABLE=
-TWITTER_SPACES_ENABLE=
-TWITTER_TIMELINE_MODE=
-TWITTER_TIMELINE_POLL_INTERVAL=
-
-# Fill these out if you want to use EVM
-EVM_PRIVATE_KEY=
-EVM_CHAINS=mainnet,sepolia,base,arbitrum,polygon
-EVM_PROVIDER_URL=
-
-# Fill these out if you want to use Solana
-SOLANA_PUBLIC_KEY=
-SOLANA_PRIVATE_KEY=
-BIRDEYE_API_KEY=
-
-# Local AI Configuration
+### LOCAL AI CONFIGURATION ###
 USE_LOCAL_AI=
 USE_STUDIOLM_TEXT_MODELS=
 USE_OLLAMA_TEXT_MODELS=
@@ -9758,68 +7773,114 @@ STUDIOLM_SMALL_MODEL=
 STUDIOLM_MEDIUM_MODEL=
 STUDIOLM_EMBEDDING_MODEL=
 
-# Settings for The Org
+### DATABASE ###
+# By default, Eliza will use a local pglite instance
+# If you fill out POSTGRES_URL, the agent will connect to your postgres instance instead of using the local path
 
-COMMUNITY_MANAGER_DISCORD_APPLICATION_ID=
-COMMUNITY_MANAGER_DISCORD_API_TOKEN=
+# You can override the pglite data directory
+# PGLITE_DATA_DIR=/Users/UserName/eliza/packages/.pglite/
 
-SOCIAL_MEDIA_MANAGER_DISCORD_APPLICATION_ID=
-SOCIAL_MEDIA_MANAGER_DISCORD_API_TOKEN=
+# Fill this out if you want to use Postgres
+POSTGRES_URL=
 
-LIAISON_DISCORD_APPLICATION_ID=
-LIAISON_DISCORD_API_TOKEN=
+### LOGGING CONFIGURATION ###
+# Logging Configuration (supported: fatal, error, warn, info, debug, trace | default: info)
+LOG_LEVEL=
 
-PROJECT_MANAGER_DISCORD_APPLICATION_ID=
-PROJECT_MANAGER_DISCORD_API_TOKEN=
+# Sentry Configuration
+SENTRY_LOGGING=true
+SENTRY_DSN=
+SENTRY_ENVIRONMENT=
+SENTRY_TRACES_SAMPLE_RATE=
+SENTRY_SEND_DEFAULT_PII=
 
-DEV_REL_DISCORD_APPLICATION_ID=
-DEV_REL_DISCORD_API_TOKEN=
-DEVREL_IMPORT_KNOWLEDGE=true
-
-INVESTMENT_MANAGER_DISCORD_APPLICATION_ID=
-INVESTMENT_MANAGER_DISCORD_API_TOKEN=
-
-# Settings for Investment Manager plugins
+### API KEYS ###
+# Many services require API keys to function
+# Most plugins will indicate what is needed in their README.md and throw helpful errors if they are missing
 BIRDEYE_API_KEY=
 JUPITER_API_KEY=
 HELIUS_API_KEY=
 COINMARKETCAP_API_KEY=
 ZEROEX_API_KEY=
 COINGECKO_API_KEY=
+
+### SINGLE AGENT VARIABLES ###
+# If you are running multiple agents, you will need to configure these variables in the agent secrets 
+# (available in the GUI) OR you can namespace the secrets and connect them up in your character definition
+
+# Example: 
+# settings: {
+#   process.env.COMMUNITY_MANAGER_DISCORD_API_TOKEN
+# }
+
+# Note: See below for multi-agent examples
+
+# Discord Configuration
+DISCORD_APPLICATION_ID=
+DISCORD_API_TOKEN=
+
+# Telegram Configuration
+TELEGRAM_BOT_TOKEN=
+
+# Twitter Configuration (DEPRECATED)
+
+# EVM Configuration
+EVM_PRIVATE_KEY=
+EVM_CHAINS=mainnet,sepolia,base,arbitrum,polygon
+EVM_PROVIDER_URL=
+
+# Solana Configuration
+SOLANA_PUBLIC_KEY=
+SOLANA_PRIVATE_KEY=
+
+### MULTI-AGENT CONFIGURATION ###
+# Settings for The Org
+# The Org is an example of a multi-agent swarm
+# Available here: https://github.com/elizaOS/the-org
+# This is an example of how environment variables can be scoped per-project
+
+# Community Manager
+COMMUNITY_MANAGER_DISCORD_APPLICATION_ID=
+COMMUNITY_MANAGER_DISCORD_API_TOKEN=
+
+# Social Media Manager
+SOCIAL_MEDIA_MANAGER_DISCORD_APPLICATION_ID=
+SOCIAL_MEDIA_MANAGER_DISCORD_API_TOKEN=
+
+# Liaison
+LIAISON_DISCORD_APPLICATION_ID=
+LIAISON_DISCORD_API_TOKEN=
+
+# Project Manager
+PROJECT_MANAGER_DISCORD_APPLICATION_ID=
+PROJECT_MANAGER_DISCORD_API_TOKEN=
+
+# Developer Relations
+DEV_REL_DISCORD_APPLICATION_ID=
+DEV_REL_DISCORD_API_TOKEN=
+DEVREL_IMPORT_KNOWLEDGE=true
+
+# Investment Manager
+INVESTMENT_MANAGER_DISCORD_APPLICATION_ID=
+INVESTMENT_MANAGER_DISCORD_API_TOKEN=
 ````
 
 ## File: README.md
 ````markdown
-# Eliza 🤖
+# Eliza
 
-<div align="center">
-  <img src="./docs/static/img/eliza_banner.jpg" alt="Eliza Banner" width="100%" />
-</div>
-
-<div align="center">
-
-📑 [Technical Report](https://arxiv.org/pdf/2501.06781) | 📖 [Documentation](https://elizaos.github.io/eliza/) | 🎯 [Examples](https://github.com/thejoven/awesome-eliza)
-
-</div>
-
-## 🌍 README Translations
-
-[中文说明](packages/docs/i18n/readme/README_CN.md) | [日本語の説明](packages/docs/i18n/readme/README_JA.md) | [한국어 설명](packages/docs/i18n/readme/README_KOR.md) | [Persian](packages/docs/i18n/readme/README_FA.md) | [Français](packages/docs/i18n/readme/README_FR.md) | [Português](packages/docs/i18n/readme/README_PTBR.md) | [Türkçe](packages/docs/i18n/readme/README_TR.md) | [Русский](packages/docs/i18n/readme/README_RU.md) | [Español](packages/docs/i18n/readme/README_ES.md) | [Italiano](packages/docs/i18n/readme/README_IT.md) | [ไทย](packages/docs/i18n/readme/README_TH.md) | [Deutsch](packages/docs/i18n/readme/README_DE.md) | [Tiếng Việt](packages/docs/i18n/readme/README_VI.md) | [עִברִית](packages/docs/i18n/readme/README_HE.md) | [Tagalog](packages/docs/i18n/readme/README_TG.md) | [Polski](packages/docs/i18n/readme/README_PL.md) | [Arabic](packages/docs/i18n/readme/README_AR.md) | [Hungarian](packages/docs/i18n/readme/README_HU.md) | [Srpski](packages/docs/i18n/readme/README_RS.md) | [Română](packages/docs/i18n/readme/README_RO.md) | [Nederlands](packages/docs/i18n/readme/README_NL.md) | [Ελληνικά](packages/docs/i18n/readme/README_GR.md)
-
-## 🚩 Overview
-
-<div align="center">
-  <img src="./docs/static/img/eliza_diagram.jpg" alt="Eliza Diagram" width="100%" />
-</div>
+A framework for multi-agent development and deployment
 
 ## ✨ Features
 
-- 🛠️ Full-featured Discord, X (Twitter) and Telegram connectors
+- 🛠️ Full-featured Discord, Telegram, and Farcaster connectors (and many more!)
 - 🔗 Support for every model (Llama, Grok, OpenAI, Anthropic, Gemini, etc.)
-- 👥 Multi-agent and room support
-- 📚 Easily ingest and interact with your documents
-- 💾 Retrievable memory and document store
-- 🚀 Highly extensible - create your own actions and clients
+- 🎨 Modern and professional UI with a redesigned dashboard for managing agents and groups.
+- 💬 Robust real-time communication with enhanced channel and message handling.
+- 👥 Multi-agent and group support with intuitive management.
+- 📚 Easily ingest and interact with your documents.
+- 💾 Retrievable memory and document store.
+- 🚀 Highly extensible - create your own actions and clients.
 - 📦 Just works!
 
 ## Video Tutorials
@@ -9838,8 +7899,7 @@ COINGECKO_API_KEY=
 
 ### Prerequisites
 
-- [Python 2.7+](https://www.python.org/downloads/)
-- [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
+- [Node.js](https://nodejs.org/) (v18 or higher recommended)
 - [bun](https://bun.sh/docs/installation)
 
 > **Note for Windows Users:** [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual) is required.
@@ -9909,12 +7969,15 @@ bun start # npm will work too
 
 ### Interact via Browser
 
-Once the agent is running, you can visit http://localhost:3000 to interact with your agent through a web interface. The interface provides:
+Once Eliza is running, access the modern web interface at http://localhost:3000. It has been professionally redesigned and features:
 
-- Real-time chat with your agent
-- Character configuration options
-- Plugin management
-- Memory and conversation history
+- A welcoming dashboard with a gradient hero section and clear calls-to-action for creating agents and groups.
+- Visually enhanced cards for managing agents and groups, including status indicators and member counts.
+- Real-time chat capabilities with your agents.
+- Character configuration options.
+- Plugin management.
+- Comprehensive memory and conversation history.
+- Responsive design for an optimal experience on various screen sizes.
 
 ### OpenTelemetry Instrumentation (Optional)
 
@@ -9992,225 +8055,628 @@ To run the pre-commit hook manually:
 ```bash
 bun run pre-commit
 ```
+
+## 📂 Repository Structure
+
+Eliza is organized as a monorepo using Bun, Lerna, and Turbo for efficient package management and build orchestration. Here's a detailed overview of the project structure:
+
+-   **`/` (Root)**:
+    -   `.github/`: GitHub Actions workflows for CI/CD pipelines and issue templates
+    -   `.husky/`: Git hooks configuration, including pre-commit formatting
+    -   `.devcontainer/`: Development container configurations for consistent environments
+    -   `packages/`: Core packages and modules (detailed below)
+    -   `scripts/`: Build, development, and utility scripts
+    -   `data/`: Application and user data storage
+    -   `AGENTS.md`: Comprehensive agent documentation and specifications
+    -   `CHANGELOG.md`: Detailed version history and changes
+    -   `Dockerfile`, `docker-compose.yaml`: Container configurations for deployment
+    -   `lerna.json`, `package.json`, `turbo.json`: Monorepo configuration and workspace definitions
+
+-   **`/packages/`**: Core components of the Eliza framework:
+    -   `core/`: The foundational package (@elizaos/core) implementing:
+        - OpenTelemetry instrumentation for tracing and monitoring
+        - LangChain integration for AI model interactions
+        - PDF processing capabilities
+        - Logging and error handling infrastructure
+    -   `app/`: Tauri-based cross-platform application (@elizaos/app)
+        - React-based UI implementation
+        - Tauri plugins for system integration
+        - Desktop and mobile builds support
+    -   `autodoc/`: Documentation automation tool (@elizaos/autodoc)
+        - LangChain-powered documentation generation
+        - TypeScript parsing and analysis
+        - GitHub integration via Octokit
+    -   `cli/`: Command-line interface for Eliza management
+    -   `client/`: Client libraries for web interfaces
+    -   `create-eliza/`: Project scaffolding tool
+    -   `docs/`: Official documentation source files
+    -   `plugin-bootstrap/`: Core agent initialization (@elizaos/plugin-bootstrap)
+        - Provides fundamental agent actions (reply, follow/unfollow, mute/unmute)
+        - Implements core evaluators and providers
+        - Handles message processing and world events
+    -   `plugin-sql/`: Database integration (@elizaos/plugin-sql)
+        - PostgreSQL integration with PGLite support
+        - Drizzle ORM for type-safe queries
+        - Migration management tools
+        - Integration testing support
+    -   `plugin-starter/`: Template for creating new plugins
+    -   `project-starter/`, `project-tee-starter/`: Project templates
+
+This architecture enables modular development, clear separation of concerns, and scalable feature implementation across the Eliza ecosystem.
+
+
+## Tauri Application CI/CD and Signing
+
+The Eliza application, built with Tauri and located in `packages/app`, is configured for cross-platform continuous integration and deployment. This setup automates the building and releasing of the application for various operating systems.
+
+### Overview
+
+The Tauri application is designed to be built for:
+
+- Desktop: Linux, macOS, and Windows.
+- Mobile: Android and iOS.
+
+### CI/CD Workflows
+
+Two main GitHub Actions workflows handle the CI/CD process for the Tauri application:
+
+- **`tauri-ci.yml`**:
+
+  - Triggered on pushes to `main` and `develop` branches.
+  - Performs debug builds of the desktop application (Linux, macOS, Windows) to ensure code integrity and catch build issues early.
+
+- **`tauri-release.yml`**:
+  - Triggered when new tags (e.g., `v*`) are pushed or when a new release is created/published on GitHub.
+  - Builds release-ready versions of the application for all supported desktop platforms (Linux AppImage & .deb, macOS .dmg, Windows .exe NSIS installer).
+  - Builds release versions for mobile platforms (Android .apk, iOS .ipa).
+  - Uploads all generated binaries and installers as artifacts to the corresponding GitHub Release.
+
+### Mobile Application Backend
+
+The mobile versions of the Eliza Tauri application (Android and iOS) are configured to connect to an external backend service hosted at `https://api.eliza.how`. This connection is essential for certain functionalities of the mobile app.
+
+The Content Security Policy (CSP) in `packages/app/src-tauri/tauri.conf.json` has been updated to allow `connect-src` directives to this specific domain, ensuring that the mobile app can securely communicate with its backend.
+
+### Application Signing (Important for Releases)
+
+For the `tauri-release.yml` workflow to produce _signed_ and deployable mobile applications suitable for app stores or distribution, specific secrets must be configured in the GitHub repository settings (`Settings > Secrets and variables > Actions`).
+
+**Android Signing Secrets:**
+
+- `ANDROID_KEYSTORE_BASE64`: Base64 encoded content of your Java Keystore file (`.jks` or `.keystore`).
+- `ANDROID_KEYSTORE_ALIAS`: The alias of your key within the keystore.
+- `ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD`: The password for the private key associated with the alias.
+- `ANDROID_KEYSTORE_PASSWORD`: The password for the keystore file itself.
+
+> **Note**: The CI workflow currently includes a step to generate a dummy, unsigned keystore for Android if these secrets are not provided. This allows the release build to complete and produce an unsigned APK, but this APK cannot be published to app stores. For official releases, providing the actual signing credentials via these secrets is crucial.
+
+**iOS Signing Secrets:**
+
+- `APPLE_DEVELOPMENT_CERTIFICATE_P12_BASE64`: Base64 encoded content of your Apple Distribution Certificate (`.p12` file).
+- `APPLE_CERTIFICATE_PASSWORD`: The password used to encrypt the `.p12` certificate file.
+- `APPLE_PROVISIONING_PROFILE_BASE64`: Base64 encoded content of your Distribution Provisioning Profile (`.mobileprovision` file).
+- `APPLE_DEVELOPMENT_TEAM`: Your Apple Developer Team ID (e.g., `A1B2C3D4E5`).
+
+> **Note**: The CI workflow currently includes placeholder steps for setting up the Apple development environment and signing for iOS. These steps will require the above secrets to be populated. If these secrets are not provided and the signing steps are made active (by uncommenting them in the workflow), the iOS build will likely fail.
+
+### Artifacts
+
+Upon successful completion of the `tauri-release.yml` workflow (triggered by a new tag/release), all compiled application installers and mobile packages will be available as downloadable artifacts on the GitHub Releases page for that specific tag. This includes:
+
+- Linux: `.AppImage` and `.deb` files.
+- macOS: `.dmg` file.
+- Windows: `.exe` NSIS installer.
+- Android: `.apk` file.
+- iOS: `.ipa` file.
 ````
 
-## File: packages/cli/src/commands/env.ts
+## File: packages/core/src/database.ts
 ````typescript
-import { handleError, UserEnvironment, findNearestEnvFile } from '@/src/utils';
-import { stringToUuid } from '@elizaos/core';
-import { Command } from 'commander';
-import dotenv from 'dotenv';
-import { existsSync } from 'node:fs';
-import fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
-import prompts from 'prompts';
-import { rimraf } from 'rimraf';
-import colors from 'yoctocolors';
-export async function getGlobalEnvPath(): Promise<string>
-function getLocalEnvPath(): string | null
-export async function parseEnvFile(filePath: string): Promise<Record<string, string>>
-/**
- * Write key-value pairs to an .env file
- * @param filePath Path to the .env file
- * @param envVars Object containing the key-value pairs
- */
-async function writeEnvFile(filePath: string, envVars: Record<string, string>): Promise<void>
-async function listEnvVars(): Promise<void>
-function maskedValue(value: string): string
+import type {
+  Agent,
+  Component,
+  Entity,
+  IDatabaseAdapter,
+  Log,
+  Memory,
+  MemoryMetadata,
+  Participant,
+  Relationship,
+  Room,
+  Task,
+  UUID,
+  World,
+} from './types';
+export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter
 ⋮----
-// If the value looks like a token/API key (longer than 20 chars, no spaces), mask it
-⋮----
-/**
- * Edit environment variables
- * @param scope Edit local environment variables
- * @returns A boolean indicating whether the user wants to go back to the main menu
- */
-async function editEnvVars(scope: 'local', fromMainMenu = false, yes = false): Promise<boolean>
-⋮----
-// List current variables first
-⋮----
-// If no variables exist, offer to add new ones
-⋮----
-async function addNewVariable(envPath: string, envVars: Record<string, string>): Promise<void>
-async function resetEnvFile(filePath: string): Promise<boolean>
-// Reset operation types and helper functions
-type ResetTarget = 'localEnv' | 'cache' | 'globalDb' | 'localDb';
-type ResetAction = 'reset' | 'deleted' | 'skipped' | 'warning';
-interface ResetItem {
-  title: string;
-  value: ResetTarget;
-  description?: string;
-  selected?: boolean;
-}
-async function safeDeleteDirectory(
-  dir: string,
-  actions: Record<string, string[]>,
-  label: string
-): Promise<boolean>
-async function resetEnv(yes = false): Promise<void>
-⋮----
-// Check for PGLite
-⋮----
-// Ignore errors in env parsing
-⋮----
-// Create reset item options
-⋮----
-async function showMainMenu(yes = false): Promise<void>
+abstract initialize(config?: any): Promise<void>;
+abstract init(): Promise<void>;
+abstract runMigrations(migrationsPaths?: string[]): Promise<void>;
+abstract isReady(): Promise<boolean>;
+abstract close(): Promise<void>;
+abstract getConnection(): Promise<unknown>;
+abstract getEntityByIds(entityIds: UUID[]): Promise<Entity[] | null>;
+abstract getEntitiesForRoom(roomId: UUID, includeComponents?: boolean): Promise<Entity[]>;
+abstract createEntities(entities: Entity[]): Promise<boolean>;
+abstract updateEntity(entity: Entity): Promise<void>;
+abstract getComponent(
+    entityId: UUID,
+    type: string,
+    worldId?: UUID,
+    sourceEntityId?: UUID
+  ): Promise<Component | null>;
+abstract getComponents(
+    entityId: UUID,
+    worldId?: UUID,
+    sourceEntityId?: UUID
+  ): Promise<Component[]>;
+abstract createComponent(component: Component): Promise<boolean>;
+abstract updateComponent(component: Component): Promise<void>;
+abstract deleteComponent(componentId: UUID): Promise<void>;
+abstract getMemories(params: {
+    entityId?: UUID;
+    agentId?: UUID;
+    count?: number;
+    unique?: boolean;
+    tableName: string;
+    start?: number;
+    end?: number;
+    roomId?: UUID;
+    worldId?: UUID;
+  }): Promise<Memory[]>;
+abstract getMemoriesByRoomIds(params: {
+    roomIds: UUID[];
+    tableName: string;
+    limit?: number;
+  }): Promise<Memory[]>;
+abstract getMemoryById(id: UUID): Promise<Memory | null>;
+abstract getMemoriesByIds(memoryIds: UUID[], tableName?: string): Promise<Memory[]>;
+abstract getCachedEmbeddings(
+abstract log(params: {
+    body: { [key: string]: unknown };
+    entityId: UUID;
+    roomId: UUID;
+    type: string;
+  }): Promise<void>;
+abstract getLogs(params: {
+    entityId: UUID;
+    roomId?: UUID;
+    type?: string;
+    count?: number;
+    offset?: number;
+  }): Promise<Log[]>;
+abstract deleteLog(logId: UUID): Promise<void>;
+abstract searchMemories(params: {
+    tableName: string;
+    embedding: number[];
+    match_threshold?: number;
+    count?: number;
+    unique?: boolean;
+    query?: string;
+    roomId?: UUID;
+    worldId?: UUID;
+    entityId?: UUID;
+  }): Promise<Memory[]>;
+abstract createMemory(memory: Memory, tableName: string, unique?: boolean): Promise<UUID>;
+abstract updateMemory(
+    memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }
+  ): Promise<boolean>;
+abstract deleteMemory(memoryId: UUID): Promise<void>;
+abstract deleteManyMemories(memoryIds: UUID[]): Promise<void>;
+abstract deleteAllMemories(roomId: UUID, tableName: string): Promise<void>;
+abstract countMemories(roomId: UUID, unique?: boolean, tableName?: string): Promise<number>;
+abstract getWorld(id: UUID): Promise<World | null>;
+abstract getAllWorlds(): Promise<World[]>;
+abstract createWorld(world: World): Promise<UUID>;
+abstract updateWorld(world: World): Promise<void>;
+abstract removeWorld(id: UUID): Promise<void>;
+abstract getRoomsByIds(roomIds: UUID[]): Promise<Room[] | null>;
+abstract getRoomsByWorld(worldId: UUID): Promise<Room[]>;
+abstract createRooms(rooms: Room[]): Promise<UUID[]>;
+abstract updateRoom(room: Room): Promise<void>;
+abstract deleteRoom(roomId: UUID): Promise<void>;
+abstract getRoomsForParticipant(entityId: UUID): Promise<UUID[]>;
+abstract getRoomsForParticipants(userIds: UUID[]): Promise<UUID[]>;
+abstract addParticipantsRoom(entityIds: UUID[], roomId: UUID): Promise<boolean>;
+abstract removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
+abstract getParticipantsForEntity(entityId: UUID): Promise<Participant[]>;
+abstract getParticipantsForRoom(roomId: UUID): Promise<UUID[]>;
+abstract getParticipantUserState(
+    roomId: UUID,
+    entityId: UUID
+  ): Promise<'FOLLOWED' | 'MUTED' | null>;
+abstract setParticipantUserState(
+    roomId: UUID,
+    entityId: UUID,
+    state: 'FOLLOWED' | 'MUTED' | null
+  ): Promise<void>;
+abstract createRelationship(params: {
+    sourceEntityId: UUID;
+    targetEntityId: UUID;
+    tags?: string[];
+    metadata?: Record<string, unknown>;
+  }): Promise<boolean>;
+abstract getRelationship(params: {
+    sourceEntityId: UUID;
+    targetEntityId: UUID;
+  }): Promise<Relationship | null>;
+abstract getRelationships(params:
+abstract updateRelationship(params: {
+    sourceEntityId: UUID;
+    targetEntityId: UUID;
+    tags?: string[];
+    metadata?: Record<string, unknown>;
+  }): Promise<void>;
+abstract getAgent(agentId: UUID): Promise<Agent | null>;
+abstract getAgents(): Promise<Partial<Agent>[]>;
+abstract createAgent(agent: Partial<Agent>): Promise<boolean>;
+abstract updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean>;
+abstract deleteAgent(agentId: UUID): Promise<boolean>;
+abstract ensureEmbeddingDimension(dimension: number): Promise<void>;
+abstract getCache<T>(key: string): Promise<T | undefined>;
+abstract setCache<T>(key: string, value: T): Promise<boolean>;
+abstract deleteCache(key: string): Promise<boolean>;
+abstract createTask(task: Task): Promise<UUID>;
+abstract getTasks(params:
+abstract getTask(id: UUID): Promise<Task | null>;
+abstract getTasksByName(name: string): Promise<Task[]>;
+abstract updateTask(id: UUID, task: Partial<Task>): Promise<void>;
+abstract deleteTask(id: UUID): Promise<void>;
+abstract getMemoriesByWorldId(params: {
+    worldId: UUID;
+    count?: number;
+    tableName?: string;
+  }): Promise<Memory[]>;
+abstract deleteRoomsByWorldId(worldId: UUID): Promise<void>;
 ````
 
-## File: packages/cli/src/commands/create.ts
+## File: packages/core/src/runtime.ts
 ````typescript
+import { v4 as uuidv4 } from 'uuid';
+import { createUniqueUuid } from './entities';
+import { decryptSecret, getSalt, safeReplacer } from './index';
+import { createLogger } from './logger';
 import {
-  buildProject,
-  copyTemplate as copyTemplateUtil,
-  displayBanner,
-  getElizaDirectories,
-  handleError,
-  promptAndStorePostgresUrl,
-  runBunCommand,
-  setupPgLite,
-  findNearestEnvFile,
-} from '@/src/utils';
-import { Command } from 'commander';
-import { existsSync, readFileSync } from 'node:fs';
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import prompts from 'prompts';
-import colors from 'yoctocolors';
-import { z } from 'zod';
-import { character as elizaCharacter } from '@/src/characters/eliza';
-⋮----
-async function getLocalAvailableDatabases(): Promise<string[]>
-async function installDependencies(targetDir: string)
-async function createIgnoreFiles(targetDir: string): Promise<void>
-⋮----
-// Determine project type, respecting -y
-⋮----
-// Default to project if -y is used and -t is omitted
-⋮----
-const validateProjectName = (name: string): boolean =>
-````
-
-## File: packages/cli/src/commands/start.ts
-````typescript
-import { character as defaultCharacter } from '@/src/characters/eliza';
-import { AgentServer } from '@/src/server/index';
-import { jsonToCharacter, loadCharacterTryPath } from '@/src/server/loader';
-import {
-  buildProject,
-  configureDatabaseSettings,
-  displayBanner,
-  findNextAvailablePort,
-  getCliInstallTag,
-  handleError,
-  installPlugin,
-  loadConfig,
-  loadEnvironment,
-  findNearestEnvFile,
-  loadPluginModule,
-  promptForEnvVars,
-  saveConfig,
-} from '@/src/utils';
-import {
-  AgentRuntime,
-  encryptedCharacter,
-  logger,
-  RuntimeSettings,
-  stringToUuid,
+  ChannelType,
+  ModelType,
+  type Content,
+  type KnowledgeItem,
+  type MemoryMetadata,
   type Character,
-  type IAgentRuntime,
+  type Action,
+  type Evaluator,
+  type Provider,
+  type HandlerCallback,
+  type IDatabaseAdapter,
+  type Entity,
+  type Room,
+  type World,
+  type SendHandlerFunction,
+  type TargetInfo,
+  type ModelParamsMap,
+  type ModelResultMap,
+  type ModelTypeName,
   type Plugin,
-} from '@elizaos/core';
-import { Command, Option } from 'commander';
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+  type Route,
+  type UUID,
+  type Service,
+  type ServiceTypeName,
+  type State,
+  type TaskWorker,
+  type Agent,
+  type Log,
+  type Participant,
+  type Relationship,
+  type Task,
+  type Memory,
+  type ModelHandler,
+  type RuntimeSettings,
+  type Component,
+  IAgentRuntime,
+} from './types';
+import { BM25 } from './search';
+import { EventType, type MessagePayload } from './types';
+import { stringToUuid } from './utils';
 ⋮----
-async function loadAndPreparePlugin(pluginName: string, version: string): Promise<Plugin | null>
+export class Semaphore
 ⋮----
-.replace(/^@elizaos\/plugin-/, '') // Remove prefix
-.replace(/^@elizaos-plugins\//, '') // Remove alternative prefix
+constructor(count: number)
+async acquire(): Promise<void>
+release(): void
 ⋮----
-function isValidPluginShape(obj: any): obj is Plugin
-export async function promptForProjectPlugins(
-  project: any,
-  pluginToLoad?: { name: string }
+export class AgentRuntime implements IAgentRuntime
+⋮----
+constructor(opts: {
+    conversationLength?: number;
+    agentId?: UUID;
+    character?: Character;
+    plugins?: Plugin[];
+    fetch?: typeof fetch;
+    adapter?: IDatabaseAdapter;
+    settings?: RuntimeSettings;
+events?:
+async registerPlugin(plugin: Plugin): Promise<void>
+private async resolvePluginDependencies(characterPlugins: Plugin[]): Promise<Plugin[]>
+⋮----
+const resolve = async (pluginName: string) =>
+⋮----
+getAllServices(): Map<ServiceTypeName, Service>
+async stop()
+async initialize(): Promise<void>
+async runPluginMigrations(): Promise<void>
+async getConnection(): Promise<unknown>
+setSetting(key: string, value: string | boolean | null | any, secret = false)
+getSetting(key: string): string | boolean | null | any
+getConversationLength()
+registerDatabaseAdapter(adapter: IDatabaseAdapter)
+registerProvider(provider: Provider)
+registerAction(action: Action)
+registerEvaluator(evaluator: Evaluator)
+async processActions(
+    message: Memory,
+    responses: Memory[],
+    state?: State,
+    callback?: HandlerCallback
 ): Promise<void>
 ⋮----
-// Prompt for each identified plugin
+function normalizeAction(actionString: string)
 ⋮----
-/**
- * Starts an agent with the given character, agent server, initialization function, plugins, and options.
- *
- * @param character The character object representing the agent.
- * @param server The agent server where the agent will be registered.
- * @param init Optional initialization function to be called with the agent runtime.
- * @param plugins An array of plugins to be used by the agent.
- * @param options Additional options for starting the agent, such as data directory and postgres URL.
- * @returns A promise that resolves to the agent runtime object.
- */
-export async function startAgent(
-  character: Character,
-  server: AgentServer,
-  init?: (runtime: IAgentRuntime) => void,
-  plugins: Plugin[] = [],
-  options: {
-    dataDir?: string;
-    postgresUrl?: string;
-    isPluginTestMode?: boolean;
-  } = {}
-): Promise<IAgentRuntime>
+async evaluate(
+    message: Memory,
+    state: State,
+    didRespond?: boolean,
+    callback?: HandlerCallback,
+    responses?: Memory[]
+)
+async ensureConnections(entities, rooms, source, world): Promise<void>
 ⋮----
-// Ensure character has a plugins array
+const chunkArray = (arr, size)
 ⋮----
-// Determine the appropriate installation tag based on the CLI version
-⋮----
-// Pre-load plugins passed directly to the function (these can be Plugin objects)
-⋮----
-// Use isValidPluginShape for broader validation
-⋮----
-); // Stringify only if not null/undefined
-⋮----
-// Initialize encryptedChar.plugins if it's undefined
-⋮----
-function loadEnvConfig(): RuntimeSettings
-interface NamespacedSettings {
-    [namespace: string]: RuntimeSettings;
-  }
-function parseNamespacedSettings(env: RuntimeSettings): NamespacedSettings
-⋮----
-async function stopAgent(runtime: IAgentRuntime, server: AgentServer)
-const startAgents = async (options: {
-  configure?: boolean;
-  port?: number;
-  characters?: Character[];
-}) =>
-⋮----
-// Split by commas in case user provided comma-separated list
-// Strip quotes if present (handles both single and double quotes)
+async ensureConnection({
+    entityId,
+    roomId,
+    worldId,
+    worldName,
+    userName,
+    name,
+    source,
+    type,
+    channelId,
+    serverId,
+    userId,
+    metadata,
+  }: {
+    entityId: UUID;
+    roomId: UUID;
+    worldId: UUID;
+    worldName?: string;
+    userName?: string;
+    name?: string;
+    source?: string;
+    type?: ChannelType;
+    channelId?: string;
+    serverId?: string;
+    userId?: UUID;
+    metadata?: Record<string, any>;
+})
+async ensureParticipantInRoom(entityId: UUID, roomId: UUID)
+async removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean>
+async getParticipantsForEntity(entityId: UUID): Promise<Participant[]>
+async getParticipantsForRoom(roomId: UUID): Promise<UUID[]>
+async addParticipant(entityId: UUID, roomId: UUID): Promise<boolean>
+async addParticipantsRoom(entityIds: UUID[], roomId: UUID): Promise<boolean>
+async ensureWorldExists(
+async ensureRoomExists(
+async composeState(
+    message: Memory,
+    includeList: string[] | null = null,
+    onlyInclude = false,
+    skipCache = false
+): Promise<State>
+getService<T extends Service = Service>(serviceName: ServiceTypeName | string): T | null
+getTypedService<T extends Service = Service>(serviceName: ServiceTypeName | string): T | null
+getRegisteredServiceTypes(): ServiceTypeName[]
+hasService(serviceType: ServiceTypeName | string): boolean
+async registerService(serviceDef: typeof Service): Promise<void>
+registerModel(
+    modelType: ModelTypeName,
+    handler: (params: any) => Promise<any>,
+    provider: string,
+    priority?: number
+)
+getModel(
+    modelType: ModelTypeName,
+    provider?: string
+): ((runtime: IAgentRuntime, params: any) => Promise<any>) | undefined
+async useModel<T extends ModelTypeName, R = ModelResultMap[T]>(
+    modelType: T,
+    params: Omit<ModelParamsMap[T], 'runtime'> | any,
+    provider?: string
+): Promise<R>
+registerEvent(event: string, handler: (params: any) => Promise<void>)
+getEvent(event: string): ((params: any) => Promise<void>)[] | undefined
+async emitEvent(event: string | string[], params: any)
+async ensureEmbeddingDimension()
+registerTaskWorker(taskHandler: TaskWorker): void
+getTaskWorker(name: string): TaskWorker | undefined
+get db(): any
+async init(): Promise<void>
+async close(): Promise<void>
+async getAgent(agentId: UUID): Promise<Agent | null>
+async getAgents(): Promise<Partial<Agent>[]>
+async createAgent(agent: Partial<Agent>): Promise<boolean>
+async updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean>
+async deleteAgent(agentId: UUID): Promise<boolean>
+async ensureAgentExists(agent: Partial<Agent>): Promise<Agent>
+async getEntityById(entityId: UUID): Promise<Entity | null>
+async getEntityByIds(entityIds: UUID[]): Promise<Entity[] | null>
+async getEntitiesForRoom(roomId: UUID, includeComponents?: boolean): Promise<Entity[]>
+async createEntity(entity: Entity): Promise<boolean>
+async createEntities(entities: Entity[]): Promise<boolean>
+async updateEntity(entity: Entity): Promise<void>
+async getComponent(
+    entityId: UUID,
+    type: string,
+    worldId?: UUID,
+    sourceEntityId?: UUID
+): Promise<Component | null>
+async getComponents(entityId: UUID, worldId?: UUID, sourceEntityId?: UUID): Promise<Component[]>
+async createComponent(component: Component): Promise<boolean>
+async updateComponent(component: Component): Promise<void>
+async deleteComponent(componentId: UUID): Promise<void>
+async addEmbeddingToMemory(memory: Memory): Promise<Memory>
+async getMemories(params: {
+    entityId?: UUID;
+    agentId?: UUID;
+    roomId?: UUID;
+    count?: number;
+    unique?: boolean;
+    tableName: string;
+    start?: number;
+    end?: number;
+}): Promise<Memory[]>
+async getMemoryById(id: UUID): Promise<Memory | null>
+async getMemoriesByIds(ids: UUID[], tableName?: string): Promise<Memory[]>
+async getMemoriesByRoomIds(params: {
+    tableName: string;
+    roomIds: UUID[];
+    limit?: number;
+}): Promise<Memory[]>
+async getCachedEmbeddings(params: {
+    query_table_name: string;
+    query_threshold: number;
+    query_input: string;
+    query_field_name: string;
+    query_field_sub_name: string;
+    query_match_count: number;
+}): Promise<
+async log(params: {
+    body: { [key: string]: unknown };
+    entityId: UUID;
+    roomId: UUID;
+    type: string;
+}): Promise<void>
+async searchMemories(params: {
+    embedding: number[];
+    query?: string;
+    match_threshold?: number;
+    count?: number;
+    roomId?: UUID;
+    unique?: boolean;
+    worldId?: UUID;
+    entityId?: UUID;
+    tableName: string;
+}): Promise<Memory[]>
+async rerankMemories(query: string, memories: Memory[]): Promise<Memory[]>
+async createMemory(memory: Memory, tableName: string, unique?: boolean): Promise<UUID>
+async updateMemory(
+    memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }
+): Promise<boolean>
+async deleteMemory(memoryId: UUID): Promise<void>
+async deleteManyMemories(memoryIds: UUID[]): Promise<void>
+async deleteAllMemories(roomId: UUID, tableName: string): Promise<void>
+async countMemories(roomId: UUID, unique?: boolean, tableName?: string): Promise<number>
+async getLogs(params: {
+    entityId: UUID;
+    roomId?: UUID;
+    type?: string;
+    count?: number;
+    offset?: number;
+}): Promise<Log[]>
+async deleteLog(logId: UUID): Promise<void>
+async createWorld(world: World): Promise<UUID>
+async getWorld(id: UUID): Promise<World | null>
+async removeWorld(worldId: UUID): Promise<void>
+async getAllWorlds(): Promise<World[]>
+async updateWorld(world: World): Promise<void>
+async getRoom(roomId: UUID): Promise<Room | null>
+async getRoomsByIds(roomIds: UUID[]): Promise<Room[] | null>
+async createRoom(
+async createRooms(rooms: Room[]): Promise<UUID[]>
+async deleteRoom(roomId: UUID): Promise<void>
+async deleteRoomsByWorldId(worldId: UUID): Promise<void>
+async updateRoom(room: Room): Promise<void>
+async getRoomsForParticipant(entityId: UUID): Promise<UUID[]>
+async getRoomsForParticipants(userIds: UUID[]): Promise<UUID[]>
+async getRooms(worldId: UUID): Promise<Room[]>
+async getRoomsByWorld(worldId: UUID): Promise<Room[]>
+async getParticipantUserState(
+    roomId: UUID,
+    entityId: UUID
+): Promise<'FOLLOWED' | 'MUTED' | null>
+async setParticipantUserState(
+    roomId: UUID,
+    entityId: UUID,
+    state: 'FOLLOWED' | 'MUTED' | null
+): Promise<void>
+async createRelationship(params: {
+    sourceEntityId: UUID;
+    targetEntityId: UUID;
+    tags?: string[];
+    metadata?: { [key: string]: any };
+}): Promise<boolean>
+async updateRelationship(relationship: Relationship): Promise<void>
+async getRelationship(params: {
+    sourceEntityId: UUID;
+    targetEntityId: UUID;
+}): Promise<Relationship | null>
+async getRelationships(params:
+async getCache<T>(key: string): Promise<T | undefined>
+async setCache<T>(key: string, value: T): Promise<boolean>
+async deleteCache(key: string): Promise<boolean>
+async createTask(task: Task): Promise<UUID>
+async getTasks(params:
+async getTask(id: UUID): Promise<Task | null>
+async getTasksByName(name: string): Promise<Task[]>
+async updateTask(id: UUID, task: Partial<Task>): Promise<void>
+async deleteTask(id: UUID): Promise<void>
+on(event: string, callback: (data: any) => void): void
+off(event: string, callback: (data: any) => void): void
+emit(event: string, data: any): void
+async sendControlMessage(params: {
+    roomId: UUID;
+    action: 'enable_input' | 'disable_input';
+    target?: string;
+}): Promise<void>
+registerSendHandler(source: string, handler: SendHandlerFunction): void
+async sendMessageToTarget(target: TargetInfo, content: Content): Promise<void>
+async getMemoriesByWorldId(params: {
+    worldId: UUID;
+    count?: number;
+    tableName?: string;
+}): Promise<Memory[]>
+async runMigrations(migrationsPaths?: string[]): Promise<void>
+async isReady(): Promise<boolean>
 ````
 
 ## File: package.json
 ````json
 {
   "name": "eliza",
+  "version": "1.0.6",
+  "module": "index.ts",
+  "type": "module",
+  "engines": {
+    "node": "23.3.0"
+  },
   "scripts": {
+    "postinstall": "bash ./scripts/init-submodules.sh",
     "start": "turbo run start --filter=./packages/cli --log-prefix=none",
     "start:debug": "cross-env NODE_NO_WARNINGS=1 LOG_LEVEL=debug elizaos start",
     "start:app": "turbo run start --filter=./packages/app",
-    "dev": "turbo run start --filter=./packages/cli",
+    "dev": "bun run scripts/dev-watch.js",
     "build:docs": "turbo run build --filter=@elizaos/docs",
     "build": "turbo run build --filter=!@elizaos/docs",
     "build:client": "turbo run build --filter=@elizaos/client",
-    "clean": "turbo run clean --filter=./packages/* && rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo bun.lock*",
+    "format": "turbo run format --filter=./packages/*",
+    "format:check": "turbo run format:check --filter=./packages/*",
+    "clean": "turbo run clean --filter=./packages/* && rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo bun.lock* .eliza .elizadb && bun install && bun run build",
     "build:cli": "turbo run build --filter=@elizaos/cli --no-cache",
     "build:core": "turbo run build --filter=@elizaos/core --no-cache",
     "lint": "turbo run lint --filter=./packages/* && prettier --write . && prettier --check .",
     "pre-commit": "bun run scripts/pre-commit-lint.js",
-    "release": "bun run build && bun lint && lerna publish --no-private --force-publish && bun lint",
+    "release": "lerna version --no-private --force-publish --no-push --no-git-tag-version && bun run build && bun lint && lerna publish from-package --no-private --force-publish && bun lint",
     "release:alpha": "lerna publish prerelease --preid alpha --dist-tag alpha --no-private --force-publish --loglevel verbose",
-    "release:beta": "lerna publish prerelease --preid beta --dist-tag beta --no-private --force-publish --loglevel verbose",
     "migrate": "turbo run migrate --filter=./packages/plugin-sql --force",
     "migrate:generate": "turbo run migrate:generate --filter=./packages/plugin-sql",
     "docker:build": "bash ./scripts/docker.sh build",
@@ -10224,72 +8690,31 @@ const startAgents = async (options: {
     "test:app": "turbo run test --concurrency 20 --filter=./packages/app",
     "prepare": "husky"
   },
-  "devDependencies": {
-    "@types/bun": "latest",
-    "@types/node": "^22.15.3",
-    "@types/uuid": "^9.0.8",
-    "@vitest/eslint-plugin": "1.0.1",
-    "bun": "^1.2.13",
-    "concurrently": "9.1.0",
-    "cross-env": "7.0.3",
-    "husky": "^9.1.7",
-    "lerna": "8.1.4",
-    "lint-staged": "^15.5.0",
-    "sharp": "0.33.5",
-    "tsup": "8.5.0",
-    "turbo": "^2.4.4",
-    "typedoc": "0.27.9",
-    "typescript": "5.8.2",
-    "vite": "5.4.12",
-    "vitest": "3.0.5"
-  },
-  "bun": {
-    "overrides": {
-      "cookie": "0.7.0",
-      "bs58": "5.0.0",
-      "secp256k1": "5.0.1",
-      "minipass": "7.1.2",
-      "form-data": "4.0.2",
-      "eslint": "9.22.0",
-      "react": "19.0.0",
-      "react-dom": "19.0.0",
-      "got": "12.6.1"
-    }
-  },
-  "engines": {
-    "node": "23.3.0"
-  },
-  "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
-    "@babel/generator": "^7.26.10",
-    "@hapi/shot": "^6.0.1",
-    "@sentry/browser": "^9.20.0",
-    "@types/hapi": "^18.0.14",
-    "vittest": "^1.0.2",
-    "zod": "3.24.1"
-  },
-  "packageManager": "bun@1.2.5",
+  "packageManager": "bun@1.2.15",
   "workspaces": [
     "packages/*",
     "plugin-specification/*"
   ],
-  "module": "index.ts",
-  "type": "module",
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^22.15.3",
+    "@types/uuid": "^10.0.0",
+    "bun": "^1.2.15",
+    "husky": "^9.1.7",
+    "lerna": "8.1.4",
+    "tsup": "8.5.0",
+    "turbo": "^2.5.4",
+    "typescript": "^5.8.2",
+    "vitest": "3.1.4"
+  },
   "resolutions": {
-    "@nrwl/devkit": "19.8.13",
-    "@nrwl/tao": "19.8.13",
-    "zod": "3.24.1",
-    "eslint": "9.22.0",
-    "react": "19.0.0",
-    "react-dom": "19.0.0",
-    "vitest": "3.0.5",
-    "@metaplex-foundation/umi": "0.9.2",
+    "@nrwl/devkit": "19.8.4",
+    "@nrwl/tao": "19.8.4",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "@types/react": "19.1.5",
     "typedoc-plugin-markdown": "4.2.10",
-    "buffer": "6.0.3",
-    "@solana/spl-token": "0.4.9",
-    "solana-bankrun": "0.3.1",
-    "got": "12.6.1",
-    "form-data": "4.0.2"
+    "typedoc": "0.27.9"
   },
   "trustedDependencies": [
     "@swc/core",
@@ -10301,38 +8726,12 @@ const startAgents = async (options: {
     "husky",
     "node-llama-cpp",
     "protobufjs",
-    "sharp",
     "utf-8-validate"
   ],
-  "version": "0.1.0"
+  "dependencies": {
+    "helmet": "^8.1.0"
+  }
 }
-````
-
-## File: packages/cli/src/commands/test.ts
-````typescript
-import { loadProject } from '@/src/project';
-import { AgentServer } from '@/src/server/index';
-import { jsonToCharacter, loadCharacterTryPath } from '@/src/server/loader';
-import { TestRunner, buildProject, promptForEnvVars, findNearestEnvFile } from '@/src/utils';
-import { type IAgentRuntime, type ProjectAgent } from '@elizaos/core';
-import { Command, Option } from 'commander';
-⋮----
-import { existsSync } from 'node:fs';
-⋮----
-import path from 'node:path';
-import { exec } from 'node:child_process';
-import { promisify } from 'node:util';
-import { startAgent } from './start';
-import { pathToFileURL } from 'url';
-⋮----
-async function checkPortAvailable(port: number): Promise<boolean>
-function checkIfLikelyPluginDir(dir: string): boolean
-function processFilterName(name?: string): string | undefined
-async function runComponentTests(options:
-const runE2eTests = async (options:
-async function runAllTests(options:
-⋮----
-export default function registerCommand(cli: Command)
 ````
 
 
