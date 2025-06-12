@@ -58,6 +58,20 @@ export const actionsProvider: Provider = {
     // Format action-related texts
     const actionNames = `Possible response actions: ${formatActionNames(actionsData)}`;
 
+    // Create a more detailed actions format with descriptions
+    const actionsWithDescriptions =
+      actionsData.length > 0
+        ? addHeader(
+            '# Available Actions',
+            actionsData
+              .map(
+                (action) =>
+                  `- **${action.name}**: ${action.description || 'No description available'}`
+              )
+              .join('\n')
+          )
+        : '';
+
     const actions =
       actionsData.length > 0 ? addHeader('# Available Actions', formatActions(actionsData)) : '';
 
@@ -74,10 +88,13 @@ export const actionsProvider: Provider = {
       actions,
       actionNames,
       actionExamples,
+      actionsWithDescriptions,
     };
 
-    // Combine all text sections
-    const text = [actionNames, actionExamples, actions].filter(Boolean).join('\n\n');
+    // Combine all text sections - now including actionsWithDescriptions
+    const text = [actionNames, actionsWithDescriptions, actionExamples, actions]
+      .filter(Boolean)
+      .join('\n\n');
 
     return {
       data,
