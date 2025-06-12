@@ -2,14 +2,14 @@
 sidebar_position: 3
 title: Frequently Asked Questions
 description: Common questions and answers about installing, configuring, and using ElizaOS
-keywords: [FAQ, troubleshooting, installation, setup, Twitter, Discord, models, memory]
+keywords: [FAQ, troubleshooting, installation, setup, Discord, models, memory]
 ---
 
 # Frequently Asked Questions
 
 ### What is Eliza?
 
-Eliza is an extensible open-source framework for building autonomous AI agents that can engage in natural conversations, learn from interactions, and maintain consistent personalities across platforms like Twitter, Discord, and Telegram.
+Eliza is an extensible open-source framework for building autonomous AI agents that can engage in natural conversations, learn from interactions, and maintain consistent personalities across platforms like Farcaster, X, Discord, and Telegram.
 
 ### What's the difference between v1 and v2?
 
@@ -139,13 +139,6 @@ Check your database for null memory entries and ensure proper content formatting
 - To add documents: Specify path to file / folder in the characterfile
 - For large datasets: Consider using a vector database
 
-### How much does it cost to run an agent?
-
-- OpenAI API: Approximately 500 simple replies for $1
-- Server hosting: $5-20/month depending on provider
-- Optional: Twitter API costs if using premium features
-- Local deployment can reduce costs but requires 24/7 uptime
-
 ### How do I clear or reset my agent's memory?
 
 Using the CLI:
@@ -199,16 +192,6 @@ Or manually:
 
 ## Production Deployment
 
-### What's the recommended way to deploy Eliza?
-
-1. Use a VPS or cloud provider (DigitalOcean, AWS, Hetzner)
-2. Requirements:
-   - Minimum 2GB RAM
-   - 20GB storage
-   - Ubuntu or Debian recommended
-3. Use PM2 or Docker for process management
-4. Consider using residential IPs for Twitter bots
-
 ### How do I ensure my agent runs continuously?
 
 1. Use a process manager like PM2:
@@ -233,16 +216,6 @@ Or manually:
    - Verify connection string
    - Check database exists
    - Ensure proper credentials
-
-### How do I debug when my agent isn't responding?
-
-1. Enable debug logging in .env:
-   ```
-   DEBUG=eliza:*
-   ```
-2. Check the database for saved messages
-3. Verify API keys and model provider status
-4. Check client-specific settings (Twitter, Discord, etc.)
 
 ### How do I resolve embedding dimension mismatch errors?
 
@@ -273,7 +246,6 @@ Eliza welcomes contributions from individuals with a wide range of skills:
 - **Develop new plugins**: Create new functionality using the plugin system
 - **Improve the core**: Enhance the ElizaOS core functionality
 - **Fine-tune models**: Optimize models for specific personalities and use cases
-- **Enhance clients**: Improve platform integrations for Twitter, Discord, etc.
 
 #### Non-Technical Contributions
 
