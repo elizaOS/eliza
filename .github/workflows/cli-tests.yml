@@ -118,5 +118,5 @@ jobs:
           done
 
       - name: Run CLI TypeScript tests
-        run: bun run test
+        run: bun run test:cli
         working-directory: packages/cli
