@@ -64,13 +64,15 @@ async function verifyPluginImport(repository: string, context: string): Promise<
  * @param {string} versionString - Version string for installation
  * @param {string} directory - Directory to install in
  * @param {string} context - Description of the installation context for logging
+ * @param {boolean} skipVerification - Whether to skip import verification
  * @returns {boolean} - Whether the installation and import verification was successful
  */
 async function attemptInstallation(
   packageName: string,
   versionString: string,
   directory: string,
-  context: string
+  context: string,
+  skipVerification = false
 ): Promise<boolean> {
   logger.debug(`Attempting to install plugin ${context}...`);
 
@@ -88,7 +90,7 @@ async function attemptInstallation(
     if (packageName.startsWith('github:')) {
       return true;
     }
-    if (process.env.ELIZA_SKIP_PLUGIN_VERIFY) {
+    if (skipVerification || process.env.ELIZA_SKIP_PLUGIN_VERIFY) {
       logger.info(
         `Installation successful for ${installResult.installedIdentifier}, skipping verification`
       );
@@ -111,13 +113,14 @@ async function attemptInstallation(
  * @param {string} packageName - The repository URL of the plugin to install.
  * @param {string} cwd - The current working directory where the plugin will be installed.
  * @param {string} versionSpecifier - The specific version of the plugin to install.
- * @param {string} monorepoBranch - The specific branch to use for monorepo installation.
+ * @param {boolean} skipVerification - Whether to skip import verification.
  * @returns {Promise<boolean>} - A Promise that resolves to true if the plugin is successfully installed, or false otherwise.
  */
 export async function installPlugin(
   packageName: string,
   cwd: string,
-  versionSpecifier?: string
+  versionSpecifier?: string,
+  skipVerification = false
 ): Promise<boolean> {
   logger.debug(`Installing plugin: ${packageName}`);
 
@@ -135,7 +138,7 @@ export async function installPlugin(
 
   // Direct GitHub installation
   if (packageName.startsWith('github:')) {
-    return await attemptInstallation(packageName, '', cwd, ':');
+    return await attemptInstallation(packageName, '', cwd, '', skipVerification);
   }
 
   // Handle full GitHub URLs as well
@@ -145,7 +148,7 @@ export async function installPlugin(
   if (httpsMatch) {
     const [, owner, repo, ref] = httpsMatch;
     const spec = `github:${owner}/${repo}${ref ? `#${ref}` : ''}`;
-    return await attemptInstallation(spec, '', cwd, ':');
+    return await attemptInstallation(spec, '', cwd, '', skipVerification);
   }
 
   const cache = await fetchPluginRegistry();
@@ -183,7 +186,7 @@ export async function installPlugin(
     logger.warn(
       `Plugin ${packageName} not found in registry cache, attempting direct installation`
     );
-    return await attemptInstallation(packageName, versionSpecifier || '', cwd, '');
+    return await attemptInstallation(packageName, versionSpecifier || '', cwd, '', skipVerification);
   }
 
   const info = cache!.registry[key];
@@ -199,7 +202,7 @@ export async function installPlugin(
 
     if (result.success) {
       // Verify import if not a GitHub install
-      if (!info.npm.repo.startsWith('github:') && !process.env.ELIZA_SKIP_PLUGIN_VERIFY) {
+      if (!info.npm.repo.startsWith('github:') && !skipVerification && !process.env.ELIZA_SKIP_PLUGIN_VERIFY) {
         const importSuccess = await verifyPluginImport(
           result.installedIdentifier || info.npm.repo,
           'from npm with potential GitHub fallback'
@@ -213,7 +216,7 @@ export async function installPlugin(
 
     if (result.success) {
       // Verify import if not a GitHub install
-      if (!process.env.ELIZA_SKIP_PLUGIN_VERIFY) {
+      if (!skipVerification && !process.env.ELIZA_SKIP_PLUGIN_VERIFY) {
         const importSuccess = await verifyPluginImport(
           result.installedIdentifier || key,
           'from npm registry with potential GitHub fallback'
@@ -227,7 +230,7 @@ export async function installPlugin(
   // If both npm approaches failed, try direct GitHub installation as final fallback
   if (info.git?.repo && cliDir) {
     const spec = `github:${info.git.repo}${githubVersion ? `#${githubVersion}` : ''}`;
-    return await attemptInstallation(spec, '', cliDir, 'in CLI directory');
+    return await attemptInstallation(spec, '', cliDir, 'in CLI directory', skipVerification);
   }
 
   logger.error(`Failed to install plugin ${packageName}`);

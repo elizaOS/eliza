@@ -69,6 +69,7 @@ export class UserEnvironment {
 
   private static readonly instance: UserEnvironment = new UserEnvironment();
   private cachedInfo: { [key: string]: UserEnvironmentInfo } = {}; // Cache per directory
+  private monorepoCache: Map<string, string | null> = new Map(); // Cache for monorepo detection
 
   private constructor() {}
 
@@ -134,8 +135,10 @@ export class UserEnvironment {
     let version: string | null = null;
 
     try {
-      // Get bun version
-      const { stdout } = await import('execa').then(({ execa }) => execa('bun', ['--version']));
+      // Get bun version with timeout
+      const { stdout } = await import('execa').then(({ execa }) => 
+        execa('bun', ['--version'], { timeout: 5000 })
+      );
       version = stdout.trim();
       logger.debug(`[UserEnvironment] Bun version: ${version}`);
     } catch (e) {
@@ -227,16 +230,34 @@ export class UserEnvironment {
   /**
    * Finds the monorepo root by traversing upwards from a starting directory,
    * looking for a marker directory ('packages/core').
+   * Uses caching to avoid repeated filesystem traversal.
    *
    * @param startDir The directory to start searching from.
    * @returns The path to the monorepo root if found, otherwise null.
    */
   public findMonorepoRoot(startDir: string): string | null {
-    let currentDir = path.resolve(startDir);
+    const resolvedStartDir = path.resolve(startDir);
+    
+    // Check cache first
+    if (this.monorepoCache.has(resolvedStartDir)) {
+      const cached = this.monorepoCache.get(resolvedStartDir);
+      logger.debug(`[UserEnvironment] Using cached monorepo result for ${resolvedStartDir}: ${cached || 'null'}`);
+      return cached;
+    }
+
+    let currentDir = resolvedStartDir;
     let levels = 0;
     const MAX_LEVELS = 10; // Limit traversal to prevent excessive filesystem searching
 
     while (levels < MAX_LEVELS) {
+      // Check if we already have a cached result for this directory
+      if (this.monorepoCache.has(currentDir)) {
+        const cachedResult = this.monorepoCache.get(currentDir);
+        // Cache the result for the original start directory too
+        this.monorepoCache.set(resolvedStartDir, cachedResult);
+        return cachedResult;
+      }
+
       const corePackagePath = path.join(currentDir, 'packages', 'core');
       if (existsSync(corePackagePath)) {
         try {
@@ -249,6 +270,15 @@ export class UserEnvironment {
               const packageJson = JSON.parse(packageJsonContent);
               // Verify this is actually the ElizaOS monorepo
               if (packageJson.name?.includes('eliza') || packageJson.workspaces) {
+                // Cache positive result for all traversed directories
+                let cacheDir = resolvedStartDir;
+                while (cacheDir !== currentDir) {
+                  this.monorepoCache.set(cacheDir, currentDir);
+                  const parentDir = path.dirname(cacheDir);
+                  if (parentDir === cacheDir) break;
+                  cacheDir = parentDir;
+                }
+                this.monorepoCache.set(currentDir, currentDir);
                 return currentDir;
               }
             }
@@ -260,11 +290,16 @@ export class UserEnvironment {
 
       const parentDir = path.dirname(currentDir);
       if (parentDir === currentDir) {
-        return null; // Reached filesystem root
+        // Reached filesystem root - cache negative result
+        this.monorepoCache.set(resolvedStartDir, null);
+        return null;
       }
       currentDir = parentDir;
       levels++;
     }
+    
+    // Reached max levels - cache negative result
+    this.monorepoCache.set(resolvedStartDir, null);
     return null;
   }
 
