@@ -299,24 +299,33 @@ export class AgentServer {
 
       // Security headers first - before any other middleware
       logger.debug('Setting up security headers...');
+      logger.debug(`NODE_ENV: ${process.env.NODE_ENV}`);
+      logger.debug(
+        `CSP will be: ${process.env.NODE_ENV === 'production' ? 'ENABLED' : 'DISABLED'}`
+      );
       this.app.use(
         helmet({
+          // Content Security Policy - environment-aware configuration
           // Content Security Policy - more permissive for the main app to handle UI
-          contentSecurityPolicy: {
-            directives: {
-              defaultSrc: ["'self'"],
-              styleSrc: ["'self'", "'unsafe-inline'", 'https:'], // Allow inline styles for UI
-              scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"], // Allow inline scripts for UI frameworks
-              imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'], // Allow images from various sources
-              fontSrc: ["'self'", 'https:', 'data:'],
-              connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'], // Allow WebSocket connections
-              mediaSrc: ["'self'", 'blob:', 'data:'],
-              objectSrc: ["'none'"],
-              frameSrc: ["'none'"],
-              baseUri: ["'self'"],
-              formAction: ["'self'"],
-            },
-          },
+          contentSecurityPolicy:
+            process.env.NODE_ENV === 'production'
+              ? {
+                  directives: {
+                    defaultSrc: ["'self'"],
+                    styleSrc: ["'self'", "'unsafe-inline'", 'https:'],
+                    scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+                    imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
+                    fontSrc: ["'self'", 'https:', 'data:'],
+                    connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
+                    mediaSrc: ["'self'", 'blob:', 'data:'],
+                    objectSrc: ["'none'"],
+                    frameSrc: ["'none'"],
+                    baseUri: ["'self'"],
+                    formAction: ["'self'"],
+                    // upgrade-insecure-requests is added by helmet automatically
+                  },
+                }
+              : false, // Disable CSP in development to prevent Safari HTTPS issues
           // Cross-Origin Embedder Policy - disabled for compatibility
           crossOriginEmbedderPolicy: false,
           // Cross-Origin Resource Policy
