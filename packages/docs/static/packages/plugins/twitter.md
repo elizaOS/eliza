@@ -18,19 +18,6 @@ A plugin for Twitter/X integration, providing automated tweet posting capabiliti
 npm install @elizaos/plugin-twitter
 ```
 
-## Configuration
-
-Requires environment variables:
-
-```env
-TWITTER_USERNAME=your_username
-TWITTER_PASSWORD=your_password
-TWITTER_EMAIL=your_email              # Optional: for 2FA
-TWITTER_2FA_SECRET=your_2fa_secret    # Optional: for 2FA
-TWITTER_PREMIUM=false                 # Optional: enables premium features
-TWITTER_DRY_RUN=false                # Optional: test without posting
-```
-
 ## Integration
 
 Import and register the plugin in Eliza configuration:
