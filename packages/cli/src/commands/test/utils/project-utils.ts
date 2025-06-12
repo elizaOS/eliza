@@ -23,7 +23,7 @@ export function findMonorepoRoot(startDir: string): string {
     }
     currentDir = path.dirname(currentDir);
   }
-  
+
   throw new Error(
     'Could not find monorepo root. Make sure to run tests from within the Eliza project.'
   );
@@ -66,14 +66,14 @@ export async function installPluginDependencies(projectInfo: DirectoryInfo): Pro
   if (projectInfo.type !== 'elizaos-plugin') {
     return;
   }
-  
+
   const project = await loadProject(process.cwd());
   if (project.isPlugin && project.pluginModule?.dependencies?.length > 0) {
     const pluginsDir = path.join(process.cwd(), '.eliza', 'plugins');
     if (!fs.existsSync(pluginsDir)) {
       await fs.promises.mkdir(pluginsDir, { recursive: true });
     }
-    
+
     const packageJsonPath = path.join(pluginsDir, 'package.json');
     if (!fs.existsSync(packageJsonPath)) {
       const packageJsonContent = {

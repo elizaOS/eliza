@@ -7,14 +7,14 @@ import { checkVersionNeedsUpdate, fetchLatestVersion, getVersion } from '../util
 
 /**
  * Update CLI to latest version
- * 
+ *
  * Handles CLI updates with automatic migration from npm to bun when appropriate, and supports both global and local installation scenarios.
  */
 export async function performCliUpdate(options: GlobalUpdateOptions = {}): Promise<boolean> {
   try {
     const currentVersion = await getVersion();
     const targetVersion = options.version || 'latest';
-    
+
     let latestVersion: string;
     if (targetVersion === 'latest') {
       const fetchedVersion = await fetchLatestVersion('@elizaos/cli');

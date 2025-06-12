@@ -40,7 +40,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '23'
-          
+
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
 

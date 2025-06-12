@@ -81,7 +81,7 @@ describe('Dynamic Migration Tests', () => {
     runtime = setup.runtime;
     cleanup = setup.cleanup;
     testAgentId = setup.testAgentId;
-    
+
     // Get migration service from the runtime
     migrationService = new DatabaseMigrationService(runtime);
   }, 30000);

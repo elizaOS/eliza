@@ -17,7 +17,20 @@ import {
   type UUID,
   type World,
 } from '@elizaos/core';
-import { and, cosineDistance, count, desc, eq, gte, inArray, lt, lte, or, SQL, sql } from 'drizzle-orm';
+import {
+  and,
+  cosineDistance,
+  count,
+  desc,
+  eq,
+  gte,
+  inArray,
+  lt,
+  lte,
+  or,
+  SQL,
+  sql,
+} from 'drizzle-orm';
 import { v4 } from 'uuid';
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from './schema/embedding';
 import {
@@ -323,10 +336,7 @@ export abstract class BaseDrizzleAdapter<
             updateData.updatedAt = new Date(); // Always set updatedAt to current time
           }
 
-          await tx
-            .update(agentTable)
-            .set(updateData)
-            .where(eq(agentTable.id, agentId));
+          await tx.update(agentTable).set(updateData).where(eq(agentTable.id, agentId));
         });
 
         logger.debug('Agent updated successfully:', {
@@ -1677,7 +1687,7 @@ export abstract class BaseDrizzleAdapter<
           entityId: memory.entityId,
           roomId: memory.roomId,
           worldId: memory.worldId, // Include worldId
-          agentId: this.agentId,
+          agentId: memory.agentId || this.agentId,
           unique: memory.unique ?? isUnique,
           createdAt: memory.createdAt ? new Date(memory.createdAt) : new Date(),
         },
@@ -2451,10 +2461,10 @@ export abstract class BaseDrizzleAdapter<
         agentId: relationship.agentId as UUID,
         tags: relationship.tags ?? [],
         metadata: (relationship.metadata as { [key: string]: unknown }) ?? {},
-        createdAt: relationship.createdAt 
-          ? (relationship.createdAt instanceof Date 
-            ? relationship.createdAt.toISOString() 
-            : new Date(relationship.createdAt).toISOString())
+        createdAt: relationship.createdAt
+          ? relationship.createdAt instanceof Date
+            ? relationship.createdAt.toISOString()
+            : new Date(relationship.createdAt).toISOString()
           : new Date().toISOString(),
       }));
     });
@@ -2641,7 +2651,7 @@ export abstract class BaseDrizzleAdapter<
           updatedAt: now,
           agentId: this.agentId as UUID,
         };
-        
+
         const result = await this.db.insert(taskTable).values(values).returning();
 
         return result[0].id as UUID;
@@ -3250,36 +3260,36 @@ export abstract class BaseDrizzleAdapter<
   }> {
     return this.withDatabase(async () => {
       const now = new Date();
-      
+
       await this.db.transaction(async (tx) => {
         // Update channel details
         const updateData: any = { updatedAt: now };
         if (updates.name !== undefined) updateData.name = updates.name;
         if (updates.metadata !== undefined) updateData.metadata = updates.metadata;
-        
-        await tx.update(channelTable)
-          .set(updateData)
-          .where(eq(channelTable.id, channelId));
+
+        await tx.update(channelTable).set(updateData).where(eq(channelTable.id, channelId));
 
         // Update participants if provided
         if (updates.participantCentralUserIds !== undefined) {
           // Remove existing participants
-          await tx.delete(channelParticipantsTable)
+          await tx
+            .delete(channelParticipantsTable)
             .where(eq(channelParticipantsTable.channelId, channelId));
-          
+
           // Add new participants
           if (updates.participantCentralUserIds.length > 0) {
             const participantValues = updates.participantCentralUserIds.map((userId) => ({
               channelId: channelId,
               userId: userId,
             }));
-            await tx.insert(channelParticipantsTable)
+            await tx
+              .insert(channelParticipantsTable)
               .values(participantValues)
               .onConflictDoNothing();
           }
         }
       });
-      
+
       // Return updated channel details
       const updatedChannel = await this.getChannelDetails(channelId);
       if (!updatedChannel) {
@@ -3297,10 +3307,12 @@ export abstract class BaseDrizzleAdapter<
       await this.db.transaction(async (tx) => {
         // Delete all messages in the channel (cascade delete will handle this, but explicit is better)
         await tx.delete(messageTable).where(eq(messageTable.channelId, channelId));
-        
+
         // Delete all participants (cascade delete will handle this, but explicit is better)
-        await tx.delete(channelParticipantsTable).where(eq(channelParticipantsTable.channelId, channelId));
-        
+        await tx
+          .delete(channelParticipantsTable)
+          .where(eq(channelParticipantsTable.channelId, channelId));
+
         // Delete the channel itself
         await tx.delete(channelTable).where(eq(channelTable.id, channelId));
       });
@@ -3376,7 +3388,9 @@ export abstract class BaseDrizzleAdapter<
     return this.withDatabase(async () => {
       await this.db
         .delete(serverAgentsTable)
-        .where(and(eq(serverAgentsTable.serverId, serverId), eq(serverAgentsTable.agentId, agentId)));
+        .where(
+          and(eq(serverAgentsTable.serverId, serverId), eq(serverAgentsTable.agentId, agentId))
+        );
     });
   }
 

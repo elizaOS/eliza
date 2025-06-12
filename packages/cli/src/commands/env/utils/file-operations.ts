@@ -84,13 +84,10 @@ export async function resetEnvFile(filePath: string): Promise<boolean> {
       return false; // No variables to reset
     }
 
-    const resetVars = Object.keys(envVars).reduce(
-      (acc, key) => {
-        acc[key] = '';
-        return acc;
-      },
-      {} as EnvVars
-    );
+    const resetVars = Object.keys(envVars).reduce((acc, key) => {
+      acc[key] = '';
+      return acc;
+    }, {} as EnvVars);
 
     await writeEnvFile(filePath, resetVars);
     return true;

@@ -1,11 +1,7 @@
 import { getElizaCharacter } from '@/src/characters/eliza';
 import { AgentServer } from '@/src/server/index';
 import { jsonToCharacter, loadCharacterTryPath } from '@/src/server/loader';
-import {
-  configureDatabaseSettings,
-  findNextAvailablePort,
-  resolvePgliteDir,
-} from '@/src/utils';
+import { configureDatabaseSettings, findNextAvailablePort, resolvePgliteDir } from '@/src/utils';
 import { logger, type Character, type ProjectAgent } from '@elizaos/core';
 import { startAgent, stopAgent } from './agent-start';
 
@@ -21,7 +17,7 @@ export interface ServerStartOptions {
 
 /**
  * Start the agents and server
- * 
+ *
  * Initializes the database, creates the server instance, configures port settings, and starts the specified agents or default Eliza character.
  */
 export async function startAgents(options: ServerStartOptions): Promise<void> {
@@ -50,9 +46,9 @@ export async function startAgents(options: ServerStartOptions): Promise<void> {
   if (options.projectAgents && options.projectAgents.length > 0) {
     for (const projectAgent of options.projectAgents) {
       await startAgent(
-        projectAgent.character, 
-        server, 
-        projectAgent.init, 
+        projectAgent.character,
+        server,
+        projectAgent.init,
         projectAgent.plugins || []
       );
     }
@@ -62,7 +58,7 @@ export async function startAgents(options: ServerStartOptions): Promise<void> {
     for (const character of options.characters) {
       await startAgent(character, server);
     }
-  } 
+  }
   // Default fallback to Eliza character
   else {
     const elizaCharacter = getElizaCharacter();

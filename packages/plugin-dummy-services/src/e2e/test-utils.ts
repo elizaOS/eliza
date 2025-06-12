@@ -117,4 +117,4 @@ export function sendMessageAndWaitForResponse(
       callback,
     });
   });
-} 
+}

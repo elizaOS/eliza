@@ -57,10 +57,10 @@ Upload and process an audio file as a message through a specific agent
         schema: {
           type: 'object',
           properties: {
-            file: { 
-              type: 'string', 
-              format: 'binary', 
-              description: 'Audio file to process as a message' 
+            file: {
+              type: 'string',
+              format: 'binary',
+              description: 'Audio file to process as a message',
             },
           },
           required: ['file'],
@@ -85,13 +85,13 @@ Upload and process an audio file as a message through a specific agent
               data: {
                 type: 'object',
                 properties: {
-                  transcription: { 
-                    type: 'string', 
-                    description: 'Transcribed text from the audio file' 
+                  transcription: {
+                    type: 'string',
+                    description: 'Transcribed text from the audio file',
                   },
-                  message: { 
-                    type: 'string', 
-                    example: 'Audio transcribed, further processing TBD.' 
+                  message: {
+                    type: 'string',
+                    example: 'Audio transcribed, further processing TBD.',
                   },
                 },
               },

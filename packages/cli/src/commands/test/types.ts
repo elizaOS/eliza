@@ -11,7 +11,7 @@ export interface ComponentTestOptions {
 }
 
 /**
- * Options for e2e test execution  
+ * Options for e2e test execution
  */
 export interface E2ETestOptions {
   port?: number;

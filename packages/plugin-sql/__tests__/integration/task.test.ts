@@ -60,7 +60,7 @@ describe('Task Integration Tests', () => {
     await adapter.createEntities([
       { id: testEntityId, agentId: testAgentId, names: ['Test Entity'] } as Entity,
     ]);
-    
+
     await adapter.addParticipant(testEntityId, testRoomId);
   }, 30000);
 
@@ -143,8 +143,20 @@ describe('Task Integration Tests', () => {
       const roomId1 = uuidv4() as UUID;
       const roomId2 = uuidv4() as UUID;
       await adapter.createRooms([
-        { id: roomId1, agentId: testAgentId, worldId: testWorldId, source: 'test', type: ChannelType.GROUP } as Room,
-        { id: roomId2, agentId: testAgentId, worldId: testWorldId, source: 'test', type: ChannelType.GROUP } as Room,
+        {
+          id: roomId1,
+          agentId: testAgentId,
+          worldId: testWorldId,
+          source: 'test',
+          type: ChannelType.GROUP,
+        } as Room,
+        {
+          id: roomId2,
+          agentId: testAgentId,
+          worldId: testWorldId,
+          source: 'test',
+          type: ChannelType.GROUP,
+        } as Room,
       ]);
 
       const task1: Task = {

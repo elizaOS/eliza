@@ -9,7 +9,12 @@ import { upgradePlugin } from './actions/upgrade';
 import { generatePlugin } from './actions/generate';
 
 // Import types
-import { ListPluginsOptions, AddPluginOptions, UpgradePluginOptions, GeneratePluginOptions } from './types';
+import {
+  ListPluginsOptions,
+  AddPluginOptions,
+  UpgradePluginOptions,
+  GeneratePluginOptions,
+} from './types';
 
 export const plugins = new Command()
   .name('plugins')
@@ -104,7 +109,7 @@ plugins
 
 // Re-export for backward compatibility
 export * from './actions/install';
-export * from './actions/remove'; 
+export * from './actions/remove';
 export * from './actions/list';
 export * from './actions/upgrade';
 export * from './actions/generate';

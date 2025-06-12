@@ -6,12 +6,12 @@ import { resetEnv } from './reset';
 
 /**
  * Display the main menu for environment variables
- * 
+ *
  * Provides an interactive menu system for managing environment variables, including listing, editing, and resetting operations.
  */
 export async function showMainMenu(options: InteractiveEnvOptions): Promise<void> {
   const { yes } = options;
-  
+
   // Interactive mode always requires user input, so ignore the -y flag
   let exit = false;
 

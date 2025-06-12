@@ -57,10 +57,10 @@ Upload media files to a specific channel for sharing and communication
         schema: {
           type: 'object',
           properties: {
-            file: { 
-              type: 'string', 
-              format: 'binary', 
-              description: 'Media file to upload' 
+            file: {
+              type: 'string',
+              format: 'binary',
+              description: 'Media file to upload',
             },
           },
           required: ['file'],
@@ -85,27 +85,28 @@ Upload media files to a specific channel for sharing and communication
               data: {
                 type: 'object',
                 properties: {
-                  url: { 
-                    type: 'string', 
+                  url: {
+                    type: 'string',
                     description: 'URL path to access the uploaded media',
-                    example: '/media/uploads/channels/12345678-1234-1234-1234-123456789abc/document.pdf'
+                    example:
+                      '/media/uploads/channels/12345678-1234-1234-1234-123456789abc/document.pdf',
                   },
-                  type: { 
-                    type: 'string', 
+                  type: {
+                    type: 'string',
                     description: 'MIME type of the uploaded file',
-                    example: 'image/jpeg'
+                    example: 'image/jpeg',
                   },
-                  filename: { 
-                    type: 'string', 
-                    description: 'Generated filename on server' 
+                  filename: {
+                    type: 'string',
+                    description: 'Generated filename on server',
                   },
-                  originalName: { 
-                    type: 'string', 
-                    description: 'Original filename from upload' 
+                  originalName: {
+                    type: 'string',
+                    description: 'Original filename from upload',
                   },
-                  size: { 
-                    type: 'integer', 
-                    description: 'File size in bytes' 
+                  size: {
+                    type: 'integer',
+                    description: 'File size in bytes',
                   },
                 },
               },
@@ -122,9 +123,9 @@ Upload media files to a specific channel for sharing and communication
             type: 'object',
             properties: {
               success: { type: 'boolean', example: false },
-              error: { 
-                type: 'string', 
-                description: 'Error message describing the issue' 
+              error: {
+                type: 'string',
+                description: 'Error message describing the issue',
               },
             },
             title: 'Error',
@@ -140,9 +141,9 @@ Upload media files to a specific channel for sharing and communication
             type: 'object',
             properties: {
               success: { type: 'boolean', example: false },
-              error: { 
-                type: 'string', 
-                example: 'Too many requests, please try again later.' 
+              error: {
+                type: 'string',
+                example: 'Too many requests, please try again later.',
               },
             },
             title: 'Rate Limit Error',
@@ -158,9 +159,9 @@ Upload media files to a specific channel for sharing and communication
             type: 'object',
             properties: {
               success: { type: 'boolean', example: false },
-              error: { 
-                type: 'string', 
-                example: 'Failed to process media upload' 
+              error: {
+                type: 'string',
+                example: 'Failed to process media upload',
               },
             },
             title: 'Server Error',
@@ -174,21 +175,25 @@ Upload media files to a specific channel for sharing and communication
 ## Supported File Types
 
 ### Images
+
 - JPEG (`image/jpeg`)
 - PNG (`image/png`)
 - GIF (`image/gif`)
 - WebP (`image/webp`)
 
 ### Videos
+
 - MP4 (`video/mp4`)
 - WebM (`video/webm`)
 
 ### Audio
+
 - MP3 (`audio/mpeg`)
 - WAV (`audio/wav`)
 - OGG (`audio/ogg`)
 
 ### Documents
+
 - PDF (`application/pdf`)
 - Plain Text (`text/plain`)
 

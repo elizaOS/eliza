@@ -304,7 +304,7 @@ export const apiClient = {
     fetcher({ url: '/messaging/central-channels', method: 'POST', body: payload }),
 
   // Ping, TTS, Transcription, Media Upload, Knowledge (agent-specific or global services)
-  ping: (): Promise<{ pong: boolean; timestamp: number }> => fetcher({ url: '/runtime/ping' }),
+  ping: (): Promise<{ pong: boolean; timestamp: number }> => fetcher({ url: '/server/ping' }),
   ttsStream: (agentId: string, text: string): Promise<Blob> =>
     fetcher({
       url: `/audio/${agentId}/speech/generate`,
@@ -358,11 +358,14 @@ export const apiClient = {
     if (params.level) queryParams.append('level', params.level);
     if (params.agentName) queryParams.append('agentName', params.agentName);
     if (params.agentId) queryParams.append('agentId', params.agentId);
-    return fetcher({ url: `/runtime/logs${queryParams.toString() ? `?${queryParams.toString()}` : ''}` });
+    return fetcher({
+      url: `/server/logs${queryParams.toString() ? `?${queryParams.toString()}` : ''}`,
+    });
   },
   deleteGlobalLogs: (): Promise<{ status: string; message: string }> =>
-    fetcher({ url: '/runtime/logs', method: 'DELETE' }),
-  deleteLog: (logId: string): Promise<void> => fetcher({ url: `/runtime/logs/${logId}`, method: 'DELETE' }),
+    fetcher({ url: '/server/logs', method: 'DELETE' }),
+  deleteLog: (logId: string): Promise<void> =>
+    fetcher({ url: `/server/logs/${logId}`, method: 'DELETE' }),
   getAgentLogs: (
     agentId: string,
     options?: {

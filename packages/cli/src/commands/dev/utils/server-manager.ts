@@ -5,7 +5,7 @@ import { ServerProcess } from '../types';
 
 /**
  * Server process manager for development mode
- * 
+ *
  * Manages the lifecycle of the development server process, including starting, stopping, and restarting.
  */
 export class DevServerManager implements ServerProcess {

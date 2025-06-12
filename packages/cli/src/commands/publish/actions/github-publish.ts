@@ -13,7 +13,7 @@ export async function publishToGitHubAction(
   dryRun: boolean = false
 ): Promise<PublishResult> {
   console.info('Publishing to GitHub and registry...');
-  
+
   const result = await publishToGitHub(
     cwd,
     packageJson,
