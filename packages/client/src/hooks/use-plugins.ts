@@ -69,7 +69,7 @@ export function usePlugins() {
 
             return isPlugin && hasV1Support && hasV1Version;
           })
-          .map(([name]) => name)
+          .map(([name]) => name.replace(/^@elizaos-plugins\//, '@elizaos/'))
           .sort();
 
         // Process agent plugins from the parallel fetch
