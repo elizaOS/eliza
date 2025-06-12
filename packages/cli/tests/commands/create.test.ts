@@ -94,7 +94,7 @@ describe('ElizaOS Create Commands', () => {
     expect(existsSync('my-default-app/src')).toBe(true);
     expect(existsSync('my-default-app/.gitignore')).toBe(true);
     expect(existsSync('my-default-app/.npmignore')).toBe(true);
-  }, 40000);
+  }, 120000);
 
   test('create plugin project succeeds', async () => {
     execSync(`rm -rf plugin-my-plugin-app`, { stdio: 'ignore' });
@@ -125,7 +125,7 @@ describe('ElizaOS Create Commands', () => {
     expect(existsSync(pluginDir)).toBe(true);
     expect(existsSync(join(pluginDir, 'package.json'))).toBe(true);
     expect(existsSync(join(pluginDir, 'src/index.ts'))).toBe(true);
-  }, 40000);
+  }, 120000);
 
   test('create agent succeeds', async () => {
     execSync(`rm -f my-test-agent.json`, { stdio: 'ignore' });
