@@ -1,8 +1,7 @@
 # @elizaos/plugin-twitter
 
-> **⚠️ DEPRECATION NOTICE**  
-> **This plugin is deprecated.**  
-> We recommend migrating to alternative social media platforms like Farcaster or Discord.
+> **⚠️ MAINTANENCE NOTICE**  
+> **This plugin is undergoing maintanence.**  
 
 A plugin for Twitter/X integration, providing automated tweet posting capabilities with character-aware content generation.
 
@@ -165,13 +164,11 @@ Contributions are welcome! Please see the CONTRIBUTING.md file for more informat
 This plugin integrates with and builds upon several key technologies:
 
 - [Twitter/X API](https://developer.twitter.com/en/docs): Official Twitter platform API
-- [agent-twitter-client](https://www.npmjs.com/package/agent-twitter-client): Twitter API client library
 - [Zod](https://github.com/colinhacks/zod): TypeScript-first schema validation
 
 Special thanks to:
 
 - The Twitter/X Developer Platform team
-- The agent-twitter-client maintainers for API integration tools
 - The Eliza community for their contributions and feedback
 
 For more information about Twitter/X integration capabilities:
