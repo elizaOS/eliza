@@ -489,7 +489,7 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
     });
 
     // Skip standard agent API routes - these should be handled by agentRouter
-    // Pattern: /agents/{uuid}/... but NOT /agents/{uuid}/plugins/{pluginName}/...
+    // Pattern: /agents/{uuid}/...
     const agentApiRoutePattern = /^\/agents\/[a-f0-9-]{36}\/(?!plugins\/)/i;
     if (agentApiRoutePattern.test(req.path)) {
       logger.debug(`Skipping agent API route in plugin handler: ${req.path}`);
@@ -609,13 +609,31 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
         } // End route loop
       } else {
         logger.warn(
-          `Agent ID ${agentIdFromQuery} provided in query, but agent runtime not found. Path: ${reqPath}. Passing to next middleware.`
+          `Agent ID ${agentIdFromQuery} provided in query, but agent runtime not found. Path: ${reqPath}.`
         );
+        // Return a specific error instead of passing to next middleware
+        res.status(404).json({
+          success: false,
+          error: {
+            message: 'Agent not found',
+            code: 'AGENT_NOT_FOUND'
+          }
+        });
+        return;
       }
     } else if (agentIdFromQuery && !validateUuid(agentIdFromQuery)) {
       logger.warn(
-        `Invalid Agent ID format in query: ${agentIdFromQuery}. Path: ${reqPath}. Passing to next middleware.`
+        `Invalid Agent ID format in query: ${agentIdFromQuery}. Path: ${reqPath}.`
       );
+      // Return a specific error for invalid UUID format
+      res.status(400).json({
+        success: false,
+        error: {
+          message: 'Invalid agent ID format',
+          code: 'INVALID_AGENT_ID'
+        }
+      });
+      return;
     } else {
       // No agentId in query, or it was invalid. Try matching globally for any agent that might have this route.
       // This allows for non-agent-specific plugin routes if any plugin defines them.
@@ -708,19 +726,13 @@ export function createApiRouter(
   const router = express.Router();
 
   // API-specific security headers (supplementing main app helmet)
+  // Let the main app's environment-aware CSP handle all routes
+  // Only add non-CSP security headers for API routes
   router.use(
     helmet({
-      // More restrictive CSP for API endpoints
-      contentSecurityPolicy: {
-        directives: {
-          defaultSrc: ["'none'"], // API should not load resources
-          scriptSrc: ["'none'"], // No scripts in API responses
-          objectSrc: ["'none'"],
-          baseUri: ["'none'"],
-          formAction: ["'none'"],
-        },
-      },
-      // API-specific headers
+      // Disable CSP here - let main app handle it with environment awareness
+      contentSecurityPolicy: false,
+      // API-specific headers only
       crossOriginResourcePolicy: { policy: 'cross-origin' },
       referrerPolicy: { policy: 'no-referrer' },
     })

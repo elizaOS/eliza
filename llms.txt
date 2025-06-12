@@ -2259,10 +2259,11 @@ Watch the commas to make sure it's valid json! Here's a few more config tips:
 Add to your `.env`:
 
 ```bash
-TWITTER_USERNAME=  # Account username
-TWITTER_PASSWORD=  # Account password
-TWITTER_EMAIL=    # Account email
-TWITTER_2FA_SECRET=    # In order to avoid X preventing the login, it is better to activate 2fa in the target account, copy the 2fa secret and paste it here
+# Required Twitter API Credentials
+TWITTER_API_KEY=
+TWITTER_API_SECRET_KEY=
+TWITTER_ACCESS_TOKEN=
+TWITTER_ACCESS_TOKEN_SECRET=
 ```
 
 **Important:** Log in to the [Twitter Developer Portal](https://developer.twitter.com) and enable the "Automated" label for your account to avoid being flagged as inauthentic.
@@ -2338,9 +2339,11 @@ POSTGRES_URL=
 TELEGRAM_BOT_TOKEN=
 
 # Fill these out if you want to use Twitter
-TWITTER_USERNAME=
-TWITTER_PASSWORD=
-TWITTER_EMAIL=
+# Required Twitter API Credentials
+TWITTER_API_KEY=
+TWITTER_API_SECRET_KEY=
+TWITTER_ACCESS_TOKEN=
+TWITTER_ACCESS_TOKEN_SECRET=
 
 # Fill these out if you want to use EVM
 EVM_PRIVATE_KEY=

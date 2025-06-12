@@ -10,27 +10,16 @@ env:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
   ELIZA_NONINTERACTIVE: true
+
 on:
   push:
     branches:
       - 'main'
       - 'develop'
-    paths:
-      - 'packages/cli/**'
-      - 'packages/core/**'
-      - 'packages/plugin-bootstrap/**'
-      - 'packages/plugin-sql/**'
-      - '.github/workflows/cli-tests.yml'
   pull_request:
     branches:
       - 'main'
       - 'develop'
-    paths:
-      - 'packages/cli/**'
-      - 'packages/core/**'
-      - 'packages/plugin-bootstrap/**'
-      - 'packages/plugin-sql/**'
-      - '.github/workflows/cli-tests.yml'
 
 jobs:
   test:
@@ -45,6 +34,17 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+
+      # ── Restore Turborepo local cache ───────────────────────────────
+      - name: Restore Turbo cache
+        id: cache-turbo
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: |
+            ${{ runner.os }}-turbo-${{ hashFiles('turbo.json', '**/bun.lock', '**/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-
 
       - name: Set up Node.js
         uses: actions/setup-node@v3
@@ -74,6 +74,14 @@ jobs:
 
       - name: Build all packages
         run: bun run build
+
+      # ── Save Turborepo local cache (only if no hit above) ───────────
+      - name: Save Turbo cache
+        if: steps.cache-turbo.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .turbo
+          key: ${{ steps.cache-turbo.outputs.cache-primary-key }}
 
       - name: Clean eliza projects cache
         shell: bash
@@ -117,5 +125,7 @@ jobs:
           done
 
       - name: Run CLI TypeScript tests
-        run: bun run test
+        run: bun run test:cli
         working-directory: packages/cli
+        env:
+          ELIZA_TEST_MODE: true
