@@ -29,12 +29,6 @@ This package provides Twitter/X integration for the Eliza AI agent.
 Create or edit `.env` file in your project root:
 
 ```bash
-# Twitter API Credentials
-TWITTER_USERNAME=           # Your Twitter/X username
-TWITTER_PASSWORD=           # Your Twitter/X password
-TWITTER_EMAIL=              # Your Twitter/X email
-TWITTER_2FA_SECRET=         # Optional: 2FA secret for login
-
 # Twitter Client Configuration
 TWITTER_DRY_RUN=false      # Set to true for testing without posting
 MAX_TWEET_LENGTH=280       # Default tweet length limit
