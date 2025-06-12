@@ -23,7 +23,7 @@ export const start = new Command()
     try {
       // Load env config first before any character loading
       await loadEnvConfig();
-      
+
       let characters: Character[] = [];
       let projectAgents: ProjectAgent[] = [];
 

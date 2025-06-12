@@ -72,7 +72,12 @@ export async function installPluginFromRegistry(
 
   const targetName = pluginKey || plugin;
 
-  const registryInstallResult = await installPlugin(targetName, cwd, opts.tag, opts.skipVerification);
+  const registryInstallResult = await installPlugin(
+    targetName,
+    cwd,
+    opts.tag,
+    opts.skipVerification
+  );
 
   if (registryInstallResult) {
     console.log(`Successfully installed ${targetName}`);

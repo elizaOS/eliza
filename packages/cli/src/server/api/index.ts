@@ -616,22 +616,20 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
           success: false,
           error: {
             message: 'Agent not found',
-            code: 'AGENT_NOT_FOUND'
-          }
+            code: 'AGENT_NOT_FOUND',
+          },
         });
         return;
       }
     } else if (agentIdFromQuery && !validateUuid(agentIdFromQuery)) {
-      logger.warn(
-        `Invalid Agent ID format in query: ${agentIdFromQuery}. Path: ${reqPath}.`
-      );
+      logger.warn(`Invalid Agent ID format in query: ${agentIdFromQuery}. Path: ${reqPath}.`);
       // Return a specific error for invalid UUID format
       res.status(400).json({
         success: false,
         error: {
           message: 'Invalid agent ID format',
-          code: 'INVALID_AGENT_ID'
-        }
+          code: 'INVALID_AGENT_ID',
+        },
       });
       return;
     } else {

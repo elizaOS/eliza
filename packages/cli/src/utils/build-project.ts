@@ -16,7 +16,6 @@ import { runBunCommand } from './run-bun';
  * @throws {Error} If no build method can be determined or if all build attempts fail.
  */
 export async function buildProject(cwd: string = process.cwd(), isPlugin = false) {
-
   if (process.env.ELIZA_TEST_MODE) {
     console.info('Skipping build in test mode');
     return;
