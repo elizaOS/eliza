@@ -186,7 +186,13 @@ export async function installPlugin(
     logger.warn(
       `Plugin ${packageName} not found in registry cache, attempting direct installation`
     );
-    return await attemptInstallation(packageName, versionSpecifier || '', cwd, '', skipVerification);
+    return await attemptInstallation(
+      packageName,
+      versionSpecifier || '',
+      cwd,
+      '',
+      skipVerification
+    );
   }
 
   const info = cache!.registry[key];
@@ -202,7 +208,11 @@ export async function installPlugin(
 
     if (result.success) {
       // Verify import if not a GitHub install
-      if (!info.npm.repo.startsWith('github:') && !skipVerification && !process.env.ELIZA_SKIP_PLUGIN_VERIFY) {
+      if (
+        !info.npm.repo.startsWith('github:') &&
+        !skipVerification &&
+        !process.env.ELIZA_SKIP_PLUGIN_VERIFY
+      ) {
         const importSuccess = await verifyPluginImport(
           result.installedIdentifier || info.npm.repo,
           'from npm with potential GitHub fallback'

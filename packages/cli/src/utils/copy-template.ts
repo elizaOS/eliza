@@ -54,7 +54,7 @@ export async function copyDir(src: string, dest: string, exclude: string[] = [])
   // Process files in parallel (up to 10 concurrent operations)
   const MAX_CONCURRENT_FILES = 10;
   const filePromises: Promise<void>[] = [];
-  
+
   for (let i = 0; i < files.length; i += MAX_CONCURRENT_FILES) {
     const batch = files.slice(i, i + MAX_CONCURRENT_FILES);
     const batchPromises = batch.map(async (entry) => {

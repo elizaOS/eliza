@@ -243,7 +243,7 @@ export class AgentServer {
       throw error; // Re-throw to prevent startup if default server can't be created
     }
   }
-  
+
   /**
    * Initializes the server with the provided options.
    *
@@ -295,7 +295,7 @@ export class AgentServer {
                   connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
                   mediaSrc: ["'self'", 'blob:', 'data:'],
                   objectSrc: ["'none'"],
-                  frameSrc: ["'self'", "data:"],
+                  frameSrc: ["'self'", 'data:'],
                   baseUri: ["'self'"],
                   formAction: ["'self'"],
                   // Note: upgrade-insecure-requests is intentionally omitted for Safari compatibility

@@ -135,9 +135,7 @@ export class UserEnvironment {
 
     try {
       // Get bun version
-      const { stdout } = await import('execa').then(({ execa }) => 
-        execa('bun', ['--version'])
-      );
+      const { stdout } = await import('execa').then(({ execa }) => execa('bun', ['--version']));
       version = stdout.trim();
       logger.debug(`[UserEnvironment] Bun version: ${version}`);
     } catch (e) {
@@ -268,7 +266,7 @@ export class UserEnvironment {
       currentDir = parentDir;
       levels++;
     }
-    
+
     // Reached max levels
     return null;
   }
