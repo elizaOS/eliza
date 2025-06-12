@@ -245,7 +245,7 @@ export const starterPlugin: Plugin = {
   services: [StarterService],
   actions: [helloWorldAction],
   providers: [helloWorldProvider],
-  dependencies: ['@elizaos/plugin-knowledge'],
+  // dependencies: ['@elizaos/plugin-knowledge'], <--- plugin dependecies go here (if requires another plugin)
 };
 
 export default starterPlugin;
