@@ -298,42 +298,68 @@ export class AgentServer {
       this.app = express();
 
       // Security headers first - before any other middleware
+      const isProd = process.env.NODE_ENV === 'production';
       logger.debug('Setting up security headers...');
+      if (!isProd) {
+        logger.debug(`NODE_ENV: ${process.env.NODE_ENV}`);
+        logger.debug(`CSP will be: ${isProd ? 'ENABLED' : 'MINIMAL_DEV'}`);
+      }
       this.app.use(
         helmet({
-          // Content Security Policy - more permissive for the main app to handle UI
-          contentSecurityPolicy: {
-            directives: {
-              defaultSrc: ["'self'"],
-              styleSrc: ["'self'", "'unsafe-inline'", 'https:'], // Allow inline styles for UI
-              scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"], // Allow inline scripts for UI frameworks
-              imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'], // Allow images from various sources
-              fontSrc: ["'self'", 'https:', 'data:'],
-              connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'], // Allow WebSocket connections
-              mediaSrc: ["'self'", 'blob:', 'data:'],
-              objectSrc: ["'none'"],
-              frameSrc: ["'none'"],
-              baseUri: ["'self'"],
-              formAction: ["'self'"],
-            },
-          },
+          // Content Security Policy - environment-aware configuration
+          contentSecurityPolicy: isProd
+            ? {
+                // Production CSP - includes upgrade-insecure-requests
+                directives: {
+                  defaultSrc: ["'self'"],
+                  styleSrc: ["'self'", "'unsafe-inline'", 'https:'],
+                  scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+                  imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
+                  fontSrc: ["'self'", 'https:', 'data:'],
+                  connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
+                  mediaSrc: ["'self'", 'blob:', 'data:'],
+                  objectSrc: ["'none'"],
+                  frameSrc: ["'none'"],
+                  baseUri: ["'self'"],
+                  formAction: ["'self'"],
+                  // upgrade-insecure-requests is added by helmet automatically
+                },
+                useDefaults: true,
+              }
+            : {
+                // Development CSP - minimal policy without upgrade-insecure-requests
+                directives: {
+                  defaultSrc: ["'self'"],
+                  styleSrc: ["'self'", "'unsafe-inline'", 'https:', 'http:'],
+                  scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+                  imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
+                  fontSrc: ["'self'", 'https:', 'http:', 'data:'],
+                  connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
+                  mediaSrc: ["'self'", 'blob:', 'data:'],
+                  objectSrc: ["'none'"],
+                  frameSrc: ["'self'", "data:"],
+                  baseUri: ["'self'"],
+                  formAction: ["'self'"],
+                  // Note: upgrade-insecure-requests is intentionally omitted for Safari compatibility
+                },
+                useDefaults: false,
+              },
           // Cross-Origin Embedder Policy - disabled for compatibility
           crossOriginEmbedderPolicy: false,
           // Cross-Origin Resource Policy
           crossOriginResourcePolicy: { policy: 'cross-origin' },
-          // Frame Options
-          frameguard: { action: 'deny' },
+          // Frame Options - allow same-origin iframes to align with frameSrc CSP
+          frameguard: { action: 'sameorigin' },
           // Hide Powered-By header
           hidePoweredBy: true,
           // HTTP Strict Transport Security - only in production
-          hsts:
-            process.env.NODE_ENV === 'production'
-              ? {
-                  maxAge: 31536000, // 1 year
-                  includeSubDomains: true,
-                  preload: true,
-                }
-              : false,
+          hsts: isProd
+            ? {
+                maxAge: 31536000, // 1 year
+                includeSubDomains: true,
+                preload: true,
+              }
+            : false,
           // No Sniff
           noSniff: true,
           // Referrer Policy

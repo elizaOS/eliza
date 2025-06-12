@@ -135,7 +135,9 @@ export class UserEnvironment {
 
     try {
       // Get bun version
-      const { stdout } = await import('execa').then(({ execa }) => execa('bun', ['--version']));
+      const { stdout } = await import('execa').then(({ execa }) => 
+        execa('bun', ['--version'])
+      );
       version = stdout.trim();
       logger.debug(`[UserEnvironment] Bun version: ${version}`);
     } catch (e) {
@@ -260,11 +262,14 @@ export class UserEnvironment {
 
       const parentDir = path.dirname(currentDir);
       if (parentDir === currentDir) {
-        return null; // Reached filesystem root
+        // Reached filesystem root
+        return null;
       }
       currentDir = parentDir;
       levels++;
     }
+    
+    // Reached max levels
     return null;
   }
 

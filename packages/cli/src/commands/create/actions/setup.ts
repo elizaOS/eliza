@@ -99,6 +99,11 @@ export async function setupAIModelConfig(
 export async function installDependencies(targetDir: string): Promise<void> {
   console.info('Installing dependencies...');
 
+  if (process.env.ELIZA_TEST_MODE) {
+    console.info('Skipping install in test mode');
+    return;
+  }
+
   // First just install basic dependencies
   await runBunCommand(['install'], targetDir);
 }

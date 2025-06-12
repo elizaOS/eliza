@@ -124,6 +124,8 @@ export const replyAction = {
     };
 
     await callback(responseContent);
+
+    return true;
   },
   examples: [
     [

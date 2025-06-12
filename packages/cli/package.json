@@ -38,7 +38,7 @@
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
-    "test": "bun test tests/commands/"
+    "test:cli": "bun test tests/commands/"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.40.0",
@@ -82,7 +82,7 @@
     "@clack/prompts": "^0.11.0",
     "@electric-sql/pglite": "^0.3.2",
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-bootstrap": "1.0.5",
+    "@elizaos/plugin-bootstrap": "workspace:*",
     "@elizaos/plugin-local-ai": "latest",
     "@elizaos/plugin-openai": "latest",
     "@elizaos/plugin-sql": "workspace:*",
