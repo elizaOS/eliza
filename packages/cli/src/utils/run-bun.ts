@@ -22,6 +22,9 @@ export async function runBunCommand(
         args[0] === 'install') {
       finalArgs.push('--offline');
       console.info('Using offline mode for faster installation from cache...');
+      console.debug(`CI: ${process.env.CI}, ELIZA_TEST_MODE: ${process.env.ELIZA_TEST_MODE}, args[0]: ${args[0]}`);
+    } else if (options?.preferOffline && args[0] === 'install') {
+      console.debug(`Offline mode not used - CI: ${process.env.CI}, ELIZA_TEST_MODE: ${process.env.ELIZA_TEST_MODE}, args[0]: ${args[0]}`);
     }
     
     await execa('bun', finalArgs, { cwd, stdio: 'inherit' });
