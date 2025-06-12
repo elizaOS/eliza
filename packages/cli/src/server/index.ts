@@ -158,8 +158,6 @@ export class AgentServer {
       await this.ensureDefaultServer();
       logger.success('[INIT] Default server setup complete');
 
-      await this.ensureDefaultAgent();
-
       await this.initializeServer(options);
       await new Promise((resolve) => setTimeout(resolve, 250));
       this.isInitialized = true;
@@ -245,47 +243,7 @@ export class AgentServer {
       throw error; // Re-throw to prevent startup if default server can't be created
     }
   }
-
-  private async ensureDefaultAgent(): Promise<void> {
-    try {
-      const DEFAULT_AGENT_ID = '00000000-0000-0000-0000-000000000002';
-
-      // Check if the default agent exists
-      logger.info('[AgentServer] Checking for default agent...');
-      const agent = await this.database.getAgent(DEFAULT_AGENT_ID as UUID);
-
-      if (!agent) {
-        logger.info('[AgentServer] Creating default agent...');
-
-        // Create default agent
-        const defaultAgent = {
-          id: DEFAULT_AGENT_ID as UUID,
-          name: 'Default Message Bus Agent',
-          email: 'messagebus@eliza.ai',
-          description: 'Default agent for message bus operations',
-          personas: ['messagebus'],
-          settings: {},
-          modelProvider: 'none',
-          modelName: 'none',
-          createdAt: new Date(),
-        };
-
-        const created = await this.database.createAgent(defaultAgent as any);
-
-        if (created) {
-          logger.success('[AgentServer] Default agent created successfully');
-        } else {
-          throw new Error('Failed to create default agent');
-        }
-      } else {
-        logger.info('[AgentServer] Default agent already exists');
-      }
-    } catch (error) {
-      logger.error('[AgentServer] Error ensuring default agent:', error);
-      throw error;
-    }
-  }
-
+  
   /**
    * Initializes the server with the provided options.
    *
