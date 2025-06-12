@@ -36,7 +36,7 @@ New in Eliza v2!
 | --------------------------------- | --------------------------------- |
 | [![](/img/cli.jpg)](/img/cli.jpg) | [![](/img/gui.jpg)](/img/gui.jpg) |
 
-- **Platform Integration**: Clients for Discord, X (Twitter), Telegram, and many others
+- **Platform Integration**: Clients for Discord, Telegram, Farcaster, and many others
 - **Flexible Model Support**: Deepseek, Ollama, Grok, OpenAI, Anthropic, Gemini, LLama, etc.
 - **Character System**: Create diverse agents using [character files](https://github.com/elizaOS/characterfile)
 - **Multi-Agent Architecture**: Manage multiple unique AI personalities simultaneously

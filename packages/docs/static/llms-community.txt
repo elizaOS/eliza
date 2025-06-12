@@ -242,7 +242,7 @@ packages/
       packages/
         adapters/
           mongodb.md
-          sqlite.md
+          pglite.md
           postgres.md
           qdrant.md
           sqlite.md
@@ -544,7 +544,7 @@ ElizaOS's Autonomous Investor is a social-trading intelligence layer that combin
 - We currently mix paper trades with small real-money positions to validate the full workflow—trade proposals, basic scam checks, and overall system stability.
 - Ensuring data flow integrity remains a priority, particularly for LLM prompts, aggregator APIs, and security measures.
 
-**Beta Rollout (~1,000 Users):**
+**Initial Rollout (~1,000 Users):**
 
 - Integrate the Trust Marketplace with the DAO Discord and relevant Telegram groups.
 - These steps will be formally announced in Discord and on X.
@@ -811,7 +811,7 @@ flowchart TD
         B --> C[Content Normalization]
         C --> D[Topic Extraction/LLM]
         D --> E[Summarization/LLM]
-        E --> F[Storage/SQLite]
+        E --> F[Storage/Pglite]
     end
     style C fill:#FFA500,color:#333
     style D fill:#FF7F50,color:#333
@@ -1101,7 +1101,7 @@ await runtime.createTask({ ... });
 
 ## Timeline
 
-- **March 2025**: Research beta now live.
+- **March 2025**: Research version now live.
 - **April 2025**: Public rollout.
 
 ### Should You Upgrade?
@@ -1180,7 +1180,7 @@ We transcribed, summarized, and uplaoded notes for every Space shortly after eac
 - Jan 3, 2025
 - 8: From DeFi to Social Media
     - ai16zdao, shawmakesmagic, astridhpilla, lostgirldev, spaceodili, 0xBuildInPublic, youfadedwealth, nftRanch, SYMBiEX, SuperfruitsAi, TimshelXYZ, chrislatorres, AIFlow_ML, jamesyoung, deadlock_1991, yeahimomar, human_for_now, lordasado, RodrigoSotoAlt, HDPbilly, GoatOfGamblers, Titan_Node, KyleSt4rgarden, unl__cky, CheddarQueso3D, sunosuporno, tmoindustries, Sawyer_APRO, wakesync, Ru7Longcrypto, marko_post, NEETOCRACY, HefAiGent, reality_spiral, witconomist, triadfi, Rowdymode, MaushishYadav, chaininsured, godfreymeyer, thelotioncoin, codergf_xyz, IGLIVISION, EledraNguyen, GnonOnSolana, Satoshi_BTCFi, swarmnode, memeillionaire, krauscrypto, usebuildfun, affaanmustafa, O_on_X, AITATsol, xiao_zcloak, Protocol_Blend, yq_acc, akshayynft, BenjiStackzzz, 0xBuns, aiquantfun
-    - Miku chatbot relaunch, Selene growth & PR review, Eliza framework fixes, voice features, plugin isolation, Audits agent documentation, PP coin automated trading, framework integration, DeepSeek model provider, Dragon Fruit AI launch, Meetup Fund platform, Eliza partnerships, knowledge graph for repos, verifiable inference system, Alice AI fund management, Pixocracy AI village management, form fill infrastructure, Smol World agent reasoning, Bosu memory management, Twitter client reflection loop, Goat Arena prediction market, LivePeer inference endpoints, Solana token staking, media generation improvements, agent documentation, DeFi assistant waitlist, region swarm voice integration, BNB chain integration, Netflix & chill extension, dating coach AI agent, Mars' first digital citizen, Army of Indians DAO, ERC 314 technology integration, GitHub client for scrum planning, Marketplace of Trust white paper, AI personality expansion, Twin Tone beta testing, yield optimizing agent, insurance broker agent, 3D news show avatars, AI agents for social channels, Haruka Twitter bot, NFT marketplace on Superchain, Square Fun AI analytics, Echo Chambers v2.3, Swarm Node growth, token integration, voice cloning mobile app, no-code AI agent builder, project scaling strategies, AI agent unsuspension techniques, global trade analysis, crypto payment functionality, DeFi protocol user experience
+    - Miku chatbot relaunch, Selene growth & PR review, Eliza framework fixes, voice features, plugin isolation, Audits agent documentation, PP coin automated trading, framework integration, DeepSeek model provider, Dragon Fruit AI launch, Meetup Fund platform, Eliza partnerships, knowledge graph for repos, verifiable inference system, Alice AI fund management, Pixocracy AI village management, form fill infrastructure, Smol World agent reasoning, Bosu memory management, Twitter client reflection loop, Goat Arena prediction market, LivePeer inference endpoints, Solana token staking, media generation improvements, agent documentation, DeFi assistant waitlist, region swarm voice integration, BNB chain integration, Netflix & chill extension, dating coach AI agent, Mars' first digital citizen, Army of Indians DAO, ERC 314 technology integration, GitHub client for scrum planning, Marketplace of Trust white paper, AI personality expansion, Twin Tone testing, yield optimizing agent, insurance broker agent, 3D news show avatars, AI agents for social channels, Haruka Twitter bot, NFT marketplace on Superchain, Square Fun AI analytics, Echo Chambers v2.3, Swarm Node growth, token integration, voice cloning mobile app, no-code AI agent builder, project scaling strategies, AI agent unsuspension techniques, global trade analysis, crypto payment functionality, DeFi protocol user experience
         - https://www.youtube.com/watch?v=Vs7D5DN_trk
 - Jan 10, 2025
 - 9: AI Agents to DePIN
@@ -1190,7 +1190,7 @@ We transcribed, summarized, and uplaoded notes for every Space shortly after eac
 - Jan 17, 2025
 - 10: From Digital to Physical
     - ai16zdao, shawmakesmagic, JustinMoonAI, AntiRugAgent, rckprtr, dreygo_, Audix_hq, coordinape, lostgirldev, AIFlow_ML, astridhpilla, thelotioncoin, RodrigoSotoAlt, berliangor, unl__cky, xiao_zcloak, 0xnavkumar, GoatOfGamblers, Amiewitheliza, 0xVEER, BuzzyCrypto_, SYMBiEX, w1kke, luki_notlowkey, AgentTextdotfun, yikesawjeez, ByornOeste, Nasdao_, elizawakesup, dankvr, sypherlit
-    -  Eliza V2 development, inventory system, CLI, Tron integration, rug pull prevention, Discover AI community management, Kyra AI market-making, smart contract visuals, Farcaster community rewards, website and terminal development, PR agent for ElizaOS, voice and VRM development, API connections, persistent memory system, SQLite rewriting in Rust, Telegram launch, "Approve Agents" model for wallets, verifiable TEE Network, Telegram mini apps, internal team calls, ETH Denver AI program, autonomous trader and music releases, web search in agents, devotion program staking, on-chain data plugin, DePIN network for SMS, CICD improvements, conspiracy theory thesis, DeFi validator personality, Eliza's robot body, Degen Spartan AI trading, Void AI cross-chain mixer
+    -  Eliza V2 development, inventory system, CLI, Tron integration, rug pull prevention, Discover AI community management, Kyra AI market-making, smart contract visuals, Farcaster community rewards, website and terminal development, PR agent for ElizaOS, voice and VRM development, API connections, persistent memory system, Pglite rewriting in Rust, Telegram launch, "Approve Agents" model for wallets, verifiable TEE Network, Telegram mini apps, internal team calls, ETH Denver AI program, autonomous trader and music releases, web search in agents, devotion program staking, on-chain data plugin, DePIN network for SMS, CICD improvements, conspiracy theory thesis, DeFi validator personality, Eliza's robot body, Degen Spartan AI trading, Void AI cross-chain mixer
     - https://www.youtube.com/watch?v=1voboZEQTAw
 - Jan 24, 2025
 - 11: AI Agents Level Up
@@ -3948,992 +3948,6 @@ ElizaOS is highly extensible through its plugin system. You can create custom ac
 - [Package Showcase](/packages) - Explore available plugins and extensions
 `````
 
-## File: packages/docs/docs/core/plugins.md
-`````markdown
----
-sidebar_position: 8
-title: Plugin System
-description: Learn about ElizaOS plugins - modular extensions that enhance agent capabilities
-keywords: [plugins, extensions, modules, development, publishing, registry, npm, GitHub]
-image: /img/plugins.png
----
-
-# Plugins
-
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
-
-Plugins are modular extensions that enhance the capabilities of ElizaOS agents. They provide a flexible way to add new functionality, integrate external services, and customize agent behavior across different platforms.
-
-:::info
-Key Improvements in V2
-
-1. **Unified API**: Almost everything is accessible via `runtime.methodName()` in the agent runtime for simpler development
-2. **Enhanced Model System**: The new `useModel` approach allows for flexible model provider registration
-3. **Events System**: Formal support for event-based programming
-4. **Plugin Creation Workflow**: Simplified creation and testing via CLI
-5. **Testing Infrastructure**: Built-in support for plugin testing
-6. **No Monorepo Required**: Complete plugin development without touching the core codebase
-7. **Plugin Registry**: Manages the catalog of available plugins and handles their registration with the runtime
-8. **Bootstrap Plugin**: Initializes core functionality required for all agents to operate
-   :::
-
-The ElizaOS plugin system maintains the same basic concept as previous versions, with several new extension points (events, routes, tests, models) and features that significantly improve the developer experience.
-
-**Browse plugins the elizaOS community made here: [Package Showcase](/packages)**
-
-[![](/img/plugins.png)](/packages)
-
-> elizaOS maintains an official package registry at [github.com/elizaos-plugins/registry](https://github.com/elizaos-plugins/registry).
-
----
-
-## Quick Start
-
-The new CLI tool introduces a streamlined workflow for plugin development without ever needing to touch the ElizaOS monorepo directly:
-
-1. **Create**: `npm create eliza` - Initialize a new plugin project with proper structure
-2. **Develop**: Edit the plugin code in the generated project structure
-3. **Test**: `elizaos test` - Test the plugin functionality
-4. **Run**: `elizaos start` - Run the plugin with a default agent
-5. **Publish**: `elizaos publish` - Share your plugin with others
-
-> Note: at time of publishing, use `npm create eliza` until main version is uploaded
-
-### Creating a New Plugin
-
-You can create a new ElizaOS plugin using the CLI:
-
-```bash
-# Using npm
-npm create eliza
-
-# Or using npx
-npx create-eliza
-```
-
-When prompted, select "Plugin" as the type to create. The CLI will guide you through the setup process, creating a plugin with the proper structure and dependencies.
-
----
-
-### Managing Plugins
-
-There are several ways to add plugins to your ElizaOS project:
-
-<Tabs>
-  <TabItem value="package" label="Via package.json">
-    ```json
-    {
-      "dependencies": {
-        "@elizaos/plugin-solana": "github:elizaos-plugins/plugin-solana",
-        "@elizaos/plugin-twitter": "github:elizaos-plugins/plugin-twitter"
-      }
-    }
-    ```
-  </TabItem>
-  <TabItem value="character" label="Via Character Definition">
-    ```typescript
-    // In src/index.ts
-    export const character: Character = {
-      name: 'MyAgent',
-      plugins: ['@elizaos/plugin-twitter', '@elizaos/plugin-example'],
-      // ...
-    };
-    ```
-  </TabItem>
-  <TabItem value="cli" label="Via CLI Commands">
-    ```bash
-    # Add a plugin
-    elizaos plugins add @elizaos/plugin-twitter
-
-    # Remove a plugin
-    elizaos plugins remove @elizaos/plugin-twitter
-
-    # List available plugins
-    elizaos plugins list
-    ```
-
-  </TabItem>
-</Tabs>
-
----
-
-### Plugin Configuration
-
-Configure plugin settings in your character definition:
-
-```json
-{
-  "name": "MyAgent",
-  "plugins": ["@elizaos/plugin-example"],
-  "settings": {
-    "example": {
-      "enableFeatureX": true
-      // Plugin-specific configuration
-    }
-  }
-}
-```
-
-### Plugin Loading Process
-
-The AgentRuntime automatically loads the Bootstrap Plugin during initialization, before any other plugins:
-
-```typescript
-async initialize() {
-  // Register bootstrap plugin
-  await this.registerPlugin(bootstrapPlugin);
-
-  // Then register additional plugins
-  for (const plugin of this.plugins) {
-    await this.registerPlugin(plugin);
-  }
-
-  // Initialize other components
-  // ...
-}
-```
-
----
-
-### Publishing Plugins
-
-If you're a plugin developer, you can publish your plugin to make it available to others. The ElizaOS CLI provides several options for publishing your plugin depending on your needs.
-
-First, make sure your plugin is built and ready for distribution:
-
-```bash
-# Navigate to your plugin directory
-cd my-eliza-plugin
-
-# Build your plugin
-npm run build
-```
-
-<Tabs>
-  <TabItem value="github" label="GitHub Publishing">
-    Publishing to GitHub is the recommended approach for sharing your plugin with the ElizaOS community:
-
-    ```bash
-    # Publish to GitHub
-    elizaos publish
-    ```
-
-    This will:
-    1. Build and package your plugin
-    2. Create or update a GitHub repository in the elizaos-plugins organization
-    3. Add your plugin to the ElizaOS registry (if you're a registry maintainer)
-
-    For first-time publishers, the CLI will guide you through setting up GitHub credentials for publishing.
-
-    GitHub publishing is ideal for open-source plugins that you want to share with the community and have listed in the official registry.
-
-  </TabItem>
-
-  <TabItem value="npm" label="npm Publishing">
-    You can also publish your plugin to npm:
-
-    ```bash
-    # Publish to npm
-    elizaos publish --npm
-    ```
-
-    This allows users to install your plugin using standard npm commands:
-
-    ```bash
-    npm install @your-scope/plugin-name
-    ```
-
-    npm publishing is useful when you want to:
-    - Maintain your own package namespace
-    - Integrate with existing npm workflows
-    - Set up automated versioning and releases
-
-    Make sure your package.json is properly configured with the correct name, version, and access permissions.
-
-  </TabItem>
-
-  <TabItem value="testing" label="Test Mode">
-    Before publishing, you can validate the process without making any external changes:
-
-    ```bash
-    # Test the publish process
-    elizaos publish --test
-    ```
-
-    This runs through all the packaging and validation steps without actually publishing anything.
-
-    Test mode is helpful for:
-    - Verifying your plugin structure is correct
-    - Ensuring all required files are present
-    - Checking that dependencies are properly configured
-    - Validating that your plugin can be built successfully
-
-    Always run in test mode before your first public release to avoid issues.
-
-  </TabItem>
-
-  <TabItem value="customizing" label="Additional Options">
-    The publish command supports several additional options to customize the publishing process:
-
-    ```bash
-    # Specify platform compatibility
-    elizaos publish --platform node
-
-    # Set custom version number
-    elizaos publish --version 1.2.3
-
-    # Provide a custom registry URL
-    elizaos publish --registry https://custom-registry.com
-
-    # Publish with public access
-    elizaos publish --access public
-    ```
-
-    These options give you fine-grained control over how and where your plugin is published. Refer to `elizaos publish --help` for a complete list of options.
-
-  </TabItem>
-</Tabs>
-
-:::info
-When submitting a plugin to the [elizaOS Registry](https://github.com/elizaos-plugins/registry), include:
-
-1. **Working Demo**: Screenshots or video of your plugin in action
-2. **Test Results**: Evidence of successful integration and error handling
-3. **Configuration Example**: Show how to properly configure your plugin
-   :::
-
----
-
-## Plugin Architecture
-
-Eliza uses a unified plugin architecture where everything is a plugin - including services, adapters, actions, evaluators, and providers. This approach ensures consistent behavior and better extensibility.
-
-### Plugin Components
-
-Each plugin can provide one or more of the following components:
-
-| Component          | Purpose                                                                         |
-| ------------------ | ------------------------------------------------------------------------------- |
-| **Services**       | Platform integrations (Discord, Twitter, etc.) or specialized capabilities      |
-| **Actions**        | Executable functions triggered by the agent (reply, generate content, etc.)     |
-| **Providers**      | Context providers that supply info to the agent during decision making          |
-| **Evaluators**     | Analyze conversations to extract insights and improve future interactions       |
-| **Adapters**       | Database or storage system integrations                                         |
-| **Model Handlers** | Register handlers for different model types (text generation, embeddings, etc.) |
-| **Event Handlers** | React to system events like messages, connections, or actions                   |
-| **API Routes**     | Add custom REST endpoints to the agent's HTTP interface                         |
-| **Tests**          | Include test suites to verify plugin functionality                              |
-
-### Plugin Interface
-
-All plugins implement the core Plugin interface:
-
-```typescript
-interface Plugin {
-  name: string;
-  description: string;
-  config?: { [key: string]: any };
-
-  // Optional initialization method
-  init?: (config: Record<string, string>, runtime: IAgentRuntime) => Promise<void>;
-
-  // Components
-  services?: (typeof Service)[];
-  actions?: Action[];
-  providers?: Provider[];
-  evaluators?: Evaluator[];
-  adapters?: Adapter[];
-
-  // Additional features
-  routes?: Route[];
-  tests?: TestSuite[];
-  events?: { [key: string]: ((params: any) => Promise<any>)[] };
-}
-```
-
-### Service Implementation
-
-Services are the core integration points for external platforms. A properly implemented service:
-
-```typescript
-import { Service, IAgentRuntime } from '@elizaos/core';
-
-export class ExampleService extends Service {
-  // Required: Define the service type (used for runtime registration)
-  static serviceType = 'example';
-
-  // Required: Describe what this service enables the agent to do
-  capabilityDescription = 'Enables the agent to interact with the Example platform';
-
-  // Store runtime for service operations
-  constructor(protected runtime: IAgentRuntime) {
-    super();
-    // Initialize connections, setup event handlers, etc.
-  }
-
-  // Required: Static method to create and initialize service instance
-  static async start(runtime: IAgentRuntime): Promise<ExampleService> {
-    const service = new ExampleService(runtime);
-    // Additional initialization if needed
-    return service;
-  }
-
-  // Required: Clean up resources when service is stopped
-  async stop(): Promise<void> {
-    // Close connections, release resources
-  }
-
-  // Optional: Custom methods for your service functionality
-  async sendMessage(content: string, channelId: string): Promise<void> {
-    // Implementation
-  }
-}
-```
-
-## Plugin Structure
-
-Each plugin repository should follow this structure:
-
-```
-plugin-name/
-├── images/                # Branding assets
-│   ├── logo.png           # Square logo (400x400px)
-│   ├── banner.png         # Banner image (1280x640px)
-│   └── screenshots/       # Feature screenshots
-├── src/
-│   ├── index.ts           # Main plugin entry point
-│   ├── service.ts         # Service implementation
-│   ├── actions/           # Plugin-specific actions
-│   ├── providers/         # Data providers
-│   ├── types.ts           # Type definitions
-│   └── environment.ts     # Configuration validation
-├── tests/                 # Test suite
-├── package.json           # Plugin configuration and dependencies
-└── README.md              # Plugin documentation
-```
-
-### Plugin Entry Point
-
-Your plugin's `index.ts` should export a Plugin object:
-
-```typescript
-// Example plugin implementation
-import { type Plugin } from '@elizaos/core';
-import { ExampleService } from './service';
-import { searchAction } from './actions/search';
-import { statusProvider } from './providers/status';
-
-const examplePlugin: Plugin = {
-  name: 'example',
-  description: 'Example platform integration for ElizaOS',
-  services: [ExampleService],
-  actions: [searchAction],
-  providers: [statusProvider],
-  init: async (config, runtime) => {
-    // Perform any necessary initialization
-    const apiKey = runtime.getSetting('EXAMPLE_API_KEY');
-    if (!apiKey) {
-      console.warn('EXAMPLE_API_KEY not provided');
-    }
-  },
-};
-
-export default examplePlugin;
-```
-
-### Plugin Configuration
-
-Your plugin's `package.json` should include an `agentConfig` section:
-
-```json
-{
-  "name": "@elizaos/plugin-example",
-  "version": "1.0.0",
-  "agentConfig": {
-    "pluginType": "elizaos:plugin:1.0.0",
-    "pluginParameters": {
-      "API_KEY": {
-        "type": "string",
-        "description": "API key for the Example service"
-      }
-    }
-  }
-}
-```
-
-### Environment Variables and Secrets
-
-Plugins access configuration through the runtime with the following precedence:
-
-1. Character settings secrets (highest priority)
-2. Character settings
-3. Global environment settings
-
-#### Access Pattern
-
-```typescript
-// In your service implementation
-const apiKey = runtime.getSetting('EXAMPLE_API_KEY');
-const debugMode = runtime.getSetting('EXAMPLE_DEBUG_MODE'); // Returns boolean for "true"/"false" strings
-```
-
-#### Configuration in Character File
-
-```json
-{
-  "name": "MyAgent",
-  "plugins": ["@elizaos/plugin-example"],
-  "settings": {
-    "example": {
-      "enableFeatureX": true
-    },
-    "secrets": {
-      "EXAMPLE_API_KEY": "your-api-key-here"
-    }
-  }
-}
-```
-
----
-
-## Bootstrap Plugin
-
-The Bootstrap Plugin is a foundational component of ElizaOS that initializes the core functionality required for agents to operate. It's automatically loaded as part of the initialization process, establishing the minimum viable capabilities that all agents need.
-
-```typescript
-export const bootstrapPlugin: Plugin = {
-  name: 'bootstrap',
-  description: 'Agent bootstrap with basic actions and evaluators',
-  actions: [...],
-  events: {...},
-  evaluators: [...],
-  providers: [...],
-  services: [TaskService, ScenarioService],
-};
-```
-
-The Bootstrap Plugin registers essential components across several categories to provide a foundation for all agents. These components can be extended by custom plugins.
-
-<Tabs>
-  <TabItem value="actions" label="Actions">
-    | Action                 | Description                                     |
-    | ---------------------- | ----------------------------------------------- |
-    | `replyAction`          | Generates and sends a response to a message     |
-    | `followRoomAction`     | Enables an agent to actively follow a room      |
-    | `unfollowRoomAction`   | Stops an agent from following a room            |
-    | `muteRoomAction`       | Mutes notifications from a room                 |
-    | `unmuteRoomAction`     | Unmutes notifications from a room               |
-    | `sendMessageAction`    | Sends a message to a specific room              |
-    | `ignoreAction`         | Explicitly ignores a message                    |
-    | `noneAction`           | Acknowledges a message without taking action    |
-    | `updateEntityAction`   | Updates properties of an entity                 |
-    | `choiceAction`         | Presents choices to users and handles responses |
-    | `updateRoleAction`     | Updates a user's role in a world                |
-    | `updateSettingsAction` | Updates agent or world settings                 |
-  </TabItem>
-  
-  <TabItem value="providers" label="Providers">
-    | Provider                 | Description                                                |
-    | ------------------------ | ---------------------------------------------------------- |
-    | `characterProvider`      | Provides the agent's personality and configuration         |
-    | `recentMessagesProvider` | Retrieves recent conversation history                      |
-    | `knowledgeProvider`      | Supplies factual information from the knowledge base       |
-    | `timeProvider`           | Provides awareness of current time and date                |
-    | `entitiesProvider`       | Supplies information about entities in the current context |
-    | `relationshipsProvider`  | Provides information about entity relationships            |
-    | `factsProvider`          | Retrieves relevant facts from memory                       |
-    | `roleProvider`           | Provides role information within worlds                    |
-    | `settingsProvider`       | Supplies configured settings                               |
-    | `anxietyProvider`        | Informs agent of potential issues to be careful about      |
-    | `attachmentsProvider`    | Handles media and file attachments                         |
-    | `providersProvider`      | Meta-provider with information about available providers   |
-    | `actionsProvider`        | Meta-provider with information about available actions     |
-    | `evaluatorsProvider`     | Meta-provider with information about available evaluators  |
-    | `choiceProvider`         | Manages choice-based interactions                          |
-    | `capabilitiesProvider`   | Provides information about agent capabilities              |
-  </TabItem>
-  
-  <TabItem value="services" label="Services & Evaluators">
-    **Services:**
-
-    | Service           | Purpose                                          |
-    | ----------------- | ------------------------------------------------ |
-    | `TaskService`     | Manages deferred, scheduled, and repeating tasks |
-    | `ScenarioService` | Handles scenario-based interactions and testing  |
-
-    **Evaluators:**
-
-    | Evaluator             | Description                                           |
-    | --------------------- | ----------------------------------------------------- |
-    | `reflectionEvaluator` | Enables self-awareness and learning from interactions |
-
-  </TabItem>
-  
-  <TabItem value="events" label="Event Handlers">
-    The Bootstrap Plugin registers handlers for key system events that enable the core message processing flow:
-
-    **Core Events:**
-    - `MESSAGE_RECEIVED` - Processes new messages and generates responses
-    - `REACTION_RECEIVED` - Tracks reactions to messages
-    - `VOICE_MESSAGE_RECEIVED` - Handles audio messages
-    - `POST_GENERATED` - Creates social media content
-    - `MESSAGE_SENT` - Logs outgoing messages
-
-    **World Events:**
-    - `WORLD_JOINED` / `WORLD_CONNECTED` - Synchronizes data when joining worlds
-    - `ENTITY_JOINED` / `ENTITY_LEFT` - Manages entity presence
-
-    **Lifecycle Events:**
-    - `ACTION_STARTED` / `ACTION_COMPLETED` - Tracks action execution
-    - `EVALUATOR_STARTED` / `EVALUATOR_COMPLETED` - Monitors evaluator processing
-    - `RUN_STARTED` / `RUN_ENDED` / `RUN_TIMEOUT` - Manages message processing lifecycle
-
-    The message processing flow follows these steps:
-    1. Receive message via `MESSAGE_RECEIVED` event
-    2. Save message to memory
-    3. Check if agent should respond
-    4. If responding, compose state from providers
-    5. Generate a response using the language model
-    6. Process any actions specified in the response
-    7. Run evaluators on the conversation
-    8. Emit lifecycle events throughout the process
-
-  </TabItem>
-</Tabs>
-
-### Extending Bootstrap Functionality
-
-While the Bootstrap Plugin provides core functionality, it's designed to be extended by other plugins. Custom plugins can:
-
-1. **Add new actions** - Extend the agent's capabilities
-2. **Register additional providers** - Supply more contextual information
-3. **Add evaluators** - Create new ways to analyze and learn from interactions
-4. **Handle additional events** - React to more system events
-5. **Initialize custom services** - Provide new functionality
-
-When working with plugins in relation to the Bootstrap Plugin:
-
-1. **Don't modify bootstrap directly** - Instead, create custom plugins to extend functionality
-2. **Understand provider contribution** - Know how each provider contributes to the agent's context
-3. **Learn the core actions** - Become familiar with the actions that all agents can perform
-4. **Leverage event handlers** - Use the event system for reactive behavior
-5. **Extend, don't replace** - Build on top of bootstrap functionality rather than replacing it
-
----
-
-## Developing a Plugin
-
-When developing a new plugin, focus on these key aspects:
-
-1. **Service Implementation**: Create a solid service class following the pattern above
-2. **Proper Error Handling**: Handle API failures gracefully
-3. **Type Definitions**: Define clear interfaces and types
-4. **Documentation**: Include detailed setup instructions
-5. **Tests**: Add test cases for your functionality
-
-### Testing Your Plugin
-
-During development, you can test your plugin locally:
-
-```bash
-# Start with your plugin
-elizaos start --plugins=./path/to/plugin
-
-# Or with a specific character
-elizaos start --character=./characters/test.character.json --plugins=./path/to/plugin
-```
-
-### Distribution & PR Requirements
-
-When submitting a plugin to the [elizaOS Registry](https://github.com/elizaos-plugins/registry), include:
-
-1. **Working Demo**: Screenshots or video of your plugin in action
-2. **Test Results**: Evidence of successful integration and error handling
-3. **Configuration Example**: Show how to properly configure your plugin
-4. **Quality Checklist**:
-   - [ ] Plugin follows the standard structure
-   - [ ] Required branding assets are included
-   - [ ] Documentation is complete
-   - [ ] GitHub topics properly set
-   - [ ] Tests are passing
-   - [ ] Includes error handling
-
----
-
-## FAQ
-
-### What exactly is a plugin in ElizaOS?
-
-A plugin is a modular extension that adds new capabilities to ElizaOS agents, such as API integrations, custom actions, or platform connections. Plugins allow you to expand agent functionality and share reusable components with other developers.
-
-### When should I create a plugin versus using existing ones?
-
-Create a plugin when you need custom functionality not available in existing plugins, want to integrate with external services, or plan to share reusable agent capabilities with the community.
-
-### How do I manage plugin dependencies?
-
-Plugin dependencies are managed through your project's `package.json`. You can add plugins directly using npm or the ElizaOS CLI, and they will be automatically loaded when your project starts.
-
-### Can I use a plugin in development before publishing?
-
-Yes, you can use the `--plugins` flag with the `start` command to include local plugins during development:
-
-```bash
-elizaos start --plugins=./path/to/plugin
-```
-
-### What's the difference between Actions and Services?
-
-Actions handle specific agent responses or behaviors, while Services provide platform integrations (like Discord or Twitter) or ongoing background functionality that multiple actions might use.
-
-### How do I handle rate limits with external APIs?
-
-Implement proper backoff strategies in your service implementation and consider using a queue system for message handling to respect platform rate limits.
-
-## Additional Resources
-
-- [ElizaOS Registry](https://github.com/elizaos-plugins/registry)
-- [Example Plugins](https://github.com/elizaos-plugins)
-- [Discord Community](https://discord.gg/elizaos)
-`````
-
-## File: packages/docs/docs/core/project.md
-`````markdown
----
-sidebar_position: 2
-title: Project System
-description: Understanding ElizaOS projects - organizational structure for creating and deploying AI agents
-keywords: [projects, organization, configuration, character, agents, deployment]
-image: /img/project.jpg
----
-
-# 📝 ElizaOS Projects
-
-Projects are the main organizational structure in ElizaOS, containing all the necessary components to create and deploy AI agents. A project can include one or more agents, each with their own character definition, plugins, and configurations.
-
-## Project Structure
-
-A typical ElizaOS project structure:
-
-```
-my-eliza-project/
-├── src/
-│   └── index.ts        # Main entry point
-├── knowledge/          # Knowledge base files
-├── package.json        # Dependencies and scripts
-└── tsconfig.json       # TypeScript configuration
-```
-
-## Creating a New Project
-
-You can create a new ElizaOS project using:
-
-```bash
-# Using npm
-npm create eliza
-
-# Or using npx
-npx @elizaos/cli create
-```
-
-The CLI will guide you through the setup process, including:
-
-- Project name
-- Database selection (sqlite, postgres, etc.)
-- Initial configuration
-
-## Project Configuration
-
-The main project file (`src/index.ts`) exports a default project object:
-
-```typescript
-import type { Character, IAgentRuntime, Project, ProjectAgent } from '@elizaos/core';
-import customPlugin from './plugin';
-
-// Define the character
-export const character: Character = {
-  name: 'Agent Name',
-  plugins: ['@elizaos/plugin-discord', '@elizaos/plugin-direct'],
-  // Other character properties
-};
-
-// Create a ProjectAgent that includes the character
-export const projectAgent: ProjectAgent = {
-  character,
-  init: async (runtime: IAgentRuntime) => {
-    // Initialize agent-specific functionality
-    console.log('Initializing agent:', character.name);
-  },
-  plugins: [customPlugin],
-  tests: [], // Optional tests for your agent
-};
-
-// Export the full project with all agents
-const project: Project = {
-  agents: [projectAgent],
-};
-
-export default project;
-```
-
-## Character Configuration
-
-Each agent in your project requires a character definition that controls its personality, knowledge, and behavior.
-
-### Required Character Fields
-
-```typescript
-{
-  name: "agentName", // Character's display name
-  plugins: ["@elizaos/plugin-discord"], // Example plugins
-  settings: {
-    // Configuration settings
-    secrets: {}, // API keys and sensitive data
-    voice: {}, // Voice configuration
-  },
-  bio: [], // Character background as a string or array of statements
-  style: {
-    // Interaction style guide
-    all: [], // General style rules
-    chat: [], // Chat-specific style
-    post: [] // Post-specific style
-  }
-}
-```
-
-### Plugins
-
-Plugins provide your agent with capabilities and integrations:
-
-- `@elizaos/plugin-discord`: Discord integration
-- `@elizaos/plugin-telegram`: Telegram integration
-- `@elizaos/plugin-twitter`: Twitter/X integration
-- `@elizaos/plugin-slack`: Slack integration
-- `@elizaos/plugin-direct`: Direct chat interface
-- `@elizaos/plugin-simsai`: SimsAI platform integration
-
-View all available plugins: https://github.com/elizaos-plugins/registry
-
-### Settings Configuration
-
-The `settings` object supports various configurations:
-
-```typescript
-{
-  "settings": {
-    "ragKnowledge": false, // Enable RAG knowledge mode
-    "voice": {
-      "model": "string", // Voice synthesis model
-      "url": "string" // Optional voice API URL
-    },
-    "secrets": {
-      // API keys (use env vars in production)
-      "API_KEY": "string"
-    },
-  }
-}
-```
-
-### Bio & Style
-
-Define your agent's personality and communication style:
-
-```typescript
-{
-  "bio": ["Expert in blockchain development", "Specializes in DeFi protocols"],
-  "style": {
-    "all": [
-      // Applied to all interactions
-      "Keep responses clear",
-      "Maintain professional tone"
-    ],
-    "chat": [
-      // Chat-specific style
-      "Engage with curiosity",
-      "Provide explanations"
-    ],
-    "post": [
-      // Social post style
-      "Keep posts informative",
-      "Focus on key points"
-    ]
-  }
-}
-```
-
-**Style Tips**
-
-- Be specific about tone and mannerisms
-- Include platform-specific guidance
-- Define clear boundaries and limitations
-
-### Optional Character Fields
-
-```typescript
-{
-  "username": "handle", // Character's username/handle
-  "system": "System prompt text", // Custom system prompt
-  "lore": [], // Additional background/history
-  "knowledge": [
-    // Knowledge base entries
-    "Direct string knowledge",
-    { "path": "file/path.md", "shared": false },
-    { "directory": "knowledge/path", "shared": false }
-  ],
-  "messageExamples": [], // Example conversations
-  "postExamples": [], // Example social posts
-  "topics": [], // Areas of expertise
-  "adjectives": [] // Character traits
-}
-```
-
-## Knowledge Management
-
-ElizaOS supports two knowledge modes:
-
-### Classic Mode (Default)
-
-- Direct string knowledge added to character's context
-- No chunking or semantic search
-- Enabled by default (`settings.ragKnowledge: false`)
-- Only processes string knowledge entries
-- Simpler but less sophisticated
-
-### RAG Mode
-
-- Advanced knowledge processing with semantic search
-- Chunks content and uses embeddings
-- Must be explicitly enabled (`settings.ragKnowledge: true`)
-- Supports three knowledge types:
-  1. Direct string knowledge
-  2. Single file references: `{ "path": "path/to/file.md", "shared": false }`
-  3. Directory references: `{ "directory": "knowledge/dir", "shared": false }`
-- Supported file types: .md, .txt, .pdf
-- Optional `shared` flag for knowledge reuse across characters
-
-### Knowledge Path Configuration
-
-- Knowledge files are relative to the project's `knowledge` directory
-- Paths should not contain `../` (sanitized for security)
-- Both shared and private knowledge supported
-- Files automatically reloaded if content changes
-
-## Example Project
-
-Here's a complete example of a project configuration:
-
-```typescript
-import type { Character, IAgentRuntime, Project, ProjectAgent } from '@elizaos/core';
-
-export const character: Character = {
-  name: 'Tech Helper',
-  plugins: ['@elizaos/plugin-discord', '@elizaos/plugin-direct'],
-  settings: {
-    ragKnowledge: true,
-    voice: {
-      model: 'en_US-male-medium',
-    },
-    discord: {
-      shouldRespondOnlyToMentions: false,
-      allowedChannelIds: ['123456789012345678'],
-    },
-  },
-  bio: ['Friendly technical assistant', 'Specializes in explaining complex topics simply'],
-  lore: ['Pioneer in open-source AI development', 'Advocate for AI accessibility'],
-  messageExamples: [
-    [
-      {
-        name: 'user1',
-        content: { text: 'Can you explain how AI models work?' },
-      },
-      {
-        name: 'TechAI',
-        content: {
-          text: 'Think of AI models like pattern recognition systems.',
-        },
-      },
-    ],
-  ],
-  topics: ['artificial intelligence', 'machine learning', 'technology education'],
-  knowledge: [
-    {
-      directory: 'tech_guides',
-      shared: true,
-    },
-  ],
-  style: {
-    all: ['Clear', 'Patient', 'Educational'],
-    chat: ['Interactive', 'Supportive'],
-    post: ['Concise', 'Informative'],
-  },
-};
-
-export const projectAgent: ProjectAgent = {
-  character,
-  init: async (runtime: IAgentRuntime) => {
-    console.log('Initializing Tech Helper agent');
-  },
-  plugins: [], // Project-specific plugins
-};
-
-const project: Project = {
-  agents: [projectAgent],
-};
-
-export default project;
-```
-
-## Character File Export
-
-While projects are the primary structure in ElizaOS, you can still export standalone character files for compatibility with other systems or sharing character definitions:
-
-```typescript
-import fs from 'fs';
-import { character } from './src/index';
-
-// Export character to JSON file
-fs.writeFileSync('character.json', JSON.stringify(character, null, 2));
-```
-
-## Managing Multiple Agents
-
-A project can contain multiple agents, each with its own character and plugins:
-
-```typescript
-const project: Project = {
-  agents: [
-    {
-      character: technicalSupportCharacter,
-      init: async (runtime) => {
-        /* init code */
-      },
-      plugins: [customSupportPlugin],
-    },
-    {
-      character: communityManagerCharacter,
-      init: async (runtime) => {
-        /* init code */
-      },
-      plugins: [communityPlugin],
-    },
-  ],
-};
-```
-
-Each agent operates independently but can share the same database and resources.
-
-## Running Your Project
-
-After configuring your project, you can run it using:
-
-```bash
-elizaos start
-```
-
-This will start your agents according to your project configuration.
-`````
-
 ## File: packages/docs/docs/core/providers.md
 `````markdown
 ---
@@ -6548,177 +5562,6 @@ See the [Rooms](./rooms.md) documentation for more details on managing rooms wit
 5. **Default settings**: Provide sensible defaults for world settings to make configuration easier
 `````
 
-## File: packages/docs/docs/intro.md
-`````markdown
----
-sidebar_position: 1
-title: Introduction to Eliza
-description: A powerful multi-agent simulation framework for creating and managing autonomous AI agents
-keywords:
-  [
-    introduction,
-    AI agents,
-    multi-agent,
-    framework,
-    TypeScript,
-    autonomous agents,
-    simulation,
-    RAG,
-    plugins,
-  ]
-image: /img/eliza_banner.jpg
----
-
-# Introduction to Eliza
-
-![](/img/eliza_banner.jpg)
-_As seen powering [@DegenSpartanAI](https://x.com/degenspartanai) and [@aixvc_agent](https://x.com/aixvc_agent)_
-
-## What is Eliza?
-
-Eliza is a powerful multi-agent simulation framework designed to create, deploy, and manage autonomous AI agents. Built with TypeScript, it provides a flexible and extensible platform for developing intelligent agents that can interact across multiple platforms while maintaining consistent personalities and knowledge.
-
-> Pro tip: copy paste the text from https://eliza.how/llms-full.txt into your preferred LLM.
-
-## Key Features
-
-New in the Eliza v2 beta!
-
-| CLI Tool                          | Native GUI                        |
-| --------------------------------- | --------------------------------- |
-| [![](/img/cli.jpg)](/img/cli.jpg) | [![](/img/gui.jpg)](/img/gui.jpg) |
-
-- **Platform Integration**: Clients for Discord, X (Twitter), Telegram, and many others
-- **Flexible Model Support**: Deepseek, Ollama, Grok, OpenAI, Anthropic, Gemini, LLama, etc.
-- **Character System**: Create diverse agents using [character files](https://github.com/elizaOS/characterfile)
-- **Multi-Agent Architecture**: Manage multiple unique AI personalities simultaneously
-- **Memory Management**: Easily ingest and interact with documents using RAG
-- **Media Processing**: PDF, URLs, Audio transcription, Video processing, Image analysis, Conversation summarization
-- **Technical Foundation**:
-  - 100% TypeScript implementation
-  - Modular architecture
-  - Highly extensible action and plugin system
-  - Custom client support
-  - Comprehensive API
-
----
-
-## Installation
-
-For detailed instructions on each path, including configuration options and extended capabilities, see our [Quickstart Guide](./quickstart.md).
-
-### Prerequisites
-
-- [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
-- Git for version control
-- For Windows Users: [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual) is required
-
-Eliza offers different paths depending on your goals:
-
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
-
-<Tabs>
-  <TabItem value="cli" label="Install CLI Tool (Recommended)" default>
-
-```bash
-# make sure you have bun installed
-npm install -g bun
-
-# Install the CLI globally
-npm install -g @elizaos/cli
-# or install via bun
-bun install -g @elizaos/cli
-
-# From a folder to install a project
-elizaos create
-cd new-agent
-elizaos start
-```
-
-Then visit https://localhost:3000 to interact with your agent through a web interface.
-
-  </TabItem>
-  <TabItem value="project" label="Create a Test Project">
-
-```bash
-# Create a new project through interactive setup
-elizaos create # will be simpler after beta
-
-# Navigate to your project directory
-cd my-project-name
-
-# Start your project
-elizaos start
-```
-
-  </TabItem>
-  <TabItem value="plugin" label="Add a Custom Plugin">
-
-Add plugins to your project:
-
-```bash
-# List available plugins
-elizaos plugins list
-
-# Add a plugin
-elizaos plugins add @elizaos/plugin-discord
-
-# Create a plugin project
-elizaos create --type plugin
-```
-
-Develop and test your plugin:
-
-```bash
-# Test your plugin
-elizaos start
-
-# Publish your plugin when ready
-elizaos plugins publish
-```
-
-  </TabItem>
-  <TabItem value="contribute" label="Contribute to ElizaOS Core">
-
-```bash
-# Clone the repository
-git clone git@github.com:elizaOS/eliza.git
-cd eliza
-
-# We are currently on the main branch
-git checkout main
-
-# Install dependencies and build
-bun install
-bun run build
-
-# Start ElizaOS
-bun start
-```
-
-Visit https://localhost:3000 to interact with your agent through a web interface.
-
-  </TabItem>
-</Tabs>
-
-> If it fails the first time try the start command again
-
----
-
-## Community and Support
-
-Eliza is backed by an active community of developers and users:
-
-- [**Open Source**](https://github.com/elizaos/eliza): Contribute to the project on GitHub
-- [**Technical Report (Whitepaper)**](https://arxiv.org/pdf/2501.06781)
-- [**Awesome Eliza**](https://github.com/elizaos/awesome-eliza)
-- [**Examples**](https://github.com/elizaos/characters): Ready-to-use character templates and implementations
-- [**Support**](https://discord.gg/elizaos): Active community for troubleshooting and discussion
-
-Join us in building the future of autonomous AI agents with Eliza!
-`````
-
 ## File: packages/docs/docs/quickstart.md
 `````markdown
 ---
@@ -6845,14 +5688,23 @@ elizaos plugins add @elizaos/plugin-discord
 
 ### Working with Character Files
 
-You can import or export character files using the CLI:
+You can work with character files using the agent commands:
 
 ```bash
-# Export character to a JSON file
-elizaos character export --output my-character.json
+# Create a new character file
+elizaos create -t agent my-character
 
-# Import character from a JSON file
-elizaos character import --file my-character.json
+# Start an agent with a character file
+elizaos agent start --path ./my-character.json
+
+# Get agent details and save to file
+elizaos agent get --name eliza --output my-exported-character.json
+
+# Start agent with JSON configuration directly
+elizaos agent start --json '{"name":"Eliza","system":"You are a helpful assistant","bio":["Helpful AI assistant"],...}'
+
+# Load character from remote URL
+elizaos agent start --remote-character https://example.com/characters/assistant.json
 ```
 
 This is particularly useful for those migrating from v1 who are used to working with standalone character files.
@@ -6872,18 +5724,18 @@ Develop your plugin following the structure in your generated project:
 # Test your plugin
 elizaos start
 # Publish your plugin when ready
-elizaos plugins publish
+elizaos publish
 ```
 
 ### Publishing options:
 
 ```bash
 # Test publish without making changes
-elizaos plugins publish --test
-# Publish to npm
-elizaos plugins publish --npm
-# Specify platform compatibility
-elizaos plugins publish --platform node
+elizaos publish --test
+# Publish to npm instead of GitHub
+elizaos publish --npm
+# Generate files locally without publishing
+elizaos publish --dry-run
 ```
 
 ---
@@ -6934,10 +5786,10 @@ If your agent fails to start on the first attempt:
 
 Once you have your agent running, explore:
 
-- 🤖 [Understand Agents](./core/agents.md)
-- ⚡ [Add Custom Actions](./core/actions.md)
-- 🧠 [Configure Knowledge](./core/knowledge.md)
-- 🔌 [Add Services](./core/services.md)
+- [Understand Agents](./core/agents.md)
+- [Add Custom Actions](./core/actions.md)
+- [Configure Knowledge](./core/knowledge.md)
+- [Add Services](./core/services.md)
 
 Join the [Discord community](https://discord.gg/elizaOS) for support and to share what you're building!
 `````
@@ -7326,43 +6178,6 @@ BeffAI is a decentralized AI agent platform for DeFi automation and decision-mak
 - Q3 2025: zkBNB mainnet; Q4 2025: BNB Beacon Chain deprecation
 - Metrics vs competitors: 2,100 TPS, $0.02 fees, 1.4M daily users
 - Key partnerships: PancakeSwap ($1.2B TVL), Venus Protocol ($800M deposits), COMBO Network
-`````
-
-## File: packages/docs/partners/bossu/brief.mdx
-`````
-# Bossu
-
-## Overview
-
-Bossu is an AI agent platform specialized for Web3 applications, bridging autonomous AI systems with decentralized technologies. It partners with ElizaOS ecosystem to provide specialized Web3 capabilities complementing Eliza's general-purpose AI agent framework.
-
-## Eliza Integration
-
-- Integrates via ElizaOS's plugin architecture
-- Technical synergies:
-
-  - ERC-6551 token-bound accounts for unified agent identity
-  - Shared memory layer for cross-platform context
-  - Delegated transaction signing via Eliza's secure enclave
-  - Plugin registry enabling one-click deployment
-
-- Developer access through Eliza's plugin marketplace:
-
-```typescript
-import { BossuWeb3 } from '@elizaos-plugins/bossu-integration';
-const agent = new BossuWeb3({ network: 'arbitrum' });
-```
-
-## Recent Updates (Q1 2025)
-
-- February: Added Optimism Superchain integration support
-- March: Released testnet version of cross-chain MEV protection system
-
-## Market Position
-
-- Niche provider in Web3 AI sector
-- Competes with Chainlink Functions and OpenZeppelin Defender
-- Key partnerships: LayerZero (omnichain messaging), Axiom (ZK-proof infrastructure), Socket (liquidity routing)
 `````
 
 ## File: packages/docs/partners/collab-land/brief.mdx
@@ -9874,263 +8689,6 @@ Integration is in development with early plugins in elizaos-plugins/zerebro-brid
 - 12,000+ developers using ZerePy, $47M total value locked in agent liquidity pools
 `````
 
-## File: packages/docs/static/packages/adapters/mongodb.md
-`````markdown
-# MongoDB Adapter for ElizaOS
-
-## Purpose
-
-A robust MongoDB adapter for ElizaOS that provides persistence, vector search capabilities, and caching functionality.
-
-## Key Features
-
-- Full MongoDB database support with connection pooling
-- Vector search capabilities for efficient similarity searches
-- Automatic fallback to standard search when vector search is unavailable
-- Built-in caching system with TTL support
-- Sharding support for better performance at scale
-- Comprehensive memory and knowledge management
-- Relationship tracking between users
-- Goal tracking and management
-- Participant and room management
-
-## Installation
-
-```bash
-npm install @elizaos-plugins/adapter-mongodb
-```
-
-## Configuration
-
-Add the adapter to your ElizaOS configuration:
-
-```json
-{
-  "plugins": ["@elizaos-plugins/adapter-mongodb"],
-  "settings": {
-    "MONGODB_CONNECTION_STRING": "your_mongodb_connection_string",
-    "MONGODB_DATABASE": "your_database_name" // Optional, defaults to "elizaAgent"
-  }
-}
-```
-
-### Required Environment Variables
-
-- `MONGODB_CONNECTION_STRING`: Your MongoDB connection string
-- `MONGODB_DATABASE` (optional): Database name to use
-
-## Integration
-
-The adapter provides persistence, vector search, and caching functionality for ElizaOS through MongoDB.
-
-## Example Usage
-
-```bash
-cd src/__tests__
-./run_tests.sh
-```
-`````
-
-## File: packages/docs/static/packages/adapters/sqlite.md
-`````markdown
-# PGLite Adapter for ElizaOS
-
-## Purpose
-
-A lightweight PostgreSQL-compatible database adapter for ElizaOS, providing vector search capabilities and efficient data persistence in a local environment.
-
-## Key Features
-
-- Embedded PostgreSQL engine for local development and testing
-- Full vector search support via pgvector
-- Built-in fuzzy string matching
-- Automatic schema initialization
-- Memory-efficient caching system
-- Support for multiple embedding providers (OpenAI, Ollama, GaiaNet)
-- Transaction support with automatic rollback
-
-## Installation
-
-```bash
-npm install @elizaos-plugins/adapter-sqlite
-```
-
-## Configuration
-
-Add the adapter to your ElizaOS configuration:
-
-```json
-{
-  "plugins": ["@elizaos-plugins/adapter-sqlite"],
-  "settings": {
-    "SQLITE_DATA_DIR": "/path/to/data/directory" // Required setting
-  }
-}
-```
-
-### Required Environment Variables
-
-- `SQLITE_DATA_DIR`: Path to the directory where PGLite will store its data
-  - Use `memory://` for in-memory database (useful for testing)
-
-## Integration
-
-The adapter automatically configures vector search based on your embedding provider and manages database tables, vector indexes, cache tables, and relationship tracking tables.
-`````
-
-## File: packages/docs/static/packages/adapters/postgres.md
-`````markdown
-# ElizaOS PostgreSQL Adapter
-
-## Purpose
-
-A database adapter plugin for ElizaOS that provides PostgreSQL connectivity with vector embedding support for semantic search capabilities.
-
-## Key Features
-
-- Seamless integration with ElizaOS memory and knowledge storage systems
-- Vector embedding storage and retrieval with pgvector extension
-- Support for multiple embedding models and dimensions
-- Robust connection management with automatic retries and circuit breaking
-- Full transaction support for safe database operations
-- Comprehensive memory, relationship, and knowledge management
-- Built-in caching system
-
-## Installation
-
-Install the adapter via npm:
-
-```bash
-npm install @elizaos-plugins/adapter-postgres
-```
-
-Or using bun:
-
-```bash
-bun add @elizaos-plugins/adapter-postgres
-```
-
-## Configuration
-
-Add to ElizaOS configuration:
-
-```javascript
-// agent.config.js
-export default {
-  adapters: ['postgres'],
-  settings: {
-    POSTGRES_URL: 'postgresql://username:password@localhost:5432/elizaos',
-  },
-};
-```
-
-## Prerequisites
-
-- PostgreSQL 15+ with pgvector extension installed
-- Connection permissions to create tables and extensions
-
-## Integration
-
-The adapter automatically initializes the required database schema when first connecting, providing methods for memory management, knowledge management, and vector search using pgvector for semantic capabilities.
-`````
-
-## File: packages/docs/static/packages/adapters/qdrant.md
-`````markdown
-# Qdrant Adapter for ElizaOS
-
-## Purpose
-
-A vector database adapter for ElizaOS that provides efficient similarity search capabilities through Qdrant, optimized for knowledge management and semantic search operations.
-
-## Key Features
-
-- Vector similarity search with cosine distance
-- Efficient knowledge base management
-- Built-in text preprocessing for better search quality
-- UUID v5 compatibility for Qdrant IDs
-- In-memory caching system
-- Content metadata support
-- Shared knowledge management
-
-## Installation
-
-```bash
-npm install @elizaos-plugins/adapter-qdrant
-```
-
-## Configuration
-
-Add the adapter to your ElizaOS configuration:
-
-```json
-{
-  "plugins": ["@elizaos-plugins/adapter-qdrant"],
-  "settings": {
-    "QDRANT_URL": "your-qdrant-server-url",
-    "QDRANT_KEY": "your-qdrant-api-key",
-    "QDRANT_PORT": "6333",
-    "QDRANT_VECTOR_SIZE": "1536"
-  }
-}
-```
-
-### Required Environment Variables
-
-- `QDRANT_URL`: URL of your Qdrant server
-- `QDRANT_KEY`: API key for authentication
-- `QDRANT_PORT`: Port number for Qdrant server
-- `QDRANT_VECTOR_SIZE`: Dimension of your vectors
-
-## Integration
-
-The adapter implements knowledge management, vector similarity search, and caching operations for ElizaOS, while other database functions are stubbed but not implemented.
-`````
-
-## File: packages/docs/static/packages/adapters/sqlite.md
-`````markdown
-# SQLite Adapter
-
-## Purpose
-
-A SQLite database adapter for ElizaOS that provides persistent storage capabilities with vector similarity search support.
-
-## Key Features
-
-- Full SQLite database implementation of ElizaOS database interface
-- Vector similarity search via sqlite-vec extension
-- JSON validation and foreign key constraints
-- Built-in caching system
-- Comprehensive transaction support with circuit breaker pattern
-- Support for storing and retrieving various data types including memories, accounts, goals, and knowledge base
-
-## Installation
-
-```bash
-npm install @elizaos-plugins/adapter-sqlite
-```
-
-## Configuration
-
-- `SQLITE_FILE`: Path to the SQLite database file (default: `./data/db.sqlite`)
-- Default database location is in a `data` directory in project root
-
-## Integration
-
-Implements the `IDatabaseAdapter` interface and extends the `DatabaseAdapter` base class to provide a lightweight, file-based storage solution for ElizaOS.
-
-## Example Usage
-
-```typescript
-import sqlitePlugin from '@elizaos-plugins/adapter-sqlite';
-import { IAgentRuntime } from '@elizaos/core';
-
-// Initialize with ElizaOS runtime
-function initializeAgent(runtime: IAgentRuntime) {
-  runtime.use(sqlitePlugin);
-}
-```
-`````
-
 ## File: packages/docs/static/packages/adapters/sqljs.md
 `````markdown
 # Unmaintained
@@ -10138,101 +8696,6 @@ function initializeAgent(runtime: IAgentRuntime) {
 ## Purpose
 
 This plugin used to live in @elizaos/core and needs a maintainer.
-`````
-
-## File: packages/docs/static/packages/adapters/supabase.md
-`````markdown
-# ElizaOS Supabase Adapter
-
-## Purpose
-
-This adapter enables ElizaOS to integrate with Supabase for data persistence and real-time capabilities.
-
-## Prerequisites
-
-- Supabase account and project
-- ElizaOS installation
-- Node.js and npm/yarn/bun
-
-## Installation
-
-```bash
-npm install github:elizaos-plugins/adapter-supabase
-```
-
-## Configuration
-
-1. Add the adapter to your character configuration:
-
-```json
-{
-  "plugins": ["@elizaos-plugins/adapter-supabase"],
-  "settings": {
-    "secrets": {
-      "SUPABASE_URL": "your-supabase-project-url",
-      "SUPABASE_ANON_KEY": "your-supabase-anon-key"
-    }
-  }
-}
-```
-
-2. Set up the database schema by running the migrations:
-
-```bash
-# Run the schema migration
-psql -f schema.sql
-
-# Seed the initial data
-psql -f seed.sql
-```
-
-## Integration
-
-Once configured, the adapter will automatically handle:
-
-- Data persistence for character states and interactions
-- Real-time updates for multi-user environments
-- State synchronization across different instances
-- Secure data storage and retrieval
-`````
-
-## File: packages/docs/static/packages/clients/alexa.md
-`````markdown
-# ElizaOS Alexa Client Plugin
-
-## Purpose
-
-Enables ElizaOS agents to integrate with Amazon Alexa, allowing your ElizaOS character to interact with users through Alexa-enabled devices.
-
-## Key Features
-
-- Send proactive notifications to Alexa devices
-- Connect ElizaOS agents to the Alexa Skills ecosystem
-- Enable voice-based interaction with your ElizaOS character
-
-## Installation
-
-```bash
-npm install @elizaos-plugins/client-alexa
-```
-
-## Configuration
-
-Add the following environment variables or settings to your ElizaOS configuration:
-
-```
-ALEXA_SKILL_ID=your-skill-id
-ALEXA_CLIENT_ID=your-client-id
-ALEXA_CLIENT_SECRET=your-client-secret
-```
-
-## Integration
-
-The plugin connects ElizaOS characters to Alexa-enabled devices, currently supporting one-way communication through proactive message alerts.
-
-## Links
-
-[Alexa Developer Console](https://developer.amazon.com/alexa/console/ask)
 `````
 
 ## File: packages/docs/static/packages/clients/auto.md
@@ -10250,53 +8713,6 @@ The plugin is now incorporated into @elizaos/core rather than existing as a stan
 ## Links
 
 @elizaos/core
-`````
-
-## File: packages/docs/static/packages/clients/deva.md
-`````markdown
-# ElizaOS Deva Client Plugin
-
-## Purpose
-
-A client plugin for ElizaOS that enables AI characters to seamlessly post content to the Deva social network.
-
-## Key Features
-
-- **Persona Management**: Automatically fetches and maintains character's Deva persona details
-- **Post Timeline**: Synchronizes posts between Deva and ElizaOS memory system
-- **Scheduled Posting**: Generates and publishes new posts on configurable time intervals
-- **Customizable Templates**: Supports custom post templates for content generation
-- **Style Preservation**: Ensures posts match your character's voice, style, and expertise
-
-## Installation
-
-```bash
-npm install @elizaos-plugins/client-deva
-```
-
-## Configuration
-
-Required settings:
-| Setting | Description | Default |
-| ------------------- | ---------------------------------------- | --------------- |
-| `DEVA_API_KEY` | Your Deva API key for authentication | None (Required) |
-| `DEVA_API_BASE_URL` | Base URL for the Deva API | None (Required) |
-| `POST_INTERVAL_MIN` | Minimum interval between posts (minutes) | 90 |
-| `POST_INTERVAL_MAX` | Maximum interval between posts (minutes) | 180 |
-| `POST_IMMEDIATELY` | Whether to post immediately on startup | false |
-
-## Integration
-
-The plugin connects to the Deva API, fetches the character's persona details, retrieves existing posts and stores them in ElizaOS's memory system, and follows a posting schedule based on configured intervals.
-
-## Example Usage
-
-Once configured, the Deva client automatically:
-
-1. Connects to the Deva API and fetches character's persona details
-2. Retrieves existing posts and stores them in memory
-3. Begins the posting schedule based on configured intervals
-4. Generates and publishes new posts matching the character's style
 `````
 
 ## File: packages/docs/static/packages/clients/direct.md
@@ -10371,126 +8787,6 @@ await discordManager.command.registerCommands([
   },
 ]);
 ```
-`````
-
-## File: packages/docs/static/packages/clients/eliza-home.md
-`````markdown
-# ElizaOS Home Plugin
-
-## Purpose
-
-Enables agents to control smart home devices, scenes, and rooms through SmartThings integration, handling commands like "turn on the lights" or "set the thermostat to 72 degrees."
-
-## Key Features
-
-- Control various smart home devices (lights, switches, thermostats, locks, etc.)
-- Execute scenes and automations
-- Discover available devices and their current states
-- Process natural language commands for device control
-- Group devices by room for organized management
-- Support for multiple device capabilities (switch, level, color, temperature, etc.)
-
-## Prerequisites
-
-- A SmartThings account with connected devices
-- A SmartThings personal access token
-- ElizaOS installed and configured
-
-## Installation
-
-```bash
-npm install @elizaos-plugins/client-eliza-home
-```
-
-## Configuration
-
-Environment Variable:
-
-- `SMARTTHINGS_TOKEN` (Required): SmartThings personal access token
-
-Add to agent configuration:
-
-```json
-{
-  "clients": ["home"]
-}
-```
-
-## Integration
-
-Connects with ElizaOS to allow agents to control smart home devices through natural language commands.
-
-## Example Usage
-
-- "Turn on the living room lights"
-- "Set the thermostat to 72 degrees"
-- "Dim the bedroom lights to 50%"
-- "What devices do you see?"
-- "Activate movie night scene"
-
-## Links
-
-[SmartThings Developer Workspace](https://account.smartthings.com/tokens)
-`````
-
-## File: packages/docs/static/packages/clients/farcaster.md
-`````markdown
-# ElizaOS Farcaster Client
-
-## Purpose
-
-A plugin for ElizaOS that enables agent integration with the Farcaster social network.
-
-## Key Features
-
-- **Automated Posting**: Schedule and publish regular casts with configurable intervals
-- **Engagement Monitoring**: Track mentions, replies, and interactions
-- **Conversation Threading**: Build and maintain conversation context for natural interactions
-- **Dry Run Mode**: Test functionality without actually posting to Farcaster
-- **Configurable Settings**: Customize behavior via environment variables
-- **Caching**: Efficient caching of profiles and casts for improved performance
-
-## Installation
-
-```bash
-npm install @elizaos-plugins/client-farcaster
-```
-
-## Configuration
-
-### Required Settings
-
-| Parameter                      | Description                            |
-| ------------------------------ | -------------------------------------- |
-| `FARCASTER_NEYNAR_API_KEY`     | Neynar API key for accessing Farcaster |
-| `FARCASTER_NEYNAR_SIGNER_UUID` | Signer UUID for your Farcaster account |
-| `FARCASTER_FID`                | Your Farcaster FID (identifier)        |
-
-### Optional Settings
-
-Various parameters available including dry run mode, polling intervals, and post settings.
-
-## Integration
-
-```typescript
-import { ElizaOS } from '@elizaos/core';
-import farcasterPlugin from '@elizaos-plugins/client-farcaster';
-
-// Initialize ElizaOS
-const elizaOs = new ElizaOS({
-  // ElizaOS configuration
-});
-
-// Register the Farcaster plugin
-elizaOs.registerPlugin(farcasterPlugin);
-
-// Start ElizaOS
-elizaOs.start();
-```
-
-## Example Usage
-
-Custom templates can be defined in agent character configuration to customize cast generation and responses.
 `````
 
 ## File: packages/docs/static/packages/clients/github.md
@@ -10742,68 +9038,6 @@ Configure using environment variables or in character JSON file:
 - [Farcaster Documentation](https://docs.farcaster.xyz/)
 `````
 
-## File: packages/docs/static/packages/clients/telegram-account.md
-`````markdown
-# Client Telegram Account
-
-## Purpose
-
-The Telegram Account Plugin allows ElizaOS agents to connect and operate through a real Telegram account, enabling your agent to participate in Telegram chats, groups, and direct messages as a regular user.
-
-## Key Features
-
-- Connect to any Telegram account using API credentials
-- Receive and respond to direct messages
-- Participate in group chats when mentioned (@username)
-- Reply to messages that reply to the account
-- Support for multi-part messages (automatically splits long messages)
-- Proper Markdown formatting in responses
-- Media attachment support
-
-## Prerequisites
-
-- A Telegram account with an active phone number
-- Telegram API credentials (App ID and App Hash)
-- ElizaOS installed and configured
-
-## Installation
-
-```bash
-npm install @elizaos-plugins/client-telegram-account
-```
-
-## Configuration
-
-Environment variables:
-
-```
-TELEGRAM_ACCOUNT_PHONE="+1234567890"
-TELEGRAM_ACCOUNT_APP_ID=12345
-TELEGRAM_ACCOUNT_APP_HASH="your_api_hash_here"
-TELEGRAM_ACCOUNT_DEVICE_MODEL="Desktop"
-TELEGRAM_ACCOUNT_SYSTEM_VERSION="1.0"
-```
-
-Add to agent configuration:
-
-```json
-{
-  "clients": ["telegramAccount"]
-}
-```
-
-## Integration
-
-Once configured, your agent will:
-
-- Respond to direct messages automatically
-- Respond in groups when specifically mentioned with @username
-- Respond to replies to its own messages
-- Process incoming media files
-- Format responses using Markdown
-- Split long messages into multiple parts if necessary
-`````
-
 ## File: packages/docs/static/packages/clients/telegram.md
 `````markdown
 # Telegram Client Plugin for ElizaOS
@@ -10857,41 +9091,7 @@ The plugin connects ElizaOS characters to Telegram through the bot API, allowing
 `````markdown
 # Eliza Twitter/X Client
 
-## Purpose
-
-This package provides Twitter/X integration for the Eliza AI agent.
-
-## Key Features
-
-- Post generation and management
-- Interaction handling (mentions, replies)
-- Search functionality
-- Twitter Spaces support with STT/TTS capabilities
-- Media handling (images, videos)
-- Approval workflow via Discord (optional)
-
-## Configuration
-
-Create or edit `.env` file with Twitter API credentials, client configuration, post generation settings, action processing settings, Spaces configuration, and approval workflow settings.
-
-## Integration
-
-```typescript
-import { TwitterClientInterface } from '@elizaos/twitter';
-
-const twitterPlugin = {
-  name: 'twitter',
-  description: 'Twitter client',
-  clients: [TwitterClientInterface],
-};
-
-// Register with your Eliza runtime
-runtime.registerPlugin(twitterPlugin);
-```
-
-## Example Usage
-
-The client can automatically generate and post tweets, handle interactions (mentions, replies, quote tweets, direct messages), search Twitter for relevant topics, create and manage Twitter Spaces, and utilize an optional Discord-based approval system for tweets.
+DEPRECATED
 `````
 
 ## File: packages/docs/static/packages/clients/xmtp.md
@@ -11483,61 +9683,6 @@ import { aptosPlugin, WalletProvider, TransferAptosToken } from '@elizaos/plugin
 - Move Language Guide: https://move-language.github.io/move/
 - Petra Wallet Docs: https://petra.app/docs
 - DexScreener API: https://docs.dexscreener.com/
-`````
-
-## File: packages/docs/static/packages/plugins/arbitrage.md
-`````markdown
-# ElizaOS Arbitrage Plugin
-
-## Purpose
-
-A powerful DEX arbitrage trading plugin for ElizaOS, designed to identify and automatically execute profitable cross-market trading opportunities on Ethereum-based decentralized exchanges.
-
-## Key Features
-
-- Real-time Market Monitoring
-- Automated Opportunity Detection
-- Smart Trade Execution
-- Configurable Trading Parameters
-- Risk Management
-- Performance Optimization
-
-## Installation
-
-```bash
-npm install @elizaos-plugins/plugin-arbitrage
-```
-
-## Configuration
-
-```json
-{
-  "name": "Trader",
-  "settings": {
-    "secrets": {
-      "EVM_PRIVATE_KEY": "YOUR_PRIVATE_KEY_HERE",
-      "FLASHBOTS_RELAY_SIGNING_KEY": "YOUR_FLASHBOTS_KEY_HERE",
-      "BUNDLE_EXECUTOR_ADDRESS": "YOUR_EXECUTOR_ADDRESS_HERE"
-    },
-    "arbitrage": {
-      "ethereumWsUrl": "YOUR_ETH_WSS_URL",
-      "rpcUrl": "YOUR_ETH_RPC_URL"
-    }
-  },
-  "plugins": ["@elizaos/plugin-arbitrage", "@elizaos/plugin-evm"]
-}
-```
-
-## Integration
-
-The plugin integrates with ElizaOS and provides actions like `EXECUTE_ARBITRAGE` and providers such as `marketProvider`.
-
-## Example Usage
-
-```
-User: "Find arbitrage opportunities"
-Trader: "Scanning for arbitrage trades..."
-```
 `````
 
 ## File: packages/docs/static/packages/plugins/arthera.md
@@ -12483,47 +10628,6 @@ The plugin responds to natural language queries about cryptocurrency prices, pro
 - [GitHub Repository](https://github.com/elizaos/eliza/tree/main/packages/plugin-coinmarketcap)
 `````
 
-## File: packages/docs/static/packages/plugins/compass.md
-`````markdown
-# @elizaos-plugins/plugin-compass
-
-## Purpose
-
-A plugin that integrates the Compass API into the ElizaOS ecosystem to execute operations on DeFi protocols.
-
-## Key Features
-
-- Leverages the `@compass-labs/sdk` TypeScript SDK
-- Provides actions corresponding to Compass API endpoints and schemas
-
-## Installation
-
-```
-npx elizaos plugins add @elizaos-plugins/plugin-compass
-bun run build
-```
-
-## Configuration
-
-Required environment variables:
-
-- COMPASS_WALLET_PRIVATE_KEY
-- COMPASS_ARBITRUM_RPC_URL
-- COMPASS_ETHEREUM_RPC_URL
-- COMPASS_BASE_RPC_URL
-
-These can also be set directly in the character configuration under settings.secrets.
-
-## Integration
-
-Added to the character configuration in the "plugins" array as "@elizaos-plugins/plugin-compass".
-
-## Links
-
-- [Compass API](https://api.compasslabs.ai/)
-- [Compass SDK](https://www.npmjs.com/package/@compass-labs/sdk)
-`````
-
 ## File: packages/docs/static/packages/plugins/conflux.md
 `````markdown
 # @elizaos/plugin-conflux
@@ -12748,35 +10852,6 @@ import { cronosZkEVMPlugin } from '@elizaos/plugin-cronoszkevm';
 - [zkEVM Bridge](https://zkevm.cronos.org/bridge)
 - [Cronos Developer Portal](https://cronos.org/developers)
 - [zkSync Integration Guide](https://docs.cronos.org/zkevm/integration)
-`````
-
-## File: packages/docs/static/packages/plugins/d-a-t-a.md
-`````markdown
-# @elizaos-plugins/plugin-d.a.t.a
-
-## Purpose
-
-A Data Authentication, Trust, and Attestation framework plugin from CARV that enhances the Eliza Agent Framework with powerful data processing capabilities, enabling agents to analyze, transform, and derive insights from various data sources.
-
-## Key Features
-
-- Comprehensive Data Processing: Transform raw data into actionable insights through advanced analysis techniques
-- Flexible Data Handling: Support for multiple data formats and sources, from CSV to JSON and APIs
-- Intelligent Analysis: Leverage statistical methods and machine learning techniques for deeper understanding
-
-## Integration
-
-Integrates with the Eliza Agent Framework to empower AI agents with sophisticated data analysis capabilities.
-
-## Use Cases
-
-- On-chain stats fetching
-- Token info
-- On-chain address tracking (CARV ID required)
-
-## Example Usage
-
-Users can query token information such as AAVE, receiving detailed data about the token's category, platforms it's deployed on, and other relevant information through the plugin's data retrieval capabilities.
 `````
 
 ## File: packages/docs/static/packages/plugins/dcap.md
@@ -13591,55 +11666,6 @@ Add to your character file:
 
 - FIRECRAWL_GET_SCRAPED_DATA: For single-page content extraction
 - WEB_SEARCH: Web search for any data
-`````
-
-## File: packages/docs/static/packages/plugins/flow-advanced.md
-`````markdown
-# @elizaos-plugins/plugin-flow-advanced
-
-## Purpose
-
-This plugin provides advanced functionality for the Flow Blockchain.
-
-## Key Features
-
-- Accounts management based on Account Linking feature
-- Token Price Query for any token on Flow Blockchain
-- Token Transfer from User's account to others' address
-- Token Registeration for any token on Flow Blockchain
-
-## Installation
-
-```bash
-npx elizaos plugins add @elizaos-plugins/plugin-di
-npx elizaos plugins add @elizaos-plugins/plugin-flow
-npx elizaos plugins add @elizaos-plugins/plugin-flow-advanced
-```
-
-## Configuration
-
-Environment variables:
-
-```typescript
-FLOW_ADDRESS=<Flow wallet address starting with 0x>
-FLOW_PRIVATE_KEY=<Private key for the Flow wallet starting with 0x>
-FLOW_NETWORK=<Network to connect to: "mainnet", "testnet", or "emulator" (optional, defaults to "mainnet")>
-FLOW_ENDPOINT_URL=<Custom RPC endpoint URL (optional)>
-```
-
-## Integration
-
-```typescript
-import { advancedFlowPlugin } from '@elizaos-plugins/plugin-flow-advanced';
-```
-
-## Example Usage
-
-```typescript
-'Send 5 FLOW to 0xa51d7fe9e0080662';
-'Send 1 FLOW - A.1654653399040a61.FlowToken to 0xa2de93114bae3e73';
-'Send 1000 FROTH - 0xb73bf8e6a4477a952e0338e6cc00cc0ce5ad04ba to 0x000000000000000000000002e44fbfbd00395de5';
-```
 `````
 
 ## File: packages/docs/static/packages/plugins/flow.md
@@ -17436,75 +15462,6 @@ const result = await runtime.executeAction('TRANSFER_TOKEN', {
 - [Starknet GitHub Repository](https://github.com/starkware-libs/starknet)
 `````
 
-## File: packages/docs/static/packages/plugins/story.md
-`````markdown
-# ElizaOS Story Protocol Plugin
-
-## Purpose
-
-A plugin for ElizaOS that enables interaction with Story Protocol - a comprehensive IP management system on the blockchain that allows creators to register, license, and manage their intellectual property assets.
-
-## Key Features
-
-- IP Registration: Register creative works as IP assets on Story Protocol
-- License Management: Attach license terms to IP assets with customizable commercial terms
-- IP Licensing: Mint license tokens for IP assets
-- Asset Information: Fetch details about IP assets and available licenses
-- Blockchain Integration: Built-in wallet provider for Odyssey testnet
-
-## Installation
-
-Install via npm:
-
-```bash
-npm install @elizaos-plugins/plugin-story
-```
-
-Or using bun:
-
-```bash
-bun add @elizaos-plugins/plugin-story
-```
-
-## Configuration
-
-Add to ElizaOS agent configuration:
-
-```javascript
-// agent.config.js
-export default {
-  // Other ElizaOS configuration
-  plugins: ['story'],
-  settings: {
-    STORY_PRIVATE_KEY: '0x...', // Your Story Protocol private key
-    PINATA_JWT: '...', // Your Pinata JWT token
-  },
-};
-```
-
-## Integration
-
-Integrates with Story Protocol on the Odyssey testnet, providing on-chain IP registration, programmable licensing with configurable commercial terms, creator attribution, revenue sharing, and IP relationship tracking.
-
-## Example Usage
-
-Register IP assets:
-
-```
-User: I'd like to register a short story I wrote called "The Digital Forest"
-Agent: Great! What's the description for your IP?
-User: It's a sci-fi story about a forest that exists in cyberspace
-Agent: I'll register "The Digital Forest" as an IP asset on Story Protocol.
-*Agent registers IP and provides transaction details*
-```
-
-## Links
-
-- [Story Protocol Documentation](https://docs.storyprotocol.xyz)
-- [Odyssey Testnet Explorer](https://odyssey.storyscan.xyz)
-- [Pinata IPFS](https://www.pinata.cloud/)
-`````
-
 ## File: packages/docs/static/packages/plugins/sui.md
 `````markdown
 # @elizaos/plugin-sui
@@ -18120,55 +16077,6 @@ The plugin responds to natural language commands like:
 
 - [FAL.ai Documentation](https://fal.ai/docs)
 - [ElizaOS Documentation](https://elizaos.github.io/eliza/)
-`````
-
-## File: packages/docs/static/packages/plugins/twilio.md
-`````markdown
-# @elizaos/plugin-twilio
-
-## Purpose
-
-A Twilio plugin for ElizaOS that enables SMS and voice call capabilities.
-
-## Key Features
-
-- SMS Messaging: Send, receive, and respond to SMS messages with natural conversation handling
-- Voice Calls: Make and receive calls with natural voice conversations using ElevenLabs and speech recognition
-
-## Installation
-
-```bash
-bun add @elizaos-plugins/plugin-twilio
-```
-
-## Configuration
-
-1. Add plugin to character file with settings for actions and voice
-2. Set environment variables in `.env` file (Twilio credentials, webhook configuration, ElevenLabs API key)
-3. Configure webhooks in Twilio Console for voice and SMS
-4. For local development, use ngrok to expose webhook endpoints
-
-## Integration
-
-- Connects with ElizaOS to enable SMS and voice communication
-- Uses ElevenLabs for voice synthesis
-- Uses Twilio's speech recognition capabilities for speech-to-text
-
-## Example Usage
-
-SMS Commands:
-
-```
-Send an SMS to +1234567890 saying Hello world!
-Send SMS to +1234567890 about the weather forecast
-```
-
-Voice Call Commands:
-
-```
-Call +1234567890 and tell them about the latest updates
-Call +1234567890 to say that we need to schedule a meeting
-```
 `````
 
 ## File: packages/docs/static/packages/plugins/twitter.md
@@ -18846,6 +16754,2070 @@ try {
 - [ZKSync Documentation](https://docs.zksync.io/)
 - [Matter Labs Blog](https://blog.matter-labs.io/)
 - [ZKSync GitHub](https://github.com/matter-labs/zksync-era)
+`````
+
+## File: packages/docs/docs/core/plugins.md
+`````markdown
+---
+sidebar_position: 8
+title: Plugin System
+description: Learn about ElizaOS plugins - modular extensions that enhance agent capabilities
+keywords: [plugins, extensions, modules, development, publishing, registry, npm, GitHub]
+image: /img/plugins.png
+---
+
+# Plugins
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+Plugins are modular extensions that enhance the capabilities of ElizaOS agents. They provide a flexible way to add new functionality, integrate external services, and customize agent behavior across different platforms.
+
+:::info
+Key Improvements in V2
+
+1. **Unified API**: Almost everything is accessible via `runtime.methodName()` in the agent runtime for simpler development
+2. **Enhanced Model System**: The new `useModel` approach allows for flexible model provider registration
+3. **Events System**: Formal support for event-based programming
+4. **Plugin Creation Workflow**: Simplified creation and testing via CLI
+5. **Testing Infrastructure**: Built-in support for plugin testing
+6. **No Monorepo Required**: Complete plugin development without touching the core codebase
+7. **Plugin Registry**: Manages the catalog of available plugins and handles their registration with the runtime
+8. **Bootstrap Plugin**: Initializes core functionality required for all agents to operate
+   :::
+
+The ElizaOS plugin system maintains the same basic concept as previous versions, with several new extension points (events, routes, tests, models) and features that significantly improve the developer experience.
+
+**Browse plugins the elizaOS community made here: [Package Showcase](/packages)**
+
+[![](/img/plugins.png)](/packages)
+
+> elizaOS maintains an official package registry at [github.com/elizaos-plugins/registry](https://github.com/elizaos-plugins/registry).
+
+---
+
+## Quick Start
+
+The new CLI tool introduces a streamlined workflow for plugin development without ever needing to touch the ElizaOS monorepo directly:
+
+1. **Create**: `bun create eliza` - Initialize a new plugin project with proper structure
+2. **Develop**: Edit the plugin code in the generated project structure
+3. **Test**: `elizaos test` - Test the plugin functionality
+4. **Run**: `elizaos start` - Run the plugin with a default agent
+5. **Publish**: `elizaos publish` - Share your plugin with others
+
+### Creating a New Plugin
+
+You can create a new ElizaOS plugin using the CLI:
+
+```bash
+# Using bun (recommended)
+bun create eliza
+
+# Or using bunx
+bunx create-eliza
+```
+
+When prompted, select "Plugin" as the type to create. The CLI will guide you through the setup process, creating a plugin with the proper structure and dependencies.
+
+---
+
+### Managing Plugins
+
+There are several ways to add plugins to your ElizaOS project:
+
+<Tabs>
+  <TabItem value="package" label="Via package.json">
+    ```json
+    {
+      "dependencies": {
+        "@elizaos/plugin-solana": "github:elizaos-plugins/plugin-solana",
+        "@elizaos/plugin-farcaster": "github:elizaos-plugins/plugin-farcaster"
+      }
+    }
+    ```
+  </TabItem>
+  <TabItem value="character" label="Via Character Definition">
+    ```typescript
+    // In src/index.ts
+    export const character: Character = {
+      name: 'MyAgent',
+      plugins: ['@elizaos/plugin-farcaster', '@elizaos/plugin-example'],
+      // ...
+    };
+    ```
+  </TabItem>
+  <TabItem value="cli" label="Via CLI Commands">
+    ```bash
+    # Add a plugin
+    elizaos plugins add @elizaos/plugin-farcaster
+
+    # Remove a plugin
+    elizaos plugins remove @elizaos/plugin-farcaster
+
+    # List available plugins
+    elizaos plugins list
+    ```
+
+  </TabItem>
+</Tabs>
+
+---
+
+### Plugin Configuration
+
+Configure plugin settings in your character definition:
+
+```json
+{
+  "name": "MyAgent",
+  "plugins": ["@elizaos/plugin-example"],
+  "settings": {
+    "example": {
+      "enableFeatureX": true
+    }
+  }
+}
+```
+
+### Plugin Loading Process
+
+The AgentRuntime automatically loads the Bootstrap Plugin during initialization, before any other plugins:
+
+```typescript
+async initialize() {
+  // Register bootstrap plugin
+  await this.registerPlugin(bootstrapPlugin);
+
+  // Then register additional plugins
+  for (const plugin of this.plugins) {
+    await this.registerPlugin(plugin);
+  }
+
+  // Initialize other components
+  // ...
+}
+```
+
+---
+
+### Publishing Plugins
+
+If you're a plugin developer, you can publish your plugin to make it available to others. The ElizaOS CLI provides several options for publishing your plugin depending on your needs.
+
+First, make sure your plugin is built and ready for distribution:
+
+```bash
+# Navigate to your plugin directory
+cd my-eliza-plugin
+
+# Build your plugin
+npm run build
+```
+
+<Tabs>
+  <TabItem value="github" label="GitHub Publishing">
+    Publishing to GitHub is the recommended approach for sharing your plugin with the ElizaOS community:
+
+    ```bash
+    # Publish to GitHub
+    elizaos publish
+    ```
+
+    This will:
+    1. Build and package your plugin
+    2. Create or update a GitHub repository in the elizaos-plugins organization
+    3. Add your plugin to the ElizaOS registry (if you're a registry maintainer)
+
+    For first-time publishers, the CLI will guide you through setting up GitHub credentials for publishing.
+
+    GitHub publishing is ideal for open-source plugins that you want to share with the community and have listed in the official registry.
+
+  </TabItem>
+
+  <TabItem value="npm" label="npm Publishing">
+    You can also publish your plugin to npm:
+
+    ```bash
+    # Publish to npm
+    elizaos publish --npm
+    ```
+
+    This allows users to install your plugin using standard npm commands:
+
+    ```bash
+    npm install @your-scope/plugin-name
+    ```
+
+    npm publishing is useful when you want to:
+    - Maintain your own package namespace
+    - Integrate with existing npm workflows
+    - Set up automated versioning and releases
+
+    Make sure your package.json is properly configured with the correct name, version, and access permissions.
+
+  </TabItem>
+
+  <TabItem value="testing" label="Test Mode">
+    Before publishing, you can validate the process without making any external changes:
+
+    ```bash
+    # Test the publish process
+    elizaos publish --test
+    ```
+
+    This runs through all the packaging and validation steps without actually publishing anything.
+
+    Test mode is helpful for:
+    - Verifying your plugin structure is correct
+    - Ensuring all required files are present
+    - Checking that dependencies are properly configured
+    - Validating that your plugin can be built successfully
+
+    Always run in test mode before your first public release to avoid issues.
+
+  </TabItem>
+
+  <TabItem value="customizing" label="Additional Options">
+    The publish command supports several additional options to customize the publishing process:
+
+    ```bash
+    # Specify platform compatibility
+    elizaos publish --platform node
+
+    # Set custom version number
+    elizaos publish --version 1.2.3
+
+    # Provide a custom registry URL
+    elizaos publish --registry https://custom-registry.com
+
+    # Publish with public access
+    elizaos publish --access public
+    ```
+
+    These options give you fine-grained control over how and where your plugin is published. Refer to `elizaos publish --help` for a complete list of options.
+
+  </TabItem>
+</Tabs>
+
+:::info
+When submitting a plugin to the [elizaOS Registry](https://github.com/elizaos-plugins/registry), include:
+
+1. **Working Demo**: Screenshots or video of your plugin in action
+2. **Test Results**: Evidence of successful integration and error handling
+3. **Configuration Example**: Show how to properly configure your plugin
+   :::
+
+---
+
+## Plugin Architecture
+
+Eliza uses a unified plugin architecture where everything is a plugin - including services, adapters, actions, evaluators, and providers. This approach ensures consistent behavior and better extensibility.
+
+### Plugin Components
+
+Each plugin can provide one or more of the following components:
+
+| Component          | Purpose                                                                         |
+| ------------------ | ------------------------------------------------------------------------------- |
+| **Services**       | Platform integrations (Discord, Telegram, etc.) or specialized capabilities      |
+| **Actions**        | Executable functions triggered by the agent (reply, generate content, etc.)     |
+| **Providers**      | Context providers that supply info to the agent during decision making          |
+| **Evaluators**     | Analyze conversations to extract insights and improve future interactions       |
+| **Adapters**       | Database or storage system integrations                                         |
+| **Model Handlers** | Register handlers for different model types (text generation, embeddings, etc.) |
+| **Event Handlers** | React to system events like messages, connections, or actions                   |
+| **API Routes**     | Add custom REST endpoints to the agent's HTTP interface                         |
+| **Tests**          | Include test suites to verify plugin functionality                              |
+
+### Plugin Interface
+
+All plugins implement the core Plugin interface:
+
+```typescript
+interface Plugin {
+  name: string;
+  description: string;
+  config?: { [key: string]: any };
+
+  // Optional initialization method
+  init?: (config: Record<string, string>, runtime: IAgentRuntime) => Promise<void>;
+
+  // Components
+  services?: (typeof Service)[];
+  actions?: Action[];
+  providers?: Provider[];
+  evaluators?: Evaluator[];
+  adapters?: Adapter[];
+
+  // Additional features
+  routes?: Route[];
+  tests?: TestSuite[];
+  events?: { [key: string]: ((params: any) => Promise<any>)[] };
+}
+```
+
+### Service Implementation
+
+Services are the core integration points for external platforms. A properly implemented service:
+
+```typescript
+import { Service, IAgentRuntime } from '@elizaos/core';
+
+export class ExampleService extends Service {
+  // Required: Define the service type (used for runtime registration)
+  static serviceType = 'example';
+
+  // Required: Describe what this service enables the agent to do
+  capabilityDescription = 'Enables the agent to interact with the Example platform';
+
+  // Store runtime for service operations
+  constructor(protected runtime: IAgentRuntime) {
+    super();
+    // Initialize connections, setup event handlers, etc.
+  }
+
+  // Required: Static method to create and initialize service instance
+  static async start(runtime: IAgentRuntime): Promise<ExampleService> {
+    const service = new ExampleService(runtime);
+    // Additional initialization if needed
+    return service;
+  }
+
+  // Required: Clean up resources when service is stopped
+  async stop(): Promise<void> {
+    // Close connections, release resources
+  }
+
+  // Optional: Custom methods for your service functionality
+  async sendMessage(content: string, channelId: string): Promise<void> {
+    // Implementation
+  }
+}
+```
+
+## Plugin Structure
+
+Each plugin repository should follow this structure:
+
+```
+plugin-name/
+├── images/                # Branding assets
+│   ├── logo.png           # Square logo (400x400px)
+│   ├── banner.png         # Banner image (1280x640px)
+│   └── screenshots/       # Feature screenshots
+├── src/
+│   ├── index.ts           # Main plugin entry point
+│   ├── service.ts         # Service implementation
+│   ├── actions/           # Plugin-specific actions
+│   ├── providers/         # Data providers
+│   ├── types.ts           # Type definitions
+│   └── environment.ts     # Configuration validation
+├── tests/                 # Test suite
+├── package.json           # Plugin configuration and dependencies
+└── README.md              # Plugin documentation
+```
+
+### Plugin Entry Point
+
+Your plugin's `index.ts` should export a Plugin object:
+
+```typescript
+// Example plugin implementation
+import { type Plugin } from '@elizaos/core';
+import { ExampleService } from './service';
+import { searchAction } from './actions/search';
+import { statusProvider } from './providers/status';
+
+const examplePlugin: Plugin = {
+  name: 'example',
+  description: 'Example platform integration for ElizaOS',
+  services: [ExampleService],
+  actions: [searchAction],
+  providers: [statusProvider],
+  init: async (config, runtime) => {
+    // Perform any necessary initialization
+    const apiKey = runtime.getSetting('EXAMPLE_API_KEY');
+    if (!apiKey) {
+      console.warn('EXAMPLE_API_KEY not provided');
+    }
+  },
+};
+
+export default examplePlugin;
+```
+
+### Plugin Configuration
+
+Your plugin's `package.json` should include an `agentConfig` section:
+
+```json
+{
+  "name": "@elizaos/plugin-example",
+  "version": "1.0.0",
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "API_KEY": {
+        "type": "string",
+        "description": "API key for the Example service"
+      }
+    }
+  }
+}
+```
+
+### Environment Variables and Secrets
+
+Plugins access configuration through the runtime with the following precedence:
+
+1. Character settings secrets (highest priority)
+2. Character settings
+3. Global environment settings
+
+#### Access Pattern
+
+```typescript
+// In your service implementation
+const apiKey = runtime.getSetting('EXAMPLE_API_KEY');
+const debugMode = runtime.getSetting('EXAMPLE_DEBUG_MODE'); // Returns boolean for "true"/"false" strings
+```
+
+#### Configuration in Character File
+
+```json
+{
+  "name": "MyAgent",
+  "plugins": ["@elizaos/plugin-example"],
+  "settings": {
+    "example": {
+      "enableFeatureX": true
+    },
+    "secrets": {
+      "EXAMPLE_API_KEY": "your-api-key-here"
+    }
+  }
+}
+```
+
+---
+
+## Bootstrap Plugin
+
+The Bootstrap Plugin is a foundational component of ElizaOS that initializes the core functionality required for agents to operate. It's automatically loaded as part of the initialization process, establishing the minimum viable capabilities that all agents need.
+
+```typescript
+export const bootstrapPlugin: Plugin = {
+  name: 'bootstrap',
+  description: 'Agent bootstrap with basic actions and evaluators',
+  actions: [...],
+  events: {...},
+  evaluators: [...],
+  providers: [...],
+  services: [TaskService, ScenarioService],
+};
+```
+
+The Bootstrap Plugin registers essential components across several categories to provide a foundation for all agents. These components can be extended by custom plugins.
+
+<Tabs>
+  <TabItem value="actions" label="Actions">
+    | Action                 | Description                                     |
+    | ---------------------- | ----------------------------------------------- |
+    | `replyAction`          | Generates and sends a response to a message     |
+    | `followRoomAction`     | Enables an agent to actively follow a room      |
+    | `unfollowRoomAction`   | Stops an agent from following a room            |
+    | `muteRoomAction`       | Mutes notifications from a room                 |
+    | `unmuteRoomAction`     | Unmutes notifications from a room               |
+    | `sendMessageAction`    | Sends a message to a specific room              |
+    | `ignoreAction`         | Explicitly ignores a message                    |
+    | `noneAction`           | Acknowledges a message without taking action    |
+    | `updateEntityAction`   | Updates properties of an entity                 |
+    | `choiceAction`         | Presents choices to users and handles responses |
+    | `updateRoleAction`     | Updates a user's role in a world                |
+    | `updateSettingsAction` | Updates agent or world settings                 |
+  </TabItem>
+  
+  <TabItem value="providers" label="Providers">
+    | Provider                 | Description                                                |
+    | ------------------------ | ---------------------------------------------------------- |
+    | `characterProvider`      | Provides the agent's personality and configuration         |
+    | `recentMessagesProvider` | Retrieves recent conversation history                      |
+    | `knowledgeProvider`      | Supplies factual information from the knowledge base       |
+    | `timeProvider`           | Provides awareness of current time and date                |
+    | `entitiesProvider`       | Supplies information about entities in the current context |
+    | `relationshipsProvider`  | Provides information about entity relationships            |
+    | `factsProvider`          | Retrieves relevant facts from memory                       |
+    | `roleProvider`           | Provides role information within worlds                    |
+    | `settingsProvider`       | Supplies configured settings                               |
+    | `anxietyProvider`        | Informs agent of potential issues to be careful about      |
+    | `attachmentsProvider`    | Handles media and file attachments                         |
+    | `providersProvider`      | Meta-provider with information about available providers   |
+    | `actionsProvider`        | Meta-provider with information about available actions     |
+    | `evaluatorsProvider`     | Meta-provider with information about available evaluators  |
+    | `choiceProvider`         | Manages choice-based interactions                          |
+    | `capabilitiesProvider`   | Provides information about agent capabilities              |
+  </TabItem>
+  
+  <TabItem value="services" label="Services & Evaluators">
+    **Services:**
+
+    | Service           | Purpose                                          |
+    | ----------------- | ------------------------------------------------ |
+    | `TaskService`     | Manages deferred, scheduled, and repeating tasks |
+    | `ScenarioService` | Handles scenario-based interactions and testing  |
+
+    **Evaluators:**
+
+    | Evaluator             | Description                                           |
+    | --------------------- | ----------------------------------------------------- |
+    | `reflectionEvaluator` | Enables self-awareness and learning from interactions |
+
+  </TabItem>
+  
+  <TabItem value="events" label="Event Handlers">
+    The Bootstrap Plugin registers handlers for key system events that enable the core message processing flow:
+
+    **Core Events:**
+    - `MESSAGE_RECEIVED` - Processes new messages and generates responses
+    - `REACTION_RECEIVED` - Tracks reactions to messages
+    - `VOICE_MESSAGE_RECEIVED` - Handles audio messages
+    - `POST_GENERATED` - Creates social media content
+    - `MESSAGE_SENT` - Logs outgoing messages
+
+    **World Events:**
+    - `WORLD_JOINED` / `WORLD_CONNECTED` - Synchronizes data when joining worlds
+    - `ENTITY_JOINED` / `ENTITY_LEFT` - Manages entity presence
+
+    **Lifecycle Events:**
+    - `ACTION_STARTED` / `ACTION_COMPLETED` - Tracks action execution
+    - `EVALUATOR_STARTED` / `EVALUATOR_COMPLETED` - Monitors evaluator processing
+    - `RUN_STARTED` / `RUN_ENDED` / `RUN_TIMEOUT` - Manages message processing lifecycle
+
+    The message processing flow follows these steps:
+    1. Receive message via `MESSAGE_RECEIVED` event
+    2. Save message to memory
+    3. Check if agent should respond
+    4. If responding, compose state from providers
+    5. Generate a response using the language model
+    6. Process any actions specified in the response
+    7. Run evaluators on the conversation
+    8. Emit lifecycle events throughout the process
+
+  </TabItem>
+</Tabs>
+
+### Extending Bootstrap Functionality
+
+While the Bootstrap Plugin provides core functionality, it's designed to be extended by other plugins. Custom plugins can:
+
+1. **Add new actions** - Extend the agent's capabilities
+2. **Register additional providers** - Supply more contextual information
+3. **Add evaluators** - Create new ways to analyze and learn from interactions
+4. **Handle additional events** - React to more system events
+5. **Initialize custom services** - Provide new functionality
+
+When working with plugins in relation to the Bootstrap Plugin:
+
+1. **Don't modify bootstrap directly** - Instead, create custom plugins to extend functionality
+2. **Understand provider contribution** - Know how each provider contributes to the agent's context
+3. **Learn the core actions** - Become familiar with the actions that all agents can perform
+4. **Leverage event handlers** - Use the event system for reactive behavior
+5. **Extend, don't replace** - Build on top of bootstrap functionality rather than replacing it
+
+---
+
+## Developing a Plugin
+
+When developing a new plugin, focus on these key aspects:
+
+1. **Service Implementation**: Create a solid service class following the pattern above
+2. **Proper Error Handling**: Handle API failures gracefully
+3. **Type Definitions**: Define clear interfaces and types
+4. **Documentation**: Include detailed setup instructions
+5. **Tests**: Add test cases for your functionality
+
+### Testing Your Plugin
+
+During development, you can test your plugin locally:
+
+```bash
+# Start with your plugin
+elizaos start --plugins=./path/to/plugin
+
+# Or with a specific character
+elizaos start --character=./characters/test.character.json --plugins=./path/to/plugin
+```
+
+### Distribution & PR Requirements
+
+When submitting a plugin to the [elizaOS Registry](https://github.com/elizaos-plugins/registry), include:
+
+1. **Working Demo**: Screenshots or video of your plugin in action
+2. **Test Results**: Evidence of successful integration and error handling
+3. **Configuration Example**: Show how to properly configure your plugin
+4. **Quality Checklist**:
+   - [ ] Plugin follows the standard structure
+   - [ ] Required branding assets are included
+   - [ ] Documentation is complete
+   - [ ] GitHub topics properly set
+   - [ ] Tests are passing
+   - [ ] Includes error handling
+
+---
+
+## FAQ
+
+### What exactly is a plugin in ElizaOS?
+
+A plugin is a modular extension that adds new capabilities to ElizaOS agents, such as API integrations, custom actions, or platform connections. Plugins allow you to expand agent functionality and share reusable components with other developers.
+
+### When should I create a plugin versus using existing ones?
+
+Create a plugin when you need custom functionality not available in existing plugins, want to integrate with external services, or plan to share reusable agent capabilities with the community.
+
+### How do I manage plugin dependencies?
+
+Plugin dependencies are managed through your project's `package.json`. You can add plugins directly using npm or the ElizaOS CLI, and they will be automatically loaded when your project starts.
+
+### Can I use a plugin in development before publishing?
+
+Yes, you can use the `--plugins` flag with the `start` command to include local plugins during development:
+
+```bash
+elizaos start --plugins=./path/to/plugin
+```
+
+### What's the difference between Actions and Services?
+
+Actions handle specific agent responses or behaviors, while Services provide platform integrations (like Discord or Telegram) or ongoing background functionality that multiple actions might use.
+
+### How do I handle rate limits with external APIs?
+
+Implement proper backoff strategies in your service implementation and consider using a queue system for message handling to respect platform rate limits.
+
+## Additional Resources
+
+- [ElizaOS Registry](https://github.com/elizaos-plugins/registry)
+- [Example Plugins](https://github.com/elizaos-plugins)
+- [Discord Community](https://discord.gg/elizaos)
+`````
+
+## File: packages/docs/docs/core/project.md
+`````markdown
+---
+sidebar_position: 2
+title: Project System
+description: Understanding ElizaOS projects - organizational structure for creating and deploying AI agents
+keywords: [projects, organization, configuration, character, agents, deployment]
+image: /img/project.jpg
+---
+
+# 📝 ElizaOS Projects
+
+Projects are the main organizational structure in ElizaOS, containing all the necessary components to create and deploy AI agents. A project can include one or more agents, each with their own character definition, plugins, and configurations.
+
+## Project Structure
+
+A typical ElizaOS project structure:
+
+```
+my-eliza-project/
+├── src/
+│   └── index.ts        # Main entry point
+├── knowledge/          # Knowledge base files
+├── package.json        # Dependencies and scripts
+└── tsconfig.json       # TypeScript configuration
+```
+
+## Creating a New Project
+
+You can create a new ElizaOS project using:
+
+```bash
+# Using bun (recommended)
+bun create eliza
+
+# Or using bunx
+bunx @elizaos/cli create
+```
+
+The CLI will guide you through the setup process, including:
+
+- Project name
+- Database selection (sqlite, postgres, etc.)
+- Initial configuration
+
+## Project Configuration
+
+The main project file (`src/index.ts`) exports a default project object:
+
+```typescript
+import type { Character, IAgentRuntime, Project, ProjectAgent } from '@elizaos/core';
+import customPlugin from './plugin';
+
+// Define the character
+export const character: Character = {
+  name: 'Agent Name',
+  plugins: ['@elizaos/plugin-discord', '@elizaos/plugin-direct'],
+  // Other character properties
+};
+
+// Create a ProjectAgent that includes the character
+export const projectAgent: ProjectAgent = {
+  character,
+  init: async (runtime: IAgentRuntime) => {
+    // Initialize agent-specific functionality
+    console.log('Initializing agent:', character.name);
+  },
+  plugins: [customPlugin],
+  tests: [], // Optional tests for your agent
+};
+
+// Export the full project with all agents
+const project: Project = {
+  agents: [projectAgent],
+};
+
+export default project;
+```
+
+## Character Configuration
+
+Each agent in your project requires a character definition that controls its personality, knowledge, and behavior.
+
+### Required Character Fields
+
+```typescript
+{
+  name: "agentName", // Character's display name
+  plugins: ["@elizaos/plugin-discord"], // Example plugins
+  settings: {
+    // Configuration settings
+    secrets: {}, // API keys and sensitive data
+    voice: {}, // Voice configuration
+  },
+  bio: [], // Character background as a string or array of statements
+  style: {
+    // Interaction style guide
+    all: [], // General style rules
+    chat: [], // Chat-specific style
+    post: [] // Post-specific style
+  }
+}
+```
+
+### Plugins
+
+Plugins provide your agent with capabilities and integrations:
+
+- `@elizaos/plugin-discord`: Discord integration
+- `@elizaos/plugin-telegram`: Telegram integration
+- `@elizaos/plugin-farcaster`: Farcaster integration
+- `@elizaos/plugin-slack`: Slack integration
+- `@elizaos/plugin-direct`: Direct chat interface
+- `@elizaos/plugin-simsai`: SimsAI platform integration
+
+View all available plugins: https://github.com/elizaos-plugins/registry
+
+### Settings Configuration
+
+The `settings` object supports various configurations:
+
+```typescript
+{
+  "settings": {
+    "ragKnowledge": false, // Enable RAG knowledge mode
+    "voice": {
+      "model": "string", // Voice synthesis model
+      "url": "string" // Optional voice API URL
+    },
+    "secrets": {
+      // API keys (use env vars in production)
+      "API_KEY": "string"
+    },
+  }
+}
+```
+
+### Bio & Style
+
+Define your agent's personality and communication style:
+
+```typescript
+{
+  "bio": ["Expert in blockchain development", "Specializes in DeFi protocols"],
+  "style": {
+    "all": [
+      // Applied to all interactions
+      "Keep responses clear",
+      "Maintain professional tone"
+    ],
+    "chat": [
+      // Chat-specific style
+      "Engage with curiosity",
+      "Provide explanations"
+    ],
+    "post": [
+      // Social post style
+      "Keep posts informative",
+      "Focus on key points"
+    ]
+  }
+}
+```
+
+**Style Tips**
+
+- Be specific about tone and mannerisms
+- Include platform-specific guidance
+- Define clear boundaries and limitations
+
+### Optional Character Fields
+
+```typescript
+{
+  "username": "handle", // Character's username/handle
+  "system": "System prompt text", // Custom system prompt
+  "lore": [], // Additional background/history
+  "knowledge": [
+    // Knowledge base entries
+    "Direct string knowledge",
+    { "path": "file/path.md", "shared": false },
+    { "directory": "knowledge/path", "shared": false }
+  ],
+  "messageExamples": [], // Example conversations
+  "postExamples": [], // Example social posts
+  "topics": [], // Areas of expertise
+  "adjectives": [] // Character traits
+}
+```
+
+## Knowledge Management
+
+ElizaOS supports two knowledge modes:
+
+### Classic Mode (Default)
+
+- Direct string knowledge added to character's context
+- No chunking or semantic search
+- Enabled by default (`settings.ragKnowledge: false`)
+- Only processes string knowledge entries
+- Simpler but less sophisticated
+
+### RAG Mode
+
+- Advanced knowledge processing with semantic search
+- Chunks content and uses embeddings
+- Must be explicitly enabled (`settings.ragKnowledge: true`)
+- Supports three knowledge types:
+  1. Direct string knowledge
+  2. Single file references: `{ "path": "path/to/file.md", "shared": false }`
+  3. Directory references: `{ "directory": "knowledge/dir", "shared": false }`
+- Supported file types: .md, .txt, .pdf
+- Optional `shared` flag for knowledge reuse across characters
+
+### Knowledge Path Configuration
+
+- Knowledge files are relative to the project's `knowledge` directory
+- Paths should not contain `../` (sanitized for security)
+- Both shared and private knowledge supported
+- Files automatically reloaded if content changes
+
+## Example Project
+
+Here's a complete example of a project configuration:
+
+```typescript
+import type { Character, IAgentRuntime, Project, ProjectAgent } from '@elizaos/core';
+
+export const character: Character = {
+  name: 'Tech Helper',
+  plugins: ['@elizaos/plugin-discord', '@elizaos/plugin-direct'],
+  settings: {
+    ragKnowledge: true,
+    voice: {
+      model: 'en_US-male-medium',
+    },
+    discord: {
+      shouldRespondOnlyToMentions: false,
+      allowedChannelIds: ['123456789012345678'],
+    },
+  },
+  bio: ['Friendly technical assistant', 'Specializes in explaining complex topics simply'],
+  lore: ['Pioneer in open-source AI development', 'Advocate for AI accessibility'],
+  messageExamples: [
+    [
+      {
+        name: 'user1',
+        content: { text: 'Can you explain how AI models work?' },
+      },
+      {
+        name: 'TechAI',
+        content: {
+          text: 'Think of AI models like pattern recognition systems.',
+        },
+      },
+    ],
+  ],
+  topics: ['artificial intelligence', 'machine learning', 'technology education'],
+  knowledge: [
+    {
+      directory: 'tech_guides',
+      shared: true,
+    },
+  ],
+  style: {
+    all: ['Clear', 'Patient', 'Educational'],
+    chat: ['Interactive', 'Supportive'],
+    post: ['Concise', 'Informative'],
+  },
+};
+
+export const projectAgent: ProjectAgent = {
+  character,
+  init: async (runtime: IAgentRuntime) => {
+    console.log('Initializing Tech Helper agent');
+  },
+  plugins: [], // Project-specific plugins
+};
+
+const project: Project = {
+  agents: [projectAgent],
+};
+
+export default project;
+```
+
+## Character File Export
+
+While projects are the primary structure in ElizaOS, you can still export standalone character files for compatibility with other systems or sharing character definitions:
+
+```typescript
+import fs from 'fs';
+import { character } from './src/index';
+
+// Export character to JSON file
+fs.writeFileSync('character.json', JSON.stringify(character, null, 2));
+```
+
+## Managing Multiple Agents
+
+A project can contain multiple agents, each with its own character and plugins:
+
+```typescript
+const project: Project = {
+  agents: [
+    {
+      character: technicalSupportCharacter,
+      init: async (runtime) => {
+        /* init code */
+      },
+      plugins: [customSupportPlugin],
+    },
+    {
+      character: communityManagerCharacter,
+      init: async (runtime) => {
+        /* init code */
+      },
+      plugins: [communityPlugin],
+    },
+  ],
+};
+```
+
+Each agent operates independently but can share the same database and resources.
+
+## Running Your Project
+
+After configuring your project, you can run it using:
+
+```bash
+elizaos start
+```
+
+This will start your agents according to your project configuration.
+`````
+
+## File: packages/docs/docs/intro.md
+`````markdown
+---
+sidebar_position: 1
+title: Introduction to Eliza
+description: A powerful multi-agent simulation framework for creating and managing autonomous AI agents
+keywords:
+  [
+    introduction,
+    AI agents,
+    multi-agent,
+    framework,
+    TypeScript,
+    autonomous agents,
+    simulation,
+    RAG,
+    plugins,
+  ]
+image: /img/eliza_banner.jpg
+---
+
+# Introduction to Eliza
+
+![](/img/eliza_banner.jpg)
+_As seen powering [@DegenSpartanAI](https://x.com/degenspartanai) and [@aixvc_agent](https://x.com/aixvc_agent)_
+
+## What is Eliza?
+
+Eliza is a powerful multi-agent simulation framework designed to create, deploy, and manage autonomous AI agents. Built with TypeScript, it provides a flexible and extensible platform for developing intelligent agents that can interact across multiple platforms while maintaining consistent personalities and knowledge.
+
+> Pro tip: copy paste the text from https://eliza.how/llms-full.txt into your preferred LLM.
+
+## Key Features
+
+New in Eliza v2!
+
+| CLI Tool                          | Native GUI                        |
+| --------------------------------- | --------------------------------- |
+| [![](/img/cli.jpg)](/img/cli.jpg) | [![](/img/gui.jpg)](/img/gui.jpg) |
+
+- **Platform Integration**: Clients for Discord, Telegram, Farcaster, and many others
+- **Flexible Model Support**: Deepseek, Ollama, Grok, OpenAI, Anthropic, Gemini, LLama, etc.
+- **Character System**: Create diverse agents using [character files](https://github.com/elizaOS/characterfile)
+- **Multi-Agent Architecture**: Manage multiple unique AI personalities simultaneously
+- **Memory Management**: Easily ingest and interact with documents using RAG
+- **Media Processing**: PDF, URLs, Audio transcription, Video processing, Image analysis, Conversation summarization
+- **Technical Foundation**:
+  - 100% TypeScript implementation
+  - Modular architecture
+  - Highly extensible action and plugin system
+  - Custom client support
+  - Comprehensive API
+
+---
+
+## Installation
+
+For detailed instructions on each path, including configuration options and extended capabilities, see our [Quickstart Guide](./quickstart.md).
+
+### Prerequisites
+
+- [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
+- Git for version control
+- For Windows Users: [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual) is required
+
+Eliza offers different paths depending on your goals:
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="cli" label="Install CLI Tool (Recommended)" default>
+
+```bash
+# make sure you have bun installed
+npm install -g bun
+
+# Install the CLI globally
+npm install -g @elizaos/cli
+# or install via bun
+bun install -g @elizaos/cli
+
+# From a folder to install a project
+elizaos create
+cd new-agent
+elizaos start
+```
+
+Then visit https://localhost:3000 to interact with your agent through a web interface.
+
+  </TabItem>
+  <TabItem value="project" label="Create a Test Project">
+
+```bash
+# Create a new project through interactive setup
+elizaos create
+
+# Navigate to your project directory
+cd my-project-name
+
+# Start your project
+elizaos start
+```
+
+  </TabItem>
+  <TabItem value="plugin" label="Add a Custom Plugin">
+
+Add plugins to your project:
+
+```bash
+# List available plugins
+elizaos plugins list
+
+# Add a plugin
+elizaos plugins add @elizaos/plugin-discord
+
+# Create a plugin project
+elizaos create --type plugin
+```
+
+Develop and test your plugin:
+
+```bash
+# Test your plugin
+elizaos start
+
+# Publish your plugin when ready
+elizaos plugins publish
+```
+
+  </TabItem>
+  <TabItem value="contribute" label="Contribute to ElizaOS Core">
+
+```bash
+# Clone the repository
+git clone git@github.com:elizaOS/eliza.git
+cd eliza
+
+# We are currently on the main branch
+git checkout main
+
+# Install dependencies and build
+bun install
+bun run build
+
+# Start ElizaOS
+bun start
+```
+
+Visit https://localhost:3000 to interact with your agent through a web interface.
+
+  </TabItem>
+</Tabs>
+
+> If it fails the first time try the start command again
+
+---
+
+## Community and Support
+
+Eliza is backed by an active community of developers and users:
+
+- [**Open Source**](https://github.com/elizaos/eliza): Contribute to the project on GitHub
+- [**Technical Report (Whitepaper)**](https://arxiv.org/pdf/2501.06781)
+- [**Awesome Eliza**](https://github.com/elizaos/awesome-eliza)
+- [**Examples**](https://github.com/elizaos/characters): Ready-to-use character templates and implementations
+- [**Support**](https://discord.gg/elizaos): Active community for troubleshooting and discussion
+
+Join us in building the future of autonomous AI agents with Eliza!
+`````
+
+## File: packages/docs/partners/bossu/brief.mdx
+`````
+# Bossu
+
+## Overview
+
+Bossu is an AI agent platform specialized for Web3 applications, bridging autonomous AI systems with decentralized technologies. It partners with ElizaOS ecosystem to provide specialized Web3 capabilities complementing Eliza's general-purpose AI agent framework.
+
+## Eliza Integration
+
+- Integrates via ElizaOS's plugin architecture
+- Technical synergies:
+
+  - ERC-6551 token-bound accounts for unified agent identity
+  - Shared memory layer for cross-platform context
+  - Delegated transaction signing via Eliza's secure enclave
+  - Plugin registry enabling one-click deployment
+
+- Developer access through Eliza's plugin marketplace:
+
+```typescript
+import { BossuWeb3 } from '@elizaos-plugins/bossu-integration';
+const agent = new BossuWeb3({ network: 'arbitrum' });
+```
+
+## Recent Updates (Q1 2025)
+
+- February: Added Optimism Superchain integration support
+- March: Released testnet version of cross-chain MEV protection system
+
+## Market Position
+
+- Niche provider in Web3 AI sector
+- Competes with Chainlink Functions and OpenZeppelin Defender
+- Key partnerships: LayerZero (omnichain messaging), Axiom (ZK-proof infrastructure), Socket (liquidity routing)
+`````
+
+## File: packages/docs/static/packages/adapters/mongodb.md
+`````markdown
+# MongoDB Adapter for ElizaOS
+
+## Purpose
+
+A robust MongoDB adapter for ElizaOS that provides persistence, vector search capabilities, and caching functionality.
+
+## Key Features
+
+- Full MongoDB database support with connection pooling
+- Vector search capabilities for efficient similarity searches
+- Automatic fallback to standard search when vector search is unavailable
+- Built-in caching system with TTL support
+- Sharding support for better performance at scale
+- Comprehensive memory and knowledge management
+- Relationship tracking between users
+- Goal tracking and management
+- Participant and room management
+
+## Installation
+
+```bash
+npm install @elizaos-plugins/adapter-mongodb
+```
+
+## Configuration
+
+Add the adapter to your ElizaOS configuration:
+
+```json
+{
+  "plugins": ["@elizaos-plugins/adapter-mongodb"],
+  "settings": {
+    "MONGODB_CONNECTION_STRING": "your_mongodb_connection_string",
+    "MONGODB_DATABASE": "your_database_name" // Optional, defaults to "elizaAgent"
+  }
+}
+```
+
+### Required Environment Variables
+
+- `MONGODB_CONNECTION_STRING`: Your MongoDB connection string
+- `MONGODB_DATABASE` (optional): Database name to use
+
+## Integration
+
+The adapter provides persistence, vector search, and caching functionality for ElizaOS through MongoDB.
+
+## Example Usage
+
+```bash
+cd src/__tests__
+./run_tests.sh
+```
+`````
+
+## File: packages/docs/static/packages/adapters/pglite.md
+`````markdown
+# PGLite Adapter for ElizaOS
+
+## Purpose
+
+A lightweight PostgreSQL-compatible database adapter for ElizaOS, providing vector search capabilities and efficient data persistence in a local environment.
+
+## Key Features
+
+- Embedded PostgreSQL engine for local development and testing
+- Full vector search support via pgvector
+- Built-in fuzzy string matching
+- Automatic schema initialization
+- Memory-efficient caching system
+- Support for multiple embedding providers (OpenAI, Ollama, GaiaNet)
+- Transaction support with automatic rollback
+
+## Installation
+
+```bash
+npm install @elizaos-plugins/adapter-pglite
+```
+
+## Configuration
+
+Add the adapter to your ElizaOS configuration:
+
+```json
+{
+  "plugins": ["@elizaos-plugins/adapter-pglite"],
+  "settings": {
+    "PGLITE_DATA_DIR": "/path/to/data/directory" // Required setting
+  }
+}
+```
+
+### Required Environment Variables
+
+- `PGLITE_DATA_DIR`: Path to the directory where PGLite will store its data
+  - Use `memory://` for in-memory database (useful for testing)
+
+## Integration
+
+The adapter automatically configures vector search based on your embedding provider and manages database tables, vector indexes, cache tables, and relationship tracking tables.
+`````
+
+## File: packages/docs/static/packages/adapters/postgres.md
+`````markdown
+# ElizaOS PostgreSQL Adapter
+
+## Purpose
+
+A database adapter plugin for ElizaOS that provides PostgreSQL connectivity with vector embedding support for semantic search capabilities.
+
+## Key Features
+
+- Seamless integration with ElizaOS memory and knowledge storage systems
+- Vector embedding storage and retrieval with pgvector extension
+- Support for multiple embedding models and dimensions
+- Robust connection management with automatic retries and circuit breaking
+- Full transaction support for safe database operations
+- Comprehensive memory, relationship, and knowledge management
+- Built-in caching system
+
+## Installation
+
+Install the adapter via npm:
+
+```bash
+npm install @elizaos-plugins/adapter-postgres
+```
+
+Or using bun:
+
+```bash
+bun add @elizaos-plugins/adapter-postgres
+```
+
+## Configuration
+
+Add to ElizaOS configuration:
+
+```javascript
+// agent.config.js
+export default {
+  adapters: ['postgres'],
+  settings: {
+    POSTGRES_URL: 'postgresql://username:password@localhost:5432/elizaos',
+  },
+};
+```
+
+## Prerequisites
+
+- PostgreSQL 15+ with pgvector extension installed
+- Connection permissions to create tables and extensions
+
+## Integration
+
+The adapter automatically initializes the required database schema when first connecting, providing methods for memory management, knowledge management, and vector search using pgvector for semantic capabilities.
+`````
+
+## File: packages/docs/static/packages/adapters/qdrant.md
+`````markdown
+# Qdrant Adapter for ElizaOS
+
+## Purpose
+
+A vector database adapter for ElizaOS that provides efficient similarity search capabilities through Qdrant, optimized for knowledge management and semantic search operations.
+
+## Key Features
+
+- Vector similarity search with cosine distance
+- Efficient knowledge base management
+- Built-in text preprocessing for better search quality
+- UUID v5 compatibility for Qdrant IDs
+- In-memory caching system
+- Content metadata support
+- Shared knowledge management
+
+## Installation
+
+```bash
+npm install @elizaos-plugins/adapter-qdrant
+```
+
+## Configuration
+
+Add the adapter to your ElizaOS configuration:
+
+```json
+{
+  "plugins": ["@elizaos-plugins/adapter-qdrant"],
+  "settings": {
+    "QDRANT_URL": "your-qdrant-server-url",
+    "QDRANT_KEY": "your-qdrant-api-key",
+    "QDRANT_PORT": "6333",
+    "QDRANT_VECTOR_SIZE": "1536"
+  }
+}
+```
+
+### Required Environment Variables
+
+- `QDRANT_URL`: URL of your Qdrant server
+- `QDRANT_KEY`: API key for authentication
+- `QDRANT_PORT`: Port number for Qdrant server
+- `QDRANT_VECTOR_SIZE`: Dimension of your vectors
+
+## Integration
+
+The adapter implements knowledge management, vector similarity search, and caching operations for ElizaOS, while other database functions are stubbed but not implemented.
+`````
+
+## File: packages/docs/static/packages/adapters/sqlite.md
+`````markdown
+# SQLite Adapter
+
+## Purpose
+
+A SQLite database adapter for ElizaOS that provides persistent storage capabilities with vector similarity search support.
+
+## Key Features
+
+- Full SQLite database implementation of ElizaOS database interface
+- Vector similarity search via sqlite-vec extension
+- JSON validation and foreign key constraints
+- Built-in caching system
+- Comprehensive transaction support with circuit breaker pattern
+- Support for storing and retrieving various data types including memories, accounts, goals, and knowledge base
+
+## Installation
+
+```bash
+npm install @elizaos-plugins/adapter-sqlite
+```
+
+## Configuration
+
+- `SQLITE_FILE`: Path to the SQLite database file (default: `./data/db.sqlite`)
+- Default database location is in a `data` directory in project root
+
+## Integration
+
+Implements the `IDatabaseAdapter` interface and extends the `DatabaseAdapter` base class to provide a lightweight, file-based storage solution for ElizaOS.
+
+## Example Usage
+
+```typescript
+import sqlitePlugin from '@elizaos-plugins/adapter-sqlite';
+import { IAgentRuntime } from '@elizaos/core';
+
+// Initialize with ElizaOS runtime
+function initializeAgent(runtime: IAgentRuntime) {
+  runtime.use(sqlitePlugin);
+}
+```
+`````
+
+## File: packages/docs/static/packages/adapters/supabase.md
+`````markdown
+# ElizaOS Supabase Adapter
+
+## Purpose
+
+This adapter enables ElizaOS to integrate with Supabase for data persistence and real-time capabilities.
+
+## Prerequisites
+
+- Supabase account and project
+- ElizaOS installation
+- Node.js and npm/yarn/bun
+
+## Installation
+
+```bash
+npm install github:elizaos-plugins/adapter-supabase
+```
+
+## Configuration
+
+1. Add the adapter to your character configuration:
+
+```json
+{
+  "plugins": ["@elizaos-plugins/adapter-supabase"],
+  "settings": {
+    "secrets": {
+      "SUPABASE_URL": "your-supabase-project-url",
+      "SUPABASE_ANON_KEY": "your-supabase-anon-key"
+    }
+  }
+}
+```
+
+2. Set up the database schema by running the migrations:
+
+```bash
+# Run the schema migration
+psql -f schema.sql
+
+# Seed the initial data
+psql -f seed.sql
+```
+
+## Integration
+
+Once configured, the adapter will automatically handle:
+
+- Data persistence for character states and interactions
+- Real-time updates for multi-user environments
+- State synchronization across different instances
+- Secure data storage and retrieval
+`````
+
+## File: packages/docs/static/packages/clients/alexa.md
+`````markdown
+# ElizaOS Alexa Client Plugin
+
+## Purpose
+
+Enables ElizaOS agents to integrate with Amazon Alexa, allowing your ElizaOS character to interact with users through Alexa-enabled devices.
+
+## Key Features
+
+- Send proactive notifications to Alexa devices
+- Connect ElizaOS agents to the Alexa Skills ecosystem
+- Enable voice-based interaction with your ElizaOS character
+
+## Installation
+
+```bash
+npm install @elizaos-plugins/client-alexa
+```
+
+## Configuration
+
+Add the following environment variables or settings to your ElizaOS configuration:
+
+```
+ALEXA_SKILL_ID=your-skill-id
+ALEXA_CLIENT_ID=your-client-id
+ALEXA_CLIENT_SECRET=your-client-secret
+```
+
+## Integration
+
+The plugin connects ElizaOS characters to Alexa-enabled devices, currently supporting one-way communication through proactive message alerts.
+
+## Links
+
+[Alexa Developer Console](https://developer.amazon.com/alexa/console/ask)
+`````
+
+## File: packages/docs/static/packages/clients/deva.md
+`````markdown
+# ElizaOS Deva Client Plugin
+
+## Purpose
+
+A client plugin for ElizaOS that enables AI characters to seamlessly post content to the Deva social network.
+
+## Key Features
+
+- **Persona Management**: Automatically fetches and maintains character's Deva persona details
+- **Post Timeline**: Synchronizes posts between Deva and ElizaOS memory system
+- **Scheduled Posting**: Generates and publishes new posts on configurable time intervals
+- **Customizable Templates**: Supports custom post templates for content generation
+- **Style Preservation**: Ensures posts match your character's voice, style, and expertise
+
+## Installation
+
+```bash
+npm install @elizaos-plugins/client-deva
+```
+
+## Configuration
+
+Required settings:
+| Setting | Description | Default |
+| ------------------- | ---------------------------------------- | --------------- |
+| `DEVA_API_KEY` | Your Deva API key for authentication | None (Required) |
+| `DEVA_API_BASE_URL` | Base URL for the Deva API | None (Required) |
+| `TWITTER_POST_POST_INTERVAL_MIN` | Minimum interval between posts (minutes) | 90 |
+| `TWITTER_POST_POST_INTERVAL_MAX` | Maximum interval between posts (minutes) | 180 |
+| `POST_IMMEDIATELY` | Whether to post immediately on startup | false |
+
+## Integration
+
+The plugin connects to the Deva API, fetches the character's persona details, retrieves existing posts and stores them in ElizaOS's memory system, and follows a posting schedule based on configured intervals.
+
+## Example Usage
+
+Once configured, the Deva client automatically:
+
+1. Connects to the Deva API and fetches character's persona details
+2. Retrieves existing posts and stores them in memory
+3. Begins the posting schedule based on configured intervals
+4. Generates and publishes new posts matching the character's style
+`````
+
+## File: packages/docs/static/packages/clients/eliza-home.md
+`````markdown
+# ElizaOS Home Plugin
+
+## Purpose
+
+Enables agents to control smart home devices, scenes, and rooms through SmartThings integration, handling commands like "turn on the lights" or "set the thermostat to 72 degrees."
+
+## Key Features
+
+- Control various smart home devices (lights, switches, thermostats, locks, etc.)
+- Execute scenes and automations
+- Discover available devices and their current states
+- Process natural language commands for device control
+- Group devices by room for organized management
+- Support for multiple device capabilities (switch, level, color, temperature, etc.)
+
+## Prerequisites
+
+- A SmartThings account with connected devices
+- A SmartThings personal access token
+- ElizaOS installed and configured
+
+## Installation
+
+```bash
+npm install @elizaos-plugins/client-eliza-home
+```
+
+## Configuration
+
+Environment Variable:
+
+- `SMARTTHINGS_TOKEN` (Required): SmartThings personal access token
+
+Add to agent configuration:
+
+```json
+{
+  "clients": ["home"]
+}
+```
+
+## Integration
+
+Connects with ElizaOS to allow agents to control smart home devices through natural language commands.
+
+## Example Usage
+
+- "Turn on the living room lights"
+- "Set the thermostat to 72 degrees"
+- "Dim the bedroom lights to 50%"
+- "What devices do you see?"
+- "Activate movie night scene"
+
+## Links
+
+[SmartThings Developer Workspace](https://account.smartthings.com/tokens)
+`````
+
+## File: packages/docs/static/packages/clients/farcaster.md
+`````markdown
+# ElizaOS Farcaster Client
+
+## Purpose
+
+A plugin for ElizaOS that enables agent integration with the Farcaster social network.
+
+## Key Features
+
+- **Automated Posting**: Schedule and publish regular casts with configurable intervals
+- **Engagement Monitoring**: Track mentions, replies, and interactions
+- **Conversation Threading**: Build and maintain conversation context for natural interactions
+- **Dry Run Mode**: Test functionality without actually posting to Farcaster
+- **Configurable Settings**: Customize behavior via environment variables
+- **Caching**: Efficient caching of profiles and casts for improved performance
+
+## Installation
+
+```bash
+npm install @elizaos-plugins/client-farcaster
+```
+
+## Configuration
+
+### Required Settings
+
+| Parameter                      | Description                            |
+| ------------------------------ | -------------------------------------- |
+| `FARCASTER_NEYNAR_API_KEY`     | Neynar API key for accessing Farcaster |
+| `FARCASTER_NEYNAR_SIGNER_UUID` | Signer UUID for your Farcaster account |
+| `FARCASTER_FID`                | Your Farcaster FID (identifier)        |
+
+### Optional Settings
+
+Various parameters available including dry run mode, polling intervals, and post settings.
+
+## Integration
+
+```typescript
+import { ElizaOS } from '@elizaos/core';
+import farcasterPlugin from '@elizaos-plugins/client-farcaster';
+
+// Initialize ElizaOS
+const elizaOs = new ElizaOS({
+  // ElizaOS configuration
+});
+
+// Register the Farcaster plugin
+elizaOs.registerPlugin(farcasterPlugin);
+
+// Start ElizaOS
+elizaOs.start();
+```
+
+## Example Usage
+
+Custom templates can be defined in agent character configuration to customize cast generation and responses.
+`````
+
+## File: packages/docs/static/packages/clients/telegram-account.md
+`````markdown
+# Client Telegram Account
+
+## Purpose
+
+The Telegram Account Plugin allows ElizaOS agents to connect and operate through a real Telegram account, enabling your agent to participate in Telegram chats, groups, and direct messages as a regular user.
+
+## Key Features
+
+- Connect to any Telegram account using API credentials
+- Receive and respond to direct messages
+- Participate in group chats when mentioned (@username)
+- Reply to messages that reply to the account
+- Support for multi-part messages (automatically splits long messages)
+- Proper Markdown formatting in responses
+- Media attachment support
+
+## Prerequisites
+
+- A Telegram account with an active phone number
+- Telegram API credentials (App ID and App Hash)
+- ElizaOS installed and configured
+
+## Installation
+
+```bash
+npm install @elizaos-plugins/client-telegram-account
+```
+
+## Configuration
+
+Environment variables:
+
+```
+TELEGRAM_ACCOUNT_PHONE="+1234567890"
+TELEGRAM_ACCOUNT_APP_ID=12345
+TELEGRAM_ACCOUNT_APP_HASH="your_api_hash_here"
+TELEGRAM_ACCOUNT_DEVICE_MODEL="Desktop"
+TELEGRAM_ACCOUNT_SYSTEM_VERSION="1.0"
+```
+
+Add to agent configuration:
+
+```json
+{
+  "clients": ["telegramAccount"]
+}
+```
+
+## Integration
+
+Once configured, your agent will:
+
+- Respond to direct messages automatically
+- Respond in groups when specifically mentioned with @username
+- Respond to replies to its own messages
+- Process incoming media files
+- Format responses using Markdown
+- Split long messages into multiple parts if necessary
+`````
+
+## File: packages/docs/static/packages/plugins/arbitrage.md
+`````markdown
+# ElizaOS Arbitrage Plugin
+
+## Purpose
+
+A powerful DEX arbitrage trading plugin for ElizaOS, designed to identify and automatically execute profitable cross-market trading opportunities on Ethereum-based decentralized exchanges.
+
+## Key Features
+
+- Real-time Market Monitoring
+- Automated Opportunity Detection
+- Smart Trade Execution
+- Configurable Trading Parameters
+- Risk Management
+- Performance Optimization
+
+## Installation
+
+```bash
+npm install @elizaos-plugins/plugin-arbitrage
+```
+
+## Configuration
+
+```json
+{
+  "name": "Trader",
+  "settings": {
+    "secrets": {
+      "EVM_PRIVATE_KEY": "YOUR_PRIVATE_KEY_HERE",
+      "FLASHBOTS_RELAY_SIGNING_KEY": "YOUR_FLASHBOTS_KEY_HERE",
+      "BUNDLE_EXECUTOR_ADDRESS": "YOUR_EXECUTOR_ADDRESS_HERE"
+    },
+    "arbitrage": {
+      "ethereumWsUrl": "YOUR_ETH_WSS_URL",
+      "rpcUrl": "YOUR_ETH_RPC_URL"
+    }
+  },
+  "plugins": ["@elizaos/plugin-arbitrage", "@elizaos/plugin-evm"]
+}
+```
+
+## Integration
+
+The plugin integrates with ElizaOS and provides actions like `EXECUTE_ARBITRAGE` and providers such as `marketProvider`.
+
+## Example Usage
+
+```
+User: "Find arbitrage opportunities"
+Trader: "Scanning for arbitrage trades..."
+```
+`````
+
+## File: packages/docs/static/packages/plugins/compass.md
+`````markdown
+# @elizaos-plugins/plugin-compass
+
+## Purpose
+
+A plugin that integrates the Compass API into the ElizaOS ecosystem to execute operations on DeFi protocols.
+
+## Key Features
+
+- Leverages the `@compass-labs/sdk` TypeScript SDK
+- Provides actions corresponding to Compass API endpoints and schemas
+
+## Installation
+
+```
+npx elizaos plugins add @elizaos-plugins/plugin-compass
+bun run build
+```
+
+## Configuration
+
+Required environment variables:
+
+- COMPASS_WALLET_PRIVATE_KEY
+- COMPASS_ARBITRUM_RPC_URL
+- COMPASS_ETHEREUM_RPC_URL
+- COMPASS_BASE_RPC_URL
+
+These can also be set directly in the character configuration under settings.secrets.
+
+## Integration
+
+Added to the character configuration in the "plugins" array as "@elizaos-plugins/plugin-compass".
+
+## Links
+
+- [Compass API](https://api.compasslabs.ai/)
+- [Compass SDK](https://www.npmjs.com/package/@compass-labs/sdk)
+`````
+
+## File: packages/docs/static/packages/plugins/d-a-t-a.md
+`````markdown
+# @elizaos-plugins/plugin-d.a.t.a
+
+## Purpose
+
+A Data Authentication, Trust, and Attestation framework plugin from CARV that enhances the Eliza Agent Framework with powerful data processing capabilities, enabling agents to analyze, transform, and derive insights from various data sources.
+
+## Key Features
+
+- Comprehensive Data Processing: Transform raw data into actionable insights through advanced analysis techniques
+- Flexible Data Handling: Support for multiple data formats and sources, from CSV to JSON and APIs
+- Intelligent Analysis: Leverage statistical methods and machine learning techniques for deeper understanding
+
+## Integration
+
+Integrates with the Eliza Agent Framework to empower AI agents with sophisticated data analysis capabilities.
+
+## Use Cases
+
+- On-chain stats fetching
+- Token info
+- On-chain address tracking (CARV ID required)
+
+## Example Usage
+
+Users can query token information such as AAVE, receiving detailed data about the token's category, platforms it's deployed on, and other relevant information through the plugin's data retrieval capabilities.
+`````
+
+## File: packages/docs/static/packages/plugins/flow-advanced.md
+`````markdown
+# @elizaos-plugins/plugin-flow-advanced
+
+## Purpose
+
+This plugin provides advanced functionality for the Flow Blockchain.
+
+## Key Features
+
+- Accounts management based on Account Linking feature
+- Token Price Query for any token on Flow Blockchain
+- Token Transfer from User's account to others' address
+- Token Registeration for any token on Flow Blockchain
+
+## Installation
+
+```bash
+npx elizaos plugins add @elizaos-plugins/plugin-di
+npx elizaos plugins add @elizaos-plugins/plugin-flow
+npx elizaos plugins add @elizaos-plugins/plugin-flow-advanced
+```
+
+## Configuration
+
+Environment variables:
+
+```typescript
+FLOW_ADDRESS=<Flow wallet address starting with 0x>
+FLOW_PRIVATE_KEY=<Private key for the Flow wallet starting with 0x>
+FLOW_NETWORK=<Network to connect to: "mainnet", "testnet", or "emulator" (optional, defaults to "mainnet")>
+FLOW_ENDPOINT_URL=<Custom RPC endpoint URL (optional)>
+```
+
+## Integration
+
+```typescript
+import { advancedFlowPlugin } from '@elizaos-plugins/plugin-flow-advanced';
+```
+
+## Example Usage
+
+```typescript
+'Send 5 FLOW to 0xa51d7fe9e0080662';
+'Send 1 FLOW - A.1654653399040a61.FlowToken to 0xa2de93114bae3e73';
+'Send 1000 FROTH - 0xb73bf8e6a4477a952e0338e6cc00cc0ce5ad04ba to 0x000000000000000000000002e44fbfbd00395de5';
+```
+`````
+
+## File: packages/docs/static/packages/plugins/story.md
+`````markdown
+# ElizaOS Story Protocol Plugin
+
+## Purpose
+
+A plugin for ElizaOS that enables interaction with Story Protocol - a comprehensive IP management system on the blockchain that allows creators to register, license, and manage their intellectual property assets.
+
+## Key Features
+
+- IP Registration: Register creative works as IP assets on Story Protocol
+- License Management: Attach license terms to IP assets with customizable commercial terms
+- IP Licensing: Mint license tokens for IP assets
+- Asset Information: Fetch details about IP assets and available licenses
+- Blockchain Integration: Built-in wallet provider for Odyssey testnet
+
+## Installation
+
+Install via npm:
+
+```bash
+npm install @elizaos-plugins/plugin-story
+```
+
+Or using bun:
+
+```bash
+bun add @elizaos-plugins/plugin-story
+```
+
+## Configuration
+
+Add to ElizaOS agent configuration:
+
+```javascript
+// agent.config.js
+export default {
+  // Other ElizaOS configuration
+  plugins: ['story'],
+  settings: {
+    STORY_PRIVATE_KEY: '0x...', // Your Story Protocol private key
+    PINATA_JWT: '...', // Your Pinata JWT token
+  },
+};
+```
+
+## Integration
+
+Integrates with Story Protocol on the Odyssey testnet, providing on-chain IP registration, programmable licensing with configurable commercial terms, creator attribution, revenue sharing, and IP relationship tracking.
+
+## Example Usage
+
+Register IP assets:
+
+```
+User: I'd like to register a short story I wrote called "The Digital Forest"
+Agent: Great! What's the description for your IP?
+User: It's a sci-fi story about a forest that exists in cyberspace
+Agent: I'll register "The Digital Forest" as an IP asset on Story Protocol.
+*Agent registers IP and provides transaction details*
+```
+
+## Links
+
+- [Story Protocol Documentation](https://docs.storyprotocol.xyz)
+- [Odyssey Testnet Explorer](https://odyssey.storyscan.xyz)
+- [Pinata IPFS](https://www.pinata.cloud/)
+`````
+
+## File: packages/docs/static/packages/plugins/twilio.md
+`````markdown
+# @elizaos/plugin-twilio
+
+## Purpose
+
+A Twilio plugin for ElizaOS that enables SMS and voice call capabilities.
+
+## Key Features
+
+- SMS Messaging: Send, receive, and respond to SMS messages with natural conversation handling
+- Voice Calls: Make and receive calls with natural voice conversations using ElevenLabs and speech recognition
+
+## Installation
+
+```bash
+bun add @elizaos-plugins/plugin-twilio
+```
+
+## Configuration
+
+1. Add plugin to character file with settings for actions and voice
+2. Set environment variables in `.env` file (Twilio credentials, webhook configuration, ElevenLabs API key)
+3. Configure webhooks in Twilio Console for voice and SMS
+4. For local development, use ngrok to expose webhook endpoints
+
+## Integration
+
+- Connects with ElizaOS to enable SMS and voice communication
+- Uses ElevenLabs for voice synthesis
+- Uses Twilio's speech recognition capabilities for speech-to-text
+
+## Example Usage
+
+SMS Commands:
+
+```
+Send an SMS to +1234567890 saying Hello world!
+Send SMS to +1234567890 about the weather forecast
+```
+
+Voice Call Commands:
+
+```
+Call +1234567890 and tell them about the latest updates
+Call +1234567890 to say that we need to schedule a meeting
+```
 `````
 
 

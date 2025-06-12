@@ -106,7 +106,7 @@ Plugins provide your agent with capabilities and integrations:
 
 - `@elizaos/plugin-discord`: Discord integration
 - `@elizaos/plugin-telegram`: Telegram integration
-- `@elizaos/plugin-twitter`: Twitter/X integration
+- `@elizaos/plugin-farcaster`: Farcaster integration
 - `@elizaos/plugin-slack`: Slack integration
 - `@elizaos/plugin-direct`: Direct chat interface
 - `@elizaos/plugin-simsai`: SimsAI platform integration

@@ -1,5 +1,8 @@
 # @elizaos/plugin-twitter
 
+> **⚠️ MAINTANENCE NOTICE**  
+> **This plugin is undergoing maintanence.**  
+
 A plugin for Twitter/X integration, providing automated tweet posting capabilities with character-aware content generation.
 
 ## Overview
@@ -8,36 +11,12 @@ This plugin provides functionality to:
 
 - Compose context-aware tweets
 - Post tweets to Twitter/X platform
-- Handle authentication and session management
-- Support premium Twitter features
 - Manage tweet length restrictions
 
 ## Installation
 
 ```bash
 npm install @elizaos/plugin-twitter
-```
-
-## Configuration
-
-### Required environment variables:
-
-```env
-TWITTER_API_KEY=your_api_key
-TWITTER_API_SECRET_KEY=your_api_secret_key
-TWITTER_ACCESS_TOKEN=your_access_token
-TWITTER_ACCESS_TOKEN_SECRET=your_access_token_secret
-```
-
-### Optional environment variables:
-
-```env
-TWITTER_TARGET_USERS=username1,username2        # Comma-separated list of target users
-TWITTER_DRY_RUN=false                           # Set to true to simulate actions without posting
-TWITTER_POST_ENABLE=false                       # Enable autonomous tweet posting
-TWITTER_SEARCH_ENABLE=true                      # Enable timeline monitoring
-TWITTER_POST_INTERVAL_MIN=90                    # Minimum minutes between posts
-TWITTER_POST_INTERVAL_MAX=180                   # Maximum minutes between posts
 ```
 
 ## Usage
@@ -100,11 +79,8 @@ npm run dev
 ## Dependencies
 
 - `@elizaos/core`: Core Eliza functionality
-- `agent-twitter-client`: Twitter API client
 - `tsup`: Build tool
 - Other standard dependencies listed in package.json
-
-## API Reference
 
 ### Core Interfaces
 
@@ -138,24 +114,13 @@ interface Action {
 
 ## Common Issues/Troubleshooting
 
-### Issue: Authentication Failures
-
-- **Cause**: Invalid credentials or 2FA configuration
-- **Solution**: Verify credentials and 2FA setup
-
 ### Issue: Tweet Length Errors
 
 - **Cause**: Content exceeds Twitter's character limit
 - **Solution**: Enable TWITTER_PREMIUM for extended tweets or ensure content is within limits
 
-### Issue: Rate Limiting
-
-- **Cause**: Too many requests in short time
-- **Solution**: Implement proper request throttling
-
 ## Security Best Practices
 
-- Store credentials securely using environment variables
 - Use 2FA when possible
 - Implement proper error handling
 - Keep dependencies updated
@@ -190,63 +155,6 @@ Generate a tweet that:
 `;
 ```
 
-## Future Enhancements
-
-1. **Content Generation**
-
-   - Advanced context awareness
-   - Multi-language support
-   - Style customization
-   - Hashtag optimization
-   - Media generation
-   - Thread composition
-
-2. **Engagement Features**
-
-   - Auto-reply system
-   - Engagement analytics
-   - Follower management
-   - Interaction scheduling
-   - Sentiment analysis
-   - Community management
-
-3. **Tweet Management**
-
-   - Thread management
-   - Tweet scheduling
-   - Content moderation
-   - Archive management
-   - Delete automation
-   - Edit optimization
-
-4. **Analytics Integration**
-
-   - Performance tracking
-   - Engagement metrics
-   - Audience insights
-   - Trend analysis
-   - ROI measurement
-   - Custom reporting
-
-5. **Authentication**
-
-   - OAuth improvements
-   - Multi-account support
-   - Session management
-   - Rate limit handling
-   - Security enhancements
-   - Backup mechanisms
-
-6. **Developer Tools**
-   - Enhanced debugging
-   - Testing framework
-   - Documentation generator
-   - Integration templates
-   - Error handling
-   - Logging system
-
-We welcome community feedback and contributions to help prioritize these enhancements.
-
 ## Contributing
 
 Contributions are welcome! Please see the CONTRIBUTING.md file for more information.
@@ -256,13 +164,11 @@ Contributions are welcome! Please see the CONTRIBUTING.md file for more informat
 This plugin integrates with and builds upon several key technologies:
 
 - [Twitter/X API](https://developer.twitter.com/en/docs): Official Twitter platform API
-- [agent-twitter-client](https://www.npmjs.com/package/agent-twitter-client): Twitter API client library
 - [Zod](https://github.com/colinhacks/zod): TypeScript-first schema validation
 
 Special thanks to:
 
 - The Twitter/X Developer Platform team
-- The agent-twitter-client maintainers for API integration tools
 - The Eliza community for their contributions and feedback
 
 For more information about Twitter/X integration capabilities:
@@ -270,7 +176,3 @@ For more information about Twitter/X integration capabilities:
 - [Twitter API Documentation](https://developer.twitter.com/en/docs)
 - [Twitter Developer Portal](https://developer.twitter.com/en/portal/dashboard)
 - [Twitter API Best Practices](https://developer.twitter.com/en/docs/twitter-api/rate-limits)
-
-## License
-
-This plugin is part of the Eliza project. See the main project repository for license information.

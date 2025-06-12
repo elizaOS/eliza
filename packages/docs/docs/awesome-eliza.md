@@ -89,7 +89,6 @@ A curated list of awesome things related to the [eliza framework](https://github
 
 ## 🛠️ Tools
 
-- [twitter-scraper-finetune](https://github.com/elizaOS/twitter-scraper-finetune) - Scrape twitter accounts for fine tuning
 - [elizagen](https://elizagen.howieduhzit.best/) - Easy eliza characterfile generator, add your own API keys
 - [Fleek.xyz](https://fleek.xyz/eliza/) - Deploy Eliza agents in one click on a hosted platform
 
@@ -108,7 +107,6 @@ A curated list of awesome things related to the [eliza framework](https://github
 - [Lens](https://github.com/elizaos-plugins/client-lens) - Client for Lens Protocol decentralized social networking
 - [Slack](https://github.com/elizaos-plugins/client-slack) - Slack integration with messaging and workspace collaboration features
 - [Telegram](https://github.com/elizaos-plugins/client-telegram) - Telegram messaging client with bot and channel integration capabilities
-- [Twitter](https://github.com/elizaos-plugins/client-twitter) - Twitter/X client for posting and monitoring social media activity
 - [Tako](https://github.com/takoprotocol/client-tako) - Client for the Tako protocol enabling cross-platform social engagement
 - [Alexa](https://github.com/elizaos-plugins/client-alexa) - Integration with Amazon Alexa devices for voice-controlled agent interactions
 - [Deva](https://github.com/elizaos-plugins/client-deva) - Communication with Deva AI systems for advanced conversational capabilities

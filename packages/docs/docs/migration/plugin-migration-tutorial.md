@@ -82,7 +82,7 @@ The runtime no longer needs to know about every possible AI provider. Your plugi
 
 ### Services: The Unification of External Connections
 
-In 0.x, we had "clients" - things that connected to Discord, Twitter, Telegram, etc. But we realized that these weren't just clients; they were providing services to the agent. They were handling messages, managing connections, processing events.
+In 0.x, we had "clients" - things that connected to Discord, Telegram, etc. But we realized that these weren't just clients; they were providing services to the agent. They were handling messages, managing connections, processing events.
 
 In 1.x, everything that connects to the outside world is a service. This isn't just a renaming; it's a recognition that these components have lifecycles, they need to start up and shut down gracefully, they provide capabilities to the system. They're not just passive clients; they're active service providers.
 
@@ -98,7 +98,7 @@ First, find every reference to "user" or "userId". Each time you see one, ask yo
 
 Second, look for every place you're importing utilities from the Eliza core. Ask yourself: "Is my plugin depending on the runtime to do something it should handle itself?" In 1.x, your plugin needs to be self-sufficient.
 
-Third, find your client connections (Discord, Twitter, etc.). Ask yourself: "What service is this really providing to the system?" In 1.x, you'll need to think of these as services with proper lifecycles.
+Third, find your client connections (Discord, Telegram, etc.). Ask yourself: "What service is this really providing to the system?" In 1.x, you'll need to think of these as services with proper lifecycles.
 
 ### Step 2: Setting Up Your New Development Environment
 
