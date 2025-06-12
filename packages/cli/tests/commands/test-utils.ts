@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { existsSync } from 'fs';
+import { TEST_TIMEOUTS } from '../test-timeouts';
 
 export interface TestContext {
   testTmpDir: string;
@@ -68,7 +69,7 @@ export function safeChangeDirectory(targetDir: string): void {
 export async function createTestProject(elizaosCmd: string, projectName: string): Promise<void> {
   execSync(`${elizaosCmd} create ${projectName} --yes`, {
     stdio: 'pipe',
-    timeout: 60000,
+    timeout: TEST_TIMEOUTS.PROJECT_CREATION,
   });
   process.chdir(projectName);
 }
@@ -83,7 +84,7 @@ export function runCliCommand(
 ): string {
   return execSync(`${elizaosCmd} ${args}`, {
     encoding: 'utf8',
-    timeout: options.timeout || 30000,
+    timeout: options.timeout || TEST_TIMEOUTS.STANDARD_COMMAND,
   });
 }
 
@@ -98,7 +99,7 @@ export function runCliCommandSilently(
   return execSync(`${elizaosCmd} ${args}`, {
     encoding: 'utf8',
     stdio: 'pipe',
-    timeout: options.timeout || 30000,
+    timeout: options.timeout || TEST_TIMEOUTS.STANDARD_COMMAND,
   });
 }
 
@@ -114,7 +115,7 @@ export function expectCliCommandToFail(
     const result = execSync(`${elizaosCmd} ${args}`, {
       encoding: 'utf8',
       stdio: 'pipe',
-      timeout: options.timeout || 30000,
+      timeout: options.timeout || TEST_TIMEOUTS.STANDARD_COMMAND,
     });
     throw new Error(`Command should have failed but succeeded with output: ${result}`);
   } catch (e: any) {

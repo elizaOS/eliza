@@ -289,7 +289,7 @@ export class MessageBusService extends Service {
     }
 
     logger.info(
-      `[${this.runtime.character.name}] MessageBusService: Agent is a participant in channel ${message.channel_id}, proceeding with message processing`
+      `[${this.runtime.character.name} - ${this.runtime.agentId}] MessageBusService: Agent is a participant in channel ${message.channel_id}, proceeding with message processing`
     );
 
     try {

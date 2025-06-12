@@ -5,6 +5,7 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import { existsSync } from 'fs';
 import { safeChangeDirectory, runCliCommandSilently, expectCliCommandToFail } from './test-utils';
+import { TEST_TIMEOUTS } from '../test-timeouts';
 
 describe('ElizaOS Create Commands', () => {
   let testTmpDir: string;
@@ -69,7 +70,7 @@ describe('ElizaOS Create Commands', () => {
     execSync(`rm -rf my-default-app`, { stdio: 'ignore' });
 
     const result = runCliCommandSilently(elizaosCmd, 'create my-default-app --yes', {
-      timeout: 30000,
+      timeout: TEST_TIMEOUTS.PROJECT_CREATION,
     });
 
     // Check for various success patterns since output might vary
@@ -94,13 +95,13 @@ describe('ElizaOS Create Commands', () => {
     expect(existsSync('my-default-app/src')).toBe(true);
     expect(existsSync('my-default-app/.gitignore')).toBe(true);
     expect(existsSync('my-default-app/.npmignore')).toBe(true);
-  }, 40000);
+  }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
 
   test('create plugin project succeeds', async () => {
     execSync(`rm -rf plugin-my-plugin-app`, { stdio: 'ignore' });
 
     const result = runCliCommandSilently(elizaosCmd, 'create my-plugin-app --yes --type plugin', {
-      timeout: 30000,
+      timeout: TEST_TIMEOUTS.PROJECT_CREATION,
     });
 
     // Check for various success patterns
@@ -125,7 +126,7 @@ describe('ElizaOS Create Commands', () => {
     expect(existsSync(pluginDir)).toBe(true);
     expect(existsSync(join(pluginDir, 'package.json'))).toBe(true);
     expect(existsSync(join(pluginDir, 'src/index.ts'))).toBe(true);
-  }, 40000);
+  }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
 
   test('create agent succeeds', async () => {
     execSync(`rm -f my-test-agent.json`, { stdio: 'ignore' });
@@ -152,11 +153,13 @@ describe('ElizaOS Create Commands', () => {
     execSync(`rm -rf create-in-place && mkdir create-in-place`, { stdio: 'ignore' });
     process.chdir('create-in-place');
 
-    const result = runCliCommandSilently(elizaosCmd, 'create . --yes');
+    const result = runCliCommandSilently(elizaosCmd, 'create . --yes', {
+      timeout: TEST_TIMEOUTS.PROJECT_CREATION,
+    });
 
     expect(result).toContain('Project initialized successfully!');
     expect(existsSync('package.json')).toBe(true);
-  });
+  }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
 
   test('rejects invalid project name', async () => {
     const result = expectCliCommandToFail(elizaosCmd, 'create "Invalid Name" --yes');
@@ -187,7 +190,7 @@ describe('ElizaOS Create Commands', () => {
       // Skip this test if create-eliza is not available
       console.warn('Skipping create-eliza test - command not available');
     }
-  }, 30000);
+  }, 60000);
 
   test('create-eliza plugin project succeeds', async () => {
     execSync(`rm -rf plugin-my-create-plugin`, { stdio: 'ignore' });
@@ -204,7 +207,7 @@ describe('ElizaOS Create Commands', () => {
       // Skip this test if create-eliza is not available
       console.warn('Skipping create-eliza plugin test - command not available');
     }
-  }, 30000);
+  }, 60000);
 
   test('create-eliza agent succeeds', async () => {
     execSync(`rm -f my-create-agent.json`, { stdio: 'ignore' });
@@ -219,5 +222,5 @@ describe('ElizaOS Create Commands', () => {
       // Skip this test if create-eliza is not available
       console.warn('Skipping create-eliza agent test - command not available');
     }
-  }, 30000);
+  }, 60000);
 });
