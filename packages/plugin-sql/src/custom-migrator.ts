@@ -951,10 +951,12 @@ export class PluginNamespaceManager {
         const result = await this.db.execute(sql.raw('SHOW search_path'));
         if (result.rows && result.rows.length > 0) {
           const searchPath = (result.rows[0] as any).search_path;
-          // The search_path can be a comma-separated list, take the first one.
-          const firstSchema = searchPath.split(',')[0].trim();
-          if (firstSchema && firstSchema !== '"$user"') {
-            return firstSchema;
+          // The search_path can be a comma-separated list, iterate to find the first valid schema
+          const schemas = searchPath.split(',').map((s: string) => s.trim());
+          for (const schema of schemas) {
+            if (schema && !schema.includes('$user')) {
+              return schema;
+            }
           }
         }
       } catch (e) {
