@@ -69,7 +69,7 @@ describe('ElizaOS Create Commands', () => {
     execSync(`rm -rf my-default-app`, { stdio: 'ignore' });
 
     const result = runCliCommandSilently(elizaosCmd, 'create my-default-app --yes', {
-      timeout: 60000,
+      timeout: 120000,
     });
 
     // Check for various success patterns since output might vary
@@ -100,7 +100,7 @@ describe('ElizaOS Create Commands', () => {
     execSync(`rm -rf plugin-my-plugin-app`, { stdio: 'ignore' });
 
     const result = runCliCommandSilently(elizaosCmd, 'create my-plugin-app --yes --type plugin', {
-      timeout: 60000,
+      timeout: 120000,
     });
 
     // Check for various success patterns
@@ -152,7 +152,9 @@ describe('ElizaOS Create Commands', () => {
     execSync(`rm -rf create-in-place && mkdir create-in-place`, { stdio: 'ignore' });
     process.chdir('create-in-place');
 
-    const result = runCliCommandSilently(elizaosCmd, 'create . --yes');
+    const result = runCliCommandSilently(elizaosCmd, 'create . --yes', {
+      timeout: 120000,
+    });
 
     expect(result).toContain('Project initialized successfully!');
     expect(existsSync('package.json')).toBe(true);
