@@ -10,7 +10,6 @@ env:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
   ELIZA_NONINTERACTIVE: true
-  ELIZA_TEST_MODE: true
 on:
   push:
     branches:
