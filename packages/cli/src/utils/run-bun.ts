@@ -15,13 +15,22 @@ export async function runBunCommand(
 ): Promise<void> {
   const finalArgs = [...args];
   
-  // In CI environments, automatically use offline mode for install-related commands
+  // In CI environments, optimize bun install with appropriate flags
   const isInstallCommand = args[0] === 'install' || args[0] === 'add';
   const isCI = process.env.CI || process.env.ELIZA_TEST_MODE === 'true';
   
-  if (isCI && isInstallCommand && !finalArgs.includes('--prefer-offline')) {
-    finalArgs.push('--prefer-offline');
-    console.info('Using prefer-offline mode for faster installation from cache...');
+  console.log(`[DEBUG] runBunCommand: args=${JSON.stringify(args)}, isInstallCommand=${isInstallCommand}, isCI=${isCI}, CI=${process.env.CI}, ELIZA_TEST_MODE=${process.env.ELIZA_TEST_MODE}`);
+  
+  if (isCI && isInstallCommand) {
+    // Use flags that actually exist in Bun to optimize CI installations
+    if (!finalArgs.includes('--frozen-lockfile')) {
+      finalArgs.push('--frozen-lockfile');  // Prevent lockfile changes in CI
+    }
+    if (!finalArgs.includes('--no-install')) {
+      finalArgs.push('--no-install');  // Disable auto-install to use existing packages
+    }
+    console.info('✅ Using CI-optimized flags for faster installation...');
+    console.log(`[DEBUG] Final args: ${JSON.stringify(finalArgs)}`);
   }
 
   try {
@@ -31,10 +40,10 @@ export async function runBunCommand(
       throw new Error(`Bun command not found. ${displayBunInstallationTipCompact()}`);
     }
     
-    // If prefer-offline mode fails, try again without prefer-offline flag
+    // If CI-optimized install fails, try again with basic args
     if (isCI && isInstallCommand && 
-        (error.message?.includes('offline') || error.message?.includes('prefer-offline'))) {
-      console.warn('Prefer-offline install failed, retrying with network access...');
+        (error.message?.includes('frozen-lockfile') || error.message?.includes('install'))) {
+      console.warn('CI-optimized install failed, retrying with basic args...');
       await execa('bun', args, { cwd, stdio: 'inherit' });
     } else {
       throw error;
