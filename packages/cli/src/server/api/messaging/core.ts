@@ -80,7 +80,6 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
           thought: raw_message?.thought,
           actions: raw_message?.actions,
           attachments: metadata?.attachments,
-          prompt: raw_message?.prompt,
         });
       }
       // NO broadcast to internalMessageBus here, this endpoint is for messages ALREADY PROCESSED by an agent

@@ -44,6 +44,7 @@ import {
 import { BM25 } from './search';
 import { EventType, type MessagePayload } from './types';
 import { stringToUuid } from './utils';
+import { EventEmitter } from 'events';
 
 const environmentSettings: RuntimeSettings = {};
 
@@ -108,6 +109,7 @@ export class AgentRuntime implements IAgentRuntime {
   public logger;
   private settings: RuntimeSettings;
   private servicesInitQueue = new Set<typeof Service>();
+  private currentRunId?: UUID; // Track the current run ID
 
   constructor(opts: {
     conversationLength?: number;
@@ -123,16 +125,15 @@ export class AgentRuntime implements IAgentRuntime {
     this.agentId =
       opts.character?.id ??
       opts?.agentId ??
-      stringToUuid(opts.character?.name ?? uuidv4() + opts.character?.username);
+              stringToUuid(opts.character?.name ?? uuidv4() + opts.character?.username);
     this.character = opts.character;
     const logLevel = process.env.LOG_LEVEL || 'info';
 
     // Create the logger with appropriate level - only show debug logs when explicitly configured
     this.logger = createLogger({
       agentName: this.character?.name,
+      logLevel: logLevel as any,
     });
-
-    this.logger.debug(`[AgentRuntime] Process working directory: ${process.cwd()}`);
 
     this.#conversationLength = opts.conversationLength ?? this.#conversationLength;
     if (opts.adapter) {
@@ -153,6 +154,39 @@ export class AgentRuntime implements IAgentRuntime {
     }
 
     this.logger.debug(`Success: Agent ID: ${this.agentId}`);
+    this.currentRunId = undefined; // Initialize run ID tracker
+  }
+
+  /**
+   * Create a new run ID for tracking a sequence of model calls
+   */
+  createRunId(): UUID {
+    return uuidv4() as UUID;
+  }
+
+  /**
+   * Start a new run for tracking prompts
+   */
+  startRun(): UUID {
+    this.currentRunId = this.createRunId();
+    return this.currentRunId;
+  }
+
+  /**
+   * End the current run
+   */
+  endRun(): void {
+    this.currentRunId = undefined;
+  }
+
+  /**
+   * Get the current run ID (creates one if it doesn't exist)
+   */
+  getCurrentRunId(): UUID {
+    if (!this.currentRunId) {
+      this.currentRunId = this.createRunId();
+    }
+    return this.currentRunId;
   }
 
   async registerPlugin(plugin: Plugin): Promise<void> {
@@ -1308,17 +1342,36 @@ export class AgentRuntime implements IAgentRuntime {
             } items)`
           : JSON.stringify(response, safeReplacer(), 2).replace(/\\n/g, '\n')
       );
+      
+      // Log all prompts except TEXT_EMBEDDING to track agent behavior
+      if (modelKey !== ModelType.TEXT_EMBEDDING && promptContent) {
+        await this.adapter.log({
+          entityId: this.agentId,
+          roomId: this.agentId,
+          body: {
+            modelType,
+            modelKey,
+            prompt: promptContent,
+            runId: this.getCurrentRunId(),
+            timestamp: Date.now(),
+            executionTime: elapsedTime,
+            provider: provider || (this.models.get(modelKey)?.[0]?.provider || 'unknown'),
+          },
+          type: `prompt:${modelKey}`,
+        });
+      }
+      
+      // Keep the existing model logging for backward compatibility
       this.adapter.log({
         entityId: this.agentId,
         roomId: this.agentId,
         body: {
           modelType,
           modelKey,
-          params: params
-            ? typeof params === 'object'
-              ? Object.keys(params)
-              : typeof params
-            : null,
+          params: {
+            ...(typeof params === 'object' && !Array.isArray(params) && params ? params : {}),
+            prompt: promptContent,
+          },
           response:
             Array.isArray(response) && response.every((x) => typeof x === 'number')
               ? '[array]'

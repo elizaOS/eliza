@@ -165,21 +165,6 @@ export function MessageContent({
                 </CollapsibleContent>
               </Collapsible>
             )}
-            {message.prompt && (
-              <Collapsible className="mb-1">
-                <CollapsibleTrigger className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors group">
-                  <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]:rotate-90" />
-                  LLM Prompt
-                </CollapsibleTrigger>
-                <CollapsibleContent className="pl-5 pt-1">
-                  <div className="bg-muted/50 rounded-md p-2 mt-1">
-                    <pre className="text-xs font-mono whitespace-pre-wrap overflow-x-auto text-muted-foreground">
-                      {message.prompt}
-                    </pre>
-                  </div>
-                </CollapsibleContent>
-              </Collapsible>
-            )}
           </div>
         )}
 

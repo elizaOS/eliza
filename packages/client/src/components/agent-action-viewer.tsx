@@ -198,39 +198,75 @@ function ActionCard({ action, onDelete }: ActionCardProps) {
       );
     }
 
-    const paramsText =
-      typeof params === 'object' ? JSON.stringify(params, null, 2) : String(params);
-    const isLong = paramsText.length > 200;
-
+    // Extract prompt from params if present
+    const { prompt, ...otherParams } = params || {};
+    
     return (
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-muted-foreground">Parameters</span>
-          {isLong && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowFullParams(!showFullParams)}
-              className="h-6 px-2 text-xs"
-            >
-              {showFullParams ? 'Show less' : 'Show more'}
-            </Button>
-          )}
-        </div>
-        <div className="bg-muted/30 rounded-md p-3 relative group">
-          <pre className="text-xs font-mono whitespace-pre-wrap overflow-x-auto">
-            {showFullParams || !isLong ? paramsText : truncateText(paramsText, 200)}
-          </pre>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => copyToClipboard(paramsText)}
-            className="absolute top-1 right-1 h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-            title="Copy parameters"
-          >
-            <Copy className="h-3 w-3" />
-          </Button>
-        </div>
+      <div className="space-y-4">
+        {/* Display prompt separately with special formatting */}
+        {prompt && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-muted-foreground">Prompt</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => copyToClipboard(prompt)}
+                className="h-6 px-2 text-xs"
+                title="Copy prompt"
+              >
+                <Copy className="h-3 w-3 mr-1" />
+                Copy
+              </Button>
+            </div>
+            <div className="bg-muted/30 rounded-md p-3 relative">
+              <pre className="text-xs font-mono whitespace-pre-wrap overflow-x-auto">
+                {typeof prompt === 'string' ? prompt : JSON.stringify(prompt, null, 2)}
+              </pre>
+            </div>
+          </div>
+        )}
+
+        {/* Display other parameters if any */}
+        {Object.keys(otherParams).length > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-muted-foreground">Other Parameters</span>
+              {(() => {
+                const paramsText = JSON.stringify(otherParams, null, 2);
+                const isLong = paramsText.length > 200;
+                return isLong ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowFullParams(!showFullParams)}
+                    className="h-6 px-2 text-xs"
+                  >
+                    {showFullParams ? 'Show less' : 'Show more'}
+                  </Button>
+                ) : null;
+              })()}
+            </div>
+            <div className="bg-muted/30 rounded-md p-3 relative group">
+              <pre className="text-xs font-mono whitespace-pre-wrap overflow-x-auto">
+                {(() => {
+                  const paramsText = JSON.stringify(otherParams, null, 2);
+                  const isLong = paramsText.length > 200;
+                  return showFullParams || !isLong ? paramsText : truncateText(paramsText, 200);
+                })()}
+              </pre>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => copyToClipboard(JSON.stringify(otherParams, null, 2))}
+                className="absolute top-1 right-1 h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                title="Copy parameters"
+              >
+                <Copy className="h-3 w-3" />
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     );
   };

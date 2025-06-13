@@ -492,7 +492,6 @@ export class MessageBusService extends Service {
           text: content.text, 
           thought: content.thought, 
           actions: content.actions,
-          prompt: content.prompt  // Include the prompt in raw_message
         },
         metadata: {
           agent_id: this.runtime.agentId,
