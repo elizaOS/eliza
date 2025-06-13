@@ -1,5 +1,5 @@
 {
-  "name": "@npm-username/plugin-name",
+  "name": "@elizaos/plugin-starter",
   "description": "${PLUGINDESCRIPTION}",
   "version": "1.0.6",
   "type": "module",

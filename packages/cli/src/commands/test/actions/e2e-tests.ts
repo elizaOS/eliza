@@ -1,6 +1,6 @@
 import { loadProject } from '@/src/project';
-import { AgentServer } from '@/src/server/index';
-import { jsonToCharacter, loadCharacterTryPath } from '@/src/server/loader';
+import { AgentServer } from '@elizaos/server';
+import { jsonToCharacter, loadCharacterTryPath } from '../../../commands/start/utils/loader';
 import {
   buildProject,
   findNextAvailablePort,

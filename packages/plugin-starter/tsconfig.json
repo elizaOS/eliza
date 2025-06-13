@@ -9,7 +9,8 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": false,
-    "allowImportingTsExtensions": false,
+    "allowImportingTsExtensions": true,
+    "emitDeclarationOnly": true,
     "declaration": true,
     "resolveJsonModule": true,
     "noImplicitAny": false,
@@ -17,12 +18,7 @@
     "checkJs": false,
     "noEmitOnError": false,
     "moduleDetection": "force",
-    "allowArbitraryExtensions": true,
-    "baseUrl": ".",
-    "paths": {
-      "@elizaos/core": ["../core/src"],
-      "@elizaos/core/*": ["../core/src/*"]
-    }
+    "allowArbitraryExtensions": true
   },
   "include": ["src/**/*.ts", "e2e/**/*.ts", "__tests__/**/*.ts"]
 }
