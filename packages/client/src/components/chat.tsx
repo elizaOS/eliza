@@ -955,11 +955,11 @@ export default function Chat({
                     <DropdownMenuTrigger asChild>
                       <Button variant="outline" size="sm" className="w-8 sm:max-w-[300px] sm:w-auto">
                         <History className="size-4 flex-shrink-0" />
-                        <span className="hidden sm:inline truncate text-xs sm:text-sm sm:ml-2">
+                        <span className="hidden md:inline truncate text-xs sm:text-sm sm:ml-2">
                           {agentDmChannels.find((c) => c.id === chatState.currentDmChannelId)
                             ?.name || 'Select Chat'}
                         </span>
-                        <Badge variant="secondary" className="hidden sm:inline-flex ml-1 sm:ml-2 text-xs">
+                        <Badge variant="secondary" className="hidden md:inline-flex ml-1 sm:ml-2 text-xs">
                           {agentDmChannels.length}
                         </Badge>
                       </Button>
