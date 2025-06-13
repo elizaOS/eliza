@@ -34,7 +34,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { agentTemplates, getTemplateById } from '@/config/agent-templates';
 import { cn } from '@/lib/utils';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import SplitButton from '@/components/split-button';
+import { SplitButton } from '@/components/ui/split-button';
 
 export type InputField = {
   name: string;
@@ -70,9 +70,10 @@ export type CharacterFormProps = {
   onSubmit: (character: Agent) => Promise<void>;
   onDelete?: () => void;
   onReset?: () => void;
-  stopAgentButton?: React.ReactNode;
+  onStopAgent?: () => void;
   isAgent?: boolean;
   isDeleting?: boolean;
+  isStopping?: boolean;
   customComponents?: customComponent[];
   characterValue: Agent;
   setCharacterValue: {
@@ -121,8 +122,9 @@ export default function CharacterForm({
   onSubmit,
   onDelete,
   onReset,
-  stopAgentButton,
+  onStopAgent,
   isDeleting = false,
+  isStopping = false,
   customComponents = [],
 }: CharacterFormProps) {
   const { toast } = useToast();
@@ -446,7 +448,7 @@ export default function CharacterForm({
                 {field.title}
                 {field.name in FIELD_REQUIREMENTS &&
                   (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.name] ===
-                    FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
+                  FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
               </Label>
             </TooltipTrigger>
             {field.tooltip && (
@@ -521,7 +523,7 @@ export default function CharacterForm({
                 {field.title}
                 {field.path in FIELD_REQUIREMENTS &&
                   (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.path] ===
-                    FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
+                  FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
               </Label>
             </TooltipTrigger>
             {field.tooltip && (
@@ -607,49 +609,30 @@ export default function CharacterForm({
     fileInputRef.current?.click();
   };
 
-  // Define import/export options
-  const importExportOptions = [
-    {
-      label: 'Export JSON',
-      description: 'Export current agent configuration as a JSON file',
-      onClick: handleExportJSON,
-    },
-    {
-      label: 'Import JSON',
-      description: 'Import agent configuration from a JSON file',
-      onClick: handleImportClick,
-    },
-  ];
+
 
   // Define stop/delete options (only if both are available)
   const stopDeleteOptions = useMemo(() => {
     const options = [];
 
-    if (stopAgentButton) {
+    if (onStopAgent) {
       options.push({
         label: 'Stop Agent',
-        description: 'Stop the agent from running',
-        onClick: () => {
-          // The stopAgentButton should handle its own click logic
-          // We'll trigger it by finding and clicking the button
-          const stopButton = document.querySelector('[data-stop-agent]') as HTMLButtonElement;
-          if (stopButton) {
-            stopButton.click();
-          }
-        },
+        description: 'Stop running',
+        onClick: onStopAgent,
       });
     }
 
     if (onDelete) {
       options.push({
         label: 'Delete Agent',
-        description: 'Permanently delete this agent and all its data',
+        description: 'Delete permanently',
         onClick: () => onDelete(),
       });
     }
 
     return options;
-  }, [stopAgentButton, onDelete]);
+  }, [onStopAgent, onDelete]);
 
   /**
    * Handle template selection
@@ -674,22 +657,22 @@ export default function CharacterForm({
     [onReset, setCharacterValue]
   );
 
-  // Create all tabs data
+  // Create all tabs data with better short labels
   const allTabs = [
     ...AGENT_FORM_SCHEMA.map((section) => ({
       value: section.sectionValue,
       label: section.sectionTitle,
-      shortLabel: section.sectionTitle.substring(0, 8), // For mobile
+      shortLabel: section.sectionTitle.split(' ')[0], // Use first word for mobile
     })),
     ...customComponents.map((component) => ({
       value: `custom-${component.name}`,
       label: component.name,
-      shortLabel: (component as any).shortLabel || component.name.substring(0, 8), // Use provided shortLabel or first 4 chars
+      shortLabel: (component as any).shortLabel || component.name.split(' ')[0], // Use first word
     })),
   ];
 
   return (
-    <div ref={containerRef} className="container w-full mx-auto p-6">
+    <div ref={containerRef} className="w-full max-w-4xl mx-auto p-4 sm:p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-3xl font-bold">{title || 'Agent Settings'}</h1>
@@ -751,14 +734,11 @@ export default function CharacterForm({
                     key={tab.value}
                     value={tab.value}
                     className={cn(
-                      'inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
-                      'data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm',
-                      !showLabels && 'px-2' // Smaller padding on mobile
+                      'whitespace-nowrap px-3 py-1.5 text-sm font-medium',
+                      !showLabels && 'px-2 text-xs' // Smaller padding and text on mobile
                     )}
                   >
-                    <span className={cn('block', !showLabels && 'text-xs')}>
-                      {showLabels ? tab.label : tab.shortLabel}
-                    </span>
+                    {showLabels ? tab.label : tab.shortLabel}
                   </TabsTrigger>
                 ))}
               </TabsList>
@@ -805,10 +785,24 @@ export default function CharacterForm({
             {/* Stop/Delete Split Button - only show if we have options */}
             {stopDeleteOptions.length > 0 && (
               <SplitButton
-                options={stopDeleteOptions}
+                mainAction={{
+                  label: stopDeleteOptions[0].label === 'Stop Agent' && isStopping ? 'Stopping...' : stopDeleteOptions[0].label,
+                  onClick: stopDeleteOptions[0].onClick,
+                  icon: stopDeleteOptions[0].label === 'Stop Agent' ?
+                    (isStopping ? <Loader2 className="h-4 w-4 animate-spin" /> : <StopCircle className="h-4 w-4" />) :
+                    <Trash className="h-4 w-4" />,
+                  disabled: stopDeleteOptions[0].label === 'Stop Agent' ? isStopping : false
+                }}
+                actions={stopDeleteOptions.slice(1).map(option => ({
+                  label: option.label === 'Stop Agent' && isStopping ? 'Stopping...' : option.label,
+                  onClick: option.onClick,
+                  icon: option.label === 'Stop Agent' ?
+                    (isStopping ? <Loader2 className="h-4 w-4 animate-spin" /> : <StopCircle className="h-4 w-4" />) :
+                    <Trash className="h-4 w-4" />,
+                  variant: 'destructive' as const,
+                  disabled: option.label === 'Stop Agent' ? isStopping : false
+                }))}
                 variant="destructive"
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                buttonClassName="bg-destructive text-destructive-foreground hover:bg-destructive/90 border-destructive"
                 disabled={isDeleting}
               />
             )}
@@ -845,7 +839,21 @@ export default function CharacterForm({
             </TooltipProvider>
 
             {/* Import/Export Split Button */}
-            <SplitButton options={importExportOptions} defaultValue="0" />
+            <SplitButton
+              mainAction={{
+                label: 'Export JSON',
+                onClick: handleExportJSON,
+                icon: <Download className="h-4 w-4" />
+              }}
+              actions={[
+                {
+                  label: 'Import JSON',
+                  onClick: handleImportClick,
+                  icon: <Upload className="h-4 w-4" />
+                }
+              ]}
+              variant="outline"
+            />
 
             <TooltipProvider>
               <Tooltip>
