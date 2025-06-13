@@ -4,6 +4,7 @@ import * as React from 'react';
 
 interface ChatMessageListProps extends React.HTMLAttributes<HTMLDivElement> {
   scrollRef: React.RefObject<HTMLDivElement | null>;
+  contentRef?: React.RefObject<HTMLDivElement | null>; // Optional content ref for StickToBottom
   isAtBottom: boolean;
   scrollToBottom: () => void;
   disableAutoScroll: () => void;
@@ -12,19 +13,21 @@ interface ChatMessageListProps extends React.HTMLAttributes<HTMLDivElement> {
 
 const ChatMessageList = React.forwardRef<HTMLDivElement, ChatMessageListProps>(
   (
-    { className, children, scrollRef, isAtBottom, scrollToBottom, disableAutoScroll, ...props },
+    { className, children, scrollRef, contentRef, isAtBottom, scrollToBottom, disableAutoScroll, ...props },
     _ref
   ) => {
     return (
       <div className="relative w-full h-full overflow-hidden">
         <div
-          className={`flex flex-col w-full h-full p-4 overflow-y-auto ${className}`}
+          className={`flex flex-col w-full h-full p-2 overflow-y-auto ${className}`}
           ref={scrollRef}
           onWheel={disableAutoScroll}
           onTouchMove={disableAutoScroll}
           {...props}
         >
-          <div className="flex flex-col gap-2">{children}</div>
+          <div className="flex flex-col gap-1" ref={contentRef}>
+            {children}
+          </div>
         </div>
 
         {!isAtBottom && (

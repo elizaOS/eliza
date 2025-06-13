@@ -2,7 +2,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import { type VariantProps, cva } from 'class-variance-authority';
 import * as React from 'react';
-import { Button, type ButtonProps } from '../button';
+import { Button } from '../button';
 import MessageLoading from './message-loading';
 
 // ChatBubble
@@ -25,7 +25,7 @@ const chatBubbleVariant = cva('flex gap-2 max-w-[60%] items-end relative group',
 
 interface ChatBubbleProps
   extends React.HTMLAttributes<HTMLDivElement>,
-    VariantProps<typeof chatBubbleVariant> {}
+  VariantProps<typeof chatBubbleVariant> { }
 
 const ChatBubble = React.forwardRef<HTMLDivElement, ChatBubbleProps>(
   ({ className, variant, layout, children, ...props }, ref) => (
@@ -36,12 +36,12 @@ const ChatBubble = React.forwardRef<HTMLDivElement, ChatBubbleProps>(
     >
       {React.Children.map(children, (child) =>
         React.isValidElement(child) &&
-        typeof child.type !== 'string' &&
-        child.type !== React.Fragment
+          typeof child.type !== 'string' &&
+          child.type !== React.Fragment
           ? React.cloneElement(child, {
-              variant,
-              layout,
-            } as React.ComponentProps<typeof child.type>)
+            variant,
+            layout,
+          } as React.ComponentProps<typeof child.type>)
           : child
       )}
     </div>
@@ -64,7 +64,7 @@ const ChatBubbleAvatar: React.FC<ChatBubbleAvatarProps> = ({ src, fallback, clas
 );
 
 // ChatBubbleMessage
-const chatBubbleMessageVariants = cva('p-4', {
+const chatBubbleMessageVariants = cva('p-3', {
   variants: {
     variant: {
       received: 'bg-secondary text-secondary-foreground rounded-lg rounded-bl-none',
@@ -83,7 +83,7 @@ const chatBubbleMessageVariants = cva('p-4', {
 
 interface ChatBubbleMessageProps
   extends React.HTMLAttributes<HTMLDivElement>,
-    VariantProps<typeof chatBubbleMessageVariants> {
+  VariantProps<typeof chatBubbleMessageVariants> {
   isLoading?: boolean;
 }
 
@@ -125,7 +125,7 @@ const ChatBubbleTimestamp: React.FC<ChatBubbleTimestampProps> = ({
 );
 
 // ChatBubbleAction
-type ChatBubbleActionProps = ButtonProps & {
+type ChatBubbleActionProps = React.ComponentProps<typeof Button> & {
   icon: React.ReactNode;
 };
 

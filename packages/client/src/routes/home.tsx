@@ -64,8 +64,8 @@ export default function Home() {
 
   return (
     <>
-      <div className="flex-1 p-3 w-full h-full">
-        <div className="flex flex-col gap-4 h-full w-full md:max-w-4xl mx-auto">
+      <div className="flex-1 p-3 w-full overflow-y-auto">
+        <div className="flex flex-col gap-4 w-full md:max-w-4xl mx-auto">
           <div className="flex items-center justify-between gap-2 p-2">
             <PageTitle title="Agents" />
             <Button
@@ -134,7 +134,6 @@ export default function Home() {
 
       {isGroupPanelOpen && (
         <GroupPanel
-          agents={agents as Agent[]}
           onClose={() => {
             setSelectedGroupId(null);
             setIsGroupPanelOpen(false);
