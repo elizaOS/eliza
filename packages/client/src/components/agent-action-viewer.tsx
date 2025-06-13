@@ -28,6 +28,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import { HierarchicalCard, CardSection, cardColors, type CardAction, type CardMetadata } from '@/components/ui/hierarchical-card';
 
 // Constants
 const ITEMS_PER_PAGE = 15;
@@ -134,6 +135,13 @@ function getModelIcon(modelType = '') {
   return Activity;
 }
 
+function getModelColor(modelType = '') {
+  if (modelType.includes('TEXT') || modelType.includes('OBJECT')) return 'bg-emerald-600/80';
+  if (modelType.includes('IMAGE')) return 'bg-amber-600/80';
+  if (modelType.includes('TRANSCRIPTION')) return 'bg-blue-600/80';
+  return 'bg-slate-500';
+}
+
 function formatTokenUsage(usage: any) {
   if (!usage) return null;
 
@@ -175,7 +183,6 @@ function groupActionsByDate(actions: AgentLog[]) {
 
 // Components
 function ActionCard({ action, onDelete }: ActionCardProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
   const [showFullParams, setShowFullParams] = useState(false);
   const [showFullResponse, setShowFullResponse] = useState(false);
 
@@ -203,21 +210,8 @@ function ActionCard({ action, onDelete }: ActionCardProps) {
     const isLong = paramsText.length > 200;
 
     return (
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-muted-foreground">Parameters</span>
-          {isLong && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowFullParams(!showFullParams)}
-              className="h-6 px-2 text-xs"
-            >
-              {showFullParams ? 'Show less' : 'Show more'}
-            </Button>
-          )}
-        </div>
-        <div className="bg-muted/30 rounded-md p-3 relative group">
+      <CardSection title="Parameters" collapsible={isLong}>
+        <div className="relative group">
           <pre className="text-xs font-mono whitespace-pre-wrap overflow-x-auto">
             {showFullParams || !isLong ? paramsText : truncateText(paramsText, 200)}
           </pre>
@@ -231,7 +225,7 @@ function ActionCard({ action, onDelete }: ActionCardProps) {
             <Copy className="h-3 w-3" />
           </Button>
         </div>
-      </div>
+      </CardSection>
     );
   };
 
@@ -253,21 +247,8 @@ function ActionCard({ action, onDelete }: ActionCardProps) {
     const isLong = responseText.length > 300;
 
     return (
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-muted-foreground">Response</span>
-          {isLong && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowFullResponse(!showFullResponse)}
-              className="h-6 px-2 text-xs"
-            >
-              {showFullResponse ? 'Show less' : 'Show more'}
-            </Button>
-          )}
-        </div>
-        <div className="bg-muted/30 rounded-md p-3 relative group max-h-64 overflow-y-auto">
+      <CardSection title="Response" collapsible={isLong}>
+        <div className="relative group max-h-64 overflow-y-auto">
           <pre className="text-xs font-mono whitespace-pre-wrap overflow-x-auto">
             {showFullResponse || !isLong ? responseText : truncateText(responseText, 300)}
           </pre>
@@ -281,171 +262,119 @@ function ActionCard({ action, onDelete }: ActionCardProps) {
             <Copy className="h-3 w-3" />
           </Button>
         </div>
-      </div>
+      </CardSection>
     );
   };
 
   const hasExtendedContent =
     action.body?.params || action.body?.response || action.message || action.details;
 
-  return (
-    <div className="border rounded-lg bg-card hover:shadow-sm transition-all duration-200 group">
-      {/* Header */}
-      <div className="p-4 pb-3">
-        <div className="flex items-start justify-between">
-          <div className="flex items-start gap-3 flex-1">
-            <div className="p-2 rounded-lg bg-muted">
-              <IconComponent className="h-4 w-4 text-muted-foreground" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <h4 className="font-semibold text-sm">{usageType}</h4>
-                <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">
-                  {modelType}
-                </span>
-              </div>
+  // Build metadata array
+  const metadata: CardMetadata[] = [];
 
-              {/* Model and timing info */}
-              <div className="space-y-1">
-                {modelKey && (
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Zap className="h-3 w-3" />
-                    <code className="font-mono">{modelKey}</code>
-                  </div>
-                )}
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Clock className="h-3 w-3" />
-                  <span>{formatDate(action.createdAt || action.timestamp)}</span>
-                  {action.id && (
-                    <>
-                      <span>•</span>
-                      <code className="text-[10px] bg-muted px-1 rounded">
-                        {action.id.slice(-8)}
-                      </code>
-                    </>
-                  )}
-                </div>
-              </div>
+  if (modelKey) {
+    metadata.push({
+      icon: Zap,
+      text: modelKey,
+      className: 'font-mono bg-surface-overlay px-1 border border-border-subtle rounded-none'
+    });
+  }
 
-              {/* Token usage */}
-              {tokenUsage && (
-                <div className="flex items-center gap-4 mt-2 text-xs">
-                  <div className="flex items-center gap-1">
-                    <span className="text-muted-foreground">Tokens:</span>
-                    <span className="font-mono">{tokenUsage.total.toLocaleString()}</span>
-                  </div>
-                  {tokenUsage.prompt > 0 && (
-                    <div className="flex items-center gap-1 text-muted-foreground">
-                      <span>In:</span>
-                      <span className="font-mono">{tokenUsage.prompt.toLocaleString()}</span>
-                    </div>
-                  )}
-                  {tokenUsage.completion > 0 && (
-                    <div className="flex items-center gap-1 text-muted-foreground">
-                      <span>Out:</span>
-                      <span className="font-mono">{tokenUsage.completion.toLocaleString()}</span>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
+  metadata.push({
+    icon: Clock,
+    text: formatDate(action.createdAt || action.timestamp)
+  });
 
-          {/* Action buttons */}
-          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            {hasExtendedContent && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setIsExpanded(!isExpanded)}
-                className="h-8 w-8 p-0"
-                title={isExpanded ? 'Collapse details' : 'Expand details'}
-              >
-                {isExpanded ? (
-                  <ChevronUp className="h-3 w-3" />
-                ) : (
-                  <ChevronDown className="h-3 w-3" />
-                )}
-              </Button>
-            )}
-            {action.id && onDelete && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  if (typeof action.id === 'string') {
-                    onDelete(action.id);
-                  }
-                }}
-                className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-                title="Delete log entry"
-              >
-                <Trash2 className="h-3 w-3" />
-              </Button>
-            )}
-          </div>
-        </div>
-      </div>
+  if (action.id) {
+    metadata.push({
+      text: `• ${action.id.slice(-8)}`,
+      className: 'text-[10px] bg-surface-overlay border border-border-subtle px-1 rounded-none'
+    });
+  }
 
-      {/* Expandable content */}
-      {isExpanded && hasExtendedContent && (
-        <>
-          <Separator />
-          <div className="p-4 pt-3 space-y-4">
-            {renderParams()}
-            {renderResponse()}
+  // Add token usage to metadata
+  if (tokenUsage) {
+    metadata.push({
+      text: `Tokens: ${tokenUsage.total.toLocaleString()}`,
+      className: 'font-mono'
+    });
+    if (tokenUsage.prompt > 0) {
+      metadata.push({
+        text: `In: ${tokenUsage.prompt.toLocaleString()}`,
+        className: 'font-mono text-text-muted'
+      });
+    }
+    if (tokenUsage.completion > 0) {
+      metadata.push({
+        text: `Out: ${tokenUsage.completion.toLocaleString()}`,
+        className: 'font-mono text-text-muted'
+      });
+    }
+  }
 
-            {/* Additional metadata */}
-            {(action.message || action.details) && (
-              <div className="space-y-2">
-                <span className="text-xs font-medium text-muted-foreground">Additional Info</span>
-                <div className="bg-muted/30 rounded-md p-3">
-                  {action.message && (
-                    <div className="text-xs mb-2">
-                      <span className="font-medium text-muted-foreground">Message: </span>
-                      <span>{action.message}</span>
-                    </div>
-                  )}
-                  {action.details && (
-                    <div className="text-xs">
-                      <span className="font-medium text-muted-foreground">Details: </span>
-                      <span>{action.details}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </>
-      )}
+  // Build actions array
+  const actions: CardAction[] = [];
 
-      {/* Quick preview for collapsed state */}
-      {!isExpanded && hasExtendedContent && (
-        <>
-          <Separator />
-          <div className="p-4 pt-3">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <AlertCircle className="h-3 w-3" />
-              <span>
-                {action.body?.params && action.body?.response
-                  ? 'Contains parameters and response data'
-                  : action.body?.params
-                    ? 'Contains parameter data'
-                    : 'Contains response data'}
-              </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setIsExpanded(true)}
-                className="h-5 px-2 text-xs ml-auto"
-              >
-                View details
-              </Button>
-            </div>
-          </div>
-        </>
-      )}
+  if (action.id && onDelete) {
+    actions.push({
+      icon: Trash2,
+      onClick: () => {
+        if (typeof action.id === 'string') {
+          onDelete(action.id);
+        }
+      },
+      tooltip: 'Delete log entry',
+      className: 'text-status-error hover:text-status-error hover:bg-status-error/10'
+    });
+  }
+
+  // Preview content for collapsed state
+  const previewContent = hasExtendedContent ? (
+    <div className="flex items-center gap-2 text-xs text-text-muted">
+      <AlertCircle className="h-3 w-3" />
+      <span>
+        {action.body?.params && action.body?.response
+          ? 'Contains parameters and response data'
+          : action.body?.params
+            ? 'Contains parameter data'
+            : 'Contains response data'}
+      </span>
     </div>
+  ) : undefined;
+
+  return (
+    <HierarchicalCard
+      indicatorColor={getModelColor(modelType)}
+      indicatorHeight="h-20"
+      icon={IconComponent}
+      title={usageType}
+      badges={[{ text: modelType }]}
+      metadata={metadata}
+      actions={actions}
+      expandable={hasExtendedContent}
+      previewContent={previewContent}
+    >
+      {renderParams()}
+      {renderResponse()}
+
+      {/* Additional metadata */}
+      {(action.message || action.details) && (
+        <CardSection title="Additional Info">
+          {action.message && (
+            <div className="text-xs mb-2">
+              <span className="font-medium text-text-muted">Message: </span>
+              <span className="text-text-primary">{action.message}</span>
+            </div>
+          )}
+          {action.details && (
+            <div className="text-xs">
+              <span className="font-medium text-text-muted">Details: </span>
+              <span className="text-text-primary">{action.details}</span>
+            </div>
+          )}
+        </CardSection>
+      )}
+    </HierarchicalCard>
   );
 }
 
@@ -491,7 +420,7 @@ function EmptyState({
             : `No ${selectedType} actions found.`}
       </p>
       {searchQuery && (
-        <Button variant="outline" onClick={() => {}}>
+        <Button variant="outline" onClick={() => { }}>
           Clear Search
         </Button>
       )}

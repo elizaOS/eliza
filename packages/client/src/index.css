@@ -5,6 +5,7 @@
 
 @layer base {
   :root {
+    /* Light theme - keeping original for compatibility */
     --background: 0 0% 100%;
     --foreground: 240 10% 3.9%;
     --card: 0 0% 93%;
@@ -24,7 +25,7 @@
     --border: 240 5.9% 90%;
     --input: 240 5.9% 90%;
     --ring: 240 5.9% 10%;
-    --radius: 1rem;
+    --radius: 0rem; /* Design system: 0px border-radius */
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 240 5.3% 26.1%;
     --sidebar-primary: 240 5.9% 10%;
@@ -36,33 +37,61 @@
   }
 
   .dark {
-    --background: 0 0% 9%;
-    --foreground: 0 0% 98%;
-    --card: 0 0% 11.5%;
-    --card-foreground: 0 0% 98%;
-    --popover: 0 0% 12%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 240 5.9% 10%;
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 240 4.9% 83.9%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* === UNIFIED COLOR SYSTEM === */
+    /* Core Surfaces - Progressive elevation system */
+    --surface-base: 0 0% 6%;         /* #0F0F0F - Main app background */
+    --surface-raised: 0 0% 9%;       /* #171717 - Cards, inputs, elevated content */
+    --surface-overlay: 0 0% 11%;     /* #1C1C1C - Modals, popovers, tooltips */
+    
+    /* Borders - Consistent separation system */
+    --border-subtle: 0 0% 12%;       /* #1F1F1F - Subtle dividers */
+    --border-strong: 0 0% 15%;       /* #262626 - Prominent borders, focus rings */
+    
+    /* Text Hierarchy - Semantic text colors */
+    --text-primary: 0 0% 98%;        /* #FAFAFA - Main content text */
+    --text-secondary: 0 0% 75%;      /* #BFBFBF - Secondary information */
+    --text-muted: 0 0% 65%;         /* #A6A6A6 - Placeholders, disabled text */
+    --text-inverse: 0 0% 6%;        /* #0F0F0F - Text on light backgrounds */
+    
+    /* Interactive States */
+    --interactive-primary: 213 94% 68%;    /* #6FA8FF - Primary actions, links */
+    --interactive-hover: 0 0% 12%;         /* #1F1F1F - Hover backgrounds */
+    --interactive-pressed: 0 0% 15%;      /* #262626 - Pressed/active states */
+    
+    /* Status Colors */
+    --status-success: 142 71% 45%;   /* #22C55E - Success states */
+    --status-warning: 38 92% 50%;    /* #F59E0B - Warning states */  
+    --status-error: 0 84% 65%;       /* #EF4444 - Error states */
+    --status-info: 213 94% 68%;      /* #6FA8FF - Info states */
+
+    /* === MAP TO EXISTING TOKENS === */
+    --background: var(--surface-base);
+    --foreground: var(--text-primary);
+    --card: var(--surface-raised);
+    --card-foreground: var(--text-primary);
+    --popover: var(--surface-overlay);
+    --popover-foreground: var(--text-primary);
+    --primary: var(--text-primary);
+    --primary-foreground: var(--text-inverse);
+    --secondary: var(--surface-raised);
+    --secondary-foreground: var(--text-primary);
+    --muted: var(--surface-raised);
+    --muted-foreground: var(--text-muted);
+    --accent: var(--interactive-primary);
+    --accent-foreground: var(--text-inverse);
+    --destructive: var(--status-error);
+    --destructive-foreground: var(--text-primary);
+    --border: var(--border-subtle);
+    --input: var(--surface-raised);
+    --ring: var(--interactive-primary);
+    --sidebar-background: var(--surface-base);
+    --sidebar-foreground: var(--text-primary);
+    --sidebar-primary: var(--interactive-primary);
+    --sidebar-primary-foreground: var(--text-inverse);
+    --sidebar-accent: var(--interactive-hover);
+    --sidebar-accent-foreground: var(--text-primary);
+    --sidebar-border: var(--border-subtle);
+    --sidebar-ring: var(--interactive-primary);
   }
 }
 
@@ -73,6 +102,116 @@
 
   body {
     @apply bg-background text-foreground;
+    font-family: system-ui, Inter, ui-sans-serif, sans-serif;
+  }
+
+  /* Design System Typography */
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold tracking-tight;
+  }
+
+  /* Design System Form Inputs */
+  input, textarea, select {
+    @apply rounded-none border-border bg-background text-foreground;
+  }
+
+  /* Design System Focus States - clean borders only */
+  input:focus, textarea:focus, select:focus,
+  input:focus-visible, textarea:focus-visible, select:focus-visible {
+    @apply outline-none border-accent ring-0;
+    box-shadow: none !important;
+  }
+
+  /* Design System Button Base */
+  button {
+    @apply rounded-none font-medium;
+  }
+
+  /* Clean button focus and hover - no blue everywhere */
+  button:focus, button:focus-visible {
+    @apply outline-none ring-0;
+    box-shadow: none !important;
+  }
+
+  /* Override all button hover states with semantic tokens */
+  button:hover {
+    background-color: hsl(var(--interactive-hover)) !important;
+    color: hsl(var(--text-primary)) !important;
+    transform: translateY(-1px);
+    transition: all 150ms ease;
+  }
+
+  /* Specifically override shadcn button variants */
+  button[data-slot="button"]:hover {
+    background-color: hsl(var(--interactive-hover)) !important;
+    color: hsl(var(--text-primary)) !important;
+    transform: translateY(-1px);
+    transition: all 150ms ease;
+  }
+
+  /* Override input hover states - no accent color on hover */
+  input:hover, textarea:hover, select:hover {
+    border-color: hsl(var(--border)) !important;
+  }
+
+  /* Override all Radix UI component hover/focus states */
+  [data-radix-select-trigger]:hover,
+  [data-radix-select-trigger]:focus,
+  [data-slot="dropdown-menu-trigger"]:hover,
+  [data-slot="dropdown-menu-trigger"]:focus {
+    border-color: hsl(var(--border)) !important;
+    background-color: hsl(var(--background)) !important;
+  }
+
+  /* High specificity override for all dropdown/select items with semantic tokens */
+  div[role="option"]:hover,
+  div[role="option"]:focus,
+  div[role="option"][data-highlighted],
+  div[role="option"][data-state="highlighted"],
+  [data-radix-select-item]:hover,
+  [data-radix-select-item]:focus,
+  [data-radix-select-item][data-highlighted],
+  [data-radix-dropdown-menu-item]:hover,
+  [data-radix-dropdown-menu-item]:focus,
+  [data-radix-dropdown-menu-item][data-highlighted] {
+    background-color: hsl(var(--interactive-hover)) !important;
+    color: hsl(var(--text-primary)) !important;
+    transition: background-color 150ms ease !important;
+  }
+
+  /* Ultra-specific targeting for Radix primitives that resist override */
+  [data-radix-collection-item]:hover,
+  [data-radix-collection-item]:focus,
+  [data-radix-collection-item][data-highlighted],
+  [data-radix-collection-item][data-state="highlighted"] {
+    background-color: hsl(var(--interactive-hover)) !important;
+    color: hsl(var(--text-primary)) !important;
+  }
+
+  /* Override role-based interactive elements with higher specificity */
+  div[role="menuitem"]:hover,
+  div[role="menuitem"]:focus,
+  div[role="option"]:hover,
+  div[role="option"]:focus,
+  span[role="option"]:hover,
+  span[role="option"]:focus {
+    background-color: hsl(var(--interactive-hover)) !important;
+    color: hsl(var(--text-primary)) !important;
+    transition: background-color 150ms ease !important;
+  }
+
+  /* Nuclear option - override Tailwind focus classes directly with semantic tokens */
+  .focus\:bg-accent:focus,
+  .focus\:text-accent-foreground:focus,
+  .hover\:bg-accent:hover,
+  .hover\:text-accent-foreground:hover {
+    background-color: hsl(var(--interactive-hover)) !important;
+    color: hsl(var(--text-primary)) !important;
+  }
+
+  /* Remove default blue hover from interactive elements */
+  a:hover, [role="button"]:hover {
+    text-decoration: none;
   }
 }
 

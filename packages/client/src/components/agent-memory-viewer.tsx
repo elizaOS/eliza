@@ -26,6 +26,7 @@ import {
 import { Separator } from '@/components/ui/separator';
 import MemoryEditOverlay from './agent-memory-edit-overlay';
 import MemoryGraph from './memory-graph';
+import { HierarchicalCard, CardSection, cardColors, type CardAction, type CardMetadata } from '@/components/ui/hierarchical-card';
 
 // Number of items to load per batch
 const ITEMS_PER_PAGE = 15;
@@ -294,90 +295,97 @@ export function AgentMemoryViewer({ agentId, agentName }: AgentMemoryViewerProps
 
     const entityName = getEntityName();
 
+    // Determine indicator color
+    const indicatorColor = isAgent
+      ? cardColors.agent
+      : content?.thought
+        ? cardColors.thought
+        : cardColors.user;
+
+    // Build metadata array
+    const metadata: CardMetadata[] = [
+      {
+        icon: Clock,
+        text: formatDate(memory.createdAt || 0)
+      }
+    ];
+
+    if (memory.id) {
+      metadata.push({
+        text: `• ${memory.id.slice(-8)}`,
+        className: 'text-[10px] bg-surface-overlay border border-border-subtle px-1 rounded-none'
+      });
+    }
+
+    // Build actions array
+    const actions: CardAction[] = [];
+
+    if (content?.text) {
+      actions.push({
+        icon: Copy,
+        onClick: () => copyToClipboard(content.text || ''),
+        tooltip: 'Copy text'
+      });
+    }
+
+    if (memory.id) {
+      actions.push({
+        icon: Pencil,
+        onClick: () => setEditingMemory(memory),
+        tooltip: 'Edit memory'
+      });
+    }
+
+    // Determine if there's content to show
+    const hasContent = content?.text || !!content?.thought ||
+      (content?.actions && content.actions.length > 0) ||
+      (content?.providers && content.providers.length > 0) ||
+      content?.source ||
+      (memory.metadata && Object.keys(memory.metadata).length > 0);
+
     return (
-      <div className="border rounded-lg p-4 bg-card hover:bg-accent/5 transition-colors group">
-        {/* Header */}
-        <div className="flex items-start justify-between mb-3">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-md bg-muted">
-              <IconComponent className="h-4 w-4" />
+      <HierarchicalCard
+        indicatorColor={indicatorColor}
+        icon={IconComponent}
+        title={entityName}
+        badges={[{ text: !!content?.thought ? 'Thought' : isAgent ? 'Agent' : 'User' }]}
+        metadata={metadata}
+        actions={actions}
+        expandable={hasContent}
+        defaultExpanded={true}
+      >
+        {/* Main text */}
+        {content?.text && (
+          <CardSection>
+            <div className="border-l-2 border-border-strong pl-3">
+              <p className="text-sm leading-relaxed whitespace-pre-wrap text-text-primary">{content.text}</p>
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-medium text-sm">{entityName}</span>
-                <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">
-                  {content?.thought ? 'Thought' : isAgent ? 'Agent' : 'User'}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
-                <Clock className="h-3 w-3" />
-                <span>{formatDate(memory.createdAt || 0)}</span>
-                {memory.id && (
-                  <>
-                    <span>•</span>
-                    <code className="text-[10px] bg-muted px-1 rounded">{memory.id.slice(-8)}</code>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
+          </CardSection>
+        )}
 
-          {/* Action buttons */}
-          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            {content?.text && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => copyToClipboard(content.text || '')}
-                className="h-8 w-8 p-0"
-                title="Copy text"
-              >
-                <Copy className="h-3 w-3" />
-              </Button>
-            )}
-            {memory.id && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setEditingMemory(memory)}
-                className="h-8 w-8 p-0"
-                title="Edit memory"
-              >
-                <Pencil className="h-3 w-3" />
-              </Button>
-            )}
-          </div>
-        </div>
-
-        {/* Content */}
-        <div className="space-y-3">
-          {/* Main text */}
-          {content?.text && (
-            <div className="bg-muted/50 rounded-md p-3">
-              <p className="text-sm leading-relaxed whitespace-pre-wrap">{content.text}</p>
-            </div>
-          )}
-
-          {/* Thought process */}
-          {content?.thought && (
-            <div className="border-l-2 border-muted pl-3">
+        {/* Thought process */}
+        {content?.thought && (
+          <CardSection title="Thought Process">
+            <div className="border-l-2 border-border-strong pl-3 py-2">
               <div className="flex items-center gap-2 mb-1">
-                <Brain className="h-3 w-3 text-muted-foreground" />
-                <span className="text-xs font-medium text-muted-foreground">Thought Process</span>
+                <Brain className="h-3 w-3 text-text-muted" />
+                <span className="text-xs font-medium text-text-muted">Thought Process</span>
               </div>
-              <p className="text-xs text-muted-foreground italic leading-relaxed">
+              <p className="text-xs text-text-secondary italic leading-relaxed">
                 {String(content.thought)}
               </p>
             </div>
-          )}
+          </CardSection>
+        )}
 
-          {/* Tags */}
-          {(content?.actions || content?.providers || content?.source) && (
+        {/* Tags */}
+        {(content?.actions || content?.providers || content?.source) && (
+          <CardSection title="Tags">
             <div className="flex flex-wrap gap-1">
               {content.actions?.map((action) => (
                 <span
                   key={action}
-                  className="text-xs px-2 py-1 bg-muted rounded text-muted-foreground"
+                  className="text-xs px-2 py-1 bg-surface-overlay border border-border-subtle rounded-none text-text-muted"
                   title="Action"
                 >
                   {action}
@@ -386,33 +394,30 @@ export function AgentMemoryViewer({ agentId, agentName }: AgentMemoryViewerProps
               {content.providers?.map((provider) => (
                 <span
                   key={provider}
-                  className="text-xs px-2 py-1 bg-muted rounded text-muted-foreground"
+                  className="text-xs px-2 py-1 bg-surface-overlay border border-border-subtle rounded-none text-text-muted"
                   title="Provider"
                 >
                   {provider}
                 </span>
               ))}
               {content.source && (
-                <span className="text-xs px-2 py-1 bg-muted rounded text-muted-foreground">
+                <span className="text-xs px-2 py-1 bg-surface-overlay border border-border-subtle rounded-none text-text-muted">
                   {content.source}
                 </span>
               )}
             </div>
-          )}
+          </CardSection>
+        )}
 
-          {/* Metadata (simplified) */}
-          {memory.metadata && Object.keys(memory.metadata).length > 0 && (
-            <details className="text-xs">
-              <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-                View metadata
-              </summary>
-              <div className="mt-2 p-2 bg-muted/30 rounded text-[10px] font-mono overflow-x-auto">
-                <pre>{JSON.stringify(memory.metadata, null, 2)}</pre>
-              </div>
-            </details>
-          )}
-        </div>
-      </div>
+        {/* Metadata */}
+        {memory.metadata && Object.keys(memory.metadata).length > 0 && (
+          <CardSection title="Metadata" collapsible defaultCollapsed>
+            <pre className="text-[10px] font-mono overflow-x-auto text-text-muted">
+              {JSON.stringify(memory.metadata, null, 2)}
+            </pre>
+          </CardSection>
+        )}
+      </HierarchicalCard>
     );
   };
 

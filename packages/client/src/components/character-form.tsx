@@ -444,7 +444,7 @@ export default function CharacterForm({
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Label htmlFor={field.name} className="flex items-center gap-1">
+              <Label htmlFor={field.name} className="flex items-center gap-1 text-base font-medium">
                 {field.title}
                 {field.name in FIELD_REQUIREMENTS &&
                   (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.name] ===
@@ -477,6 +477,7 @@ export default function CharacterForm({
           type="checkbox"
           checked={(characterValue as Record<string, any>)[field.name] === 'true'}
           onChange={handleChange}
+          className=""
         />
       ) : field.fieldType === 'select' ? (
         <Select
@@ -508,6 +509,7 @@ export default function CharacterForm({
           type={field.fieldType}
           value={field.getValue(characterValue)}
           onChange={handleChange}
+          className=""
         />
       )}
     </div>
@@ -519,7 +521,7 @@ export default function CharacterForm({
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Label htmlFor={field.path} className="flex items-center gap-1">
+              <Label htmlFor={field.path} className="flex items-center gap-1 text-base font-medium">
                 {field.title}
                 {field.path in FIELD_REQUIREMENTS &&
                   (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.path] ===
@@ -672,10 +674,10 @@ export default function CharacterForm({
   ];
 
   return (
-    <div ref={containerRef} className="w-full max-w-full mx-auto p-4 sm:p-6">
+    <div ref={containerRef} className="w-full max-w-full mx-auto p-4 sm:p-6 min-h-screen">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-3xl font-bold">{title || 'Agent Settings'}</h1>
+          <h1 className="text-3xl">{title || 'Agent Settings'}</h1>
           <p className="text-muted-foreground mt-1">
             {description || 'Configure your agent settings'}
           </p>
@@ -728,14 +730,19 @@ export default function CharacterForm({
 
             {/* Tabs container */}
             <div ref={tabsContainerRef} className="overflow-x-auto scrollbar-hide">
-              <TabsList className="inline-flex h-10 items-center justify-start rounded-md bg-muted p-1 text-muted-foreground w-full">
+              <TabsList className="inline-flex items-center justify-start border-b p-0 text-muted-foreground w-full h-auto">
                 {allTabs.map((tab) => (
                   <TabsTrigger
                     key={tab.value}
                     value={tab.value}
                     className={cn(
-                      'whitespace-nowrap px-3 py-1.5 text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:rounded-md data-[state=active]:border-0',
-                      !showLabels && 'px-2 text-xs' // Smaller padding and text on mobile
+                      'whitespace-nowrap px-6 py-4 text-base leading-none',
+                      'bg-transparent border-0 text-muted-foreground',
+                      'data-[state=active]:text-foreground data-[state=active]:bg-transparent',
+                      'data-[state=active]:border-b-2 data-[state=active]:border-b-accent',
+                      'hover:text-foreground',
+                      'transition-colors duration-200 relative',
+                      !showLabels && 'px-4 text-sm' // Smaller padding on mobile
                     )}
                   >
                     {showLabels ? tab.label : tab.shortLabel}
@@ -766,14 +773,28 @@ export default function CharacterForm({
                   value={section.sectionValue}
                   className="space-y-6"
                 >
-                  {section.sectionType === SECTION_TYPE.INPUT
-                    ? (section.fields as InputField[]).map(renderInputField)
-                    : (section.fields as ArrayField[]).map(renderArrayField)}
+                  <div className="space-y-4">
+                    <h2 className="text-xl border-b pb-2">
+                      {section.sectionTitle}
+                    </h2>
+                    <div className="space-y-4">
+                      {section.sectionType === SECTION_TYPE.INPUT
+                        ? (section.fields as InputField[]).map(renderInputField)
+                        : (section.fields as ArrayField[]).map(renderArrayField)}
+                    </div>
+                  </div>
                 </TabsContent>
               ))}
               {customComponents.map((component) => (
-                <TabsContent key={`custom-${component.name}`} value={`custom-${component.name}`}>
-                  {component.component}
+                <TabsContent key={`custom-${component.name}`} value={`custom-${component.name}`} className="space-y-6">
+                  <div className="space-y-4">
+                    <h2 className="text-xl border-b pb-2">
+                      {component.name}
+                    </h2>
+                    <div className="space-y-4">
+                      {component.component}
+                    </div>
+                  </div>
                 </TabsContent>
               ))}
             </CardContent>

@@ -28,11 +28,41 @@ export default {
         'bounce-sm': 'bounce-sm 0.6s ease-in-out 2',
       },
       borderRadius: {
-        lg: 'var(--radius)',
-        md: 'calc(var(--radius) - 2px)',
-        sm: 'calc(var(--radius) - 4px)',
+        DEFAULT: '0px', // Override default to rounded-none
+        none: '0px',
+        lg: '0px', // Override to match design system
+        md: '0px', // Override to match design system  
+        sm: '0px', // Override to match design system
       },
       colors: {
+        // === SEMANTIC COLOR SYSTEM ===
+        // Surface hierarchy
+        'surface-base': 'hsl(var(--surface-base))',
+        'surface-raised': 'hsl(var(--surface-raised))',
+        'surface-overlay': 'hsl(var(--surface-overlay))',
+        
+        // Border system  
+        'border-subtle': 'hsl(var(--border-subtle))',
+        'border-strong': 'hsl(var(--border-strong))',
+        
+        // Text hierarchy
+        'text-primary': 'hsl(var(--text-primary))',
+        'text-secondary': 'hsl(var(--text-secondary))',
+        'text-muted': 'hsl(var(--text-muted))',
+        'text-inverse': 'hsl(var(--text-inverse))',
+        
+        // Interactive states
+        'interactive-primary': 'hsl(var(--interactive-primary))',
+        'interactive-hover': 'hsl(var(--interactive-hover))',
+        'interactive-pressed': 'hsl(var(--interactive-pressed))',
+        
+        // Status colors
+        'status-success': 'hsl(var(--status-success))',
+        'status-warning': 'hsl(var(--status-warning))',
+        'status-error': 'hsl(var(--status-error))',
+        'status-info': 'hsl(var(--status-info))',
+
+        // === EXISTING TOKENS (for compatibility) ===
         background: 'hsl(var(--background))',
         foreground: 'hsl(var(--foreground))',
         card: {

@@ -55,7 +55,7 @@ const TagInput = ({ value, onChange, onKeyDown }: TagInputProps) => (
     onChange={onChange}
     onKeyDown={onKeyDown}
     placeholder="Type and press Enter to add..."
-    className={cn('bg-background', !value && 'text-muted-foreground')}
+    className={cn(!value && 'text-muted-foreground')}
   />
 );
 
@@ -86,7 +86,7 @@ export default function ArrayInput({ title, data, onChange }: ArrayInputProps) {
   return (
     <div className="space-y-2">
       <Label>{title}</Label>
-      <div className="p-2 bg-card rounded-md border">
+      <div className="p-4 border">
         <TagList tags={data} onRemove={removeTag} />
         <TagInput
           value={inputValue}
