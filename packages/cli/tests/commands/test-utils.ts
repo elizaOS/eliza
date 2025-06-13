@@ -20,7 +20,8 @@ export async function setupTestEnvironment(): Promise<TestContext> {
   process.chdir(testTmpDir);
 
   const scriptDir = join(__dirname, '../..');
-  const elizaosCmd = `bun run ${join(scriptDir, 'dist/index.js')}`;
+  const scriptPath = join(scriptDir, 'dist/index.js');
+  const elizaosCmd = `bun run "${scriptPath}"`;
 
   return { testTmpDir, elizaosCmd, originalCwd };
 }
