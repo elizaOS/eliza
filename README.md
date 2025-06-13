@@ -64,7 +64,7 @@ elizaos create my-agent --yes --type project
 
 **Recommended Options for Beginners:**
 
-- **Database**: `pglite` (lightweight, no setup required)  
+- **Database**: `pglite` (lightweight, no setup required)
 - **Model Provider**: `openai` (most reliable and well-tested)
 - **Project Type**: `project` (full ElizaOS application with runtime and agents)
 
@@ -105,6 +105,7 @@ LOG_LEVEL=debug elizaos start
 ```
 
 After starting, your agent will be available at:
+
 - **Web Interface**: http://localhost:3000
 - **API Endpoint**: http://localhost:3000/api
 
@@ -162,6 +163,7 @@ NODE_ENV=development elizaos start      # Development mode with extra logging
 ```
 
 **Pro Tips:**
+
 - Use `elizaos --help` to see all available commands and global options
 - Use `elizaos <command> --help` for detailed help on any specific command
 - Use `LOG_LEVEL=debug` during development to see detailed execution flow
@@ -172,6 +174,7 @@ NODE_ENV=development elizaos start      # Development mode with extra logging
 #### Available Commands Reference
 
 **All CLI Commands:**
+
 ```bash
 elizaos create     # Create new projects, plugins, agents, or TEE projects
 elizaos start      # Start the agent server with character profiles
@@ -189,7 +192,6 @@ elizaos tee        # Trusted Execution Environment commands
 # Get help for any specific command
 elizaos <command> --help    # e.g., elizaos create --help, elizaos agent --help
 ```
-
 
 ### Manually Start Eliza (Only recommended if you know what you are doing)
 
@@ -228,8 +230,8 @@ https://bun.sh/docs/installation
 
 ```bash
 bun install
-bun run build 
-bun start 
+bun run build
+bun start
 ```
 
 ### Interact via Browser
@@ -243,10 +245,6 @@ Once Eliza is running, access the modern web interface at http://localhost:3000.
 - Plugin management.
 - Comprehensive memory and conversation history.
 - Responsive design for an optimal experience on various screen sizes.
-
-
-
-
 
 ## Citation
 
