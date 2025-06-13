@@ -517,8 +517,6 @@ export default function Chat({
     initialDmChannelId,
     updateChatState,
     handleNewDmChannel,
-    autoCreatedDmRef,
-    agentDmChannels.length,
   ]);
 
   // Cleanup timeout on unmount or when agentDmChannels appears
