@@ -86,6 +86,7 @@ export interface ServerMessage {
     attachments?: any[];
     authorDisplayName?: string; // If API puts it here
     serverId?: UUID; // If API puts it here
+    prompt?: string; // Add prompt field to store the LLM prompt
     [key: string]: any;
   };
 }

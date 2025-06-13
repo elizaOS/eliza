@@ -136,7 +136,7 @@ export function MessageContent({
       >
         {!isUser && agentData && (
           <div className="w-full">
-            {message.text && message.thought && (
+            {message.thought && (
               <Collapsible className="mb-1">
                 <CollapsibleTrigger className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors group">
                   <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]:rotate-90" />
@@ -146,6 +146,21 @@ export function MessageContent({
                   <Badge variant="outline" className="text-xs">
                     {message.thought}
                   </Badge>
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+            {message.prompt && (
+              <Collapsible className="mb-1">
+                <CollapsibleTrigger className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors group">
+                  <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]:rotate-90" />
+                  LLM Prompt
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pl-5 pt-1">
+                  <div className="bg-muted/50 rounded-md p-2 mt-1">
+                    <pre className="text-xs font-mono whitespace-pre-wrap overflow-x-auto text-muted-foreground">
+                      {message.prompt}
+                    </pre>
+                  </div>
                 </CollapsibleContent>
               </Collapsible>
             )}

@@ -467,6 +467,7 @@ const messageReceivedHandler = async ({
                 providers: parsedXml.providers || [],
                 text: parsedXml.text || '',
                 simple: parsedXml.simple || false,
+                prompt: prompt,
               };
             } else {
               responseContent = null;

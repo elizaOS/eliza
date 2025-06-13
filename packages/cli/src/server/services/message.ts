@@ -477,7 +477,12 @@ export class MessageBusService extends Service {
         content: content.text,
         in_reply_to_message_id: centralInReplyToRootMessageId,
         source_type: 'agent_response',
-        raw_message: { text: content.text, thought: content.thought, actions: content.actions },
+        raw_message: { 
+          text: content.text, 
+          thought: content.thought, 
+          actions: content.actions,
+          prompt: content.prompt  // Include the prompt in raw_message
+        },
         metadata: {
           agent_id: this.runtime.agentId,
           agentName: this.runtime.character.name,

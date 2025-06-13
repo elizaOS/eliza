@@ -286,6 +286,7 @@ async function processSocketMessage(
 
         if (content.thought) broadcastData.thought = content.thought;
         if (content.actions) broadcastData.actions = content.actions;
+        if (content.prompt) broadcastData.prompt = content.prompt;
 
         logger.debug(`Broadcasting message to channel ${socketChannelId}`, {
           channel: socketChannelId,

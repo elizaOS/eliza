@@ -85,6 +85,7 @@ export const replyAction = {
       thought: response.thought,
       text: (response.message as string) || '',
       actions: ['REPLY'],
+      prompt: prompt,
     };
 
     await callback(responseContent);

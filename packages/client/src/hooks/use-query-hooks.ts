@@ -287,6 +287,7 @@ export type UiMessage = Content & {
   isLoading?: boolean;
   channelId: UUID; // Central Channel ID
   serverId?: UUID; // Server ID (optional in some contexts, but good for full context)
+  prompt?: string; // The LLM prompt used to generate this message (for agents)
   // attachments and other Content props are inherited
 };
 
@@ -383,6 +384,7 @@ export function useChannelMessages(
         serverId: serverIdToUse || sm.metadata?.serverId || sm.serverId || initialServerId,
         source: sm.sourceType,
         isLoading: false,
+        prompt: isAgent ? sm.metadata?.prompt : undefined,
       };
     },
     [currentClientCentralId, initialServerId]

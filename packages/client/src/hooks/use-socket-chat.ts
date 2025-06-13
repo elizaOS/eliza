@@ -157,6 +157,7 @@ export function useSocketChat({
           thought: data.thought,
           actions: data.actions,
           isLoading: false,
+          prompt: data.prompt,
         };
 
         // Check if message already exists
