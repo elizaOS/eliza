@@ -100,6 +100,11 @@ export async function performInitialBuild(context: DevContext): Promise<void> {
   const isPlugin = directoryType.type === 'elizaos-plugin';
   const isMonorepo = directoryType.type === 'elizaos-monorepo';
 
+  if (process.env.ELIZA_TEST_MODE) {
+    console.info('Skipping initial build in test mode');
+    return;
+  }
+
   // Ensure initial build is performed (skip for monorepo as it may have multiple projects)
   if (!isMonorepo) {
     console.info('Building project...');

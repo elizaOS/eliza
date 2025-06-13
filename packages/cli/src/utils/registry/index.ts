@@ -386,6 +386,7 @@ export function normalizePluginName(pluginName: string): string[] {
     `@elizaos/plugin-${baseName}`, // Scoped with elizaos and plugin prefix
     `@elizaos/${baseName}`, // Scoped with elizaos-plugins
     `@elizaos/plugin-${baseName}`, // Scoped with elizaos-plugins and plugin prefix
+    `@elizaos-plugins/plugin-${baseName}`, // Scoped with elizaos-plugins and plugin prefix
   ];
 }
 

@@ -115,44 +115,6 @@ const tokenPriceProvider: Provider = {
 };
 ```
 
-### Verify the Actions
-
-Below is an example showcasing how to post price information from the [tokenPriceProvider](./src/providers/tokenPriceProvider.ts) to Twitter. Developers can easily adapt this process for other providers.
-
-Note that you need to configure the `.env` file correctly to post tweets.
-
-```typescript
-export const postTweetAction: Action = {
-  description: 'Post a tweet on Twitter and be verified by Primus',
-  examples: [],
-  handler: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
-    const contentYouWantToPost = await tokenPriceProvider.get(runtime, message, state);
-    const endpoint = 'https://twitter.com/i/api/graphql/a1p9RWpkYKBjWv_I3WzS-A/CreateTweet';
-    const method = 'POST';
-    const attestation = await generateProof(
-      endpoint,
-      method,
-      headers,
-      bodyStr,
-      '$.data.create_tweet.tweet_results.result.rest_id'
-    );
-    elizaLogger.info('Tweet posting proof generated successfully:', attestation);
-    const verifyResult = verifyProof(attestation);
-    if (!verifyResult) {
-      throw new Error('Attestation verify failed, data from source is illegality');
-    }
-  },
-  name: 'POST_TWEET',
-  similes: [],
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
-    const hasCredentials = !!process.env.TWITTER_USERNAME && !!process.env.TWITTER_PASSWORD;
-    elizaLogger.log(`Has credentials: ${hasCredentials}`);
-
-    return hasCredentials;
-  },
-};
-```
-
 ## Installation
 
 ```bash

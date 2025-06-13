@@ -97,7 +97,7 @@ function AppContent() {
     <TooltipProvider delayDuration={0}>
       <SidebarProvider>
         <AppSidebar refreshHomePage={refreshHomePage} />
-        <SidebarInset className="h-screen flex flex-col md:ml-72">
+        <SidebarInset className="h-screen flex flex-col md:ml-72 overflow-hidden">
           {/* Mobile menu button */}
           <div className="md:hidden absolute top-4 left-4 z-50">
             <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
@@ -117,14 +117,37 @@ function AppContent() {
               <ConnectionErrorBanner />
             </div>
           </div>
-          <div className="flex-1 min-h-0">
+          <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
             <Routes>
               <Route path="/" element={<Home key={homeKey} />} />
-              <Route path="chat/:agentId/:channelId" element={<Chat />} />
-              <Route path="chat/:agentId" element={<Chat />} />
+              <Route
+                path="chat/:agentId/:channelId"
+                element={
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    <Chat />
+                  </div>
+                }
+              />
+              <Route
+                path="chat/:agentId"
+                element={
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    <Chat />
+                  </div>
+                }
+              />
               <Route path="group/new" element={<CreateGroupPage />} />
               <Route path="agents/new" element={<AgentCreatorRoute />} />
-              <Route path="/create" element={<AgentCreator />} />
+              <Route
+                path="/create"
+                element={
+                  <div className="flex w-full justify-center px-4 sm:px-6">
+                    <div className="w-full md:max-w-4xl">
+                      <AgentCreator />
+                    </div>
+                  </div>
+                }
+              />
               <Route
                 path="/logs"
                 element={
@@ -138,7 +161,14 @@ function AppContent() {
                   </div>
                 }
               />
-              <Route path="group/:channelId" element={<GroupChannel />} />
+              <Route
+                path="group/:channelId"
+                element={
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    <GroupChannel />
+                  </div>
+                }
+              />
               <Route
                 path="settings/"
                 element={

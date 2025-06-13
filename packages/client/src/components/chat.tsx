@@ -11,9 +11,12 @@ import ConfirmationDialog from '@/components/confirmation-dialog';
 import { useConfirmation } from '@/hooks/use-confirmation';
 import { ChatBubbleMessage, ChatBubbleTimestamp } from '@/components/ui/chat/chat-bubble';
 import ChatTtsButton from '@/components/ui/chat/chat-tts-button';
+import { Markdown } from '@/components/ui/chat/markdown';
+import { AnimatedMarkdown } from '@/components/ui/chat/animated-markdown';
 import { useAutoScroll } from '@/components/ui/chat/hooks/useAutoScroll';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { SplitButton, type SplitButtonAction } from '@/components/ui/split-button';
 import { CHAT_SOURCE, GROUP_CHAT_SOURCE, USER_NAME } from '@/constants';
 import { useFileUpload } from '@/hooks/use-file-upload';
 import {
@@ -50,7 +53,9 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/r
 import { useQueryClient } from '@tanstack/react-query';
 import {
   ChevronRight,
+  Edit,
   Eraser,
+  History,
   Info,
   Loader2,
   MessageSquarePlus,
@@ -75,6 +80,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useCreateDmChannel, useDmChannelsForAgent } from '@/hooks/use-dm-channels';
+import { useSidebarState } from '@/hooks/use-sidebar-state';
+import { usePanelWidthState } from '@/hooks/use-panel-width-state';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import type { MessageChannel } from '@/types';
 moment.extend(relativeTime);
@@ -90,7 +97,6 @@ interface UnifiedChatViewProps {
 
 // Consolidated chat state type
 interface ChatUIState {
-  showSidebar: boolean;
   showGroupEditPanel: boolean;
   showProfileOverlay: boolean;
   input: string;
@@ -98,10 +104,20 @@ interface ChatUIState {
   selectedGroupAgentId: UUID | null;
   currentDmChannelId: UUID | null;
   isCreatingDM: boolean;
+  isMobile: boolean; // Add mobile state
 }
 
 // Message content component - exported for use in ChatMessageListComponent
-export const MemoizedMessageContent = React.memo(MessageContent);
+export const MemoizedMessageContent = React.memo(MessageContent, (prevProps, nextProps) => {
+  // Only re-render if the message content, animation state, or other key props change
+  return (
+    prevProps.message.id === nextProps.message.id &&
+    prevProps.message.text === nextProps.message.text &&
+    prevProps.message.isLoading === nextProps.message.isLoading &&
+    prevProps.shouldAnimate === nextProps.shouldAnimate &&
+    prevProps.isUser === nextProps.isUser
+  );
+});
 
 export function MessageContent({
   message,
@@ -136,7 +152,7 @@ export function MessageContent({
       >
         {!isUser && agentData && (
           <div className="w-full">
-            {message.text && message.thought && (
+            {message.thought && (
               <Collapsible className="mb-1">
                 <CollapsibleTrigger className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors group">
                   <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]:rotate-90" />
@@ -168,11 +184,18 @@ export function MessageContent({
                 {textWithoutUrls.trim() && (
                   <div>
                     {isUser ? (
-                      textWithoutUrls
-                    ) : shouldAnimate ? (
-                      <AIWriter>{textWithoutUrls}</AIWriter>
+                      <Markdown className="prose-sm max-w-none" variant="user">
+                        {textWithoutUrls}
+                      </Markdown>
                     ) : (
-                      textWithoutUrls
+                      <AnimatedMarkdown
+                        className="prose-sm max-w-none"
+                        variant="agent"
+                        shouldAnimate={shouldAnimate}
+                        messageId={message.id}
+                      >
+                        {textWithoutUrls}
+                      </AnimatedMarkdown>
                     )}
                   </div>
                 )}
@@ -240,9 +263,18 @@ export default function Chat({
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Consolidate all chat UI state into a single object
+  // Use persistent sidebar state
+  const { isVisible: showSidebar, setSidebarVisible, toggleSidebar } = useSidebarState();
+  const {
+    mainPanelSize,
+    sidebarPanelSize,
+    isFloatingMode: isFloatingModeFromWidth,
+    setMainPanelSize,
+    setSidebarPanelSize,
+  } = usePanelWidthState();
+
+  // Consolidate all chat UI state into a single object (excluding showSidebar which is now managed separately)
   const [chatState, setChatState] = useState<ChatUIState>({
-    showSidebar: false,
     showGroupEditPanel: false,
     showProfileOverlay: false,
     input: '',
@@ -250,7 +282,11 @@ export default function Chat({
     selectedGroupAgentId: null,
     currentDmChannelId: null,
     isCreatingDM: false,
+    isMobile: false,
   });
+
+  // Determine if we should use floating mode - either from width detection OR mobile
+  const isFloatingMode = isFloatingModeFromWidth || chatState.isMobile;
 
   // Confirmation dialogs
   const { confirm, isOpen, onOpenChange, onConfirm, options } = useConfirmation();
@@ -326,8 +362,14 @@ export default function Chat({
     [allAgents]
   );
 
-  const { scrollRef, isAtBottom, scrollToBottom, disableAutoScroll, autoScrollEnabled } =
-    useAutoScroll({ smooth: true });
+  const {
+    scrollRef,
+    contentRef,
+    isAtBottom,
+    scrollToBottom,
+    disableAutoScroll,
+    autoScrollEnabled,
+  } = useAutoScroll({ smooth: true });
   const prevMessageCountRef = useRef(0);
   const safeScrollToBottom = useCallback(() => {
     if (scrollRef.current) {
@@ -433,6 +475,7 @@ export default function Chat({
             updateChatState({ currentDmChannelId: null });
             // Allow the auto-create logic to run again
             autoCreatedDmRef.current = false;
+            await handleNewDmChannel(targetAgentData.id);
           }
         } catch (error) {
           clientLogger.error('[Chat] Error deleting DM channel:', error);
@@ -474,24 +517,7 @@ export default function Chat({
         return; // Exit early, let the effect run again with cleared state
       }
 
-      if (
-        !isLoadingAgentDmChannels &&
-        !createDmChannelMutation.isPending &&
-        !chatState.isCreatingDM
-      ) {
-        if (
-          agentDmChannels.length === 0 &&
-          !initialDmChannelId &&
-          !autoCreatedDmRef.current &&
-          !chatState.isCreatingDM &&
-          !createDmChannelMutation.isPending
-        ) {
-          // No channels at all and none expected via URL -> create exactly one
-          clientLogger.info('[Chat] No existing DM channels found; auto-creating a fresh one.');
-          autoCreatedDmRef.current = true;
-          handleNewDmChannel(targetAgentData.id);
-        }
-
+      if (!isLoadingAgentDmChannels) {
         // If we now have channels, ensure one is selected
         if (agentDmChannels.length > 0) {
           const currentValid = agentDmChannels.some((c) => c.id === chatState.currentDmChannelId);
@@ -503,17 +529,19 @@ export default function Chat({
             updateChatState({ currentDmChannelId: agentDmChannels[0].id });
             autoCreatedDmRef.current = false;
           }
-        }
-
-        if (
-          !autoCreatedDmRef.current &&
-          !chatState.isCreatingDM &&
-          !createDmChannelMutation.isPending &&
-          agentDmChannels.length === 0
-        ) {
-          clientLogger.info('[Chat] No DM channels available, creating fresh DM immediately.');
-          autoCreatedDmRef.current = true;
-          handleNewDmChannel(targetAgentData.id);
+        } else {
+          if (
+            agentDmChannels.length === 0 &&
+            !initialDmChannelId &&
+            !autoCreatedDmRef.current &&
+            !chatState.isCreatingDM &&
+            !createDmChannelMutation.isPending
+          ) {
+            // No channels at all and none expected via URL -> create exactly one
+            clientLogger.info('[Chat] No existing DM channels found; auto-creating a fresh one.');
+            autoCreatedDmRef.current = true;
+            handleNewDmChannel(targetAgentData.id);
+          }
         }
       }
     } else if (chatType !== ChannelType.DM && chatState.currentDmChannelId !== null) {
@@ -531,8 +559,6 @@ export default function Chat({
     initialDmChannelId,
     updateChatState,
     handleNewDmChannel,
-    autoCreatedDmRef,
-    agentDmChannels.length,
   ]);
 
   // Cleanup timeout on unmount or when agentDmChannels appears
@@ -558,10 +584,19 @@ export default function Chat({
     ) {
       updateChatState({
         selectedGroupAgentId: groupAgents[0].id as UUID,
-        showSidebar: true,
       });
+      if (!showSidebar) {
+        setSidebarVisible(true);
+      }
     }
-  }, [chatType, groupAgents, chatState.selectedGroupAgentId, updateChatState]);
+  }, [
+    chatType,
+    groupAgents,
+    chatState.selectedGroupAgentId,
+    updateChatState,
+    showSidebar,
+    setSidebarVisible,
+  ]);
 
   // Get the final channel ID for hooks
   const finalChannelIdForHooks: UUID | undefined =
@@ -839,6 +874,22 @@ export default function Chat({
     );
   };
 
+  // Handle mobile detection and window resize
+  useEffect(() => {
+    const checkMobile = () => {
+      const isMobile = window.innerWidth < 768;
+      updateChatState({ isMobile });
+      // Note: Don't auto-hide sidebar on mobile - let floating mode handle it
+    };
+
+    // Initial check
+    checkMobile();
+
+    // Add resize listener
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, [updateChatState]);
+
   if (
     chatType === ChannelType.DM &&
     (isLoadingAgent || (!targetAgentData && contextId) || isLoadingAgentDmChannels)
@@ -867,15 +918,15 @@ export default function Chat({
     if (chatType === ChannelType.DM && targetAgentData) {
       return (
         <div className="flex items-center justify-between mb-4 p-3 bg-card rounded-lg border">
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <Avatar className="size-10 border rounded-full">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <div className="relative flex-shrink-0">
+              <Avatar className="size-4 sm:size-10 border rounded-full">
                 <AvatarImage src={getAgentAvatar(targetAgentData)} />
               </Avatar>
               {targetAgentData?.status === AgentStatus.ACTIVE ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <span className="absolute bottom-0 right-0 w-[10px] h-[10px] rounded-full border border-white bg-green-500" />
+                    <span className="absolute bottom-0 right-0 size-2 sm:size-[10px] rounded-full border border-white bg-green-500" />
                   </TooltipTrigger>
                   <TooltipContent side="right">
                     <p>Agent is active</p>
@@ -884,7 +935,7 @@ export default function Chat({
               ) : (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <span className="absolute bottom-0 right-0 w-[10px] h-[10px] rounded-full border border-white bg-muted-foreground" />
+                    <span className="absolute bottom-0 right-0 size-2 sm:size-[10px] rounded-full border border-white bg-muted-foreground" />
                   </TooltipTrigger>
                   <TooltipContent side="right">
                     <p>Agent is inactive</p>
@@ -892,15 +943,17 @@ export default function Chat({
                 </Tooltip>
               )}
             </div>
-            <div className="flex flex-col">
+            <div className="flex flex-col min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <h2 className="font-semibold text-lg">{targetAgentData?.name || 'Agent'}</h2>
+                <h2 className="font-semibold text-lg truncate max-w-[80px] sm:max-w-none">
+                  {targetAgentData?.name || 'Agent'}
+                </h2>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-6 w-6 p-0"
+                      className="h-6 w-6 p-0 flex-shrink-0"
                       onClick={() => updateChatState({ showProfileOverlay: true })}
                     >
                       <Info className="size-4" />
@@ -913,31 +966,49 @@ export default function Chat({
               </div>
               {targetAgentData?.bio && (
                 <p className="text-sm text-muted-foreground line-clamp-1">
-                  {Array.isArray(targetAgentData.bio)
-                    ? targetAgentData.bio[0]
-                    : targetAgentData.bio}
+                  <span className="sm:hidden">
+                    {/* Mobile: Show only first 30 characters */}
+                    {((text) => (text.length > 30 ? `${text.substring(0, 30)}...` : text))(
+                      Array.isArray(targetAgentData?.bio)
+                        ? targetAgentData?.bio[0] || ''
+                        : targetAgentData?.bio || ''
+                    )}
+                  </span>
+                  <span className="hidden sm:inline">
+                    {/* Desktop: Show full first bio entry or full bio */}
+                    {Array.isArray(targetAgentData.bio)
+                      ? targetAgentData.bio[0]
+                      : targetAgentData.bio}
+                  </span>
                 </p>
               )}
             </div>
           </div>
-          <div className="flex gap-2 items-center">
+          <div className="flex gap-1 sm:gap-2 items-center flex-shrink-0">
             {chatType === ChannelType.DM && (
               <div className="flex items-center gap-1">
                 {agentDmChannels.length > 0 && (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm" className="max-w-[300px]">
-                        <MessageSquarePlus className="size-4 mr-2 flex-shrink-0" />
-                        <span className="truncate">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-8 sm:max-w-[300px] sm:w-auto"
+                      >
+                        <History className="size-4 flex-shrink-0" />
+                        <span className="hidden md:inline truncate text-xs sm:text-sm sm:ml-2">
                           {agentDmChannels.find((c) => c.id === chatState.currentDmChannelId)
                             ?.name || 'Select Chat'}
                         </span>
-                        <Badge variant="secondary" className="ml-2">
+                        <Badge
+                          variant="secondary"
+                          className="hidden md:inline-flex ml-1 sm:ml-2 text-xs"
+                        >
                           {agentDmChannels.length}
                         </Badge>
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-[320px]">
+                    <DropdownMenuContent align="end" className="w-[280px] sm:w-[320px]">
                       <DropdownMenuLabel className="font-medium">
                         Chat History with {targetAgentData.name}
                       </DropdownMenuLabel>
@@ -953,10 +1024,10 @@ export default function Chat({
                             )}
                           >
                             <div className="flex items-center justify-between w-full">
-                              <div className="flex flex-col">
+                              <div className="flex flex-col min-w-0 flex-1">
                                 <span
                                   className={cn(
-                                    'text-sm',
+                                    'text-sm truncate',
                                     channel.id === chatState.currentDmChannelId && 'font-medium'
                                   )}
                                 >
@@ -971,7 +1042,7 @@ export default function Chat({
                                 </span>
                               </div>
                               {channel.id === chatState.currentDmChannelId && (
-                                <Badge variant="default" className="text-xs">
+                                <Badge variant="default" className="text-xs flex-shrink-0 ml-2">
                                   Current
                                 </Badge>
                               )}
@@ -982,58 +1053,58 @@ export default function Chat({
                     </DropdownMenuContent>
                   </DropdownMenu>
                 )}
-                <Button
+
+                {/* Chat Actions Split Button */}
+                <SplitButton
+                  mainAction={{
+                    label: chatState.isCreatingDM ? (
+                      'Creating...'
+                    ) : (
+                      <>
+                        <span className="sm:hidden">New</span>
+                        <span className="hidden sm:inline">New Chat</span>
+                      </>
+                    ),
+                    onClick: () => handleNewDmChannel(targetAgentData?.id),
+                    icon: chatState.isCreatingDM ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Plus className="size-4" />
+                    ),
+                    disabled: chatState.isCreatingDM || isLoadingAgentDmChannels,
+                  }}
+                  actions={[
+                    {
+                      label: 'Clear Messages',
+                      onClick: handleClearChat,
+                      icon: <Eraser className="size-4" />,
+                      disabled: !messages || messages.length === 0,
+                    },
+                    {
+                      label: 'Delete Chat',
+                      onClick: handleDeleteCurrentDmChannel,
+                      icon: <Trash2 className="size-4" />,
+                      disabled: !chatState.currentDmChannelId,
+                      variant: 'destructive',
+                    },
+                  ]}
                   variant="outline"
                   size="sm"
-                  onClick={() => handleNewDmChannel(targetAgentData?.id)}
-                  disabled={chatState.isCreatingDM || isLoadingAgentDmChannels}
-                  title="Start a new distinct conversation with this agent"
-                >
-                  {chatState.isCreatingDM ? (
-                    <Loader2 className="size-4 mr-2 animate-spin" />
-                  ) : (
-                    <Plus className="size-4 mr-2" />
-                  )}
-                  New Chat
-                </Button>
+                  className="px-2 sm:px-3"
+                />
               </div>
             )}
-            {/* Clear Messages Button for DM */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleClearChat}
-              disabled={!messages || messages.length === 0}
-              title="Clear all messages in this conversation"
-              className="xl:px-3"
-            >
-              <Eraser className="size-4" />
-              <span className="hidden xl:inline xl:ml-2">Clear Messages</span>
-            </Button>
 
-            {/* Delete Channel Button for DM */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleDeleteCurrentDmChannel}
-              disabled={!chatState.currentDmChannelId}
-              title="Delete this entire chat session"
-              className="xl:px-3"
-            >
-              <Trash2 className="size-4" />
-              <span className="hidden xl:inline xl:ml-2">Delete Chat</span>
-            </Button>
-
-            <Separator orientation="vertical" className="h-8" />
+            <Separator orientation="vertical" className="h-8 hidden sm:block" />
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="xl:px-3 xl:h-8 h-8 w-8 xl:w-auto ml-3"
-                  onClick={() => updateChatState({ showSidebar: !chatState.showSidebar })}
+                  className="px-2 sm:px-3 h-8 w-8 sm:w-auto ml-1 sm:ml-3"
+                  onClick={toggleSidebar}
                 >
-                  {chatState.showSidebar ? (
+                  {showSidebar ? (
                     <PanelRightClose className="h-4 w-4" />
                   ) : (
                     <PanelRight className="h-4 w-4" />
@@ -1041,7 +1112,7 @@ export default function Chat({
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                <p>{chatState.showSidebar ? 'Close SidePanel' : 'Open SidePanel'}</p>
+                <p>{showSidebar ? 'Close SidePanel' : 'Open SidePanel'}</p>
               </TooltipContent>
             </Tooltip>
           </div>
@@ -1057,77 +1128,74 @@ export default function Chat({
       return (
         <div className="flex flex-col gap-3 mb-4">
           <div className="flex items-center justify-between p-3 bg-card rounded-lg border">
-            <div className="flex items-center gap-3">
-              <h2 className="font-semibold text-lg" title={groupDisplayName}>
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <h2 className="font-semibold text-lg truncate" title={groupDisplayName}>
                 {groupDisplayName}
               </h2>
             </div>
-            <div className="flex gap-2 items-center">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => updateChatState({ showGroupEditPanel: true })}
-              >
-                Edit Group
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleClearChat}
-                disabled={!messages || messages.length === 0}
-                title="Clear all messages"
-                className="xl:px-3"
-              >
-                <Eraser className="size-4" />
-                <span className="hidden xl:inline xl:ml-2">Clear</span>
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  if (!finalChannelIdForHooks || !finalServerIdForHooks) return;
-                  confirm(
-                    {
-                      title: 'Delete Group',
-                      description:
-                        'Are you sure you want to delete this group? This action cannot be undone.',
-                      confirmText: 'Delete',
-                      variant: 'destructive',
-                    },
-                    async () => {
-                      try {
-                        await apiClient.deleteChannel(finalChannelIdForHooks);
-                        toast({
-                          title: 'Group Deleted',
-                          description: 'The group has been successfully deleted.',
-                        });
-                        // Navigate back to home after deletion
-                        window.location.href = '/';
-                      } catch (error) {
-                        clientLogger.error('[Chat] Error deleting group:', error);
-                        toast({
-                          title: 'Error',
-                          description: 'Could not delete group.',
-                          variant: 'destructive',
-                        });
-                      }
-                    }
-                  );
+            <div className="flex gap-1 sm:gap-2 items-center flex-shrink-0">
+              {/* Group Actions Split Button */}
+              <SplitButton
+                mainAction={{
+                  label: 'Edit Group',
+                  onClick: () => updateChatState({ showGroupEditPanel: true }),
+                  icon: <Edit className="size-4" />,
                 }}
-                disabled={!finalChannelIdForHooks || !finalServerIdForHooks}
-                title="Delete group"
-                className="xl:px-3"
-              >
-                <Trash2 className="size-4" />
-                <span className="hidden xl:inline xl:ml-2">Delete</span>
-              </Button>
+                actions={[
+                  {
+                    label: 'Clear Messages',
+                    onClick: handleClearChat,
+                    icon: <Eraser className="size-4" />,
+                    disabled: !messages || messages.length === 0,
+                  },
+                  {
+                    label: 'Delete Group',
+                    onClick: () => {
+                      if (!finalChannelIdForHooks || !finalServerIdForHooks) return;
+                      confirm(
+                        {
+                          title: 'Delete Group',
+                          description:
+                            'Are you sure you want to delete this group? This action cannot be undone.',
+                          confirmText: 'Delete',
+                          variant: 'destructive',
+                        },
+                        async () => {
+                          try {
+                            await apiClient.deleteChannel(finalChannelIdForHooks);
+                            toast({
+                              title: 'Group Deleted',
+                              description: 'The group has been successfully deleted.',
+                            });
+                            // Navigate back to home after deletion
+                            window.location.href = '/';
+                          } catch (error) {
+                            clientLogger.error('[Chat] Error deleting group:', error);
+                            toast({
+                              title: 'Error',
+                              description: 'Could not delete group.',
+                              variant: 'destructive',
+                            });
+                          }
+                        }
+                      );
+                    },
+                    icon: <Trash2 className="size-4" />,
+                    disabled: !finalChannelIdForHooks || !finalServerIdForHooks,
+                    variant: 'destructive',
+                  },
+                ]}
+                variant="outline"
+                size="sm"
+                className="px-2 sm:px-3"
+              />
               <Button
                 variant="ghost"
                 size="sm"
-                className="xl:px-3 xl:h-8 h-8 w-8 xl:w-auto"
-                onClick={() => updateChatState({ showSidebar: !chatState.showSidebar })}
+                className="px-2 sm:px-3 h-8 w-8 sm:w-auto"
+                onClick={toggleSidebar}
               >
-                {chatState.showSidebar ? (
+                {showSidebar ? (
                   <PanelRightClose className="h-4 w-4" />
                 ) : (
                   <PanelRight className="h-4 w-4" />
@@ -1138,13 +1206,15 @@ export default function Chat({
 
           {groupAgents.length > 0 && (
             <div className="flex items-center gap-2 p-2 bg-card rounded-lg border overflow-x-auto">
-              <span className="text-sm text-muted-foreground whitespace-nowrap">Agents:</span>
-              <div className="flex gap-2">
+              <span className="text-sm text-muted-foreground whitespace-nowrap flex-shrink-0">
+                Agents:
+              </span>
+              <div className="flex gap-2 min-w-0">
                 <Button
                   variant={!chatState.selectedGroupAgentId ? 'default' : 'ghost'}
                   size="sm"
                   onClick={() => updateChatState({ selectedGroupAgentId: null })}
-                  className="flex items-center gap-2"
+                  className="flex items-center gap-2 flex-shrink-0"
                 >
                   <span>All</span>
                 </Button>
@@ -1156,15 +1226,17 @@ export default function Chat({
                     onClick={() => {
                       updateChatState({
                         selectedGroupAgentId: agent?.id || null,
-                        showSidebar: agent?.id ? true : chatState.showSidebar,
                       });
+                      if (agent?.id && !showSidebar) {
+                        setSidebarVisible(true);
+                      }
                     }}
-                    className="flex items-center gap-2"
+                    className="flex items-center gap-2 flex-shrink-0"
                   >
                     <Avatar className="size-5">
                       <AvatarImage src={getAgentAvatar(agent)} />
                     </Avatar>
-                    <span>{agent?.name}</span>
+                    <span className="truncate max-w-[100px] sm:max-w-none">{agent?.name}</span>
                   </Button>
                 ))}
               </div>
@@ -1178,63 +1250,165 @@ export default function Chat({
 
   return (
     <>
-      <ResizablePanelGroup direction="horizontal" className="h-full">
-        <ResizablePanel defaultSize={chatState.showSidebar ? 70 : 100} minSize={50}>
-          <div className="relative h-full">
-            {/* Main chat content */}
-            <div className="h-full flex flex-col p-4">
-              {renderChatHeader()}
+      <div className="h-full flex flex-col relative overflow-hidden">
+        {/* Conditional layout based on floating mode */}
+        {isFloatingMode ? (
+          /* Single panel layout for floating mode */
+          <div className="h-full flex flex-col overflow-hidden">
+            <div className="flex-shrink-0 p-2 sm:p-4 pb-0">{renderChatHeader()}</div>
 
-              <div
-                className={cn(
-                  'flex flex-col transition-all duration-300 w-full grow overflow-hidden '
-                )}
-              >
-                <div className="flex-1 min-h-0">
-                  <ChatMessageListComponent
-                    messages={messages}
-                    isLoadingMessages={isLoadingMessages}
-                    chatType={chatType}
-                    currentClientEntityId={currentClientEntityId}
-                    targetAgentData={targetAgentData}
-                    allAgents={allAgents}
-                    animatedMessageId={animatedMessageId}
-                    scrollRef={scrollRef}
-                    isAtBottom={isAtBottom}
-                    scrollToBottom={scrollToBottom}
-                    disableAutoScroll={disableAutoScroll}
-                    finalChannelId={finalChannelIdForHooks}
-                    getAgentInMessage={getAgentInMessage}
-                    agentAvatarMap={agentAvatarMap}
-                    onDeleteMessage={handleDeleteMessage}
-                    onRetryMessage={handleRetryMessage}
-                    selectedGroupAgentId={chatState.selectedGroupAgentId}
-                  />
-                </div>
+            <div
+              className={cn(
+                'flex flex-col transition-all duration-300 w-full flex-1 min-h-0 overflow-hidden p-2 sm:p-4 pt-0'
+              )}
+            >
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <ChatMessageListComponent
+                  messages={messages}
+                  isLoadingMessages={isLoadingMessages}
+                  chatType={chatType}
+                  currentClientEntityId={currentClientEntityId}
+                  targetAgentData={targetAgentData}
+                  allAgents={allAgents}
+                  animatedMessageId={animatedMessageId}
+                  scrollRef={scrollRef}
+                  contentRef={contentRef}
+                  isAtBottom={isAtBottom}
+                  scrollToBottom={scrollToBottom}
+                  disableAutoScroll={disableAutoScroll}
+                  finalChannelId={finalChannelIdForHooks}
+                  getAgentInMessage={getAgentInMessage}
+                  agentAvatarMap={agentAvatarMap}
+                  onDeleteMessage={handleDeleteMessage}
+                  onRetryMessage={handleRetryMessage}
+                  selectedGroupAgentId={chatState.selectedGroupAgentId}
+                />
+              </div>
 
-                <div className="flex-shrink-0">
-                  <ChatInputArea
-                    input={chatState.input}
-                    setInput={(value) => updateChatState({ input: value })}
-                    inputDisabled={chatState.inputDisabled}
-                    selectedFiles={selectedFiles}
-                    removeFile={removeFile}
-                    handleFileChange={handleFileChange}
-                    handleSendMessage={handleSendMessage}
-                    handleKeyDown={handleKeyDown}
-                    chatType={chatType}
-                    targetAgentData={targetAgentData}
-                    formRef={formRef}
-                    inputRef={inputRef}
-                    fileInputRef={fileInputRef}
-                  />
-                </div>
+              <div className="flex-shrink-0">
+                <ChatInputArea
+                  input={chatState.input}
+                  setInput={(value) => updateChatState({ input: value })}
+                  inputDisabled={chatState.inputDisabled}
+                  selectedFiles={selectedFiles}
+                  removeFile={removeFile}
+                  handleFileChange={handleFileChange}
+                  handleSendMessage={handleSendMessage}
+                  handleKeyDown={handleKeyDown}
+                  chatType={chatType}
+                  targetAgentData={targetAgentData}
+                  formRef={formRef}
+                  inputRef={inputRef}
+                  fileInputRef={fileInputRef}
+                />
               </div>
             </div>
           </div>
-        </ResizablePanel>
+        ) : (
+          /* Resizable panel layout for desktop mode */
+          <ResizablePanelGroup
+            direction="horizontal"
+            className="h-full flex-1 overflow-hidden"
+            onLayout={(sizes) => {
+              if (sizes.length >= 2 && showSidebar && !chatState.isMobile) {
+                setMainPanelSize(sizes[0]);
+                setSidebarPanelSize(sizes[1]);
+              }
+            }}
+          >
+            <ResizablePanel
+              defaultSize={showSidebar && !chatState.isMobile ? mainPanelSize : 100}
+              minSize={chatState.isMobile ? 100 : 50}
+            >
+              <div className="relative h-full overflow-hidden">
+                {/* Main chat content */}
+                <div className="h-full flex flex-col overflow-hidden">
+                  <div className="flex-shrink-0 p-2 sm:p-4 pb-0">{renderChatHeader()}</div>
 
-        {/* Right panel / sidebar */}
+                  <div
+                    className={cn(
+                      'flex flex-col transition-all duration-300 w-full flex-1 min-h-0 overflow-hidden p-2 sm:p-4 pt-0'
+                    )}
+                  >
+                    <div className="flex-1 min-h-0 overflow-hidden">
+                      <ChatMessageListComponent
+                        messages={messages}
+                        isLoadingMessages={isLoadingMessages}
+                        chatType={chatType}
+                        currentClientEntityId={currentClientEntityId}
+                        targetAgentData={targetAgentData}
+                        allAgents={allAgents}
+                        animatedMessageId={animatedMessageId}
+                        scrollRef={scrollRef}
+                        contentRef={contentRef}
+                        isAtBottom={isAtBottom}
+                        scrollToBottom={scrollToBottom}
+                        disableAutoScroll={disableAutoScroll}
+                        finalChannelId={finalChannelIdForHooks}
+                        getAgentInMessage={getAgentInMessage}
+                        agentAvatarMap={agentAvatarMap}
+                        onDeleteMessage={handleDeleteMessage}
+                        onRetryMessage={handleRetryMessage}
+                        selectedGroupAgentId={chatState.selectedGroupAgentId}
+                      />
+                    </div>
+
+                    <div className="flex-shrink-0">
+                      <ChatInputArea
+                        input={chatState.input}
+                        setInput={(value) => updateChatState({ input: value })}
+                        inputDisabled={chatState.inputDisabled}
+                        selectedFiles={selectedFiles}
+                        removeFile={removeFile}
+                        handleFileChange={handleFileChange}
+                        handleSendMessage={handleSendMessage}
+                        handleKeyDown={handleKeyDown}
+                        chatType={chatType}
+                        targetAgentData={targetAgentData}
+                        formRef={formRef}
+                        inputRef={inputRef}
+                        fileInputRef={fileInputRef}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </ResizablePanel>
+
+            {/* Right panel / sidebar */}
+            {(() => {
+              let sidebarAgentId: UUID | undefined = undefined;
+              let sidebarAgentName: string = 'Agent';
+
+              if (chatType === ChannelType.DM) {
+                sidebarAgentId = contextId; // This is agentId for DM
+                sidebarAgentName = targetAgentData?.name || 'Agent';
+              } else if (chatType === ChannelType.GROUP && chatState.selectedGroupAgentId) {
+                sidebarAgentId = chatState.selectedGroupAgentId;
+                const selectedAgent = allAgents.find(
+                  (a) => a.id === chatState.selectedGroupAgentId
+                );
+                sidebarAgentName = selectedAgent?.name || 'Group Member';
+              } else if (chatType === ChannelType.GROUP && !chatState.selectedGroupAgentId) {
+                sidebarAgentName = 'Group';
+              }
+
+              return (
+                showSidebar &&
+                !chatState.isMobile && (
+                  <>
+                    <ResizableHandle withHandle />
+                    <ResizablePanel defaultSize={sidebarPanelSize} minSize={20} maxSize={50}>
+                      <AgentSidebar agentId={sidebarAgentId} agentName={sidebarAgentName} />
+                    </ResizablePanel>
+                  </>
+                )
+              );
+            })()}
+          </ResizablePanelGroup>
+        )}
+
+        {/* Floating sidebar overlay for narrow screens */}
         {(() => {
           let sidebarAgentId: UUID | undefined = undefined;
           let sidebarAgentName: string = 'Agent';
@@ -1251,17 +1425,33 @@ export default function Chat({
           }
 
           return (
-            chatState.showSidebar && (
-              <>
-                <ResizableHandle withHandle />
-                <ResizablePanel defaultSize={30} minSize={20} maxSize={50}>
-                  <AgentSidebar agentId={sidebarAgentId} agentName={sidebarAgentName} />
-                </ResizablePanel>
-              </>
+            showSidebar &&
+            isFloatingMode && (
+              <div className="absolute inset-0 z-50 bg-background/80 backdrop-blur-sm">
+                <div className="absolute inset-0 bg-background shadow-lg">
+                  <div className="h-full flex flex-col">
+                    {/* Close button for floating sidebar */}
+                    <div className="flex items-center justify-between p-4 border-b">
+                      <h3 className="font-semibold text-lg">{sidebarAgentName}</h3>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setSidebarVisible(false)}
+                        className="h-8 w-8 p-0"
+                      >
+                        <PanelRightClose className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <div className="flex-1 overflow-hidden">
+                      <AgentSidebar agentId={sidebarAgentId} agentName={sidebarAgentName} />
+                    </div>
+                  </div>
+                </div>
+              </div>
             )
           );
         })()}
-      </ResizablePanelGroup>
+      </div>
 
       {chatState.showGroupEditPanel && chatType === ChannelType.GROUP && (
         <GroupPanel

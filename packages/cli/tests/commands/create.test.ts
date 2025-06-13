@@ -5,6 +5,7 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import { existsSync } from 'fs';
 import { safeChangeDirectory, runCliCommandSilently, expectCliCommandToFail } from './test-utils';
+import { TEST_TIMEOUTS } from '../test-timeouts';
 
 describe('ElizaOS Create Commands', () => {
   let testTmpDir: string;
@@ -21,8 +22,8 @@ describe('ElizaOS Create Commands', () => {
 
     // Setup CLI commands
     const scriptDir = join(__dirname, '..');
-    elizaosCmd = `bun run ${join(scriptDir, '../dist/index.js')}`;
-    createElizaCmd = `bun run ${join(scriptDir, '../../create-eliza/index.mjs')}`;
+    elizaosCmd = `bun run "${join(scriptDir, '../dist/index.js')}"`;
+    createElizaCmd = `bun run "${join(scriptDir, '../../create-eliza/index.mjs')}"`;
 
     // Change to test directory
     process.chdir(testTmpDir);
@@ -66,10 +67,19 @@ describe('ElizaOS Create Commands', () => {
   });
 
   test('create default project succeeds', async () => {
-    execSync(`rm -rf my-default-app`, { stdio: 'ignore' });
+    // Use cross-platform directory removal
+    try {
+      if (process.platform === 'win32') {
+        execSync(`if exist my-default-app rmdir /s /q my-default-app`, { stdio: 'ignore' });
+      } else {
+        execSync(`rm -rf my-default-app`, { stdio: 'ignore' });
+      }
+    } catch (e) {
+      // Ignore cleanup errors
+    }
 
     const result = runCliCommandSilently(elizaosCmd, 'create my-default-app --yes', {
-      timeout: 30000,
+      timeout: TEST_TIMEOUTS.PROJECT_CREATION,
     });
 
     // Check for various success patterns since output might vary
@@ -94,13 +104,22 @@ describe('ElizaOS Create Commands', () => {
     expect(existsSync('my-default-app/src')).toBe(true);
     expect(existsSync('my-default-app/.gitignore')).toBe(true);
     expect(existsSync('my-default-app/.npmignore')).toBe(true);
-  }, 40000);
+  }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
 
   test('create plugin project succeeds', async () => {
-    execSync(`rm -rf plugin-my-plugin-app`, { stdio: 'ignore' });
+    // Use cross-platform directory removal
+    try {
+      if (process.platform === 'win32') {
+        execSync(`if exist plugin-my-plugin-app rmdir /s /q plugin-my-plugin-app`, { stdio: 'ignore' });
+      } else {
+        execSync(`rm -rf plugin-my-plugin-app`, { stdio: 'ignore' });
+      }
+    } catch (e) {
+      // Ignore cleanup errors
+    }
 
     const result = runCliCommandSilently(elizaosCmd, 'create my-plugin-app --yes --type plugin', {
-      timeout: 30000,
+      timeout: TEST_TIMEOUTS.PROJECT_CREATION,
     });
 
     // Check for various success patterns
@@ -125,10 +144,19 @@ describe('ElizaOS Create Commands', () => {
     expect(existsSync(pluginDir)).toBe(true);
     expect(existsSync(join(pluginDir, 'package.json'))).toBe(true);
     expect(existsSync(join(pluginDir, 'src/index.ts'))).toBe(true);
-  }, 40000);
+  }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
 
   test('create agent succeeds', async () => {
-    execSync(`rm -f my-test-agent.json`, { stdio: 'ignore' });
+    // Use cross-platform file removal
+    try {
+      if (process.platform === 'win32') {
+        execSync(`if exist my-test-agent.json del my-test-agent.json`, { stdio: 'ignore' });
+      } else {
+        execSync(`rm -f my-test-agent.json`, { stdio: 'ignore' });
+      }
+    } catch (e) {
+      // Ignore cleanup errors
+    }
 
     const result = runCliCommandSilently(elizaosCmd, 'create my-test-agent --yes --type agent');
 
@@ -138,9 +166,18 @@ describe('ElizaOS Create Commands', () => {
   });
 
   test('rejects creating project in existing directory', async () => {
-    execSync(`rm -rf existing-app && mkdir existing-app && echo "test" > existing-app/file.txt`, {
-      stdio: 'ignore',
-    });
+    // Use cross-platform commands
+    try {
+      if (process.platform === 'win32') {
+        execSync(`if exist existing-app rmdir /s /q existing-app`, { stdio: 'ignore' });
+        execSync(`mkdir existing-app`, { stdio: 'ignore' });
+        execSync(`echo test > existing-app\\file.txt`, { stdio: 'ignore' });
+      } else {
+        execSync(`rm -rf existing-app && mkdir existing-app && echo "test" > existing-app/file.txt`, { stdio: 'ignore' });
+      }
+    } catch (e) {
+      // Ignore setup errors
+    }
 
     const result = expectCliCommandToFail(elizaosCmd, 'create existing-app --yes');
 
@@ -149,14 +186,26 @@ describe('ElizaOS Create Commands', () => {
   });
 
   test('create project in current directory', async () => {
-    execSync(`rm -rf create-in-place && mkdir create-in-place`, { stdio: 'ignore' });
+    // Use cross-platform commands
+    try {
+      if (process.platform === 'win32') {
+        execSync(`if exist create-in-place rmdir /s /q create-in-place`, { stdio: 'ignore' });
+        execSync(`mkdir create-in-place`, { stdio: 'ignore' });
+      } else {
+        execSync(`rm -rf create-in-place && mkdir create-in-place`, { stdio: 'ignore' });
+      }
+    } catch (e) {
+      // Ignore setup errors
+    }
     process.chdir('create-in-place');
 
-    const result = runCliCommandSilently(elizaosCmd, 'create . --yes');
+    const result = runCliCommandSilently(elizaosCmd, 'create . --yes', {
+      timeout: TEST_TIMEOUTS.PROJECT_CREATION,
+    });
 
     expect(result).toContain('Project initialized successfully!');
     expect(existsSync('package.json')).toBe(true);
-  });
+  }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
 
   test('rejects invalid project name', async () => {
     const result = expectCliCommandToFail(elizaosCmd, 'create "Invalid Name" --yes');
@@ -174,7 +223,16 @@ describe('ElizaOS Create Commands', () => {
 
   // create-eliza parity tests
   test('create-eliza default project succeeds', async () => {
-    execSync(`rm -rf my-create-app`, { stdio: 'ignore' });
+    // Use cross-platform directory removal
+    try {
+      if (process.platform === 'win32') {
+        execSync(`if exist my-create-app rmdir /s /q my-create-app`, { stdio: 'ignore' });
+      } else {
+        execSync(`rm -rf my-create-app`, { stdio: 'ignore' });
+      }
+    } catch (e) {
+      // Ignore cleanup errors
+    }
 
     try {
       const result = runCliCommandSilently(createElizaCmd, 'my-create-app --yes');
@@ -187,10 +245,19 @@ describe('ElizaOS Create Commands', () => {
       // Skip this test if create-eliza is not available
       console.warn('Skipping create-eliza test - command not available');
     }
-  }, 30000);
+  }, 60000);
 
   test('create-eliza plugin project succeeds', async () => {
-    execSync(`rm -rf plugin-my-create-plugin`, { stdio: 'ignore' });
+    // Use cross-platform directory removal
+    try {
+      if (process.platform === 'win32') {
+        execSync(`if exist plugin-my-create-plugin rmdir /s /q plugin-my-create-plugin`, { stdio: 'ignore' });
+      } else {
+        execSync(`rm -rf plugin-my-create-plugin`, { stdio: 'ignore' });
+      }
+    } catch (e) {
+      // Ignore cleanup errors
+    }
 
     try {
       const result = runCliCommandSilently(createElizaCmd, 'my-create-plugin --yes --type plugin');
@@ -204,10 +271,19 @@ describe('ElizaOS Create Commands', () => {
       // Skip this test if create-eliza is not available
       console.warn('Skipping create-eliza plugin test - command not available');
     }
-  }, 30000);
+  }, 60000);
 
   test('create-eliza agent succeeds', async () => {
-    execSync(`rm -f my-create-agent.json`, { stdio: 'ignore' });
+    // Use cross-platform file removal
+    try {
+      if (process.platform === 'win32') {
+        execSync(`if exist my-create-agent.json del my-create-agent.json`, { stdio: 'ignore' });
+      } else {
+        execSync(`rm -f my-create-agent.json`, { stdio: 'ignore' });
+      }
+    } catch (e) {
+      // Ignore cleanup errors
+    }
 
     try {
       const result = runCliCommandSilently(createElizaCmd, 'my-create-agent --yes --type agent');
@@ -219,5 +295,5 @@ describe('ElizaOS Create Commands', () => {
       // Skip this test if create-eliza is not available
       console.warn('Skipping create-eliza agent test - command not available');
     }
-  }, 30000);
+  }, 60000);
 });

@@ -38,7 +38,6 @@
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
-    "test": "vitest run",
     "test:cli": "bun test tests/commands/"
   },
   "devDependencies": {
@@ -72,9 +71,8 @@
     "tsup": "8.5.0",
     "tsx": "4.19.4",
     "type-fest": "^3.8.0",
-    "typescript": "^5.5.4",
+    "typescript": "5.8.2",
     "vite": "^5.4.1",
-    "vitest": "^3.0.0",
     "which": "^4.0.0",
     "ws": "^8.18.0",
     "yoctocolors": "^2.1.1"
@@ -84,7 +82,7 @@
     "@clack/prompts": "^0.11.0",
     "@electric-sql/pglite": "^0.3.2",
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-bootstrap": "1.0.5",
+    "@elizaos/plugin-bootstrap": "workspace:*",
     "@elizaos/plugin-local-ai": "latest",
     "@elizaos/plugin-openai": "latest",
     "@elizaos/plugin-sql": "workspace:*",

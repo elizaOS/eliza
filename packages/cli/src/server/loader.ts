@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type Character, logger } from '@elizaos/core';
 import multer from 'multer';
-import { character as defaultCharacter } from '../characters/eliza';
+import { getElizaCharacter } from '../characters/eliza';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -301,7 +301,7 @@ export async function loadCharacters(charactersArg: string): Promise<Character[]
 
   if (loadedCharacters.length === 0) {
     logger.info('No characters found, using default character');
-    loadedCharacters.push(defaultCharacter);
+    loadedCharacters.push(getElizaCharacter());
   }
 
   return loadedCharacters;

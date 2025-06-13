@@ -72,7 +72,7 @@ There are several ways to add plugins to your ElizaOS project:
     {
       "dependencies": {
         "@elizaos/plugin-solana": "github:elizaos-plugins/plugin-solana",
-        "@elizaos/plugin-twitter": "github:elizaos-plugins/plugin-twitter"
+        "@elizaos/plugin-farcaster": "github:elizaos-plugins/plugin-farcaster"
       }
     }
     ```
@@ -82,7 +82,7 @@ There are several ways to add plugins to your ElizaOS project:
     // In src/index.ts
     export const character: Character = {
       name: 'MyAgent',
-      plugins: ['@elizaos/plugin-twitter', '@elizaos/plugin-example'],
+      plugins: ['@elizaos/plugin-farcaster', '@elizaos/plugin-example'],
       // ...
     };
     ```
@@ -90,10 +90,10 @@ There are several ways to add plugins to your ElizaOS project:
   <TabItem value="cli" label="Via CLI Commands">
     ```bash
     # Add a plugin
-    elizaos plugins add @elizaos/plugin-twitter
+    elizaos plugins add @elizaos/plugin-farcaster
 
     # Remove a plugin
-    elizaos plugins remove @elizaos/plugin-twitter
+    elizaos plugins remove @elizaos/plugin-farcaster
 
     # List available plugins
     elizaos plugins list
@@ -260,7 +260,7 @@ Each plugin can provide one or more of the following components:
 
 | Component          | Purpose                                                                         |
 | ------------------ | ------------------------------------------------------------------------------- |
-| **Services**       | Platform integrations (Discord, Twitter, etc.) or specialized capabilities      |
+| **Services**       | Platform integrations (Discord, Telegram, etc.) or specialized capabilities      |
 | **Actions**        | Executable functions triggered by the agent (reply, generate content, etc.)     |
 | **Providers**      | Context providers that supply info to the agent during decision making          |
 | **Evaluators**     | Analyze conversations to extract insights and improve future interactions       |
@@ -630,7 +630,7 @@ elizaos start --plugins=./path/to/plugin
 
 ### What's the difference between Actions and Services?
 
-Actions handle specific agent responses or behaviors, while Services provide platform integrations (like Discord or Twitter) or ongoing background functionality that multiple actions might use.
+Actions handle specific agent responses or behaviors, while Services provide platform integrations (like Discord or Telegram) or ongoing background functionality that multiple actions might use.
 
 ### How do I handle rate limits with external APIs?
 

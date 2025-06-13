@@ -1,6 +1,8 @@
 @config "../tailwind.config.ts";
 @import 'tailwindcss';
 
+@custom-variant dark (&:is(.dark *));
+
 @layer base {
   :root {
     --background: 0 0% 100%;
@@ -17,7 +19,7 @@
     --muted-foreground: 240 3.8% 46.1%;
     --accent: 240 4.8% 97%;
     --accent-foreground: 240 5.9% 10%;
-    --destructive: 0 84.2% 60.2%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 98%;
     --border: 240 5.9% 90%;
     --input: 240 5.9% 90%;
@@ -48,7 +50,7 @@
     --muted-foreground: 240 5% 64.9%;
     --accent: 240 3.7% 15.9%;
     --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 98%;
     --border: 240 3.7% 15.9%;
     --input: 240 3.7% 15.9%;
@@ -88,4 +90,13 @@
 
 @utility container {
   margin-inline: auto;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
 }

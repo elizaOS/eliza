@@ -3,7 +3,12 @@ import { Button } from '@/components/ui/button';
 import { useAgentManagement } from '@/hooks/use-agent-management';
 import { useAgent } from '@/hooks/use-query-hooks';
 import clientLogger from '@/lib/logger';
-import { type Agent, AgentStatus as CoreAgentStatusEnum, type UUID } from '@elizaos/core';
+import {
+  type Agent,
+  ChannelType,
+  AgentStatus as CoreAgentStatusEnum,
+  type UUID,
+} from '@elizaos/core';
 import { Loader2, Play } from 'lucide-react';
 import { useEffect } from 'react';
 import { useParams } from 'react-router';
@@ -109,7 +114,7 @@ export default function AgentRoute() {
   return (
     <ChatComponent
       key={`${agentId}-${channelId || 'no-dm-channel'}`}
-      chatType="DM"
+      chatType={ChannelType.DM}
       contextId={agentId}
       initialDmChannelId={channelId}
     />

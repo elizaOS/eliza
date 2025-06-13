@@ -222,7 +222,12 @@ export const agentTemplates: AgentTemplate[] = [
         TWITTER_ENABLE_POST_GENERATION: true,
         TWITTER_POST_INTERVAL_MIN: 90,
         TWITTER_POST_INTERVAL_MAX: 180,
-        secrets: {},
+        secrets: {
+          TWITTER_API_KEY: 'process.env.TWITTER_API_KEY',
+          TWITTER_API_SECRET_KEY: 'process.env.TWITTER_API_SECRET_KEY',
+          TWITTER_ACCESS_TOKEN: 'process.env.TWITTER_ACCESS_TOKEN',
+          TWITTER_ACCESS_TOKEN_SECRET: 'process.env.TWITTER_ACCESS_TOKEN_SECRET',
+        },
       },
     },
   },

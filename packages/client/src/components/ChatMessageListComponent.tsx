@@ -17,6 +17,7 @@ interface ChatMessageListComponentProps {
   allAgents: Partial<Agent>[];
   animatedMessageId: string | null;
   scrollRef: React.RefObject<HTMLDivElement | null>;
+  contentRef?: React.RefObject<HTMLDivElement | null>; // Optional content ref for StickToBottom
   isAtBottom: boolean;
   scrollToBottom: () => void;
   disableAutoScroll: () => void;
@@ -37,6 +38,7 @@ export const ChatMessageListComponent: React.FC<ChatMessageListComponentProps> =
   allAgents,
   animatedMessageId,
   scrollRef,
+  contentRef,
   isAtBottom,
   scrollToBottom,
   disableAutoScroll,
@@ -64,6 +66,7 @@ export const ChatMessageListComponent: React.FC<ChatMessageListComponentProps> =
     <ChatMessageList
       key={finalChannelId || 'no-channel'}
       scrollRef={scrollRef}
+      contentRef={contentRef}
       isAtBottom={isAtBottom}
       scrollToBottom={scrollToBottom}
       disableAutoScroll={disableAutoScroll}
@@ -94,7 +97,7 @@ export const ChatMessageListComponent: React.FC<ChatMessageListComponentProps> =
         return (
           <div
             key={`${message.id}-${message.createdAt}`}
-            className={cn('flex gap-1 p-1', isUser ? 'justify-end' : 'justify-start')}
+            className={cn('flex gap-1', isUser ? 'justify-end' : 'justify-start')}
           >
             <ChatBubble
               variant={isUser ? 'sent' : 'received'}

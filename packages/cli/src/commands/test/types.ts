@@ -23,6 +23,7 @@ export interface E2ETestOptions {
  * Combined test command options
  */
 export interface TestCommandOptions extends ComponentTestOptions, E2ETestOptions {
+  type?: 'component' | 'e2e' | 'all';
   port?: number;
   name?: string;
   skipBuild?: boolean;

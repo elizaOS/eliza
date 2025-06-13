@@ -67,10 +67,7 @@ export async function startAgent(
     settings: await loadEnvConfig(),
   });
 
-  // Pass the server's database adapter to the runtime before plugin initialization
   const initWrapper = async (runtime: IAgentRuntime) => {
-    // Register the server's database adapter with the runtime
-    runtime.registerDatabaseAdapter(server.database);
     if (init) {
       await init(runtime);
     }

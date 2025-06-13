@@ -31,8 +31,7 @@ export function createAgentPanelsRouter(
         .filter((route) => route.public === true && route.type === 'GET' && route.name)
         .map((route) => ({
           name: route.name,
-          // Construct the full path to the plugin route
-          path: `/api/agents/${agentId}/plugins/${runtime.plugins.find((p) => p.routes?.includes(route))?.name}${route.path.startsWith('/') ? route.path : `/${route.path}`}`,
+          path: `/api${route.path.startsWith('/') ? route.path : `/${route.path}`}?agentId=${agentId}`,
         }));
 
       sendSuccess(res, publicPanels);

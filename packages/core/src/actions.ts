@@ -74,17 +74,8 @@ const formatSelectedExamples = (examples: ActionExample[][]): string => {
       // Format the conversation
       const conversation = example
         .map((message) => {
-          // Build the base message
+          // Build the base message - only include the text, no action info
           let messageText = `${message.name}: ${message.content.text}`;
-
-          // Add action information if present
-          if (message.content.action) {
-            messageText += ` (action: ${message.content.action})`;
-          }
-
-          if (message.content.actions?.length) {
-            messageText += ` (actions: ${message.content.actions.join(', ')})`;
-          }
 
           // Replace name placeholders
           for (let i = 0; i < randomNames.length; i++) {

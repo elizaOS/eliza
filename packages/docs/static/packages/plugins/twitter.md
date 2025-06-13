@@ -1,34 +1,33 @@
 # @elizaos/plugin-twitter
 
-## Purpose
+Twitter/X bot integration plugin.
 
-A plugin for Twitter/X integration, providing automated tweet posting capabilities with character-aware content generation.
+## Configuration
 
-## Key Features
+### Required environment variables:
 
-- Compose context-aware tweets
-- Post tweets to Twitter/X platform
-- Handle authentication and session management
-- Support premium Twitter features
-- Manage tweet length restrictions
+```env
+TWITTER_API_KEY=your_api_key
+TWITTER_API_SECRET_KEY=your_api_secret_key
+TWITTER_ACCESS_TOKEN=your_access_token
+TWITTER_ACCESS_TOKEN_SECRET=your_access_token_secret
+```
+
+### Optional environment variables:
+
+```env
+TWITTER_TARGET_USERS=username1,username2        # Comma-separated list of target users
+TWITTER_DRY_RUN=false                           # Set to true to simulate actions without posting
+TWITTER_POST_ENABLE=false                       # Enable autonomous tweet posting
+TWITTER_SEARCH_ENABLE=true                      # Enable timeline monitoring
+TWITTER_POST_INTERVAL_MIN=90                    # Minimum minutes between posts
+TWITTER_POST_INTERVAL_MAX=180                   # Maximum minutes between posts
+```
 
 ## Installation
 
 ```bash
 npm install @elizaos/plugin-twitter
-```
-
-## Configuration
-
-Requires environment variables:
-
-```env
-TWITTER_USERNAME=your_username
-TWITTER_PASSWORD=your_password
-TWITTER_EMAIL=your_email              # Optional: for 2FA
-TWITTER_2FA_SECRET=your_2fa_secret    # Optional: for 2FA
-TWITTER_PREMIUM=false                 # Optional: enables premium features
-TWITTER_DRY_RUN=false                # Optional: test without posting
 ```
 
 ## Integration

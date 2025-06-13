@@ -296,8 +296,8 @@ const messageReceivedHandler = async ({
     // Set this as the latest response ID for this agent+room
     agentResponses.set(message.roomId, responseId);
 
-    // Generate a unique run ID for tracking this message handler execution
-    const runId = asUUID(v4());
+    // Use runtime's run tracking for this message processing
+    const runId = runtime.startRun();
     const startTime = Date.now();
 
     // Emit run started event
@@ -504,17 +504,16 @@ const messageReceivedHandler = async ({
 
             responseContent.simple = isSimple;
 
-            const agentPlan = {
+            const responseMesssage = {
               id: asUUID(v4()),
               entityId: runtime.agentId,
               agentId: runtime.agentId,
               content: responseContent,
               roomId: message.roomId,
-              isPlan: true,
               createdAt: Date.now(),
             };
 
-            responseMessages = [agentPlan];
+            responseMessages = [responseMesssage];
           }
 
           // Clean up the response ID
@@ -536,39 +535,7 @@ const messageReceivedHandler = async ({
             // without actions there can't be more than one message
             await callback(responseContent);
           } else {
-            await runtime.processActions(
-              message,
-              responseMessages,
-              state,
-              async (memory: Content) => {
-                return [];
-              }
-            );
-            if (responseMessages.length) {
-              // Log provider usage for complex responses
-              for (const responseMessage of responseMessages) {
-                if (
-                  responseMessage.content.providers &&
-                  responseMessage.content.providers.length > 0
-                ) {
-                  logger.debug(
-                    '[Bootstrap] Complex response used providers',
-                    responseMessage.content.providers
-                  );
-                }
-              }
-
-              for (const memory of responseMessages) {
-                // Skip the agent plan - it should never be sent to the user.
-                // Unless it's simple response but that was already triggered before
-                // we reach this part of the code.
-                if ('isPlan' in memory && memory.isPlan) {
-                  logger.debug('[Bootstrap] Skipping agent plan in callback - internal use only');
-                  continue;
-                }
-                await callback(memory.content);
-              }
-            }
+            await runtime.processActions(message, responseMessages, state, callback);
           }
           await runtime.evaluate(
             message,
