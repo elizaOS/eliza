@@ -10,7 +10,7 @@ import { logger, stringToUuid } from '@elizaos/core';
 import * as fs from 'node:fs';
 import path from 'node:path';
 import { v4 as uuidv4 } from 'uuid';
-import { character as elizaCharacter } from '@/src/characters/eliza';
+import { getElizaCharacter } from '@/src/characters/eliza';
 
 /**
  * Interface for a project module that can be loaded.
@@ -142,6 +142,7 @@ export async function loadProject(dir: string): Promise<Project> {
       // Create a fallback project with the default Eliza character
       // Use deterministic UUID based on character name to match runtime behavior
       const defaultCharacterName = 'Eliza (Default)';
+      const elizaCharacter = getElizaCharacter(); // Get the filtered character based on env vars
       const defaultAgent: ProjectAgent = {
         character: {
           ...elizaCharacter,
@@ -230,6 +231,7 @@ export async function loadProject(dir: string): Promise<Project> {
         // Use the Eliza character as our test agent
         // Use deterministic UUID based on character name to match runtime behavior
         const characterName = 'Eliza (Test Mode)';
+        const elizaCharacter = getElizaCharacter(); // Get the filtered character based on env vars
         const testCharacter: Character = {
           ...elizaCharacter,
           id: stringToUuid(characterName) as UUID,
