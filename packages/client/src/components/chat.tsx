@@ -247,7 +247,13 @@ export default function Chat({
 
   // Use persistent sidebar state
   const { isVisible: showSidebar, setSidebarVisible, toggleSidebar } = useSidebarState();
-  const { mainPanelSize, sidebarPanelSize, setMainPanelSize, setSidebarPanelSize } = usePanelWidthState();
+  const {
+    mainPanelSize,
+    sidebarPanelSize,
+    isFloatingMode: isFloatingModeFromWidth,
+    setMainPanelSize,
+    setSidebarPanelSize
+  } = usePanelWidthState();
 
   // Consolidate all chat UI state into a single object (excluding showSidebar which is now managed separately)
   const [chatState, setChatState] = useState<ChatUIState>({
@@ -260,6 +266,9 @@ export default function Chat({
     isCreatingDM: false,
     isMobile: false,
   });
+
+  // Determine if we should use floating mode - either from width detection OR mobile
+  const isFloatingMode = isFloatingModeFromWidth || chatState.isMobile;
 
   // Confirmation dialogs
   const { confirm, isOpen, onOpenChange, onConfirm, options } = useConfirmation();
@@ -839,10 +848,7 @@ export default function Chat({
     const checkMobile = () => {
       const isMobile = window.innerWidth < 768;
       updateChatState({ isMobile });
-      // Auto-hide sidebar on mobile
-      if (isMobile && showSidebar) {
-        setSidebarVisible(false);
-      }
+      // Note: Don't auto-hide sidebar on mobile - let floating mode handle it
     };
 
     // Initial check
@@ -851,7 +857,7 @@ export default function Chat({
     // Add resize listener
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
-  }, [updateChatState, showSidebar, setSidebarVisible]);
+  }, [updateChatState]);
 
   if (
     chatType === ChannelType.DM &&
@@ -1194,103 +1200,205 @@ export default function Chat({
 
   return (
     <>
-      <div className="h-full flex flex-col">
-        <ResizablePanelGroup
-          direction="horizontal"
-          className="h-full flex-1"
-          onLayout={(sizes) => {
-            if (sizes.length >= 2 && showSidebar && !chatState.isMobile) {
-              setMainPanelSize(sizes[0]);
-              setSidebarPanelSize(sizes[1]);
-            }
-          }}
-        >
-          <ResizablePanel
-            defaultSize={showSidebar && !chatState.isMobile ? mainPanelSize : 100}
-            minSize={chatState.isMobile ? 100 : 50}
-          >
-            <div className="relative h-full">
-              {/* Main chat content */}
-              <div className="h-full flex flex-col p-2 sm:p-4">
-                {renderChatHeader()}
+      <div className="h-full flex flex-col relative overflow-hidden">
+        {/* Conditional layout based on floating mode */}
+        {isFloatingMode ? (
+          /* Single panel layout for floating mode */
+          <div className="h-full flex flex-col overflow-hidden">
+            <div className="flex-shrink-0 p-2 sm:p-4 pb-0">
+              {renderChatHeader()}
+            </div>
 
-                <div
-                  className={cn(
-                    'flex flex-col transition-all duration-300 w-full flex-1 min-h-0 overflow-hidden'
-                  )}
-                >
-                  <div className="flex-1 min-h-0 overflow-hidden">
-                    <ChatMessageListComponent
-                      messages={messages}
-                      isLoadingMessages={isLoadingMessages}
-                      chatType={chatType}
-                      currentClientEntityId={currentClientEntityId}
-                      targetAgentData={targetAgentData}
-                      allAgents={allAgents}
-                      animatedMessageId={animatedMessageId}
-                      scrollRef={scrollRef}
-                      isAtBottom={isAtBottom}
-                      scrollToBottom={scrollToBottom}
-                      disableAutoScroll={disableAutoScroll}
-                      finalChannelId={finalChannelIdForHooks}
-                      getAgentInMessage={getAgentInMessage}
-                      agentAvatarMap={agentAvatarMap}
-                      onDeleteMessage={handleDeleteMessage}
-                      onRetryMessage={handleRetryMessage}
-                      selectedGroupAgentId={chatState.selectedGroupAgentId}
-                    />
+            <div
+              className={cn(
+                'flex flex-col transition-all duration-300 w-full flex-1 min-h-0 overflow-hidden p-2 sm:p-4 pt-0'
+              )}
+            >
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <ChatMessageListComponent
+                  messages={messages}
+                  isLoadingMessages={isLoadingMessages}
+                  chatType={chatType}
+                  currentClientEntityId={currentClientEntityId}
+                  targetAgentData={targetAgentData}
+                  allAgents={allAgents}
+                  animatedMessageId={animatedMessageId}
+                  scrollRef={scrollRef}
+                  isAtBottom={isAtBottom}
+                  scrollToBottom={scrollToBottom}
+                  disableAutoScroll={disableAutoScroll}
+                  finalChannelId={finalChannelIdForHooks}
+                  getAgentInMessage={getAgentInMessage}
+                  agentAvatarMap={agentAvatarMap}
+                  onDeleteMessage={handleDeleteMessage}
+                  onRetryMessage={handleRetryMessage}
+                  selectedGroupAgentId={chatState.selectedGroupAgentId}
+                />
+              </div>
+
+              <div className="flex-shrink-0">
+                <ChatInputArea
+                  input={chatState.input}
+                  setInput={(value) => updateChatState({ input: value })}
+                  inputDisabled={chatState.inputDisabled}
+                  selectedFiles={selectedFiles}
+                  removeFile={removeFile}
+                  handleFileChange={handleFileChange}
+                  handleSendMessage={handleSendMessage}
+                  handleKeyDown={handleKeyDown}
+                  chatType={chatType}
+                  targetAgentData={targetAgentData}
+                  formRef={formRef}
+                  inputRef={inputRef}
+                  fileInputRef={fileInputRef}
+                />
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* Resizable panel layout for desktop mode */
+          <ResizablePanelGroup
+            direction="horizontal"
+            className="h-full flex-1 overflow-hidden"
+            onLayout={(sizes) => {
+              if (sizes.length >= 2 && showSidebar && !chatState.isMobile) {
+                setMainPanelSize(sizes[0]);
+                setSidebarPanelSize(sizes[1]);
+              }
+            }}
+          >
+            <ResizablePanel
+              defaultSize={showSidebar && !chatState.isMobile ? mainPanelSize : 100}
+              minSize={chatState.isMobile ? 100 : 50}
+            >
+              <div className="relative h-full overflow-hidden">
+                {/* Main chat content */}
+                <div className="h-full flex flex-col overflow-hidden">
+                  <div className="flex-shrink-0 p-2 sm:p-4 pb-0">
+                    {renderChatHeader()}
                   </div>
 
-                  <div className="flex-shrink-0">
-                    <ChatInputArea
-                      input={chatState.input}
-                      setInput={(value) => updateChatState({ input: value })}
-                      inputDisabled={chatState.inputDisabled}
-                      selectedFiles={selectedFiles}
-                      removeFile={removeFile}
-                      handleFileChange={handleFileChange}
-                      handleSendMessage={handleSendMessage}
-                      handleKeyDown={handleKeyDown}
-                      chatType={chatType}
-                      targetAgentData={targetAgentData}
-                      formRef={formRef}
-                      inputRef={inputRef}
-                      fileInputRef={fileInputRef}
-                    />
+                  <div
+                    className={cn(
+                      'flex flex-col transition-all duration-300 w-full flex-1 min-h-0 overflow-hidden p-2 sm:p-4 pt-0'
+                    )}
+                  >
+                    <div className="flex-1 min-h-0 overflow-hidden">
+                      <ChatMessageListComponent
+                        messages={messages}
+                        isLoadingMessages={isLoadingMessages}
+                        chatType={chatType}
+                        currentClientEntityId={currentClientEntityId}
+                        targetAgentData={targetAgentData}
+                        allAgents={allAgents}
+                        animatedMessageId={animatedMessageId}
+                        scrollRef={scrollRef}
+                        isAtBottom={isAtBottom}
+                        scrollToBottom={scrollToBottom}
+                        disableAutoScroll={disableAutoScroll}
+                        finalChannelId={finalChannelIdForHooks}
+                        getAgentInMessage={getAgentInMessage}
+                        agentAvatarMap={agentAvatarMap}
+                        onDeleteMessage={handleDeleteMessage}
+                        onRetryMessage={handleRetryMessage}
+                        selectedGroupAgentId={chatState.selectedGroupAgentId}
+                      />
+                    </div>
+
+                    <div className="flex-shrink-0">
+                      <ChatInputArea
+                        input={chatState.input}
+                        setInput={(value) => updateChatState({ input: value })}
+                        inputDisabled={chatState.inputDisabled}
+                        selectedFiles={selectedFiles}
+                        removeFile={removeFile}
+                        handleFileChange={handleFileChange}
+                        handleSendMessage={handleSendMessage}
+                        handleKeyDown={handleKeyDown}
+                        chatType={chatType}
+                        targetAgentData={targetAgentData}
+                        formRef={formRef}
+                        inputRef={inputRef}
+                        fileInputRef={fileInputRef}
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          </ResizablePanel>
+            </ResizablePanel>
 
-          {/* Right panel / sidebar */}
-          {(() => {
-            let sidebarAgentId: UUID | undefined = undefined;
-            let sidebarAgentName: string = 'Agent';
+            {/* Right panel / sidebar */}
+            {(() => {
+              let sidebarAgentId: UUID | undefined = undefined;
+              let sidebarAgentName: string = 'Agent';
 
-            if (chatType === ChannelType.DM) {
-              sidebarAgentId = contextId; // This is agentId for DM
-              sidebarAgentName = targetAgentData?.name || 'Agent';
-            } else if (chatType === ChannelType.GROUP && chatState.selectedGroupAgentId) {
-              sidebarAgentId = chatState.selectedGroupAgentId;
-              const selectedAgent = allAgents.find((a) => a.id === chatState.selectedGroupAgentId);
-              sidebarAgentName = selectedAgent?.name || 'Group Member';
-            } else if (chatType === ChannelType.GROUP && !chatState.selectedGroupAgentId) {
-              sidebarAgentName = 'Group';
-            }
+              if (chatType === ChannelType.DM) {
+                sidebarAgentId = contextId; // This is agentId for DM
+                sidebarAgentName = targetAgentData?.name || 'Agent';
+              } else if (chatType === ChannelType.GROUP && chatState.selectedGroupAgentId) {
+                sidebarAgentId = chatState.selectedGroupAgentId;
+                const selectedAgent = allAgents.find((a) => a.id === chatState.selectedGroupAgentId);
+                sidebarAgentName = selectedAgent?.name || 'Group Member';
+              } else if (chatType === ChannelType.GROUP && !chatState.selectedGroupAgentId) {
+                sidebarAgentName = 'Group';
+              }
 
-            return (
-              showSidebar && !chatState.isMobile && (
-                <>
-                  <ResizableHandle withHandle />
-                  <ResizablePanel defaultSize={sidebarPanelSize} minSize={20} maxSize={50}>
-                    <AgentSidebar agentId={sidebarAgentId} agentName={sidebarAgentName} />
-                  </ResizablePanel>
-                </>
-              )
-            );
-          })()}
-        </ResizablePanelGroup>
+              return (
+                showSidebar && !chatState.isMobile && (
+                  <>
+                    <ResizableHandle withHandle />
+                    <ResizablePanel defaultSize={sidebarPanelSize} minSize={20} maxSize={50}>
+                      <AgentSidebar agentId={sidebarAgentId} agentName={sidebarAgentName} />
+                    </ResizablePanel>
+                  </>
+                )
+              );
+            })()}
+          </ResizablePanelGroup>
+        )}
+
+        {/* Floating sidebar overlay for narrow screens */}
+        {(() => {
+          let sidebarAgentId: UUID | undefined = undefined;
+          let sidebarAgentName: string = 'Agent';
+
+          if (chatType === ChannelType.DM) {
+            sidebarAgentId = contextId; // This is agentId for DM
+            sidebarAgentName = targetAgentData?.name || 'Agent';
+          } else if (chatType === ChannelType.GROUP && chatState.selectedGroupAgentId) {
+            sidebarAgentId = chatState.selectedGroupAgentId;
+            const selectedAgent = allAgents.find((a) => a.id === chatState.selectedGroupAgentId);
+            sidebarAgentName = selectedAgent?.name || 'Group Member';
+          } else if (chatType === ChannelType.GROUP && !chatState.selectedGroupAgentId) {
+            sidebarAgentName = 'Group';
+          }
+
+          return (
+            showSidebar && isFloatingMode && (
+              <div className="absolute inset-0 z-50 bg-background/80 backdrop-blur-sm">
+                <div className="absolute inset-0 bg-background shadow-lg">
+                  <div className="h-full flex flex-col">
+                    {/* Close button for floating sidebar */}
+                    <div className="flex items-center justify-between p-4 border-b">
+                      <h3 className="font-semibold text-lg">{sidebarAgentName}</h3>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setSidebarVisible(false)}
+                        className="h-8 w-8 p-0"
+                      >
+                        <PanelRightClose className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <div className="flex-1 overflow-hidden">
+                      <AgentSidebar agentId={sidebarAgentId} agentName={sidebarAgentName} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )
+          );
+        })()}
       </div>
 
       {chatState.showGroupEditPanel && chatType === ChannelType.GROUP && (

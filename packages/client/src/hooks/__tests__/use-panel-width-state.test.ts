@@ -25,6 +25,12 @@ describe('usePanelWidthState', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorageMock.getItem.mockReturnValue(null);
+    // Reset window dimensions (above 1400 threshold)
+    Object.defineProperty(window, 'innerWidth', {
+      writable: true,
+      configurable: true,
+      value: 1500,
+    });
   });
 
   it('should initialize with default values when localStorage is empty', () => {
@@ -32,6 +38,8 @@ describe('usePanelWidthState', () => {
 
     expect(result.current.mainPanelSize).toBe(70);
     expect(result.current.sidebarPanelSize).toBe(30);
+    expect(result.current.isFloatingMode).toBe(false);
+    expect(result.current.floatingThreshold).toBe(1400);
   });
 
   it('should load persisted values from localStorage on mount', () => {
@@ -163,5 +171,73 @@ describe('usePanelWidthState', () => {
     // Should fall back to defaults for out-of-range values
     expect(result.current.mainPanelSize).toBe(70);
     expect(result.current.sidebarPanelSize).toBe(30);
+  });
+
+  it('should detect floating mode based on window width', () => {
+    // Set narrow width (below 1400 threshold)
+    Object.defineProperty(window, 'innerWidth', {
+      writable: true,
+      configurable: true,
+      value: 1300,
+    });
+
+    const { result } = renderHook(() => usePanelWidthState());
+
+    expect(result.current.isFloatingMode).toBe(true);
+  });
+
+  it('should toggle floating mode manually', () => {
+    const { result } = renderHook(() => usePanelWidthState());
+
+    // Initially not floating (window width is 1200)
+    expect(result.current.isFloatingMode).toBe(false);
+
+    act(() => {
+      result.current.toggleFloatingMode();
+    });
+
+    expect(result.current.isFloatingMode).toBe(true);
+  });
+
+  it('should update floating threshold and persist to localStorage', () => {
+    const { result } = renderHook(() => usePanelWidthState());
+
+    act(() => {
+      result.current.setFloatingThreshold(900);
+    });
+
+    expect(result.current.floatingThreshold).toBe(900);
+    expect(localStorageMock.setItem).toHaveBeenCalledWith('eliza-floating-threshold', '900');
+  });
+
+  it('should respond to window resize events', () => {
+    const { result } = renderHook(() => usePanelWidthState());
+
+    // Initially not floating (window width is 1200 from beforeEach, above 1400 threshold)
+    expect(result.current.isFloatingMode).toBe(false);
+
+    // Simulate window resize to narrow width (below 1400 threshold)
+    act(() => {
+      Object.defineProperty(window, 'innerWidth', {
+        writable: true,
+        configurable: true,
+        value: 1300,
+      });
+      window.dispatchEvent(new Event('resize'));
+    });
+
+    expect(result.current.isFloatingMode).toBe(true);
+
+    // Simulate window resize back to wide width (above 1400 threshold)
+    act(() => {
+      Object.defineProperty(window, 'innerWidth', {
+        writable: true,
+        configurable: true,
+        value: 1500,
+      });
+      window.dispatchEvent(new Event('resize'));
+    });
+
+    expect(result.current.isFloatingMode).toBe(false);
   });
 }); 
