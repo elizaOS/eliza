@@ -20,7 +20,13 @@ describe('ElizaOS Start Commands', () => {
     // ---- Ensure port is free.
     testServerPort = 3000;
     try {
-      execSync(`lsof -t -i :${testServerPort} | xargs kill -9`, { stdio: 'ignore' });
+      if (process.platform === 'win32') {
+        // Windows: Use netstat and taskkill to free the port
+        execSync(`for /f "tokens=5" %a in ('netstat -aon ^| findstr :${testServerPort}') do taskkill /f /pid %a`, { stdio: 'ignore' });
+      } else {
+        // Unix/Linux/macOS: Use lsof and kill
+        execSync(`lsof -t -i :${testServerPort} | xargs kill -9`, { stdio: 'ignore' });
+      }
       await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
     } catch (e) {
       // Ignore if no processes found
