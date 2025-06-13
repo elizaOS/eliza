@@ -22,8 +22,8 @@ describe('ElizaOS Create Commands', () => {
 
     // Setup CLI commands
     const scriptDir = join(__dirname, '..');
-    elizaosCmd = `bun run ${join(scriptDir, '../dist/index.js')}`;
-    createElizaCmd = `bun run ${join(scriptDir, '../../create-eliza/index.mjs')}`;
+    elizaosCmd = `bun run "${join(scriptDir, '../dist/index.js')}"`;
+    createElizaCmd = `bun run "${join(scriptDir, '../../create-eliza/index.mjs')}"`;
 
     // Change to test directory
     process.chdir(testTmpDir);
@@ -170,7 +170,7 @@ describe('ElizaOS Create Commands', () => {
     try {
       if (process.platform === 'win32') {
         execSync(`if exist existing-app rmdir /s /q existing-app`, { stdio: 'ignore' });
-        execSync(`mkdir existing-app && echo test > existing-app\file.txt`, { stdio: 'ignore' });
+        execSync(`mkdir existing-app && echo test > existing-app\\file.txt`, { stdio: 'ignore' });
       } else {
         execSync(`rm -rf existing-app && mkdir existing-app && echo "test" > existing-app/file.txt`, { stdio: 'ignore' });
       }

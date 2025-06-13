@@ -55,28 +55,20 @@ describe('ElizaOS Env Commands', () => {
   });
 
   test('env edit-local creates local .env if missing', async () => {
-    // Use platform-appropriate shell and input method
-    const shell = process.platform === 'win32' ? 'cmd' : '/bin/bash';
-    const inputCommand = process.platform === 'win32' 
-      ? `echo y | ${context.elizaosCmd} env edit-local`
-      : `printf "y\\n" | ${context.elizaosCmd} env edit-local`;
-    
-    try {
-      const result = execSync(inputCommand, {
-        encoding: 'utf8',
-        shell,
-      });
-
-      // The command should complete successfully
-      expect(result).toBeTruthy();
-    } catch (e) {
-      // Skip test on Windows if shell operations are problematic
-      if (process.platform === 'win32') {
-        console.warn('Skipping env edit-local test on Windows due to shell limitations');
-        return;
-      }
-      throw e;
+    // Skip this test on Windows due to complex shell input handling
+    if (process.platform === 'win32') {
+      console.warn('Skipping env edit-local test on Windows due to shell input limitations');
+      return;
     }
+    
+    // Use printf to simulate user input on Unix systems
+    const result = execSync(`printf "y\\n" | ${context.elizaosCmd} env edit-local`, {
+      encoding: 'utf8',
+      shell: '/bin/bash',
+    });
+
+    // The command should complete successfully
+    expect(result).toBeTruthy();
   });
 
   test('env reset shows all necessary options', async () => {
