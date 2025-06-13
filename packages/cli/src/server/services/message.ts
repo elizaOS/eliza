@@ -488,9 +488,9 @@ export class MessageBusService extends Service {
         content: content.text,
         in_reply_to_message_id: centralInReplyToRootMessageId,
         source_type: 'agent_response',
-        raw_message: { 
-          text: content.text, 
-          thought: content.thought, 
+        raw_message: {
+          text: content.text,
+          thought: content.thought,
           actions: content.actions,
         },
         metadata: {

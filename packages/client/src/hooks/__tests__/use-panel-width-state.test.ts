@@ -11,7 +11,7 @@ const localStorageMock = {
 };
 
 Object.defineProperty(window, 'localStorage', {
-  value: localStorageMock
+  value: localStorageMock,
 });
 
 // Mock clientLogger
@@ -102,9 +102,7 @@ describe('usePanelWidthState', () => {
   });
 
   it('should reset panel sizes to defaults and clear localStorage', () => {
-    localStorageMock.getItem
-      .mockReturnValueOnce('60')
-      .mockReturnValueOnce('40');
+    localStorageMock.getItem.mockReturnValueOnce('60').mockReturnValueOnce('40');
 
     const { result } = renderHook(() => usePanelWidthState());
 
@@ -240,4 +238,4 @@ describe('usePanelWidthState', () => {
 
     expect(result.current.isFloatingMode).toBe(false);
   });
-}); 
+});

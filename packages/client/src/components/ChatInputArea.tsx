@@ -105,7 +105,9 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
                   >
                     <X className="h-2 w-2 sm:h-3 sm:w-3" />
                   </Button>
-                  <div className="text-xs text-center mt-1 truncate w-12 sm:w-16">{fileData.file.name}</div>
+                  <div className="text-xs text-center mt-1 truncate w-12 sm:w-16">
+                    {fileData.file.name}
+                  </div>
                 </div>
               );
             })}

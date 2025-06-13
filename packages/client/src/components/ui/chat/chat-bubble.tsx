@@ -25,7 +25,7 @@ const chatBubbleVariant = cva('flex gap-2 max-w-[60%] items-end relative group',
 
 interface ChatBubbleProps
   extends React.HTMLAttributes<HTMLDivElement>,
-  VariantProps<typeof chatBubbleVariant> { }
+    VariantProps<typeof chatBubbleVariant> {}
 
 const ChatBubble = React.forwardRef<HTMLDivElement, ChatBubbleProps>(
   ({ className, variant, layout, children, ...props }, ref) => (
@@ -36,12 +36,12 @@ const ChatBubble = React.forwardRef<HTMLDivElement, ChatBubbleProps>(
     >
       {React.Children.map(children, (child) =>
         React.isValidElement(child) &&
-          typeof child.type !== 'string' &&
-          child.type !== React.Fragment
+        typeof child.type !== 'string' &&
+        child.type !== React.Fragment
           ? React.cloneElement(child, {
-            variant,
-            layout,
-          } as React.ComponentProps<typeof child.type>)
+              variant,
+              layout,
+            } as React.ComponentProps<typeof child.type>)
           : child
       )}
     </div>
@@ -83,7 +83,7 @@ const chatBubbleMessageVariants = cva('p-3', {
 
 interface ChatBubbleMessageProps
   extends React.HTMLAttributes<HTMLDivElement>,
-  VariantProps<typeof chatBubbleMessageVariants> {
+    VariantProps<typeof chatBubbleMessageVariants> {
   isLoading?: boolean;
 }
 

@@ -200,7 +200,7 @@ function ActionCard({ action, onDelete }: ActionCardProps) {
 
   const renderParams = () => {
     const params = action.body?.params;
-    
+
     if (!params && !actionPrompts) return null;
 
     if (modelType.includes('TRANSCRIPTION') && Array.isArray(params)) {
@@ -214,7 +214,7 @@ function ActionCard({ action, onDelete }: ActionCardProps) {
 
     // Extract prompt from params if present (for backward compatibility)
     const { prompt, ...otherParams } = params || {};
-    
+
     return (
       <div className="space-y-4">
         {/* Display multiple prompts if this is an action with prompts */}
@@ -252,7 +252,7 @@ function ActionCard({ action, onDelete }: ActionCardProps) {
             </div>
           </div>
         )}
-        
+
         {/* Display single prompt from params (backward compatibility) */}
         {!actionPrompts && prompt && (
           <div className="space-y-2">
@@ -385,9 +385,7 @@ function ActionCard({ action, onDelete }: ActionCardProps) {
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
-                <h4 className="font-semibold text-sm">
-                  {isActionLog ? actionName : usageType}
-                </h4>
+                <h4 className="font-semibold text-sm">{isActionLog ? actionName : usageType}</h4>
                 <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">
                   {isActionLog ? 'Action' : modelType}
                 </span>
@@ -404,7 +402,9 @@ function ActionCard({ action, onDelete }: ActionCardProps) {
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Zap className="h-3 w-3" />
                     <code className="font-mono">
-                      {isActionLog ? `Action ID: ${action.body?.actionId?.slice(-8) || 'N/A'}` : modelKey}
+                      {isActionLog
+                        ? `Action ID: ${action.body?.actionId?.slice(-8) || 'N/A'}`
+                        : modelKey}
                     </code>
                   </div>
                 )}
@@ -525,11 +525,15 @@ function ActionCard({ action, onDelete }: ActionCardProps) {
                 {(() => {
                   const parts = [];
                   if (action.body?.promptCount && action.body.promptCount > 0) {
-                    parts.push(`${action.body.promptCount} prompt${action.body.promptCount > 1 ? 's' : ''}`);
+                    parts.push(
+                      `${action.body.promptCount} prompt${action.body.promptCount > 1 ? 's' : ''}`
+                    );
                   }
                   if (action.body?.params) parts.push('parameters');
                   if (action.body?.response) parts.push('response data');
-                  return parts.length > 0 ? `Contains ${parts.join(' and ')}` : 'Contains additional data';
+                  return parts.length > 0
+                    ? `Contains ${parts.join(' and ')}`
+                    : 'Contains additional data';
                 })()}
               </span>
               <Button

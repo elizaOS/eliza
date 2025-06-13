@@ -110,9 +110,9 @@ export const ChatMessageListComponent: React.FC<ChatMessageListComponentProps> =
                       chatType === ChannelType.DM
                         ? targetAgentData
                         : senderAgent ||
-                        (agentAvatarMap && message.senderId && allAgents
-                          ? allAgents.find((a: Partial<Agent>) => a.id === message.senderId)
-                          : undefined)
+                            (agentAvatarMap && message.senderId && allAgents
+                              ? allAgents.find((a: Partial<Agent>) => a.id === message.senderId)
+                              : undefined)
                     )}
                   />
                 </Avatar>

@@ -15,7 +15,7 @@ interface UseAutoScrollOptions {
 export function useAutoScroll(options: UseAutoScrollOptions = {}) {
   const { smooth = false } = options;
   const userHasScrolled = useRef(false); // To track if user manually scrolled up
-  
+
   // Use StickToBottom for enhanced scroll behavior
   const stickToBottom = useStickToBottom({
     initial: smooth ? 'smooth' : 'instant',
@@ -30,7 +30,7 @@ export function useAutoScroll(options: UseAutoScrollOptions = {}) {
   // Sync our state with StickToBottom's state
   useEffect(() => {
     const isAtBottom = stickToBottom.isAtBottom;
-    
+
     if (isAtBottom) {
       // User is at bottom - reset user control and enable auto-scroll
       userHasScrolled.current = false;
@@ -49,11 +49,11 @@ export function useAutoScroll(options: UseAutoScrollOptions = {}) {
   const scrollToBottom = useCallback(
     (instant?: boolean) => {
       const animation = instant ? 'instant' : smooth ? 'smooth' : 'instant';
-      stickToBottom.scrollToBottom({ 
+      stickToBottom.scrollToBottom({
         animation,
-        preserveScrollPosition: false // Always scroll to bottom when called
+        preserveScrollPosition: false, // Always scroll to bottom when called
       });
-      
+
       // Update our state
       setScrollState({ isAtBottom: true, autoScrollEnabled: true });
       userHasScrolled.current = false;

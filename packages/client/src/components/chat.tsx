@@ -184,7 +184,9 @@ export function MessageContent({
                 {textWithoutUrls.trim() && (
                   <div>
                     {isUser ? (
-                      <Markdown className="prose-sm max-w-none" variant="user">{textWithoutUrls}</Markdown>
+                      <Markdown className="prose-sm max-w-none" variant="user">
+                        {textWithoutUrls}
+                      </Markdown>
                     ) : (
                       <AnimatedMarkdown
                         className="prose-sm max-w-none"
@@ -268,7 +270,7 @@ export default function Chat({
     sidebarPanelSize,
     isFloatingMode: isFloatingModeFromWidth,
     setMainPanelSize,
-    setSidebarPanelSize
+    setSidebarPanelSize,
   } = usePanelWidthState();
 
   // Consolidate all chat UI state into a single object (excluding showSidebar which is now managed separately)
@@ -309,10 +311,10 @@ export default function Chat({
   // Convert AgentWithStatus to Agent, ensuring required fields have defaults
   const targetAgentData: Agent | undefined = agentDataResponse?.data
     ? ({
-      ...agentDataResponse.data,
-      createdAt: agentDataResponse.data.createdAt || Date.now(),
-      updatedAt: agentDataResponse.data.updatedAt || Date.now(),
-    } as Agent)
+        ...agentDataResponse.data,
+        createdAt: agentDataResponse.data.createdAt || Date.now(),
+        updatedAt: agentDataResponse.data.updatedAt || Date.now(),
+      } as Agent)
     : undefined;
 
   // Use the new hooks for DM channel management
@@ -360,8 +362,14 @@ export default function Chat({
     [allAgents]
   );
 
-  const { scrollRef, contentRef, isAtBottom, scrollToBottom, disableAutoScroll, autoScrollEnabled } =
-    useAutoScroll({ smooth: true });
+  const {
+    scrollRef,
+    contentRef,
+    isAtBottom,
+    scrollToBottom,
+    disableAutoScroll,
+    autoScrollEnabled,
+  } = useAutoScroll({ smooth: true });
   const prevMessageCountRef = useRef(0);
   const safeScrollToBottom = useCallback(() => {
     if (scrollRef.current) {
@@ -581,7 +589,14 @@ export default function Chat({
         setSidebarVisible(true);
       }
     }
-  }, [chatType, groupAgents, chatState.selectedGroupAgentId, updateChatState, showSidebar, setSidebarVisible]);
+  }, [
+    chatType,
+    groupAgents,
+    chatState.selectedGroupAgentId,
+    updateChatState,
+    showSidebar,
+    setSidebarVisible,
+  ]);
 
   // Get the final channel ID for hooks
   const finalChannelIdForHooks: UUID | undefined =
@@ -930,7 +945,9 @@ export default function Chat({
             </div>
             <div className="flex flex-col min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <h2 className="font-semibold text-lg truncate max-w-[80px] sm:max-w-none">{targetAgentData?.name || 'Agent'}</h2>
+                <h2 className="font-semibold text-lg truncate max-w-[80px] sm:max-w-none">
+                  {targetAgentData?.name || 'Agent'}
+                </h2>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
@@ -951,7 +968,11 @@ export default function Chat({
                 <p className="text-sm text-muted-foreground line-clamp-1">
                   <span className="sm:hidden">
                     {/* Mobile: Show only first 30 characters */}
-                    {((text) => text.length > 30 ? `${text.substring(0, 30)}...` : text)(Array.isArray(targetAgentData?.bio) ? targetAgentData?.bio[0] || '' : targetAgentData?.bio || '')}
+                    {((text) => (text.length > 30 ? `${text.substring(0, 30)}...` : text))(
+                      Array.isArray(targetAgentData?.bio)
+                        ? targetAgentData?.bio[0] || ''
+                        : targetAgentData?.bio || ''
+                    )}
                   </span>
                   <span className="hidden sm:inline">
                     {/* Desktop: Show full first bio entry or full bio */}
@@ -969,13 +990,20 @@ export default function Chat({
                 {agentDmChannels.length > 0 && (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm" className="w-8 sm:max-w-[300px] sm:w-auto">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-8 sm:max-w-[300px] sm:w-auto"
+                      >
                         <History className="size-4 flex-shrink-0" />
                         <span className="hidden md:inline truncate text-xs sm:text-sm sm:ml-2">
                           {agentDmChannels.find((c) => c.id === chatState.currentDmChannelId)
                             ?.name || 'Select Chat'}
                         </span>
-                        <Badge variant="secondary" className="hidden md:inline-flex ml-1 sm:ml-2 text-xs">
+                        <Badge
+                          variant="secondary"
+                          className="hidden md:inline-flex ml-1 sm:ml-2 text-xs"
+                        >
                           {agentDmChannels.length}
                         </Badge>
                       </Button>
@@ -1008,8 +1036,8 @@ export default function Chat({
                                 <span className="text-xs text-muted-foreground">
                                   {moment(
                                     channel.metadata?.createdAt ||
-                                    channel.updatedAt ||
-                                    channel.createdAt
+                                      channel.updatedAt ||
+                                      channel.createdAt
                                   ).fromNow()}
                                 </span>
                               </div>
@@ -1029,32 +1057,36 @@ export default function Chat({
                 {/* Chat Actions Split Button */}
                 <SplitButton
                   mainAction={{
-                    label: chatState.isCreatingDM ? 'Creating...' : (
+                    label: chatState.isCreatingDM ? (
+                      'Creating...'
+                    ) : (
                       <>
                         <span className="sm:hidden">New</span>
                         <span className="hidden sm:inline">New Chat</span>
                       </>
                     ),
                     onClick: () => handleNewDmChannel(targetAgentData?.id),
-                    icon: chatState.isCreatingDM ?
-                      <Loader2 className="size-4 animate-spin" /> :
-                      <Plus className="size-4" />,
-                    disabled: chatState.isCreatingDM || isLoadingAgentDmChannels
+                    icon: chatState.isCreatingDM ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Plus className="size-4" />
+                    ),
+                    disabled: chatState.isCreatingDM || isLoadingAgentDmChannels,
                   }}
                   actions={[
                     {
                       label: 'Clear Messages',
                       onClick: handleClearChat,
                       icon: <Eraser className="size-4" />,
-                      disabled: !messages || messages.length === 0
+                      disabled: !messages || messages.length === 0,
                     },
                     {
                       label: 'Delete Chat',
                       onClick: handleDeleteCurrentDmChannel,
                       icon: <Trash2 className="size-4" />,
                       disabled: !chatState.currentDmChannelId,
-                      variant: 'destructive'
-                    }
+                      variant: 'destructive',
+                    },
                   ]}
                   variant="outline"
                   size="sm"
@@ -1107,14 +1139,14 @@ export default function Chat({
                 mainAction={{
                   label: 'Edit Group',
                   onClick: () => updateChatState({ showGroupEditPanel: true }),
-                  icon: <Edit className="size-4" />
+                  icon: <Edit className="size-4" />,
                 }}
                 actions={[
                   {
                     label: 'Clear Messages',
                     onClick: handleClearChat,
                     icon: <Eraser className="size-4" />,
-                    disabled: !messages || messages.length === 0
+                    disabled: !messages || messages.length === 0,
                   },
                   {
                     label: 'Delete Group',
@@ -1150,8 +1182,8 @@ export default function Chat({
                     },
                     icon: <Trash2 className="size-4" />,
                     disabled: !finalChannelIdForHooks || !finalServerIdForHooks,
-                    variant: 'destructive'
-                  }
+                    variant: 'destructive',
+                  },
                 ]}
                 variant="outline"
                 size="sm"
@@ -1174,7 +1206,9 @@ export default function Chat({
 
           {groupAgents.length > 0 && (
             <div className="flex items-center gap-2 p-2 bg-card rounded-lg border overflow-x-auto">
-              <span className="text-sm text-muted-foreground whitespace-nowrap flex-shrink-0">Agents:</span>
+              <span className="text-sm text-muted-foreground whitespace-nowrap flex-shrink-0">
+                Agents:
+              </span>
               <div className="flex gap-2 min-w-0">
                 <Button
                   variant={!chatState.selectedGroupAgentId ? 'default' : 'ghost'}
@@ -1221,9 +1255,7 @@ export default function Chat({
         {isFloatingMode ? (
           /* Single panel layout for floating mode */
           <div className="h-full flex flex-col overflow-hidden">
-            <div className="flex-shrink-0 p-2 sm:p-4 pb-0">
-              {renderChatHeader()}
-            </div>
+            <div className="flex-shrink-0 p-2 sm:p-4 pb-0">{renderChatHeader()}</div>
 
             <div
               className={cn(
@@ -1291,9 +1323,7 @@ export default function Chat({
               <div className="relative h-full overflow-hidden">
                 {/* Main chat content */}
                 <div className="h-full flex flex-col overflow-hidden">
-                  <div className="flex-shrink-0 p-2 sm:p-4 pb-0">
-                    {renderChatHeader()}
-                  </div>
+                  <div className="flex-shrink-0 p-2 sm:p-4 pb-0">{renderChatHeader()}</div>
 
                   <div
                     className={cn(
@@ -1355,14 +1385,17 @@ export default function Chat({
                 sidebarAgentName = targetAgentData?.name || 'Agent';
               } else if (chatType === ChannelType.GROUP && chatState.selectedGroupAgentId) {
                 sidebarAgentId = chatState.selectedGroupAgentId;
-                const selectedAgent = allAgents.find((a) => a.id === chatState.selectedGroupAgentId);
+                const selectedAgent = allAgents.find(
+                  (a) => a.id === chatState.selectedGroupAgentId
+                );
                 sidebarAgentName = selectedAgent?.name || 'Group Member';
               } else if (chatType === ChannelType.GROUP && !chatState.selectedGroupAgentId) {
                 sidebarAgentName = 'Group';
               }
 
               return (
-                showSidebar && !chatState.isMobile && (
+                showSidebar &&
+                !chatState.isMobile && (
                   <>
                     <ResizableHandle withHandle />
                     <ResizablePanel defaultSize={sidebarPanelSize} minSize={20} maxSize={50}>
@@ -1392,7 +1425,8 @@ export default function Chat({
           }
 
           return (
-            showSidebar && isFloatingMode && (
+            showSidebar &&
+            isFloatingMode && (
               <div className="absolute inset-0 z-50 bg-background/80 backdrop-blur-sm">
                 <div className="absolute inset-0 bg-background shadow-lg">
                   <div className="h-full flex flex-col">
