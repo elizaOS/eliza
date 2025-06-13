@@ -1,6 +1,6 @@
 import CharacterForm from '@/components/character-form';
-import StopAgentButton from '@/components/stop-agent-button';
 import { useAgentUpdate } from '@/hooks/use-agent-update';
+import { useAgentManagement } from '@/hooks/use-agent-management';
 import ConfirmationDialog from '@/components/confirmation-dialog';
 import { useConfirmation } from '@/hooks/use-confirmation';
 import { useToast } from '@/hooks/use-toast';
@@ -24,6 +24,25 @@ export default function AgentSettings({ agent, agentId }: { agent: Agent; agentI
 
   // Use our enhanced agent update hook for more intelligent handling of JSONb fields
   const agentState = useAgentUpdate(agent);
+
+  // Use agent management hook for stop functionality
+  const { stopAgent, isAgentStopping } = useAgentManagement();
+
+  const handleStopAgent = async () => {
+    try {
+      await stopAgent(agent);
+      toast({
+        title: 'Success',
+        description: 'Agent stopped successfully',
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to stop agent',
+        variant: 'destructive',
+      });
+    }
+  };
 
   const handleSubmit = async () => {
     try {
@@ -223,11 +242,10 @@ export default function AgentSettings({ agent, agentId }: { agent: Agent; agentI
         onSubmit={handleSubmit}
         onReset={agentState.reset}
         onDelete={handleDelete}
-        stopAgentButton={
-          isActive ? <StopAgentButton agent={agent} redirectToHome={true} /> : undefined
-        }
+        onStopAgent={isActive ? handleStopAgent : undefined}
         isAgent={true}
         isDeleting={isDeleting}
+        isStopping={isAgentStopping(agentId)}
         customComponents={[
           {
             name: 'Plugins',
