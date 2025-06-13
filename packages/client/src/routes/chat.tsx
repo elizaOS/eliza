@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { useAgentManagement } from '@/hooks/use-agent-management';
 import { useAgent } from '@/hooks/use-query-hooks';
 import clientLogger from '@/lib/logger';
-import { type Agent, AgentStatus as CoreAgentStatusEnum, type UUID } from '@elizaos/core';
+import { type Agent, ChannelType, AgentStatus as CoreAgentStatusEnum, type UUID } from '@elizaos/core';
 import { Loader2, Play } from 'lucide-react';
 import { useEffect } from 'react';
 import { useParams } from 'react-router';
@@ -30,38 +30,38 @@ export default function AgentRoute() {
 
   const agentFromHook: Agent | undefined = agentDataResponse?.data
     ? ({
-        ...(agentDataResponse.data as AgentWithStatus),
-        status:
-          agentDataResponse.data.status === 'active'
-            ? CoreAgentStatusEnum.ACTIVE
-            : agentDataResponse.data.status === 'inactive'
-              ? CoreAgentStatusEnum.INACTIVE
-              : CoreAgentStatusEnum.INACTIVE,
-        username: agentDataResponse.data.username || agentDataResponse.data.name || 'Unknown',
-        bio: agentDataResponse.data.bio || '',
-        messageExamples: agentDataResponse.data.messageExamples || [],
-        postExamples: agentDataResponse.data.postExamples || [],
-        topics: agentDataResponse.data.topics || [],
-        adjectives: agentDataResponse.data.adjectives || [],
-        knowledge: agentDataResponse.data.knowledge || [],
-        plugins: agentDataResponse.data.plugins || [],
-        settings: agentDataResponse.data.settings || {},
-        secrets: (agentDataResponse.data as any).secrets || {},
-        style: agentDataResponse.data.style || {},
-        templates: agentDataResponse.data.templates || {},
-        enabled:
-          typeof agentDataResponse.data.enabled === 'boolean'
-            ? agentDataResponse.data.enabled
-            : true,
-        createdAt:
-          typeof agentDataResponse.data.createdAt === 'number'
-            ? agentDataResponse.data.createdAt
-            : Date.now(),
-        updatedAt:
-          typeof agentDataResponse.data.updatedAt === 'number'
-            ? agentDataResponse.data.updatedAt
-            : Date.now(),
-      } as Agent)
+      ...(agentDataResponse.data as AgentWithStatus),
+      status:
+        agentDataResponse.data.status === 'active'
+          ? CoreAgentStatusEnum.ACTIVE
+          : agentDataResponse.data.status === 'inactive'
+            ? CoreAgentStatusEnum.INACTIVE
+            : CoreAgentStatusEnum.INACTIVE,
+      username: agentDataResponse.data.username || agentDataResponse.data.name || 'Unknown',
+      bio: agentDataResponse.data.bio || '',
+      messageExamples: agentDataResponse.data.messageExamples || [],
+      postExamples: agentDataResponse.data.postExamples || [],
+      topics: agentDataResponse.data.topics || [],
+      adjectives: agentDataResponse.data.adjectives || [],
+      knowledge: agentDataResponse.data.knowledge || [],
+      plugins: agentDataResponse.data.plugins || [],
+      settings: agentDataResponse.data.settings || {},
+      secrets: (agentDataResponse.data as any).secrets || {},
+      style: agentDataResponse.data.style || {},
+      templates: agentDataResponse.data.templates || {},
+      enabled:
+        typeof agentDataResponse.data.enabled === 'boolean'
+          ? agentDataResponse.data.enabled
+          : true,
+      createdAt:
+        typeof agentDataResponse.data.createdAt === 'number'
+          ? agentDataResponse.data.createdAt
+          : Date.now(),
+      updatedAt:
+        typeof agentDataResponse.data.updatedAt === 'number'
+          ? agentDataResponse.data.updatedAt
+          : Date.now(),
+    } as Agent)
     : undefined;
 
   if (!agentId) return <div className="p-4">Agent ID not provided.</div>;
@@ -109,7 +109,7 @@ export default function AgentRoute() {
   return (
     <ChatComponent
       key={`${agentId}-${channelId || 'no-dm-channel'}`}
-      chatType="DM"
+      chatType={ChannelType.DM}
       contextId={agentId}
       initialDmChannelId={channelId}
     />

@@ -78,6 +78,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useCreateDmChannel, useDmChannelsForAgent } from '@/hooks/use-dm-channels';
+import { useSidebarState } from '@/hooks/use-sidebar-state';
+import { usePanelWidthState } from '@/hooks/use-panel-width-state';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import type { MessageChannel } from '@/types';
 moment.extend(relativeTime);
@@ -93,7 +95,6 @@ interface UnifiedChatViewProps {
 
 // Consolidated chat state type
 interface ChatUIState {
-  showSidebar: boolean;
   showGroupEditPanel: boolean;
   showProfileOverlay: boolean;
   input: string;
@@ -244,9 +245,12 @@ export default function Chat({
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Consolidate all chat UI state into a single object
+  // Use persistent sidebar state
+  const { isVisible: showSidebar, setSidebarVisible, toggleSidebar } = useSidebarState();
+  const { mainPanelSize, sidebarPanelSize, setMainPanelSize, setSidebarPanelSize } = usePanelWidthState();
+
+  // Consolidate all chat UI state into a single object (excluding showSidebar which is now managed separately)
   const [chatState, setChatState] = useState<ChatUIState>({
-    showSidebar: false,
     showGroupEditPanel: false,
     showProfileOverlay: false,
     input: '',
@@ -547,10 +551,12 @@ export default function Chat({
     ) {
       updateChatState({
         selectedGroupAgentId: groupAgents[0].id as UUID,
-        showSidebar: true,
       });
+      if (!showSidebar) {
+        setSidebarVisible(true);
+      }
     }
-  }, [chatType, groupAgents, chatState.selectedGroupAgentId, updateChatState]);
+  }, [chatType, groupAgents, chatState.selectedGroupAgentId, updateChatState, showSidebar, setSidebarVisible]);
 
   // Get the final channel ID for hooks
   const finalChannelIdForHooks: UUID | undefined =
@@ -834,8 +840,8 @@ export default function Chat({
       const isMobile = window.innerWidth < 768;
       updateChatState({ isMobile });
       // Auto-hide sidebar on mobile
-      if (isMobile && chatState.showSidebar) {
-        updateChatState({ showSidebar: false });
+      if (isMobile && showSidebar) {
+        setSidebarVisible(false);
       }
     };
 
@@ -845,7 +851,7 @@ export default function Chat({
     // Add resize listener
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
-  }, [updateChatState, chatState.showSidebar]);
+  }, [updateChatState, showSidebar, setSidebarVisible]);
 
   if (
     chatType === ChannelType.DM &&
@@ -921,9 +927,16 @@ export default function Chat({
               </div>
               {targetAgentData?.bio && (
                 <p className="text-sm text-muted-foreground line-clamp-1">
-                  {Array.isArray(targetAgentData.bio)
-                    ? targetAgentData.bio[0]
-                    : targetAgentData.bio}
+                  <span className="sm:hidden">
+                    {/* Mobile: Show only first 30 characters */}
+                    {((text) => text.length > 30 ? `${text.substring(0, 30)}...` : text)(Array.isArray(targetAgentData?.bio) ? targetAgentData?.bio[0] || '' : targetAgentData?.bio || '')}
+                  </span>
+                  <span className="hidden sm:inline">
+                    {/* Desktop: Show full first bio entry or full bio */}
+                    {Array.isArray(targetAgentData.bio)
+                      ? targetAgentData.bio[0]
+                      : targetAgentData.bio}
+                  </span>
                 </p>
               )}
             </div>
@@ -1035,9 +1048,9 @@ export default function Chat({
                   variant="ghost"
                   size="sm"
                   className="px-2 sm:px-3 h-8 w-8 sm:w-auto ml-1 sm:ml-3"
-                  onClick={() => updateChatState({ showSidebar: !chatState.showSidebar })}
+                  onClick={toggleSidebar}
                 >
-                  {chatState.showSidebar ? (
+                  {showSidebar ? (
                     <PanelRightClose className="h-4 w-4" />
                   ) : (
                     <PanelRight className="h-4 w-4" />
@@ -1045,7 +1058,7 @@ export default function Chat({
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                <p>{chatState.showSidebar ? 'Close SidePanel' : 'Open SidePanel'}</p>
+                <p>{showSidebar ? 'Close SidePanel' : 'Open SidePanel'}</p>
               </TooltipContent>
             </Tooltip>
           </div>
@@ -1126,9 +1139,9 @@ export default function Chat({
                 variant="ghost"
                 size="sm"
                 className="px-2 sm:px-3 h-8 w-8 sm:w-auto"
-                onClick={() => updateChatState({ showSidebar: !chatState.showSidebar })}
+                onClick={toggleSidebar}
               >
-                {chatState.showSidebar ? (
+                {showSidebar ? (
                   <PanelRightClose className="h-4 w-4" />
                 ) : (
                   <PanelRight className="h-4 w-4" />
@@ -1157,8 +1170,10 @@ export default function Chat({
                     onClick={() => {
                       updateChatState({
                         selectedGroupAgentId: agent?.id || null,
-                        showSidebar: agent?.id ? true : chatState.showSidebar,
                       });
+                      if (agent?.id && !showSidebar) {
+                        setSidebarVisible(true);
+                      }
                     }}
                     className="flex items-center gap-2 flex-shrink-0"
                   >
@@ -1180,9 +1195,18 @@ export default function Chat({
   return (
     <>
       <div className="h-full flex flex-col">
-        <ResizablePanelGroup direction="horizontal" className="h-full flex-1">
+        <ResizablePanelGroup
+          direction="horizontal"
+          className="h-full flex-1"
+          onLayout={(sizes) => {
+            if (sizes.length >= 2 && showSidebar && !chatState.isMobile) {
+              setMainPanelSize(sizes[0]);
+              setSidebarPanelSize(sizes[1]);
+            }
+          }}
+        >
           <ResizablePanel
-            defaultSize={chatState.showSidebar && !chatState.isMobile ? 70 : 100}
+            defaultSize={showSidebar && !chatState.isMobile ? mainPanelSize : 100}
             minSize={chatState.isMobile ? 100 : 50}
           >
             <div className="relative h-full">
@@ -1256,10 +1280,10 @@ export default function Chat({
             }
 
             return (
-              chatState.showSidebar && !chatState.isMobile && (
+              showSidebar && !chatState.isMobile && (
                 <>
                   <ResizableHandle withHandle />
-                  <ResizablePanel defaultSize={30} minSize={20} maxSize={50}>
+                  <ResizablePanel defaultSize={sidebarPanelSize} minSize={20} maxSize={50}>
                     <AgentSidebar agentId={sidebarAgentId} agentName={sidebarAgentName} />
                   </ResizablePanel>
                 </>

@@ -672,7 +672,7 @@ export default function CharacterForm({
   ];
 
   return (
-    <div ref={containerRef} className="w-full max-w-4xl mx-auto p-4 sm:p-6">
+    <div ref={containerRef} className="w-full max-w-full mx-auto p-4 sm:p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-3xl font-bold">{title || 'Agent Settings'}</h1>
@@ -728,7 +728,7 @@ export default function CharacterForm({
 
             {/* Tabs container */}
             <div ref={tabsContainerRef} className="overflow-x-auto scrollbar-hide">
-              <TabsList className="inline-flex h-10 items-center justify-start rounded-md bg-muted p-1 text-muted-foreground w-max min-w-full">
+              <TabsList className="inline-flex h-10 items-center justify-start rounded-md bg-muted p-1 text-muted-foreground w-full">
                 {allTabs.map((tab) => (
                   <TabsTrigger
                     key={tab.value}
@@ -780,104 +780,103 @@ export default function CharacterForm({
           </Card>
         </Tabs>
 
-        <div className="flex justify-between gap-4 mt-6">
-          <div className="flex gap-4">
-            {/* Stop/Delete Split Button - only show if we have options */}
-            {stopDeleteOptions.length > 0 && (
-              <SplitButton
-                mainAction={{
-                  label: stopDeleteOptions[0].label === 'Stop Agent' && isStopping ? 'Stopping...' : stopDeleteOptions[0].label,
-                  onClick: stopDeleteOptions[0].onClick,
-                  icon: stopDeleteOptions[0].label === 'Stop Agent' ?
-                    (isStopping ? <Loader2 className="h-4 w-4 animate-spin" /> : <StopCircle className="h-4 w-4" />) :
-                    <Trash className="h-4 w-4" />,
-                  disabled: stopDeleteOptions[0].label === 'Stop Agent' ? isStopping : false
-                }}
-                actions={stopDeleteOptions.slice(1).map(option => ({
-                  label: option.label === 'Stop Agent' && isStopping ? 'Stopping...' : option.label,
-                  onClick: option.onClick,
-                  icon: option.label === 'Stop Agent' ?
-                    (isStopping ? <Loader2 className="h-4 w-4 animate-spin" /> : <StopCircle className="h-4 w-4" />) :
-                    <Trash className="h-4 w-4" />,
-                  variant: 'destructive' as const,
-                  disabled: option.label === 'Stop Agent' ? isStopping : false
-                }))}
-                variant="destructive"
-                disabled={isDeleting}
-              />
-            )}
-
-            {/* Hidden file input for import */}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".json"
-              onChange={handleImportJSON}
-              className="hidden"
-            />
-          </div>
-
-          <div className="flex gap-4">
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      onReset?.();
-                    }}
-                  >
-                    <RotateCcw className="h-4 w-4" />
-                    {showLabels && <span className="ml-2">Reset Changes</span>}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Reset all form fields to their original values</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-
-            {/* Import/Export Split Button */}
+        <div className="flex flex-col gap-3 mt-6">
+          {/* Stop/Delete Split Button - only show if we have options */}
+          {stopDeleteOptions.length > 0 && (
             <SplitButton
               mainAction={{
-                label: 'Export JSON',
-                onClick: handleExportJSON,
-                icon: <Download className="h-4 w-4" />
+                label: stopDeleteOptions[0].label === 'Stop Agent' && isStopping ? 'Stopping...' : stopDeleteOptions[0].label,
+                onClick: stopDeleteOptions[0].onClick,
+                icon: stopDeleteOptions[0].label === 'Stop Agent' ?
+                  (isStopping ? <Loader2 className="h-4 w-4 animate-spin" /> : <StopCircle className="h-4 w-4" />) :
+                  <Trash className="h-4 w-4" />,
+                disabled: stopDeleteOptions[0].label === 'Stop Agent' ? isStopping : false
               }}
-              actions={[
-                {
-                  label: 'Import JSON',
-                  onClick: handleImportClick,
-                  icon: <Upload className="h-4 w-4" />
-                }
-              ]}
-              variant="outline"
+              actions={stopDeleteOptions.slice(1).map(option => ({
+                label: option.label === 'Stop Agent' && isStopping ? 'Stopping...' : option.label,
+                onClick: option.onClick,
+                icon: option.label === 'Stop Agent' ?
+                  (isStopping ? <Loader2 className="h-4 w-4 animate-spin" /> : <StopCircle className="h-4 w-4" />) :
+                  <Trash className="h-4 w-4" />,
+                variant: 'destructive' as const,
+                disabled: option.label === 'Stop Agent' ? isStopping : false
+              }))}
+              variant="destructive"
+              disabled={isDeleting}
+              className="w-full"
             />
+          )}
 
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button type="submit" disabled={isSubmitting} className="agent-form-submit">
-                    {isSubmitting ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        {showLabels && <span className="ml-2">Saving...</span>}
-                      </>
-                    ) : (
-                      <>
-                        <Save className="h-4 w-4" />
-                        {showLabels && <span className="ml-2">Save Changes</span>}
-                      </>
-                    )}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Save all changes to the agent configuration</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    onReset?.();
+                  }}
+                  className="w-full"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  <span className="ml-2">Reset Changes</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Reset all form fields to their original values</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          {/* Import/Export Split Button */}
+          <SplitButton
+            mainAction={{
+              label: 'Export JSON',
+              onClick: handleExportJSON,
+              icon: <Download className="h-4 w-4" />
+            }}
+            actions={[
+              {
+                label: 'Import JSON',
+                onClick: handleImportClick,
+                icon: <Upload className="h-4 w-4" />
+              }
+            ]}
+            variant="outline"
+            className="w-full"
+          />
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button type="submit" disabled={isSubmitting} className="agent-form-submit w-full">
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span className="ml-2">Saving...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4" />
+                      <span className="ml-2">Save Changes</span>
+                    </>
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Save all changes to the agent configuration</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          {/* Hidden file input for import */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json"
+            onChange={handleImportJSON}
+            className="hidden"
+          />
         </div>
       </form>
     </div>

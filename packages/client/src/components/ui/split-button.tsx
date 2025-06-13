@@ -30,13 +30,16 @@ export interface SplitButtonProps {
 export const SplitButton = React.forwardRef<HTMLDivElement, SplitButtonProps>(
     ({ mainAction, actions, variant = 'default', size = 'default', disabled, className }, ref) => {
         return (
-            <div ref={ref} className={cn('flex', className)}>
+            <div ref={ref} className={cn('flex w-full', className)}>
                 <Button
                     variant={variant}
                     size={size}
                     onClick={mainAction.onClick}
                     disabled={disabled || mainAction.disabled}
-                    className="rounded-r-none border-r-0"
+                    className={cn(
+                        "rounded-r-none flex-1",
+                        variant === 'destructive' ? "border-r border-red-700" : "border-r-0"
+                    )}
                 >
                     {mainAction.icon && <span className="mr-2">{mainAction.icon}</span>}
                     {mainAction.label}
@@ -48,7 +51,7 @@ export const SplitButton = React.forwardRef<HTMLDivElement, SplitButtonProps>(
                             variant={variant}
                             size={size}
                             disabled={disabled}
-                            className="rounded-l-none px-2"
+                            className="rounded-l-none px-2 flex-shrink-0"
                         >
                             <ChevronDown className="h-4 w-4" />
                             <span className="sr-only">More options</span>
