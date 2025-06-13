@@ -323,6 +323,17 @@ export class MessageBusService extends Service {
           `[${this.runtime.character.name}] Agent generated response for message. Preparing to send back to bus.`
         );
 
+        await this.runtime.createMemory(
+          {
+            entityId: this.runtime.agentId,
+            content: responseContent,
+            roomId: agentRoomId,
+            worldId: agentWorldId,
+            agentId: this.runtime.agentId,
+          },
+          'messages'
+        );
+
         // Send response to central bus
         await this.sendAgentResponseToBus(
           agentRoomId,
