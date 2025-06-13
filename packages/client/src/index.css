@@ -1,6 +1,8 @@
 @config "../tailwind.config.ts";
 @import 'tailwindcss';
 
+@custom-variant dark (&:is(.dark *));
+
 @layer base {
   :root {
     --background: 0 0% 100%;
@@ -88,4 +90,13 @@
 
 @utility container {
   margin-inline: auto;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
 }

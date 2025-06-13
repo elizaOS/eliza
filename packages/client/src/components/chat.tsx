@@ -11,6 +11,8 @@ import ConfirmationDialog from '@/components/confirmation-dialog';
 import { useConfirmation } from '@/hooks/use-confirmation';
 import { ChatBubbleMessage, ChatBubbleTimestamp } from '@/components/ui/chat/chat-bubble';
 import ChatTtsButton from '@/components/ui/chat/chat-tts-button';
+import { Markdown } from '@/components/ui/chat/markdown';
+import { AnimatedMarkdown } from '@/components/ui/chat/animated-markdown';
 import { useAutoScroll } from '@/components/ui/chat/hooks/useAutoScroll';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -106,7 +108,16 @@ interface ChatUIState {
 }
 
 // Message content component - exported for use in ChatMessageListComponent
-export const MemoizedMessageContent = React.memo(MessageContent);
+export const MemoizedMessageContent = React.memo(MessageContent, (prevProps, nextProps) => {
+  // Only re-render if the message content, animation state, or other key props change
+  return (
+    prevProps.message.id === nextProps.message.id &&
+    prevProps.message.text === nextProps.message.text &&
+    prevProps.message.isLoading === nextProps.message.isLoading &&
+    prevProps.shouldAnimate === nextProps.shouldAnimate &&
+    prevProps.isUser === nextProps.isUser
+  );
+});
 
 export function MessageContent({
   message,
@@ -173,11 +184,16 @@ export function MessageContent({
                 {textWithoutUrls.trim() && (
                   <div>
                     {isUser ? (
-                      textWithoutUrls
-                    ) : shouldAnimate ? (
-                      <AIWriter>{textWithoutUrls}</AIWriter>
+                      <Markdown className="prose-sm max-w-none" variant="user">{textWithoutUrls}</Markdown>
                     ) : (
-                      textWithoutUrls
+                      <AnimatedMarkdown
+                        className="prose-sm max-w-none"
+                        variant="agent"
+                        shouldAnimate={shouldAnimate}
+                        messageId={message.id}
+                      >
+                        {textWithoutUrls}
+                      </AnimatedMarkdown>
                     )}
                   </div>
                 )}
@@ -344,7 +360,7 @@ export default function Chat({
     [allAgents]
   );
 
-  const { scrollRef, isAtBottom, scrollToBottom, disableAutoScroll, autoScrollEnabled } =
+  const { scrollRef, contentRef, isAtBottom, scrollToBottom, disableAutoScroll, autoScrollEnabled } =
     useAutoScroll({ smooth: true });
   const prevMessageCountRef = useRef(0);
   const safeScrollToBottom = useCallback(() => {
@@ -1224,6 +1240,7 @@ export default function Chat({
                   allAgents={allAgents}
                   animatedMessageId={animatedMessageId}
                   scrollRef={scrollRef}
+                  contentRef={contentRef}
                   isAtBottom={isAtBottom}
                   scrollToBottom={scrollToBottom}
                   disableAutoScroll={disableAutoScroll}
@@ -1293,6 +1310,7 @@ export default function Chat({
                         allAgents={allAgents}
                         animatedMessageId={animatedMessageId}
                         scrollRef={scrollRef}
+                        contentRef={contentRef}
                         isAtBottom={isAtBottom}
                         scrollToBottom={scrollToBottom}
                         disableAutoScroll={disableAutoScroll}

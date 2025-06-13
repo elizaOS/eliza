@@ -342,7 +342,8 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
     combinedLogs = apiLogs;
   }
 
-  const logs = combinedLogs;
+  // Sort logs by timestamp in descending order (newest first)
+  const logs = combinedLogs.sort((a, b) => b.time - a.time);
   const levels = logResponse?.levels || [];
   const agentNames = agents?.data?.agents?.map((agent) => agent.name) || [];
 
