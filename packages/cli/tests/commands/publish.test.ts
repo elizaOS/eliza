@@ -181,8 +181,9 @@ exit /b 0`
     }
 
     // Create comprehensive git mock
-    const gitMockContent = process.platform === 'win32' ? 
-      `@echo off
+    const gitMockContent =
+      process.platform === 'win32'
+        ? `@echo off
 if "%1"=="init" (
   echo Initialized git repository
   exit /b 0
@@ -228,8 +229,8 @@ if "%1"=="tag" (
   exit /b 0
 )
 echo git %*
-exit /b 0` : 
-      `#!/bin/bash
+exit /b 0`
+        : `#!/bin/bash
 # Comprehensive git mock that handles all git operations
 case "$1" in
   "init")
@@ -295,8 +296,9 @@ esac`;
     }
 
     // Mock gh (GitHub CLI) command
-    const ghMockContent = process.platform === 'win32' ? 
-      `@echo off
+    const ghMockContent =
+      process.platform === 'win32'
+        ? `@echo off
 if "%1"=="auth" (
   echo Logged in to github.com as test-user
   exit /b 0
@@ -306,8 +308,8 @@ if "%1"=="repo" (
   exit /b 0
 )
 echo gh %*
-exit /b 0` : 
-      `#!/bin/bash
+exit /b 0`
+        : `#!/bin/bash
 case "$1" in
   "auth")
     echo "Logged in to github.com as test-user"

@@ -60,7 +60,7 @@ describe('ElizaOS Env Commands', () => {
       console.warn('Skipping env edit-local test on Windows due to shell input limitations');
       return;
     }
-    
+
     // Use printf to simulate user input on Unix systems
     const result = execSync(`printf "y\\n" | ${context.elizaosCmd} env edit-local`, {
       encoding: 'utf8',

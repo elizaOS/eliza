@@ -260,7 +260,7 @@ Each plugin can provide one or more of the following components:
 
 | Component          | Purpose                                                                         |
 | ------------------ | ------------------------------------------------------------------------------- |
-| **Services**       | Platform integrations (Discord, Telegram, etc.) or specialized capabilities      |
+| **Services**       | Platform integrations (Discord, Telegram, etc.) or specialized capabilities     |
 | **Actions**        | Executable functions triggered by the agent (reply, generate content, etc.)     |
 | **Providers**      | Context providers that supply info to the agent during decision making          |
 | **Evaluators**     | Analyze conversations to extract insights and improve future interactions       |
