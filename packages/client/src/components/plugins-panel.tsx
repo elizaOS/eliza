@@ -86,7 +86,6 @@ export default function PluginsPanel({
     return [
       ...defaultPlugins,
       ...(Array.isArray(plugins) ? plugins : Object.keys(plugins))
-        .map((name) => name.replace(/^@elizaos-plugins\//, '@elizaos/'))
         .filter((name) => !defaultPlugins.includes(name)),
     ];
   }, [plugins]);

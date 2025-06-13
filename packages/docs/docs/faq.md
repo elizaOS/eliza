@@ -2,14 +2,14 @@
 sidebar_position: 3
 title: Frequently Asked Questions
 description: Common questions and answers about installing, configuring, and using ElizaOS
-keywords: [FAQ, troubleshooting, installation, setup, Twitter, Discord, models, memory]
+keywords: [FAQ, troubleshooting, installation, setup, Discord, models, memory]
 ---
 
 # Frequently Asked Questions
 
 ### What is Eliza?
 
-Eliza is an extensible open-source framework for building autonomous AI agents that can engage in natural conversations, learn from interactions, and maintain consistent personalities across platforms like Twitter, Discord, and Telegram.
+Eliza is an extensible open-source framework for building autonomous AI agents that can engage in natural conversations, learn from interactions, and maintain consistent personalities across platforms like Farcaster, X, Discord, and Telegram.
 
 ### What's the difference between v1 and v2?
 
@@ -88,66 +88,6 @@ Yes, but consider:
 
 ---
 
-## Twitter/X Integration
-
-### How do I prevent my agent from spamming or posting duplicates?
-
-Configure your .env file:
-
-```
-TWITTER_INTERACTION_ENABLE=false
-TWITTER_POST_INTERVAL_MIN=900  # 15 minutes minimum
-TWITTER_POST_INTERVAL_MAX=1200 # 20 minutes maximum
-TWITTER_DRY_RUN=true   # Test mode
-```
-
-### How do I control which tweets my agent responds to?
-
-1. Configure target users in .env:
-   ```
-   TWITTER_TARGET_USERS="user1,user2,user3"
-   ```
-2. Control specific actions:
-   ```
-   TWITTER_LIKES_ENABLE=false
-   TWITTER_RETWEETS_ENABLE=false
-   TWITTER_REPLY_ENABLE=true
-   TWITTER_FOLLOW_ENABLE=false
-   ```
-
-### How do I fix Twitter authentication issues?
-
-1. Mark your account as "Automated" in Twitter settings
-2. Ensure proper credentials in .env file
-3. Consider using a residential IP or VPN as Twitter may block cloud IPs
-4. Set up proper rate limiting to avoid suspensions
-
-### How do I prevent unwanted Twitter interactions?
-
-To better control what tweets your agent responds to, configure `TWITTER_TARGET_USERS` in `.env` and set specific action flags like `TWITTER_LIKES_ENABLE=false` to control interaction types.
-
-### How do I troubleshoot Twitter authentication issues?
-
-Ensure correct credentials in `.env`, mark account as "Automated" in Twitter settings, and consider using a residential IP to avoid blocks.
-
-### How do I make my agent respond to Twitter replies?
-
-Set `TWITTER_INTERACTION_ENABLE=true` and configure `TWITTER_POLL_INTERVAL`. Target specific users for guaranteed responses.
-
-### How do I avoid Twitter bot suspensions?
-
-- Mark account as automated in Twitter settings
-- Space out posts (15-20 minutes between interactions)
-- Avoid using proxies
-
-### How do I fix Twitter authentication issues?
-
-- Ensure correct credentials in .env file
-- Use valid TWITTER_COOKIES format
-- Turn on "Automated" in Twitter profile settings
-
----
-
 ## Model Configuration
 
 ### How do I switch between different AI models?
@@ -198,13 +138,6 @@ Check your database for null memory entries and ensure proper content formatting
 - To reset memory: Delete the db.sqlite file and restart
 - To add documents: Specify path to file / folder in the characterfile
 - For large datasets: Consider using a vector database
-
-### How much does it cost to run an agent?
-
-- OpenAI API: Approximately 500 simple replies for $1
-- Server hosting: $5-20/month depending on provider
-- Optional: Twitter API costs if using premium features
-- Local deployment can reduce costs but requires 24/7 uptime
 
 ### How do I clear or reset my agent's memory?
 
@@ -259,16 +192,6 @@ Or manually:
 
 ## Production Deployment
 
-### What's the recommended way to deploy Eliza?
-
-1. Use a VPS or cloud provider (DigitalOcean, AWS, Hetzner)
-2. Requirements:
-   - Minimum 2GB RAM
-   - 20GB storage
-   - Ubuntu or Debian recommended
-3. Use PM2 or Docker for process management
-4. Consider using residential IPs for Twitter bots
-
 ### How do I ensure my agent runs continuously?
 
 1. Use a process manager like PM2:
@@ -293,16 +216,6 @@ Or manually:
    - Verify connection string
    - Check database exists
    - Ensure proper credentials
-
-### How do I debug when my agent isn't responding?
-
-1. Enable debug logging in .env:
-   ```
-   DEBUG=eliza:*
-   ```
-2. Check the database for saved messages
-3. Verify API keys and model provider status
-4. Check client-specific settings (Twitter, Discord, etc.)
 
 ### How do I resolve embedding dimension mismatch errors?
 
@@ -333,7 +246,6 @@ Eliza welcomes contributions from individuals with a wide range of skills:
 - **Develop new plugins**: Create new functionality using the plugin system
 - **Improve the core**: Enhance the ElizaOS core functionality
 - **Fine-tune models**: Optimize models for specific personalities and use cases
-- **Enhance clients**: Improve platform integrations for Twitter, Discord, etc.
 
 #### Non-Technical Contributions
 

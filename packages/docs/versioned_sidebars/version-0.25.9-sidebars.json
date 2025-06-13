@@ -144,11 +144,6 @@
         },
         {
           "type": "doc",
-          "id": "guides/fine-tuning",
-          "label": "Fine Tuning"
-        },
-        {
-          "type": "doc",
           "id": "guides/secrets-management",
           "label": "Secrets Management"
         },

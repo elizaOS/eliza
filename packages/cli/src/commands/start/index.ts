@@ -21,6 +21,9 @@ export const start = new Command()
   })
   .action(async (options: StartOptions & { character?: string[] }) => {
     try {
+      // Load env config first before any character loading
+      await loadEnvConfig();
+
       let characters: Character[] = [];
       let projectAgents: ProjectAgent[] = [];
 
@@ -38,9 +41,6 @@ export const start = new Command()
         try {
           const cwd = process.cwd();
           const packageJsonPath = path.join(cwd, 'package.json');
-
-          // Load env config first to populate plugins.
-          await loadEnvConfig();
 
           // Check if we're in a project directory
           if (fs.existsSync(packageJsonPath)) {

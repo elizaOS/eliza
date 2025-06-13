@@ -8,6 +8,7 @@ export interface ListPluginsOptions {
 
 export interface AddPluginOptions {
   skipEnvPrompt?: boolean;
+  skipVerification?: boolean;
   branch?: string;
   tag?: string;
 }

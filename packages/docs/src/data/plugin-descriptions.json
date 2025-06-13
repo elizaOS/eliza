@@ -5,7 +5,7 @@
   },
   "@elizaos-plugins/adapter-pglite": {
     "custom_preview": "/logos/pglite.png",
-    "description": "Lightweight PostgreSQL adapter for embedded database applications."
+    "description": "File-based SQL database adapter for lightweight local storage."
   },
   "@elizaos-plugins/adapter-postgres": {
     "custom_preview": "/logos/postgres.jpg",
@@ -14,10 +14,6 @@
   "@elizaos-plugins/adapter-qdrant": {
     "custom_preview": "/logos/qdrant.png",
     "description": "Vector database adapter for Qdrant with similarity search capabilities."
-  },
-  "@elizaos-plugins/adapter-pglite": {
-    "custom_preview": "/logos/pglite.png",
-    "description": "File-based SQL database adapter for lightweight local storage."
   },
   "@elizaos-plugins/adapter-sqljs": {
     "custom_preview": "/logos/sqljs.png",
@@ -773,5 +769,38 @@
   },
   "@elizaos-plugins/plugin-storacha": {
     "description": "🔌 A plugin providing distributed storage functionality for ElizaOS agents."
+  },
+  "@elizaos-plugins/adapter-sqlite": {
+    "description": "File-based SQL database adapter for lightweight local storage."
+  },
+  "@elizaos-plugins/plugin-bitquery": {
+    "description": "ElizaOS Bitquery Plugin (used by @ainstein_001 on X)"
+  },
+  "@elizaos-plugins/plugin-bless": {
+    "description": "A plugin enabling ElizaOS agents to interact with the Bless Network."
+  },
+  "@elizaos-plugins/plugin-discord": {
+    "description": "A Discord plugin for ElizaOS, enabling integration with Discord servers for interaction, voice, and message management."
+  },
+  "@elizaos-plugins/plugin-morpheus": {
+    "description": "Morpheus Plugin for ElizaOS"
+  },
+  "@elizaos-plugins/plugin-proof-of-agent": {
+    "description": "The Proof of Agent plugin is designed to facilitate token claims using a proof of agent mechanism. It leverages trusted execution environments (TEE) and remote attestation to ensure secure and verified transactions."
+  },
+  "@elizaos-plugins/plugin-pundiai-dataset": {
+    "description": "Eliza’s plugin architecture ,Plugin for interacting with pundiai dataset API to fetch data"
+  },
+  "@elizaos-plugins/plugin-safe": {
+    "description": "Eliza plugin for Safe SDK"
+  },
+  "@elizaos-plugins/plugin-trn": {
+    "description": "ElizaOS plugin for The Root Network"
+  },
+  "@elizaos-plugins/plugin-xmtp": {
+    "description": "Enables secure, decentralized, and end-to-end encrypted messaging through the XMTP protocol."
+  },
+  "@mazzz/plugin-elizaos-compchembridge": {
+    "description": "ElizaOS plugin for parsing Gaussian 16 quantum chemistry logfiles into a knowledge graph"
   }
 }

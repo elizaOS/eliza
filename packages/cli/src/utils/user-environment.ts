@@ -260,11 +260,14 @@ export class UserEnvironment {
 
       const parentDir = path.dirname(currentDir);
       if (parentDir === currentDir) {
-        return null; // Reached filesystem root
+        // Reached filesystem root
+        return null;
       }
       currentDir = parentDir;
       levels++;
     }
+
+    // Reached max levels
     return null;
   }
 

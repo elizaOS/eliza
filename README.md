@@ -4,7 +4,7 @@ A framework for multi-agent development and deployment
 
 ## ✨ Features
 
-- 🛠️ Full-featured Discord, X (Twitter) and Telegram connectors (and many more!)
+- 🛠️ Full-featured Discord, Telegram, and Farcaster connectors (and many more!)
 - 🔗 Support for every model (Llama, Grok, OpenAI, Anthropic, Gemini, etc.)
 - 🎨 Modern and professional UI with a redesigned dashboard for managing agents and groups.
 - 💬 Robust real-time communication with enhanced channel and message handling.

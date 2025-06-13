@@ -27,7 +27,7 @@ export async function installPluginFromGitHub(
   const githubSpecifier = `github:${owner}/${repo}${ref ? `#${ref}` : ''}`;
   const pluginNameForPostInstall = repo;
 
-  const success = await installPlugin(githubSpecifier, cwd);
+  const success = await installPlugin(githubSpecifier, cwd, undefined, opts.skipVerification);
 
   if (success) {
     logger.info(`Successfully installed ${pluginNameForPostInstall} from ${githubSpecifier}.`);
@@ -72,7 +72,12 @@ export async function installPluginFromRegistry(
 
   const targetName = pluginKey || plugin;
 
-  const registryInstallResult = await installPlugin(targetName, cwd, opts.tag);
+  const registryInstallResult = await installPlugin(
+    targetName,
+    cwd,
+    opts.tag,
+    opts.skipVerification
+  );
 
   if (registryInstallResult) {
     console.log(`Successfully installed ${targetName}`);

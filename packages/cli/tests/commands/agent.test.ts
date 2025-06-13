@@ -3,6 +3,7 @@ import { spawn, execSync } from 'child_process';
 import { mkdtemp, rm, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import { TEST_TIMEOUTS } from '../test-timeouts';
 
 describe('ElizaOS Agent Commands', () => {
   let serverProcess: any;
@@ -24,7 +25,7 @@ describe('ElizaOS Agent Commands', () => {
     // Kill any existing processes on port 3000
     try {
       execSync(`lsof -t -i :3000 | xargs kill -9`, { stdio: 'ignore' });
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
     } catch (e) {
       // Ignore if no processes found
     }
@@ -67,7 +68,7 @@ describe('ElizaOS Agent Commands', () => {
         throw new Error('Server did not start within timeout');
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
       attempts++;
     }
 
@@ -92,13 +93,13 @@ describe('ElizaOS Agent Commands', () => {
     }
 
     // Give characters time to register
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-  }, 60000); // 60 second timeout for setup
+    await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
+  }, TEST_TIMEOUTS.SUITE_TIMEOUT); // Suite timeout for setup
 
   afterAll(async () => {
     if (serverProcess) {
       serverProcess.kill();
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
     }
 
     if (testTmpDir) {

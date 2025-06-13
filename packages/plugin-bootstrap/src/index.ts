@@ -535,32 +535,7 @@ const messageReceivedHandler = async ({
             // without actions there can't be more than one message
             await callback(responseContent);
           } else {
-            await runtime.processActions(
-              message,
-              responseMessages,
-              state,
-              async (memory: Content) => {
-                return [];
-              }
-            );
-            if (responseMessages.length) {
-              // Log provider usage for complex responses
-              for (const responseMessage of responseMessages) {
-                if (
-                  responseMessage.content.providers &&
-                  responseMessage.content.providers.length > 0
-                ) {
-                  logger.debug(
-                    '[Bootstrap] Complex response used providers',
-                    responseMessage.content.providers
-                  );
-                }
-              }
-
-              for (const memory of responseMessages) {
-                await callback(memory.content);
-              }
-            }
+            await runtime.processActions(message, responseMessages, state, callback);
           }
           await runtime.evaluate(
             message,
