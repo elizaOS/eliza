@@ -1,5 +1,6 @@
-// @hidden
-import { useCallback, useEffect, useRef, useState } from 'react';
+// Enhanced with StickToBottom for better UX
+import { useCallback, useRef, useState, useEffect } from 'react';
+import { useStickToBottom } from 'use-stick-to-bottom';
 
 interface ScrollState {
   isAtBottom: boolean;
@@ -9,122 +10,77 @@ interface ScrollState {
 interface UseAutoScrollOptions {
   offset?: number;
   smooth?: boolean;
-  // content?: React.ReactNode; // Removed as it's an indirect dependency, watching scrollHeight is better
 }
 
 export function useAutoScroll(options: UseAutoScrollOptions = {}) {
-  const { offset = 20, smooth = false } = options;
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const lastContentHeight = useRef(0);
+  const { smooth = false } = options;
   const userHasScrolled = useRef(false); // To track if user manually scrolled up
+  
+  // Use StickToBottom for enhanced scroll behavior
+  const stickToBottom = useStickToBottom({
+    initial: smooth ? 'smooth' : 'instant',
+    resize: smooth ? 'smooth' : 'instant',
+  });
 
   const [scrollState, setScrollState] = useState<ScrollState>({
     isAtBottom: true,
     autoScrollEnabled: true,
   });
 
-  const checkIsAtBottom = useCallback(
-    (element: HTMLElement) => {
-      const { scrollTop, scrollHeight, clientHeight } = element;
-      const distanceToBottom = Math.abs(scrollHeight - scrollTop - clientHeight);
-      return distanceToBottom <= offset;
-    },
-    [offset]
-  );
-
-  const scrollToBottom = useCallback(
-    (instant?: boolean) => {
-      if (!scrollRef.current) return;
-      const targetScrollTop = scrollRef.current.scrollHeight - scrollRef.current.clientHeight;
-      scrollRef.current.scrollTo({
-        top: targetScrollTop,
-        behavior: instant ? 'auto' : smooth ? 'smooth' : 'auto',
-      });
-      // When we programmatically scroll to bottom, user is at bottom and autoScroll should be enabled
-      setScrollState({ isAtBottom: true, autoScrollEnabled: true });
-      userHasScrolled.current = false;
-    },
-    [smooth] // Removed checkIsAtBottom from here as it's not directly used, but ensure offset changes are handled if it affects logic elsewhere
-  );
-
-  const handleScroll = useCallback(() => {
-    if (!scrollRef.current) return;
-    const atBottom = checkIsAtBottom(scrollRef.current);
-
-    if (atBottom) {
-      // If user scrolls to the bottom, reset userHasScrolled and re-enable autoScroll
+  // Sync our state with StickToBottom's state
+  useEffect(() => {
+    const isAtBottom = stickToBottom.isAtBottom;
+    
+    if (isAtBottom) {
+      // User is at bottom - reset user control and enable auto-scroll
       userHasScrolled.current = false;
       setScrollState({ isAtBottom: true, autoScrollEnabled: true });
     } else {
-      // User is not at the bottom. If userHasScrolled.current is true, it means they scrolled up.
-      // Keep autoScrollEnabled as false. If it was a programmatic scroll not to bottom, this state will reflect that.
+      // User is not at bottom
       setScrollState((prev) => ({
         ...prev,
         isAtBottom: false,
         autoScrollEnabled: userHasScrolled.current ? false : prev.autoScrollEnabled,
       }));
     }
-  }, [checkIsAtBottom]);
+  }, [stickToBottom.isAtBottom]);
 
-  useEffect(() => {
-    const element = scrollRef.current;
-    if (!element) return;
-    element.addEventListener('scroll', handleScroll, { passive: true });
-    return () => element.removeEventListener('scroll', handleScroll);
-  }, [handleScroll]);
+  // Enhanced scroll to bottom using StickToBottom
+  const scrollToBottom = useCallback(
+    (instant?: boolean) => {
+      const animation = instant ? 'instant' : smooth ? 'smooth' : 'instant';
+      stickToBottom.scrollToBottom({ 
+        animation,
+        preserveScrollPosition: false // Always scroll to bottom when called
+      });
+      
+      // Update our state
+      setScrollState({ isAtBottom: true, autoScrollEnabled: true });
+      userHasScrolled.current = false;
+    },
+    [stickToBottom.scrollToBottom, smooth]
+  );
 
-  // This effect reacts to new content (scrollHeight changes)
-  useEffect(() => {
-    const scrollElement = scrollRef.current;
-    if (!scrollElement) return;
-
-    const currentHeight = scrollElement.scrollHeight;
-    // Only act if height actually changed to avoid unnecessary processing
-    if (currentHeight !== lastContentHeight.current) {
-      if (currentHeight > lastContentHeight.current) {
-        // Content added
-        if (scrollState.autoScrollEnabled && !userHasScrolled.current) {
-          requestAnimationFrame(() => {
-            scrollToBottom(lastContentHeight.current === 0); // Instant if first load, otherwise respect smooth option implicitly
-          });
-        }
-      }
-      lastContentHeight.current = currentHeight; // Update height regardless
-    }
-  }, [scrollRef.current?.scrollHeight, scrollState.autoScrollEnabled, scrollToBottom]); // Dependency on scrollHeight
-
-  // ResizeObserver to handle container resizes (e.g., keyboard, devtools)
-  useEffect(() => {
-    const element = scrollRef.current;
-    if (!element) return;
-    const resizeObserver = new ResizeObserver(() => {
-      // Only auto-scroll on resize if user hasn't manually scrolled up and autoScroll is generally enabled
-      if (scrollState.autoScrollEnabled && !userHasScrolled.current) {
-        // It might be better to scroll smoothly here unless it's a major resize like orientation change
-        scrollToBottom(false);
-      }
-    });
-    resizeObserver.observe(element);
-    return () => resizeObserver.disconnect();
-  }, [scrollState.autoScrollEnabled, scrollToBottom]);
-
+  // Enhanced disable auto-scroll using StickToBottom
   const disableAutoScroll = useCallback(() => {
-    if (!scrollRef.current) return;
-    const atBottom = checkIsAtBottom(scrollRef.current);
-    if (!atBottom) {
+    if (!stickToBottom.isAtBottom) {
       userHasScrolled.current = true; // User has taken control by scrolling up
+      stickToBottom.stopScroll(); // Stop any ongoing scroll animations
       setScrollState((prev) => ({
         ...prev,
         autoScrollEnabled: false, // Disable auto-scroll
       }));
     }
-  }, [checkIsAtBottom]);
+  }, [stickToBottom.isAtBottom, stickToBottom.stopScroll]);
 
   return {
-    scrollRef,
+    scrollRef: stickToBottom.scrollRef,
+    contentRef: stickToBottom.contentRef, // Expose content ref for proper StickToBottom usage
     isAtBottom: scrollState.isAtBottom,
     autoScrollEnabled: scrollState.autoScrollEnabled,
     scrollToBottom: () => scrollToBottom(false), // Expose a non-instant scroll by default
     disableAutoScroll,
+    // Expose StickToBottom instance for advanced usage if needed
+    _stickToBottom: stickToBottom,
   };
 }
