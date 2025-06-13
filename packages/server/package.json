@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/server",
   "version": "1.0.6",
-  "description": "elizaOS CLI - Manage your AI agents and plugins",
+  "description": "ElizaOS Server - Core server infrastructure for ElizaOS agents",
   "publishConfig": {
     "access": "public",
     "workspaces": {
@@ -16,7 +16,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/elizaOS/eliza.git",
-    "directory": "packages/cli"
+    "directory": "packages/server"
   },
   "files": [
     "dist",
@@ -27,9 +27,6 @@
   "exports": {
     ".": "./dist/index.js",
     "./package.json": "./package.json"
-  },
-  "bin": {
-    "elizaos": "./dist/index.js"
   },
   "scripts": {
     "build": "tsup",

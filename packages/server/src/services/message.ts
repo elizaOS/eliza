@@ -289,7 +289,7 @@ export class MessageBusService extends Service {
     }
 
     logger.info(
-      `[${this.runtime.character.name}] MessageBusService: Agent is a participant in channel ${message.channel_id}, proceeding with message processing`
+      `[${this.runtime.character.name} - ${this.runtime.agentId}] MessageBusService: Agent is a participant in channel ${message.channel_id}, proceeding with message processing`
     );
 
     try {
@@ -321,6 +321,17 @@ export class MessageBusService extends Service {
       const callbackForCentralBus = async (responseContent: Content): Promise<Memory[]> => {
         logger.info(
           `[${this.runtime.character.name}] Agent generated response for message. Preparing to send back to bus.`
+        );
+
+        await this.runtime.createMemory(
+          {
+            entityId: this.runtime.agentId,
+            content: responseContent,
+            roomId: agentRoomId,
+            worldId: agentWorldId,
+            agentId: this.runtime.agentId,
+          },
+          'messages'
         );
 
         // Send response to central bus
@@ -490,7 +501,7 @@ export class MessageBusService extends Service {
       };
 
       logger.info(
-        `[${this.runtime.character.name}] MessageBusService: Sending payload to central server API endpoint (/api/messagingsubmit):`,
+        `[${this.runtime.character.name}] MessageBusService: Sending payload to central server API endpoint (/api/messaging/submit):`,
         payloadToServer
       );
 

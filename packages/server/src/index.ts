@@ -17,6 +17,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import { createApiRouter, createPluginRouteHandler, setupSocketIO } from './api';
 import { apiKeyAuthMiddleware } from './authMiddleware';
 import { messageBusConnectorPlugin } from './services/message';
+import { loadCharacterTryPath, jsonToCharacter } from './loader';
 
 import {
   createDatabaseAdapter,
@@ -132,6 +133,10 @@ export class AgentServer {
     try {
       logger.debug('Initializing AgentServer (constructor)...');
       this.agents = new Map();
+
+      // Initialize character loading functions
+      this.loadCharacterTryPath = loadCharacterTryPath;
+      this.jsonToCharacter = jsonToCharacter;
     } catch (error) {
       logger.error('Failed to initialize AgentServer (constructor):', error);
       throw error;
@@ -1013,3 +1018,17 @@ export class AgentServer {
     return serverIds;
   }
 }
+
+// Export loader utilities
+export {
+  tryLoadFile,
+  loadCharactersFromUrl,
+  jsonToCharacter,
+  loadCharacter,
+  loadCharacterTryPath,
+  hasValidRemoteUrls,
+  loadCharacters,
+} from './loader';
+
+// Export types
+export * from './types';
