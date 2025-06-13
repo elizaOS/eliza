@@ -433,6 +433,7 @@ export default function Chat({
             updateChatState({ currentDmChannelId: null });
             // Allow the auto-create logic to run again
             autoCreatedDmRef.current = false;
+            await handleNewDmChannel(targetAgentData.id);
           }
         } catch (error) {
           clientLogger.error('[Chat] Error deleting DM channel:', error);
@@ -474,24 +475,7 @@ export default function Chat({
         return; // Exit early, let the effect run again with cleared state
       }
 
-      if (
-        !isLoadingAgentDmChannels &&
-        !createDmChannelMutation.isPending &&
-        !chatState.isCreatingDM
-      ) {
-        if (
-          agentDmChannels.length === 0 &&
-          !initialDmChannelId &&
-          !autoCreatedDmRef.current &&
-          !chatState.isCreatingDM &&
-          !createDmChannelMutation.isPending
-        ) {
-          // No channels at all and none expected via URL -> create exactly one
-          clientLogger.info('[Chat] No existing DM channels found; auto-creating a fresh one.');
-          autoCreatedDmRef.current = true;
-          handleNewDmChannel(targetAgentData.id);
-        }
-
+      if (!isLoadingAgentDmChannels) {
         // If we now have channels, ensure one is selected
         if (agentDmChannels.length > 0) {
           const currentValid = agentDmChannels.some((c) => c.id === chatState.currentDmChannelId);
@@ -503,17 +487,19 @@ export default function Chat({
             updateChatState({ currentDmChannelId: agentDmChannels[0].id });
             autoCreatedDmRef.current = false;
           }
-        }
-
-        if (
-          !autoCreatedDmRef.current &&
-          !chatState.isCreatingDM &&
-          !createDmChannelMutation.isPending &&
-          agentDmChannels.length === 0
-        ) {
-          clientLogger.info('[Chat] No DM channels available, creating fresh DM immediately.');
-          autoCreatedDmRef.current = true;
-          handleNewDmChannel(targetAgentData.id);
+        } else {
+          if (
+            agentDmChannels.length === 0 &&
+            !initialDmChannelId &&
+            !autoCreatedDmRef.current &&
+            !chatState.isCreatingDM &&
+            !createDmChannelMutation.isPending
+          ) {
+            // No channels at all and none expected via URL -> create exactly one
+            clientLogger.info('[Chat] No existing DM channels found; auto-creating a fresh one.');
+            autoCreatedDmRef.current = true;
+            handleNewDmChannel(targetAgentData.id);
+          }
         }
       }
     } else if (chatType !== ChannelType.DM && chatState.currentDmChannelId !== null) {
