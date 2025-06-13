@@ -734,7 +734,7 @@ export default function CharacterForm({
                     key={tab.value}
                     value={tab.value}
                     className={cn(
-                      'whitespace-nowrap px-3 py-1.5 text-sm font-medium',
+                      'whitespace-nowrap px-3 py-1.5 text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:rounded-md data-[state=active]:border-0',
                       !showLabels && 'px-2 text-xs' // Smaller padding and text on mobile
                     )}
                   >
