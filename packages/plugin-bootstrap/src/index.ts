@@ -296,8 +296,8 @@ const messageReceivedHandler = async ({
     // Set this as the latest response ID for this agent+room
     agentResponses.set(message.roomId, responseId);
 
-    // Generate a unique run ID for tracking this message handler execution
-    const runId = asUUID(v4());
+    // Use runtime's run tracking for this message processing
+    const runId = runtime.startRun();
     const startTime = Date.now();
 
     // Emit run started event
