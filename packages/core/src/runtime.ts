@@ -110,6 +110,15 @@ export class AgentRuntime implements IAgentRuntime {
   private settings: RuntimeSettings;
   private servicesInitQueue = new Set<typeof Service>();
   private currentRunId?: UUID; // Track the current run ID
+  private currentActionContext?: { // Track current action execution context
+    actionName: string;
+    actionId: UUID;
+    prompts: Array<{
+      modelType: string;
+      prompt: string;
+      timestamp: number;
+    }>;
+  };
 
   constructor(opts: {
     conversationLength?: number;
@@ -657,25 +666,42 @@ export class AgentRuntime implements IAgentRuntime {
         try {
           this.logger.debug(`Executing handler for action: ${action.name}`);
 
+          // Start tracking this action's execution
+          const actionId = uuidv4() as UUID;
+          this.currentActionContext = {
+            actionName: action.name,
+            actionId: actionId,
+            prompts: []
+          };
+
           const result = await action.handler(this, message, state, {}, callback, responses);
           this.logger.debug(`Success: Action ${action.name} executed successfully.`);
 
-          // log to database
+          // log to database with collected prompts
           this.adapter.log({
             entityId: message.entityId,
             roomId: message.roomId,
             type: 'action',
             body: {
               action: action.name,
+              actionId: actionId,
               message: message.content.text,
               messageId: message.id,
               state,
               responses,
+              prompts: this.currentActionContext?.prompts || [],
+              promptCount: this.currentActionContext?.prompts.length || 0,
             },
           });
+
+          // Clear action context
+          this.currentActionContext = undefined;
         } catch (error: any) {
           const errorMessage = error instanceof Error ? error.message : String(error);
           this.logger.error(error);
+
+          // Clear action context on error
+          this.currentActionContext = undefined;
 
           const actionMemory: Memory = {
             id: uuidv4() as UUID,
@@ -1345,6 +1371,15 @@ export class AgentRuntime implements IAgentRuntime {
       
       // Log all prompts except TEXT_EMBEDDING to track agent behavior
       if (modelKey !== ModelType.TEXT_EMBEDDING && promptContent) {
+        // If we're in an action context, collect the prompt
+        if (this.currentActionContext) {
+          this.currentActionContext.prompts.push({
+            modelType: modelKey,
+            prompt: promptContent,
+            timestamp: Date.now(),
+          });
+        }
+        
         await this.adapter.log({
           entityId: this.agentId,
           roomId: this.agentId,
@@ -1356,6 +1391,10 @@ export class AgentRuntime implements IAgentRuntime {
             timestamp: Date.now(),
             executionTime: elapsedTime,
             provider: provider || (this.models.get(modelKey)?.[0]?.provider || 'unknown'),
+            actionContext: this.currentActionContext ? {
+              actionName: this.currentActionContext.actionName,
+              actionId: this.currentActionContext.actionId,
+            } : undefined,
           },
           type: `prompt:${modelKey}`,
         });

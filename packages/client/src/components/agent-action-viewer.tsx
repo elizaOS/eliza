@@ -28,6 +28,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
 
 // Constants
 const ITEMS_PER_PAGE = 15;
@@ -52,6 +53,8 @@ type AgentLog = {
   body?: {
     modelType?: string;
     modelKey?: string;
+    action?: string;
+    actionId?: string;
     params?: any;
     response?: any;
     usage?: {
@@ -59,6 +62,12 @@ type AgentLog = {
       completion_tokens?: number;
       total_tokens?: number;
     };
+    prompts?: {
+      modelType?: string;
+      prompt: string;
+      timestamp?: number;
+    }[];
+    promptCount?: number;
   };
   createdAt?: number;
   [key: string]: any;
@@ -127,6 +136,7 @@ function formatDate(timestamp: number | undefined) {
 }
 
 function getModelIcon(modelType = '') {
+  if (modelType === 'ACTION') return Zap;
   if (modelType.includes('TEXT_EMBEDDING')) return Brain;
   if (modelType.includes('TRANSCRIPTION')) return FileText;
   if (modelType.includes('TEXT') || modelType.includes('OBJECT')) return Bot;
@@ -181,13 +191,17 @@ function ActionCard({ action, onDelete }: ActionCardProps) {
 
   const modelType = action.body?.modelType || '';
   const modelKey = action.body?.modelKey || '';
-  const IconComponent = getModelIcon(modelType);
-  const usageType = getModelUsageType(modelType);
+  const isActionLog = action.type === 'action';
+  const actionName = action.body?.action || '';
+  const IconComponent = getModelIcon(isActionLog ? 'ACTION' : modelType);
+  const usageType = isActionLog ? 'Action' : getModelUsageType(modelType);
   const tokenUsage = formatTokenUsage(action.body?.response?.usage || action.body?.usage);
+  const actionPrompts = action.body?.prompts;
 
   const renderParams = () => {
     const params = action.body?.params;
-    if (!params) return null;
+    
+    if (!params && !actionPrompts) return null;
 
     if (modelType.includes('TRANSCRIPTION') && Array.isArray(params)) {
       return (
@@ -198,13 +212,49 @@ function ActionCard({ action, onDelete }: ActionCardProps) {
       );
     }
 
-    // Extract prompt from params if present
+    // Extract prompt from params if present (for backward compatibility)
     const { prompt, ...otherParams } = params || {};
     
     return (
       <div className="space-y-4">
-        {/* Display prompt separately with special formatting */}
-        {prompt && (
+        {/* Display multiple prompts if this is an action with prompts */}
+        {actionPrompts && Array.isArray(actionPrompts) && actionPrompts.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-muted-foreground">
+                Prompts ({actionPrompts.length})
+              </span>
+            </div>
+            <div className="space-y-3">
+              {actionPrompts.map((promptData, index) => (
+                <div key={index} className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">
+                      {promptData.modelType || 'Prompt'} #{index + 1}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => copyToClipboard(promptData.prompt)}
+                      className="h-5 px-1 text-xs"
+                      title="Copy prompt"
+                    >
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                  </div>
+                  <div className="bg-muted/30 rounded-md p-2">
+                    <pre className="text-xs font-mono whitespace-pre-wrap overflow-x-auto">
+                      {promptData.prompt}
+                    </pre>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        
+        {/* Display single prompt from params (backward compatibility) */}
+        {!actionPrompts && prompt && (
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-muted-foreground">Prompt</span>
@@ -335,18 +385,27 @@ function ActionCard({ action, onDelete }: ActionCardProps) {
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
-                <h4 className="font-semibold text-sm">{usageType}</h4>
+                <h4 className="font-semibold text-sm">
+                  {isActionLog ? actionName : usageType}
+                </h4>
                 <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">
-                  {modelType}
+                  {isActionLog ? 'Action' : modelType}
                 </span>
+                {action.body?.promptCount && action.body.promptCount > 1 && (
+                  <Badge variant="secondary" className="text-xs px-1.5">
+                    {action.body.promptCount} prompts
+                  </Badge>
+                )}
               </div>
 
               {/* Model and timing info */}
               <div className="space-y-1">
-                {modelKey && (
+                {(modelKey || isActionLog) && (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Zap className="h-3 w-3" />
-                    <code className="font-mono">{modelKey}</code>
+                    <code className="font-mono">
+                      {isActionLog ? `Action ID: ${action.body?.actionId?.slice(-8) || 'N/A'}` : modelKey}
+                    </code>
                   </div>
                 )}
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -463,11 +522,15 @@ function ActionCard({ action, onDelete }: ActionCardProps) {
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <AlertCircle className="h-3 w-3" />
               <span>
-                {action.body?.params && action.body?.response
-                  ? 'Contains parameters and response data'
-                  : action.body?.params
-                    ? 'Contains parameter data'
-                    : 'Contains response data'}
+                {(() => {
+                  const parts = [];
+                  if (action.body?.promptCount && action.body.promptCount > 0) {
+                    parts.push(`${action.body.promptCount} prompt${action.body.promptCount > 1 ? 's' : ''}`);
+                  }
+                  if (action.body?.params) parts.push('parameters');
+                  if (action.body?.response) parts.push('response data');
+                  return parts.length > 0 ? `Contains ${parts.join(' and ')}` : 'Contains additional data';
+                })()}
               </span>
               <Button
                 variant="ghost"
@@ -554,10 +617,12 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
     if (selectedType !== ActionType.all) {
       const modelType = action.body?.modelType || '';
       const usageType = getModelUsageType(modelType);
+      const isActionLog = action.type === 'action';
 
       switch (selectedType) {
         case ActionType.llm:
-          if (usageType !== 'LLM') return false;
+          // Include both LLM calls and actions (which often contain LLM prompts)
+          if (usageType !== 'LLM' && !isActionLog) return false;
           break;
         case ActionType.transcription:
           if (usageType !== 'Transcription') return false;
@@ -566,7 +631,7 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
           if (usageType !== 'Image') return false;
           break;
         case ActionType.other:
-          if (usageType !== 'Other' && usageType !== 'Unknown') return false;
+          if (usageType !== 'Other' && usageType !== 'Unknown' && !isActionLog) return false;
           break;
       }
     }
