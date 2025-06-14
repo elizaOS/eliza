@@ -68,7 +68,7 @@ export const AudioRecorder = ({ className, timerClassName, agentId, onChange }: 
 
   const mutation = useMutation({
     mutationKey: ['whisper'],
-    mutationFn: (file: Blob) => apiClient.whisper(agentId, file),
+    mutationFn: (file: Blob) => apiClient.transcribeAudio(agentId, file),
     onSuccess: (data: { data: { text: string } }) => {
       if (data?.data?.text) {
         onChange(data.data.text);
