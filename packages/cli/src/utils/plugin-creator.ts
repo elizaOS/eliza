@@ -542,7 +542,7 @@ Be extremely detailed and specific. This specification will be used to generate 
 Remember: The plugin must work with BOTH Pglite and PostgreSQL without any code changes.`;
 
     const message = await this.anthropic!.messages.create({
-      model: 'claude-opus-4-20250514',
+      model: 'claude-sonnet-4-20250514',
       max_tokens: 8192,
       temperature: 0.3,
       messages: [
@@ -1011,7 +1011,7 @@ Respond with a JSON object:
 If ANY of the CRITICAL requirements fail, the plugin is NOT production ready.`;
 
     const message = await this.anthropic!.messages.create({
-      model: 'claude-opus-4-20250514',
+      model: 'claude-sonnet-4-20250514',
       max_tokens: 8192,
       temperature: 0,
       messages: [

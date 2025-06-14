@@ -1,6 +1,6 @@
 import { defineConfig } from 'tsup';
 import { copy } from 'esbuild-plugin-copy';
-import path from 'path';
+import path from 'node:path';
 
 export default defineConfig({
   clean: true,
@@ -55,6 +55,14 @@ const require = createRequire(import.meta.url);
         {
           from: './node_modules/@electric-sql/pglite/dist/pglite.wasm',
           to: './dist',
+        },
+        {
+          from: './src/utils/upgrade/CLAUDE.md',
+          to: './dist/',
+        },
+        {
+          from: './src/utils/upgrade/TEST_CASES.md',
+          to: './dist/',
         },
       ],
       // Setting this to true will output a list of copied files
