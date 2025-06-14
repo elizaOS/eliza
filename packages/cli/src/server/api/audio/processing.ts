@@ -7,7 +7,7 @@ import path from 'node:path';
 import type { AgentServer } from '../../index';
 import { cleanupFile } from '../shared/file-utils';
 import { sendError, sendSuccess } from '../shared/response-utils';
-import { agentUpload } from '../shared/uploads';
+import { agentAudioUpload } from '../shared/uploads';
 import { createFileSystemRateLimit, createUploadRateLimit } from '../shared/middleware';
 import { MAX_FILE_SIZE, MAX_FILE_SIZE_DISPLAY } from '../shared/constants';
 
@@ -78,7 +78,7 @@ export function createAudioProcessingRouter(
   // Audio messages endpoints
   router.post(
     '/:agentId/audio-messages',
-    agentUpload.single('file'), // Use agentUpload
+    agentAudioUpload.single('file'), // Use agentAudioUpload
     async (req: AudioRequest, res) => {
       logger.debug('[AUDIO MESSAGE] Processing audio message');
       const agentId = validateUuid(req.params.agentId);
@@ -137,7 +137,7 @@ export function createAudioProcessingRouter(
   // Transcription endpoint
   router.post(
     '/:agentId/transcriptions',
-    agentUpload.single('file'), // Use agentUpload
+    agentAudioUpload.single('file'), // Use agentAudioUpload
     async (req: AudioRequest, res) => {
       logger.debug('[TRANSCRIPTION] Request to transcribe audio');
       const agentId = validateUuid(req.params.agentId);
