@@ -329,7 +329,7 @@ export const apiClient = {
   ): Promise<{ success: boolean; data: { url: string; type: string } }> => {
     const formData = new FormData();
     formData.append('file', file);
-    return fetcher({ url: `/agents/${agentId}/upload-media`, method: 'POST', body: formData });
+    return fetcher({ url: `/media/agents/${agentId}/upload-media`, method: 'POST', body: formData });
   },
   uploadKnowledgeDocuments: async (agentId: string, files: File[]): Promise<any> => {
     const formData = new FormData();
