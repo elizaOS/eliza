@@ -30,6 +30,12 @@ vi.mock('@elizaos/plugin-sql', () => ({
     getDatabase: vi.fn(() => ({
       execute: vi.fn().mockResolvedValue([]),
     })),
+    getMessageServers: vi.fn().mockResolvedValue([
+      { id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' }
+    ]),
+    createMessageServer: vi.fn().mockResolvedValue({ id: '00000000-0000-0000-0000-000000000000' }),
+    addAgentToServer: vi.fn().mockResolvedValue(undefined),
+    db: { execute: vi.fn().mockResolvedValue([]) },
   })),
   DatabaseMigrationService: vi.fn(() => ({
     initializeWithDatabase: vi.fn().mockResolvedValue(undefined),
@@ -41,8 +47,16 @@ vi.mock('@elizaos/plugin-sql', () => ({
 
 // Mock filesystem operations
 vi.mock('node:fs', () => ({
+  default: {
+    mkdirSync: vi.fn(),
+    existsSync: vi.fn(() => true),
+    readFileSync: vi.fn(() => '{}'),
+    writeFileSync: vi.fn(),
+  },
   mkdirSync: vi.fn(),
   existsSync: vi.fn(() => true),
+  readFileSync: vi.fn(() => '{}'),
+  writeFileSync: vi.fn(),
 }));
 
 describe('AgentServer Integration Tests', () => {

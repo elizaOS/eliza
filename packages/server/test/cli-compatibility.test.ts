@@ -20,6 +20,25 @@ vi.mock('@elizaos/core', () => ({
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     return uuidRegex.test(id) ? id : null;
   },
+  Service: class MockService {
+    constructor() {}
+    async initialize() {}
+    async cleanup() {}
+  },
+  createUniqueUuid: vi.fn(() => '123e4567-e89b-12d3-a456-426614174000'),
+  ChannelType: {
+    DIRECT: 'direct',
+    GROUP: 'group',
+  },
+  EventType: {
+    MESSAGE: 'message',
+    USER_JOIN: 'user_join',
+  },
+  SOCKET_MESSAGE_TYPE: {
+    MESSAGE: 'message',
+    AGENT_UPDATE: 'agent_update',
+    CONNECTION: 'connection',
+  },
 }));
 
 // Mock plugin-sql
@@ -30,8 +49,13 @@ vi.mock('@elizaos/plugin-sql', () => ({
     getDatabase: vi.fn(() => ({
       execute: vi.fn().mockResolvedValue([]),
     })),
-    getMessageServers: vi.fn().mockResolvedValue([]),
-    createMessageServer: vi.fn().mockResolvedValue({ id: 'server-id' }),
+    getMessageServers: vi.fn(() => Promise.resolve([
+      { id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' }
+    ])),
+    createMessageServer: vi.fn().mockResolvedValue({ id: '00000000-0000-0000-0000-000000000000' }),
+    getMessageServerById: vi.fn().mockResolvedValue({ id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' }),
+    addAgentToServer: vi.fn().mockResolvedValue(undefined),
+    db: { execute: vi.fn().mockResolvedValue([]) },
   })),
   DatabaseMigrationService: vi.fn(() => ({
     initializeWithDatabase: vi.fn().mockResolvedValue(undefined),
@@ -43,8 +67,16 @@ vi.mock('@elizaos/plugin-sql', () => ({
 
 // Mock filesystem
 vi.mock('node:fs', () => ({
+  default: {
+    mkdirSync: vi.fn(),
+    existsSync: vi.fn(() => true),
+    readFileSync: vi.fn(() => '{}'),
+    writeFileSync: vi.fn(),
+  },
   mkdirSync: vi.fn(),
   existsSync: vi.fn(() => true),
+  readFileSync: vi.fn(() => '{}'),
+  writeFileSync: vi.fn(),
 }));
 
 describe('CLI Compatibility Tests', () => {

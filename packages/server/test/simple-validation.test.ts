@@ -18,6 +18,20 @@ vi.mock('@elizaos/core', () => ({
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     return uuidRegex.test(id) ? id : null;
   },
+  Service: class MockService {
+    constructor() {}
+    async initialize() {}
+    async cleanup() {}
+  },
+  createUniqueUuid: vi.fn(() => '123e4567-e89b-12d3-a456-426614174000'),
+  ChannelType: {
+    DIRECT: 'direct',
+    GROUP: 'group',
+  },
+  EventType: {
+    MESSAGE: 'message',
+    USER_JOIN: 'user_join',
+  },
 }));
 
 describe('Simple Validation Tests', () => {

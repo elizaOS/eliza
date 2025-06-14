@@ -21,7 +21,7 @@ export default defineConfig({
   // Ensure that all external dependencies are properly handled.
   // The regex explicitly includes dependencies that should not be externalized.
   noExternal: [
-    /^(?!(@electric-sql\/pglite|zod|@elizaos\/core|chokidar|semver|octokit|execa|@noble\/curves)).*/,
+    /^(?!(@electric-sql\/pglite|zod|@elizaos\/core|@elizaos\/server|chokidar|semver|octokit|execa|@noble\/curves)).*/,
   ],
   platform: 'node',
   minify: false,
