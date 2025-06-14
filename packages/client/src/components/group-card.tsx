@@ -46,7 +46,7 @@ const GroupCard: React.FC<GroupCardProps> = ({ group /*, onEdit */ }) => {
 
   return (
     <Card className="w-full min-h-[180px] flex flex-col transition-all hover:shadow-lg">
-      <CardHeader className="pb-2">
+      <CardHeader>
         <div className="flex items-center gap-3">
           <div className="p-2 bg-muted rounded-full">
             <Users className="h-6 w-6 text-muted-foreground" />

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { ContentType as CoreContentType } from '@elizaos/core';
-import type { UUID, Media, ChannelType } from '@elizaos/core';
+import { UUID, Media, ChannelType } from '@elizaos/core';
 import { randomUUID } from '@/lib/utils';
 import { apiClient } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';

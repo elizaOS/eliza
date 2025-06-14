@@ -36,7 +36,6 @@ Response format should be formatted in a valid JSON block like this:
 
 Your response should include the valid JSON block and nothing else.`;
 
-
 /**
  * Represents an action that allows the agent to reply to the current conversation with a generated message.
  *

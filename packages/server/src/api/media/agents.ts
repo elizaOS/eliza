@@ -4,7 +4,7 @@ import express from 'express';
 import type { AgentServer } from '../../index';
 import { sendError, sendSuccess } from '../shared/response-utils';
 import { cleanupFile } from '../shared/file-utils';
-import { agentUpload } from '../shared/uploads';
+import { agentMediaUpload } from '../shared/uploads';
 
 // Using Express.Multer.File type instead of importing from multer directly
 type MulterFile = Express.Multer.File;
@@ -28,7 +28,7 @@ export function createAgentMediaRouter(
   // Media upload endpoint for images and videos
   router.post(
     '/:agentId/upload-media',
-    agentUpload.single('file'),
+    agentMediaUpload.single('file'),
     async (req: AgentMediaRequest, res) => {
       logger.debug('[MEDIA UPLOAD] Processing media upload');
       const agentId = validateUuid(req.params.agentId);

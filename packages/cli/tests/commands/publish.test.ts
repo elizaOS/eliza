@@ -22,7 +22,7 @@ describe('ElizaOS Publish Commands', () => {
 
     // Setup CLI command
     const scriptDir = join(__dirname, '..');
-    elizaosCmd = `bun run ${join(scriptDir, '../dist/index.js')}`;
+    elizaosCmd = `bun run "${join(scriptDir, '../dist/index.js')}"`;
 
     // === COMPREHENSIVE CREDENTIAL MOCKING ===
     // Set all possible environment variables to avoid any prompts
@@ -132,13 +132,105 @@ case "$1" in
 esac`
     );
 
-    // Make npm mock executable
-    execSync(`chmod +x ${join(mockBinDir, 'npm')}`);
+    // Make npm mock executable (cross-platform)
+    if (process.platform === 'win32') {
+      // On Windows, create a .cmd file
+      await writeFile(
+        join(mockBinDir, 'npm.cmd'),
+        `@echo off
+if "%1"=="whoami" (
+  echo test-user
+  exit /b 0
+)
+if "%1"=="login" (
+  echo Logged in as test-user
+  exit /b 0
+)
+if "%1"=="publish" (
+  echo Published successfully
+  exit /b 0
+)
+if "%1"=="run" (
+  echo npm run %2 completed
+  exit /b 0
+)
+if "%1"=="version" (
+  if "%2"=="patch" echo v1.0.1
+  if "%2"=="minor" echo v1.0.1
+  if "%2"=="major" echo v1.0.1
+  if "%2"=="" echo 1.0.0
+  exit /b 0
+)
+if "%1"=="view" (
+  echo {}
+  exit /b 0
+)
+if "%1"=="config" (
+  echo npm config %*
+  exit /b 0
+)
+if "%1"=="install" (
+  echo Dependencies installed
+  exit /b 0
+)
+echo npm %*
+exit /b 0`
+      );
+    } else {
+      execSync(`chmod +x ${join(mockBinDir, 'npm')}`);
+    }
 
     // Create comprehensive git mock
-    await writeFile(
-      join(mockBinDir, 'git'),
-      `#!/bin/bash
+    const gitMockContent =
+      process.platform === 'win32'
+        ? `@echo off
+if "%1"=="init" (
+  echo Initialized git repository
+  exit /b 0
+)
+if "%1"=="add" (
+  echo Git add completed
+  exit /b 0
+)
+if "%1"=="commit" (
+  echo Git commit completed
+  exit /b 0
+)
+if "%1"=="push" (
+  echo Git push completed
+  exit /b 0
+)
+if "%1"=="config" (
+  if "%2"=="user.name" echo Test User
+  if "%2"=="user.email" echo test@example.com
+  if "%2"=="remote.origin.url" echo https://github.com/test-user/test-repo.git
+  if not "%2"=="user.name" if not "%2"=="user.email" if not "%2"=="remote.origin.url" echo git config value
+  exit /b 0
+)
+if "%1"=="remote" (
+  if "%2"=="get-url" (
+    echo https://github.com/test-user/test-repo.git
+  ) else (
+    echo git remote %*
+  )
+  exit /b 0
+)
+if "%1"=="status" (
+  echo On branch main
+  echo nothing to commit, working tree clean
+  exit /b 0
+)
+if "%1"=="branch" (
+  echo * main
+  exit /b 0
+)
+if "%1"=="tag" (
+  echo v1.0.0
+  exit /b 0
+)
+echo git %*
+exit /b 0`
+        : `#!/bin/bash
 # Comprehensive git mock that handles all git operations
 case "$1" in
   "init")
@@ -191,16 +283,33 @@ case "$1" in
     echo "git $*"
     exit 0
     ;;
-esac`
+esac`;
+
+    await writeFile(
+      join(mockBinDir, process.platform === 'win32' ? 'git.cmd' : 'git'),
+      gitMockContent
     );
 
-    // Make git mock executable
-    execSync(`chmod +x ${join(mockBinDir, 'git')}`);
+    // Make git mock executable (Unix only)
+    if (process.platform !== 'win32') {
+      execSync(`chmod +x ${join(mockBinDir, 'git')}`);
+    }
 
     // Mock gh (GitHub CLI) command
-    await writeFile(
-      join(mockBinDir, 'gh'),
-      `#!/bin/bash
+    const ghMockContent =
+      process.platform === 'win32'
+        ? `@echo off
+if "%1"=="auth" (
+  echo Logged in to github.com as test-user
+  exit /b 0
+)
+if "%1"=="repo" (
+  echo Repository operation completed
+  exit /b 0
+)
+echo gh %*
+exit /b 0`
+        : `#!/bin/bash
 case "$1" in
   "auth")
     echo "Logged in to github.com as test-user"
@@ -214,11 +323,17 @@ case "$1" in
     echo "gh $*"
     exit 0
     ;;
-esac`
+esac`;
+
+    await writeFile(
+      join(mockBinDir, process.platform === 'win32' ? 'gh.cmd' : 'gh'),
+      ghMockContent
     );
 
-    // Make gh mock executable
-    execSync(`chmod +x ${join(mockBinDir, 'gh')}`);
+    // Make gh mock executable (Unix only)
+    if (process.platform !== 'win32') {
+      execSync(`chmod +x ${join(mockBinDir, 'gh')}`);
+    }
   });
 
   afterEach(async () => {
@@ -251,9 +366,13 @@ esac`
     process.chdir(join(testTmpDir, pluginDir));
 
     // Initialize git repository to avoid git-related prompts
-    execSync('git init', { stdio: 'pipe' });
-    execSync('git config user.name "Test User"', { stdio: 'pipe' });
-    execSync('git config user.email "test@example.com"', { stdio: 'pipe' });
+    try {
+      execSync('git init', { stdio: 'pipe' });
+      execSync('git config user.name "Test User"', { stdio: 'pipe' });
+      execSync('git config user.email "test@example.com"', { stdio: 'pipe' });
+    } catch (e) {
+      // Ignore git errors in test environment
+    }
 
     // Create required images directory and files
     await mkdir('images', { recursive: true });
@@ -319,8 +438,12 @@ esac`
     );
 
     // Add files to git to avoid uncommitted changes warnings
-    execSync('git add .', { stdio: 'pipe' });
-    execSync('git commit -m "Initial commit"', { stdio: 'pipe' });
+    try {
+      execSync('git add .', { stdio: 'pipe' });
+      execSync('git commit -m "Initial commit"', { stdio: 'pipe' });
+    } catch (e) {
+      // Ignore git errors in test environment
+    }
   };
 
   // publish --help (safe test that never prompts)

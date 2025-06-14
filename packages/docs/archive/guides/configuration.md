@@ -174,7 +174,7 @@ TELEGRAM_ACCOUNT_SYSTEM_VERSION= # System version
 # Twitter/X
 TWITTER_DRY_RUN=false # Simulate without posting
 TWITTER_API_KEY= # Twitter API v2 key
-TWITTER_API_SECRET_KEY= # Twitter API v2 secret key  
+TWITTER_API_SECRET_KEY= # Twitter API v2 secret key
 TWITTER_ACCESS_TOKEN= # OAuth access token
 TWITTER_ACCESS_TOKEN_SECRET= # OAuth access token secret
 TWITTER_TARGET_USERS= # Comma-separated list of target users

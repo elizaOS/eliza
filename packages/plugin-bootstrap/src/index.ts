@@ -296,8 +296,8 @@ const messageReceivedHandler = async ({
     // Set this as the latest response ID for this agent+room
     agentResponses.set(message.roomId, responseId);
 
-    // Generate a unique run ID for tracking this message handler execution
-    const runId = asUUID(v4());
+    // Use runtime's run tracking for this message processing
+    const runId = runtime.startRun();
     const startTime = Date.now();
 
     // Emit run started event
@@ -715,14 +715,16 @@ const channelClearedHandler = async ({
   memoryCount: number;
 }) => {
   try {
-    logger.info(`[Bootstrap] Clearing ${memoryCount} message memories from channel ${channelId} -> room ${roomId}`);
-    
+    logger.info(
+      `[Bootstrap] Clearing ${memoryCount} message memories from channel ${channelId} -> room ${roomId}`
+    );
+
     // Get all message memories for this room
     const memories = await runtime.getMemoriesByRoomIds({
       tableName: 'messages',
-      roomIds: [roomId]
+      roomIds: [roomId],
     });
-    
+
     // Delete each message memory
     let deletedCount = 0;
     for (const memory of memories) {
@@ -735,8 +737,10 @@ const channelClearedHandler = async ({
         }
       }
     }
-    
-    logger.info(`[Bootstrap] Successfully cleared ${deletedCount}/${memories.length} message memories from channel ${channelId}`);
+
+    logger.info(
+      `[Bootstrap] Successfully cleared ${deletedCount}/${memories.length} message memories from channel ${channelId}`
+    );
   } catch (error: unknown) {
     logger.error('[Bootstrap] Error in channel cleared handler:', error);
   }
@@ -1032,17 +1036,22 @@ const syncSingleUser = async (
     const worldId = createUniqueUuid(runtime, serverId);
 
     // Create world with ownership metadata for DM connections (onboarding)
-    const worldMetadata = type === ChannelType.DM ? {
-      ownership: {
-        ownerId: entityId,
-      },
-      roles: {
-        [entityId]: Role.OWNER,
-      },
-      settings: {}, // Initialize empty settings for onboarding
-    } : undefined;
+    const worldMetadata =
+      type === ChannelType.DM
+        ? {
+            ownership: {
+              ownerId: entityId,
+            },
+            roles: {
+              [entityId]: Role.OWNER,
+            },
+            settings: {}, // Initialize empty settings for onboarding
+          }
+        : undefined;
 
-    logger.info(`[Bootstrap] syncSingleUser - type: ${type}, isDM: ${type === ChannelType.DM}, worldMetadata: ${JSON.stringify(worldMetadata)}`);
+    logger.info(
+      `[Bootstrap] syncSingleUser - type: ${type}, isDM: ${type === ChannelType.DM}, worldMetadata: ${JSON.stringify(worldMetadata)}`
+    );
 
     await runtime.ensureConnection({
       entityId,
@@ -1061,7 +1070,9 @@ const syncSingleUser = async (
     // Verify the world was created with proper metadata
     try {
       const createdWorld = await runtime.getWorld(worldId);
-      logger.info(`[Bootstrap] Created world check - ID: ${worldId}, metadata: ${JSON.stringify(createdWorld?.metadata)}`);
+      logger.info(
+        `[Bootstrap] Created world check - ID: ${worldId}, metadata: ${JSON.stringify(createdWorld?.metadata)}`
+      );
     } catch (error) {
       logger.error(`[Bootstrap] Failed to verify created world: ${error}`);
     }
@@ -1249,7 +1260,7 @@ const events = {
   [EventType.ENTITY_JOINED]: [
     async (payload: EntityPayload) => {
       logger.debug(`[Bootstrap] ENTITY_JOINED event received for entity ${payload.entityId}`);
-      
+
       if (!payload.worldId) {
         logger.error('[Bootstrap] No worldId provided for entity joined');
         return;

@@ -329,7 +329,7 @@ export const apiClient = {
   ): Promise<{ success: boolean; data: { url: string; type: string } }> => {
     const formData = new FormData();
     formData.append('file', file);
-    return fetcher({ url: `/agents/${agentId}/upload-media`, method: 'POST', body: formData });
+    return fetcher({ url: `/media/agents/${agentId}/upload-media`, method: 'POST', body: formData });
   },
   uploadKnowledgeDocuments: async (agentId: string, files: File[]): Promise<any> => {
     const formData = new FormData();
@@ -448,6 +448,35 @@ export const apiClient = {
     return fetcher({ url: `/messaging/central-channels/${channelId}/participants` });
   },
 
+  addUserToChannel: async (
+    channelId: UUID,
+    userId: UUID
+  ): Promise<{ success: boolean; data: MessageChannel }> =>
+    fetcher({
+      url: `/messaging/central-channels/${channelId}/participants`,
+      method: 'POST',
+      body: { userId },
+    }),
+
+  addUsersToChannel: async (
+    channelId: UUID,
+    userIds: UUID[]
+  ): Promise<{ success: boolean; data: MessageChannel }> =>
+    fetcher({
+      url: `/messaging/central-channels/${channelId}/participants/bulk`,
+      method: 'POST',
+      body: { userIds },
+    }),
+
+  removeUserFromChannel: async (
+    channelId: UUID,
+    userId: UUID
+  ): Promise<{ success: boolean; data: MessageChannel }> =>
+    fetcher({
+      url: `/messaging/central-channels/${channelId}/participants/${userId}`,
+      method: 'DELETE',
+    }),
+
   uploadChannelMedia: async (
     channelId: UUID,
     file: File
@@ -534,4 +563,29 @@ export const apiClient = {
     agentId: UUID
   ): Promise<{ success: boolean; data: { agentId: UUID; servers: UUID[] } }> =>
     fetcher({ url: `/messaging/agents/${agentId}/servers` }),
+
+  // Channel-Agent Association Management
+  addAgentToChannel: (
+    channelId: UUID,
+    agentId: UUID
+  ): Promise<{ success: boolean; data: { channelId: UUID; agentId: UUID; message: string } }> =>
+    fetcher({
+      url: `/messaging/central-channels/${channelId}/agents`,
+      method: 'POST',
+      body: { agentId },
+    }),
+
+  removeAgentFromChannel: (
+    channelId: UUID,
+    agentId: UUID
+  ): Promise<{ success: boolean; data: { channelId: UUID; agentId: UUID; message: string } }> =>
+    fetcher({
+      url: `/messaging/central-channels/${channelId}/agents/${agentId}`,
+      method: 'DELETE',
+    }),
+
+  getAgentsForChannel: (
+    channelId: UUID
+  ): Promise<{ success: boolean; data: { channelId: UUID; participants: UUID[] } }> =>
+    fetcher({ url: `/messaging/central-channels/${channelId}/agents` }),
 };

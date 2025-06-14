@@ -1,7 +1,7 @@
 # @elizaos/plugin-twitter
 
 > **⚠️ MAINTANENCE NOTICE**  
-> **This plugin is undergoing maintanence.**  
+> **This plugin is undergoing maintanence.**
 
 A plugin for Twitter/X integration, providing automated tweet posting capabilities with character-aware content generation.
 

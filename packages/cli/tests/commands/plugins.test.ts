@@ -21,7 +21,7 @@ describe('ElizaOS Plugin Commands', () => {
 
     // Setup CLI command
     const scriptDir = join(__dirname, '..');
-    elizaosCmd = `bun run ${join(scriptDir, '../dist/index.js')}`;
+    elizaosCmd = `bun run "${join(scriptDir, '../dist/index.js')}"`;
 
     // Create one test project for all plugin tests to share
     projectDir = join(testTmpDir, 'shared-test-project');
@@ -57,7 +57,6 @@ describe('ElizaOS Plugin Commands', () => {
     }
   });
 
-
   // Core help / list tests
   test('plugins command shows help with no subcommand', () => {
     const result = execSync(`${elizaosCmd} plugins`, { encoding: 'utf8' });
@@ -92,136 +91,171 @@ describe('ElizaOS Plugin Commands', () => {
   });
 
   // add / install tests
-  test('plugins add installs a plugin', async () => {
-    execSync(`${elizaosCmd} plugins add @elizaos/plugin-telegram --skip-env-prompt`, {
-      stdio: 'pipe',
-      timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
-    });
-
-    const packageJson = await readFile('package.json', 'utf8');
-    expect(packageJson).toContain('@elizaos/plugin-telegram');
-  }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
-
-  test('plugins install alias works', async () => {
-    execSync(`${elizaosCmd} plugins install @elizaos/plugin-openai --skip-env-prompt`, {
-      stdio: 'pipe',
-      timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
-    });
-
-    const packageJson = await readFile('package.json', 'utf8');
-    expect(packageJson).toContain('@elizaos/plugin-openai');
-  }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
-
-  test('plugins add supports third-party plugins', async () => {
-    execSync(`${elizaosCmd} plugins add @fleek-platform/eliza-plugin-mcp --skip-env-prompt`, {
-      stdio: 'pipe',
-      timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
-    });
-
-    const packageJson = await readFile('package.json', 'utf8');
-    expect(packageJson).toContain('@fleek-platform/eliza-plugin-mcp');
-  }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
-
-  test('plugins add supports GitHub URL installation', async () => {
-    execSync(
-      `${elizaosCmd} plugins add https://github.com/elizaos-plugins/plugin-video-understanding --skip-env-prompt`,
-      {
+  test(
+    'plugins add installs a plugin',
+    async () => {
+      execSync(`${elizaosCmd} plugins add @elizaos/plugin-telegram --skip-env-prompt`, {
         stdio: 'pipe',
-        timeout: TEST_TIMEOUTS.NETWORK_OPERATION,
-      }
-    );
+        timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+      });
 
-    execSync(
-      `${elizaosCmd} plugins add github:elizaos-plugins/plugin-farcaster#1.x --skip-env-prompt`,
-      {
+      const packageJson = await readFile('package.json', 'utf8');
+      expect(packageJson).toContain('@elizaos/plugin-telegram');
+    },
+    TEST_TIMEOUTS.INDIVIDUAL_TEST
+  );
+
+  test(
+    'plugins install alias works',
+    async () => {
+      execSync(`${elizaosCmd} plugins install @elizaos/plugin-openai --skip-env-prompt`, {
         stdio: 'pipe',
-        timeout: TEST_TIMEOUTS.NETWORK_OPERATION,
-      }
-    );
+        timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+      });
 
-    const packageJson = await readFile('package.json', 'utf8');
-    expect(packageJson).toContain('plugin-video-understanding');
-    expect(packageJson).toContain('plugin-farcaster');
-  }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
+      const packageJson = await readFile('package.json', 'utf8');
+      expect(packageJson).toContain('@elizaos/plugin-openai');
+    },
+    TEST_TIMEOUTS.INDIVIDUAL_TEST
+  );
+
+  test(
+    'plugins add supports third-party plugins',
+    async () => {
+      execSync(`${elizaosCmd} plugins add @fleek-platform/eliza-plugin-mcp --skip-env-prompt`, {
+        stdio: 'pipe',
+        timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+      });
+
+      const packageJson = await readFile('package.json', 'utf8');
+      expect(packageJson).toContain('@fleek-platform/eliza-plugin-mcp');
+    },
+    TEST_TIMEOUTS.INDIVIDUAL_TEST
+  );
+
+  test(
+    'plugins add supports GitHub URL installation',
+    async () => {
+      execSync(
+        `${elizaosCmd} plugins add https://github.com/elizaos-plugins/plugin-video-understanding --skip-env-prompt`,
+        {
+          stdio: 'pipe',
+          timeout: TEST_TIMEOUTS.NETWORK_OPERATION,
+        }
+      );
+
+      execSync(
+        `${elizaosCmd} plugins add github:elizaos-plugins/plugin-farcaster#1.x --skip-env-prompt`,
+        {
+          stdio: 'pipe',
+          timeout: TEST_TIMEOUTS.NETWORK_OPERATION,
+        }
+      );
+
+      const packageJson = await readFile('package.json', 'utf8');
+      expect(packageJson).toContain('plugin-video-understanding');
+      expect(packageJson).toContain('plugin-farcaster');
+    },
+    TEST_TIMEOUTS.INDIVIDUAL_TEST
+  );
 
   // installed-plugins list tests
-  test('plugins installed-plugins shows installed plugins', async () => {
-    const result = execSync(`${elizaosCmd} plugins installed-plugins`, { encoding: 'utf8' });
-    // Should show previously installed plugins from other tests
-    expect(result).toMatch(/@elizaos\/plugin-|github:/);
-  }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
+  test(
+    'plugins installed-plugins shows installed plugins',
+    async () => {
+      const result = execSync(`${elizaosCmd} plugins installed-plugins`, { encoding: 'utf8' });
+      // Should show previously installed plugins from other tests
+      expect(result).toMatch(/@elizaos\/plugin-|github:/);
+    },
+    TEST_TIMEOUTS.INDIVIDUAL_TEST
+  );
 
   // remove / aliases tests
-  test('plugins remove uninstalls a plugin', async () => {
-    execSync(`${elizaosCmd} plugins add @elizaos/plugin-sql --skip-env-prompt`, {
-      stdio: 'pipe',
-      timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
-    });
-
-    let packageJson = await readFile('package.json', 'utf8');
-    expect(packageJson).toContain('@elizaos/plugin-sql');
-
-    execSync(`${elizaosCmd} plugins remove @elizaos/plugin-sql`, {
-      stdio: 'pipe',
-      timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
-    });
-
-    packageJson = await readFile('package.json', 'utf8');
-    expect(packageJson).not.toContain('@elizaos/plugin-sql');
-  }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
-
-  test('plugins remove aliases (delete, del, rm) work', async () => {
-    const plugins = ['@elizaos/plugin-evm', '@elizaos/plugin-groq', '@elizaos/plugin-anthropic'];
-
-    // Add all plugins first
-    for (const plugin of plugins) {
-      execSync(`${elizaosCmd} plugins add ${plugin} --skip-env-prompt`, {
+  test(
+    'plugins remove uninstalls a plugin',
+    async () => {
+      execSync(`${elizaosCmd} plugins add @elizaos/plugin-sql --skip-env-prompt`, {
         stdio: 'pipe',
         timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
       });
-    }
 
-    // Test different remove aliases
-    const removeCommands = [
-      ['delete', '@elizaos/plugin-evm'],
-      ['del', '@elizaos/plugin-groq'],
-      ['rm', '@elizaos/plugin-anthropic'],
-    ];
+      let packageJson = await readFile('package.json', 'utf8');
+      expect(packageJson).toContain('@elizaos/plugin-sql');
 
-    for (const [command, plugin] of removeCommands) {
-      execSync(`${elizaosCmd} plugins ${command} ${plugin}`, {
+      execSync(`${elizaosCmd} plugins remove @elizaos/plugin-sql`, {
         stdio: 'pipe',
         timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
       });
-    }
-  }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
+
+      packageJson = await readFile('package.json', 'utf8');
+      expect(packageJson).not.toContain('@elizaos/plugin-sql');
+    },
+    TEST_TIMEOUTS.INDIVIDUAL_TEST
+  );
+
+  test(
+    'plugins remove aliases (delete, del, rm) work',
+    async () => {
+      const plugins = ['@elizaos/plugin-evm', '@elizaos/plugin-groq', '@elizaos/plugin-anthropic'];
+
+      // Add all plugins first
+      for (const plugin of plugins) {
+        execSync(`${elizaosCmd} plugins add ${plugin} --skip-env-prompt`, {
+          stdio: 'pipe',
+          timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+        });
+      }
+
+      // Test different remove aliases
+      const removeCommands = [
+        ['delete', '@elizaos/plugin-evm'],
+        ['del', '@elizaos/plugin-groq'],
+        ['rm', '@elizaos/plugin-anthropic'],
+      ];
+
+      for (const [command, plugin] of removeCommands) {
+        execSync(`${elizaosCmd} plugins ${command} ${plugin}`, {
+          stdio: 'pipe',
+          timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+        });
+      }
+    },
+    TEST_TIMEOUTS.INDIVIDUAL_TEST
+  );
 
   // Negative case tests
-  test('plugins add fails for missing plugin', async () => {
-    try {
-      execSync(`${elizaosCmd} plugins add missing --skip-env-prompt`, {
-        stdio: 'pipe',
-        timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
-      });
-      expect(false).toBe(true); // Should not reach here
-    } catch (e: any) {
-      expect(e.status).not.toBe(0);
-      const output = e.stdout?.toString() || e.stderr?.toString() || '';
-      expect(output).toMatch(/not found in registry/);
-    }
-  }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
-
-
-  test('plugins add via GitHub shorthand URL', async () => {
-    execSync(
-      `${elizaosCmd} plugins add github:elizaos-plugins/plugin-openrouter#1.x --skip-env-prompt`,
-      {
-        stdio: 'pipe',
-        timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+  test(
+    'plugins add fails for missing plugin',
+    async () => {
+      try {
+        execSync(`${elizaosCmd} plugins add missing --skip-env-prompt`, {
+          stdio: 'pipe',
+          timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+        });
+        expect(false).toBe(true); // Should not reach here
+      } catch (e: any) {
+        expect(e.status).not.toBe(0);
+        const output = e.stdout?.toString() || e.stderr?.toString() || '';
+        expect(output).toMatch(/not found in registry/);
       }
-    );
+    },
+    TEST_TIMEOUTS.INDIVIDUAL_TEST
+  );
 
-    const packageJson = await readFile('package.json', 'utf8');
-    expect(packageJson).toContain('github:elizaos-plugins/plugin-openrouter#1.x');
-  }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
+  test(
+    'plugins add via GitHub shorthand URL',
+    async () => {
+      execSync(
+        `${elizaosCmd} plugins add github:elizaos-plugins/plugin-openrouter#1.x --skip-env-prompt`,
+        {
+          stdio: 'pipe',
+          timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+        }
+      );
+
+      const packageJson = await readFile('package.json', 'utf8');
+      expect(packageJson).toContain('github:elizaos-plugins/plugin-openrouter#1.x');
+    },
+    TEST_TIMEOUTS.INDIVIDUAL_TEST
+  );
 });

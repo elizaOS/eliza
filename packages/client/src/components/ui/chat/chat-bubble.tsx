@@ -2,7 +2,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import { type VariantProps, cva } from 'class-variance-authority';
 import * as React from 'react';
-import { Button, type ButtonProps } from '../button';
+import { Button } from '../button';
 import MessageLoading from './message-loading';
 
 // ChatBubble
@@ -64,7 +64,7 @@ const ChatBubbleAvatar: React.FC<ChatBubbleAvatarProps> = ({ src, fallback, clas
 );
 
 // ChatBubbleMessage
-const chatBubbleMessageVariants = cva('p-4', {
+const chatBubbleMessageVariants = cva('p-3', {
   variants: {
     variant: {
       received: 'bg-secondary text-secondary-foreground rounded-lg rounded-bl-none',
@@ -125,7 +125,7 @@ const ChatBubbleTimestamp: React.FC<ChatBubbleTimestampProps> = ({
 );
 
 // ChatBubbleAction
-type ChatBubbleActionProps = ButtonProps & {
+type ChatBubbleActionProps = React.ComponentProps<typeof Button> & {
   icon: React.ReactNode;
 };
 

@@ -20,7 +20,16 @@ describe('ElizaOS Start Commands', () => {
     // ---- Ensure port is free.
     testServerPort = 3000;
     try {
-      execSync(`lsof -t -i :${testServerPort} | xargs kill -9`, { stdio: 'ignore' });
+      if (process.platform === 'win32') {
+        // Windows: Use netstat and taskkill to free the port
+        execSync(
+          `for /f "tokens=5" %a in ('netstat -aon ^| findstr :${testServerPort}') do taskkill /f /pid %a`,
+          { stdio: 'ignore' }
+        );
+      } else {
+        // Unix/Linux/macOS: Use lsof and kill
+        execSync(`lsof -t -i :${testServerPort} | xargs kill -9`, { stdio: 'ignore' });
+      }
       await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
     } catch (e) {
       // Ignore if no processes found
@@ -109,81 +118,89 @@ describe('ElizaOS Start Commands', () => {
     expect(result).toContain('--port');
   });
 
-  test('start and list shows Ada agent running', async () => {
-    const charactersDir = join(__dirname, '../test-characters');
-    const adaPath = join(charactersDir, 'ada.json');
+  test(
+    'start and list shows Ada agent running',
+    async () => {
+      const charactersDir = join(__dirname, '../test-characters');
+      const adaPath = join(charactersDir, 'ada.json');
 
-    // Start a temporary server with Ada character
-    const serverProcess = await startServerAndWait(
-      `-p ${testServerPort} --character ${adaPath}`,
-      'server.log'
-    );
+      // Start a temporary server with Ada character
+      const serverProcess = await startServerAndWait(
+        `-p ${testServerPort} --character ${adaPath}`,
+        'server.log'
+      );
 
-    try {
-      // Wait a bit more for agent to register
-      await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
+      try {
+        // Wait a bit more for agent to register
+        await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
 
-      // Test that agent list shows Ada
-      const result = execSync(
-        `${elizaosCmd} agent list --remote-url http://localhost:${testServerPort}`,
+        // Test that agent list shows Ada
+        const result = execSync(
+          `${elizaosCmd} agent list --remote-url http://localhost:${testServerPort}`,
+          {
+            encoding: 'utf8',
+            timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+          }
+        );
+
+        expect(result).toContain('Ada');
+      } finally {
+        // Clean up server
+        serverProcess.kill();
+        await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
+      }
+    },
+    TEST_TIMEOUTS.INDIVIDUAL_TEST
+  );
+
+  // Custom port flag (-p)
+  test(
+    'custom port spin-up works',
+    async () => {
+      const newPort = 3456;
+      const charactersDir = join(__dirname, '../test-characters');
+      const adaPath = join(charactersDir, 'ada.json');
+
+      await mkdir(join(testTmpDir, 'elizadb2'), { recursive: true });
+
+      const serverProcess = spawn(
+        'bun',
+        [
+          'run',
+          join(__dirname, '..', '../dist/index.js'),
+          'start',
+          '-p',
+          newPort.toString(),
+          '--character',
+          adaPath,
+        ],
         {
-          encoding: 'utf8',
-          timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+          env: {
+            ...process.env,
+            LOG_LEVEL: 'debug',
+            PGLITE_DATA_DIR: join(testTmpDir, 'elizadb2'),
+          },
+          stdio: ['ignore', 'pipe', 'pipe'],
+          cwd: testTmpDir,
         }
       );
 
-      expect(result).toContain('Ada');
-    } finally {
-      // Clean up server
-      serverProcess.kill();
-      await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
-    }
-  }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
+      runningProcesses.push(serverProcess);
 
-  // Custom port flag (-p)
-  test('custom port spin-up works', async () => {
-    const newPort = 3456;
-    const charactersDir = join(__dirname, '../test-characters');
-    const adaPath = join(charactersDir, 'ada.json');
+      try {
+        // Wait for server to start
+        await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.MEDIUM_WAIT));
 
-    await mkdir(join(testTmpDir, 'elizadb2'), { recursive: true });
-
-    const serverProcess = spawn(
-      'bun',
-      [
-        'run',
-        join(__dirname, '..', '../dist/index.js'),
-        'start',
-        '-p',
-        newPort.toString(),
-        '--character',
-        adaPath,
-      ],
-      {
-        env: {
-          ...process.env,
-          LOG_LEVEL: 'debug',
-          PGLITE_DATA_DIR: join(testTmpDir, 'elizadb2'),
-        },
-        stdio: ['ignore', 'pipe', 'pipe'],
-        cwd: testTmpDir,
+        // Try to connect to the custom port
+        const response = await fetch(`http://localhost:${newPort}/api/agents`);
+        expect(response.ok).toBe(true);
+      } finally {
+        serverProcess.kill();
+        await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
       }
-    );
-
-    runningProcesses.push(serverProcess);
-
-    try {
-      // Wait for server to start
-      await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.MEDIUM_WAIT));
-
-      // Try to connect to the custom port
-      const response = await fetch(`http://localhost:${newPort}/api/agents`);
-      expect(response.ok).toBe(true);
-    } finally {
-      serverProcess.kill();
-      await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
-    }
-  }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
+    },
+    TEST_TIMEOUTS.INDIVIDUAL_TEST
+  );
 
   // Multiple character input formats
   test('multiple character formats parse', () => {
@@ -220,68 +237,76 @@ describe('ElizaOS Start Commands', () => {
   });
 
   // --configure flag triggers reconfiguration message in log
-  test('configure option runs', async () => {
-    const charactersDir = join(__dirname, '../test-characters');
-    const adaPath = join(charactersDir, 'ada.json');
+  test(
+    'configure option runs',
+    async () => {
+      const charactersDir = join(__dirname, '../test-characters');
+      const adaPath = join(charactersDir, 'ada.json');
 
-    await mkdir(join(testTmpDir, 'elizadb3'), { recursive: true });
+      await mkdir(join(testTmpDir, 'elizadb3'), { recursive: true });
 
-    const serverProcess = spawn(
-      'bun',
-      [
-        'run',
-        join(__dirname, '..', '../dist/index.js'),
-        'start',
-        '--configure',
-        '--character',
-        adaPath,
-      ],
-      {
-        env: {
-          ...process.env,
-          LOG_LEVEL: 'debug',
-          PGLITE_DATA_DIR: join(testTmpDir, 'elizadb3'),
-        },
-        stdio: ['ignore', 'pipe', 'pipe'],
-        cwd: testTmpDir,
+      const serverProcess = spawn(
+        'bun',
+        [
+          'run',
+          join(__dirname, '..', '../dist/index.js'),
+          'start',
+          '--configure',
+          '--character',
+          adaPath,
+        ],
+        {
+          env: {
+            ...process.env,
+            LOG_LEVEL: 'debug',
+            PGLITE_DATA_DIR: join(testTmpDir, 'elizadb3'),
+          },
+          stdio: ['ignore', 'pipe', 'pipe'],
+          cwd: testTmpDir,
+        }
+      );
+
+      runningProcesses.push(serverProcess);
+
+      try {
+        // Wait for configuration to start
+        await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.MEDIUM_WAIT));
+
+        // Check if process started (configure option was accepted)
+        expect(serverProcess.pid).toBeDefined();
+      } finally {
+        serverProcess.kill();
+        await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
       }
-    );
-
-    runningProcesses.push(serverProcess);
-
-    try {
-      // Wait for configuration to start
-      await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.MEDIUM_WAIT));
-
-      // Check if process started (configure option was accepted)
-      expect(serverProcess.pid).toBeDefined();
-    } finally {
-      serverProcess.kill();
-      await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
-    }
-  }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
+    },
+    TEST_TIMEOUTS.INDIVIDUAL_TEST
+  );
 
   // Basic server startup test without advanced features that require models
-  test('server starts and responds to health check', async () => {
-    const charactersDir = join(__dirname, '../test-characters');
-    const adaPath = join(charactersDir, 'ada.json');
+  test(
+    'server starts and responds to health check',
+    async () => {
+      const charactersDir = join(__dirname, '../test-characters');
+      const adaPath = join(charactersDir, 'ada.json');
 
-    // Start server
-    const serverProcess = await startServerAndWait(
-      `-p ${testServerPort} --character ${adaPath}`,
-      'health.log'
-    );
+      // Start server
+      const serverProcess = await startServerAndWait(
+        `-p ${testServerPort} --character ${adaPath}`,
+        'health.log'
+      );
 
-    try {
-      // Wait for server to be fully ready
-      await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.MEDIUM_WAIT));
+      try {
+        // Wait for server to be fully ready
+        await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.MEDIUM_WAIT));
 
-      // Health check
-      const response = await fetch(`http://localhost:${testServerPort}/api/agents`);
-      expect(response.ok).toBe(true);
-    } finally {
-      serverProcess.kill();
-      await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
-    }
-  }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
+        // Health check
+        const response = await fetch(`http://localhost:${testServerPort}/api/agents`);
+        expect(response.ok).toBe(true);
+      } finally {
+        serverProcess.kill();
+        await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
+      }
+    },
+    TEST_TIMEOUTS.INDIVIDUAL_TEST
+  );
 });

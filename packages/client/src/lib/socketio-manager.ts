@@ -16,6 +16,9 @@ export type MessageBroadcastData = {
   source: string;
   name: string; // Required for ContentWithUser compatibility
   attachments?: any[];
+  thought?: string; // Agent's thought process
+  actions?: string[]; // Actions taken by the agent
+  prompt?: string; // The LLM prompt used to generate this message
   [key: string]: any;
 };
 
