@@ -73,13 +73,37 @@ export class MessageBusService extends Service {
     this.fetchAgentServers();
   }
 
+  private validChannelIds: Set<UUID> = new Set();
+
+  private async fetchValidChannelIds(): Promise<void> {
+    try {
+      const serverApiUrl = this.getCentralMessageServerUrl();
+      const response = await fetch(`${serverApiUrl}/api/messaging/valid-channels`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && Array.isArray(data.channels)) {
+          this.validChannelIds = new Set(data.channels);
+        }
+      }
+    } catch (error) {
+      logger.error(
+        `[${this.runtime.character.name}] MessageBusService: Error fetching valid channel IDs:`,
+        error
+      );
+    }
+  }
+
   private async getChannelParticipants(channelId: UUID): Promise<string[]> {
     try {
       const serverApiUrl = this.getCentralMessageServerUrl();
 
-      if (!validateUuid(channelId)) {
+      if (!validateUuid(channelId) || !this.validChannelIds.has(channelId)) {
+        logger.warn(
+          `[${this.runtime.character.name}] MessageBusService: Invalid or unauthorized channel ID: ${channelId}`
+        );
         return [];
       }
+
       const response = await fetch(
         `${serverApiUrl}/api/messaging/central-channels/${channelId}/participants`
       );
