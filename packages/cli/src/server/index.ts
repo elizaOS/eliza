@@ -392,12 +392,16 @@ export class AgentServer {
             return res.status(404).json({ error: 'File does not exist!!!!!!!' });
           }
 
-          res.sendFile(sanitizedFilename, {
-            root: path.join(uploadsBasePath, agentId),
-          }, (err) => {
+          res.sendFile(sanitizedFilename, { root: agentUploadsPath }, (err) => {
             if (err) {
-              logger.error("SendFile error:", err);
-              res.status(404).json({ error: 'File not found' });
+              if (err.message === 'Request aborted') {
+                logger.warn(`[MEDIA] Download aborted: ${req.originalUrl}`);
+              } else if (!res.headersSent) {
+                logger.warn(`[MEDIA] File not found: ${agentUploadsPath}/${sanitizedFilename}`);
+                res.status(404).json({ error: 'File not found' });
+              }
+            } else {
+              logger.debug(`[MEDIA] Successfully served: ${sanitizedFilename}`);
             }
           });
         }
