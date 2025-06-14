@@ -350,11 +350,38 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/agents/{{agentId}}/logs",
+              "raw": "{{baseUrl}}/api/agents/{{agentId}}/logs?roomId={{roomId}}&type=info&count=50&offset=0&excludeTypes=debug,trace",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "agents", "{{agentId}}", "logs"]
+              "path": ["api", "agents", "{{agentId}}", "logs"],
+              "query": [
+                {
+                  "key": "roomId",
+                  "value": "{{roomId}}",
+                  "description": "Filter by room ID"
+                },
+                {
+                  "key": "type",
+                  "value": "info",
+                  "description": "Filter by log type"
+                },
+                {
+                  "key": "count",
+                  "value": "50",
+                  "description": "Limit number of results"
+                },
+                {
+                  "key": "offset",
+                  "value": "0",
+                  "description": "Pagination offset"
+                },
+                {
+                  "key": "excludeTypes",
+                  "value": "debug,trace",
+                  "description": "Exclude specific log types"
+                }
+              ]
             },
-            "description": "Get agent logs"
+            "description": "Get agent logs with filtering options"
           }
         },
         {
@@ -758,6 +785,54 @@
           }
         },
         {
+          "name": "Add Agent to Channel",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentId\": \"{{agentId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/messaging/central-channels/{{channelId}}/agents",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "messaging", "central-channels", "{{channelId}}", "agents"]
+            },
+            "description": "Add an agent to a channel"
+          }
+        },
+        {
+          "name": "Remove Agent from Channel",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/messaging/central-channels/{{channelId}}/agents/{{agentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "messaging", "central-channels", "{{channelId}}", "agents", "{{agentId}}"]
+            },
+            "description": "Remove an agent from a channel"
+          }
+        },
+        {
+          "name": "List Channel Agents",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/messaging/central-channels/{{channelId}}/agents",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "messaging", "central-channels", "{{channelId}}", "agents"]
+            },
+            "description": "List all agents in a channel"
+          }
+        },
+        {
           "name": "Update Channel",
           "request": {
             "method": "PATCH",
@@ -793,7 +868,7 @@
           }
         },
         {
-          "name": "Create Group Channel",
+          "name": "Create Group Channel (Legacy)",
           "request": {
             "method": "POST",
             "header": [
@@ -811,7 +886,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "messaging", "group-channels"]
             },
-            "description": "Create a group channel"
+            "description": "Create a group channel (legacy endpoint)"
           }
         },
         {
@@ -980,7 +1055,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Room Name\",\n  \"description\": \"Room description\"\n}"
+              "raw": "{\n  \"name\": \"Room Name\",\n  \"type\": \"dm\",\n  \"source\": \"client\",\n  \"worldId\": \"{{worldId}}\",\n  \"serverId\": \"{{serverId}}\",\n  \"metadata\": {}\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/memory/{{agentId}}/rooms",
@@ -1180,9 +1255,9 @@
               ]
             },
             "url": {
-              "raw": "{{baseUrl}}/api/media/agents/{{agentId}}/upload",
+              "raw": "{{baseUrl}}/api/media/agents/{{agentId}}/upload-media",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "media", "agents", "{{agentId}}", "upload"]
+              "path": ["api", "media", "agents", "{{agentId}}", "upload-media"]
             },
             "description": "Upload media file for an agent"
           }
@@ -1247,7 +1322,7 @@
           }
         },
         {
-          "name": "Submit TEE Logs",
+          "name": "Query TEE Logs",
           "request": {
             "method": "POST",
             "header": [
@@ -1258,14 +1333,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"level\": \"info\",\n  \"message\": \"TEE log message\",\n  \"agentId\": \"{{agentId}}\"\n}"
+              "raw": "{\n  \"query\": {\n    \"agentId\": \"{{agentId}}\",\n    \"roomId\": \"{{roomId}}\",\n    \"entityId\": \"\",\n    \"type\": \"\",\n    \"containsContent\": \"\",\n    \"startTimestamp\": null,\n    \"endTimestamp\": null\n  },\n  \"page\": 1,\n  \"pageSize\": 10\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/tee/logs",
               "host": ["{{baseUrl}}"],
               "path": ["api", "tee", "logs"]
             },
-            "description": "Submit TEE-specific logs"
+            "description": "Query TEE logs with filtering and pagination"
           }
         }
       ]
