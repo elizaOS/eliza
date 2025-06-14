@@ -25,14 +25,12 @@ export default defineConfig({
         '**/*.d.ts',
         '**/*.config.{ts,js}',
         '**/*.setup.{ts,js}',
-        'src/index.ts', // Exclude main CLI entry point from coverage reporting
-        'src/scripts/**', // Exclude build scripts
-        'src/tee/phala/**', // Exclude specific TEE implementations for now
-        'src/server/api/**', // Exclude API files for now
-        'src/server/socketio/**', // Exclude socket.io for now
-        'src/server/authMiddleware.ts',
-        'src/server/loader.ts',
-        'src/server/index.ts',
+        'src/socketio/**', // Exclude socket.io for now - complex integration
+        'src/authMiddleware.ts', // Simple middleware, covered by integration tests
+        'src/loader.ts', // File I/O heavy, covered by integration tests
+        'src/bus.ts', // Simple event bus
+        'src/types.ts', // Type definitions only
+        'src/upload.ts', // File upload handling, covered by integration tests
       ],
     },
     setupFiles: ['./test/setup.ts'],
