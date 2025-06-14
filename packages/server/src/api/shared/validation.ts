@@ -1,5 +1,5 @@
 import type { IAgentRuntime, UUID } from '@elizaos/core';
-import { validateUuid } from '@elizaos/core';
+import { validateUuid, logger } from '@elizaos/core';
 
 /**
  * Validates and retrieves an agent runtime from the agents map
@@ -27,10 +27,33 @@ export const validateRoomId = (roomId: string): UUID | null => {
 };
 
 /**
- * Validates a channel ID parameter
+ * Enhanced channel ID validation with security logging
+ * Validates a channel ID parameter with additional security checks
  */
-export const validateChannelId = (channelId: string): UUID | null => {
-  return validateUuid(channelId);
+export const validateChannelId = (channelId: string, clientIp?: string): UUID | null => {
+  // Basic UUID validation
+  const validatedUuid = validateUuid(channelId);
+  
+  if (!validatedUuid) {
+    // Log invalid channel ID attempts for security monitoring
+    if (clientIp) {
+      logger.warn(`[SECURITY] Invalid channel ID attempted from ${clientIp}: ${channelId}`);
+    }
+    return null;
+  }
+  
+  // Additional security check: ensure channel ID doesn't contain suspicious patterns
+  const suspiciousPatterns = ['..', '<', '>', '"', "'", '\\', '/'];
+  const hasSuspiciousPattern = suspiciousPatterns.some(pattern => channelId.includes(pattern));
+  
+  if (hasSuspiciousPattern) {
+    if (clientIp) {
+      logger.warn(`[SECURITY] Suspicious channel ID pattern from ${clientIp}: ${channelId}`);
+    }
+    return null;
+  }
+  
+  return validatedUuid;
 };
 
 /**

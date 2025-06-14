@@ -28,13 +28,15 @@ bun add @elizaos/server
 ### Basic Server Setup
 
 ```typescript
-import { createServer } from '@elizaos/server';
+import { AgentServer } from '@elizaos/server';
 
-// Start the server with default configuration
-const server = await createServer({
-  port: 3000,
-  agents: ['./characters/assistant.json'],
-});
+// Create and initialize server
+const server = new AgentServer();
+await server.initialize();
+
+// Start the server
+const port = 3000;
+server.start(port);
 
 // Server is now running at http://localhost:3000
 ```
@@ -42,31 +44,34 @@ const server = await createServer({
 ### Advanced Configuration
 
 ```typescript
-import { AgentServer } from '@elizaos/server';
-import { Character } from '@elizaos/core';
+import { AgentServer, ServerOptions, ServerMiddleware } from '@elizaos/server';
+import { logger } from '@elizaos/core';
 
-// Create custom character
-const myCharacter: Character = {
-  name: 'Assistant',
-  system: 'You are a helpful assistant.',
-  // ... other character config
+// Custom middleware
+const customMiddleware: ServerMiddleware = (req, res, next) => {
+  logger.info(`${req.method} ${req.path}`);
+  next();
+};
+
+// Server configuration
+const serverOptions: ServerOptions = {
+  dataDir: './data/agents',
+  middlewares: [customMiddleware],
+  postgresUrl: process.env.DATABASE_URL, // Optional PostgreSQL
 };
 
 // Initialize server with options
-const server = new AgentServer({
-  port: 3000,
-  host: '0.0.0.0',
-  cors: {
-    origin: '*',
-    credentials: true,
-  },
+const server = new AgentServer();
+await server.initialize(serverOptions);
+
+// Register additional middleware
+server.registerMiddleware((req, res, next) => {
+  res.setHeader('X-Server', 'ElizaOS');
+  next();
 });
 
-// Add agents programmatically
-await server.addAgent(myCharacter);
-
 // Start the server
-await server.start();
+server.start(3000);
 ```
 
 ## API Endpoints
@@ -133,41 +138,55 @@ ws.on('message', (data) => {
 
 ```typescript
 import express from 'express';
-import { createAgentRouter } from '@elizaos/server';
+import { AgentServer } from '@elizaos/server';
 
 const app = express();
 
-// Add ElizaOS agent routes
-const agentRouter = createAgentRouter({
-  agents: ['./my-agent.json'],
-  database: {
-    type: 'sqlite',
-    path: './data/agents.db',
-  },
-});
+// Create ElizaOS server
+const elizaServer = new AgentServer();
+await elizaServer.initialize();
 
-app.use('/api', agentRouter);
+// Mount ElizaOS APIs on your Express app
+// The server provides its own Express app instance
+app.use('/eliza', elizaServer.app);
+
+// Your custom routes
+app.get('/custom', (req, res) => {
+  res.json({ message: 'Custom endpoint' });
+});
 
 app.listen(3000);
 ```
 
-### Custom Runtime Integration
+### Programmatic Agent Management
 
 ```typescript
-import { AgentRuntime } from '@elizaos/server';
-import { SqliteAdapter } from '@elizaos/plugin-sql';
+import { AgentServer } from '@elizaos/server';
+import { AgentRuntime, Character } from '@elizaos/core';
 
-// Create custom runtime
+// Initialize server
+const server = new AgentServer();
+await server.initialize();
+
+// Create and register agent runtime
+const character: Character = {
+  name: 'MyAgent',
+  // ... character configuration
+};
+
+// Note: Full AgentRuntime creation requires more setup
+// This is a simplified example
 const runtime = new AgentRuntime({
-  database: new SqliteAdapter('./my-app.db'),
-  plugins: [
-    // Add your plugins
-  ],
+  character,
+  database: server.database,
+  // ... other configuration
 });
 
-// Use runtime in your application
-await runtime.initialize();
-const response = await runtime.processMessage('Hello!');
+// Register agent with server
+await server.registerAgent(runtime);
+
+// Start server
+server.start(3000);
 ```
 
 ## Configuration
