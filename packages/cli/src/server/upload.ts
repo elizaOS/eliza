@@ -49,7 +49,7 @@ export const agentStorage = multer.diskStorage({
   },
 });
 
-export const agentUpload = multer({
+export const agentAudioUpload = multer({
   storage: agentStorage,
   limits: {
     fileSize: MAX_FILE_SIZE, // 50MB max file size
@@ -61,6 +61,22 @@ export const agentUpload = multer({
       cb(null, true);
     } else {
       cb(new Error(`Invalid file type. Only audio files are allowed. Received: ${file.mimetype}`));
+    }
+  },
+});
+
+export const agentMediaUpload = multer({
+  storage: agentStorage,
+  limits: {
+    fileSize: MAX_FILE_SIZE, // 50MB max file size
+    files: 1, // Only allow 1 file per request
+  },
+  fileFilter: (req, file, cb) => {
+    // Only allow specific file types for security
+    if (ALLOWED_MEDIA_MIME_TYPES.includes(file.mimetype as any)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Invalid file type. Only media files are allowed. Received: ${file.mimetype}`));
     }
   },
 });

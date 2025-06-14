@@ -365,14 +365,14 @@ export class AgentServer {
         );
       }
 
-      const uploadsBasePath = path.join(process.cwd(), '.eliza', 'data', 'uploads');
+      const uploadsBasePath = path.join(process.cwd(), '.eliza', 'data', 'uploads', 'agents');
       const generatedBasePath = path.join(process.cwd(), '.eliza', 'data', 'generated');
       fs.mkdirSync(uploadsBasePath, { recursive: true });
       fs.mkdirSync(generatedBasePath, { recursive: true });
 
       // Agent-specific media serving - only serve files from agent-specific directories
       this.app.get(
-        '/media/uploads/:agentId/:filename',
+        '/media/uploads/agents/:agentId/:filename',
         // @ts-expect-error - this is a valid express route
         (req: express.Request, res: express.Response) => {
           const agentId = req.params.agentId as string;
@@ -387,9 +387,21 @@ export class AgentServer {
           if (!filePath.startsWith(agentUploadsPath)) {
             return res.status(403).json({ error: 'Access denied' });
           }
-          res.sendFile(filePath, (err) => {
+
+          if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ error: 'File does not exist!!!!!!!' });
+          }
+
+          res.sendFile(sanitizedFilename, { root: agentUploadsPath }, (err) => {
             if (err) {
-              res.status(404).json({ error: 'File not found' });
+              if (err.message === 'Request aborted') {
+                logger.warn(`[MEDIA] Download aborted: ${req.originalUrl}`);
+              } else if (!res.headersSent) {
+                logger.warn(`[MEDIA] File not found: ${agentUploadsPath}/${sanitizedFilename}`);
+                res.status(404).json({ error: 'File not found' });
+              }
+            } else {
+              logger.debug(`[MEDIA] Successfully served: ${sanitizedFilename}`);
             }
           });
         }
