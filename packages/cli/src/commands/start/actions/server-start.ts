@@ -1,6 +1,5 @@
 import { getElizaCharacter } from '@/src/characters/eliza';
-import { AgentServer } from '@elizaos/server';
-import { jsonToCharacter, loadCharacterTryPath } from '../utils/loader';
+import { AgentServer, jsonToCharacter, loadCharacterTryPath } from '@elizaos/server';
 import { configureDatabaseSettings, findNextAvailablePort, resolvePgliteDir } from '@/src/utils';
 import { logger, type Character, type ProjectAgent } from '@elizaos/core';
 import { startAgent, stopAgent } from './agent-start';
