@@ -4,6 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import express from 'express';
+import http from 'node:http';
 import { AgentServer } from '../src/index';
 
 // Mock dependencies
@@ -76,9 +77,32 @@ vi.mock('node:fs', () => ({
   writeFileSync: vi.fn(),
 }));
 
+// Mock Socket.IO
+vi.mock('socket.io', () => ({
+  Server: vi.fn(() => ({
+    on: vi.fn(),
+    emit: vi.fn(),
+    to: vi.fn(() => ({
+      emit: vi.fn(),
+    })),
+    close: vi.fn((callback) => {
+      if (callback) callback();
+    }),
+  })),
+}));
+
 // Skip socket.io initialization for API tests
 vi.mock('../src/socketio/index', () => ({
-  setupSocketIO: vi.fn(() => ({})),
+  setupSocketIO: vi.fn(() => ({
+    on: vi.fn(),
+    emit: vi.fn(),
+    to: vi.fn(() => ({
+      emit: vi.fn(),
+    })),
+    close: vi.fn((callback) => {
+      if (callback) callback();
+    }),
+  })),
   SocketIORouter: vi.fn(() => ({
     setupListeners: vi.fn(),
   })),
@@ -87,8 +111,31 @@ vi.mock('../src/socketio/index', () => ({
 describe('API Server Functionality', () => {
   let server: AgentServer;
   let app: express.Application;
+  let mockServer: any;
 
   beforeEach(async () => {
+    vi.clearAllMocks();
+    
+    // Mock HTTP server with all methods Socket.IO expects
+    mockServer = {
+      listen: vi.fn((port, callback) => {
+        if (callback) callback();
+      }),
+      close: vi.fn((callback) => {
+        if (callback) callback();
+      }),
+      listeners: vi.fn(() => []),
+      removeAllListeners: vi.fn(),
+      on: vi.fn(),
+      once: vi.fn(),
+      emit: vi.fn(),
+      address: vi.fn(() => ({ port: 3000 })),
+      timeout: 0,
+      keepAliveTimeout: 5000,
+    };
+    
+    vi.spyOn(http, 'createServer').mockReturnValue(mockServer as any);
+    
     server = new AgentServer();
     await server.initialize();
     app = server.app;
@@ -105,7 +152,8 @@ describe('API Server Functionality', () => {
       expect(app).toBeDefined();
       expect(typeof app.listen).toBe('function');
       expect(typeof app.use).toBe('function');
-      expect(app._router).toBeDefined();
+      // _router might not exist immediately after initialization
+      expect(app._router !== undefined || app.router !== undefined).toBe(true);
     });
 
     it('should have middleware configured', () => {
