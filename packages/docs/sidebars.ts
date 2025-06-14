@@ -34,10 +34,6 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: '🧠 Core Concepts',
       collapsed: false,
-      link: {
-        type: 'doc',
-        id: 'core/overview',
-      },
       items: [
         {
           type: 'doc',
