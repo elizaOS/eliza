@@ -22,9 +22,6 @@ export const character: Character = {
   plugins: [
     '@elizaos/plugin-sql',
     // Removed @elizaos/plugin-polygon to avoid conflicts with zkEVM plugin
-    ...(process.env.ALCHEMY_API_KEY || process.env.ZKEVM_RPC_URL
-      ? ['@elizaos/plugin-polygon-zkevm']
-      : []),
     ...(process.env.CLOB_API_URL ? ['@elizaos/plugin-polymarket'] : []),
     ...(process.env.OPENAI_API_KEY ? ['@elizaos/plugin-openai'] : []),
     ...(process.env.ANTHROPIC_API_KEY ? ['@elizaos/plugin-anthropic'] : []),

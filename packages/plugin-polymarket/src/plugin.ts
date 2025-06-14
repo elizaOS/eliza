@@ -6,7 +6,6 @@ import {
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
-  ModelType,
   type Provider,
   type ProviderResult,
   Service,
@@ -27,6 +26,10 @@ import { getClobMarkets } from './actions/getClobMarkets';
 import { getOpenMarkets } from './actions/getOpenMarkets';
 import { getPriceHistory } from './actions/getPriceHistory';
 import { placeOrderAction } from './actions/placeOrder';
+import { placeTypedOrderAction } from './actions/placeTypedOrder';
+import { cancelAllOrdersAction } from './actions/cancelAllOrders';
+import { cancelOrderByIdAction } from './actions/cancelOrderById';
+import { cancelMarketOrdersAction } from './actions/cancelMarketOrders';
 import { createApiKeyAction } from './actions/createApiKey';
 import { revokeApiKeyAction } from './actions/revokeApiKey';
 import { getAllApiKeysAction } from './actions/getAllApiKeys';
@@ -38,6 +41,7 @@ import { getTradeHistoryAction } from './actions/getTradeHistory';
 import { handleAuthenticationAction } from './actions/handleAuthentication';
 import { setupWebsocketAction } from './actions/setupWebsocket';
 import { handleRealtimeUpdatesAction } from './actions/handleRealtimeUpdates';
+import { deleteApiKeyAction } from './actions/deleteApiKey';
 
 /**
  * Define the configuration schema for the Polymarket plugin
@@ -170,6 +174,43 @@ const polymarketProvider: Provider = {
   },
 };
 
+const polymarketPluginActions = [
+  // Order-related actions should come FIRST for proper prioritization
+  getOrderDetailsAction,
+  checkOrderScoringAction,
+  getActiveOrdersAction,
+  cancelOrderByIdAction,
+  cancelAllOrdersAction,
+  cancelMarketOrdersAction,
+  placeOrderAction,
+  placeTypedOrderAction,
+
+  // Market-related actions come after
+  retrieveAllMarketsAction,
+  getSimplifiedMarketsAction,
+  getSamplingMarkets,
+  getClobMarkets,
+  getOpenMarkets,
+  getPriceHistory,
+  getMarketDetailsAction,
+  getOrderBookSummaryAction,
+  getOrderBookDepthAction,
+  getBestPriceAction,
+  getMidpointPriceAction,
+  getSpreadAction,
+
+  // API management actions
+  createApiKeyAction,
+  revokeApiKeyAction,
+  getAllApiKeysAction,
+  getAccountAccessStatusAction,
+  getTradeHistoryAction,
+  handleAuthenticationAction,
+  setupWebsocketAction,
+  handleRealtimeUpdatesAction,
+  deleteApiKeyAction,
+];
+
 const plugin: Plugin = {
   name: 'polymarket',
   description: 'A plugin for interacting with Polymarket prediction markets',
@@ -201,32 +242,7 @@ const plugin: Plugin = {
     }
   },
   services: [PolymarketService],
-  actions: [
-    retrieveAllMarketsAction,
-    getSimplifiedMarketsAction,
-    getSamplingMarkets,
-    getClobMarkets,
-    getOpenMarkets,
-    getPriceHistory,
-    getMarketDetailsAction,
-    getOrderBookSummaryAction,
-    getOrderBookDepthAction,
-    getBestPriceAction,
-    getMidpointPriceAction,
-    getSpreadAction,
-    placeOrderAction,
-    createApiKeyAction,
-    revokeApiKeyAction,
-    getAllApiKeysAction,
-    getOrderDetailsAction,
-    checkOrderScoringAction,
-    getActiveOrdersAction,
-    getAccountAccessStatusAction,
-    getTradeHistoryAction,
-    handleAuthenticationAction,
-    setupWebsocketAction,
-    handleRealtimeUpdatesAction,
-  ],
+  actions: polymarketPluginActions,
   providers: [polymarketProvider],
 };
 

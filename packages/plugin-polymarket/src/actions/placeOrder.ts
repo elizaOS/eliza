@@ -10,11 +10,12 @@ import {
   composePromptFromState,
 } from '@elizaos/core';
 import { callLLMWithTimeout } from '../utils/llmHelpers';
-import { initializeClobClient } from '../utils/clobClient';
+import { initializeClobClientWithCreds } from '../utils/clobClient';
 import { orderTemplate } from '../templates';
 import { OrderSide, OrderType } from '../types';
 import { ClobClient, Side } from '@polymarket/clob-client';
 import { ethers } from 'ethers';
+import { checkAndApproveUSDC, formatApprovalResult } from '../utils/usdcApproval';
 
 interface PlaceOrderParams {
   tokenId: string;
@@ -40,7 +41,6 @@ export const placeOrderAction: Action = {
     'LIMIT_ORDER',
     'MARKET_ORDER',
     'TRADE',
-    'ORDER',
     'BUY',
     'SELL',
     'PURCHASE',
@@ -57,6 +57,27 @@ export const placeOrderAction: Action = {
 
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
     logger.info(`[placeOrderAction] Validate called for message: "${message.content?.text}"`);
+
+    // Check if this is actually a cancel order request
+    const messageText = message.content?.text?.toLowerCase() || '';
+    const cancelKeywords = [
+      'cancel',
+      'stop',
+      'remove',
+      'delete',
+      'abort',
+      'revoke',
+      'withdraw',
+      'kill',
+      'terminate',
+      'close',
+    ];
+    const containsCancelKeyword = cancelKeywords.some((keyword) => messageText.includes(keyword));
+
+    if (containsCancelKeyword) {
+      logger.info('[placeOrderAction] Message contains cancel keywords, rejecting validation');
+      return false;
+    }
 
     const clobApiUrl = runtime.getSetting('CLOB_API_URL');
 
@@ -173,20 +194,68 @@ export const placeOrderAction: Action = {
         const errorContent: Content = {
           text: `❌ **Error**: ${errorMessage}
 
-Please provide order details in your request. Examples:
+Please provide order details in your request. Here are comprehensive examples:
+
+**📈 BUY ORDERS:**
 • "Buy 100 tokens of 123456 at $0.50 limit order"
+• "Place buy order for 50 shares of token 789012 at $0.65"
+• "Create limit buy for 25 tokens of market 456789 at price $0.40"
+• "BUY 200 shares at $0.75 for token ID 321654"
+• "Purchase 75 tokens of 987654 at $0.35 with GTC order"
+• "Long 150 shares of 111222 at $0.80"
+
+**📉 SELL ORDERS:**
 • "Sell 50 shares of token 789012 at $0.75"
+• "Place sell order for 100 tokens of 456789 at $0.60"
+• "Create limit sell for 25 shares of market 321654 at price $0.85"
+• "SELL 75 tokens at $0.45 for token ID 987654"
+• "Short 200 shares of 555666 at $0.30"
+• "Liquidate 125 tokens of 777888 at $0.70"
+
+**🚀 MARKET ORDERS (Immediate execution):**
 • "Place market order to buy 25 tokens of 456789"
+• "Market buy 100 shares of token 123456"
+• "Execute immediate sell of 50 tokens for 789012"
+• "FOK buy order for 75 shares of 321654"
+• "Quick sell 200 tokens of 987654 at market price"
+
+**⏰ TIME-BASED ORDERS:**
+• "Buy 100 tokens of 123456 at $0.50 GTD order (Good Till Day)"
+• "Sell 50 shares of 789012 at $0.75 FAK order (Fill And Kill)"
+• "Place GTC buy for 25 tokens of 456789 at $0.40 (Good Till Cancelled)"
+
+**💰 ADVANCED PRICING:**
+• "Buy 100 tokens of 123456 at $0.505 with fee rate 50 basis points"
+• "Sell 75 shares of 789012 at $0.6789 precision pricing"
+• "Place order: token 456789, buy side, 50 size, $0.4321 price"
+
+**🎯 PREDICTION MARKET EXAMPLES:**
+• "Buy 100 YES tokens for 'Will Bitcoin hit $100k?' at $0.65"
+• "Sell 50 NO shares for election market 789012 at $0.40" 
+• "Long 200 tokens on sports outcome 456789 at $0.75"
+• "Short 75 shares on weather prediction 321654 at $0.25"
+
+**📊 COMPLEX SCENARIOS:**
+• "Create buy order: 150 tokens, market ID 123456, limit price $0.55, GTC type"
+• "Place sell order with parameters: tokenId=789012, side=SELL, price=0.80, size=100, orderType=FOK"
+• "Submit trade: BUY 75 @ $0.45 for token 456789 with 100 bps fee"
 
 **Required parameters:**
-- Token ID (market identifier)
-- Side (buy/sell)
-- Price (in USD, 0-1.0 for prediction markets)
-- Size (number of shares)
+- **Token ID**: Market identifier (6+ digit number or hex)
+- **Side**: BUY/SELL (or LONG/SHORT)
+- **Price**: USD amount (0.01-1.00 for prediction markets)
+- **Size**: Number of shares/tokens
 
 **Optional parameters:**
-- Order type (GTC/limit, FOK/market, GTD, FAK)
-- Fee rate (in basis points)`,
+- **Order Type**: GTC (limit), FOK (market), GTD, FAK
+- **Fee Rate**: Basis points (0-1000)
+
+**💡 Pro Tips:**
+• Use specific token IDs for best results
+• Prediction market prices are typically 0.01-1.00
+• GTC orders stay open until filled or cancelled
+• FOK orders execute immediately or fail
+• Market orders use FOK type automatically`,
           actions: ['PLACE_ORDER'],
           data: { error: errorMessage },
         };
@@ -212,7 +281,88 @@ Please provide order details in your request. Examples:
     }
 
     try {
-      const client = await initializeClobClient(runtime);
+      const client = await initializeClobClientWithCreds(runtime);
+
+      // NEW: Check and handle USDC approval BEFORE placing order
+      logger.info(`[placeOrderAction] Checking USDC approval for order...`);
+
+      // Get wallet private key and create wallet instance
+      const privateKey =
+        runtime.getSetting('WALLET_PRIVATE_KEY') ||
+        runtime.getSetting('PRIVATE_KEY') ||
+        runtime.getSetting('POLYMARKET_PRIVATE_KEY');
+
+      if (!privateKey) {
+        throw new Error('No private key found for USDC approval');
+      }
+
+      // Create wallet and provider for Polygon
+      const wallet = new ethers.Wallet(privateKey);
+      const polygonRpcUrl =
+        runtime.getSetting('POLYGON_RPC_URL') || 'https://polygon-bor-rpc.publicnode.com';
+      const provider = new ethers.JsonRpcProvider(polygonRpcUrl);
+
+      // Calculate order value (only for BUY orders need USDC)
+      const rawOrderValue = price * size;
+      const orderValue = Math.round(rawOrderValue * 1000000) / 1000000; // Round to 6 decimal places
+
+      logger.info(
+        `[placeOrderAction] Order value calculation: ${price} * ${size} = ${rawOrderValue} -> ${orderValue} (rounded)`
+      );
+
+      // Only check approval for BUY orders (selling doesn't require USDC)
+      let approvalResult = null;
+      if (side === 'BUY') {
+        logger.info(
+          `[placeOrderAction] BUY order detected, checking USDC approval for $${orderValue}`
+        );
+
+        // Check and approve USDC if needed (approve unlimited for better UX)
+        approvalResult = await checkAndApproveUSDC(wallet, provider, orderValue, true);
+
+        if (!approvalResult.success) {
+          // Return early with approval error
+          const approvalError = `❌ **USDC Approval Required**
+
+${approvalResult.error}
+
+**Order Details:**
+• **Token ID**: ${tokenId}
+• **Side**: ${side} (requires USDC)
+• **Price**: $${price.toFixed(4)}
+• **Size**: ${size} shares
+• **Total Value**: $${orderValue.toFixed(4)} USDC
+
+**To complete this order:**
+1. Ensure you have sufficient USDC on Polygon network
+2. Bridge USDC from Ethereum if needed: https://portal.polygon.technology/
+3. Try placing the order again
+
+**Current Status:**
+• **USDC Balance**: ${approvalResult.balance} USDC
+• **Required**: ${approvalResult.requiredAmount} USDC`;
+
+          const errorContent: Content = {
+            text: approvalError,
+            actions: ['PLACE_ORDER'],
+            data: {
+              success: false,
+              error: approvalResult.error,
+              approvalResult,
+              orderDetails: { tokenId, side, price, size, orderType },
+            },
+          };
+
+          if (callback) {
+            await callback(errorContent);
+          }
+          throw new Error(approvalResult.error);
+        }
+
+        logger.info(`[placeOrderAction] USDC approval successful:`, approvalResult);
+      } else {
+        logger.info(`[placeOrderAction] SELL order detected, no USDC approval needed`);
+      }
 
       // Create order arguments matching the official ClobClient interface
       const orderArgs = {
@@ -254,6 +404,7 @@ Please provide order details in your request. Examples:
       try {
         orderResponse = await client.postOrder(signedOrder, orderType as OrderType);
         logger.info(`[placeOrderAction] Order posted successfully`);
+        logger.info(`[placeOrderAction] Order response:`, JSON.stringify(orderResponse, null, 2));
       } catch (postError) {
         logger.error(`[placeOrderAction] Error posting order:`, postError);
         throw new Error(
@@ -265,14 +416,82 @@ Please provide order details in your request. Examples:
       let responseText: string;
       let responseData: any;
 
-      if (orderResponse.success) {
+      // Enhanced response parsing to handle different response structures
+      let isSuccess = false;
+      let orderId: string | undefined;
+      let errorMessage: string | undefined;
+      let status: string | undefined;
+      let orderHashes: string[] | undefined;
+
+      // Check various ways the response might indicate success
+      if (orderResponse) {
+        // Method 1: Direct success property
+        if (typeof orderResponse.success === 'boolean') {
+          isSuccess = orderResponse.success;
+        }
+        // Method 2: Check if we have an orderId (usually indicates success)
+        else if (orderResponse.orderId || orderResponse.order_id) {
+          isSuccess = true;
+        }
+        // Method 3: Check if status indicates success
+        else if (
+          orderResponse.status &&
+          ['matched', 'unmatched', 'delayed'].includes(orderResponse.status)
+        ) {
+          isSuccess = true;
+        }
+        // Method 4: If no explicit error message and we have some response, assume success
+        else if (
+          !orderResponse.errorMsg &&
+          !orderResponse.error &&
+          typeof orderResponse === 'object'
+        ) {
+          isSuccess = true;
+        }
+
+        // Extract response details
+        orderId = orderResponse.orderId || orderResponse.order_id;
+        errorMessage = orderResponse.errorMsg || orderResponse.error || orderResponse.message;
+        status = orderResponse.status;
+        orderHashes = orderResponse.orderHashes || orderResponse.order_hashes;
+
+        logger.info(
+          `[placeOrderAction] Parsed response - isSuccess: ${isSuccess}, orderId: ${orderId}, error: ${errorMessage}`
+        );
+      } else {
+        // No response object means something went wrong
+        isSuccess = false;
+        errorMessage = 'No response received from order posting';
+      }
+
+      if (isSuccess) {
         const sideText = side.toLowerCase();
         const orderTypeText =
           orderType === 'GTC' ? 'limit' : orderType === 'FOK' ? 'market' : orderType.toLowerCase();
         const totalValue = (price * size).toFixed(4);
 
-        responseText = `✅ **Order Placed Successfully**
+        // Add approval information for BUY orders
+        let approvalInfo = '';
+        if (side === 'BUY' && approvalResult) {
+          if (approvalResult.approvalNeeded) {
+            approvalInfo = `\n**USDC Approval:**
+• **Status**: ✅ Automatically approved
+• **Transaction**: ${approvalResult.approvalTxHash}
+• **Gas Cost**: ${approvalResult.gasCost} MATIC
+• **Allowance**: Unlimited (optimal for trading)
 
+`;
+          } else {
+            approvalInfo = `\n**USDC Status:**
+• **Balance**: ${approvalResult.balance} USDC ✅
+• **Allowance**: Sufficient for trading ✅
+
+`;
+          }
+        }
+
+        responseText = `✅ **Order Placed Successfully**
+${approvalInfo}
 **Order Details:**
 • **Type**: ${orderTypeText} ${sideText} order
 • **Token ID**: ${tokenId}
@@ -283,18 +502,18 @@ Please provide order details in your request. Examples:
 • **Fee Rate**: ${feeRateBps} bps
 
 **Order Response:**
-• **Order ID**: ${orderResponse.orderId || 'Pending'}
-• **Status**: ${orderResponse.status || 'submitted'}
+• **Order ID**: ${orderId || 'Pending'}
+• **Status**: ${status || 'submitted'}
 ${
-  orderResponse.orderHashes && orderResponse.orderHashes.length > 0
-    ? `• **Transaction Hash(es)**: ${orderResponse.orderHashes.join(', ')}`
+  orderHashes && orderHashes.length > 0
+    ? `• **Transaction Hash(es)**: ${orderHashes.join(', ')}`
     : ''
 }
 
 ${
-  orderResponse.status === 'matched'
+  status === 'matched'
     ? '🎉 Your order was immediately matched and executed!'
-    : orderResponse.status === 'delayed'
+    : status === 'delayed'
       ? '⏳ Your order is subject to a matching delay due to market conditions.'
       : '📋 Your order has been placed and is waiting to be matched.'
 }`;
@@ -310,13 +529,19 @@ ${
             feeRateBps,
             totalValue,
           },
-          orderResponse,
+          orderResponse: {
+            orderId,
+            status,
+            orderHashes,
+            originalResponse: orderResponse,
+          },
+          approvalResult,
           timestamp: new Date().toISOString(),
         };
       } else {
         responseText = `❌ **Order Placement Failed**
 
-**Error**: ${orderResponse.errorMsg || 'Unknown error occurred'}
+**Error**: ${errorMessage || 'Unknown error occurred'}
 
 **Order Details Attempted:**
 • **Token ID**: ${tokenId}
@@ -329,11 +554,13 @@ Please check your parameters and try again. Common issues:
 • Insufficient balance or allowances
 • Invalid price or size
 • Market not active
-• Network connectivity issues`;
+• Network connectivity issues
+
+**Debug Info**: Response received but no success indicator found. This might indicate a response format issue or an edge case.`;
 
         responseData = {
           success: false,
-          error: orderResponse.errorMsg,
+          error: errorMessage || 'Unknown error occurred',
           orderDetails: {
             tokenId,
             side,
@@ -341,6 +568,11 @@ Please check your parameters and try again. Common issues:
             size,
             orderType,
             feeRateBps,
+          },
+          debugInfo: {
+            originalResponse: orderResponse,
+            responseType: typeof orderResponse,
+            responseKeys: orderResponse ? Object.keys(orderResponse) : [],
           },
           timestamp: new Date().toISOString(),
         };

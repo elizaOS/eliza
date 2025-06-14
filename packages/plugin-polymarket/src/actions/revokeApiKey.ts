@@ -19,10 +19,10 @@ export interface RevokeApiKeyResponse {
  * Deletes/revokes an existing API key to disable L2 authentication
  */
 export const revokeApiKeyAction = {
-  name: 'DELETE_API_KEY',
+  name: 'REVOKE_API_KEY',
   similes: [
     'REVOKE_API_KEY',
-    'DELETE_POLYMARKET_API_KEY',
+    'DELETE_SPECIFIC_API_KEY',
     'REMOVE_API_CREDENTIALS',
     'REVOKE_CLOB_CREDENTIALS',
     'DELETE_API_ACCESS',
@@ -41,7 +41,7 @@ export const revokeApiKeyAction = {
         name: '{{user2}}',
         content: {
           text: "I'll revoke the specified API key. This will disable L2 authentication for that key.",
-          action: 'DELETE_API_KEY',
+          action: 'REVOKE_API_KEY',
         },
       },
     ],
@@ -56,7 +56,7 @@ export const revokeApiKeyAction = {
         name: '{{user2}}',
         content: {
           text: 'Revoking your API key credentials...',
-          action: 'DELETE_API_KEY',
+          action: 'REVOKE_API_KEY',
         },
       },
     ],
@@ -116,15 +116,15 @@ Examples:
 
       // Handle both string and object responses from LLM
       let apiKeyIdString: string;
-      if (typeof extractedApiKeyId === 'object' && extractedApiId !== null) {
+      if (typeof extractedApiKeyId === 'object' && extractedApiKeyId !== null) {
         // If it's an object like {"api_key_id": "NONE"} or {"result": "NONE"}, extract the result
         apiKeyIdString =
-          (extractedApiId as any).api_key_id ||
-          (extractedApiId as any).result ||
-          (extractedApiId as any).apiKeyId ||
-          String(extractedApiId);
+          (extractedApiKeyId as any).api_key_id ||
+          (extractedApiKeyId as any).result ||
+          (extractedApiKeyId as any).apiKeyId ||
+          String(extractedApiKeyId);
       } else {
-        apiKeyIdString = String(extractedApiId || '');
+        apiKeyIdString = String(extractedApiKeyId || '');
       }
 
       if (!apiKeyIdString || apiKeyIdString.trim() === 'NONE' || apiKeyIdString.trim() === '') {
@@ -142,7 +142,7 @@ Examples:
         if (callback) {
           callback({
             text: errorMessage,
-            action: 'DELETE_API_KEY',
+            action: 'REVOKE_API_KEY',
             data: {
               success: false,
               error: 'No valid API key ID provided',
@@ -252,7 +252,7 @@ If you need API access, use the CREATE_API_KEY action to generate new credential
       if (callback) {
         callback({
           text: successMessage,
-          action: 'DELETE_API_KEY',
+          action: 'REVOKE_API_KEY',
           data: {
             success: true,
             revocation: responseData,
@@ -283,7 +283,7 @@ If you need API access, use the CREATE_API_KEY action to generate new credential
       if (callback) {
         callback({
           text: errorMessage,
-          action: 'DELETE_API_KEY',
+          action: 'REVOKE_API_KEY',
           data: {
             success: false,
             error: error instanceof Error ? error.message : 'Unknown error',

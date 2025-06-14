@@ -1,7 +1,7 @@
 import { type IAgentRuntime, logger } from '@elizaos/core';
 import { ClobClient } from '@polymarket/clob-client';
+import { Chain } from '@polymarket/clob-client';
 import { ethers } from 'ethers';
-
 
 // Re-export the ClobClient type for other modules
 export type { ClobClient } from '@polymarket/clob-client';
@@ -14,13 +14,64 @@ export interface ApiKeyCreds {
 }
 
 /**
+ * Create a wallet adapter that bridges ethers v5/v6 compatibility
+ * The ClobClient and order-utils expect specific method signatures
+ */
+function createEthersV5CompatibleWallet(wallet: ethers.Wallet) {
+  const adapter = {
+    // Core properties
+    address: wallet.address,
+    provider: wallet.provider,
+    _isSigner: true,
+
+    // V6 methods (current ethers)
+    getAddress: async () => wallet.address,
+    signMessage: async (message: string | Uint8Array) => wallet.signMessage(message),
+    signTypedData: async (domain: any, types: any, value: any) =>
+      wallet.signTypedData(domain, types, value),
+    signTransaction: async (transaction: any) => wallet.signTransaction(transaction),
+    connect: (provider: any) => wallet.connect(provider),
+
+    // V5 compatibility methods (what order-utils expects)
+    _signTypedData: async (domain: any, types: any, value: any) => {
+      // Bridge to v6 method
+      return wallet.signTypedData(domain, types, value);
+    },
+
+    // Additional properties that might be expected
+    _index: (wallet as any)._index,
+    _mnemonic: (wallet as any)._mnemonic,
+    publicKey: (wallet as any).publicKey,
+    privateKey: wallet.privateKey,
+  };
+
+  // Create a proxy to handle any missing method calls
+  return new Proxy(adapter, {
+    get(target: any, prop: string | symbol) {
+      if (prop in target) {
+        return target[prop];
+      }
+      // If the property exists on the original wallet, return it
+      if (prop in wallet && typeof (wallet as any)[prop] === 'function') {
+        return (...args: any[]) => (wallet as any)[prop](...args);
+      }
+      if (prop in wallet) {
+        return (wallet as any)[prop];
+      }
+      return undefined;
+    },
+  });
+}
+
+/**
  * Initialize CLOB client with wallet-based authentication
  * @param runtime - The agent runtime containing configuration
  * @returns Configured CLOB client instance
  */
 export async function initializeClobClient(runtime: IAgentRuntime): Promise<ClobClient> {
   const clobApiUrl = runtime.getSetting('CLOB_API_URL') || 'https://clob.polymarket.com';
-  const clobWsUrl = runtime.getSetting('CLOB_WS_URL') || 'wss://ws-subscriptions-clob.polymarket.com/ws/';
+  const clobWsUrl =
+    runtime.getSetting('CLOB_WS_URL') || 'wss://ws-subscriptions-clob.polymarket.com/ws/';
 
   const privateKey =
     runtime.getSetting('WALLET_PRIVATE_KEY') ||
@@ -33,29 +84,29 @@ export async function initializeClobClient(runtime: IAgentRuntime): Promise<Clob
     );
   }
 
-  logger.info(`[initializeClobClient] Initializing CLOB client with HTTP URL: ${clobApiUrl}` + (clobWsUrl ? ` and WS URL: ${clobWsUrl}` : ' (no WS URL provided)'));
+  logger.info(
+    `[initializeClobClient] Initializing CLOB client with HTTP URL: ${clobApiUrl}` +
+      (clobWsUrl ? ` and WS URL: ${clobWsUrl}` : ' (no WS URL provided)')
+  );
 
   try {
+    // Create ethers v5 compatible wallet adapter
     const wallet = new ethers.Wallet(privateKey);
-    const enhancedWallet = {
-      ...wallet,
-      _signTypedData: async (domain: any, types: any, value: any) => wallet.signTypedData(domain, types, value),
-      getAddress: async () => wallet.address,
-    };
+    const walletAdapter = createEthersV5CompatibleWallet(wallet);
 
     logger.info(`[initializeClobClient] Wallet address: ${wallet.address}`);
     logger.info(`[initializeClobClient] Chain ID: 137`);
 
+    // Pass the compatible wallet adapter to ClobClient
     const client = new ClobClient(
       clobApiUrl,
-      137, // Polygon chain ID
-      enhancedWallet as any,
-      undefined, // No API creds for this basic client
-      clobWsUrl  // Pass WebSocket URL
+      Chain.POLYGON, // Chain ID (137) as second parameter
+      walletAdapter as any // V5 compatible adapter
     );
 
     logger.info(
-      `[initializeClobClient] CLOB client initialized successfully with direct EOA wallet` + (clobWsUrl ? ' and WebSocket support.' : '.')
+      `[initializeClobClient] CLOB client initialized successfully with v5 compatible wallet` +
+        (clobWsUrl ? ' and WebSocket support.' : '.')
     );
     return client;
   } catch (error) {
@@ -73,7 +124,8 @@ export async function initializeClobClient(runtime: IAgentRuntime): Promise<Clob
  */
 export async function initializeClobClientWithCreds(runtime: IAgentRuntime): Promise<ClobClient> {
   const clobApiUrl = runtime.getSetting('CLOB_API_URL') || 'https://clob.polymarket.com';
-  const clobWsUrl = runtime.getSetting('CLOB_WS_URL') || 'wss://ws-subscriptions-clob.polymarket.com/ws/';
+  const clobWsUrl =
+    runtime.getSetting('CLOB_WS_URL') || 'wss://ws-subscriptions-clob.polymarket.com/ws/';
 
   const privateKey =
     runtime.getSetting('WALLET_PRIVATE_KEY') ||
@@ -113,12 +165,9 @@ export async function initializeClobClientWithCreds(runtime: IAgentRuntime): Pro
   logger.info(`[initializeClobClientWithCreds] Initializing CLOB client with API credentials.`);
 
   try {
+    // Create ethers v5 compatible wallet adapter
     const wallet = new ethers.Wallet(privateKey);
-    const enhancedWallet = {
-      ...wallet,
-      _signTypedData: async (domain: any, types: any, value: any) => wallet.signTypedData(domain, types, value),
-      getAddress: async () => wallet.address,
-    };
+    const walletAdapter = createEthersV5CompatibleWallet(wallet);
 
     const creds: ApiKeyCreds = {
       key: apiKey,
@@ -129,16 +178,17 @@ export async function initializeClobClientWithCreds(runtime: IAgentRuntime): Pro
     logger.info(`[initializeClobClientWithCreds] Wallet address: ${wallet.address}`);
     logger.info(`[initializeClobClientWithCreds] Chain ID: 137`);
 
+    // Pass the compatible wallet adapter to ClobClient
     const client = new ClobClient(
       clobApiUrl,
-      137, // Polygon chain ID
-      enhancedWallet as any,
-      creds, // API credentials for L2 authentication
-      clobWsUrl // Pass WebSocket URL
+      Chain.POLYGON, // Chain ID (137) as second parameter
+      walletAdapter as any, // V5 compatible adapter
+      creds
     );
 
     logger.info(
-      `[initializeClobClientWithCreds] CLOB client initialized successfully with API credentials` + (clobWsUrl ? ' and WebSocket support.' : '.')
+      `[initializeClobClientWithCreds] CLOB client initialized successfully with API credentials and v5 compatible wallet` +
+        (clobWsUrl ? ' and WebSocket support.' : '.')
     );
     return client;
   } catch (error) {

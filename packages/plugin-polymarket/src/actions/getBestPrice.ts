@@ -18,6 +18,16 @@ interface BestPriceParams {
   side: string;
 }
 
+// Define the response structure for the callback data property
+export interface BestPriceResponseData {
+  tokenId: string;
+  side: 'buy' | 'sell';
+  price: string;
+  formattedPrice: string;
+  percentagePrice: string;
+  timestamp: string;
+}
+
 /**
  * Get best bid/ask price for a market token action for Polymarket
  * Fetches the best price for a specific token and side (buy/sell)
@@ -136,10 +146,66 @@ export const getBestPriceAction: Action = {
         const errorContent: Content = {
           text: `❌ **Error**: ${errorMessage}
 
-Please provide a token ID in your request. Examples:
+Please provide a token ID in your request. Here are comprehensive examples:
+
+**💰 BASIC PRICE QUERIES:**
 • "Get best price for token 123456 on buy side"
 • "What's the sell price for market token 789012?"
-• "Show me the best bid for 456789"`,
+• "Show me the best bid for 456789"
+• "Best ask price for token 321654"
+• "Price for buying token 987654"
+• "Selling price for 555666"
+
+**⚡ QUICK PRICE FORMATS:**
+• "Price 123456 buy"
+• "Sell price 789012"
+• "Ask 456789"
+• "Bid 321654"
+• "Buy price for 987654"
+• "Token 555666 sell"
+
+**🔍 DETAILED PRICE QUERIES:**
+• "Show me the best buy price for token 123456"
+• "Get the current sell price for market 789012"
+• "What's the best ask price for token 456789?"
+• "Display bid price for market token 321654"
+• "Current buying price for prediction token 987654"
+• "Market sell price for token 555666"
+
+**📊 SIDE-SPECIFIC QUERIES:**
+• "Buy side price for token 123456"
+• "Sell side price for market 789012"
+• "Ask price (buy) for token 456789"
+• "Bid price (sell) for token 321654"
+• "Long price for 987654"
+• "Short price for 555666"
+
+**🎯 CONTEXT-AWARE QUERIES:**
+• "Best price to buy Bitcoin prediction token 123456"
+• "Selling price for election market 789012"
+• "Price to buy YES on sports bet 456789"
+• "NO token sell price for 321654"
+• "Current crypto market price 987654"
+
+**📋 STRUCTURED QUERIES:**
+• "GET_BEST_PRICE token: 123456, side: buy"
+• "Price { tokenId: 789012, side: sell }"
+• "Best price = 456789 buy"
+• "Show price_token: 321654 sell"
+
+**💡 What You'll See:**
+Price information includes:
+• Current best price in USD
+• Percentage representation (0-100%)
+• Buy vs. sell side pricing
+• Real-time market data
+• Price explanations
+
+**📈 Trading Context:**
+• **Buy/Ask Price**: What you pay to purchase
+• **Sell/Bid Price**: What you receive when selling
+• **Side**: Buy (long) or Sell (short) position
+• **Real-time**: Prices update with market conditions`,
           actions: ['GET_BEST_PRICE'],
           data: { error: errorMessage },
         };
@@ -272,6 +338,141 @@ Please check:
         name: '{{user2}}',
         content: {
           text: 'Getting the best bid price for token 456789.',
+          actions: ['GET_BEST_PRICE'],
+        },
+      },
+    ],
+    [
+      {
+        name: '{{user1}}',
+        content: {
+          text: 'Best ask price for token 321654',
+        },
+      },
+      {
+        name: '{{user2}}',
+        content: {
+          text: "I'll get the best ask (buy) price for token 321654.",
+          actions: ['GET_BEST_PRICE'],
+        },
+      },
+    ],
+    [
+      {
+        name: '{{user1}}',
+        content: {
+          text: 'Price for buying token 987654',
+        },
+      },
+      {
+        name: '{{user2}}',
+        content: {
+          text: 'Getting the current buying price for token 987654.',
+          actions: ['GET_BEST_PRICE'],
+        },
+      },
+    ],
+    [
+      {
+        name: '{{user1}}',
+        content: {
+          text: 'Selling price for 555666',
+        },
+      },
+      {
+        name: '{{user2}}',
+        content: {
+          text: "I'll fetch the selling price for token 555666.",
+          actions: ['GET_BEST_PRICE'],
+        },
+      },
+    ],
+    [
+      {
+        name: '{{user1}}',
+        content: {
+          text: 'Price 123456 buy',
+        },
+      },
+      {
+        name: '{{user2}}',
+        content: {
+          text: 'Getting buy price for token 123456.',
+          actions: ['GET_BEST_PRICE'],
+        },
+      },
+    ],
+    [
+      {
+        name: '{{user1}}',
+        content: {
+          text: 'Sell price 789012',
+        },
+      },
+      {
+        name: '{{user2}}',
+        content: {
+          text: 'Fetching sell price for token 789012.',
+          actions: ['GET_BEST_PRICE'],
+        },
+      },
+    ],
+    [
+      {
+        name: '{{user1}}',
+        content: {
+          text: 'Current crypto market price 456789',
+        },
+      },
+      {
+        name: '{{user2}}',
+        content: {
+          text: 'Getting the current market price for crypto token 456789.',
+          actions: ['GET_BEST_PRICE'],
+        },
+      },
+    ],
+    [
+      {
+        name: '{{user1}}',
+        content: {
+          text: 'Best price to buy Bitcoin prediction token 123456',
+        },
+      },
+      {
+        name: '{{user2}}',
+        content: {
+          text: "I'll get the best price for buying the Bitcoin prediction token.",
+          actions: ['GET_BEST_PRICE'],
+        },
+      },
+    ],
+    [
+      {
+        name: '{{user1}}',
+        content: {
+          text: 'Long price for 987654',
+        },
+      },
+      {
+        name: '{{user2}}',
+        content: {
+          text: 'Getting the long (buy) price for token 987654.',
+          actions: ['GET_BEST_PRICE'],
+        },
+      },
+    ],
+    [
+      {
+        name: '{{user1}}',
+        content: {
+          text: 'Short price for 321654',
+        },
+      },
+      {
+        name: '{{user2}}',
+        content: {
+          text: 'Getting the short (sell) price for token 321654.',
           actions: ['GET_BEST_PRICE'],
         },
       },

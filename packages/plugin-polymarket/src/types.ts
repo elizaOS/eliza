@@ -123,27 +123,23 @@ export interface SimplifiedMarketsResponse {
 }
 
 /**
- * Order book entry
+ * Order book entry, aligned with ClobClient's OrderSummary
  */
-export interface BookEntry {
-  /** Price level */
+export interface PolymarketOrderSummaryEntry {
   price: string;
-  /** Size at this price level */
   size: string;
 }
 
 /**
- * Order book data
+ * Order book data, aligned with ClobClient's OrderBookSummary type.
  */
-export interface OrderBook {
-  /** Market condition ID */
+export interface PolymarketOrderBookSummary {
   market: string;
-  /** Token ID */
   asset_id: string;
-  /** Buy orders (bids) */
-  bids: BookEntry[];
-  /** Sell orders (asks) */
-  asks: BookEntry[];
+  timestamp: string;
+  bids: PolymarketOrderSummaryEntry[];
+  asks: PolymarketOrderSummaryEntry[];
+  hash: string;
 }
 
 /**
@@ -409,69 +405,82 @@ export type AreOrdersScoringResponse = Record<string, boolean>;
  * Parameters for the getOpenOrders ClobClient method.
  */
 export interface GetOpenOrdersParams {
-  market?: string;      // Market condition ID
-  assetId?: string;     // Asset ID (token ID)
-  address?: string;     // User address
-  nextCursor?: string;  // Pagination cursor
+  market?: string; // Market condition ID
+  asset_id?: string; // Asset ID (token ID)
+  address?: string; // User address
+  next_cursor?: string; // Pagination cursor
 }
 
 /**
  * Represents an open order from the CLOB API (/orders/open endpoint).
  */
 export interface OpenOrder {
-  order_id: string;
-  user_id: string;
-  market_id: string; // This is the condition_id
-  token_id: string;
-  side: OrderSide;   // Reuses existing OrderSide enum: 'BUY' | 'SELL'
-  type: string;      // e.g., "LIMIT"
-  status: string;    // e.g., "OPEN" - could create an enum if more statuses are known for open orders
+  id: string; // Was order_id
+  status: string; // Consider using local OrderStatus enum if it aligns with API's string values
+  owner: string; // New, was user_id
+  maker_address: string; // New
+  market: string; // Was market_id (this is the condition_id)
+  asset_id: string; // Was token_id
+  side: string; // Was OrderSide enum, clob-client uses 'BUY' | 'SELL' string literal
+  original_size: string; // Was size
+  size_matched: string; // Was filled_size
   price: string;
+  associate_trades?: string[]; // New
+  outcome?: string; // New
+  created_at: number; // Was string (ISO datetime), now number (timestamp)
+  expiration?: string; // New (ISO date string or timestamp)
+  order_type?: string; // Was type (e.g., "LIMIT")
+  // Fields like fees_paid, updated_at from old OpenOrder are not directly in clob-client's OpenOrder
+}
+
+/**
+ * Parameters for fetching trades, aligned with ClobClient's TradeParams.
+ * Note: ClobClient's TradeParams uses 'before' and 'after' (trade IDs) for pagination,
+ * not timestamps or general next_cursor. Limit is also not part of these request params.
+ */
+export interface PolymarketTradeClientParams {
+  id?: string; // Optional: Specific trade ID to fetch
+  maker_address?: string; // Was user_address
+  market?: string; // Was market_id
+  asset_id?: string; // Was token_id
+  before?: string; // Cursor (trade ID) to get trades before this one
+  after?: string; // Cursor (trade ID) to get trades after this one
+  // from_timestamp and to_timestamp are NOT supported by ClobClient.TradeParams
+  // limit is also NOT directly part of ClobClient.TradeParams
+}
+
+/**
+ * Represents a single trade, aligned with ClobClient's Trade type.
+ */
+export interface PolymarketTradeRecord {
+  id: string;
+  taker_order_id: string;
+  market: string;
+  asset_id: string;
+  side: string | number; // In ClobClient, it's Side enum or string, which is 'BUY' | 'SELL' or number
   size: string;
-  filled_size: string;
-  fees_paid: string;
-  created_at: string; // ISO datetime string
-  updated_at: string; // ISO datetime string
-}
-
-/**
- * Parameters for the getTrades ClobClient method.
- * Based on https://docs.polymarket.com/developers/CLOB/trades/get-trades
- */
-export interface GetTradesParams {
-  user_address?: string;
-  market_id?: string;
-  token_id?: string;
-  from_timestamp?: number; // Unix timestamp (seconds)
-  to_timestamp?: number;   // Unix timestamp (seconds)
-  limit?: number;
-  next_cursor?: string;
-}
-
-/**
- * Represents a trade entry from the CLOB API (/trades endpoint).
- */
-export interface TradeEntry {
-  trade_id: string;
-  order_id: string;
-  user_id: string;
-  market_id: string;
-  token_id: string;
-  side: OrderSide; // 'BUY' or 'SELL'
-  type: string; // e.g., "LIMIT_TAKER", "LIMIT_MAKER"
+  fee_rate_bps: string;
   price: string;
-  size: string;
-  fees_paid: string;
-  timestamp: string; // ISO datetime string
-  tx_hash: string;
+  status: string;
+  match_time: string; // ISO string timestamp
+  last_update: string; // ISO string timestamp
+  outcome: string;
+  bucket_index: number;
+  owner: string;
+  maker_address: string;
+  maker_orders: any[]; // ClobClient.MakerOrder[] - for simplicity using any[] for now or define MakerOrder
+  transaction_hash: string;
+  trader_side: 'TAKER' | 'MAKER';
 }
 
 /**
- * Paginated response structure for the /trades endpoint.
+ * Paginated response for trades, aligned with ClobClient's getTradesPaginated method response structure.
  */
-export interface TradesResponse {
-  data: TradeEntry[];
-  next_cursor: string;
+export interface PolymarketPaginatedTradesResponse {
+  trades: PolymarketTradeRecord[]; // RENAMED from data to trades
+  next_cursor: string; // ClobClient.getTradesPaginated actually returns string, not string?
+  count: number; // Total count of items matching filter
+  limit: number; // The limit that was applied for this page
 }
 
 /**
