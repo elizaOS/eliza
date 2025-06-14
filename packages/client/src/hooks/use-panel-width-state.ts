@@ -27,21 +27,21 @@ export function usePanelWidthState() {
       const storedMainSize = localStorage.getItem(MAIN_PANEL_WIDTH_KEY);
       const storedSidebarSize = localStorage.getItem(SIDEBAR_PANEL_WIDTH_KEY);
       const storedThreshold = localStorage.getItem(FLOATING_THRESHOLD_KEY);
-      
+
       if (storedMainSize !== null) {
         const parsedMainSize = parseFloat(storedMainSize);
         if (!isNaN(parsedMainSize) && parsedMainSize > 0 && parsedMainSize <= 100) {
           setMainPanelSize(parsedMainSize);
         }
       }
-      
+
       if (storedSidebarSize !== null) {
         const parsedSidebarSize = parseFloat(storedSidebarSize);
         if (!isNaN(parsedSidebarSize) && parsedSidebarSize > 0 && parsedSidebarSize <= 100) {
           setSidebarPanelSize(parsedSidebarSize);
         }
       }
-      
+
       if (storedThreshold !== null) {
         const parsedThreshold = parseFloat(storedThreshold);
         if (!isNaN(parsedThreshold) && parsedThreshold > 0) {
@@ -69,7 +69,7 @@ export function usePanelWidthState() {
 
     // Add resize listener
     window.addEventListener('resize', checkFloatingMode);
-    
+
     return () => {
       window.removeEventListener('resize', checkFloatingMode);
     };
@@ -80,7 +80,7 @@ export function usePanelWidthState() {
     // Validate size is within reasonable bounds
     const validatedSize = Math.max(20, Math.min(80, size));
     setMainPanelSize(validatedSize);
-    
+
     try {
       localStorage.setItem(MAIN_PANEL_WIDTH_KEY, validatedSize.toString());
     } catch (error) {
@@ -93,7 +93,7 @@ export function usePanelWidthState() {
     // Validate size is within reasonable bounds
     const validatedSize = Math.max(20, Math.min(80, size));
     setSidebarPanelSize(validatedSize);
-    
+
     try {
       localStorage.setItem(SIDEBAR_PANEL_WIDTH_KEY, validatedSize.toString());
     } catch (error) {
@@ -105,7 +105,7 @@ export function usePanelWidthState() {
   const setFloatingThresholdPersistent = useCallback((threshold: number) => {
     const validatedThreshold = Math.max(320, Math.min(2560, threshold));
     setFloatingThreshold(validatedThreshold);
-    
+
     try {
       localStorage.setItem(FLOATING_THRESHOLD_KEY, validatedThreshold.toString());
     } catch (error) {
@@ -115,7 +115,7 @@ export function usePanelWidthState() {
 
   // Manual toggle for floating mode (overrides automatic detection)
   const toggleFloatingMode = useCallback(() => {
-    setIsFloatingMode(prev => !prev);
+    setIsFloatingMode((prev) => !prev);
   }, []);
 
   // Reset to default sizes
@@ -123,7 +123,7 @@ export function usePanelWidthState() {
     setMainPanelSize(DEFAULT_MAIN_PANEL_SIZE);
     setSidebarPanelSize(DEFAULT_SIDEBAR_PANEL_SIZE);
     setFloatingThreshold(DEFAULT_FLOATING_THRESHOLD);
-    
+
     try {
       localStorage.removeItem(MAIN_PANEL_WIDTH_KEY);
       localStorage.removeItem(SIDEBAR_PANEL_WIDTH_KEY);
@@ -144,4 +144,4 @@ export function usePanelWidthState() {
     toggleFloatingMode,
     resetPanelSizes,
   };
-} 
+}

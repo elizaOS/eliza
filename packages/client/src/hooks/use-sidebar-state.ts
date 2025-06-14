@@ -29,7 +29,7 @@ export function useSidebarState() {
   // Update sidebar state and persist to localStorage
   const setSidebarVisible = useCallback((visible: boolean) => {
     setIsVisible(visible);
-    
+
     try {
       localStorage.setItem(SIDEBAR_STATE_KEY, JSON.stringify(visible));
     } catch (error) {
@@ -47,4 +47,4 @@ export function useSidebarState() {
     setSidebarVisible,
     toggleSidebar,
   };
-} 
+}

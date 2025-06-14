@@ -120,17 +120,34 @@ function AppContent() {
           <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
             <Routes>
               <Route path="/" element={<Home key={homeKey} />} />
-              <Route path="chat/:agentId/:channelId" element={<div className="flex-1 min-h-0 overflow-hidden"><Chat /></div>} />
-              <Route path="chat/:agentId" element={<div className="flex-1 min-h-0 overflow-hidden"><Chat /></div>} />
+              <Route
+                path="chat/:agentId/:channelId"
+                element={
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    <Chat />
+                  </div>
+                }
+              />
+              <Route
+                path="chat/:agentId"
+                element={
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    <Chat />
+                  </div>
+                }
+              />
               <Route path="group/new" element={<CreateGroupPage />} />
               <Route path="agents/new" element={<AgentCreatorRoute />} />
-              <Route path="/create" element={
-                <div className="flex w-full justify-center px-4 sm:px-6">
-                  <div className="w-full md:max-w-4xl">
-                    <AgentCreator />
+              <Route
+                path="/create"
+                element={
+                  <div className="flex w-full justify-center px-4 sm:px-6">
+                    <div className="w-full md:max-w-4xl">
+                      <AgentCreator />
+                    </div>
                   </div>
-                </div>
-              } />
+                }
+              />
               <Route
                 path="/logs"
                 element={
@@ -144,7 +161,14 @@ function AppContent() {
                   </div>
                 }
               />
-              <Route path="group/:channelId" element={<div className="flex-1 min-h-0 overflow-hidden"><GroupChannel /></div>} />
+              <Route
+                path="group/:channelId"
+                element={
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    <GroupChannel />
+                  </div>
+                }
+              />
               <Route
                 path="settings/"
                 element={

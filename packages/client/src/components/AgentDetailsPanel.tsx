@@ -40,7 +40,9 @@ export default function AgentDetailsPanel({ agent }: AgentDetailsPanelProps) {
                 <p className="text-sm text-muted-foreground">
                   <span className="sm:hidden">
                     {/* Mobile: Show truncated bio */}
-                    {((text) => text.length > 150 ? `${text.substring(0, 150)}...` : text)(Array.isArray(agent?.bio) ? agent?.bio.join(' ') : agent?.bio)}
+                    {((text) => (text.length > 150 ? `${text.substring(0, 150)}...` : text))(
+                      Array.isArray(agent?.bio) ? agent?.bio.join(' ') : agent?.bio
+                    )}
                   </span>
                   <span className="hidden sm:block">
                     {/* Desktop: Show full bio */}

@@ -51,21 +51,24 @@ export function useAgentTabState(agentId: UUID | undefined) {
   }, [agentId, getStoredTabStates]);
 
   // Update tab state and persist to localStorage
-  const updateTab = useCallback((newTab: TabValue) => {
-    setCurrentTab(newTab);
-    
-    if (agentId) {
-      const storedStates = getStoredTabStates();
-      const updatedStates = {
-        ...storedStates,
-        [agentId]: newTab,
-      };
-      saveTabStates(updatedStates);
-    }
-  }, [agentId, getStoredTabStates, saveTabStates]);
+  const updateTab = useCallback(
+    (newTab: TabValue) => {
+      setCurrentTab(newTab);
+
+      if (agentId) {
+        const storedStates = getStoredTabStates();
+        const updatedStates = {
+          ...storedStates,
+          [agentId]: newTab,
+        };
+        saveTabStates(updatedStates);
+      }
+    },
+    [agentId, getStoredTabStates, saveTabStates]
+  );
 
   return {
     currentTab,
     setTab: updateTab,
   };
-} 
+}

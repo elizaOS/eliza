@@ -29,7 +29,7 @@ export default function useVersion() {
       const data = await response.json();
       const latestVersion = data.tag_name;
       return latestVersion;
-    } catch { }
+    } catch {}
   }
 
   const compareVersion = useCallback(async () => {

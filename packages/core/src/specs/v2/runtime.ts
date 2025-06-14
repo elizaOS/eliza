@@ -24,6 +24,7 @@ import type {
   Room,
   Route,
   RuntimeSettings,
+  SendHandlerFunction,
   Service,
   ServiceTypeName,
   State,
@@ -790,10 +791,20 @@ export class AgentRuntime implements IAgentRuntime {
     return this._runtime.sendControlMessage(params);
   }
 
-  registerSendHandler(source: string, handler: any): void {
-    return this._runtime.registerSendHandler(source, handler as any);
+  /**
+   * Register a message send handler for a specific source
+   * @param source - The source identifier (e.g., 'discord', 'telegram')
+   * @param handler - The handler function to send messages
+   */
+  registerSendHandler(source: string, handler: SendHandlerFunction): void {
+    this._runtime.registerSendHandler(source, handler);
   }
 
+  /**
+   * Send a message to a specific target
+   * @param target - The target information including source and channel/user ID
+   * @param content - The message content to send
+   */
   async sendMessageToTarget(target: TargetInfo, content: Content): Promise<void> {
     return this._runtime.sendMessageToTarget(target, content);
   }
@@ -804,5 +815,22 @@ export class AgentRuntime implements IAgentRuntime {
     tableName?: string;
   }): Promise<Memory[]> {
     return this._runtime.getMemoriesByWorldId(params);
+  }
+
+  // Run tracking methods
+  createRunId(): UUID {
+    return this._runtime.createRunId();
+  }
+
+  startRun(): UUID {
+    return this._runtime.startRun();
+  }
+
+  endRun(): void {
+    return this._runtime.endRun();
+  }
+
+  getCurrentRunId(): UUID {
+    return this._runtime.getCurrentRunId();
   }
 }

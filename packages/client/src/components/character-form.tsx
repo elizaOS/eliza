@@ -448,7 +448,7 @@ export default function CharacterForm({
                 {field.title}
                 {field.name in FIELD_REQUIREMENTS &&
                   (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.name] ===
-                  FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
+                    FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
               </Label>
             </TooltipTrigger>
             {field.tooltip && (
@@ -523,7 +523,7 @@ export default function CharacterForm({
                 {field.title}
                 {field.path in FIELD_REQUIREMENTS &&
                   (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.path] ===
-                  FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
+                    FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
               </Label>
             </TooltipTrigger>
             {field.tooltip && (
@@ -608,8 +608,6 @@ export default function CharacterForm({
   const handleImportClick = () => {
     fileInputRef.current?.click();
   };
-
-
 
   // Define stop/delete options (only if both are available)
   const stopDeleteOptions = useMemo(() => {
@@ -785,21 +783,38 @@ export default function CharacterForm({
           {stopDeleteOptions.length > 0 && (
             <SplitButton
               mainAction={{
-                label: stopDeleteOptions[0].label === 'Stop Agent' && isStopping ? 'Stopping...' : stopDeleteOptions[0].label,
+                label:
+                  stopDeleteOptions[0].label === 'Stop Agent' && isStopping
+                    ? 'Stopping...'
+                    : stopDeleteOptions[0].label,
                 onClick: stopDeleteOptions[0].onClick,
-                icon: stopDeleteOptions[0].label === 'Stop Agent' ?
-                  (isStopping ? <Loader2 className="h-4 w-4 animate-spin" /> : <StopCircle className="h-4 w-4" />) :
-                  <Trash className="h-4 w-4" />,
-                disabled: stopDeleteOptions[0].label === 'Stop Agent' ? isStopping : false
+                icon:
+                  stopDeleteOptions[0].label === 'Stop Agent' ? (
+                    isStopping ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <StopCircle className="h-4 w-4" />
+                    )
+                  ) : (
+                    <Trash className="h-4 w-4" />
+                  ),
+                disabled: stopDeleteOptions[0].label === 'Stop Agent' ? isStopping : false,
               }}
-              actions={stopDeleteOptions.slice(1).map(option => ({
+              actions={stopDeleteOptions.slice(1).map((option) => ({
                 label: option.label === 'Stop Agent' && isStopping ? 'Stopping...' : option.label,
                 onClick: option.onClick,
-                icon: option.label === 'Stop Agent' ?
-                  (isStopping ? <Loader2 className="h-4 w-4 animate-spin" /> : <StopCircle className="h-4 w-4" />) :
-                  <Trash className="h-4 w-4" />,
+                icon:
+                  option.label === 'Stop Agent' ? (
+                    isStopping ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <StopCircle className="h-4 w-4" />
+                    )
+                  ) : (
+                    <Trash className="h-4 w-4" />
+                  ),
                 variant: 'destructive' as const,
-                disabled: option.label === 'Stop Agent' ? isStopping : false
+                disabled: option.label === 'Stop Agent' ? isStopping : false,
               }))}
               variant="destructive"
               disabled={isDeleting}
@@ -833,14 +848,14 @@ export default function CharacterForm({
             mainAction={{
               label: 'Export JSON',
               onClick: handleExportJSON,
-              icon: <Download className="h-4 w-4" />
+              icon: <Download className="h-4 w-4" />,
             }}
             actions={[
               {
                 label: 'Import JSON',
                 onClick: handleImportClick,
-                icon: <Upload className="h-4 w-4" />
-              }
+                icon: <Upload className="h-4 w-4" />,
+              },
             ]}
             variant="outline"
             className="w-full"
