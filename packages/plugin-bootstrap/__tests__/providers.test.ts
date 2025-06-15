@@ -519,7 +519,7 @@ describe('Role Provider', () => {
         return {
           id: ownerId,
           names: ['Simple Owner'],
-          metadata: { discord: { name: 'SimpleOwnerName', username: 'simple_owner_discord' } },
+          metadata: { name: 'SimpleOwnerName', username: 'simple_owner_discord' },
         };
       }
       return null;
