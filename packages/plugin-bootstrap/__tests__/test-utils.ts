@@ -279,6 +279,12 @@ export function createMockRuntime(overrides: Partial<MockRuntime> = {}): MockRun
         createdAt: Date.now(),
       },
     ]),
+
+    // Run tracking methods required by IAgentRuntime
+    createRunId: vi.fn().mockReturnValue('test-run-id' as UUID),
+    startRun: vi.fn().mockReturnValue('test-run-id' as UUID),
+    endRun: vi.fn().mockReturnValue(undefined),
+    getCurrentRunId: vi.fn().mockReturnValue('test-run-id' as UUID),
   };
 
   // Merge with overrides
