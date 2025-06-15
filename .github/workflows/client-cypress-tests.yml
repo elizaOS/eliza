@@ -85,14 +85,10 @@ jobs:
       - name: Build packages (Turbo cached)
         run: bun run build
 
-      - name: Install Cypress binary
-        working-directory: packages/client
-        run: npx cypress install
-
       - name: Run Cypress Component Tests
         working-directory: packages/client
         run: |
-          npx cypress run --component --browser chrome
+          bun run cy:component
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -161,10 +157,6 @@ jobs:
 
       - name: Build packages (Turbo cached)
         run: bun run build
-
-      - name: Install Cypress binary
-        working-directory: packages/client
-        run: npx cypress install
 
       - name: Create .env file
         run: |
