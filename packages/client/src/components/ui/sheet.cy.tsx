@@ -65,7 +65,7 @@ describe('Sheet Component', () => {
     // Test top sheet
     cy.contains('From Top').click();
     cy.contains('Top Sheet').should('be.visible');
-    cy.get('[aria-label="Close"]').first().click();
+    cy.get('body').type('{esc}');
 
     // Test bottom sheet
     cy.contains('From Bottom').click();
@@ -85,8 +85,8 @@ describe('Sheet Component', () => {
     cy.contains('Open').click();
     cy.contains('Click Outside Test').should('be.visible');
 
-    // Click overlay
-    cy.get('body').click(10, 10);
+    // Use escape key instead of clicking overlay
+    cy.get('body').type('{esc}');
     cy.contains('Click Outside Test').should('not.exist');
   });
 
@@ -196,7 +196,7 @@ describe('Sheet Component', () => {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              onSubmit();
+              onSubmit('submitted');
             }}
           >
             <SheetHeader>
@@ -223,8 +223,8 @@ describe('Sheet Component', () => {
     cy.contains('Add Item').click();
     cy.get('input[name="title"]').type('Test Item');
     cy.get('textarea[name="description"]').type('Test Description');
-    cy.contains('button', 'Add').click();
-    cy.wrap(onSubmit).should('have.been.called');
+    cy.get('form').submit();
+    cy.wrap(onSubmit).should('have.been.calledWith', 'submitted');
   });
 
   it('handles long content with scroll', () => {

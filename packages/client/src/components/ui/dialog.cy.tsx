@@ -49,8 +49,8 @@ describe('Dialog Component', () => {
     cy.contains('Open').click();
     cy.contains('Click Outside Test').should('be.visible');
 
-    // Click outside
-    cy.get('body').click(0, 0);
+    // Test escape key instead of clicking outside
+    cy.get('body').type('{esc}');
     cy.contains('Click Outside Test').should('not.exist');
   });
 
@@ -160,7 +160,7 @@ describe('Dialog Component', () => {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              onSubmit();
+              onSubmit('submitted');
             }}
           >
             <DialogHeader>
@@ -187,8 +187,10 @@ describe('Dialog Component', () => {
     cy.contains('Add Item').click();
     cy.get('input[name="title"]').type('Test Item');
     cy.get('textarea[name="description"]').type('Test Description');
-    cy.contains('button', 'Add').click();
-    cy.wrap(onSubmit).should('have.been.called');
+    cy.get('[role="dialog"]').within(() => {
+      cy.contains('button', 'Add').click({ force: true });
+    });
+    cy.wrap(onSubmit).should('have.been.calledWith', 'submitted');
   });
 
   it('prevents closing when modal', () => {

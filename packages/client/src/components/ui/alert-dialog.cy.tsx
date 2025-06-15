@@ -63,12 +63,15 @@ describe('AlertDialog Component', () => {
       </AlertDialog>
     );
 
+    // Open the dialog
     cy.contains('Delete').click();
-    cy.wait(200); // Allow dialog to fully open and settle
     
-    // Use a more reliable click approach - click all Delete buttons
-    cy.get('button').contains('Delete').each(($btn) => {
-      cy.wrap($btn).click({ force: true });
+    // Wait for dialog to appear and ensure it's visible
+    cy.contains('Confirm Deletion').should('be.visible');
+    
+    // Try clicking the specific action button using a more precise selector
+    cy.get('[role="alertdialog"]').within(() => {
+      cy.contains('button', 'Delete').click({ force: true });
     });
     cy.wrap(onAction).should('have.been.called');
 
@@ -224,12 +227,15 @@ describe('AlertDialog Component', () => {
 
     cy.mount(<TestComponent />);
 
+    // Open the dialog
     cy.contains('button', 'Delete').click();
-    cy.wait(200); // Allow dialog to fully open and settle
     
-    // Click the Delete button in the dialog
-    cy.get('button').contains('Delete').each(($btn) => {
-      cy.wrap($btn).click({ force: true });
+    // Wait for dialog content to appear
+    cy.contains('Delete Item').should('be.visible');
+    
+    // Click the action button within the dialog
+    cy.get('[role="alertdialog"]').within(() => {
+      cy.contains('button', 'Delete').click({ force: true });
     });
     cy.contains('Deleting...').should('be.visible');
     cy.wait(150);

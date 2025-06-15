@@ -113,7 +113,7 @@ describe('Select Component', () => {
       </Select>
     );
 
-    cy.get('[role="combobox"]').should('have.attr', 'aria-disabled', 'true');
+    cy.get('[role="combobox"]').should('have.attr', 'data-disabled');
     cy.get('[role="combobox"]').click({ force: true });
     cy.contains('Option 1').should('not.exist');
   });
@@ -247,7 +247,9 @@ describe('Select Component', () => {
     );
 
     cy.get('[role="combobox"]').click();
-    cy.contains('United Kingdom').click();
+    cy.get('[role="listbox"]').within(() => {
+      cy.contains('United Kingdom').click({ force: true });
+    });
     cy.get('[role="combobox"]').should('contain', 'United Kingdom');
   });
 
