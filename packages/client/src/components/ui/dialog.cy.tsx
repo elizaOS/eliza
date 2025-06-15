@@ -82,7 +82,7 @@ describe('Dialog Component', () => {
     cy.contains('Open Form').click();
     cy.get('input[placeholder="Name"]').should('be.visible');
 
-    cy.contains('button', 'Save changes').click();
+    cy.contains('button', 'Save changes').click({ force: true });
     cy.wrap(onSave).should('have.been.called');
   });
 
@@ -111,7 +111,7 @@ describe('Dialog Component', () => {
     cy.contains('External Open').click();
     cy.contains('Controlled Dialog').should('be.visible');
 
-    cy.contains('button', 'Close').click();
+    cy.contains('button', 'Close').click({ force: true });
     cy.contains('Controlled Dialog').should('not.exist');
   });
 

@@ -21,8 +21,8 @@ describe('Toast Component', () => {
       </ToastProvider>
     );
 
-    cy.contains('Success').should('be.visible');
-    cy.contains('Your changes have been saved.').should('be.visible');
+    cy.contains('Notification').should('be.visible');
+    cy.contains('This is a toast message').should('be.visible');
   });
 
   it('renders with action button', () => {
@@ -41,7 +41,7 @@ describe('Toast Component', () => {
       </ToastProvider>
     );
 
-    cy.contains('button', 'Undo').click();
+    cy.contains('button', 'Redo').click();
     cy.wrap(onAction).should('have.been.called');
   });
 

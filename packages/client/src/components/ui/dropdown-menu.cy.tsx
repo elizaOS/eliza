@@ -100,21 +100,25 @@ describe('DropdownMenu Component', () => {
   });
 
   it('renders checkbox items', () => {
-    const [checked, setChecked] = React.useState(false);
+    const CheckboxTestComponent = () => {
+      const [checked, setChecked] = React.useState(false);
 
-    cy.mountRadix(
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button>Settings</Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent>
-          <DropdownMenuCheckboxItem checked={checked} onCheckedChange={setChecked}>
-            Show Status Bar
-          </DropdownMenuCheckboxItem>
-          <DropdownMenuCheckboxItem>Show Activity Bar</DropdownMenuCheckboxItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    );
+      return (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button>Settings</Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuCheckboxItem checked={checked} onCheckedChange={setChecked}>
+              Show Status Bar
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem>Show Activity Bar</DropdownMenuCheckboxItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      );
+    };
+
+    cy.mountRadix(<CheckboxTestComponent />);
 
     cy.get('button').click();
     cy.contains('Show Status Bar').click();
@@ -122,22 +126,26 @@ describe('DropdownMenu Component', () => {
   });
 
   it('renders radio group items', () => {
-    const [value, setValue] = React.useState('option1');
+    const RadioTestComponent = () => {
+      const [value, setValue] = React.useState('option1');
 
-    cy.mountRadix(
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button>View</Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent>
-          <DropdownMenuRadioGroup value={value} onValueChange={setValue}>
-            <DropdownMenuRadioItem value="option1">Option 1</DropdownMenuRadioItem>
-            <DropdownMenuRadioItem value="option2">Option 2</DropdownMenuRadioItem>
-            <DropdownMenuRadioItem value="option3">Option 3</DropdownMenuRadioItem>
-          </DropdownMenuRadioGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    );
+      return (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button>View</Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuRadioGroup value={value} onValueChange={setValue}>
+              <DropdownMenuRadioItem value="option1">Option 1</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="option2">Option 2</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="option3">Option 3</DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      );
+    };
+
+    cy.mountRadix(<RadioTestComponent />);
 
     cy.get('button').click();
     cy.contains('Option 1').should('have.attr', 'data-state', 'checked');

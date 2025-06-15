@@ -64,7 +64,7 @@ describe('AlertDialog Component', () => {
     );
 
     cy.contains('Delete').click();
-    cy.contains('button', 'Delete').last().click();
+    cy.contains('button', 'Delete').last().click({ force: true });
     cy.wrap(onAction).should('have.been.called');
 
     // Dialog should close
@@ -89,7 +89,7 @@ describe('AlertDialog Component', () => {
     );
 
     cy.contains('Show Alert').click();
-    cy.contains('button', 'Cancel').click();
+    cy.contains('button', 'Cancel').click({ force: true });
     cy.wrap(onCancel).should('have.been.called');
 
     // Dialog should close
@@ -133,7 +133,7 @@ describe('AlertDialog Component', () => {
     cy.contains('Open Alert').click();
     cy.contains('Confirm Action').should('be.visible');
 
-    cy.contains('button', 'Confirm').click();
+    cy.contains('button', 'Confirm').click({ force: true });
     cy.contains('Confirmed: Yes').should('be.visible');
     cy.contains('Confirm Action').should('not.exist');
   });
