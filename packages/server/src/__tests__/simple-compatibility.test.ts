@@ -10,7 +10,7 @@ describe('Server Package Compatibility', () => {
   describe('Export Structure', () => {
     it('should have the expected export structure for CLI compatibility', () => {
       // Test the core patterns that CLI expects
-      
+
       // 1. Path expansion utility
       const expandTildePath = (filepath: string): string => {
         if (filepath && filepath.startsWith('~')) {
@@ -18,10 +18,10 @@ describe('Server Package Compatibility', () => {
         }
         return filepath;
       };
-      
+
       expect(expandTildePath('~/test')).toBe(path.join(process.cwd(), 'test'));
       expect(expandTildePath('/absolute')).toBe('/absolute');
-      
+
       // 2. Server interface expectations
       class MockAgentServer {
         isInitialized = false;
@@ -30,7 +30,7 @@ describe('Server Package Compatibility', () => {
         database: any = null;
         server: any = null;
         socketIO: any = null;
-        
+
         async initialize(options?: any) {
           this.isInitialized = true;
           this.app = { use: () => {} };
@@ -38,37 +38,37 @@ describe('Server Package Compatibility', () => {
           this.server = {};
           this.socketIO = {};
         }
-        
+
         start(port: number) {
           // Mock start
         }
-        
+
         async stop() {
           // Mock stop
         }
-        
+
         async registerAgent(runtime: any) {
           this.agents.set(runtime.agentId, runtime);
         }
-        
+
         unregisterAgent(agentId: string) {
           this.agents.delete(agentId);
         }
-        
+
         registerMiddleware(middleware: any) {
           // Mock middleware registration
         }
       }
-      
+
       // Test CLI usage patterns
       const server = new MockAgentServer();
-      
+
       // CLI extends server with custom methods
       (server as any).startAgent = () => {};
       (server as any).stopAgent = () => {};
       (server as any).loadCharacterTryPath = () => {};
       (server as any).jsonToCharacter = () => {};
-      
+
       expect(server.isInitialized).toBe(false);
       expect(typeof server.initialize).toBe('function');
       expect(typeof server.start).toBe('function');
@@ -84,7 +84,7 @@ describe('Server Package Compatibility', () => {
         middlewares?: any[];
         postgresUrl?: string;
       }
-      
+
       const validateOptions = (options: ServerOptions) => {
         // Test that CLI options are valid
         if (options.dataDir) {
@@ -97,13 +97,13 @@ describe('Server Package Compatibility', () => {
           expect(typeof options.postgresUrl).toBe('string');
         }
       };
-      
+
       // Test CLI's typical options
       const cliOptions = {
         dataDir: './data',
         postgresUrl: undefined,
       };
-      
+
       expect(() => validateOptions(cliOptions)).not.toThrow();
     });
   });
@@ -118,7 +118,7 @@ describe('Server Package Compatibility', () => {
         plugins: [],
         stop: async () => {},
       };
-      
+
       // Test agent validation patterns
       const validateRuntime = (runtime: any) => {
         if (!runtime) {
@@ -131,7 +131,7 @@ describe('Server Package Compatibility', () => {
           throw new Error('Runtime missing character configuration');
         }
       };
-      
+
       expect(() => validateRuntime(mockRuntime)).not.toThrow();
       expect(() => validateRuntime(null)).toThrow('Attempted to register null/undefined runtime');
       expect(() => validateRuntime({})).toThrow('Runtime missing agentId');
@@ -142,22 +142,25 @@ describe('Server Package Compatibility', () => {
     it('should support CLI database configuration patterns', () => {
       // Test path resolution patterns CLI uses
       const resolvePgliteDir = (dir?: string, fallbackDir?: string): string => {
-        const base = dir || process.env.PGLITE_DATA_DIR || fallbackDir || 
-                     path.join(process.cwd(), '.eliza', '.elizadb');
-        
+        const base =
+          dir ||
+          process.env.PGLITE_DATA_DIR ||
+          fallbackDir ||
+          path.join(process.cwd(), '.eliza', '.elizadb');
+
         // Handle tilde expansion
         if (base.startsWith('~')) {
           return path.join(process.cwd(), base.slice(1));
         }
-        
+
         return base;
       };
-      
+
       // Test various CLI usage patterns
       expect(resolvePgliteDir()).toBe(path.join(process.cwd(), '.eliza', '.elizadb'));
       expect(resolvePgliteDir('./custom')).toBe('./custom');
       expect(resolvePgliteDir('~/custom')).toBe(path.join(process.cwd(), 'custom'));
-      
+
       // Test environment variable handling
       const originalEnv = process.env.PGLITE_DATA_DIR;
       process.env.PGLITE_DATA_DIR = '/env/path';
@@ -174,11 +177,11 @@ describe('Server Package Compatibility', () => {
           throw new Error(`Invalid port number: ${port}`);
         }
       };
-      
+
       expect(() => validatePort(3000)).not.toThrow();
       expect(() => validatePort(null)).toThrow('Invalid port number: null');
       expect(() => validatePort('invalid')).toThrow('Invalid port number: invalid');
-      
+
       // Test graceful unregistration
       const safeUnregister = (agentId: any): void => {
         if (!agentId) {
@@ -187,7 +190,7 @@ describe('Server Package Compatibility', () => {
         }
         // Perform unregistration
       };
-      
+
       expect(() => safeUnregister(null)).not.toThrow();
       expect(() => safeUnregister(undefined)).not.toThrow();
     });
@@ -196,18 +199,18 @@ describe('Server Package Compatibility', () => {
   describe('Middleware Extension Patterns', () => {
     it('should support CLI middleware registration patterns', () => {
       type MiddlewareFunction = (req: any, res: any, next: () => void) => void;
-      
+
       // Test CLI's middleware registration pattern
       const middlewares: MiddlewareFunction[] = [];
-      
+
       const registerMiddleware = (middleware: MiddlewareFunction) => {
         middlewares.push(middleware);
       };
-      
+
       const testMiddleware: MiddlewareFunction = (req, res, next) => {
         next();
       };
-      
+
       registerMiddleware(testMiddleware);
       expect(middlewares.length).toBe(1);
       expect(middlewares[0]).toBe(testMiddleware);

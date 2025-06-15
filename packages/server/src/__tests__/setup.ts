@@ -24,7 +24,7 @@ beforeAll(() => {
   console.warn = () => {};
   console.error = () => {};
   console.info = () => {};
-  
+
   // Configure logger for test environment
   logger.level = 'error';
 });

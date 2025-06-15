@@ -47,7 +47,7 @@ describe('Basic Server Functionality', () => {
     it('should detect suspicious patterns', () => {
       const detectSuspiciousPatterns = (input: string): boolean => {
         const suspiciousPatterns = ['..', '<', '>', '"', "'", '\\', '/'];
-        return suspiciousPatterns.some(pattern => input.includes(pattern));
+        return suspiciousPatterns.some((pattern) => input.includes(pattern));
       };
 
       // Suspicious inputs
@@ -78,7 +78,7 @@ describe('Basic Server Functionality', () => {
     it('should detect script injection patterns', () => {
       const containsScriptInjection = (input: string): boolean => {
         const scriptPatterns = ['<script', 'javascript:', 'onerror=', 'onload='];
-        return scriptPatterns.some(pattern => input.toLowerCase().includes(pattern));
+        return scriptPatterns.some((pattern) => input.toLowerCase().includes(pattern));
       };
 
       expect(containsScriptInjection('<script>alert(1)</script>')).toBe(true);
@@ -92,43 +92,46 @@ describe('Basic Server Functionality', () => {
     it('should implement basic rate limiting concepts', () => {
       class SimpleRateLimiter {
         private requests: Map<string, number[]> = new Map();
-        
-        constructor(private windowMs: number, private maxRequests: number) {}
-        
+
+        constructor(
+          private windowMs: number,
+          private maxRequests: number
+        ) {}
+
         isAllowed(clientId: string): boolean {
           const now = Date.now();
           const windowStart = now - this.windowMs;
-          
+
           if (!this.requests.has(clientId)) {
             this.requests.set(clientId, []);
           }
-          
+
           const clientRequests = this.requests.get(clientId)!;
-          
+
           // Remove old requests outside the window
-          const validRequests = clientRequests.filter(time => time > windowStart);
+          const validRequests = clientRequests.filter((time) => time > windowStart);
           this.requests.set(clientId, validRequests);
-          
+
           // Check if under limit
           if (validRequests.length < this.maxRequests) {
             validRequests.push(now);
             return true;
           }
-          
+
           return false;
         }
       }
 
       const rateLimiter = new SimpleRateLimiter(60000, 5); // 5 requests per minute
-      
+
       // Should allow first 5 requests
       for (let i = 0; i < 5; i++) {
         expect(rateLimiter.isAllowed('client1')).toBe(true);
       }
-      
+
       // Should block the 6th request
       expect(rateLimiter.isAllowed('client1')).toBe(false);
-      
+
       // Different client should be allowed
       expect(rateLimiter.isAllowed('client2')).toBe(true);
     });
@@ -137,44 +140,48 @@ describe('Basic Server Functionality', () => {
   describe('Middleware patterns', () => {
     it('should implement basic middleware concepts', () => {
       type MiddlewareFunction = (req: any, res: any, next: () => void) => void;
-      
+
       const createValidationMiddleware = (paramName: string): MiddlewareFunction => {
         return (req, res, next) => {
           const paramValue = req.params?.[paramName];
-          
+
           if (!paramValue) {
             res.error = 'Missing parameter';
             return;
           }
-          
+
           // Simple UUID validation
           const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
           if (!uuidRegex.test(paramValue)) {
             res.error = 'Invalid format';
             return;
           }
-          
+
           next();
         };
       };
 
       const middleware = createValidationMiddleware('id');
-      
+
       // Test valid case
       const validReq = { params: { id: '123e4567-e89b-12d3-a456-426614174000' } };
       const validRes: any = {};
       let nextCalled = false;
-      
-      middleware(validReq, validRes, () => { nextCalled = true; });
+
+      middleware(validReq, validRes, () => {
+        nextCalled = true;
+      });
       expect(nextCalled).toBe(true);
       expect(validRes.error).toBeUndefined();
-      
+
       // Test invalid case
       const invalidReq = { params: { id: 'invalid-id' } };
       const invalidRes: any = {};
       nextCalled = false;
-      
-      middleware(invalidReq, invalidRes, () => { nextCalled = true; });
+
+      middleware(invalidReq, invalidRes, () => {
+        nextCalled = true;
+      });
       expect(nextCalled).toBe(false);
       expect(invalidRes.error).toBe('Invalid format');
     });
@@ -187,7 +194,7 @@ describe('Basic Server Functionality', () => {
         middlewares?: any[];
         postgresUrl?: string;
       }
-      
+
       const createServerConfig = (options: ServerOptions = {}) => {
         return {
           dataDir: options.dataDir || './default-data',

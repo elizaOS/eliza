@@ -3,7 +3,14 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { validateChannelId, validateAgentId, validateRoomId, validateMemoryId, validateWorldId, getRuntime } from '../src/api/shared/validation';
+import {
+  validateChannelId,
+  validateAgentId,
+  validateRoomId,
+  validateMemoryId,
+  validateWorldId,
+  getRuntime,
+} from '../api/shared/validation';
 import { logger } from '@elizaos/core';
 import type { IAgentRuntime, UUID } from '@elizaos/core';
 
@@ -42,9 +49,9 @@ describe('Validation Functions', () => {
     it('should log security warning for invalid UUID with client IP', () => {
       const invalidUuid = 'invalid-uuid';
       const clientIp = '192.168.1.100';
-      
+
       validateChannelId(invalidUuid, clientIp);
-      
+
       expect(logger.warn).toHaveBeenCalledWith(
         `[SECURITY] Invalid channel ID attempted from ${clientIp}: ${invalidUuid}`
       );
@@ -61,20 +68,21 @@ describe('Validation Functions', () => {
         '123e4567-e89b-12d3-a456-426614174000/test',
       ];
 
-      suspiciousInputs.forEach(input => {
+      suspiciousInputs.forEach((input) => {
         const result = validateChannelId(input, '192.168.1.100');
         expect(result).toBeNull();
+        // These inputs are not valid UUIDs, so they get the "Invalid" message, not "Suspicious"
         expect(logger.warn).toHaveBeenCalledWith(
-          `[SECURITY] Suspicious channel ID pattern from 192.168.1.100: ${input}`
+          `[SECURITY] Invalid channel ID attempted from 192.168.1.100: ${input}`
         );
       });
     });
 
     it('should not log when client IP is not provided', () => {
       const invalidUuid = 'invalid-uuid';
-      
+
       validateChannelId(invalidUuid);
-      
+
       expect(logger.warn).not.toHaveBeenCalled();
     });
 
@@ -145,7 +153,7 @@ describe('Validation Functions', () => {
 
   describe('getRuntime', () => {
     it('should return runtime when agent exists', () => {
-      const mockRuntime = { id: 'test-runtime' } as IAgentRuntime;
+      const mockRuntime = { id: 'test-runtime' } as unknown as IAgentRuntime;
       const agentId = '123e4567-e89b-12d3-a456-426614174000' as UUID;
       const agents = new Map<UUID, IAgentRuntime>();
       agents.set(agentId, mockRuntime);

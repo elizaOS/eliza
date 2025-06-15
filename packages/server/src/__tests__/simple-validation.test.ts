@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { expandTildePath } from '../src/index';
+import { expandTildePath } from '../index';
 import path from 'node:path';
 
 // Simple mocks
@@ -50,7 +50,7 @@ describe('Simple Validation Tests', () => {
     it('should expand tilde path correctly', () => {
       const input = '~/test/path';
       const expected = path.join(process.cwd(), 'test/path');
-      
+
       const result = expandTildePath(input);
       expect(result).toBe(expected);
     });
@@ -58,7 +58,7 @@ describe('Simple Validation Tests', () => {
     it('should leave non-tilde paths unchanged', () => {
       const absolutePath = '/absolute/path';
       const relativePath = 'relative/path';
-      
+
       expect(expandTildePath(absolutePath)).toBe(absolutePath);
       expect(expandTildePath(relativePath)).toBe(relativePath);
     });
@@ -77,10 +77,10 @@ describe('Simple Validation Tests', () => {
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         return uuidRegex.test(id);
       };
-      
+
       const validUuid = '123e4567-e89b-12d3-a456-426614174000';
       const invalidUuid = 'invalid-uuid';
-      
+
       expect(validateUuidPattern(validUuid)).toBe(true);
       expect(validateUuidPattern(invalidUuid)).toBe(false);
     });
@@ -90,7 +90,7 @@ describe('Simple Validation Tests', () => {
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         return uuidRegex.test(id);
       };
-      
+
       const testCases = [
         { input: '123e4567-e89b-12d3-a456-426614174000', expected: true },
         { input: '00000000-0000-0000-0000-000000000000', expected: true },
@@ -120,9 +120,9 @@ describe('Simple Validation Tests', () => {
         'test/slash',
       ];
 
-      suspiciousIds.forEach(id => {
+      suspiciousIds.forEach((id) => {
         const suspiciousPatterns = ['..', '<', '>', '"', "'", '\\', '/'];
-        const hasSuspicious = suspiciousPatterns.some(pattern => id.includes(pattern));
+        const hasSuspicious = suspiciousPatterns.some((pattern) => id.includes(pattern));
         expect(hasSuspicious).toBe(true);
       });
     });
@@ -134,9 +134,9 @@ describe('Simple Validation Tests', () => {
         'ffffffff-ffff-ffff-ffff-ffffffffffff',
       ];
 
-      cleanUuids.forEach(uuid => {
+      cleanUuids.forEach((uuid) => {
         const suspiciousPatterns = ['..', '<', '>', '"', "'", '\\', '/'];
-        const hasSuspicious = suspiciousPatterns.some(pattern => uuid.includes(pattern));
+        const hasSuspicious = suspiciousPatterns.some((pattern) => uuid.includes(pattern));
         expect(hasSuspicious).toBe(false);
       });
     });
@@ -146,13 +146,13 @@ describe('Simple Validation Tests', () => {
     it('should identify path traversal attempts', () => {
       const maliciousPaths = [
         '../../../etc/passwd',
-        '..\\..\\windows\\system32', 
+        '..\\..\\windows\\system32',
         '....//....//etc/passwd',
         // URL encoded version decoded for checking
         decodeURIComponent('%2e%2e%2f%2e%2e%2f'),
       ];
 
-      maliciousPaths.forEach(path => {
+      maliciousPaths.forEach((path) => {
         expect(path.includes('..')).toBe(true);
       });
     });
@@ -165,8 +165,9 @@ describe('Simple Validation Tests', () => {
         '"><script>alert(1)</script>',
       ];
 
-      maliciousInputs.forEach(input => {
-        const hasScriptTag = input.includes('<script') || input.includes('javascript:') || input.includes('onerror=');
+      maliciousInputs.forEach((input) => {
+        const hasScriptTag =
+          input.includes('<script') || input.includes('javascript:') || input.includes('onerror=');
         expect(hasScriptTag).toBe(true);
       });
     });

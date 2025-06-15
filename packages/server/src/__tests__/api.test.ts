@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import express from 'express';
 import http from 'node:http';
-import { AgentServer } from '../src/index';
+import { AgentServer } from '../index';
 
 // Mock dependencies
 vi.mock('@elizaos/core', async () => {
@@ -48,9 +48,9 @@ vi.mock('@elizaos/plugin-sql', () => ({
     getDatabase: vi.fn(() => ({
       execute: vi.fn().mockResolvedValue([]),
     })),
-    getMessageServers: vi.fn().mockResolvedValue([
-      { id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' }
-    ]),
+    getMessageServers: vi
+      .fn()
+      .mockResolvedValue([{ id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' }]),
     createMessageServer: vi.fn().mockResolvedValue({ id: '00000000-0000-0000-0000-000000000000' }),
     getAgentsForServer: vi.fn().mockResolvedValue([]),
     addAgentToServer: vi.fn().mockResolvedValue(undefined),
@@ -115,7 +115,7 @@ describe('API Server Functionality', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    
+
     // Mock HTTP server with all methods Socket.IO expects
     mockServer = {
       listen: vi.fn((port, callback) => {
@@ -133,9 +133,9 @@ describe('API Server Functionality', () => {
       timeout: 0,
       keepAliveTimeout: 5000,
     };
-    
+
     vi.spyOn(http, 'createServer').mockReturnValue(mockServer as any);
-    
+
     server = new AgentServer();
     await server.initialize();
     app = server.app;
@@ -179,7 +179,7 @@ describe('API Server Functionality', () => {
     it('should have database configured', () => {
       expect(server.database).toBeDefined();
       expect(typeof server.database.init).toBe('function');
-      expect(typeof server.database.getMessageServers).toBe('function');
+      expect(typeof (server.database as any).getMessageServers).toBe('function');
     });
   });
 

@@ -34,7 +34,7 @@ export const validateUuidMiddleware = (paramName: string) => {
   return (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const paramValue = req.params[paramName];
     let validatedUuid: UUID | null;
-    
+
     // Use enhanced validation for channel IDs
     if (paramName === 'channelId') {
       const clientIp = req.ip || 'unknown';
@@ -63,19 +63,19 @@ export const validateChannelIdMiddleware = () => {
   return (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const channelId = req.params.channelId;
     const clientIp = req.ip || 'unknown';
-    
+
     if (!channelId) {
       return sendError(res, 400, 'MISSING_CHANNEL_ID', 'Channel ID is required');
     }
-    
+
     const validatedChannelId = validateChannelId(channelId, clientIp);
-    
+
     if (!validatedChannelId) {
       // Rate limit failed attempts to prevent brute force
       logger.warn(`[SECURITY] Failed channel ID validation from ${clientIp}: ${channelId}`);
       return sendError(res, 400, 'INVALID_CHANNEL_ID', 'Invalid channel ID format');
     }
-    
+
     // Store validated channel ID
     req.params.channelId = validatedChannelId;
     next();

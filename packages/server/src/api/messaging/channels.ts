@@ -1,5 +1,5 @@
 import { ChannelType, logger, validateUuid, type UUID } from '@elizaos/core';
-import express from 'express';
+import express, { type RequestHandler } from 'express';
 import internalMessageBus from '../../bus';
 import type { AgentServer } from '../../index';
 import type { MessageServiceStructure as MessageService } from '../../types';
@@ -26,6 +26,7 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
   const router = express.Router();
 
   // GUI posts NEW messages from a user here
+  // @ts-ignore - Express type issue with async handlers
   router.post('/central-channels/:channelId/messages', async (req, res) => {
     const channelIdParam = validateUuid(req.params.channelId);
     const {
@@ -217,6 +218,7 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
   });
 
   // GET messages for a central channel
+  // @ts-ignore - Express type issue with async handlers
   router.get('/central-channels/:channelId/messages', async (req, res) => {
     const channelId = validateUuid(req.params.channelId);
     const limit = req.query.limit ? Number.parseInt(req.query.limit as string, 10) : 50;
@@ -259,6 +261,7 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
   });
 
   // GET /central-servers/:serverId/channels
+  // @ts-ignore - Express type issue with async handlers
   router.get('/central-servers/:serverId/channels', async (req, res) => {
     const serverId =
       req.params.serverId === DEFAULT_SERVER_ID
@@ -280,6 +283,7 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
   });
 
   // POST /channels - Create a new central channel
+  // @ts-ignore - Express type issue with async handlers
   router.post('/channels', async (req, res) => {
     const { messageServerId, name, type, sourceType, sourceId, topic, metadata } = req.body;
 
@@ -315,6 +319,7 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
   });
 
   // GET /dm-channel?targetUserId=<target_user_id>
+  // @ts-ignore - Express type issue with async handlers
   router.get('/dm-channel', async (req, res) => {
     const targetUserId = validateUuid(req.query.targetUserId as string);
     const currentUserId = validateUuid(req.query.currentUserId as string);
@@ -375,6 +380,7 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
   });
 
   // POST /central-channels (for creating group channels)
+  // @ts-ignore - Express type issue with async handlers
   router.post('/central-channels', async (req, res) => {
     const {
       name,
@@ -430,6 +436,7 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
   });
 
   // Get channel details
+  // @ts-ignore - Express type issue with async handlers
   router.get('/central-channels/:channelId/details', async (req, res) => {
     const channelId = validateUuid(req.params.channelId);
     if (!channelId) {
@@ -448,6 +455,7 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
   });
 
   // Get channel participants
+  // @ts-ignore - Express type issue with async handlers
   router.get('/central-channels/:channelId/participants', async (req, res) => {
     const channelId = validateUuid(req.params.channelId);
     if (!channelId) {
@@ -466,6 +474,7 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
   });
 
   // POST /central-channels/:channelId/agents - Add agent to channel
+  // @ts-ignore - Express type issue with async handlers
   router.post('/central-channels/:channelId/agents', async (req, res) => {
     const channelId = validateUuid(req.params.channelId);
     const { agentId } = req.body;
@@ -517,6 +526,7 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
   });
 
   // DELETE /central-channels/:channelId/agents/:agentId - Remove agent from channel
+  // @ts-ignore - Express type issue with async handlers
   router.delete('/central-channels/:channelId/agents/:agentId', async (req, res) => {
     const channelId = validateUuid(req.params.channelId);
     const agentId = validateUuid(req.params.agentId);
@@ -578,6 +588,7 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
   });
 
   // GET /central-channels/:channelId/agents - List agents in channel
+  // @ts-ignore - Express type issue with async handlers
   router.get('/central-channels/:channelId/agents', async (req, res) => {
     const channelId = validateUuid(req.params.channelId);
 
@@ -615,6 +626,7 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
   });
 
   // Delete single message
+  // @ts-ignore - Express type issue with async handlers
   router.delete('/central-channels/:channelId/messages/:messageId', async (req, res) => {
     const channelId = validateUuid(req.params.channelId);
     const messageId = validateUuid(req.params.messageId);
@@ -655,6 +667,7 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
   });
 
   // Clear all messages in channel
+  // @ts-ignore - Express type issue with async handlers
   router.delete('/central-channels/:channelId/messages', async (req, res) => {
     const channelId = validateUuid(req.params.channelId);
     if (!channelId) {
@@ -687,6 +700,7 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
   });
 
   // Update channel
+  // @ts-ignore - Express type issue with async handlers
   router.patch('/central-channels/:channelId', async (req, res) => {
     const channelId = validateUuid(req.params.channelId);
     if (!channelId) {
@@ -714,6 +728,7 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
   });
 
   // Delete entire channel
+  // @ts-ignore - Express type issue with async handlers
   router.delete('/central-channels/:channelId', async (req, res) => {
     const channelId = validateUuid(req.params.channelId);
     if (!channelId) {
@@ -753,12 +768,13 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
   });
 
   // Upload media to channel
+  // @ts-ignore - Express type issue with async handlers
   router.post(
     '/channels/:channelId/upload-media',
     createUploadRateLimit(),
     createFileSystemRateLimit(),
     channelUpload.single('file'),
-    async (req: ChannelUploadRequest, res) => {
+    (async (req: ChannelUploadRequest, res) => {
       const channelId = validateUuid(req.params.channelId);
       if (!channelId) {
         res.status(400).json({ success: false, error: 'Invalid channelId format' });
@@ -825,7 +841,7 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
         );
         res.status(500).json({ success: false, error: 'Failed to process media upload' });
       }
-    }
+    }) as RequestHandler
   );
 
   return router;
