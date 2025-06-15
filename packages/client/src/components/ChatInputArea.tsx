@@ -39,7 +39,7 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
   fileInputRef,
 }) => {
   return (
-    <div className="px-2 sm:px-4 pb-2 sm:pb-4 mt-auto flex-shrink-0">
+    <div className="px-2 sm:px-4 pb-2 sm:pb-4 mt-auto flex-shrink-0" data-testid="chat-container">
       {inputDisabled && (
         <div className="px-2 pb-2 text-sm text-muted-foreground flex items-center gap-2">
           <div className="flex gap-0.5 items-center justify-center">
@@ -131,6 +131,7 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
           disabled={
             inputDisabled || (chatType === ChannelType.DM && targetAgentData?.status === 'inactive')
           }
+          data-testid="chat-input"
         />
         <div className="flex items-center p-2 sm:p-3 pt-0 gap-1">
           <Tooltip>
@@ -176,6 +177,7 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
             type="submit"
             size="sm"
             className="ml-auto gap-1.5 h-[26px] sm:h-[30px] px-2 sm:px-3"
+            data-testid="send-button"
           >
             {inputDisabled || selectedFiles.some((f) => f.isUploading) ? (
               <div className="flex gap-0.5 items-center justify-center">

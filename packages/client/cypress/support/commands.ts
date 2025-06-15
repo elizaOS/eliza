@@ -6,11 +6,18 @@ Cypress.Commands.add('waitForApp', () => {
   // Wait for the root element to exist
   cy.get('#root', { timeout: 30000 }).should('exist');
   
-  // Wait for any loading indicators to disappear
-  cy.get('[data-testid="loading"]', { timeout: 30000 }).should('not.exist');
-  
   // Wait for the app to be interactive
   cy.document().its('readyState').should('equal', 'complete');
+  
+  // Wait a bit for React to hydrate and render
+  cy.wait(1000);
+  
+  // Check if there's any loading indicator and wait for it to disappear
+  cy.get('body').then(($body) => {
+    if ($body.find('[data-testid="loading"]').length > 0) {
+      cy.get('[data-testid="loading"]', { timeout: 30000 }).should('not.exist');
+    }
+  });
 });
 
 // Custom command to login (can be implemented based on your auth flow)
@@ -74,6 +81,10 @@ Cypress.Commands.add('waitForApi', (alias: string, timeout = 10000) => {
 declare global {
   namespace Cypress {
     interface Chainable {
+      waitForApp(): Chainable<void>;
+      login(email: string, password: string): Chainable<void>;
+      connectWebSocket(): Chainable<void>;
+      cleanupTestData(): Chainable<void>;
       getByTestId(testId: string): Chainable<JQuery<HTMLElement>>;
       waitForApi(alias: string, timeout?: number): Chainable<any>;
     }

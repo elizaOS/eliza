@@ -498,6 +498,7 @@ export function AppSidebar({
           !isMobile && 'hidden md:flex md:flex-col'
         )}
         collapsible="none"
+        data-testid="app-sidebar"
       >
         {/* ---------- header ---------- */}
         <SidebarHeader>
