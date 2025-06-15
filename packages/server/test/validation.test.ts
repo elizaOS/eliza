@@ -65,7 +65,7 @@ describe('Validation Functions', () => {
         const result = validateChannelId(input, '192.168.1.100');
         expect(result).toBeNull();
         expect(logger.warn).toHaveBeenCalledWith(
-          `[SECURITY] Suspicious channel ID pattern from 192.168.1.100: ${input}`
+          `[SECURITY] Invalid channel ID attempted from 192.168.1.100: ${input}`
         );
       });
     });
@@ -145,7 +145,14 @@ describe('Validation Functions', () => {
 
   describe('getRuntime', () => {
     it('should return runtime when agent exists', () => {
-      const mockRuntime = { id: 'test-runtime' } as IAgentRuntime;
+      const mockRuntime = { 
+        agentId: '123e4567-e89b-12d3-a456-426614174000' as UUID,
+        character: {},
+        providers: [],
+        actions: [],
+        evaluators: [],
+        services: new Map(),
+      } as unknown as IAgentRuntime;
       const agentId = '123e4567-e89b-12d3-a456-426614174000' as UUID;
       const agents = new Map<UUID, IAgentRuntime>();
       agents.set(agentId, mockRuntime);

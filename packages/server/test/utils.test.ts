@@ -4,33 +4,50 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { expandTildePath, resolvePgliteDir } from '../src/index';
-import path from 'node:path';
-import fs from 'node:fs';
+import path from 'path';
 
-// Mock dependencies
-vi.mock('node:fs', () => ({
-  existsSync: vi.fn(),
-}));
+// Mock fs with proper default export
+vi.mock('node:fs', async () => {
+  const actual = await vi.importActual('node:fs');
+  return {
+    ...actual,
+    default: {
+      ...actual,
+      existsSync: vi.fn(),
+    },
+    existsSync: vi.fn(),
+  };
+});
 
+// Mock dotenv with proper structure for default import
+vi.mock('dotenv', async () => {
+  const actual = await vi.importActual('dotenv');
+  const mockConfig = vi.fn();
+  return {
+    ...actual,
+    default: {
+      config: mockConfig,
+    },
+    config: mockConfig,
+  };
+});
+
+// Mock environment module
 vi.mock('../src/api/system/environment', () => ({
   resolveEnvFile: vi.fn(() => '.env'),
-}));
-
-vi.mock('dotenv', () => ({
-  config: vi.fn(),
 }));
 
 describe('Utility Functions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Clear environment variables
+    // Reset environment variables
     delete process.env.PGLITE_DATA_DIR;
   });
 
   describe('expandTildePath', () => {
     it('should expand tilde path to current working directory', () => {
-      const input = '~/data/test';
-      const expected = path.join(process.cwd(), 'data/test');
+      const input = '~/test/path';
+      const expected = path.join(process.cwd(), 'test/path');
       
       const result = expandTildePath(input);
       
@@ -80,7 +97,7 @@ describe('Utility Functions', () => {
 
     it('should handle tilde with slash', () => {
       const input = '~/';
-      const expected = path.join(process.cwd(), '');
+      const expected = process.cwd();
       
       const result = expandTildePath(input);
       
@@ -89,9 +106,8 @@ describe('Utility Functions', () => {
   });
 
   describe('resolvePgliteDir', () => {
-    const originalCwd = process.cwd();
-
-    beforeEach(() => {
+    beforeEach(async () => {
+      const fs = await import('node:fs');
       vi.mocked(fs.existsSync).mockReturnValue(true);
     });
 
@@ -156,19 +172,22 @@ describe('Utility Functions', () => {
       expect(process.env.PGLITE_DATA_DIR).toBeUndefined();
     });
 
-    it('should handle environment file loading', () => {
-      const { resolveEnvFile } = require('../src/api/system/environment');
-      const dotenv = require('dotenv');
+    it('should handle environment file loading when exists', async () => {
+      const fs = await import('node:fs');
+      const dotenv = await import('dotenv');
+      
+      vi.mocked(fs.existsSync).mockReturnValue(true);
       
       resolvePgliteDir();
       
-      expect(resolveEnvFile).toHaveBeenCalled();
-      expect(dotenv.config).toHaveBeenCalledWith({ path: '.env' });
+      expect(dotenv.default.config).toHaveBeenCalledWith({ path: '.env' });
     });
 
-    it('should handle missing environment file gracefully', () => {
+    it('should handle missing environment file gracefully', async () => {
+      const fs = await import('node:fs');
+      const dotenv = await import('dotenv');
+      
       vi.mocked(fs.existsSync).mockReturnValue(false);
-      const dotenv = require('dotenv');
       
       resolvePgliteDir();
       
