@@ -1,14 +1,10 @@
+/// <reference types="cypress" />
+/// <reference path="../../../cypress/support/types.d.ts" />
+
 import React from 'react';
 import AgentCard from './agent-card';
 import type { AgentWithStatus } from '@/types';
-
-// Mock AgentStatus to avoid import issues
-const AgentStatus = {
-  ACTIVE: 'active',
-  INACTIVE: 'inactive',
-  STARTING: 'starting',
-  STOPPING: 'stopping',
-};
+import { AgentStatus } from '@elizaos/core';
 
 describe('AgentCard Component', () => {
   const mockAgent: Partial<AgentWithStatus> = {

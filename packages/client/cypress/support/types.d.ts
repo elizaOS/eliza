@@ -1,5 +1,8 @@
 /// <reference types="cypress" />
 /// <reference types="@testing-library/cypress" />
+/// <reference types="@cypress/react" />
+
+import { MountOptions, MountReturn } from '@cypress/react';
 
 declare module 'process/browser' {
   const process: NodeJS.Process;
@@ -10,9 +13,21 @@ declare module 'process/browser' {
 declare global {
   namespace Cypress {
     interface Chainable {
-      mount: typeof mount;
-      mountWithRouter: typeof mountWithRouter;
-      mountRadix: typeof mountRadix;
+      /**
+       * Mounts a React component with all common providers (QueryClient, Router)
+       */
+      mount(component: React.ReactNode, options?: MountOptions): Chainable<MountReturn>;
+      
+      /**
+       * Mounts a React component with just Router provider
+       */
+      mountWithRouter(component: React.ReactNode, options?: MountOptions): Chainable<MountReturn>;
+      
+      /**
+       * Mounts a React component specifically for Radix UI components with DirectionProvider
+       */
+      mountRadix(component: React.ReactNode, options?: MountOptions): Chainable<MountReturn>;
+      
       waitForApp(): Chainable<void>;
       login(email: string, password: string): Chainable<void>;
       connectWebSocket(): Chainable<void>;

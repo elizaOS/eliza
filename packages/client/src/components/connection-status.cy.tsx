@@ -1,7 +1,6 @@
-import React from 'react';
+/// <reference types="cypress" />
+
 import ConnectionStatus from './connection-status';
-import { AuthProvider } from '../context/AuthContext';
-import { ConnectionProvider } from '../context/ConnectionContext';
 
 // Mock the contexts
 const MockProviders = ({

@@ -18,7 +18,7 @@
       "@elizaos/core": ["../core/src"],
       "@elizaos/core/*": ["../core/src/*"]
     },
-    "types": ["cypress", "node", "@testing-library/cypress", "react", "react-dom"],
+    "types": ["cypress", "node", "@testing-library/cypress", "@cypress/react"],
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true
   },
@@ -26,9 +26,11 @@
     "**/*.ts",
     "**/*.tsx",
     "**/*.d.ts",
+    "./support/**/*",
     "../src/**/*.cy.ts",
     "../src/**/*.cy.tsx",
     "../src/**/*.tsx",
     "../src/**/*.ts"
-  ]
+  ],
+  "exclude": ["node_modules"]
 } 
