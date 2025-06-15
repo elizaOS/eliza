@@ -214,8 +214,8 @@ describe('Utility Functions', () => {
     });
 
     it('should handle empty string inputs', () => {
-      // Empty string gets passed to expandTildePath which returns empty string
-      const expected = '';
+      // Empty string should fall back to default path since it's considered invalid
+      const expected = path.join(process.cwd(), '.eliza', '.elizadb');
 
       const result = resolvePgliteDir('');
 

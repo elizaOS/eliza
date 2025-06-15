@@ -245,7 +245,7 @@ describe('MessageBusService', () => {
       };
 
       // Override mock to exclude agent from participants for this test
-      mockFetch.mockImplementationOnce((url) => {
+      mockFetch.mockImplementation((url) => {
         if (url.includes('/api/messaging/central-channels/') && url.includes('/participants')) {
           return Promise.resolve({
             ok: true,
@@ -258,9 +258,18 @@ describe('MessageBusService', () => {
             }),
           });
         }
+        if (url.includes('/api/messaging/central-channels/') && url.includes('/details')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              success: true,
+              data: { id: '456e7890-e89b-12d3-a456-426614174000' }
+            })
+          });
+        }
         return Promise.resolve({
           ok: true,
-          json: async () => ({ success: true }),
+          json: async () => ({ success: true, data: {} }),
         });
       });
 
@@ -305,7 +314,7 @@ describe('MessageBusService', () => {
       await handler(testMessage);
 
       expect(logger.error).toHaveBeenCalledWith(
-        expect.stringContaining('MessageBusService: Error fetching participants'),
+        expect.stringContaining('MessageBusService: Error fetching participants for channel'),
         expect.any(Error)
       );
     });
