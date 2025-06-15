@@ -75,7 +75,13 @@ export function createAgentLogsRouter(
       sendSuccess(res, filteredLogs);
     } catch (error) {
       logger.error(`[AGENT LOGS] Error retrieving logs for agent ${agentId}:`, error);
-      sendError(res, 500, 'LOG_ERROR', 'Error retrieving agent logs', error.message);
+      sendError(
+        res,
+        500,
+        'LOG_ERROR',
+        'Error retrieving agent logs',
+        error instanceof Error ? error.message : String(error)
+      );
     }
   });
 
@@ -97,7 +103,13 @@ export function createAgentLogsRouter(
       res.status(204).send();
     } catch (error) {
       logger.error(`[LOG DELETE] Error deleting log ${logId} for agent ${agentId}:`, error);
-      sendError(res, 500, 'DELETE_ERROR', 'Failed to delete log', error.message);
+      sendError(
+        res,
+        500,
+        'DELETE_ERROR',
+        'Failed to delete log',
+        error instanceof Error ? error.message : String(error)
+      );
     }
   });
 

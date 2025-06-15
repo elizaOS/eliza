@@ -219,7 +219,7 @@ export class UserEnvironment {
       name: 'bun',
       version,
       global: isGlobal,
-      isNpx,
+      isNpx: !!isNpx,
       isBunx,
     };
   }

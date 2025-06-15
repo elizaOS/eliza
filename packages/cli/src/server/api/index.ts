@@ -1,14 +1,5 @@
 import type { IAgentRuntime, UUID } from '@elizaos/core';
-import {
-  AgentRuntime,
-  ChannelType,
-  createUniqueUuid,
-  EventType,
-  logger as Logger,
-  logger,
-  SOCKET_MESSAGE_TYPE,
-  validateUuid,
-} from '@elizaos/core';
+import { ChannelType, createUniqueUuid, EventType, logger, validateUuid } from '@elizaos/core';
 import bodyParser from 'body-parser';
 import cors from 'cors';
 import express from 'express';
@@ -252,7 +243,16 @@ async function processSocketMessage(
     };
 
     // Define callback for agent responses
-    const callback = async (content) => {
+    const callback = async (content: {
+      inReplyTo?: string;
+      text?: string;
+      simple?: boolean | string;
+      message?: string;
+      actions?: string[];
+      thought?: string;
+      providers?: any[];
+      [key: string]: any;
+    }) => {
       // NOTE: This callback runs *after* the main span might have ended.
       // If detailed tracing of the callback is needed, a new linked span could be created here.
       try {
@@ -316,7 +316,7 @@ async function processSocketMessage(
           await runtime.createMemory(memory, 'messages');
         } catch (error) {
           // Handle duplicate key constraint gracefully
-          if (error.message && error.message.includes('memories_pkey')) {
+          if (error instanceof Error && error.message && error.message.includes('memories_pkey')) {
             logger.debug('Memory already exists, likely due to duplicate processing:', memory.id);
           } else {
             logger.error('Error creating memory:', error);
@@ -382,8 +382,11 @@ async function processSocketMessage(
         span.setStatus({ code: SpanStatusCode.OK });
       } catch (error) {
         logger.error('Error processing instrumented socket message:', error);
-        span.recordException(error);
-        span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+        span.recordException(error as Error);
+        span.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: error instanceof Error ? error.message : String(error),
+        });
         throw error;
       } finally {
         span.end();
@@ -541,8 +544,10 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
                 `Agent ${agentIdFromQuery} plugin wildcard route: [${route.type.toUpperCase()}] ${routePath} for request: ${reqPath}`
               );
               try {
-                route.handler(req, res, runtime);
-                handled = true;
+                if (route.handler) {
+                  route.handler(req, res, runtime);
+                  handled = true;
+                }
               } catch (error) {
                 logger.error(
                   `Error handling plugin wildcard route for agent ${agentIdFromQuery}: ${routePath}`,
@@ -554,10 +559,14 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
                 );
                 if (!res.headersSent) {
                   const status =
-                    error.code === 'ENOENT' || error.message?.includes('not found') ? 404 : 500;
-                  res
-                    .status(status)
-                    .json({ error: error.message || 'Error processing wildcard route' });
+                    (error instanceof Error && 'code' in error && error.code === 'ENOENT') ||
+                    (error instanceof Error && error.message?.includes('not found'))
+                      ? 404
+                      : 500;
+                  res.status(status).json({
+                    error:
+                      error instanceof Error ? error.message : 'Error processing wildcard route',
+                  });
                 }
                 handled = true;
               }
@@ -585,8 +594,10 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
               );
               req.params = { ...(matched.params || {}) };
               try {
-                route.handler(req, res, runtime);
-                handled = true;
+                if (route.handler) {
+                  route.handler(req, res, runtime);
+                  handled = true;
+                }
               } catch (error) {
                 logger.error(
                   `Error handling plugin route for agent ${agentIdFromQuery}: ${routePath}`,
@@ -599,8 +610,13 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
                 );
                 if (!res.headersSent) {
                   const status =
-                    error.code === 'ENOENT' || error.message?.includes('not found') ? 404 : 500;
-                  res.status(status).json({ error: error.message || 'Error processing route' });
+                    (error instanceof Error && 'code' in error && error.code === 'ENOENT') ||
+                    (error instanceof Error && error.message?.includes('not found'))
+                      ? 404
+                      : 500;
+                  res.status(status).json({
+                    error: error instanceof Error ? error.message : 'Error processing route',
+                  });
                 }
                 handled = true;
               }
@@ -660,7 +676,7 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
                 `Global plugin wildcard route: [${route.type.toUpperCase()}] ${routePath} (Agent: ${runtime.agentId}) for request: ${reqPath}`
               );
               try {
-                route.handler(req, res, runtime);
+                route?.handler?.(req, res, runtime);
                 handled = true;
               } catch (error) {
                 logger.error(
@@ -669,10 +685,14 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
                 );
                 if (!res.headersSent) {
                   const status =
-                    error.code === 'ENOENT' || error.message?.includes('not found') ? 404 : 500;
-                  res
-                    .status(status)
-                    .json({ error: error.message || 'Error processing wildcard route' });
+                    (error instanceof Error && 'code' in error && error.code === 'ENOENT') ||
+                    (error instanceof Error && error.message?.includes('not found'))
+                      ? 404
+                      : 500;
+                  res.status(status).json({
+                    error:
+                      error instanceof Error ? error.message : 'Error processing wildcard route',
+                  });
                 }
                 handled = true;
               }
@@ -683,7 +703,7 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
               `Global plugin route matched: [${route.type.toUpperCase()}] ${routePath} (Agent: ${runtime.agentId}) for request: ${reqPath}`
             );
             try {
-              route.handler(req, res, runtime);
+              route?.handler?.(req, res, runtime);
               handled = true;
             } catch (error) {
               logger.error(
@@ -692,8 +712,13 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
               );
               if (!res.headersSent) {
                 const status =
-                  error.code === 'ENOENT' || error.message?.includes('not found') ? 404 : 500;
-                res.status(status).json({ error: error.message || 'Error processing route' });
+                  (error instanceof Error && 'code' in error && error.code === 'ENOENT') ||
+                  (error instanceof Error && error.message?.includes('not found'))
+                    ? 404
+                    : 500;
+                res.status(status).json({
+                  error: error instanceof Error ? error.message : 'Error processing route',
+                });
               }
               handled = true;
             }

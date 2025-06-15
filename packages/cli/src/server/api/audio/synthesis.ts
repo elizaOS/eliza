@@ -45,7 +45,13 @@ export function createSynthesisRouter(
       res.send(audioResult.buffer);
     } catch (error) {
       logger.error('[TTS] Error generating speech:', error);
-      sendError(res, 500, 'PROCESSING_ERROR', 'Error generating speech', error.message);
+      sendError(
+        res,
+        500,
+        'PROCESSING_ERROR',
+        'Error generating speech',
+        error instanceof Error ? error.message : String(error)
+      );
     }
   });
 
@@ -86,7 +92,13 @@ export function createSynthesisRouter(
       );
     } catch (error) {
       logger.error('[SPEECH GENERATE] Error generating speech:', error);
-      sendError(res, 500, 'PROCESSING_ERROR', 'Error generating speech', error.message);
+      sendError(
+        res,
+        500,
+        'PROCESSING_ERROR',
+        'Error generating speech',
+        error instanceof Error ? error.message : String(error)
+      );
     }
   });
 

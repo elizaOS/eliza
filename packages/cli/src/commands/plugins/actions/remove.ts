@@ -44,8 +44,16 @@ export async function removePlugin(plugin: string): Promise<void> {
       stdio: 'inherit',
     });
   } catch (execError) {
-    logger.error(`Failed to run 'bun remove ${packageNameToRemove}': ${execError.message}`);
-    if (execError.stderr?.includes('not found')) {
+    logger.error(
+      `Failed to run 'bun remove ${packageNameToRemove}': ${execError instanceof Error ? execError.message : String(execError)}`
+    );
+    if (
+      execError &&
+      typeof execError === 'object' &&
+      'stderr' in execError &&
+      typeof execError.stderr === 'string' &&
+      execError.stderr.includes('not found')
+    ) {
       logger.info(
         `'bun remove' indicated package was not found. Continuing with directory removal attempt.`
       );
@@ -69,7 +77,9 @@ export async function removePlugin(plugin: string): Promise<void> {
     try {
       fs.rmSync(pluginDir, { recursive: true, force: true });
     } catch (rmError) {
-      logger.error(`Failed to remove directory ${pluginDir}: ${rmError.message}`);
+      logger.error(
+        `Failed to remove directory ${pluginDir}: ${rmError instanceof Error ? rmError.message : String(rmError)}`
+      );
     }
   } else {
     const nonPrefixedDir = path.join(cwd, baseName);
@@ -77,7 +87,9 @@ export async function removePlugin(plugin: string): Promise<void> {
       try {
         fs.rmSync(nonPrefixedDir, { recursive: true, force: true });
       } catch (rmError) {
-        logger.error(`Failed to remove directory ${nonPrefixedDir}: ${rmError.message}`);
+        logger.error(
+          `Failed to remove directory ${nonPrefixedDir}: ${rmError instanceof Error ? rmError.message : String(rmError)}`
+        );
       }
     }
   }

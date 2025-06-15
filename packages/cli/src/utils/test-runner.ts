@@ -106,7 +106,7 @@ export class TestRunner {
       } catch (error) {
         this.stats.failed++;
         logger.error(`  [X] ${test.name}`);
-        logger.error(`    ${error.message}`);
+        logger.error(`    ${error instanceof Error ? error.message : String(error)}`);
       }
     }
   }

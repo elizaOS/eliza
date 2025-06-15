@@ -4,7 +4,7 @@ import { type DirectoryInfo } from '@/src/utils/directory-detection';
  * Handle invalid directory scenarios
  */
 export function handleInvalidDirectory(directoryInfo: DirectoryInfo) {
-  const messages = {
+  const messages: Record<string, (string | undefined)[]> = {
     'non-elizaos-dir': [
       "This directory doesn't appear to be an ElizaOS project.",
       directoryInfo.packageName && `Found package: ${directoryInfo.packageName}`,

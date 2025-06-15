@@ -56,7 +56,7 @@ function validateSecureFilePath(filePath: string): string {
       throw new Error('Path does not point to a regular file');
     }
   } catch (error) {
-    throw new Error(`File access error: ${error.message}`);
+    throw new Error(`File access error: ${error instanceof Error ? error.message : String(error)}`);
   }
 
   return normalizedPath;
@@ -104,7 +104,12 @@ export function createAudioProcessingRouter(
           securePath = validateSecureFilePath(audioFile.path);
         } catch (pathError) {
           cleanupFile(audioFile.path);
-          return sendError(res, 403, 'INVALID_PATH', `Invalid file path: ${pathError.message}`);
+          return sendError(
+            res,
+            403,
+            'INVALID_PATH',
+            `Invalid file path: ${pathError instanceof Error ? pathError.message : String(pathError)}`
+          );
         }
 
         // Additional file validation using secure path
@@ -129,7 +134,13 @@ export function createAudioProcessingRouter(
       } catch (error) {
         logger.error('[AUDIO MESSAGE] Error processing audio:', error);
         cleanupFile(audioFile?.path);
-        sendError(res, 500, 'PROCESSING_ERROR', 'Error processing audio message', error.message);
+        sendError(
+          res,
+          500,
+          'PROCESSING_ERROR',
+          'Error processing audio message',
+          error instanceof Error ? error.message : String(error)
+        );
       }
     }
   );
@@ -165,7 +176,12 @@ export function createAudioProcessingRouter(
           securePath = validateSecureFilePath(audioFile.path);
         } catch (pathError) {
           cleanupFile(audioFile.path);
-          return sendError(res, 403, 'INVALID_PATH', `Invalid file path: ${pathError.message}`);
+          return sendError(
+            res,
+            403,
+            'INVALID_PATH',
+            `Invalid file path: ${pathError instanceof Error ? pathError.message : String(pathError)}`
+          );
         }
 
         const stats = await fs.promises.stat(securePath);
@@ -195,7 +211,13 @@ export function createAudioProcessingRouter(
       } catch (error) {
         logger.error('[TRANSCRIPTION] Error transcribing audio:', error);
         cleanupFile(audioFile?.path);
-        sendError(res, 500, 'PROCESSING_ERROR', 'Error transcribing audio', error.message);
+        sendError(
+          res,
+          500,
+          'PROCESSING_ERROR',
+          'Error transcribing audio',
+          error instanceof Error ? error.message : String(error)
+        );
       }
     }
   );

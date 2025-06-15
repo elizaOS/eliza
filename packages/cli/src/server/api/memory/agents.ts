@@ -54,7 +54,13 @@ export function createAgentMemoryRouter(
       sendSuccess(res, { memories: cleanMemories });
     } catch (error) {
       logger.error('[MEMORIES GET] Error retrieving memories for room:', error);
-      sendError(res, 500, '500', 'Failed to retrieve memories', error.message);
+      sendError(
+        res,
+        500,
+        '500',
+        'Failed to retrieve memories',
+        error instanceof Error ? error.message : String(error)
+      );
     }
   });
 
@@ -83,7 +89,7 @@ export function createAgentMemoryRouter(
       const memories = await runtime.getMemories({
         agentId,
         tableName,
-        roomId,
+        roomId: roomId || undefined,
       });
 
       const cleanMemories = includeEmbedding
@@ -95,7 +101,13 @@ export function createAgentMemoryRouter(
       sendSuccess(res, { memories: cleanMemories });
     } catch (error) {
       logger.error(`[AGENT MEMORIES] Error retrieving memories for agent ${agentId}:`, error);
-      sendError(res, 500, 'MEMORY_ERROR', 'Error retrieving agent memories', error.message);
+      sendError(
+        res,
+        500,
+        'MEMORY_ERROR',
+        'Error retrieving agent memories',
+        error instanceof Error ? error.message : String(error)
+      );
     }
   });
 
@@ -127,16 +139,16 @@ export function createAgentMemoryRouter(
         // they should be handled here or ensured by upstream validation.
         // For example, if agentId from body is always expected as UUID:
         agentId: restOfMemoryData.agentId
-          ? validateUuid(restOfMemoryData.agentId as string)
+          ? validateUuid(restOfMemoryData.agentId as string) || undefined
           : agentId,
         roomId: restOfMemoryData.roomId
-          ? validateUuid(restOfMemoryData.roomId as string)
+          ? validateUuid(restOfMemoryData.roomId as string) || undefined
           : undefined,
         entityId: restOfMemoryData.entityId
-          ? validateUuid(restOfMemoryData.entityId as string)
+          ? validateUuid(restOfMemoryData.entityId as string) || undefined
           : undefined,
         worldId: restOfMemoryData.worldId
-          ? validateUuid(restOfMemoryData.worldId as string)
+          ? validateUuid(restOfMemoryData.worldId as string) || undefined
           : undefined,
         // Ensure metadata, if provided, conforms to MemoryMetadata
         metadata: restOfMemoryData.metadata as MemoryMetadata | undefined,
@@ -145,8 +157,8 @@ export function createAgentMemoryRouter(
       // Remove undefined fields that might have been explicitly set to undefined by casting above,
       // if the updateMemory implementation doesn't handle them gracefully.
       Object.keys(memoryToUpdate).forEach((key) => {
-        if (memoryToUpdate[key] === undefined) {
-          delete memoryToUpdate[key];
+        if ((memoryToUpdate as any)[key] === undefined) {
+          delete (memoryToUpdate as any)[key];
         }
       });
 
@@ -156,7 +168,13 @@ export function createAgentMemoryRouter(
       sendSuccess(res, { id: memoryId, message: 'Memory updated successfully' });
     } catch (error) {
       logger.error(`[MEMORY UPDATE] Error updating memory ${memoryId}:`, error);
-      sendError(res, 500, 'UPDATE_ERROR', 'Failed to update memory', error.message);
+      sendError(
+        res,
+        500,
+        'UPDATE_ERROR',
+        'Failed to update memory',
+        error instanceof Error ? error.message : String(error)
+      );
     }
   });
 

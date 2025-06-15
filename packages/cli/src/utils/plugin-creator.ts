@@ -204,11 +204,11 @@ export class PluginCreator {
         type: 'input',
         name: 'features',
         message: 'Main features (comma-separated):',
-        filter: (input) =>
+        filter: (input: string) =>
           input
             .split(',')
-            .map((f) => f.trim())
-            .filter((f) => f),
+            .map((f: string) => f.trim())
+            .filter((f: string) => f),
       },
       {
         type: 'checkbox',
@@ -237,11 +237,11 @@ export class PluginCreator {
           type: 'input',
           name: 'actions',
           message: 'Action names (comma-separated):',
-          filter: (input) =>
+          filter: (input: string) =>
             input
               .split(',')
-              .map((a) => a.trim())
-              .filter((a) => a),
+              .map((a: string) => a.trim())
+              .filter((a: string) => a),
         },
       ]);
       spec.actions = actionAnswers.actions;
@@ -253,11 +253,11 @@ export class PluginCreator {
           type: 'input',
           name: 'providers',
           message: 'Provider names (comma-separated):',
-          filter: (input) =>
+          filter: (input: string) =>
             input
               .split(',')
-              .map((p) => p.trim())
-              .filter((p) => p),
+              .map((p: string) => p.trim())
+              .filter((p: string) => p),
         },
       ]);
       spec.providers = providerAnswers.providers;
@@ -269,11 +269,11 @@ export class PluginCreator {
           type: 'input',
           name: 'evaluators',
           message: 'Evaluator names (comma-separated):',
-          filter: (input) =>
+          filter: (input: string) =>
             input
               .split(',')
-              .map((e) => e.trim())
-              .filter((e) => e),
+              .map((e: string) => e.trim())
+              .filter((e: string) => e),
         },
       ]);
       spec.evaluators = evaluatorAnswers.evaluators;
@@ -285,11 +285,11 @@ export class PluginCreator {
           type: 'input',
           name: 'services',
           message: 'Service names (comma-separated):',
-          filter: (input) =>
+          filter: (input: string) =>
             input
               .split(',')
-              .map((s) => s.trim())
-              .filter((s) => s),
+              .map((s: string) => s.trim())
+              .filter((s: string) => s),
         },
       ]);
       spec.services = serviceAnswers.services;

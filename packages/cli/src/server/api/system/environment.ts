@@ -22,9 +22,15 @@ export function createEnvironmentRouter(): express.Router {
   const router = express.Router();
 
   // Get local environment variables
-  router.get('/local', async (req, res) => {
+  (router as any).get('/local', async (req: express.Request, res: express.Response) => {
     try {
       const localEnvPath = getLocalEnvPath();
+      if (!localEnvPath) {
+        return res.json({
+          success: true,
+          data: {},
+        });
+      }
       const localEnvs = await parseEnvFile(localEnvPath);
 
       res.json({
@@ -38,14 +44,14 @@ export function createEnvironmentRouter(): express.Router {
         error: {
           code: 'FETCH_ERROR',
           message: 'Failed to retrieve local envs',
-          details: error.message,
+          details: error instanceof Error ? error.message : String(error),
         },
       });
     }
   });
 
   // Update local environment variables
-  router.post('/local', async (req, res) => {
+  (router as any).post('/local', async (req: express.Request, res: express.Response) => {
     try {
       const { content } = req.body;
 
@@ -76,7 +82,7 @@ export function createEnvironmentRouter(): express.Router {
         error: {
           code: 'UPDATE_ERROR',
           message: 'Failed to update local envs',
-          details: error.message,
+          details: error instanceof Error ? error.message : String(error),
         },
       });
     }

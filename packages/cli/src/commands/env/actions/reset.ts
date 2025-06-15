@@ -37,10 +37,12 @@ export async function resetEnv(options: ResetEnvOptions): Promise<void> {
     const localEnvVars = existsSync(localEnvPath) ? await parseEnvFile(localEnvPath) : {};
 
     // Check for external Postgres
-    usingExternalPostgres = localEnvVars.POSTGRES_URL && localEnvVars.POSTGRES_URL.trim() !== '';
+    usingExternalPostgres = !!(
+      localEnvVars.POSTGRES_URL && localEnvVars.POSTGRES_URL.trim() !== ''
+    );
 
     // Check for Pglite
-    usingPglite = localEnvVars.PGLITE_DATA_DIR && localEnvVars.PGLITE_DATA_DIR.trim() !== '';
+    usingPglite = !!(localEnvVars.PGLITE_DATA_DIR && localEnvVars.PGLITE_DATA_DIR.trim() !== '');
   } catch (error) {
     // Ignore errors in env parsing
   }
@@ -93,7 +95,7 @@ export async function resetEnv(options: ResetEnvOptions): Promise<void> {
       console.info(colors.bold('The following items will be reset:'));
       for (const value of selectedValues) {
         const item = resetItems.find((item) => item.value === value);
-        console.info(`  • ${item.title}`);
+        console.info(`  • ${item?.title || value}`);
       }
     } else {
       console.info('No valid items found to reset.');
@@ -123,7 +125,7 @@ export async function resetEnv(options: ResetEnvOptions): Promise<void> {
     console.log('\nYou selected:');
     for (const value of selectedValues) {
       const item = resetItems.find((item) => item.value === value);
-      console.log(`  • ${item.title}`);
+      console.log(`  • ${item?.title || value}`);
     }
 
     // Final confirmation
