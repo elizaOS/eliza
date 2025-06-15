@@ -204,7 +204,10 @@ export class UserEnvironment {
       // Check if running via npx/bunx first, as these might trigger global check falsely
       if (!isNpx && !isBunx) {
         // Check if bun has the CLI installed globally
-        execSync(`bun pm ls -g | grep -q "${packageName}"`, { stdio: 'ignore' });
+        const command = process.platform === 'win32' 
+          ? `bun pm ls -g | findstr "${packageName}"`
+          : `bun pm ls -g | grep -q "${packageName}"`;
+        execSync(command, { stdio: 'ignore' });
         isGlobalCheck = true;
       }
     } catch (error) {

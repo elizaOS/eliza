@@ -55,3 +55,12 @@ temp/
 .elizadb/
 pglite/
 cache/
+
+generatedImages/
+images/
+data/
+.eliza
+.elizadb-test
+
+dist/
+coverage/

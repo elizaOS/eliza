@@ -1,0 +1,3 @@
+[test]
+# Preload test setup to handle global configuration
+preload = ["./tests/setup.ts"]

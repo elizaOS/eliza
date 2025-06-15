@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
-const cliPath = (await import.meta.resolve('@elizaos/cli')).replace('file://', '');
+const cliPath = fileURLToPath(await import.meta.resolve('@elizaos/cli'));
 
 const rawArgs = process.argv.slice(2);
 const args = ['create', ...rawArgs];

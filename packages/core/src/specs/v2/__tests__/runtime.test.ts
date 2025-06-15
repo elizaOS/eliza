@@ -126,6 +126,7 @@ const mockDatabaseAdapter: IDatabaseAdapter = {
   }): Promise<Memory[]> {
     throw new Error('Function not implemented.');
   },
+  deleteManyMemories: vi.fn().mockResolvedValue(undefined),
 };
 
 // Mock action creator (matches your example)

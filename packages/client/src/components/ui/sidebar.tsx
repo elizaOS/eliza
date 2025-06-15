@@ -263,6 +263,7 @@ const SidebarTrigger = React.forwardRef<
         onClick?.(event);
         toggleSidebar();
       }}
+      data-testid="sidebar-toggle"
       {...props}
     >
       <PanelLeft />

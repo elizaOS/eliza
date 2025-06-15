@@ -221,3 +221,160 @@ export const assertions = {
     }
   },
 };
+
+/**
+ * Wait for server to be ready by polling health endpoint
+ * @param port - Port number to check
+ * @param maxWaitTime - Maximum time to wait in milliseconds
+ * @param endpoint - Endpoint to check (default: '/api/agents')
+ */
+export async function waitForServerReady(
+  port: number,
+  maxWaitTime: number = TEST_TIMEOUTS.SERVER_STARTUP,
+  endpoint: string = '/api/agents'
+): Promise<void> {
+  const startTime = Date.now();
+  const pollInterval = 1000; // Check every 1 second
+  
+  while (Date.now() - startTime < maxWaitTime) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+      
+      const response = await fetch(`http://localhost:${port}${endpoint}`, {
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
+      if (response.ok) {
+        // Server is ready, give it one more second to stabilize
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        return;
+      }
+    } catch (error) {
+      // Server not ready yet, continue polling
+    }
+    
+    await new Promise((resolve) => setTimeout(resolve, pollInterval));
+  }
+  
+  throw new Error(`Server failed to become ready on port ${port} within ${maxWaitTime}ms`);
+}
+
+/**
+ * Cross-platform test process manager
+ * Handles proper process lifecycle management for CLI tests
+ */
+export class TestProcessManager {
+  private processes: Set<any> = new Set();
+
+  /**
+   * Spawn a process with proper error handling and cleanup
+   */
+  spawn(command: string, args: string[], options: any = {}): any {
+    const { spawn } = require('child_process');
+    
+    // Force stdio to 'ignore' to prevent hanging streams on Windows
+    const processOptions = {
+      ...options,
+      stdio: ['ignore', 'ignore', 'ignore'], // Ignore all stdio to prevent hanging
+    };
+
+    const childProcess = spawn(command, args, processOptions);
+    
+    // Track the process for cleanup
+    this.processes.add(childProcess);
+    
+    // Remove from tracking when process exits naturally
+    childProcess.on('exit', () => {
+      this.processes.delete(childProcess);
+    });
+    
+    return childProcess;
+  }
+
+  /**
+   * Gracefully terminate a single process with platform-specific handling
+   */
+  async terminateProcess(process: any): Promise<void> {
+    if (!process || process.exitCode !== null || process.killed) {
+      return;
+    }
+
+    try {
+      // Create exit promise
+      const exitPromise = new Promise<void>((resolve) => {
+        if (process.exitCode !== null) {
+          resolve();
+          return;
+        }
+        
+        const cleanup = () => {
+          process.removeAllListeners();
+          resolve();
+        };
+        
+        process.once('exit', cleanup);
+        process.once('error', cleanup);
+      });
+
+      if (process.platform === 'win32') {
+        // Windows: Try graceful termination first
+        process.kill('SIGTERM');
+        
+        // Wait briefly for graceful shutdown
+        const gracefulTimeout = new Promise<boolean>((resolve) => {
+          setTimeout(() => resolve(false), 1000);
+        });
+        
+        const wasGraceful = await Promise.race([
+          exitPromise.then(() => true),
+          gracefulTimeout
+        ]);
+        
+        // Force kill if still running
+        if (!wasGraceful && process.exitCode === null) {
+          try {
+            process.kill('SIGKILL');
+          } catch (e) {
+            // Process might already be dead
+          }
+        }
+      } else {
+        // Unix: SIGTERM should be sufficient
+        process.kill('SIGTERM');
+      }
+
+      // Wait for process to exit with timeout
+      const timeoutPromise = new Promise<void>((resolve) => {
+        setTimeout(resolve, TEST_TIMEOUTS.PROCESS_CLEANUP);
+      });
+      
+      await Promise.race([exitPromise, timeoutPromise]);
+      
+    } catch (error) {
+      // Ignore termination errors
+    } finally {
+      this.processes.delete(process);
+    }
+  }
+
+  /**
+   * Clean up all tracked processes
+   */
+  async cleanup(): Promise<void> {
+    const cleanupPromises = Array.from(this.processes).map(proc => 
+      this.terminateProcess(proc)
+    );
+    
+    await Promise.allSettled(cleanupPromises);
+    this.processes.clear();
+  }
+
+  /**
+   * Get count of active processes
+   */
+  getActiveCount(): number {
+    return this.processes.size;
+  }
+}
