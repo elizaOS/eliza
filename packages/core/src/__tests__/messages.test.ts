@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, test, vi, it } from 'vitest';
-import { formatEntities, getEntityDetails } from '../src/entities';
-import { formatMessages, formatTimestamp } from '../src/utils';
+import { formatEntities, getEntityDetails } from '../entities';
+import { formatMessages, formatTimestamp } from '../utils';
 import type {
   Content,
   Entity,
@@ -9,8 +9,8 @@ import type {
   Memory,
   Room,
   UUID,
-} from '../src/types';
-import { ChannelType } from '../src/types';
+} from '../types';
+import { ChannelType } from '../types';
 
 describe('Messages Library', () => {
   let runtime: IAgentRuntime & IDatabaseAdapter;

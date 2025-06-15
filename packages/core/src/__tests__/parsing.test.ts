@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseBooleanFromText, parseJSONObjectFromText } from '../src/utils';
+import { parseBooleanFromText, parseJSONObjectFromText } from '../utils';
 
 describe('Parsing Module', () => {
   describe('parseBooleanFromText', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { BM25 } from '../src/search';
+import { BM25 } from '../search';
 
 describe('BM25 search', () => {
   it('indexes documents and finds matches', () => {

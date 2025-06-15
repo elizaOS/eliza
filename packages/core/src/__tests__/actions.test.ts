@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { composeActionExamples, formatActionNames, formatActions } from '../src/actions';
-import type { Action } from '../src/types';
+import { composeActionExamples, formatActionNames, formatActions } from '../actions';
+import type { Action } from '../types';
 
 describe('Actions', () => {
   const mockActions: Action[] = [
@@ -101,6 +101,48 @@ describe('Actions', () => {
     it('should handle count larger than available examples', () => {
       const examples = composeActionExamples(mockActions, 10);
       expect(examples.length).toBeGreaterThan(0);
+    });
+
+    it('should handle actions without examples', () => {
+      const actionsWithoutExamples: Action[] = [
+        {
+          name: 'test',
+          description: 'Test action without examples',
+          examples: [], // Empty examples array
+          similes: [],
+          handler: async () => {
+            throw new Error('Not implemented');
+          },
+          validate: async () => {
+            throw new Error('Not implemented');
+          },
+        },
+        {
+          name: 'test2',
+          description: 'Test action with no examples property',
+          // examples property not defined
+          similes: [],
+          handler: async () => {
+            throw new Error('Not implemented');
+          },
+          validate: async () => {
+            throw new Error('Not implemented');
+          },
+        } as Action,
+      ];
+      
+      const examples = composeActionExamples(actionsWithoutExamples, 5);
+      expect(examples).toBe('');
+    });
+
+    it('should handle count of zero', () => {
+      const examples = composeActionExamples(mockActions, 0);
+      expect(examples).toBe('');
+    });
+
+    it('should handle negative count', () => {
+      const examples = composeActionExamples(mockActions, -5);
+      expect(examples).toBe('');
     });
   });
 

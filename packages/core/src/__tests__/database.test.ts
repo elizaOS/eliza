@@ -1,5 +1,5 @@
 import { describe, expect, beforeEach, it } from 'vitest';
-import { DatabaseAdapter } from '../src/database';
+import { DatabaseAdapter } from '../database';
 import type {
   Agent,
   ChannelType,
@@ -13,7 +13,7 @@ import type {
   Task,
   UUID,
   World,
-} from '../src/types';
+} from '../types';
 
 /**
  * MockDatabaseAdapter class extends DatabaseAdapter class and provides mock implementations for various database operations.
@@ -44,6 +44,15 @@ import type {
  */
 class MockDatabaseAdapter extends DatabaseAdapter {
   init(): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
+  initialize(): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
+  runMigrations(): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
+  isReady(): Promise<boolean> {
     throw new Error('Method not implemented.');
   }
   close(): Promise<void> {
@@ -251,7 +260,7 @@ class MockDatabaseAdapter extends DatabaseAdapter {
    * @returns {Promise<void>} A promise that resolves when all memories are successfully removed.
    */
   deleteManyMemories(_memoryIds: UUID[]): Promise<void> {
-    throw new Error('Method not implemented.');
+    return Promise.resolve();
   }
   /**
    * Remove all memories associated with a specific room and table.

@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AgentRuntime } from '../src/runtime';
-import { MemoryType, ModelType } from '../src/types';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+import { AgentRuntime } from '../runtime';
+import { MemoryType, ModelType } from '../types';
 import type {
   Action,
   Agent,
@@ -13,7 +13,7 @@ import type {
   Provider,
   State,
   UUID,
-} from '../src/types';
+} from '../types';
 import { v4 as uuidv4 } from 'uuid';
 const stringToUuid = (id: string): UUID => id as UUID;
 
@@ -53,6 +53,9 @@ vi.mock('./index', async (importOriginal) => {
 const mockDatabaseAdapter: IDatabaseAdapter = {
   db: {},
   init: vi.fn().mockResolvedValue(undefined),
+  initialize: vi.fn().mockResolvedValue(undefined),
+  runMigrations: vi.fn().mockResolvedValue(undefined),
+  isReady: vi.fn().mockResolvedValue(true),
   close: vi.fn().mockResolvedValue(undefined),
   getConnection: vi.fn().mockResolvedValue({}),
   getEntityByIds: vi.fn().mockResolvedValue([]),
@@ -66,6 +69,7 @@ const mockDatabaseAdapter: IDatabaseAdapter = {
   searchMemories: vi.fn().mockResolvedValue([]),
   createMemory: vi.fn().mockResolvedValue(stringToUuid(uuidv4())),
   deleteMemory: vi.fn().mockResolvedValue(undefined),
+  deleteManyMemories: vi.fn().mockResolvedValue(undefined),
   deleteAllMemories: vi.fn().mockResolvedValue(undefined),
   countMemories: vi.fn().mockResolvedValue(0),
   getRoomsByIds: vi.fn().mockResolvedValue([]),
