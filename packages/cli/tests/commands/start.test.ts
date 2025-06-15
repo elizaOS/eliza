@@ -78,6 +78,36 @@ describe('ElizaOS Start Commands', () => {
     }
   });
 
+  // Helper function to wait for server to be ready by polling health endpoint
+  const waitForServerReady = async (port: number, maxWaitTime: number = TEST_TIMEOUTS.SERVER_STARTUP): Promise<void> => {
+    const startTime = Date.now();
+    const pollInterval = 1000;
+    
+    while (Date.now() - startTime < maxWaitTime) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
+        
+        const response = await fetch(`http://localhost:${port}/api/agents`, {
+          signal: controller.signal,
+        });
+        
+        clearTimeout(timeoutId);
+        if (response.ok) {
+          // Server is ready, give it one more second to stabilize
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          return;
+        }
+      } catch (error) {
+        // Server not ready yet, continue polling
+      }
+      
+      await new Promise((resolve) => setTimeout(resolve, pollInterval));
+    }
+    
+    throw new Error(`Server failed to become ready on port ${port} within ${maxWaitTime}ms`);
+  };
+
   // Helper function to start server and wait for it to be ready
   const startServerAndWait = async (
     args: string,
@@ -104,39 +134,15 @@ describe('ElizaOS Start Commands', () => {
 
     runningProcesses.push(serverProcess);
 
-    // Wait for server to be ready by polling the health endpoint
-    const startTime = Date.now();
-    const pollInterval = 1000; // Check every 1 second
+    // Wait for server to be ready
+    await waitForServerReady(testServerPort, maxWaitTime);
     
-    while (Date.now() - startTime < maxWaitTime) {
-      try {
-        // Create abort controller for timeout (compatible with older Node.js)
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000);
-        
-        const response = await fetch(`http://localhost:${testServerPort}/api/agents`, {
-          signal: controller.signal,
-        });
-        
-        clearTimeout(timeoutId);
-        if (response.ok) {
-          // Server is ready
-          await new Promise((resolve) => setTimeout(resolve, 1000)); // Give it one more second
-          return serverProcess;
-        }
-      } catch (error) {
-        // Server not ready yet, continue polling
-      }
-      
-      // Check if process is still running
-      if (serverProcess.killed || serverProcess.exitCode !== null) {
-        throw new Error('Server process died before becoming ready');
-      }
-      
-      await new Promise((resolve) => setTimeout(resolve, pollInterval));
+    // Check if process is still running after startup
+    if (serverProcess.killed || serverProcess.exitCode !== null) {
+      throw new Error('Server process died during startup');
     }
-    
-    throw new Error(`Server failed to become ready within ${maxWaitTime}ms`);
+
+    return serverProcess;
   };
 
   // Basic agent check
@@ -217,43 +223,12 @@ describe('ElizaOS Start Commands', () => {
       runningProcesses.push(serverProcess);
 
       try {
-        // Wait for server to start with polling
-        const startTime = Date.now();
-        const maxWaitTime = TEST_TIMEOUTS.SERVER_STARTUP;
-        const pollInterval = 1000;
+        // Wait for server to be ready
+        await waitForServerReady(newPort);
         
-        let serverReady = false;
-        while (Date.now() - startTime < maxWaitTime && !serverReady) {
-          try {
-            // Create abort controller for timeout (compatible with older Node.js)
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 2000);
-            
-            const response = await fetch(`http://localhost:${newPort}/api/agents`, {
-              signal: controller.signal,
-            });
-            
-            clearTimeout(timeoutId);
-            if (response.ok) {
-              serverReady = true;
-              expect(response.ok).toBe(true);
-              break;
-            }
-          } catch (error) {
-            // Server not ready yet, continue polling
-          }
-          
-          // Check if process is still running
-          if (serverProcess.killed || serverProcess.exitCode !== null) {
-            throw new Error('Server process died before becoming ready');
-          }
-          
-          await new Promise((resolve) => setTimeout(resolve, pollInterval));
-        }
-        
-        if (!serverReady) {
-          throw new Error(`Server failed to become ready on port ${newPort} within ${maxWaitTime}ms`);
-        }
+        // Verify server is accessible
+        const response = await fetch(`http://localhost:${newPort}/api/agents`);
+        expect(response.ok).toBe(true);
       } finally {
         serverProcess.kill();
         await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
