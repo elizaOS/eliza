@@ -221,3 +221,42 @@ export const assertions = {
     }
   },
 };
+
+/**
+ * Wait for server to be ready by polling health endpoint
+ * @param port - Port number to check
+ * @param maxWaitTime - Maximum time to wait in milliseconds
+ * @param endpoint - Endpoint to check (default: '/api/agents')
+ */
+export async function waitForServerReady(
+  port: number,
+  maxWaitTime: number = TEST_TIMEOUTS.SERVER_STARTUP,
+  endpoint: string = '/api/agents'
+): Promise<void> {
+  const startTime = Date.now();
+  const pollInterval = 1000; // Check every 1 second
+  
+  while (Date.now() - startTime < maxWaitTime) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+      
+      const response = await fetch(`http://localhost:${port}${endpoint}`, {
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
+      if (response.ok) {
+        // Server is ready, give it one more second to stabilize
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        return;
+      }
+    } catch (error) {
+      // Server not ready yet, continue polling
+    }
+    
+    await new Promise((resolve) => setTimeout(resolve, pollInterval));
+  }
+  
+  throw new Error(`Server failed to become ready on port ${port} within ${maxWaitTime}ms`);
+}

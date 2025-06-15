@@ -144,8 +144,9 @@ describe('ElizaOS Plugin Commands', () => {
         }
       );
 
+      // Use a different plugin that doesn't cause workspace resolution issues
       execSync(
-        `${elizaosCmd} plugins add github:elizaos-plugins/plugin-farcaster#1.x --skip-env-prompt`,
+        `${elizaosCmd} plugins add github:elizaos-plugins/plugin-openrouter#1.x --skip-env-prompt`,
         {
           stdio: 'pipe',
           timeout: TEST_TIMEOUTS.NETWORK_OPERATION,
@@ -154,7 +155,7 @@ describe('ElizaOS Plugin Commands', () => {
 
       const packageJson = await readFile('package.json', 'utf8');
       expect(packageJson).toContain('plugin-video-understanding');
-      expect(packageJson).toContain('plugin-farcaster');
+      expect(packageJson).toContain('plugin-openrouter');
     },
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
@@ -246,7 +247,7 @@ describe('ElizaOS Plugin Commands', () => {
     'plugins add via GitHub shorthand URL',
     async () => {
       execSync(
-        `${elizaosCmd} plugins add github:elizaos-plugins/plugin-openrouter#1.x --skip-env-prompt`,
+        `${elizaosCmd} plugins add github:elizaos-plugins/plugin-evm#1.x --skip-env-prompt`,
         {
           stdio: 'pipe',
           timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
@@ -254,7 +255,7 @@ describe('ElizaOS Plugin Commands', () => {
       );
 
       const packageJson = await readFile('package.json', 'utf8');
-      expect(packageJson).toContain('github:elizaos-plugins/plugin-openrouter#1.x');
+      expect(packageJson).toContain('github:elizaos-plugins/plugin-evm#1.x');
     },
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );

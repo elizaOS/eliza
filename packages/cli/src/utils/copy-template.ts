@@ -16,11 +16,15 @@ import { UserEnvironment } from './user-environment';
  * @returns {Promise<void>} A Promise that resolves when the copy operation is complete.
  */
 export async function copyDir(src: string, dest: string, exclude: string[] = []) {
+  // Ensure paths are properly resolved as absolute paths
+  const resolvedSrc = path.resolve(src);
+  const resolvedDest = path.resolve(dest);
+  
   // Create destination directory if it doesn't exist
-  await fs.mkdir(dest, { recursive: true });
+  await fs.mkdir(resolvedDest, { recursive: true });
 
   // Read source directory
-  const entries = await fs.readdir(src, { withFileTypes: true });
+  const entries = await fs.readdir(resolvedSrc, { withFileTypes: true });
 
   // Separate files and directories for different processing strategies
   const files: typeof entries = [];
@@ -58,8 +62,8 @@ export async function copyDir(src: string, dest: string, exclude: string[] = [])
   for (let i = 0; i < files.length; i += MAX_CONCURRENT_FILES) {
     const batch = files.slice(i, i + MAX_CONCURRENT_FILES);
     const batchPromises = batch.map(async (entry) => {
-      const srcPath = path.join(src, entry.name);
-      const destPath = path.join(dest, entry.name);
+      const srcPath = path.join(resolvedSrc, entry.name);
+      const destPath = path.join(resolvedDest, entry.name);
       await fs.copyFile(srcPath, destPath);
     });
     filePromises.push(...batchPromises);
@@ -71,8 +75,8 @@ export async function copyDir(src: string, dest: string, exclude: string[] = [])
   // Process directories sequentially to avoid too much recursion depth
   // but still get benefits from parallel file copying within each directory
   for (const entry of directories) {
-    const srcPath = path.join(src, entry.name);
-    const destPath = path.join(dest, entry.name);
+    const srcPath = path.join(resolvedSrc, entry.name);
+    const destPath = path.join(resolvedDest, entry.name);
     await copyDir(srcPath, destPath, exclude);
   }
 }

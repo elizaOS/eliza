@@ -42,9 +42,16 @@ import dotenv from 'dotenv';
  * @returns The expanded path.
  */
 export function expandTildePath(filepath: string): string {
-  if (filepath && filepath.startsWith('~')) {
-    return path.join(process.cwd(), filepath.slice(1));
+  if (!filepath) {
+    return filepath;
   }
+  
+  if (filepath.startsWith('~/')) {
+    return path.join(process.cwd(), filepath.slice(2));
+  } else if (filepath === '~') {
+    return process.cwd();
+  }
+  
   return filepath;
 }
 
@@ -55,7 +62,7 @@ export function resolvePgliteDir(dir?: string, fallbackDir?: string): string {
   }
 
   const base =
-    dir ??
+    (dir && dir.trim() !== '') ? dir :
     process.env.PGLITE_DATA_DIR ??
     fallbackDir ??
     path.join(process.cwd(), '.eliza', '.elizadb');

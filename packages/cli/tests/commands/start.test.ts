@@ -3,7 +3,7 @@ import { execSync, spawn } from 'child_process';
 import { mkdtemp, rm, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { safeChangeDirectory } from './test-utils';
+import { safeChangeDirectory, waitForServerReady } from './test-utils';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 
 describe('ElizaOS Start Commands', () => {
@@ -50,11 +50,21 @@ describe('ElizaOS Start Commands', () => {
   });
 
   afterEach(async () => {
-    // Kill any running processes
+    // Kill any running processes with proper Windows handling
     for (const proc of runningProcesses) {
       try {
-        proc.kill();
+        if (process.platform === 'win32') {
+          // On Windows, use taskkill for more reliable termination
+          proc.kill('SIGKILL');
+        } else {
+          proc.kill();
+        }
         await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
+        
+        // Wait for process to actually exit
+        if (!proc.killed && proc.exitCode === null) {
+          await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
+        }
       } catch (e) {
         // Ignore cleanup errors
       }
@@ -82,7 +92,7 @@ describe('ElizaOS Start Commands', () => {
   const startServerAndWait = async (
     args: string,
     logFile: string,
-    waitTime: number = TEST_TIMEOUTS.MEDIUM_WAIT
+    maxWaitTime: number = TEST_TIMEOUTS.SERVER_STARTUP
   ): Promise<any> => {
     await mkdir(join(testTmpDir, 'elizadb'), { recursive: true });
 
@@ -105,7 +115,12 @@ describe('ElizaOS Start Commands', () => {
     runningProcesses.push(serverProcess);
 
     // Wait for server to be ready
-    await new Promise((resolve) => setTimeout(resolve, waitTime));
+    await waitForServerReady(testServerPort, maxWaitTime);
+    
+    // Check if process is still running after startup
+    if (serverProcess.killed || serverProcess.exitCode !== null) {
+      throw new Error('Server process died during startup');
+    }
 
     return serverProcess;
   };
@@ -188,10 +203,10 @@ describe('ElizaOS Start Commands', () => {
       runningProcesses.push(serverProcess);
 
       try {
-        // Wait for server to start
-        await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.MEDIUM_WAIT));
-
-        // Try to connect to the custom port
+        // Wait for server to be ready
+        await waitForServerReady(newPort);
+        
+        // Verify server is accessible
         const response = await fetch(`http://localhost:${newPort}/api/agents`);
         expect(response.ok).toBe(true);
       } finally {
