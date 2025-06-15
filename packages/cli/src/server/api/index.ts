@@ -332,6 +332,18 @@ async function processSocketMessage(
 
     logger.debug('Emitting MESSAGE_RECEIVED', { messageId: newMessage.id });
 
+    // Immediately disable input for all clients in the channel while agent processes
+    io.to(socketChannelId).emit('controlMessage', {
+      action: 'disable_input',
+      channelId: socketChannelId,
+      roomId: socketChannelId, // Keep for backward compatibility
+    });
+    logger.debug('[SOCKET] Sent disable_input controlMessage', {
+      channelId: socketChannelId,
+      agentId,
+      senderId,
+    });
+
     // Emit message received event to trigger agent's message handler
     runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
       runtime: runtime,
