@@ -40,6 +40,11 @@ if (typeof window !== 'undefined') {
   (window as any).React = React;
 }
 
+// Ensure React is properly available globally
+if (typeof globalThis !== 'undefined') {
+  (globalThis as any).React = React;
+}
+
 // Add custom mount command with providers
 declare global {
   namespace Cypress {
