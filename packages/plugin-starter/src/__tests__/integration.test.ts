@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterAll, beforeAll } from 'vitest';
-import { starterPlugin, StarterService } from '../src/index';
+import { starterPlugin, StarterService } from '../index';
 import { createMockRuntime, setupLoggerSpies, MockRuntime } from './test-utils';
 import { HandlerCallback, IAgentRuntime, Memory, State, UUID, logger } from '@elizaos/core';
 

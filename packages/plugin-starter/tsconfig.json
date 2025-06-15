@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "outDir": "dist",
-    "lib": ["ESNext"],
+    "lib": ["ESNext", "dom"],
     "target": "ESNext",
     "module": "Preserve",
     "moduleResolution": "Bundler",
@@ -18,7 +18,11 @@
     "checkJs": false,
     "noEmitOnError": false,
     "moduleDetection": "force",
-    "allowArbitraryExtensions": true
+    "allowArbitraryExtensions": true,
+    "jsx": "react",
+    "types": ["cypress", "@testing-library/cypress"],
+    "isolatedModules": false,
+    "noEmit": true
   },
-  "include": ["src/**/*.ts", "e2e/**/*.ts", "__tests__/**/*.ts"]
+  "include": ["src/**/*.ts", "e2e/**/*.ts", "src/__tests__/**/*.ts"]
 }
