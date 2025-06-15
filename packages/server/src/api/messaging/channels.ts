@@ -857,7 +857,7 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
         );
         res.status(500).json({ success: false, error: 'Failed to process media upload' });
       }
-    }) as RequestHandler
+    }
   );
 
   return router;
