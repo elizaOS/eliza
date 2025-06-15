@@ -3,7 +3,7 @@ import { execSync } from 'child_process';
 import { mkdtemp, rm, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { safeChangeDirectory, waitForServerReady, TestProcessManager } from './test-utils';
+import { safeChangeDirectory, waitForServerReady, TestProcessManager, killProcessOnPort } from './test-utils';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 
 describe('ElizaOS Start Commands', () => {
@@ -22,21 +22,8 @@ describe('ElizaOS Start Commands', () => {
 
     // ---- Ensure port is free.
     testServerPort = 3000;
-    try {
-      if (process.platform === 'win32') {
-        // Windows: Use netstat and taskkill to free the port
-        execSync(
-          `for /f "tokens=5" %a in ('netstat -aon ^| findstr :${testServerPort}') do taskkill /f /pid %a`,
-          { stdio: 'ignore' }
-        );
-      } else {
-        // Unix/Linux/macOS: Use lsof and kill
-        execSync(`lsof -t -i :${testServerPort} | xargs kill -9`, { stdio: 'ignore' });
-      }
-      await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
-    } catch (e) {
-      // Ignore if no processes found
-    }
+    await killProcessOnPort(testServerPort);
+    await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
 
     // Create temporary directory
     testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-start-'));
