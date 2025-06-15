@@ -4,7 +4,7 @@ import { mkdtemp, rm, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { TEST_TIMEOUTS } from '../test-timeouts';
-import { waitForServerReady } from './test-utils';
+import { waitForServerReady, killProcessOnPort } from './test-utils';
 
 describe('ElizaOS Agent Commands', () => {
   let serverProcess: any;
@@ -24,12 +24,8 @@ describe('ElizaOS Agent Commands', () => {
     elizaosCmd = `bun ${join(scriptDir, '../dist/index.js')}`;
 
     // Kill any existing processes on port 3000
-    try {
-      execSync(`lsof -t -i :3000 | xargs kill -9`, { stdio: 'ignore' });
-      await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
-    } catch (e) {
-      // Ignore if no processes found
-    }
+    await killProcessOnPort(3000);
+    await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
 
     // Create database directory
     await mkdir(join(testTmpDir, 'elizadb'), { recursive: true });
@@ -82,11 +78,13 @@ describe('ElizaOS Agent Commands', () => {
   afterAll(async () => {
     if (serverProcess) {
       try {
-        if (process.platform === 'win32') {
-          // On Windows, use SIGKILL for more reliable termination
+        // Use SIGTERM for graceful shutdown, fallback to SIGKILL
+        serverProcess.kill('SIGTERM');
+        
+        // Wait briefly, then force kill if still running
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        if (!serverProcess.killed && serverProcess.exitCode === null) {
           serverProcess.kill('SIGKILL');
-        } else {
-          serverProcess.kill();
         }
         await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
         

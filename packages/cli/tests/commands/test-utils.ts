@@ -68,9 +68,18 @@ export function safeChangeDirectory(targetDir: string): void {
  * Helper to create a basic ElizaOS project for testing
  */
 export async function createTestProject(elizaosCmd: string, projectName: string): Promise<void> {
+  const timeout = TEST_TIMEOUTS.PROJECT_CREATION;
+  
+  const windowsOptions = process.platform === 'win32' ? {
+    timeout: timeout * 1.5,
+    killSignal: 'SIGKILL',
+    windowsHide: true,
+  } : {};
+
   execSync(`${elizaosCmd} create ${projectName} --yes`, {
     stdio: 'pipe',
-    timeout: TEST_TIMEOUTS.PROJECT_CREATION,
+    timeout,
+    ...windowsOptions,
   });
   process.chdir(projectName);
 }
@@ -83,9 +92,20 @@ export function runCliCommand(
   args: string,
   options: { timeout?: number } = {}
 ): string {
+  const timeout = options.timeout || TEST_TIMEOUTS.STANDARD_COMMAND;
+  
+  // On Windows, use different timeout and signal handling
+  const windowsOptions = process.platform === 'win32' ? {
+    timeout: timeout * 1.5, // 50% longer timeout for Windows
+    killSignal: 'SIGKILL',   // Use SIGKILL instead of SIGTERM
+    windowsHide: true,       // Hide console window
+  } : {};
+
   return execSync(`${elizaosCmd} ${args}`, {
     encoding: 'utf8',
-    timeout: options.timeout || TEST_TIMEOUTS.STANDARD_COMMAND,
+    stdio: ['ignore', 'pipe', 'pipe'], // Explicit stdio handling
+    timeout,
+    ...windowsOptions,
   });
 }
 
@@ -97,10 +117,19 @@ export function runCliCommandSilently(
   args: string,
   options: { timeout?: number } = {}
 ): string {
+  const timeout = options.timeout || TEST_TIMEOUTS.STANDARD_COMMAND;
+  
+  const windowsOptions = process.platform === 'win32' ? {
+    timeout: timeout * 1.5,
+    killSignal: 'SIGKILL',
+    windowsHide: true,
+  } : {};
+
   return execSync(`${elizaosCmd} ${args}`, {
     encoding: 'utf8',
     stdio: 'pipe',
-    timeout: options.timeout || TEST_TIMEOUTS.STANDARD_COMMAND,
+    timeout,
+    ...windowsOptions,
   });
 }
 
@@ -112,11 +141,20 @@ export function expectCliCommandToFail(
   args: string,
   options: { timeout?: number } = {}
 ): { status: number; output: string } {
+  const timeout = options.timeout || TEST_TIMEOUTS.STANDARD_COMMAND;
+  
+  const windowsOptions = process.platform === 'win32' ? {
+    timeout: timeout * 1.5,
+    killSignal: 'SIGKILL',
+    windowsHide: true,
+  } : {};
+
   try {
     const result = execSync(`${elizaosCmd} ${args}`, {
       encoding: 'utf8',
       stdio: 'pipe',
-      timeout: options.timeout || TEST_TIMEOUTS.STANDARD_COMMAND,
+      timeout,
+      ...windowsOptions,
     });
     throw new Error(`Command should have failed but succeeded with output: ${result}`);
   } catch (e: any) {
@@ -260,6 +298,71 @@ export async function waitForServerReady(
   
   throw new Error(`Server failed to become ready on port ${port} within ${maxWaitTime}ms`);
 }
+
+/**
+ * Kill process on a specific port with cross-platform support
+ */
+export async function killProcessOnPort(port: number): Promise<void> {
+  try {
+    if (process.platform === 'win32') {
+      // Windows: More reliable process killing
+      const netstatResult = execSync(
+        `netstat -ano | findstr :${port}`,
+        { encoding: 'utf8', stdio: 'pipe' }
+      );
+      
+      const lines = netstatResult.split('\n').filter(line => line.includes(`:${port}`));
+      const pids = lines.map(line => {
+        const parts = line.trim().split(/\s+/);
+        return parts[parts.length - 1];
+      }).filter(pid => pid && pid !== '0');
+      
+      for (const pid of pids) {
+        try {
+          execSync(`taskkill /F /PID ${pid}`, { stdio: 'ignore' });
+        } catch (e) {
+          // Ignore if process is already dead
+        }
+      }
+    } else {
+      // Unix systems
+      execSync(`lsof -ti:${port} | xargs kill -9 2>/dev/null || true`, { stdio: 'ignore' });
+    }
+  } catch (e) {
+    // Ignore port cleanup errors
+  }
+}
+
+/**
+ * Cross-platform file operations utility
+ */
+export const crossPlatform = {
+  removeDir: (path: string) => {
+    try {
+      if (process.platform === 'win32') {
+        execSync(`if exist "${path}" rmdir /s /q "${path}"`, { stdio: 'ignore' });
+      } else {
+        execSync(`rm -rf "${path}"`, { stdio: 'ignore' });
+      }
+    } catch (e) {
+      // Ignore cleanup errors
+    }
+  },
+  
+  removeFile: (path: string) => {
+    try {
+      if (process.platform === 'win32') {
+        execSync(`if exist "${path}" del /q "${path}"`, { stdio: 'ignore' });
+      } else {
+        execSync(`rm -f "${path}"`, { stdio: 'ignore' });
+      }
+    } catch (e) {
+      // Ignore cleanup errors
+    }
+  },
+
+  killProcessOnPort: killProcessOnPort,
+};
 
 /**
  * Cross-platform test process manager

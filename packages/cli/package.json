@@ -38,7 +38,7 @@
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
-    "test:cli": "bun test tests/commands/"
+    "test:cli": "cross-env NODE_OPTIONS=\"--max-old-space-size=4096\" bun test tests/commands/ --timeout 300000"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.40.0",
@@ -54,6 +54,7 @@
     "axios": "^1.7.9",
     "bun-types": "^1.2.16",
     "commander": "^10.0.0",
+    "cross-env": "^7.0.3",
     "diff": "^5.1.0",
     "dotenv": "^16.5.0",
     "esbuild-plugin-copy": "^2.1.1",

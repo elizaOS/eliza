@@ -12,6 +12,7 @@ image: /img/eliza_banner.jpg
 ## Prerequisites
 
 - [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
+- [Bun](https://bun.sh/docs/installation) - Fast JavaScript runtime and package manager
 - Git for version control
 - For Windows Users: [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual) is required
 
@@ -24,18 +25,10 @@ import TabItem from '@theme/TabItem';
   <TabItem value="global" label="Install Globally (Recommended)" default>
 
 ```bash
-# Install globally
-npm install -g @elizaos/cli
+# Install globally with Bun
+bun install -g @elizaos/cli
 # Start ElizaOS
 elizaos start
-```
-
-  </TabItem>
-  <TabItem value="npx" label="Test with NPX">
-
-```bash
-# Use directly with npx
-npx @elizaos/cli start
 ```
 
   </TabItem>
@@ -134,8 +127,8 @@ elizaos agent start --path ./my-character.json
 # Get agent details and save to file
 elizaos agent get --name eliza --output my-exported-character.json
 
-# Start agent with JSON configuration directly
-elizaos agent start --json '{"name":"Eliza","system":"You are a helpful assistant","bio":["Helpful AI assistant"],...}'
+# Start agent with character file
+elizaos agent start --path my-character.json
 
 # Load character from remote URL
 elizaos agent start --remote-character https://example.com/characters/assistant.json

@@ -46,10 +46,18 @@ export function expandTildePath(filepath: string): string {
     return filepath;
   }
 
-  if (filepath.startsWith('~/')) {
-    return path.join(process.cwd(), filepath.slice(2));
-  } else if (filepath === '~') {
-    return process.cwd();
+  if (filepath.startsWith('~')) {
+    if (filepath === '~') {
+      return process.cwd();
+    } else if (filepath.startsWith('~/')) {
+      return path.join(process.cwd(), filepath.slice(2));
+    } else if (filepath.startsWith('~~')) {
+      // Don't expand ~~
+      return filepath;
+    } else {
+      // Handle ~user/path by expanding it to cwd/user/path
+      return path.join(process.cwd(), filepath.slice(1));
+    }
   }
 
   return filepath;
@@ -62,7 +70,7 @@ export function resolvePgliteDir(dir?: string, fallbackDir?: string): string {
   }
 
   const base =
-    (dir && dir.trim() !== '') ? dir :
+    dir ??
       process.env.PGLITE_DATA_DIR ??
       fallbackDir ??
       path.join(process.cwd(), '.eliza', '.elizadb');
@@ -571,7 +579,15 @@ export class AgentServer {
       this.app.use(pluginRouteHandler);
 
       // Mount the core API router under /api
-      // API Router setup
+      // This router handles all API endpoints including:
+      // - /api/agents/* - Agent management and interactions
+      // - /api/messaging/* - Message handling and channels
+      // - /api/media/* - File uploads and media serving
+      // - /api/memory/* - Memory management and retrieval
+      // - /api/audio/* - Audio processing and transcription
+      // - /api/server/* - Runtime and server management
+      // - /api/tee/* - TEE (Trusted Execution Environment) operations
+      // - /api/system/* - System configuration and health checks
       const apiRouter = createApiRouter(this.agents, this);
       this.app.use(
         '/api',
