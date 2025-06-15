@@ -1,9 +1,9 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { execSync, spawn } from 'child_process';
+import { execSync } from 'child_process';
 import { mkdtemp, rm, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { safeChangeDirectory, waitForServerReady } from './test-utils';
+import { safeChangeDirectory, waitForServerReady, TestProcessManager } from './test-utils';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 
 describe('ElizaOS Start Commands', () => {
@@ -11,11 +11,14 @@ describe('ElizaOS Start Commands', () => {
   let elizaosCmd: string;
   let originalCwd: string;
   let testServerPort: number;
-  let runningProcesses: any[] = [];
+  let processManager: TestProcessManager;
 
   beforeEach(async () => {
     // Store original working directory
     originalCwd = process.cwd();
+    
+    // Initialize process manager
+    processManager = new TestProcessManager();
 
     // ---- Ensure port is free.
     testServerPort = 3000;
@@ -50,26 +53,8 @@ describe('ElizaOS Start Commands', () => {
   });
 
   afterEach(async () => {
-    // Kill any running processes with proper Windows handling
-    for (const proc of runningProcesses) {
-      try {
-        if (process.platform === 'win32') {
-          // On Windows, use taskkill for more reliable termination
-          proc.kill('SIGKILL');
-        } else {
-          proc.kill();
-        }
-        await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
-        
-        // Wait for process to actually exit
-        if (!proc.killed && proc.exitCode === null) {
-          await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
-        }
-      } catch (e) {
-        // Ignore cleanup errors
-      }
-    }
-    runningProcesses = [];
+    // Clean up all processes
+    await processManager.cleanup();
 
     // Clean up environment variables
     delete process.env.LOCAL_SMALL_MODEL;
@@ -97,7 +82,7 @@ describe('ElizaOS Start Commands', () => {
     await mkdir(join(testTmpDir, 'elizadb'), { recursive: true });
 
     const charactersDir = join(__dirname, '../test-characters');
-    const serverProcess = spawn(
+    const serverProcess = processManager.spawn(
       'bun',
       [join(__dirname, '..', '../dist/index.js'), 'start', ...args.split(' ')],
       {
@@ -107,12 +92,9 @@ describe('ElizaOS Start Commands', () => {
           PGLITE_DATA_DIR: join(testTmpDir, 'elizadb'),
           SERVER_PORT: testServerPort.toString(),
         },
-        stdio: ['ignore', 'pipe', 'pipe'],
         cwd: testTmpDir,
       }
     );
-
-    runningProcesses.push(serverProcess);
 
     // Wait for server to be ready
     await waitForServerReady(testServerPort, maxWaitTime);
@@ -178,7 +160,7 @@ describe('ElizaOS Start Commands', () => {
 
       await mkdir(join(testTmpDir, 'elizadb2'), { recursive: true });
 
-      const serverProcess = spawn(
+      const serverProcess = processManager.spawn(
         'bun',
         [
           join(__dirname, '..', '../dist/index.js'),
@@ -194,12 +176,9 @@ describe('ElizaOS Start Commands', () => {
             LOG_LEVEL: 'debug',
             PGLITE_DATA_DIR: join(testTmpDir, 'elizadb2'),
           },
-          stdio: ['ignore', 'pipe', 'pipe'],
           cwd: testTmpDir,
         }
       );
-
-      runningProcesses.push(serverProcess);
 
       try {
         // Wait for server to be ready
@@ -259,7 +238,7 @@ describe('ElizaOS Start Commands', () => {
 
       await mkdir(join(testTmpDir, 'elizadb3'), { recursive: true });
 
-      const serverProcess = spawn(
+      const serverProcess = processManager.spawn(
         'bun',
         [
           join(__dirname, '..', '../dist/index.js'),
@@ -274,12 +253,9 @@ describe('ElizaOS Start Commands', () => {
             LOG_LEVEL: 'debug',
             PGLITE_DATA_DIR: join(testTmpDir, 'elizadb3'),
           },
-          stdio: ['ignore', 'pipe', 'pipe'],
           cwd: testTmpDir,
         }
       );
-
-      runningProcesses.push(serverProcess);
 
       try {
         // Wait for configuration to start
