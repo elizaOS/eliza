@@ -12,7 +12,6 @@ import {
   type UUID,
 } from '@elizaos/core';
 import internalMessageBus from '../bus'; // Import the bus
-import { sendError } from '../api/shared';
 
 // This interface defines the structure of messages coming from the server
 export interface MessageServiceMessage {
