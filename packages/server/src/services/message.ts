@@ -92,9 +92,12 @@ export class MessageBusService extends Service {
       // Fetch channels for each subscribed server
       for (const serverId of serversToCheck) {
         try {
-          const response = await fetch(
-            `${serverApiUrl}/api/messaging/central-servers/${serverId}/channels`
+          // Use URL constructor for safe URL building
+          const channelsUrl = new URL(
+            `/api/messaging/central-servers/${encodeURIComponent(serverId)}/channels`,
+            serverApiUrl
           );
+          const response = await fetch(channelsUrl.toString());
           if (response.ok) {
             const data = await response.json();
             if (data.success && data.data?.channels && Array.isArray(data.data.channels)) {
@@ -194,9 +197,12 @@ export class MessageBusService extends Service {
   private async fetchAgentServers() {
     try {
       const serverApiUrl = this.getCentralMessageServerUrl();
-      const response = await fetch(
-        `${serverApiUrl}/api/messaging/agents/${this.runtime.agentId}/servers`
+      // Use URL constructor for safe URL building
+      const agentServersUrl = new URL(
+        `/api/messaging/agents/${encodeURIComponent(this.runtime.agentId)}/servers`,
+        serverApiUrl
       );
+      const response = await fetch(agentServersUrl.toString());
 
       if (response.ok) {
         const data = await response.json();
@@ -618,7 +624,9 @@ export class MessageBusService extends Service {
 
       // Actual fetch to the central server API
       const baseUrl = this.getCentralMessageServerUrl();
-      const serverApiUrl = `${baseUrl}/api/messaging/submit`;
+      // Use URL constructor for safe URL building
+      const submitUrl = new URL('/api/messaging/submit', baseUrl);
+      const serverApiUrl = submitUrl.toString();
       const response = await fetch(serverApiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' /* TODO: Add Auth if needed */ },
