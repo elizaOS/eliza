@@ -97,7 +97,9 @@ export class MessageBusService extends Service {
             `/api/messaging/central-servers/${encodeURIComponent(serverId)}/channels`,
             serverApiUrl
           );
-          const response = await fetch(channelsUrl.toString());
+          const response = await fetch(channelsUrl.toString(), {
+            headers: this.getAuthHeaders()
+          });
           if (response.ok) {
             const data = await response.json();
             if (data.success && data.data?.channels && Array.isArray(data.data.channels)) {
@@ -154,7 +156,9 @@ export class MessageBusService extends Service {
           `/api/messaging/central-channels/${encodeURIComponent(channelId)}/details`,
           serverApiUrl
         );
-        const detailsResponse = await fetch(detailsUrl.toString());
+        const detailsResponse = await fetch(detailsUrl.toString(), {
+          headers: this.getAuthHeaders()
+        });
 
         if (detailsResponse.ok) {
           // Channel exists, add it to our valid set for future use
@@ -176,7 +180,9 @@ export class MessageBusService extends Service {
         `/api/messaging/central-channels/${encodeURIComponent(channelId)}/participants`,
         serverApiUrl
       );
-      const response = await fetch(participantsUrl.toString());
+      const response = await fetch(participantsUrl.toString(), {
+        headers: this.getAuthHeaders()
+      });
 
       if (response.ok) {
         const data = await response.json();
@@ -202,7 +208,9 @@ export class MessageBusService extends Service {
         `/api/messaging/agents/${encodeURIComponent(this.runtime.agentId)}/servers`,
         serverApiUrl
       );
-      const response = await fetch(agentServersUrl.toString());
+      const response = await fetch(agentServersUrl.toString(), {
+        headers: this.getAuthHeaders()
+      });
 
       if (response.ok) {
         const data = await response.json();
@@ -629,7 +637,7 @@ export class MessageBusService extends Service {
       const serverApiUrl = submitUrl.toString();
       const response = await fetch(serverApiUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' /* TODO: Add Auth if needed */ },
+        headers: this.getAuthHeaders(),
         body: JSON.stringify(payloadToServer),
       });
 
@@ -644,6 +652,20 @@ export class MessageBusService extends Service {
         error
       );
     }
+  }
+
+  private getAuthHeaders(): Record<string, string> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+    
+    // Add authentication header if ELIZA_SERVER_AUTH_TOKEN is configured
+    const serverAuthToken = process.env.ELIZA_SERVER_AUTH_TOKEN;
+    if (serverAuthToken) {
+      headers['X-API-KEY'] = serverAuthToken;
+    }
+    
+    return headers;
   }
 
   getCentralMessageServerUrl(): string {
