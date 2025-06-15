@@ -130,4 +130,4 @@ jobs:
         env:
           ELIZA_TEST_MODE: true
           NODE_OPTIONS: --max-old-space-size=4096
-        timeout-minutes: 15
+          timeout-minutes: 15
