@@ -14,25 +14,25 @@ import http from 'node:http';
 import path, { basename, dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Server as SocketIOServer } from 'socket.io';
-import { createApiRouter, createPluginRouteHandler, setupSocketIO } from './api';
-import { apiKeyAuthMiddleware } from './authMiddleware';
-import { messageBusConnectorPlugin } from './services/message';
-import { loadCharacterTryPath, jsonToCharacter } from './loader';
+import { createApiRouter, createPluginRouteHandler, setupSocketIO } from './api/index.js';
+import { apiKeyAuthMiddleware } from './authMiddleware.js';
+import { messageBusConnectorPlugin } from './services/message.js';
+import { loadCharacterTryPath, jsonToCharacter } from './loader.js';
 
 import {
   createDatabaseAdapter,
   DatabaseMigrationService,
   plugin as sqlPlugin,
 } from '@elizaos/plugin-sql';
-import internalMessageBus from './bus';
+import internalMessageBus from './bus.js';
 import type {
   CentralRootMessage,
   MessageChannel,
   MessageServer,
   MessageServiceStructure,
-} from './types';
+} from './types.js';
 import { existsSync } from 'node:fs';
-import { resolveEnvFile } from './api/system/environment';
+import { resolveEnvFile } from './api/system/environment.js';
 import dotenv from 'dotenv';
 
 /**
