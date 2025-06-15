@@ -112,7 +112,9 @@ export async function performInitialBuild(context: DevContext): Promise<void> {
       await buildProject(directory, isPlugin);
       console.info('✓ Initial build completed');
     } catch (error) {
-      console.error(`Initial build failed: ${error.message}`);
+      console.error(
+        `Initial build failed: ${error instanceof Error ? error.message : String(error)}`
+      );
       console.info('Continuing with dev mode anyway...');
     }
   } else {

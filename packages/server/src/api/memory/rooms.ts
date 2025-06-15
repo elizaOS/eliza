@@ -88,7 +88,13 @@ export function createRoomManagementRouter(
       );
     } catch (error) {
       logger.error(`[ROOM CREATE] Error creating room for agent ${agentId}:`, error);
-      sendError(res, 500, 'CREATE_ERROR', 'Failed to create room', error.message);
+      sendError(
+        res,
+        500,
+        'CREATE_ERROR',
+        'Failed to create room',
+        error instanceof Error ? error.message : String(error)
+      );
     }
   });
 
@@ -124,7 +130,13 @@ export function createRoomManagementRouter(
       sendSuccess(res, { rooms: agentRooms });
     } catch (error) {
       logger.error(`[ROOMS LIST] Error retrieving rooms for agent ${agentId}:`, error);
-      sendError(res, 500, 'RETRIEVAL_ERROR', 'Failed to retrieve agent rooms', error.message);
+      sendError(
+        res,
+        500,
+        'RETRIEVAL_ERROR',
+        'Failed to retrieve agent rooms',
+        error instanceof Error ? error.message : String(error)
+      );
     }
   });
 
@@ -162,7 +174,13 @@ export function createRoomManagementRouter(
       });
     } catch (error) {
       logger.error(`[ROOM DETAILS] Error retrieving room ${roomId} for agent ${agentId}:`, error);
-      sendError(res, 500, 'RETRIEVAL_ERROR', 'Failed to retrieve room details', error.message);
+      sendError(
+        res,
+        500,
+        'RETRIEVAL_ERROR',
+        'Failed to retrieve room details',
+        error instanceof Error ? error.message : String(error)
+      );
     }
   });
 

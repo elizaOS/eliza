@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { execSync } from 'child_process';
-import { mkdtemp, rm, writeFile, mkdir, access } from 'fs/promises';
+import { mkdtemp, rm, writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { safeChangeDirectory, runCliCommandSilently } from './test-utils';

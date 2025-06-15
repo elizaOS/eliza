@@ -25,7 +25,13 @@ export function createAgentWorldsRouter(
       sendSuccess(res, { worlds });
     } catch (error) {
       logger.error('[WORLDS LIST] Error retrieving worlds:', error);
-      sendError(res, 500, '500', 'Error retrieving worlds', error.message);
+      sendError(
+        res,
+        500,
+        '500',
+        'Error retrieving worlds',
+        error instanceof Error ? error.message : String(error)
+      );
     }
   });
 
@@ -57,7 +63,13 @@ export function createAgentWorldsRouter(
       sendSuccess(res, { world }, 201);
     } catch (error) {
       logger.error('[WORLD CREATE] Error creating world:', error);
-      sendError(res, 500, '500', 'Error creating world', error.message);
+      sendError(
+        res,
+        500,
+        '500',
+        'Error creating world',
+        error instanceof Error ? error.message : String(error)
+      );
     }
   };
 
@@ -115,7 +127,13 @@ export function createAgentWorldsRouter(
       sendSuccess(res, { world: refreshedWorld });
     } catch (error) {
       logger.error('[WORLD UPDATE] Error updating world:', error);
-      sendError(res, 500, '500', 'Error updating world', error.message);
+      sendError(
+        res,
+        500,
+        '500',
+        'Error updating world',
+        error instanceof Error ? error.message : String(error)
+      );
     }
   });
 

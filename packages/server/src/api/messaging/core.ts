@@ -13,8 +13,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
   const router = express.Router();
 
   // Endpoint for AGENT REPLIES or direct submissions to the central bus FROM AGENTS/SYSTEM
-  // @ts-ignore - Express type issue with async handlers
-  router.post('/submit', async (req, res) => {
+  (router as any).post('/submit', async (req: express.Request, res: express.Response) => {
     const {
       channel_id,
       server_id, // This is the server_id
@@ -60,7 +59,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
         rawMessage: raw_message,
         sourceType: source_type || 'agent_response',
         inReplyToRootMessageId: in_reply_to_message_id
-          ? validateUuid(in_reply_to_message_id)
+          ? validateUuid(in_reply_to_message_id) || undefined
           : undefined,
         metadata,
       };
@@ -94,8 +93,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
   });
 
   // Endpoint for INGESTING messages from EXTERNAL platforms (e.g., Discord plugin)
-  // @ts-ignore - Express type issue with async handlers
-  router.post('/ingest-external', async (req, res) => {
+  (router as any).post('/ingest-external', async (req: express.Request, res: express.Response) => {
     const messagePayload = req.body as Partial<MessageService>; // Partial because ID, created_at will be generated
 
     if (
@@ -116,7 +114,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
         sourceId: messagePayload.source_id, // Original platform message ID
         sourceType: messagePayload.source_type,
         inReplyToRootMessageId: messagePayload.in_reply_to_message_id
-          ? validateUuid(messagePayload.in_reply_to_message_id)
+          ? validateUuid(messagePayload.in_reply_to_message_id) || undefined
           : undefined,
         metadata: messagePayload.metadata,
       };

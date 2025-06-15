@@ -88,6 +88,8 @@ export async function installDependencies(cwd: string): Promise<void> {
     await execa(packageManager, ['install'], { cwd, stdio: 'inherit' });
     console.log('Dependencies installed successfully [✓]');
   } catch (error) {
-    throw new Error(`Failed to install dependencies: ${error.message}`);
+    throw new Error(
+      `Failed to install dependencies: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 }

@@ -95,7 +95,9 @@ export async function updateRegistryIndex(
 
     return true;
   } catch (error) {
-    console.error(`Failed to update registry index: ${error.message}`);
+    console.error(
+      `Failed to update registry index: ${error instanceof Error ? error.message : String(error)}`
+    );
     return false;
   }
 }
@@ -127,7 +129,9 @@ export async function savePackageToRegistry(
 
     return true;
   } catch (error) {
-    console.error(`Failed to save package metadata: ${error.message}`);
+    console.error(
+      `Failed to save package metadata: ${error instanceof Error ? error.message : String(error)}`
+    );
     return false;
   }
 }

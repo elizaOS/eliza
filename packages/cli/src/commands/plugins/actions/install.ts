@@ -39,7 +39,9 @@ export async function installPluginFromGitHub(
       try {
         await promptForPluginEnvVars(packageName, cwd);
       } catch (error) {
-        logger.warn(`Warning: Could not prompt for environment variables: ${error.message}`);
+        logger.warn(
+          `Warning: Could not prompt for environment variables: ${error instanceof Error ? error.message : String(error)}`
+        );
         // Don't fail the installation if env prompting fails
       }
     } else {
@@ -93,7 +95,9 @@ export async function installPluginFromRegistry(
       try {
         await promptForPluginEnvVars(actualPackageName, cwd);
       } catch (error) {
-        logger.warn(`Warning: Could not prompt for environment variables: ${error.message}`);
+        logger.warn(
+          `Warning: Could not prompt for environment variables: ${error instanceof Error ? error.message : String(error)}`
+        );
         // Don't fail the installation if env prompting fails
       }
     } else {

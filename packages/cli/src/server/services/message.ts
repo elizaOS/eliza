@@ -181,7 +181,7 @@ export class MessageBusService extends Service {
         },
       });
     } catch (error) {
-      if (error.message && error.message.includes('worlds_pkey')) {
+      if (error instanceof Error && error.message && error.message.includes('worlds_pkey')) {
         logger.debug(
           `[${this.runtime.character.name}] MessageBusService: World ${agentWorldId} already exists, continuing with message processing`
         );
@@ -205,7 +205,7 @@ export class MessageBusService extends Service {
         },
       });
     } catch (error) {
-      if (error.message && error.message.includes('rooms_pkey')) {
+      if (error instanceof Error && error.message && error.message.includes('rooms_pkey')) {
         logger.debug(
           `[${this.runtime.character.name}] MessageBusService: Room ${agentRoomId} already exists, continuing with message processing`
         );
@@ -309,12 +309,14 @@ export class MessageBusService extends Service {
       );
 
       // Check if this memory already exists (in case of duplicate processing)
-      const existingMemory = await this.runtime.getMemoryById(agentMemory.id);
-      if (existingMemory) {
-        logger.debug(
-          `[${this.runtime.character.name}] MessageBusService: Memory ${agentMemory.id} already exists, skipping duplicate processing`
-        );
-        return;
+      if (agentMemory.id) {
+        const existingMemory = await this.runtime.getMemoryById(agentMemory.id);
+        if (existingMemory) {
+          logger.debug(
+            `[${this.runtime.character.name}] MessageBusService: Memory ${agentMemory.id} already exists, skipping duplicate processing`
+          );
+          return;
+        }
       }
 
       const callbackForCentralBus = async (responseContent: Content): Promise<Memory[]> => {

@@ -117,10 +117,10 @@ const AGENT_RUNTIME_URL =
 * Represents an agent server which handles agents, database, and server functionalities.
 */
 export class AgentServer {
-  public app: express.Application;
+  public app!: express.Application;
   private agents: Map<UUID, IAgentRuntime>;
-  public server: http.Server;
-  public socketIO: SocketIOServer;
+  public server!: http.Server;
+  public socketIO!: SocketIOServer;
   private serverPort: number = 3000; // Add property to store current port
   public isInitialized: boolean = false; // Flag to prevent double initialization
 
@@ -575,7 +575,7 @@ export class AgentServer {
       const apiRouter = createApiRouter(this.agents, this);
       this.app.use(
         '/api',
-        (req, res, next) => {
+        (req: express.Request, res: express.Response, next: express.NextFunction) => {
           if (req.path !== '/ping') {
             logger.debug(`API request: ${req.method} ${req.path}`);
           }
@@ -692,13 +692,17 @@ export class AgentServer {
       const teePlugin = runtime.plugins.find((p) => p.name === 'phala-tee-plugin');
       if (teePlugin) {
         logger.debug(`Found TEE plugin for agent ${runtime.agentId}`);
-        for (const provider of teePlugin.providers) {
-          runtime.registerProvider(provider);
-          logger.debug(`Registered TEE provider: ${provider.name}`);
+        if (teePlugin.providers) {
+          for (const provider of teePlugin.providers) {
+            runtime.registerProvider(provider);
+            logger.debug(`Registered TEE provider: ${provider.name}`);
+          }
         }
-        for (const action of teePlugin.actions) {
-          runtime.registerAction(action);
-          logger.debug(`Registered TEE action: ${action.name}`);
+        if (teePlugin.actions) {
+          for (const action of teePlugin.actions) {
+            runtime.registerAction(action);
+            logger.debug(`Registered TEE action: ${action.name}`);
+          }
         }
       }
 

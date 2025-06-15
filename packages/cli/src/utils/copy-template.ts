@@ -224,7 +224,9 @@ async function replacePluginNameInFiles(targetDir: string, pluginName: string): 
         logger.debug(`Updated plugin name in ${filePath}`);
       }
     } catch (error) {
-      logger.warn(`Could not update ${filePath}: ${error.message}`);
+      logger.warn(
+        `Could not update ${filePath}: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   });
 

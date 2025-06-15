@@ -102,7 +102,9 @@ async function attemptInstallation(
     return await verifyPluginImport(installResult.installedIdentifier, context);
   } catch (installError) {
     // Catch any unexpected errors during the process
-    logger.warn(`Error during installation attempt ${context}: ${installError.message}`);
+    logger.warn(
+      `Error during installation attempt ${context}: ${installError instanceof Error ? installError.message : String(installError)}`
+    );
     return false;
   }
 }

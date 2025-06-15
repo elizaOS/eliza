@@ -19,9 +19,9 @@ import {
 export const plugins = new Command()
   .name('plugins')
   .description('Manage ElizaOS plugins')
-  .action(function () {
+  .action(() => {
     // Show help automatically if no subcommand is specified
-    this.help({ showGlobals: false });
+    plugins.help();
   });
 
 export const pluginsCommand = plugins

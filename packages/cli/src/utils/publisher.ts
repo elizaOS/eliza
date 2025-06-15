@@ -15,7 +15,7 @@ import {
   createGitHubRepository,
   pushToGitHub,
 } from './github';
-import { getGitHubToken, getRegistrySettings } from './registry';
+import { getRegistrySettings } from './registry';
 
 interface PackageJson {
   name: string;
@@ -496,7 +496,9 @@ export async function publishToGitHub(
         return false;
       }
     } catch (error) {
-      logger.error(`Failed to update index.json: ${error.message}`);
+      logger.error(
+        `Failed to update index.json: ${error instanceof Error ? error.message : String(error)}`
+      );
       return false;
     }
 

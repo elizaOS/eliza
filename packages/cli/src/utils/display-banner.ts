@@ -4,7 +4,6 @@ import fs from 'node:fs';
 import path, { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execa } from 'execa';
-import { yellow } from 'yoctocolors';
 
 // Function to get the package version
 // --- Utility: Get local CLI version from package.json ---

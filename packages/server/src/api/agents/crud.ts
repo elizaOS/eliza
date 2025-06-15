@@ -32,13 +32,14 @@ export function createAgentCrudRouter(
 
       // Return only minimal agent data
       const response = allAgents
-        .map((agent: Agent) => ({
+        .map((agent: Partial<Agent>) => ({
           id: agent.id,
-          name: agent.name,
-          characterName: agent.name, // Since Agent extends Character, agent.name is the character name
-          bio: agent.bio[0] ?? '',
-          status: runtimes.includes(agent.id) ? 'active' : 'inactive',
+          name: agent.name || '',
+          characterName: agent.name || '', // Since Agent extends Character, agent.name is the character name
+          bio: agent.bio?.[0] ?? '',
+          status: agent.id && runtimes.includes(agent.id) ? 'active' : 'inactive',
         }))
+        .filter((agent) => agent.id) // Filter out agents without IDs
         .sort((a: any, b: any) => {
           if (a.status === b.status) {
             return a.name.localeCompare(b.name);
@@ -49,7 +50,13 @@ export function createAgentCrudRouter(
       sendSuccess(res, { agents: response });
     } catch (error) {
       logger.error('[AGENTS LIST] Error retrieving agents:', error);
-      sendError(res, 500, '500', 'Error retrieving agents', error.message);
+      sendError(
+        res,
+        500,
+        '500',
+        'Error retrieving agents',
+        error instanceof Error ? error.message : String(error)
+      );
     }
   });
 
@@ -78,7 +85,13 @@ export function createAgentCrudRouter(
       sendSuccess(res, response);
     } catch (error) {
       logger.error('[AGENT GET] Error retrieving agent:', error);
-      sendError(res, 500, '500', 'Error retrieving agent', error.message);
+      sendError(
+        res,
+        500,
+        '500',
+        'Error retrieving agent',
+        error instanceof Error ? error.message : String(error)
+      );
     }
   });
 
@@ -144,7 +157,7 @@ export function createAgentCrudRouter(
         error: {
           code: 'CREATE_ERROR',
           message: error instanceof Error ? error.message : 'Error creating agent',
-          details: error.message,
+          details: error instanceof Error ? error.message : String(error),
         },
       });
     }
@@ -165,7 +178,7 @@ export function createAgentCrudRouter(
     try {
       if (updates.settings?.secrets) {
         const salt = getSalt();
-        const encryptedSecrets: Record<string, string> = {};
+        const encryptedSecrets: Record<string, string | null> = {};
         Object.entries(updates.settings.secrets).forEach(([key, value]) => {
           if (value === null) {
             encryptedSecrets[key] = null;
@@ -185,7 +198,7 @@ export function createAgentCrudRouter(
       const updatedAgent = await db.getAgent(agentId);
 
       const isActive = !!agents.get(agentId);
-      if (isActive) {
+      if (isActive && updatedAgent) {
         serverInstance?.unregisterAgent(agentId);
         await serverInstance?.startAgent(updatedAgent);
       }
@@ -196,7 +209,13 @@ export function createAgentCrudRouter(
       sendSuccess(res, { ...updatedAgent, status });
     } catch (error) {
       logger.error('[AGENT UPDATE] Error updating agent:', error);
-      sendError(res, 500, 'UPDATE_ERROR', 'Error updating agent', error.message);
+      sendError(
+        res,
+        500,
+        'UPDATE_ERROR',
+        'Error updating agent',
+        error instanceof Error ? error.message : String(error)
+      );
     }
   });
 

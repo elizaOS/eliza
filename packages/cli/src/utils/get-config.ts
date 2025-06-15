@@ -226,8 +226,8 @@ export function isValidPostgresUrl(url: string): boolean {
     const parsedUrl = new URL(url);
     return (
       parsedUrl.protocol === 'postgresql:' &&
-      parsedUrl.hostname &&
-      parsedUrl.pathname &&
+      !!parsedUrl.hostname &&
+      !!parsedUrl.pathname &&
       parsedUrl.pathname !== '/'
     );
   } catch {
@@ -503,7 +503,7 @@ export async function promptAndStorePostgresUrl(envFilePath: string): Promise<st
     return response;
   } catch (error) {
     spinner.stop('Failed to save configuration');
-    clack.log.error(`Error: ${error.message}`);
+    clack.log.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
     return null;
   }
 }
@@ -631,7 +631,7 @@ export async function promptAndStoreOpenAIKey(envFilePath: string): Promise<stri
     return response;
   } catch (error) {
     spinner.stop('Failed to save API key');
-    clack.log.error(`Error: ${error.message}`);
+    clack.log.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
     return null;
   }
 }
@@ -680,7 +680,7 @@ export async function promptAndStoreAnthropicKey(envFilePath: string): Promise<s
     return response;
   } catch (error) {
     spinner.stop('Failed to save API key');
-    clack.log.error(`Error: ${error.message}`);
+    clack.log.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
     return null;
   }
 }
