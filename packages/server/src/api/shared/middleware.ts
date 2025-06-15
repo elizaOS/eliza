@@ -2,6 +2,7 @@ import type { IAgentRuntime, UUID } from '@elizaos/core';
 import express from 'express';
 import { validateUuid, logger } from '@elizaos/core';
 import { sendError } from './response-utils';
+import { validateChannelId } from './validation';
 import rateLimit from 'express-rate-limit';
 
 /**
@@ -32,14 +33,51 @@ export const agentExistsMiddleware = (agents: Map<UUID, IAgentRuntime>) => {
 export const validateUuidMiddleware = (paramName: string) => {
   return (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const paramValue = req.params[paramName];
-    const validatedUuid = validateUuid(paramValue);
+    let validatedUuid: UUID | null;
+    
+    // Use enhanced validation for channel IDs
+    if (paramName === 'channelId') {
+      const clientIp = req.ip || 'unknown';
+      validatedUuid = validateChannelId(paramValue, clientIp);
+    } else {
+      validatedUuid = validateUuid(paramValue);
+    }
 
     if (!validatedUuid) {
+      // Log security event for invalid IDs
+      const clientIp = req.ip || 'unknown';
+      logger.warn(`[SECURITY] Invalid ${paramName} from ${clientIp}: ${paramValue}`);
       return sendError(res, 400, 'INVALID_ID', `Invalid ${paramName} format`);
     }
 
     // Add validated UUID to request params
     req.params[paramName] = validatedUuid;
+    next();
+  };
+};
+
+/**
+ * Enhanced channel ID validation middleware with additional security
+ */
+export const validateChannelIdMiddleware = () => {
+  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const channelId = req.params.channelId;
+    const clientIp = req.ip || 'unknown';
+    
+    if (!channelId) {
+      return sendError(res, 400, 'MISSING_CHANNEL_ID', 'Channel ID is required');
+    }
+    
+    const validatedChannelId = validateChannelId(channelId, clientIp);
+    
+    if (!validatedChannelId) {
+      // Rate limit failed attempts to prevent brute force
+      logger.warn(`[SECURITY] Failed channel ID validation from ${clientIp}: ${channelId}`);
+      return sendError(res, 400, 'INVALID_CHANNEL_ID', 'Invalid channel ID format');
+    }
+    
+    // Store validated channel ID
+    req.params.channelId = validatedChannelId;
     next();
   };
 };
@@ -243,6 +281,49 @@ export const createUploadRateLimit = () => {
         error: {
           code: 'UPLOAD_RATE_LIMIT_EXCEEDED',
           message: 'Too many upload attempts. Please try again later.',
+        },
+      });
+    },
+  });
+};
+
+/**
+ * Rate limiting specifically for channel validation attempts
+ * Prevents brute force attacks on channel IDs
+ */
+export const createChannelValidationRateLimit = () => {
+  return rateLimit({
+    windowMs: 10 * 60 * 1000, // 10 minutes
+    max: 200, // Limit each IP to 200 channel validation attempts per 10 minutes
+    message: {
+      success: false,
+      error: {
+        code: 'CHANNEL_VALIDATION_RATE_LIMIT_EXCEEDED',
+        message: 'Too many channel validation attempts. Please try again later.',
+      },
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: (req) => {
+      // Skip rate limiting if channel ID is valid (successful validations)
+      const channelId = req.params.channelId;
+      if (channelId) {
+        const validatedChannelId = validateChannelId(channelId);
+        return !!validatedChannelId; // Skip if valid
+      }
+      return false; // Apply rate limiting for invalid attempts
+    },
+    handler: (req, res) => {
+      const clientIp = req.ip || 'unknown';
+      const channelId = req.params.channelId || 'unknown';
+      logger.warn(
+        `[SECURITY] Channel validation rate limit exceeded for IP: ${clientIp}, attempted channel: ${channelId}`
+      );
+      res.status(429).json({
+        success: false,
+        error: {
+          code: 'CHANNEL_VALIDATION_RATE_LIMIT_EXCEEDED',
+          message: 'Too many channel validation attempts. Please try again later.',
         },
       });
     },

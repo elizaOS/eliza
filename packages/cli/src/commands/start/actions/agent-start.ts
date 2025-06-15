@@ -1,4 +1,4 @@
-import { AgentServer } from '@/src/server/index';
+import { AgentServer } from '@elizaos/server';
 import {
   AgentRuntime,
   encryptedCharacter,

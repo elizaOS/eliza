@@ -1,8 +1,34 @@
-import { parseEnvFile } from '@/src/commands/env';
 import { logger } from '@elizaos/core';
 import express from 'express';
 import { existsSync, writeFileSync } from 'fs';
-import { resolveEnvFile } from '@/src/utils';
+import path from 'path';
+import dotenv from 'dotenv';
+import fs from 'fs/promises';
+
+export type EnvVars = Record<string, string>;
+
+/**
+ * Parse an .env file and return the key-value pairs
+ * @param filePath Path to the .env file
+ * @returns Object containing the key-value pairs
+ */
+export async function parseEnvFile(filePath: string): Promise<EnvVars> {
+  try {
+    if (!existsSync(filePath)) {
+      return {};
+    }
+
+    const content = await fs.readFile(filePath, 'utf-8');
+    // Handle empty file case gracefully
+    if (content.trim() === '') {
+      return {};
+    }
+    return dotenv.parse(content);
+  } catch (error) {
+    console.error(`Error parsing .env file: ${error.message}`);
+    return {};
+  }
+}
 
 function serializeEnvObject(envObj: Record<string, string>): string {
   return Object.entries(envObj)
@@ -13,6 +39,35 @@ function serializeEnvObject(envObj: Record<string, string>): string {
 function getLocalEnvPath(): string | null {
   const envPath = resolveEnvFile();
   return existsSync(envPath) ? envPath : null;
+}
+
+/**
+ * Resolves the path to the nearest `.env` file.
+ *
+ * If no `.env` file is found when traversing up from the starting directory,
+ * a path to `.env` in the starting directory is returned.
+ *
+ * @param startDir - The directory to start searching from. Defaults to the
+ *   current working directory.
+ * @returns The resolved path to the `.env` file.
+ */
+export function resolveEnvFile(startDir: string = process.cwd()): string {
+  let currentDir = startDir;
+
+  while (true) {
+    const candidate = path.join(currentDir, '.env');
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+
+    const parentDir = path.dirname(currentDir);
+    if (parentDir === currentDir) {
+      break;
+    }
+    currentDir = parentDir;
+  }
+
+  return path.join(startDir, '.env');
 }
 
 /**

@@ -11,7 +11,7 @@ import {
 import express from 'express';
 import type { AgentServer } from '../../index';
 import { sendError } from '../shared/response-utils';
-import { convertToAudioBuffer } from '@/src/utils';
+import { convertToAudioBuffer } from './audioBuffer';
 
 /**
  * Speech conversation functionality

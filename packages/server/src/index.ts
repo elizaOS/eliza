@@ -1,6 +1,4 @@
-import { resolvePgliteDir } from '@/src/utils';
 import {
-  ChannelType,
   type Character,
   DatabaseAdapter,
   type IAgentRuntime,
@@ -13,27 +11,75 @@ import express, { Request, Response } from 'express';
 import helmet from 'helmet';
 import * as fs from 'node:fs';
 import http from 'node:http';
-import * as path from 'node:path';
+import path, { basename, dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Server as SocketIOServer } from 'socket.io';
 import { createApiRouter, createPluginRouteHandler, setupSocketIO } from './api';
 import { apiKeyAuthMiddleware } from './authMiddleware';
 import { messageBusConnectorPlugin } from './services/message';
+import { loadCharacterTryPath, jsonToCharacter } from './loader';
 
-import internalMessageBus from './bus';
-import type {
-  MessageChannel,
-  MessageServer,
-  CentralRootMessage,
-  MessageServiceStructure,
-} from './types';
 import {
   createDatabaseAdapter,
   DatabaseMigrationService,
   plugin as sqlPlugin,
 } from '@elizaos/plugin-sql';
+import internalMessageBus from './bus';
+import type {
+  CentralRootMessage,
+  MessageChannel,
+  MessageServer,
+  MessageServiceStructure,
+} from './types';
+import { existsSync } from 'node:fs';
+import { resolveEnvFile } from './api/system/environment';
+import dotenv from 'dotenv';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+/**
+ * Expands a file path starting with `~` to the project directory.
+ *
+ * @param filepath - The path to expand.
+ * @returns The expanded path.
+ */
+export function expandTildePath(filepath: string): string {
+  if (!filepath) {
+    return filepath;
+  }
+  
+  if (filepath.startsWith('~/')) {
+    return path.join(process.cwd(), filepath.slice(2));
+  } else if (filepath === '~') {
+    return process.cwd();
+  }
+  
+  return filepath;
+}
+
+export function resolvePgliteDir(dir?: string, fallbackDir?: string): string {
+  const envPath = resolveEnvFile();
+  if (existsSync(envPath)) {
+    dotenv.config({ path: envPath });
+  }
+
+  const base =
+    (dir && dir.trim() !== '') ? dir :
+    process.env.PGLITE_DATA_DIR ??
+    fallbackDir ??
+    path.join(process.cwd(), '.eliza', '.elizadb');
+
+  // Automatically migrate legacy path (<cwd>/.elizadb) to new location (<cwd>/.eliza/.elizadb)
+  const resolved = expandTildePath(base);
+  const legacyPath = path.join(process.cwd(), '.elizadb');
+  if (resolved === legacyPath) {
+    const newPath = path.join(process.cwd(), '.eliza', '.elizadb');
+    process.env.PGLITE_DATA_DIR = newPath;
+    return newPath;
+  }
+
+  return resolved;
+}
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID; // Single default server
 
@@ -94,6 +140,10 @@ export class AgentServer {
     try {
       logger.debug('Initializing AgentServer (constructor)...');
       this.agents = new Map();
+
+      // Initialize character loading functions
+      this.loadCharacterTryPath = loadCharacterTryPath;
+      this.jsonToCharacter = jsonToCharacter;
     } catch (error) {
       logger.error('Failed to initialize AgentServer (constructor):', error);
       throw error;
@@ -381,9 +431,9 @@ export class AgentServer {
           if (!uuidRegex.test(agentId)) {
             return res.status(400).json({ error: 'Invalid agent ID format' });
           }
-          const sanitizedFilename = path.basename(filename);
-          const agentUploadsPath = path.join(uploadsBasePath, agentId);
-          const filePath = path.join(agentUploadsPath, sanitizedFilename);
+          const sanitizedFilename = basename(filename);
+          const agentUploadsPath = join(uploadsBasePath, agentId);
+          const filePath = join(agentUploadsPath, sanitizedFilename);
           if (!filePath.startsWith(agentUploadsPath)) {
             return res.status(403).json({ error: 'Access denied' });
           }
@@ -417,9 +467,9 @@ export class AgentServer {
           if (!uuidRegex.test(agentId)) {
             return res.status(400).json({ error: 'Invalid agent ID format' });
           }
-          const sanitizedFilename = path.basename(filename);
-          const agentGeneratedPath = path.join(generatedBasePath, agentId);
-          const filePath = path.join(agentGeneratedPath, sanitizedFilename);
+          const sanitizedFilename = basename(filename);
+          const agentGeneratedPath = join(generatedBasePath, agentId);
+          const filePath = join(agentGeneratedPath, sanitizedFilename);
           if (!filePath.startsWith(agentGeneratedPath)) {
             return res.status(403).json({ error: 'Access denied' });
           }
@@ -444,9 +494,9 @@ export class AgentServer {
             return;
           }
 
-          const sanitizedFilename = path.basename(filename);
-          const channelUploadsPath = path.join(uploadsBasePath, 'channels', channelId);
-          const filePath = path.join(channelUploadsPath, sanitizedFilename);
+          const sanitizedFilename = basename(filename);
+          const channelUploadsPath = join(uploadsBasePath, 'channels', channelId);
+          const filePath = join(channelUploadsPath, sanitizedFilename);
 
           if (!filePath.startsWith(channelUploadsPath)) {
             res.status(403).json({ error: 'Access denied' });
@@ -469,7 +519,7 @@ export class AgentServer {
       // Add specific middleware to handle portal assets
       this.app.use((req, res, next) => {
         // Automatically detect and handle static assets based on file extension
-        const ext = path.extname(req.path).toLowerCase();
+        const ext = extname(req.path).toLowerCase();
 
         // Set correct content type based on file extension
         if (ext === '.js' || ext === '.mjs') {
@@ -494,7 +544,7 @@ export class AgentServer {
         lastModified: true,
         setHeaders: (res: express.Response, filePath: string) => {
           // Set the correct content type for different file extensions
-          const ext = path.extname(filePath).toLowerCase();
+          const ext = extname(filePath).toLowerCase();
           if (ext === '.css') {
             res.setHeader('Content-Type', 'text/css');
           } else if (ext === '.js') {
@@ -512,7 +562,7 @@ export class AgentServer {
       };
 
       // Serve static assets from the client dist path
-      const clientPath = path.join(__dirname, '..', 'dist');
+      const clientPath = join(__dirname, '..', 'dist');
       this.app.use(express.static(clientPath, staticOptions));
 
       // *** NEW: Mount the plugin route handler BEFORE static serving ***
@@ -987,3 +1037,17 @@ export class AgentServer {
     return serverIds;
   }
 }
+
+// Export loader utilities
+export {
+  tryLoadFile,
+  loadCharactersFromUrl,
+  jsonToCharacter,
+  loadCharacter,
+  loadCharacterTryPath,
+  hasValidRemoteUrls,
+  loadCharacters,
+} from './loader';
+
+// Export types
+export * from './types';
