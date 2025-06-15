@@ -26,8 +26,18 @@ export interface BadgeProps
   extends React.HTMLAttributes<HTMLDivElement>,
     VariantProps<typeof badgeVariants> {}
 
-function Badge({ className, variant, ...props }: BadgeProps) {
-  return <div className={cn(badgeVariants({ variant }), className)} {...props} />;
+interface ExtendedBadgeProps extends BadgeProps {
+  'data-testid'?: string;
+}
+
+function Badge({ className, variant, ...props }: ExtendedBadgeProps) {
+  return (
+    <div
+      className={cn(badgeVariants({ variant }), className)}
+      data-testid={props['data-testid'] || 'badge'}
+      {...props}
+    />
+  );
 }
 
 export { Badge, badgeVariants };

@@ -3,9 +3,13 @@ import * as React from 'react';
 
 import { cn } from '@/lib/utils';
 
+interface SeparatorProps extends React.ComponentPropsWithoutRef<typeof SeparatorPrimitive.Root> {
+  'data-testid'?: string;
+}
+
 const Separator = React.forwardRef<
   React.ElementRef<typeof SeparatorPrimitive.Root>,
-  React.ComponentPropsWithoutRef<typeof SeparatorPrimitive.Root>
+  SeparatorProps
 >(({ className, orientation = 'horizontal', decorative = true, ...props }, ref) => (
   <SeparatorPrimitive.Root
     ref={ref}
@@ -16,6 +20,7 @@ const Separator = React.forwardRef<
       orientation === 'horizontal' ? 'h-[1px] w-full' : 'h-full w-[1px]',
       className
     )}
+    data-testid={props['data-testid'] || 'separator'}
     {...props}
   />
 ));

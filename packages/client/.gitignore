@@ -23,3 +23,13 @@ dist-ssr
 *.sw?
 
 src/lib/info.json
+
+# Cypress test artifacts
+cypress/videos/
+cypress/screenshots/
+cypress/downloads/
+.cypress/
+screenshots/
+coverage/
+test-results/
+.cursor/
