@@ -41,7 +41,7 @@ describe('ElizaOS Start Commands', () => {
 
     // Setup CLI command
     const scriptDir = join(__dirname, '..');
-    elizaosCmd = `bun run ${join(scriptDir, '../dist/index.js')}`;
+    elizaosCmd = `bun ${join(scriptDir, '../dist/index.js')}`;
 
     // Make PORT + model envs explicit.
     process.env.LOCAL_SMALL_MODEL = 'DeepHermes-3-Llama-3-3B-Preview-q4.gguf';
@@ -99,7 +99,7 @@ describe('ElizaOS Start Commands', () => {
     const charactersDir = join(__dirname, '../test-characters');
     const serverProcess = spawn(
       'bun',
-      ['run', join(__dirname, '..', '../dist/index.js'), 'start', ...args.split(' ')],
+      [join(__dirname, '..', '../dist/index.js'), 'start', ...args.split(' ')],
       {
         env: {
           ...process.env,
@@ -181,7 +181,6 @@ describe('ElizaOS Start Commands', () => {
       const serverProcess = spawn(
         'bun',
         [
-          'run',
           join(__dirname, '..', '../dist/index.js'),
           'start',
           '-p',
@@ -263,7 +262,6 @@ describe('ElizaOS Start Commands', () => {
       const serverProcess = spawn(
         'bun',
         [
-          'run',
           join(__dirname, '..', '../dist/index.js'),
           'start',
           '--configure',

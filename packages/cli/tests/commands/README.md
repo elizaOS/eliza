@@ -33,7 +33,7 @@ describe('My Command', () => {
     testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-'));
     process.chdir(testTmpDir);
     const scriptDir = join(__dirname, '..');
-    elizaosCmd = `bun run ${join(scriptDir, '../dist/index.js')}`;
+    elizaosCmd = `bun ${join(scriptDir, '../dist/index.js')}`;
   });
 
   afterEach(async () => {

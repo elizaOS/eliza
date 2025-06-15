@@ -21,7 +21,7 @@ describe('ElizaOS Plugin Commands', () => {
 
     // Setup CLI command
     const scriptDir = join(__dirname, '..');
-    elizaosCmd = `bun run "${join(scriptDir, '../dist/index.js')}"`;
+    elizaosCmd = `bun "${join(scriptDir, '../dist/index.js')}"`;
 
     // Create one test project for all plugin tests to share
     projectDir = join(testTmpDir, 'shared-test-project');

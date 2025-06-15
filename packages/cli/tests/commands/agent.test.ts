@@ -21,7 +21,7 @@ describe('ElizaOS Agent Commands', () => {
 
     // Setup CLI command
     const scriptDir = join(__dirname, '..');
-    elizaosCmd = `bun run ${join(scriptDir, '../dist/index.js')}`;
+    elizaosCmd = `bun ${join(scriptDir, '../dist/index.js')}`;
 
     // Kill any existing processes on port 3000
     try {
@@ -39,7 +39,7 @@ describe('ElizaOS Agent Commands', () => {
 
     serverProcess = spawn(
       'bun',
-      ['run', join(scriptDir, '../dist/index.js'), 'start', '--port', testServerPort],
+      [join(scriptDir, '../dist/index.js'), 'start', '--port', testServerPort],
       {
         env: {
           ...process.env,

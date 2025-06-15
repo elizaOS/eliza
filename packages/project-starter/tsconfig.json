@@ -28,5 +28,5 @@
     }
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["dist", "node_modules"]
+  "exclude": ["dist", "node_modules", "src/__tests__/**/*", "src/**/cypress/**/*", "**/*.test.ts", "**/*.spec.ts"]
 }

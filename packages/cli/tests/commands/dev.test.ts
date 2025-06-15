@@ -40,7 +40,7 @@ describe('ElizaOS Dev Commands', () => {
 
     // Setup CLI command
     const scriptDir = join(__dirname, '..');
-    elizaosCmd = `bun run ${join(scriptDir, '../dist/index.js')}`;
+    elizaosCmd = `bun ${join(scriptDir, '../dist/index.js')}`;
 
     // Set test environment variables to avoid database issues
     process.env.TEST_SERVER_PORT = testServerPort.toString();
@@ -87,7 +87,7 @@ describe('ElizaOS Dev Commands', () => {
 
     const devProcess = spawn(
       'bun',
-      ['run', join(__dirname, '..', '../dist/index.js'), 'dev', ...args.split(' ')],
+      [join(__dirname, '..', '../dist/index.js'), 'dev', ...args.split(' ')],
       {
         env: {
           ...process.env,
@@ -144,7 +144,7 @@ describe('ElizaOS Dev Commands', () => {
       // Start dev process and capture output
       const devProcess = spawn(
         'bun',
-        ['run', join(__dirname, '..', '../dist/index.js'), 'dev', '--port', testServerPort.toString()],
+        [join(__dirname, '..', '../dist/index.js'), 'dev', '--port', testServerPort.toString()],
         {
           env: {
             ...process.env,
@@ -191,7 +191,7 @@ describe('ElizaOS Dev Commands', () => {
       // Start dev process
       const devProcess = spawn(
         'bun',
-        ['run', join(__dirname, '..', '../dist/index.js'), 'dev', '--port', testServerPort.toString()],
+        [join(__dirname, '..', '../dist/index.js'), 'dev', '--port', testServerPort.toString()],
         {
           env: {
             ...process.env,
@@ -260,7 +260,7 @@ describe('ElizaOS Dev Commands', () => {
       let output = '';
       const devProcess = spawn(
         'bun',
-        ['run', join(__dirname, '..', '../dist/index.js'), 'dev', '--port', testServerPort.toString()],
+        [join(__dirname, '..', '../dist/index.js'), 'dev', '--port', testServerPort.toString()],
         {
           env: {
             ...process.env,
