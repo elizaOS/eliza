@@ -32,8 +32,8 @@ describe('getFarmingPoolDetailsAction', () => {
     } as unknown as IAgentRuntime;
 
     mockMemory = {
-      entityId: 'user-id' as any,
-      roomId: 'room-id' as any,
+      entityId: 'user-id-1234-5678-9abc-def012345678' as `${string}-${string}-${string}-${string}-${string}`,
+      roomId: 'room-id-1234-5678-9abc-def012345678' as `${string}-${string}-${string}-${string}-${string}`,
       content: {
         text: 'Get details for a farming pool',
         poolId: 'pool-456',

@@ -32,8 +32,8 @@ describe('calculateLiquidityValueAction', () => {
     } as unknown as IAgentRuntime;
 
     mockMemory = {
-      entityId: 'user-id' as any,
-      roomId: 'room-id' as any,
+      entityId: 'user-id-1234-5678-9abc-def012345678' as `${string}-${string}-${string}-${string}-${string}`,
+      roomId: 'room-id-1234-5678-9abc-def012345678' as `${string}-${string}-${string}-${string}-${string}`,
       content: {
         text: 'Calculate the value of 10 LP tokens for the USDC/WMATIC pool',
         token0SymbolOrAddress: 'USDC',

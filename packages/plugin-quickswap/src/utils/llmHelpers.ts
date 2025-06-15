@@ -11,9 +11,16 @@ export async function callLLMWithTimeout<T>(
   try {
     logger.info(`[${actionName}] Calling LLM with timeout for template:`, template);
 
-    const prompt = composePromptFromState(template, {
-      message: { content: { text: messageText } as Memory['content'] },
-      state, // Pass the state if needed by the template
+    const prompt = composePromptFromState({
+      state: {
+        ...state, // Pass the existing state if needed by the template
+        message: {
+          content: {
+            text: messageText
+          }
+        },
+      },
+      template,
     });
 
     // Simulate LLM call. In a real scenario, this would use runtime.useModel
