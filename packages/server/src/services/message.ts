@@ -146,9 +146,12 @@ export class MessageBusService extends Service {
       // First check if channel is in our cached set
       if (!this.validChannelIds.has(channelId)) {
         // Try to verify the channel exists by fetching its details
-        const detailsResponse = await fetch(
-          `${serverApiUrl}/api/messaging/central-channels/${channelId}/details`
+        // Use URL constructor for safe URL building
+        const detailsUrl = new URL(
+          `/api/messaging/central-channels/${encodeURIComponent(channelId)}/details`,
+          serverApiUrl
         );
+        const detailsResponse = await fetch(detailsUrl.toString());
 
         if (detailsResponse.ok) {
           // Channel exists, add it to our valid set for future use
@@ -165,9 +168,12 @@ export class MessageBusService extends Service {
       }
 
       // Now fetch the participants
-      const response = await fetch(
-        `${serverApiUrl}/api/messaging/central-channels/${channelId}/participants`
+      // Use URL constructor for safe URL building
+      const participantsUrl = new URL(
+        `/api/messaging/central-channels/${encodeURIComponent(channelId)}/participants`,
+        serverApiUrl
       );
+      const response = await fetch(participantsUrl.toString());
 
       if (response.ok) {
         const data = await response.json();
