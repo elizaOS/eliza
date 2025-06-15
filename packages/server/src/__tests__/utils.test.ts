@@ -214,8 +214,8 @@ describe('Utility Functions', () => {
     });
 
     it('should handle empty string inputs', () => {
-      // Empty string should fall back to default path since it's considered invalid  
-      const expected = path.join(process.cwd(), '.eliza', '.elizadb');
+      // Empty string gets passed through and expandTildePath returns it unchanged
+      const expected = '';
 
       const result = resolvePgliteDir('');
 
@@ -247,7 +247,7 @@ describe('Utility Functions', () => {
 
     it('should handle various tilde variations', () => {
       const inputs = [
-        { input: '~user/path', expected: '~user/path' }, // Tilde with user name not expanded
+        { input: '~user/path', expected: path.join(process.cwd(), 'user/path') }, // Tilde gets expanded
         { input: '~~', expected: '~~' }, // Double tilde - not expanded since doesn't start with ~/
         { input: 'not~tilde', expected: 'not~tilde' }, // Tilde not at start
       ];
