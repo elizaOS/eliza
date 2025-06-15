@@ -35,7 +35,7 @@ export class MessageBusService extends Service {
   capabilityDescription = 'Manages connection and message synchronization with the message server.';
 
   private boundHandleIncomingMessage: (message: MessageServiceMessage) => Promise<void>;
-  private boundHandleServerAgentUpdate: (data: any) => void;
+  private boundHandleServerAgentUpdate: (data: any) => Promise<void>;
   private boundHandleMessageDeleted: (data: any) => Promise<void>;
   private boundHandleChannelCleared: (data: any) => Promise<void>;
   private subscribedServers: Set<UUID> = new Set();
@@ -60,7 +60,7 @@ export class MessageBusService extends Service {
     await service.stop();
   }
 
-  private connectToMessageBus() {
+  private async connectToMessageBus() {
     logger.info(
       `[${this.runtime.character.name}] MessageBusService: Subscribing to internal message bus for 'new_message', 'message_deleted', and 'channel_cleared' events.`
     );
@@ -70,7 +70,9 @@ export class MessageBusService extends Service {
     internalMessageBus.on('channel_cleared', this.boundHandleChannelCleared);
 
     // Initialize by fetching servers this agent belongs to
-    this.fetchAgentServers();
+    await this.fetchAgentServers();
+    // Then fetch valid channels for those servers
+    await this.fetchValidChannelIds();
   }
 
   private validChannelIds: Set<UUID> = new Set();
@@ -78,16 +80,53 @@ export class MessageBusService extends Service {
   private async fetchValidChannelIds(): Promise<void> {
     try {
       const serverApiUrl = this.getCentralMessageServerUrl();
-      const response = await fetch(`${serverApiUrl}/api/messaging/valid-channels`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && Array.isArray(data.channels)) {
-          this.validChannelIds = new Set(data.channels);
+
+      // Clear existing channel IDs before fetching new ones
+      this.validChannelIds.clear();
+
+      // Include the default server ID if not already in subscribed servers
+      const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
+      const serversToCheck = new Set(this.subscribedServers);
+      serversToCheck.add(DEFAULT_SERVER_ID);
+
+      // Fetch channels for each subscribed server
+      for (const serverId of serversToCheck) {
+        try {
+          const response = await fetch(
+            `${serverApiUrl}/api/messaging/central-servers/${serverId}/channels`
+          );
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.data?.channels && Array.isArray(data.data.channels)) {
+              // Add channel IDs to the set
+              data.data.channels.forEach((channel: any) => {
+                if (channel.id && validateUuid(channel.id)) {
+                  this.validChannelIds.add(channel.id as UUID);
+                }
+              });
+              logger.info(
+                `[${this.runtime.character.name}] MessageBusService: Fetched ${data.data.channels.length} channels from server ${serverId}`
+              );
+            }
+          } else {
+            logger.warn(
+              `[${this.runtime.character.name}] MessageBusService: Failed to fetch channels for server ${serverId}: ${response.status} ${response.statusText}`
+            );
+          }
+        } catch (serverError) {
+          logger.error(
+            `[${this.runtime.character.name}] MessageBusService: Error fetching channels for server ${serverId}:`,
+            serverError
+          );
         }
       }
+
+      logger.info(
+        `[${this.runtime.character.name}] MessageBusService: Loaded ${this.validChannelIds.size} valid channel IDs from ${serversToCheck.size} servers (including default server)`
+      );
     } catch (error) {
       logger.error(
-        `[${this.runtime.character.name}] MessageBusService: Error fetching valid channel IDs:`,
+        `[${this.runtime.character.name}] MessageBusService: Error in fetchValidChannelIds:`,
         error
       );
     }
@@ -97,13 +136,35 @@ export class MessageBusService extends Service {
     try {
       const serverApiUrl = this.getCentralMessageServerUrl();
 
-      if (!validateUuid(channelId) || !this.validChannelIds.has(channelId)) {
+      if (!validateUuid(channelId)) {
         logger.warn(
-          `[${this.runtime.character.name}] MessageBusService: Invalid or unauthorized channel ID: ${channelId}`
+          `[${this.runtime.character.name}] MessageBusService: Invalid channel ID format: ${channelId}`
         );
         return [];
       }
 
+      // First check if channel is in our cached set
+      if (!this.validChannelIds.has(channelId)) {
+        // Try to verify the channel exists by fetching its details
+        const detailsResponse = await fetch(
+          `${serverApiUrl}/api/messaging/central-channels/${channelId}/details`
+        );
+
+        if (detailsResponse.ok) {
+          // Channel exists, add it to our valid set for future use
+          this.validChannelIds.add(channelId);
+          logger.info(
+            `[${this.runtime.character.name}] MessageBusService: Discovered new channel ${channelId}, added to valid channels`
+          );
+        } else {
+          logger.warn(
+            `[${this.runtime.character.name}] MessageBusService: Channel ${channelId} does not exist or is not accessible`
+          );
+          return [];
+        }
+      }
+
+      // Now fetch the participants
       const response = await fetch(
         `${serverApiUrl}/api/messaging/central-channels/${channelId}/participants`
       );
@@ -135,20 +196,36 @@ export class MessageBusService extends Service {
         const data = await response.json();
         if (data.success && data.data?.servers) {
           this.subscribedServers = new Set(data.data.servers);
+          // Always include the default server
+          const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
+          this.subscribedServers.add(DEFAULT_SERVER_ID);
           logger.info(
-            `[${this.runtime.character.name}] MessageBusService: Agent is subscribed to ${this.subscribedServers.size} servers`
+            `[${this.runtime.character.name}] MessageBusService: Agent is subscribed to ${this.subscribedServers.size} servers (including default server)`
           );
         }
+      } else {
+        // Even if the request fails, ensure we're subscribed to the default server
+        const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
+        this.subscribedServers.add(DEFAULT_SERVER_ID);
+        logger.warn(
+          `[${this.runtime.character.name}] MessageBusService: Failed to fetch agent servers, but added default server`
+        );
       }
     } catch (error) {
       logger.error(
         `[${this.runtime.character.name}] MessageBusService: Error fetching agent servers:`,
         error
       );
+      // Even on error, ensure we're subscribed to the default server
+      const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
+      this.subscribedServers.add(DEFAULT_SERVER_ID);
+      logger.info(
+        `[${this.runtime.character.name}] MessageBusService: Added default server after error`
+      );
     }
   }
 
-  private handleServerAgentUpdate(data: any) {
+  private async handleServerAgentUpdate(data: any) {
     if (data.agentId !== this.runtime.agentId) {
       return; // Not for this agent
     }
@@ -158,11 +235,15 @@ export class MessageBusService extends Service {
       logger.info(
         `[${this.runtime.character.name}] MessageBusService: Agent added to server ${data.serverId}`
       );
+      // Refresh channel IDs to include channels from the new server
+      await this.fetchValidChannelIds();
     } else if (data.type === 'agent_removed_from_server') {
       this.subscribedServers.delete(data.serverId);
       logger.info(
         `[${this.runtime.character.name}] MessageBusService: Agent removed from server ${data.serverId}`
       );
+      // Refresh channel IDs to remove channels from the removed server
+      await this.fetchValidChannelIds();
     }
   }
 
