@@ -46,13 +46,18 @@ export function expandTildePath(filepath: string): string {
     return filepath;
   }
 
-  if (filepath.startsWith('~/')) {
-    return path.join(process.cwd(), filepath.slice(2));
-  } else if (filepath === '~') {
-    return process.cwd();
-  } else if (filepath.startsWith('~') && filepath.length > 1 && filepath.charAt(1) !== '~') {
-    // Handle ~user/path by treating it as ~/user/path (but not ~~)
-    return path.join(process.cwd(), filepath.slice(1));
+  if (filepath.startsWith('~')) {
+    if (filepath === '~') {
+      return process.cwd();
+    } else if (filepath.startsWith('~/')) {
+      return path.join(process.cwd(), filepath.slice(2));
+    } else if (filepath.startsWith('~~')) {
+      // Don't expand ~~
+      return filepath;
+    } else {
+      // Handle ~user/path by expanding it to cwd/user/path
+      return path.join(process.cwd(), filepath.slice(1));
+    }
   }
 
   return filepath;
@@ -65,7 +70,7 @@ export function resolvePgliteDir(dir?: string, fallbackDir?: string): string {
   }
 
   const base =
-    (dir !== undefined && dir !== null) ? dir :
+    dir ??
       process.env.PGLITE_DATA_DIR ??
       fallbackDir ??
       path.join(process.cwd(), '.eliza', '.elizadb');
