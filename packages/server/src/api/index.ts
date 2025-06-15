@@ -813,13 +813,28 @@ export function createApiRouter(
   );
 
   // Setup new domain-based routes
+  // Mount agents router at /agents - handles agent creation, management, and interactions
   router.use('/agents', agentsRouter(agents, serverInstance));
+  
+  // Mount messaging router at /messaging - handles messages, channels, and chat functionality
   router.use('/messaging', messagingRouter(agents, serverInstance));
+  
+  // Mount media router at /media - handles file uploads, downloads, and media management
   router.use('/media', mediaRouter(agents, serverInstance));
+  
+  // Mount memory router at /memory - handles agent memory storage and retrieval
   router.use('/memory', memoryRouter(agents, serverInstance));
+  
+  // Mount audio router at /audio - handles audio processing, transcription, and voice operations
   router.use('/audio', audioRouter(agents, serverInstance));
+  
+  // Mount runtime router at /server - handles server runtime operations and management
   router.use('/server', runtimeRouter(agents, serverInstance));
+  
+  // Mount TEE router at /tee - handles Trusted Execution Environment operations
   router.use('/tee', teeRouter(agents, serverInstance));
+  
+  // Mount system router at /system - handles system configuration, health checks, and environment
   router.use('/system', systemRouter(agents, serverInstance));
 
   // NOTE: /world routes have been removed - functionality moved to messaging/spaces

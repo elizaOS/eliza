@@ -571,7 +571,15 @@ export class AgentServer {
       this.app.use(pluginRouteHandler);
 
       // Mount the core API router under /api
-      // API Router setup
+      // This router handles all API endpoints including:
+      // - /api/agents/* - Agent management and interactions
+      // - /api/messaging/* - Message handling and channels
+      // - /api/media/* - File uploads and media serving
+      // - /api/memory/* - Memory management and retrieval
+      // - /api/audio/* - Audio processing and transcription
+      // - /api/server/* - Runtime and server management
+      // - /api/tee/* - TEE (Trusted Execution Environment) operations
+      // - /api/system/* - System configuration and health checks
       const apiRouter = createApiRouter(this.agents, this);
       this.app.use(
         '/api',
