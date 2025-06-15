@@ -1,6 +1,29 @@
 import React from 'react';
 import AgentCard from './agent-card';
 import type { AgentWithStatus } from '@/types';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
+
+// Mock the hooks that AgentCard uses
+const mockUseAgentManagement = {
+  startAgent: cy.stub(),
+  stopAgent: cy.stub(),
+  isAgentStarting: cy.stub().returns(false),
+  isAgentStopping: cy.stub().returns(false),
+  startingAgents: [],
+  stoppingAgents: [],
+};
+
+// Mock the useToast hook
+const mockUseToast = {
+  toast: cy.stub(),
+};
+
+// Mock the module imports
+beforeEach(() => {
+  cy.stub(require('@/hooks/use-agent-management'), 'useAgentManagement').returns(mockUseAgentManagement);
+  cy.stub(require('@/hooks/use-toast'), 'useToast').returns(mockUseToast);
+});
 
 // Mock AgentStatus to avoid import issues
 const AgentStatus = {
@@ -8,6 +31,31 @@ const AgentStatus = {
   INACTIVE: 'inactive',
   STARTING: 'starting',
   STOPPING: 'stopping',
+};
+
+// Helper function to wrap component with necessary providers
+const mountWithProviders = (component: React.ReactNode, options = {}) => {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+        refetchOnWindowFocus: false,
+      },
+      mutations: {
+        retry: false,
+      },
+    },
+  });
+
+  const wrapped = (
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        {component}
+      </MemoryRouter>
+    </QueryClientProvider>
+  );
+
+  return cy.mount(wrapped, options);
 };
 
 describe('AgentCard Component', () => {
@@ -33,7 +81,7 @@ describe('AgentCard Component', () => {
   it('renders agent information correctly', () => {
     const onChat = cy.stub();
 
-    cy.mount(<AgentCard agent={mockAgent} onChat={onChat} />);
+    mountWithProviders(<AgentCard agent={mockAgent} onChat={onChat} />);
 
     // Check agent name is displayed
     cy.contains(mockAgent.name!).should('be.visible');
@@ -48,7 +96,7 @@ describe('AgentCard Component', () => {
   it('displays active agent correctly', () => {
     const onChat = cy.stub();
 
-    cy.mount(<AgentCard agent={activeAgent} onChat={onChat} />);
+    mountWithProviders(<AgentCard agent={activeAgent} onChat={onChat} />);
 
     // Status should be green for active
     cy.get('.rounded-full').should('have.class', 'bg-green-500');
@@ -60,7 +108,7 @@ describe('AgentCard Component', () => {
   it('handles missing agent data gracefully', () => {
     const onChat = cy.stub();
 
-    cy.mount(<AgentCard agent={{}} onChat={onChat} />);
+    mountWithProviders(<AgentCard agent={{}} onChat={onChat} />);
 
     // Should show error message
     cy.contains('Agent data not available').should('be.visible');
@@ -69,7 +117,7 @@ describe('AgentCard Component', () => {
   it('shows start button for inactive agents', () => {
     const onChat = cy.stub();
 
-    cy.mount(<AgentCard agent={mockAgent} onChat={onChat} />);
+    mountWithProviders(<AgentCard agent={mockAgent} onChat={onChat} />);
 
     // Start button should be visible
     cy.contains('Start').should('be.visible');
@@ -78,7 +126,7 @@ describe('AgentCard Component', () => {
   it('shows stop button for active agents', () => {
     const onChat = cy.stub();
 
-    cy.mount(<AgentCard agent={activeAgent} onChat={onChat} />);
+    mountWithProviders(<AgentCard agent={activeAgent} onChat={onChat} />);
 
     // Stop button should be visible
     cy.get('button').should('exist');
@@ -88,7 +136,7 @@ describe('AgentCard Component', () => {
   it('handles chat button click for active agents', () => {
     const onChat = cy.stub();
 
-    cy.mount(<AgentCard agent={activeAgent} onChat={onChat} />);
+    mountWithProviders(<AgentCard agent={activeAgent} onChat={onChat} />);
 
     // Click a button (could be chat or other action button)
     cy.get('button').first().click();
@@ -100,7 +148,7 @@ describe('AgentCard Component', () => {
   it('navigates to chat page when inactive agent card is clicked', () => {
     const onChat = cy.stub();
 
-    cy.mount(<AgentCard agent={mockAgent} onChat={onChat} />);
+    mountWithProviders(<AgentCard agent={mockAgent} onChat={onChat} />);
 
     // Click the card
     cy.get('.cursor-pointer').click();
@@ -116,7 +164,9 @@ describe('AgentCard Component', () => {
       isStarting: true,
     };
 
-    cy.mount(<AgentCard agent={startingAgent} onChat={onChat} />);
+    // Mock isAgentStarting to return true for this test
+    mockUseAgentManagement.isAgentStarting.returns(true);
+    mountWithProviders(<AgentCard agent={startingAgent} onChat={onChat} />);
 
     // Should show some loading indicator or disabled state
     cy.get('button').should('exist');
@@ -129,7 +179,9 @@ describe('AgentCard Component', () => {
       isStopping: true,
     };
 
-    cy.mount(<AgentCard agent={stoppingAgent} onChat={onChat} />);
+    // Mock isAgentStopping to return true for this test
+    mockUseAgentManagement.isAgentStopping.returns(true);
+    mountWithProviders(<AgentCard agent={stoppingAgent} onChat={onChat} />);
 
     // Should show some loading indicator or disabled state
     cy.get('button').should('exist');
@@ -142,7 +194,7 @@ describe('AgentCard Component', () => {
       settings: {},
     };
 
-    cy.mount(<AgentCard agent={agentWithoutAvatar} onChat={onChat} />);
+    mountWithProviders(<AgentCard agent={agentWithoutAvatar} onChat={onChat} />);
 
     // Should show initials or fallback
     cy.get('.bg-secondary').should('exist');
@@ -151,7 +203,7 @@ describe('AgentCard Component', () => {
   it('applies correct styling for inactive agents', () => {
     const onChat = cy.stub();
 
-    cy.mount(<AgentCard agent={mockAgent} onChat={onChat} />);
+    mountWithProviders(<AgentCard agent={mockAgent} onChat={onChat} />);
 
     // Card should have opacity styling
     cy.get('.opacity-75').should('exist');
@@ -161,7 +213,8 @@ describe('AgentCard Component', () => {
     const onChat = cy.stub();
 
     // Test starting state
-    cy.mount(
+    mockUseAgentManagement.isAgentStarting.returns(true);
+    mountWithProviders(
       <div data-testid="starting-wrapper">
         <AgentCard agent={{ ...mockAgent, isStarting: true }} onChat={onChat} />
       </div>
@@ -170,7 +223,8 @@ describe('AgentCard Component', () => {
     cy.get('[data-testid="starting-wrapper"] button').should('exist');
 
     // Test stopping state
-    cy.mount(
+    mockUseAgentManagement.isAgentStopping.returns(true);
+    mountWithProviders(
       <div data-testid="stopping-wrapper">
         <AgentCard agent={{ ...activeAgent, isStopping: true }} onChat={onChat} />
       </div>
@@ -182,7 +236,7 @@ describe('AgentCard Component', () => {
   it('handles hover effects correctly', () => {
     const onChat = cy.stub();
 
-    cy.mount(<AgentCard agent={mockAgent} onChat={onChat} />);
+    mountWithProviders(<AgentCard agent={mockAgent} onChat={onChat} />);
 
     // Hover over card
     cy.get('.cursor-pointer').trigger('mouseenter');
@@ -198,7 +252,7 @@ describe('AgentCard Component', () => {
       name: 'This is a very long agent name that should be truncated',
     };
 
-    cy.mount(<AgentCard agent={longNameAgent} onChat={onChat} />);
+    mountWithProviders(<AgentCard agent={longNameAgent} onChat={onChat} />);
 
     // Check for truncate class
     cy.get('.truncate').should('exist');
@@ -211,7 +265,7 @@ describe('AgentCard Component', () => {
     const onChat = cy.stub();
     const cardClick = cy.stub();
 
-    cy.mount(
+    mountWithProviders(
       <div onClick={cardClick}>
         <AgentCard agent={activeAgent} onChat={onChat} />
       </div>
