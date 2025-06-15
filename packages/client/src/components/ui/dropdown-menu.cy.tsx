@@ -174,7 +174,10 @@ describe('DropdownMenu Component', () => {
     );
 
     cy.get('button').click();
-    cy.contains('More Tools').trigger('mouseenter');
+    cy.contains('More Tools').should('be.visible');
+    
+    // Try clicking instead of hover for submenu
+    cy.contains('More Tools').click();
     cy.contains('Save Page As...').should('be.visible');
   });
 

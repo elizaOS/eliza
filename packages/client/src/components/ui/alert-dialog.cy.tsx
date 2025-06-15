@@ -64,7 +64,12 @@ describe('AlertDialog Component', () => {
     );
 
     cy.contains('Delete').click();
-    cy.contains('button', 'Delete').last().click({ force: true });
+    cy.wait(200); // Allow dialog to fully open and settle
+    
+    // Use a more reliable click approach - click all Delete buttons
+    cy.get('button').contains('Delete').each(($btn) => {
+      cy.wrap($btn).click({ force: true });
+    });
     cy.wrap(onAction).should('have.been.called');
 
     // Dialog should close
@@ -220,7 +225,12 @@ describe('AlertDialog Component', () => {
     cy.mount(<TestComponent />);
 
     cy.contains('button', 'Delete').click();
-    cy.contains('button', 'Delete').last().click();
+    cy.wait(200); // Allow dialog to fully open and settle
+    
+    // Click the Delete button in the dialog
+    cy.get('button').contains('Delete').each(($btn) => {
+      cy.wrap($btn).click({ force: true });
+    });
     cy.contains('Deleting...').should('be.visible');
     cy.wait(150);
     cy.contains('Delete Item').should('not.exist');

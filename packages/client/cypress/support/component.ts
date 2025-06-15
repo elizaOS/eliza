@@ -13,6 +13,9 @@ import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import '@/index.css'; // Import global styles
 import { DirectionProvider } from '@radix-ui/react-direction';
+import { TooltipProvider } from '@/components/ui/tooltip';
+// import { AuthProvider } from '@/context/AuthContext';
+// import { ConnectionProvider } from '@/context/ConnectionContext';
 
 // Import polyfills
 import { Buffer } from 'buffer';
@@ -75,56 +78,8 @@ function mountWithProviders(component: React.ReactNode, options = {}) {
   const queryClient = createTestQueryClient();
   
   const wrapped = React.createElement(
-    QueryClientProvider,
-    { client: queryClient },
-    React.createElement(
-      BrowserRouter,
-      {},
-      // Add a div container for portals
-      React.createElement(
-        'div',
-        { 
-          id: 'root',
-          style: { width: '100%', height: '100%' }
-        },
-        component,
-        // Portal container for Radix UI
-        React.createElement('div', { id: 'radix-portal' })
-      )
-    )
-  );
-
-  return mount(wrapped, options);
-}
-
-// Mount with just router (for simpler components)
-function mountWithRouter(component: React.ReactNode, options = {}) {
-  const wrapped = React.createElement(
-    BrowserRouter,
+    TooltipProvider,
     {},
-    // Add a div container for portals
-    React.createElement(
-      'div',
-      { 
-        id: 'root',
-        style: { width: '100%', height: '100%' }
-      },
-      component,
-      // Portal container for Radix UI
-      React.createElement('div', { id: 'radix-portal' })
-    )
-  );
-
-  return mount(wrapped, options);
-}
-
-// Mount specifically for Radix UI components with DirectionProvider
-function mountRadix(component: React.ReactNode, options = {}) {
-  const queryClient = createTestQueryClient();
-  
-  const wrapped = React.createElement(
-    DirectionProvider,
-    { dir: 'ltr' },
     React.createElement(
       QueryClientProvider,
       { client: queryClient },
@@ -141,6 +96,72 @@ function mountRadix(component: React.ReactNode, options = {}) {
           component,
           // Portal container for Radix UI
           React.createElement('div', { id: 'radix-portal' })
+        )
+      )
+    )
+  );
+
+  return mount(wrapped, options);
+}
+
+// Mount with just router (for simpler components)
+function mountWithRouter(component: React.ReactNode, options = {}) {
+  const queryClient = createTestQueryClient();
+  
+  const wrapped = React.createElement(
+    TooltipProvider,
+    {},
+    React.createElement(
+      QueryClientProvider,
+      { client: queryClient },
+      React.createElement(
+        BrowserRouter,
+        {},
+        // Add a div container for portals
+        React.createElement(
+          'div',
+          { 
+            id: 'root',
+            style: { width: '100%', height: '100%' }
+          },
+          component,
+          // Portal container for Radix UI
+          React.createElement('div', { id: 'radix-portal' })
+        )
+      )
+    )
+  );
+
+  return mount(wrapped, options);
+}
+
+// Mount specifically for Radix UI components with DirectionProvider
+function mountRadix(component: React.ReactNode, options = {}) {
+  const queryClient = createTestQueryClient();
+  
+  const wrapped = React.createElement(
+    TooltipProvider,
+    {},
+    React.createElement(
+      DirectionProvider,
+      { dir: 'ltr' },
+      React.createElement(
+        QueryClientProvider,
+        { client: queryClient },
+        React.createElement(
+          BrowserRouter,
+          {},
+          // Add a div container for portals
+          React.createElement(
+            'div',
+            { 
+              id: 'root',
+              style: { width: '100%', height: '100%' }
+            },
+            component,
+            // Portal container for Radix UI
+            React.createElement('div', { id: 'radix-portal' })
+          )
         )
       )
     )
