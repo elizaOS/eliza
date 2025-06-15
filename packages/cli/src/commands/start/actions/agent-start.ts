@@ -29,7 +29,8 @@ export async function startAgent(
   character.id ??= stringToUuid(character.name);
 
   const loadedPlugins = new Map<string, Plugin>();
-  loadedPlugins.set(sqlPlugin.name, sqlPlugin); // Always include sqlPlugin
+  // Type-cast to ensure compatibility with local types
+  loadedPlugins.set(sqlPlugin.name, sqlPlugin as unknown as Plugin); // Always include sqlPlugin
 
   const pluginsToLoad = new Set<string>(character.plugins || []);
   for (const p of plugins) {

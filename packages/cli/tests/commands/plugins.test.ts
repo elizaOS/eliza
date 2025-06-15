@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeAll, afterAll, beforeEach  , vi } from 'vitest';
 import { execSync } from 'child_process';
 import { mkdtemp, rm, readFile, access } from 'fs/promises';
 import { join } from 'path';
@@ -58,7 +58,7 @@ describe('ElizaOS Plugin Commands', () => {
   });
 
   // Core help / list tests
-  test('plugins command shows help with no subcommand', () => {
+  it('plugins command shows help with no subcommand', () => {
     const result = execSync(`${elizaosCmd} plugins`, { encoding: 'utf8' });
     expect(result).toContain('Manage ElizaOS plugins');
     expect(result).toContain('Commands:');
@@ -68,19 +68,19 @@ describe('ElizaOS Plugin Commands', () => {
     expect(result).toContain('remove');
   });
 
-  test('plugins --help shows usage information', () => {
+  it('plugins --help shows usage information', () => {
     const result = execSync(`${elizaosCmd} plugins --help`, { encoding: 'utf8' });
     expect(result).toContain('Manage ElizaOS plugins');
   });
 
-  test('plugins list shows available plugins', () => {
+  it('plugins list shows available plugins', () => {
     const result = execSync(`${elizaosCmd} plugins list`, { encoding: 'utf8' });
     expect(result).toContain('Available v1.x plugins');
     expect(result).toMatch(/plugin-openai/);
     expect(result).toMatch(/plugin-ollama/);
   });
 
-  test('plugins list aliases (l, ls) work correctly', () => {
+  it('plugins list aliases (l, ls) work correctly', () => {
     const aliases = ['l', 'ls'];
 
     for (const alias of aliases) {
@@ -91,7 +91,7 @@ describe('ElizaOS Plugin Commands', () => {
   });
 
   // add / install tests
-  test(
+  it(
     'plugins add installs a plugin',
     async () => {
       execSync(`${elizaosCmd} plugins add @elizaos/plugin-telegram --skip-env-prompt`, {
@@ -105,7 +105,7 @@ describe('ElizaOS Plugin Commands', () => {
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
 
-  test(
+  it(
     'plugins install alias works',
     async () => {
       execSync(`${elizaosCmd} plugins install @elizaos/plugin-openai --skip-env-prompt`, {
@@ -119,7 +119,7 @@ describe('ElizaOS Plugin Commands', () => {
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
 
-  test(
+  it(
     'plugins add supports third-party plugins',
     async () => {
       execSync(`${elizaosCmd} plugins add @fleek-platform/eliza-plugin-mcp --skip-env-prompt`, {
@@ -133,7 +133,7 @@ describe('ElizaOS Plugin Commands', () => {
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
 
-  test(
+  it(
     'plugins add supports GitHub URL installation',
     async () => {
       execSync(
@@ -160,7 +160,7 @@ describe('ElizaOS Plugin Commands', () => {
   );
 
   // installed-plugins list tests
-  test(
+  it(
     'plugins installed-plugins shows installed plugins',
     async () => {
       const result = execSync(`${elizaosCmd} plugins installed-plugins`, { encoding: 'utf8' });
@@ -171,7 +171,7 @@ describe('ElizaOS Plugin Commands', () => {
   );
 
   // remove / aliases tests
-  test(
+  it(
     'plugins remove uninstalls a plugin',
     async () => {
       execSync(`${elizaosCmd} plugins add @elizaos/plugin-sql --skip-env-prompt`, {
@@ -193,7 +193,7 @@ describe('ElizaOS Plugin Commands', () => {
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
 
-  test(
+  it(
     'plugins remove aliases (delete, del, rm) work',
     async () => {
       const plugins = ['@elizaos/plugin-evm', '@elizaos/plugin-groq', '@elizaos/plugin-anthropic'];
@@ -224,7 +224,7 @@ describe('ElizaOS Plugin Commands', () => {
   );
 
   // Negative case tests
-  test(
+  it(
     'plugins add fails for missing plugin',
     async () => {
       try {
@@ -242,7 +242,7 @@ describe('ElizaOS Plugin Commands', () => {
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
 
-  test(
+  it(
     'plugins add via GitHub shorthand URL',
     async () => {
       execSync(

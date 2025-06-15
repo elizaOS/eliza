@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach  , vi } from 'vitest';
 import { execSync, spawn } from 'child_process';
 import { mkdtemp, rm, mkdir, writeFile, readFile } from 'fs/promises';
 import { join } from 'path';
@@ -108,14 +108,14 @@ describe('ElizaOS Dev Commands', () => {
     return devProcess;
   };
 
-  test('dev --help shows usage', () => {
+  it('dev --help shows usage', () => {
     const result = execSync(`${elizaosCmd} dev --help`, { encoding: 'utf8' });
     expect(result).toContain('Usage: elizaos dev');
     expect(result).toContain('development mode');
     expect(result).toContain('auto-rebuild');
   });
 
-  test(
+  it(
     'dev command starts in project directory',
     async () => {
       await createTestProject(elizaosCmd, 'test-project');
@@ -136,7 +136,7 @@ describe('ElizaOS Dev Commands', () => {
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
 
-  test(
+  it(
     'dev command detects project type correctly',
     async () => {
       await createTestProject(elizaosCmd, 'test-project');
@@ -177,7 +177,7 @@ describe('ElizaOS Dev Commands', () => {
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
 
-  test(
+  it(
     'dev command responds to file changes in project',
     async () => {
       await createTestProject(elizaosCmd, 'test-project');
@@ -231,7 +231,7 @@ describe('ElizaOS Dev Commands', () => {
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
 
-  test(
+  it(
     'dev command accepts character file',
     async () => {
       await createTestProject(elizaosCmd, 'test-project');
@@ -251,7 +251,7 @@ describe('ElizaOS Dev Commands', () => {
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
 
-  test(
+  it(
     'dev command handles non-elizaos directory gracefully',
     async () => {
       // Create a non-ElizaOS project
@@ -292,7 +292,7 @@ describe('ElizaOS Dev Commands', () => {
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
 
-  test('dev command validates port parameter', () => {
+  it('dev command validates port parameter', () => {
     // Test that invalid port is rejected
     try {
       execSync(`${elizaosCmd} dev --port abc`, { 

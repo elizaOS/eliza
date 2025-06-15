@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
+import { describe, it, expect, beforeAll, afterAll  , vi } from 'vitest';
 import { spawn, execSync } from 'child_process';
 import { mkdtemp, rm, mkdir } from 'fs/promises';
 import { join } from 'path';
@@ -111,19 +111,19 @@ describe('ElizaOS Agent Commands', () => {
     }
   });
 
-  test('agent help displays usage information', async () => {
+  it('agent help displays usage information', async () => {
     const result = execSync(`${elizaosCmd} agent --help`, { encoding: 'utf8' });
     expect(result).toContain('Usage: elizaos agent');
   });
 
-  test('agent list returns agents', async () => {
+  it('agent list returns agents', async () => {
     const result = execSync(`${elizaosCmd} agent list --remote-url ${testServerUrl}`, {
       encoding: 'utf8',
     });
     expect(result).toMatch(/(Ada|Max|Shaw)/);
   });
 
-  test('agent list works with JSON flag', async () => {
+  it('agent list works with JSON flag', async () => {
     const result = execSync(`${elizaosCmd} agent list --remote-url ${testServerUrl} --json`, {
       encoding: 'utf8',
     });
@@ -132,14 +132,14 @@ describe('ElizaOS Agent Commands', () => {
     expect(result).toMatch(/(name|Name)/);
   });
 
-  test('agent get shows details with name parameter', async () => {
+  it('agent get shows details with name parameter', async () => {
     const result = execSync(`${elizaosCmd} agent get --remote-url ${testServerUrl} -n Ada`, {
       encoding: 'utf8',
     });
     expect(result).toContain('Ada');
   });
 
-  test('agent get with JSON flag shows character definition', async () => {
+  it('agent get with JSON flag shows character definition', async () => {
     const result = execSync(`${elizaosCmd} agent get --remote-url ${testServerUrl} -n Ada --json`, {
       encoding: 'utf8',
     });
@@ -147,7 +147,7 @@ describe('ElizaOS Agent Commands', () => {
     expect(result).toContain('Ada');
   });
 
-  test('agent get with output flag saves to file', async () => {
+  it('agent get with output flag saves to file', async () => {
     const outputFile = join(testTmpDir, 'output_ada.json');
     execSync(
       `${elizaosCmd} agent get --remote-url ${testServerUrl} -n Ada --output ${outputFile}`,
@@ -159,7 +159,7 @@ describe('ElizaOS Agent Commands', () => {
     expect(fileContent).toContain('Ada');
   });
 
-  test('agent start loads character from file', async () => {
+  it('agent start loads character from file', async () => {
     const charactersDir = join(__dirname, '../test-characters');
     const adaPath = join(charactersDir, 'ada.json');
 
@@ -175,7 +175,7 @@ describe('ElizaOS Agent Commands', () => {
     }
   });
 
-  test('agent start works with name parameter', async () => {
+  it('agent start works with name parameter', async () => {
     try {
       execSync(`${elizaosCmd} agent start --remote-url ${testServerUrl} -n Ada`, {
         encoding: 'utf8',
@@ -186,7 +186,7 @@ describe('ElizaOS Agent Commands', () => {
     }
   });
 
-  test('agent start handles non-existent agent fails', async () => {
+  it('agent start handles non-existent agent fails', async () => {
     const nonExistentName = `NonExistent_${Date.now()}`;
 
     try {
@@ -202,7 +202,7 @@ describe('ElizaOS Agent Commands', () => {
     }
   });
 
-  test('agent stop works after start', async () => {
+  it('agent stop works after start', async () => {
     // Ensure Ada is started first
     try {
       execSync(`${elizaosCmd} agent start --remote-url ${testServerUrl} -n Ada`, { stdio: 'pipe' });
@@ -220,7 +220,7 @@ describe('ElizaOS Agent Commands', () => {
     }
   });
 
-  test('agent set updates configuration correctly', async () => {
+  it('agent set updates configuration correctly', async () => {
     const configFile = join(testTmpDir, 'update_config.json');
     const configContent = JSON.stringify({
       system: 'Updated system prompt for testing',
@@ -236,7 +236,7 @@ describe('ElizaOS Agent Commands', () => {
     expect(result).toMatch(/(updated|Updated)/);
   });
 
-  test('agent full lifecycle management', async () => {
+  it('agent full lifecycle management', async () => {
     // Start agent
     try {
       execSync(`${elizaosCmd} agent start --remote-url ${testServerUrl} -n Ada`, {

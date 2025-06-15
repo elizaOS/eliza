@@ -96,5 +96,9 @@ export async function startDevMode(options: DevOptions): Promise<void> {
 
     console.log('Dev mode is active! The server will restart when files change.');
     console.log('Press Ctrl+C to exit');
+  } else {
+    // In standalone mode, just keep the server running without watching files
+    console.log('Server is running in standalone dev mode.');
+    console.log('Press Ctrl+C to exit');
   }
 }

@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach  , vi } from 'vitest';
 import { execSync } from 'child_process';
 import { mkdtemp, rm, readFile } from 'fs/promises';
 import { join } from 'path';
@@ -59,14 +59,14 @@ describe('ElizaOS Create Commands', () => {
     expect(agentData.style.all.length).toBeGreaterThan(0);
   };
 
-  test('create --help shows usage', async () => {
+  it('create --help shows usage', async () => {
     const result = execSync(`${elizaosCmd} create --help`, { encoding: 'utf8' });
     expect(result).toContain('Usage: elizaos create');
     expect(result).toMatch(/(project|plugin|agent)/);
     expect(result).not.toContain('frobnicate');
   });
 
-  test(
+  it(
     'create default project succeeds',
     async () => {
       // Use cross-platform directory removal
@@ -110,7 +110,7 @@ describe('ElizaOS Create Commands', () => {
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
 
-  test(
+  it(
     'create plugin project succeeds',
     async () => {
       // Use cross-platform directory removal
@@ -156,7 +156,7 @@ describe('ElizaOS Create Commands', () => {
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
 
-  test('create agent succeeds', async () => {
+  it('create agent succeeds', async () => {
     // Use cross-platform file removal
     try {
       if (process.platform === 'win32') {
@@ -175,7 +175,7 @@ describe('ElizaOS Create Commands', () => {
     await validateAgentJson('my-test-agent.json', 'my-test-agent');
   });
 
-  test('rejects creating project in existing directory', async () => {
+  it('rejects creating project in existing directory', async () => {
     // Use cross-platform commands
     try {
       if (process.platform === 'win32') {
@@ -198,7 +198,7 @@ describe('ElizaOS Create Commands', () => {
     expect(result.output).toContain('already exists');
   });
 
-  test(
+  it(
     'create project in current directory',
     async () => {
       // Use cross-platform commands
@@ -224,14 +224,14 @@ describe('ElizaOS Create Commands', () => {
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
 
-  test('rejects invalid project name', async () => {
+  it('rejects invalid project name', async () => {
     const result = expectCliCommandToFail(elizaosCmd, 'create "Invalid Name" --yes');
 
     expect(result.status).not.toBe(0);
     expect(result.output).toMatch(/Invalid/i);
   });
 
-  test('rejects invalid project type', async () => {
+  it('rejects invalid project type', async () => {
     const result = expectCliCommandToFail(elizaosCmd, 'create bad-type-proj --yes --type bad-type');
 
     expect(result.status).not.toBe(0);
@@ -239,7 +239,7 @@ describe('ElizaOS Create Commands', () => {
   });
 
   // create-eliza parity tests
-  test('create-eliza default project succeeds', async () => {
+  it('create-eliza default project succeeds', async () => {
     // Use cross-platform directory removal
     try {
       if (process.platform === 'win32') {
@@ -264,7 +264,7 @@ describe('ElizaOS Create Commands', () => {
     }
   }, 60000);
 
-  test('create-eliza plugin project succeeds', async () => {
+  it('create-eliza plugin project succeeds', async () => {
     // Use cross-platform directory removal
     try {
       if (process.platform === 'win32') {
@@ -292,7 +292,7 @@ describe('ElizaOS Create Commands', () => {
     }
   }, 60000);
 
-  test('create-eliza agent succeeds', async () => {
+  it('create-eliza agent succeeds', async () => {
     // Use cross-platform file removal
     try {
       if (process.platform === 'win32') {

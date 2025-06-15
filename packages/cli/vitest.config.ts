@@ -7,7 +7,7 @@ export default defineConfig({
     environment: 'node',
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'json', 'html'],
+      reporter: ['text', 'json', 'html', 'lcov'],
       exclude: [
         '**/node_modules/**',
         '**/dist/**',
@@ -29,12 +29,18 @@ export default defineConfig({
         'src/scripts/**', // Exclude build scripts
         'src/tee/phala/**', // Exclude specific TEE implementations for now
       ],
+      thresholds: {
+        lines: 80,
+        functions: 80,
+        branches: 80,
+        statements: 80
+      }
     },
-    setupFiles: ['./test/setup.ts'],
+    setupFiles: ['./tests/setup.ts'],
     alias: {
       '@/src': path.resolve(__dirname, 'src'),
     },
-    include: ['test/**/*.test.ts', 'test/**/*.spec.ts'],
+    include: ['tests/**/*.test.ts', 'tests/**/*.spec.ts'],
     poolOptions: {
       threads: {
         minThreads: 1,

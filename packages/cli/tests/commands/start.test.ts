@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach  , vi } from 'vitest';
 import { execSync, spawn } from 'child_process';
 import { mkdtemp, rm, mkdir } from 'fs/promises';
 import { join } from 'path';
@@ -111,14 +111,14 @@ describe('ElizaOS Start Commands', () => {
   };
 
   // Basic agent check
-  test('start command shows help', () => {
+  it('start command shows help', () => {
     const result = execSync(`${elizaosCmd} start --help`, { encoding: 'utf8' });
     expect(result).toContain('Usage: elizaos start');
     expect(result).toContain('--character');
     expect(result).toContain('--port');
   });
 
-  test(
+  it(
     'start and list shows Ada agent running',
     async () => {
       const charactersDir = join(__dirname, '../test-characters');
@@ -154,7 +154,7 @@ describe('ElizaOS Start Commands', () => {
   );
 
   // Custom port flag (-p)
-  test(
+  it(
     'custom port spin-up works',
     async () => {
       const newPort = 3456;
@@ -203,7 +203,7 @@ describe('ElizaOS Start Commands', () => {
   );
 
   // Multiple character input formats
-  test('multiple character formats parse', () => {
+  it('multiple character formats parse', () => {
     const charactersDir = join(__dirname, '../test-characters');
     const adaPath = join(charactersDir, 'ada.json');
 
@@ -219,7 +219,7 @@ describe('ElizaOS Start Commands', () => {
   });
 
   // Mixed valid/invalid files should not crash CLI when running with --help (dry)
-  test('graceful acceptance of invalid character file list (dry)', () => {
+  it('graceful acceptance of invalid character file list (dry)', () => {
     const charactersDir = join(__dirname, '../test-characters');
     const adaPath = join(charactersDir, 'ada.json');
 
@@ -231,13 +231,13 @@ describe('ElizaOS Start Commands', () => {
   });
 
   // --build flag accepted
-  test('build option flag accepted', () => {
+  it('build option flag accepted', () => {
     const result = execSync(`${elizaosCmd} start --build --help`, { encoding: 'utf8' });
     expect(result).toContain('start');
   });
 
   // --configure flag triggers reconfiguration message in log
-  test(
+  it(
     'configure option runs',
     async () => {
       const charactersDir = join(__dirname, '../test-characters');
@@ -283,7 +283,7 @@ describe('ElizaOS Start Commands', () => {
   );
 
   // Basic server startup test without advanced features that require models
-  test(
+  it(
     'server starts and responds to health check',
     async () => {
       const charactersDir = join(__dirname, '../test-characters');

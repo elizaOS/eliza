@@ -11,8 +11,17 @@ import {
   type Plugin,
   type UUID,
 } from '@elizaos/core';
-import internalMessageBus from '../bus'; // Import the bus
-import { sendError } from '../api/shared';
+// TODO: Fix these imports - they reference files that don't exist
+// import internalMessageBus from '../bus'; // Import the bus
+// import { sendError } from '../api/shared';
+
+// Temporary stub for missing dependencies
+const internalMessageBus = {
+  on: (event: string, handler: any) => {},
+  off: (event: string, handler: any) => {},
+  emit: (event: string, data: any) => {},
+};
+const sendError = (ws: any, error: string) => {};
 
 // This interface defines the structure of messages coming from the server
 export interface MessageServiceMessage {

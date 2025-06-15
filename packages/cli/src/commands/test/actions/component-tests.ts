@@ -5,6 +5,8 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { ComponentTestOptions, TestResult } from '../types';
 import { processFilterName } from '../utils/project-utils';
+import { runTypeCheck } from '@/src/utils/testing/tsc-validator';
+import { createVitestConfig } from '../utils/vitest-config';
 
 /**
  * Run component tests using Vitest
@@ -16,25 +18,53 @@ export async function runComponentTests(
   options: ComponentTestOptions,
   projectInfo: DirectoryInfo
 ): Promise<TestResult> {
+  const cwd = process.cwd();
+  const isPlugin = projectInfo.type === 'elizaos-plugin';
+
+  // Run TypeScript validation first
+  if (!options.skipTypeCheck) {
+    logger.info('Running TypeScript validation...');
+    const typeCheckResult = await runTypeCheck(cwd, true);
+
+    if (!typeCheckResult.success) {
+      logger.error('TypeScript validation failed:');
+      typeCheckResult.errors.forEach((error) => logger.error(error));
+      return { failed: true };
+    }
+    logger.success('TypeScript validation passed');
+  }
   // Build the project or plugin first unless skip-build is specified
   if (!options.skipBuild) {
     try {
-      const cwd = process.cwd();
-      const isPlugin = projectInfo.type === 'elizaos-plugin';
       logger.info(`Building ${isPlugin ? 'plugin' : 'project'}...`);
       await buildProject(cwd, isPlugin);
-      logger.info(`Build completed successfully`);
+      logger.success(`Build completed successfully`);
     } catch (buildError) {
-      logger.error(`Build error: ${buildError}`);
-      logger.warn(`Attempting to continue with tests despite build error`);
+      logger.error(`Build failed: ${buildError}`);
+      // Return immediately on build failure
+      return { failed: true };
     }
   }
 
   logger.info('Running component tests...');
 
+  // Create vitest config for proper isolation
+  const vitestConfig = createVitestConfig(
+    testPath || cwd,
+    isPlugin ? path.basename(cwd) : undefined
+  );
+
   return new Promise((resolve) => {
     // Build command arguments
     const args = ['run', 'vitest', 'run', '--passWithNoTests', '--reporter=default'];
+
+    // Add config
+    if (vitestConfig.test?.include) {
+      args.push('--include', vitestConfig.test.include.join(','));
+    }
+    if (vitestConfig.test?.exclude) {
+      args.push('--exclude', vitestConfig.test.exclude.join(','));
+    }
 
     // Add filter if specified
     if (options.name) {

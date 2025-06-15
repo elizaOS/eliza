@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach  , vi } from 'vitest';
 import { execSync } from 'child_process';
 import { mkdtemp, rm, writeFile, mkdir, access } from 'fs/promises';
 import { join } from 'path';
@@ -447,7 +447,7 @@ esac`;
   };
 
   // publish --help (safe test that never prompts)
-  test('publish --help shows usage', () => {
+  it('publish --help shows usage', () => {
     const result = execSync(`${elizaosCmd} publish --help`, { encoding: 'utf8' });
     expect(result).toContain('Usage: elizaos publish');
     expect(result).toContain('Publish a plugin to npm, GitHub, and the registry');
@@ -458,7 +458,7 @@ esac`;
   });
 
   // CLI integration (safe test)
-  test('publish command integrates with CLI properly', () => {
+  it('publish command integrates with CLI properly', () => {
     // Test that publish command is properly integrated into main CLI
     const helpResult = execSync(`${elizaosCmd} --help`, { encoding: 'utf8' });
     expect(helpResult).toContain('publish');
@@ -469,13 +469,13 @@ esac`;
   });
 
   // Test mode functionality (should not prompt with proper mocking)
-  test('publish command validates basic directory structure', () => {
+  it('publish command validates basic directory structure', () => {
     // Test that publish command works with help
     const result = execSync(`${elizaosCmd} publish --help`, { encoding: 'utf8' });
     expect(result).toContain('publish');
   });
 
-  test('publish command detects missing images', async () => {
+  it('publish command detects missing images', async () => {
     // Test in a simple plugin directory without creating complex structure
     await mkdir('plugin-simple');
     process.chdir(join(testTmpDir, 'plugin-simple'));
@@ -492,34 +492,34 @@ esac`;
   });
 
   // Dry run functionality (should not prompt)
-  test('publish dry-run flag works', () => {
+  it('publish dry-run flag works', () => {
     // Test that --dry-run flag is recognized
     const result = execSync(`${elizaosCmd} publish --dry-run --help`, { encoding: 'utf8' });
     expect(result).toContain('dry-run');
   });
 
   // npm flag behavior (should use mocked npm)
-  test('publish npm flag works', () => {
+  it('publish npm flag works', () => {
     // Test that --npm flag is recognized
     const result = execSync(`${elizaosCmd} publish --npm --help`, { encoding: 'utf8' });
     expect(result).toContain('npm');
   });
 
   // Package.json validation
-  test('publish validates package.json structure', () => {
+  it('publish validates package.json structure', () => {
     // Test that command recognizes package.json validation
     const result = execSync(`${elizaosCmd} publish --help`, { encoding: 'utf8' });
     expect(result).toContain('publish');
   });
 
   // Directory validation
-  test('publish fails outside plugin directory', () => {
+  it('publish fails outside plugin directory', () => {
     // Test that publish help works from any directory
     const result = execSync(`${elizaosCmd} publish --help`, { encoding: 'utf8' });
     expect(result).toContain('publish');
   });
 
-  test('publish fails in plugin directory without package.json', async () => {
+  it('publish fails in plugin directory without package.json', async () => {
     await mkdir('plugin-test');
     process.chdir(join(testTmpDir, 'plugin-test'));
     // Use --help to avoid hanging on prompts
@@ -527,7 +527,7 @@ esac`;
     expect(result).toContain('publish');
   });
 
-  test('publish fails with invalid package.json', async () => {
+  it('publish fails with invalid package.json', async () => {
     await mkdir('plugin-test');
     process.chdir(join(testTmpDir, 'plugin-test'));
     await writeFile('package.json', 'invalid json');
@@ -535,7 +535,7 @@ esac`;
     expect(result).toContain('publish');
   });
 
-  test('publish fails with missing required package.json fields', async () => {
+  it('publish fails with missing required package.json fields', async () => {
     await mkdir('plugin-test');
     process.chdir(join(testTmpDir, 'plugin-test'));
     await writeFile(
@@ -549,7 +549,7 @@ esac`;
   });
 
   // Plugin naming validation
-  test('publish validates plugin naming convention', async () => {
+  it('publish validates plugin naming convention', async () => {
     await mkdir('invalid-name');
     process.chdir(join(testTmpDir, 'invalid-name'));
     await writeFile(
@@ -568,20 +568,20 @@ esac`;
     expect(result).toContain('publish');
   });
 
-  test('publish test flag works', () => {
+  it('publish test flag works', () => {
     // Test that --test flag is recognized
     const result = execSync(`${elizaosCmd} publish --test --help`, { encoding: 'utf8' });
     expect(result).toContain('test');
   });
 
   // Skip registry functionality
-  test('publish skip-registry flag works', () => {
+  it('publish skip-registry flag works', () => {
     // Test that --skip-registry flag is recognized
     const result = execSync(`${elizaosCmd} publish --skip-registry --help`, { encoding: 'utf8' });
     expect(result).toContain('skip-registry');
   });
 
-  test('publish handles package.json with placeholders', async () => {
+  it('publish handles package.json with placeholders', async () => {
     await mkdir('plugin-placeholders');
     process.chdir(join(testTmpDir, 'plugin-placeholders'));
 
@@ -607,19 +607,19 @@ esac`;
   });
 
   // Error handling and edge cases
-  test('publish handles missing dist directory gracefully', () => {
+  it('publish handles missing dist directory gracefully', () => {
     // Test basic functionality
     const result = execSync(`${elizaosCmd} publish --help`, { encoding: 'utf8' });
     expect(result).toContain('publish');
   });
 
-  test('publish detects npm authentication status', () => {
+  it('publish detects npm authentication status', () => {
     // Test that publish help works (npm mocking not critical for help)
     const result = execSync(`${elizaosCmd} publish --help`, { encoding: 'utf8' });
     expect(result).toContain('publish');
   });
 
-  test('publish provides helpful success messaging', () => {
+  it('publish provides helpful success messaging', () => {
     // Test basic help messaging
     const result = execSync(`${elizaosCmd} publish --help`, { encoding: 'utf8' });
     expect(result).toContain('publish');

@@ -8,6 +8,7 @@
 export interface ComponentTestOptions {
   name?: string;
   skipBuild?: boolean;
+  skipTypeCheck?: boolean;
 }
 
 /**
