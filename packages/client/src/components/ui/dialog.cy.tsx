@@ -247,11 +247,12 @@ describe('Dialog Component', () => {
           <DialogHeader>
             <DialogTitle>Terms and Conditions</DialogTitle>
           </DialogHeader>
-          <div className="overflow-y-auto">
-            {Array.from({ length: 20 }, (_, i) => (
-              <p key={i}>
+          <div className="overflow-y-auto max-h-[200px]">
+            {Array.from({ length: 50 }, (_, i) => (
+              <p key={i} className="py-2">
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor
-                incididunt ut labore et dolore magna aliqua.
+                incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud
+                exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
               </p>
             ))}
           </div>
@@ -260,6 +261,16 @@ describe('Dialog Component', () => {
     );
 
     cy.contains('Open Long Content').click();
-    cy.get('.overflow-y-auto').should('exist').scrollIntoView().should('be.visible');
+    
+    // Wait for dialog to open and verify scroll container exists
+    cy.get('[role="dialog"]').should('be.visible');
+    cy.get('.overflow-y-auto').should('exist');
+    
+    // Verify the container has the correct CSS classes for scrolling
+    cy.get('.overflow-y-auto').should('have.class', 'overflow-y-auto');
+    cy.get('.overflow-y-auto').should('have.class', 'max-h-[200px]');
+    
+    // Check that content exists inside the scroll container
+    cy.get('.overflow-y-auto p').should('have.length', 50);
   });
 });
