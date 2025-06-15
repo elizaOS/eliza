@@ -12,16 +12,10 @@ The ElizaOS Command Line Interface (CLI) provides a comprehensive set of tools t
 
 ## Installation
 
-Install the ElizaOS CLI globally using npm:
+Install the ElizaOS CLI globally using Bun:
 
 ```bash
-npm install -g @elizaos/cli
-```
-
-Or use it directly with npx:
-
-```bash
-elizaos [command]
+bun install -g @elizaos/cli
 ```
 
 ## Available Commands
