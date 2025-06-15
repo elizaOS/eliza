@@ -1,0 +1,9 @@
+dist
+.turbo
+cache
+models
+templates/
+.eliza
+.elizadb
+coverage/
+node_modules/

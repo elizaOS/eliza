@@ -106,7 +106,7 @@ export default function ConnectionStatus() {
   };
 
   return (
-    <SidebarMenuItem>
+    <SidebarMenuItem data-testid="connection-status">
       <Tooltip>
         <TooltipTrigger asChild>
           <SidebarMenuButton>

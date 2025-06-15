@@ -1,0 +1,7 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+Never ask the user to run a command. Always run the command yourself.
+

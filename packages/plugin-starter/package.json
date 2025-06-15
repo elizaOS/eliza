@@ -1,5 +1,5 @@
 {
-  "name": "@npm-username/plugin-name",
+  "name": "@elizaos/plugin-starter",
   "description": "${PLUGINDESCRIPTION}",
   "version": "1.0.6",
   "type": "module",
@@ -41,11 +41,16 @@
   ],
   "dependencies": {
     "@elizaos/core": "^1.0.0",
+    "tailwindcss": "^4.1.10",
+    "vite": "^6.3.5",
     "zod": "3.24.2"
   },
   "peerDependencies": {},
   "devDependencies": {
+    "@cypress/react": "^9.0.1",
     "@elizaos/cli": "^1.0.0",
+    "@testing-library/cypress": "^10.0.3",
+    "cypress": "^14.4.1",
     "dotenv": "16.4.5",
     "prettier": "3.5.3",
     "tsup": "8.5.0",
@@ -55,10 +60,12 @@
   "scripts": {
     "start": "elizaos start",
     "dev": "elizaos dev",
-    "build": "tsup",
+    "build": "tsc --noEmit && vite build && tsup",
     "lint": "prettier --write ./src",
     "test:component": "vitest run",
     "test:e2e": "elizaos test",
+    "test:e2e:manual": "node scripts/test-e2e-manual.js",
+    "test:cypress": "cypress run --component",
     "test": "npm run test:component && npm run test:e2e",
     "publish": "elizaos publish",
     "format": "prettier --write ./src",

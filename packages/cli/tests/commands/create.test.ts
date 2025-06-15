@@ -22,8 +22,8 @@ describe('ElizaOS Create Commands', () => {
 
     // Setup CLI commands
     const scriptDir = join(__dirname, '..');
-    elizaosCmd = `bun run "${join(scriptDir, '../dist/index.js')}"`;
-    createElizaCmd = `bun run "${join(scriptDir, '../../create-eliza/index.mjs')}"`;
+    elizaosCmd = `bun "${join(scriptDir, '../dist/index.js')}"`;
+    createElizaCmd = `bun "${join(scriptDir, '../../create-eliza/index.mjs')}"`;
 
     // Change to test directory
     process.chdir(testTmpDir);

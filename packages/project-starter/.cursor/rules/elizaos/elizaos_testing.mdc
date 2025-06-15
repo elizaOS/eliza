@@ -1,0 +1,153 @@
+---
+description: ElizaOS testing and test procedure
+globs: 
+alwaysApply: false
+---
+> You are an expert in ElizaOS v2, TypeScript, and testing strategies using `elizaos test` (often 'bun run test' in elizaos packages). You focus on creating robust, maintainable tests that cover everything from individual components to full end-to-end user journeys.
+
+## ElizaOS Testing Architecture
+
+ElizaOS employs a unified testing strategy orchestrated by the `elizaos test` command, as defined in `packages/cli/src/commands/test.ts`. This command programmatically sets up a real `AgentServer` and `AgentRuntime`, using a `TestRunner` class to execute both component-level and end-to-end tests within a live, in-process environment. This approach ensures that tests run against the actual runtime, providing high-fidelity validation of component interactions and agent behavior.
+
+### Testing Flow
+
+```mermaid
+graph TD
+    A[elizaos test] --> B{Build Project/Plugin};
+    B --> C{Start In-Process AgentServer};
+    C --> D{Initialize AgentRuntime};
+    D --> E(Load Character & Plugins);
+    E --> F[Create TestRunner];
+    F --> G{Run Tests};
+    
+    subgraph "Test Types"
+        G --> H[Component Tests (vitest)];
+        G --> I[E2E / Integration Tests];
+    end
+
+    I --> J[Simulate User Interaction];
+    J --> D;
+    
+    G --> K[Assert Behavior & State];
+    K --> L[Teardown Server & Runtime];
+```
+
+### Key Components
+
+*   **`elizaos test`**: The main CLI command that bootstraps the entire testing process. It handles project building, server setup, and test execution.
+*   **`AgentServer`**: A real server is started in-process to handle agent lifecycle and communication, providing a realistic test environment.
+*   **`AgentRuntime`**: A real instance of the agent's core runtime is created, loading the actual character, plugins, and services for the project being tested.
+*   **`TestRunner`**: A dedicated class that discovers and executes test files, passing the live `AgentRuntime` instance to them.
+*   **PGLite**: The default database for testing is an in-memory PGLite instance, ensuring tests are fast and isolated without requiring an external database server.
+*   **`vitest`**: Used for component-level tests that can be run via `bun vitest`, and also leveraged by the `TestRunner` for its assertion library.
+
+## Writing E2E and Integration Tests
+
+Because the `TestRunner` provides a live `AgentRuntime`, there is little distinction between "integration" and "E2E" tests. Both are written as test suites that interact with the live agent.
+
+```typescript
+// ✅ DO: Write tests that leverage the live runtime provided by TestRunner.
+// This example would be in a file like `tests/e2e/conversation.test.ts`
+
+import { type IAgentRuntime } from '@elizaos/core';
+import { TestSuite } from '../utils/test-suite'; // A simple test runner utility
+
+// The TestRunner will instantiate this class and call its methods.
+export default class ConversationTestSuite extends TestSuite {
+  public name = "Conversation Flow E2E Test";
+
+  public tests = {
+    "Agent should respond to a greeting": async (runtime: IAgentRuntime) => {
+      // 1. Arrange: Simulate an incoming message
+      const userMessage = {
+        roomId: 'e2e-test-room',
+        content: { text: "Hello agent!" },
+        // ... other memory properties
+      };
+
+      // 2. Act: Process the message through the live runtime
+      await runtime.handleMessage(userMessage);
+
+      // 3. Assert: Verify the agent's response from the database
+      const memories = await runtime.getMemories({ roomId: 'e2e-test-room', count: 2 });
+      
+      this.expect(memories.length).toBe(2);
+      const agentResponse = memories.find(m => m.agentId === runtime.agentId);
+      this.expect(agentResponse).toBeDefined();
+      this.expect(agentResponse.content.text).toContain("Hello");
+    },
+
+    "Agent should remember context in a follow-up message": async (runtime: IAgentRuntime) => {
+      // Arrange: Send initial message to set context
+      await runtime.handleMessage({
+        roomId: 'e2e-context-test',
+        content: { text: "My favorite color is blue." }
+      });
+
+      // Act: Ask a follow-up question
+      await runtime.handleMessage({
+        roomId: 'e2e-context-test',
+        content: { text: "Do you remember my favorite color?" }
+      });
+      
+      // Assert: Check if the agent uses the remembered context
+      const memories = await runtime.getMemories({ roomId: 'e2e-context-test', count: 4 });
+      const lastAgentResponse = memories.find(m => m.agentId === runtime.agentId);
+
+      this.expect(lastAgentResponse.content.text.toLowerCase()).toContain("blue");
+    }
+  };
+}
+```
+
+## Writing Component (`vitest`) Tests
+
+While the `TestRunner` handles E2E tests, you should still write focused unit tests for individual components using `vitest` directly. This is faster and allows for more granular testing of edge cases.
+
+```typescript
+// ✅ DO: Write focused unit tests for components using vitest mocks.
+// Location: packages/my-plugin/src/actions.test.ts
+
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { type IAgentRuntime, type Memory } from '@elizaos/core';
+import { createMockRuntime } from '../../tests/mocks/runtime'; // Use your unit test mock
+import { myAction } from './actions';
+
+describe('myAction Unit Test', () => {
+  let mockRuntime: IAgentRuntime;
+  let mockMessage: Memory;
+
+  beforeEach(() => {
+    mockRuntime = createMockRuntime();
+    mockMessage = {
+      content: { text: 'Execute my-action with value: 123' },
+      // ... other properties
+    };
+  });
+
+  it('should correctly parse the value from the message', async () => {
+    // Spy on a method to ensure it's called with the correct, parsed value
+    vi.spyOn(mockRuntime, 'createEntity');
+
+    await myAction.handler(mockRuntime, mockMessage);
+
+    expect(mockRuntime.createEntity).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        data: { parsedValue: 123 }
+      })
+    );
+  });
+
+  // ❌ DON'T: Rely on a live runtime for unit tests.
+  // Mocks provide control and speed.
+});
+```
+
+## Best Practices
+
+*   **Use the Right Tool**: Use `elizaos test` for testing how components interact within the live system (E2E/integration). Use `bun vitest` for fast, isolated unit tests of individual functions and components.
+*   **Isolate Test Data**: Leverage the ephemeral in-memory PGLite database for test runs. Avoid connecting to a production or shared development database.
+*   **Test Naming Convention**: The `TestRunner` automatically discovers test files. Name your E2E/integration test files like `*.e2e.ts` or `*.test.ts` within a `tests` directory.
+*   **Stateless Tests**: Design tests to be independent. Each test should set up its own required state and not depend on the successful execution of a previous test.
+*   **Focus on Behavior**: E2E tests should validate user journeys and agent behaviors (e.g., "Can the agent complete a multi-step booking process?"), not internal implementation details.

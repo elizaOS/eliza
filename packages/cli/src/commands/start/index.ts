@@ -1,6 +1,6 @@
 import { displayBanner, handleError } from '@/src/utils';
 import { validatePort } from '@/src/utils/port-validation';
-import { loadCharacterTryPath } from '@/src/server/loader';
+import { loadCharacterTryPath } from '@elizaos/server';
 import { loadProject } from '@/src/project';
 import { logger, type Character, type ProjectAgent } from '@elizaos/core';
 import { Command } from 'commander';

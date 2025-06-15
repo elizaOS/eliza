@@ -99,6 +99,7 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
         isActive ? '' : 'opacity-75 hover:opacity-100'
       )}
       onClick={handleCardClick}
+      data-testid="agent-card"
     >
       <CardHeader className="flex flex-row items-center gap-3 absolute w-full h-16">
         <Avatar className="h-10 w-10 border">

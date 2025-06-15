@@ -1,0 +1,260 @@
+---
+description: ElizaOS types and interfaces
+globs: 
+alwaysApply: false
+---
+> You are an expert in ElizaOS v2, TypeScript, and software architecture. You focus on creating clear, well-documented code and explaining complex type systems to other developers.
+
+## ElizaOS Core Types and Interfaces
+
+This document provides a comprehensive guide to the core types and interfaces used throughout the ElizaOS v2 ecosystem. Understanding these data structures is essential for developing plugins, services, and interacting with the `AgentRuntime`.
+
+### Type Architecture Overview
+
+The type system is designed to be modular and extensible. The `IAgentRuntime` serves as the central hub, interacting with various components like `Plugins`, which in turn provide `Actions`, `Providers`, and `Evaluators`. All these components operate on a set of core data structures like `Memory`, `Entity`, `Room`, and `World`.
+
+```mermaid
+graph TD
+    subgraph Runtime
+        A[IAgentRuntime]
+    end
+
+    subgraph Configuration
+        B[Character]
+        C[Plugin]
+    end
+
+    subgraph Components
+        D[Action]
+        E[Provider]
+        F[Evaluator]
+        G[Service]
+    end
+    
+    subgraph DataModel
+        H[Memory]
+        I[Entity]
+        J[Room]
+        K[World]
+        L[Relationship]
+    end
+
+    B --> A
+    C --> A
+    
+    A -- Manages Lifecycle --> C
+    A -- Manages Lifecycle --> G
+    
+    C -- Registers --> D
+    C -- Registers --> E
+    C -- Registers --> F
+    C -- Registers --> G
+
+    D & E & F -- Operate On --> H & I & J & K & L
+    A -- Provides API For --> DataModel
+```
+
+---
+
+## 1. Core Runtime & Configuration
+
+These interfaces define the agent itself and its operational environment.
+
+### `IAgentRuntime`
+The `IAgentRuntime` is the most important interface in ElizaOS. It represents the live, operational state of an agent. It provides the API for all memory operations, service access, and component interactions. When you write a component, the `runtime` instance is your gateway to the rest of the system.
+
+**Key Responsibilities:**
+*   Managing the agent's lifecycle (`initialize`, `start`, `stop`).
+*   Providing access to the database via `IDatabaseAdapter` methods.
+*   Orchestrating `Action`, `Provider`, and `Evaluator` execution.
+*   Managing the lifecycle of `Services`.
+*   Emitting and listening to system-wide events.
+
+```typescript
+// ✅ DO: Always use the provided `runtime` instance inside your components.
+import { type IAgentRuntime, type Action } from '@elizaos/core';
+
+const exampleAction: Action = {
+  name: "EXAMPLE_ACTION",
+  // ...
+  handler: async (runtime: IAgentRuntime, message) => {
+    // Correct: Use the runtime to access other parts of the system.
+    const recentMemories = await runtime.getMemories({ roomId: message.roomId, count: 5 });
+    const myService = runtime.getService('MyService');
+    // ...
+    return true;
+  }
+}
+```
+
+### `Character`
+The `Character` interface defines the agent's personality, configuration, and capabilities. It's a plain object that is passed to the `AgentRuntime` upon creation.
+
+```typescript
+// Reference: packages/core/src/types.ts
+export interface Character {
+  /** Agent's name */
+  name: string;
+  /** Agent's biography or description */
+  bio: string | string[];
+  /** The base system prompt for the LLM */
+  system?: string;
+  /** Examples to guide the agent's response style */
+  messageExamples?: MessageExample[][];
+  /** A list of plugin packages to load */
+  plugins?: string[];
+  /** Agent-specific settings and secrets */
+  settings?: {
+    [key: string]: any;
+  };
+  secrets?: {
+    [key: string]: any;
+  };
+  // ... and other personality/style fields
+}
+```
+
+### `Plugin`
+Plugins are the primary way to extend an agent's functionality. They are objects that bundle together components (`Actions`, `Providers`, etc.) and `Services` for the runtime to register.
+
+```typescript
+// Reference: packages/core/src/types.ts
+export interface Plugin {
+  /** Unique name for the plugin */
+  name: string;
+  /** Human-readable description */
+  description: string;
+  /** Optional components to register */
+  actions?: Action[];
+  providers?: Provider[];
+  evaluators?: Evaluator[];
+  /** Optional services to start */
+  services?: (typeof Service)[];
+  /** List of other plugin names this plugin depends on */
+  dependencies?: string[];
+}
+```
+
+---
+
+## 2. Core Components
+
+These are the building blocks of agent behavior, registered via `Plugins`.
+
+### `Action`
+An `Action` defines something the agent can *do*. It contains a `validate` function to help the LLM decide if the action is appropriate and a `handler` function containing the core logic.
+
+```typescript
+// Reference: packages/core/src/types.ts
+export interface Action {
+  name: string;
+  description: string;
+  examples: ActionExample[][];
+  validate: Validator; // (runtime, message, state) => Promise<boolean>
+  handler: Handler;    // (runtime, message, state, ...) => Promise<unknown>
+}
+```
+
+### `Provider`
+A `Provider` supplies the agent with contextual information. It has a `get` method that returns data, which the `AgentRuntime` then composes into the final context for the LLM.
+
+```typescript
+// Reference: packages/core/src/types.ts
+export interface Provider {
+  name: string;
+  description?: string;
+  get: (runtime: IAgentRuntime, message: Memory, state: State) => Promise<ProviderResult>;
+}
+
+export interface ProviderResult {
+  text?: string;
+  data?: { [key: string]: any; };
+  values?: { [key: string]: any; };
+}
+```
+
+### `Evaluator`
+An `Evaluator` allows the agent to reflect on its performance or analyze a conversation after the fact.
+
+```typescript
+// Reference: packages/core/src/types.ts
+export interface Evaluator {
+  name: string;
+  description: string;
+  alwaysRun?: boolean; // If true, runs even if the agent didn't respond
+  handler: Handler;
+}
+```
+
+---
+
+## 3. Data Model
+
+These interfaces represent the core data objects that the agent operates on. They are stored in the database via the `IDatabaseAdapter`.
+
+### `Memory`
+A `Memory` is the most fundamental data structure, representing a single piece of information, most often a message.
+
+```typescript
+// Reference: packages/core/src/types.ts
+export interface Memory {
+  id?: UUID;
+  entityId: UUID; // The ID of the entity that created the memory (e.g., a user)
+  roomId: UUID;
+  worldId?: UUID;
+  content: Content;
+  embedding?: number[];
+  createdAt?: number;
+}
+
+export interface Content {
+  text?: string;
+  actions?: string[];
+  // ... and other fields
+}
+```
+
+### `Entity`, `Room`, `World`
+These structures model the environment the agent exists in.
+*   **`Entity`**: Represents an actor or object (a user, another agent, a concept).
+*   **`Room`**: Represents a specific context for interaction (a chat channel, a DM).
+*   **`World`**: A collection of rooms and entities (a Discord server, a project).
+
+```typescript
+// Reference: packages/core/src/types.ts
+export interface Entity {
+  id?: UUID;
+  names: string[];
+  metadata?: { [key: string]: any };
+  agentId: UUID;
+}
+
+export interface Room {
+  id: UUID;
+  name?: string;
+  source: string; // e.g., 'discord', 'cli'
+  type: ChannelType; // e.g., DM, GROUP
+  worldId?: UUID;
+}
+
+export interface World {
+  id: UUID;
+  name?: string;
+  agentId: UUID;
+  serverId: string; // The platform-specific ID for the world
+}
+```
+
+### `Relationship`
+This allows you to create a knowledge graph by linking two `Entities` together with a typed relationship.
+
+```typescript
+// Reference: packages/core/src/types.ts
+export interface Relationship {
+  id: UUID;
+  sourceEntityId: UUID;
+  targetEntityId: UUID;
+  tags: string[];
+  metadata: { [key: string]: any; };
+}
+```
