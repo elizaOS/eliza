@@ -2,7 +2,18 @@ describe('Home Page', () => {
   beforeEach(() => {
     // Visit the home page before each test
     cy.visit('/');
-    cy.waitForApp();
+    
+    // Wait for app to be ready (inline implementation)
+    cy.get('#root', { timeout: 30000 }).should('exist');
+    cy.document().its('readyState').should('equal', 'complete');
+    cy.wait(1000);
+    
+    // Check if there's any loading indicator and wait for it to disappear
+    cy.get('body').then(($body) => {
+      if ($body.find('[data-testid="loading"]').length > 0) {
+        cy.get('[data-testid="loading"]', { timeout: 30000 }).should('not.exist');
+      }
+    });
   });
 
   it('loads successfully', () => {

@@ -52,36 +52,7 @@ Cypress.on('window:before:load', (win) => {
   };
 });
 
-// Add custom Cypress types
-declare global {
-  namespace Cypress {
-    interface Chainable {
-      /**
-       * Custom command to login via UI or API
-       * @example cy.login('user@example.com', 'password')
-       */
-      login(email: string, password: string): Chainable<void>;
-
-      /**
-       * Custom command to wait for the app to be ready
-       * @example cy.waitForApp()
-       */
-      waitForApp(): Chainable<void>;
-
-      /**
-       * Custom command to connect to WebSocket
-       * @example cy.connectWebSocket()
-       */
-      connectWebSocket(): Chainable<void>;
-
-      /**
-       * Custom command to clean up test data
-       * @example cy.cleanupTestData()
-       */
-      cleanupTestData(): Chainable<void>;
-    }
-  }
-}
+// TypeScript declarations are in ./commands.ts
 
 // Ensure this file is treated as a module
 export {}; 

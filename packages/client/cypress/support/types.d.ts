@@ -13,10 +13,7 @@ declare global {
       mount: typeof mount;
       mountWithRouter: typeof mountWithRouter;
       mountRadix: typeof mountRadix;
-      waitForApp(): Chainable<void>;
-      login(email: string, password: string): Chainable<void>;
-      connectWebSocket(): Chainable<void>;
-      cleanupTestData(): Chainable<void>;
+      // Custom commands are declared in ./commands.ts
     }
   }
 }

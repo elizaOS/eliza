@@ -89,6 +89,4 @@ declare global {
       waitForApi(alias: string, timeout?: number): Chainable<any>;
     }
   }
-}
-
-export {}; 
+} 
