@@ -346,11 +346,13 @@ export async function promptForEnvVars(pluginName: string): Promise<Record<strin
     const value = await promptForEnvVar(config);
 
     // Save to our record
-    result[config.key] = value;
-    envVars[config.key] = value;
+    if (value !== null) {
+      result[config.key] = value;
+      envVars[config.key] = value;
 
-    // Also set in process.env for immediate use
-    process.env[config.key] = value;
+      // Also set in process.env for immediate use
+      process.env[config.key] = value;
+    }
 
     changes = true;
   }

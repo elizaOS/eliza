@@ -1,6 +1,6 @@
 import type { OptionValues } from 'commander';
 import { z } from 'zod';
-import type { AgentBasic, ApiResponse } from '../../shared';
+import type { AgentBasic } from '../../shared';
 import { getAgentsBaseUrl } from '../../shared';
 
 // Zod schemas for validation

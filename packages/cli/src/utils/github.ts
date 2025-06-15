@@ -57,7 +57,9 @@ export async function validateGitHubToken(token: string): Promise<boolean> {
 
     return false;
   } catch (error) {
-    logger.error(`Failed to validate GitHub token: ${error.message}`);
+    logger.error(
+      `Failed to validate GitHub token: ${error instanceof Error ? error.message : String(error)}`
+    );
     return false;
   }
 }
@@ -111,7 +113,9 @@ export async function forkRepository(
     logger.error(`Failed to fork repository: ${response.statusText}`);
     return null;
   } catch (error) {
-    logger.error(`Failed to fork repository: ${error.message}`);
+    logger.error(
+      `Failed to fork repository: ${error instanceof Error ? error.message : String(error)}`
+    );
     return null;
   }
 }
@@ -334,7 +338,9 @@ export async function createBranch(
     logger.error(`Failed to create branch: ${response.statusText}`);
     return false;
   } catch (error) {
-    logger.error(`Failed to create branch: ${error.message}`);
+    logger.error(
+      `Failed to create branch: ${error instanceof Error ? error.message : String(error)}`
+    );
     return false;
   }
 }
@@ -464,7 +470,7 @@ export async function updateFile(
 
     return false;
   } catch (error) {
-    logger.error(`Error updating file: ${error.message}`);
+    logger.error(`Error updating file: ${error instanceof Error ? error.message : String(error)}`);
     return false;
   }
 }
@@ -506,7 +512,9 @@ export async function createPullRequest(
     logger.error(`Failed to create pull request: ${response.statusText}`);
     return null;
   } catch (error) {
-    logger.error(`Failed to create pull request: ${error.message}`);
+    logger.error(
+      `Failed to create pull request: ${error instanceof Error ? error.message : String(error)}`
+    );
     return null;
   }
 }
@@ -745,7 +753,9 @@ export async function ensureDirectory(
     logger.error(`Failed to create directory: ${directoryPath}`);
     return false;
   } catch (error) {
-    logger.error(`Error creating directory: ${error.message}`);
+    logger.error(
+      `Error creating directory: ${error instanceof Error ? error.message : String(error)}`
+    );
     return false;
   }
 }
@@ -852,7 +862,10 @@ export async function createGitHubRepository(
       message: `Failed to create repository: ${response.status} ${response.statusText} - ${errorData.message || 'Unknown error'}`,
     };
   } catch (error) {
-    return { success: false, message: `Error creating repository: ${error.message}` };
+    return {
+      success: false,
+      message: `Error creating repository: ${error instanceof Error ? error.message : String(error)}`,
+    };
   }
 }
 
@@ -940,7 +953,9 @@ export async function pushToGitHub(
       logger.success(`Pushed to GitHub repository: ${repoUrl}`);
       return true;
     } catch (error) {
-      logger.error(`Failed to push to GitHub: ${error.message}`);
+      logger.error(
+        `Failed to push to GitHub: ${error instanceof Error ? error.message : String(error)}`
+      );
 
       // Try force pushing if normal push fails
       try {
@@ -952,12 +967,17 @@ export async function pushToGitHub(
         });
         return true;
       } catch (forcePushError) {
-        logger.error('Force push also failed:', forcePushError.message);
+        logger.error(
+          'Force push also failed:',
+          forcePushError instanceof Error ? forcePushError.message : String(forcePushError)
+        );
         return false;
       }
     }
   } catch (error) {
-    logger.error(`Error in git operations: ${error.message}`);
+    logger.error(
+      `Error in git operations: ${error instanceof Error ? error.message : String(error)}`
+    );
     return false;
   }
 }

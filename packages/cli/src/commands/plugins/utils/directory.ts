@@ -25,7 +25,9 @@ export const getDependenciesFromDirectory = (cwd: string): Dependencies | null =
     if (error instanceof SyntaxError) {
       logger.warn(`Could not parse package.json: ${error.message}`);
     } else {
-      logger.warn(`Error reading package.json: ${error.message}`);
+      logger.warn(
+        `Error reading package.json: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
     return null;
   }

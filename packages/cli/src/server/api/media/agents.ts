@@ -83,7 +83,13 @@ export function createAgentMediaRouter(
       } catch (error) {
         logger.error(`[MEDIA UPLOAD] Error processing upload: ${error}`);
         cleanupFile(mediaFile.path);
-        sendError(res, 500, 'UPLOAD_ERROR', 'Failed to process media upload', error.message);
+        sendError(
+          res,
+          500,
+          'UPLOAD_ERROR',
+          'Failed to process media upload',
+          error instanceof Error ? error.message : String(error)
+        );
       }
     }
   );

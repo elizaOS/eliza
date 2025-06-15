@@ -94,7 +94,7 @@ describe('ElizaOS Agent Commands', () => {
 
     // Give characters time to register
     await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
-  }, TEST_TIMEOUTS.SUITE_TIMEOUT); // Suite timeout for setup
+  });
 
   afterAll(async () => {
     if (serverProcess) {

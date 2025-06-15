@@ -292,7 +292,7 @@ export async function loadCharacters(charactersArg: string): Promise<Character[]
 
   if (hasValidRemoteUrls()) {
     logger.info('Loading characters from remote URLs');
-    const characterUrls = commaSeparatedStringToArray(process.env.REMOTE_CHARACTER_URLS);
+    const characterUrls = commaSeparatedStringToArray(process.env.REMOTE_CHARACTER_URLS || '');
     for (const characterUrl of characterUrls) {
       const characters = await loadCharactersFromUrl(characterUrl);
       loadedCharacters.push(...characters);

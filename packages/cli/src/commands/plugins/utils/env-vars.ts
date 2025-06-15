@@ -38,7 +38,9 @@ export const extractPluginEnvRequirements = async (
 
     return agentConfig.pluginParameters;
   } catch (error) {
-    logger.debug(`Error reading plugin package.json for ${packageName}: ${error.message}`);
+    logger.debug(
+      `Error reading plugin package.json for ${packageName}: ${error instanceof Error ? error.message : String(error)}`
+    );
     return {};
   }
 };

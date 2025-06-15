@@ -69,7 +69,9 @@ export async function startDevMode(options: DevOptions): Promise<void> {
       // Start the server with the args
       await serverManager.start(cliArgs);
     } catch (error) {
-      console.error(`Error during rebuild and restart: ${error.message}`);
+      console.error(
+        `Error during rebuild and restart: ${error instanceof Error ? error.message : String(error)}`
+      );
       // Try to restart the server even if build fails
       if (!serverManager.process) {
         console.info('Attempting to restart server regardless of build failure...');

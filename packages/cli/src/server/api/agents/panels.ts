@@ -37,7 +37,13 @@ export function createAgentPanelsRouter(
       sendSuccess(res, publicPanels);
     } catch (error) {
       logger.error(`[AGENT PANELS] Error retrieving panels for agent ${agentId}:`, error);
-      sendError(res, 500, 'PANEL_ERROR', 'Error retrieving agent panels', error.message);
+      sendError(
+        res,
+        500,
+        'PANEL_ERROR',
+        'Error retrieving agent panels',
+        error instanceof Error ? error.message : String(error)
+      );
     }
   });
 

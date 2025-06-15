@@ -57,9 +57,6 @@ async function main() {
 
   // Check for built-in flags that exit early (before preAction hook runs)
   const args = process.argv.slice(2);
-  const isVersionFlag = args.includes('-v') || args.includes('--version');
-  const isHelpFlag =
-    args.includes('-h') || args.includes('--help') || (args.length === 1 && args[0] === 'help');
   const isUpdateCommand = args.includes('update');
   const willShowBanner = args.length === 0;
 
@@ -98,7 +95,9 @@ async function main() {
           });
         });
       } catch (error) {
-        logger.error(`Failed to stop processes: ${error.message}`);
+        logger.error(
+          `Failed to stop processes: ${error instanceof Error ? error.message : String(error)}`
+        );
       }
     });
 

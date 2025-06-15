@@ -23,7 +23,7 @@ export function createServersRouter(serverInstance: AgentServer): express.Router
   });
 
   // POST /servers - Create a new server
-  router.post('/servers', async (req, res) => {
+  (router as any).post('/servers', async (req: express.Request, res: express.Response) => {
     const { name, sourceType, sourceId, metadata } = req.body;
 
     if (!name || !sourceType) {
@@ -52,144 +52,159 @@ export function createServersRouter(serverInstance: AgentServer): express.Router
   // ===============================
 
   // POST /servers/:serverId/agents - Add agent to server
-  router.post('/servers/:serverId/agents', async (req, res) => {
-    const serverId =
-      req.params.serverId === DEFAULT_SERVER_ID
-        ? DEFAULT_SERVER_ID
-        : validateUuid(req.params.serverId);
-    const { agentId } = req.body;
+  (router as any).post(
+    '/servers/:serverId/agents',
+    async (req: express.Request, res: express.Response) => {
+      const serverId =
+        req.params.serverId === DEFAULT_SERVER_ID
+          ? DEFAULT_SERVER_ID
+          : validateUuid(req.params.serverId);
+      const { agentId } = req.body;
 
-    if (!serverId || !validateUuid(agentId)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid serverId or agentId format',
-      });
-    }
+      if (!serverId || !validateUuid(agentId)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid serverId or agentId format',
+        });
+      }
 
-    try {
-      // Add agent to server association
-      await serverInstance.addAgentToServer(serverId, agentId as UUID);
+      try {
+        // Add agent to server association
+        await serverInstance.addAgentToServer(serverId, agentId as UUID);
 
-      // Notify the agent's message bus service to start listening for this server
-      const messageForBus = {
-        type: 'agent_added_to_server',
-        serverId,
-        agentId,
-      };
-      internalMessageBus.emit('server_agent_update', messageForBus);
-
-      res.status(201).json({
-        success: true,
-        data: {
+        // Notify the agent's message bus service to start listening for this server
+        const messageForBus = {
+          type: 'agent_added_to_server',
           serverId,
           agentId,
-          message: 'Agent added to server successfully',
-        },
-      });
-    } catch (error) {
-      logger.error(`[MessagesRouter] Error adding agent ${agentId} to server ${serverId}:`, error);
-      res.status(500).json({ success: false, error: 'Failed to add agent to server' });
+        };
+        internalMessageBus.emit('server_agent_update', messageForBus);
+
+        res.status(201).json({
+          success: true,
+          data: {
+            serverId,
+            agentId,
+            message: 'Agent added to server successfully',
+          },
+        });
+      } catch (error) {
+        logger.error(
+          `[MessagesRouter] Error adding agent ${agentId} to server ${serverId}:`,
+          error
+        );
+        res.status(500).json({ success: false, error: 'Failed to add agent to server' });
+      }
     }
-  });
+  );
 
   // DELETE /servers/:serverId/agents/:agentId - Remove agent from server
-  router.delete('/servers/:serverId/agents/:agentId', async (req, res) => {
-    const serverId =
-      req.params.serverId === DEFAULT_SERVER_ID
-        ? DEFAULT_SERVER_ID
-        : validateUuid(req.params.serverId);
-    const agentId = validateUuid(req.params.agentId);
+  (router as any).delete(
+    '/servers/:serverId/agents/:agentId',
+    async (req: express.Request, res: express.Response) => {
+      const serverId =
+        req.params.serverId === DEFAULT_SERVER_ID
+          ? DEFAULT_SERVER_ID
+          : validateUuid(req.params.serverId);
+      const agentId = validateUuid(req.params.agentId);
 
-    if (!serverId || !agentId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid serverId or agentId format',
-      });
-    }
+      if (!serverId || !agentId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid serverId or agentId format',
+        });
+      }
 
-    try {
-      // Remove agent from server association
-      await serverInstance.removeAgentFromServer(serverId, agentId);
+      try {
+        // Remove agent from server association
+        await serverInstance.removeAgentFromServer(serverId, agentId);
 
-      // Notify the agent's message bus service to stop listening for this server
-      const messageForBus = {
-        type: 'agent_removed_from_server',
-        serverId,
-        agentId,
-      };
-      internalMessageBus.emit('server_agent_update', messageForBus);
-
-      res.status(200).json({
-        success: true,
-        data: {
+        // Notify the agent's message bus service to stop listening for this server
+        const messageForBus = {
+          type: 'agent_removed_from_server',
           serverId,
           agentId,
-          message: 'Agent removed from server successfully',
-        },
-      });
-    } catch (error) {
-      logger.error(
-        `[MessagesRouter] Error removing agent ${agentId} from server ${serverId}:`,
-        error
-      );
-      res.status(500).json({ success: false, error: 'Failed to remove agent from server' });
+        };
+        internalMessageBus.emit('server_agent_update', messageForBus);
+
+        res.status(200).json({
+          success: true,
+          data: {
+            serverId,
+            agentId,
+            message: 'Agent removed from server successfully',
+          },
+        });
+      } catch (error) {
+        logger.error(
+          `[MessagesRouter] Error removing agent ${agentId} from server ${serverId}:`,
+          error
+        );
+        res.status(500).json({ success: false, error: 'Failed to remove agent from server' });
+      }
     }
-  });
+  );
 
   // GET /servers/:serverId/agents - List agents in server
-  router.get('/servers/:serverId/agents', async (req, res) => {
-    const serverId =
-      req.params.serverId === DEFAULT_SERVER_ID
-        ? DEFAULT_SERVER_ID
-        : validateUuid(req.params.serverId);
+  (router as any).get(
+    '/servers/:serverId/agents',
+    async (req: express.Request, res: express.Response) => {
+      const serverId =
+        req.params.serverId === DEFAULT_SERVER_ID
+          ? DEFAULT_SERVER_ID
+          : validateUuid(req.params.serverId);
 
-    if (!serverId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid serverId format',
-      });
-    }
+      if (!serverId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid serverId format',
+        });
+      }
 
-    try {
-      const agents = await serverInstance.getAgentsForServer(serverId);
-      res.json({
-        success: true,
-        data: {
-          serverId,
-          agents, // Array of agent IDs
-        },
-      });
-    } catch (error) {
-      logger.error(`[MessagesRouter] Error fetching agents for server ${serverId}:`, error);
-      res.status(500).json({ success: false, error: 'Failed to fetch server agents' });
+      try {
+        const agents = await serverInstance.getAgentsForServer(serverId);
+        res.json({
+          success: true,
+          data: {
+            serverId,
+            agents, // Array of agent IDs
+          },
+        });
+      } catch (error) {
+        logger.error(`[MessagesRouter] Error fetching agents for server ${serverId}:`, error);
+        res.status(500).json({ success: false, error: 'Failed to fetch server agents' });
+      }
     }
-  });
+  );
 
   // GET /agents/:agentId/servers - List servers agent belongs to
-  router.get('/agents/:agentId/servers', async (req, res) => {
-    const agentId = validateUuid(req.params.agentId);
+  (router as any).get(
+    '/agents/:agentId/servers',
+    async (req: express.Request, res: express.Response) => {
+      const agentId = validateUuid(req.params.agentId);
 
-    if (!agentId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid agentId format',
-      });
-    }
+      if (!agentId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid agentId format',
+        });
+      }
 
-    try {
-      const servers = await serverInstance.getServersForAgent(agentId);
-      res.json({
-        success: true,
-        data: {
-          agentId,
-          servers, // Array of server IDs
-        },
-      });
-    } catch (error) {
-      logger.error(`[MessagesRouter] Error fetching servers for agent ${agentId}:`, error);
-      res.status(500).json({ success: false, error: 'Failed to fetch agent servers' });
+      try {
+        const servers = await serverInstance.getServersForAgent(agentId);
+        res.json({
+          success: true,
+          data: {
+            agentId,
+            servers, // Array of server IDs
+          },
+        });
+      } catch (error) {
+        logger.error(`[MessagesRouter] Error fetching servers for agent ${agentId}:`, error);
+        res.status(500).json({ success: false, error: 'Failed to fetch agent servers' });
+      }
     }
-  });
+  );
 
   return router;
 }

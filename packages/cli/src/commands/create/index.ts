@@ -1,6 +1,5 @@
 import { displayBanner, handleError } from '@/src/utils';
 import { Command } from 'commander';
-import path from 'node:path';
 import * as clack from '@clack/prompts';
 import colors from 'yoctocolors';
 import { logger } from '@elizaos/core';

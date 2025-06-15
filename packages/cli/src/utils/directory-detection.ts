@@ -58,7 +58,7 @@ export function detectDirectoryType(dir: string): DirectoryInfo {
   }
 
   // Check for monorepo root
-  const monorepoRoot = UserEnvironment.getInstance().findMonorepoRoot(dir);
+  const monorepoRoot = UserEnvironment.getInstance().findMonorepoRoot(dir) ?? undefined;
 
   // Check for package.json
   const packageJsonPath = path.join(dir, 'package.json');

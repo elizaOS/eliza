@@ -27,7 +27,7 @@ export async function startAgents(options: ServerStartOptions): Promise<void> {
   const pgliteDataDir = postgresUrl ? undefined : await resolvePgliteDir();
 
   const server = new AgentServer();
-  await server.initialize({ dataDir: pgliteDataDir, postgresUrl });
+  await server.initialize({ dataDir: pgliteDataDir, postgresUrl: postgresUrl || undefined });
 
   server.startAgent = (character) => startAgent(character, server);
   server.stopAgent = (runtime) => stopAgent(runtime, server);

@@ -80,11 +80,11 @@ export async function convertToAudioBuffer(
     // Handle Node Readable Stream
     resultBuffer = await new Promise<Buffer>((resolve, reject) => {
       const chunks: Buffer[] = [];
-      speechResponse.on('data', (chunk) =>
+      speechResponse.on('data', (chunk: any) =>
         chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
       );
       speechResponse.on('end', () => resolve(Buffer.concat(chunks)));
-      speechResponse.on('error', (err) => reject(err));
+      speechResponse.on('error', (err: Error) => reject(err));
     });
   } else {
     throw new Error('Unexpected response type from TEXT_TO_SPEECH model');
