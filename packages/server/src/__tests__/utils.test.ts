@@ -247,8 +247,8 @@ describe('Utility Functions', () => {
 
     it('should handle various tilde variations', () => {
       const inputs = [
-        { input: '~user/path', expected: process.cwd() + '/user/path' }, // Tilde at start gets expanded
-        { input: '~~', expected: process.cwd() + '/~' }, // Double tilde - first ~ is expanded
+        { input: '~user/path', expected: '~user/path' }, // Tilde with user name not expanded
+        { input: '~~', expected: '~~' }, // Double tilde - not expanded since doesn't start with ~/
         { input: 'not~tilde', expected: 'not~tilde' }, // Tilde not at start
       ];
 

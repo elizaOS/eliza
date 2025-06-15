@@ -63,22 +63,24 @@ describe('MessageBusService', () => {
 
     // Mock successful fetch responses
     mockFetch.mockImplementation((url) => {
-      // Mock valid channels endpoint
-      if (url.includes('/valid-channels')) {
+      // Mock central servers channels endpoint
+      if (url.includes('/api/messaging/central-servers/') && url.includes('/channels')) {
         return Promise.resolve({
           ok: true,
           json: async () => ({
             success: true,
-            channels: [
-              '456e7890-e89b-12d3-a456-426614174000',
-              '123e4567-e89b-12d3-a456-426614174000',
-              '234e5678-e89b-12d3-a456-426614174000',
-            ],
+            data: {
+              channels: [
+                { id: '456e7890-e89b-12d3-a456-426614174000' },
+                { id: '123e4567-e89b-12d3-a456-426614174000' },
+                { id: '234e5678-e89b-12d3-a456-426614174000' },
+              ],
+            },
           }),
         });
       }
       // Mock channel participants endpoint
-      if (url.includes('/participants')) {
+      if (url.includes('/api/messaging/central-channels/') && url.includes('/participants')) {
         return Promise.resolve({
           ok: true,
           json: async () => ({
@@ -92,7 +94,7 @@ describe('MessageBusService', () => {
         });
       }
       // Mock agent servers endpoint
-      if (url.includes(`/agents/${mockRuntime.agentId}/servers`)) {
+      if (url.includes(`/api/messaging/agents/${mockRuntime.agentId}/servers`)) {
         return Promise.resolve({
           ok: true,
           json: async () => ({
@@ -149,7 +151,10 @@ describe('MessageBusService', () => {
 
     it('should fetch agent servers on initialization', async () => {
       expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining(`/api/messaging/agents/${mockRuntime.agentId}/servers`)
+        expect.stringContaining(`/api/messaging/agents/${mockRuntime.agentId}/servers`),
+        expect.objectContaining({
+          headers: expect.any(Object)
+        })
       );
     });
   });
@@ -241,7 +246,7 @@ describe('MessageBusService', () => {
 
       // Override mock to exclude agent from participants for this test
       mockFetch.mockImplementationOnce((url) => {
-        if (url.includes('/participants')) {
+        if (url.includes('/api/messaging/central-channels/') && url.includes('/participants')) {
           return Promise.resolve({
             ok: true,
             json: async () => ({
@@ -288,7 +293,7 @@ describe('MessageBusService', () => {
 
       // Override mock to throw error for participants endpoint
       mockFetch.mockImplementationOnce((url) => {
-        if (url.includes('/participants')) {
+        if (url.includes('/api/messaging/central-channels/') && url.includes('/participants')) {
           return Promise.reject(new Error('Network error'));
         }
         return Promise.resolve({

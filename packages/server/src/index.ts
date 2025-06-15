@@ -62,7 +62,7 @@ export function resolvePgliteDir(dir?: string, fallbackDir?: string): string {
   }
 
   const base =
-    (dir && dir.trim() !== '') ? dir :
+    (dir !== undefined && dir !== null) ? dir :
       process.env.PGLITE_DATA_DIR ??
       fallbackDir ??
       path.join(process.cwd(), '.eliza', '.elizadb');
