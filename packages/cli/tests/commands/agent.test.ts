@@ -81,8 +81,22 @@ describe('ElizaOS Agent Commands', () => {
 
   afterAll(async () => {
     if (serverProcess) {
-      serverProcess.kill();
-      await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
+      try {
+        if (process.platform === 'win32') {
+          // On Windows, use SIGKILL for more reliable termination
+          serverProcess.kill('SIGKILL');
+        } else {
+          serverProcess.kill();
+        }
+        await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
+        
+        // Wait for process to actually exit
+        if (!serverProcess.killed && serverProcess.exitCode === null) {
+          await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.PROCESS_CLEANUP));
+        }
+      } catch (e) {
+        // Ignore cleanup errors
+      }
     }
 
     if (testTmpDir) {

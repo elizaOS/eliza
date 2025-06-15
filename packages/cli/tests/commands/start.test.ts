@@ -50,11 +50,21 @@ describe('ElizaOS Start Commands', () => {
   });
 
   afterEach(async () => {
-    // Kill any running processes
+    // Kill any running processes with proper Windows handling
     for (const proc of runningProcesses) {
       try {
-        proc.kill();
+        if (process.platform === 'win32') {
+          // On Windows, use taskkill for more reliable termination
+          proc.kill('SIGKILL');
+        } else {
+          proc.kill();
+        }
         await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
+        
+        // Wait for process to actually exit
+        if (!proc.killed && proc.exitCode === null) {
+          await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
+        }
       } catch (e) {
         // Ignore cleanup errors
       }
