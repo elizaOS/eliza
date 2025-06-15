@@ -504,7 +504,7 @@ const messageReceivedHandler = async ({
 
             responseContent.simple = isSimple;
 
-            const responseMesssage = {
+            const responseMessage = {
               id: asUUID(v4()),
               entityId: runtime.agentId,
               agentId: runtime.agentId,
@@ -513,7 +513,7 @@ const messageReceivedHandler = async ({
               createdAt: Date.now(),
             };
 
-            responseMessages = [responseMesssage];
+            responseMessages = [responseMessage];
           }
 
           // Clean up the response ID
