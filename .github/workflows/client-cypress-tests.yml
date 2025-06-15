@@ -85,6 +85,10 @@ jobs:
       - name: Build packages (Turbo cached)
         run: bun run build
 
+      - name: Install Cypress binary
+        working-directory: packages/client
+        run: npx cypress install
+
       - name: Run Cypress Component Tests
         working-directory: packages/client
         run: |
@@ -157,6 +161,10 @@ jobs:
 
       - name: Build packages (Turbo cached)
         run: bun run build
+
+      - name: Install Cypress binary
+        working-directory: packages/client
+        run: npx cypress install
 
       - name: Create .env file
         run: |
