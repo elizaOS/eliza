@@ -14,6 +14,7 @@ import {
   logger,
 } from '@elizaos/core';
 import { z } from 'zod';
+import { StarterPluginTestSuite } from './tests';
 
 /**
  * Defines the configuration schema for a plugin, including the validation rules for the plugin name.
@@ -52,7 +53,11 @@ const helloWorldAction: Action = {
   similes: ['GREET', 'SAY_HELLO'],
   description: 'Responds with a simple hello world message',
 
-  validate: async (_runtime: IAgentRuntime, _message: Memory, _state: State): Promise<boolean> => {
+  validate: async (
+    _runtime: IAgentRuntime,
+    _message: Memory,
+    _state: State | undefined
+  ): Promise<boolean> => {
     // Always valid
     return true;
   },
@@ -60,10 +65,10 @@ const helloWorldAction: Action = {
   handler: async (
     _runtime: IAgentRuntime,
     message: Memory,
-    _state: State,
+    _state: State | undefined,
     _options: any,
-    callback: HandlerCallback,
-    _responses: Memory[]
+    callback?: HandlerCallback,
+    _responses?: Memory[]
   ) => {
     try {
       logger.info('Handling HELLO_WORLD action');
@@ -75,8 +80,10 @@ const helloWorldAction: Action = {
         source: message.content.source,
       };
 
-      // Call back with the hello world message
-      await callback(responseContent);
+      // Call back with the hello world message if callback is provided
+      if (callback) {
+        await callback(responseContent);
+      }
 
       return responseContent;
     } catch (error) {
@@ -115,7 +122,7 @@ const helloWorldProvider: Provider = {
   get: async (
     _runtime: IAgentRuntime,
     _message: Memory,
-    _state: State
+    _state: State | undefined
   ): Promise<ProviderResult> => {
     return {
       text: 'I am a provider',
@@ -211,6 +218,21 @@ export const starterPlugin: Plugin = {
         });
       },
     },
+    {
+      name: 'current-time-route',
+      path: '/api/time',
+      type: 'GET',
+      handler: async (_req: any, res: any) => {
+        // Return current time in various formats
+        const now = new Date();
+        res.json({
+          timestamp: now.toISOString(),
+          unix: Math.floor(now.getTime() / 1000),
+          formatted: now.toLocaleString(),
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        });
+      },
+    },
   ],
   events: {
     MESSAGE_RECEIVED: [
@@ -245,6 +267,7 @@ export const starterPlugin: Plugin = {
   services: [StarterService],
   actions: [helloWorldAction],
   providers: [helloWorldProvider],
+  tests: [StarterPluginTestSuite],
   // dependencies: ['@elizaos/plugin-knowledge'], <--- plugin dependecies go here (if requires another plugin)
 };
 

@@ -283,8 +283,15 @@ export async function loadCharacters(charactersArg: string): Promise<Character[]
 
   if (characterPaths?.length > 0) {
     for (const characterPath of characterPaths) {
-      const character = await loadCharacterTryPath(characterPath);
-      loadedCharacters.push(character);
+      try {
+        const character = await loadCharacterTryPath(characterPath);
+        loadedCharacters.push(character);
+      } catch (error) {
+        // Log error but continue loading other characters
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        logger.error(`Failed to load character from '${characterPath}': ${errorMsg}`);
+        // Continue to next character
+      }
     }
   }
 

@@ -13,6 +13,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
   const router = express.Router();
 
   // Endpoint for AGENT REPLIES or direct submissions to the central bus FROM AGENTS/SYSTEM
+  // @ts-ignore - Express type issue with async handlers
   router.post('/submit', async (req, res) => {
     const {
       channel_id,
@@ -93,6 +94,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
   });
 
   // Endpoint for INGESTING messages from EXTERNAL platforms (e.g., Discord plugin)
+  // @ts-ignore - Express type issue with async handlers
   router.post('/ingest-external', async (req, res) => {
     const messagePayload = req.body as Partial<MessageService>; // Partial because ID, created_at will be generated
 

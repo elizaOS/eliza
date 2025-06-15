@@ -1,6 +1,17 @@
-import type { IAgentRuntime, ITeeLogService, TeeLogQuery } from '@elizaos/core';
+import type { IAgentRuntime } from '@elizaos/core';
 import { ServiceType, logger } from '@elizaos/core';
 import express from 'express';
+
+// Local type definitions until these are added to core
+interface TeeLogQuery {
+  agentId?: string;
+  roomId?: string;
+  entityId?: string;
+  type?: string;
+  containsContent?: string;
+  startTimestamp?: number;
+  endTimestamp?: number;
+}
 
 /**
  * TEE (Trusted Execution Environment) security functionality
@@ -9,20 +20,23 @@ export function createTeeRouter(agents: Map<string, IAgentRuntime>): express.Rou
   const router = express.Router();
 
   // Get all TEE agents
+  // @ts-ignore - Express type issue with async handlers
   router.get('/agents', async (_req, res) => {
     try {
       const allAgents = [];
 
       for (const agentRuntime of agents.values()) {
-        const teeLogService = agentRuntime.getService<ITeeLogService>(ServiceType.TEE);
+        const teeLogService = agentRuntime.getService(ServiceType.TEE);
 
-        const agents = await teeLogService.getAllAgents();
+        const agents = await (teeLogService as any).getAllAgents();
         allAgents.push(...agents);
       }
 
       const runtime: IAgentRuntime = agents.values().next().value;
-      const teeLogService = runtime.getService<ITeeLogService>(ServiceType.TEE);
-      const attestation = await teeLogService.generateAttestation(JSON.stringify(allAgents));
+      const teeLogService = runtime.getService(ServiceType.TEE);
+      const attestation = await (teeLogService as any).generateAttestation(
+        JSON.stringify(allAgents)
+      );
       res.json({ agents: allAgents, attestation: attestation });
     } catch (error) {
       logger.error('Failed to get TEE agents:', error);
@@ -33,6 +47,7 @@ export function createTeeRouter(agents: Map<string, IAgentRuntime>): express.Rou
   });
 
   // Get specific TEE agent
+  // @ts-ignore - Express type issue with async handlers
   router.get('/agents/:agentId', async (req, res) => {
     try {
       const agentId = req.params.agentId;
@@ -42,10 +57,12 @@ export function createTeeRouter(agents: Map<string, IAgentRuntime>): express.Rou
         return;
       }
 
-      const teeLogService = agentRuntime.getService<ITeeLogService>(ServiceType.TEE);
+      const teeLogService = agentRuntime.getService(ServiceType.TEE);
 
-      const teeAgent = await teeLogService.getAgent(agentId);
-      const attestation = await teeLogService.generateAttestation(JSON.stringify(teeAgent));
+      const teeAgent = await (teeLogService as any).getAgent(agentId);
+      const attestation = await (teeLogService as any).generateAttestation(
+        JSON.stringify(teeAgent)
+      );
       res.json({ agent: teeAgent, attestation: attestation });
     } catch (error) {
       logger.error('Failed to get TEE agent:', error);
@@ -56,6 +73,7 @@ export function createTeeRouter(agents: Map<string, IAgentRuntime>): express.Rou
   });
 
   // Query TEE logs
+  // @ts-ignore - Express type issue with async handlers
   router.post('/logs', async (req: express.Request, res: express.Response) => {
     try {
       const query = req.body.query || {};
@@ -72,9 +90,11 @@ export function createTeeRouter(agents: Map<string, IAgentRuntime>): express.Rou
         endTimestamp: query.endTimestamp || undefined,
       };
       const agentRuntime: IAgentRuntime = agents.values().next().value;
-      const teeLogService = agentRuntime.getService<ITeeLogService>(ServiceType.TEE);
-      const pageQuery = await teeLogService.getLogs(teeLogQuery, page, pageSize);
-      const attestation = await teeLogService.generateAttestation(JSON.stringify(pageQuery));
+      const teeLogService = agentRuntime.getService(ServiceType.TEE);
+      const pageQuery = await (teeLogService as any).getLogs(teeLogQuery, page, pageSize);
+      const attestation = await (teeLogService as any).generateAttestation(
+        JSON.stringify(pageQuery)
+      );
       res.json({
         logs: pageQuery,
         attestation: attestation,

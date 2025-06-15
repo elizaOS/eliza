@@ -12,6 +12,7 @@ export function createServersRouter(serverInstance: AgentServer): express.Router
   const router = express.Router();
 
   // GET /central-servers
+  // @ts-ignore - Express type issue with async handlers
   router.get('/central-servers', async (_req, res) => {
     try {
       const servers = await serverInstance.getServers();
@@ -23,6 +24,7 @@ export function createServersRouter(serverInstance: AgentServer): express.Router
   });
 
   // POST /servers - Create a new server
+  // @ts-ignore - Express type issue with async handlers
   router.post('/servers', async (req, res) => {
     const { name, sourceType, sourceId, metadata } = req.body;
 
@@ -52,6 +54,7 @@ export function createServersRouter(serverInstance: AgentServer): express.Router
   // ===============================
 
   // POST /servers/:serverId/agents - Add agent to server
+  // @ts-ignore - Express type issue with async handlers
   router.post('/servers/:serverId/agents', async (req, res) => {
     const serverId =
       req.params.serverId === DEFAULT_SERVER_ID
@@ -93,6 +96,7 @@ export function createServersRouter(serverInstance: AgentServer): express.Router
   });
 
   // DELETE /servers/:serverId/agents/:agentId - Remove agent from server
+  // @ts-ignore - Express type issue with async handlers
   router.delete('/servers/:serverId/agents/:agentId', async (req, res) => {
     const serverId =
       req.params.serverId === DEFAULT_SERVER_ID
@@ -137,6 +141,7 @@ export function createServersRouter(serverInstance: AgentServer): express.Router
   });
 
   // GET /servers/:serverId/agents - List agents in server
+  // @ts-ignore - Express type issue with async handlers
   router.get('/servers/:serverId/agents', async (req, res) => {
     const serverId =
       req.params.serverId === DEFAULT_SERVER_ID
@@ -166,6 +171,7 @@ export function createServersRouter(serverInstance: AgentServer): express.Router
   });
 
   // GET /agents/:agentId/servers - List servers agent belongs to
+  // @ts-ignore - Express type issue with async handlers
   router.get('/agents/:agentId/servers', async (req, res) => {
     const agentId = validateUuid(req.params.agentId);
 

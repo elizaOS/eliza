@@ -33,7 +33,7 @@ export const validateRoomId = (roomId: string): UUID | null => {
 export const validateChannelId = (channelId: string, clientIp?: string): UUID | null => {
   // Basic UUID validation
   const validatedUuid = validateUuid(channelId);
-  
+
   if (!validatedUuid) {
     // Log invalid channel ID attempts for security monitoring
     if (clientIp) {
@@ -41,18 +41,18 @@ export const validateChannelId = (channelId: string, clientIp?: string): UUID | 
     }
     return null;
   }
-  
+
   // Additional security check: ensure channel ID doesn't contain suspicious patterns
   const suspiciousPatterns = ['..', '<', '>', '"', "'", '\\', '/'];
-  const hasSuspiciousPattern = suspiciousPatterns.some(pattern => channelId.includes(pattern));
-  
+  const hasSuspiciousPattern = suspiciousPatterns.some((pattern) => channelId.includes(pattern));
+
   if (hasSuspiciousPattern) {
     if (clientIp) {
       logger.warn(`[SECURITY] Suspicious channel ID pattern from ${clientIp}: ${channelId}`);
     }
     return null;
   }
-  
+
   return validatedUuid;
 };
 

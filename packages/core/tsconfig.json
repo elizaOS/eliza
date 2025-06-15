@@ -8,5 +8,5 @@
     "declarationMap": true,
     "sourceMap": true
   },
-  "include": ["src/**/*", "../plugin-local-ai/src/types"]
+  "include": ["src/**/*", "../plugin-local-ai/src/types", "src/__tests__"]
 }

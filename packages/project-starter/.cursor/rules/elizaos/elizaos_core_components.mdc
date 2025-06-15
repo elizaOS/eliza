@@ -1,0 +1,202 @@
+---
+description: ElizaOS Core Components and architecture
+globs: 
+alwaysApply: false
+---
+> You are an expert in ElizaOS v2, TypeScript, component architecture, and AI agent development. You focus on creating robust, testable Action handlers, Provider implementations, and Evaluator patterns with proper validation and error handling.
+
+## Core Component Architecture
+
+ElizaOS agents are extended through three core component types, which are registered via plugins:
+
+1.  **Actions**: Define the agent's capabilities (what it can *do*).
+2.  **Providers**: Supply the agent with context and information (what it *knows*).
+3.  **Evaluators**: Allow the agent to perform post-interaction analysis (how it *learns*).
+
+All components are managed by the `AgentRuntime` and should be stateless, relying on the `runtime` instance for access to memory, services, and other agent facilities.
+
+### Action Implementation Patterns
+
+Actions are the verbs of the agent. They are plain objects that conform to the `Action` interface.
+
+```typescript
+// ✅ DO: Implement actions as plain objects conforming to the Action interface.
+// Reference: packages/core/src/types.ts
+
+import {
+  type Action,
+  type IAgentRuntime,
+  type Memory,
+  type State,
+  type Validator,
+  type Handler,
+  logger,
+} from '@elizaos/core';
+
+export const sendMessageAction: Action = {
+  name: 'SEND_MESSAGE',
+  description: 'Sends a message to a channel or user.',
+  examples: [
+    [
+      { name: 'user', content: { text: 'Send a welcome message to the #general channel.' } },
+      { name: 'assistant', content: { text: 'Okay, I will send a welcome message now.', actions: ['SEND_MESSAGE'] } }
+    ]
+  ],
+
+  // The validator determines if the action is appropriate for a given message.
+  // It should be fast and deterministic.
+  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+    const text = message.content.text?.toLowerCase() || '';
+    return text.includes('send') && text.includes('message');
+  },
+
+  // The handler contains the core logic of the action.
+  handler: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
+    try {
+      // 1. Extract necessary information from the message or state
+      const targetChannel = "general"; // In a real scenario, this would be parsed from the message
+      const responseText = "Welcome to the server!";
+
+      // 2. Use the runtime to interact with the world
+      // Note: `sendMessageToTarget` is a placeholder for a method provided by a service/plugin
+      if (runtime.sendMessage) {
+        await runtime.sendMessage(message.roomId, { text: responseText });
+      } else {
+        logger.warn("Runtime does not have a registered `sendMessage` method.");
+        return false;
+      }
+      
+      logger.info(`Message sent via SEND_MESSAGE action to channel: ${targetChannel}`);
+      
+      // 3. Return true on success
+      return true;
+    } catch (error) {
+      logger.error('SEND_MESSAGE action failed:', error);
+      // 4. Return false or throw an error on failure
+      return false;
+    }
+  },
+};
+
+// ❌ DON'T: Create complex classes for simple actions.
+// The framework is designed for plain objects.
+// Avoid creating `BaseAction` or similar abstractions unless absolutely necessary.
+// Stick to the interfaces provided in @elizaos/core.
+```
+
+### Provider Implementation Patterns
+
+Providers supply the data that fuels the agent's context and decision-making. They are simple objects that implement the `Provider` interface.
+
+```typescript
+// ✅ DO: Implement providers as simple objects with a `get` method.
+// Reference: packages/core/src/types.ts
+
+import { type Provider, type ProviderResult } from '@elizaos/core';
+
+export const timeProvider: Provider = {
+  name: 'currentTime',
+  description: 'Provides the current date and time.',
+  
+  // The 'get' method returns a string or a structured ProviderResult.
+  get: async (runtime: IAgentRuntime, message: Memory, state: State): Promise<ProviderResult> => {
+    const now = new Date();
+    const timeString = now.toLocaleTimeString();
+    const dateString = nowtoLocaleDateString();
+
+    return {
+      // `text` is used for direct inclusion in prompts
+      text: `The current time is ${timeString} on ${dateString}.`,
+      // `data` and `values` provide structured information for other components
+      data: {
+        iso: now.toISOString(),
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      },
+      values: {
+        hour: now.getHours(),
+        minute: now.getMinutes(),
+      }
+    };
+  }
+};
+
+// ❌ DON'T: Add unnecessary complexity like custom caching within the provider.
+// If caching is needed, it should be managed at the service layer or by the runtime.
+const badProvider: Provider = {
+  name: 'bad_provider',
+  cache: new Map(), // Anti-pattern: Providers should be stateless.
+  get: async (runtime, message) => {
+    // ... complex logic that belongs elsewhere
+    return { text: "data" };
+  }
+};
+```
+
+### Evaluator Implementation Patterns
+
+Evaluators enable the agent to perform self-reflection and analysis after an interaction. Like other components, they are simple objects that conform to the `Evaluator` interface.
+
+```typescript
+// ✅ DO: Implement evaluators with a clear, focused handler that returns a score or data.
+// Reference: packages/core/src/types.ts
+
+import { type Evaluator, type EvaluationResult } from '@elizaos/core';
+
+export const responseClarityEvaluator: Evaluator = {
+  name: 'responseClarity',
+  description: 'Evaluates the clarity of an agent\'s response.',
+  
+  // The handler receives the original message and the agent's responses.
+  handler: async (runtime, message, state, options, callback, responses): Promise<EvaluationResult> => {
+    const lastResponse = responses?.[responses.length - 1];
+
+    if (!lastResponse?.content?.text) {
+      return { score: 0, details: { reason: 'No response text to evaluate.' } };
+    }
+
+    const text = lastResponse.content.text;
+    let score = 1.0; // Start with a perfect score
+
+    // Rule: Penalize for long sentences (avg > 25 words is complex)
+    const sentences = text.split(/[.!?]+/);
+    const words = text.split(/\s+/).length;
+    const avgSentenceLength = words / sentences.length;
+    if (avgSentenceLength > 25) {
+      score -= 0.3;
+    }
+
+    // Rule: Penalize for jargon (example list)
+    const jargon = ['synergize', 'paradigm shift', 'core competency'];
+    if (jargon.some(j => text.includes(j))) {
+      score -= 0.4;
+    }
+    
+    return {
+      score: Math.max(0, score), // Ensure score is not negative
+      details: {
+        avgSentenceLength: avgSentenceLength,
+        wordCount: words,
+      }
+    };
+  }
+};
+
+// ❌ DON'T: Overload evaluators with tasks other than evaluation.
+// Their purpose is to analyze, not to trigger new actions or modify state directly.
+const badEvaluator: Evaluator = {
+  name: 'bad_evaluator',
+  handler: async (runtime, message) => {
+    // Anti-pattern: An evaluator should not be calling actions.
+    await runtime.actions.get('SEND_MESSAGE')?.handler(runtime, message);
+    return { score: 0.5 };
+  }
+};
+```
+
+## Best Practices
+
+*   **Simplicity**: Implement components as plain objects that conform to the interfaces in `@elizaos/core`. Avoid inheritance and complex class structures unless strictly necessary.
+*   **Statelessness**: Actions, Providers, and Evaluators should be stateless. All required state should be passed in via the `runtime`, `message`, and `state` parameters.
+*   **Single Responsibility**: Each component should have a single, well-defined purpose.
+*   **Use the Runtime**: Leverage the `IAgentRuntime` instance passed to every component handler. Use it to access memory, models, services, and other core facilities instead of importing them directly.
+*   **Validation is Key**: For Actions, write a `validate` function that is as specific as possible to prevent the LLM from selecting the wrong action. This is a critical part of making the agent reliable.

@@ -27,7 +27,7 @@ export function apiKeyAuthMiddleware(req: Request, res: Response, next: NextFunc
     return next();
   }
 
-  const apiKey = req.headers['x-api-key'];
+  const apiKey = req.headers?.['x-api-key'];
 
   if (!apiKey || apiKey !== serverAuthToken) {
     logger.warn(`Unauthorized access attempt: Missing or invalid X-API-KEY from ${req.ip}`);
