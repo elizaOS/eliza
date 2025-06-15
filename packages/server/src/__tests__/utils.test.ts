@@ -214,7 +214,7 @@ describe('Utility Functions', () => {
     });
 
     it('should handle empty string inputs', () => {
-      // Empty string should fall back to default path since it's considered invalid
+      // Empty string should fall back to default path since it's considered invalid  
       const expected = path.join(process.cwd(), '.eliza', '.elizadb');
 
       const result = resolvePgliteDir('');

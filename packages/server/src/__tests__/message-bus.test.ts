@@ -150,12 +150,12 @@ describe('MessageBusService', () => {
     });
 
     it('should fetch agent servers on initialization', async () => {
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining(`/api/messaging/agents/${mockRuntime.agentId}/servers`),
-        expect.objectContaining({
-          headers: expect.any(Object)
-        })
-      );
+      // Check that the first fetch call was to the agent servers endpoint
+      const firstCall = (global.fetch as any).mock.calls[0];
+      expect(firstCall[0]).toContain(`/api/messaging/agents/${mockRuntime.agentId}/servers`);
+      expect(firstCall[1]).toEqual(expect.objectContaining({
+        headers: expect.any(Object)
+      }));
     });
   });
 
@@ -244,7 +244,8 @@ describe('MessageBusService', () => {
         metadata: {},
       };
 
-      // Override mock to exclude agent from participants for this test
+      // Clear previous mocks and set up specific mock for this test
+      mockFetch.mockClear();
       mockFetch.mockImplementation((url) => {
         if (url.includes('/api/messaging/central-channels/') && url.includes('/participants')) {
           return Promise.resolve({
@@ -300,14 +301,15 @@ describe('MessageBusService', () => {
         metadata: {},
       };
 
-      // Override mock to throw error for participants endpoint
-      mockFetch.mockImplementationOnce((url) => {
+      // Clear previous mocks and set up error mock for this test
+      mockFetch.mockClear();
+      mockFetch.mockImplementation((url) => {
         if (url.includes('/api/messaging/central-channels/') && url.includes('/participants')) {
           return Promise.reject(new Error('Network error'));
         }
         return Promise.resolve({
           ok: true,
-          json: async () => ({ success: true }),
+          json: async () => ({ success: true, data: {} }),
         });
       });
 
