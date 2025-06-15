@@ -27,6 +27,8 @@ describe('ElizaOS Agent Commands', () => {
     try {
       if (process.platform === 'win32') {
         // Windows: Use netstat and taskkill to free the port
+        // Note: The single percent sign (%a) is correct for inline execution via execSync.
+        // If this logic is moved into a batch file, double percent signs (%%a) would be required.
         execSync(
           `for /f "tokens=5" %a in ('netstat -aon ^| findstr :3000') do taskkill /f /pid %a`,
           { stdio: 'ignore' }
