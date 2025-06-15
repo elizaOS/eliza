@@ -1,6 +1,6 @@
+import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool, type PoolClient } from 'pg';
 import { logger } from '@elizaos/core';
-import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 export class PostgresConnectionManager {
   private pool: Pool;
@@ -35,6 +35,11 @@ export class PostgresConnectionManager {
     }
   }
 
+  /**
+   * Closes the connection pool.
+   * @returns {Promise<void>}
+   * @memberof PostgresConnectionManager
+   */
   public async close(): Promise<void> {
     await this.pool.end();
   }

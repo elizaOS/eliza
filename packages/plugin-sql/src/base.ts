@@ -900,11 +900,126 @@ export abstract class BaseDrizzleAdapter<
    * @returns {Promise<void>} A Promise that resolves when the entity is updated.
    */
   async updateEntity(entity: Entity): Promise<void> {
+    if (!entity.id) {
+      throw new Error('Entity ID is required for update');
+    }
     return this.withDatabase(async () => {
       await this.db
         .update(entityTable)
         .set(entity)
-        .where(and(eq(entityTable.id, entity.id as UUID), eq(entityTable.agentId, entity.agentId)));
+        .where(eq(entityTable.id, entity.id as string));
+    });
+  }
+
+  /**
+   * Asynchronously deletes an entity from the database based on the provided ID.
+   * @param {UUID} entityId - The ID of the entity to delete.
+   * @returns {Promise<void>} A Promise that resolves when the entity is deleted.
+   */
+  async deleteEntity(entityId: UUID): Promise<void> {
+    return this.withDatabase(async () => {
+      await this.db.transaction(async (tx) => {
+        // Delete related components first
+        await tx.delete(componentTable).where(
+          or(
+            eq(componentTable.entityId, entityId),
+            eq(componentTable.sourceEntityId, entityId)
+          )
+        );
+        
+        // Delete the entity
+        await tx.delete(entityTable).where(eq(entityTable.id, entityId));
+      });
+    });
+  }
+
+  /**
+   * Asynchronously retrieves entities by their names and agentId.
+   * @param {Object} params - The parameters for retrieving entities.
+   * @param {string[]} params.names - The names to search for.
+   * @param {UUID} params.agentId - The agent ID to filter by.
+   * @returns {Promise<Entity[]>} A Promise that resolves to an array of entities.
+   */
+  async getEntitiesByNames(params: {
+    names: string[];
+    agentId: UUID;
+  }): Promise<Entity[]> {
+    return this.withDatabase(async () => {
+      const { names, agentId } = params;
+      
+      // Build a condition to match any of the names
+      const nameConditions = names.map(name => 
+        sql`${name} = ANY(${entityTable.names})`
+      );
+      
+      const query = sql`
+        SELECT * FROM ${entityTable}
+        WHERE ${entityTable.agentId} = ${agentId}
+        AND (${sql.join(nameConditions, sql` OR `)})
+      `;
+      
+      const result = await this.db.execute(query);
+      
+      return result.rows.map((row: any) => ({
+        id: row.id as UUID,
+        agentId: row.agentId as UUID,
+        names: row.names || [],
+        metadata: row.metadata || {}
+      }));
+    });
+  }
+
+  /**
+   * Asynchronously searches for entities by name with fuzzy matching.
+   * @param {Object} params - The parameters for searching entities.
+   * @param {string} params.query - The search query.
+   * @param {UUID} params.agentId - The agent ID to filter by.
+   * @param {number} params.limit - The maximum number of results to return.
+   * @returns {Promise<Entity[]>} A Promise that resolves to an array of entities.
+   */
+  async searchEntitiesByName(params: {
+    query: string;
+    agentId: UUID;
+    limit?: number;
+  }): Promise<Entity[]> {
+    return this.withDatabase(async () => {
+      const { query, agentId, limit = 10 } = params;
+      
+      // If query is empty, return all entities up to limit
+      if (!query || query.trim() === '') {
+        const result = await this.db
+          .select()
+          .from(entityTable)
+          .where(eq(entityTable.agentId, agentId))
+          .limit(limit);
+          
+        return result.map((row: any) => ({
+          id: row.id as UUID,
+          agentId: row.agentId as UUID,
+          names: row.names || [],
+          metadata: row.metadata || {}
+        }));
+      }
+      
+      // Otherwise, search for entities with names containing the query (case-insensitive)
+      const searchQuery = sql`
+        SELECT * FROM ${entityTable}
+        WHERE ${entityTable.agentId} = ${agentId}
+        AND EXISTS (
+          SELECT 1 FROM unnest(${entityTable.names}) AS name
+          WHERE LOWER(name) LIKE LOWER(${'%' + query + '%'})
+        )
+        LIMIT ${limit}
+      `;
+      
+      const result = await this.db.execute(searchQuery);
+      
+      return result.rows.map((row: any) => ({
+        id: row.id as UUID,
+        agentId: row.agentId as UUID,
+        names: row.names || [],
+        metadata: row.metadata || {}
+      }));
     });
   }
 
