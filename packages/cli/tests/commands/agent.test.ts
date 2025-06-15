@@ -4,6 +4,7 @@ import { mkdtemp, rm, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { TEST_TIMEOUTS } from '../test-timeouts';
+import { waitForServerReady } from './test-utils';
 
 describe('ElizaOS Agent Commands', () => {
   let serverProcess: any;
@@ -50,27 +51,9 @@ describe('ElizaOS Agent Commands', () => {
     );
 
     // Wait for server to be ready
-    let attempts = 0;
-    const maxAttempts = 30;
-
-    while (attempts < maxAttempts) {
-      try {
-        const response = await fetch(`${testServerUrl}/api/agents`);
-        if (response.ok) {
-          console.log('[DEBUG] Server is ready!');
-          break;
-        }
-      } catch (e) {
-        // Server not ready yet
-      }
-
-      if (attempts === maxAttempts - 1) {
-        throw new Error('Server did not start within timeout');
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
-      attempts++;
-    }
+    console.log('[DEBUG] Waiting for server to be ready...');
+    await waitForServerReady(parseInt(testServerPort, 10));
+    console.log('[DEBUG] Server is ready!');
 
     // Pre-load test characters
     const charactersDir = join(scriptDir, 'test-characters');

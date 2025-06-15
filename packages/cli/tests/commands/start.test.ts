@@ -3,7 +3,7 @@ import { execSync, spawn } from 'child_process';
 import { mkdtemp, rm, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { safeChangeDirectory } from './test-utils';
+import { safeChangeDirectory, waitForServerReady } from './test-utils';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 
 describe('ElizaOS Start Commands', () => {
@@ -77,36 +77,6 @@ describe('ElizaOS Start Commands', () => {
       }
     }
   });
-
-  // Helper function to wait for server to be ready by polling health endpoint
-  const waitForServerReady = async (port: number, maxWaitTime: number = TEST_TIMEOUTS.SERVER_STARTUP): Promise<void> => {
-    const startTime = Date.now();
-    const pollInterval = 1000;
-    
-    while (Date.now() - startTime < maxWaitTime) {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000);
-        
-        const response = await fetch(`http://localhost:${port}/api/agents`, {
-          signal: controller.signal,
-        });
-        
-        clearTimeout(timeoutId);
-        if (response.ok) {
-          // Server is ready, give it one more second to stabilize
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-          return;
-        }
-      } catch (error) {
-        // Server not ready yet, continue polling
-      }
-      
-      await new Promise((resolve) => setTimeout(resolve, pollInterval));
-    }
-    
-    throw new Error(`Server failed to become ready on port ${port} within ${maxWaitTime}ms`);
-  };
 
   // Helper function to start server and wait for it to be ready
   const startServerAndWait = async (
