@@ -87,7 +87,7 @@ jobs:
 
       - name: Install Cypress binary
         working-directory: packages/client
-        run: npx cypress install
+        run: bunx cypress install
 
       - name: Run Cypress Component Tests
         working-directory: packages/client
@@ -164,7 +164,7 @@ jobs:
 
       - name: Install Cypress binary
         working-directory: packages/client
-        run: npx cypress install
+        run: bunx cypress install
 
       - name: Create .env file
         run: |
