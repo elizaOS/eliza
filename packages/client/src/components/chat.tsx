@@ -821,8 +821,11 @@ export default function Chat({
         isLoading: false,
         text: `${optimisticUiMessage.text || 'Attachment(s)'} (Failed to send)`,
       });
-    } finally {
+      // Re-enable input on error
       updateChatState({ inputDisabled: false });
+    } finally {
+      // Let the server control input state via control messages
+      // Only focus the input, don't re-enable it
       inputRef.current?.focus();
     }
   };
