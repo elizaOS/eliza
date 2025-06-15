@@ -260,6 +260,6 @@ describe('Dialog Component', () => {
     );
 
     cy.contains('Open Long Content').click();
-    cy.get('.overflow-y-auto').should('be.visible');
+    cy.get('.overflow-y-auto').should('exist').scrollIntoView().should('be.visible');
   });
 });
