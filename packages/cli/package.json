@@ -33,7 +33,7 @@
   },
   "scripts": {
     "start": "bun run build && node dist/index.js start",
-    "build": "npx tsup && bun run src/scripts/copy-client-dist.ts && bun run src/scripts/copy-templates.ts",
+    "build": "npx tsup && bun run src/scripts/copy-client-dist.ts && bun run src/scripts/copy-templates.ts && cp -r templates dist/templates",
     "lint": "prettier --write ./src",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
