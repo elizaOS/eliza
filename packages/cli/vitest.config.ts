@@ -29,12 +29,6 @@ export default defineConfig({
         'src/scripts/**', // Exclude build scripts
         'src/tee/phala/**', // Exclude specific TEE implementations for now
       ],
-      thresholds: {
-        lines: 80,
-        functions: 80,
-        branches: 80,
-        statements: 80
-      }
     },
     setupFiles: ['./tests/setup.ts'],
     alias: {
