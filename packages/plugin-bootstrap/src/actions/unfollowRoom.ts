@@ -333,7 +333,7 @@ export const unfollowRoomAction: Action = {
       {
         name: '{{name1}}',
         content: {
-          text: '{{name2}} stahp followin dis room plz',
+          text: '{{name2}} stahp following dis room plz',
         },
       },
       {

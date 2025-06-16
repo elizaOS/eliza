@@ -41,6 +41,14 @@ export default defineConfig({
       '@/src': path.resolve(__dirname, 'src'),
     },
     include: ['tests/**/*.test.ts', 'tests/**/*.spec.ts'],
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      'templates/**/*.test.ts',
+      'templates/**/*.spec.ts',
+      'dist/templates/**/*.test.ts',
+      'dist/templates/**/*.spec.ts'
+    ],
     poolOptions: {
       threads: {
         minThreads: 1,

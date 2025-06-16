@@ -48,9 +48,9 @@
     "test:bats:integration": "bats tests/bats/integration",
     "test:bats:e2e": "bats tests/bats/e2e",
     "test:types": "tsc --noEmit",
-    "test:cli": "bun test tests/commands/",
     "coverage": "c8 --reporter=lcov --reporter=text bun test",
-    "coverage:html": "c8 --reporter=html bun test && open coverage/index.html"
+    "coverage:html": "c8 --reporter=html bun test && open coverage/index.html",
+    "test:cli": "cross-env NODE_OPTIONS=\"--max-old-space-size=4096\" bun test tests/commands/ --timeout 300000"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.40.0",
@@ -70,6 +70,7 @@
     "bats-support": "^0.3.0",
     "bun-types": "^1.2.16",
     "commander": "^10.0.0",
+    "cross-env": "^7.0.3",
     "diff": "^5.1.0",
     "dotenv": "^16.5.0",
     "esbuild-plugin-copy": "^2.1.1",

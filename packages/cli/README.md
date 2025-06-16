@@ -31,15 +31,6 @@ elizaos --no-auto-install create my-project
 ELIZA_NO_AUTO_INSTALL=true elizaos create my-project
 ```
 
-### Alternative usage with npx
-
-You can also run the CLI directly without installation using npx:
-
-```bash
-npx @elizaos/cli [command]
-```
-
-This is useful for trying out commands without installing the CLI globally.
 
 ## Global Options
 
@@ -661,7 +652,7 @@ Plugins extend the functionality of ElizaOS agents by providing additional capab
 6. **Publish your plugin**:
 
    ```bash
-   # Login to npm first
+   # Login to npm first (still needed for publishing)
    npm login
 
    # Test your plugin thoroughly
@@ -684,8 +675,8 @@ Plugins extend the functionality of ElizaOS agents by providing additional capab
    elizaos test
 
    # Update version and publish updates
-   bun version patch  # or minor/major (or npm version if preferred)
-   npm publish
+   bun version patch  # or minor/major
+   npm publish  # Note: npm publish is still required for registry
    git push origin main && git push --tags
    ```
 

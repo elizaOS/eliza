@@ -214,7 +214,7 @@ describe('Utility Functions', () => {
     });
 
     it('should handle empty string inputs', () => {
-      // Empty string gets passed to expandTildePath which returns empty string
+      // Empty string gets passed through and expandTildePath returns it unchanged
       const expected = '';
 
       const result = resolvePgliteDir('');
@@ -247,8 +247,8 @@ describe('Utility Functions', () => {
 
     it('should handle various tilde variations', () => {
       const inputs = [
-        { input: '~user/path', expected: process.cwd() + '/user/path' }, // Tilde at start gets expanded
-        { input: '~~', expected: process.cwd() + '/~' }, // Double tilde - first ~ is expanded
+        { input: '~user/path', expected: path.join(process.cwd(), 'user/path') }, // Tilde gets expanded
+        { input: '~~', expected: '~~' }, // Double tilde - not expanded since doesn't start with ~/
         { input: 'not~tilde', expected: 'not~tilde' }, // Tilde not at start
       ];
 

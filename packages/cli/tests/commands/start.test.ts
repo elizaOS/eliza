@@ -4,7 +4,12 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TEST_TIMEOUTS } from '../test-timeouts';
-import { safeChangeDirectory, TestProcessManager, waitForServerReady } from './test-utils';
+import {
+  killProcessOnPort,
+  safeChangeDirectory,
+  TestProcessManager,
+  waitForServerReady,
+} from './test-utils';
 
 describe('ElizaOS Start Commands', () => {
   let testTmpDir: string;
@@ -16,27 +21,14 @@ describe('ElizaOS Start Commands', () => {
   beforeEach(async () => {
     // Store original working directory
     originalCwd = process.cwd();
-    
+
     // Initialize process manager
     processManager = new TestProcessManager();
 
     // ---- Ensure port is free.
     testServerPort = 3000;
-    try {
-      if (process.platform === 'win32') {
-        // Windows: Use netstat and taskkill to free the port
-        execSync(
-          `for /f "tokens=5" %a in ('netstat -aon ^| findstr :${testServerPort}') do taskkill /f /pid %a`,
-          { stdio: 'ignore' }
-        );
-      } else {
-        // Unix/Linux/macOS: Use lsof and kill
-        execSync(`lsof -t -i :${testServerPort} | xargs kill -9`, { stdio: 'ignore' });
-      }
-      await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
-    } catch (e) {
-      // Ignore if no processes found
-    }
+    await killProcessOnPort(testServerPort);
+    await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
 
     // Create temporary directory
     testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-start-'));
@@ -96,7 +88,7 @@ describe('ElizaOS Start Commands', () => {
 
     // Wait for server to be ready
     await waitForServerReady(testServerPort, maxWaitTime);
-    
+
     // Check if process is still running after startup
     if (serverProcess.killed || serverProcess.exitCode !== null) {
       throw new Error('Server process died during startup');
@@ -120,9 +112,7 @@ describe('ElizaOS Start Commands', () => {
       const adaPath = join(charactersDir, 'ada.json');
 
       // Start a temporary server with Ada character
-      const serverProcess = await startServerAndWait(
-        `-p ${testServerPort} --character ${adaPath}`
-      );
+      const serverProcess = await startServerAndWait(`-p ${testServerPort} --character ${adaPath}`);
 
       try {
         // Wait a bit more for agent to register
@@ -180,7 +170,7 @@ describe('ElizaOS Start Commands', () => {
       try {
         // Wait for server to be ready
         await waitForServerReady(newPort);
-        
+
         // Verify server is accessible
         const response = await fetch(`http://localhost:${newPort}/api/agents`);
         expect(response.ok).toBe(true);
@@ -237,13 +227,7 @@ describe('ElizaOS Start Commands', () => {
 
       const serverProcess = processManager.spawn(
         'bun',
-        [
-          join(__dirname, '..', '../dist/index.js'),
-          'start',
-          '--configure',
-          '--character',
-          adaPath,
-        ],
+        [join(__dirname, '..', '../dist/index.js'), 'start', '--configure', '--character', adaPath],
         {
           env: {
             ...process.env,
@@ -276,9 +260,7 @@ describe('ElizaOS Start Commands', () => {
       const adaPath = join(charactersDir, 'ada.json');
 
       // Start server
-      const serverProcess = await startServerAndWait(
-        `-p ${testServerPort} --character ${adaPath}`
-      );
+      const serverProcess = await startServerAndWait(`-p ${testServerPort} --character ${adaPath}`);
 
       try {
         // Wait for server to be fully ready
