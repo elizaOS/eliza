@@ -310,10 +310,10 @@ export default function Chat({
   // Convert AgentWithStatus to Agent, ensuring required fields have defaults
   const targetAgentData: Agent | undefined = agentDataResponse?.data
     ? ({
-        ...agentDataResponse.data,
-        createdAt: agentDataResponse.data.createdAt || Date.now(),
-        updatedAt: agentDataResponse.data.updatedAt || Date.now(),
-      } as Agent)
+      ...agentDataResponse.data,
+      createdAt: agentDataResponse.data.createdAt || Date.now(),
+      updatedAt: agentDataResponse.data.updatedAt || Date.now(),
+    } as Agent)
     : undefined;
 
   // Use the new hooks for DM channel management
@@ -663,7 +663,7 @@ export default function Chat({
       // Clear the local message list immediately for instant UI response
       clearMessages();
     },
-    onInputDisabledChange: (disabled: boolean) => {inputDisabledRef.current = disabled},
+    onInputDisabledChange: (disabled: boolean) => { inputDisabledRef.current = disabled },
   });
 
   const {
@@ -847,7 +847,7 @@ export default function Chat({
     inputDisabledRef.current = true;
     const retryMessageId = randomUUID() as UUID;
     const finalTextContent = message.text?.trim() || `Shared ${message.attachments?.length} file(s).`;
-  
+
     const optimisticUiMessage: UiMessage = {
       id: retryMessageId,
       text: message.text,
@@ -861,7 +861,7 @@ export default function Chat({
       source: chatType === ChannelType.DM ? CHAT_SOURCE : GROUP_CHAT_SOURCE,
       attachments: message.attachments,
     };
-  
+
     addMessage(optimisticUiMessage);
     safeScrollToBottom();
 
@@ -888,7 +888,7 @@ export default function Chat({
       });
       inputDisabledRef.current = false;
     }
-    
+
   };
 
   const handleClearChat = () => {
@@ -1073,8 +1073,8 @@ export default function Chat({
                                 <span className="text-xs text-muted-foreground">
                                   {moment(
                                     channel.metadata?.createdAt ||
-                                      channel.updatedAt ||
-                                      channel.createdAt
+                                    channel.updatedAt ||
+                                    channel.createdAt
                                   ).fromNow()}
                                 </span>
                               </div>
@@ -1416,18 +1416,22 @@ export default function Chat({
             {(() => {
               let sidebarAgentId: UUID | undefined = undefined;
               let sidebarAgentName: string = 'Agent';
+              let sidebarChannelId: UUID | undefined = undefined;
 
               if (chatType === ChannelType.DM) {
                 sidebarAgentId = contextId; // This is agentId for DM
                 sidebarAgentName = targetAgentData?.name || 'Agent';
+                sidebarChannelId = chatState.currentDmChannelId || undefined;
               } else if (chatType === ChannelType.GROUP && chatState.selectedGroupAgentId) {
                 sidebarAgentId = chatState.selectedGroupAgentId;
                 const selectedAgent = allAgents.find(
                   (a) => a.id === chatState.selectedGroupAgentId
                 );
                 sidebarAgentName = selectedAgent?.name || 'Group Member';
+                sidebarChannelId = contextId; // contextId is the channelId for GROUP
               } else if (chatType === ChannelType.GROUP && !chatState.selectedGroupAgentId) {
                 sidebarAgentName = 'Group';
+                sidebarChannelId = contextId; // contextId is the channelId for GROUP
               }
 
               return (
@@ -1436,7 +1440,7 @@ export default function Chat({
                   <>
                     <ResizableHandle withHandle />
                     <ResizablePanel defaultSize={sidebarPanelSize} minSize={20} maxSize={50}>
-                      <AgentSidebar agentId={sidebarAgentId} agentName={sidebarAgentName} />
+                      <AgentSidebar agentId={sidebarAgentId} agentName={sidebarAgentName} channelId={sidebarChannelId} />
                     </ResizablePanel>
                   </>
                 )
@@ -1449,16 +1453,20 @@ export default function Chat({
         {(() => {
           let sidebarAgentId: UUID | undefined = undefined;
           let sidebarAgentName: string = 'Agent';
+          let sidebarChannelId: UUID | undefined = undefined;
 
           if (chatType === ChannelType.DM) {
             sidebarAgentId = contextId; // This is agentId for DM
             sidebarAgentName = targetAgentData?.name || 'Agent';
+            sidebarChannelId = chatState.currentDmChannelId || undefined;
           } else if (chatType === ChannelType.GROUP && chatState.selectedGroupAgentId) {
             sidebarAgentId = chatState.selectedGroupAgentId;
             const selectedAgent = allAgents.find((a) => a.id === chatState.selectedGroupAgentId);
             sidebarAgentName = selectedAgent?.name || 'Group Member';
+            sidebarChannelId = contextId; // contextId is the channelId for GROUP
           } else if (chatType === ChannelType.GROUP && !chatState.selectedGroupAgentId) {
             sidebarAgentName = 'Group';
+            sidebarChannelId = contextId; // contextId is the channelId for GROUP
           }
 
           return (
@@ -1480,7 +1488,7 @@ export default function Chat({
                       </Button>
                     </div>
                     <div className="flex-1 overflow-hidden">
-                      <AgentSidebar agentId={sidebarAgentId} agentName={sidebarAgentName} />
+                      <AgentSidebar agentId={sidebarAgentId} agentName={sidebarAgentName} channelId={sidebarChannelId} />
                     </div>
                   </div>
                 </div>
