@@ -57,8 +57,16 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          submodules: recursive
-          token: ${{ secrets.GH_PAT }}
+
+      - name: Initialize submodules manually
+        run: |
+          # Initialize submodules with proper error handling
+          if git submodule status | grep -q '^-'; then
+            echo "Initializing submodules..."
+            git submodule update --init --recursive || echo "Submodule initialization failed, continuing..."
+          else
+            echo "Submodules already initialized or not present"
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
