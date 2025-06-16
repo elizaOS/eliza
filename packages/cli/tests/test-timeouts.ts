@@ -12,6 +12,7 @@ export const TEST_TIMEOUTS = {
   // Command execution timeouts (execSync) - Windows processes are slower
   QUICK_COMMAND: process.platform === 'win32' ? 45 * 1000 : 30 * 1000, // 45/30 seconds for simple commands
   STANDARD_COMMAND: process.platform === 'win32' ? 90 * 1000 : 60 * 1000, // 90/60 seconds for standard operations
+  PLUGIN_INSTALLATION: process.platform === 'win32' ? 3 * 60 * 1000 : 2 * 60 * 1000, // 3/2 minutes for plugin installation
   PROJECT_CREATION: process.platform === 'win32' ? 3 * 60 * 1000 : 2 * 60 * 1000, // 3/2 minutes for project creation
   NETWORK_OPERATION: process.platform === 'win32' ? 2 * 60 * 1000 : 90 * 1000, // 2 minutes/90 seconds for GitHub/network operations
 

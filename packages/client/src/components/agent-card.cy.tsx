@@ -1,8 +1,9 @@
 /// <reference types="cypress" />
-/// <reference path="../../../cypress/support/types.d.ts" />
+/// <reference path="../../cypress/support/types.d.ts" />
 
 import React from 'react';
 import type { AgentWithStatus } from '@/types';
+import { AgentStatus } from '@elizaos/core';
 
 // Create a minimal test component that represents AgentCard functionality
 const TestAgentCard: React.FC<{
@@ -14,7 +15,7 @@ const TestAgentCard: React.FC<{
   }
 
   const agentName = agent.name || 'Unnamed Agent';
-  const isActive = agent.status === 'active';
+  const isActive = agent.status === AgentStatus.ACTIVE;
 
   return (
     <div data-testid="agent-card" className="agent-card">
@@ -23,7 +24,7 @@ const TestAgentCard: React.FC<{
         data-testid="status-indicator"
         className={`status-dot ${isActive ? 'active' : 'inactive'}`}
       />
-      <div data-testid="agent-status">{agent.status || 'inactive'}</div>
+      <div data-testid="agent-status">{agent.status === AgentStatus.ACTIVE ? 'active' : agent.status === AgentStatus.INACTIVE ? 'inactive' : 'unknown'}</div>
       {agent.settings?.avatar && (
         <img data-testid="agent-avatar" src={agent.settings.avatar} alt={agentName} />
       )}
@@ -49,7 +50,7 @@ describe('AgentCard Component', () => {
     id: '12345678-1234-1234-1234-123456789012',
     name: 'Test Agent',
     username: 'testagent',
-    status: 'inactive',
+    status: AgentStatus.INACTIVE,
     settings: {
       avatar: 'https://example.com/avatar.png',
     },
@@ -61,7 +62,7 @@ describe('AgentCard Component', () => {
 
   const activeAgent: Partial<AgentWithStatus> = {
     ...mockAgent,
-    status: 'active',
+    status: AgentStatus.ACTIVE,
   };
 
   it('renders agent information correctly', () => {

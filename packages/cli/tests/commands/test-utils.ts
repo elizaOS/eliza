@@ -72,7 +72,7 @@ export async function createTestProject(elizaosCmd: string, projectName: string)
   
   const windowsOptions = process.platform === 'win32' ? {
     timeout: timeout * 1.5,
-    killSignal: 'SIGKILL',
+    killSignal: 'SIGKILL' as NodeJS.Signals,
     windowsHide: true,
   } : {};
 
@@ -97,7 +97,7 @@ export function runCliCommand(
   // On Windows, use different timeout and signal handling
   const windowsOptions = process.platform === 'win32' ? {
     timeout: timeout * 1.5, // 50% longer timeout for Windows
-    killSignal: 'SIGKILL',   // Use SIGKILL instead of SIGTERM
+    killSignal: 'SIGKILL' as NodeJS.Signals,   // Use SIGKILL instead of SIGTERM
     windowsHide: true,       // Hide console window
   } : {};
 
@@ -121,7 +121,7 @@ export function runCliCommandSilently(
   
   const windowsOptions = process.platform === 'win32' ? {
     timeout: timeout * 1.5,
-    killSignal: 'SIGKILL',
+    killSignal: 'SIGKILL' as NodeJS.Signals,
     windowsHide: true,
   } : {};
 
@@ -145,7 +145,7 @@ export function expectCliCommandToFail(
   
   const windowsOptions = process.platform === 'win32' ? {
     timeout: timeout * 1.5,
-    killSignal: 'SIGKILL',
+    killSignal: 'SIGKILL' as NodeJS.Signals,
     windowsHide: true,
   } : {};
 

@@ -136,26 +136,29 @@ describe('ElizaOS Plugin Commands', () => {
   it(
     'plugins add supports GitHub URL installation',
     async () => {
+      // First GitHub URL install
       execSync(
         `${elizaosCmd} plugins add https://github.com/elizaos-plugins/plugin-video-understanding --skip-env-prompt`,
         {
           stdio: 'pipe',
-          timeout: TEST_TIMEOUTS.NETWORK_OPERATION,
+          timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION, // Use longer timeout for GitHub installs
         }
       );
 
-      // Use a different plugin that doesn't cause workspace resolution issues
+      const packageJson1 = await readFile('package.json', 'utf8');
+      expect(packageJson1).toContain('plugin-video-understanding');
+
+      // Second GitHub URL install with shorthand syntax
       execSync(
         `${elizaosCmd} plugins add github:elizaos-plugins/plugin-openrouter#1.x --skip-env-prompt`,
         {
           stdio: 'pipe',
-          timeout: TEST_TIMEOUTS.NETWORK_OPERATION,
+          timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION, // Use longer timeout for GitHub installs
         }
       );
 
-      const packageJson = await readFile('package.json', 'utf8');
-      expect(packageJson).toContain('plugin-video-understanding');
-      expect(packageJson).toContain('plugin-openrouter');
+      const packageJson2 = await readFile('package.json', 'utf8');
+      expect(packageJson2).toContain('plugin-openrouter');
     },
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );

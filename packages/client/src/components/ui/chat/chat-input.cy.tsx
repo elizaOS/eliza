@@ -1,8 +1,57 @@
 /// <reference types="cypress" />
-/// <reference path="../../../cypress/support/types.d.ts" />
+/// <reference path="../../../../cypress/support/types.d.ts" />
 
 import React from 'react';
 import { ChatInput } from './chat-input';
+
+// Test component for form submission
+const TestForm = () => {
+  const [value, setValue] = React.useState('');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setValue('');
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <ChatInput value={value} onChange={(e) => setValue(e.target.value)} />
+      <button type="submit">Send</button>
+    </form>
+  );
+};
+
+// Test component for chat form
+const TestChatForm = () => {
+  const [messages, setMessages] = React.useState<string[]>([]);
+  const [input, setInput] = React.useState('');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (input.trim()) {
+      setMessages([...messages, input]);
+      setInput('');
+    }
+  };
+
+  return (
+    <div>
+      <div className="messages">
+        {messages.map((msg, i) => (
+          <div key={i}>{msg}</div>
+        ))}
+      </div>
+      <form onSubmit={handleSubmit}>
+        <ChatInput
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="Type a message..."
+        />
+        <button type="submit">Send</button>
+      </form>
+    </div>
+  );
+};
 
 describe('ChatInput Component', () => {
   it('renders correctly with default props', () => {
@@ -58,22 +107,6 @@ describe('ChatInput Component', () => {
   });
 
   it('clears input on submit', () => {
-    const TestForm = () => {
-      const [value, setValue] = React.useState('');
-
-      const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        setValue('');
-      };
-
-      return (
-        <form onSubmit={handleSubmit}>
-          <ChatInput value={value} onChange={(e) => setValue(e.target.value)} />
-          <button type="submit">Send</button>
-        </form>
-      );
-    };
-
     cy.mount(<TestForm />);
 
     cy.get('textarea').type('Test message');
@@ -115,37 +148,6 @@ describe('ChatInput Component', () => {
   });
 
   it('works in a chat form', () => {
-    const TestChatForm = () => {
-      const [messages, setMessages] = React.useState<string[]>([]);
-      const [input, setInput] = React.useState('');
-
-      const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (input.trim()) {
-          setMessages([...messages, input]);
-          setInput('');
-        }
-      };
-
-      return (
-        <div>
-          <div className="messages">
-            {messages.map((msg, i) => (
-              <div key={i}>{msg}</div>
-            ))}
-          </div>
-          <form onSubmit={handleSubmit}>
-            <ChatInput
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Type a message..."
-            />
-            <button type="submit">Send</button>
-          </form>
-        </div>
-      );
-    };
-
     cy.mount(<TestChatForm />);
 
     cy.get('textarea').type('First message');

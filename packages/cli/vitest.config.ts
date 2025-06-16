@@ -40,14 +40,16 @@ export default defineConfig({
     alias: {
       '@/src': path.resolve(__dirname, 'src'),
     },
-    include: ['tests/**/*.test.ts', 'tests/**/*.spec.ts'],
+    include: [
+      'tests/**/*.test.ts', 
+      'tests/**/*.spec.ts'
+    ],
     exclude: [
       '**/node_modules/**',
       '**/dist/**',
-      'templates/**/*.test.ts',
-      'templates/**/*.spec.ts',
-      'dist/templates/**/*.test.ts',
-      'dist/templates/**/*.spec.ts'
+      'templates/**',
+      'src/**',
+      'dist/templates/**'
     ],
     poolOptions: {
       threads: {

@@ -17,9 +17,11 @@
     "test:quick": "./scripts/test-quick.sh",
     "test:unit": "vitest run --coverage",
     "test:unit:watch": "vitest",
-    "test:cypress": "cypress run --e2e && cypress run --component",
+    "test:component": "cypress run --component",
+    "test:e2e": "cypress run --e2e",
+    "test:e2e:with-server": "./scripts/test-e2e-with-server.sh",
     "cypress:open": "cypress open",
-    "type-check": "./scripts/check-types.sh"
+    "type-check": "cd cypress && npx tsc --noEmit --project tsconfig.json"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
@@ -140,6 +142,7 @@
     "util": "^0.12.5",
     "vite": "^6.3.5",
     "vite-tsconfig-paths": "^5.1.4",
-    "vitest": "^3.2.3"
+    "vitest": "^3.2.3",
+    "wait-on": "^8.0.3"
   }
 }
