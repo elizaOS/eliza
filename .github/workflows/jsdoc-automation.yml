@@ -43,7 +43,6 @@ on:
 jobs:
   generate-docs:
     runs-on: ubuntu-latest
-    container: debian:bullseye # Use Debian 11 as the execution environment
 
     permissions:
       contents: write
@@ -58,41 +57,51 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          submodules: recursive
+          token: ${{ secrets.GH_PAT }}
 
-      - name: Install Node.js
-        run: |
-          apt-get update
-          apt-get install -y curl
-          curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-          apt-get install -y nodejs
-          node -v
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '23.3.0'
+          cache: 'npm'
 
-      - name: Install Python
-        run: |
-          apt-get update
-          apt-get install -y curl software-properties-common
-          apt-get install -y python3 python3-dev python3-venv python3-pip
-          python3 --version
-          which python3
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
       - name: Install system dependencies
         run: |
-          apt-get update -y
-          apt-get install -y --no-install-recommends \
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends \
             git \
             make \
             build-essential \
-            unzip
+            unzip \
+            curl
 
-      - name: Install bun
+      - name: Setup Bun
         uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.2.15'
+
+      - name: Verify installations
+        run: |
+          node -v
+          python3 --version
+          bun --version
 
       - name: Install root dependencies
-        run: bun install
+        run: |
+          # Skip postinstall script to avoid submodule issues in CI
+          SKIP_POSTINSTALL=1 bun install --frozen-lockfile
+        env:
+          SKIP_POSTINSTALL: 1
 
       - name: Install package dependencies
         working-directory: packages/autodoc
-        run: bun install
+        run: bun install --frozen-lockfile
 
       - name: Build TypeScript
         working-directory: packages/autodoc
