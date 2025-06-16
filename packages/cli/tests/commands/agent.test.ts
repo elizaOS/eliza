@@ -41,6 +41,7 @@ describe('ElizaOS Agent Commands', () => {
           ...process.env,
           LOG_LEVEL: 'debug',
           PGLITE_DATA_DIR: `${testTmpDir}/elizadb`,
+          NODE_OPTIONS: '--max-old-space-size=4096', // Give server more memory
         },
         stdio: ['ignore', 'pipe', 'pipe'],
       }
@@ -48,7 +49,9 @@ describe('ElizaOS Agent Commands', () => {
 
     // Wait for server to be ready
     console.log('[DEBUG] Waiting for server to be ready...');
-    await waitForServerReady(parseInt(testServerPort, 10));
+    // Give more time in CI for server startup
+    const maxWaitTime = process.env.CI === 'true' ? 60000 : TEST_TIMEOUTS.SERVER_STARTUP;
+    await waitForServerReady(parseInt(testServerPort, 10), maxWaitTime);
     console.log('[DEBUG] Server is ready!');
 
     // Pre-load test characters
@@ -62,9 +65,15 @@ describe('ElizaOS Agent Commands', () => {
           `${elizaosCmd} agent start --remote-url ${testServerUrl} --path ${characterPath}`,
           {
             stdio: 'pipe',
+            timeout: 30000, // 30 second timeout for loading each character
           }
         );
         console.log(`[DEBUG] Successfully loaded character: ${character}`);
+        
+        // Wait between loading characters to avoid overwhelming the server
+        if (process.env.CI === 'true') {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
       } catch (e) {
         console.error(`[ERROR] Failed to load character ${character}:`, e);
         throw e;
