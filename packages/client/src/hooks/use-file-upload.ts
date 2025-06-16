@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { ContentType as CoreContentType } from '@elizaos/core';
+import { getContentTypeFromMimeType } from '@elizaos/core';
 import { UUID, Media, ChannelType } from '@elizaos/core';
 import { randomUUID } from '@/lib/utils';
 import { apiClient } from '@/lib/api';
@@ -33,14 +33,6 @@ export function useFileUpload({ agentId, channelId, chatType }: UseFileUploadPro
       blobUrlsRef.current.clear();
     };
   }, []);
-
-  const getContentTypeFromMimeType = (mimeType: string): CoreContentType | undefined => {
-    if (mimeType.startsWith('image/')) return CoreContentType.IMAGE;
-    if (mimeType.startsWith('video/')) return CoreContentType.VIDEO;
-    if (mimeType.startsWith('audio/')) return CoreContentType.AUDIO;
-    if (mimeType.includes('pdf') || mimeType.includes('document')) return CoreContentType.DOCUMENT;
-    return undefined;
-  };
 
   const handleFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
