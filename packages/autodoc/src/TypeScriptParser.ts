@@ -47,11 +47,16 @@ export class TypeScriptParser {
   public parse(file: string): any {
     try {
       const content = fs.readFileSync(file, 'utf-8');
+
+      // Determine if this is a TSX file based on file extension or JSX syntax
+      const isTsxFile = file.endsWith('.tsx') || content.includes('<') && content.includes('>') && content.includes('React');
+
       const parserOptions: ParserOptions = {
         sourceType: 'module',
-        ecmaVersion: 2020,
+        ecmaVersion: 'latest',
         ecmaFeatures: {
           jsx: true,
+          globalReturn: false,
         },
         range: true,
         loc: true,
@@ -59,6 +64,9 @@ export class TypeScriptParser {
         comment: true,
         errorOnUnknownASTType: false,
         errorOnTypeScriptSyntacticAndSemanticIssues: false,
+        // Add project configuration for better TypeScript support
+        project: undefined, // Don't use project-based parsing to avoid config issues
+        extraFileExtensions: ['.tsx'],
       };
 
       const ast = parse(content, parserOptions);
@@ -69,7 +77,7 @@ export class TypeScriptParser {
       return ast;
     } catch (error) {
       if (error instanceof Error) {
-        this.handleParseError(error);
+        this.handleParseError(error, file);
       } else {
         console.error('Unknown error:', error);
       }
@@ -95,17 +103,19 @@ export class TypeScriptParser {
       evaluators: [],
     };
 
-    if (ast) {
+    if (ast && ast.body) {
       // Traverse the AST to find export declarations
       ast.body.forEach((node: any) => {
         if (node.type === 'ImportDeclaration') {
-          const source = node.source.value;
-          if (source.startsWith('./actions/')) {
-            exports.actions.push(source);
-          } else if (source.startsWith('./providers/')) {
-            exports.providers.push(source);
-          } else if (source.startsWith('./evaluators/')) {
-            exports.evaluators.push(source);
+          const source = node.source?.value;
+          if (typeof source === 'string') {
+            if (source.startsWith('./actions/')) {
+              exports.actions.push(source);
+            } else if (source.startsWith('./providers/')) {
+              exports.providers.push(source);
+            } else if (source.startsWith('./evaluators/')) {
+              exports.evaluators.push(source);
+            }
           }
         }
       });
@@ -178,7 +188,13 @@ export class TypeScriptParser {
     return lines.slice(bounds.startLine - 1, bounds.endLine).join('\n');
   }
 
-  private handleParseError(error: Error): void {
-    console.error('Error parsing TypeScript file:', error.message);
+  private handleParseError(error: Error, file?: string): void {
+    const fileInfo = file ? ` in file ${file}` : '';
+    console.error(`Error parsing TypeScript file${fileInfo}:`, error.message);
+
+    // Don't log full stack trace for parsing errors to reduce noise
+    if (error.message.includes('Unexpected token')) {
+      console.warn(`Skipping file due to parsing error${fileInfo}. This might be due to unsupported syntax.`);
+    }
   }
 }
