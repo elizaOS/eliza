@@ -840,11 +840,11 @@ export default function Chat({
     }
   };
 
-  const handleRetryMessage = (message: UiMessage) => {
+  const handleRetryMessage = async (message: UiMessage) => {
     if (inputDisabledRef.current || (!message.text?.trim() && message.attachments?.length === 0)) {
       return;
     }
-    
+    inputDisabledRef.current = true;
     const retryMessageId = randomUUID() as UUID;
     const finalTextContent = message.text?.trim() || `Shared ${message.attachments?.length} file(s).`;
   
@@ -865,15 +865,30 @@ export default function Chat({
     addMessage(optimisticUiMessage);
     safeScrollToBottom();
 
-    sendMessage(
-      finalTextContent,
-      finalServerIdForHooks!,
-      chatType === ChannelType.DM ? CHAT_SOURCE : GROUP_CHAT_SOURCE,
-      message.attachments,
-      retryMessageId,
-      undefined,
-      finalChannelIdForHooks!
-    );
+    try {
+      await sendMessage(
+        finalTextContent,
+        finalServerIdForHooks!,
+        chatType === ChannelType.DM ? CHAT_SOURCE : GROUP_CHAT_SOURCE,
+        message.attachments,
+        retryMessageId,
+        undefined,
+        finalChannelIdForHooks!
+      );
+    } catch (error) {
+      clientLogger.error('Error sending message or uploading files:', error);
+      toast({
+        title: 'Error Sending Message',
+        description: error instanceof Error ? error.message : 'Could not send message.',
+        variant: 'destructive',
+      });
+      updateMessage(retryMessageId, {
+        isLoading: false,
+        text: `${optimisticUiMessage.text || 'Attachment(s)'} (Failed to send)`,
+      });
+      inputDisabledRef.current = false;
+    }
+    
   };
 
   const handleClearChat = () => {
