@@ -102,13 +102,13 @@ jobs:
       - name: Install root dependencies
         run: |
           # Skip postinstall script to avoid submodule issues in CI
-          SKIP_POSTINSTALL=1 bun install --frozen-lockfile
+          SKIP_POSTINSTALL=1 bun install
         env:
           SKIP_POSTINSTALL: 1
 
       - name: Install package dependencies
         working-directory: packages/autodoc
-        run: bun install --frozen-lockfile
+        run: bun install
 
       - name: Build TypeScript
         working-directory: packages/autodoc
