@@ -100,7 +100,6 @@ interface ChatUIState {
   showGroupEditPanel: boolean;
   showProfileOverlay: boolean;
   input: string;
-  inputDisabled: boolean;
   selectedGroupAgentId: UUID | null;
   currentDmChannelId: UUID | null;
   isCreatingDM: boolean;
@@ -278,7 +277,6 @@ export default function Chat({
     showGroupEditPanel: false,
     showProfileOverlay: false,
     input: '',
-    inputDisabled: false,
     selectedGroupAgentId: null,
     currentDmChannelId: null,
     isCreatingDM: false,
@@ -301,6 +299,7 @@ export default function Chat({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
+  const inputDisabledRef = useRef<boolean>(false);
 
   // For DM, we need agent data. For GROUP, we need channel data
   const { data: agentDataResponse, isLoading: isLoadingAgent } = useAgent(
@@ -664,7 +663,7 @@ export default function Chat({
       // Clear the local message list immediately for instant UI response
       clearMessages();
     },
-    onInputDisabledChange: (disabled: boolean) => updateChatState({ inputDisabled: disabled }),
+    onInputDisabledChange: (disabled: boolean) => {inputDisabledRef.current = disabled},
   });
 
   const {
@@ -724,14 +723,14 @@ export default function Chat({
           description: 'Failed to create chat channel. Please try again.',
           variant: 'destructive',
         });
-        updateChatState({ inputDisabled: false });
+        inputDisabledRef.current = false;
         return;
       }
     }
 
     if (
       (!chatState.input.trim() && selectedFiles.length === 0) ||
-      chatState.inputDisabled ||
+      inputDisabledRef.current ||
       !channelIdToUse ||
       !finalServerIdForHooks ||
       !currentClientEntityId ||
@@ -739,7 +738,7 @@ export default function Chat({
     )
       return;
 
-    updateChatState({ inputDisabled: true });
+    inputDisabledRef.current = true;
     const tempMessageId = randomUUID() as UUID;
     let messageText = chatState.input.trim();
     const currentInputVal = chatState.input;
@@ -797,7 +796,7 @@ export default function Chat({
       const finalTextContent =
         messageText || (finalAttachments.length > 0 ? `Shared content.` : '');
       if (!finalTextContent.trim() && finalAttachments.length === 0) {
-        updateChatState({ inputDisabled: false });
+        inputDisabledRef.current = false;
         removeMessage(tempMessageId);
         return;
       }
@@ -822,7 +821,7 @@ export default function Chat({
         text: `${optimisticUiMessage.text || 'Attachment(s)'} (Failed to send)`,
       });
       // Re-enable input on error
-      updateChatState({ inputDisabled: false });
+      inputDisabledRef.current = false;
     } finally {
       // Let the server control input state via control messages
       // Only focus the input, don't re-enable it
@@ -842,7 +841,7 @@ export default function Chat({
   };
 
   const handleRetryMessage = (messageText: string) => {
-    if (!messageText.trim() || chatState.inputDisabled) return;
+    if (!messageText.trim() || inputDisabledRef.current) return;
     // Set the input to the message text and submit it
     updateChatState({ input: messageText });
     // Focus the input after a brief delay to ensure state has updated
@@ -1292,7 +1291,7 @@ export default function Chat({
                 <ChatInputArea
                   input={chatState.input}
                   setInput={(value) => updateChatState({ input: value })}
-                  inputDisabled={chatState.inputDisabled}
+                  inputDisabled={inputDisabledRef.current}
                   selectedFiles={selectedFiles}
                   removeFile={removeFile}
                   handleFileChange={handleFileChange}
@@ -1360,7 +1359,7 @@ export default function Chat({
                       <ChatInputArea
                         input={chatState.input}
                         setInput={(value) => updateChatState({ input: value })}
-                        inputDisabled={chatState.inputDisabled}
+                        inputDisabled={inputDisabledRef.current}
                         selectedFiles={selectedFiles}
                         removeFile={removeFile}
                         handleFileChange={handleFileChange}
