@@ -1,10 +1,11 @@
 import type { IAgentRuntime, UUID } from '@elizaos/core';
-import { validateUuid, logger } from '@elizaos/core';
+import { validateUuid, logger, getContentTypeFromMimeType } from '@elizaos/core';
 import express from 'express';
 import type { AgentServer } from '../../index';
 import { sendError, sendSuccess } from '../shared/response-utils';
 import { cleanupFile } from '../shared/file-utils';
 import { agentMediaUpload } from '../shared/uploads';
+import { ALLOWED_MEDIA_MIME_TYPES } from '../shared';
 
 // Using Express.Multer.File type instead of importing from multer directly
 type MulterFile = Express.Multer.File;
@@ -42,32 +43,22 @@ export function createAgentMediaRouter(
         return sendError(res, 400, 'INVALID_REQUEST', 'No media file provided');
       }
 
-      const validImageTypes = [
-        'image/jpeg',
-        'image/png',
-        'image/gif',
-        'image/webp',
-        'image/svg+xml',
-        'image/bmp',
-      ];
-      const validVideoTypes = [
-        'video/mp4',
-        'video/webm',
-        'video/mov',
-        'video/avi',
-        'video/mkv',
-        'video/quicktime',
-      ];
-      const allValidTypes = [...validImageTypes, ...validVideoTypes];
+      const mimetype = mediaFile.mimetype;
 
-      if (!allValidTypes.includes(mediaFile.mimetype)) {
+      if (!ALLOWED_MEDIA_MIME_TYPES.includes(mimetype as any)) {
         cleanupFile(mediaFile.path);
-        return sendError(res, 400, 'INVALID_FILE_TYPE', 'File must be an image or video');
+        return sendError(res, 400, 'INVALID_FILE_TYPE', 'Unsupported media file type');
+      }
+
+      const mediaType = getContentTypeFromMimeType(mimetype);
+
+      if (!mimetype) {
+        cleanupFile(mediaFile.path);
+        return sendError(res, 400, 'UNSUPPORTED_MEDIA_TYPE', `Unsupported media MIME type: ${mimetype}`);
       }
 
       try {
         const fileUrl = `/media/uploads/agents/${agentId}/${mediaFile.filename}`;
-        const mediaType = validImageTypes.includes(mediaFile.mimetype) ? 'image' : 'video';
 
         logger.info(
           `[MEDIA UPLOAD] Successfully uploaded ${mediaType}: ${mediaFile.filename}. URL: ${fileUrl}`
