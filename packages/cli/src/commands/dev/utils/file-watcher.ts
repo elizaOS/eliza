@@ -103,7 +103,7 @@ export async function watchDirectory(
     });
 
     // Set up file change handler
-    watcher.on('all', (_, filePath) => {
+    watcher.on('all', (_event: string, filePath: string) => {
       // Only react to specific file types
       if (!/\.(ts|js|tsx|jsx)$/.test(filePath)) {
         return;
