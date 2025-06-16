@@ -3,6 +3,10 @@
 
 set -e
 
+# Set test environment variables
+export ELIZA_TEST_MODE="true"
+export NODE_ENV="test"
+
 echo "🧪 Running elizaOS CLI Test Suite"
 echo "================================="
 
@@ -46,8 +50,14 @@ bun run build
 echo -e "${YELLOW}⚠ Skipping TypeScript validation due to dependency type issues${NC}"
 # run_test_suite "TypeScript Validation" "tsc --noEmit"
 
-# Run unit tests with coverage
-run_test_suite "Unit Tests" "bun test tests/commands --coverage"
+# Run unit tests - disable coverage in CI due to memory constraints
+if [ "$CI" = "true" ]; then
+  echo -e "${YELLOW}Running tests without coverage in CI to avoid memory issues${NC}"
+  run_test_suite "Unit Tests" "cross-env NODE_OPTIONS=\"--max-old-space-size=4096\" bun test tests/commands --timeout 300000"
+else
+  # Run with coverage locally
+  run_test_suite "Unit Tests" "bun test tests/commands --coverage"
+fi
 
 # Run BATS tests if available
 if command -v bats >/dev/null 2>&1; then
