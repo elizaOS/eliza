@@ -1,7 +1,7 @@
 import chokidar from 'chokidar';
 import fs from 'node:fs';
 import path from 'node:path';
-import { WatcherConfig, FileChangeEvent } from '../types';
+import { WatcherConfig } from '../types';
 
 /**
  * Default watcher configuration
@@ -103,7 +103,7 @@ export async function watchDirectory(
     });
 
     // Set up file change handler
-    watcher.on('all', (event, filePath) => {
+    watcher.on('all', (_, filePath) => {
       // Only react to specific file types
       if (!/\.(ts|js|tsx|jsx)$/.test(filePath)) {
         return;

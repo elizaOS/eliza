@@ -208,7 +208,6 @@ describe('emoji-handler', () => {
 
   describe('emoji utility functions', () => {
     beforeEach(() => {
-      const originalPlatform = process.platform;
       Object.defineProperty(process, 'platform', {
         value: 'darwin',
         configurable: true

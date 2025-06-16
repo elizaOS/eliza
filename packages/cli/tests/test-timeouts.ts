@@ -12,6 +12,7 @@ export const TEST_TIMEOUTS = {
   // Command execution timeouts (execSync)
   QUICK_COMMAND: 30 * 1000, // 30 seconds for simple commands (help, list, etc.)
   STANDARD_COMMAND: 60 * 1000, // 1 minute for standard operations
+  PLUGIN_INSTALLATION: 2 * 60 * 1000, // 2 minutes for plugin installation
   PROJECT_CREATION: 2 * 60 * 1000, // 2 minutes for project creation
   NETWORK_OPERATION: 90 * 1000, // 90 seconds for GitHub/network operations
 

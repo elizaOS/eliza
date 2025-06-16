@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach  , vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { execSync } from 'child_process';
-import { mkdtemp, rm, readFile, access } from 'fs/promises';
+import { mkdtemp, rm, readFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { safeChangeDirectory } from './test-utils';
@@ -21,7 +21,7 @@ describe('ElizaOS Plugin Commands', () => {
 
     // Setup CLI command
     const scriptDir = join(__dirname, '..');
-    elizaosCmd = `bun run "${join(scriptDir, '../dist/index.js')}"`;
+    elizaosCmd = `bun "${join(scriptDir, '../dist/index.js')}"`;
 
     // Create one test project for all plugin tests to share
     projectDir = join(testTmpDir, 'shared-test-project');
@@ -36,7 +36,7 @@ describe('ElizaOS Plugin Commands', () => {
     // Change to project directory for all tests
     process.chdir(projectDir);
     console.log('Shared test project created at:', projectDir);
-  }, TEST_TIMEOUTS.SUITE_TIMEOUT); // Longer timeout for project creation
+  });
 
   beforeEach(() => {
     // Ensure we're in the project directory for each test
@@ -96,7 +96,7 @@ describe('ElizaOS Plugin Commands', () => {
     async () => {
       execSync(`${elizaosCmd} plugins add @elizaos/plugin-telegram --skip-env-prompt`, {
         stdio: 'pipe',
-        timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+        timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,
       });
 
       const packageJson = await readFile('package.json', 'utf8');
@@ -110,7 +110,7 @@ describe('ElizaOS Plugin Commands', () => {
     async () => {
       execSync(`${elizaosCmd} plugins install @elizaos/plugin-openai --skip-env-prompt`, {
         stdio: 'pipe',
-        timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+        timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,
       });
 
       const packageJson = await readFile('package.json', 'utf8');
@@ -124,7 +124,7 @@ describe('ElizaOS Plugin Commands', () => {
     async () => {
       execSync(`${elizaosCmd} plugins add @fleek-platform/eliza-plugin-mcp --skip-env-prompt`, {
         stdio: 'pipe',
-        timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+        timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,
       });
 
       const packageJson = await readFile('package.json', 'utf8');
@@ -144,8 +144,9 @@ describe('ElizaOS Plugin Commands', () => {
         }
       );
 
+      // Use a different plugin that doesn't cause workspace resolution issues
       execSync(
-        `${elizaosCmd} plugins add github:elizaos-plugins/plugin-farcaster#1.x --skip-env-prompt`,
+        `${elizaosCmd} plugins add github:elizaos-plugins/plugin-openrouter#1.x --skip-env-prompt`,
         {
           stdio: 'pipe',
           timeout: TEST_TIMEOUTS.NETWORK_OPERATION,
@@ -154,7 +155,7 @@ describe('ElizaOS Plugin Commands', () => {
 
       const packageJson = await readFile('package.json', 'utf8');
       expect(packageJson).toContain('plugin-video-understanding');
-      expect(packageJson).toContain('plugin-farcaster');
+      expect(packageJson).toContain('plugin-openrouter');
     },
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
@@ -176,7 +177,7 @@ describe('ElizaOS Plugin Commands', () => {
     async () => {
       execSync(`${elizaosCmd} plugins add @elizaos/plugin-sql --skip-env-prompt`, {
         stdio: 'pipe',
-        timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+        timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,
       });
 
       let packageJson = await readFile('package.json', 'utf8');
@@ -202,7 +203,7 @@ describe('ElizaOS Plugin Commands', () => {
       for (const plugin of plugins) {
         execSync(`${elizaosCmd} plugins add ${plugin} --skip-env-prompt`, {
           stdio: 'pipe',
-          timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+          timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,
         });
       }
 
@@ -246,15 +247,15 @@ describe('ElizaOS Plugin Commands', () => {
     'plugins add via GitHub shorthand URL',
     async () => {
       execSync(
-        `${elizaosCmd} plugins add github:elizaos-plugins/plugin-openrouter#1.x --skip-env-prompt`,
+        `${elizaosCmd} plugins add github:elizaos-plugins/plugin-evm#1.x --skip-env-prompt`,
         {
           stdio: 'pipe',
-          timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+          timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,
         }
       );
 
       const packageJson = await readFile('package.json', 'utf8');
-      expect(packageJson).toContain('github:elizaos-plugins/plugin-openrouter#1.x');
+      expect(packageJson).toContain('github:elizaos-plugins/plugin-evm#1.x');
     },
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );

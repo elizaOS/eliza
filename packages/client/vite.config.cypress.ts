@@ -2,9 +2,11 @@ import react from '@vitejs/plugin-react-swc';
 import path from 'node:path';
 import { defineConfig } from 'vite';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
+import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
   plugins: [
+    tailwindcss(),
     react(),
     nodePolyfills({
       // Enable all polyfills for testing
@@ -69,6 +71,16 @@ export default defineConfig({
       },
     },
     include: [
+      'react',
+      'react-dom',
+      'react/jsx-runtime',
+      '@radix-ui/react-checkbox',
+      '@radix-ui/react-dialog',
+      '@radix-ui/react-dropdown-menu',
+      '@radix-ui/react-toast',
+      '@radix-ui/react-tooltip',
+      '@radix-ui/react-alert-dialog',
+      'lucide-react',
       'buffer',
       'process',
       'crypto-browserify',

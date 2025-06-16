@@ -13,25 +13,10 @@ declare module 'process/browser' {
 declare global {
   namespace Cypress {
     interface Chainable {
-      /**
-       * Mounts a React component with all common providers (QueryClient, Router)
-       */
-      mount(component: React.ReactNode, options?: MountOptions): Chainable<MountReturn>;
-      
-      /**
-       * Mounts a React component with just Router provider
-       */
-      mountWithRouter(component: React.ReactNode, options?: MountOptions): Chainable<MountReturn>;
-      
-      /**
-       * Mounts a React component specifically for Radix UI components with DirectionProvider
-       */
-      mountRadix(component: React.ReactNode, options?: MountOptions): Chainable<MountReturn>;
-      
-      waitForApp(): Chainable<void>;
-      login(email: string, password: string): Chainable<void>;
-      connectWebSocket(): Chainable<void>;
-      cleanupTestData(): Chainable<void>;
+      mount: typeof mount;
+      mountWithRouter: typeof mountWithRouter;
+      mountRadix: typeof mountRadix;
+      // Custom commands are declared in ./commands.ts
     }
   }
 }

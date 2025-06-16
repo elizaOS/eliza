@@ -108,7 +108,9 @@ export async function migrateCliToBun(targetVersion: string): Promise<void> {
 
     logger.info('✅ CLI migration completed successfully! You may need to restart your terminal.');
   } catch (error) {
-    logger.error(`❌ CLI migration failed: ${error.message}`);
+    logger.error(
+      `❌ CLI migration failed: ${error instanceof Error ? error.message : String(error)}`
+    );
     logger.error('Your original npm installation is still intact.');
 
     // Try to clean up failed bun installation

@@ -66,8 +66,16 @@ describe('AlertDialog Component', () => {
       </AlertDialog>
     );
 
+    // Open the dialog
     cy.contains('Delete').click();
-    cy.contains('button', 'Delete').last().click();
+
+    // Wait for dialog to appear and ensure it's visible
+    cy.contains('Confirm Deletion').should('be.visible');
+
+    // Try clicking the specific action button using a more precise selector
+    cy.get('[role="alertdialog"]').within(() => {
+      cy.contains('button', 'Delete').click({ force: true });
+    });
     cy.wrap(onAction).should('have.been.called');
 
     // Dialog should close
@@ -92,7 +100,7 @@ describe('AlertDialog Component', () => {
     );
 
     cy.contains('Show Alert').click();
-    cy.contains('button', 'Cancel').click();
+    cy.contains('button', 'Cancel').click({ force: true });
     cy.wrap(onCancel).should('have.been.called');
 
     // Dialog should close
@@ -136,7 +144,7 @@ describe('AlertDialog Component', () => {
     cy.contains('Open Alert').click();
     cy.contains('Confirm Action').should('be.visible');
 
-    cy.contains('button', 'Confirm').click();
+    cy.contains('button', 'Confirm').click({ force: true });
     cy.contains('Confirmed: Yes').should('be.visible');
     cy.contains('Confirm Action').should('not.exist');
   });
@@ -222,8 +230,16 @@ describe('AlertDialog Component', () => {
 
     cy.mount(<TestComponent />);
 
+    // Open the dialog
     cy.contains('button', 'Delete').click();
-    cy.contains('button', 'Delete').last().click();
+
+    // Wait for dialog content to appear
+    cy.contains('Delete Item').should('be.visible');
+
+    // Click the action button within the dialog
+    cy.get('[role="alertdialog"]').within(() => {
+      cy.contains('button', 'Delete').click({ force: true });
+    });
     cy.contains('Deleting...').should('be.visible');
     cy.wait(150);
     cy.contains('Delete Item').should('not.exist');

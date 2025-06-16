@@ -45,7 +45,10 @@ export async function performCliUpdate(options: GlobalUpdateOptions = {}): Promi
           return true;
         } catch (migrationError) {
           logger.warn('Migration to bun failed, falling back to npm update...');
-          logger.debug('Migration error:', migrationError.message);
+          logger.debug(
+            'Migration error:',
+            migrationError instanceof Error ? migrationError.message : String(migrationError)
+          );
           // Fallback to npm installation since bun failed
           try {
             await execa('npm', ['install', '-g', `@elizaos/cli@${latestVersion}`], {
@@ -55,7 +58,7 @@ export async function performCliUpdate(options: GlobalUpdateOptions = {}): Promi
             return true;
           } catch (npmError) {
             throw new Error(
-              `Both bun migration and npm fallback failed. Bun: ${migrationError.message}, npm: ${npmError.message}`
+              `Both bun migration and npm fallback failed. Bun: ${migrationError instanceof Error ? migrationError.message : String(migrationError)}, npm: ${npmError instanceof Error ? npmError.message : String(npmError)}`
             );
           }
         }
@@ -67,7 +70,7 @@ export async function performCliUpdate(options: GlobalUpdateOptions = {}): Promi
     console.log(`CLI updated successfully to version ${latestVersion} [✓]`);
     return true;
   } catch (error) {
-    console.error(`CLI update failed: ${error.message}`);
+    console.error(`CLI update failed: ${error instanceof Error ? error.message : String(error)}`);
     return false;
   }
 }

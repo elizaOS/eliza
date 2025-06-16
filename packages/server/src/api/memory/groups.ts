@@ -65,9 +65,15 @@ export function createGroupMemoryRouter(
         logger.error(`[ROOM CREATE] Error creating room for agent ${agentId}:`, error);
         errors.push({
           agentId,
-          code: error.message === 'Agent not found' ? 'NOT_FOUND' : 'CREATE_ERROR',
-          message: error.message === 'Agent not found' ? error.message : 'Failed to Create group',
-          details: error.message,
+          code:
+            error instanceof Error && error.message === 'Agent not found'
+              ? 'NOT_FOUND'
+              : 'CREATE_ERROR',
+          message:
+            error instanceof Error && error.message === 'Agent not found'
+              ? error.message
+              : 'Failed to Create group',
+          details: error instanceof Error ? error.message : String(error),
         });
       }
     }
@@ -104,7 +110,13 @@ export function createGroupMemoryRouter(
       res.status(204).send();
     } catch (error) {
       logger.error('[GROUP DELETE] Error deleting group:', error);
-      sendError(res, 500, 'DELETE_ERROR', 'Error deleting group', error.message);
+      sendError(
+        res,
+        500,
+        'DELETE_ERROR',
+        'Error deleting group',
+        error instanceof Error ? error.message : String(error)
+      );
     }
   });
 
@@ -129,7 +141,13 @@ export function createGroupMemoryRouter(
       res.status(204).send();
     } catch (error) {
       logger.error('[GROUP MEMORIES DELETE] Error clearing memories:', error);
-      sendError(res, 500, 'DELETE_ERROR', 'Error deleting group memories', error.message);
+      sendError(
+        res,
+        500,
+        'DELETE_ERROR',
+        'Error deleting group memories',
+        error instanceof Error ? error.message : String(error)
+      );
     }
   });
 

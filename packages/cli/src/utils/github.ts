@@ -57,7 +57,9 @@ export async function validateGitHubToken(token: string): Promise<boolean> {
 
     return false;
   } catch (error) {
-    logger.error(`Failed to validate GitHub token: ${error.message}`);
+    logger.error(
+      `Failed to validate GitHub token: ${error instanceof Error ? error.message : String(error)}`
+    );
     return false;
   }
 }
@@ -65,12 +67,7 @@ export async function validateGitHubToken(token: string): Promise<boolean> {
 /**
  * Check if a fork exists for a given repository
  */
-export async function forkExists(
-  token: string,
-  owner: string,
-  repo: string,
-  username: string
-): Promise<boolean> {
+export async function forkExists(token: string, repo: string, username: string): Promise<boolean> {
   try {
     const response = await fetch(`${GITHUB_API_URL}/repos/${username}/${repo}`, {
       headers: {
@@ -111,7 +108,9 @@ export async function forkRepository(
     logger.error(`Failed to fork repository: ${response.statusText}`);
     return null;
   } catch (error) {
-    logger.error(`Failed to fork repository: ${error.message}`);
+    logger.error(
+      `Failed to fork repository: ${error instanceof Error ? error.message : String(error)}`
+    );
     return null;
   }
 }
@@ -334,7 +333,9 @@ export async function createBranch(
     logger.error(`Failed to create branch: ${response.statusText}`);
     return false;
   } catch (error) {
-    logger.error(`Failed to create branch: ${error.message}`);
+    logger.error(
+      `Failed to create branch: ${error instanceof Error ? error.message : String(error)}`
+    );
     return false;
   }
 }
@@ -464,7 +465,7 @@ export async function updateFile(
 
     return false;
   } catch (error) {
-    logger.error(`Error updating file: ${error.message}`);
+    logger.error(`Error updating file: ${error instanceof Error ? error.message : String(error)}`);
     return false;
   }
 }
@@ -506,7 +507,9 @@ export async function createPullRequest(
     logger.error(`Failed to create pull request: ${response.statusText}`);
     return null;
   } catch (error) {
-    logger.error(`Failed to create pull request: ${error.message}`);
+    logger.error(
+      `Failed to create pull request: ${error instanceof Error ? error.message : String(error)}`
+    );
     return null;
   }
 }
@@ -696,16 +699,15 @@ export async function saveGitHubCredentials(username: string, token: string): Pr
  */
 export async function ensureDirectory(
   token: string,
-  owner: string,
   repo: string,
-  directoryPath: string,
-  branch = 'main'
+  path: string,
+  branch: string
 ): Promise<boolean> {
   try {
     // First check if the directory already exists
     try {
       const response = await fetch(
-        `${GITHUB_API_URL}/repos/${owner}/${repo}/contents/${directoryPath}?ref=${branch}`,
+        `${GITHUB_API_URL}/repos/${repo}/contents/${path}?ref=${branch}`,
         {
           headers: {
             Authorization: `token ${token}`,
@@ -716,36 +718,37 @@ export async function ensureDirectory(
 
       // Directory exists
       if (response.status === 200) {
-        logger.info(`Directory ${directoryPath} already exists`);
+        logger.info(`Directory ${path} already exists`);
         return true;
       }
     } catch (error) {
       // Directory doesn't exist, we'll create it
-      logger.info(`Directory ${directoryPath} doesn't exist, creating it`);
+      logger.info(`Directory ${path} doesn't exist, creating it`);
     }
 
     // Create a placeholder file in the directory
     // (GitHub doesn't have a concept of empty directories)
-    const placeholderPath = `${directoryPath}/.gitkeep`;
+    const placeholderPath = `${path}/.gitkeep`;
     const result = await updateFile(
       token,
-      owner,
       repo,
       placeholderPath,
       '', // Empty content for placeholder
-      `Create directory: ${directoryPath}`,
+      `Create directory: ${path}`,
       branch
     );
 
     if (result) {
-      logger.success(`Created directory: ${directoryPath}`);
+      logger.success(`Created directory: ${path}`);
       return true;
     }
 
-    logger.error(`Failed to create directory: ${directoryPath}`);
+    logger.error(`Failed to create directory: ${path}`);
     return false;
   } catch (error) {
-    logger.error(`Error creating directory: ${error.message}`);
+    logger.error(
+      `Error creating directory: ${error instanceof Error ? error.message : String(error)}`
+    );
     return false;
   }
 }
@@ -852,7 +855,10 @@ export async function createGitHubRepository(
       message: `Failed to create repository: ${response.status} ${response.statusText} - ${errorData.message || 'Unknown error'}`,
     };
   } catch (error) {
-    return { success: false, message: `Error creating repository: ${error.message}` };
+    return {
+      success: false,
+      message: `Error creating repository: ${error instanceof Error ? error.message : String(error)}`,
+    };
   }
 }
 
@@ -940,7 +946,9 @@ export async function pushToGitHub(
       logger.success(`Pushed to GitHub repository: ${repoUrl}`);
       return true;
     } catch (error) {
-      logger.error(`Failed to push to GitHub: ${error.message}`);
+      logger.error(
+        `Failed to push to GitHub: ${error instanceof Error ? error.message : String(error)}`
+      );
 
       // Try force pushing if normal push fails
       try {
@@ -952,12 +960,17 @@ export async function pushToGitHub(
         });
         return true;
       } catch (forcePushError) {
-        logger.error('Force push also failed:', forcePushError.message);
+        logger.error(
+          'Force push also failed:',
+          forcePushError instanceof Error ? forcePushError.message : String(forcePushError)
+        );
         return false;
       }
     }
   } catch (error) {
-    logger.error(`Error in git operations: ${error.message}`);
+    logger.error(
+      `Error in git operations: ${error instanceof Error ? error.message : String(error)}`
+    );
     return false;
   }
 }

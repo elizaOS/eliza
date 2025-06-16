@@ -38,7 +38,9 @@ export const extractPluginEnvRequirements = async (
 
     return agentConfig.pluginParameters;
   } catch (error) {
-    logger.debug(`Error reading plugin package.json for ${packageName}: ${error.message}`);
+    logger.debug(
+      `Error reading plugin package.json for ${packageName}: ${error instanceof Error ? error.message : String(error)}`
+    );
     return {};
   }
 };
@@ -155,7 +157,9 @@ export const promptForPluginEnvVars = async (packageName: string, cwd: string): 
         console.log(`⚠ Skipped ${varName} (no value provided)`);
       }
     } catch (error) {
-      logger.warn(`Failed to prompt for ${varName}: ${error.message}`);
+      logger.warn(
+        `Failed to prompt for ${varName}: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 

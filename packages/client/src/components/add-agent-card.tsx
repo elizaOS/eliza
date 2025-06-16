@@ -18,6 +18,7 @@ const AddAgentCard: React.FC = () => {
       tabIndex={0} // Make it focusable
       role="button"
       aria-label="Create new agent"
+      data-testid="add-agent-button"
     >
       <CardContent className="p-6 flex flex-col items-center justify-center text-center">
         <PlusCircle className="w-12 h-12 text-muted-foreground mb-3" />

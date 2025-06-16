@@ -27,7 +27,7 @@ export async function cloneRepository(
     });
   } catch (error) {
     // Special handling for likely branch errors
-    if (error.message && error.message.includes('exit code 128')) {
+    if (error instanceof Error && error.message.includes('exit code 128')) {
       console.error(`\n[X] Branch '${branch}' doesn't exist in the ElizaOS repository.`);
       console.error(`Please specify a valid branch name. Common branches include:`);
       console.error(`  • main - The main branch`);
@@ -37,7 +37,9 @@ export async function cloneRepository(
       );
       throw new Error(`Branch '${branch}' not found`);
     }
-    throw new Error(`Failed to clone repository: ${error.message}`);
+    throw new Error(
+      `Failed to clone repository: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 }
 

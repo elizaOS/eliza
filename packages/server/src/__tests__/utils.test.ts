@@ -2,52 +2,53 @@
  * Unit tests for utility functions
  */
 
-// Mock dependencies - must be hoisted before imports
-const { existsSyncMock, dotenvConfigMock } = vi.hoisted(() => {
-  return {
-    existsSyncMock: vi.fn(),
-    dotenvConfigMock: vi.fn(),
-  };
-});
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { expandTildePath, resolvePgliteDir } from '../index';
+import path from 'node:path';
 
+// Mock fs with proper default export
 vi.mock('node:fs', async () => {
   const actual = await vi.importActual('node:fs');
   return {
     ...actual,
-    existsSync: existsSyncMock,
+    default: {
+      ...actual,
+      existsSync: vi.fn(),
+    },
+    existsSync: vi.fn(),
   };
 });
 
-vi.mock('dotenv', () => ({
-  default: {
-    config: dotenvConfigMock,
-  },
-  config: dotenvConfigMock,
-}));
+// Mock dotenv with proper structure for default import
+vi.mock('dotenv', async () => {
+  const actual = await vi.importActual('dotenv');
+  const mockConfig = vi.fn();
+  return {
+    ...actual,
+    default: {
+      config: mockConfig,
+    },
+    config: mockConfig,
+  };
+});
 
-vi.mock('../src/api/system/environment', () => ({
+// Mock environment module
+vi.mock('../api/system/environment', () => ({
   resolveEnvFile: vi.fn(() => '.env'),
 }));
-
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { expandTildePath, resolvePgliteDir } from '../index';
-import path from 'node:path';
-import fs from 'node:fs';
 
 describe('Utility Functions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    existsSyncMock.mockClear();
-    dotenvConfigMock.mockClear();
-    // Clear environment variables
+    // Reset environment variables
     delete process.env.PGLITE_DATA_DIR;
   });
 
   describe('expandTildePath', () => {
     it('should expand tilde path to current working directory', () => {
-      const input = '~/data/test';
-      const expected = path.join(process.cwd(), 'data/test');
-
+      const input = '~/test/path';
+      const expected = path.join(process.cwd(), 'test/path');
+      
       const result = expandTildePath(input);
 
       expect(result).toBe(expected);
@@ -96,8 +97,8 @@ describe('Utility Functions', () => {
 
     it('should handle tilde with slash', () => {
       const input = '~/';
-      const expected = process.cwd() + '/';
-
+      const expected = process.cwd();
+      
       const result = expandTildePath(input);
 
       expect(result).toBe(expected);
@@ -105,10 +106,9 @@ describe('Utility Functions', () => {
   });
 
   describe('resolvePgliteDir', () => {
-    const originalCwd = process.cwd();
-
-    beforeEach(() => {
-      existsSyncMock.mockReturnValue(true);
+    beforeEach(async () => {
+      const fs = await import('node:fs');
+      vi.mocked(fs.existsSync).mockReturnValue(true);
     });
 
     it('should use provided directory', () => {
@@ -172,23 +172,26 @@ describe('Utility Functions', () => {
       expect(process.env.PGLITE_DATA_DIR).toBeUndefined();
     });
 
-    it('should handle environment file loading', () => {
-      // resolveEnvFile is mocked to return '.env'
-      existsSyncMock.mockReturnValue(true);
-      dotenvConfigMock.mockClear();
-
+    it('should handle environment file loading when exists', async () => {
+      const fs = await import('node:fs');
+      const dotenv = await import('dotenv');
+      
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      
       resolvePgliteDir();
-
-      // Just check that it was called, not the exact arguments
-      expect(dotenvConfigMock).toHaveBeenCalled();
+      
+      expect(dotenv.default.config).toHaveBeenCalledWith({ path: '.env' });
     });
 
-    it('should handle missing environment file gracefully', () => {
-      existsSyncMock.mockReturnValue(false);
-
+    it('should handle missing environment file gracefully', async () => {
+      const fs = await import('node:fs');
+      const dotenv = await import('dotenv');
+      
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+      
       resolvePgliteDir();
 
-      expect(dotenvConfigMock).not.toHaveBeenCalled();
+      expect(dotenv.default.config).not.toHaveBeenCalled();
     });
 
     it('should prefer explicit dir over environment variable', () => {

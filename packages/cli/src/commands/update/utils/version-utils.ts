@@ -58,7 +58,7 @@ export function checkVersionNeedsUpdate(
 
     return { needsUpdate: semver.lt(versionToCompare, targetVersion) };
   } catch (error) {
-    return { needsUpdate: false, error: error.message };
+    return { needsUpdate: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
 
@@ -94,7 +94,9 @@ export async function fetchLatestVersion(packageName: string): Promise<string | 
     logger.debug(`Latest version of ${packageName} from npm: ${version}`);
     return version;
   } catch (error) {
-    logger.error(`Failed to fetch version for ${packageName}: ${error.message}`);
+    logger.error(
+      `Failed to fetch version for ${packageName}: ${error instanceof Error ? error.message : String(error)}`
+    );
     return null;
   }
 }

@@ -87,7 +87,9 @@ export async function startAgent(options: OptionValues): Promise<void> {
           }
         } catch (error) {
           console.error('Error reading or parsing local JSON file:', error);
-          throw new Error(`Failed to read or parse local JSON file: ${error.message}`);
+          throw new Error(
+            `Failed to read or parse local JSON file: ${error instanceof Error ? error.message : String(error)}`
+          );
         }
       }
 

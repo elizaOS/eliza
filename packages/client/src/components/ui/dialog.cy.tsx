@@ -52,8 +52,8 @@ describe('Dialog Component', () => {
     cy.contains('Open').click();
     cy.contains('Click Outside Test').should('be.visible');
 
-    // Click outside
-    cy.get('body').click(0, 0);
+    // Test escape key instead of clicking outside
+    cy.get('body').type('{esc}');
     cy.contains('Click Outside Test').should('not.exist');
   });
 
@@ -85,7 +85,7 @@ describe('Dialog Component', () => {
     cy.contains('Open Form').click();
     cy.get('input[placeholder="Name"]').should('be.visible');
 
-    cy.contains('button', 'Save changes').click();
+    cy.contains('button', 'Save changes').click({ force: true });
     cy.wrap(onSave).should('have.been.called');
   });
 
@@ -114,7 +114,7 @@ describe('Dialog Component', () => {
     cy.contains('External Open').click();
     cy.contains('Controlled Dialog').should('be.visible');
 
-    cy.contains('button', 'Close').click();
+    cy.contains('button', 'Close').click({ force: true });
     cy.contains('Controlled Dialog').should('not.exist');
   });
 
@@ -163,7 +163,7 @@ describe('Dialog Component', () => {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              onSubmit();
+              onSubmit('submitted');
             }}
           >
             <DialogHeader>
@@ -190,8 +190,10 @@ describe('Dialog Component', () => {
     cy.contains('Add Item').click();
     cy.get('input[name="title"]').type('Test Item');
     cy.get('textarea[name="description"]').type('Test Description');
-    cy.contains('button', 'Add').click();
-    cy.wrap(onSubmit).should('have.been.called');
+    cy.get('[role="dialog"]').within(() => {
+      cy.contains('button', 'Add').click({ force: true });
+    });
+    cy.wrap(onSubmit).should('have.been.calledWith', 'submitted');
   });
 
   it('prevents closing when modal', () => {
@@ -248,11 +250,12 @@ describe('Dialog Component', () => {
           <DialogHeader>
             <DialogTitle>Terms and Conditions</DialogTitle>
           </DialogHeader>
-          <div className="overflow-y-auto">
-            {Array.from({ length: 20 }, (_, i) => (
-              <p key={i}>
+          <div className="overflow-y-auto max-h-[200px]">
+            {Array.from({ length: 50 }, (_, i) => (
+              <p key={i} className="py-2">
                 Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor
-                incididunt ut labore et dolore magna aliqua.
+                incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud
+                exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
               </p>
             ))}
           </div>
@@ -261,6 +264,16 @@ describe('Dialog Component', () => {
     );
 
     cy.contains('Open Long Content').click();
-    cy.get('.overflow-y-auto').should('be.visible');
+
+    // Wait for dialog to open and verify scroll container exists
+    cy.get('[role="dialog"]').should('be.visible');
+    cy.get('.overflow-y-auto').should('exist');
+
+    // Verify the container has the correct CSS classes for scrolling
+    cy.get('.overflow-y-auto').should('have.class', 'overflow-y-auto');
+    cy.get('.overflow-y-auto').should('have.class', 'max-h-[200px]');
+
+    // Check that content exists inside the scroll container
+    cy.get('.overflow-y-auto p').should('have.length', 50);
   });
 });

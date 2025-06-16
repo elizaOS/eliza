@@ -1,5 +1,4 @@
 import type { Agent, MessageExample } from '@elizaos/core';
-import { logger } from '@elizaos/core';
 import colors from 'yoctocolors';
 
 /**
@@ -13,7 +12,7 @@ export function displayAgent(data: Partial<Agent>, title = 'Agent Review'): void
   console.log(`Username: ${data.username || data.name?.toLowerCase().replace(/\s+/g, '_')}`);
 
   // Display sections
-  displaySection('Bio', Array.isArray(data.bio) ? data.bio : [data.bio]);
+  displaySection('Bio', Array.isArray(data.bio) ? data.bio : data.bio ? [data.bio] : undefined);
   displaySection('Adjectives', data.adjectives);
   displaySection('Topics', data.topics);
   displaySection('Plugins', data.plugins);

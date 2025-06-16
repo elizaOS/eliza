@@ -1,10 +1,17 @@
 import type { Agent, UUID } from '@elizaos/core';
 import { AgentStatus } from '@elizaos/core';
+import * as crypto from 'crypto';
 
-// Mock data generators
+// Helper function to generate a secure random string
+const generateSecureRandomString = (length: number): string => {
+  const array = new Uint8Array(length);
+  crypto.getRandomValues(array);
+  return Array.from(array, byte => (byte % 36).toString(36)).join('');
+};
+
 export const generateMockAgent = (overrides?: Partial<Agent>): Agent => {
   const id = overrides?.id || generateUUID();
-  const name = overrides?.name || `Test Agent ${Math.random().toString(36).substring(7)}`;
+  const name = overrides?.name || `Test Agent ${generateSecureRandomString(7)}`;
   
   return {
     id,

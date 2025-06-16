@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeAll, afterAll  , vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, execSync } from 'child_process';
 import { mkdtemp, rm, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { TEST_TIMEOUTS } from '../test-timeouts';
+import { waitForServerReady } from './test-utils';
 
 describe('ElizaOS Agent Commands', () => {
   let serverProcess: any;
@@ -20,7 +21,7 @@ describe('ElizaOS Agent Commands', () => {
 
     // Setup CLI command
     const scriptDir = join(__dirname, '..');
-    elizaosCmd = `bun run ${join(scriptDir, '../dist/index.js')}`;
+    elizaosCmd = `bun ${join(scriptDir, '../dist/index.js')}`;
 
     // Kill any existing processes on port 3000
     try {
@@ -38,7 +39,7 @@ describe('ElizaOS Agent Commands', () => {
 
     serverProcess = spawn(
       'bun',
-      ['run', join(scriptDir, '../dist/index.js'), 'start', '--port', testServerPort],
+      [join(scriptDir, '../dist/index.js'), 'start', '--port', testServerPort],
       {
         env: {
           ...process.env,
@@ -50,27 +51,9 @@ describe('ElizaOS Agent Commands', () => {
     );
 
     // Wait for server to be ready
-    let attempts = 0;
-    const maxAttempts = 30;
-
-    while (attempts < maxAttempts) {
-      try {
-        const response = await fetch(`${testServerUrl}/api/agents`);
-        if (response.ok) {
-          console.log('[DEBUG] Server is ready!');
-          break;
-        }
-      } catch (e) {
-        // Server not ready yet
-      }
-
-      if (attempts === maxAttempts - 1) {
-        throw new Error('Server did not start within timeout');
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
-      attempts++;
-    }
+    console.log('[DEBUG] Waiting for server to be ready...');
+    await waitForServerReady(parseInt(testServerPort, 10));
+    console.log('[DEBUG] Server is ready!');
 
     // Pre-load test characters
     const charactersDir = join(scriptDir, 'test-characters');
@@ -94,12 +77,26 @@ describe('ElizaOS Agent Commands', () => {
 
     // Give characters time to register
     await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
-  }, TEST_TIMEOUTS.SUITE_TIMEOUT); // Suite timeout for setup
+  });
 
   afterAll(async () => {
     if (serverProcess) {
-      serverProcess.kill();
-      await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
+      try {
+        if (process.platform === 'win32') {
+          // On Windows, use SIGKILL for more reliable termination
+          serverProcess.kill('SIGKILL');
+        } else {
+          serverProcess.kill();
+        }
+        await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
+        
+        // Wait for process to actually exit
+        if (!serverProcess.killed && serverProcess.exitCode === null) {
+          await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.PROCESS_CLEANUP));
+        }
+      } catch (e) {
+        // Ignore cleanup errors
+      }
     }
 
     if (testTmpDir) {

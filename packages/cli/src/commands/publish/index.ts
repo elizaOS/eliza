@@ -33,13 +33,7 @@ import { getNpmUsername } from './utils/authentication';
 import { checkCliVersion } from './utils/version-check';
 
 // Import types
-import {
-  PublishOptions,
-  PackageJson,
-  Credentials,
-  DirectoryInfo,
-  PlaceholderReplacement,
-} from './types';
+import { PublishOptions, PackageJson, Credentials, PlaceholderReplacement } from './types';
 
 // Constants
 const LOCAL_REGISTRY_PATH = 'packages/registry';
@@ -231,39 +225,49 @@ export const publish = new Command()
         // Repository URL placeholder (only for GitHub publishing)
         '${REPO_URL}': {
           check: () =>
-            !opts.npm &&
-            credentials &&
-            packageJson.repository &&
-            (packageJson.repository.url === '${REPO_URL}' || packageJson.repository.url === ''),
+            !!(
+              !opts.npm &&
+              credentials &&
+              packageJson.repository &&
+              (packageJson.repository.url === '${REPO_URL}' || packageJson.repository.url === '')
+            ),
           replace: () => {
             if (!packageJson.repository) {
               packageJson.repository = { type: 'git', url: '' };
             }
-            packageJson.repository.url = `github:${credentials.username}/${pluginDirName}`;
-            console.info(`Set repository: ${packageJson.repository.url}`);
+            if (credentials) {
+              packageJson.repository.url = `github:${credentials.username}/${pluginDirName}`;
+              console.info(`Set repository: ${packageJson.repository.url}`);
+            }
           },
         },
         // Author placeholder (only for GitHub publishing)
         '${GITHUB_USERNAME}': {
-          check: () => !opts.npm && credentials && packageJson.author === '${GITHUB_USERNAME}',
+          check: () => !!(!opts.npm && credentials && packageJson.author === '${GITHUB_USERNAME}'),
           replace: () => {
-            packageJson.author = credentials.username;
-            console.info(`Set author: ${packageJson.author}`);
+            if (credentials) {
+              packageJson.author = credentials.username;
+              console.info(`Set author: ${packageJson.author}`);
+            }
           },
         },
         // Bugs URL placeholder (only for GitHub publishing)
         'bugs-placeholder': {
           check: () =>
-            !opts.npm &&
-            credentials &&
-            packageJson.bugs &&
-            packageJson.bugs.url &&
-            packageJson.bugs.url.includes('${GITHUB_USERNAME}'),
+            !!(
+              !opts.npm &&
+              credentials &&
+              packageJson.bugs &&
+              packageJson.bugs.url &&
+              packageJson.bugs.url.includes('${GITHUB_USERNAME}')
+            ),
           replace: () => {
-            packageJson.bugs.url = packageJson.bugs.url
-              .replace('${GITHUB_USERNAME}', credentials.username)
-              .replace('${PLUGINNAME}', pluginDirName);
-            console.info(`Set bugs URL: ${packageJson.bugs.url}`);
+            if (packageJson.bugs?.url && credentials) {
+              packageJson.bugs.url = packageJson.bugs.url
+                .replace('${GITHUB_USERNAME}', credentials.username)
+                .replace('${PLUGINNAME}', pluginDirName);
+              console.info(`Set bugs URL: ${packageJson.bugs.url}`);
+            }
           },
         },
       };
@@ -345,7 +349,6 @@ export const publish = new Command()
 
         console.info('\nTesting GitHub publishing:');
         const githubTestSuccess = await testPublishToGitHub(
-          cwd,
           packageJson,
           credentials?.username || ''
         );
@@ -387,12 +390,11 @@ export const publish = new Command()
       packageMetadata.npmPackage = packageJson.name;
 
       // Step 2: Publish to GitHub and registry (unless --npm flag is used for npm-only)
-      if (!opts.npm) {
+      if (!opts.npm && credentials) {
         try {
           publishResult = await publishToGitHubAction(
             cwd,
             packageJson,
-            cliVersion,
             credentials,
             opts.skipRegistry,
             false
@@ -419,7 +421,7 @@ export const publish = new Command()
       }
 
       // Handle registry publication messaging
-      displayRegistryPublicationMessage(opts, userIsMaintainer, registryPrUrl);
+      displayRegistryPublicationMessage(opts, userIsMaintainer, registryPrUrl || undefined);
 
       console.log(`Successfully published plugin ${packageJson.name}@${packageJson.version}`);
 

@@ -21,12 +21,15 @@ export async function getAgent(opts: OptionValues): Promise<void> {
     // API Endpoint: GET /agents/:agentId
     const response = await fetch(`${baseUrl}/${resolvedAgentId}`);
     if (!response.ok) {
-      const errorData = (await response.json()) as ApiResponse<unknown>;
       logger.error(`Failed to get agent`);
       process.exit(1);
     }
 
     const { data: agent } = (await response.json()) as ApiResponse<Agent>;
+
+    if (!agent) {
+      throw new Error('No agent data received from server');
+    }
 
     // Save to file if output option is specified - exit early
     if (opts.output !== undefined) {
@@ -105,13 +108,17 @@ export async function setAgentConfig(opts: OptionValues): Promise<void> {
       try {
         config = JSON.parse(opts.config);
       } catch (error) {
-        throw new Error(`Failed to parse config JSON string: ${error.message}`);
+        throw new Error(
+          `Failed to parse config JSON string: ${error instanceof Error ? error.message : String(error)}`
+        );
       }
     } else if (opts.file) {
       try {
         config = JSON.parse(fs.readFileSync(opts.file, 'utf8'));
       } catch (error) {
-        throw new Error(`Failed to read or parse config file: ${error.message}`);
+        throw new Error(
+          `Failed to read or parse config file: ${error instanceof Error ? error.message : String(error)}`
+        );
       }
     } else {
       throw new Error('Please provide either a config JSON string (-c) or a config file path (-f)');

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/cli",
-  "version": "1.0.6",
+  "version": "1.0.9",
   "description": "elizaOS CLI - Manage your AI agents and plugins",
   "publishConfig": {
     "access": "public",
@@ -33,7 +33,7 @@
   },
   "scripts": {
     "start": "bun run build && node dist/index.js start",
-    "build": "npx tsup && bun run src/scripts/copy-client-dist.ts && bun run src/scripts/copy-templates.ts",
+    "build": "npx tsup && bun run src/scripts/copy-client-dist.ts && bun run src/scripts/copy-templates.ts && node -e \"require('fs').cpSync('templates', 'dist/templates', {recursive: true, force: true})\"",
     "lint": "prettier --write ./src",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
@@ -60,6 +60,7 @@
     "@types/babel__core": "^7.20.1",
     "@types/diff": "^5.0.3",
     "@types/fs-extra": "^11.0.1",
+    "@types/inquirer": "^9.0.8",
     "@types/lodash": "^4.17.7",
     "@types/node": "^22.15.3",
     "@types/prompts": "^2.4.2",
@@ -67,6 +68,7 @@
     "axios": "^1.7.9",
     "bats-assert": "^2.0.0",
     "bats-support": "^0.3.0",
+    "bun-types": "^1.2.16",
     "commander": "^10.0.0",
     "diff": "^5.1.0",
     "dotenv": "^16.5.0",
@@ -115,6 +117,7 @@
     "express": "^5.1.0",
     "express-rate-limit": "^7.5.0",
     "helmet": "^8.1.0",
+    "inquirer": "^12.6.3",
     "multer": "^2.0.0",
     "octokit": "^4.1.3",
     "path-to-regexp": "^8.2.0",

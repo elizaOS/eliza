@@ -22,7 +22,7 @@ dist-ssr
 *.sln
 *.sw?
 
-src/lib/info.json
+# src/lib/info.json
 
 # Cypress test artifacts
 cypress/videos/

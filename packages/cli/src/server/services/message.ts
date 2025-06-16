@@ -11,17 +11,14 @@ import {
   type Plugin,
   type UUID,
 } from '@elizaos/core';
-// TODO: Fix these imports - they reference files that don't exist
-// import internalMessageBus from '../bus'; // Import the bus
-// import { sendError } from '../api/shared';
 
-// Temporary stub for missing dependencies
 const internalMessageBus = {
-  on: (event: string, handler: any) => {},
-  off: (event: string, handler: any) => {},
-  emit: (event: string, data: any) => {},
+  on: (_event: string, _handler: any) => {},
+  off: (_event: string, _handler: any) => {},
+  emit: (_event: string, _data: any) => {},
+  once: (_event: string, _handler: any) => {},
+  removeAllListeners: (_event?: string) => {},
 };
-const sendError = (ws: any, error: string) => {};
 
 // This interface defines the structure of messages coming from the server
 export interface MessageServiceMessage {
@@ -191,7 +188,7 @@ export class MessageBusService extends Service {
         },
       });
     } catch (error) {
-      if (error.message && error.message.includes('worlds_pkey')) {
+      if (error instanceof Error && error.message && error.message.includes('worlds_pkey')) {
         logger.debug(
           `[${this.runtime.character.name}] MessageBusService: World ${agentWorldId} already exists, continuing with message processing`
         );
@@ -215,7 +212,7 @@ export class MessageBusService extends Service {
         },
       });
     } catch (error) {
-      if (error.message && error.message.includes('rooms_pkey')) {
+      if (error instanceof Error && error.message && error.message.includes('rooms_pkey')) {
         logger.debug(
           `[${this.runtime.character.name}] MessageBusService: Room ${agentRoomId} already exists, continuing with message processing`
         );
@@ -319,12 +316,14 @@ export class MessageBusService extends Service {
       );
 
       // Check if this memory already exists (in case of duplicate processing)
-      const existingMemory = await this.runtime.getMemoryById(agentMemory.id);
-      if (existingMemory) {
-        logger.debug(
-          `[${this.runtime.character.name}] MessageBusService: Memory ${agentMemory.id} already exists, skipping duplicate processing`
-        );
-        return;
+      if (agentMemory.id) {
+        const existingMemory = await this.runtime.getMemoryById(agentMemory.id);
+        if (existingMemory) {
+          logger.debug(
+            `[${this.runtime.character.name}] MessageBusService: Memory ${agentMemory.id} already exists, skipping duplicate processing`
+          );
+          return;
+        }
       }
 
       const callbackForCentralBus = async (responseContent: Content): Promise<Memory[]> => {

@@ -20,7 +20,7 @@ const TEMPLATES_DIR = path.resolve(ROOT_DIR, 'packages/cli/templates');
 /**
  * Updates package.json with the CLI version and replaces workspace references
  */
-async function updatePackageJson(packagePath, cliVersion, isPluginStarter = false) {
+async function updatePackageJson(packagePath: string, cliVersion: string) {
   const packageJsonContent = await fs.readFile(packagePath, 'utf-8');
   const packageData = JSON.parse(packageJsonContent);
 
@@ -100,7 +100,7 @@ async function main() {
 
       // Update package.json with correct version
       const packageJsonPath = path.resolve(template.dest, 'package.json');
-      await updatePackageJson(packageJsonPath, cliVersion, template.name === 'plugin-starter');
+      await updatePackageJson(packageJsonPath, cliVersion);
     }
 
     console.log('Templates have been copied and updated successfully.');

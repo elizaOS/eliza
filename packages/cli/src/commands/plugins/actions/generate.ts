@@ -32,7 +32,9 @@ export async function generatePlugin(opts: GeneratePluginOptions): Promise<void>
         const specContent = fs.readFileSync(opts.specFile, 'utf-8');
         spec = JSON.parse(specContent);
       } catch (error) {
-        logger.error(`Failed to read or parse spec file: ${error.message}`);
+        logger.error(
+          `Failed to read or parse spec file: ${error instanceof Error ? error.message : String(error)}`
+        );
         process.exit(1);
       }
     } else if (opts.skipPrompts) {
@@ -58,7 +60,7 @@ export async function generatePlugin(opts: GeneratePluginOptions): Promise<void>
       console.log(`   Location: ${result.pluginPath}`);
       console.log(`\nThe plugin has been created in your current directory.`);
       console.log(`\nNext steps:`);
-      console.log(`1. cd ${path.basename(result.pluginPath)}`);
+      console.log(`1. cd ${path.basename(result.pluginPath ?? '')}`);
       console.log(`2. Review the generated code`);
       console.log(`3. Test the plugin: bun test`);
       console.log(`4. Add to your ElizaOS project`);

@@ -1,4 +1,3 @@
-import { AgentServer } from '@elizaos/server';
 import {
   AgentRuntime,
   encryptedCharacter,
@@ -9,10 +8,11 @@ import {
   type Plugin,
 } from '@elizaos/core';
 import { plugin as sqlPlugin } from '@elizaos/plugin-sql';
-import { AgentStartConfig, AgentStartOptions } from '../types';
+import { AgentServer } from '@elizaos/server';
+import { AgentStartOptions } from '../types';
+import { loadEnvConfig } from '../utils/config-utils';
 import { resolvePluginDependencies } from '../utils/dependency-resolver';
 import { isValidPluginShape, loadAndPreparePlugin } from '../utils/plugin-utils';
-import { loadEnvConfig } from '../utils/config-utils';
 
 /**
  * Start an agent with the given configuration

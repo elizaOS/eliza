@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { TestRunner } from '../../../src/utils/test-runner';
-import type { IAgentRuntime, Plugin, ProjectAgent, TestSuite, Character } from '@elizaos/core';
+import type { IAgentRuntime, Plugin, ProjectAgent, Character } from '@elizaos/core';
 
 // Mock the logger
 vi.mock('@elizaos/core', async (importOriginal) => {
@@ -257,7 +257,9 @@ describe('TestRunner Plugin Isolation', () => {
       expect(pluginTests?.fn).toHaveBeenCalled();
       
       // Project test should not run
-      const projectTests = projectAgent.tests?.[0]?.tests?.[0];
+      const projectTests = projectAgent.tests && Array.isArray(projectAgent.tests) && projectAgent.tests.length > 0 
+        ? projectAgent.tests[0].tests?.[0] 
+        : undefined;
       expect(projectTests?.fn).not.toHaveBeenCalled();
     });
 

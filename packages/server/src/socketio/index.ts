@@ -6,7 +6,6 @@ import {
   ChannelType,
   type UUID,
   EventType,
-  createUniqueUuid,
 } from '@elizaos/core';
 import type { Socket, Server as SocketIOServer } from 'socket.io';
 import type { AgentServer } from '../index';

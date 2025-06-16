@@ -4,7 +4,6 @@ import fs from 'node:fs';
 import path, { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execa } from 'execa';
-import { yellow } from 'yoctocolors';
 
 // Function to get the package version
 // --- Utility: Get local CLI version from package.json ---
@@ -152,7 +151,6 @@ export async function displayBanner(skipUpdateCheck: boolean = false) {
   const w = '\x1b[38;5;255m';
   const r = '\x1b[0m';
   const orange = '\x1b[38;5;208m';
-  const green = '\x1b[38;5;118m';
   let versionColor = lightblue;
 
   const version = getVersion();

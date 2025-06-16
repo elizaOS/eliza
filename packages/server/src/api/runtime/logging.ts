@@ -41,7 +41,7 @@ export function createLoggingRouter(
   const router = express.Router();
 
   // Logs endpoint handler
-  const logsHandler = (req, res) => {
+  const logsHandler = async (req: express.Request, res: express.Response) => {
     const since = req.query.since ? Number(req.query.since) : Date.now() - 3600000; // Default 1 hour
     const requestedLevel = (req.query.level?.toString().toLowerCase() || 'all') as LogLevel;
     const requestedAgentName = req.query.agentName?.toString() || 'all';
@@ -61,7 +61,10 @@ export function createLoggingRouter(
     try {
       // Get logs from the destination's buffer
       const recentLogs: LogEntry[] = destination.recentLogs();
-      const requestedLevelValue = LOG_LEVELS[requestedLevel] || LOG_LEVELS.info;
+      const requestedLevelValue =
+        requestedLevel === 'all'
+          ? 0 // Show all levels when 'all' is requested
+          : LOG_LEVELS[requestedLevel as keyof typeof LOG_LEVELS] || LOG_LEVELS.info;
 
       // Calculate population rates once for efficiency
       const logsWithAgentNames = recentLogs.filter((l) => l.agentName).length;
@@ -154,11 +157,11 @@ export function createLoggingRouter(
   };
 
   // GET and POST endpoints for logs
-  router.get('/logs', logsHandler);
-  router.post('/logs', logsHandler);
+  (router as any).get('/logs', logsHandler);
+  (router as any).post('/logs', logsHandler);
 
   // Handler for clearing logs
-  const logsClearHandler = (_req, res) => {
+  const logsClearHandler = (_req: express.Request, res: express.Response) => {
     try {
       // Access the underlying logger instance
       const destination = (logger as any)[Symbol.for('pino-destination')];
@@ -184,7 +187,7 @@ export function createLoggingRouter(
   };
 
   // DELETE endpoint for clearing logs
-  router.delete('/logs', logsClearHandler);
+  (router as any).delete('/logs', logsClearHandler);
 
   return router;
 }

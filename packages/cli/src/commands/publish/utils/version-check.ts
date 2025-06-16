@@ -70,6 +70,6 @@ export async function checkCliVersion(): Promise<string> {
     return currentVersion;
   } catch (error) {
     console.warn('Could not check for CLI updates');
-    return null;
+    return '0.0.0';
   }
 }

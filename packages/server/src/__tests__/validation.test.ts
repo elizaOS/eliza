@@ -153,7 +153,14 @@ describe('Validation Functions', () => {
 
   describe('getRuntime', () => {
     it('should return runtime when agent exists', () => {
-      const mockRuntime = { id: 'test-runtime' } as unknown as IAgentRuntime;
+      const mockRuntime = { 
+        agentId: '123e4567-e89b-12d3-a456-426614174000' as UUID,
+        character: {},
+        providers: [],
+        actions: [],
+        evaluators: [],
+        services: new Map(),
+      } as unknown as IAgentRuntime;
       const agentId = '123e4567-e89b-12d3-a456-426614174000' as UUID;
       const agents = new Map<UUID, IAgentRuntime>();
       agents.set(agentId, mockRuntime);

@@ -92,8 +92,7 @@ vi.mock('commander', async () => {
   return {
     ...actual,
     Command: class MockCommand extends actual.Command {
-      parseAsync(...args: any[]) {
-        // Don't actually parse to avoid running the main function
+      parseAsync() {
         return Promise.resolve(this);
       }
     }

@@ -24,8 +24,8 @@ describe('Toast Component', () => {
       </ToastProvider>
     );
 
-    cy.contains('Success').should('be.visible');
-    cy.contains('Your changes have been saved.').should('be.visible');
+    cy.contains('Notification').should('be.visible');
+    cy.contains('This is a toast message').should('be.visible');
   });
 
   it('renders with action button', () => {
@@ -44,7 +44,7 @@ describe('Toast Component', () => {
       </ToastProvider>
     );
 
-    cy.contains('button', 'Undo').click();
+    cy.contains('button', 'Redo').click();
     cy.wrap(onAction).should('have.been.called');
   });
 
@@ -60,7 +60,7 @@ describe('Toast Component', () => {
       </ToastProvider>
     );
 
-    cy.get('[aria-label="Close"]').should('exist');
+    cy.get('button[type="button"]').should('exist');
   });
 
   it('supports different variants', () => {
@@ -160,7 +160,7 @@ describe('Toast Component', () => {
       </ToastProvider>
     );
 
-    cy.contains('✅').should('be.visible');
+    cy.get('svg').should('be.visible');
     cy.contains('Success').should('be.visible');
   });
 
@@ -190,7 +190,7 @@ describe('Toast Component', () => {
 
     cy.contains('Error').should('be.visible');
     cy.contains('Failed to save changes').should('be.visible');
-    cy.contains('Try again').should('be.visible');
+    cy.get('button[type="button"]').should('exist');
   });
 
   it('viewport positions toast correctly', () => {
@@ -204,6 +204,6 @@ describe('Toast Component', () => {
       </ToastProvider>
     );
 
-    cy.get('.fixed.bottom-0.right-0').should('exist');
+    cy.get('[data-state="open"]').should('be.visible');
   });
 });

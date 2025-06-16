@@ -40,7 +40,7 @@ export async function upgradePlugin(pluginPath: string, opts: UpgradePluginOptio
       console.log(`   Location: ${result.repoPath}`);
       console.log(`\nThe upgraded plugin has been copied to your current directory.`);
       console.log(`\nNext steps:`);
-      console.log(`1. cd ${path.basename(result.repoPath)}`);
+      console.log(`1. cd ${path.basename(result.repoPath ?? '')}`);
       console.log(`2. Review the changes`);
       console.log(`3. Test the upgraded plugin thoroughly`);
       console.log(`4. Push to GitHub and create a pull request when ready`);

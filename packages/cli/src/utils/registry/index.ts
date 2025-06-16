@@ -116,7 +116,9 @@ export async function getGitHubToken(): Promise<string | undefined> {
       return env.GITHUB_TOKEN;
     }
   } catch (error) {
-    logger.debug(`Error reading GitHub token: ${error.message}`);
+    logger.debug(
+      `Error reading GitHub token: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
   return undefined;
 }
@@ -156,11 +158,11 @@ export async function setGitHubToken(token: string) {
 
     logger.debug('GitHub token saved successfully');
   } catch (error) {
-    logger.error(`Failed to save GitHub token: ${error.message}`);
+    logger.error(
+      `Failed to save GitHub token: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 }
-
-const agent = process.env.https_proxy ? new HttpsProxyAgent(process.env.https_proxy) : undefined;
 
 /**
  * Normalizes a package name by removing scope prefixes
@@ -227,7 +229,9 @@ export async function saveRegistryCache(registry: Record<string, string>): Promi
     await fs.writeFile(REGISTRY_CACHE_FILE, JSON.stringify(registry, null, 2));
     logger.debug('Registry cache saved successfully');
   } catch (error) {
-    logger.debug(`Failed to save registry cache: ${error.message}`);
+    logger.debug(
+      `Failed to save registry cache: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 }
 
@@ -264,7 +268,9 @@ export async function getLocalRegistryIndex(): Promise<Record<string, string>> {
       }
     }
   } catch (error) {
-    logger.debug(`Failed to fetch registry from public URL: ${error.message}`);
+    logger.debug(
+      `Failed to fetch registry from public URL: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 
   // If fetching fails, try to read from cache
@@ -276,7 +282,9 @@ export async function getLocalRegistryIndex(): Promise<Record<string, string>> {
       return cachedRegistry;
     }
   } catch (error) {
-    logger.debug(`Failed to read registry cache: ${error.message}`);
+    logger.debug(
+      `Failed to read registry cache: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 
   // If we're in a monorepo context, try to discover local plugins
@@ -299,7 +307,9 @@ export async function getLocalRegistryIndex(): Promise<Record<string, string>> {
       // Merge with default registry, prioritizing local packages
       return { ...DEFAULT_REGISTRY, ...localRegistry };
     } catch (error) {
-      logger.debug(`Failed to discover local plugins: ${error.message}`);
+      logger.debug(
+        `Failed to discover local plugins: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 
@@ -426,7 +436,9 @@ export async function getPluginRepository(pluginName: string): Promise<string | 
 
     return null;
   } catch (error) {
-    logger.debug(`Error getting plugin repository: ${error.message}`);
+    logger.debug(
+      `Error getting plugin repository: ${error instanceof Error ? error.message : String(error)}`
+    );
     return null;
   }
 }
@@ -446,7 +458,9 @@ export async function repoHasBranch(repoUrl: string, branchName: string): Promis
     const { stdout } = await execa('git', ['ls-remote', '--heads', repoUrl, branchName]);
     return stdout.includes(branchName);
   } catch (error) {
-    logger.warn(`Failed to check for branch ${branchName} in ${repoUrl}: ${error.message}`);
+    logger.warn(
+      `Failed to check for branch ${branchName} in ${repoUrl}: ${error instanceof Error ? error.message : String(error)}`
+    );
     return false;
   }
 }
@@ -541,7 +555,9 @@ export async function getPluginVersion(
       return packageDetails.latestVersion;
     }
   } catch (error) {
-    logger.debug(`Error getting package details: ${error.message}`);
+    logger.debug(
+      `Error getting package details: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 
   // Fallback to a reasonable default version
@@ -606,7 +622,9 @@ export async function getPackageDetails(packageName: string): Promise<{
       return null;
     }
   } catch (error) {
-    logger.warn(`Failed to fetch package details from registry: ${error.message}`);
+    logger.warn(
+      `Failed to fetch package details from registry: ${error instanceof Error ? error.message : String(error)}`
+    );
     return null;
   }
 }
@@ -629,10 +647,8 @@ export async function getBestPluginVersion(
   }
 
   // Parse the runtime version for semver matching
-  const [runtimeMajor, runtimeMinor, runtimePatch] = runtimeVersion.split('.').map(Number);
-  const [packageMajor, packageMinor, packagePatch] = packageDetails.runtimeVersion
-    .split('.')
-    .map(Number);
+  const [runtimeMajor, runtimeMinor] = runtimeVersion.split('.').map(Number);
+  const [packageMajor, packageMinor] = packageDetails.runtimeVersion.split('.').map(Number);
 
   // If major version is different, warn but still return the latest
   if (runtimeMajor !== packageMajor) {

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach  , vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { execSync } from 'child_process';
 import { mkdtemp, rm, writeFile } from 'fs/promises';
 import { join } from 'path';
@@ -21,7 +21,7 @@ describe('ElizaOS Update Commands', () => {
 
     // Setup CLI command
     const scriptDir = join(__dirname, '..');
-    elizaosCmd = `bun run ${join(scriptDir, '../dist/index.js')}`;
+    elizaosCmd = `bun ${join(scriptDir, '../dist/index.js')}`;
   });
 
   afterEach(async () => {

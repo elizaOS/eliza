@@ -1,9 +1,7 @@
 import { logger } from '@elizaos/core';
-import { spawn } from 'node:child_process';
 import { UserEnvironment } from './user-environment';
 import { displayBunInstallationTipCompact } from './bun-installation-helper';
 import { runBunCommand } from './run-bun';
-import which from 'which';
 import fs from 'node:fs';
 import path from 'node:path';
 import { execa } from 'execa';

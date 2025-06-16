@@ -12,7 +12,7 @@ const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
 // Using Express.Multer.File type instead of importing from multer directly
 type MulterFile = Express.Multer.File;
 
-interface ChannelUploadRequest extends express.Request {
+interface ChannelUploadRequest extends express.Request<{ channelId: string }> {
   file?: MulterFile;
   params: {
     channelId: string;
@@ -26,265 +26,270 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
   const router = express.Router();
 
   // GUI posts NEW messages from a user here
-  // @ts-ignore - Express type issue with async handlers
-  router.post('/central-channels/:channelId/messages', async (req, res) => {
-    const channelIdParam = validateUuid(req.params.channelId);
-    const {
-      author_id, // This is the GUI user's central ID
-      content,
-      in_reply_to_message_id, // Central root_message.id
-      server_id, // Central server_id this channel belongs to
-      raw_message,
-      metadata, // Should include user_display_name
-      source_type, // Should be something like 'eliza_gui'
-    } = req.body;
+  (router as any).post(
+    '/central-channels/:channelId/messages',
+    async (req: express.Request, res: express.Response) => {
+      const channelIdParam = validateUuid(req.params.channelId);
+      const {
+        author_id, // This is the GUI user's central ID
+        content,
+        in_reply_to_message_id, // Central root_message.id
+        server_id, // Central server_id this channel belongs to
+        raw_message,
+        metadata, // Should include user_display_name
+        source_type, // Should be something like 'eliza_gui'
+      } = req.body;
 
-    // Special handling for default server ID "0"
-    const isValidServerId = server_id === DEFAULT_SERVER_ID || validateUuid(server_id);
+      // Special handling for default server ID "0"
+      const isValidServerId = server_id === DEFAULT_SERVER_ID || validateUuid(server_id);
 
-    if (!channelIdParam || !validateUuid(author_id) || !content || !isValidServerId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing required fields: channelId, server_id, author_id, content',
-      });
-    }
-
-    try {
-      // Ensure the channel exists before creating the message
-      logger.info(
-        `[Messages Router] Checking if channel ${channelIdParam} exists before creating message`
-      );
-      let channelExists = false;
-      try {
-        const existingChannel = await serverInstance.getChannelDetails(channelIdParam);
-        channelExists = !!existingChannel;
-        logger.info(`[Messages Router] Channel ${channelIdParam} exists: ${channelExists}`);
-      } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        logger.info(
-          `[Messages Router] Channel ${channelIdParam} does not exist, will create it. Error: ${errorMessage}`
-        );
-      }
-
-      if (!channelExists) {
-        // Auto-create the channel if it doesn't exist
-        logger.info(
-          `[Messages Router] Auto-creating channel ${channelIdParam} with serverId ${server_id}`
-        );
-        try {
-          // First verify the server exists
-          const servers = await serverInstance.getServers();
-          const serverExists = servers.some((s) => s.id === server_id);
-          logger.info(
-            `[Messages Router] Server ${server_id} exists: ${serverExists}. Available servers: ${servers.map((s) => s.id).join(', ')}`
-          );
-
-          if (!serverExists) {
-            logger.error(
-              `[Messages Router] Server ${server_id} does not exist, cannot create channel`
-            );
-            return res
-              .status(500)
-              .json({ success: false, error: `Server ${server_id} does not exist` });
-          }
-
-          // Determine if this is likely a DM based on the context
-          const isDmChannel =
-            metadata?.isDm ||
-            metadata?.channelType === ChannelType.DM ||
-            metadata?.channel_type === ChannelType.DM;
-
-          const channelData = {
-            id: channelIdParam as UUID, // Use the specific channel ID from the URL
-            messageServerId: server_id as UUID,
-            name: isDmChannel
-              ? `DM ${channelIdParam.substring(0, 8)}`
-              : `Chat ${channelIdParam.substring(0, 8)}`,
-            type: isDmChannel ? ChannelType.DM : ChannelType.GROUP,
-            sourceType: 'auto_created',
-            metadata: {
-              created_by: 'gui_auto_creation',
-              created_for_user: author_id,
-              created_at: new Date().toISOString(),
-              channel_type: isDmChannel ? ChannelType.DM : ChannelType.GROUP,
-              ...metadata,
-            },
-          };
-
-          logger.info(
-            '[Messages Router] Creating channel with data:',
-            JSON.stringify(channelData, null, 2)
-          );
-
-          // For DM channels, we need to determine the participants
-          const participants = [author_id as UUID];
-          if (isDmChannel) {
-            // Try to extract the other participant from metadata
-            const otherParticipant = metadata?.targetUserId || metadata?.recipientId;
-            if (otherParticipant && validateUuid(otherParticipant)) {
-              participants.push(otherParticipant as UUID);
-              logger.info(
-                `[Messages Router] DM channel will include participants: ${participants.join(', ')}`
-              );
-            } else {
-              logger.warn(
-                `[Messages Router] DM channel missing second participant, only adding author: ${author_id}`
-              );
-            }
-          }
-
-          await serverInstance.createChannel(channelData, participants);
-          logger.info(
-            `[Messages Router] Auto-created ${isDmChannel ? ChannelType.DM : ChannelType.GROUP} channel ${channelIdParam} for message submission with ${participants.length} participants`
-          );
-        } catch (createError: unknown) {
-          const errorMessage =
-            createError instanceof Error ? createError.message : String(createError);
-          logger.error(
-            `[Messages Router] Failed to auto-create channel ${channelIdParam}:`,
-            createError
-          );
-          return res
-            .status(500)
-            .json({ success: false, error: `Failed to create channel: ${errorMessage}` });
-        }
-      } else {
-        logger.info(
-          `[Messages Router] Channel ${channelIdParam} already exists, proceeding with message creation`
-        );
-      }
-
-      const newRootMessageData = {
-        channelId: channelIdParam,
-        authorId: author_id as UUID,
-        content: content as string,
-        inReplyToRootMessageId: in_reply_to_message_id
-          ? validateUuid(in_reply_to_message_id)
-          : undefined,
-        rawMessage: raw_message,
-        metadata,
-        sourceType: source_type || 'eliza_gui',
-      };
-
-      const createdRootMessage = await serverInstance.createMessage(newRootMessageData);
-
-      if (!createdRootMessage.id) {
-        throw new Error('Created message does not have an ID');
-      }
-
-      const messageForBus: MessageService = {
-        id: createdRootMessage.id,
-        channel_id: createdRootMessage.channelId,
-        server_id: server_id as UUID,
-        author_id: createdRootMessage.authorId,
-        content: createdRootMessage.content,
-        created_at: new Date(createdRootMessage.createdAt).getTime(),
-        source_type: createdRootMessage.sourceType,
-        raw_message: createdRootMessage.rawMessage,
-        metadata: createdRootMessage.metadata,
-        author_display_name: metadata?.user_display_name, // Get from GUI payload
-        in_reply_to_message_id: createdRootMessage.inReplyToRootMessageId,
-        source_id: createdRootMessage.sourceId, // Will be undefined here, which is fine
-      };
-
-      internalMessageBus.emit('new_message', messageForBus);
-      logger.info(
-        '[Messages Router /central-channels/:channelId/messages] GUI Message published to internal bus:',
-        messageForBus.id
-      );
-
-      // Emit to SocketIO for real-time display in all connected GUIs
-      if (serverInstance.socketIO) {
-        serverInstance.socketIO.to(channelIdParam).emit('messageBroadcast', {
-          senderId: author_id,
-          senderName: metadata?.user_display_name || 'User',
-          text: content,
-          roomId: channelIdParam, // GUI uses central channelId as roomId for socket
-          serverId: server_id, // Client layer uses serverId
-          createdAt: messageForBus.created_at,
-          source: messageForBus.source_type,
-          id: messageForBus.id,
+      if (!channelIdParam || !validateUuid(author_id) || !content || !isValidServerId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Missing required fields: channelId, server_id, author_id, content',
         });
       }
 
-      res.status(201).json({ success: true, data: messageForBus });
-    } catch (error) {
-      logger.error(
-        '[Messages Router /central-channels/:channelId/messages] Error processing GUI message:',
-        error
-      );
-      res.status(500).json({ success: false, error: 'Failed to process message' });
+      try {
+        // Ensure the channel exists before creating the message
+        logger.info(
+          `[Messages Router] Checking if channel ${channelIdParam} exists before creating message`
+        );
+        let channelExists = false;
+        try {
+          const existingChannel = await serverInstance.getChannelDetails(channelIdParam);
+          channelExists = !!existingChannel;
+          logger.info(`[Messages Router] Channel ${channelIdParam} exists: ${channelExists}`);
+        } catch (error: unknown) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          logger.info(
+            `[Messages Router] Channel ${channelIdParam} does not exist, will create it. Error: ${errorMessage}`
+          );
+        }
+
+        if (!channelExists) {
+          // Auto-create the channel if it doesn't exist
+          logger.info(
+            `[Messages Router] Auto-creating channel ${channelIdParam} with serverId ${server_id}`
+          );
+          try {
+            // First verify the server exists
+            const servers = await serverInstance.getServers();
+            const serverExists = servers.some((s) => s.id === server_id);
+            logger.info(
+              `[Messages Router] Server ${server_id} exists: ${serverExists}. Available servers: ${servers.map((s) => s.id).join(', ')}`
+            );
+
+            if (!serverExists) {
+              logger.error(
+                `[Messages Router] Server ${server_id} does not exist, cannot create channel`
+              );
+              return res
+                .status(500)
+                .json({ success: false, error: `Server ${server_id} does not exist` });
+            }
+
+            // Determine if this is likely a DM based on the context
+            const isDmChannel =
+              metadata?.isDm ||
+              metadata?.channelType === ChannelType.DM ||
+              metadata?.channel_type === ChannelType.DM;
+
+            const channelData = {
+              id: channelIdParam as UUID, // Use the specific channel ID from the URL
+              messageServerId: server_id as UUID,
+              name: isDmChannel
+                ? `DM ${channelIdParam.substring(0, 8)}`
+                : `Chat ${channelIdParam.substring(0, 8)}`,
+              type: isDmChannel ? ChannelType.DM : ChannelType.GROUP,
+              sourceType: 'auto_created',
+              metadata: {
+                created_by: 'gui_auto_creation',
+                created_for_user: author_id,
+                created_at: new Date().toISOString(),
+                channel_type: isDmChannel ? ChannelType.DM : ChannelType.GROUP,
+                ...metadata,
+              },
+            };
+
+            logger.info(
+              '[Messages Router] Creating channel with data:',
+              JSON.stringify(channelData, null, 2)
+            );
+
+            // For DM channels, we need to determine the participants
+            const participants = [author_id as UUID];
+            if (isDmChannel) {
+              // Try to extract the other participant from metadata
+              const otherParticipant = metadata?.targetUserId || metadata?.recipientId;
+              if (otherParticipant && validateUuid(otherParticipant)) {
+                participants.push(otherParticipant as UUID);
+                logger.info(
+                  `[Messages Router] DM channel will include participants: ${participants.join(', ')}`
+                );
+              } else {
+                logger.warn(
+                  `[Messages Router] DM channel missing second participant, only adding author: ${author_id}`
+                );
+              }
+            }
+
+            await serverInstance.createChannel(channelData, participants);
+            logger.info(
+              `[Messages Router] Auto-created ${isDmChannel ? ChannelType.DM : ChannelType.GROUP} channel ${channelIdParam} for message submission with ${participants.length} participants`
+            );
+          } catch (createError: unknown) {
+            const errorMessage =
+              createError instanceof Error ? createError.message : String(createError);
+            logger.error(
+              `[Messages Router] Failed to auto-create channel ${channelIdParam}:`,
+              createError
+            );
+            return res
+              .status(500)
+              .json({ success: false, error: `Failed to create channel: ${errorMessage}` });
+          }
+        } else {
+          logger.info(
+            `[Messages Router] Channel ${channelIdParam} already exists, proceeding with message creation`
+          );
+        }
+
+        const newRootMessageData = {
+          channelId: channelIdParam,
+          authorId: author_id as UUID,
+          content: content as string,
+          inReplyToRootMessageId: in_reply_to_message_id
+            ? validateUuid(in_reply_to_message_id) || undefined
+            : undefined,
+          rawMessage: raw_message,
+          metadata,
+          sourceType: source_type || 'eliza_gui',
+        };
+
+        const createdRootMessage = await serverInstance.createMessage(newRootMessageData);
+
+        if (!createdRootMessage.id) {
+          throw new Error('Created message does not have an ID');
+        }
+
+        const messageForBus: MessageService = {
+          id: createdRootMessage.id,
+          channel_id: createdRootMessage.channelId,
+          server_id: server_id as UUID,
+          author_id: createdRootMessage.authorId,
+          content: createdRootMessage.content,
+          created_at: new Date(createdRootMessage.createdAt).getTime(),
+          source_type: createdRootMessage.sourceType,
+          raw_message: createdRootMessage.rawMessage,
+          metadata: createdRootMessage.metadata,
+          author_display_name: metadata?.user_display_name, // Get from GUI payload
+          in_reply_to_message_id: createdRootMessage.inReplyToRootMessageId,
+          source_id: createdRootMessage.sourceId, // Will be undefined here, which is fine
+        };
+
+        internalMessageBus.emit('new_message', messageForBus);
+        logger.info(
+          '[Messages Router /central-channels/:channelId/messages] GUI Message published to internal bus:',
+          messageForBus.id
+        );
+
+        // Emit to SocketIO for real-time display in all connected GUIs
+        if (serverInstance.socketIO) {
+          serverInstance.socketIO.to(channelIdParam).emit('messageBroadcast', {
+            senderId: author_id,
+            senderName: metadata?.user_display_name || 'User',
+            text: content,
+            roomId: channelIdParam, // GUI uses central channelId as roomId for socket
+            serverId: server_id, // Client layer uses serverId
+            createdAt: messageForBus.created_at,
+            source: messageForBus.source_type,
+            id: messageForBus.id,
+          });
+        }
+
+        res.status(201).json({ success: true, data: messageForBus });
+      } catch (error) {
+        logger.error(
+          '[Messages Router /central-channels/:channelId/messages] Error processing GUI message:',
+          error
+        );
+        res.status(500).json({ success: false, error: 'Failed to process message' });
+      }
     }
-  });
+  );
 
   // GET messages for a central channel
-  // @ts-ignore - Express type issue with async handlers
-  router.get('/central-channels/:channelId/messages', async (req, res) => {
-    const channelId = validateUuid(req.params.channelId);
-    const limit = req.query.limit ? Number.parseInt(req.query.limit as string, 10) : 50;
-    const before = req.query.before ? Number.parseInt(req.query.before as string, 10) : undefined;
-    const beforeDate = before ? new Date(before) : undefined;
+  (router as any).get(
+    '/central-channels/:channelId/messages',
+    async (req: express.Request, res: express.Response) => {
+      const channelId = validateUuid(req.params.channelId);
+      const limit = req.query.limit ? Number.parseInt(req.query.limit as string, 10) : 50;
+      const before = req.query.before ? Number.parseInt(req.query.before as string, 10) : undefined;
+      const beforeDate = before ? new Date(before) : undefined;
 
-    if (!channelId) {
-      return res.status(400).json({ success: false, error: 'Invalid channelId' });
+      if (!channelId) {
+        return res.status(400).json({ success: false, error: 'Invalid channelId' });
+      }
+
+      try {
+        const messages = await serverInstance.getMessagesForChannel(channelId, limit, beforeDate);
+        // Transform to MessageService structure if GUI expects timestamps as numbers, or align types
+        const messagesForGui = messages.map((msg) => {
+          // Extract thought and actions from rawMessage for historical messages
+          const rawMessage =
+            typeof msg.rawMessage === 'string' ? JSON.parse(msg.rawMessage) : msg.rawMessage;
+
+          return {
+            ...msg,
+            created_at: new Date(msg.createdAt).getTime(), // Ensure timestamp number
+            updated_at: new Date(msg.updatedAt).getTime(),
+            // Include thought and actions from rawMessage in metadata for client compatibility
+            metadata: {
+              ...msg.metadata,
+              thought: rawMessage?.thought,
+              actions: rawMessage?.actions,
+            },
+            // Ensure other fields align with client's MessageServiceStructure / ServerMessage
+          };
+        });
+        res.json({ success: true, data: { messages: messagesForGui } });
+      } catch (error) {
+        logger.error(
+          `[Messages Router /central-channels/:channelId/messages] Error fetching messages for channel ${channelId}:`,
+          error
+        );
+        res.status(500).json({ success: false, error: 'Failed to fetch messages' });
+      }
     }
-
-    try {
-      const messages = await serverInstance.getMessagesForChannel(channelId, limit, beforeDate);
-      // Transform to MessageService structure if GUI expects timestamps as numbers, or align types
-      const messagesForGui = messages.map((msg) => {
-        // Extract thought and actions from rawMessage for historical messages
-        const rawMessage =
-          typeof msg.rawMessage === 'string' ? JSON.parse(msg.rawMessage) : msg.rawMessage;
-
-        return {
-          ...msg,
-          created_at: new Date(msg.createdAt).getTime(), // Ensure timestamp number
-          updated_at: new Date(msg.updatedAt).getTime(),
-          // Include thought and actions from rawMessage in metadata for client compatibility
-          metadata: {
-            ...msg.metadata,
-            thought: rawMessage?.thought,
-            actions: rawMessage?.actions,
-          },
-          // Ensure other fields align with client's MessageServiceStructure / ServerMessage
-        };
-      });
-      res.json({ success: true, data: { messages: messagesForGui } });
-    } catch (error) {
-      logger.error(
-        `[Messages Router /central-channels/:channelId/messages] Error fetching messages for channel ${channelId}:`,
-        error
-      );
-      res.status(500).json({ success: false, error: 'Failed to fetch messages' });
-    }
-  });
+  );
 
   // GET /central-servers/:serverId/channels
-  // @ts-ignore - Express type issue with async handlers
-  router.get('/central-servers/:serverId/channels', async (req, res) => {
-    const serverId =
-      req.params.serverId === DEFAULT_SERVER_ID
-        ? DEFAULT_SERVER_ID
-        : validateUuid(req.params.serverId);
-    if (!serverId) {
-      return res.status(400).json({ success: false, error: 'Invalid serverId' });
+  (router as any).get(
+    '/central-servers/:serverId/channels',
+    async (req: express.Request, res: express.Response) => {
+      const serverId =
+        req.params.serverId === DEFAULT_SERVER_ID
+          ? DEFAULT_SERVER_ID
+          : validateUuid(req.params.serverId);
+      if (!serverId) {
+        return res.status(400).json({ success: false, error: 'Invalid serverId' });
+      }
+      try {
+        const channels = await serverInstance.getChannelsForServer(serverId);
+        res.json({ success: true, data: { channels } });
+      } catch (error) {
+        logger.error(
+          `[Messages Router /central-servers/:serverId/channels] Error fetching channels for server ${serverId}:`,
+          error
+        );
+        res.status(500).json({ success: false, error: 'Failed to fetch channels' });
+      }
     }
-    try {
-      const channels = await serverInstance.getChannelsForServer(serverId);
-      res.json({ success: true, data: { channels } });
-    } catch (error) {
-      logger.error(
-        `[Messages Router /central-servers/:serverId/channels] Error fetching channels for server ${serverId}:`,
-        error
-      );
-      res.status(500).json({ success: false, error: 'Failed to fetch channels' });
-    }
-  });
+  );
 
   // POST /channels - Create a new central channel
-  // @ts-ignore - Express type issue with async handlers
-  router.post('/channels', async (req, res) => {
+  (router as any).post('/channels', async (req: express.Request, res: express.Response) => {
     const { messageServerId, name, type, sourceType, sourceId, topic, metadata } = req.body;
 
     if (!messageServerId || !name || !type) {
@@ -319,8 +324,7 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
   });
 
   // GET /dm-channel?targetUserId=<target_user_id>
-  // @ts-ignore - Express type issue with async handlers
-  router.get('/dm-channel', async (req, res) => {
+  (router as any).get('/dm-channel', async (req: express.Request, res: express.Response) => {
     const targetUserId = validateUuid(req.query.targetUserId as string);
     const currentUserId = validateUuid(req.query.currentUserId as string);
     const providedDmServerId =
@@ -337,7 +341,7 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
       return;
     }
 
-    let dmServerIdToUse: UUID;
+    let dmServerIdToUse: UUID = DEFAULT_SERVER_ID;
 
     try {
       if (providedDmServerId) {
@@ -349,13 +353,9 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
           logger.warn(
             `Provided dmServerId ${providedDmServerId} not found, using default DM server logic.`
           );
-          // Fall through to default server logic if provided ID is invalid
+          // Use default server if provided ID is invalid
+          dmServerIdToUse = DEFAULT_SERVER_ID;
         }
-      }
-
-      // Always use the default server (ID "0")
-      if (!dmServerIdToUse) {
-        dmServerIdToUse = DEFAULT_SERVER_ID;
       }
 
       const channel = await serverInstance.findOrCreateCentralDmChannel(
@@ -380,8 +380,7 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
   });
 
   // POST /central-channels (for creating group channels)
-  // @ts-ignore - Express type issue with async handlers
-  router.post('/central-channels', async (req, res) => {
+  (router as any).post('/central-channels', async (req: express.Request, res: express.Response) => {
     const {
       name,
       participantCentralUserIds,
@@ -436,345 +435,362 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
   });
 
   // Get channel details
-  // @ts-ignore - Express type issue with async handlers
-  router.get('/central-channels/:channelId/details', async (req, res) => {
-    const channelId = validateUuid(req.params.channelId);
-    if (!channelId) {
-      return res.status(400).json({ success: false, error: 'Invalid channelId' });
-    }
-    try {
-      const channelDetails = await serverInstance.getChannelDetails(channelId);
-      if (!channelDetails) {
-        return res.status(404).json({ success: false, error: 'Channel not found' });
+  (router as any).get(
+    '/central-channels/:channelId/details',
+    async (req: express.Request, res: express.Response) => {
+      const channelId = validateUuid(req.params.channelId);
+      if (!channelId) {
+        return res.status(400).json({ success: false, error: 'Invalid channelId' });
       }
-      res.json({ success: true, data: channelDetails });
-    } catch (error) {
-      logger.error(`[Messages Router] Error fetching details for channel ${channelId}:`, error);
-      res.status(500).json({ success: false, error: 'Failed to fetch channel details' });
+      try {
+        const channelDetails = await serverInstance.getChannelDetails(channelId);
+        if (!channelDetails) {
+          return res.status(404).json({ success: false, error: 'Channel not found' });
+        }
+        res.json({ success: true, data: channelDetails });
+      } catch (error) {
+        logger.error(`[Messages Router] Error fetching details for channel ${channelId}:`, error);
+        res.status(500).json({ success: false, error: 'Failed to fetch channel details' });
+      }
     }
-  });
+  );
 
   // Get channel participants
-  // @ts-ignore - Express type issue with async handlers
-  router.get('/central-channels/:channelId/participants', async (req, res) => {
-    const channelId = validateUuid(req.params.channelId);
-    if (!channelId) {
-      return res.status(400).json({ success: false, error: 'Invalid channelId' });
+  (router as any).get(
+    '/central-channels/:channelId/participants',
+    async (req: express.Request, res: express.Response) => {
+      const channelId = validateUuid(req.params.channelId);
+      if (!channelId) {
+        return res.status(400).json({ success: false, error: 'Invalid channelId' });
+      }
+      try {
+        const participants = await serverInstance.getChannelParticipants(channelId);
+        res.json({ success: true, data: participants });
+      } catch (error) {
+        logger.error(
+          `[Messages Router] Error fetching participants for channel ${channelId}:`,
+          error
+        );
+        res.status(500).json({ success: false, error: 'Failed to fetch channel participants' });
+      }
     }
-    try {
-      const participants = await serverInstance.getChannelParticipants(channelId);
-      res.json({ success: true, data: participants });
-    } catch (error) {
-      logger.error(
-        `[Messages Router] Error fetching participants for channel ${channelId}:`,
-        error
-      );
-      res.status(500).json({ success: false, error: 'Failed to fetch channel participants' });
-    }
-  });
+  );
 
   // POST /central-channels/:channelId/agents - Add agent to channel
-  // @ts-ignore - Express type issue with async handlers
-  router.post('/central-channels/:channelId/agents', async (req, res) => {
-    const channelId = validateUuid(req.params.channelId);
-    const { agentId } = req.body;
+  (router as any).post(
+    '/central-channels/:channelId/agents',
+    async (req: express.Request, res: express.Response) => {
+      const channelId = validateUuid(req.params.channelId);
+      const { agentId } = req.body;
 
-    if (!channelId || !validateUuid(agentId)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid channelId or agentId format',
-      });
-    }
-
-    try {
-      // Verify the channel exists
-      const channel = await serverInstance.getChannelDetails(channelId);
-      if (!channel) {
-        return res.status(404).json({
+      if (!channelId || !validateUuid(agentId)) {
+        return res.status(400).json({
           success: false,
-          error: 'Channel not found',
+          error: 'Invalid channelId or agentId format',
         });
       }
 
-      // Verify the agent exists (optional - depends on your agent registry)
-      // You might want to add a method to check if agent exists in your system
+      try {
+        // Verify the channel exists
+        const channel = await serverInstance.getChannelDetails(channelId);
+        if (!channel) {
+          return res.status(404).json({
+            success: false,
+            error: 'Channel not found',
+          });
+        }
 
-      // Add agent to channel participants
-      await serverInstance.addParticipantsToChannel(channelId, [agentId as UUID]);
+        // Verify the agent exists (optional - depends on your agent registry)
+        // You might want to add a method to check if agent exists in your system
 
-      logger.info(`[Messages Router] Added agent ${agentId} to channel ${channelId}`);
+        // Add agent to channel participants
+        await serverInstance.addParticipantsToChannel(channelId, [agentId as UUID]);
 
-      res.status(201).json({
-        success: true,
-        data: {
-          channelId,
-          agentId,
-          message: 'Agent added to channel successfully',
-        },
-      });
-    } catch (error) {
-      logger.error(
-        `[Messages Router] Error adding agent ${agentId} to channel ${channelId}:`,
-        error
-      );
-      res.status(500).json({
-        success: false,
-        error: 'Failed to add agent to channel',
-        details: error instanceof Error ? error.message : String(error),
-      });
+        logger.info(`[Messages Router] Added agent ${agentId} to channel ${channelId}`);
+
+        res.status(201).json({
+          success: true,
+          data: {
+            channelId,
+            agentId,
+            message: 'Agent added to channel successfully',
+          },
+        });
+      } catch (error) {
+        logger.error(
+          `[Messages Router] Error adding agent ${agentId} to channel ${channelId}:`,
+          error
+        );
+        res.status(500).json({
+          success: false,
+          error: 'Failed to add agent to channel',
+          details: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
-  });
+  );
 
   // DELETE /central-channels/:channelId/agents/:agentId - Remove agent from channel
-  // @ts-ignore - Express type issue with async handlers
-  router.delete('/central-channels/:channelId/agents/:agentId', async (req, res) => {
-    const channelId = validateUuid(req.params.channelId);
-    const agentId = validateUuid(req.params.agentId);
+  (router as any).delete(
+    '/central-channels/:channelId/agents/:agentId',
+    async (req: express.Request, res: express.Response) => {
+      const channelId = validateUuid(req.params.channelId);
+      const agentId = validateUuid(req.params.agentId);
 
-    if (!channelId || !agentId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid channelId or agentId format',
-      });
-    }
-
-    try {
-      // Verify the channel exists
-      const channel = await serverInstance.getChannelDetails(channelId);
-      if (!channel) {
-        return res.status(404).json({
+      if (!channelId || !agentId) {
+        return res.status(400).json({
           success: false,
-          error: 'Channel not found',
+          error: 'Invalid channelId or agentId format',
         });
       }
 
-      // Get current participants to verify agent is in channel
-      const currentParticipants = await serverInstance.getChannelParticipants(channelId);
-      if (!currentParticipants.includes(agentId)) {
-        return res.status(404).json({
+      try {
+        // Verify the channel exists
+        const channel = await serverInstance.getChannelDetails(channelId);
+        if (!channel) {
+          return res.status(404).json({
+            success: false,
+            error: 'Channel not found',
+          });
+        }
+
+        // Get current participants to verify agent is in channel
+        const currentParticipants = await serverInstance.getChannelParticipants(channelId);
+        if (!currentParticipants.includes(agentId)) {
+          return res.status(404).json({
+            success: false,
+            error: 'Agent is not a participant in this channel',
+          });
+        }
+
+        // Remove agent from channel participants
+        // Note: We need to update the channel with the new participant list
+        const updatedParticipants = currentParticipants.filter((id) => id !== agentId);
+        await serverInstance.updateChannel(channelId, {
+          participantCentralUserIds: updatedParticipants,
+        });
+
+        logger.info(`[Messages Router] Removed agent ${agentId} from channel ${channelId}`);
+
+        res.status(200).json({
+          success: true,
+          data: {
+            channelId,
+            agentId,
+            message: 'Agent removed from channel successfully',
+          },
+        });
+      } catch (error) {
+        logger.error(
+          `[Messages Router] Error removing agent ${agentId} from channel ${channelId}:`,
+          error
+        );
+        res.status(500).json({
           success: false,
-          error: 'Agent is not a participant in this channel',
+          error: 'Failed to remove agent from channel',
+          details: error instanceof Error ? error.message : String(error),
         });
       }
-
-      // Remove agent from channel participants
-      // Note: We need to update the channel with the new participant list
-      const updatedParticipants = currentParticipants.filter((id) => id !== agentId);
-      await serverInstance.updateChannel(channelId, {
-        participantCentralUserIds: updatedParticipants,
-      });
-
-      logger.info(`[Messages Router] Removed agent ${agentId} from channel ${channelId}`);
-
-      res.status(200).json({
-        success: true,
-        data: {
-          channelId,
-          agentId,
-          message: 'Agent removed from channel successfully',
-        },
-      });
-    } catch (error) {
-      logger.error(
-        `[Messages Router] Error removing agent ${agentId} from channel ${channelId}:`,
-        error
-      );
-      res.status(500).json({
-        success: false,
-        error: 'Failed to remove agent from channel',
-        details: error instanceof Error ? error.message : String(error),
-      });
     }
-  });
+  );
 
   // GET /central-channels/:channelId/agents - List agents in channel
-  // @ts-ignore - Express type issue with async handlers
-  router.get('/central-channels/:channelId/agents', async (req, res) => {
-    const channelId = validateUuid(req.params.channelId);
+  (router as any).get(
+    '/central-channels/:channelId/agents',
+    async (req: express.Request, res: express.Response) => {
+      const channelId = validateUuid(req.params.channelId);
 
-    if (!channelId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid channelId format',
-      });
+      if (!channelId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid channelId format',
+        });
+      }
+
+      try {
+        // Get all participants
+        const allParticipants = await serverInstance.getChannelParticipants(channelId);
+
+        // Filter for agents (this is a simplified approach - you might want to
+        // implement a more sophisticated way to distinguish agents from users)
+        // For now, we'll return all participants and let the client filter
+        // In a production system, you'd want to cross-reference with an agent registry
+
+        res.json({
+          success: true,
+          data: {
+            channelId,
+            participants: allParticipants, // All participants (agents and users)
+            // TODO: Add agent-specific filtering when agent registry is available
+          },
+        });
+      } catch (error) {
+        logger.error(`[Messages Router] Error fetching agents for channel ${channelId}:`, error);
+        res.status(500).json({
+          success: false,
+          error: 'Failed to fetch channel agents',
+        });
+      }
     }
-
-    try {
-      // Get all participants
-      const allParticipants = await serverInstance.getChannelParticipants(channelId);
-
-      // Filter for agents (this is a simplified approach - you might want to
-      // implement a more sophisticated way to distinguish agents from users)
-      // For now, we'll return all participants and let the client filter
-      // In a production system, you'd want to cross-reference with an agent registry
-
-      res.json({
-        success: true,
-        data: {
-          channelId,
-          participants: allParticipants, // All participants (agents and users)
-          // TODO: Add agent-specific filtering when agent registry is available
-        },
-      });
-    } catch (error) {
-      logger.error(`[Messages Router] Error fetching agents for channel ${channelId}:`, error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to fetch channel agents',
-      });
-    }
-  });
+  );
 
   // Delete single message
-  // @ts-ignore - Express type issue with async handlers
-  router.delete('/central-channels/:channelId/messages/:messageId', async (req, res) => {
-    const channelId = validateUuid(req.params.channelId);
-    const messageId = validateUuid(req.params.messageId);
-    if (!channelId || !messageId) {
-      return res.status(400).json({ success: false, error: 'Invalid channelId or messageId' });
-    }
-    try {
-      // First, delete the message from central database
-      await serverInstance.deleteMessage(messageId);
-      logger.info(`[Messages Router] Deleted message ${messageId} from central database`);
+  (router as any).delete(
+    '/central-channels/:channelId/messages/:messageId',
+    async (req: express.Request, res: express.Response) => {
+      const channelId = validateUuid(req.params.channelId);
+      const messageId = validateUuid(req.params.messageId);
+      if (!channelId || !messageId) {
+        return res.status(400).json({ success: false, error: 'Invalid channelId or messageId' });
+      }
+      try {
+        // First, delete the message from central database
+        await serverInstance.deleteMessage(messageId);
+        logger.info(`[Messages Router] Deleted message ${messageId} from central database`);
 
-      // Then emit message_deleted event to internal bus for agent memory cleanup
-      const deletedMessagePayload = {
-        messageId: messageId,
-        channelId: channelId,
-      };
-
-      internalMessageBus.emit('message_deleted', deletedMessagePayload);
-      logger.info(
-        `[Messages Router] Emitted message_deleted event to internal bus for message ${messageId}`
-      );
-
-      // Also, emit an event via SocketIO to inform clients about the deletion
-      if (serverInstance.socketIO) {
-        serverInstance.socketIO.to(channelId).emit('messageDeleted', {
+        // Then emit message_deleted event to internal bus for agent memory cleanup
+        const deletedMessagePayload = {
           messageId: messageId,
           channelId: channelId,
-        });
+        };
+
+        internalMessageBus.emit('message_deleted', deletedMessagePayload);
+        logger.info(
+          `[Messages Router] Emitted message_deleted event to internal bus for message ${messageId}`
+        );
+
+        // Also, emit an event via SocketIO to inform clients about the deletion
+        if (serverInstance.socketIO) {
+          serverInstance.socketIO.to(channelId).emit('messageDeleted', {
+            messageId: messageId,
+            channelId: channelId,
+          });
+        }
+        res.status(204).send();
+      } catch (error) {
+        logger.error(
+          `[Messages Router] Error deleting message ${messageId} from channel ${channelId}:`,
+          error
+        );
+        res.status(500).json({ success: false, error: 'Failed to delete message' });
       }
-      res.status(204).send();
-    } catch (error) {
-      logger.error(
-        `[Messages Router] Error deleting message ${messageId} from channel ${channelId}:`,
-        error
-      );
-      res.status(500).json({ success: false, error: 'Failed to delete message' });
     }
-  });
+  );
 
   // Clear all messages in channel
-  // @ts-ignore - Express type issue with async handlers
-  router.delete('/central-channels/:channelId/messages', async (req, res) => {
-    const channelId = validateUuid(req.params.channelId);
-    if (!channelId) {
-      return res.status(400).json({ success: false, error: 'Invalid channelId' });
-    }
-    try {
-      // Clear all messages from central database
-      await serverInstance.clearChannelMessages(channelId);
-
-      // Emit to internal bus for agent memory cleanup
-      const channelClearedPayload = {
-        channelId: channelId,
-      };
-      internalMessageBus.emit('channel_cleared', channelClearedPayload);
-      logger.info(
-        `[Messages Router] Emitted channel_cleared event to internal bus for channel ${channelId}`
-      );
-
-      // Also, emit an event via SocketIO to inform clients about the channel clear
-      if (serverInstance.socketIO) {
-        serverInstance.socketIO.to(channelId).emit('channelCleared', {
-          channelId: channelId,
-        });
+  (router as any).delete(
+    '/central-channels/:channelId/messages',
+    async (req: express.Request, res: express.Response) => {
+      const channelId = validateUuid(req.params.channelId);
+      if (!channelId) {
+        return res.status(400).json({ success: false, error: 'Invalid channelId' });
       }
-      res.status(204).send();
-    } catch (error) {
-      logger.error(`[Messages Router] Error clearing messages for channel ${channelId}:`, error);
-      res.status(500).json({ success: false, error: 'Failed to clear messages' });
+      try {
+        // Clear all messages from central database
+        await serverInstance.clearChannelMessages(channelId);
+
+        // Emit to internal bus for agent memory cleanup
+        const channelClearedPayload = {
+          channelId: channelId,
+        };
+        internalMessageBus.emit('channel_cleared', channelClearedPayload);
+        logger.info(
+          `[Messages Router] Emitted channel_cleared event to internal bus for channel ${channelId}`
+        );
+
+        // Also, emit an event via SocketIO to inform clients about the channel clear
+        if (serverInstance.socketIO) {
+          serverInstance.socketIO.to(channelId).emit('channelCleared', {
+            channelId: channelId,
+          });
+        }
+        res.status(204).send();
+      } catch (error) {
+        logger.error(`[Messages Router] Error clearing messages for channel ${channelId}:`, error);
+        res.status(500).json({ success: false, error: 'Failed to clear messages' });
+      }
     }
-  });
+  );
 
   // Update channel
-  // @ts-ignore - Express type issue with async handlers
-  router.patch('/central-channels/:channelId', async (req, res) => {
-    const channelId = validateUuid(req.params.channelId);
-    if (!channelId) {
-      return res.status(400).json({ success: false, error: 'Invalid channelId' });
-    }
-    const { name, participantCentralUserIds, metadata } = req.body;
-    try {
-      const updatedChannel = await serverInstance.updateChannel(channelId, {
-        name,
-        participantCentralUserIds,
-        metadata,
-      });
-      // Emit an event via SocketIO to inform clients about the channel update
-      if (serverInstance.socketIO) {
-        serverInstance.socketIO.to(channelId).emit('channelUpdated', {
-          channelId: channelId,
-          updates: updatedChannel,
-        });
+  (router as any).patch(
+    '/central-channels/:channelId',
+    async (req: express.Request, res: express.Response) => {
+      const channelId = validateUuid(req.params.channelId);
+      if (!channelId) {
+        return res.status(400).json({ success: false, error: 'Invalid channelId' });
       }
-      res.json({ success: true, data: updatedChannel });
-    } catch (error) {
-      logger.error(`[Messages Router] Error updating channel ${channelId}:`, error);
-      res.status(500).json({ success: false, error: 'Failed to update channel' });
+      const { name, participantCentralUserIds, metadata } = req.body;
+      try {
+        const updatedChannel = await serverInstance.updateChannel(channelId, {
+          name,
+          participantCentralUserIds,
+          metadata,
+        });
+        // Emit an event via SocketIO to inform clients about the channel update
+        if (serverInstance.socketIO) {
+          serverInstance.socketIO.to(channelId).emit('channelUpdated', {
+            channelId: channelId,
+            updates: updatedChannel,
+          });
+        }
+        res.json({ success: true, data: updatedChannel });
+      } catch (error) {
+        logger.error(`[Messages Router] Error updating channel ${channelId}:`, error);
+        res.status(500).json({ success: false, error: 'Failed to update channel' });
+      }
     }
-  });
+  );
 
   // Delete entire channel
-  // @ts-ignore - Express type issue with async handlers
-  router.delete('/central-channels/:channelId', async (req, res) => {
-    const channelId = validateUuid(req.params.channelId);
-    if (!channelId) {
-      return res.status(400).json({ success: false, error: 'Invalid channelId' });
-    }
-    try {
-      // Get messages count before deletion for logging
-      const messages = await serverInstance.getMessagesForChannel(channelId);
-      const messageCount = messages.length;
-
-      // Delete the entire channel
-      await serverInstance.deleteChannel(channelId);
-      logger.info(
-        `[Messages Router] Deleted channel ${channelId} with ${messageCount} messages from central database`
-      );
-
-      // Emit to internal bus for agent memory cleanup (same as clear messages)
-      const channelClearedPayload = {
-        channelId: channelId,
-      };
-      internalMessageBus.emit('channel_cleared', channelClearedPayload);
-      logger.info(
-        `[Messages Router] Emitted channel_cleared event to internal bus for deleted channel ${channelId}`
-      );
-
-      // Emit an event via SocketIO to inform clients about the channel deletion
-      if (serverInstance.socketIO) {
-        serverInstance.socketIO.to(channelId).emit('channelDeleted', {
-          channelId: channelId,
-        });
+  (router as any).delete(
+    '/central-channels/:channelId',
+    async (req: express.Request, res: express.Response) => {
+      const channelId = validateUuid(req.params.channelId);
+      if (!channelId) {
+        return res.status(400).json({ success: false, error: 'Invalid channelId' });
       }
-      res.status(204).send();
-    } catch (error) {
-      logger.error(`[Messages Router] Error deleting channel ${channelId}:`, error);
-      res.status(500).json({ success: false, error: 'Failed to delete channel' });
+      try {
+        // Get messages count before deletion for logging
+        const messages = await serverInstance.getMessagesForChannel(channelId);
+        const messageCount = messages.length;
+
+        // Delete the entire channel
+        await serverInstance.deleteChannel(channelId);
+        logger.info(
+          `[Messages Router] Deleted channel ${channelId} with ${messageCount} messages from central database`
+        );
+
+        // Emit to internal bus for agent memory cleanup (same as clear messages)
+        const channelClearedPayload = {
+          channelId: channelId,
+        };
+        internalMessageBus.emit('channel_cleared', channelClearedPayload);
+        logger.info(
+          `[Messages Router] Emitted channel_cleared event to internal bus for deleted channel ${channelId}`
+        );
+
+        // Emit an event via SocketIO to inform clients about the channel deletion
+        if (serverInstance.socketIO) {
+          serverInstance.socketIO.to(channelId).emit('channelDeleted', {
+            channelId: channelId,
+          });
+        }
+        res.status(204).send();
+      } catch (error) {
+        logger.error(`[Messages Router] Error deleting channel ${channelId}:`, error);
+        res.status(500).json({ success: false, error: 'Failed to delete channel' });
+      }
     }
-  });
+  );
 
   // Upload media to channel
-  // @ts-ignore - Express type issue with async handlers
-  router.post(
+  (router as any).post(
     '/channels/:channelId/upload-media',
     createUploadRateLimit(),
     createFileSystemRateLimit(),
     channelUpload.single('file'),
-    (async (req: ChannelUploadRequest, res) => {
+    async (req: ChannelUploadRequest, res: express.Response) => {
       const channelId = validateUuid(req.params.channelId);
       if (!channelId) {
         res.status(400).json({ success: false, error: 'Invalid channelId format' });
@@ -841,7 +857,7 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
         );
         res.status(500).json({ success: false, error: 'Failed to process media upload' });
       }
-    }) as RequestHandler
+    }
   );
 
   return router;

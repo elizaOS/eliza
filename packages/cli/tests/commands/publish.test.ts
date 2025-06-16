@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach  , vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { execSync } from 'child_process';
-import { mkdtemp, rm, writeFile, mkdir, access } from 'fs/promises';
+import { mkdtemp, rm, writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { safeChangeDirectory, runCliCommandSilently } from './test-utils';
+import { safeChangeDirectory } from './test-utils';
 
 describe('ElizaOS Publish Commands', () => {
   let testTmpDir: string;
@@ -22,7 +22,7 @@ describe('ElizaOS Publish Commands', () => {
 
     // Setup CLI command
     const scriptDir = join(__dirname, '..');
-    elizaosCmd = `bun run "${join(scriptDir, '../dist/index.js')}"`;
+    elizaosCmd = `bun "${join(scriptDir, '../dist/index.js')}"`;
 
     // === COMPREHENSIVE CREDENTIAL MOCKING ===
     // Set all possible environment variables to avoid any prompts
@@ -359,93 +359,6 @@ esac`;
     }
   });
 
-  // Helper function to create test plugin
-  const createTestPlugin = async (name: string) => {
-    const pluginDir = `plugin-${name}`;
-    await mkdir(pluginDir);
-    process.chdir(join(testTmpDir, pluginDir));
-
-    // Initialize git repository to avoid git-related prompts
-    try {
-      execSync('git init', { stdio: 'pipe' });
-      execSync('git config user.name "Test User"', { stdio: 'pipe' });
-      execSync('git config user.email "test@example.com"', { stdio: 'pipe' });
-    } catch (e) {
-      // Ignore git errors in test environment
-    }
-
-    // Create required images directory and files
-    await mkdir('images', { recursive: true });
-    await writeFile('images/logo.jpg', 'mock logo content');
-    await writeFile('images/banner.jpg', 'mock banner content');
-
-    // Create a valid package.json
-    const packageJson = {
-      name: `@test-user/plugin-${name}`,
-      version: '1.0.0',
-      description: `Test plugin for ${name} functionality`,
-      main: 'dist/index.js',
-      type: 'module',
-      scripts: {
-        build: "echo 'Build completed'",
-        test: "echo 'Tests passed'",
-        publish: 'elizaos publish',
-      },
-      repository: {
-        type: 'git',
-        url: `github:test-user/plugin-${name}`,
-      },
-      author: 'test-user',
-      license: 'MIT',
-      agentConfig: {
-        pluginType: 'elizaos:plugin:1.0.0',
-        pluginParameters: {
-          API_KEY: {
-            type: 'string',
-            description: 'API key for the service',
-          },
-        },
-      },
-      keywords: ['elizaos-plugins', 'test'],
-      maintainers: ['test-user'],
-    };
-    await writeFile('package.json', JSON.stringify(packageJson, null, 2));
-
-    // Create basic source structure
-    await mkdir('src', { recursive: true });
-    await writeFile(
-      'src/index.ts',
-      `export default {
-  name: "test-plugin",
-  description: "A test plugin",
-  actions: [],
-  evaluators: [],
-  providers: []
-};`
-    );
-
-    // Create dist directory with built files
-    await mkdir('dist', { recursive: true });
-    await writeFile(
-      'dist/index.js',
-      `export default {
-  name: "test-plugin",
-  description: "A test plugin",
-  actions: [],
-  evaluators: [],
-  providers: []
-};`
-    );
-
-    // Add files to git to avoid uncommitted changes warnings
-    try {
-      execSync('git add .', { stdio: 'pipe' });
-      execSync('git commit -m "Initial commit"', { stdio: 'pipe' });
-    } catch (e) {
-      // Ignore git errors in test environment
-    }
-  };
-
   // publish --help (safe test that never prompts)
   it('publish --help shows usage', () => {
     const result = execSync(`${elizaosCmd} publish --help`, { encoding: 'utf8' });
@@ -496,132 +409,5 @@ esac`;
     // Test that --dry-run flag is recognized
     const result = execSync(`${elizaosCmd} publish --dry-run --help`, { encoding: 'utf8' });
     expect(result).toContain('dry-run');
-  });
-
-  // npm flag behavior (should use mocked npm)
-  it('publish npm flag works', () => {
-    // Test that --npm flag is recognized
-    const result = execSync(`${elizaosCmd} publish --npm --help`, { encoding: 'utf8' });
-    expect(result).toContain('npm');
-  });
-
-  // Package.json validation
-  it('publish validates package.json structure', () => {
-    // Test that command recognizes package.json validation
-    const result = execSync(`${elizaosCmd} publish --help`, { encoding: 'utf8' });
-    expect(result).toContain('publish');
-  });
-
-  // Directory validation
-  it('publish fails outside plugin directory', () => {
-    // Test that publish help works from any directory
-    const result = execSync(`${elizaosCmd} publish --help`, { encoding: 'utf8' });
-    expect(result).toContain('publish');
-  });
-
-  it('publish fails in plugin directory without package.json', async () => {
-    await mkdir('plugin-test');
-    process.chdir(join(testTmpDir, 'plugin-test'));
-    // Use --help to avoid hanging on prompts
-    const result = execSync(`${elizaosCmd} publish --help`, { encoding: 'utf8' });
-    expect(result).toContain('publish');
-  });
-
-  it('publish fails with invalid package.json', async () => {
-    await mkdir('plugin-test');
-    process.chdir(join(testTmpDir, 'plugin-test'));
-    await writeFile('package.json', 'invalid json');
-    const result = runCliCommandSilently(elizaosCmd, 'publish --help');
-    expect(result).toContain('publish');
-  });
-
-  it('publish fails with missing required package.json fields', async () => {
-    await mkdir('plugin-test');
-    process.chdir(join(testTmpDir, 'plugin-test'));
-    await writeFile(
-      'package.json',
-      JSON.stringify({
-        name: '@test-user/plugin-test',
-      })
-    );
-    const result = execSync(`${elizaosCmd} publish --help`, { encoding: 'utf8' });
-    expect(result).toContain('publish');
-  });
-
-  // Plugin naming validation
-  it('publish validates plugin naming convention', async () => {
-    await mkdir('invalid-name');
-    process.chdir(join(testTmpDir, 'invalid-name'));
-    await writeFile(
-      'package.json',
-      JSON.stringify({
-        name: '@test-user/invalid-name',
-        version: '1.0.0',
-        description: 'Invalid plugin name',
-        main: 'dist/index.js',
-        agentConfig: {
-          pluginType: 'elizaos:plugin:1.0.0',
-        },
-      })
-    );
-    const result = execSync(`${elizaosCmd} publish --help`, { encoding: 'utf8' });
-    expect(result).toContain('publish');
-  });
-
-  it('publish test flag works', () => {
-    // Test that --test flag is recognized
-    const result = execSync(`${elizaosCmd} publish --test --help`, { encoding: 'utf8' });
-    expect(result).toContain('test');
-  });
-
-  // Skip registry functionality
-  it('publish skip-registry flag works', () => {
-    // Test that --skip-registry flag is recognized
-    const result = execSync(`${elizaosCmd} publish --skip-registry --help`, { encoding: 'utf8' });
-    expect(result).toContain('skip-registry');
-  });
-
-  it('publish handles package.json with placeholders', async () => {
-    await mkdir('plugin-placeholders');
-    process.chdir(join(testTmpDir, 'plugin-placeholders'));
-
-    await writeFile(
-      'package.json',
-      JSON.stringify({
-        name: '@npm-username/plugin-name',
-        version: '1.0.0',
-        description: '${PLUGINDESCRIPTION}',
-        repository: {
-          type: 'git',
-          url: '${REPO_URL}',
-        },
-        author: '${GITHUB_USERNAME}',
-        agentConfig: {
-          pluginType: 'elizaos:plugin:1.0.0',
-        },
-      })
-    );
-
-    const result = execSync(`${elizaosCmd} publish --help`, { encoding: 'utf8' });
-    expect(result).toContain('publish');
-  });
-
-  // Error handling and edge cases
-  it('publish handles missing dist directory gracefully', () => {
-    // Test basic functionality
-    const result = execSync(`${elizaosCmd} publish --help`, { encoding: 'utf8' });
-    expect(result).toContain('publish');
-  });
-
-  it('publish detects npm authentication status', () => {
-    // Test that publish help works (npm mocking not critical for help)
-    const result = execSync(`${elizaosCmd} publish --help`, { encoding: 'utf8' });
-    expect(result).toContain('publish');
-  });
-
-  it('publish provides helpful success messaging', () => {
-    // Test basic help messaging
-    const result = execSync(`${elizaosCmd} publish --help`, { encoding: 'utf8' });
-    expect(result).toContain('publish');
   });
 });

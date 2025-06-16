@@ -17,7 +17,11 @@ export async function loadPluginDependencies(projectInfo: DirectoryInfo): Promis
   const project = await loadProject(process.cwd());
   const dependencyPlugins: Plugin[] = [];
 
-  if (project.isPlugin && project.pluginModule?.dependencies?.length > 0) {
+  if (
+    project.isPlugin &&
+    project.pluginModule?.dependencies &&
+    project.pluginModule.dependencies.length > 0
+  ) {
     const projectPluginsPath = path.join(process.cwd(), '.eliza', 'plugins');
     for (const dependency of project.pluginModule.dependencies) {
       const pluginPath = path.join(projectPluginsPath, 'node_modules', dependency);

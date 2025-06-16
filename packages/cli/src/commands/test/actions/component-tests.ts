@@ -69,8 +69,10 @@ export async function runComponentTests(
     // Add filter if specified
     if (options.name) {
       const baseName = processFilterName(options.name);
-      logger.info(`Using test filter: ${baseName}`);
-      args.push('-t', baseName);
+      if (baseName) {
+        logger.info(`Using test filter: ${baseName}`);
+        args.push('-t', baseName);
+      }
     }
 
     const targetPath = testPath ? path.resolve(process.cwd(), '..', testPath) : process.cwd();
