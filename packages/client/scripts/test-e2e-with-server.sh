@@ -11,12 +11,13 @@ echo "===================================="
 
 # Start the dev server in the background
 echo -e "${YELLOW}Starting development server...${NC}"
-npx vite --port 5173 &
+CLIENT_PORT=${CLIENT_PORT:-5173}
+bunx vite --port $CLIENT_PORT &
 SERVER_PID=$!
 
 # Wait for server to be ready
 echo -e "${YELLOW}Waiting for server to be ready...${NC}"
-npx wait-on http://localhost:5173 -t 30000
+bunx wait-on http://localhost:$CLIENT_PORT -t 30000
 
 if [ $? -ne 0 ]; then
   echo -e "${RED}❌ Failed to start development server${NC}"
@@ -28,7 +29,7 @@ echo -e "${GREEN}✅ Development server is ready${NC}"
 
 # Run E2E tests
 echo -e "\n${YELLOW}Running E2E tests...${NC}"
-npx cypress run --e2e
+bunx cypress run --e2e
 TEST_EXIT_CODE=$?
 
 # Kill the server

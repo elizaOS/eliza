@@ -92,7 +92,7 @@ jobs:
       - name: Run Cypress Component Tests
         working-directory: packages/client
         run: |
-          bun run cy:component
+          bun run test:component
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -174,8 +174,8 @@ jobs:
       - name: Run E2E tests with server
         working-directory: packages/client
         run: |
-          chmod +x scripts/test-with-server.sh
-          ./scripts/test-with-server.sh e2e
+          chmod +x scripts/test-e2e-with-server.sh
+          ./scripts/test-e2e-with-server.sh
         env:
           SERVER_PORT: 3000
           CLIENT_PORT: 5173
