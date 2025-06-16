@@ -5,7 +5,7 @@ import type { AgentServer } from '../../index';
 import { sendError, sendSuccess } from '../shared/response-utils';
 import { cleanupFile } from '../shared/file-utils';
 import { agentMediaUpload } from '../shared/uploads';
-import { ALLOWED_MEDIA_MIME_TYPES, ALLOWED_AUDIO_MIME_TYPES } from '../shared';
+import { ALLOWED_MEDIA_MIME_TYPES } from '../shared';
 
 // Using Express.Multer.File type instead of importing from multer directly
 type MulterFile = Express.Multer.File;
