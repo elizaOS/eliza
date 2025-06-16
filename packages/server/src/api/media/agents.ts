@@ -1,5 +1,5 @@
 import type { IAgentRuntime, UUID } from '@elizaos/core';
-import { validateUuid, logger } from '@elizaos/core';
+import { validateUuid, logger, getContentTypeFromMimeType } from '@elizaos/core';
 import express from 'express';
 import type { AgentServer } from '../../index';
 import { sendError, sendSuccess } from '../shared/response-utils';
@@ -50,22 +50,9 @@ export function createAgentMediaRouter(
         return sendError(res, 400, 'INVALID_FILE_TYPE', 'Unsupported media file type');
       }
 
-      let mediaType: 'image' | 'video' | 'audio' | 'document';
+      const mediaType = getContentTypeFromMimeType(mimetype);
 
-      if (mimetype.startsWith('image/')) {
-        mediaType = 'image';
-      } else if (mimetype.startsWith('video/')) {
-        mediaType = 'video';
-      } else if (ALLOWED_AUDIO_MIME_TYPES.includes(mimetype as any)) {
-        mediaType = 'audio';
-      } else if (
-        mimetype === 'application/pdf' ||
-        mimetype === 'text/plain' ||
-        mimetype.startsWith('application/') ||
-        mimetype.startsWith('text/')
-      ) {
-        mediaType = 'document';
-      } else {
+      if (!mimetype) {
         cleanupFile(mediaFile.path);
         return sendError(res, 400, 'UNSUPPORTED_MEDIA_TYPE', `Unsupported media MIME type: ${mimetype}`);
       }
