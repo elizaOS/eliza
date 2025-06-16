@@ -100,7 +100,7 @@
     "@clack/prompts": "^0.11.0",
     "@electric-sql/pglite": "^0.3.2",
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-anthropic": "workspace:*",
+    "@elizaos/plugin-anthropic": "^1.0.0",
     "@elizaos/plugin-bootstrap": "1.0.8",
     "@elizaos/plugin-local-ai": "latest",
     "@elizaos/plugin-openai": "latest",
