@@ -237,7 +237,7 @@ export function MessageContent({
             </>
           )}
           {isUser && message.text && !message.isLoading && onRetry && (
-            <RetryButton onClick={() => onRetry(message.text!)} />
+            <RetryButton onClick={() => onRetry(message)} />
           )}
           <DeleteButton onClick={() => onDelete(message.id as string)} />
         </div>
@@ -840,20 +840,40 @@ export default function Chat({
     }
   };
 
-  const handleRetryMessage = (messageText: string) => {
-    if (!messageText.trim() || inputDisabledRef.current) return;
-    // Set the input to the message text and submit it
-    updateChatState({ input: messageText });
-    // Focus the input after a brief delay to ensure state has updated
-    setTimeout(() => {
-      if (inputRef.current) {
-        inputRef.current.focus();
-        // Trigger form submission
-        if (formRef.current) {
-          formRef.current.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
-        }
-      }
-    }, 10);
+  const handleRetryMessage = (message: UiMessage) => {
+    if (inputDisabledRef.current || (!message.text?.trim() && message.attachments?.length === 0)) {
+      return;
+    }
+    
+    const retryMessageId = randomUUID() as UUID;
+    const finalTextContent = message.text?.trim() || `Shared ${message.attachments?.length} file(s).`;
+  
+    const optimisticUiMessage: UiMessage = {
+      id: retryMessageId,
+      text: message.text,
+      name: USER_NAME,
+      createdAt: Date.now(),
+      senderId: currentClientEntityId,
+      isAgent: false,
+      isLoading: true,
+      channelId: message.channelId,
+      serverId: finalServerIdForHooks,
+      source: chatType === ChannelType.DM ? CHAT_SOURCE : GROUP_CHAT_SOURCE,
+      attachments: message.attachments,
+    };
+  
+    addMessage(optimisticUiMessage);
+    safeScrollToBottom();
+
+    sendMessage(
+      finalTextContent,
+      finalServerIdForHooks!,
+      chatType === ChannelType.DM ? CHAT_SOURCE : GROUP_CHAT_SOURCE,
+      message.attachments,
+      retryMessageId,
+      undefined,
+      finalChannelIdForHooks!
+    );
   };
 
   const handleClearChat = () => {
