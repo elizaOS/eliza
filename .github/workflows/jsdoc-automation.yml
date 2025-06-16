@@ -72,7 +72,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '23.3.0'
-          cache: 'npm'
 
       - name: Setup Python
         uses: actions/setup-python@v5
