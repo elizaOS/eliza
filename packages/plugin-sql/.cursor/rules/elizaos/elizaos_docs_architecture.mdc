@@ -1,0 +1,1168 @@
+---
+description: ElizaOS Architecture
+globs: 
+alwaysApply: false
+---
+> You are an expert in ElizaOS v2, system architecture documentation, technical writing, and software engineering best practices. You focus on creating clear, comprehensive, and maintainable documentation that enables developers to understand, contribute to, and extend the ElizaOS ecosystem.
+
+## ElizaOS Documentation Architecture Flow
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│  Arch Overview  │    │  Component Docs  │    │  Integration    │
+│  - System Flow  │───▶│  - Actions       │───▶│  - API Specs    │
+│  - Core Modules │    │  - Providers     │    │  - Plugin Guide │
+│  - Data Flow    │    │  - Evaluators    │    │  - Examples     │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+         │                       │                       │
+         ▼                       ▼                       ▼
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│  Development    │    │  Deployment      │    │  Contribution   │
+│  - Setup Guide  │    │  - Environments  │    │  - Guidelines   │
+│  - Dev Workflow │    │  - Configuration │    │  - Code Style   │
+│  - Testing      │    │  - Monitoring    │    │  - PR Process   │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+```
+
+## Project Structure
+
+```
+eliza/
+├── docs/
+│   ├── architecture/
+│   │   ├── overview.md           # System overview
+│   │   ├── core-concepts.md      # Core concepts and terminology
+│   │   ├── data-flow.md          # Data flow diagrams
+│   │   ├── plugin-system.md      # Plugin architecture
+│   │   └── security.md           # Security considerations
+│   ├── components/
+│   │   ├── actions/              # Action documentation
+│   │   ├── providers/            # Provider documentation
+│   │   ├── evaluators/           # Evaluator documentation
+│   │   └── runtime/              # Runtime documentation
+│   ├── guides/
+│   │   ├── getting-started.md    # Quick start guide
+│   │   ├── development.md        # Development setup
+│   │   ├── deployment.md         # Deployment guide
+│   │   └── troubleshooting.md    # Common issues
+│   ├── api/
+│   │   ├── core/                 # Core API reference
+│   │   ├── plugins/              # Plugin API reference
+│   │   └── examples/             # API usage examples
+│   └── contributing/
+│       ├── guidelines.md         # Contribution guidelines
+│       ├── code-style.md         # Code style guide
+│       └── review-process.md     # Review process
+├── packages/core/
+│   └── README.md                 # Core package documentation
+├── plugins/
+│   └── */README.md               # Plugin-specific documentation
+└── README.md                     # Main project documentation
+```
+
+## Core Documentation Patterns
+
+### System Architecture Documentation
+
+```markdown
+# ✅ DO: Comprehensive architecture overview
+
+# ElizaOS v2 System Architecture
+
+## Overview
+
+ElizaOS v2 is a modular agent framework designed for building autonomous AI agents that can interact across multiple platforms and maintain persistent memory and context.
+
+## Core Architecture
+
+The ElizaOS v2 architecture is centered around the `AgentRuntime`, a powerful orchestrator that manages the entire lifecycle of an AI agent. It integrates a modular plugin system, a persistent memory system via a database adapter, and a flexible service layer to create highly capable and extensible agents.
+
+```mermaid
+graph TD
+    subgraph AgentRuntime
+        A[Character Config] --> B(Initialization);
+        B --> C{Plugin System};
+        B --> D{Memory System};
+        B --> E{Service Layer};
+        B --> F{Event System};
+
+        C -- registers --> G[Actions];
+        C -- registers --> H[Providers];
+        C -- registers --> I[Evaluators];
+        
+        D -- uses --> J[IDatabaseAdapter];
+        J -- driver for --> K[Postgres/PGLite];
+
+        E -- manages --> L[Services];
+    end
+
+    subgraph "External Interactions"
+        M[User Message] --> AgentRuntime;
+        AgentRuntime -- uses --> N[LLM/Model Providers];
+        AgentRuntime -- interacts via --> O[Platform Connectors];
+    end
+
+    AgentRuntime -- Manages --> P[Agent State];
+    P -- persists via --> D;
+
+    style AgentRuntime fill:#f9f,stroke:#333,stroke-width:2px
+```
+
+## Core Concepts
+
+### Agent Runtime
+The central orchestrator that manages the agent's lifecycle, coordinates between components, and maintains the execution context.
+
+**Key Responsibilities:**
+- Character configuration management
+- Plugin lifecycle management
+- Message processing coordination
+- State management and persistence
+
+### Plugin System
+A modular architecture that allows extending agent capabilities through plugins.
+
+**Plugin Types:**
+- **Actions**: Define what the agent can do (e.g., send messages, make API calls)
+- **Providers**: Supply context and data (e.g., recent messages, external APIs)
+- **Evaluators**: Assess situations and provide scoring (e.g., sentiment analysis)
+
+### Memory System
+Manages persistent storage and retrieval of conversation history and context.
+
+**Components:**
+- **Memory Manager**: Interface for creating and retrieving memories
+- **Vector Database**: Stores embeddings for semantic search
+- **State Composer**: Builds context from multiple providers
+
+## Data Flow
+
+### Message Processing Flow
+
+```
+User Message → Platform Client → Agent Runtime
+                                      │
+                                      ▼
+                               Message Validation
+                                      │
+                                      ▼
+                               Action Selection
+                                      │
+                                      ▼
+                               Context Building
+                               (Providers + Memory)
+                                      │
+                                      ▼
+                               Action Execution
+                                      │
+                                      ▼
+                               Response Generation
+                                      │
+                                      ▼
+                               Memory Storage
+                                      │
+                                      ▼
+                               Platform Response
+```
+
+### Memory Flow
+
+```
+New Memory → Embedding Generation → Vector Storage
+                                         │
+                                         ▼
+Query Request → Embedding Query → Similarity Search → Result Ranking
+```
+
+## Security Architecture
+
+### Authentication & Authorization
+- Token-based authentication for platform APIs
+- Role-based access control for plugin capabilities
+- Secure credential storage and management
+
+### Data Protection
+- Encryption at rest for sensitive data
+- Secure communication channels (TLS/SSL)
+- Privacy-preserving memory management
+
+### Input Validation
+- Comprehensive input sanitization
+- Rate limiting and abuse prevention
+- Content filtering and safety checks
+```
+
+### Component Documentation Standards
+
+```markdown
+# ✅ DO: Detailed component documentation with examples
+
+# Actions Documentation
+
+## Overview
+
+Actions define what an ElizaOS agent can do in response to messages or events. They encapsulate specific behaviors and capabilities that can be triggered based on message content, context, or user commands.
+
+## Action Interface
+
+```typescript
+interface Action {
+  name: string;                    // Unique identifier
+  description: string;             // Human-readable description
+  examples: MessageExample[][];    // Training examples
+  validate?: (runtime: IAgentRuntime, message: Memory) => Promise<boolean>;
+  handler: (runtime: IAgentRuntime, message: Memory, state?: State) => Promise<boolean>;
+}
+```
+
+## Implementation Guide
+
+### Basic Action Structure
+
+```typescript
+import { Action, IAgentRuntime, Memory, State } from '@elizaos/core';
+
+export const exampleAction: Action = {
+  name: 'EXAMPLE_ACTION',
+  description: 'An example action that demonstrates basic structure',
+  
+  examples: [
+    [
+      {
+        user: '{{user1}}',
+        content: { text: 'trigger phrase' }
+      },
+      {
+        user: '{{agent}}',
+        content: { text: 'Expected response', action: 'EXAMPLE_ACTION' }
+      }
+    ]
+  ],
+
+  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+    // Validation logic - return true if action should handle this message
+    return message.content.text?.toLowerCase().includes('trigger phrase') || false;
+  },
+
+  handler: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
+    try {
+      // Action implementation
+      const response = await processMessage(message, state);
+      
+      // Create response memory
+      await runtime.messageManager.createMemory({
+        userId: runtime.agentId,
+        content: {
+          text: response,
+          action: 'EXAMPLE_ACTION'
+        },
+        roomId: message.roomId,
+        embedding: await generateEmbedding(response)
+      });
+
+      return true;
+    } catch (error) {
+      console.error('Action execution failed:', error);
+      return false;
+    }
+  }
+};
+```
+
+### Best Practices
+
+#### Validation
+- **Be Specific**: Use precise validation criteria to avoid conflicts
+- **Performance**: Keep validation logic lightweight
+- **Error Handling**: Always handle validation errors gracefully
+
+```typescript
+// ✅ Good: Specific and efficient validation
+validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  const text = message.content.text?.toLowerCase();
+  return text?.includes('weather') && text?.includes('forecast');
+}
+
+// ❌ Bad: Too broad validation
+validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  return message.content.text?.length > 0;
+}
+```
+
+#### Handler Implementation
+- **Idempotency**: Handlers should be safe to run multiple times
+- **Error Recovery**: Implement proper error handling and logging
+- **State Management**: Use state parameter for context-aware responses
+
+```typescript
+// ✅ Good: Robust handler with error handling
+handler: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
+  try {
+    // Validate inputs
+    if (!message.content.text) {
+      throw new Error('Empty message content');
+    }
+
+    // Process with context
+    const context = state?.recentMessages || [];
+    const response = await generateResponse(message.content.text, context);
+
+    // Store result
+    await runtime.messageManager.createMemory({
+      userId: runtime.agentId,
+      content: { text: response, action: this.name },
+      roomId: message.roomId,
+      embedding: await runtime.embed(response)
+    });
+
+    return true;
+  } catch (error) {
+    console.error(`${this.name} handler failed:`, error);
+    return false;
+  }
+}
+```
+
+## Testing Actions
+
+### Unit Testing
+
+```typescript
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { exampleAction } from './example-action.js';
+
+describe('ExampleAction', () => {
+  let mockRuntime: IAgentRuntime;
+  let mockMessage: Memory;
+
+  beforeEach(() => {
+    mockRuntime = createMockRuntime();
+    mockMessage = createMockMessage();
+  });
+
+  it('should validate trigger phrases correctly', async () => {
+    mockMessage.content.text = 'trigger phrase example';
+    const isValid = await exampleAction.validate(mockRuntime, mockMessage);
+    expect(isValid).toBe(true);
+  });
+
+  it('should handle execution successfully', async () => {
+    const result = await exampleAction.handler(mockRuntime, mockMessage);
+    expect(result).toBe(true);
+    expect(mockRuntime.messageManager.createMemory).toHaveBeenCalled();
+  });
+});
+```
+
+## Common Patterns
+
+### API Integration Actions
+```typescript
+export const apiCallAction: Action = {
+  name: 'API_CALL',
+  description: 'Makes API calls to external services',
+  
+  handler: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+    const client = new APIClient({
+      token: runtime.character.settings.secrets.apiToken,
+      rateLimiter: new RateLimiter(100, 60000) // 100 calls per minute
+    });
+
+    try {
+      const result = await client.makeRequest(message.content.text);
+      // Handle response...
+      return true;
+    } catch (error) {
+      if (error instanceof RateLimitError) {
+        // Queue for retry
+        await runtime.scheduler.schedule(this, message, Date.now() + error.retryAfter);
+      }
+      throw error;
+    }
+  }
+};
+```
+
+### Multi-step Actions
+```typescript
+export const multiStepAction: Action = {
+  name: 'MULTI_STEP',
+  description: 'Handles multi-step workflows',
+  
+  handler: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
+    const workflow = new WorkflowManager(runtime);
+    
+    // Check if continuing existing workflow
+    const existingWorkflow = await workflow.getActive(message.userId);
+    if (existingWorkflow) {
+      return await workflow.continue(existingWorkflow, message);
+    }
+    
+    // Start new workflow
+    return await workflow.start('workflow-type', message, state);
+  }
+};
+```
+```
+
+### API Documentation Standards
+
+```markdown
+# ✅ DO: Comprehensive API documentation
+
+# ElizaOS Core API Reference
+
+## AgentRuntime
+
+The main runtime class that orchestrates agent behavior and manages the execution environment.
+
+### Constructor
+
+```typescript
+constructor(config: AgentRuntimeConfig)
+```
+
+**Parameters:**
+- `config`: Configuration object for the runtime
+
+```typescript
+interface AgentRuntimeConfig {
+  character: Character;              // Agent character configuration
+  databaseAdapter: DatabaseAdapter; // Database connection
+  token: string;                     // API token for LLM provider
+  modelProvider: ModelProvider;      // LLM provider (openai, anthropic, etc.)
+  actions?: Action[];               // Custom actions
+  providers?: Provider[];           // Custom providers
+  evaluators?: Evaluator[];         // Custom evaluators
+}
+```
+
+**Example:**
+```typescript
+const runtime = new AgentRuntime({
+  character: {
+    name: 'MyAgent',
+    bio: 'A helpful assistant',
+    // ... other character properties
+  },
+  databaseAdapter: new PostgresDatabaseAdapter({
+    connectionString: process.env.DATABASE_URL
+  }),
+  token: process.env.OPENAI_API_KEY,
+  modelProvider: 'openai',
+  actions: [customAction1, customAction2],
+  providers: [customProvider],
+  evaluators: [customEvaluator]
+});
+```
+
+### Methods
+
+#### `initialize(): Promise<void>`
+
+Initializes the runtime and all registered components.
+
+**Returns:** Promise that resolves when initialization is complete
+
+**Throws:** 
+- `RuntimeError` - If initialization fails
+- `DatabaseError` - If database connection fails
+
+**Example:**
+```typescript
+try {
+  await runtime.initialize();
+  console.log('Runtime initialized successfully');
+} catch (error) {
+  console.error('Failed to initialize runtime:', error);
+}
+```
+
+#### `processMessage(message: Memory): Promise<void>`
+
+Processes an incoming message through the action pipeline.
+
+**Parameters:**
+- `message`: Memory object containing the message to process
+
+**Returns:** Promise that resolves when message processing is complete
+
+**Example:**
+```typescript
+const message = {
+  id: 'msg-123',
+  userId: 'user-456',
+  content: { text: 'Hello, can you help me?' },
+  roomId: 'room-789',
+  embedding: embeddings,
+  createdAt: Date.now()
+};
+
+await runtime.processMessage(message);
+```
+
+#### `registerAction(action: Action): void`
+
+Registers a new action with the runtime.
+
+**Parameters:**
+- `action`: Action object to register
+
+**Throws:**
+- `DuplicateActionError` - If action name already exists
+
+**Example:**
+```typescript
+const myAction = {
+  name: 'MY_ACTION',
+  description: 'Custom action',
+  examples: [],
+  handler: async (runtime, message) => {
+    // Action implementation
+    return true;
+  }
+};
+
+runtime.registerAction(myAction);
+```
+
+## Memory Manager
+
+Manages persistent storage and retrieval of agent memories.
+
+### Methods
+
+#### `createMemory(memory: CreateMemoryInput): Promise<Memory>`
+
+Creates a new memory in the database.
+
+**Parameters:**
+```typescript
+interface CreateMemoryInput {
+  userId: string;           // User who created the memory
+  content: Content;         // Memory content
+  roomId: string;          // Room/conversation identifier
+  embedding?: number[];     // Optional pre-computed embedding
+  unique?: boolean;        // Whether to enforce uniqueness
+}
+```
+
+**Returns:** Promise resolving to the created Memory object
+
+**Example:**
+```typescript
+const memory = await runtime.messageManager.createMemory({
+  userId: 'user-123',
+  content: {
+    text: 'User asked about weather',
+    metadata: { topic: 'weather', intent: 'query' }
+  },
+  roomId: 'room-456',
+  embedding: await runtime.embed('User asked about weather')
+});
+```
+
+#### `getMemories(params: GetMemoriesParams): Promise<Memory[]>`
+
+Retrieves memories based on criteria.
+
+**Parameters:**
+```typescript
+interface GetMemoriesParams {
+  roomId?: string;         // Filter by room
+  userId?: string;         // Filter by user
+  count?: number;          // Maximum number to return (default: 10)
+  unique?: boolean;        // Whether to return unique memories only
+  start?: Date;           // Start date filter
+  end?: Date;             // End date filter
+}
+```
+
+**Returns:** Promise resolving to array of Memory objects
+
+**Example:**
+```typescript
+// Get recent memories from a room
+const recentMemories = await runtime.messageManager.getMemories({
+  roomId: 'room-123',
+  count: 5
+});
+
+// Get memories from a specific user
+const userMemories = await runtime.messageManager.getMemories({
+  userId: 'user-456',
+  count: 20
+});
+```
+
+#### `searchMemoriesByEmbedding(embedding: number[], options: SearchOptions): Promise<Memory[]>`
+
+Performs semantic search using vector embeddings.
+
+**Parameters:**
+- `embedding`: Query embedding vector
+- `options`: Search configuration options
+
+```typescript
+interface SearchOptions {
+  match_threshold?: number;  // Similarity threshold (0-1)
+  count?: number;           // Maximum results to return
+  roomId?: string;          // Limit search to specific room
+  userId?: string;          // Limit search to specific user
+}
+```
+
+**Returns:** Promise resolving to array of Memory objects sorted by similarity
+
+**Example:**
+```typescript
+const queryEmbedding = await runtime.embed('What did we discuss about weather?');
+
+const similarMemories = await runtime.messageManager.searchMemoriesByEmbedding(
+  queryEmbedding,
+  {
+    match_threshold: 0.8,
+    count: 10,
+    roomId: 'room-123'
+  }
+);
+```
+
+## Error Handling
+
+### Standard Error Types
+
+```typescript
+// Runtime errors
+class RuntimeError extends Error {
+  constructor(message: string, public code: string) {
+    super(message);
+    this.name = 'RuntimeError';
+  }
+}
+
+// Database errors
+class DatabaseError extends Error {
+  constructor(message: string, public query?: string) {
+    super(message);
+    this.name = 'DatabaseError';
+  }
+}
+
+// Validation errors
+class ValidationError extends Error {
+  constructor(message: string, public field: string) {
+    super(message);
+    this.name = 'ValidationError';
+  }
+}
+```
+
+### Error Handling Patterns
+
+```typescript
+try {
+  await runtime.processMessage(message);
+} catch (error) {
+  if (error instanceof ValidationError) {
+    console.error('Invalid input:', error.field, error.message);
+    // Handle validation error
+  } else if (error instanceof DatabaseError) {
+    console.error('Database error:', error.message);
+    // Handle database error
+  } else {
+    console.error('Unexpected error:', error);
+    // Handle unknown error
+  }
+}
+```
+```
+
+### Development Documentation
+
+```markdown
+# ✅ DO: Comprehensive development guide
+
+# ElizaOS Development Guide
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js 20+ (recommend using fnm or nvm)
+- PostgreSQL 15+ with pgvector extension
+- Git
+
+### Installation
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/ai16z/eliza.git
+   cd eliza
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Set up environment variables**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your configuration
+   ```
+
+4. **Set up database**
+   ```bash
+   # Start PostgreSQL (using Docker)
+   docker run -d \
+     --name eliza-postgres \
+     -e POSTGRES_DB=eliza \
+     -e POSTGRES_USER=eliza \
+     -e POSTGRES_PASSWORD=eliza \
+     -p 5432:5432 \
+     pgvector/pgvector:pg15
+   
+   # Run migrations
+   npm run db:migrate
+   ```
+
+5. **Build the project**
+   ```bash
+   npm run build
+   ```
+
+6. **Start development server**
+   ```bash
+   npm run dev
+   ```
+
+## Development Workflow
+
+### Project Structure
+
+```
+eliza/
+├── packages/
+│   ├── core/           # Core ElizaOS functionality
+│   ├── cli/            # Command-line interface
+│   └── client-*/       # Platform-specific clients
+├── plugins/
+│   ├── api/           # API integration plugins
+│   ├── onchain/       # Blockchain plugins
+│   └── clients/       # Client platform plugins
+├── docs/              # Documentation
+├── tests/             # Test suites
+└── scripts/           # Build and utility scripts
+```
+
+### Development Commands
+
+```bash
+# Development mode with hot reload
+npm run dev
+
+# Build all packages
+npm run build
+
+# Run tests
+npm test
+npm run test:unit
+npm run test:integration
+npm run test:e2e
+
+# Lint and format
+npm run lint
+npm run format
+
+# Type checking
+npm run typecheck
+
+# Generate documentation
+npm run docs
+```
+
+## Creating a New Plugin
+
+### 1. Plugin Structure
+
+Create a new directory in the appropriate plugin category:
+
+```
+plugins/
+└── your-plugin/
+    ├── src/
+    │   ├── index.ts        # Main plugin export
+    │   ├── actions/        # Plugin actions
+    │   ├── providers/      # Plugin providers
+    │   ├── evaluators/     # Plugin evaluators
+    │   └── types.ts        # Type definitions
+    ├── tests/
+    │   ├── unit/          # Unit tests
+    │   └── integration/   # Integration tests
+    ├── package.json       # Package configuration
+    ├── tsconfig.json      # TypeScript configuration
+    └── README.md          # Plugin documentation
+```
+
+### 2. Plugin Implementation
+
+```typescript
+// src/index.ts
+import { Plugin } from '@elizaos/core';
+import { exampleAction } from './actions/example.js';
+import { exampleProvider } from './providers/example.js';
+import { exampleEvaluator } from './evaluators/example.js';
+
+export const myPlugin: Plugin = {
+  name: 'my-plugin',
+  description: 'Description of what the plugin does',
+  dependencies: [], // Other plugins this depends on
+  
+  actions: [exampleAction],
+  providers: [exampleProvider],
+  evaluators: [exampleEvaluator],
+  services: [], // Optional background services
+  
+  async initialize(runtime) {
+    console.log('Initializing my plugin');
+    // Plugin initialization logic
+  },
+  
+  async cleanup() {
+    console.log('Cleaning up my plugin');
+    // Plugin cleanup logic
+  }
+};
+
+export default myPlugin;
+```
+
+### 3. Testing Your Plugin
+
+```typescript
+// tests/unit/plugin.test.ts
+import { describe, it, expect, beforeEach } from 'vitest';
+import { TestRuntimeFactory } from '@elizaos/testing';
+import { myPlugin } from '../src/index.js';
+
+describe('MyPlugin', () => {
+  let runtime;
+
+  beforeEach(async () => {
+    runtime = await TestRuntimeFactory.createTestRuntime({}, {
+      plugins: [myPlugin]
+    });
+  });
+
+  it('should initialize successfully', () => {
+    expect(runtime.plugins.has('my-plugin')).toBe(true);
+  });
+
+  it('should register actions', () => {
+    expect(runtime.actions.has('EXAMPLE_ACTION')).toBe(true);
+  });
+});
+```
+
+## Code Style Guide
+
+### TypeScript Guidelines
+
+#### Types and Interfaces
+
+```typescript
+// ✅ Use interface for object shapes that might be extended
+interface UserConfig {
+  name: string;
+  age: number;
+  preferences?: string[];
+}
+
+// ✅ Use type for unions, primitives, and complex types
+type Status = 'active' | 'inactive' | 'pending';
+type EventHandler = (event: Event) => void;
+
+// ✅ Use const assertions for immutable data
+const PLUGIN_TYPES = ['action', 'provider', 'evaluator'] as const;
+type PluginType = typeof PLUGIN_TYPES[number];
+```
+
+#### Naming Conventions
+
+```typescript
+// ✅ PascalCase for classes, interfaces, types
+class AgentRuntime { }
+interface MessageContent { }
+type ActionResult = boolean;
+
+// ✅ camelCase for variables, functions, methods
+const agentConfig = { };
+function processMessage() { }
+
+// ✅ SCREAMING_SNAKE_CASE for constants
+const MAX_RETRY_ATTEMPTS = 3;
+const DEFAULT_TIMEOUT_MS = 5000;
+
+// ✅ kebab-case for file names
+// action-handler.ts
+// message-processor.ts
+```
+
+#### Error Handling
+
+```typescript
+// ✅ Use specific error types
+class PluginError extends Error {
+  constructor(
+    message: string,
+    public pluginName: string,
+    public code: string
+  ) {
+    super(message);
+    this.name = 'PluginError';
+  }
+}
+
+// ✅ Handle errors at appropriate levels
+async function processAction(action: Action, message: Memory): Promise<boolean> {
+  try {
+    return await action.handler(runtime, message);
+  } catch (error) {
+    if (error instanceof PluginError) {
+      console.error(`Plugin ${error.pluginName} failed:`, error.message);
+      return false;
+    }
+    throw error; // Re-throw unexpected errors
+  }
+}
+```
+
+### Documentation Standards
+
+#### Function Documentation
+
+```typescript
+/**
+ * Processes a message through the action pipeline.
+ * 
+ * @param message - The message to process
+ * @param context - Additional context for processing
+ * @returns Promise resolving to processing result
+ * 
+ * @throws {ValidationError} When message format is invalid
+ * @throws {RuntimeError} When processing fails
+ * 
+ * @example
+ * ```typescript
+ * const result = await processMessage(message, { userId: 'user-123' });
+ * if (result.success) {
+ *   console.log('Message processed successfully');
+ * }
+ * ```
+ */
+async function processMessage(
+  message: Memory,
+  context: ProcessingContext
+): Promise<ProcessingResult> {
+  // Implementation
+}
+```
+
+#### README Template
+
+```markdown
+# Plugin Name
+
+Brief description of what the plugin does.
+
+## Features
+
+- Feature 1
+- Feature 2
+- Feature 3
+
+## Installation
+
+```bash
+npm install @elizaos/plugin-name
+```
+
+## Configuration
+
+```typescript
+const config = {
+  apiKey: process.env.API_KEY,
+  timeout: 5000
+};
+```
+
+## Usage
+
+```typescript
+import { pluginName } from '@elizaos/plugin-name';
+
+const runtime = new AgentRuntime({
+  // ... other config
+  plugins: [pluginName]
+});
+```
+
+## API Reference
+
+### Actions
+
+#### ACTION_NAME
+Description of what the action does.
+
+**Triggers:** When this action is triggered
+**Parameters:** Parameters it accepts
+**Returns:** What it returns
+
+### Providers
+
+#### PROVIDER_NAME
+Description of what the provider supplies.
+
+## Contributing
+
+See [CONTRIBUTING.md](mdc:../../CONTRIBUTING.md) for guidelines.
+
+## License
+
+MIT
+```
+
+## Testing Guidelines
+
+### Unit Testing
+
+```typescript
+// ✅ Test structure
+describe('ComponentName', () => {
+  describe('methodName', () => {
+    it('should handle normal case', () => {
+      // Test implementation
+    });
+    
+    it('should handle edge case', () => {
+      // Test implementation
+    });
+    
+    it('should throw error on invalid input', () => {
+      // Test implementation
+    });
+  });
+});
+```
+
+### Integration Testing
+
+```typescript
+// ✅ Integration test setup
+describe('Plugin Integration', () => {
+  let runtime: IAgentRuntime;
+  
+  beforeEach(async () => {
+    runtime = await TestRuntimeFactory.createTestRuntime({}, {
+      plugins: [testPlugin]
+    });
+  });
+  
+  afterEach(async () => {
+    await TestRuntimeFactory.cleanup();
+  });
+  
+  it('should integrate with runtime correctly', async () => {
+    // Test plugin integration
+  });
+});
+```
+
+## Performance Guidelines
+
+### Memory Management
+
+```typescript
+// ✅ Clean up resources
+class ResourceManager {
+  private resources = new Map();
+  
+  async cleanup() {
+    for (const [id, resource] of this.resources) {
+      try {
+        await resource.cleanup();
+      } catch (error) {
+        console.warn(`Failed to cleanup resource ${id}:`, error);
+      }
+    }
+    this.resources.clear();
+  }
+}
+```
+
+### Async Operations
+
+```typescript
+// ✅ Use Promise.all for concurrent operations
+const results = await Promise.all([
+  fetchUserData(userId),
+  fetchPreferences(userId),
+  fetchHistory(userId)
+]);
+
+// ✅ Use proper error boundaries
+async function withRetry<T>(
+  operation: () => Promise<T>,
+  maxRetries: number = 3
+): Promise<T> {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (i === maxRetries - 1) throw error;
+      await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+    }
+  }
+  throw new Error('Max retries exceeded');
+}
+```
+```
+
+## Best Practices Summary
+
+### Documentation Structure
+- Start with clear overview and architecture diagrams
+- Provide comprehensive API documentation with examples
+- Include troubleshooting guides and common patterns
+- Maintain up-to-date README files for all packages
+
+### Code Documentation
+- Use clear, descriptive names for functions and variables
+- Include JSDoc comments for all public APIs
+- Provide usage examples for complex functionality
+- Document error conditions and edge cases
+
+### Development Workflow
+- Follow consistent project structure across packages
+- Use comprehensive testing strategies (unit, integration, E2E)
+- Implement proper error handling and logging
+- Follow established code style guidelines
+
+### API Design
+- Design for extensibility and modularity
+- Provide clear interfaces and type definitions
+- Include proper error handling and validation
+- Document breaking changes and migration paths
+
+### Performance Considerations
+- Implement proper resource cleanup
+- Use efficient async patterns
+- Monitor and optimize memory usage
+- Provide performance benchmarks
+
+## References
+- [Technical Writing Best Practices](mdc:https:/developers.google.com/tech-writing)
+- [TypeScript Documentation](mdc:https:/www.typescriptlang.org/docs)
+- [API Design Guidelines](mdc:https:/github.com/microsoft/api-guidelines)
+- [Software Architecture Documentation](mdc:https:/c4model.com)

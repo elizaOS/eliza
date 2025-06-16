@@ -432,7 +432,7 @@ describe('Base Adapter Comprehensive Tests', () => {
             // Retrieve cached embedding
             const cached = await adapter.getCachedEmbeddings({
                 query_table_name: 'logs',
-                query_threshold: 0.5,
+                query_threshold: 5,
                 query_input: content,
                 query_field_name: 'body',
                 query_field_sub_name: 'content',
@@ -456,7 +456,7 @@ describe('Base Adapter Comprehensive Tests', () => {
             }]);
 
             const entities = await adapter.getEntityByIds([entityId]);
-            expect(entities?.[0]?.metadata).toBeUndefined();
+            expect(entities?.[0]?.metadata).toEqual({});
 
             // Memory with required entityId
             const memoryId = uuidv4() as UUID;

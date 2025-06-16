@@ -39,14 +39,21 @@ describe('Base Adapter Methods Integration Tests', () => {
         it('should handle getMemories with various filters', async () => {
             const agentId = testAgentId;
             const roomId = uuidv4() as UUID;
+            const roomId2 = uuidv4() as UUID; // Different room for third memory
 
-            // Create room first
+            // Create rooms first
             await adapter.createRooms([{
                 id: roomId,
                 agentId: testAgentId,
                 source: 'test',
                 type: 'GROUP' as ChannelType,
                 name: 'Test Room'
+            }, {
+                id: roomId2,
+                agentId: testAgentId,
+                source: 'test',
+                type: 'GROUP' as ChannelType,
+                name: 'Test Room 2'
             }]);
 
             // Create test memories
@@ -73,7 +80,7 @@ describe('Base Adapter Methods Integration Tests', () => {
                     id: uuidv4() as UUID,
                     agentId,
                     entityId: testEntityId,
-                    roomId: uuidv4() as UUID, // Different room
+                    roomId: roomId2, // Different room
                     content: { text: 'Test memory 3' } as Content,
                     createdAt: Date.now(),
                     metadata: { type: 'test' }
@@ -583,6 +590,15 @@ describe('Base Adapter Methods Integration Tests', () => {
         it('should handle complex memory searches', async () => {
             const agentId = testAgentId;
             const roomId = uuidv4() as UUID;
+            const entityId = uuidv4() as UUID;
+
+            // Create entity first
+            await adapter.createEntities([{
+                id: entityId,
+                agentId: testAgentId,
+                names: ['Test Entity for Memory Search'],
+                metadata: { type: 'test' }
+            }]);
 
             // Create room
             await adapter.createRooms([{
@@ -598,7 +614,7 @@ describe('Base Adapter Methods Integration Tests', () => {
                 {
                     id: uuidv4() as UUID,
                     agentId,
-                    entityId: testEntityId,
+                    entityId: entityId,
                     roomId,
                     content: { text: 'Meeting scheduled for tomorrow' } as Content,
                     createdAt: Date.now() - 3600000, // 1 hour ago
@@ -607,7 +623,7 @@ describe('Base Adapter Methods Integration Tests', () => {
                 {
                     id: uuidv4() as UUID,
                     agentId,
-                    entityId: testEntityId,
+                    entityId: entityId,
                     roomId,
                     content: { text: 'Remember to buy groceries' } as Content,
                     createdAt: Date.now() - 1800000, // 30 min ago
@@ -616,7 +632,7 @@ describe('Base Adapter Methods Integration Tests', () => {
                 {
                     id: uuidv4() as UUID,
                     agentId,
-                    entityId: testEntityId,
+                    entityId: entityId,
                     roomId,
                     content: { text: 'Important meeting notes' } as Content,
                     createdAt: Date.now() - 900000, // 15 min ago

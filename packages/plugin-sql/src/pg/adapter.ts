@@ -1,6 +1,6 @@
 import { type UUID, logger, Agent, Entity, Memory, Component } from '@elizaos/core';
 import { type NodePgDatabase, drizzle } from 'drizzle-orm/node-postgres';
-import { BaseDatabaseAdapter } from '../base';
+import { BaseDrizzleAdapter } from '../base';
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from '../schema/embedding';
 import type { PostgresConnectionManager } from './manager';
 import { type Pool as PgPool } from 'pg';
@@ -9,18 +9,20 @@ import * as schema from '../schema';
 
 /**
  * Adapter class for interacting with a PostgreSQL database.
- * Extends BaseDrizzleAdapter<NodePgDatabase>.
+ * Extends BaseDrizzleAdapter.
  */
-export class PgDatabaseAdapter extends BaseDatabaseAdapter {
+export class PgDatabaseAdapter extends BaseDrizzleAdapter {
   protected embeddingDimension: EmbeddingDimensionColumn = DIMENSION_MAP[384];
+  private manager: PostgresConnectionManager;
 
   constructor(
     agentId: UUID,
     manager: PostgresConnectionManager,
     schema?: any,
   ) {
-    const db = manager.getDatabase(schema || globalSchema);
-    super(agentId, db, manager);
+    super(agentId);
+    this.manager = manager;
+    this.db = manager.getDatabase();
   }
 
   /**
@@ -112,7 +114,7 @@ export class PgDatabaseAdapter extends BaseDatabaseAdapter {
   }
 
   getEntityByIds(entityIds: UUID[]): Promise<Entity[]> {
-    return super.getEntityByIds(entityIds);
+    return super.getEntityByIds(entityIds).then(result => result || []);
   }
 
   updateEntity(entity: Entity): Promise<void> {
@@ -131,11 +133,11 @@ export class PgDatabaseAdapter extends BaseDatabaseAdapter {
     return super.searchMemories(params);
   }
 
-  updateMemory(memory: Partial<Memory>): Promise<boolean> {
+  updateMemory(memory: Partial<Memory> & { id: UUID }): Promise<boolean> {
     return super.updateMemory(memory);
   }
 
-  deleteMemory(memoryId: UUID): Promise<boolean> {
+  deleteMemory(memoryId: UUID): Promise<void> {
     return super.deleteMemory(memoryId);
   }
 
@@ -147,11 +149,11 @@ export class PgDatabaseAdapter extends BaseDatabaseAdapter {
     return super.getComponent(entityId, type, worldId, sourceEntityId);
   }
 
-  updateComponent(component: Component): Promise<boolean> {
+  updateComponent(component: Component): Promise<void> {
     return super.updateComponent(component);
   }
 
-  deleteComponent(componentId: UUID): Promise<boolean> {
+  deleteComponent(componentId: UUID): Promise<void> {
     return super.deleteComponent(componentId);
   }
 }

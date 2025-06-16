@@ -1,0 +1,311 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+---
+title: ElizaOS End-to-End Runtime Testing Guide
+---
+
+# ElizaOS End-to-End Runtime Testing
+
+This guide explains how to create end-to-end (e2e) runtime tests for ElizaOS plugins that are executed by the ElizaOS CLI test runner.
+
+## Overview
+
+ElizaOS e2e tests are **real runtime tests** that:
+- Execute against actual ElizaOS runtime instances
+- Create real tasks, memories, and side effects
+- Verify actual outcomes, not mocked behaviors
+- Are run using the `elizaos test` command
+
+## Test Structure
+
+### 1. Individual Test Object
+
+Each test must export an object with this structure:
+
+```typescript
+export const myTestName = {
+  name: "my-test-name",
+  description: "Description of what this test does",
+  fn: async (runtime: IAgentRuntime) => {
+    // Test implementation
+  }
+};
+```
+
+### 2. Test Suite Array
+
+Tests are grouped into TestSuite arrays:
+
+```typescript
+import { type TestSuite } from "@elizaos/core";
+
+export const myTestSuite: TestSuite[] = [
+  {
+    name: "My Test Suite Name",
+    tests: [
+      test1,
+      test2,
+      test3,
+    ],
+  },
+];
+```
+
+### 3. Plugin Integration
+
+The test suite is added to the plugin's `tests` property:
+
+```typescript
+export const myPlugin: Plugin = {
+  name: "my-plugin",
+  description: "My plugin description",
+  tests: myTestSuite,  // Add tests here
+  actions: [...],
+  providers: [...],
+  // ... other plugin properties
+};
+```
+
+## Writing E2E Tests
+
+### Key Principles
+
+1. **Use Real Runtime**: Tests receive an actual `IAgentRuntime` instance
+2. **No Mocks**: Do not mock runtime methods or dependencies
+3. **Real Side Effects**: Tests create real tasks, memories, etc.
+4. **Verify Outcomes**: Check that expected tasks/data were actually created
+
+### Test Implementation Pattern
+
+```typescript
+export const myE2ETest = {
+  name: "my-feature-e2e",
+  description: "E2E test for my feature",
+  fn: async (runtime: IAgentRuntime) => {
+    console.log("Starting My Feature E2E Test...");
+    
+    try {
+      // 1. Create test data
+      const testRoomId = createUniqueUuid(runtime, "test-room");
+      const message: Memory = {
+        id: createUniqueUuid(runtime, "test-message"),
+        content: { 
+          text: "Test message content", 
+          source: "test" 
+        },
+        roomId: testRoomId,
+        agentId: runtime.agentId,
+        entityId: runtime.agentId,
+        createdAt: Date.now(),
+      };
+
+      // 2. Find and validate action
+      const myAction = runtime.actions.find(
+        action => action.name === "MY_ACTION_NAME"
+      );
+      
+      if (!myAction) {
+        throw new Error("MY_ACTION_NAME action not found");
+      }
+
+      const isValid = await myAction.validate(runtime, message);
+      if (!isValid) {
+        throw new Error("Message validation failed");
+      }
+
+      // 3. Execute action
+      const state = await runtime.composeState(message);
+      const callback = async (response: any) => {
+        console.log("Action response:", response.text);
+        return [];
+      };
+      
+      await myAction.handler(runtime, message, state, {}, callback);
+
+      // 4. Wait for async operations
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // 5. Verify outcomes
+      const createdTasks = await runtime.getTasks({
+        tags: ["expected", "tags"],
+      });
+
+      if (createdTasks.length === 0) {
+        throw new Error("No tasks were created");
+      }
+
+      console.log(`✓ Created ${createdTasks.length} tasks`);
+      console.log("✅ My Feature E2E Test PASSED\n");
+      
+    } catch (error) {
+      console.error("❌ My Feature E2E Test FAILED:", error);
+      throw error;
+    }
+  }
+};
+```
+
+## Test Organization
+
+### File Structure
+```
+src/
+├── index.ts              # Plugin definition
+├── actions/              # Action implementations
+├── providers/            # Provider implementations
+└── tests/               # E2E tests
+    ├── index.ts         # Test suite export
+    ├── feature1.e2e.ts  # Feature 1 tests
+    ├── feature2.e2e.ts  # Feature 2 tests
+    └── integration.e2e.ts # Integration tests
+```
+
+### Example Test Index
+
+Reference: [src/scenarios/tests/index.ts](mdc:src/scenarios/tests/index.ts)
+
+```typescript
+import { type TestSuite } from "@elizaos/core";
+import { feature1E2ETest } from "./feature1.e2e";
+import { feature2E2ETest } from "./feature2.e2e";
+import { integrationE2ETest } from "./integration.e2e";
+
+export const myPluginTests: TestSuite[] = [
+  {
+    name: "My Plugin E2E Tests",
+    tests: [
+      feature1E2ETest,
+      feature2E2ETest,
+      integrationE2ETest,
+    ],
+  },
+];
+```
+
+## Common Test Patterns
+
+### 1. Testing Actions
+
+```typescript
+// Find action
+const action = runtime.actions.find(a => a.name === "ACTION_NAME");
+if (!action) throw new Error("Action not found");
+
+// Validate
+const isValid = await action.validate(runtime, message);
+if (!isValid) throw new Error("Validation failed");
+
+// Execute
+await action.handler(runtime, message, state, {}, callback);
+```
+
+### 2. Testing Providers
+
+```typescript
+// Find provider
+const provider = runtime.providers.find(p => p.name === "PROVIDER_NAME");
+if (!provider) throw new Error("Provider not found");
+
+// Get context
+const context = await provider.get(runtime, message, state);
+
+// Verify content
+if (!context.text.includes("Expected content")) {
+  throw new Error("Provider didn't return expected content");
+}
+```
+
+### 3. Verifying Task Creation
+
+```typescript
+// Wait for async operations
+await new Promise(resolve => setTimeout(resolve, 1000));
+
+// Query tasks
+const tasks = await runtime.getTasks({
+  tags: ["tag1", "tag2"],
+});
+
+// Verify
+if (tasks.length === 0) {
+  throw new Error("No tasks created");
+}
+
+// Check specific properties
+const task = tasks.find(t => t.name === "Expected Task Name");
+if (!task) throw new Error("Specific task not found");
+```
+
+### 4. Integration Testing
+
+Reference: [src/scenarios/tests/scenariosIntegration.e2e.ts](mdc:src/scenarios/tests/scenariosIntegration.e2e.ts)
+
+```typescript
+// Test multiple features together
+const messages = [message1, message2, message3];
+const promises = messages.map(async (msg) => {
+  // Process each message
+  await processMessage(runtime, msg);
+});
+
+await Promise.all(promises);
+```
+
+## Running Tests
+
+### Build First
+```bash
+npm run build
+```
+
+### Run Tests
+```bash
+npm run test:e2e
+# or
+elizaos test
+```
+
+### Test Output
+- Tests log their progress with console.log
+- Use ✓ for successes
+- Use ✅ for test completion
+- Use ❌ for failures
+- Throw errors to fail tests
+
+## Best Practices
+
+1. **Clear Test Names**: Use descriptive names like `documentation-research-e2e`
+2. **Console Logging**: Log test progress for debugging
+3. **Wait for Async**: Add delays after actions that create tasks
+4. **Verify Real Data**: Check actual task/memory creation
+5. **Clean Error Messages**: Provide clear failure reasons
+6. **Test Independence**: Each test should work in isolation
+7. **Resource Cleanup**: Note that created tasks persist (by design)
+
+## Common Issues
+
+### Tests Not Found
+- Ensure tests are exported from plugin
+- Check that test structure matches expected format
+- Verify build includes test files
+
+### Runtime Methods Undefined
+- Ensure using real runtime, not mocks
+- Check that required plugins are loaded
+- Verify runtime initialization
+
+### Async Timing Issues
+- Add appropriate delays after actions
+- Wait for task creation to complete
+- Consider longer delays for complex operations
+
+## Example References
+
+- Documentation Research Test: [src/scenarios/tests/documentationResearch.e2e.ts](mdc:src/scenarios/tests/documentationResearch.e2e.ts)
+- GitHub Analysis Test: [src/scenarios/tests/githubAnalysis.e2e.ts](mdc:src/scenarios/tests/githubAnalysis.e2e.ts)
+- System Health Test: [src/scenarios/tests/systemHealth.e2e.ts](mdc:src/scenarios/tests/systemHealth.e2e.ts)
+- Learning Path Test: [src/scenarios/tests/learningPath.e2e.ts](mdc:src/scenarios/tests/learningPath.e2e.ts)
+- Integration Test: [src/scenarios/tests/scenariosIntegration.e2e.ts](mdc:src/scenarios/tests/scenariosIntegration.e2e.ts)
