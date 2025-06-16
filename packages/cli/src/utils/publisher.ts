@@ -1,7 +1,5 @@
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
-import { logger } from '@elizaos/core';
 import { execa } from 'execa';
+import { logger } from '@elizaos/core';
 import {
   branchExists,
   createBranch,
@@ -32,30 +30,6 @@ interface PackageJson {
   type?: string; // 'module' or 'commonjs' for Node.js module format
 }
 
-// This interface isn't used but we'll keep it for future reference
-interface PublishTestResult {
-  npmChecks: {
-    loggedIn: boolean;
-    canBuild: boolean;
-    hasPermissions: boolean;
-  };
-  githubChecks: {
-    hasToken: boolean;
-    hasValidToken: boolean;
-    hasForkAccess: boolean;
-    canCreateBranch: boolean;
-    canUpdateFiles: boolean;
-    canCreatePR: boolean;
-  };
-  packageChecks: {
-    hasPackageJson: boolean;
-    hasValidName: boolean;
-    hasVersion: boolean;
-    hasRepository: boolean;
-    versionNotExists: boolean;
-  };
-}
-
 /**
  * Tests whether the current environment is ready to publish an npm package from the specified directory.
  *
@@ -76,7 +50,6 @@ export async function testPublishToNpm(cwd: string): Promise<boolean> {
     logger.info('[✓] Build test successful');
 
     // Test publish access
-    const pkgJson = JSON.parse(await fs.readFile(path.join(cwd, 'package.json'), 'utf-8'));
     await execa('npm', ['access', 'ls-packages'], { cwd });
     logger.info('[✓] Have publish permissions');
 
@@ -102,7 +75,6 @@ export async function testPublishToNpm(cwd: string): Promise<boolean> {
  * @returns `true` if all required GitHub permissions and operations succeed; otherwise, `false`.
  */
 export async function testPublishToGitHub(
-  cwd: string,
   packageJson: PackageJson,
   username: string
 ): Promise<boolean> {
@@ -142,7 +114,7 @@ export async function testPublishToGitHub(
     logger.info(`Testing with registry: ${registryOwner}/${registryRepo}`);
 
     // Check fork permissions and create fork if needed
-    const hasFork = await forkExists(token, registryOwner, registryRepo, username);
+    const hasFork = await forkExists(token, registryRepo, username);
     logger.info(hasFork ? '[✓] Fork exists' : '[✓] Can create fork');
 
     if (!hasFork) {
@@ -182,8 +154,7 @@ export async function testPublishToGitHub(
     // Try to create the directory first if needed
     const dirCreated = await ensureDirectory(
       token,
-      username,
-      registryRepo,
+      `${username}/${registryRepo}`,
       'test-files',
       branchName
     );
@@ -240,7 +211,6 @@ export async function publishToNpm(cwd: string): Promise<boolean> {
  *
  * @param cwd - The working directory containing the package to publish.
  * @param packageJson - The parsed package.json object for the package.
- * @param cliVersion - The CLI version to record in the registry metadata.
  * @param username - The GitHub username of the publisher.
  * @param skipRegistry - If true, skips registry updates and only publishes to GitHub.
  * @param isTest - If true, runs in test mode without making actual changes.
@@ -255,7 +225,6 @@ export async function publishToNpm(cwd: string): Promise<boolean> {
 export async function publishToGitHub(
   cwd: string,
   packageJson: PackageJson,
-  cliVersion: string,
   username: string,
   skipRegistry = false,
   isTest = false
@@ -358,7 +327,7 @@ export async function publishToGitHub(
   const [registryOwner, registryRepo] = settings.defaultRegistry.split('/');
 
   // Check for fork
-  const hasFork = await forkExists(token, registryOwner, registryRepo, username);
+  const hasFork = await forkExists(token, registryRepo, username);
   let forkFullName: string;
 
   if (!hasFork && !isTest) {

@@ -2,7 +2,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type Character, logger } from '@elizaos/core';
-import multer from 'multer';
 import { getElizaCharacter } from '../characters/eliza';
 
 const __filename = fileURLToPath(import.meta.url);

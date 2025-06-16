@@ -53,8 +53,6 @@ import {
   worldTable,
 } from './schema/index';
 
-import type { DrizzleDatabase } from './types';
-
 // Define the metadata type inline since we can't import it
 /**
  * Represents metadata information about memory.
@@ -79,12 +77,8 @@ import type { DrizzleDatabase } from './types';
  * The adapter includes built-in retry logic for database operations, embedding dimension
  * management, and transaction support. Concrete implementations must provide the
  * withDatabase method to execute operations against their specific database.
- *
- * @template TDrizzleDatabase - The type of Drizzle operations supported by the adapter.
  */
-export abstract class BaseDrizzleAdapter<
-  TDrizzleDatabase extends DrizzleDatabase,
-> extends DatabaseAdapter<TDrizzleDatabase> {
+export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
   protected readonly maxRetries: number = 3;
   protected readonly baseDelay: number = 1000;
   protected readonly maxDelay: number = 10000;
@@ -105,7 +99,7 @@ export abstract class BaseDrizzleAdapter<
   /**
    * Get the underlying database instance for testing purposes
    */
-  public getDatabase(): TDrizzleDatabase {
+  public getDatabase(): any {
     return this.db;
   }
 
@@ -170,9 +164,7 @@ export abstract class BaseDrizzleAdapter<
   async ensureEmbeddingDimension(dimension: number) {
     return this.withDatabase(async () => {
       const existingMemory = await this.db
-        .select({
-          embedding: embeddingTable,
-        })
+        .select()
         .from(memoryTable)
         .innerJoin(embeddingTable, eq(embeddingTable.memoryId, memoryTable.id))
         .where(eq(memoryTable.agentId, this.agentId))
@@ -180,7 +172,7 @@ export abstract class BaseDrizzleAdapter<
 
       if (existingMemory.length > 0) {
         const usedDimension = Object.entries(DIMENSION_MAP).find(
-          ([_, colName]) => existingMemory[0].embedding[colName] !== null
+          ([_, colName]) => (existingMemory[0] as any).embeddings[colName] !== null
         );
         // We don't actually need to use usedDimension for now, but it's good to know it's there.
       }
@@ -364,7 +356,7 @@ export abstract class BaseDrizzleAdapter<
    * @private
    */
   private async mergeAgentSettings(
-    tx: DrizzleDatabase,
+    tx: any,
     agentId: UUID,
     updatedSettings: any
   ): Promise<any> {
@@ -465,7 +457,7 @@ export abstract class BaseDrizzleAdapter<
           }, 30000);
 
           this.db
-            .transaction(async (tx: DrizzleDatabase) => {
+            .transaction(async (tx: any) => {
               try {
                 // Step 1: Find all entities belonging to this agent
                 logger.debug(`[DB] Fetching entities for agent: ${agentId}`);
@@ -900,11 +892,126 @@ export abstract class BaseDrizzleAdapter<
    * @returns {Promise<void>} A Promise that resolves when the entity is updated.
    */
   async updateEntity(entity: Entity): Promise<void> {
+    if (!entity.id) {
+      throw new Error('Entity ID is required for update');
+    }
     return this.withDatabase(async () => {
       await this.db
         .update(entityTable)
         .set(entity)
-        .where(and(eq(entityTable.id, entity.id as UUID), eq(entityTable.agentId, entity.agentId)));
+        .where(eq(entityTable.id, entity.id as string));
+    });
+  }
+
+  /**
+   * Asynchronously deletes an entity from the database based on the provided ID.
+   * @param {UUID} entityId - The ID of the entity to delete.
+   * @returns {Promise<void>} A Promise that resolves when the entity is deleted.
+   */
+  async deleteEntity(entityId: UUID): Promise<void> {
+    return this.withDatabase(async () => {
+      await this.db.transaction(async (tx) => {
+        // Delete related components first
+        await tx.delete(componentTable).where(
+          or(
+            eq(componentTable.entityId, entityId),
+            eq(componentTable.sourceEntityId, entityId)
+          )
+        );
+        
+        // Delete the entity
+        await tx.delete(entityTable).where(eq(entityTable.id, entityId));
+      });
+    });
+  }
+
+  /**
+   * Asynchronously retrieves entities by their names and agentId.
+   * @param {Object} params - The parameters for retrieving entities.
+   * @param {string[]} params.names - The names to search for.
+   * @param {UUID} params.agentId - The agent ID to filter by.
+   * @returns {Promise<Entity[]>} A Promise that resolves to an array of entities.
+   */
+  async getEntitiesByNames(params: {
+    names: string[];
+    agentId: UUID;
+  }): Promise<Entity[]> {
+    return this.withDatabase(async () => {
+      const { names, agentId } = params;
+      
+      // Build a condition to match any of the names
+      const nameConditions = names.map(name => 
+        sql`${name} = ANY(${entityTable.names})`
+      );
+      
+      const query = sql`
+        SELECT * FROM ${entityTable}
+        WHERE ${entityTable.agentId} = ${agentId}
+        AND (${sql.join(nameConditions, sql` OR `)})
+      `;
+      
+      const result = await this.db.execute(query);
+      
+      return result.rows.map((row: any) => ({
+        id: row.id as UUID,
+        agentId: row.agentId as UUID,
+        names: row.names || [],
+        metadata: row.metadata || {}
+      }));
+    });
+  }
+
+  /**
+   * Asynchronously searches for entities by name with fuzzy matching.
+   * @param {Object} params - The parameters for searching entities.
+   * @param {string} params.query - The search query.
+   * @param {UUID} params.agentId - The agent ID to filter by.
+   * @param {number} params.limit - The maximum number of results to return.
+   * @returns {Promise<Entity[]>} A Promise that resolves to an array of entities.
+   */
+  async searchEntitiesByName(params: {
+    query: string;
+    agentId: UUID;
+    limit?: number;
+  }): Promise<Entity[]> {
+    return this.withDatabase(async () => {
+      const { query, agentId, limit = 10 } = params;
+      
+      // If query is empty, return all entities up to limit
+      if (!query || query.trim() === '') {
+        const result = await this.db
+          .select()
+          .from(entityTable)
+          .where(eq(entityTable.agentId, agentId))
+          .limit(limit);
+          
+        return result.map((row: any) => ({
+          id: row.id as UUID,
+          agentId: row.agentId as UUID,
+          names: row.names || [],
+          metadata: row.metadata || {}
+        }));
+      }
+      
+      // Otherwise, search for entities with names containing the query (case-insensitive)
+      const searchQuery = sql`
+        SELECT * FROM ${entityTable}
+        WHERE ${entityTable.agentId} = ${agentId}
+        AND EXISTS (
+          SELECT 1 FROM unnest(${entityTable.names}) AS name
+          WHERE LOWER(name) LIKE LOWER(${'%' + query + '%'})
+        )
+        LIMIT ${limit}
+      `;
+      
+      const result = await this.db.execute(searchQuery);
+      
+      return result.rows.map((row: any) => ({
+        id: row.id as UUID,
+        agentId: row.agentId as UUID,
+        names: row.names || [],
+        metadata: row.metadata || {}
+      }));
     });
   }
 
@@ -1297,10 +1404,7 @@ export abstract class BaseDrizzleAdapter<
   }): Promise<{ embedding: number[]; levenshtein_score: number }[]> {
     return this.withDatabase(async () => {
       try {
-        const results = await this.db.execute<{
-          embedding: number[];
-          levenshtein_score: number;
-        }>(sql`
+        const results = await (this.db as any).execute(sql`
                     WITH content_text AS (
                         SELECT
                             m.id,
@@ -1869,7 +1973,7 @@ export abstract class BaseDrizzleAdapter<
    * @param documentId The UUID of the document memory whose fragments should be deleted
    * @private
    */
-  private async deleteMemoryFragments(tx: DrizzleDatabase, documentId: UUID): Promise<void> {
+  private async deleteMemoryFragments(tx: any, documentId: UUID): Promise<void> {
     const fragmentsToDelete = await this.getMemoryFragments(tx, documentId);
 
     if (fragmentsToDelete.length > 0) {
@@ -1895,7 +1999,7 @@ export abstract class BaseDrizzleAdapter<
    * @returns An array of memory fragments
    * @private
    */
-  private async getMemoryFragments(tx: DrizzleDatabase, documentId: UUID): Promise<{ id: UUID }[]> {
+  private async getMemoryFragments(tx: any, documentId: UUID): Promise<{ id: UUID }[]> {
     const fragments = await tx
       .select({ id: memoryTable.id })
       .from(memoryTable)

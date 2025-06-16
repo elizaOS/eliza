@@ -1,5 +1,4 @@
 import type { Agent, MessageExample } from '@elizaos/core';
-import { logger } from '@elizaos/core';
 import colors from 'yoctocolors';
 
 /**

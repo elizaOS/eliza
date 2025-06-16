@@ -121,10 +121,10 @@ Cypress.Commands.add('sendChatMessage', (message: string) => {
 Cypress.Commands.add('clearAppData', () => {
   cy.window().then((win) => {
     // Clear local storage
-    win.localStorage.clear();
+    (win as any).localStorage.clear();
 
     // Clear session storage
-    win.sessionStorage.clear();
+    (win as any).sessionStorage.clear();
 
     // Clear cookies
     cy.clearCookies();

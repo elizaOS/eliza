@@ -1,3 +1,6 @@
+/// <reference types="cypress" />
+/// <reference path="../../../cypress/support/types.d.ts" />
+
 import React from 'react';
 import {
   Dialog,
@@ -261,15 +264,15 @@ describe('Dialog Component', () => {
     );
 
     cy.contains('Open Long Content').click();
-    
+
     // Wait for dialog to open and verify scroll container exists
     cy.get('[role="dialog"]').should('be.visible');
     cy.get('.overflow-y-auto').should('exist');
-    
+
     // Verify the container has the correct CSS classes for scrolling
     cy.get('.overflow-y-auto').should('have.class', 'overflow-y-auto');
     cy.get('.overflow-y-auto').should('have.class', 'max-h-[200px]');
-    
+
     // Check that content exists inside the scroll container
     cy.get('.overflow-y-auto p').should('have.length', 50);
   });

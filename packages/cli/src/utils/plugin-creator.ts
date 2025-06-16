@@ -2,20 +2,14 @@ import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '@elizaos/core';
 import { execa } from 'execa';
 import * as fs from 'fs-extra';
+import inquirer from 'inquirer';
 import ora from 'ora';
 import * as path from 'path';
-import { dirname } from 'path';
 import simpleGit, { SimpleGit } from 'simple-git';
-import { fileURLToPath } from 'url';
 import * as os from 'os';
-import inquirer from 'inquirer';
 import { runBunCommand } from './run-bun';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
 // Configuration
-const MAX_TOKENS = 100000;
 const MAX_BUILD_ITERATIONS = 5;
 const MAX_TEST_ITERATIONS = 5;
 const MAX_REVISION_ITERATIONS = 3;
@@ -185,20 +179,19 @@ export class PluginCreator {
         type: 'input',
         name: 'name',
         message: 'Plugin name (without "plugin-" prefix):',
-        validate: (input) => {
-          if (!input) return 'Plugin name is required';
-          if (!/^[a-z0-9-]+$/.test(input)) {
-            return 'Plugin name must be lowercase with hyphens only';
+        validate: (input: string) => {
+          if (!input || input.trim() === '') {
+            return 'Plugin name is required';
           }
           return true;
         },
-        filter: (input) => input.toLowerCase().replace(/\s+/g, '-'),
+        filter: (input: string) => input.toLowerCase().replace(/\s+/g, '-'),
       },
       {
         type: 'input',
         name: 'description',
         message: 'Plugin description:',
-        validate: (input) => input.length > 0 || 'Description is required',
+        validate: (input: string) => input.length > 0 || 'Description is required',
       },
       {
         type: 'input',

@@ -1,7 +1,6 @@
-import { logger } from '@elizaos/core';
 import type { ChildProcess } from 'node:child_process';
 import { spawn } from 'node:child_process';
-import { ServerProcess } from '../types';
+import type { ServerProcess } from '../types';
 
 /**
  * Server process manager for development mode

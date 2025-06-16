@@ -177,3 +177,5 @@ dist
 
 :memory:
 debug-cache-db
+./cursor
+coverage/

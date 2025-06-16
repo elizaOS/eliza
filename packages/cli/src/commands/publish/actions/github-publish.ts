@@ -7,7 +7,6 @@ import { Credentials, PackageJson, PublishResult } from '../types';
 export async function publishToGitHubAction(
   cwd: string,
   packageJson: PackageJson,
-  cliVersion: string,
   credentials: Credentials,
   skipRegistry: boolean = false,
   dryRun: boolean = false
@@ -17,7 +16,6 @@ export async function publishToGitHubAction(
   const result = await publishToGitHub(
     cwd,
     packageJson,
-    cliVersion,
     credentials.username,
     skipRegistry,
     dryRun

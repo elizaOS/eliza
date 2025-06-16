@@ -1,3 +1,6 @@
+/// <reference types="cypress" />
+/// <reference path="../../../cypress/support/types.d.ts" />
+
 import React from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from './card';
 

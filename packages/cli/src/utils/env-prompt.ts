@@ -1,10 +1,9 @@
-import { promises as fs } from 'node:fs';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import path from 'node:path';
-import { logger } from '@elizaos/core';
+import { UserEnvironment } from '@/src/utils';
 import * as clack from '@clack/prompts';
 import colors from 'yoctocolors';
-import { UserEnvironment } from './user-environment';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import { logger } from '@elizaos/core';
 
 /**
  * Interface for environment variable configuration

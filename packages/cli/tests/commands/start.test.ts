@@ -1,10 +1,15 @@
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { execSync } from 'child_process';
-import { mkdtemp, rm, mkdir } from 'fs/promises';
-import { join } from 'path';
+import { mkdir, mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
-import { safeChangeDirectory, waitForServerReady, TestProcessManager, killProcessOnPort } from './test-utils';
+import { join } from 'path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TEST_TIMEOUTS } from '../test-timeouts';
+import {
+  killProcessOnPort,
+  safeChangeDirectory,
+  TestProcessManager,
+  waitForServerReady,
+} from './test-utils';
 
 describe('ElizaOS Start Commands', () => {
   let testTmpDir: string;
@@ -16,7 +21,7 @@ describe('ElizaOS Start Commands', () => {
   beforeEach(async () => {
     // Store original working directory
     originalCwd = process.cwd();
-    
+
     // Initialize process manager
     processManager = new TestProcessManager();
 
@@ -63,12 +68,10 @@ describe('ElizaOS Start Commands', () => {
   // Helper function to start server and wait for it to be ready
   const startServerAndWait = async (
     args: string,
-    logFile: string,
     maxWaitTime: number = TEST_TIMEOUTS.SERVER_STARTUP
   ): Promise<any> => {
     await mkdir(join(testTmpDir, 'elizadb'), { recursive: true });
 
-    const charactersDir = join(__dirname, '../test-characters');
     const serverProcess = processManager.spawn(
       'bun',
       [join(__dirname, '..', '../dist/index.js'), 'start', ...args.split(' ')],
@@ -85,7 +88,7 @@ describe('ElizaOS Start Commands', () => {
 
     // Wait for server to be ready
     await waitForServerReady(testServerPort, maxWaitTime);
-    
+
     // Check if process is still running after startup
     if (serverProcess.killed || serverProcess.exitCode !== null) {
       throw new Error('Server process died during startup');
@@ -95,24 +98,21 @@ describe('ElizaOS Start Commands', () => {
   };
 
   // Basic agent check
-  test('start command shows help', () => {
+  it('start command shows help', () => {
     const result = execSync(`${elizaosCmd} start --help`, { encoding: 'utf8' });
     expect(result).toContain('Usage: elizaos start');
     expect(result).toContain('--character');
     expect(result).toContain('--port');
   });
 
-  test(
+  it(
     'start and list shows Ada agent running',
     async () => {
       const charactersDir = join(__dirname, '../test-characters');
       const adaPath = join(charactersDir, 'ada.json');
 
       // Start a temporary server with Ada character
-      const serverProcess = await startServerAndWait(
-        `-p ${testServerPort} --character ${adaPath}`,
-        'server.log'
-      );
+      const serverProcess = await startServerAndWait(`-p ${testServerPort} --character ${adaPath}`);
 
       try {
         // Wait a bit more for agent to register
@@ -138,7 +138,7 @@ describe('ElizaOS Start Commands', () => {
   );
 
   // Custom port flag (-p)
-  test(
+  it(
     'custom port spin-up works',
     async () => {
       const newPort = 3456;
@@ -170,7 +170,7 @@ describe('ElizaOS Start Commands', () => {
       try {
         // Wait for server to be ready
         await waitForServerReady(newPort);
-        
+
         // Verify server is accessible
         const response = await fetch(`http://localhost:${newPort}/api/agents`);
         expect(response.ok).toBe(true);
@@ -183,7 +183,7 @@ describe('ElizaOS Start Commands', () => {
   );
 
   // Multiple character input formats
-  test('multiple character formats parse', () => {
+  it('multiple character formats parse', () => {
     const charactersDir = join(__dirname, '../test-characters');
     const adaPath = join(charactersDir, 'ada.json');
 
@@ -199,7 +199,7 @@ describe('ElizaOS Start Commands', () => {
   });
 
   // Mixed valid/invalid files should not crash CLI when running with --help (dry)
-  test('graceful acceptance of invalid character file list (dry)', () => {
+  it('graceful acceptance of invalid character file list (dry)', () => {
     const charactersDir = join(__dirname, '../test-characters');
     const adaPath = join(charactersDir, 'ada.json');
 
@@ -211,13 +211,13 @@ describe('ElizaOS Start Commands', () => {
   });
 
   // --build flag accepted
-  test('build option flag accepted', () => {
+  it('build option flag accepted', () => {
     const result = execSync(`${elizaosCmd} start --build --help`, { encoding: 'utf8' });
     expect(result).toContain('start');
   });
 
   // --configure flag triggers reconfiguration message in log
-  test(
+  it(
     'configure option runs',
     async () => {
       const charactersDir = join(__dirname, '../test-characters');
@@ -227,13 +227,7 @@ describe('ElizaOS Start Commands', () => {
 
       const serverProcess = processManager.spawn(
         'bun',
-        [
-          join(__dirname, '..', '../dist/index.js'),
-          'start',
-          '--configure',
-          '--character',
-          adaPath,
-        ],
+        [join(__dirname, '..', '../dist/index.js'), 'start', '--configure', '--character', adaPath],
         {
           env: {
             ...process.env,
@@ -259,17 +253,14 @@ describe('ElizaOS Start Commands', () => {
   );
 
   // Basic server startup test without advanced features that require models
-  test(
+  it(
     'server starts and responds to health check',
     async () => {
       const charactersDir = join(__dirname, '../test-characters');
       const adaPath = join(charactersDir, 'ada.json');
 
       // Start server
-      const serverProcess = await startServerAndWait(
-        `-p ${testServerPort} --character ${adaPath}`,
-        'health.log'
-      );
+      const serverProcess = await startServerAndWait(`-p ${testServerPort} --character ${adaPath}`);
 
       try {
         // Wait for server to be fully ready

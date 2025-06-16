@@ -1,24 +1,28 @@
-import { type UUID, logger } from '@elizaos/core';
+import { type UUID, logger, Agent, Entity, Memory, Component } from '@elizaos/core';
 import { type NodePgDatabase, drizzle } from 'drizzle-orm/node-postgres';
 import { BaseDrizzleAdapter } from '../base';
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from '../schema/embedding';
 import type { PostgresConnectionManager } from './manager';
 import { type Pool as PgPool } from 'pg';
+import * as globalSchema from '../schema';
+import * as schema from '../schema';
 
 /**
  * Adapter class for interacting with a PostgreSQL database.
- * Extends BaseDrizzleAdapter<NodePgDatabase>.
+ * Extends BaseDrizzleAdapter.
  */
-export class PgDatabaseAdapter extends BaseDrizzleAdapter<NodePgDatabase> {
+export class PgDatabaseAdapter extends BaseDrizzleAdapter {
   protected embeddingDimension: EmbeddingDimensionColumn = DIMENSION_MAP[384];
+  private manager: PostgresConnectionManager;
 
   constructor(
     agentId: UUID,
-    private manager: PostgresConnectionManager
+    manager: PostgresConnectionManager,
+    schema?: any,
   ) {
     super(agentId);
     this.manager = manager;
-    this.db = this.manager.getDatabase();
+    this.db = manager.getDatabase();
   }
 
   /**
@@ -87,5 +91,69 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter<NodePgDatabase> {
    */
   async getConnection() {
     return this.manager.getConnection();
+  }
+
+  async createAgent(agent: Agent): Promise<boolean> {
+    return super.createAgent(agent);
+  }
+
+  getAgent(agentId: UUID): Promise<Agent | null> {
+    return super.getAgent(agentId);
+  }
+
+  updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean> {
+    return super.updateAgent(agentId, agent);
+  }
+
+  deleteAgent(agentId: UUID): Promise<boolean> {
+    return super.deleteAgent(agentId);
+  }
+
+  createEntities(entities: Entity[]): Promise<boolean> {
+    return super.createEntities(entities);
+  }
+
+  getEntityByIds(entityIds: UUID[]): Promise<Entity[]> {
+    return super.getEntityByIds(entityIds).then(result => result || []);
+  }
+
+  updateEntity(entity: Entity): Promise<void> {
+    return super.updateEntity(entity);
+  }
+
+  createMemory(memory: Memory, tableName: string): Promise<UUID> {
+    return super.createMemory(memory, tableName);
+  }
+
+  getMemoryById(memoryId: UUID): Promise<Memory | null> {
+    return super.getMemoryById(memoryId);
+  }
+
+  searchMemories(params: any): Promise<any[]> {
+    return super.searchMemories(params);
+  }
+
+  updateMemory(memory: Partial<Memory> & { id: UUID }): Promise<boolean> {
+    return super.updateMemory(memory);
+  }
+
+  deleteMemory(memoryId: UUID): Promise<void> {
+    return super.deleteMemory(memoryId);
+  }
+
+  createComponent(component: Component): Promise<boolean> {
+    return super.createComponent(component);
+  }
+
+  getComponent(entityId: UUID, type: string, worldId?: UUID, sourceEntityId?: UUID): Promise<Component | null> {
+    return super.getComponent(entityId, type, worldId, sourceEntityId);
+  }
+
+  updateComponent(component: Component): Promise<void> {
+    return super.updateComponent(component);
+  }
+
+  deleteComponent(componentId: UUID): Promise<void> {
+    return super.deleteComponent(componentId);
   }
 }

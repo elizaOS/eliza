@@ -151,7 +151,6 @@ export async function displayBanner(skipUpdateCheck: boolean = false) {
   const w = '\x1b[38;5;255m';
   const r = '\x1b[0m';
   const orange = '\x1b[38;5;208m';
-  const green = '\x1b[38;5;118m';
   let versionColor = lightblue;
 
   const version = getVersion();

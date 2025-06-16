@@ -1,6 +1,6 @@
 import { getElizaCharacter } from '@/src/characters/eliza';
 import { copyTemplate as copyTemplateUtil, buildProject } from '@/src/utils';
-import path, { join } from 'path';
+import { join } from 'path';
 import fs from 'node:fs/promises';
 import * as clack from '@clack/prompts';
 import colors from 'yoctocolors';
@@ -46,7 +46,7 @@ export async function createPlugin(
   }
 
   // Copy plugin template
-  await copyTemplateUtil('plugin', pluginTargetDir, pluginDirName);
+  await copyTemplateUtil('plugin', pluginTargetDir);
 
   // Install dependencies
   await installDependencies(pluginTargetDir);
@@ -140,7 +140,7 @@ export async function createTEEProject(
   }
 
   // Copy TEE template
-  await copyTemplateUtil('project-tee-starter', teeTargetDir, projectName);
+  await copyTemplateUtil('project-tee-starter', teeTargetDir);
 
   // Set up project environment
   await setupProjectEnvironment(teeTargetDir, database, aiModel, isNonInteractive);
@@ -188,10 +188,7 @@ export async function createProject(
   }
 
   // Copy project template
-  // For current directory projects, use the directory name as the project name
-  const templateName =
-    projectName === '.' ? path.basename(targetDir) || 'eliza-project' : projectName;
-  await copyTemplateUtil('project-starter', projectTargetDir, templateName);
+  await copyTemplateUtil('project-starter', projectTargetDir);
 
   // Set up project environment
   await setupProjectEnvironment(projectTargetDir, database, aiModel, isNonInteractive);

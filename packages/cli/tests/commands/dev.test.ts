@@ -1,35 +1,47 @@
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { execSync, spawn } from 'child_process';
-import { mkdtemp, rm, mkdir, writeFile, readFile } from 'fs/promises';
-import { join } from 'path';
+import { mkdir, mkdtemp, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
-import { existsSync } from 'fs';
-import { safeChangeDirectory, createTestProject, killProcessOnPort } from './test-utils';
+import { join } from 'path';
+import { afterAll, beforeAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TEST_TIMEOUTS } from '../test-timeouts';
+import { createTestProject, killProcessOnPort, safeChangeDirectory } from './test-utils';
 
 describe('ElizaOS Dev Commands', () => {
   let testTmpDir: string;
+  let projectDir: string;
   let elizaosCmd: string;
   let originalCwd: string;
   let testServerPort: number;
   let runningProcesses: any[] = [];
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     // Store original working directory
     originalCwd = process.cwd();
 
+    // Create temporary directory
+    testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-dev-'));
+
+    // Setup CLI command
+    const scriptDir = join(__dirname, '..');
+    elizaosCmd = `bun ${join(scriptDir, '../dist/index.js')}`;
+
+    // Create one test project for all dev tests to share
+    projectDir = join(testTmpDir, 'shared-test-project');
+    process.chdir(testTmpDir);
+
+    console.log('Creating shared test project for dev tests...');
+    await createTestProject(elizaosCmd, 'shared-test-project');
+    console.log('Shared test project created at:', projectDir);
+  });
+
+  beforeEach(async () => {
     // Setup test port (different from start tests)
     testServerPort = 3100;
     await killProcessOnPort(testServerPort);
     await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
 
-    // Create temporary directory
-    testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-dev-'));
-    process.chdir(testTmpDir);
-
-    // Setup CLI command
-    const scriptDir = join(__dirname, '..');
-    elizaosCmd = `bun ${join(scriptDir, '../dist/index.js')}`;
+    // Change to project directory for each test
+    process.chdir(projectDir);
 
     // Set test environment variables to avoid database issues
     process.env.TEST_SERVER_PORT = testServerPort.toString();
@@ -54,7 +66,9 @@ describe('ElizaOS Dev Commands', () => {
     // Clean up environment variables
     delete process.env.TEST_SERVER_PORT;
     delete process.env.LOG_LEVEL;
+  });
 
+  afterAll(async () => {
     // Restore original working directory
     safeChangeDirectory(originalCwd);
 
@@ -70,7 +84,8 @@ describe('ElizaOS Dev Commands', () => {
   // Helper function to start dev process and wait for it to be ready
   const startDevAndWait = async (
     args: string,
-    waitTime: number = TEST_TIMEOUTS.MEDIUM_WAIT
+    waitTime: number = TEST_TIMEOUTS.MEDIUM_WAIT,
+    cwd?: string
   ): Promise<any> => {
     await mkdir(join(testTmpDir, 'elizadb'), { recursive: true });
 
@@ -85,7 +100,7 @@ describe('ElizaOS Dev Commands', () => {
           SERVER_PORT: testServerPort.toString(),
         },
         stdio: ['ignore', 'pipe', 'pipe'],
-        cwd: testTmpDir,
+        cwd: cwd || projectDir,
       }
     );
 
@@ -97,18 +112,16 @@ describe('ElizaOS Dev Commands', () => {
     return devProcess;
   };
 
-  test('dev --help shows usage', () => {
+  it('dev --help shows usage', () => {
     const result = execSync(`${elizaosCmd} dev --help`, { encoding: 'utf8' });
     expect(result).toContain('Usage: elizaos dev');
     expect(result).toContain('development mode');
     expect(result).toContain('auto-rebuild');
   });
 
-  test(
+  it(
     'dev command starts in project directory',
     async () => {
-      await createTestProject(elizaosCmd, 'test-project');
-      
       // Start dev process
       const devProcess = await startDevAndWait('--port ' + testServerPort);
 
@@ -125,11 +138,9 @@ describe('ElizaOS Dev Commands', () => {
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
 
-  test(
+  it(
     'dev command detects project type correctly',
     async () => {
-      await createTestProject(elizaosCmd, 'test-project');
-      
       // Start dev process and capture output
       const devProcess = spawn(
         'bun',
@@ -141,7 +152,7 @@ describe('ElizaOS Dev Commands', () => {
             PGLITE_DATA_DIR: join(testTmpDir, 'elizadb'),
           },
           stdio: ['ignore', 'pipe', 'pipe'],
-          cwd: join(testTmpDir, 'test-project'),
+          cwd: projectDir,
         }
       );
 
@@ -166,15 +177,12 @@ describe('ElizaOS Dev Commands', () => {
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
 
-  test(
+  it(
     'dev command responds to file changes in project',
     async () => {
-      await createTestProject(elizaosCmd, 'test-project');
-      process.chdir(join(testTmpDir, 'test-project'));
-      
       // Create a simple file to modify
-      const testFile = join(process.cwd(), 'src', 'test-file.ts');
-      await mkdir(join(process.cwd(), 'src'), { recursive: true });
+      const testFile = join(projectDir, 'src', 'test-file.ts');
+      await mkdir(join(projectDir, 'src'), { recursive: true });
       await writeFile(testFile, 'export const test = "initial";');
 
       // Start dev process
@@ -188,7 +196,7 @@ describe('ElizaOS Dev Commands', () => {
             PGLITE_DATA_DIR: join(testTmpDir, 'elizadb'),
           },
           stdio: ['ignore', 'pipe', 'pipe'],
-          cwd: process.cwd(),
+          cwd: projectDir,
         }
       );
 
@@ -220,11 +228,9 @@ describe('ElizaOS Dev Commands', () => {
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
 
-  test(
+  it(
     'dev command accepts character file',
     async () => {
-      await createTestProject(elizaosCmd, 'test-project');
-      
       const charactersDir = join(__dirname, '../test-characters');
       const adaPath = join(charactersDir, 'ada.json');
 
@@ -240,11 +246,13 @@ describe('ElizaOS Dev Commands', () => {
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
 
-  test(
+  it(
     'dev command handles non-elizaos directory gracefully',
     async () => {
-      // Create a non-ElizaOS project
-      await writeFile('package.json', JSON.stringify({ name: 'not-elizaos', version: '1.0.0' }));
+      // Create a non-ElizaOS project directory
+      const nonElizaDir = join(testTmpDir, 'non-elizaos');
+      await mkdir(nonElizaDir, { recursive: true });
+      await writeFile(join(nonElizaDir, 'package.json'), JSON.stringify({ name: 'not-elizaos', version: '1.0.0' }));
 
       let output = '';
       const devProcess = spawn(
@@ -257,7 +265,7 @@ describe('ElizaOS Dev Commands', () => {
             PGLITE_DATA_DIR: join(testTmpDir, 'elizadb'),
           },
           stdio: ['ignore', 'pipe', 'pipe'],
-          cwd: testTmpDir,
+          cwd: nonElizaDir,
         }
       );
 
@@ -281,13 +289,13 @@ describe('ElizaOS Dev Commands', () => {
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
 
-  test('dev command validates port parameter', () => {
+  it('dev command validates port parameter', () => {
     // Test that invalid port is rejected
     try {
-      execSync(`${elizaosCmd} dev --port abc`, { 
-        encoding: 'utf8', 
+      execSync(`${elizaosCmd} dev --port abc`, {
+        encoding: 'utf8',
         stdio: 'pipe',
-        timeout: 5000 
+        timeout: 5000,
       });
       expect(false).toBe(true); // Should not reach here
     } catch (error: any) {

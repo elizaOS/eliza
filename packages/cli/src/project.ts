@@ -1,12 +1,12 @@
-import type {
+import {
   AgentRuntime,
   Character,
-  IAgentRuntime,
   Plugin,
-  ProjectAgent,
-  UUID,
+  logger,
+  type ProjectAgent,
+  type UUID,
 } from '@elizaos/core';
-import { logger, stringToUuid } from '@elizaos/core';
+import { stringToUuid } from '@elizaos/core';
 import * as fs from 'node:fs';
 import path from 'node:path';
 import { getElizaCharacter } from '@/src/characters/eliza';
@@ -148,7 +148,7 @@ export async function loadProject(dir: string): Promise<Project> {
           id: stringToUuid(defaultCharacterName) as UUID,
           name: defaultCharacterName,
         },
-        init: async (runtime: IAgentRuntime) => {
+        init: async () => {
           logger.info('Initializing default Eliza character');
         },
       };
@@ -223,7 +223,7 @@ export async function loadProject(dir: string): Promise<Project> {
           description: plugin.description || 'No description',
           init:
             plugin.init ||
-            (async (config, runtime) => {
+            (async () => {
               logger.info(`Dummy init for plugin: ${plugin.name}`);
             }),
         };
@@ -245,7 +245,7 @@ export async function loadProject(dir: string): Promise<Project> {
         const testAgent: ProjectAgent = {
           character: testCharacter,
           plugins: [completePlugin], // Only include the plugin being tested
-          init: async (runtime: IAgentRuntime) => {
+          init: async () => {
             logger.info(`Initializing Eliza test agent for plugin: ${completePlugin.name}`);
             // The plugin will be registered automatically in runtime.initialize()
           },

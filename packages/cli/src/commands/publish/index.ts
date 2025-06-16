@@ -33,13 +33,7 @@ import { getNpmUsername } from './utils/authentication';
 import { checkCliVersion } from './utils/version-check';
 
 // Import types
-import {
-  PublishOptions,
-  PackageJson,
-  Credentials,
-  DirectoryInfo,
-  PlaceholderReplacement,
-} from './types';
+import { PublishOptions, PackageJson, Credentials, PlaceholderReplacement } from './types';
 
 // Constants
 const LOCAL_REGISTRY_PATH = 'packages/registry';
@@ -355,7 +349,6 @@ export const publish = new Command()
 
         console.info('\nTesting GitHub publishing:');
         const githubTestSuccess = await testPublishToGitHub(
-          cwd,
           packageJson,
           credentials?.username || ''
         );
@@ -402,7 +395,6 @@ export const publish = new Command()
           publishResult = await publishToGitHubAction(
             cwd,
             packageJson,
-            cliVersion,
             credentials,
             opts.skipRegistry,
             false

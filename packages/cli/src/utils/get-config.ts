@@ -369,7 +369,7 @@ export async function setupPgLite(
   targetProjectDir?: string
 ): Promise<void> {
   const dirs = await ensureElizaDir(targetProjectDir);
-  const { elizaDir, elizaDbDir, envFilePath } = dirs;
+  const { elizaDbDir, envFilePath } = dirs;
 
   // Use provided parameters or defaults from dirs
   const targetDbDir = dbDir || elizaDbDir;

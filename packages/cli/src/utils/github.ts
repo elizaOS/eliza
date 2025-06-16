@@ -67,12 +67,7 @@ export async function validateGitHubToken(token: string): Promise<boolean> {
 /**
  * Check if a fork exists for a given repository
  */
-export async function forkExists(
-  token: string,
-  owner: string,
-  repo: string,
-  username: string
-): Promise<boolean> {
+export async function forkExists(token: string, repo: string, username: string): Promise<boolean> {
   try {
     const response = await fetch(`${GITHUB_API_URL}/repos/${username}/${repo}`, {
       headers: {
@@ -704,16 +699,15 @@ export async function saveGitHubCredentials(username: string, token: string): Pr
  */
 export async function ensureDirectory(
   token: string,
-  owner: string,
   repo: string,
-  directoryPath: string,
-  branch = 'main'
+  path: string,
+  branch: string
 ): Promise<boolean> {
   try {
     // First check if the directory already exists
     try {
       const response = await fetch(
-        `${GITHUB_API_URL}/repos/${owner}/${repo}/contents/${directoryPath}?ref=${branch}`,
+        `${GITHUB_API_URL}/repos/${repo}/contents/${path}?ref=${branch}`,
         {
           headers: {
             Authorization: `token ${token}`,
@@ -724,33 +718,32 @@ export async function ensureDirectory(
 
       // Directory exists
       if (response.status === 200) {
-        logger.info(`Directory ${directoryPath} already exists`);
+        logger.info(`Directory ${path} already exists`);
         return true;
       }
     } catch (error) {
       // Directory doesn't exist, we'll create it
-      logger.info(`Directory ${directoryPath} doesn't exist, creating it`);
+      logger.info(`Directory ${path} doesn't exist, creating it`);
     }
 
     // Create a placeholder file in the directory
     // (GitHub doesn't have a concept of empty directories)
-    const placeholderPath = `${directoryPath}/.gitkeep`;
+    const placeholderPath = `${path}/.gitkeep`;
     const result = await updateFile(
       token,
-      owner,
       repo,
       placeholderPath,
       '', // Empty content for placeholder
-      `Create directory: ${directoryPath}`,
+      `Create directory: ${path}`,
       branch
     );
 
     if (result) {
-      logger.success(`Created directory: ${directoryPath}`);
+      logger.success(`Created directory: ${path}`);
       return true;
     }
 
-    logger.error(`Failed to create directory: ${directoryPath}`);
+    logger.error(`Failed to create directory: ${path}`);
     return false;
   } catch (error) {
     logger.error(

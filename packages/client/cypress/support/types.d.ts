@@ -1,5 +1,8 @@
 /// <reference types="cypress" />
 /// <reference types="@testing-library/cypress" />
+/// <reference types="@cypress/react" />
+
+import { MountOptions, MountReturn } from '@cypress/react';
 
 declare module 'process/browser' {
   const process: NodeJS.Process;

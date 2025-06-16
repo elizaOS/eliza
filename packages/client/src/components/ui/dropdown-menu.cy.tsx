@@ -1,3 +1,6 @@
+/// <reference types="cypress" />
+/// <reference path="../../../cypress/support/types.d.ts" />
+
 import React from 'react';
 import {
   DropdownMenu,
@@ -175,7 +178,7 @@ describe('DropdownMenu Component', () => {
 
     cy.get('button').click();
     cy.contains('More Tools').should('be.visible');
-    
+
     // Try clicking instead of hover for submenu
     cy.contains('More Tools').click();
     cy.contains('Save Page As...').should('be.visible');

@@ -29,6 +29,7 @@ export class TestRunner {
   private projectAgent?: ProjectAgent;
   private stats: TestStats;
   private isDirectPluginTest: boolean;
+  private pluginUnderTest?: Plugin;
 
   constructor(runtime: IAgentRuntime, projectAgent?: ProjectAgent) {
     this.runtime = runtime;
@@ -46,18 +47,42 @@ export class TestRunner {
     // 1. If we have exactly one plugin and the character name refers to the plugin
     // 2. If we're in a directory containing a plugin and this agent is being used to test it
     // 3. If the agent has special naming indicating it's for testing a specific plugin
-    if (
-      (projectAgent?.plugins?.length === 1 &&
-        (projectAgent.character.name.includes(`Test Agent for ${projectAgent.plugins[0].name}`) ||
-          (projectAgent.character.name.toLowerCase().includes('test') &&
-            projectAgent.character.name
-              .toLowerCase()
-              .includes(projectAgent.plugins[0].name.toLowerCase())))) ||
-      // Alternatively, if we were launched from within a plugin directory, consider it a direct test
-      process.env.ELIZA_TESTING_PLUGIN === 'true'
+    // 4. If ELIZA_TESTING_PLUGIN environment variable is set
+
+    // When testing a plugin directly, the plugin being tested is passed in projectAgent.plugins
+    // but it might not be the first one due to dependency loading (e.g., sql plugin is always first)
+    const testingPlugin = process.env.ELIZA_TESTING_PLUGIN === 'true';
+
+    if (testingPlugin && projectAgent?.plugins) {
+      // Find the plugin that's not a core plugin (like sql)
+      const corePlugins = ['@elizaos/plugin-sql'];
+      const nonCorePlugins = projectAgent.plugins.filter(
+        (plugin) => !corePlugins.includes(plugin.name)
+      );
+
+      if (nonCorePlugins.length > 0) {
+        // Store the actual plugin being tested
+        this.pluginUnderTest = nonCorePlugins[0];
+        this.isDirectPluginTest = true;
+        logger.debug(
+          `Direct plugin test detected - will only run tests for plugin: ${this.pluginUnderTest.name}`
+        );
+      } else {
+        this.isDirectPluginTest = false;
+      }
+    } else if (
+      projectAgent?.plugins?.length === 1 &&
+      (projectAgent.character.name.includes(`Test Agent for ${projectAgent.plugins[0].name}`) ||
+        (projectAgent.character.name.toLowerCase().includes('test') &&
+          projectAgent.character.name
+            .toLowerCase()
+            .includes(projectAgent.plugins[0].name.toLowerCase())))
     ) {
+      this.pluginUnderTest = projectAgent.plugins[0];
       this.isDirectPluginTest = true;
-      logger.debug('This is a direct plugin test - will only run tests for this plugin');
+      logger.debug(
+        `Direct plugin test detected - will only run tests for plugin: ${this.pluginUnderTest.name}`
+      );
     } else {
       this.isDirectPluginTest = false;
     }
@@ -160,7 +185,7 @@ export class TestRunner {
       logger.info('\nRunning plugin tests...');
 
       // When directly testing a plugin, we test only that plugin
-      const plugin = this.projectAgent?.plugins?.[0] as Plugin;
+      const plugin = this.pluginUnderTest;
       if (!plugin || !plugin.tests) {
         logger.info(`No tests found for this plugin (${plugin?.name || 'unknown plugin'})`);
         logger.info(

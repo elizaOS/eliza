@@ -164,8 +164,6 @@ export async function setGitHubToken(token: string) {
   }
 }
 
-const agent = process.env.https_proxy ? new HttpsProxyAgent(process.env.https_proxy) : undefined;
-
 /**
  * Normalizes a package name by removing scope prefixes
  * @param packageName The package name to normalize
@@ -649,10 +647,8 @@ export async function getBestPluginVersion(
   }
 
   // Parse the runtime version for semver matching
-  const [runtimeMajor, runtimeMinor, runtimePatch] = runtimeVersion.split('.').map(Number);
-  const [packageMajor, packageMinor, packagePatch] = packageDetails.runtimeVersion
-    .split('.')
-    .map(Number);
+  const [runtimeMajor, runtimeMinor] = runtimeVersion.split('.').map(Number);
+  const [packageMajor, packageMinor] = packageDetails.runtimeVersion.split('.').map(Number);
 
   // If major version is different, warn but still return the latest
   if (runtimeMajor !== packageMajor) {

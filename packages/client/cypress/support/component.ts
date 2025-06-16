@@ -19,6 +19,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 
 // Import polyfills
 import { Buffer } from 'buffer';
+// @ts-ignore
 import process from 'process/browser';
 
 // Mock environment variables to prevent errors
@@ -48,16 +49,7 @@ if (typeof globalThis !== 'undefined') {
   (globalThis as any).React = React;
 }
 
-// Add custom mount command with providers
-declare global {
-  namespace Cypress {
-    interface Chainable {
-      mount: typeof mountWithProviders;
-      mountWithRouter: typeof mountWithRouter;
-      mountRadix: typeof mountRadix;
-    }
-  }
-}
+// Remove duplicate declarations - they're already in types.d.ts
 
 // Create a default query client for tests
 const createTestQueryClient = () =>
@@ -79,8 +71,7 @@ function mountWithProviders(component: React.ReactNode, options = {}) {
   
   const wrapped = React.createElement(
     TooltipProvider,
-    {},
-    React.createElement(
+    { children: React.createElement(
       QueryClientProvider,
       { client: queryClient },
       React.createElement(
@@ -98,7 +89,7 @@ function mountWithProviders(component: React.ReactNode, options = {}) {
           React.createElement('div', { id: 'radix-portal' })
         )
       )
-    )
+    )}
   );
 
   return mount(wrapped, options);
@@ -110,8 +101,7 @@ function mountWithRouter(component: React.ReactNode, options = {}) {
   
   const wrapped = React.createElement(
     TooltipProvider,
-    {},
-    React.createElement(
+    { children: React.createElement(
       QueryClientProvider,
       { client: queryClient },
       React.createElement(
@@ -129,7 +119,7 @@ function mountWithRouter(component: React.ReactNode, options = {}) {
           React.createElement('div', { id: 'radix-portal' })
         )
       )
-    )
+    )}
   );
 
   return mount(wrapped, options);
@@ -141,8 +131,7 @@ function mountRadix(component: React.ReactNode, options = {}) {
   
   const wrapped = React.createElement(
     TooltipProvider,
-    {},
-    React.createElement(
+    { children: React.createElement(
       DirectionProvider,
       { dir: 'ltr' },
       React.createElement(
@@ -164,7 +153,7 @@ function mountRadix(component: React.ReactNode, options = {}) {
           )
         )
       )
-    )
+    )}
   );
 
   return mount(wrapped, options);

@@ -11,7 +11,7 @@ export const phalaCliCommand = new Command('phala')
   .description('Official Phala Cloud CLI - Manage TEE deployments on Phala Cloud')
   .allowUnknownOption()
   .helpOption(false)
-  .action(async (options, command) => {
+  .action(async (_, command) => {
     // Get all arguments after 'phala'
     const args = command.args;
 

@@ -1,3 +1,6 @@
+/// <reference types="cypress" />
+/// <reference path="../../../cypress/support/types.d.ts" />
+
 import React from 'react';
 import {
   Command,
@@ -174,7 +177,7 @@ describe('Command Component', () => {
     // Test that arrow keys work (even if selection behavior varies)
     cy.get('input').type('{downarrow}');
     cy.get('input').type('{downarrow}');
-    
+
     // Command component should still be interactive
     cy.get('input').should('have.focus');
   });

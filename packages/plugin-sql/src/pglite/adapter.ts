@@ -6,7 +6,7 @@ import type { PGliteClientManager } from './manager';
 
 /**
  * PgliteDatabaseAdapter class represents an adapter for interacting with a PgliteDatabase.
- * Extends BaseDrizzleAdapter<PgliteDatabase>.
+ * Extends BaseDrizzleAdapter.
  *
  * @constructor
  * @param {UUID} agentId - The ID of the agent.
@@ -22,7 +22,7 @@ import type { PGliteClientManager } from './manager';
  * @method close
  * @return {void} - A Promise that resolves when the database is closed.
  */
-export class PgliteDatabaseAdapter extends BaseDrizzleAdapter<PgliteDatabase> {
+export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
   private manager: PGliteClientManager;
   protected embeddingDimension: EmbeddingDimensionColumn = DIMENSION_MAP[384];
 

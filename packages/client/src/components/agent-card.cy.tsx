@@ -1,5 +1,9 @@
+/// <reference types="cypress" />
+/// <reference path="../../cypress/support/types.d.ts" />
+
 import React from 'react';
 import type { AgentWithStatus } from '@/types';
+import { AgentStatus } from '@elizaos/core';
 
 // Create a minimal test component that represents AgentCard functionality
 const TestAgentCard: React.FC<{
@@ -7,55 +11,34 @@ const TestAgentCard: React.FC<{
   onChat: (agent: Partial<AgentWithStatus>) => void;
 }> = ({ agent, onChat }) => {
   if (!agent || !agent.id) {
-    return (
-      <div data-testid="agent-card-error">
-        Agent data not available.
-      </div>
-    );
+    return <div data-testid="agent-card-error">Agent data not available.</div>;
   }
 
   const agentName = agent.name || 'Unnamed Agent';
-  const isActive = agent.status === 'active';
+  const isActive = agent.status === AgentStatus.ACTIVE;
 
   return (
     <div data-testid="agent-card" className="agent-card">
       <div data-testid="agent-name">{agentName}</div>
-      <div 
+      <div
         data-testid="status-indicator"
         className={`status-dot ${isActive ? 'active' : 'inactive'}`}
       />
-      <div data-testid="agent-status">
-        {agent.status || 'inactive'}
-      </div>
+      <div data-testid="agent-status">{agent.status === AgentStatus.ACTIVE ? 'active' : agent.status === AgentStatus.INACTIVE ? 'inactive' : 'unknown'}</div>
       {agent.settings?.avatar && (
-        <img 
-          data-testid="agent-avatar"
-          src={agent.settings.avatar} 
-          alt={agentName}
-        />
+        <img data-testid="agent-avatar" src={agent.settings.avatar} alt={agentName} />
       )}
       {!agent.settings?.avatar && (
-        <div data-testid="agent-initials">
-          {agentName.substring(0, 2).toUpperCase()}
-        </div>
+        <div data-testid="agent-initials">{agentName.substring(0, 2).toUpperCase()}</div>
       )}
       {isActive ? (
-        <button 
-          data-testid="chat-button"
-          onClick={() => onChat(agent)}
-        >
+        <button data-testid="chat-button" onClick={() => onChat(agent)}>
           Chat
         </button>
       ) : (
-        <button data-testid="start-button">
-          Start
-        </button>
+        <button data-testid="start-button">Start</button>
       )}
-      <button 
-        data-testid="card-button"
-        onClick={() => onChat(agent)}
-        className="card-clickable"
-      >
+      <button data-testid="card-button" onClick={() => onChat(agent)} className="card-clickable">
         Card Click
       </button>
     </div>
@@ -67,7 +50,7 @@ describe('AgentCard Component', () => {
     id: '12345678-1234-1234-1234-123456789012',
     name: 'Test Agent',
     username: 'testagent',
-    status: 'inactive',
+    status: AgentStatus.INACTIVE,
     settings: {
       avatar: 'https://example.com/avatar.png',
     },
@@ -79,7 +62,7 @@ describe('AgentCard Component', () => {
 
   const activeAgent: Partial<AgentWithStatus> = {
     ...mockAgent,
-    status: 'active',
+    status: AgentStatus.ACTIVE,
   };
 
   it('renders agent information correctly', () => {
@@ -167,7 +150,11 @@ describe('AgentCard Component', () => {
 
     // Should show avatar
     cy.get('[data-testid="agent-avatar"]').should('exist');
-    cy.get('[data-testid="agent-avatar"]').should('have.attr', 'src', 'https://example.com/avatar.png');
+    cy.get('[data-testid="agent-avatar"]').should(
+      'have.attr',
+      'src',
+      'https://example.com/avatar.png'
+    );
   });
 
   it('shows initials fallback when no avatar', () => {

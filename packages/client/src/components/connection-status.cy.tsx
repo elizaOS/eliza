@@ -5,7 +5,7 @@ beforeEach(() => {
   cy.stub(React, 'useContext').callsFake((context: any) => {
     if (context.displayName === 'AuthContext' || context._currentValue === undefined) {
       return {
-        openApiKeyDialog: cy.stub()
+        openApiKeyDialog: cy.stub(),
       };
     }
     return context._currentValue;
@@ -18,7 +18,7 @@ describe('ConnectionStatus Component', () => {
   it('renders connection status component', () => {
     cy.mount(<ConnectionStatus />);
 
-    // Component should render without errors  
+    // Component should render without errors
     cy.get('*').should('exist');
   });
 

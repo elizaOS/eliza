@@ -47,8 +47,6 @@ export interface MigratorOptions {
 export class PluginMigrator {
   private git: SimpleGit;
   private repoPath: string | null;
-  private isGitHub: boolean;
-  private originalPath: string | null;
   private anthropic: Anthropic | null;
   private changedFiles: Set<string>;
   private options: MigratorOptions;
@@ -58,8 +56,6 @@ export class PluginMigrator {
   constructor(options: MigratorOptions = {}) {
     this.git = simpleGit();
     this.repoPath = null;
-    this.isGitHub = false;
-    this.originalPath = null;
     this.anthropic = null;
     this.changedFiles = new Set();
     this.options = options;
@@ -382,10 +378,11 @@ export class PluginMigrator {
         }
       }
 
-      // Run the test command
-      const result = await execa(testCommand, testArgs, {
+      // Run tests
+      logger.info('Running tests...');
+      await execa(testCommand, testArgs, {
         cwd: this.repoPath!,
-        stdio: 'pipe',
+        stdio: 'inherit',
       });
 
       return { success: true };
@@ -593,8 +590,6 @@ Make all necessary changes to fix the issues and ensure the migration is complet
 
   private async handleInput(input: string): Promise<void> {
     if (input.startsWith('https://github.com/')) {
-      this.isGitHub = true;
-      this.originalPath = input;
       const repoName = input.split('/').slice(-2).join('/').replace('.git', '');
       const repoFolder = repoName.split('/')[1] || repoName;
       this.repoPath = path.join(process.cwd(), 'cloned_repos', repoFolder);

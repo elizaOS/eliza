@@ -210,9 +210,12 @@ export async function runE2eTests(
 
             server.registerAgent(runtime); // Ensure server knows about the runtime
             runtimes.push(runtime);
+
+            // Pass all loaded plugins to the projectAgent so TestRunner can identify
+            // which one is the plugin under test vs dependencies
             projectAgents.push({
               character: defaultElizaCharacter,
-              plugins: runtime.plugins,
+              plugins: runtime.plugins, // Pass all plugins, not just the one under test
             });
 
             logger.info('Default test agent started successfully');
@@ -314,6 +317,11 @@ export async function runE2eTests(
         }
         return { failed: true };
       } finally {
+        // Clean up the ELIZA_TESTING_PLUGIN environment variable
+        if (process.env.ELIZA_TESTING_PLUGIN) {
+          delete process.env.ELIZA_TESTING_PLUGIN;
+        }
+
         // Clean up database directory after tests complete
         try {
           if (fs.existsSync(elizaDbDir)) {

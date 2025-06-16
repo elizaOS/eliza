@@ -2,9 +2,9 @@ import * as clack from '@clack/prompts';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import colors from 'yoctocolors';
-import { ResetEnvOptions, ResetTarget, ResetItem, ResetActionRecord } from '../types';
-import { getLocalEnvPath, parseEnvFile, resetEnvFile } from '../utils/file-operations';
+import { ResetActionRecord, ResetEnvOptions, ResetItem, ResetTarget } from '../types';
 import { safeDeleteDirectory } from '../utils/directory-operations';
+import { getLocalEnvPath, resetEnvFile } from '../utils/file-operations';
 
 /**
  * Resolve the PGLite database directory path
@@ -29,23 +29,6 @@ export async function resetEnv(options: ResetEnvOptions): Promise<void> {
 
   const localEnvPath = (await getLocalEnvPath()) ?? path.join(process.cwd(), '.env');
   const localDbDir = await resolvePgliteDir();
-
-  // Check if external Postgres is in use
-  let usingExternalPostgres = false;
-  let usingPglite = false;
-  try {
-    const localEnvVars = existsSync(localEnvPath) ? await parseEnvFile(localEnvPath) : {};
-
-    // Check for external Postgres
-    usingExternalPostgres = !!(
-      localEnvVars.POSTGRES_URL && localEnvVars.POSTGRES_URL.trim() !== ''
-    );
-
-    // Check for Pglite
-    usingPglite = !!(localEnvVars.PGLITE_DATA_DIR && localEnvVars.PGLITE_DATA_DIR.trim() !== '');
-  } catch (error) {
-    // Ignore errors in env parsing
-  }
 
   // Create reset item options
   const resetItems: ResetItem[] = [

@@ -11,7 +11,14 @@ import {
   type Plugin,
   type UUID,
 } from '@elizaos/core';
-import internalMessageBus from '../bus'; // Import the bus
+
+const internalMessageBus = {
+  on: (_event: string, _handler: any) => {},
+  off: (_event: string, _handler: any) => {},
+  emit: (_event: string, _data: any) => {},
+  once: (_event: string, _handler: any) => {},
+  removeAllListeners: (_event?: string) => {},
+};
 
 // This interface defines the structure of messages coming from the server
 export interface MessageServiceMessage {

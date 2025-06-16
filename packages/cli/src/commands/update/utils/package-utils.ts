@@ -1,5 +1,4 @@
-import { promises as fs } from 'node:fs';
-import * as path from 'node:path';
+import fs from 'node:fs/promises';
 import { execa } from 'execa';
 import { logger } from '@elizaos/core';
 import { getPackageManager } from '@/src/utils';

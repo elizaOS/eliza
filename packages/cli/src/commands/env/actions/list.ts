@@ -13,7 +13,6 @@ import { maskedValue } from '../utils/validation';
  */
 export async function listEnvVars(): Promise<void> {
   const envInfo = await UserEnvironment.getInstanceInfo();
-  const localEnvPath = await getLocalEnvPath();
 
   // Display system information
   console.info(colors.bold('\nSystem Information:'));

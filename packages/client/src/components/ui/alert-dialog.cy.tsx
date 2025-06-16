@@ -1,3 +1,6 @@
+/// <reference types="cypress" />
+/// <reference path="../../../cypress/support/types.d.ts" />
+
 import React from 'react';
 import {
   AlertDialog,
@@ -65,10 +68,10 @@ describe('AlertDialog Component', () => {
 
     // Open the dialog
     cy.contains('Delete').click();
-    
+
     // Wait for dialog to appear and ensure it's visible
     cy.contains('Confirm Deletion').should('be.visible');
-    
+
     // Try clicking the specific action button using a more precise selector
     cy.get('[role="alertdialog"]').within(() => {
       cy.contains('button', 'Delete').click({ force: true });
@@ -229,10 +232,10 @@ describe('AlertDialog Component', () => {
 
     // Open the dialog
     cy.contains('button', 'Delete').click();
-    
+
     // Wait for dialog content to appear
     cy.contains('Delete Item').should('be.visible');
-    
+
     // Click the action button within the dialog
     cy.get('[role="alertdialog"]').within(() => {
       cy.contains('button', 'Delete').click({ force: true });

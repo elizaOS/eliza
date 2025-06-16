@@ -96,7 +96,9 @@ export async function resetEnvFile(filePath: string): Promise<boolean> {
     await writeEnvFile(filePath, resetVars);
     return true;
   } catch (error) {
-    console.error(`Error resetting environment file: ${error.message}`);
+    console.error(
+      `Error resetting environment file: ${error instanceof Error ? error.message : String(error)}`
+    );
     return false;
   }
 }

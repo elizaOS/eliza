@@ -1,3 +1,6 @@
+/// <reference types="cypress" />
+/// <reference path="../../../cypress/support/types.d.ts" />
+
 import React from 'react';
 import { Checkbox } from './checkbox';
 
@@ -31,7 +34,14 @@ describe('Checkbox Component', () => {
 
       return (
         <div>
-          <Checkbox checked={checked} onCheckedChange={setChecked} />
+          <Checkbox
+            checked={checked}
+            onCheckedChange={(value) => {
+              if (typeof value === 'boolean') {
+                setChecked(value);
+              }
+            }}
+          />
           <p>{checked ? 'Checked' : 'Unchecked'}</p>
         </div>
       );
