@@ -33,6 +33,7 @@ export class DirectoryTraversal {
     '.vscode',
     'public',
     'static',
+    'client', // Exclude client package due to React/JSX parsing complexities
   ];
 
   /**
@@ -43,7 +44,7 @@ export class DirectoryTraversal {
   constructor(
     private config: Configuration,
     public prFiles: string[] = []
-  ) {}
+  ) { }
 
   /**
    * Gets the absolute path for a file
