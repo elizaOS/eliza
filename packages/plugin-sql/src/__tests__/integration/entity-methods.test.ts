@@ -51,8 +51,8 @@ describe('Entity Methods Integration Tests', () => {
 
         it('should not throw when deleting non-existent entity', async () => {
             const nonExistentId = uuidv4() as UUID;
-            // Should not throw
-            await expect(adapter.deleteEntity(nonExistentId)).resolves.not.toThrow();
+            // Should not throw - deleteEntity should handle non-existent entities gracefully
+            await adapter.deleteEntity(nonExistentId);
         });
     });
 

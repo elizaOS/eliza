@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { DatabaseMigrationService } from '../../migration-service';
 import { logger, type Plugin } from '@elizaos/core';
+import * as customMigrator from '../../custom-migrator';
 
 // Mock the logger to avoid console output during tests
 vi.mock('@elizaos/core', async () => {
@@ -18,17 +19,15 @@ vi.mock('@elizaos/core', async () => {
 
 // Mock the custom migrator
 vi.mock('../../custom-migrator', () => ({
-  runPluginMigrations: vi.fn()
+  runPluginMigrations: vi.fn().mockResolvedValue(undefined)
 }));
 
-describe.skip('DatabaseMigrationService', () => {
+describe('DatabaseMigrationService', () => {
   let migrationService: DatabaseMigrationService;
   let mockDb: any;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    const { runPluginMigrations } = require('../../custom-migrator');
-    runPluginMigrations.mockResolvedValue(undefined);
 
     // Create mock database
     mockDb = {
@@ -124,7 +123,6 @@ describe.skip('DatabaseMigrationService', () => {
     });
 
     it('should run migrations for registered plugins', async () => {
-      const { runPluginMigrations } = require('../../custom-migrator');
 
       // Initialize database
       await migrationService.initializeWithDatabase(mockDb);
@@ -153,14 +151,13 @@ describe.skip('DatabaseMigrationService', () => {
       expect(logger.info).toHaveBeenCalledWith('Starting migration for plugin: plugin2');
       expect(logger.info).toHaveBeenCalledWith('All plugin migrations completed.');
 
-      expect(runPluginMigrations).toHaveBeenCalledTimes(2);
-      expect(runPluginMigrations).toHaveBeenCalledWith(mockDb, 'plugin1', { table1: {} });
-      expect(runPluginMigrations).toHaveBeenCalledWith(mockDb, 'plugin2', { table2: {} });
+      expect(customMigrator.runPluginMigrations).toHaveBeenCalledTimes(2);
+      expect(customMigrator.runPluginMigrations).toHaveBeenCalledWith(mockDb, 'plugin1', { table1: {} });
+      expect(customMigrator.runPluginMigrations).toHaveBeenCalledWith(mockDb, 'plugin2', { table2: {} });
     });
 
     it('should handle migration errors', async () => {
-      const { runPluginMigrations } = require('../../custom-migrator');
-      runPluginMigrations.mockRejectedValueOnce(new Error('Migration failed'));
+      vi.mocked(customMigrator.runPluginMigrations).mockRejectedValueOnce(new Error('Migration failed'));
 
       // Initialize database
       await migrationService.initializeWithDatabase(mockDb);

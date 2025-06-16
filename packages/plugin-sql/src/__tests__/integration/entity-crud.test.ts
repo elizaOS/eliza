@@ -278,8 +278,8 @@ describe('Entity CRUD Operations', () => {
                 metadata: {}
             };
 
-            // Should not throw
-            await expect(adapter.updateEntity(entity)).resolves.not.toThrow();
+            // Should not throw - updateEntity should handle non-existent entities gracefully
+            await adapter.updateEntity(entity);
 
             // Entity should not exist
             const retrieved = await adapter.getEntityByIds([entity.id!]);
@@ -289,8 +289,8 @@ describe('Entity CRUD Operations', () => {
         it('should handle deletion of non-existent entity', async () => {
             const nonExistentId = uuidv4() as UUID;
             
-            // Should not throw
-            await expect(adapter.deleteEntity(nonExistentId)).resolves.not.toThrow();
+            // Should not throw - deleteEntity should handle non-existent entities gracefully
+            await adapter.deleteEntity(nonExistentId);
         });
 
         it('should handle entities with multiple names in search', async () => {
