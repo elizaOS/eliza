@@ -12,14 +12,14 @@ vi.mock('@elizaos/core', async () => {
       info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
-      debug: vi.fn()
-    }
+      debug: vi.fn(),
+    },
   };
 });
 
 // Mock the custom migrator
 vi.mock('../../custom-migrator', () => ({
-  runPluginMigrations: vi.fn().mockResolvedValue(undefined)
+  runPluginMigrations: vi.fn().mockResolvedValue(undefined),
 }));
 
 describe('DatabaseMigrationService', () => {
@@ -34,10 +34,10 @@ describe('DatabaseMigrationService', () => {
       query: {
         agentTable: { findFirst: vi.fn() },
         entityTable: { findFirst: vi.fn() },
-        memoryTable: { findFirst: vi.fn() }
+        memoryTable: { findFirst: vi.fn() },
       },
       transaction: vi.fn(),
-      execute: vi.fn().mockResolvedValue({ rows: [] })
+      execute: vi.fn().mockResolvedValue({ rows: [] }),
     };
 
     migrationService = new DatabaseMigrationService();
@@ -54,7 +54,9 @@ describe('DatabaseMigrationService', () => {
     it('should initialize with database', async () => {
       await migrationService.initializeWithDatabase(mockDb);
 
-      expect(logger.info).toHaveBeenCalledWith('DatabaseMigrationService initialized with database');
+      expect(logger.info).toHaveBeenCalledWith(
+        'DatabaseMigrationService initialized with database'
+      );
       expect((migrationService as any).db).toBe(mockDb);
     });
   });
@@ -82,17 +84,13 @@ describe('DatabaseMigrationService', () => {
 
       expect(logger.info).toHaveBeenCalledWith('Registered schema for plugin: plugin1');
       expect(logger.info).toHaveBeenCalledWith('Registered schema for plugin: plugin2');
-      expect(logger.info).toHaveBeenCalledWith(
-        'Discovered 2 plugin schemas out of 3 plugins'
-      );
+      expect(logger.info).toHaveBeenCalledWith('Discovered 2 plugin schemas out of 3 plugins');
     });
 
     it('should handle empty plugin array', () => {
       migrationService.discoverAndRegisterPluginSchemas([]);
 
-      expect(logger.info).toHaveBeenCalledWith(
-        'Discovered 0 plugin schemas out of 0 plugins'
-      );
+      expect(logger.info).toHaveBeenCalledWith('Discovered 0 plugin schemas out of 0 plugins');
     });
 
     it('should handle plugins without schemas', () => {
@@ -109,9 +107,7 @@ describe('DatabaseMigrationService', () => {
 
       migrationService.discoverAndRegisterPluginSchemas(plugins);
 
-      expect(logger.info).toHaveBeenCalledWith(
-        'Discovered 0 plugin schemas out of 2 plugins'
-      );
+      expect(logger.info).toHaveBeenCalledWith('Discovered 0 plugin schemas out of 2 plugins');
     });
   });
 
@@ -123,7 +119,6 @@ describe('DatabaseMigrationService', () => {
     });
 
     it('should run migrations for registered plugins', async () => {
-
       // Initialize database
       await migrationService.initializeWithDatabase(mockDb);
 
@@ -152,12 +147,18 @@ describe('DatabaseMigrationService', () => {
       expect(logger.info).toHaveBeenCalledWith('All plugin migrations completed.');
 
       expect(customMigrator.runPluginMigrations).toHaveBeenCalledTimes(2);
-      expect(customMigrator.runPluginMigrations).toHaveBeenCalledWith(mockDb, 'plugin1', { table1: {} });
-      expect(customMigrator.runPluginMigrations).toHaveBeenCalledWith(mockDb, 'plugin2', { table2: {} });
+      expect(customMigrator.runPluginMigrations).toHaveBeenCalledWith(mockDb, 'plugin1', {
+        table1: {},
+      });
+      expect(customMigrator.runPluginMigrations).toHaveBeenCalledWith(mockDb, 'plugin2', {
+        table2: {},
+      });
     });
 
     it('should handle migration errors', async () => {
-      vi.mocked(customMigrator.runPluginMigrations).mockRejectedValueOnce(new Error('Migration failed'));
+      vi.mocked(customMigrator.runPluginMigrations).mockRejectedValueOnce(
+        new Error('Migration failed')
+      );
 
       // Initialize database
       await migrationService.initializeWithDatabase(mockDb);
@@ -188,4 +189,4 @@ describe('DatabaseMigrationService', () => {
       expect(logger.info).toHaveBeenCalledWith('All plugin migrations completed.');
     });
   });
-}); 
+});

@@ -18,7 +18,7 @@ export default defineConfig({
         '**/test/**',
         '**/__tests__/**',
         '**/setupTests.ts',
-        'vitest.setup.ts'
+        'vitest.setup.ts',
       ],
     },
   },

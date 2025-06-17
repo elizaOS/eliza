@@ -44,7 +44,7 @@ export class DirectoryTraversal {
   constructor(
     private config: Configuration,
     public prFiles: string[] = []
-  ) { }
+  ) {}
 
   /**
    * Gets the absolute path for a file

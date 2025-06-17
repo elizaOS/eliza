@@ -312,10 +312,10 @@ export default function Chat({
   // Convert AgentWithStatus to Agent, ensuring required fields have defaults
   const targetAgentData: Agent | undefined = agentDataResponse?.data
     ? ({
-      ...agentDataResponse.data,
-      createdAt: agentDataResponse.data.createdAt || Date.now(),
-      updatedAt: agentDataResponse.data.updatedAt || Date.now(),
-    } as Agent)
+        ...agentDataResponse.data,
+        createdAt: agentDataResponse.data.createdAt || Date.now(),
+        updatedAt: agentDataResponse.data.updatedAt || Date.now(),
+      } as Agent)
     : undefined;
 
   // Use the new hooks for DM channel management
@@ -503,7 +503,7 @@ export default function Chat({
 
   useEffect(() => {
     inputDisabledRef.current = chatState.inputDisabled;
-  }, [chatState.inputDisabled])
+  }, [chatState.inputDisabled]);
 
   // Effect to handle initial DM channel selection or creation
   useEffect(() => {
@@ -851,7 +851,8 @@ export default function Chat({
     }
     updateChatState({ inputDisabled: true });
     const retryMessageId = randomUUID() as UUID;
-    const finalTextContent = message.text?.trim() || `Shared ${message.attachments?.length} file(s).`;
+    const finalTextContent =
+      message.text?.trim() || `Shared ${message.attachments?.length} file(s).`;
 
     const optimisticUiMessage: UiMessage = {
       id: retryMessageId,
@@ -893,7 +894,6 @@ export default function Chat({
       });
       updateChatState({ inputDisabled: false });
     }
-
   };
 
   const handleClearChat = () => {
@@ -1078,8 +1078,8 @@ export default function Chat({
                                 <span className="text-xs text-muted-foreground">
                                   {moment(
                                     channel.metadata?.createdAt ||
-                                    channel.updatedAt ||
-                                    channel.createdAt
+                                      channel.updatedAt ||
+                                      channel.createdAt
                                   ).fromNow()}
                                 </span>
                               </div>
@@ -1445,7 +1445,11 @@ export default function Chat({
                   <>
                     <ResizableHandle withHandle />
                     <ResizablePanel defaultSize={sidebarPanelSize} minSize={20} maxSize={50}>
-                      <AgentSidebar agentId={sidebarAgentId} agentName={sidebarAgentName} channelId={sidebarChannelId} />
+                      <AgentSidebar
+                        agentId={sidebarAgentId}
+                        agentName={sidebarAgentName}
+                        channelId={sidebarChannelId}
+                      />
                     </ResizablePanel>
                   </>
                 )
@@ -1493,7 +1497,11 @@ export default function Chat({
                       </Button>
                     </div>
                     <div className="flex-1 overflow-hidden">
-                      <AgentSidebar agentId={sidebarAgentId} agentName={sidebarAgentName} channelId={sidebarChannelId} />
+                      <AgentSidebar
+                        agentId={sidebarAgentId}
+                        agentName={sidebarAgentName}
+                        channelId={sidebarChannelId}
+                      />
                     </div>
                   </div>
                 </div>

@@ -17,7 +17,14 @@ import {
   decryptObjectValues,
   decryptSecret,
 } from '../settings';
-import type { IAgentRuntime, Setting, World, WorldSettings, OnboardingConfig, Character } from '../types';
+import type {
+  IAgentRuntime,
+  Setting,
+  World,
+  WorldSettings,
+  OnboardingConfig,
+  Character,
+} from '../types';
 
 // Mock dependencies
 vi.mock('../src/entities', () => ({
@@ -40,7 +47,7 @@ describe('settings utilities', () => {
     vi.clearAllMocks();
     // Mock process.env
     process.env.SECRET_SALT = 'test-salt-value';
-    
+
     mockRuntime = {
       agentId: 'agent-123' as any,
       getWorld: vi.fn(),
@@ -64,9 +71,9 @@ describe('settings utilities', () => {
         usageDescription: '',
         required: true,
       };
-      
+
       const setting = createSettingFromConfig(cfg);
-      
+
       expect(setting).toEqual({
         name: 'API_KEY',
         description: 'API Key for service',
@@ -97,9 +104,9 @@ describe('settings utilities', () => {
         onSetAction: onSetActionFn,
         visibleIf: (settings) => settings['OTHER_SETTING']?.value === 'enabled',
       };
-      
+
       const setting = createSettingFromConfig(cfg);
-      
+
       expect(setting.usageDescription).toBe('Enter your API key');
       expect(setting.validation).toBe(validationFn);
       expect(setting.public).toBe(true);
@@ -107,26 +114,30 @@ describe('settings utilities', () => {
       expect(setting.dependsOn).toEqual(['OTHER_SETTING']);
       expect(setting.onSetAction).toBe(onSetActionFn);
       expect(setting.visibleIf).toBeInstanceOf(Function);
-      expect(setting.visibleIf({ 
-        OTHER_SETTING: { 
-          name: 'OTHER_SETTING',
-          description: 'Other setting',
-          usageDescription: 'Other setting description',
-          value: 'enabled',
-          required: true,
-          secret: false,
-        } 
-      })).toBe(true);
-      expect(setting.visibleIf({ 
-        OTHER_SETTING: { 
-          name: 'OTHER_SETTING',
-          description: 'Other setting',
-          usageDescription: 'Other setting description',
-          value: 'disabled',
-          required: true,
-          secret: false,
-        } 
-      })).toBe(false);
+      expect(
+        setting.visibleIf({
+          OTHER_SETTING: {
+            name: 'OTHER_SETTING',
+            description: 'Other setting',
+            usageDescription: 'Other setting description',
+            value: 'enabled',
+            required: true,
+            secret: false,
+          },
+        })
+      ).toBe(true);
+      expect(
+        setting.visibleIf({
+          OTHER_SETTING: {
+            name: 'OTHER_SETTING',
+            description: 'Other setting',
+            usageDescription: 'Other setting description',
+            value: 'disabled',
+            required: true,
+            secret: false,
+          },
+        })
+      ).toBe(false);
     });
   });
 
@@ -154,7 +165,7 @@ describe('settings utilities', () => {
 
     it('should encrypt a string value', () => {
       const encrypted = encryptStringValue('secret-value', salt);
-      
+
       expect(encrypted).not.toBe('secret-value');
       expect(encrypted).toContain(':'); // Should have iv:encrypted format
     });
@@ -182,14 +193,14 @@ describe('settings utilities', () => {
     it('should not re-encrypt already encrypted values', () => {
       const encrypted = encryptStringValue('secret', salt);
       const doubleEncrypted = encryptStringValue(encrypted, salt);
-      
+
       expect(doubleEncrypted).toBe(encrypted);
     });
 
     it('should encrypt values that look like encrypted format but have invalid IV', () => {
       const fakeEncrypted = 'invalid:value';
       const encrypted = encryptStringValue(fakeEncrypted, salt);
-      
+
       expect(encrypted).not.toBe(fakeEncrypted);
       expect(encrypted.split(':').length).toBe(2);
     });
@@ -202,7 +213,7 @@ describe('settings utilities', () => {
       const original = 'secret-value';
       const encrypted = encryptStringValue(original, salt);
       const decrypted = decryptStringValue(encrypted, salt);
-      
+
       expect(decrypted).toBe(original);
     });
 
@@ -259,9 +270,9 @@ describe('settings utilities', () => {
         secret: true,
         required: true,
       };
-      
+
       const salted = saltSettingValue(setting, salt);
-      
+
       expect(salted.value).not.toBe('my-secret-key');
       expect(salted.value).toContain(':');
     });
@@ -275,9 +286,9 @@ describe('settings utilities', () => {
         secret: false,
         required: true,
       };
-      
+
       const salted = saltSettingValue(setting, salt);
-      
+
       expect(salted.value).toBe('https://example.com');
     });
 
@@ -290,9 +301,9 @@ describe('settings utilities', () => {
         secret: true,
         required: true,
       };
-      
+
       const salted = saltSettingValue(setting, salt);
-      
+
       expect(salted.value).toBe(true);
     });
 
@@ -305,9 +316,9 @@ describe('settings utilities', () => {
         secret: true,
         required: false,
       };
-      
+
       const salted = saltSettingValue(setting, salt);
-      
+
       expect(salted.value).toBe('');
     });
   });
@@ -326,9 +337,9 @@ describe('settings utilities', () => {
         secret: true,
         required: true,
       };
-      
+
       const unsalted = unsaltSettingValue(setting, salt);
-      
+
       expect(unsalted.value).toBe(original);
     });
 
@@ -341,9 +352,9 @@ describe('settings utilities', () => {
         secret: false,
         required: true,
       };
-      
+
       const unsalted = unsaltSettingValue(setting, salt);
-      
+
       expect(unsalted.value).toBe('https://example.com');
     });
   });
@@ -378,9 +389,9 @@ describe('settings utilities', () => {
           required: true,
         },
       };
-      
+
       const salted = saltWorldSettings(worldSettings, salt);
-      
+
       expect(salted.API_KEY.value).not.toBe('secret1');
       expect(salted.API_KEY.value).toContain(':');
       expect(salted.DB_PASSWORD.value).not.toBe('secret2');
@@ -395,7 +406,7 @@ describe('settings utilities', () => {
     it('should unsalt all secret settings in world settings', () => {
       const encrypted1 = encryptStringValue('secret1', salt);
       const encrypted2 = encryptStringValue('secret2', salt);
-      
+
       const worldSettings: WorldSettings = {
         API_KEY: {
           name: 'API_KEY',
@@ -414,9 +425,9 @@ describe('settings utilities', () => {
           required: true,
         },
       };
-      
+
       const unsalted = unsaltWorldSettings(worldSettings, salt);
-      
+
       expect(unsalted.API_KEY.value).toBe('secret1');
       expect(unsalted.DB_PASSWORD.value).toBe('secret2');
     });
@@ -434,25 +445,27 @@ describe('settings utilities', () => {
           required: true,
         },
       };
-      
+
       (mockRuntime.getWorld as any).mockResolvedValue(mockWorld);
       (mockRuntime.updateWorld as any).mockResolvedValue(true);
-      
+
       const result = await updateWorldSettings(mockRuntime, 'server-123', worldSettings);
-      
+
       expect(result).toBe(true);
-      expect(mockRuntime.updateWorld).toHaveBeenCalledWith(expect.objectContaining({
-        metadata: expect.objectContaining({
-          settings: expect.any(Object),
-        }),
-      }));
+      expect(mockRuntime.updateWorld).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            settings: expect.any(Object),
+          }),
+        })
+      );
     });
 
     it('should return false when world not found', async () => {
       (mockRuntime.getWorld as any).mockResolvedValue(null);
-      
+
       const result = await updateWorldSettings(mockRuntime, 'server-123', {});
-      
+
       expect(result).toBe(false);
       expect(mockRuntime.updateWorld).not.toHaveBeenCalled();
     });
@@ -461,15 +474,17 @@ describe('settings utilities', () => {
       const worldWithoutMetadata = { ...mockWorld, metadata: undefined };
       (mockRuntime.getWorld as any).mockResolvedValue(worldWithoutMetadata);
       (mockRuntime.updateWorld as any).mockResolvedValue(true);
-      
+
       const result = await updateWorldSettings(mockRuntime, 'server-123', {});
-      
+
       expect(result).toBe(true);
-      expect(mockRuntime.updateWorld).toHaveBeenCalledWith(expect.objectContaining({
-        metadata: expect.objectContaining({
-          settings: {},
-        }),
-      }));
+      expect(mockRuntime.updateWorld).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            settings: {},
+          }),
+        })
+      );
     });
   });
 
@@ -477,7 +492,7 @@ describe('settings utilities', () => {
     it('should get and unsalt world settings', async () => {
       const salt = getSalt();
       const encrypted = encryptStringValue('secret-value', salt);
-      
+
       mockWorld.metadata = {
         settings: {
           API_KEY: {
@@ -490,28 +505,28 @@ describe('settings utilities', () => {
           },
         },
       };
-      
+
       (mockRuntime.getWorld as any).mockResolvedValue(mockWorld);
-      
+
       const result = await getWorldSettings(mockRuntime, 'server-123');
-      
+
       expect(result).not.toBeNull();
       expect(result!.API_KEY.value).toBe('secret-value');
     });
 
     it('should return null when world not found', async () => {
       (mockRuntime.getWorld as any).mockResolvedValue(null);
-      
+
       const result = await getWorldSettings(mockRuntime, 'server-123');
-      
+
       expect(result).toBeNull();
     });
 
     it('should return null when world has no settings', async () => {
       (mockRuntime.getWorld as any).mockResolvedValue(mockWorld);
-      
+
       const result = await getWorldSettings(mockRuntime, 'server-123');
-      
+
       expect(result).toBeNull();
     });
   });
@@ -536,11 +551,11 @@ describe('settings utilities', () => {
           },
         },
       };
-      
+
       (mockRuntime.updateWorld as any).mockResolvedValue(true);
-      
+
       const result = await initializeOnboarding(mockRuntime, mockWorld, config);
-      
+
       expect(result).not.toBeNull();
       expect(result!.API_KEY).toBeDefined();
       expect(result!.API_KEY.value).toBeNull();
@@ -552,7 +567,7 @@ describe('settings utilities', () => {
     it('should return existing settings if already initialized', async () => {
       const salt = getSalt();
       const encrypted = encryptStringValue('existing-secret', salt);
-      
+
       mockWorld.metadata = {
         settings: {
           API_KEY: {
@@ -565,7 +580,7 @@ describe('settings utilities', () => {
           },
         },
       };
-      
+
       const config: OnboardingConfig = {
         settings: {
           NEW_KEY: {
@@ -576,9 +591,9 @@ describe('settings utilities', () => {
           },
         },
       };
-      
+
       const result = await initializeOnboarding(mockRuntime, mockWorld, config);
-      
+
       expect(result).not.toBeNull();
       expect(result!.API_KEY).toBeDefined();
       expect(result!.API_KEY.value).toBe('existing-secret');
@@ -587,11 +602,11 @@ describe('settings utilities', () => {
 
     it('should handle config without settings', async () => {
       const config: OnboardingConfig = { settings: {} };
-      
+
       (mockRuntime.updateWorld as any).mockResolvedValue(true);
-      
+
       const result = await initializeOnboarding(mockRuntime, mockWorld, config);
-      
+
       expect(result).toEqual({});
       expect(mockRuntime.updateWorld).toHaveBeenCalled();
     });
@@ -610,9 +625,9 @@ describe('settings utilities', () => {
           },
         },
       };
-      
+
       const encrypted = encryptedCharacter(character);
-      
+
       expect(encrypted.settings?.secrets?.API_KEY).not.toBe('secret-api-key');
       expect(encrypted.settings?.secrets?.API_KEY).toContain(':');
       expect(encrypted.settings?.secrets?.PASSWORD).not.toBe('secret-password');
@@ -629,9 +644,9 @@ describe('settings utilities', () => {
           KEY: 'secret-key',
         },
       };
-      
+
       const encrypted = encryptedCharacter(character);
-      
+
       expect(encrypted.secrets?.TOKEN).not.toBe('secret-token');
       expect(encrypted.secrets?.TOKEN).toContain(':');
       expect(encrypted.secrets?.KEY).not.toBe('secret-key');
@@ -644,9 +659,9 @@ describe('settings utilities', () => {
         name: 'Test Character',
         bio: 'Test character bio',
       };
-      
+
       const encrypted = encryptedCharacter(character);
-      
+
       expect(encrypted).toEqual(character);
     });
 
@@ -659,9 +674,9 @@ describe('settings utilities', () => {
           TOKEN: 'secret-token',
         },
       };
-      
+
       const encrypted = encryptedCharacter(character);
-      
+
       expect(character.secrets?.TOKEN).toBe('secret-token');
       expect(encrypted.secrets?.TOKEN).not.toBe('secret-token');
     });
@@ -681,9 +696,9 @@ describe('settings utilities', () => {
           },
         },
       };
-      
+
       const decrypted = decryptedCharacter(character, mockRuntime);
-      
+
       expect(decrypted.settings?.secrets?.API_KEY).toBe('secret-api-key');
       expect(decrypted.settings?.secrets?.PASSWORD).toBe('secret-password');
     });
@@ -699,9 +714,9 @@ describe('settings utilities', () => {
           KEY: encryptStringValue('secret-key', salt),
         },
       };
-      
+
       const decrypted = decryptedCharacter(character, mockRuntime);
-      
+
       expect(decrypted.secrets?.TOKEN).toBe('secret-token');
       expect(decrypted.secrets?.KEY).toBe('secret-key');
     });
@@ -712,9 +727,9 @@ describe('settings utilities', () => {
         name: 'Test Character',
         bio: 'Test character bio',
       };
-      
+
       const decrypted = decryptedCharacter(character, mockRuntime);
-      
+
       expect(decrypted).toEqual(character);
     });
   });
@@ -731,9 +746,9 @@ describe('settings utilities', () => {
         key5: null,
         key6: '',
       };
-      
+
       const encrypted = encryptObjectValues(obj, salt);
-      
+
       expect(encrypted.key1).not.toBe('value1');
       expect(encrypted.key1).toContain(':');
       expect(encrypted.key2).not.toBe('value2');
@@ -755,9 +770,9 @@ describe('settings utilities', () => {
         key3: 123,
         key4: true,
       };
-      
+
       const decrypted = decryptObjectValues(obj, salt);
-      
+
       expect(decrypted.key1).toBe('value1');
       expect(decrypted.key2).toBe('value2');
       expect(decrypted.key3).toBe(123);

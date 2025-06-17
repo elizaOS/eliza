@@ -19,16 +19,16 @@ describe('PostgreSQL Adapter Integration Tests', () => {
     manager = new PGliteClientManager(client);
     adapter = new PgliteDatabaseAdapter(agentId, manager);
     await adapter.init();
-    
+
     // Run migrations
     const migrationService = new DatabaseMigrationService();
     const db = adapter.getDatabase();
     await migrationService.initializeWithDatabase(db);
     migrationService.discoverAndRegisterPluginSchemas([
-      { name: '@elizaos/plugin-sql', description: 'SQL plugin', schema }
+      { name: '@elizaos/plugin-sql', description: 'SQL plugin', schema },
     ]);
     await migrationService.runAllPluginMigrations();
-    
+
     cleanup = async () => {
       await adapter.close();
     };
@@ -53,7 +53,7 @@ describe('PostgreSQL Adapter Integration Tests', () => {
 
     it('should close connection gracefully', async () => {
       await adapter.close();
-      
+
       // Should not throw
       expect(true).toBe(true);
     });
@@ -71,7 +71,7 @@ describe('PostgreSQL Adapter Integration Tests', () => {
         // Simple operation to test
         return 'success';
       });
-      
+
       expect(result).toBe('success');
     });
 
@@ -85,7 +85,7 @@ describe('PostgreSQL Adapter Integration Tests', () => {
         errorCaught = true;
         expect((error as Error).message).toBe('Test error');
       }
-      
+
       expect(errorCaught).toBe(true);
     });
 
@@ -94,13 +94,13 @@ describe('PostgreSQL Adapter Integration Tests', () => {
       const result = await (adapter as any).withDatabase(async () => {
         return { status: 'ok' };
       });
-      
+
       expect(result).toEqual({ status: 'ok' });
     });
 
     it('should propagate errors from database operations', async () => {
       let errorCaught = false;
-      
+
       try {
         await (adapter as any).withDatabase(async () => {
           throw new Error('Database operation failed');
@@ -109,7 +109,7 @@ describe('PostgreSQL Adapter Integration Tests', () => {
         errorCaught = true;
         expect((error as Error).message).toBe('Database operation failed');
       }
-      
+
       expect(errorCaught).toBe(true);
     });
   });
@@ -139,7 +139,7 @@ describe('PostgreSQL Adapter Integration Tests', () => {
     it('should handle connection errors', async () => {
       // Close the adapter
       await adapter.close();
-      
+
       // Now try to check if ready
       const isReady = await adapter.isReady();
       expect(isReady).toBe(false);
@@ -150,10 +150,10 @@ describe('PostgreSQL Adapter Integration Tests', () => {
       const mockClient = new PGlite();
       const mockManager = new PGliteClientManager(mockClient as any);
       const mockAdapter = new PgliteDatabaseAdapter(uuidv4() as UUID, mockManager);
-      
+
       // Close the manager to simulate a connection issue
       await mockManager.close();
-      
+
       // Check that adapter reports not ready
       const isReady = await mockAdapter.isReady();
       expect(isReady).toBe(false);
@@ -169,7 +169,7 @@ describe('PostgreSQL Adapter Integration Tests', () => {
         updatedAt: new Date().getTime(),
         bio: 'Test agent bio',
       } as any);
-      
+
       expect(result).toBe(true);
     });
 
@@ -182,7 +182,7 @@ describe('PostgreSQL Adapter Integration Tests', () => {
         updatedAt: new Date().getTime(),
         bio: 'Test agent bio',
       } as any);
-      
+
       const agent = await adapter.getAgent(agentId);
       expect(agent).toBeDefined();
       expect(agent?.name).toBe('Test Agent');
@@ -197,12 +197,12 @@ describe('PostgreSQL Adapter Integration Tests', () => {
         updatedAt: new Date().getTime(),
         bio: 'Test agent bio',
       } as any);
-      
+
       // Update agent
       await adapter.updateAgent(agentId, {
         name: 'Updated Agent',
       });
-      
+
       const agent = await adapter.getAgent(agentId);
       expect(agent?.name).toBe('Updated Agent');
     });
@@ -216,12 +216,12 @@ describe('PostgreSQL Adapter Integration Tests', () => {
         updatedAt: new Date().getTime(),
         bio: 'Test agent bio',
       } as any);
-      
+
       const deleted = await adapter.deleteAgent(agentId);
       expect(deleted).toBe(true);
-      
+
       const agent = await adapter.getAgent(agentId);
       expect(agent).toBeNull();
     });
   });
-}); 
+});

@@ -102,7 +102,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
         error: 'Missing or invalid fields: channel_id, server_id',
       });
     }
-    
+
     try {
       if (serverInstance.socketIO) {
         serverInstance.socketIO.to(channel_id).emit('messageComplete', {
@@ -117,7 +117,6 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       res.status(500).json({ success: false, error: 'Failed to notify message completion' });
     }
   });
-  
 
   // Endpoint for INGESTING messages from EXTERNAL platforms (e.g., Discord plugin)
   (router as any).post('/ingest-external', async (req: express.Request, res: express.Response) => {

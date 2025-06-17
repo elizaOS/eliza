@@ -28,7 +28,6 @@ import {
 import fs from 'fs';
 import path from 'path';
 
-
 /**
  * Processes attachments to convert localhost URLs to base64 data URIs
  * @param attachments - Array of attachment objects
@@ -304,8 +303,8 @@ async function processSocketMessage(
             source: `${source}:agent`,
             ...(content.providers &&
               content.providers.length > 0 && {
-              providers: content.providers,
-            }),
+                providers: content.providers,
+              }),
           },
           roomId: uniqueChannelId,
           createdAt: Date.now(),
@@ -527,7 +526,7 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
                 if (!res.headersSent) {
                   const status =
                     (error instanceof Error && 'code' in error && error.code === 'ENOENT') ||
-                      (error instanceof Error && error.message?.includes('not found'))
+                    (error instanceof Error && error.message?.includes('not found'))
                       ? 404
                       : 500;
                   res.status(status).json({
@@ -578,7 +577,7 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
                 if (!res.headersSent) {
                   const status =
                     (error instanceof Error && 'code' in error && error.code === 'ENOENT') ||
-                      (error instanceof Error && error.message?.includes('not found'))
+                    (error instanceof Error && error.message?.includes('not found'))
                       ? 404
                       : 500;
                   res.status(status).json({
@@ -653,7 +652,7 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
                 if (!res.headersSent) {
                   const status =
                     (error instanceof Error && 'code' in error && error.code === 'ENOENT') ||
-                      (error instanceof Error && error.message?.includes('not found'))
+                    (error instanceof Error && error.message?.includes('not found'))
                       ? 404
                       : 500;
                   res.status(status).json({
@@ -680,7 +679,7 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
               if (!res.headersSent) {
                 const status =
                   (error instanceof Error && 'code' in error && error.code === 'ENOENT') ||
-                    (error instanceof Error && error.message?.includes('not found'))
+                  (error instanceof Error && error.message?.includes('not found'))
                     ? 404
                     : 500;
                 res.status(status).json({

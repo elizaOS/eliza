@@ -5,7 +5,7 @@ import {
   type Room,
   type Task,
   type UUID,
-  type World
+  type World,
 } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';

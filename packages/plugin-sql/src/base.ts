@@ -355,11 +355,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
    * @returns The merged settings object
    * @private
    */
-  private async mergeAgentSettings(
-    tx: any,
-    agentId: UUID,
-    updatedSettings: any
-  ): Promise<any> {
+  private async mergeAgentSettings(tx: any, agentId: UUID, updatedSettings: any): Promise<any> {
     // First get the current agent data
     const currentAgent = await tx
       .select({ settings: agentTable.settings })
@@ -912,13 +908,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     return this.withDatabase(async () => {
       await this.db.transaction(async (tx) => {
         // Delete related components first
-        await tx.delete(componentTable).where(
-          or(
-            eq(componentTable.entityId, entityId),
-            eq(componentTable.sourceEntityId, entityId)
-          )
-        );
-        
+        await tx
+          .delete(componentTable)
+          .where(
+            or(eq(componentTable.entityId, entityId), eq(componentTable.sourceEntityId, entityId))
+          );
+
         // Delete the entity
         await tx.delete(entityTable).where(eq(entityTable.id, entityId));
       });
@@ -932,31 +927,26 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
    * @param {UUID} params.agentId - The agent ID to filter by.
    * @returns {Promise<Entity[]>} A Promise that resolves to an array of entities.
    */
-  async getEntitiesByNames(params: {
-    names: string[];
-    agentId: UUID;
-  }): Promise<Entity[]> {
+  async getEntitiesByNames(params: { names: string[]; agentId: UUID }): Promise<Entity[]> {
     return this.withDatabase(async () => {
       const { names, agentId } = params;
-      
+
       // Build a condition to match any of the names
-      const nameConditions = names.map(name => 
-        sql`${name} = ANY(${entityTable.names})`
-      );
-      
+      const nameConditions = names.map((name) => sql`${name} = ANY(${entityTable.names})`);
+
       const query = sql`
         SELECT * FROM ${entityTable}
         WHERE ${entityTable.agentId} = ${agentId}
         AND (${sql.join(nameConditions, sql` OR `)})
       `;
-      
+
       const result = await this.db.execute(query);
-      
+
       return result.rows.map((row: any) => ({
         id: row.id as UUID,
         agentId: row.agentId as UUID,
         names: row.names || [],
-        metadata: row.metadata || {}
+        metadata: row.metadata || {},
       }));
     });
   }
@@ -976,7 +966,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
   }): Promise<Entity[]> {
     return this.withDatabase(async () => {
       const { query, agentId, limit = 10 } = params;
-      
+
       // If query is empty, return all entities up to limit
       if (!query || query.trim() === '') {
         const result = await this.db
@@ -984,15 +974,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           .from(entityTable)
           .where(eq(entityTable.agentId, agentId))
           .limit(limit);
-          
+
         return result.map((row: any) => ({
           id: row.id as UUID,
           agentId: row.agentId as UUID,
           names: row.names || [],
-          metadata: row.metadata || {}
+          metadata: row.metadata || {},
         }));
       }
-      
+
       // Otherwise, search for entities with names containing the query (case-insensitive)
       const searchQuery = sql`
         SELECT * FROM ${entityTable}
@@ -1003,14 +993,14 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         )
         LIMIT ${limit}
       `;
-      
+
       const result = await this.db.execute(searchQuery);
-      
+
       return result.rows.map((row: any) => ({
         id: row.id as UUID,
         agentId: row.agentId as UUID,
         names: row.names || [],
-        metadata: row.metadata || {}
+        metadata: row.metadata || {},
       }));
     });
   }
@@ -1518,14 +1508,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
    * @param value - The value to sanitize
    * @returns The sanitized value
    */
-  private sanitizeJsonObject(
-    value: unknown,
-    seen: WeakSet<object> = new WeakSet()
-  ): unknown {
+  private sanitizeJsonObject(value: unknown, seen: WeakSet<object> = new WeakSet()): unknown {
     if (value === null || value === undefined) {
       return value;
     }
-  
+
     if (typeof value === 'string') {
       // Handle multiple cases that can cause PostgreSQL/PgLite JSON parsing errors:
       // 1. Remove null bytes (U+0000) which are not allowed in PostgreSQL text fields
@@ -1536,14 +1523,14 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         .replace(/\\(?!["\\/bfnrtu])/g, '\\\\') // Escape single backslashes not part of valid escape sequences
         .replace(/\\u(?![0-9a-fA-F]{4})/g, '\\\\u'); // Fix malformed Unicode escape sequences
     }
-  
+
     if (typeof value === 'object') {
       if (seen.has(value as object)) {
         return null;
       } else {
         seen.add(value as object);
       }
-  
+
       if (Array.isArray(value)) {
         return value.map((item) => this.sanitizeJsonObject(item, seen));
       } else {
@@ -1559,7 +1546,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         return result;
       }
     }
-  
+
     return value;
   }
 

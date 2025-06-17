@@ -12,13 +12,13 @@ vi.mock('@elizaos/core', async () => {
       info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
-      debug: vi.fn()
+      debug: vi.fn(),
     },
     VECTOR_DIMS: {
       SMALL: 384,
       MEDIUM: 512,
-      LARGE: 768
-    }
+      LARGE: 768,
+    },
   };
 });
 
@@ -37,7 +37,7 @@ describe('SQL Plugin', () => {
     delete process.env.POSTGRES_URL;
     delete process.env.POSTGRES_USER;
     delete process.env.POSTGRES_PASSWORD;
-    
+
     mockRuntime = {
       agentId: '00000000-0000-0000-0000-000000000000',
       getSetting: vi.fn(),
@@ -50,7 +50,9 @@ describe('SQL Plugin', () => {
   describe('Plugin Structure', () => {
     it('should have correct plugin metadata', () => {
       expect(plugin.name).toBe('@elizaos/plugin-sql');
-      expect(plugin.description).toBe('A plugin for SQL database access with dynamic schema migrations');
+      expect(plugin.description).toBe(
+        'A plugin for SQL database access with dynamic schema migrations'
+      );
       expect(plugin.priority).toBe(0);
     });
 
@@ -72,16 +74,18 @@ describe('SQL Plugin', () => {
     it('should skip initialization if adapter already exists', async () => {
       // Set up runtime with existing adapter
       (mockRuntime as any).databaseAdapter = { existing: true };
-      
+
       await plugin.init?.({}, mockRuntime);
 
-      expect(logger.info).toHaveBeenCalledWith('Database adapter already registered, skipping creation');
+      expect(logger.info).toHaveBeenCalledWith(
+        'Database adapter already registered, skipping creation'
+      );
       expect(mockRuntime.registerDatabaseAdapter).not.toHaveBeenCalled();
     });
 
     it('should register database adapter when none exists', async () => {
       mockRuntime.getSetting = vi.fn().mockReturnValue(null);
-      
+
       await plugin.init?.({}, mockRuntime);
 
       expect(logger.info).toHaveBeenCalledWith('plugin-sql init starting...');
@@ -137,7 +141,7 @@ describe('SQL Plugin', () => {
 
     it('should create PgDatabaseAdapter when postgresUrl is provided', () => {
       const config = {
-        postgresUrl: 'postgresql://localhost:5432/test'
+        postgresUrl: 'postgresql://localhost:5432/test',
       };
 
       const adapter = createDatabaseAdapter(config, agentId);
@@ -147,7 +151,7 @@ describe('SQL Plugin', () => {
 
     it('should create PgliteDatabaseAdapter when no postgresUrl is provided', () => {
       const config = {
-        dataDir: '/custom/data'
+        dataDir: '/custom/data',
       };
 
       const adapter = createDatabaseAdapter(config, agentId);
@@ -165,13 +169,19 @@ describe('SQL Plugin', () => {
 
     it('should reuse singleton managers', () => {
       // Create first adapter
-      const adapter1 = createDatabaseAdapter({ postgresUrl: 'postgresql://localhost:5432/test' }, agentId);
-      
+      const adapter1 = createDatabaseAdapter(
+        { postgresUrl: 'postgresql://localhost:5432/test' },
+        agentId
+      );
+
       // Create second adapter with same config
-      const adapter2 = createDatabaseAdapter({ postgresUrl: 'postgresql://localhost:5432/test' }, agentId);
+      const adapter2 = createDatabaseAdapter(
+        { postgresUrl: 'postgresql://localhost:5432/test' },
+        agentId
+      );
 
       expect(adapter1).toBeDefined();
       expect(adapter2).toBeDefined();
     });
   });
-}); 
+});

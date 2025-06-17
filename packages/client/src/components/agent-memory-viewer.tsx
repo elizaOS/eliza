@@ -1,15 +1,5 @@
 import type { Memory, UUID } from '@elizaos/core';
-import {
-  Database,
-  LoaderIcon,
-  Pencil,
-  Search,
-  Brain,
-  User,
-  Bot,
-  Clock,
-  Copy,
-} from 'lucide-react';
+import { Database, LoaderIcon, Pencil, Search, Brain, User, Bot, Clock, Copy } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAgentMemories, useAgents } from '@/hooks/use-query-hooks';
 import { Button } from '@/components/ui/button';
@@ -81,7 +71,8 @@ export function AgentMemoryViewer({ agentId, agentName, channelId }: AgentMemory
     selectedType === MemoryType.facts || selectedType === MemoryType.all ? 'facts' : undefined;
 
   // Only pass channelId when "Current Chat" is selected
-  const channelIdToUse = selectedType === MemoryType.currentChat && channelId ? channelId : undefined;
+  const channelIdToUse =
+    selectedType === MemoryType.currentChat && channelId ? channelId : undefined;
 
   const {
     data: messagesData = [],

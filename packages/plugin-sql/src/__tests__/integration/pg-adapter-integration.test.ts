@@ -20,13 +20,13 @@ describe('PostgreSQL Adapter Direct Integration Tests', () => {
       manager = new PGliteClientManager(client);
       adapter = new PgliteDatabaseAdapter(testAgentId, manager);
       await adapter.init();
-      
+
       // Run migrations
       const migrationService = new DatabaseMigrationService();
       const db = adapter.getDatabase();
       await migrationService.initializeWithDatabase(db);
       migrationService.discoverAndRegisterPluginSchemas([
-        { name: '@elizaos/plugin-sql', description: 'SQL plugin', schema }
+        { name: '@elizaos/plugin-sql', description: 'SQL plugin', schema },
       ]);
       await migrationService.runAllPluginMigrations();
     });
@@ -64,9 +64,9 @@ describe('PostgreSQL Adapter Direct Integration Tests', () => {
     describe('Raw Database Operations', () => {
       it('should execute raw SQL through adapter database', async () => {
         const db = adapter.getDatabase();
-        
+
         const result = await db.execute(sql`SELECT 1 as value`);
-        
+
         expect(result).toBeDefined();
         expect(result.rows).toBeDefined();
         expect(result.rows).toHaveLength(1);
@@ -75,7 +75,7 @@ describe('PostgreSQL Adapter Direct Integration Tests', () => {
 
       it('should handle transactions through adapter', async () => {
         const db = adapter.getDatabase();
-        
+
         // Create test table
         await db.execute(sql`
           CREATE TABLE IF NOT EXISTS pg_adapter_test (
@@ -83,18 +83,18 @@ describe('PostgreSQL Adapter Direct Integration Tests', () => {
             value INTEGER
           )
         `);
-        
+
         try {
           // Test transaction
           await db.transaction(async (tx) => {
             await tx.execute(sql`INSERT INTO pg_adapter_test (value) VALUES (100)`);
             await tx.execute(sql`INSERT INTO pg_adapter_test (value) VALUES (200)`);
           });
-          
+
           const result = await db.execute(sql`
             SELECT SUM(value) as total FROM pg_adapter_test
           `);
-          
+
           expect(Number(result.rows[0].total)).toBe(300);
         } finally {
           // Clean up
@@ -112,13 +112,13 @@ describe('PostgreSQL Adapter Direct Integration Tests', () => {
           createdAt: Date.now(),
           updatedAt: Date.now(),
         });
-        
+
         expect(created).toBe(true);
       });
 
       it('should retrieve the created agent', async () => {
         const agent = await adapter.getAgent(testAgentId);
-        
+
         expect(agent).toBeDefined();
         expect(agent?.id).toBe(testAgentId);
         expect(agent?.name).toBe('PG Direct Test Agent');
@@ -129,11 +129,11 @@ describe('PostgreSQL Adapter Direct Integration Tests', () => {
           settings: {
             theme: 'dark',
             language: 'en',
-          }
+          },
         });
-        
+
         expect(updated).toBe(true);
-        
+
         const agent = await adapter.getAgent(testAgentId);
         expect(agent?.settings).toEqual({
           theme: 'dark',
@@ -145,21 +145,21 @@ describe('PostgreSQL Adapter Direct Integration Tests', () => {
     describe('Connection Manager Features', () => {
       it('should get connection from manager', () => {
         const connection = manager.getConnection();
-        
+
         expect(connection).toBeDefined();
         expect(connection.query).toBeDefined();
       });
 
       it('should handle multiple operations', async () => {
         const db = adapter.getDatabase();
-        
+
         // Execute multiple operations
         const results = await Promise.all([
           db.execute(sql`SELECT 1 as id`),
           db.execute(sql`SELECT 2 as id`),
           db.execute(sql`SELECT 3 as id`),
         ]);
-        
+
         expect(results).toHaveLength(3);
         results.forEach((result, index) => {
           expect(result.rows[0].id).toBe(index + 1);
@@ -170,22 +170,20 @@ describe('PostgreSQL Adapter Direct Integration Tests', () => {
     describe('Error Handling', () => {
       it('should handle query errors gracefully', async () => {
         const db = adapter.getDatabase();
-        
-        await expect(
-          db.execute(sql`SELECT * FROM non_existent_table`)
-        ).rejects.toThrow();
+
+        await expect(db.execute(sql`SELECT * FROM non_existent_table`)).rejects.toThrow();
       });
 
       it('should maintain connection after error', async () => {
         const db = adapter.getDatabase();
-        
+
         // Cause an error
         try {
           await db.execute(sql`INVALID SQL`);
         } catch (e) {
           // Expected error
         }
-        
+
         // Connection should still work
         const result = await db.execute(sql`SELECT 1 as value`);
         expect(result.rows[0].value).toBe(1);
@@ -195,25 +193,25 @@ describe('PostgreSQL Adapter Direct Integration Tests', () => {
     describe('Advanced Features', () => {
       it('should support JSON operations', async () => {
         const db = adapter.getDatabase();
-        
+
         await db.execute(sql`
           CREATE TABLE IF NOT EXISTS json_test (
             id SERIAL PRIMARY KEY,
             data JSONB
           )
         `);
-        
+
         try {
           const testData = { name: 'test', values: [1, 2, 3] };
-          
+
           await db.execute(sql`
             INSERT INTO json_test (data) VALUES (${JSON.stringify(testData)}::jsonb)
           `);
-          
+
           const result = await db.execute(sql`
             SELECT data FROM json_test WHERE data->>'name' = 'test'
           `);
-          
+
           expect(result.rows[0].data).toEqual(testData);
         } finally {
           await db.execute(sql`DROP TABLE IF EXISTS json_test`);
@@ -222,24 +220,24 @@ describe('PostgreSQL Adapter Direct Integration Tests', () => {
 
       it('should support array operations', async () => {
         const db = adapter.getDatabase();
-        
+
         await db.execute(sql`
           CREATE TABLE IF NOT EXISTS array_test (
             id SERIAL PRIMARY KEY,
             tags TEXT[]
           )
         `);
-        
+
         try {
           // PGLite requires array syntax
           await db.execute(sql`
             INSERT INTO array_test (tags) VALUES (ARRAY['tag1', 'tag2', 'tag3'])
           `);
-          
+
           const result = await db.execute(sql`
             SELECT tags FROM array_test WHERE 'tag2' = ANY(tags)
           `);
-          
+
           expect(result.rows[0].tags).toEqual(['tag1', 'tag2', 'tag3']);
         } finally {
           await db.execute(sql`DROP TABLE IF EXISTS array_test`);
@@ -248,14 +246,14 @@ describe('PostgreSQL Adapter Direct Integration Tests', () => {
 
       it('should support timestamp operations', async () => {
         const db = adapter.getDatabase();
-        
+
         const result = await db.execute(sql`
           SELECT 
             CURRENT_TIMESTAMP as current_time,
             CURRENT_TIMESTAMP + INTERVAL '1 day' as tomorrow,
             CURRENT_TIMESTAMP - INTERVAL '1 hour' as hour_ago
         `);
-        
+
         const row = result.rows[0];
         expect(row.current_time).toBeDefined();
         expect(row.tomorrow).toBeDefined();
@@ -270,14 +268,14 @@ describe('PostgreSQL Adapter Direct Integration Tests', () => {
         const tempManager = new PGliteClientManager(tempClient);
         const tempAdapter = new PgliteDatabaseAdapter(uuidv4() as UUID, tempManager);
         await tempAdapter.init();
-        
+
         // Close it
         await tempAdapter.close();
-        
+
         // Should not be ready after close
         const isReady = await tempAdapter.isReady();
         expect(isReady).toBe(false);
       });
     });
   });
-}); 
+});

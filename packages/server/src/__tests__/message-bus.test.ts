@@ -153,9 +153,11 @@ describe('MessageBusService', () => {
       // Check that the first fetch call was to the agent servers endpoint
       const firstCall = (global.fetch as any).mock.calls[0];
       expect(firstCall[0]).toContain(`/api/messaging/agents/${mockRuntime.agentId}/servers`);
-      expect(firstCall[1]).toEqual(expect.objectContaining({
-        headers: expect.any(Object)
-      }));
+      expect(firstCall[1]).toEqual(
+        expect.objectContaining({
+          headers: expect.any(Object),
+        })
+      );
     });
   });
 
@@ -264,8 +266,8 @@ describe('MessageBusService', () => {
             ok: true,
             json: async () => ({
               success: true,
-              data: { id: '456e7890-e89b-12d3-a456-426614174000' }
-            })
+              data: { id: '456e7890-e89b-12d3-a456-426614174000' },
+            }),
           });
         }
         return Promise.resolve({

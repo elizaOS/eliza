@@ -6,8 +6,8 @@ import * as os from 'os';
 // Mock dotenv to prevent loading actual .env file
 vi.mock('dotenv', () => ({
   default: {
-    config: vi.fn()
-  }
+    config: vi.fn(),
+  },
 }));
 
 describe('Utils', () => {
@@ -92,4 +92,4 @@ describe('Utils', () => {
       expect(result).toBe(path.join(process.cwd(), 'data/pglite'));
     });
   });
-}); 
+});

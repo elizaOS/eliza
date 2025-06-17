@@ -668,12 +668,8 @@ export const getContentTypeFromMimeType = (mimeType: string): ContentType | unde
   if (mimeType.startsWith('image/')) return ContentType.IMAGE;
   if (mimeType.startsWith('video/')) return ContentType.VIDEO;
   if (mimeType.startsWith('audio/')) return ContentType.AUDIO;
-  if (
-      mimeType.includes('pdf') || 
-      mimeType.includes('document') ||
-      mimeType.startsWith('text/')
-  ) {
-      return ContentType.DOCUMENT;
+  if (mimeType.includes('pdf') || mimeType.includes('document') || mimeType.startsWith('text/')) {
+    return ContentType.DOCUMENT;
   }
   return undefined;
 };

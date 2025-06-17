@@ -130,7 +130,7 @@ describe('Actions', () => {
           },
         } as Action,
       ];
-      
+
       const examples = composeActionExamples(actionsWithoutExamples, 5);
       expect(examples).toBe('');
     });

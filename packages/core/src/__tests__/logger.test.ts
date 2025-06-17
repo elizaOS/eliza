@@ -25,7 +25,7 @@ describe('Logger', () => {
     // Save original environment
     originalEnv = { ...process.env };
     // Reset environment variables
-    Object.keys(mockEnv).forEach(key => {
+    Object.keys(mockEnv).forEach((key) => {
       process.env[key] = mockEnv[key];
     });
     vi.clearAllMocks();
@@ -64,21 +64,21 @@ describe('Logger', () => {
     it('should create logger with bindings', () => {
       const bindings = { agentName: 'TestAgent', agentId: '123' };
       const customLogger = createLogger(bindings);
-      
+
       expect(customLogger).toBeDefined();
       expect(typeof customLogger.info).toBe('function');
     });
 
     it('should create logger without bindings', () => {
       const customLogger = createLogger();
-      
+
       expect(customLogger).toBeDefined();
       expect(typeof customLogger.info).toBe('function');
     });
 
     it('should handle boolean bindings parameter', () => {
       const customLogger = createLogger(false);
-      
+
       expect(customLogger).toBeDefined();
       expect(typeof customLogger.info).toBe('function');
     });
@@ -88,7 +88,7 @@ describe('Logger', () => {
     it('should use debug level when LOG_LEVEL is debug', () => {
       process.env.LOG_LEVEL = 'debug';
       const customLogger = createLogger();
-      
+
       // Logger should be created with debug level
       expect(customLogger.level).toBeDefined();
     });
@@ -97,7 +97,7 @@ describe('Logger', () => {
       process.env.LOG_LEVEL = '';
       process.env.DEFAULT_LOG_LEVEL = 'warn';
       const customLogger = createLogger();
-      
+
       expect(customLogger.level).toBeDefined();
     });
 
@@ -105,7 +105,7 @@ describe('Logger', () => {
       process.env.LOG_LEVEL = '';
       process.env.DEFAULT_LOG_LEVEL = '';
       const customLogger = createLogger();
-      
+
       expect(customLogger.level).toBeDefined();
     });
   });
@@ -114,14 +114,14 @@ describe('Logger', () => {
     it('should use JSON format when LOG_JSON_FORMAT is true', () => {
       process.env.LOG_JSON_FORMAT = 'true';
       const customLogger = createLogger();
-      
+
       expect(customLogger).toBeDefined();
     });
 
     it('should use pretty format when LOG_JSON_FORMAT is false', () => {
       process.env.LOG_JSON_FORMAT = 'false';
       const customLogger = createLogger();
-      
+
       expect(customLogger).toBeDefined();
     });
   });
@@ -130,7 +130,7 @@ describe('Logger', () => {
     it('should filter service registration logs in non-debug mode', () => {
       process.env.LOG_LEVEL = 'info';
       const customLogger = createLogger();
-      
+
       // These logs should be filtered in non-debug mode
       const filteredMessages = [
         'registered successfully',
@@ -139,9 +139,9 @@ describe('Logger', () => {
         'linked to',
         'Started',
       ];
-      
+
       // Logger is created and can handle these messages
-      filteredMessages.forEach(msg => {
+      filteredMessages.forEach((msg) => {
         expect(() => customLogger.info({ agentName: 'test', agentId: '123' }, msg)).not.toThrow();
       });
     });
@@ -149,7 +149,7 @@ describe('Logger', () => {
     it('should not filter service registration logs in debug mode', () => {
       process.env.LOG_LEVEL = 'debug';
       const customLogger = createLogger();
-      
+
       // In debug mode, all logs should pass through
       expect(customLogger.level).toBeDefined();
     });
@@ -159,17 +159,19 @@ describe('Logger', () => {
     it('should handle Error objects in log messages', () => {
       const customLogger = createLogger();
       const testError = new Error('Test error');
-      
+
       expect(() => customLogger.error(testError)).not.toThrow();
       expect(() => customLogger.error('Message', testError)).not.toThrow();
-      expect(() => customLogger.error({ context: 'test' }, 'Error occurred', testError)).not.toThrow();
+      expect(() =>
+        customLogger.error({ context: 'test' }, 'Error occurred', testError)
+      ).not.toThrow();
     });
 
     it('should format error messages properly', () => {
       const customLogger = createLogger();
       const testError = new Error('Test error');
       testError.name = 'TestError';
-      
+
       // Should handle error formatting without throwing
       expect(() => customLogger.error(testError)).not.toThrow();
     });
@@ -187,7 +189,7 @@ describe('Logger', () => {
   describe('Hook Methods', () => {
     it('should handle various log input formats', () => {
       const customLogger = createLogger();
-      
+
       // Test various input formats
       expect(() => customLogger.info('Simple string')).not.toThrow();
       expect(() => customLogger.info({ key: 'value' }, 'With object')).not.toThrow();
@@ -198,7 +200,7 @@ describe('Logger', () => {
     it('should handle mixed arguments with errors', () => {
       const customLogger = createLogger();
       const error = new Error('Test error');
-      
+
       expect(() => customLogger.error('Message', error, { extra: 'data' })).not.toThrow();
     });
   });
@@ -207,7 +209,7 @@ describe('Logger', () => {
     it('should add diagnostic flag when LOG_DIAGNOSTIC is enabled', () => {
       process.env.LOG_DIAGNOSTIC = 'true';
       const customLogger = createLogger();
-      
+
       // Logger should handle diagnostic mode
       expect(customLogger).toBeDefined();
     });
@@ -216,7 +218,7 @@ describe('Logger', () => {
   describe('Custom Prettifiers', () => {
     it('should format log levels correctly', () => {
       const customLogger = createLogger();
-      
+
       // Test that various log levels work
       expect(() => customLogger.trace('Trace message')).not.toThrow();
       expect(() => customLogger.debug('Debug message')).not.toThrow();
@@ -233,14 +235,14 @@ describe('Logger', () => {
       const error = new Error('Test error message');
       error.name = 'CustomError';
       error.stack = 'Error: Test error message\n    at Object.<anonymous> (test.js:1:1)';
-      
+
       // This triggers the formatError path in hooks.logMethod
       expect(() => customLogger.error(error)).not.toThrow();
     });
 
     it('should handle object with multiple string arguments', () => {
       const customLogger = createLogger();
-      
+
       // This triggers the object + rest args path
       expect(() => customLogger.info({ userId: '123' }, 'User', 'logged', 'in')).not.toThrow();
     });
@@ -249,42 +251,44 @@ describe('Logger', () => {
       const customLogger = createLogger();
       const error1 = new Error('First error');
       const error2 = new Error('Second error');
-      
+
       // This triggers error handling in rest args
       expect(() => customLogger.error('Multiple errors:', error1, error2)).not.toThrow();
     });
 
     it('should handle mixed object and string arguments', () => {
       const customLogger = createLogger();
-      
+
       // This triggers the context building path
       expect(() => customLogger.info('Status:', { active: true }, 'for user')).not.toThrow();
     });
 
     it('should handle non-string, non-error objects in arguments', () => {
       const customLogger = createLogger();
-      
+
       // This triggers JSON.stringify for non-string args
-      expect(() => customLogger.info('Data:', { complex: { nested: true } }, ['array', 'data'])).not.toThrow();
+      expect(() =>
+        customLogger.info('Data:', { complex: { nested: true } }, ['array', 'data'])
+      ).not.toThrow();
     });
 
     it('should handle Sentry exception capture for errors', () => {
       const originalSentryLogging = process.env.SENTRY_LOGGING;
       process.env.SENTRY_LOGGING = ''; // Not 'false', so Sentry logging is enabled
-      
+
       const customLogger = createLogger();
       const error = new Error('Sentry test');
-      
+
       // This should trigger Sentry.captureException
       expect(() => customLogger.error(error)).not.toThrow();
       expect(() => customLogger.error('Message with error:', error)).not.toThrow();
-      
+
       process.env.SENTRY_LOGGING = originalSentryLogging;
     });
 
     it('should handle all argument being non-string objects', () => {
       const customLogger = createLogger();
-      
+
       // Logger expects string message after object, so we need to provide valid signatures
       expect(() => customLogger.info({ a: 1, b: 2, c: 3 }, 'Combined object log')).not.toThrow();
       expect(() => customLogger.info('Objects:', { a: 1 }, { b: 2 })).not.toThrow();
@@ -295,7 +299,7 @@ describe('Logger', () => {
       if (typeof (logger as any).clear === 'function') {
         expect(() => (logger as any).clear()).not.toThrow();
       }
-      
+
       // Also test on a newly created logger
       const customLogger = createLogger();
       if (typeof (customLogger as any).clear === 'function') {
@@ -307,7 +311,7 @@ describe('Logger', () => {
   describe('InMemoryDestination Coverage', () => {
     it('should handle non-JSON string data in write method', () => {
       const customLogger = createLogger();
-      
+
       // This could trigger the non-JSON path in InMemoryDestination.write
       // when the transport receives malformed data
       expect(() => customLogger.info('Simple text that might not be JSON')).not.toThrow();
@@ -316,13 +320,13 @@ describe('Logger', () => {
     it('should handle diagnostic mode with filtered logs', () => {
       process.env.LOG_DIAGNOSTIC = 'true';
       process.env.LOG_LEVEL = 'info'; // Not debug
-      
+
       const customLogger = createLogger({ agentName: 'test', agentId: '123' });
-      
+
       // These should be filtered but diagnostic mode might log them
       expect(() => customLogger.info('registered successfully')).not.toThrow();
       expect(() => customLogger.info('Registering service')).not.toThrow();
-      
+
       process.env.LOG_DIAGNOSTIC = '';
     });
   });
@@ -333,19 +337,19 @@ describe('Logger', () => {
       // We can't easily mock require failure in vitest, so we test the async path exists
       const originalEnv = process.env.LOG_JSON_FORMAT;
       process.env.LOG_JSON_FORMAT = 'false';
-      
+
       // Force a new logger creation which might use async path
       vi.resetModules();
       const { createLogger: asyncLogger } = await import('../logger');
-      
+
       const logger = asyncLogger();
       expect(logger).toBeDefined();
-      
+
       // Wait a bit for async initialization
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
       expect(() => logger.info('Async logger test')).not.toThrow();
-      
+
       process.env.LOG_JSON_FORMAT = originalEnv;
     });
 
@@ -355,13 +359,13 @@ describe('Logger', () => {
         // No default export
         somethingElse: vi.fn(),
       }));
-      
+
       vi.resetModules();
       const { createLogger: testLogger } = await import('../logger');
-      
+
       const logger = testLogger();
       expect(logger).toBeDefined();
-      
+
       vi.doUnmock('pino-pretty');
     });
   });
@@ -369,12 +373,12 @@ describe('Logger', () => {
   describe('Additional Custom Level Tests', () => {
     it('should use custom log levels', () => {
       const customLogger = createLogger();
-      
+
       // Test custom levels exist and work
       expect(typeof (customLogger as any).log).toBe('function');
       expect(typeof (customLogger as any).progress).toBe('function');
       expect(typeof (customLogger as any).success).toBe('function');
-      
+
       expect(() => (customLogger as any).log('Custom log message')).not.toThrow();
       expect(() => (customLogger as any).progress('Progress update')).not.toThrow();
       expect(() => (customLogger as any).success('Operation successful')).not.toThrow();
@@ -384,23 +388,23 @@ describe('Logger', () => {
   describe('Custom Prettifier Edge Cases', () => {
     it('should handle undefined level in prettifier', () => {
       const customLogger = createLogger();
-      
+
       // This might trigger the undefined level path in prettifier
       expect(() => customLogger.info('Test with potential undefined level')).not.toThrow();
     });
 
     it('should handle null level in prettifier', () => {
       const customLogger = createLogger();
-      
+
       // Force a log that might have null level
       expect(() => (customLogger as any).child({ level: null }).info('Test')).not.toThrow();
     });
 
     it('should handle object level data in prettifier', () => {
       const customLogger = createLogger();
-      
+
       // Test object input to level prettifier
       expect(() => customLogger.child({ level: 30 }).info('Test with numeric level')).not.toThrow();
     });
   });
-}); 
+});

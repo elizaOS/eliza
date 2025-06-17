@@ -12,13 +12,13 @@ vi.mock('@elizaos/core', async () => {
       info: vi.fn(),
       error: vi.fn(),
       warn: vi.fn(),
-      debug: vi.fn()
+      debug: vi.fn(),
     },
     VECTOR_DIMS: {
       SMALL: 384,
       MEDIUM: 512,
-      LARGE: 768
-    }
+      LARGE: 768,
+    },
   };
 });
 
@@ -34,15 +34,15 @@ describe('PgDatabaseAdapter', () => {
     mockManager = {
       getDatabase: vi.fn().mockReturnValue({
         query: {},
-        transaction: vi.fn()
+        transaction: vi.fn(),
       }),
       getClient: vi.fn(),
       testConnection: vi.fn().mockResolvedValue(true),
       close: vi.fn().mockResolvedValue(undefined),
       getConnection: vi.fn().mockReturnValue({
         connect: vi.fn(),
-        end: vi.fn()
-      })
+        end: vi.fn(),
+      }),
     };
 
     adapter = new PgDatabaseAdapter(agentId, mockManager);
@@ -64,14 +64,18 @@ describe('PgDatabaseAdapter', () => {
     it('should be a no-op', async () => {
       await adapter.runMigrations();
       // Should not throw and not do anything
-      expect(logger.debug).toHaveBeenCalledWith('PgDatabaseAdapter: Migrations should be handled externally');
+      expect(logger.debug).toHaveBeenCalledWith(
+        'PgDatabaseAdapter: Migrations should be handled externally'
+      );
     });
   });
 
   describe('init', () => {
     it('should complete initialization', async () => {
       await adapter.init();
-      expect(logger.debug).toHaveBeenCalledWith('PgDatabaseAdapter initialized, skipping automatic migrations.');
+      expect(logger.debug).toHaveBeenCalledWith(
+        'PgDatabaseAdapter initialized, skipping automatic migrations.'
+      );
     });
   });
 
@@ -132,4 +136,4 @@ describe('PgDatabaseAdapter', () => {
       expect(db.transaction).toBeDefined();
     });
   });
-}); 
+});

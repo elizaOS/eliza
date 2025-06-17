@@ -48,7 +48,7 @@ describe('Utility Functions', () => {
     it('should expand tilde path to current working directory', () => {
       const input = '~/test/path';
       const expected = path.join(process.cwd(), 'test/path');
-      
+
       const result = expandTildePath(input);
 
       expect(result).toBe(expected);
@@ -98,7 +98,7 @@ describe('Utility Functions', () => {
     it('should handle tilde with slash', () => {
       const input = '~/';
       const expected = process.cwd();
-      
+
       const result = expandTildePath(input);
 
       expect(result).toBe(expected);
@@ -175,20 +175,20 @@ describe('Utility Functions', () => {
     it('should handle environment file loading when exists', async () => {
       const fs = await import('node:fs');
       const dotenv = await import('dotenv');
-      
+
       vi.mocked(fs.existsSync).mockReturnValue(true);
-      
+
       resolvePgliteDir();
-      
+
       expect(dotenv.default.config).toHaveBeenCalledWith({ path: '.env' });
     });
 
     it('should handle missing environment file gracefully', async () => {
       const fs = await import('node:fs');
       const dotenv = await import('dotenv');
-      
+
       vi.mocked(fs.existsSync).mockReturnValue(false);
-      
+
       resolvePgliteDir();
 
       expect(dotenv.default.config).not.toHaveBeenCalled();

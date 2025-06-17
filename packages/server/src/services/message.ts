@@ -98,7 +98,7 @@ export class MessageBusService extends Service {
             serverApiUrl
           );
           const response = await fetch(channelsUrl.toString(), {
-            headers: this.getAuthHeaders()
+            headers: this.getAuthHeaders(),
           });
           if (response.ok) {
             const data = await response.json();
@@ -157,7 +157,7 @@ export class MessageBusService extends Service {
           serverApiUrl
         );
         const detailsResponse = await fetch(detailsUrl.toString(), {
-          headers: this.getAuthHeaders()
+          headers: this.getAuthHeaders(),
         });
 
         if (detailsResponse.ok) {
@@ -181,7 +181,7 @@ export class MessageBusService extends Service {
         serverApiUrl
       );
       const response = await fetch(participantsUrl.toString(), {
-        headers: this.getAuthHeaders()
+        headers: this.getAuthHeaders(),
       });
 
       if (response.ok) {
@@ -209,7 +209,7 @@ export class MessageBusService extends Service {
         serverApiUrl
       );
       const response = await fetch(agentServersUrl.toString(), {
-        headers: this.getAuthHeaders()
+        headers: this.getAuthHeaders(),
       });
 
       if (response.ok) {
@@ -571,10 +571,10 @@ export class MessageBusService extends Service {
     try {
       const room = await this.runtime.getRoom(agentRoomId);
       const world = await this.runtime.getWorld(agentWorldId);
-  
+
       const channelId = room?.channelId as UUID;
       const serverId = world?.serverId as UUID;
-  
+
       if (!channelId || !serverId) {
         logger.error(
           `[${this.runtime.character.name}] MessageBusService: Cannot map agent room/world to central IDs for response. AgentRoomID: ${agentRoomId}, AgentWorldID: ${agentWorldId}. Room or World object missing, or channelId/serverId not found on them.`
@@ -582,19 +582,19 @@ export class MessageBusService extends Service {
         await this.notifyMessageComplete(channelId, serverId);
         return;
       }
-  
+
       // If agent decides to IGNORE or has no valid text, notify completion and skip sending response
       const shouldSkip =
-        content.actions?.includes('IGNORE') ||
-        !content.text ||
-        content.text.trim() === '';
-  
+        content.actions?.includes('IGNORE') || !content.text || content.text.trim() === '';
+
       if (shouldSkip) {
-        logger.info(`[${this.runtime.character.name}] MessageBusService: Skipping response (reason: ${content.actions?.includes('IGNORE') ? 'IGNORE action' : 'No text'})`);
+        logger.info(
+          `[${this.runtime.character.name}] MessageBusService: Skipping response (reason: ${content.actions?.includes('IGNORE') ? 'IGNORE action' : 'No text'})`
+        );
         await this.notifyMessageComplete(channelId, serverId);
         return;
       }
-  
+
       // Resolve reply-to message ID from agent memory metadata
       let centralInReplyToRootMessageId: UUID | undefined = undefined;
       if (inReplyToAgentMemoryId) {
@@ -603,7 +603,7 @@ export class MessageBusService extends Service {
           centralInReplyToRootMessageId = originalAgentMemory.metadata.sourceId as UUID;
         }
       }
-  
+
       const payloadToServer = {
         channel_id: channelId,
         server_id: serverId,
@@ -626,7 +626,7 @@ export class MessageBusService extends Service {
             (originalMessage?.metadata?.channelType || room?.type) === ChannelType.DM,
         },
       };
-  
+
       logger.info(
         `[${this.runtime.character.name}] MessageBusService: Sending payload to central server API endpoint (/api/messaging/submit):`,
         payloadToServer
@@ -642,7 +642,7 @@ export class MessageBusService extends Service {
         headers: this.getAuthHeaders(),
         body: JSON.stringify(payloadToServer),
       });
-  
+
       if (!response.ok) {
         logger.error(
           `[${this.runtime.character.name}] MessageBusService: Error sending response to central server: ${response.status} ${await response.text()}`
@@ -655,11 +655,10 @@ export class MessageBusService extends Service {
       );
     }
   }
-  
 
   private async notifyMessageComplete(channelId?: UUID, serverId?: UUID) {
     if (!channelId || !serverId) return;
-  
+
     try {
       const completeUrl = new URL('/api/messaging/complete', this.getCentralMessageServerUrl());
       await fetch(completeUrl.toString(), {
@@ -668,21 +667,24 @@ export class MessageBusService extends Service {
         body: JSON.stringify({ channel_id: channelId, server_id: serverId }),
       });
     } catch (error) {
-      logger.warn(`[${this.runtime.character.name}] MessageBusService: Failed to notify completion`, error);
+      logger.warn(
+        `[${this.runtime.character.name}] MessageBusService: Failed to notify completion`,
+        error
+      );
     }
   }
-  
+
   private getAuthHeaders(): Record<string, string> {
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
     };
-    
+
     // Add authentication header if ELIZA_SERVER_AUTH_TOKEN is configured
     const serverAuthToken = process.env.ELIZA_SERVER_AUTH_TOKEN;
     if (serverAuthToken) {
       headers['X-API-KEY'] = serverAuthToken;
     }
-    
+
     return headers;
   }
 
