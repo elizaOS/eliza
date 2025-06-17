@@ -864,7 +864,7 @@ Idk about you, but I hate seeing questions left hanging in tech support channels
 
 While we're analyzing tech support channels, we can identify gaps in docs based on common community questions which can then be addressed systematically. This may involve checking if any github issues or pull requests already address a question, and if not, then to help create an issue for it. Herein lies a powerful feedback loop:
 
-- Aggregate & Analyze: Extract questions and answers, who is helping who (and if succesful), identify pain points, gather sentiment
+- Aggregate & Analyze: Extract questions and answers, who is helping who (and if successful), identify pain points, gather sentiment
 - Clean & Enhance Data, Update docs, create bug reports
 - RAG Knowledge: AI Agents giving automated responses to FAQ
 
