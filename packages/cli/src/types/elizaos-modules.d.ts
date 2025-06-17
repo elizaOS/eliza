@@ -1,6 +1,6 @@
 declare module '@elizaos/server' {
   import type { Character, IAgentRuntime, Plugin } from '@elizaos/core';
-  
+
   export class AgentServer {
     constructor(runtime?: IAgentRuntime);
     startAgent: (character: Character) => Promise<IAgentRuntime>;
@@ -13,13 +13,13 @@ declare module '@elizaos/server' {
     start(port?: number): Promise<void>;
     stop(): Promise<void>;
   }
-  
+
   export function loadCharacterTryPath(path: string): Character | null;
   export function jsonToCharacter(json: any): Character;
 }
 
 declare module '@elizaos/plugin-sql' {
   import type { Plugin } from '@elizaos/core';
-  
+
   export const plugin: Plugin;
-} 
+}

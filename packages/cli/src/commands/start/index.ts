@@ -43,7 +43,9 @@ export const start = new Command()
               characters.push(character);
               logger.info(`Successfully loaded character: ${character.name}`);
             } else {
-              logger.error(`Failed to load character from ${resolvedPath}: Invalid or empty character file`);
+              logger.error(
+                `Failed to load character from ${resolvedPath}: Invalid or empty character file`
+              );
               throw new Error(`Invalid character file: ${resolvedPath}`);
             }
           } catch (e) {
