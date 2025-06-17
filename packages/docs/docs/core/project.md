@@ -18,7 +18,7 @@ A typical ElizaOS project structure:
 my-eliza-project/
 ├── src/
 │   └── index.ts        # Main entry point
-├── knowledge/          # Knowledge base files
+├── knowledge/          # Knowledge base files (if using plugin-knowledge)
 ├── package.json        # Dependencies and scripts
 └── tsconfig.json       # TypeScript configuration
 ```
@@ -31,8 +31,8 @@ You can create a new ElizaOS project using:
 # Using bun (recommended)
 bun create eliza
 
-# Or using bunx
-bunx @elizaos/cli create
+# Or using the CLI directly
+elizaos create
 ```
 
 The CLI will guide you through the setup process, including:
@@ -110,6 +110,7 @@ Plugins provide your agent with capabilities and integrations:
 - `@elizaos/plugin-slack`: Slack integration
 - `@elizaos/plugin-direct`: Direct chat interface
 - `@elizaos/plugin-simsai`: SimsAI platform integration
+- `@elizaos/plugin-knowledge`: Document processing and RAG capabilities
 
 View all available plugins: https://github.com/elizaos-plugins/registry
 
@@ -120,7 +121,6 @@ The `settings` object supports various configurations:
 ```typescript
 {
   "settings": {
-    "ragKnowledge": false, // Enable RAG knowledge mode
     "voice": {
       "model": "string", // Voice synthesis model
       "url": "string" // Optional voice API URL
@@ -173,12 +173,7 @@ Define your agent's personality and communication style:
   "username": "handle", // Character's username/handle
   "system": "System prompt text", // Custom system prompt
   "lore": [], // Additional background/history
-  "knowledge": [
-    // Knowledge base entries
-    "Direct string knowledge",
-    { "path": "file/path.md", "shared": false },
-    { "directory": "knowledge/path", "shared": false }
-  ],
+  "knowledge": [], // Legacy knowledge entries (deprecated - use plugin-knowledge instead)
   "messageExamples": [], // Example conversations
   "postExamples": [], // Example social posts
   "topics": [], // Areas of expertise
@@ -188,34 +183,72 @@ Define your agent's personality and communication style:
 
 ## Knowledge Management
 
-ElizaOS supports two knowledge modes:
+ElizaOS now uses the **@elizaos/plugin-knowledge** for advanced document processing and retrieval. The old knowledge array in character files is deprecated.
 
-### Classic Mode (Default)
+### Modern Knowledge System (plugin-knowledge)
 
-- Direct string knowledge added to character's context
-- No chunking or semantic search
-- Enabled by default (`settings.ragKnowledge: false`)
-- Only processes string knowledge entries
-- Simpler but less sophisticated
+To add knowledge capabilities to your agent:
 
-### RAG Mode
+1. **Add the plugin to your character:**
 
-- Advanced knowledge processing with semantic search
-- Chunks content and uses embeddings
-- Must be explicitly enabled (`settings.ragKnowledge: true`)
-- Supports three knowledge types:
-  1. Direct string knowledge
-  2. Single file references: `{ "path": "path/to/file.md", "shared": false }`
-  3. Directory references: `{ "directory": "knowledge/dir", "shared": false }`
-- Supported file types: .md, .txt, .pdf
-- Optional `shared` flag for knowledge reuse across characters
+```typescript
+export const character: Character = {
+  name: 'MyAgent',
+  plugins: [
+    '@elizaos/plugin-sql', // Required first for database
+    '@elizaos/plugin-openai', // Required for embeddings
+    '@elizaos/plugin-knowledge', // Knowledge plugin
+    // ... other plugins
+  ],
+};
+```
 
-### Knowledge Path Configuration
+2. **Enable auto-loading in `.env`:**
 
-- Knowledge files are relative to the project's `knowledge` directory
-- Paths should not contain `../` (sanitized for security)
-- Both shared and private knowledge supported
-- Files automatically reloaded if content changes
+```env
+LOAD_DOCS_ON_STARTUP=true
+```
+
+3. **Add documents to the `knowledge` folder:**
+
+```
+your-project/
+├── knowledge/          # Create this folder
+│   ├── guide.pdf
+│   ├── documentation.md
+│   └── data.txt
+└── src/
+```
+
+The plugin will automatically:
+
+- Load all documents on startup
+- Process them into searchable chunks
+- Use embeddings for semantic search
+- Enable RAG (Retrieval-Augmented Generation) for accurate answers
+
+### Supported File Types
+
+- **Documents:** PDF, TXT, MD, DOC, DOCX
+- **Code:** JS, TS, PY, and many programming languages
+- **Data:** JSON, CSV, XML, YAML
+
+### Legacy Knowledge Array (Deprecated)
+
+The old `knowledge` array in character files is deprecated. Instead of:
+
+```typescript
+// ❌ OLD WAY (deprecated)
+{
+  "knowledge": [
+    "Direct string knowledge",
+    { "path": "file/path.md", "shared": false },
+    { "directory": "knowledge/path", "shared": false }
+  ]
+}
+```
+
+Use the modern plugin-knowledge system described above.
 
 ## Example Project
 
@@ -226,9 +259,14 @@ import type { Character, IAgentRuntime, Project, ProjectAgent } from '@elizaos/c
 
 export const character: Character = {
   name: 'Tech Helper',
-  plugins: ['@elizaos/plugin-discord', '@elizaos/plugin-direct'],
+  plugins: [
+    '@elizaos/plugin-sql',
+    '@elizaos/plugin-openai',
+    '@elizaos/plugin-knowledge',
+    '@elizaos/plugin-discord',
+    '@elizaos/plugin-direct',
+  ],
   settings: {
-    ragKnowledge: true,
     voice: {
       model: 'en_US-male-medium',
     },
@@ -254,12 +292,6 @@ export const character: Character = {
     ],
   ],
   topics: ['artificial intelligence', 'machine learning', 'technology education'],
-  knowledge: [
-    {
-      directory: 'tech_guides',
-      shared: true,
-    },
-  ],
   style: {
     all: ['Clear', 'Patient', 'Educational'],
     chat: ['Interactive', 'Supportive'],
@@ -281,6 +313,8 @@ const project: Project = {
 
 export default project;
 ```
+
+Note: This example uses the modern plugin-knowledge system. Documents should be placed in the `knowledge` folder and will be automatically loaded when `LOAD_DOCS_ON_STARTUP=true` is set in your `.env` file.
 
 ## Character File Export
 

@@ -8,7 +8,316 @@ image: /img/services.jpg
 
 # 🔌 Services
 
-Services are core components in Eliza that enable AI agents to interact with external platforms and services. Each service provides a specialized interface for communication while maintaining consistent agent behavior across different platforms.
+Services are core components in ElizaOS that enable AI agents to interact with external platforms and services. Each service provides a specialized interface for communication while maintaining consistent agent behavior across different platforms.
+
+## Service Architecture
+
+Services in ElizaOS follow a standardized architecture:
+
+```typescript
+export abstract class Service {
+  protected runtime!: IAgentRuntime;
+  static serviceType: string;
+  abstract capabilityDescription: string;
+  config?: Metadata;
+
+  constructor(runtime?: IAgentRuntime) {
+    if (runtime) {
+      this.runtime = runtime;
+    }
+  }
+
+  abstract stop(): Promise<void>;
+
+  static async start(_runtime: IAgentRuntime): Promise<Service> {
+    throw new Error('Not implemented');
+  }
+}
+```
+
+## Core Service Types
+
+The system defines the following service types in the `ServiceType` registry:
+
+```typescript
+export const ServiceType = {
+  TRANSCRIPTION: 'transcription',
+  VIDEO: 'video',
+  BROWSER: 'browser',
+  PDF: 'pdf',
+  REMOTE_FILES: 'aws_s3',
+  WEB_SEARCH: 'web_search',
+  EMAIL: 'email',
+  TEE: 'tee',
+  TASK: 'task',
+  WALLET: 'wallet',
+  LP_POOL: 'lp_pool',
+  TOKEN_DATA: 'token_data',
+  DATABASE_MIGRATION: 'database_migration',
+  PLUGIN_MANAGER: 'PLUGIN_MANAGER',
+  PLUGIN_CONFIGURATION: 'PLUGIN_CONFIGURATION',
+  PLUGIN_USER_INTERACTION: 'PLUGIN_USER_INTERACTION',
+} as const;
+```
+
+## Built-in Services
+
+### Task Service
+
+The Task Service (provided by `@elizaos/plugin-bootstrap`) manages scheduled and queued tasks:
+
+```typescript
+export class TaskService extends Service {
+  static serviceType = ServiceType.TASK;
+  capabilityDescription = 'The agent is able to schedule and execute tasks';
+
+  // Checks for tasks every second
+  private readonly TICK_INTERVAL = 1000;
+}
+```
+
+Features:
+
+- Scheduled task execution
+- Repeating tasks with intervals
+- One-time task execution
+- Task validation and worker registration
+
+### Platform Services
+
+Platform-specific services are provided by their respective plugins:
+
+| Service  | Plugin                     | Description                                      |
+| -------- | -------------------------- | ------------------------------------------------ |
+| Twitter  | `@elizaos/plugin-twitter`  | Twitter/X integration for posting and engagement |
+| Telegram | `@elizaos/plugin-telegram` | Telegram bot functionality                       |
+| Discord  | `@elizaos/plugin-discord`  | Discord server and DM integration                |
+| MCP      | `@elizaos/plugin-mcp`      | Model Context Protocol integration               |
+
+### Infrastructure Services
+
+| Service    | Type         | Description                           |
+| ---------- | ------------ | ------------------------------------- |
+| Knowledge  | `knowledge`  | RAG-based knowledge management        |
+| EVM        | `evm`        | Ethereum Virtual Machine interactions |
+| Wallet     | `wallet`     | Cryptocurrency wallet management      |
+| Token Data | `token_data` | Token information and analytics       |
+
+## Service Registration
+
+Services are registered through plugins during runtime initialization:
+
+```typescript
+// In your plugin
+export const myPlugin: Plugin = {
+  name: 'my-plugin',
+  services: [MyService], // Array of service classes
+  // ... other plugin properties
+};
+```
+
+The runtime automatically:
+
+1. Instantiates services during plugin registration
+2. Calls the service's `start()` method
+3. Manages service lifecycle
+4. Provides access via `runtime.getService()`
+
+## Using Services
+
+### Getting a Service
+
+```typescript
+// Type-safe service retrieval
+const taskService = runtime.getService<TaskService>(ServiceType.TASK);
+
+// Check if service exists
+if (runtime.hasService(ServiceType.TASK)) {
+  // Service is available
+}
+
+// Get all registered services
+const allServices = runtime.getAllServices();
+```
+
+### Creating a Custom Service
+
+```typescript
+import { Service, ServiceType, IAgentRuntime } from '@elizaos/core';
+
+export class MyCustomService extends Service {
+  static serviceType = 'my_custom_service';
+  capabilityDescription = 'Provides custom functionality';
+
+  constructor(runtime: IAgentRuntime) {
+    super(runtime);
+    // Initialize your service
+  }
+
+  static async start(runtime: IAgentRuntime): Promise<MyCustomService> {
+    const service = new MyCustomService(runtime);
+    // Perform async initialization
+    await service.initialize();
+    return service;
+  }
+
+  async stop(): Promise<void> {
+    // Cleanup resources
+    // Close connections
+    // Cancel timers
+  }
+
+  private async initialize(): Promise<void> {
+    // Setup code
+  }
+
+  // Add your service methods
+  async performAction(params: any): Promise<any> {
+    // Service logic
+  }
+}
+```
+
+### Extending Service Types
+
+Plugins can extend the service type registry via module augmentation:
+
+```typescript
+// In your plugin
+declare module '@elizaos/core' {
+  interface ServiceTypeRegistry {
+    MY_CUSTOM_SERVICE: 'my_custom_service';
+  }
+}
+```
+
+## Service Lifecycle
+
+1. **Registration**: Services are registered when their containing plugin is loaded
+2. **Initialization**: The `start()` method is called during runtime initialization
+3. **Operation**: Services remain active throughout the agent's lifetime
+4. **Shutdown**: The `stop()` method is called when the runtime stops
+
+```typescript
+// Service lifecycle in runtime
+async initialize(): Promise<void> {
+  // ... other initialization
+
+  // Start queued services
+  for (const service of this.servicesInitQueue) {
+    await this.registerService(service);
+  }
+
+  this.isInitialized = true;
+}
+
+async stop(): Promise<void> {
+  // Stop all services
+  for (const [serviceName, service] of this.services) {
+    await service.stop();
+  }
+}
+```
+
+## Service Communication
+
+Services can:
+
+- Access other services via the runtime
+- Emit and listen to events
+- Share state through the runtime
+- Coordinate through the task system
+
+```typescript
+// Service accessing another service
+class MyService extends Service {
+  async doSomething() {
+    const taskService = this.runtime.getService<TaskService>(ServiceType.TASK);
+    if (taskService) {
+      // Create a task
+      await this.runtime.createTask({
+        name: 'MY_TASK',
+        description: 'Task created by MyService',
+        metadata: { source: 'MyService' },
+      });
+    }
+  }
+}
+```
+
+## Best Practices
+
+1. **Service Independence**: Services should be self-contained and not directly depend on other services
+2. **Error Handling**: Implement robust error handling in service methods
+3. **Resource Management**: Properly clean up resources in the `stop()` method
+4. **Configuration**: Use the `config` property for service-specific settings
+5. **Logging**: Use the runtime's logger for consistent logging
+
+```typescript
+export class BestPracticeService extends Service {
+  private resources: any[] = [];
+
+  static async start(runtime: IAgentRuntime): Promise<BestPracticeService> {
+    try {
+      const service = new BestPracticeService(runtime);
+      await service.initialize();
+      runtime.logger.info('BestPracticeService started successfully');
+      return service;
+    } catch (error) {
+      runtime.logger.error('Failed to start BestPracticeService:', error);
+      throw error;
+    }
+  }
+
+  async stop(): Promise<void> {
+    // Clean up all resources
+    for (const resource of this.resources) {
+      try {
+        await resource.cleanup();
+      } catch (error) {
+        this.runtime.logger.error('Error cleaning up resource:', error);
+      }
+    }
+    this.resources = [];
+  }
+}
+```
+
+## Service vs Plugin
+
+Understanding the distinction:
+
+- **Plugins**: Provide actions, evaluators, providers, and services
+- **Services**: Long-running processes that maintain state and connections
+
+Services are one component that plugins can provide, alongside actions and other capabilities.
+
+## FAQ
+
+### How do services differ from actions?
+
+Actions are discrete operations triggered by the agent's decision-making, while services are long-running processes that provide continuous functionality.
+
+### Can services communicate with each other?
+
+Yes, services can access other services through the runtime and coordinate activities, though direct dependencies should be avoided.
+
+### What happens if a service fails to start?
+
+If a service fails during initialization, the error is logged but doesn't prevent the agent from starting. The service simply won't be available.
+
+### How are service configurations managed?
+
+Service configurations can be provided through:
+
+- Plugin configuration
+- Runtime settings via `runtime.getSetting()`
+- Environment variables
+- Character configuration
+
+### Can I register services dynamically?
+
+Services are typically registered during plugin initialization, but the runtime supports dynamic registration for services that need to be added after initialization.
 
 ---
 

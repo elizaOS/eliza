@@ -48,14 +48,34 @@ If you encounter build failures or dependency errors:
 
 ### How do I use local models with Eliza?
 
-Use **Ollama** for local models. Install Ollama, download the desired model (e.g., `llama3.1`), set `modelProvider` to `"ollama"` in the character file, and configure `OLLAMA` settings in `.env`.
+To use local models with Eliza:
+
+1. Install [Ollama](https://ollama.ai) on your system
+2. Download your desired model (e.g., `ollama pull llama3.1`)
+3. Install the Ollama plugin: `bun install @elizaos-plugins/plugin-ollama`
+4. Add the plugin to your character file:
+   ```json
+   {
+     "plugins": ["@elizaos-plugins/plugin-ollama"]
+   }
+   ```
+5. Configure the plugin in your `.env` file:
+   ```
+   OLLAMA_API_ENDPOINT=http://localhost:11434/api
+   OLLAMA_SMALL_MODEL=llama3
+   OLLAMA_MEDIUM_MODEL=your_medium_model
+   OLLAMA_LARGE_MODEL=gemma3:latest
+   OLLAMA_EMBEDDING_MODEL=nomic-embed-text
+   ```
+
+For more details, see the [plugin-ollama documentation](https://github.com/elizaos-plugins/plugin-ollama).
 
 ### How do I update Eliza to the latest version?
 
 For CLI projects:
 
 ```bash
-npm update -g @elizaos/cli
+bun update -g @elizaos/cli
 ```
 
 For monorepo development:
@@ -92,25 +112,67 @@ Yes, but consider:
 
 ### How do I switch between different AI models?
 
-In your character.json file:
+**⚠️ Breaking Change from v0.x to v1.x:** In ElizaOS v0.x, you could specify models directly in the character file using `modelProvider` and related fields. In v1.x, models are exclusively configured through plugins.
+
+**Migration example:**
+
+```json
+// ❌ OLD (v0.x) - No longer works
+{
+  "modelProvider": "openai",
+  "model": "gpt-4"
+}
+
+// ✅ NEW (v1.x) - Use plugins instead
+{
+  "plugins": ["@elizaos/plugin-openai"]
+}
+```
+
+Models are now defined by the plugins chosen in your character file (`.ts` or `.json`). Add the desired model plugin to the `plugins` array:
 
 ```json
 {
-  "modelProvider": "openai", // or "anthropic", "deepseek", etc.
-  "settings": {
-    "model": "gpt-4",
-    "maxInputTokens": 200000,
-    "maxOutputTokens": 8192
-  }
+  "plugins": ["@elizaos/plugin-openai"]
 }
 ```
+
+**Important notes about plugin order:**
+
+- Plugin order matters! The first plugin that supports a model type will be used
+- Some plugins don't support all model types (e.g., Anthropic doesn't support embeddings)
+- Use fallback plugins for missing capabilities:
+
+```json
+{
+  "plugins": [
+    "@elizaos/plugin-anthropic", // Primary for text generation
+    "@elizaos/plugin-openai" // Fallback for embeddings
+  ]
+}
+```
+
+**Common plugin choices:**
+
+- `@elizaos/plugin-openai`: Supports all model types (text, embeddings, objects)
+- `@elizaos/plugin-anthropic`: Text generation only
+- `@elizaos-plugins/plugin-ollama`: Local models via Ollama
+- `@elizaos/plugin-google-genai`: Google's Gemini models
+
+**Note:** The `modelProvider` field from v0.x is deprecated and will be ignored. Models are now configured exclusively through plugins.
 
 ### How do I manage API keys and secrets?
 
 Two options:
 
-1. Global .env file for shared settings
-2. Character-specific secrets in character.json:
+1. **Global .env file** for shared settings:
+
+   ```
+   OPENAI_API_KEY=your-key-here
+   ANTHROPIC_API_KEY=your-key-here
+   ```
+
+2. **Character-specific secrets** in character.json:
    ```json
    {
      "settings": {
@@ -120,6 +182,12 @@ Two options:
      }
    }
    ```
+
+**Note:** API keys are required based on the plugins you use. For example:
+
+- `@elizaos/plugin-openai` requires `OPENAI_API_KEY`
+- `@elizaos/plugin-anthropic` requires `ANTHROPIC_API_KEY`
+- `@elizaos-plugins/plugin-ollama` requires Ollama configuration (see local models section)
 
 ---
 
@@ -135,28 +203,210 @@ Check your database for null memory entries and ensure proper content formatting
 
 ### How do I manage my agent's memory?
 
-- To reset memory: Delete the db.sqlite file and restart
-- To add documents: Specify path to file / folder in the characterfile
-- For large datasets: Consider using a vector database
+- **To reset memory**:
+  - For PGLite: Delete the `.eliza/.elizadb` folder and restart
+  - For PostgreSQL: Drop and recreate the database (see "How do I clear or reset my agent's memory?" below)
+- **To add documents**: Use the `@elizaos/plugin-knowledge` plugin and place documents in the `knowledge/` or `docs/` folder
+- **For large datasets**: Use PostgreSQL instead of PGLite for better performance and scalability
 
 ### How do I clear or reset my agent's memory?
 
-Using the CLI:
+ElizaOS uses PGLite (local) or PostgreSQL (production) for data storage. There is currently no CLI command to clear memory, so you need to manually reset the database:
 
-```bash
-elizaos agent reset-memory
-```
+1. **For PGLite (local development)**:
 
-Or manually:
+   - Delete the `.elizadb` folder in your project
+   - Default location: `.eliza/.elizadb`
+   - Custom location: Check your `PGLITE_DATA_DIR` environment variable
 
-1. Delete the db.sqlite file in the agent/data directory
-2. Restart your agent
+   ```bash
+   # Default location
+   rm -rf .eliza/.elizadb
+
+   # Or if you have a custom PGLITE_DATA_DIR
+   rm -rf $PGLITE_DATA_DIR
+   ```
+
+2. **For PostgreSQL**:
+
+   - Drop and recreate the entire database (easiest method):
+
+   ```bash
+   # Connect to PostgreSQL as superuser
+   psql -U postgres
+
+   # Drop the database (WARNING: This deletes ALL data!)
+   DROP DATABASE your_database_name;
+
+   # Create a fresh database
+   CREATE DATABASE your_database_name;
+
+   # Exit psql
+   \q
+   ```
+
+   - Or selectively delete memories (advanced):
+
+   ```sql
+   -- Connect to your database
+   psql -U your_username -d your_database_name
+
+   -- Delete all memories (be careful!)
+   DELETE FROM embeddings;  -- Delete embeddings first due to foreign keys
+   DELETE FROM memories;    -- Then delete memories
+   ```
+
+**Note:** Be careful when deleting memories as this action cannot be undone. Always backup important data before resetting.
 
 ### How do I add custom knowledge or use RAG with my agent?
 
-1. Convert documents to txt/md format
-2. Use the [folder2knowledge](https://github.com/elizaOS/characterfile/tree/main/scripts) tool
-3. Add to the knowledge section in your character file, [see docs](docs/core/knowledge.md) via `"ragKnowledge": true`
+The easiest way is to use the **@elizaos/plugin-knowledge** plugin:
+
+1. **Install the plugin and an LLM provider that supports embeddings:**
+
+   ```bash
+   bun install @elizaos/plugin-knowledge
+   ```
+
+2. **Add both plugins to your character file:**
+
+   ```json
+   {
+     "plugins": [
+       "@elizaos/plugin-sql",
+       "@elizaos/plugin-openai", // or plugin-google-genai, plugin-ollama
+       "@elizaos/plugin-knowledge"
+     ]
+   }
+   ```
+
+3. **Create a `docs` or `knowledge` folder in your project root and add documents:**
+
+   ```
+   your-project/
+   ├── docs/           <-- or knowledge/
+   │   ├── guide.pdf
+   │   ├── manual.txt
+   │   └── notes.md
+   └── ... other files
+   ```
+
+4. **Enable auto-loading in your `.env`:**
+   ```
+   LOAD_DOCS_ON_STARTUP=true
+   ```
+
+**Supported embedding providers:**
+
+- `@elizaos/plugin-openai` - OpenAI embeddings (text-embedding-3-small)
+- `@elizaos-plugins/plugin-google-genai` - Google embeddings (text-embedding-004)
+- `@elizaos-plugins/plugin-ollama` - Local embeddings (nomic-embed-text)
+
+The plugin automatically uses embeddings from your configured LLM provider. For more details, see the [plugin-knowledge documentation](https://github.com/elizaOS/eliza/tree/main/packages/plugin-knowledge).
+
+---
+
+## Plugin Order and Dependencies
+
+### Why does plugin order matter?
+
+Plugin order is **critical** in ElizaOS because plugins are loaded sequentially and may depend on services provided by earlier plugins. The wrong order can cause initialization failures or missing functionality.
+
+### What's the correct plugin order?
+
+Here's the required loading order:
+
+```json
+{
+  "plugins": [
+    "@elizaos/plugin-sql", // 1. MUST BE FIRST - provides database
+    "@elizaos/plugin-anthropic", // 2. Primary LLM provider
+    "@elizaos/plugin-openai", // 3. Fallback for embeddings (if needed)
+    "@elizaos/plugin-bootstrap" // 4. Core message handling
+    // ... other plugins can go here in any order
+  ]
+}
+```
+
+### Plugin dependencies explained:
+
+1. **Database Plugin (`@elizaos/plugin-sql`)** - **MUST ALWAYS BE FIRST**
+
+   - Provides the database adapter that all other plugins use
+   - Without this, plugins that store data will fail to initialize
+
+2. **LLM Provider Plugins** - Must come after database, before plugins that need AI
+
+   - Examples: `@elizaos/plugin-openai`, `@elizaos/plugin-anthropic`, `@elizaos/plugin-google-genai`
+   - The first plugin that supports a model type (text, embedding, etc.) will be used
+   - Order these by preference - put your primary provider first
+
+3. **Fallback Providers** - For missing capabilities
+
+   - Some LLM plugins don't support all model types (e.g., Anthropic doesn't support embeddings)
+   - Add a fallback plugin that provides the missing capability:
+
+   ```json
+   {
+     "plugins": [
+       "@elizaos/plugin-sql",
+       "@elizaos/plugin-anthropic", // Primary for text generation
+       "@elizaos/plugin-openai" // Fallback for embeddings
+     ]
+   }
+   ```
+
+4. **Bootstrap Plugin (`@elizaos/plugin-bootstrap`)** - Highly recommended
+
+   - Provides all core message handling, actions, and evaluators
+   - Without this, your agent won't respond to messages or perform basic actions
+   - While technically optional (you could implement your own message handling), it provides the standard ElizaOS behavior that most users expect
+
+5. **Feature Plugins** - Can go in any order after dependencies
+   - Platform integrations: `@elizaos/plugin-discord`, `@elizaos/plugin-telegram`
+   - Additional capabilities: `@elizaos/plugin-knowledge`, `@elizaos/plugin-image-generation`
+   - Custom plugins you've created
+
+### Common plugin order mistakes:
+
+```json
+// ❌ WRONG - Knowledge plugin before its dependencies
+{
+  "plugins": [
+    "@elizaos/plugin-knowledge",  // Needs database and embeddings!
+    "@elizaos/plugin-sql",
+    "@elizaos/plugin-openai"
+  ]
+}
+
+// ✅ CORRECT - Dependencies first
+{
+  "plugins": [
+    "@elizaos/plugin-sql",         // Database first
+    "@elizaos/plugin-openai",      // Provides embeddings
+    "@elizaos/plugin-knowledge"    // Can now use both
+  ]
+}
+```
+
+### How do I know which plugins provide what?
+
+- **Database**: `@elizaos/plugin-sql`
+- **Text Generation**: Most LLM plugins (`openai`, `anthropic`, `google-genai`, `ollama`)
+- **Embeddings**: `@elizaos/plugin-openai`, `@elizaos/plugin-google-genai`, `@elizaos/plugin-ollama`
+- **Image Generation**: `@elizaos/plugin-openai`, dedicated image plugins
+- **Core Functionality**: `@elizaos/plugin-bootstrap`
+
+### Can I skip the bootstrap plugin?
+
+While the bootstrap plugin is technically optional, it provides essential functionality:
+
+- Message processing and response generation
+- Basic actions (reply, ignore, follow/unfollow rooms)
+- Memory and context management
+- Event handling for all platforms
+
+You can create your own implementation of these features, but for most users, the bootstrap plugin provides a solid foundation that follows ElizaOS best practices. Think of it as the "standard library" for ElizaOS agents.
 
 ---
 
@@ -184,9 +434,210 @@ Or manually:
 
 ### How do I create custom plugins?
 
-1. Use the CLI to scaffold a plugin:
+**Basic approach:**
+
+1. Use the CLI to scaffold a plugin: `elizaos create` (select Plugin)
 2. Implement required interfaces (actions, providers, evaluators)
 3. Publish with `elizaos plugins publish`
+
+**Advanced local development with bun link:**
+
+For testing plugins locally before publishing:
+
+1. **Scaffold both a plugin and a test project:**
+
+   ```bash
+   # Create your plugin
+   elizaos create my-plugin
+   cd my-plugin
+
+   # Create a test project
+   cd ..
+   elizaos create my-test-project
+   ```
+
+2. **Link your plugin locally using bun link:**
+
+   ```bash
+   # In your plugin directory
+   cd my-plugin
+   bun link
+
+   # This creates a global link to your plugin
+   ```
+
+3. **Use the linked plugin in your project:**
+
+   ```bash
+   # In your project directory
+   cd ../my-test-project
+   bun link @your-namespace/my-plugin
+
+   # This links the local plugin to your project
+   ```
+
+4. **Add the plugin to your character file:**
+
+   ```json
+   {
+     "plugins": ["@your-namespace/my-plugin"]
+   }
+   ```
+
+5. **Make changes and test immediately:**
+   - Edit plugin code
+   - Run `bun build` in the plugin directory
+   - Changes are immediately available in your linked project
+   - No need to publish/reinstall
+
+**Benefits of bun link:**
+
+- Test plugins locally without publishing
+- Instant feedback during development
+- No need to bump versions for each change
+- Easy debugging with local source code
+
+**To unlink when done:**
+
+```bash
+# In your project
+bun unlink @your-namespace/my-plugin
+
+# In your plugin directory
+bun unlink
+```
+
+---
+
+## Project Management and Updates
+
+### How do I update ElizaOS after new releases?
+
+When new versions of ElizaOS are released, follow these steps to update:
+
+1. **Update the CLI globally:**
+
+   ```bash
+   bun update -g @elizaos/cli
+   ```
+
+2. **Update your project dependencies:**
+
+   ```bash
+   # From your project directory
+   elizaos update
+   ```
+
+   This command updates all ElizaOS dependencies to their latest compatible versions.
+
+3. **Rebuild your project:**
+   ```bash
+   # Always use dev after updates to ensure proper rebuild
+   elizaos dev
+   ```
+   The `dev` command will automatically reinstall dependencies and rebuild if necessary.
+
+### Best practices for project updates:
+
+- **Always start with `elizaos dev`** after updates - it handles reinstallation and rebuilding automatically
+- **Check release notes** for breaking changes before updating
+- **Test in development** before updating production deployments
+- **Backup your data** (especially if using PostgreSQL) before major updates
+
+### How do I enable debug logging?
+
+For troubleshooting, you can enable detailed logging in two ways:
+
+1. **Environment variable (temporary):**
+
+   ```bash
+   LOG_LEVEL=debug elizaos start
+   # or
+   LOG_LEVEL=debug elizaos dev
+   ```
+
+2. **In your `.env` file (permanent):**
+   ```env
+   LOG_LEVEL=debug
+   ```
+
+Available log levels: `error`, `warn`, `info`, `debug`
+
+### Troubleshooting project issues:
+
+If you encounter issues after updates or during development:
+
+1. **Clean rebuild (nuclear option):**
+
+   ```bash
+   # Remove all build artifacts and dependencies
+   rm -rf node_modules && rm -rf dist && rm -rf bun.lock
+
+   # Reinstall and rebuild everything
+   elizaos dev
+   ```
+
+2. **Check your package.json:**
+
+   - **Important**: Don't hardcode ElizaOS package versions in your `package.json`
+   - Hardcoded versions will override the update process
+   - Either use proper version ranges (e.g., `"^1.0.0"`) or remove version specifications before troubleshooting
+
+   ```json
+   // ❌ BAD - Hardcoded versions
+   {
+     "dependencies": {
+       "@elizaos/core": "1.0.0",  // Will always install this exact version
+       "@elizaos/plugin-bootstrap": "1.0.0"
+     }
+   }
+
+   // ✅ GOOD - Version ranges
+   {
+     "dependencies": {
+       "@elizaos/core": "latest",  // Will update to compatible versions
+       "@elizaos/plugin-bootstrap": "latest"
+     }
+   }
+   ```
+
+3. **Common issues and solutions:**
+   - **"Module not found"** - Run `elizaos dev` to reinstall dependencies
+   - **Type errors** - Clean rebuild usually fixes this
+   - **Plugin initialization failures** - Check [plugin order](#plugin-order-and-dependencies)
+   - **Database errors** - May need to reset database after major updates
+
+### Project scaffolding tips:
+
+When creating new projects:
+
+1. **Use the CLI scaffolding:**
+
+   ```bash
+   elizaos create my-project
+   ```
+
+2. **Don't modify core files** - Keep customizations in your character files and custom plugins
+
+3. **Use version control:**
+
+   ```bash
+   git init
+   git add .
+   git commit -m "Initial ElizaOS project"
+   ```
+
+4. **Structure your project properly:**
+   ```
+   my-project/
+   ├── .env                    # Environment variables (don't commit!)
+   ├── .gitignore             # Should include .env, node_modules, dist
+   ├── src/
+   │   └── index.ts           # Your agent configuration
+   ├── knowledge/             # Knowledge documents
+   ├── custom-plugins/        # Your custom plugins
+   └── package.json           # Project dependencies
+   ```
 
 ---
 
@@ -194,14 +645,55 @@ Or manually:
 
 ### How do I ensure my agent runs continuously?
 
-1. Use a process manager like PM2:
+1. **Use PM2 process manager with Bun:**
+
    ```bash
-   npm install -g pm2
-   pm2 start "elizaos start" --name eliza
+   # Install PM2 globally with Bun
+   bun install -g pm2
+
+   # Start your agent with PM2
+   pm2 start "elizaos start" --name eliza --interpreter bun
+
+   # Save the process list for automatic restart
    pm2 save
+   pm2 startup
    ```
-2. Set up monitoring and automatic restarts
-3. Use proper error handling and logging
+
+2. **Alternative: Use PM2 with a configuration file:**
+   Create `pm2.config.js`:
+
+   ```javascript
+   module.exports = {
+     name: 'eliza-agent',
+     script: 'elizaos',
+     args: 'start',
+     interpreter: 'bun',
+     env: {
+       PATH: `${process.env.HOME}/.bun/bin:${process.env.PATH}`,
+     },
+   };
+   ```
+
+   Then start with:
+
+   ```bash
+   pm2 start pm2.config.js
+   ```
+
+3. **Set up monitoring and automatic restarts:**
+
+   ```bash
+   # Enable auto-restart on crash
+   pm2 start "elizaos start" --name eliza --interpreter bun --watch --max-memory-restart 2G
+
+   # View logs
+   pm2 logs eliza
+
+   # Monitor CPU and memory
+   pm2 monit
+   ```
+
+**Note:** PM2 cluster mode is not supported when using Bun as the interpreter. Your agent will run in fork mode.
 
 ---
 
@@ -209,27 +701,135 @@ Or manually:
 
 ### How do I fix database connection issues?
 
-1. For SQLite:
-   - Delete db.sqlite and restart
-   - Check file permissions
+1. For PGLite (default local database):
+   - Delete the `.elizadb` folder (or the path specified in `PGLITE_DATA_DIR`)
+   - Default location: `.eliza/.elizadb` in your project root
+   - Example: `rm -rf /path/to/your/project/.eliza/.elizadb`
+   - Restart your agent to create a fresh database
 2. For PostgreSQL:
-   - Verify connection string
-   - Check database exists
+
+   - Verify connection string in your `.env` file
+   - Check database exists and is accessible
    - Ensure proper credentials
+   - To drop and recreate the database:
+
+     ```bash
+     # Connect to PostgreSQL
+     psql -U your_username
+
+     # Drop the database (WARNING: This deletes all data!)
+     DROP DATABASE your_database_name;
+
+     # Create a new database
+     CREATE DATABASE your_database_name;
+     ```
 
 ### How do I resolve embedding dimension mismatch errors?
 
-1. Set `USE_OPENAI_EMBEDDING=true` in .env
-2. Reset your agent's memory with `elizaos agent reset-memory`
+1. Set `OPENAI_EMBEDDING_DIMENSIONS=384` in .env
+2. Reset your agent's memory:
+   - **For PGLite**: Remove the `.elizadb` folder
+     ```bash
+     rm -rf .eliza/.elizadb
+     ```
+   - **For PostgreSQL**: Drop and recreate the database
+     ```bash
+     psql -U your_username -c "DROP DATABASE your_database_name;"
+     psql -U your_username -c "CREATE DATABASE your_database_name;"
+     ```
 3. Ensure consistent embedding models across your setup
 
 ### Why does my agent post in JSON format sometimes?
 
 This usually happens due to incorrect output formatting or template issues. Check your character file's templates and ensure the text formatting is correct without raw JSON objects.
 
-### How do I make my agent only respond to mentions?
+---
 
-Add a mention filter to your character's configuration and set `ENABLE_ACTION_PROCESSING=false` in your .env file.
+## Character Configuration
+
+### Can I still run custom character JSON files with the new CLI?
+
+**Yes!** Custom character files are fully supported. The `--character` option works exactly as before:
+
+```bash
+# Single character file
+elizaos start --character ./customcharacter.json
+
+# Multiple character files
+elizaos start --character ./character1.json ./character2.json
+
+# Without .json extension (auto-added)
+elizaos start --character mycharacter
+
+# From URL
+elizaos start --character https://example.com/mycharacter.json
+```
+
+### What's the character file format?
+
+Your character JSON file should follow this structure:
+
+```json
+{
+  "name": "MyCustomAgent",
+  "username": "mycustomagent",
+  "description": "A custom AI agent",
+  "system": "You are a helpful assistant specialized in...",
+  "bio": ["I am a custom AI assistant.", "I specialize in helping users with..."],
+  "plugins": ["@elizaos/plugin-sql", "@elizaos/plugin-openai", "@elizaos/plugin-bootstrap"],
+  "messageExamples": [
+    [
+      {
+        "name": "user",
+        "content": { "text": "Hello!" }
+      },
+      {
+        "name": "MyCustomAgent",
+        "content": { "text": "Hi there! How can I help you today?" }
+      }
+    ]
+  ],
+  "postExamples": [
+    "Just thinking about how AI can help improve productivity...",
+    "Excited to share some tips about effective communication!"
+  ],
+  "topics": ["technology", "productivity", "communication"],
+  "adjectives": ["helpful", "knowledgeable", "friendly", "professional"],
+  "knowledge": ["./knowledge/base-knowledge.txt"],
+  "style": {
+    "all": ["Be concise and clear", "Use examples when helpful"],
+    "chat": ["Be conversational", "Ask clarifying questions"],
+    "post": ["Be engaging", "Share insights"]
+  },
+  "settings": {
+    "voice": {
+      "model": "en_US-hfc_female-medium"
+    }
+  }
+}
+```
+
+**Minimal character file:**
+
+```json
+{
+  "name": "SimpleBot",
+  "bio": "I am a helpful AI assistant.",
+  "topics": ["general"],
+  "adjectives": ["helpful"]
+}
+```
+
+### Important notes about character files:
+
+1. **Model configuration**: AI models are NOT configured in the character file anymore. In v0.x, you could specify models directly in the character file, but in v1.x models are exclusively configured through plugins. See the [Model Configuration](#how-do-i-switch-between-different-ai-models) section above.
+2. **Backward compatibility**: Existing character files from older versions work, but you'll need to:
+   - Remove any `modelProvider` or model-related settings from the character file
+   - Add the appropriate plugin(s) to the `plugins` array (e.g., `@elizaos/plugin-openai`)
+   - Configure API keys in your `.env` file or character `settings.secrets`
+   - Pay attention to plugin order - some plugins depend on others
+3. **Plugin specification**: You can specify plugins directly in the character file
+4. **Multiple characters**: Run multiple characters simultaneously with space-separated paths
 
 ---
 

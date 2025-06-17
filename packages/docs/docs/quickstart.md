@@ -97,7 +97,7 @@ A typical ElizaOS project structure looks like this:
 my-project/
 ├── src/
 │   └── index.ts      # Main entry point with character definitions
-├── knowledge/        # Knowledge files for RAG
+├── knowledge/        # Knowledge files for RAG (or use 'docs' folder)
 ├── package.json      # Project configuration and dependencies
 └── tsconfig.json     # TypeScript configuration
 ```
@@ -119,7 +119,7 @@ You can work with character files using the agent commands:
 
 ```bash
 # Create a new character file
-elizaos create -t agent my-character
+elizaos create --type agent my-character
 
 # Start an agent with a character file
 elizaos agent start --path ./my-character.json
@@ -185,17 +185,22 @@ bun build
 
 ### Plugin Issues
 
+If you encounter issues with plugins:
+
 ```bash
-# Rebuild problematic packages
-bun rebuild better-sqlite3
+# Clear cache and reinstall
+bun clean
+bun install
 ```
 
-### Docker Issues
+### Docker Setup
 
 ```bash
-# Clean up Docker environment
-docker rmi -f $(docker images -aq)
-docker builder prune -a -f
+# Start ElizaOS with PostgreSQL using Docker Compose
+docker compose up -d
+
+# View logs
+docker compose logs -f eliza
 ```
 
 ### First-time Startup Issues

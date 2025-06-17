@@ -20,65 +20,86 @@ A room in ElizaOS has the following properties:
 type Room = {
   id: UUID;
   name?: string;
-  agentId?: UUID;
-  source: string;
-  type: ChannelType;
-  channelId?: string;
-  serverId?: string;
-  worldId?: UUID;
+  agentId: UUID; // Required - the agent that owns this room
+  source: string; // Platform origin (e.g., 'discord', 'telegram')
+  type: ChannelType; // Type of room (DM, GROUP, etc.)
+  channelId?: string; // External system channel identifier
+  serverId?: string; // External system server identifier
+  worldId?: UUID; // Parent world ID (optional)
   metadata?: Record<string, unknown>;
 };
 ```
 
-| Property    | Description                                                      |
-| ----------- | ---------------------------------------------------------------- |
-| `id`        | Unique identifier for the room                                   |
-| `name`      | Optional display name for the room                               |
-| `agentId`   | Optional ID of the agent associated with this room               |
-| `source`    | The platform or origin of the room (e.g., 'discord', 'telegram') |
-| `type`      | Type of room (DM, GROUP, THREAD, etc.)                           |
-| `channelId` | External system channel identifier                               |
-| `serverId`  | External system server identifier                                |
-| `worldId`   | Optional ID of the parent world                                  |
-| `metadata`  | Additional room configuration data                               |
+| Property    | Description                                                      | Required |
+| ----------- | ---------------------------------------------------------------- | -------- |
+| `id`        | Unique identifier for the room                                   | Yes      |
+| `name`      | Display name for the room                                        | No       |
+| `agentId`   | ID of the agent that owns this room                              | Yes      |
+| `source`    | The platform or origin of the room (e.g., 'discord', 'telegram') | Yes      |
+| `type`      | Type of room (DM, GROUP, THREAD, etc.)                           | Yes      |
+| `channelId` | External system channel identifier                               | No       |
+| `serverId`  | External system server identifier                                | No       |
+| `worldId`   | ID of the parent world                                           | No       |
+| `metadata`  | Additional room configuration data                               | No       |
 
 ## Room Types
 
 ElizaOS supports several room types, defined in the `ChannelType` enum:
 
-| Type          | Description                               |
-| ------------- | ----------------------------------------- |
-| `SELF`        | Messages to self                          |
-| `DM`          | Direct messages between two participants  |
-| `GROUP`       | Group messages with multiple participants |
-| `VOICE_DM`    | Voice direct messages                     |
-| `VOICE_GROUP` | Voice channels with multiple participants |
-| `FEED`        | Social media feed                         |
-| `THREAD`      | Threaded conversation                     |
-| `WORLD`       | World channel                             |
-| `FORUM`       | Forum discussion                          |
-| `API`         | Legacy type - Use DM or GROUP instead     |
+| Type          | Description                               | Common Use Case       |
+| ------------- | ----------------------------------------- | --------------------- |
+| `SELF`        | Agent's own room for internal messages    | Agent initialization  |
+| `DM`          | Direct messages between two participants  | Private conversations |
+| `GROUP`       | Group messages with multiple participants | Team chats, channels  |
+| `VOICE_DM`    | Voice direct messages                     | Voice calls           |
+| `VOICE_GROUP` | Voice channels with multiple participants | Voice meetings        |
+| `FEED`        | Social media feed                         | Twitter, Instagram    |
+| `THREAD`      | Threaded conversation                     | Forum discussions     |
+| `WORLD`       | World-level channel                       | World announcements   |
+| `FORUM`       | Forum discussion                          | Q&A platforms         |
 
 ## Room Creation and Management
 
 ### Creating a Room
 
-You can create a new room using the AgentRuntime:
+When creating a room, the `agentId` is automatically set from the runtime:
 
 ```typescript
 const roomId = await runtime.createRoom({
+  id: customRoomId, // Optional - will generate if not provided
   name: 'general-chat',
   source: 'discord',
   type: ChannelType.GROUP,
   channelId: 'external-channel-id',
   serverId: 'external-server-id',
-  worldId: parentWorldId,
+  worldId: parentWorldId, // Optional
 });
+```
+
+### Creating Multiple Rooms
+
+You can create multiple rooms at once for better performance:
+
+```typescript
+const roomIds = await runtime.createRooms([
+  {
+    name: 'general',
+    source: 'discord',
+    type: ChannelType.GROUP,
+    worldId: worldId,
+  },
+  {
+    name: 'announcements',
+    source: 'discord',
+    type: ChannelType.GROUP,
+    worldId: worldId,
+  },
+]);
 ```
 
 ### Ensuring a Room Exists
 
-To create a room if it doesn't already exist:
+To create a room only if it doesn't already exist:
 
 ```typescript
 await runtime.ensureRoomExists({
@@ -95,11 +116,17 @@ await runtime.ensureRoomExists({
 ### Retrieving Room Information
 
 ```typescript
-// Get a specific room
+// Get a single room by ID
 const room = await runtime.getRoom(roomId);
 
-// Get all rooms in a world
-const worldRooms = await runtime.getRooms(worldId);
+// Get multiple rooms by IDs
+const rooms = await runtime.getRoomsByIds([roomId1, roomId2, roomId3]);
+
+// Get all rooms in a world (preferred method)
+const worldRooms = await runtime.getRoomsByWorld(worldId);
+
+// Deprecated - use getRoomsByWorld instead
+// const worldRooms = await runtime.getRooms(worldId);
 ```
 
 ### Updating Room Properties
@@ -117,8 +144,23 @@ await runtime.updateRoom({
 
 ### Deleting a Room
 
+**⚠️ Warning**: Deleting a room will also delete:
+
+- All messages in the room
+- All embeddings for those messages
+- All participant relationships
+- All logs associated with the room
+
 ```typescript
 await runtime.deleteRoom(roomId);
+```
+
+### Deleting All Rooms in a World
+
+Delete all rooms associated with a specific world:
+
+```typescript
+await runtime.deleteRoomsByWorldId(worldId);
 ```
 
 ## Participants in Rooms
@@ -128,17 +170,23 @@ Rooms can have multiple participants (entities) that can exchange messages.
 ### Managing Room Participants
 
 ```typescript
-// Add a participant to a room
+// Add a single participant to a room
 await runtime.addParticipant(entityId, roomId);
+
+// Add multiple participants at once (more efficient)
+await runtime.addParticipantsRoom([entityId1, entityId2, entityId3], roomId);
 
 // Remove a participant from a room
 await runtime.removeParticipant(entityId, roomId);
 
 // Get all participants in a room
-const participants = await runtime.getParticipantsForRoom(roomId);
+const participantIds = await runtime.getParticipantsForRoom(roomId);
 
 // Get all rooms where an entity is a participant
 const entityRooms = await runtime.getRoomsForParticipant(entityId);
+
+// Get rooms for multiple participants
+const sharedRooms = await runtime.getRoomsForParticipants([entityId1, entityId2]);
 ```
 
 ### Participant States
@@ -162,16 +210,26 @@ The participant states are:
 | `MUTED`    | The agent ignores messages in this room                                                   |
 | `null`     | Default state - the agent responds only when directly mentioned                           |
 
-## Following and Unfollowing Rooms
+## Self Rooms
 
-ElizaOS allows agents to "follow" rooms to actively participate in conversations without being explicitly mentioned. This functionality is managed through the `FOLLOW_ROOM` and `UNFOLLOW_ROOM` actions.
+Every agent automatically gets a "self" room during initialization. This is a special room where:
+
+- The room ID equals the agent ID
+- The room type is `SELF`
+- The agent is automatically added as a participant
+- Used for internal agent operations and self-directed messages
 
 ```typescript
-// Follow a room (typically triggered by an action)
-await runtime.setParticipantUserState(roomId, runtime.agentId, 'FOLLOWED');
-
-// Unfollow a room
-await runtime.setParticipantUserState(roomId, runtime.agentId, null);
+// During agent initialization, this happens automatically:
+const selfRoom = await runtime.createRoom({
+  id: runtime.agentId,
+  name: runtime.character.name,
+  source: 'elizaos',
+  type: ChannelType.SELF,
+  channelId: runtime.agentId,
+  serverId: runtime.agentId,
+  worldId: runtime.agentId,
+});
 ```
 
 ## Memory and Messages in Rooms
@@ -193,14 +251,22 @@ const messageId = await runtime.createMemory(
       type: 'message',
     },
   },
-  'messages'
+  'messages' // table name
 );
 
 // Retrieve recent messages from a room
 const messages = await runtime.getMemories({
   roomId: roomId,
+  tableName: 'messages',
   count: 10,
   unique: true,
+});
+
+// Get messages from multiple rooms
+const multiRoomMessages = await runtime.getMemoriesByRoomIds({
+  roomIds: [roomId1, roomId2],
+  tableName: 'messages',
+  limit: 50,
 });
 ```
 
@@ -208,12 +274,12 @@ const messages = await runtime.getMemories({
 
 ElizaOS emits events related to room activities:
 
-| Event              | Description                                  |
-| ------------------ | -------------------------------------------- |
-| `ROOM_JOINED`      | Emitted when an entity joins a room          |
-| `ROOM_LEFT`        | Emitted when an entity leaves a room         |
-| `MESSAGE_RECEIVED` | Emitted when a message is received in a room |
-| `MESSAGE_SENT`     | Emitted when a message is sent to a room     |
+| Event              | Description                                  | Payload                         |
+| ------------------ | -------------------------------------------- | ------------------------------- |
+| `ROOM_JOINED`      | Emitted when an entity joins a room          | `{ runtime, entityId, roomId }` |
+| `ROOM_LEFT`        | Emitted when an entity leaves a room         | `{ runtime, entityId, roomId }` |
+| `MESSAGE_RECEIVED` | Emitted when a message is received in a room | `{ runtime, message }`          |
+| `MESSAGE_SENT`     | Emitted when a message is sent to a room     | `{ runtime, message }`          |
 
 ### Handling Room Events
 
@@ -262,10 +328,55 @@ await runtime.ensureConnection({
 
 ## Best Practices
 
-1. **Use appropriate room types**: Select the most appropriate room type for each interaction context
-2. **Follow relationship order**: Create worlds before creating rooms, as rooms often have a parent world
-3. **Use ensureRoomExists**: Use this method to avoid duplicate rooms when syncing with external systems
-4. **Clean up rooms**: Delete rooms when they're no longer needed to prevent database bloat
-5. **Room metadata**: Use metadata for room-specific configuration that doesn't fit into the standard properties
-6. **Follow state management**: Implement clear rules for when agents should follow or unfollow rooms
-7. **Handle participants carefully**: Ensure that participant management aligns with external platform behavior
+1. **Always specify agentId**: While the runtime sets it automatically, be aware that rooms are agent-specific
+2. **Use appropriate room types**: Select the most appropriate room type for each interaction context
+3. **Create worlds first**: If using worlds, create them before creating rooms
+4. **Use batch operations**: When creating multiple rooms or adding multiple participants, use batch methods
+5. **Use ensureRoomExists**: This prevents duplicate rooms when syncing with external systems
+6. **Be careful with deletion**: Remember that deleting rooms cascades to all related data
+7. **Use metadata wisely**: Store platform-specific data in metadata rather than creating new fields
+8. **Handle participant states**: Implement clear rules for when agents should follow or mute rooms
+
+## Common Patterns
+
+### Creating a DM Room
+
+```typescript
+// Create a direct message room between agent and user
+const dmRoom = await runtime.createRoom({
+  name: `DM-${userId}`,
+  source: 'discord',
+  type: ChannelType.DM,
+  metadata: {
+    participants: [runtime.agentId, userId],
+  },
+});
+
+// Add both participants
+await runtime.addParticipantsRoom([runtime.agentId, userId], dmRoom);
+```
+
+### Platform Integration Example
+
+```typescript
+// Discord channel integration
+async function syncDiscordChannel(channel: DiscordChannel, guildId: string) {
+  // Ensure world exists for the Discord server
+  await runtime.ensureWorldExists({
+    id: createUniqueUuid(runtime.agentId, guildId),
+    name: `Discord Server ${guildId}`,
+    serverId: guildId,
+  });
+
+  // Ensure room exists for the channel
+  await runtime.ensureRoomExists({
+    id: createUniqueUuid(runtime.agentId, channel.id),
+    name: channel.name,
+    source: 'discord',
+    type: channel.type === 'text' ? ChannelType.GROUP : ChannelType.VOICE_GROUP,
+    channelId: channel.id,
+    serverId: guildId,
+    worldId: createUniqueUuid(runtime.agentId, guildId),
+  });
+}
+```
