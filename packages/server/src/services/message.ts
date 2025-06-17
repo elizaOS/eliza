@@ -603,7 +603,7 @@ export class MessageBusService extends Service {
       const payloadToServer = {
         channel_id: channelId,
         server_id: serverId,
-        author_id: this.runtime.agentId,
+        author_id: this.runtime.agentId, // This needs careful consideration: is it the agent's core ID or a specific central identity for the agent?
         content: content.text,
         in_reply_to_message_id: centralInReplyToRootMessageId,
         source_type: 'agent_response',
