@@ -632,18 +632,27 @@ export class MessageBusService extends Service {
         payloadToServer
       );
 
-      const submitUrl = new URL('/api/messaging/submit', this.getCentralMessageServerUrl());
-      const response = await fetch(submitUrl.toString(), {
+      // Actual fetch to the central server API
+      const baseUrl = this.getCentralMessageServerUrl();
+      // Use URL constructor for safe URL building
+      const submitUrl = new URL('/api/messaging/submit', baseUrl);
+      const serverApiUrl = submitUrl.toString();
+      const response = await fetch(serverApiUrl, {
         method: 'POST',
         headers: this.getAuthHeaders(),
         body: JSON.stringify(payloadToServer),
       });
   
       if (!response.ok) {
-        logger.error(`[${this.runtime.character.name}] MessageBusService: Failed to submit message: ${response.status} ${await response.text()}`);
+        logger.error(
+          `[${this.runtime.character.name}] MessageBusService: Error sending response to central server: ${response.status} ${await response.text()}`
+        );
       }
     } catch (error) {
-      logger.error(`[${this.runtime.character.name}] MessageBusService: Unexpected error:`, error);
+      logger.error(
+        `[${this.runtime.character.name}] MessageBusService: Error sending agent response to bus:`,
+        error
+      );
     }
   }
   
