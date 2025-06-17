@@ -27,7 +27,7 @@ import {
 } from './shared/middleware';
 import fs from 'fs';
 import path from 'path';
-import { SpanStatusCode, type Tracer } from '@opentelemetry/api';
+
 
 /**
  * Processes attachments to convert localhost URLs to base64 data URIs
@@ -171,15 +171,14 @@ async function processAttachments(attachments: any[], agentId?: string): Promise
 }
 
 /**
- * Processes an incoming socket message, handling agent logic and potential instrumentation.
+ * Processes an incoming socket message, handling agent logic.
  */
 async function processSocketMessage(
   runtime: IAgentRuntime,
   payload: any,
   socketId: string,
   socketChannelId: string, // This is the channelId from the client
-  io: SocketIOServer,
-  tracer?: Tracer
+  io: SocketIOServer
 ) {
   const agentId = runtime.agentId;
   const senderId = payload.senderId;
@@ -305,8 +304,8 @@ async function processSocketMessage(
             source: `${source}:agent`,
             ...(content.providers &&
               content.providers.length > 0 && {
-                providers: content.providers,
-              }),
+              providers: content.providers,
+            }),
           },
           roomId: uniqueChannelId,
           createdAt: Date.now(),
@@ -372,55 +371,11 @@ async function processSocketMessage(
     });
   };
 
-  // Handle instrumentation if tracer is provided and enabled
-  if (tracer && (runtime as any).instrumentationService?.isEnabled?.()) {
-    logger.debug('[SOCKET MESSAGE] Instrumentation enabled. Starting span.', {
-      agentId,
-      entityId,
-      channelId: uniqueChannelId,
-    });
-    await tracer.startActiveSpan('socket.message.received', async (span) => {
-      span.setAttributes({
-        'eliza.agent.id': agentId,
-        'eliza.channel.id': uniqueChannelId,
-        'eliza.entity.id': entityId,
-        'eliza.channel.type': ChannelType.DM,
-        'eliza.message.source': source,
-        'eliza.socket.id': socketId,
-      });
-
-      try {
-        await executeLogic();
-        span.setStatus({ code: SpanStatusCode.OK });
-      } catch (error) {
-        logger.error('Error processing instrumented socket message:', error);
-        span.recordException(error as Error);
-        span.setStatus({
-          code: SpanStatusCode.ERROR,
-          message: error instanceof Error ? error.message : String(error),
-        });
-        throw error;
-      } finally {
-        span.end();
-        logger.debug('[SOCKET MESSAGE] Ending instrumentation span.', {
-          agentId,
-          entityId,
-          channelId: uniqueChannelId,
-        });
-      }
-    });
-  } else {
-    // Execute logic without instrumentation
-    logger.debug('[SOCKET MESSAGE] Instrumentation disabled or unavailable, skipping span.', {
-      agentId,
-      entityId,
-      channelId: uniqueChannelId,
-    });
-    try {
-      await executeLogic();
-    } catch (error) {
-      logger.error('Error processing socket message (no instrumentation):', error);
-    }
+  // Execute the logic
+  try {
+    await executeLogic();
+  } catch (error) {
+    logger.error('Error processing socket message:', error);
   }
 }
 
@@ -572,7 +527,7 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
                 if (!res.headersSent) {
                   const status =
                     (error instanceof Error && 'code' in error && error.code === 'ENOENT') ||
-                    (error instanceof Error && error.message?.includes('not found'))
+                      (error instanceof Error && error.message?.includes('not found'))
                       ? 404
                       : 500;
                   res.status(status).json({
@@ -623,7 +578,7 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
                 if (!res.headersSent) {
                   const status =
                     (error instanceof Error && 'code' in error && error.code === 'ENOENT') ||
-                    (error instanceof Error && error.message?.includes('not found'))
+                      (error instanceof Error && error.message?.includes('not found'))
                       ? 404
                       : 500;
                   res.status(status).json({
@@ -698,7 +653,7 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
                 if (!res.headersSent) {
                   const status =
                     (error instanceof Error && 'code' in error && error.code === 'ENOENT') ||
-                    (error instanceof Error && error.message?.includes('not found'))
+                      (error instanceof Error && error.message?.includes('not found'))
                       ? 404
                       : 500;
                   res.status(status).json({
@@ -725,7 +680,7 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
               if (!res.headersSent) {
                 const status =
                   (error instanceof Error && 'code' in error && error.code === 'ENOENT') ||
-                  (error instanceof Error && error.message?.includes('not found'))
+                    (error instanceof Error && error.message?.includes('not found'))
                     ? 404
                     : 500;
                 res.status(status).json({
@@ -815,25 +770,25 @@ export function createApiRouter(
   // Setup new domain-based routes
   // Mount agents router at /agents - handles agent creation, management, and interactions
   router.use('/agents', agentsRouter(agents, serverInstance));
-  
+
   // Mount messaging router at /messaging - handles messages, channels, and chat functionality
   router.use('/messaging', messagingRouter(agents, serverInstance));
-  
+
   // Mount media router at /media - handles file uploads, downloads, and media management
   router.use('/media', mediaRouter(agents, serverInstance));
-  
+
   // Mount memory router at /memory - handles agent memory storage and retrieval
   router.use('/memory', memoryRouter(agents, serverInstance));
-  
+
   // Mount audio router at /audio - handles audio processing, transcription, and voice operations
   router.use('/audio', audioRouter(agents, serverInstance));
-  
+
   // Mount runtime router at /server - handles server runtime operations and management
   router.use('/server', runtimeRouter(agents, serverInstance));
-  
+
   // Mount TEE router at /tee - handles Trusted Execution Environment operations
   router.use('/tee', teeRouter(agents, serverInstance));
-  
+
   // Mount system router at /system - handles system configuration, health checks, and environment
   router.use('/system', systemRouter(agents, serverInstance));
 
