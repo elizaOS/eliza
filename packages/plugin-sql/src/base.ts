@@ -1520,18 +1520,21 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
    */
   private sanitizeJsonObject(
     value: unknown,
-    seen: WeakSet<object> = new WeakSet(),
-    path: string = 'root'
+    seen: WeakSet<object> = new WeakSet()
   ): unknown {
     if (value === null || value === undefined) {
       return value;
     }
   
     if (typeof value === 'string') {
+      // Handle multiple cases that can cause PostgreSQL/PgLite JSON parsing errors:
+      // 1. Remove null bytes (U+0000) which are not allowed in PostgreSQL text fields
+      // 2. Escape single backslashes that might be interpreted as escape sequences
+      // 3. Fix broken Unicode escape sequences (\u not followed by 4 hex digits)
       return value
-        .replace(/\u0000/g, '')
-        .replace(/\\(?!["\\/bfnrtu])/g, '\\\\')
-        .replace(/\\u(?![0-9a-fA-F]{4})/g, '\\\\u');
+        .replace(/\u0000/g, '') // Remove null bytes
+        .replace(/\\(?!["\\/bfnrtu])/g, '\\\\') // Escape single backslashes not part of valid escape sequences
+        .replace(/\\u(?![0-9a-fA-F]{4})/g, '\\\\u'); // Fix malformed Unicode escape sequences
     }
   
     if (typeof value === 'object') {
@@ -1542,20 +1545,16 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
       }
   
       if (Array.isArray(value)) {
-        return (value as unknown[]).map((item, index) =>
-          this.sanitizeJsonObject(item, seen, `${path}[${index}]`)
-        );
+        return value.map((item) => this.sanitizeJsonObject(item, seen));
       } else {
         const result: Record<string, unknown> = {};
-        for (const [key, val] of Object.entries(value as object)) {
-          const sanitizedKey = key
-            .replace(/\u0000/g, '')
-            .replace(/\\u(?![0-9a-fA-F]{4})/g, '\\\\u');
-          result[sanitizedKey] = this.sanitizeJsonObject(
-            val,
-            seen,
-            `${path}.${sanitizedKey}`
-          );
+        for (const [key, val] of Object.entries(value)) {
+          // Also sanitize object keys
+          const sanitizedKey =
+            typeof key === 'string'
+              ? key.replace(/\u0000/g, '').replace(/\\u(?![0-9a-fA-F]{4})/g, '\\\\u')
+              : key;
+          result[sanitizedKey] = this.sanitizeJsonObject(val, seen);
         }
         return result;
       }
