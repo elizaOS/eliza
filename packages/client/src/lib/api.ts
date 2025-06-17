@@ -500,13 +500,13 @@ export const apiClient = {
   // Agent memories (client-perspective)
   getAgentMemories: (
     agentId: UUID,
-    roomId?: UUID,
+    channelId?: UUID,
     tableName?: string,
     includeEmbedding = false
   ): Promise<{ data: { memories: ClientMemory[] } }> => {
     const queryParams = new URLSearchParams();
     if (tableName) queryParams.append('tableName', tableName);
-    if (roomId) queryParams.append('roomId', roomId);
+    if (channelId) queryParams.append('channelId', channelId);
     if (includeEmbedding) queryParams.append('includeEmbedding', 'true');
     return fetcher({
       url: `/agents/${agentId}/memories?${queryParams.toString()}`,

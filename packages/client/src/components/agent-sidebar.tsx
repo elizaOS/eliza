@@ -13,12 +13,13 @@ import { useAgentTabState } from '@/hooks/use-agent-tab-state';
 type AgentSidebarProps = {
   agentId: UUID | undefined;
   agentName: string;
+  channelId?: UUID;
 };
 
 type FixedTabValue = 'details' | 'actions' | 'logs' | 'memories';
 type TabValue = FixedTabValue | string;
 
-export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
+export function AgentSidebar({ agentId, agentName, channelId }: AgentSidebarProps) {
   const { currentTab: detailsTab, setTab: setDetailsTab } = useAgentTabState(agentId);
   const { data: panelsResponse, isLoading: isLoadingPanels } = useAgentPanels(agentId!, {
     enabled: !!agentId,
@@ -143,7 +144,7 @@ export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
       >
         {detailsTab === 'memories' && agentId && (
           <div className="w-full max-w-full">
-            <AgentMemoryViewer agentId={agentId} agentName={agentName} />
+            <AgentMemoryViewer agentId={agentId} agentName={agentName} channelId={channelId} />
           </div>
         )}
         {detailsTab === 'memories' && !agentId && (
