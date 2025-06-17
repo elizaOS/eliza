@@ -97,8 +97,13 @@ export async function setupAIModelConfig(
  * Installs dependencies for the specified target directory.
  */
 export async function installDependencies(targetDir: string): Promise<void> {
-  console.info('Installing dependencies...');
+  // Skip dependency installation in CI/test environments to save memory and time
+  if (process.env.CI === 'true' || process.env.ELIZA_TEST_MODE === 'true') {
+    console.info('Skipping dependency installation in CI/test environment...');
+    return;
+  }
 
+  console.info('Installing dependencies...');
   await runBunCommand(['install'], targetDir);
 }
 

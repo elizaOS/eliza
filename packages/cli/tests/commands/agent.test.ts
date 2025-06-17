@@ -30,30 +30,49 @@ describe('ElizaOS Agent Commands', () => {
     // Create database directory
     await mkdir(join(testTmpDir, 'elizadb'), { recursive: true });
 
-    // Start the ElizaOS server
+    // Start the ElizaOS server with a default character
     console.log(`[DEBUG] Starting ElizaOS server on port ${testServerPort}`);
+    const defaultCharacter = join(scriptDir, 'test-characters', 'ada.json');
 
     serverProcess = spawn(
       'bun',
-      [join(scriptDir, '../dist/index.js'), 'start', '--port', testServerPort],
+      [join(scriptDir, '../dist/index.js'), 'start', '--port', testServerPort, '--character', defaultCharacter],
       {
         env: {
           ...process.env,
           LOG_LEVEL: 'debug',
           PGLITE_DATA_DIR: `${testTmpDir}/elizadb`,
+          NODE_OPTIONS: '--max-old-space-size=4096', // Give server more memory
         },
         stdio: ['ignore', 'pipe', 'pipe'],
       }
     );
+
+    // Capture server output for debugging
+    serverProcess.stdout?.on('data', (data: Buffer) => {
+      console.log(`[SERVER STDOUT] ${data.toString()}`);
+    });
+    
+    serverProcess.stderr?.on('data', (data: Buffer) => {
+      console.error(`[SERVER STDERR] ${data.toString()}`);
+    });
+
+    serverProcess.on('error', (error: Error) => {
+      console.error('[SERVER ERROR]', error);
+    });
+
+    serverProcess.on('exit', (code: number | null, signal: string | null) => {
+      console.log(`[SERVER EXIT] code: ${code}, signal: ${signal}`);
+    });
 
     // Wait for server to be ready
     console.log('[DEBUG] Waiting for server to be ready...');
     await waitForServerReady(parseInt(testServerPort, 10));
     console.log('[DEBUG] Server is ready!');
 
-    // Pre-load test characters
+    // Pre-load additional test characters (ada is already loaded by server)
     const charactersDir = join(scriptDir, 'test-characters');
-    for (const character of ['ada', 'max', 'shaw']) {
+    for (const character of ['max', 'shaw']) {
       const characterPath = join(charactersDir, `${character}.json`);
       console.log(`[DEBUG] Loading character: ${character}`);
 
@@ -62,9 +81,13 @@ describe('ElizaOS Agent Commands', () => {
           `${elizaosCmd} agent start --remote-url ${testServerUrl} --path ${characterPath}`,
           {
             stdio: 'pipe',
+            timeout: 30000, // 30 second timeout for loading each character
           }
         );
         console.log(`[DEBUG] Successfully loaded character: ${character}`);
+        
+        // Small wait between loading characters to avoid overwhelming the server
+        await new Promise((resolve) => setTimeout(resolve, 500));
       } catch (e) {
         console.error(`[ERROR] Failed to load character ${character}:`, e);
         throw e;
@@ -156,11 +179,12 @@ describe('ElizaOS Agent Commands', () => {
 
   it('agent start loads character from file', async () => {
     const charactersDir = join(__dirname, '../test-characters');
-    const adaPath = join(charactersDir, 'ada.json');
+    // Use max.json since ada is already loaded by the server
+    const maxPath = join(charactersDir, 'max.json');
 
     try {
       const result = execSync(
-        `${elizaosCmd} agent start --remote-url ${testServerUrl} --path ${adaPath}`,
+        `${elizaosCmd} agent start --remote-url ${testServerUrl} --path ${maxPath}`,
         { encoding: 'utf8' }
       );
       expect(result).toMatch(/(started successfully|created|already exists|already running)/);

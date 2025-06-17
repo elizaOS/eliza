@@ -569,35 +569,33 @@ export class MessageBusService extends Service {
     originalMessage?: MessageServiceMessage
   ) {
     try {
-      // Check if the agent decided to IGNORE the message
-      if (content.actions && content.actions.includes('IGNORE')) {
-        logger.info(
-          `[${this.runtime.character.name}] MessageBusService: Agent chose to IGNORE message, not sending response to central server`
-        );
-        return;
-      }
-
-      // Also check if there's no text content
-      if (!content.text || content.text.trim() === '') {
-        logger.info(
-          `[${this.runtime.character.name}] MessageBusService: No text content in response, not sending to central server`
-        );
-        return;
-      }
-
       const room = await this.runtime.getRoom(agentRoomId);
       const world = await this.runtime.getWorld(agentWorldId);
-
+  
       const channelId = room?.channelId as UUID;
       const serverId = world?.serverId as UUID;
-
+  
       if (!channelId || !serverId) {
         logger.error(
           `[${this.runtime.character.name}] MessageBusService: Cannot map agent room/world to central IDs for response. AgentRoomID: ${agentRoomId}, AgentWorldID: ${agentWorldId}. Room or World object missing, or channelId/serverId not found on them.`
         );
+        await this.notifyMessageComplete(channelId, serverId);
         return;
       }
-
+  
+      // If agent decides to IGNORE or has no valid text, notify completion and skip sending response
+      const shouldSkip =
+        content.actions?.includes('IGNORE') ||
+        !content.text ||
+        content.text.trim() === '';
+  
+      if (shouldSkip) {
+        logger.info(`[${this.runtime.character.name}] MessageBusService: Skipping response (reason: ${content.actions?.includes('IGNORE') ? 'IGNORE action' : 'No text'})`);
+        await this.notifyMessageComplete(channelId, serverId);
+        return;
+      }
+  
+      // Resolve reply-to message ID from agent memory metadata
       let centralInReplyToRootMessageId: UUID | undefined = undefined;
       if (inReplyToAgentMemoryId) {
         const originalAgentMemory = await this.runtime.getMemoryById(inReplyToAgentMemoryId);
@@ -605,7 +603,7 @@ export class MessageBusService extends Service {
           centralInReplyToRootMessageId = originalAgentMemory.metadata.sourceId as UUID;
         }
       }
-
+  
       const payloadToServer = {
         channel_id: channelId,
         server_id: serverId,
@@ -613,7 +611,11 @@ export class MessageBusService extends Service {
         content: content.text,
         in_reply_to_message_id: centralInReplyToRootMessageId,
         source_type: 'agent_response',
-        raw_message: { text: content.text, thought: content.thought, actions: content.actions },
+        raw_message: {
+          text: content.text,
+          thought: content.thought,
+          actions: content.actions,
+        },
         metadata: {
           agent_id: this.runtime.agentId,
           agentName: this.runtime.character.name,
@@ -624,7 +626,7 @@ export class MessageBusService extends Service {
             (originalMessage?.metadata?.channelType || room?.type) === ChannelType.DM,
         },
       };
-
+  
       logger.info(
         `[${this.runtime.character.name}] MessageBusService: Sending payload to central server API endpoint (/api/messaging/submit):`,
         payloadToServer
@@ -640,7 +642,7 @@ export class MessageBusService extends Service {
         headers: this.getAuthHeaders(),
         body: JSON.stringify(payloadToServer),
       });
-
+  
       if (!response.ok) {
         logger.error(
           `[${this.runtime.character.name}] MessageBusService: Error sending response to central server: ${response.status} ${await response.text()}`
@@ -653,7 +655,23 @@ export class MessageBusService extends Service {
       );
     }
   }
+  
 
+  private async notifyMessageComplete(channelId?: UUID, serverId?: UUID) {
+    if (!channelId || !serverId) return;
+  
+    try {
+      const completeUrl = new URL('/api/messaging/complete', this.getCentralMessageServerUrl());
+      await fetch(completeUrl.toString(), {
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({ channel_id: channelId, server_id: serverId }),
+      });
+    } catch (error) {
+      logger.warn(`[${this.runtime.character.name}] MessageBusService: Failed to notify completion`, error);
+    }
+  }
+  
   private getAuthHeaders(): Record<string, string> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json'
