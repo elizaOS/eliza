@@ -1518,11 +1518,14 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
    * @param value - The value to sanitize
    * @returns The sanitized value
    */
-  private sanitizeJsonObject(value: unknown): unknown {
+  private sanitizeJsonObject(
+    value: unknown,
+    seen: WeakSet<object> = new WeakSet()
+  ): unknown {
     if (value === null || value === undefined) {
       return value;
     }
-
+  
     if (typeof value === 'string') {
       // Handle multiple cases that can cause PostgreSQL/PgLite JSON parsing errors:
       // 1. Remove null bytes (U+0000) which are not allowed in PostgreSQL text fields
@@ -1533,10 +1536,16 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         .replace(/\\(?!["\\/bfnrtu])/g, '\\\\') // Escape single backslashes not part of valid escape sequences
         .replace(/\\u(?![0-9a-fA-F]{4})/g, '\\\\u'); // Fix malformed Unicode escape sequences
     }
-
+  
     if (typeof value === 'object') {
+      if (seen.has(value as object)) {
+        return null;
+      } else {
+        seen.add(value as object);
+      }
+  
       if (Array.isArray(value)) {
-        return value.map((item) => this.sanitizeJsonObject(item));
+        return value.map((item) => this.sanitizeJsonObject(item, seen));
       } else {
         const result: Record<string, unknown> = {};
         for (const [key, val] of Object.entries(value)) {
@@ -1545,12 +1554,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
             typeof key === 'string'
               ? key.replace(/\u0000/g, '').replace(/\\u(?![0-9a-fA-F]{4})/g, '\\\\u')
               : key;
-          result[sanitizedKey] = this.sanitizeJsonObject(val);
+          result[sanitizedKey] = this.sanitizeJsonObject(val, seen);
         }
         return result;
       }
     }
-
+  
     return value;
   }
 

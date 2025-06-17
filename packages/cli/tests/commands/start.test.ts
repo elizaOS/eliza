@@ -115,17 +115,50 @@ describe('ElizaOS Start Commands', () => {
       const serverProcess = await startServerAndWait(`-p ${testServerPort} --character ${adaPath}`);
 
       try {
-        // Wait a bit more for agent to register
-        await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
+        // Wait longer for agent to fully register - CI environments may be slower
+        await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.MEDIUM_WAIT));
 
-        // Test that agent list shows Ada
-        const result = execSync(
-          `${elizaosCmd} agent list --remote-url http://localhost:${testServerPort}`,
-          {
-            encoding: 'utf8',
-            timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+        // Retry logic for CI environments where agent registration might be delayed
+        // GitHub Actions and other CI runners may have slower process startup times
+        let result = '';
+        let lastError: Error | null = null;
+        const maxRetries = 3;
+        
+        for (let i = 0; i < maxRetries; i++) {
+          try {
+            result = execSync(
+              `${elizaosCmd} agent list --remote-url http://localhost:${testServerPort}`,
+              {
+                encoding: 'utf8',
+                timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+              }
+            );
+            
+            // If we get a result, check if it contains Ada
+            if (result && result.includes('Ada')) {
+              break;
+            }
+            
+            // If no Ada found but command succeeded, wait and retry
+            if (i < maxRetries - 1) {
+              await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
+            }
+          } catch (error: any) {
+            lastError = error;
+            // If command failed and we have retries left, wait and retry
+            if (i < maxRetries - 1) {
+              await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
+            }
           }
-        );
+        }
+
+        // If we never got a successful result with Ada, throw the last error
+        if (!result || !result.includes('Ada')) {
+          if (lastError) {
+            throw lastError;
+          }
+          throw new Error(`Agent list did not contain 'Ada'. Output: ${result}`);
+        }
 
         expect(result).toContain('Ada');
       } finally {
