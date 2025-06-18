@@ -5,10 +5,15 @@ description: Initialize a new project, plugin, or agent with an interactive setu
 keywords: [create, project, plugin, setup, scaffolding, initialization, configuration]
 image: /img/cli.jpg
 ---
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
 
 # Create Command
 
 Initialize a new project, plugin, or agent.
+
+<Tabs>
+<TabItem value="overview" label="Overview & Options" default>
 
 ## Usage
 
@@ -35,7 +40,7 @@ elizaos create --help
 | `-y, --yes`           | Skip confirmation and use defaults (default: `false`)            |
 | `-t, --type <type>`   | Type of template to use (`project`, `plugin`, `agent`, or `tee`) |
 | `--template <name>`   | Use a specific template by name (e.g., `default`, `minimal`)     |
-| `--no-install`        | Skip automatic dependency installation after creation            |
+| `--no-install`        | Skip automatic dependency installation after creation          |
 | `--no-git`            | Skip `git init` for the new project                              |
 | `[name]`              | Name for the project, plugin, or agent (optional)                |
 
@@ -56,7 +61,9 @@ When using the `-y` flag to skip prompts:
 - **Default type**: `project`
 - **Default database**: `sqlite`
 
-## Examples
+
+</TabItem>
+<TabItem value="examples" label="Examples">
 
 ### Interactive Creation (Recommended)
 
@@ -125,6 +132,9 @@ elizaos create -d ./my-projects/new-agent
 # Create plugin in specific directory
 elizaos create -t plugin -d ./plugins/my-plugin
 ```
+
+</TabItem>
+<TabItem value="guides" label="Guides">
 
 ## Project Types
 
@@ -232,6 +242,9 @@ The CLI will automatically:
 - Prompts for connection details during setup
 - Better for production deployments
 
+</TabItem>
+<TabItem value="troubleshooting" label="Troubleshooting">
+
 ## Troubleshooting
 
 ### Creation Failures
@@ -316,3 +329,5 @@ elizaos create -t invalid    # Invalid template type
 - [`start`](./start.md): Start your created project
 - [`dev`](./dev.md): Run your project in development mode
 - [`env`](./env.md): Configure environment variables
+</TabItem>
+</Tabs>

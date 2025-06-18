@@ -5,10 +5,15 @@ description: Run and manage tests for ElizaOS projects and plugins
 keywords: [testing, component tests, e2e tests, Vitest, test runner, development]
 image: /img/cli.jpg
 ---
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
 
 # Test Command
 
 Run tests for Eliza agent projects and plugins.
+
+<Tabs>
+<TabItem value="overview" label="Overview & Options" default>
 
 ## Usage
 
@@ -34,6 +39,9 @@ elizaos test [options] [command]
 | `--skip-type-check`   | Skip TypeScript type checking for faster test runs            |
 | `--watch`             | Enable watch mode to re-run tests on file changes             |
 | `--coverage`          | Generate a test coverage report                               |
+
+</TabItem>
+<TabItem value="examples" label="Examples & Guides">
 
 ## Examples
 
@@ -84,3 +92,20 @@ elizaos test --watch
 # Combine options
 elizaos test e2e --port 3001 --name integration --skip-build
 ```
+
+## Test Types
+
+### Component Tests
+
+**Location**: `__tests__/` directory  
+**Framework**: Vitest  
+**Purpose**: Unit and integration testing of individual components
+
+### End-to-End Tests
+
+**Location**: `e2e/` directory  
+**Framework**: Custom ElizaOS test runner  
+**Purpose**: Runtime behavior testing with full agent context
+
+</TabItem>
+</Tabs>

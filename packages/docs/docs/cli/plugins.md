@@ -5,10 +5,15 @@ description: Manage ElizaOS plugins within a project - list, add, remove
 keywords: [plugins, extensions, packages, npm, registry, installation, configuration]
 image: /img/cli.jpg
 ---
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
 
 # Plugin Command
 
 Manage ElizaOS plugins.
+
+<Tabs>
+<TabItem value="overview" label="Overview & Options" default>
 
 ## Usage
 
@@ -26,7 +31,8 @@ elizaos plugins [options] [command]
 | `installed-plugins` |           | List plugins found in the project dependencies                                     |                                                                           |                                                                                                     |
 | `remove`            | `delete`  | Remove a plugins from the project                                                  | `<plugin>` (plugins name e.g., "abc", "plugin-abc", "elizaos/plugin-abc") |                                                                                                     |
 
-## Examples
+</TabItem>
+<TabItem value="examples" label="Examples">
 
 ### Listing Available Plugins
 
@@ -94,12 +100,6 @@ elizaos plugins update
 elizaos plugins refresh
 ```
 
-**When to run this:**
-
-- You see "Plugin cache is empty or not found" messages
-- Want to get the latest available plugins
-- Plugin installation fails due to outdated registry cache
-
 ### Listing Installed Plugins
 
 ```bash
@@ -119,6 +119,17 @@ elizaos plugins remove @elizaos/plugin-anthropic
 # Using alias
 elizaos plugins delete openai
 ```
+
+</TabItem>
+<TabItem value="guides" label="Guides & Concepts">
+
+### When to run `update`
+
+You should run the `update` command when:
+
+- You see "Plugin cache is empty or not found" messages
+- You want to get the latest available plugins from the registry
+- Plugin installation fails due to an outdated local registry cache
 
 ## Plugin Installation Formats
 
@@ -200,6 +211,9 @@ elizaos publish --test
 # Publish to the registry
 elizaos publish
 ```
+
+</TabItem>
+<TabItem value="troubleshooting" label="Troubleshooting">
 
 ## Troubleshooting
 
@@ -305,3 +319,5 @@ elizaos plugins add plugin-name --tag v1.0.0
 - [`create`](./create.md): Create a new project or plugin
 - [`env`](./env.md): Manage environment variables needed by plugins
 - [`publish`](./publish.md): Publish your plugin to the registry
+</TabItem>
+</Tabs>

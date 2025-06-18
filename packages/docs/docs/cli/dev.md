@@ -5,10 +5,15 @@ description: Run ElizaOS projects in development mode with hot reloading and deb
 keywords: [development, hot reload, debugging, watch mode, local development]
 image: /img/cli.jpg
 ---
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
 
 # Dev Command
 
 Start the project or plugin in development mode with auto-rebuild, detailed logging, and file change detection.
+
+<Tabs>
+<TabItem value="overview" label="Overview & Options" default>
 
 ## Usage
 
@@ -26,7 +31,8 @@ elizaos dev [options]
 | `-p, --port <port>`             | Port to listen on                                                    |
 | `--no-open`                     | Do not automatically open the browser on start                       |
 
-## Examples
+</TabItem>
+<TabItem value="examples" label="Examples">
 
 ### Basic Development Mode
 
@@ -79,6 +85,9 @@ elizaos dev --character https://example.com/characters/assistant.json
 # Full development setup
 elizaos dev --port 4000 --character "assistant.json,chatbot.json" --build --configure
 ```
+
+</TabItem>
+<TabItem value="guides" label="Guides & Concepts">
 
 ## Development Features
 
@@ -208,6 +217,9 @@ Multiple character files can be specified using:
 - Comma separation: `"file1.json,file2.json"`
 - Mixed format: `"file1.json, file2.json"`
 
+</TabItem>
+<TabItem value="troubleshooting" label="Troubleshooting">
+
 ## Troubleshooting
 
 ### Build Failures
@@ -297,3 +309,5 @@ elizaos env list
 - [`test`](./test.md): Run tests for your project
 - [`env`](./env.md): Configure environment variables for development
 - [`create`](./create.md): Create new projects with development structure
+</TabItem>
+</Tabs>

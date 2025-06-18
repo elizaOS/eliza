@@ -1,8 +1,6 @@
 ---
-sidebar_position: 10
 title: Automated Documentation
 description: An overview of the tools and processes used to automatically generate and validate documentation from source code.
-keywords: [documentation, automation, typescript, interface, extraction, validation, CI/CD]
 ---
 
 # Automated Documentation
