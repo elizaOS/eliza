@@ -177,7 +177,7 @@ export async function copyTemplate(
 }
 
 /**
- * Replace hardcoded "plugin-starter" strings in TypeScript files with the actual plugin name
+ * Replace hardcoded "plugin-starter" strings in source files with the actual plugin name
  */
 async function replacePluginNameInFiles(targetDir: string, pluginName: string): Promise<void> {
   const filesToProcess = [
@@ -185,7 +185,7 @@ async function replacePluginNameInFiles(targetDir: string, pluginName: string): 
     '__tests__/plugin.test.ts',
     'e2e/starter-plugin.test.ts',
     'README.md',
-    // Note: package.json excluded to maintain npm package structure
+    // package.json name is handled by the publish command
   ];
 
   // Process files in parallel
@@ -201,7 +201,7 @@ async function replacePluginNameInFiles(targetDir: string, pluginName: string): 
       ) {
         let content = await fs.readFile(fullPath, 'utf8');
 
-        // Replace the hardcoded plugin name
+        // Replace the hardcoded plugin name in source files
         content = content.replace(/plugin-starter/g, pluginName);
 
         await fs.writeFile(fullPath, content, 'utf8');

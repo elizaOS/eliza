@@ -198,7 +198,15 @@ export const publish = new Command()
       console.info('Updating package.json with actual values...');
 
       const placeholderReplacements: Record<string, PlaceholderReplacement> = {
-        // Name placeholders
+        // Template default name replacement
+        'elizaos-plugin-starter': {
+          check: () => packageJson.name === '@elizaos/plugin-starter',
+          replace: () => {
+            packageJson.name = `@${npmUsername}/${pluginDirName}`;
+            console.info(`Set package name: ${packageJson.name}`);
+          },
+        },
+        // Name placeholders (for custom templates)
         'npm-username': {
           check: () => packageJson.name.includes('npm-username'),
           replace: () => {
@@ -236,7 +244,7 @@ export const publish = new Command()
               packageJson.repository = { type: 'git', url: '' };
             }
             if (credentials) {
-              packageJson.repository.url = `github:${credentials.username}/${pluginDirName}`;
+              packageJson.repository.url = `git+https://github.com/${credentials.username}/${pluginDirName}.git`;
               console.info(`Set repository: ${packageJson.repository.url}`);
             }
           },
