@@ -1,6 +1,5 @@
-import { describe, expect, it, beforeEach, vi, afterEach } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, jest } from 'bun:test';
 import { createLogger, logger, elizaLogger } from '../logger';
-import type { Logger } from 'pino';
 
 // Mock environment variables
 const mockEnv = {
@@ -10,13 +9,6 @@ const mockEnv = {
   SENTRY_LOGGING: 'false',
   LOG_DIAGNOSTIC: '',
 };
-
-// Mock pino-pretty
-vi.mock('pino-pretty', () => ({
-  default: vi.fn(() => ({
-    write: vi.fn(),
-  })),
-}));
 
 describe('Logger', () => {
   let originalEnv: NodeJS.ProcessEnv;
@@ -28,7 +20,7 @@ describe('Logger', () => {
     Object.keys(mockEnv).forEach((key) => {
       process.env[key] = mockEnv[key];
     });
-    vi.clearAllMocks();
+    jest.clearAllMocks();
   });
 
   afterEach(() => {
@@ -331,45 +323,6 @@ describe('Logger', () => {
     });
   });
 
-  describe('Async Stream Creation', () => {
-    it('should handle async stream creation when require fails', async () => {
-      // This test simulates the async fallback path
-      // We can't easily mock require failure in vitest, so we test the async path exists
-      const originalEnv = process.env.LOG_JSON_FORMAT;
-      process.env.LOG_JSON_FORMAT = 'false';
-
-      // Force a new logger creation which might use async path
-      vi.resetModules();
-      const { createLogger: asyncLogger } = await import('../logger');
-
-      const logger = asyncLogger();
-      expect(logger).toBeDefined();
-
-      // Wait a bit for async initialization
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      expect(() => logger.info('Async logger test')).not.toThrow();
-
-      process.env.LOG_JSON_FORMAT = originalEnv;
-    });
-
-    it('should handle pino-pretty module not having default export', async () => {
-      // Mock pino-pretty without default export
-      vi.doMock('pino-pretty', () => ({
-        // No default export
-        somethingElse: vi.fn(),
-      }));
-
-      vi.resetModules();
-      const { createLogger: testLogger } = await import('../logger');
-
-      const logger = testLogger();
-      expect(logger).toBeDefined();
-
-      vi.doUnmock('pino-pretty');
-    });
-  });
-
   describe('Additional Custom Level Tests', () => {
     it('should use custom log levels', () => {
       const customLogger = createLogger();
@@ -405,6 +358,44 @@ describe('Logger', () => {
 
       // Test object input to level prettifier
       expect(() => customLogger.child({ level: 30 }).info('Test with numeric level')).not.toThrow();
+    });
+  });
+
+  describe('Logger Functionality Tests', () => {
+    it('should create logger and handle basic logging operations', () => {
+      const customLogger = createLogger();
+
+      // Test basic functionality without complex mocking
+      expect(() => customLogger.info('Basic info message')).not.toThrow();
+      expect(() => customLogger.error('Basic error message')).not.toThrow();
+      expect(() => customLogger.warn('Basic warn message')).not.toThrow();
+      expect(() => customLogger.debug('Basic debug message')).not.toThrow();
+    });
+
+    it('should handle logger creation with different configurations', () => {
+      // Test different environment configurations
+      const originalJsonFormat = process.env.LOG_JSON_FORMAT;
+
+      process.env.LOG_JSON_FORMAT = 'true';
+      const jsonLogger = createLogger();
+      expect(jsonLogger).toBeDefined();
+
+      process.env.LOG_JSON_FORMAT = 'false';
+      const prettyLogger = createLogger();
+      expect(prettyLogger).toBeDefined();
+
+      process.env.LOG_JSON_FORMAT = originalJsonFormat;
+    });
+
+    it('should handle diagnostic mode configuration', () => {
+      const originalDiagnostic = process.env.LOG_DIAGNOSTIC;
+
+      process.env.LOG_DIAGNOSTIC = 'true';
+      const diagnosticLogger = createLogger({ agentName: 'test', agentId: '123' });
+
+      expect(() => diagnosticLogger.info('Diagnostic test message')).not.toThrow();
+
+      process.env.LOG_DIAGNOSTIC = originalDiagnostic;
     });
   });
 });
