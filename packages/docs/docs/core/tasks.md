@@ -18,6 +18,11 @@ A task in ElizaOS has the following properties:
 interface Task {
   id?: UUID; // Unique identifier (auto-generated if not provided)
   name: string; // Name of the task (must match a registered task worker)
+  description: string; // Human-readable description of the task
+  roomId?: UUID; // Optional room association (for room-specific tasks)
+  worldId?: UUID; // Optional world association (for world-specific tasks)
+  entityId?: UUID; // Optional entity association
+  tags: string[]; // Tags for categorizing and filtering tasks
   updatedAt?: number; // Timestamp when the task was last updated
   metadata?: {
     // Optional additional configuration
@@ -29,12 +34,28 @@ interface Task {
     }[];
     [key: string]: unknown; // Additional custom metadata
   };
-  description: string; // Human-readable description of the task
-  roomId?: UUID; // Optional room association (for room-specific tasks)
-  worldId?: UUID; // Optional world association (for world-specific tasks)
-  tags: string[]; // Tags for categorizing and filtering tasks
 }
 ```
+
+## Task Service
+
+The Task Service (provided by `@elizaos/plugin-bootstrap`) automatically manages task execution:
+
+```typescript
+export class TaskService extends Service {
+  static serviceType = ServiceType.TASK;
+  private readonly TICK_INTERVAL = 1000; // Checks every second
+
+  // Automatically processes tasks with 'queue' tag
+}
+```
+
+The service:
+
+- Runs continuously, checking for tasks every second
+- Automatically processes tasks with the `queue` tag
+- Handles both one-time and recurring task execution
+- Validates tasks before execution using the worker's validate function
 
 ## Task Workers
 
@@ -86,58 +107,58 @@ runtime.registerTaskWorker({
       'messages'
     );
 
-    // Delete the task after it's completed
-    await runtime.deleteTask(task.id);
+    // Delete one-time tasks after execution (handled automatically if no 'repeat' tag)
   },
 });
 ```
 
 ### Creating a One-time Task
 
-Create a task that will execute once:
+Create a task that will execute once. **Important**: Include the `queue` tag for automatic processing:
 
 ```typescript
 await runtime.createTask({
   name: 'SEND_REMINDER',
   description: 'Send a reminder message to the user',
   roomId: currentRoomId,
-  tags: ['reminder', 'one-time'],
+  worldId: currentWorldId, // Required field
+  tags: ['queue', 'reminder'], // 'queue' tag required for processing
   metadata: {
     userId: message.entityId,
     reminder: 'Submit your weekly report',
-    scheduledFor: Date.now() + 86400000, // 24 hours from now
   },
 });
 ```
 
 ### Creating a Recurring Task
 
-Create a task that repeats at regular intervals:
+Create a task that repeats at regular intervals. Include both `queue` and `repeat` tags:
 
 ```typescript
 await runtime.createTask({
   name: 'DAILY_REPORT',
   description: 'Generate and post the daily report',
   roomId: announcementChannelId,
-  worldId: serverWorldId,
-  tags: ['report', 'repeat', 'daily'],
+  worldId: serverWorldId, // Required field
+  tags: ['queue', 'repeat', 'daily'], // 'queue' and 'repeat' tags required
   metadata: {
     updateInterval: 86400000, // 24 hours in milliseconds
-    updatedAt: Date.now(), // When the task was last updated/executed
+    updatedAt: Date.now(), // When the task was last executed
   },
 });
 ```
 
 ### Creating a Task Awaiting User Choice
 
-Create a task that presents options and waits for user input:
+Create a task that presents options and waits for user input using the `AWAITING_CHOICE` tag:
 
 ```typescript
 await runtime.createTask({
   name: 'CONFIRM_ACTION',
   description: 'Confirm the requested action',
   roomId: message.roomId,
-  tags: ['confirmation', 'AWAITING_CHOICE'],
+  worldId: message.worldId, // Required field
+  tags: ['AWAITING_CHOICE'], // Special tag for choice tasks
   metadata: {
     options: [
       { name: 'confirm', description: 'Proceed with the action' },
@@ -166,7 +187,7 @@ const reportTasks = await runtime.getTasksByName('DAILY_REPORT');
 // Get a specific task
 const task = await runtime.getTask(taskId);
 
-// Update a task
+// Update a task (metadata is replaced, not merged)
 await runtime.updateTask(taskId, {
   description: 'Updated description',
   metadata: {
@@ -181,270 +202,219 @@ await runtime.deleteTask(taskId);
 
 ## Task Processing
 
-Tasks are processed based on their configuration:
+### Automatic Processing with Task Service
 
-### One-time Tasks
+The Task Service automatically processes tasks based on their tags:
 
-Tasks without an `updateInterval` are executed once when triggered by your code. You are responsible for scheduling their execution by checking for pending tasks in appropriate contexts.
+1. **Queue Tag**: Tasks must have the `queue` tag to be processed by the Task Service
+2. **Repeat Tag**: Tasks with the `repeat` tag are kept after execution and re-executed based on their `updateInterval`
+3. **No Repeat Tag**: Tasks without the `repeat` tag are automatically deleted after execution
 
-### Recurring Tasks
+### Recurring Task Logic
 
-Tasks with an `updateInterval` are automatically considered for re-execution when:
+For recurring tasks:
 
-1. The current time exceeds `updatedAt + updateInterval`
-2. Your code explicitly checks for pending recurring tasks
+- The task must have both `queue` and `repeat` tags
+- The `updateInterval` in metadata defines the delay between executions
+- The `updatedAt` field tracks when the task was last executed
+- Tasks with `immediate` tag execute on first check regardless of interval
 
-To process recurring tasks, implement logic like this:
+### Choice Tasks with AWAITING_CHOICE
 
-```typescript
-// In an initialization function or periodic check
-async function processRecurringTasks() {
-  const now = Date.now();
-  const recurringTasks = await runtime.getTasks({
-    tags: ['repeat'],
-  });
+Tasks tagged with `AWAITING_CHOICE` work with the bootstrap plugin's choice system:
 
-  for (const task of recurringTasks) {
-    if (!task.metadata?.updateInterval) continue;
+1. **Choice Provider**: Displays available tasks with options to users
+2. **CHOOSE_OPTION Action**: Processes user selections
+3. **User Permissions**: Only OWNER and ADMIN roles can select options
 
-    const lastUpdate = task.metadata.updatedAt || 0;
-    const interval = task.metadata.updateInterval;
-
-    if (now >= lastUpdate + interval) {
-      const worker = runtime.getTaskWorker(task.name);
-      if (worker) {
-        try {
-          await worker.execute(runtime, {}, task);
-
-          // Update the task's last update time
-          await runtime.updateTask(task.id, {
-            metadata: {
-              ...task.metadata,
-              updatedAt: now,
-            },
-          });
-        } catch (error) {
-          logger.error(`Error executing task ${task.name}: ${error}`);
-        }
-      }
-    }
-  }
-}
-```
-
-### Tasks Awaiting User Input
-
-Tasks tagged with `AWAITING_CHOICE` are presented to users and wait for their input. These tasks use:
-
-1. The `choice` provider to display available options to users
-2. The `CHOOSE_OPTION` action to process user selections
-
-## Common Task Patterns
-
-### Deferred Follow-ups
-
-Create a task to follow up with a user later:
+Example flow:
 
 ```typescript
-runtime.registerTaskWorker({
-  name: 'FOLLOW_UP',
-  execute: async (runtime, options, task) => {
-    const { roomId } = task;
-    const { userId, topic } = task.metadata;
-
-    await runtime.createMemory(
-      {
-        entityId: runtime.agentId,
-        roomId,
-        content: {
-          text: `Hi <@${userId}>, I'm following up about ${topic}. Do you have any updates?`,
-        },
-      },
-      'messages'
-    );
-
-    await runtime.deleteTask(task.id);
+// 1. Create a choice task
+await runtime.createTask({
+  name: 'DEPLOYMENT_CHOICE',
+  description: 'Choose deployment environment',
+  roomId: message.roomId,
+  worldId: message.worldId,
+  tags: ['AWAITING_CHOICE'],
+  metadata: {
+    options: [
+      { name: 'production', description: 'Deploy to production' },
+      { name: 'staging', description: 'Deploy to staging' },
+      { name: 'cancel', description: 'Cancel deployment' },
+    ],
   },
 });
 
-// Create a follow-up task for 2 days later
+// 2. User sees options via choice provider
+// "Please select from: production, staging, cancel"
+
+// 3. User responds with choice
+// "production"
+
+// 4. CHOOSE_OPTION action executes the task worker with selected option
+runtime.registerTaskWorker({
+  name: 'DEPLOYMENT_CHOICE',
+  execute: async (runtime, options, task) => {
+    if (options.option === 'production') {
+      // Deploy to production
+    } else if (options.option === 'staging') {
+      // Deploy to staging
+    }
+    // Task is automatically deleted after execution
+  },
+});
+```
+
+## Common Task Patterns
+
+### Immediate Execution Tasks
+
+For tasks that should run as soon as the Task Service checks:
+
+```typescript
 await runtime.createTask({
-  name: 'FOLLOW_UP',
-  description: 'Follow up with user about project status',
+  name: 'IMMEDIATE_ACTION',
+  description: 'Execute immediately',
   roomId: message.roomId,
-  tags: ['follow-up', 'one-time'],
+  worldId: message.worldId,
+  tags: ['queue', 'immediate'], // 'immediate' tag for first-run execution
   metadata: {
-    userId: message.entityId,
-    topic: 'the project timeline',
-    scheduledFor: Date.now() + 2 * 86400000, // 2 days
+    // Task data
+  },
+});
+```
+
+### Conditional Recurring Tasks
+
+Tasks that repeat but may stop based on conditions:
+
+```typescript
+runtime.registerTaskWorker({
+  name: 'MONITOR_STATUS',
+  validate: async (runtime, message, state) => {
+    // Only execute if monitoring is still needed
+    const status = await checkSystemStatus();
+    return status !== 'completed';
+  },
+  execute: async (runtime, options, task) => {
+    const status = await checkSystemStatus();
+
+    if (status === 'completed') {
+      // Remove the repeat tag to stop recurrence
+      await runtime.updateTask(task.id, {
+        tags: task.tags.filter((tag) => tag !== 'repeat'),
+      });
+    }
+
+    // Report status
+    await runtime.createMemory(
+      {
+        entityId: runtime.agentId,
+        roomId: task.roomId,
+        content: { text: `Status: ${status}` },
+      },
+      'messages'
+    );
   },
 });
 ```
 
 ### Multi-step Workflows
 
-Implement complex workflows that span multiple interactions:
+Implement workflows that progress through stages:
 
 ```typescript
-// First step: Gather requirements
 runtime.registerTaskWorker({
-  name: 'GATHER_REQUIREMENTS',
+  name: 'WORKFLOW_STEP',
   execute: async (runtime, options, task) => {
-    // Ask user for requirements and create a new task for the next step
-    await runtime.createTask({
-      name: 'CONFIRM_REQUIREMENTS',
-      description: 'Confirm gathered requirements',
-      roomId: task.roomId,
-      tags: ['workflow', 'AWAITING_CHOICE'],
-      metadata: {
-        previousStep: 'GATHER_REQUIREMENTS',
-        requirements: options.requirements,
-        options: [
-          { name: 'confirm', description: 'Confirm requirements are correct' },
-          { name: 'revise', description: 'Need to revise requirements' },
-        ],
-      },
-    });
+    const currentStep = task.metadata?.step || 1;
 
-    await runtime.deleteTask(task.id);
-  },
-});
+    switch (currentStep) {
+      case 1:
+        // Execute step 1
+        await executeStep1();
 
-// Second step: Confirm requirements
-runtime.registerTaskWorker({
-  name: 'CONFIRM_REQUIREMENTS',
-  execute: async (runtime, options, task) => {
-    if (options.option === 'confirm') {
-      // Move to the next step
-      await runtime.createTask({
-        name: 'GENERATE_SOLUTION',
-        description: 'Generate solution based on requirements',
-        roomId: task.roomId,
-        tags: ['workflow'],
-        metadata: {
-          previousStep: 'CONFIRM_REQUIREMENTS',
-          requirements: task.metadata.requirements,
-        },
-      });
-    } else {
-      // Go back to requirements gathering
-      await runtime.createTask({
-        name: 'GATHER_REQUIREMENTS',
-        description: 'Revise requirements',
-        roomId: task.roomId,
-        tags: ['workflow'],
-        metadata: {
-          previousStep: 'CONFIRM_REQUIREMENTS',
-          previousRequirements: task.metadata.requirements,
-        },
-      });
+        // Update task to next step
+        await runtime.updateTask(task.id, {
+          metadata: {
+            ...task.metadata,
+            step: 2,
+          },
+        });
+        break;
+
+      case 2:
+        // Execute step 2
+        await executeStep2();
+
+        // Create choice task for user confirmation
+        await runtime.createTask({
+          name: 'CONFIRM_COMPLETION',
+          description: 'Confirm workflow completion',
+          roomId: task.roomId,
+          worldId: task.worldId,
+          tags: ['AWAITING_CHOICE'],
+          metadata: {
+            options: [
+              { name: 'complete', description: 'Mark as complete' },
+              { name: 'restart', description: 'Start over' },
+            ],
+            workflowTaskId: task.id,
+          },
+        });
+        break;
     }
-
-    await runtime.deleteTask(task.id);
   },
 });
-```
-
-### Scheduled Reports
-
-Create tasks that generate and post reports on a schedule:
-
-```typescript
-runtime.registerTaskWorker({
-  name: 'GENERATE_WEEKLY_REPORT',
-  execute: async (runtime, options, task) => {
-    const { roomId } = task;
-
-    // Generate report content
-    const reportData = await generateWeeklyReport(runtime);
-
-    // Post the report
-    await runtime.createMemory(
-      {
-        entityId: runtime.agentId,
-        roomId,
-        content: {
-          text: `# Weekly Report\n\n${reportData}`,
-        },
-      },
-      'messages'
-    );
-
-    // The task stays active for next week (updateInterval handles timing)
-  },
-});
-
-// Create a weekly report task
-await runtime.createTask({
-  name: 'GENERATE_WEEKLY_REPORT',
-  description: 'Generate and post weekly activity report',
-  roomId: reportChannelId,
-  worldId: serverWorldId,
-  tags: ['report', 'repeat', 'weekly'],
-  metadata: {
-    updateInterval: 7 * 86400000, // 7 days
-    updatedAt: Date.now(),
-    format: 'markdown',
-  },
-});
-```
-
-## Task Events and Monitoring
-
-ElizaOS doesn't currently provide built-in events for task lifecycle, so implement your own monitoring if needed:
-
-```typescript
-// Custom monitoring for task execution
-async function executeTaskWithMonitoring(runtime, taskWorker, task) {
-  try {
-    // Create a start log
-    await runtime.log({
-      body: { taskId: task.id, action: 'start' },
-      entityId: runtime.agentId,
-      roomId: task.roomId,
-      type: 'TASK_EXECUTION',
-    });
-
-    // Execute the task
-    await taskWorker.execute(runtime, {}, task);
-
-    // Create a completion log
-    await runtime.log({
-      body: { taskId: task.id, action: 'complete', success: true },
-      entityId: runtime.agentId,
-      roomId: task.roomId,
-      type: 'TASK_EXECUTION',
-    });
-  } catch (error) {
-    // Create an error log
-    await runtime.log({
-      body: { taskId: task.id, action: 'error', error: error.message },
-      entityId: runtime.agentId,
-      roomId: task.roomId,
-      type: 'TASK_EXECUTION',
-    });
-  }
-}
 ```
 
 ## Best Practices
 
-1. **Use descriptive names and descriptions**: Make tasks easily identifiable with clear names and descriptions
+1. **Always include required tags**:
 
-2. **Clean up completed tasks**: Delete one-time tasks after execution to prevent database bloat
+   - `queue` for automatic processing
+   - `repeat` for recurring tasks
+   - `AWAITING_CHOICE` for user selection tasks
 
-3. **Add error handling**: Implement robust error handling in task workers to prevent failures from breaking workflows
+2. **Set worldId**: The `worldId` field is required when creating tasks
 
-4. **Use appropriate tags**: Tag tasks effectively for easy retrieval and categorization
+3. **Clean up one-time tasks**: Tasks without `repeat` tag are automatically deleted after execution
 
-5. **Validate carefully**: Use the `validate` function to ensure tasks only execute in appropriate contexts
+4. **Use validation wisely**: The `validate` function can prevent task execution based on current conditions
 
-6. **Keep tasks atomic**: Design tasks to perform specific, well-defined operations rather than complex actions
+5. **Handle errors gracefully**: Wrap task execution in try-catch blocks to prevent task worker failures
 
-7. **Provide clear choices**: When creating choice tasks, make option names and descriptions clear and unambiguous
+6. **Metadata management**: When updating tasks, remember that metadata is replaced, not merged
 
-8. **Manage task lifecycles**: Have a clear strategy for when tasks are created, updated, and deleted
+7. **Use appropriate intervals**: For recurring tasks, choose intervals that balance timeliness with resource usage
 
-9. **Set reasonable intervals**: For recurring tasks, choose appropriate update intervals that balance timeliness and resource usage
+8. **Secure choice tasks**: Only users with OWNER or ADMIN roles can select options for AWAITING_CHOICE tasks
 
-10. **Handle concurrent execution**: Ensure task execution is idempotent to handle potential concurrent executions
+9. **Short task IDs**: When displaying tasks to users, use shortened UUIDs (first 8 characters) for readability
+
+10. **Task worker naming**: Use clear, descriptive names in UPPER_SNAKE_CASE for task workers
+
+## Task Execution Flow
+
+```mermaid
+graph TD
+    A[Task Created] --> B{Has 'queue' tag?}
+    B -->|No| C[Task not processed]
+    B -->|Yes| D[Task Service checks every second]
+    D --> E{Worker validates?}
+    E -->|No| F[Skip task]
+    E -->|Yes| G{Has 'repeat' tag?}
+    G -->|Yes| H[Execute & Update timestamp]
+    G -->|No| I[Execute & Delete task]
+    H --> J[Wait for updateInterval]
+    J --> D
+```
+
+## Limitations
+
+- Tasks are checked every second by the Task Service
+- Task metadata is limited to JSON-serializable data
+- Tasks require a registered worker with matching name
+- Only one Task Service instance should run per agent
+- Task execution is not guaranteed to be exactly on time (depends on check interval and system load)
