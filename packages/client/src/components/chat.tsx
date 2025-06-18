@@ -320,7 +320,7 @@ export default function Chat({
     : undefined;
 
   // Use the new hooks for DM channel management
-  const { data: agentDmChannels = [], isLoading: isLoadingAgentDmChannels, refetch: refetchDmChannels } = useDmChannelsForAgent(
+  const { data: agentDmChannels = [], isLoading: isLoadingAgentDmChannels } = useDmChannelsForAgent(
     chatType === ChannelType.DM ? contextId : undefined
   );
 
@@ -677,11 +677,10 @@ export default function Chat({
         participantCentralUserIds: participants.data
       })
 
-      // const currentUserId = getEntityId();
-      await refetchDmChannels();
-      // queryClient.invalidateQueries({
-      //   queryKey: ['dmChannels', contextId, currentUserId],
-      // });
+      const currentUserId = getEntityId();
+      queryClient.invalidateQueries({
+        queryKey: ['dmChannels', contextId, currentUserId],
+      });
     }
   }
 
