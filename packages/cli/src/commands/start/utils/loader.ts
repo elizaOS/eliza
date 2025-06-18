@@ -168,15 +168,10 @@ function handleCharacterLoadError(path: string, error: unknown): never {
     throw new Error(
       `Character file '${path}' contains invalid character data. ${errorMsg}`
     );
-  } else if (errorMsg.includes('Invalid JSON')) {
-    logger.error(`Invalid JSON in character file: ${path}`);
+  } else if (errorMsg.includes('Invalid JSON') || errorMsg.includes('JSON')) {
+    logger.error(`JSON error in character file: ${path}`);
     throw new Error(
-      `Character file '${path}' has invalid JSON format. Please check the file content.`
-    );
-  } else if (errorMsg.includes('JSON')) {
-    logger.error(`JSON parsing error in character file: ${path}`);
-    throw new Error(
-      `Character file '${path}' has malformed JSON. Please check the file content.`
+      `Character file '${path}' contains JSON-related issues. Please check the file content for errors.`
     );
   } else {
     logger.error(`Error loading character from ${path}: ${errorMsg}`);
