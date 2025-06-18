@@ -322,6 +322,7 @@ export default function Chat({
   const { data: agentDmChannels = [], isLoading: isLoadingAgentDmChannels } = useDmChannelsForAgent(
     chatType === ChannelType.DM ? contextId : undefined
   );
+
   const createDmChannelMutation = useCreateDmChannel();
 
   // Group chat specific data
@@ -565,7 +566,7 @@ export default function Chat({
     updateChatState,
     handleNewDmChannel,
   ]);
-
+  
   // Cleanup timeout on unmount or when agentDmChannels appears
   useEffect(() => {
     if (agentDmChannels.length > 0 && autoCreateTimeoutRef.current) {
@@ -647,6 +648,31 @@ export default function Chat({
     prevMessageCountRef.current = messages.length;
   }, [messages, autoScrollEnabled, safeScrollToBottom, finalChannelIdForHooks]);
 
+  const updateChatTitle = async() => {
+    const currentChatTitle = agentDmChannels.find((c) => c.id === finalChannelIdForHooks);
+    const timestampChatNameRegex = /^Chat - [A-Z][a-z]{2} \d{1,2}, \d{2}:\d{2}:\d{2}$/;
+    const shouldUpdate: boolean = 
+      !!currentChatTitle?.name && 
+      timestampChatNameRegex.test(currentChatTitle.name) &&
+      chatType === ChannelType.DM;
+
+    if (!shouldUpdate) {
+      return;
+    }
+
+    const data = await apiClient.getChannelSummary(finalChannelIdForHooks, contextId);
+
+    console.log("$#$#$#$#$#$#$#$#$#$$#$#$#$#$$#$#$#$#$#$", data);
+    const title = data?.data?.newTitle
+    const participants = await apiClient.getChannelParticipants(chatState.currentDmChannelId);
+    if (title && participants) {
+      await apiClient.updateChannel(finalChannelIdForHooks, {
+        name: title,
+        participantCentralUserIds: participants.data
+      })
+    }
+  }
+
   const { sendMessage, animatedMessageId } = useSocketChat({
     channelId: finalChannelIdForHooks,
     currentUserId: currentClientEntityId,
@@ -656,6 +682,7 @@ export default function Chat({
     messages,
     onAddMessage: (message: UiMessage) => {
       addMessage(message);
+      updateChatTitle();
       if (message.isAgent) safeScrollToBottom();
     },
     onUpdateMessage: (messageId: string, updates: Partial<UiMessage>) => {
