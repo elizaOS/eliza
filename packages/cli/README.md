@@ -31,7 +31,6 @@ elizaos --no-auto-install create my-project
 ELIZA_NO_AUTO_INSTALL=true elizaos create my-project
 ```
 
-
 ## Global Options
 
 The following options are available for all ElizaOS CLI commands:
@@ -185,6 +184,7 @@ Manage ElizaOS agents.
   - `stop` (alias: `st`): Stop an agent
     - Options:
       - `-n, --name <name>`: Agent id, name, or index number from list
+      - `--all`: Stop all running ElizaOS agents locally
       - `-r, --remote-url <url>`: URL of the remote agent runtime
       - `-p, --port <port>`: Port to listen on
   - `remove` (alias: `rm`): Remove an agent
@@ -527,11 +527,13 @@ Manage environment variables and secrets.
 
 ### Process Management
 
-#### `elizaos stop`
+To stop all running ElizaOS agents locally, use:
 
-Stop all running ElizaOS agents running locally.
+```bash
+elizaos agent stop --all
+```
 
-This command uses `pkill` to terminate all ElizaOS processes and does not accept any options.
+This command uses `pkill` to terminate all ElizaOS processes. For stopping individual agents, see the [Agent Management](#elizaos-agent-subcommand) section.
 
 ## Development Guide
 
