@@ -24,7 +24,13 @@ const TestAgentCard: React.FC<{
         data-testid="status-indicator"
         className={`status-dot ${isActive ? 'active' : 'inactive'}`}
       />
-      <div data-testid="agent-status">{agent.status === AgentStatus.ACTIVE ? 'active' : agent.status === AgentStatus.INACTIVE ? 'inactive' : 'unknown'}</div>
+      <div data-testid="agent-status">
+        {agent.status === AgentStatus.ACTIVE
+          ? 'active'
+          : agent.status === AgentStatus.INACTIVE
+            ? 'inactive'
+            : 'unknown'}
+      </div>
       {agent.settings?.avatar && (
         <img data-testid="agent-avatar" src={agent.settings.avatar} alt={agentName} />
       )}

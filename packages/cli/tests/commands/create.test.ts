@@ -4,8 +4,15 @@ import { mkdtemp, rm, readFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { existsSync } from 'fs';
-import { safeChangeDirectory, runCliCommandSilently, expectCliCommandToFail, crossPlatform } from './test-utils';
+import {
+  safeChangeDirectory,
+  runCliCommandSilently,
+  expectCliCommandToFail,
+  crossPlatform,
+} from './test-utils';
 import { TEST_TIMEOUTS } from '../test-timeouts';
+import { getAvailableAIModels } from '../../src/commands/create/utils/selection';
+import { isValidOllamaEndpoint } from '../../src/utils/get-config';
 
 describe('ElizaOS Create Commands', () => {
   let testTmpDir: string;
@@ -256,4 +263,46 @@ describe('ElizaOS Create Commands', () => {
       console.warn('Skipping create-eliza agent test - command not available');
     }
   }, 60000);
+
+  describe('AI Model Selection', () => {
+    it('getAvailableAIModels includes ollama option', () => {
+      const models = getAvailableAIModels();
+
+      expect(models).toHaveLength(4);
+      expect(models.map((m) => m.value)).toContain('ollama');
+
+      const ollamaModel = models.find((m) => m.value === 'ollama');
+      expect(ollamaModel).toBeDefined();
+      expect(ollamaModel?.title).toContain('Ollama');
+      expect(ollamaModel?.title).toContain('self-hosted');
+      expect(ollamaModel?.description).toContain('privacy');
+    });
+
+    it('maintains existing AI model options', () => {
+      const models = getAvailableAIModels();
+      const values = models.map((m) => m.value);
+
+      expect(values).toContain('local');
+      expect(values).toContain('openai');
+      expect(values).toContain('claude');
+      expect(values).toContain('ollama');
+    });
+  });
+
+  describe('Ollama Configuration', () => {
+    it('validates valid ollama endpoints', () => {
+      expect(isValidOllamaEndpoint('http://localhost:11434')).toBe(true);
+      expect(isValidOllamaEndpoint('https://ollama.example.com')).toBe(true);
+      expect(isValidOllamaEndpoint('http://192.168.1.100:11434')).toBe(true);
+    });
+
+    it('rejects invalid ollama endpoints', () => {
+      expect(isValidOllamaEndpoint('')).toBe(false);
+      expect(isValidOllamaEndpoint('localhost:11434')).toBe(false);
+      expect(isValidOllamaEndpoint('ftp://localhost:11434')).toBe(false);
+      expect(isValidOllamaEndpoint('not-a-url')).toBe(false);
+      expect(isValidOllamaEndpoint(null as any)).toBe(false);
+      expect(isValidOllamaEndpoint(undefined as any)).toBe(false);
+    });
+  });
 });

@@ -26,7 +26,7 @@ describe('Schema Factory Integration Tests', () => {
     it('should create uuid columns', () => {
       const pgUuid = postgresFactory.uuid('id');
       const pgliteUuid = pgliteFactory.uuid('id');
-      
+
       expect(pgUuid).toBeDefined();
       expect(pgliteUuid).toBeDefined();
     });
@@ -34,7 +34,7 @@ describe('Schema Factory Integration Tests', () => {
     it('should create text columns', () => {
       const pgText = postgresFactory.text('name');
       const pgliteText = pgliteFactory.text('name');
-      
+
       expect(pgText).toBeDefined();
       expect(pgliteText).toBeDefined();
     });
@@ -42,7 +42,7 @@ describe('Schema Factory Integration Tests', () => {
     it('should create json columns', () => {
       const pgJson = postgresFactory.json('metadata');
       const pgliteJson = pgliteFactory.json('metadata');
-      
+
       expect(pgJson).toBeDefined();
       expect(pgliteJson).toBeDefined();
     });
@@ -50,7 +50,7 @@ describe('Schema Factory Integration Tests', () => {
     it('should create boolean columns', () => {
       const pgBool = postgresFactory.boolean('active');
       const pgliteBool = pgliteFactory.boolean('active');
-      
+
       expect(pgBool).toBeDefined();
       expect(pgliteBool).toBeDefined();
     });
@@ -58,7 +58,7 @@ describe('Schema Factory Integration Tests', () => {
     it('should create timestamp columns with options', () => {
       const pgTs = postgresFactory.timestamp('createdAt', { withTimezone: true, mode: 'date' });
       const pgliteTs = pgliteFactory.timestamp('updatedAt', { mode: 'string' });
-      
+
       expect(pgTs).toBeDefined();
       expect(pgliteTs).toBeDefined();
     });
@@ -66,7 +66,7 @@ describe('Schema Factory Integration Tests', () => {
     it('should create integer columns', () => {
       const pgInt = postgresFactory.integer('count');
       const pgliteInt = pgliteFactory.integer('count');
-      
+
       expect(pgInt).toBeDefined();
       expect(pgliteInt).toBeDefined();
     });
@@ -74,10 +74,10 @@ describe('Schema Factory Integration Tests', () => {
     it('should handle vector columns differently for postgres vs pglite', () => {
       const pgVector = postgresFactory.vector('embedding', 384);
       const pgliteVector = pgliteFactory.vector('embedding', 384);
-      
+
       expect(pgVector).toBeDefined();
       expect(pgliteVector).toBeDefined();
-      
+
       // Postgres uses real vector type, pglite falls back to jsonb
       // We verify they return different types by their existence
     });
@@ -85,7 +85,7 @@ describe('Schema Factory Integration Tests', () => {
     it('should create text array columns', () => {
       const pgArray = postgresFactory.textArray('tags');
       const pgliteArray = pgliteFactory.textArray('tags');
-      
+
       expect(pgArray).toBeDefined();
       expect(pgliteArray).toBeDefined();
     });
@@ -94,7 +94,7 @@ describe('Schema Factory Integration Tests', () => {
       const constraint = sql`price > 0`;
       const pgCheck = postgresFactory.check('positive_price', constraint);
       const pgliteCheck = pgliteFactory.check('positive_price', constraint);
-      
+
       expect(pgCheck).toBeDefined();
       expect(pgliteCheck).toBeDefined();
     });
@@ -102,7 +102,7 @@ describe('Schema Factory Integration Tests', () => {
     it('should create indexes', () => {
       const pgIndex = postgresFactory.index('idx_name');
       const pgliteIndex = pgliteFactory.index();
-      
+
       expect(pgIndex).toBeDefined();
       expect(pgliteIndex).toBeDefined();
     });
@@ -113,10 +113,10 @@ describe('Schema Factory Integration Tests', () => {
         columns: ['userId'],
         foreignColumns: ['id'],
       };
-      
+
       const pgFk = postgresFactory.foreignKey(config);
       const pgliteFk = pgliteFactory.foreignKey(config);
-      
+
       expect(pgFk).toBeDefined();
       expect(pgliteFk).toBeDefined();
     });
@@ -124,7 +124,7 @@ describe('Schema Factory Integration Tests', () => {
     it('should provide default timestamp helper', () => {
       const pgDefault = postgresFactory.defaultTimestamp();
       const pgliteDefault = pgliteFactory.defaultTimestamp();
-      
+
       expect(pgDefault).toBeDefined();
       expect(pgliteDefault).toBeDefined();
       // The SQL template returns a SQL object with SQL string
@@ -135,11 +135,11 @@ describe('Schema Factory Integration Tests', () => {
     it('should handle random UUID default differently', () => {
       const pgDefault = postgresFactory.defaultRandomUuid();
       const pgliteDefault = pgliteFactory.defaultRandomUuid();
-      
+
       // Postgres supports gen_random_uuid()
       expect(pgDefault).toBeDefined();
       expect(pgDefault).toHaveProperty('queryChunks');
-      
+
       // Pglite doesn't support it
       expect(pgliteDefault).toBeUndefined();
     });
@@ -149,7 +149,7 @@ describe('Schema Factory Integration Tests', () => {
     it('should set and get global factory', () => {
       setDatabaseType('pglite');
       const factory = getSchemaFactory();
-      
+
       expect(factory).toBeDefined();
       expect(factory.dbType).toBe('pglite');
     });
@@ -157,9 +157,9 @@ describe('Schema Factory Integration Tests', () => {
     it('should default to postgres if not set', () => {
       // Reset global factory
       setDatabaseType('postgres');
-      
+
       const factory = getSchemaFactory();
       expect(factory.dbType).toBe('postgres');
     });
   });
-}); 
+});

@@ -40,10 +40,8 @@ describe('service builder', () => {
 
   it('should throw error when start function is not defined', async () => {
     // This test covers lines 59-60 - error when startFn is not defined
-    const Builder = createService('NO_START')
-      .withDescription('Service without start')
-      .build();
-    
+    const Builder = createService('NO_START').withDescription('Service without start').build();
+
     await expect((Builder as any).start(mockRuntime)).rejects.toThrow(
       'Start function not defined for service NO_START'
     );
@@ -52,7 +50,7 @@ describe('service builder', () => {
   it('should call custom stop function when provided', async () => {
     // This test covers lines 65-68 - custom stopFn execution
     const stopFn = vi.fn().mockResolvedValue(undefined);
-    
+
     const Builder = createService('WITH_STOP')
       .withDescription('Service with custom stop')
       .withStart(
@@ -64,11 +62,11 @@ describe('service builder', () => {
       )
       .withStop(stopFn)
       .build();
-    
+
     const instance = await (Builder as any).start(mockRuntime);
     const builtInstance = new Builder();
     await builtInstance.stop();
-    
+
     expect(stopFn).toHaveBeenCalled();
   });
 
@@ -84,7 +82,7 @@ describe('service builder', () => {
           })()
       )
       .build();
-    
+
     const builtInstance = new Builder();
     // Should not throw when no stopFn is provided
     await expect(builtInstance.stop()).resolves.toBeUndefined();
@@ -102,7 +100,7 @@ describe('service builder', () => {
         })(),
       // Note: no stop function provided
     });
-    
+
     const instance = await (Def as any).start(mockRuntime);
     const defInstance = new Def();
     // Should not throw when using default stop
@@ -113,24 +111,25 @@ describe('service builder', () => {
     // Test the full builder chain
     const description = 'Test service description';
     const serviceType = 'CHAINED_SERVICE';
-    
+
     const builder = createService(serviceType);
     const withDesc = builder.withDescription(description);
-    
+
     // Verify chaining returns the same instance
     expect(withDesc).toBe(builder);
-    
-    const startFn = async () => new (class extends Service { 
-      capabilityDescription = 'Chained service';
-      async stop() {} 
-    })();
+
+    const startFn = async () =>
+      new (class extends Service {
+        capabilityDescription = 'Chained service';
+        async stop() {}
+      })();
     const withStart = withDesc.withStart(startFn);
     expect(withStart).toBe(builder);
-    
+
     const stopFn = async () => {};
     const withStop = withStart.withStop(stopFn);
     expect(withStop).toBe(builder);
-    
+
     const BuiltClass = withStop.build();
     expect((BuiltClass as any).serviceType).toBe(serviceType);
   });

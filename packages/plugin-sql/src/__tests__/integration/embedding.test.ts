@@ -5,7 +5,7 @@ import {
   type UUID,
   AgentRuntime,
   ChannelType,
-  MemoryType
+  MemoryType,
 } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';

@@ -15,11 +15,7 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
   protected embeddingDimension: EmbeddingDimensionColumn = DIMENSION_MAP[384];
   private manager: PostgresConnectionManager;
 
-  constructor(
-    agentId: UUID,
-    manager: PostgresConnectionManager,
-    schema?: any,
-  ) {
+  constructor(agentId: UUID, manager: PostgresConnectionManager, schema?: any) {
     super(agentId);
     this.manager = manager;
     this.db = manager.getDatabase();
@@ -114,7 +110,7 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
   }
 
   getEntityByIds(entityIds: UUID[]): Promise<Entity[]> {
-    return super.getEntityByIds(entityIds).then(result => result || []);
+    return super.getEntityByIds(entityIds).then((result) => result || []);
   }
 
   updateEntity(entity: Entity): Promise<void> {
@@ -145,7 +141,12 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
     return super.createComponent(component);
   }
 
-  getComponent(entityId: UUID, type: string, worldId?: UUID, sourceEntityId?: UUID): Promise<Component | null> {
+  getComponent(
+    entityId: UUID,
+    type: string,
+    worldId?: UUID,
+    sourceEntityId?: UUID
+  ): Promise<Component | null> {
     return super.getComponent(entityId, type, worldId, sourceEntityId);
   }
 

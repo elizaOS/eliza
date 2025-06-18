@@ -42,7 +42,11 @@ describe('roles utilities', () => {
 
       (mockRuntime.getWorld as any).mockResolvedValue(mockWorld);
 
-      const role = await getUserServerRole(mockRuntime, 'user-123-456-789-abc-def012345678', 'server-123');
+      const role = await getUserServerRole(
+        mockRuntime,
+        'user-123-456-789-abc-def012345678',
+        'server-123'
+      );
       expect(role).toBe(Role.ADMIN);
     });
 
@@ -123,13 +127,25 @@ describe('roles utilities', () => {
 
       (mockRuntime.getWorld as any).mockResolvedValue(mockWorld);
 
-      const ownerRole = await getUserServerRole(mockRuntime, 'owner-user-123-456-789-abcdef0123', 'server-123');
+      const ownerRole = await getUserServerRole(
+        mockRuntime,
+        'owner-user-123-456-789-abcdef0123',
+        'server-123'
+      );
       expect(ownerRole).toBe(Role.OWNER);
 
-      const adminRole = await getUserServerRole(mockRuntime, 'admin-user-123-456-789-abcdef0123', 'server-123');
+      const adminRole = await getUserServerRole(
+        mockRuntime,
+        'admin-user-123-456-789-abcdef0123',
+        'server-123'
+      );
       expect(adminRole).toBe(Role.ADMIN);
 
-      const noneRole = await getUserServerRole(mockRuntime, 'none-user-123-456-789-abcdef01234', 'server-123');
+      const noneRole = await getUserServerRole(
+        mockRuntime,
+        'none-user-123-456-789-abcdef01234',
+        'server-123'
+      );
       expect(noneRole).toBe(Role.NONE);
     });
   });
@@ -175,7 +191,7 @@ describe('roles utilities', () => {
       (mockRuntime.getAllWorlds as any).mockResolvedValue(mockWorlds);
 
       const ownerWorlds = await findWorldsForOwner(mockRuntime, 'user-123');
-      
+
       expect(ownerWorlds).toBeDefined();
       expect(ownerWorlds?.length).toBe(2);
       expect(ownerWorlds?.[0].id).toBe('world-1');
@@ -184,40 +200,40 @@ describe('roles utilities', () => {
 
     it('should return null when entityId is empty', async () => {
       const { logger } = await import('../logger');
-      
+
       const result = await findWorldsForOwner(mockRuntime, '');
-      
+
       expect(result).toBeNull();
       expect(logger.error).toHaveBeenCalledWith('User ID is required to find server');
     });
 
     it('should return null when entityId is null', async () => {
       const { logger } = await import('../logger');
-      
+
       const result = await findWorldsForOwner(mockRuntime, null as any);
-      
+
       expect(result).toBeNull();
       expect(logger.error).toHaveBeenCalledWith('User ID is required to find server');
     });
 
     it('should return null when no worlds exist', async () => {
       const { logger } = await import('../logger');
-      
+
       (mockRuntime.getAllWorlds as any).mockResolvedValue([]);
 
       const result = await findWorldsForOwner(mockRuntime, 'user-123');
-      
+
       expect(result).toBeNull();
       expect(logger.info).toHaveBeenCalledWith('No worlds found for this agent');
     });
 
     it('should return null when getAllWorlds returns null', async () => {
       const { logger } = await import('../logger');
-      
+
       (mockRuntime.getAllWorlds as any).mockResolvedValue(null);
 
       const result = await findWorldsForOwner(mockRuntime, 'user-123');
-      
+
       expect(result).toBeNull();
       expect(logger.info).toHaveBeenCalledWith('No worlds found for this agent');
     });
@@ -251,7 +267,7 @@ describe('roles utilities', () => {
       (mockRuntime.getAllWorlds as any).mockResolvedValue(mockWorlds);
 
       const result = await findWorldsForOwner(mockRuntime, 'user-123');
-      
+
       expect(result).toBeNull();
     });
 
@@ -275,7 +291,7 @@ describe('roles utilities', () => {
       (mockRuntime.getAllWorlds as any).mockResolvedValue(mockWorlds);
 
       const result = await findWorldsForOwner(mockRuntime, 'user-123');
-      
+
       expect(result).toBeNull();
     });
 
@@ -295,7 +311,7 @@ describe('roles utilities', () => {
       (mockRuntime.getAllWorlds as any).mockResolvedValue(mockWorlds);
 
       const result = await findWorldsForOwner(mockRuntime, 'user-123');
-      
+
       expect(result).toBeNull();
     });
   });

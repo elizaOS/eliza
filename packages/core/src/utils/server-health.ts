@@ -33,7 +33,7 @@ export async function waitForServerReady(options: ServerHealthOptions): Promise<
   while (Date.now() - startTime < maxWaitTime) {
     let controller: AbortController | undefined;
     let timeoutId: NodeJS.Timeout | undefined;
-    
+
     try {
       controller = new AbortController();
       timeoutId = setTimeout(() => {
@@ -50,7 +50,7 @@ export async function waitForServerReady(options: ServerHealthOptions): Promise<
         clearTimeout(timeoutId);
         timeoutId = undefined;
       }
-      
+
       if (response.ok) {
         // Server is ready, give it one more second to stabilize
         await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -104,7 +104,7 @@ export async function pingServer(options: ServerHealthOptions): Promise<boolean>
       clearTimeout(timeoutId);
       timeoutId = undefined;
     }
-    
+
     return response.ok;
   } catch (error) {
     return false;

@@ -49,7 +49,9 @@ export class TypeScriptParser {
       const content = fs.readFileSync(file, 'utf-8');
 
       // Determine if this is a TSX file based on file extension or JSX syntax
-      const isTsxFile = file.endsWith('.tsx') || content.includes('<') && content.includes('>') && content.includes('React');
+      const isTsxFile =
+        file.endsWith('.tsx') ||
+        (content.includes('<') && content.includes('>') && content.includes('React'));
 
       const parserOptions: ParserOptions = {
         sourceType: 'module',
@@ -194,7 +196,9 @@ export class TypeScriptParser {
 
     // Don't log full stack trace for parsing errors to reduce noise
     if (error.message.includes('Unexpected token')) {
-      console.warn(`Skipping file due to parsing error${fileInfo}. This might be due to unsupported syntax.`);
+      console.warn(
+        `Skipping file due to parsing error${fileInfo}. This might be due to unsupported syntax.`
+      );
     }
   }
 }

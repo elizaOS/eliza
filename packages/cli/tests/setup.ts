@@ -3,6 +3,10 @@
  * This file is preloaded by Bun test runner via bunfig.toml
  */
 
+// Enable test mode to skip dependency installation and other CI optimizations
+process.env.ELIZA_TEST_MODE = 'true';
+process.env.NODE_ENV = 'test';
+
 // Store original handlers
 const originalHandlers = {
   unhandledRejection: process.listeners('unhandledRejection'),

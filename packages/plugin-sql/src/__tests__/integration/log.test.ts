@@ -1,10 +1,4 @@
-import {
-  type Entity,
-  type Room,
-  type UUID,
-  AgentRuntime,
-  ChannelType
-} from '@elizaos/core';
+import { type Entity, type Room, type UUID, AgentRuntime, ChannelType } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { PgDatabaseAdapter } from '../../pg/adapter';

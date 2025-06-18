@@ -618,26 +618,32 @@ export function useDeleteLog() {
 }
 
 /**
- * Fetches memories for a specific agent, optionally filtered by room
+ * Fetches memories for a specific agent, optionally filtered by channel
  */
 export function useAgentMemories(
   agentId: UUID,
   tableName?: string,
-  roomId?: UUID,
+  channelId?: UUID, // Changed from roomId to channelId
   includeEmbedding = false
 ) {
-  const queryKey = roomId
-    ? ['agents', agentId, 'rooms', roomId, 'memories', tableName, includeEmbedding]
+  const queryKey = channelId
+    ? ['agents', agentId, 'channels', channelId, 'memories', tableName, includeEmbedding] // Updated query key
     : ['agents', agentId, 'memories', tableName, includeEmbedding];
 
   return useQuery({
     queryKey,
     queryFn: async () => {
-      const result = await apiClient.getAgentMemories(agentId, roomId, tableName, includeEmbedding);
+      const result = await apiClient.getAgentMemories(
+        agentId,
+        channelId,
+        tableName,
+        includeEmbedding
+      ); // Pass channelId
       console.log('Agent memories result:', {
         agentId,
         tableName,
         includeEmbedding,
+        channelId, // Log channelId instead of roomId
         result,
         dataLength: result.data?.memories?.length,
         firstMemory: result.data?.memories?.[0],

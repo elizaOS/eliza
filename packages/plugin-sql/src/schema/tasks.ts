@@ -1,5 +1,6 @@
 import { jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import { agentTable } from './agent';
 
 /**
  * Represents a table schema for tasks in the database.
@@ -13,7 +14,9 @@ export const taskTable = pgTable('tasks', {
   roomId: uuid('roomId'),
   worldId: uuid('worldId'),
   entityId: uuid('entityId'),
-  agentId: uuid('agent_id').notNull(),
+  agentId: uuid('agent_id')
+    .notNull()
+    .references(() => agentTable.id, { onDelete: 'cascade' }),
   tags: text('tags')
     .array()
     .default(sql`'{}'::text[]`),

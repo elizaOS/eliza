@@ -23,7 +23,7 @@ elizaos agent [options] [command]
 | `list`     | `ls`    | List available agents                   |                                                                | `-j, --json`, `-r, --remote-url <url>`, `-p, --port <port>`           |
 | `get`      | `g`     | Get agent details                       | `-n, --name <name>`                                            | `-j, --json`, `-o, --output [file]`, `-r, --remote-url`, `-p, --port` |
 | `start`    | `s`     | Start an agent with a character profile | One of: `-n, --name`, `--path`, `--remote-character`           | `-r, --remote-url <url>`, `-p, --port <port>`                         |
-| `stop`     | `st`    | Stop an agent                           | `-n, --name <name>`                                            | `-r, --remote-url <url>`, `-p, --port <port>`                         |
+| `stop`     | `st`    | Stop an agent                           | `-n, --name <name>` OR `--all`                                 | `-r, --remote-url <url>`, `-p, --port <port>`                         |
 | `remove`   | `rm`    | Remove an agent                         | `-n, --name <name>`                                            | `-r, --remote-url <url>`, `-p, --port <port>`                         |
 | `set`      |         | Update agent configuration              | `-n, --name <name>` AND one of: `-c, --config` OR `-f, --file` | `-r, --remote-url <url>`, `-p, --port <port>`                         |
 
@@ -52,7 +52,8 @@ elizaos agent [options] [command]
 
 ### Stop/Remove Specific Options
 
-- `-n, --name <name>`: Agent id, name, or index number from list (required)
+- `-n, --name <name>`: Agent id, name, or index number from list (required for single agent)
+- `--all`: Stop all running ElizaOS agents locally (for stop command only)
 
 ### Set Specific Options
 
@@ -140,8 +141,14 @@ elizaos agent stop --name agent_123456
 # Stop agent by index
 elizaos agent stop --name 0
 
+# Stop all running agents locally
+elizaos agent stop --all
+
 # Using alias
 elizaos agent st --name eliza
+
+# Stop all using alias
+elizaos agent st --all
 
 # Stop agent on remote runtime
 elizaos agent stop --name eliza --remote-url http://server:3000

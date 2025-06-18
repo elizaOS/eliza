@@ -7,7 +7,7 @@ import {
   type MemoryMetadata,
   type Room,
   type UUID,
-  type World
+  type World,
 } from '@elizaos/core';
 import { v4 } from 'uuid';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';

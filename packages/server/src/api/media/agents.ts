@@ -54,7 +54,12 @@ export function createAgentMediaRouter(
 
       if (!mimetype) {
         cleanupFile(mediaFile.path);
-        return sendError(res, 400, 'UNSUPPORTED_MEDIA_TYPE', `Unsupported media MIME type: ${mimetype}`);
+        return sendError(
+          res,
+          400,
+          'UNSUPPORTED_MEDIA_TYPE',
+          `Unsupported media MIME type: ${mimetype}`
+        );
       }
 
       try {

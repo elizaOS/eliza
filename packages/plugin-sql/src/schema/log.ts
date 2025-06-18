@@ -18,7 +18,7 @@ export const logTable = pgTable(
       .notNull(),
     entityId: uuid('entityId')
       .notNull()
-      .references(() => entityTable.id),
+      .references(() => entityTable.id, { onDelete: 'cascade' }),
     body: jsonb('body').notNull(),
     type: text('type').notNull(),
     roomId: uuid('roomId')

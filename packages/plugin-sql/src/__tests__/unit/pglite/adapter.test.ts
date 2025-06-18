@@ -12,13 +12,13 @@ vi.mock('@elizaos/core', async () => {
       info: vi.fn(),
       error: vi.fn(),
       warn: vi.fn(),
-      debug: vi.fn()
+      debug: vi.fn(),
     },
     VECTOR_DIMS: {
       SMALL: 384,
       MEDIUM: 512,
-      LARGE: 768
-    }
+      LARGE: 768,
+    },
   };
 });
 
@@ -35,10 +35,10 @@ describe('PgliteDatabaseAdapter', () => {
       getConnection: vi.fn().mockReturnValue({
         query: vi.fn().mockResolvedValue({ rows: [] }),
         close: vi.fn().mockResolvedValue(undefined),
-        transaction: vi.fn()
+        transaction: vi.fn(),
       }),
       close: vi.fn().mockResolvedValue(undefined),
-      isShuttingDown: vi.fn().mockReturnValue(false)
+      isShuttingDown: vi.fn().mockReturnValue(false),
     };
 
     adapter = new PgliteDatabaseAdapter(agentId, mockManager);
@@ -60,14 +60,18 @@ describe('PgliteDatabaseAdapter', () => {
     it('should be a no-op', async () => {
       await adapter.runMigrations();
       // Should not throw and not do anything
-      expect(logger.debug).toHaveBeenCalledWith('PgliteDatabaseAdapter: Migrations are handled by the migration service');
+      expect(logger.debug).toHaveBeenCalledWith(
+        'PgliteDatabaseAdapter: Migrations are handled by the migration service'
+      );
     });
   });
 
   describe('init', () => {
     it('should complete initialization', async () => {
       await adapter.init();
-      expect(logger.debug).toHaveBeenCalledWith('PGliteDatabaseAdapter initialized, skipping automatic migrations.');
+      expect(logger.debug).toHaveBeenCalledWith(
+        'PGliteDatabaseAdapter initialized, skipping automatic migrations.'
+      );
     });
   });
 
@@ -113,7 +117,7 @@ describe('PgliteDatabaseAdapter', () => {
 
     it('should handle query errors gracefully', async () => {
       const mockConnection = {
-        query: vi.fn().mockRejectedValue(new Error('Query failed'))
+        query: vi.fn().mockRejectedValue(new Error('Query failed')),
       };
       mockManager.getConnection.mockReturnValue(mockConnection);
 
@@ -121,4 +125,4 @@ describe('PgliteDatabaseAdapter', () => {
       await expect(connection.query('SELECT 1')).rejects.toThrow('Query failed');
     });
   });
-}); 
+});

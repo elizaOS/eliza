@@ -19,35 +19,35 @@ describe('PostgreSQL E2E Tests', () => {
     const agentId = uuidv4() as UUID;
     const adapter = new PgliteDatabaseAdapter(agentId, manager);
     await adapter.init();
-    
+
     // Run migrations for each adapter
     const migrationService = new DatabaseMigrationService();
     const db = adapter.getDatabase();
     await migrationService.initializeWithDatabase(db);
     migrationService.discoverAndRegisterPluginSchemas([
-      { name: '@elizaos/plugin-sql', description: 'SQL plugin', schema }
+      { name: '@elizaos/plugin-sql', description: 'SQL plugin', schema },
     ]);
     await migrationService.runAllPluginMigrations();
-    
+
     return { adapter, agentId };
   };
 
   describe('Connection Management', () => {
     it('should test connection successfully', async () => {
       const { adapter } = await createTestAdapter();
-      
+
       const isReady = await adapter.isReady();
       expect(isReady).toBe(true);
-      
+
       await adapter.close();
     });
 
     it('should get connection', async () => {
       const { adapter } = await createTestAdapter();
-      
+
       const connection = await adapter.getConnection();
       expect(connection).toBeDefined();
-      
+
       await adapter.close();
     });
   });
@@ -55,7 +55,7 @@ describe('PostgreSQL E2E Tests', () => {
   describe('Agent Operations', () => {
     it('should create and retrieve an agent', async () => {
       const { adapter, agentId } = await createTestAdapter();
-      
+
       const agent: Partial<Agent> = {
         id: agentId,
         name: 'Test Agent',
@@ -72,13 +72,13 @@ describe('PostgreSQL E2E Tests', () => {
       expect(retrieved).toBeDefined();
       expect(retrieved?.name).toBe('Test Agent');
       expect(retrieved?.settings).toEqual(agent.settings);
-      
+
       await adapter.close();
     });
 
     it('should update an agent', async () => {
       const { adapter, agentId } = await createTestAdapter();
-      
+
       const agent: Partial<Agent> = {
         id: agentId,
         name: 'Original Name',
@@ -96,13 +96,13 @@ describe('PostgreSQL E2E Tests', () => {
       const retrieved = await adapter.getAgent(agentId);
       expect(retrieved?.name).toBe('Updated Name');
       expect(retrieved?.settings?.newSetting).toBe('value');
-      
+
       await adapter.close();
     });
 
     it('should delete an agent', async () => {
       const { adapter, agentId } = await createTestAdapter();
-      
+
       const agent: Partial<Agent> = {
         id: agentId,
         name: 'To Delete',
@@ -114,7 +114,7 @@ describe('PostgreSQL E2E Tests', () => {
 
       const retrieved = await adapter.getAgent(agentId);
       expect(retrieved).toBeNull();
-      
+
       await adapter.close();
     });
   });
@@ -122,13 +122,13 @@ describe('PostgreSQL E2E Tests', () => {
   describe('Entity Operations', () => {
     it('should create and retrieve entities', async () => {
       const { adapter, agentId } = await createTestAdapter();
-      
+
       // Create agent first
       await adapter.createAgent({
         id: agentId,
         name: 'Test Agent',
       } as Agent);
-      
+
       const entities: Entity[] = [
         {
           id: uuidv4() as UUID,
@@ -146,27 +146,27 @@ describe('PostgreSQL E2E Tests', () => {
       const created = await adapter.createEntities(entities);
       expect(created).toBe(true);
 
-      const entityIds = entities.map(e => e.id).filter((id): id is UUID => id !== undefined);
+      const entityIds = entities.map((e) => e.id).filter((id): id is UUID => id !== undefined);
       const retrieved = await adapter.getEntityByIds(entityIds);
       expect(retrieved).toHaveLength(2);
-      
+
       // Sort by name to ensure consistent order
       const sortedRetrieved = retrieved?.sort((a, b) => a.names[0].localeCompare(b.names[0]));
       expect(sortedRetrieved?.[0].names).toContain('Entity One');
       expect(sortedRetrieved?.[1].metadata).toEqual({ custom: 'data' });
-      
+
       await adapter.close();
     });
 
     it('should update an entity', async () => {
       const { adapter, agentId } = await createTestAdapter();
-      
+
       // Create agent first
       await adapter.createAgent({
         id: agentId,
         name: 'Test Agent',
       } as Agent);
-      
+
       const entity: Entity = {
         id: uuidv4() as UUID,
         agentId,
@@ -184,7 +184,7 @@ describe('PostgreSQL E2E Tests', () => {
       const retrieved = await adapter.getEntityByIds([entity.id!]);
       expect(retrieved?.[0].names).toContain('Updated');
       expect(retrieved?.[0].metadata).toEqual({ updated: true });
-      
+
       await adapter.close();
     });
   });
@@ -199,31 +199,35 @@ describe('PostgreSQL E2E Tests', () => {
       const result = await createTestAdapter();
       adapter = result.adapter;
       agentId = result.agentId;
-      
+
       // Create agent first
       await adapter.createAgent({
         id: agentId,
         name: 'Test Agent',
       } as Agent);
-      
+
       roomId = uuidv4() as UUID;
       entityId = uuidv4() as UUID;
-      
+
       // Create room first
-      await adapter.createRooms([{
-        id: roomId,
-        agentId,
-        source: 'test',
-        type: 'GROUP' as ChannelType,
-        name: 'Test Room'
-      }]);
-      
+      await adapter.createRooms([
+        {
+          id: roomId,
+          agentId,
+          source: 'test',
+          type: 'GROUP' as ChannelType,
+          name: 'Test Room',
+        },
+      ]);
+
       // Create required entity
-      await adapter.createEntities([{
-        id: entityId,
-        agentId,
-        names: ['Test Entity'],
-      }]);
+      await adapter.createEntities([
+        {
+          id: entityId,
+          agentId,
+          names: ['Test Entity'],
+        },
+      ]);
     });
 
     afterEach(async () => {
@@ -339,43 +343,48 @@ describe('PostgreSQL E2E Tests', () => {
       const result = await createTestAdapter();
       adapter = result.adapter;
       agentId = result.agentId;
-      
+
       // Create agent first
       await adapter.createAgent({
         id: agentId,
         name: 'Test Agent',
       } as Agent);
-      
+
       entityId = uuidv4() as UUID;
       roomId = uuidv4() as UUID;
       worldId = uuidv4() as UUID;
       sourceEntityId = uuidv4() as UUID;
-      
+
       await adapter.createWorld({
         id: worldId,
         agentId,
         serverId: uuidv4() as UUID,
         name: 'Test World',
       });
-      
+
       // Create room
-      await adapter.createRooms([{
-        id: roomId,
-        agentId,
-        source: 'test',
-        type: 'GROUP' as ChannelType,
-        name: 'Test Room'
-      }]);
-      
-      await adapter.createEntities([{
-        id: entityId,
-        agentId,
-        names: ['Component Test Entity'],
-      }, {
-        id: sourceEntityId,
-        agentId,
-        names: ['Source Test Entity'],
-      }]);
+      await adapter.createRooms([
+        {
+          id: roomId,
+          agentId,
+          source: 'test',
+          type: 'GROUP' as ChannelType,
+          name: 'Test Room',
+        },
+      ]);
+
+      await adapter.createEntities([
+        {
+          id: entityId,
+          agentId,
+          names: ['Component Test Entity'],
+        },
+        {
+          id: sourceEntityId,
+          agentId,
+          names: ['Source Test Entity'],
+        },
+      ]);
     });
 
     afterEach(async () => {
@@ -398,7 +407,12 @@ describe('PostgreSQL E2E Tests', () => {
       const created = await adapter.createComponent(component);
       expect(created).toBe(true);
 
-      const retrieved = await adapter.getComponent(entityId, 'test-component', worldId, sourceEntityId);
+      const retrieved = await adapter.getComponent(
+        entityId,
+        'test-component',
+        worldId,
+        sourceEntityId
+      );
       expect(retrieved).toBeDefined();
       expect(retrieved?.data).toEqual({ value: 'test data' });
     });
@@ -423,7 +437,12 @@ describe('PostgreSQL E2E Tests', () => {
         data: { updated: true },
       });
 
-      const retrieved = await adapter.getComponent(entityId, 'update-test', worldId, sourceEntityId);
+      const retrieved = await adapter.getComponent(
+        entityId,
+        'update-test',
+        worldId,
+        sourceEntityId
+      );
       expect(retrieved?.data).toEqual({ updated: true });
     });
 
@@ -443,7 +462,12 @@ describe('PostgreSQL E2E Tests', () => {
       await adapter.createComponent(component);
       await adapter.deleteComponent(component.id);
 
-      const retrieved = await adapter.getComponent(entityId, 'delete-test', worldId, sourceEntityId);
+      const retrieved = await adapter.getComponent(
+        entityId,
+        'delete-test',
+        worldId,
+        sourceEntityId
+      );
       expect(retrieved).toBeNull();
     });
   });
@@ -451,50 +475,54 @@ describe('PostgreSQL E2E Tests', () => {
   describe('Transaction and Concurrency', () => {
     it('should handle concurrent operations', async () => {
       const { adapter, agentId } = await createTestAdapter();
-      
+
       // Create agent first
       await adapter.createAgent({
         id: agentId,
         name: 'Test Agent',
       } as Agent);
-      
-      const operations = Array(5).fill(null).map((_, i) => {
-        const entity: Entity = {
-          id: uuidv4() as UUID,
-          agentId,
-          names: [`Concurrent Entity ${i}`],
-        };
-        return adapter.createEntities([entity]);
-      });
+
+      const operations = Array(5)
+        .fill(null)
+        .map((_, i) => {
+          const entity: Entity = {
+            id: uuidv4() as UUID,
+            agentId,
+            names: [`Concurrent Entity ${i}`],
+          };
+          return adapter.createEntities([entity]);
+        });
 
       const results = await Promise.all(operations);
-      expect(results.every(r => r === true)).toBe(true);
-      
+      expect(results.every((r) => r === true)).toBe(true);
+
       await adapter.close();
     });
 
     it('should handle large batch operations', async () => {
       const { adapter, agentId } = await createTestAdapter();
-      
+
       // Create agent first
       await adapter.createAgent({
         id: agentId,
         name: 'Test Agent',
       } as Agent);
-      
-      const entities: Entity[] = Array(100).fill(null).map((_, i) => ({
-        id: uuidv4() as UUID,
-        agentId,
-        names: [`Batch Entity ${i}`],
-      }));
+
+      const entities: Entity[] = Array(100)
+        .fill(null)
+        .map((_, i) => ({
+          id: uuidv4() as UUID,
+          agentId,
+          names: [`Batch Entity ${i}`],
+        }));
 
       const created = await adapter.createEntities(entities);
       expect(created).toBe(true);
 
-      const entityIds = entities.map(e => e.id).filter((id): id is UUID => id !== undefined);
+      const entityIds = entities.map((e) => e.id).filter((id): id is UUID => id !== undefined);
       const retrieved = await adapter.getEntityByIds(entityIds);
       expect(retrieved).toHaveLength(100);
-      
+
       await adapter.close();
     });
   });
@@ -502,7 +530,7 @@ describe('PostgreSQL E2E Tests', () => {
   describe('Error Handling', () => {
     it('should handle duplicate agent creation', async () => {
       const { adapter, agentId } = await createTestAdapter();
-      
+
       const agent: Partial<Agent> = {
         id: agentId,
         name: 'Duplicate Test',
@@ -511,31 +539,31 @@ describe('PostgreSQL E2E Tests', () => {
       await adapter.createAgent(agent as Agent);
       const secondCreate = await adapter.createAgent(agent as Agent);
       expect(secondCreate).toBe(false);
-      
+
       await adapter.close();
     });
 
     it('should handle non-existent entity retrieval', async () => {
       const { adapter } = await createTestAdapter();
-      
+
       const nonExistentId = uuidv4() as UUID;
       const result = await adapter.getEntityByIds([nonExistentId]);
       expect(result).toHaveLength(0);
-      
+
       await adapter.close();
     });
 
     it('should handle invalid memory search', async () => {
       const { adapter } = await createTestAdapter();
-      
+
       const results = await adapter.searchMemories({
         tableName: 'memories',
         embedding: Array(384).fill(0),
         count: 0, // Invalid count
       });
       expect(results).toHaveLength(0);
-      
+
       await adapter.close();
     });
   });
-}); 
+});

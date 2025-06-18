@@ -1,8 +1,4 @@
-import {
-  AgentRuntime,
-  ChannelType,
-  type UUID
-} from '@elizaos/core';
+import { AgentRuntime, ChannelType, type UUID } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PgDatabaseAdapter } from '../../pg/adapter';

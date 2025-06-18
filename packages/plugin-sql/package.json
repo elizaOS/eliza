@@ -53,7 +53,7 @@
     "migrate": "tsup src/migrate.ts --format esm --clean=false --onSuccess=\"node dist/migrate.js\"",
     "lint": "eslint .",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
-    "format": "prettier --check .",
+    "format": "prettier --write .",
     "format:check": "prettier --check ./src",
     "test": "vitest run",
     "test:watch": "vitest",

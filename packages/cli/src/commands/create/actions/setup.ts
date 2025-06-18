@@ -5,6 +5,7 @@ import {
   promptAndStorePostgresUrl,
   promptAndStoreOpenAIKey,
   promptAndStoreAnthropicKey,
+  promptAndStoreOllamaConfig,
   runBunCommand,
   setupPgLite,
 } from '@/src/utils';
@@ -83,6 +84,34 @@ export async function setupAIModelConfig(
         break;
       }
 
+      case 'ollama': {
+        if (isNonInteractive) {
+          // In non-interactive mode, just add placeholder
+          let content = '';
+          if (existsSync(envFilePath)) {
+            content = await fs.readFile(envFilePath, 'utf8');
+          }
+
+          if (content && !content.endsWith('\n')) {
+            content += '\n';
+          }
+
+          content += '\n# AI Model Configuration\n';
+          content += '# Ollama Configuration\n';
+          content += 'OLLAMA_API_ENDPOINT=http://localhost:11434\n';
+          content += 'OLLAMA_MODEL=llama2\n';
+          content += 'USE_OLLAMA_TEXT_MODELS=true\n';
+          content += '# Make sure Ollama is installed and running: https://ollama.ai/\n';
+
+          await fs.writeFile(envFilePath, content, 'utf8');
+          console.info('[√] Ollama placeholder configuration added to .env file');
+        } else {
+          // Interactive mode - prompt for Ollama configuration
+          await promptAndStoreOllamaConfig(envFilePath);
+        }
+        break;
+      }
+
       default:
         console.warn(`Unknown AI model: ${aiModel}, skipping configuration`);
         return;
@@ -97,8 +126,13 @@ export async function setupAIModelConfig(
  * Installs dependencies for the specified target directory.
  */
 export async function installDependencies(targetDir: string): Promise<void> {
-  console.info('Installing dependencies...');
+  // Skip dependency installation in CI/test environments to save memory and time
+  if (process.env.CI === 'true' || process.env.ELIZA_TEST_MODE === 'true') {
+    console.info('Skipping dependency installation in CI/test environment...');
+    return;
+  }
 
+  console.info('Installing dependencies...');
   await runBunCommand(['install'], targetDir);
 }
 

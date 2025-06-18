@@ -92,6 +92,32 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
     }
   });
 
+  // Endpoint to notify that a message is complete (e.g., agent finished responding)
+  (router as any).post('/complete', async (req: express.Request, res: express.Response) => {
+    const { channel_id, server_id } = req.body;
+
+    if (!validateUuid(channel_id) || !validateUuid(server_id)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing or invalid fields: channel_id, server_id',
+      });
+    }
+
+    try {
+      if (serverInstance.socketIO) {
+        serverInstance.socketIO.to(channel_id).emit('messageComplete', {
+          channelId: channel_id,
+          serverId: server_id,
+        });
+      }
+
+      res.status(200).json({ success: true, message: 'Completion event emitted' });
+    } catch (error) {
+      logger.error('[Messages Router /notify-complete] Error notifying message complete:', error);
+      res.status(500).json({ success: false, error: 'Failed to notify message completion' });
+    }
+  });
+
   // Endpoint for INGESTING messages from EXTERNAL platforms (e.g., Discord plugin)
   (router as any).post('/ingest-external', async (req: express.Request, res: express.Response) => {
     const messagePayload = req.body as Partial<MessageService>; // Partial because ID, created_at will be generated

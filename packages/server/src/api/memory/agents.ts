@@ -1,5 +1,5 @@
 import type { IAgentRuntime, UUID, Memory, MemoryMetadata } from '@elizaos/core';
-import { MemoryType } from '@elizaos/core';
+import { MemoryType, createUniqueUuid } from '@elizaos/core';
 import { validateUuid, logger } from '@elizaos/core';
 import express from 'express';
 import type { AgentServer } from '../../index';
@@ -80,16 +80,34 @@ export function createAgentMemoryRouter(
     try {
       const tableName = (req.query.tableName as string) || 'messages';
       const includeEmbedding = req.query.includeEmbedding === 'true';
-      const roomId = req.query.roomId ? validateUuid(req.query.roomId as string) : undefined;
 
-      if (req.query.roomId && !roomId) {
-        return sendError(res, 400, 'INVALID_ID', 'Invalid room ID format');
+      // Handle both roomId and channelId parameters
+      let roomIdToUse: UUID | undefined;
+
+      if (req.query.channelId) {
+        // Convert channelId to the agent's unique roomId
+        const channelId = validateUuid(req.query.channelId as string);
+        if (!channelId) {
+          return sendError(res, 400, 'INVALID_ID', 'Invalid channel ID format');
+        }
+        // Use createUniqueUuid to generate the same roomId the agent uses
+        roomIdToUse = createUniqueUuid(runtime, channelId);
+        logger.info(
+          `[AGENT MEMORIES] Converting channelId ${channelId} to roomId ${roomIdToUse} for agent ${agentId}`
+        );
+      } else if (req.query.roomId) {
+        // Backward compatibility: still accept roomId directly
+        const roomId = validateUuid(req.query.roomId as string);
+        if (!roomId) {
+          return sendError(res, 400, 'INVALID_ID', 'Invalid room ID format');
+        }
+        roomIdToUse = roomId;
       }
 
       const memories = await runtime.getMemories({
         agentId,
         tableName,
-        roomId: roomId || undefined,
+        roomId: roomIdToUse,
       });
 
       const cleanMemories = includeEmbedding

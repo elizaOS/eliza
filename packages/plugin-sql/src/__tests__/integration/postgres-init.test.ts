@@ -13,7 +13,7 @@ describe('PostgreSQL Initialization Tests', () => {
     delete process.env.POSTGRES_URL;
     delete process.env.PGLITE_PATH;
     delete process.env.DATABASE_PATH;
-    
+
     mockRuntime = {
       agentId: '00000000-0000-0000-0000-000000000000',
       getSetting: vi.fn(),
@@ -110,4 +110,4 @@ describe('PostgreSQL Initialization Tests', () => {
 
     expect(mockRuntime.registerDatabaseAdapter).toHaveBeenCalled();
   });
-}); 
+});

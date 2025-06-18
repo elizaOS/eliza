@@ -1,460 +1,624 @@
 ---
 sidebar_position: 4
 title: Knowledge System
-description: Understanding ElizaOS knowledge management - how agents process, store, and retrieve information
-keywords: [knowledge, RAG, embeddings, documents, processing, retrieval, semantic search]
+description: Complete guide to setting up and using the ElizaOS Knowledge Plugin for document processing and RAG
+keywords:
+  [knowledge, RAG, embeddings, documents, processing, retrieval, semantic search, plugin-knowledge]
 image: /img/knowledge.jpg
 ---
 
-# Knowledge Management
+# 🧠 Knowledge System
 
-## Overview
+The Knowledge System in ElizaOS enables agents to process, store, and retrieve information from documents using the **@elizaos/plugin-knowledge** plugin. This provides Retrieval-Augmented Generation (RAG) capabilities, allowing agents to answer questions based on stored knowledge.
 
-The Knowledge Management system in ElizaOS is a powerful Retrieval-Augmented Generation (RAG) feature that enables agents to process, store, and retrieve information from various sources. This allows agents to provide contextually relevant responses by leveraging stored knowledge during conversations.
+## Quick Start
 
-## Adding Knowledge to Agents
+### Step 1: Install the Plugin
 
-ElizaOS provides multiple ways to add knowledge to your agents, both during initialization and at runtime.
-
-### Adding Knowledge During Runtime Creation
-
-#### 1. Via Character Definition
-
-The simplest approach is to define knowledge directly in your character configuration:
+Add the knowledge plugin to your agent configuration by including it in the plugins array as a string:
 
 ```typescript
-const character: Character = {
-  name: 'My Agent',
-  // Other character properties...
-  knowledge: [
-    // Direct string knowledge
-    'Important fact: ElizaOS supports multiple knowledge formats',
+import { type Character } from '@elizaos/core';
 
-    // File references
-    { path: 'knowledge/documentation.md', shared: false },
-
-    // Directory references
-    { directory: 'knowledge/guides', shared: true },
+export const character: Character = {
+  name: 'MyAgent',
+  plugins: [
+    '@elizaos/plugin-sql', // MUST be first - provides database
+    '@elizaos/plugin-openai', // MUST be before knowledge - provides embeddings
+    '@elizaos/plugin-knowledge', // Requires both sql and embedding provider
+    // ... other plugins can go here
   ],
+  // ... rest of character config
 };
 ```
 
-The knowledge array supports three formats:
+> ⚠️ **CRITICAL: Plugin Order Matters!**
+>
+> The knowledge plugin has dependencies that MUST be loaded in the correct order:
+>
+> 1. **`@elizaos/plugin-sql`** - Must be loaded FIRST as it provides the database adapter
+> 2. **An embedding provider plugin** (e.g., `@elizaos/plugin-openai`) - Must be loaded BEFORE knowledge plugin as it provides the text embedding service
+> 3. **`@elizaos/plugin-knowledge`** - Must be loaded AFTER its dependencies
+>
+> If you don't follow this order, the knowledge plugin will fail to initialize!
 
-- String literals for direct knowledge
-- File objects pointing to specific files
-- Directory objects for entire folders of content
+### Step 2: Enable Auto-Loading (Recommended)
 
-#### 2. Programmatically Before Runtime Initialization
+Add this to your `.env` file to automatically load documents on startup:
 
-You can dynamically load knowledge before creating your runtime:
+```env
+LOAD_DOCS_ON_STARTUP=true
+```
+
+### Step 3: Create Knowledge Folder
+
+Create a `knowledge` folder in your project root and add your documents:
+
+```
+your-project/
+├── .env
+├── knowledge/          <-- Create this folder
+│   ├── guide.pdf
+│   ├── documentation.md
+│   ├── data.txt
+│   └── ... more documents
+├── src/
+└── package.json
+```
+
+That's it! Your agent will automatically load all documents when it starts.
+
+### Complete Example
+
+Here's a full example of a character configuration with the knowledge plugin:
 
 ```typescript
-// Load knowledge from files or other sources
-const knowledge = [];
+import { type Character } from '@elizaos/core';
 
-// Example: Recursively load documentation files
-function loadDocumentation(directoryPath) {
-  const files = getFilesRecursively(directoryPath, ['.md']);
-  return files.map((filePath) => {
-    const relativePath = path.relative(basePath, filePath);
-    const content = fs.readFileSync(filePath, 'utf-8');
-    return `Path: ${relativePath}\n\n${content}`;
-  });
-}
+export const character: Character = {
+  name: 'KnowledgeBot',
+  plugins: [
+    // Required dependencies in correct order
+    '@elizaos/plugin-sql', // 1. Database (REQUIRED FIRST)
+    '@elizaos/plugin-openai', // 2. Embeddings provider (REQUIRED SECOND)
+    '@elizaos/plugin-knowledge', // 3. Knowledge plugin (MUST BE AFTER DEPENDENCIES)
+    '@elizaos/plugin-bootstrap',
 
-// Load documentation
-const docKnowledge = loadDocumentation('./docs');
-knowledge.push(...docKnowledge);
-
-// Then include in your character definition
-const character: Character = {
-  // Other character properties...
-  knowledge: knowledge,
+    // Optional plugins can go after
+    ...(process.env.DISCORD_API_TOKEN ? ['@elizaos/plugin-discord'] : []),
+    ...(process.env.TELEGRAM_BOT_TOKEN ? ['@elizaos/plugin-telegram'] : []),
+  ],
+  system:
+    'You are a helpful assistant that uses your knowledge base to answer questions accurately.',
+  bio: [
+    'Expert at retrieving and using stored knowledge',
+    'Provides accurate information from documents',
+    'Helpful and conversational',
+  ],
+  // ... other character properties
 };
 ```
 
-### Adding Knowledge After Runtime Creation
+**Alternative Embedding Providers:**
 
-#### 1. Using the `addKnowledge` Method
-
-Add knowledge programmatically after the runtime is initialized:
+If you're not using OpenAI, you can use other embedding providers, but they must still be loaded before the knowledge plugin:
 
 ```typescript
-// Import needed utilities
-import { createUniqueUuid } from '@elizaos/core';
-
-// Create a knowledge item
-const knowledgeItem = {
-  id: createUniqueUuid(runtime, 'unique-knowledge-identifier'),
-  content: {
-    text: 'Important information the agent should know...',
-  },
-};
-
-// Add to runtime with default chunking settings
-await runtime.addKnowledge(knowledgeItem);
-
-// Or with custom chunking settings
-await runtime.addKnowledge(knowledgeItem, {
-  targetTokens: 1500, // Target chunk size (default: 3000)
-  overlap: 100, // Overlap between chunks (default: 200)
-  modelContextSize: 8192, // Context size of your model (default: 4096)
-});
+plugins: [
+  '@elizaos/plugin-sql', // Always first
+  '@elizaos/plugin-openai',
+  // OR '@elizaos/plugin-google',  // OR use Google for embeddings
+  // OR '@elizaos/plugin-local-ai', // OR use local embeddings
+  '@elizaos/plugin-knowledge', // Always after sql and embedding provider
+];
 ```
 
-#### 2. Processing Files at Runtime
+## How It Works
 
-You can dynamically process files at runtime:
+When you start your agent with the knowledge plugin:
 
-```typescript
-// For PDF files, use the PDF service
-const pdfService = runtime.getService<IPdfService>('pdf');
-if (pdfService) {
-  const pdfBuffer = fs.readFileSync('./knowledge/document.pdf');
-  const textContent = await pdfService.convertPdfToText(pdfBuffer);
+1. **Automatic Detection**: The plugin checks if you have plugin-openai configured
+2. **Document Loading**: If `LOAD_DOCS_ON_STARTUP=true`, it scans the knowledge folder
+3. **Processing**: Each document is processed, chunked, and embedded
+4. **Storage**: Knowledge is stored in the agent's database with vector embeddings
+5. **Retrieval**: When users ask questions, relevant knowledge is retrieved and used
 
-  const knowledgeItem = {
-    id: createUniqueUuid(runtime, 'document.pdf'),
-    content: { text: textContent },
-  };
+## Folder Structure
 
-  await runtime.addKnowledge(knowledgeItem);
-}
-```
+The plugin looks for documents in this order:
 
-## Directory Structure
-
-ElizaOS expects knowledge files to be organized in the following structure:
+1. **Custom Path** (if `KNOWLEDGE_PATH` env var is set)
+2. **`knowledge/` folder** in project root (recommended)
+3. **`docs/` folder** in project root (legacy support)
 
 ```
-knowledge/          # Root knowledge directory
-├── shared/         # Shared knowledge accessible to all agents
-└── {agent-name}/   # Agent-specific knowledge directories
+your-project/
+├── knowledge/              # Primary location (recommended)
+│   ├── products/          # You can organize in subfolders
+│   │   ├── manual.pdf
+│   │   └── specs.md
+│   ├── policies/
+│   │   ├── terms.txt
+│   │   └── privacy.md
+│   └── general-info.pdf
+└── docs/                  # Alternative location (legacy)
 ```
 
 ## Supported File Types
 
-- PDF files (`.pdf`)
-- Markdown files (`.md`)
-- Text files (`.txt`)
+### Documents
 
-## Knowledge Modes
+- **PDF** (`.pdf`) - Full text extraction
+- **Markdown** (`.md`, `.markdown`) - Preserves formatting
+- **Text** (`.txt`, `.log`) - Plain text files
+- **Microsoft Word** (`.doc`, `.docx`) - Full document support
 
-ElizaOS supports two knowledge modes:
+### Code Files
 
-### Classic Mode (Default)
+- **JavaScript/TypeScript** (`.js`, `.jsx`, `.ts`, `.tsx`, `.mjs`, `.cjs`)
+- **Python** (`.py`, `.pyw`, `.pyi`)
+- **Java/Kotlin** (`.java`, `.kt`, `.kts`)
+- **C/C++/C#** (`.c`, `.cpp`, `.cc`, `.h`, `.hpp`, `.cs`)
+- **Go** (`.go`)
+- **Rust** (`.rs`)
+- **Ruby** (`.rb`)
+- **PHP** (`.php`)
+- **Swift** (`.swift`)
+- And many more programming languages...
 
-- Direct string knowledge added to character's context
-- No chunking or semantic search
-- Enabled by default (`settings.ragKnowledge: false`)
-- Only processes string knowledge entries
-- Simpler but less sophisticated
+### Data & Config Files
 
-### RAG Mode
+- **JSON** (`.json`)
+- **YAML** (`.yaml`, `.yml`)
+- **XML** (`.xml`)
+- **CSV** (`.csv`)
+- **TOML** (`.toml`)
+- **INI** (`.ini`, `.cfg`, `.conf`)
+- **Environment** (`.env`)
 
-- Advanced knowledge processing with semantic search
-- Chunks content and uses embeddings
-- Must be explicitly enabled (`settings.ragKnowledge: true`)
-- Supports three knowledge types:
-  1. Direct string knowledge
-  2. Single file references: `{ "path": "path/to/file.md", "shared": false }`
-  3. Directory references: `{ "directory": "knowledge/dir", "shared": false }`
-- Supported file types: .md, .txt, .pdf
-- Optional `shared` flag for knowledge reuse across characters
+### Web Files
 
-To enable RAG mode, add this to your character settings:
+- **HTML** (`.html`, `.htm`)
+- **CSS** (`.css`, `.scss`, `.sass`, `.less`)
+- **Vue/React/Svelte** (`.vue`, `.jsx`, `.svelte`)
 
-```typescript
-const character: Character = {
-  // Other character properties...
-  settings: {
-    ragKnowledge: true,
-  },
-};
+## Using Knowledge
+
+Once documents are loaded, users can interact naturally:
+
+### Asking Questions
+
+Users can ask questions in natural language:
+
+- "What does the documentation say about authentication?"
+- "Can you explain the setup process from the guide?"
+- "What are the product specifications?"
+- "Search your knowledge for information about pricing"
+
+### Available Actions
+
+The plugin provides two main actions:
+
+#### 1. PROCESS_KNOWLEDGE
+
+Adds new documents or text to the knowledge base:
+
+```
+User: "Process the document at /path/to/new-guide.pdf"
+Agent: "I'll process the document and add it to my knowledge base."
+
+User: "Remember this: Our office hours are 9 AM to 5 PM EST"
+Agent: "I've added that information to my knowledge base."
 ```
 
-## How Knowledge Processing Works
+#### 2. SEARCH_KNOWLEDGE
 
-### Document Processing Flow
+Explicitly searches the knowledge base:
 
-The RAG system processes documents through several stages:
-
-1. **Directory Processing**
-
-   - The system scans configured directories in `knowledge/`
-   - Files are processed based on their shared/private status and file type
-
-2. **File Processing Pipeline**
-
-   - **Preprocessing**: Reading, cleaning, and normalizing text
-   - **Document-level Processing**: Generating embeddings for the entire document
-   - **Chunk Processing**: Splitting content into manageable chunks and generating embeddings for each
-
-3. **Retrieval Process**
-   - When a user message is received, its embedding is generated
-   - This embedding is compared to stored knowledge embeddings
-   - The most semantically similar chunks are retrieved
-   - Retrieved knowledge is incorporated into the agent's context
-
-This multi-level approach enables:
-
-- Broad document-level semantic search
-- Fine-grained chunk-level retrieval for specific information
-- Efficient parallel processing of large documents
-- Maintenance of document context through metadata linking
-
-### Knowledge Processing Flow Diagram
-
-```mermaid
-graph TB
-    subgraph Directory_Processing
-        A[Read Files from Directory] --> B[File Content]
-    end
-
-    subgraph Preprocessing
-        B --> C[Clean & Normalize Text]
-    end
-
-    subgraph Document_Processing
-        C --> D[Generate Document Embedding]
-        D --> E[Store Full Document]
-        E --> |Metadata| F[File Path]
-        E --> |Metadata| G[File Type]
-        E --> |Metadata| H[Shared Status]
-    end
-
-    subgraph Chunk_Processing
-        C --> I[Split into Chunks]
-        I --> |512 tokens| J[Chunk 1]
-        I --> |20 token overlap| K[...]
-        I --> L[Chunk N]
-
-        subgraph Parallel_Processing
-            J --> M1[Generate Embedding]
-            K --> M2[Generate Embedding]
-            L --> M3[Generate Embedding]
-        end
-
-        subgraph Chunk_Storage
-            M1 --> N1[Store Chunk]
-            M2 --> N2[Store Chunk]
-            M3 --> N3[Store Chunk]
-
-            N1 --> |Metadata| O[Original Doc Reference]
-            N1 --> |Metadata| P[Chunk Index]
-            N2 --> |Metadata| O
-            N2 --> |Metadata| P
-            N3 --> |Metadata| O
-            N3 --> |Metadata| P
-        end
-    end
-
-    style Directory_Processing fill:#f9f,stroke:#333,stroke-width:2px
-    style Preprocessing fill:#bbf,stroke:#333,stroke-width:2px
-    style Document_Processing fill:#bfb,stroke:#333,stroke-width:2px
-    style Chunk_Processing fill:#fbf,stroke:#333,stroke-width:2px
-    style Parallel_Processing fill:#fbb,stroke:#333,stroke-width:2px
-    style Chunk_Storage fill:#bff,stroke:#333,stroke-width:2px
+```
+User: "Search your knowledge for refund policy"
+Agent: "Here's what I found about refund policy: [relevant information]"
 ```
 
-### Processing Parameters
+## Configuration Options
 
-- **Chunk Size**: 512 tokens (default, configurable when adding knowledge)
-- **Chunk Overlap**: 20 tokens (default, configurable)
-- **Processing Batch Size**: 10 chunks processed concurrently
-- **Default Similarity Threshold**: 0.85 for retrieval
-- **Default Match Count**: 5 results returned
+### Basic Configuration
 
-## Best Practices for Knowledge Management
+For most users, the default configuration works perfectly. Just add the plugin and optionally set:
 
-### Content Organization
+```env
+# Enable automatic document loading
+LOAD_DOCS_ON_STARTUP=true
 
-1. **Document Structure**
-
-   - Use clear section headings and hierarchical organization
-   - Break large documents into logical smaller files
-   - Include metadata and context in markdown files
-   - Structure information from general to specific
-
-2. **File Management**
-
-   - Use descriptive filenames that reflect content
-   - Group related files in subdirectories
-   - Keep paths short and meaningful
-   - Avoid special characters in filenames
-
-3. **Knowledge Optimization**
-   - Keep individual documents focused on specific topics
-   - For very detailed information, use smaller chunks (200-300 tokens) by setting `targetTokens`
-   - Balance the total number of knowledge items for performance
-   - Prefer markdown (.md) files for best processing results
-
-### Processing Large Knowledge Bases
-
-When adding many knowledge items at once, consider implementing a semaphore pattern:
-
-```typescript
-import { Semaphore } from '@elizaos/core';
-
-// Create semaphore to limit concurrent processing
-const semaphore = new Semaphore(10);
-
-// Process items with controlled concurrency
-await Promise.all(
-  items.map(async (item) => {
-    await semaphore.acquire();
-    try {
-      await runtime.addKnowledge(item);
-    } finally {
-      semaphore.release();
-    }
-  })
-);
+# Optional: Custom document path
+KNOWLEDGE_PATH=/path/to/your/documents
 ```
 
-### Knowledge ID Management
+### Advanced Configuration
 
-When adding knowledge programmatically, use consistent ID generation:
+If you're not using plugin-openai, you'll need to configure embeddings:
 
-```typescript
-import { createUniqueUuid } from '@elizaos/core';
-const knowledgeId = createUniqueUuid(runtime, 'my-content');
+```env
+# Embedding Provider Configuration
+EMBEDDING_PROVIDER=openai          # or google
+TEXT_EMBEDDING_MODEL=text-embedding-3-small
+OPENAI_API_KEY=your-api-key       # or GOOGLE_API_KEY for Google
+
+# Embedding Dimensions (must match your model)
+# OpenAI text-embedding-3-small: 1536
+# OpenAI text-embedding-3-large: 3072
+# Google text-embedding-004: 768
 ```
 
-This ensures deterministic IDs that remain stable across sessions.
+### Rate Limiting
+
+Configure rate limits to avoid API throttling:
+
+```env
+MAX_CONCURRENT_REQUESTS=30
+REQUESTS_PER_MINUTE=60
+TOKENS_PER_MINUTE=150000
+```
+
+## Web Interface
+
+The plugin includes a web interface for managing documents. Access it at:
+
+```
+http://localhost:3000/api/agents/[your-agent-id]/plugins/knowledge/display
+```
+
+Features:
+
+- Upload new documents
+- View processed documents
+- Delete documents
+- Search knowledge base
+- View processing statistics
+
+## Best Practices
+
+### 1. Document Organization
+
+**Structure your knowledge folder logically:**
+
+```
+knowledge/
+├── products/           # Product information
+├── support/           # Support documentation
+├── policies/          # Company policies
+└── faqs/             # Frequently asked questions
+```
+
+**Benefits:**
+
+- Easier maintenance
+- Better context for the agent
+- Simpler updates
+
+### 2. Document Preparation
+
+**For best results:**
+
+- Use clear, descriptive filenames
+- Break large documents into focused topics
+- Use markdown for structured content
+- Include context in document headers
+
+**Example markdown structure:**
+
+```markdown
+# Product Setup Guide
+
+Category: Installation
+Last Updated: 2024-01-15
+
+## Overview
+
+This guide covers the installation process...
+
+## Prerequisites
+
+- Requirement 1
+- Requirement 2
+
+## Steps
+
+1. First step...
+2. Second step...
+```
+
+### 3. Content Guidelines
+
+**DO:**
+
+- ✅ Use clear, concise language
+- ✅ Structure information hierarchically
+- ✅ Include examples and use cases
+- ✅ Update documents regularly
+
+**DON'T:**
+
+- ❌ Include sensitive information (passwords, keys)
+- ❌ Use overly technical jargon without explanation
+- ❌ Create documents larger than 10MB
+- ❌ Mix unrelated topics in one document
+
+### 4. Performance Optimization
+
+**For large knowledge bases:**
+
+- Keep individual files under 5MB
+- Use focused, topic-specific documents
+- Regularly review and update content
+- Remove outdated information
 
 ## Troubleshooting
 
-### Common Issues and Solutions
+### Plugin Initialization Errors
 
-1. **Knowledge Not Being Retrieved**:
+**If you see errors like "Knowledge service not available" or "Failed to initialize Knowledge plugin":**
 
-   - Verify the file is in a supported format (PDF, MD, TXT)
-   - Check if embeddings were properly generated
-   - Ensure similarity threshold isn't too high (default: 0.85)
-   - Test retrieval with more specific queries
-   - Verify RAG mode is enabled if using file/directory references
+1. **Check plugin order** - This is the #1 cause of initialization failures!
 
-2. **Poor Quality Retrievals**:
+   ```typescript
+   // ❌ WRONG - knowledge plugin before its dependencies
+   plugins: ['@elizaos/plugin-knowledge', '@elizaos/plugin-sql', '@elizaos/plugin-openai'];
 
-   - Break down large documents into smaller, focused files
-   - Ensure document content is clear and well-structured
-   - Review the chunking size and overlap settings
-   - Check if the query contains too many common words
+   // ✅ CORRECT - dependencies first
+   plugins: ['@elizaos/plugin-sql', '@elizaos/plugin-openai', '@elizaos/plugin-knowledge'];
+   ```
 
-3. **Performance Issues**:
+2. **Verify embedding provider** - You MUST have an embedding provider:
 
-   - Monitor the total number of knowledge items
-   - Consider reducing the match count for faster retrieval
-   - Check embedding processing time for large documents
-   - Use shared knowledge efficiently across agents
+   - `@elizaos/plugin-openai` (requires `OPENAI_API_KEY`)
+   - `@elizaos/plugin-google` (requires `GOOGLE_API_KEY`)
+   - `@elizaos/plugin-local-ai` (for local models)
 
-4. **File Processing Errors**:
-   - Verify file permissions
-   - Check if paths are correctly structured
-   - Ensure PDF files are readable and not password-protected
-   - Validate that text encoding is UTF-8
+3. **Check environment variables** - Ensure your embedding provider has valid credentials
 
-## Technical Implementation Details
+### Documents Not Loading
 
-### Knowledge ID Relationships
+**Check these common issues:**
 
-The RAG system uses a hierarchical ID structure to maintain relationships:
+1. **Folder exists?**
 
-```mermaid
-classDiagram
-    class Document {
-        +UUID id
-        +String filePath
-        +String fileType
-        +Boolean isShared
-        +Float32Array embedding
-        +String content
-    }
+   ```bash
+   ls -la knowledge/  # Should show your documents
+   ```
 
-    class Fragment {
-        +UUID id
-        +UUID originalId
-        +Number chunkIndex
-        +String content
-        +Float32Array embedding
-        +String originalPath
-    }
+2. **Environment variable set?**
 
-    Document "1" --> "*" Fragment : generates
-```
+   ```bash
+   grep LOAD_DOCS_ON_STARTUP .env  # Should show =true
+   ```
 
-#### ID Generation and Linking
+3. **File permissions?**
 
-Documents IDs are generated using `createUniqueUuid(runtime, path, isShared)`, making them deterministic. Fragment IDs follow the format `${documentId}-chunk-${index}` to maintain the relationship to their source document.
+   ```bash
+   # Ensure files are readable
+   chmod -R 644 knowledge/*.pdf
+   ```
+
+4. **Supported file type?**
+   - Check the supported file types list above
+   - Ensure files aren't corrupted
+
+### Knowledge Not Retrieved
+
+**If the agent can't find information:**
+
+1. **Check if documents were processed:**
+
+   - Look for startup logs: "Loaded X documents from docs folder"
+   - Access the web interface to verify documents
+
+2. **Improve your questions:**
+
+   - Be specific: "What does the setup guide say about database configuration?"
+   - Use keywords from the documents
+   - Try different phrasings
+
+3. **Verify content:**
+   - Ensure the information exists in your documents
+   - Check if documents are properly formatted
+   - Avoid documents with only images (no text)
+
+### Processing Errors
+
+**For specific file issues:**
+
+1. **PDF errors:**
+
+   - Ensure PDFs aren't password-protected
+   - Check if PDFs contain extractable text
+   - Try re-saving the PDF
+
+2. **Large file issues:**
+
+   - Split documents over 10MB
+   - Use text formats when possible
+   - Compress images in documents
+
+3. **Encoding issues:**
+   - Save files as UTF-8
+   - Avoid special characters in filenames
+   - Use standard file extensions
 
 ## API Reference
 
-### Key Methods
+### REST API Endpoints
 
-#### `runtime.addKnowledge(item: KnowledgeItem, options?): Promise<void>`
+The plugin provides these HTTP endpoints:
 
-Adds new knowledge to the agent.
+```
+# Upload a document
+POST /api/agents/{agentId}/plugins/knowledge/documents
+Content-Type: multipart/form-data
+Body: file upload
 
-- Parameters:
-  - `item`: A knowledge item containing:
-    - `id`: UUID
-    - `content`: Object with `text` property
-  - `options`: Optional processing configuration:
-    - `targetTokens`: Number (default: 3000)
-    - `overlap`: Number (default: 200)
-    - `modelContextSize`: Number (default: 4096)
+# List all documents
+GET /api/agents/{agentId}/plugins/knowledge/documents
 
-#### `runtime.getKnowledge(message: Memory): Promise<KnowledgeItem[]>`
+# Get specific document
+GET /api/agents/{agentId}/plugins/knowledge/documents/{documentId}
 
-Retrieves knowledge based on a message's content.
+# Delete a document
+DELETE /api/agents/{agentId}/plugins/knowledge/documents/{documentId}
 
-- Parameters:
-  - `message`: Memory object containing user message
-- Returns: Array of matching KnowledgeItem objects
+# Search knowledge
+POST /api/agents/{agentId}/plugins/knowledge/search
+Body: { "query": "search terms" }
+```
 
-### Knowledge Item Definition
+### Programmatic Usage
+
+For advanced users who want to add knowledge programmatically:
 
 ```typescript
-interface KnowledgeItem {
-  id: UUID;
-  content: {
-    text: string;
-    // Optional additional metadata
-    [key: string]: any;
-  };
-}
+// Get the knowledge service
+const knowledgeService = runtime.getService('knowledge');
+
+// Add knowledge from text
+await knowledgeService.addKnowledge({
+  clientDocumentId: 'unique-id',
+  content: 'The information to store...',
+  contentType: 'text/plain',
+  originalFilename: 'dynamic-content.txt',
+  worldId: runtime.agentId,
+  roomId: message.roomId,
+  entityId: message.entityId,
+});
+
+// Search knowledge
+const results = await knowledgeService.getKnowledge(message);
 ```
+
+## Migration from Legacy System
+
+If you're migrating from the old knowledge system:
+
+1. **Move files to knowledge folder:**
+
+   ```bash
+   mkdir knowledge
+   mv docs/* knowledge/
+   ```
+
+2. **Update configuration:**
+
+   - Remove old knowledge arrays from character files
+   - Add the plugin to your agent
+   - Set `LOAD_DOCS_ON_STARTUP=true`
+
+3. **Clean up:**
+   - Remove manual knowledge loading code
+   - Delete old knowledge management functions
+   - Update any custom integrations
 
 ## Security Considerations
 
-1. **Access Control**:
+### Data Privacy
 
-   - Use the `shared` flag appropriately to control document access
-   - Keep sensitive information in agent-specific directories
-   - Regularly audit knowledge access patterns
+- **Never store sensitive data** like passwords, API keys, or personal information
+- **Review documents** before adding them to ensure compliance
+- **Use access controls** in production environments
 
-2. **Data Privacy**:
-   - Do not store sensitive personal information in knowledge files
-   - Review documents for potentially sensitive content before adding
-   - Implement appropriate backup and recovery procedures
+### File Security
 
-## Future Considerations
+- **Validate file sources** before processing
+- **Scan for malware** in production systems
+- **Limit file sizes** to prevent resource exhaustion
+- **Monitor disk usage** for knowledge storage
 
-1. **Scalability**:
+### API Security
 
-   - Monitor knowledge base size and performance
-   - Plan for regular maintenance and cleanup
-   - Consider implementing document versioning
+- **Authenticate API requests** in production
+- **Rate limit** upload endpoints
+- **Validate file types** on upload
+- **Log access** to knowledge endpoints
 
-2. **Integration**:
-   - Document integration points with other systems
-   - Plan for potential future file format support
-   - Consider implementing knowledge base analytics
+## Performance Tips
 
-## Support and Resources
+### Optimizing Retrieval
 
-- Review the implementation in `packages/core/src/ragknowledge.ts`
-- Check the issue tracker for known issues and solutions
-- Contribute improvements and bug fixes through pull requests
+1. **Quality over Quantity**: Focus on high-quality, relevant documents
+2. **Regular Maintenance**: Remove outdated or redundant information
+3. **Structured Content**: Use consistent formatting across documents
+4. **Metadata**: Include descriptive headers and categories
+
+### Scaling Considerations
+
+For large deployments:
+
+- Use PostgreSQL instead of PGLite for better performance
+- Implement caching for frequently accessed knowledge
+- Consider dedicated embedding services
+- Monitor query performance and optimize as needed
+
+## Examples
+
+### Customer Support Bot
+
+```
+knowledge/
+├── products/
+│   ├── product-catalog.md
+│   ├── pricing-guide.pdf
+│   └── feature-comparison.xlsx
+├── support/
+│   ├── troubleshooting-guide.md
+│   ├── faq.md
+│   └── contact-info.txt
+└── policies/
+    ├── return-policy.pdf
+    ├── warranty-terms.md
+    └── privacy-policy.txt
+```
+
+### Technical Documentation Bot
+
+```
+knowledge/
+├── api/
+│   ├── rest-api-reference.md
+│   ├── graphql-schema.json
+│   └── examples/
+│       ├── python-examples.py
+│       └── javascript-examples.js
+├── guides/
+│   ├── getting-started.md
+│   ├── advanced-usage.md
+│   └── best-practices.md
+└── troubleshooting/
+    ├── common-errors.md
+    └── debugging-guide.md
+```
+
+### Company Information Bot
+
+```
+knowledge/
+├── about/
+│   ├── company-history.md
+│   ├── mission-vision.txt
+│   └── team-bios.md
+├── services/
+│   ├── service-offerings.pdf
+│   ├── case-studies/
+│   └── testimonials.md
+└── resources/
+    ├── blog-posts/
+    ├── whitepapers/
+    └── presentations/
+```
+
+## Further Reading
+
+- [Plugin System](./plugins.md) - Learn about ElizaOS plugins
+- [Database System](./database.md) - Understand knowledge storage
+- [Agent Configuration](./agents.md) - Configure your agents
+
+---
+
+**Need Help?** Check the [plugin README](https://github.com/elizaos/eliza/tree/main/packages/plugin-knowledge) for additional details and advanced configuration options.

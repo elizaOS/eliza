@@ -1137,9 +1137,7 @@ export class ExtensionManager {
   async installRequiredExtensions(requiredExtensions: string[]): Promise<void> {
     for (const extension of requiredExtensions) {
       try {
-        await this.db.execute(
-          sql.raw(`CREATE EXTENSION IF NOT EXISTS "${extension}"`),
-        );
+        await this.db.execute(sql.raw(`CREATE EXTENSION IF NOT EXISTS "${extension}"`));
       } catch (error) {
         logger.warn(`Could not install extension ${extension}:`, {
           message: (error as Error).message,

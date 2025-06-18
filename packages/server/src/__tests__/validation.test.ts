@@ -153,7 +153,7 @@ describe('Validation Functions', () => {
 
   describe('getRuntime', () => {
     it('should return runtime when agent exists', () => {
-      const mockRuntime = { 
+      const mockRuntime = {
         agentId: '123e4567-e89b-12d3-a456-426614174000' as UUID,
         character: {},
         providers: [],
