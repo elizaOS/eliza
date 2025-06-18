@@ -1,4 +1,4 @@
-import { ChannelType, logger, validateUuid, type UUID } from '@elizaos/core';
+import { composePromptFromState, IAgentRuntime, ModelType, ChannelType, logger, validateUuid, type UUID } from '@elizaos/core';
 import express, { type RequestHandler } from 'express';
 import internalMessageBus from '../../bus';
 import type { AgentServer } from '../../index';
@@ -22,7 +22,10 @@ interface ChannelUploadRequest extends express.Request<{ channelId: string }> {
 /**
  * Channel management functionality
  */
-export function createChannelsRouter(serverInstance: AgentServer): express.Router {
+export function createChannelsRouter(
+  agents: Map<UUID, IAgentRuntime>, 
+  serverInstance: AgentServer
+): express.Router {
   const router = express.Router();
 
   // GUI posts NEW messages from a user here
@@ -859,6 +862,122 @@ export function createChannelsRouter(serverInstance: AgentServer): express.Route
       }
     }
   );
+
+  
+  (router as any).post(
+    '/central-channels/:channelId/summarize', 
+    async (req: express.Request, res: express.Response) => {
+      const channelId = validateUuid(req.params.channelId);
+      const { agentId } = req.body;
+
+      if (!channelId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid channel ID format'
+        });
+      }
+
+      if (!agentId || !validateUuid(agentId)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Valid agent ID is required'
+        });
+      }
+
+      try {
+        const runtime = agents.get(agentId);
+        
+        if (!runtime) {
+          return res.status(404).json({
+            success: false,
+            error: 'Agent not found or not active'
+          });
+        }
+
+        logger.info(`[CHANNEL SUMMARIZE] Summarizing channel ${channelId}`);
+        const limit = req.query.limit ? Number.parseInt(req.query.limit as string, 10) : 50;
+        const before = req.query.before ? Number.parseInt(req.query.before as string, 10) : undefined;
+        const beforeDate = before ? new Date(before) : undefined;
+
+        const messages = await serverInstance.getMessagesForChannel(channelId, limit, beforeDate);
+
+        if (!messages || messages.length < 2) {
+          return res.status(400).json({
+            success: false,
+            error: 'Channel needs at least 2 messages for summarization'
+          });
+        }
+
+        const recentMessages = messages
+            .reverse() // Show in chronological order
+            .map((msg) => {
+                const isUser = msg.authorId !== runtime.agentId;
+                const role = isUser ? 'User' : 'Agent';
+                return `${role}: ${msg.content}`;
+            })
+            .join('\n');
+
+        const prompt = composePromptFromState({
+            state: { recentMessages },
+            template: `
+Based on the conversation below, generate a short, descriptive title for this chat. The title should capture the main topic or theme of the discussion.
+Rules:
+- Keep it concise (3-6 words)
+- Make it descriptive and specific
+- Avoid generic terms like "Chat" or "Conversation"
+- Focus on the main topic, activity, or subject matter
+- Use natural language, not hashtags or symbols
+Examples:
+- "React Component Help"
+- "Weekend Trip Planning"
+- "Database Design Discussion"
+- "Recipe Exchange"
+- "Career Advice Session"
+Recent conversation:
+{{recentMessages}}
+Respond with just the title, nothing else.
+            `
+        });
+
+        const newTitle = await runtime.useModel(ModelType.TEXT_SMALL, {
+          prompt,
+          temperature: 0.3, // Use low temperature for consistent titles
+          maxTokens: 50, // Keep titles short
+        });
+
+        if (!newTitle || newTitle.trim().length === 0) {
+          logger.warn(`[ChatTitleEvaluator] Failed to generate title for room ${channelId}`);
+          return;
+        }
+
+        const cleanTitle = newTitle.trim().replace(/^["']|["']$/g, ''); // Remove quotes if present
+
+        logger.info(`[ChatTitleEvaluator] Generated title: "${cleanTitle}" for room ${channelId}`);
+
+        const result = {
+          newTitle,
+          channelId,
+          agentId,
+          agentName: runtime.character.name,
+          generatedAt: new Date().toISOString()
+        };
+
+        logger.success(`[CHANNEL SUMMARIZE] Successfully summarized channel ${channelId}`);
+        
+        res.json({
+          success: true,
+          data: result
+        });
+
+      } catch (error) {
+        logger.error('[CHANNEL SUMMARIZE] Error summarizing channel:', error);
+        res.status(500).json({
+          success: false,
+          error: 'Failed to summarize channel',
+          details: error instanceof Error ? error.message : String(error)
+        });
+      }
+  });
 
   return router;
 }
