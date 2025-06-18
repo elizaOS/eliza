@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { type Character, logger } from '@elizaos/core';
+import { type Character, logger, parseAndValidateCharacter, validateCharacter } from '@elizaos/core';
 import { character as defaultCharacter } from '../../../characters/eliza';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -49,8 +49,12 @@ export async function loadCharactersFromUrl(url: string): Promise<Character[]> {
     const errorMsg = e instanceof Error ? e.message : String(e);
     logger.error(`Error loading character(s) from ${url}: ${errorMsg}`);
 
-    // Instead of process.exit(1), throw a descriptive error that can be caught by our handlers
-    if (errorMsg.includes('JSON')) {
+    // Enhanced error handling for validation errors
+    if (errorMsg.includes('Character validation failed') || errorMsg.includes('validation')) {
+      throw new Error(
+        `Invalid character data from URL '${url}'. The character data does not match the required schema: ${errorMsg}`
+      );
+    } else if (errorMsg.includes('JSON')) {
       throw new Error(
         `Invalid JSON response from URL '${url}'. The resource may not contain valid character data.`
       );
@@ -65,14 +69,28 @@ export async function loadCharactersFromUrl(url: string): Promise<Character[]> {
 }
 
 /**
- * Converts a JSON object representing a character into a Character object with additional settings and secrets.
+ * Converts a JSON object representing a character into a validated Character object with additional settings and secrets.
  *
- * @param {any} character - The input JSON object representing a character.
- * @returns {Promise<Character>} - A Promise that resolves to a Character object.
+ * @param {unknown} character - The input data representing a character.
+ * @returns {Promise<Character>} - A Promise that resolves to a validated Character object.
+ * @throws {Error} If character validation fails.
  */
-export async function jsonToCharacter(character: any): Promise<Character> {
-  // .id isn't really valid
-  const characterId = character.id || character.name;
+export async function jsonToCharacter(character: unknown): Promise<Character> {
+  // First validate the base character data
+  const validationResult = validateCharacter(character);
+  
+  if (!validationResult.success) {
+    const errorDetails = validationResult.error?.issues
+      ? validationResult.error.issues.map(issue => `${issue.path.join('.')}: ${issue.message}`).join('; ')
+      : validationResult.error?.message || 'Unknown validation error';
+    
+    throw new Error(`Character validation failed: ${errorDetails}`);
+  }
+
+  const validatedCharacter = validationResult.data!;
+
+  // Add environment-based settings and secrets (preserve existing functionality)
+  const characterId = validatedCharacter.id || validatedCharacter.name;
   const characterPrefix = `CHARACTER.${characterId.toUpperCase().replace(/ /g, '_')}.`;
   const characterSettings = Object.entries(process.env)
     .filter(([key]) => key.startsWith(characterPrefix))
@@ -80,32 +98,53 @@ export async function jsonToCharacter(character: any): Promise<Character> {
       const settingKey = key.slice(characterPrefix.length);
       return { ...settings, [settingKey]: value };
     }, {});
+
   if (Object.keys(characterSettings).length > 0) {
-    character.settings = character.settings || {};
-    character.secrets = {
-      ...characterSettings,
-      ...(character.secrets || {}),
-      ...(character.settings?.secrets || {}),
+    const updatedCharacter = {
+      ...validatedCharacter,
+      settings: validatedCharacter.settings || {},
+      secrets: {
+        ...characterSettings,
+        ...(validatedCharacter.secrets || {}),
+        ...(validatedCharacter.settings?.secrets || {}),
+      },
     };
+
+    // Re-validate the updated character to ensure it's still valid
+    const revalidationResult = validateCharacter(updatedCharacter);
+    if (!revalidationResult.success) {
+      logger.warn('Character became invalid after adding environment settings, using original validated character');
+      return validatedCharacter;
+    }
+    
+    return revalidationResult.data!;
   }
 
-  return character;
+  return validatedCharacter;
 }
 
 /**
- * Loads a character from the specified file path.
+ * Loads a character from the specified file path with safe JSON parsing and validation.
  *
  * @param {string} filePath - The path to the character file.
- * @returns {Promise<Character>} A Promise that resolves to the loaded Character object.
- * @throws {Error} If the character file is not found.
+ * @returns {Promise<Character>} A Promise that resolves to the validated Character object.
+ * @throws {Error} If the character file is not found, has invalid JSON, or fails validation.
  */
 export async function loadCharacter(filePath: string): Promise<Character> {
   const content = tryLoadFile(filePath);
   if (!content) {
     throw new Error(`Character file not found: ${filePath}`);
   }
-  const character = JSON.parse(content);
-  return jsonToCharacter(character);
+
+  // Use safe JSON parsing and validation
+  const parseResult = parseAndValidateCharacter(content);
+  
+  if (!parseResult.success) {
+    throw new Error(`Failed to load character from ${filePath}: ${parseResult.error?.message}`);
+  }
+
+  // Apply environment settings (this will also re-validate)
+  return jsonToCharacter(parseResult.data!);
 }
 
 /**
@@ -118,16 +157,26 @@ export async function loadCharacter(filePath: string): Promise<Character> {
 function handleCharacterLoadError(path: string, error: unknown): never {
   const errorMsg = error instanceof Error ? error.message : String(error);
 
-  // Check if it's a file not found error or JSON parsing error
+  // Check for different types of errors and provide appropriate messages
   if (errorMsg.includes('ENOENT') || errorMsg.includes('no such file')) {
     logger.error(`Character file not found: ${path}`);
     throw new Error(
       `Character '${path}' not found. Please check if the file exists and the path is correct.`
     );
-  } else if (errorMsg.includes('JSON')) {
-    logger.error(`Invalid character file format: ${path}`);
+  } else if (errorMsg.includes('Character validation failed')) {
+    logger.error(`Character validation failed for: ${path}`);
+    throw new Error(
+      `Character file '${path}' contains invalid character data. ${errorMsg}`
+    );
+  } else if (errorMsg.includes('Invalid JSON')) {
+    logger.error(`Invalid JSON in character file: ${path}`);
     throw new Error(
       `Character file '${path}' has invalid JSON format. Please check the file content.`
+    );
+  } else if (errorMsg.includes('JSON')) {
+    logger.error(`JSON parsing error in character file: ${path}`);
+    throw new Error(
+      `Character file '${path}' has malformed JSON. Please check the file content.`
     );
   } else {
     logger.error(`Error loading character from ${path}: ${errorMsg}`);
