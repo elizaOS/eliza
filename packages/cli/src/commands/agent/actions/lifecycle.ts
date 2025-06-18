@@ -237,8 +237,30 @@ export async function stopAgent(opts: OptionValues): Promise<void> {
         const execAsync = promisify(exec);
 
         // Unix-like: Use pgrep/xargs, excluding current CLI process to prevent self-termination
-        const cmd = `pgrep -f "node.*elizaos" | grep -v ${process.pid} | xargs -r kill || true`;
-        await execAsync(cmd);
+        // Support both node and bun executables, and look for common ElizaOS patterns
+        const patterns = [
+          '(node|bun).*elizaos',
+          '(node|bun).*eliza.*start',
+          '(node|bun).*dist/index.js.*start',
+        ];
+
+        for (const pattern of patterns) {
+          try {
+            const { stdout } = await execAsync(`pgrep -f "${pattern}"`);
+            const pids = stdout
+              .trim()
+              .split('\n')
+              .filter((pid) => pid && pid !== process.pid.toString());
+
+            if (pids.length > 0) {
+              await execAsync(`echo "${pids.join(' ')}" | xargs -r kill`);
+            }
+          } catch (pgrepError) {
+            // pgrep returns exit code 1 when no processes match, which is expected
+            // Only log actual errors, not "no processes found"
+          }
+        }
+
         logger.success('All ElizaOS agents stopped successfully!');
       } catch (error) {
         logger.error(
