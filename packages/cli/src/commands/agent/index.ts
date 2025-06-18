@@ -80,7 +80,8 @@ agent
   .command('stop')
   .alias('st')
   .description('Stop an agent')
-  .requiredOption('-n, --name <name>', 'agent id, name, or index number from list')
+  .option('-n, --name <name>', 'agent id, name, or index number from list')
+  .option('--all', 'stop all running agents')
   .option('-r, --remote-url <url>', 'URL of the remote agent runtime')
   .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
   .action(stopAgent);

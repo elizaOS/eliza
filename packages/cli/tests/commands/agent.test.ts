@@ -36,7 +36,14 @@ describe('ElizaOS Agent Commands', () => {
 
     serverProcess = spawn(
       'bun',
-      [join(scriptDir, '../dist/index.js'), 'start', '--port', testServerPort, '--character', defaultCharacter],
+      [
+        join(scriptDir, '../dist/index.js'),
+        'start',
+        '--port',
+        testServerPort,
+        '--character',
+        defaultCharacter,
+      ],
       {
         env: {
           ...process.env,
@@ -52,7 +59,7 @@ describe('ElizaOS Agent Commands', () => {
     serverProcess.stdout?.on('data', (data: Buffer) => {
       console.log(`[SERVER STDOUT] ${data.toString()}`);
     });
-    
+
     serverProcess.stderr?.on('data', (data: Buffer) => {
       console.error(`[SERVER STDERR] ${data.toString()}`);
     });
@@ -85,7 +92,7 @@ describe('ElizaOS Agent Commands', () => {
           }
         );
         console.log(`[DEBUG] Successfully loaded character: ${character}`);
-        
+
         // Small wait between loading characters to avoid overwhelming the server
         await new Promise((resolve) => setTimeout(resolve, 500));
       } catch (e) {
@@ -103,14 +110,14 @@ describe('ElizaOS Agent Commands', () => {
       try {
         // Use SIGTERM for graceful shutdown, fallback to SIGKILL
         serverProcess.kill('SIGTERM');
-        
+
         // Wait briefly, then force kill if still running
         await new Promise((resolve) => setTimeout(resolve, 2000));
         if (!serverProcess.killed && serverProcess.exitCode === null) {
           serverProcess.kill('SIGKILL');
         }
         await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
-        
+
         // Wait for process to actually exit
         if (!serverProcess.killed && serverProcess.exitCode === null) {
           await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.PROCESS_CLEANUP));
@@ -274,6 +281,22 @@ describe('ElizaOS Agent Commands', () => {
       // Should succeed or not be running
     } catch (e: any) {
       expect(e.stdout || e.stderr).toMatch(/not running/);
+    }
+  });
+
+  // Run this test last to avoid killing the server that other tests depend on
+  it('agent stop --all works for stopping all agents', async () => {
+    // This tests the --all flag functionality using pkill
+    // Placed at end to avoid interfering with other tests that need the server
+    try {
+      const result = execSync(`${elizaosCmd} agent stop --all`, {
+        encoding: 'utf8',
+        timeout: 10000, // 10 second timeout
+      });
+      expect(result).toMatch(/(All ElizaOS agents stopped|stopped successfully)/);
+    } catch (e: any) {
+      // The command may succeed even if no agents are running
+      expect(e.stdout || e.stderr).toMatch(/(stopped|All ElizaOS agents stopped)/);
     }
   });
 });

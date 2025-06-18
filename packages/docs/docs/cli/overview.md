@@ -33,7 +33,6 @@ bun install -g @elizaos/cli
 | [`env`](./env.md)           | Manage environment variables and secrets                                                                       |
 | [`dev`](./dev.md)           | Start the project or plugin in development mode with auto-rebuild, detailed logging, and file change detection |
 | [`publish`](./publish.md)   | Publish a plugin to the registry                                                                               |
-| [`stop`](./stop.md)         | Stop all running ElizaOS agents running locally                                                                |
 
 ## Global Options
 
