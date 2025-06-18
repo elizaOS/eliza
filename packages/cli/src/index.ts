@@ -78,29 +78,6 @@ async function main() {
   // They will still be passed to all commands for backward compatibility
   // Note: Removed --remote-url global option as it conflicts with subcommand options
 
-  // Create a stop command for testing purposes
-  const stopCommand = new Command('stop')
-    .description('Stop all running ElizaOS agents running locally')
-    .action(async () => {
-      logger.info('Stopping all ElizaOS agents...');
-      // Use pkill to terminate all ElizaOS processes
-      try {
-        await import('node:child_process').then(({ exec }) => {
-          exec('pkill -f "node.*elizaos" || true', (error) => {
-            if (error) {
-              logger.error(`Error stopping processes: ${error.message}`);
-            } else {
-              logger.success('Server shutdown complete');
-            }
-          });
-        });
-      } catch (error) {
-        logger.error(
-          `Failed to stop processes: ${error instanceof Error ? error.message : String(error)}`
-        );
-      }
-    });
-
   program
     .addCommand(create)
     .addCommand(monorepo)
@@ -112,8 +89,7 @@ async function main() {
     .addCommand(test)
     .addCommand(env)
     .addCommand(dev)
-    .addCommand(publish)
-    .addCommand(stopCommand);
+    .addCommand(publish);
 
   // if no args are passed, display the banner (it will handle its own update check)
   if (process.argv.length === 2) {

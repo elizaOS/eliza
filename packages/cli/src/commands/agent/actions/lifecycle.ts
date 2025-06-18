@@ -209,6 +209,39 @@ export async function startAgent(options: OptionValues): Promise<void> {
  */
 export async function stopAgent(opts: OptionValues): Promise<void> {
   try {
+    // Validate that either --name or --all is provided
+    if (!opts.name && !opts.all) {
+      console.error('\nError: Must provide either --name <name> or --all flag');
+      console.error('Examples:');
+      console.error('  elizaos agent stop --name eliza');
+      console.error('  elizaos agent stop --all');
+      process.exit(1);
+    }
+
+    // If --all flag is provided, stop all local ElizaOS processes
+    if (opts.all) {
+      logger.info('Stopping all ElizaOS agents...');
+      try {
+        await import('node:child_process').then(({ exec }) => {
+          exec('pkill -f "node.*elizaos" || true', (error) => {
+            if (error) {
+              logger.error(`Error stopping processes: ${error.message}`);
+            } else {
+              logger.success('All ElizaOS agents stopped successfully');
+              console.log('All ElizaOS agents stopped successfully!');
+            }
+          });
+        });
+      } catch (error) {
+        logger.error(
+          `Failed to stop processes: ${error instanceof Error ? error.message : String(error)}`
+        );
+        process.exit(1);
+      }
+      return;
+    }
+
+    // Stop individual agent by name/ID
     const resolvedAgentId = await resolveAgentId(opts.name, opts);
     const baseUrl = getAgentsBaseUrl(opts);
 
