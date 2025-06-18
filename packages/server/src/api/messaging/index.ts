@@ -25,7 +25,7 @@ export function messagingRouter(
   router.use('/', createServersRouter(serverInstance));
 
   // Mount channel management functionality
-  router.use('/', createChannelsRouter(serverInstance));
+  router.use('/', createChannelsRouter(agents, serverInstance));
 
   return router;
 }

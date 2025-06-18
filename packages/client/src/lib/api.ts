@@ -497,6 +497,20 @@ export const apiClient = {
     });
   },
 
+  getChannelTitle: async (
+    channelId: UUID,
+    agentId: UUID
+  ): Promise<{
+    success: boolean;
+    data: { title: string; channelId: string };
+  }> => {
+    return fetcher({
+      url: `/messaging/central-channels/${channelId}/generate-title`,
+      method: 'POST',
+      body: { agentId },
+    });
+  },
+
   // Agent memories (client-perspective)
   getAgentMemories: (
     agentId: UUID,
