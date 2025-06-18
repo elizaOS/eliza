@@ -119,7 +119,11 @@ export async function jsonToCharacter(character: unknown): Promise<Character> {
     return revalidationResult.data!;
   }
 
-  return validatedCharacter;
+  return {
+    ...validatedCharacter,
+    settings: validatedCharacter.settings || {},
+    secrets: validatedCharacter.secrets || {},
+  };
 }
 
 /**
