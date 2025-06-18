@@ -662,7 +662,6 @@ export default function Chat({
 
     const data = await apiClient.getChannelSummary(finalChannelIdForHooks, contextId);
 
-    console.log("$#$#$#$#$#$#$#$#$#$$#$#$#$#$$#$#$#$#$#$", data);
     const title = data?.data?.title
     const participants = await apiClient.getChannelParticipants(chatState.currentDmChannelId);
     if (title && participants) {
@@ -670,6 +669,12 @@ export default function Chat({
         name: title,
         participantCentralUserIds: participants.data
       })
+
+      const currentUserId = getEntityId();
+
+      queryClient.invalidateQueries({
+        queryKey: ['dmChannels', contextId, currentUserId],
+      });
     }
   }
 
