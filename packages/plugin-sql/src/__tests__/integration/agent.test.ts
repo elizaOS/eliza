@@ -5,7 +5,7 @@ import { PgDatabaseAdapter } from '../../pg/adapter';
 import { PgliteDatabaseAdapter } from '../../pglite/adapter';
 import { agentTable } from '../../schema';
 import { mockCharacter } from '../fixtures';
-import { createIsolatedTestDatabase } from '../test-helpers';
+import { createIsolatedTestDatabase, createTestDatabase } from '../test-helpers';
 
 describe('Agent Integration Tests', () => {
   let adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
@@ -700,13 +700,198 @@ describe('Agent Integration Tests', () => {
         expect(deletedAgent).toBeNull();
       });
 
-      it('should return true when deleting non-existent agent', async () => {
+      it('should cascade delete all related data when deleting an agent', async () => {
+        // Create a separate test instance for cascade delete test
+        const agentId = uuidv4() as UUID;
+        const setup = await createTestDatabase(agentId);
+        const cascadeAdapter = setup.adapter;
+
+        try {
+          // The agent was already created by the test helper
+
+          // Create related data for the agent
+          const db = cascadeAdapter.getDatabase();
+
+          // Create a world
+          const worldId = uuidv4() as UUID;
+          await cascadeAdapter.createWorld({
+            id: worldId,
+            name: 'Test World',
+            agentId: agentId,
+            serverId: uuidv4() as UUID,
+          });
+
+          // Create rooms
+          const roomId1 = uuidv4() as UUID;
+          const roomId2 = uuidv4() as UUID;
+          await cascadeAdapter.createRooms([
+            {
+              id: roomId1,
+              name: 'Test Room 1',
+              agentId: agentId,
+              serverId: uuidv4() as UUID,
+              worldId: worldId,
+              channelId: uuidv4() as UUID,
+              type: 'PUBLIC' as any,
+              source: 'test',
+            },
+            {
+              id: roomId2,
+              name: 'Test Room 2',
+              agentId: agentId,
+              serverId: uuidv4() as UUID,
+              worldId: worldId,
+              channelId: uuidv4() as UUID,
+              type: 'PRIVATE' as any,
+              source: 'test',
+            },
+          ]);
+
+          // Create entities
+          const entityId1 = uuidv4() as UUID;
+          const entityId2 = uuidv4() as UUID;
+          await cascadeAdapter.createEntities([
+            {
+              id: entityId1,
+              agentId: agentId,
+              names: ['Entity 1'],
+              metadata: { type: 'test' },
+            },
+            {
+              id: entityId2,
+              agentId: agentId,
+              names: ['Entity 2'],
+              metadata: { type: 'test' },
+            },
+          ]);
+
+          // Create memories
+          const memoryId1 = await cascadeAdapter.createMemory(
+            {
+              id: uuidv4() as UUID,
+              agentId: agentId,
+              entityId: entityId1,
+              roomId: roomId1,
+              content: { text: 'Test memory 1' },
+              createdAt: Date.now(),
+              embedding: new Array(384).fill(0.1), // Create a test embedding
+            },
+            'test_memories'
+          );
+
+          const memoryId2 = await cascadeAdapter.createMemory(
+            {
+              id: uuidv4() as UUID,
+              agentId: agentId,
+              entityId: entityId2,
+              roomId: roomId2,
+              content: { text: 'Test memory 2' },
+              createdAt: Date.now(),
+              embedding: new Array(384).fill(0.2), // Create a test embedding
+            },
+            'test_memories'
+          );
+
+          // Create components
+          await cascadeAdapter.createComponent({
+            id: uuidv4() as UUID,
+            entityId: entityId1,
+            type: 'test_component',
+            data: { value: 'test' },
+            agentId: agentId,
+            roomId: roomId1,
+            worldId: worldId,
+            sourceEntityId: entityId2,
+            createdAt: Date.now(),
+          });
+
+          // Create participants
+          await cascadeAdapter.addParticipant(entityId1, roomId1);
+          await cascadeAdapter.addParticipant(entityId2, roomId2);
+
+          // Create relationships
+          await cascadeAdapter.createRelationship({
+            sourceEntityId: entityId1,
+            targetEntityId: entityId2,
+            tags: ['test_relationship'],
+            metadata: { strength: 0.8 },
+          });
+
+          // Create tasks
+          const taskId = await cascadeAdapter.createTask({
+            id: uuidv4() as UUID,
+            name: 'Test Task',
+            description: 'A test task',
+            roomId: roomId1,
+            worldId: worldId,
+            tags: ['test'],
+            metadata: { priority: 'high' },
+          });
+
+          // Create cache entries
+          await cascadeAdapter.setCache('test_cache_key', { value: 'cached data' });
+
+          // Create logs
+          await cascadeAdapter.log({
+            body: { action: 'test_log' },
+            entityId: entityId1,
+            roomId: roomId1,
+            type: 'test',
+          });
+
+          // Verify all data was created
+          expect(await cascadeAdapter.getWorld(worldId)).not.toBeNull();
+          expect((await cascadeAdapter.getRoomsByIds([roomId1, roomId2]))?.length).toBe(2);
+          expect((await cascadeAdapter.getEntityByIds([entityId1, entityId2]))?.length).toBe(2);
+          expect(await cascadeAdapter.getMemoryById(memoryId1)).not.toBeNull();
+          expect(await cascadeAdapter.getMemoryById(memoryId2)).not.toBeNull();
+          expect(await cascadeAdapter.getTask(taskId)).not.toBeNull();
+          expect(await cascadeAdapter.getCache('test_cache_key')).toBeDefined();
+
+          // Now delete the agent - this should cascade delete everything
+          const deleteResult = await cascadeAdapter.deleteAgent(agentId);
+          expect(deleteResult).toBe(true);
+
+          // Verify the agent is deleted
+          expect(await cascadeAdapter.getAgent(agentId)).toBeNull();
+
+          // Verify all related data is deleted via cascade
+          // Worlds should be deleted
+          expect(await cascadeAdapter.getWorld(worldId)).toBeNull();
+
+          // Rooms should be deleted
+          const rooms = await cascadeAdapter.getRoomsByIds([roomId1, roomId2]);
+          expect(rooms).toEqual([]);
+
+          // Entities should be deleted
+          const entities = await cascadeAdapter.getEntityByIds([entityId1, entityId2]);
+          expect(entities).toEqual([]);
+
+          // Memories should be deleted
+          expect(await cascadeAdapter.getMemoryById(memoryId1)).toBeNull();
+          expect(await cascadeAdapter.getMemoryById(memoryId2)).toBeNull();
+
+          // Tasks should be deleted
+          expect(await cascadeAdapter.getTask(taskId)).toBeNull();
+
+          // Cache should be deleted
+          expect(await cascadeAdapter.getCache('test_cache_key')).toBeUndefined();
+
+          // Components, participants, relationships, and logs should also be deleted
+          // but we don't have direct methods to verify these in the adapter
+          // They would be verified through database queries if needed
+        } finally {
+          await setup.cleanup();
+        }
+      });
+
+      it('should return false when deleting non-existent agent', async () => {
         const nonExistentId = uuidv4() as UUID;
 
         const result = await adapter.deleteAgent(nonExistentId);
 
-        // Should return true even though agent didn't exist
-        expect(result).toBe(true);
+        // Should return false for non-existent agents with the new implementation
+        expect(result).toBe(false);
       });
 
       it('should delete agent with complex data structure', async () => {
