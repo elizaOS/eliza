@@ -819,7 +819,6 @@ export type AgentPanel = {
 };
 
 export function useAgentPanels(agentId: UUID | undefined | null, options = {}) {
-  console.log('useAgentPanels', agentId);
   const network = useNetworkStatus();
 
   return useQuery<{
