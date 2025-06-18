@@ -901,10 +901,10 @@ export function createChannelsRouter(
 
         const messages = await serverInstance.getMessagesForChannel(channelId, limit, beforeDate);
 
-        if (!messages || messages.length < 2) {
+        if (!messages || messages.length < 4) {
           return res.status(400).json({
             success: false,
-            error: 'Channel needs at least 2 messages for summarization'
+            error: 'Channel needs at least 4 messages for summarization'
           });
         }
 
