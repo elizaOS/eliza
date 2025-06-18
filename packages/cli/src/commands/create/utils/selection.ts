@@ -35,6 +35,11 @@ export function getAvailableAIModels(): AIModelOption[] {
       value: 'claude',
       description: 'Use Anthropic Claude models',
     },
+    {
+      title: 'Ollama (self-hosted, free to use)',
+      value: 'ollama',
+      description: 'Use self-hosted Ollama models for complete privacy and control',
+    },
   ];
 }
 
