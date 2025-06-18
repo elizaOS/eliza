@@ -497,6 +497,20 @@ export const apiClient = {
     });
   },
 
+  getChannelSummary: async (
+    channelId: UUID,
+    agentId: UUID
+  ): Promise<{
+    success: boolean;
+    data: { newTitle: string; channelId: string; };
+  }> => {
+    return fetcher({
+      url: `/messaging/central-channels/${channelId}/summarize`,
+      method: 'POST',
+      body: { agentId },
+    });
+  },  
+
   // Agent memories (client-perspective)
   getAgentMemories: (
     agentId: UUID,
