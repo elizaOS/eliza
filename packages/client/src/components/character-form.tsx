@@ -35,6 +35,7 @@ import { agentTemplates, getTemplateById } from '@/config/agent-templates';
 import { cn } from '@/lib/utils';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { SplitButton } from '@/components/ui/split-button';
+import type { SecretPanelRef } from './secret-panel';
 
 export type InputField = {
   name: string;
@@ -84,6 +85,8 @@ export type CharacterFormProps = {
     importAgent?: (value: Agent) => void;
     [key: string]: any;
   };
+  onTemplateChange?: () => void;
+  secretPanelRef?: React.RefObject<SecretPanelRef | null>;
 };
 
 // Custom hook to detect container width and determine if labels should be shown
@@ -126,6 +129,8 @@ export default function CharacterForm({
   isDeleting = false,
   isStopping = false,
   customComponents = [],
+  onTemplateChange,
+  secretPanelRef,
 }: CharacterFormProps) {
   const { toast } = useToast();
   const { data: elevenlabsVoices, isLoading: isLoadingVoices } = useElevenLabsVoices();
@@ -422,6 +427,22 @@ export default function CharacterForm({
     setIsSubmitting(true);
 
     try {
+      // Validate required secrets if we have a secret panel ref
+      if (secretPanelRef?.current) {
+        const secretValidation = secretPanelRef.current.validateSecrets();
+        if (!secretValidation.isValid) {
+          toast({
+            title: 'Missing Required Secrets',
+            description: `Please provide the following required secrets: ${secretValidation.missingSecrets.join(', ')}`,
+            variant: 'destructive',
+          });
+          setIsSubmitting(false);
+          // Switch to the Secret tab to show the user what's missing
+          setActiveTab('custom-Secret');
+          return;
+        }
+      }
+
       const updatedCharacter = await ensureAvatarSize(characterValue);
       await onSubmit(updatedCharacter);
     } catch (error) {
@@ -650,9 +671,11 @@ export default function CharacterForm({
       if (template && setCharacterValue.importAgent) {
         // Use the importAgent function to set all template values at once
         setCharacterValue.importAgent(template.template as Agent);
+        // Notify parent of template change
+        onTemplateChange?.();
       }
     },
-    [onReset, setCharacterValue]
+    [onReset, setCharacterValue, onTemplateChange]
   );
 
   // Create all tabs data with better short labels
@@ -670,7 +693,7 @@ export default function CharacterForm({
   ];
 
   return (
-    <div ref={containerRef} className="w-full max-w-full mx-auto p-4 sm:p-6">
+    <div ref={containerRef} className="w-full max-w-full mx-auto p-4 sm:p-6 h-full overflow-y-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-3xl font-bold">{title || 'Agent Settings'}</h1>
@@ -757,12 +780,12 @@ export default function CharacterForm({
           </div>
 
           <Card>
-            <CardContent className="p-6">
+            <CardContent className="p-6 max-h-[60vh] overflow-y-auto">
               {AGENT_FORM_SCHEMA.map((section) => (
                 <TabsContent
                   key={section.sectionValue}
                   value={section.sectionValue}
-                  className="space-y-6"
+                  className="space-y-6 mt-0 focus:outline-none"
                 >
                   {section.sectionType === SECTION_TYPE.INPUT
                     ? (section.fields as InputField[]).map(renderInputField)
@@ -770,8 +793,12 @@ export default function CharacterForm({
                 </TabsContent>
               ))}
               {customComponents.map((component) => (
-                <TabsContent key={`custom-${component.name}`} value={`custom-${component.name}`}>
-                  {component.component}
+                <TabsContent
+                  key={`custom-${component.name}`}
+                  value={`custom-${component.name}`}
+                  className="mt-0 focus:outline-none"
+                >
+                  <div className="h-full">{component.component}</div>
                 </TabsContent>
               ))}
             </CardContent>
