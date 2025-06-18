@@ -502,7 +502,7 @@ export const apiClient = {
     agentId: UUID
   ): Promise<{
     success: boolean;
-    data: { newTitle: string; channelId: string; };
+    data: { title: string; channelId: string; };
   }> => {
     return fetcher({
       url: `/messaging/central-channels/${channelId}/summarize`,

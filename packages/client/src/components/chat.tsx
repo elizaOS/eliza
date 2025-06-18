@@ -566,7 +566,7 @@ export default function Chat({
     updateChatState,
     handleNewDmChannel,
   ]);
-  
+
   // Cleanup timeout on unmount or when agentDmChannels appears
   useEffect(() => {
     if (agentDmChannels.length > 0 && autoCreateTimeoutRef.current) {
@@ -663,7 +663,7 @@ export default function Chat({
     const data = await apiClient.getChannelSummary(finalChannelIdForHooks, contextId);
 
     console.log("$#$#$#$#$#$#$#$#$#$$#$#$#$#$$#$#$#$#$#$", data);
-    const title = data?.data?.newTitle
+    const title = data?.data?.title
     const participants = await apiClient.getChannelParticipants(chatState.currentDmChannelId);
     if (title && participants) {
       await apiClient.updateChannel(finalChannelIdForHooks, {

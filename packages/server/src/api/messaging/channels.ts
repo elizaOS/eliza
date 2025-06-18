@@ -955,11 +955,8 @@ Respond with just the title, nothing else.
         logger.info(`[ChatTitleEvaluator] Generated title: "${cleanTitle}" for room ${channelId}`);
 
         const result = {
-          newTitle,
+          title: cleanTitle,
           channelId,
-          agentId,
-          agentName: runtime.character.name,
-          generatedAt: new Date().toISOString()
         };
 
         logger.success(`[CHANNEL SUMMARIZE] Successfully summarized channel ${channelId}`);
