@@ -865,7 +865,7 @@ export function createChannelsRouter(
 
   
   (router as any).post(
-    '/central-channels/:channelId/summarize', 
+    '/central-channels/:channelId/generate-title',
     async (req: express.Request, res: express.Response) => {
       const channelId = validateUuid(req.params.channelId);
       const { agentId } = req.body;
@@ -902,9 +902,13 @@ export function createChannelsRouter(
         const messages = await serverInstance.getMessagesForChannel(channelId, limit, beforeDate);
 
         if (!messages || messages.length < 4) {
-          return res.status(400).json({
-            success: false,
-            error: 'Channel needs at least 4 messages for summarization'
+          return res.status(200).json({
+            success: true,
+            data: {
+              title: null,
+              channelId,
+              reason: 'Not enough messages to generate a title',
+            },
           });
         }
 

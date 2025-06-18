@@ -302,6 +302,7 @@ export default function Chat({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const inputDisabledRef = useRef<boolean>(false);
+  const chatTitleRef = useRef<string>('');
 
   // For DM, we need agent data. For GROUP, we need channel data
   const { data: agentDataResponse, isLoading: isLoadingAgent } = useAgent(
@@ -319,7 +320,7 @@ export default function Chat({
     : undefined;
 
   // Use the new hooks for DM channel management
-  const { data: agentDmChannels = [], isLoading: isLoadingAgentDmChannels } = useDmChannelsForAgent(
+  const { data: agentDmChannels = [], isLoading: isLoadingAgentDmChannels, refetch: refetchDmChannels } = useDmChannelsForAgent(
     chatType === ChannelType.DM ? contextId : undefined
   );
 
@@ -506,6 +507,13 @@ export default function Chat({
     inputDisabledRef.current = chatState.inputDisabled;
   }, [chatState.inputDisabled]);
 
+  useEffect(() => {
+    const currentChannel = agentDmChannels.find((c) => c.id === chatState.currentDmChannelId);
+    if (currentChannel?.name) {
+      chatTitleRef.current = currentChannel.name;
+    }
+  }, [agentDmChannels, chatState.currentDmChannelId]);
+
   // Effect to handle initial DM channel selection or creation
   useEffect(() => {
     if (chatType === ChannelType.DM && targetAgentData?.id) {
@@ -649,18 +657,17 @@ export default function Chat({
   }, [messages, autoScrollEnabled, safeScrollToBottom, finalChannelIdForHooks]);
 
   const updateChatTitle = async() => {
-    const currentChatTitle = agentDmChannels.find((c) => c.id === finalChannelIdForHooks);
     const timestampChatNameRegex = /^Chat - [A-Z][a-z]{2} \d{1,2}, \d{2}:\d{2}:\d{2}$/;
     const shouldUpdate: boolean = 
-      !!currentChatTitle?.name && 
-      timestampChatNameRegex.test(currentChatTitle.name) &&
+      !!chatTitleRef.current && 
+      timestampChatNameRegex.test(chatTitleRef.current) &&
       chatType === ChannelType.DM;
 
     if (!shouldUpdate) {
       return;
     }
 
-    const data = await apiClient.getChannelSummary(finalChannelIdForHooks, contextId);
+    const data = await apiClient.getChannelTitle(finalChannelIdForHooks, contextId);
 
     const title = data?.data?.title
     const participants = await apiClient.getChannelParticipants(chatState.currentDmChannelId);
@@ -670,11 +677,11 @@ export default function Chat({
         participantCentralUserIds: participants.data
       })
 
-      const currentUserId = getEntityId();
-
-      queryClient.invalidateQueries({
-        queryKey: ['dmChannels', contextId, currentUserId],
-      });
+      // const currentUserId = getEntityId();
+      await refetchDmChannels();
+      // queryClient.invalidateQueries({
+      //   queryKey: ['dmChannels', contextId, currentUserId],
+      // });
     }
   }
 
