@@ -22,8 +22,10 @@ elizaos start [options]
 | ------------------------------- | ------------------------------------------------------------------------------ |
 | `-c, --configure`               | Force reconfiguration of services and AI models (bypasses saved configuration) |
 | `-char, --character [paths...]` | Character file(s) to use - accepts paths or URLs                               |
-| `-b, --build`                   | Build the project before starting                                              |
+| `--build`                       | Build the project before starting                                              |
+| `--no-build`                    | Skip the build step before starting                                            |
 | `-p, --port <port>`             | Port to listen on (default: 3000)                                              |
+| `--quiet`                       | Suppress all non-error output to the console                                   |
 
 ## Examples
 
@@ -41,6 +43,12 @@ elizaos start --build
 
 # Force reconfiguration
 elizaos start --configure
+```
+
+### Suppressing Output
+```bash
+# Start quietly, only showing errors
+elizaos start --quiet
 ```
 
 ### Character Configuration

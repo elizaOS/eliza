@@ -24,6 +24,7 @@ elizaos dev [options]
 | `-char, --character [paths...]` | Character file(s) to use - accepts paths or URLs                     |
 | `-b, --build`                   | Build the project before starting                                    |
 | `-p, --port <port>`             | Port to listen on                                                    |
+| `--no-open`                     | Do not automatically open the browser on start                       |
 
 ## Examples
 
@@ -48,6 +49,9 @@ elizaos dev --configure
 
 # Build before starting development
 elizaos dev --build
+
+# Start without opening the browser
+elizaos dev --no-open
 ```
 
 ### Character File Specification

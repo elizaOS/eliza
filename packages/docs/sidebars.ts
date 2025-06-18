@@ -67,6 +67,11 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: 'doc',
+          id: 'core/characters',
+          label: 'Character Files',
+        },
+        {
+          type: 'doc',
           id: 'core/knowledge',
           label: 'Knowledge',
         },
@@ -109,6 +114,11 @@ const sidebars: SidebarsConfig = {
           type: 'doc',
           id: 'core/testing',
           label: 'Testing',
+        },
+        {
+          type: 'doc',
+          id: 'core/automated-docs',
+          label: 'Automated Docs',
         },
       ],
     },
@@ -171,6 +181,11 @@ const sidebars: SidebarsConfig = {
           type: 'doc',
           id: 'cli/update',
           label: 'Update',
+        },
+        {
+          type: 'doc',
+          id: 'cli/global-options',
+          label: 'Global Options',
         },
       ],
     },

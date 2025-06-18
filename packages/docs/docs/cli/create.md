@@ -29,12 +29,15 @@ elizaos create --help
 
 ## Options
 
-| Option              | Description                                                      |
-| ------------------- | ---------------------------------------------------------------- |
-| `-d, --dir <dir>`   | Installation directory (default: `.`)                            |
-| `-y, --yes`         | Skip confirmation and use defaults (default: `false`)            |
-| `-t, --type <type>` | Type of template to use (`project`, `plugin`, `agent`, or `tee`) |
-| `[name]`            | Name for the project, plugin, or agent (optional)                |
+| Option                | Description                                                      |
+| --------------------- | ---------------------------------------------------------------- |
+| `-d, --dir <dir>`     | Installation directory (default: `.`)                            |
+| `-y, --yes`           | Skip confirmation and use defaults (default: `false`)            |
+| `-t, --type <type>`   | Type of template to use (`project`, `plugin`, `agent`, or `tee`) |
+| `--template <name>`   | Use a specific template by name (e.g., `default`, `minimal`)     |
+| `--no-install`        | Skip automatic dependency installation after creation            |
+| `--no-git`            | Skip `git init` for the new project                              |
+| `[name]`              | Name for the project, plugin, or agent (optional)                |
 
 ## Interactive Process
 
@@ -98,6 +101,19 @@ elizaos create -t agent my-character-name
 
 # Create a TEE (Trusted Execution Environment) project
 elizaos create -t tee my-tee-project
+```
+
+### Advanced Creation
+
+```bash
+# Create a project from a specific template
+elizaos create my-special-project --template minimal
+
+# Create a project without installing dependencies automatically
+elizaos create my-lean-project --no-install
+
+# Create a project without initializing a git repository
+elizaos create my-repo-less-project --no-git
 ```
 
 ### Custom Directory

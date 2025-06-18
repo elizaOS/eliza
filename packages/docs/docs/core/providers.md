@@ -30,6 +30,8 @@ A provider's primary purpose is to supply dynamic contextual information that in
 The provider interface is defined in [types.ts](/packages/core/src/types.ts):
 
 ```typescript
+import { IAgentRuntime, Memory, State, ProviderResult } from '@elizaos/core';
+
 interface Provider {
   /** Provider name */
   name: string;
@@ -221,6 +223,8 @@ Visit the [ElizaOS Plugin Registry](https://github.com/elizaos-plugins/registry)
 ### Time Provider Example
 
 ```typescript
+import { Provider, IAgentRuntime, Memory } from '@elizaos/core';
+
 const timeProvider: Provider = {
   name: 'time',
   description: 'Provides the current date and time',
@@ -248,6 +252,8 @@ const timeProvider: Provider = {
 ### Dynamic Provider Example
 
 ```typescript
+import { Provider, IAgentRuntime, Memory, State } from '@elizaos/core';
+
 const weatherProvider: Provider = {
   name: 'weather',
   description: 'Provides weather information for a location',

@@ -18,13 +18,13 @@ elizaos plugins [options] [command]
 
 ## Subcommands
 
-| Subcommand          | Aliases   | Description                                                                        | Arguments                                                                 | Options                                                                                   |
-| ------------------- | --------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `list`              | `l`       | List available plugins to install into the project (shows v1.x plugins by default) |                                                                           | `--all` (detailed version info), `--v0` (v0.x compatible only)                            |
-| `add`               | `install` | Add a plugin to the project                                                        | `<plugin>` (plugins name e.g., "abc", "plugin-abc", "elizaos/plugin-abc") | `-n, --no-env-prompt`, `-b, --branch <branchName>` (default: main), `-T, --tag <tagname>` |
-| `update`            | `refresh` | Fetch the latest plugin registry and update local cache                            |                                                                           |                                                                                           |
-| `installed-plugins` |           | List plugins found in the project dependencies                                     |                                                                           |                                                                                           |
-| `remove`            | `delete`  | Remove a plugins from the project                                                  | `<plugin>` (plugins name e.g., "abc", "plugin-abc", "elizaos/plugin-abc") |                                                                                           |
+| Subcommand          | Aliases   | Description                                                                        | Arguments                                                                 | Options                                                                                             |
+| ------------------- | --------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `list`              | `l`       | List available plugins to install into the project (shows v1.x plugins by default) |                                                                           | `--all` (detailed version info), `--v0` (v0.x compatible only)                                      |
+| `add`               | `install` | Add a plugin to the project                                                        | `<plugin>` (plugins name e.g., "abc", "plugin-abc", "elizaos/plugin-abc") | `-n, --no-env-prompt`, `-b, --branch`, `-T, --tag`, `--dev`, `--force`                               |
+| `update`            | `refresh` | Fetch the latest plugin registry and update local cache                            |                                                                           |                                                                                                     |
+| `installed-plugins` |           | List plugins found in the project dependencies                                     |                                                                           |                                                                                                     |
+| `remove`            | `delete`  | Remove a plugins from the project                                                  | `<plugin>` (plugins name e.g., "abc", "plugin-abc", "elizaos/plugin-abc") |                                                                                                     |
 
 ## Examples
 
@@ -52,6 +52,12 @@ elizaos plugins add openai
 
 # Add a plugin by full package name
 elizaos plugins add @elizaos/plugin-anthropic
+
+# Add a plugin as a development dependency
+elizaos plugins add @elizaos/plugin-docs --dev
+
+# Force re-installation of a plugin
+elizaos plugins add @elizaos/plugin-openai --force
 
 # Add plugin and skip environment variable prompts
 elizaos plugins add google-ai --no-env-prompt
@@ -185,11 +191,13 @@ elizaos test
 
 ### 4. Publish Your Plugin
 
+For detailed instructions on authentication, plugin requirements, and the full publishing process, see the [**`publish` command documentation**](./publish.md).
+
 ```bash
-# Test publishing process
+# Test the publishing process before committing
 elizaos publish --test
 
-# Publish to registry
+# Publish to the registry
 elizaos publish
 ```
 
