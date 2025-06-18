@@ -246,20 +246,6 @@ describe('ElizaOS Agent Commands', () => {
     }
   });
 
-  it('agent stop --all works for stopping all agents', async () => {
-    // This tests the --all flag functionality
-    try {
-      const result = execSync(`${elizaosCmd} agent stop --all`, {
-        encoding: 'utf8',
-        timeout: 10000, // 10 second timeout
-      });
-      expect(result).toMatch(/(All ElizaOS agents stopped|stopped successfully)/);
-    } catch (e: any) {
-      // The command may succeed even if no agents are running
-      expect(e.stdout || e.stderr).toMatch(/(stopped|All ElizaOS agents stopped)/);
-    }
-  });
-
   it('agent set updates configuration correctly', async () => {
     const configFile = join(testTmpDir, 'update_config.json');
     const configContent = JSON.stringify({
@@ -295,6 +281,22 @@ describe('ElizaOS Agent Commands', () => {
       // Should succeed or not be running
     } catch (e: any) {
       expect(e.stdout || e.stderr).toMatch(/not running/);
+    }
+  });
+
+  // Run this test last to avoid killing the server that other tests depend on
+  it('agent stop --all works for stopping all agents', async () => {
+    // This tests the --all flag functionality using pkill
+    // Placed at end to avoid interfering with other tests that need the server
+    try {
+      const result = execSync(`${elizaosCmd} agent stop --all`, {
+        encoding: 'utf8',
+        timeout: 10000, // 10 second timeout
+      });
+      expect(result).toMatch(/(All ElizaOS agents stopped|stopped successfully)/);
+    } catch (e: any) {
+      // The command may succeed even if no agents are running
+      expect(e.stdout || e.stderr).toMatch(/(stopped|All ElizaOS agents stopped)/);
     }
   });
 });
