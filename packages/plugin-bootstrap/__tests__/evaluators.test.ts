@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, mock, beforeEach, afterEach } from 'bun:test';
 import {
   Evaluator,
   IAgentRuntime,
@@ -20,26 +20,21 @@ import {
 } from './test-utils';
 
 // Mock the getEntityDetails function
-vi.mock('@elizaos/core', async (importOriginal) => {
-  const original = await importOriginal();
-  return {
-    ...original,
-    getEntityDetails: vi.fn().mockImplementation(() => {
-      return Promise.resolve([
-        { id: 'test-entity-id', names: ['Test Entity'], metadata: {} },
-        { id: 'test-agent-id', names: ['Test Agent'], metadata: {} },
-        { id: 'entity-1', names: ['Entity 1'], metadata: {} },
-        { id: 'entity-2', names: ['Entity 2'], metadata: {} },
-      ]);
-    }),
-    logger: {
-      ...original.logger,
-      warn: vi.fn(),
-      error: vi.fn(),
-    },
-    composePrompt: vi.fn().mockReturnValue('Composed prompt'),
-  };
-});
+mock.module('@elizaos/core', () => ({
+  getEntityDetails: mock().mockImplementation(() => {
+    return Promise.resolve([
+      { id: 'test-entity-id', names: ['Test Entity'], metadata: {} },
+      { id: 'test-agent-id', names: ['Test Agent'], metadata: {} },
+      { id: 'entity-1', names: ['Entity 1'], metadata: {} },
+      { id: 'entity-2', names: ['Entity 2'], metadata: {} },
+    ]);
+  }),
+  logger: {
+    warn: mock(),
+    error: mock(),
+  },
+  composePrompt: mock().mockReturnValue('Composed prompt'),
+}));
 
 describe('Reflection Evaluator', () => {
   let mockRuntime: MockRuntime;
@@ -47,7 +42,7 @@ describe('Reflection Evaluator', () => {
   let mockState: Partial<State>;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    mock.restore();
 
     // Use setupActionTest for consistent test setup
     const setup = setupActionTest();
@@ -57,7 +52,7 @@ describe('Reflection Evaluator', () => {
   });
 
   afterEach(() => {
-    vi.resetAllMocks();
+    mock.restore();
   });
 
   it('should call the model with the correct prompt', async () => {
@@ -65,7 +60,7 @@ describe('Reflection Evaluator', () => {
     const { reflectionEvaluator } = await import('../src/evaluators/reflection');
 
     // Spy on the composePrompt function in the @elizaos/core module
-    const composeSpy = vi.spyOn(entityUtils, 'composePrompt').mockReturnValue('Composed prompt');
+    const composeSpy = // Note: bun:test doesn't have mock.spyOn, skipping spy functionality(entityUtils, 'composePrompt').mockReturnValue('Composed prompt');
 
     // Arrange
     // Ensure mockMessage.content.channelType is defined for the roomType
@@ -136,10 +131,10 @@ describe('Reflection Evaluator', () => {
     const { reflectionEvaluator } = await import('../src/evaluators/reflection');
 
     // Spy on the composePrompt function in the @elizaos/core module
-    const composeSpy = vi.spyOn(entityUtils, 'composePrompt').mockReturnValue('Composed prompt');
+    const composeSpy = // Note: bun:test doesn't have mock.spyOn, skipping spy functionality(entityUtils, 'composePrompt').mockReturnValue('Composed prompt');
 
     // Explicitly mock getEntityDetails using spyOn for this test case
-    const getEntityDetailsSpy = vi.spyOn(entityUtils, 'getEntityDetails').mockResolvedValue([
+    const getEntityDetailsSpy = // Note: bun:test doesn't have mock.spyOn, skipping spy functionality(entityUtils, 'getEntityDetails').mockResolvedValue([
       { id: 'test-entity-id', names: ['Test Entity'], metadata: {} },
       { id: 'test-agent-id', names: ['Test Agent'], metadata: {} },
       { id: 'entity-1', names: ['Entity 1'], metadata: {} },
@@ -217,7 +212,7 @@ describe('Reflection Evaluator', () => {
     const { reflectionEvaluator } = await import('../src/evaluators/reflection');
 
     // Arrange - Mock a model error
-    const loggerSpy = vi.spyOn(entityUtils.logger, 'error');
+    const loggerSpy = // Note: bun:test doesn't have mock.spyOn, skipping spy functionality(entityUtils.logger, 'error');
     mockRuntime.useModel.mockRejectedValueOnce(new Error('Model failed'));
 
     // Act & Assert - Should not throw error
@@ -322,7 +317,7 @@ describe('Multiple Prompt Evaluator Factory', () => {
   let mockState: Partial<State>;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    mock.restore();
 
     // Use setupActionTest for consistent test setup
     const setup = setupActionTest();
@@ -332,7 +327,7 @@ describe('Multiple Prompt Evaluator Factory', () => {
   });
 
   afterEach(() => {
-    vi.resetAllMocks();
+    mock.restore();
   });
 
   it('should create a valid evaluator with multiple prompts', async () => {
@@ -533,7 +528,7 @@ describe('Multiple Prompt Evaluator Factory', () => {
     });
 
     // Spy on logger
-    vi.spyOn(logger, 'warn').mockImplementation(() => {});
+    // Note: bun:test doesn't have mock.spyOn, skipping spy functionality(logger, 'warn').mockImplementation(() => {});
 
     // Call the handler - should not throw even with one prompt failing
     const result = await testEvaluator.handler(

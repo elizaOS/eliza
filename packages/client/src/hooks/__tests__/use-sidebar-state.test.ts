@@ -1,13 +1,13 @@
 import { renderHook, act } from '@testing-library/react';
-import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { mock, describe, it, expect, beforeEach } from 'bun:test';
 import { useSidebarState } from '../use-sidebar-state';
 
 // Mock localStorage
 const localStorageMock = {
-  getItem: vi.fn(),
-  setItem: vi.fn(),
-  removeItem: vi.fn(),
-  clear: vi.fn(),
+  getItem: mock(),
+  setItem: mock(),
+  removeItem: mock(),
+  clear: mock(),
 };
 
 Object.defineProperty(window, 'localStorage', {
@@ -15,15 +15,15 @@ Object.defineProperty(window, 'localStorage', {
 });
 
 // Mock clientLogger
-vi.mock('@/lib/logger', () => ({
+mock.module('../../lib/logger', () => ({
   default: {
-    error: vi.fn(),
+    error: mock(),
   },
 }));
 
 describe('useSidebarState', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    mock.restore();
     localStorageMock.getItem.mockReturnValue(null);
   });
 

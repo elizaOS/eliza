@@ -1,0 +1,3 @@
+[test]
+# Test timeout matching vitest config
+timeout = 30000

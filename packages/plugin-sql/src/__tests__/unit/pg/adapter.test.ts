@@ -1,26 +1,17 @@
 import { logger } from '@elizaos/core';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, mock } from 'bun:test';
 import { PgDatabaseAdapter } from '../../../pg/adapter';
 import { PostgresConnectionManager } from '../../../pg/manager';
 
 // Mock the logger to avoid console output during tests
-vi.mock('@elizaos/core', async () => {
-  const actual = await vi.importActual('@elizaos/core');
-  return {
-    ...actual,
-    logger: {
-      info: vi.fn(),
-      error: vi.fn(),
-      warn: vi.fn(),
-      debug: vi.fn(),
-    },
-    VECTOR_DIMS: {
-      SMALL: 384,
-      MEDIUM: 512,
-      LARGE: 768,
-    },
-  };
-});
+const mockLogger = {
+  info: mock(() => {}),
+  error: mock(() => {}),
+  warn: mock(() => {}),
+  debug: mock(() => {}),
+};
+
+// Module mocking not needed for this test in bun:test
 
 describe('PgDatabaseAdapter', () => {
   let adapter: PgDatabaseAdapter;
@@ -28,21 +19,24 @@ describe('PgDatabaseAdapter', () => {
   const agentId = '00000000-0000-0000-0000-000000000000';
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    mockLogger.info.mockClear();
+    mockLogger.error.mockClear();
+    mockLogger.warn.mockClear();
+    mockLogger.debug.mockClear();
 
     // Create a mock manager
     mockManager = {
-      getDatabase: vi.fn().mockReturnValue({
+      getDatabase: mock(() => ({
         query: {},
-        transaction: vi.fn(),
-      }),
-      getClient: vi.fn(),
-      testConnection: vi.fn().mockResolvedValue(true),
-      close: vi.fn().mockResolvedValue(undefined),
-      getConnection: vi.fn().mockReturnValue({
-        connect: vi.fn(),
-        end: vi.fn(),
-      }),
+        transaction: mock(() => {}),
+      })),
+      getClient: mock(() => {}),
+      testConnection: mock(() => Promise.resolve(true)),
+      close: mock(() => Promise.resolve()),
+      getConnection: mock(() => ({
+        connect: mock(() => {}),
+        end: mock(() => {}),
+      })),
     };
 
     adapter = new PgDatabaseAdapter(agentId, mockManager);
@@ -113,7 +107,7 @@ describe('PgDatabaseAdapter', () => {
 
   describe('getConnection', () => {
     it('should return connection from manager', async () => {
-      const mockConnection = { connect: vi.fn(), end: vi.fn() };
+      const mockConnection = { connect: mock(), end: mock() };
       mockManager.getConnection.mockReturnValue(mockConnection);
 
       const result = await adapter.getConnection();

@@ -1,26 +1,10 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, mock, spyOn } from 'bun:test';
 import { PgliteDatabaseAdapter } from '../../../pglite/adapter';
 import { PGliteClientManager } from '../../../pglite/manager';
 import { logger } from '@elizaos/core';
 
 // Mock the logger to avoid console output during tests
-vi.mock('@elizaos/core', async () => {
-  const actual = await vi.importActual('@elizaos/core');
-  return {
-    ...actual,
-    logger: {
-      info: vi.fn(),
-      error: vi.fn(),
-      warn: vi.fn(),
-      debug: vi.fn(),
-    },
-    VECTOR_DIMS: {
-      SMALL: 384,
-      MEDIUM: 512,
-      LARGE: 768,
-    },
-  };
-});
+// In bun:test, we'll use a simpler approach
 
 describe('PgliteDatabaseAdapter', () => {
   let adapter: PgliteDatabaseAdapter;
@@ -28,17 +12,17 @@ describe('PgliteDatabaseAdapter', () => {
   const agentId = '00000000-0000-0000-0000-000000000000';
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    // Mocks auto-clear in bun:test;
 
     // Create a mock manager
     mockManager = {
-      getConnection: vi.fn().mockReturnValue({
-        query: vi.fn().mockResolvedValue({ rows: [] }),
-        close: vi.fn().mockResolvedValue(undefined),
-        transaction: vi.fn(),
+      getConnection: mock().mockReturnValue({
+        query: mock().mockResolvedValue({ rows: [] }),
+        close: mock().mockResolvedValue(undefined),
+        transaction: mock(),
       }),
-      close: vi.fn().mockResolvedValue(undefined),
-      isShuttingDown: vi.fn().mockReturnValue(false),
+      close: mock().mockResolvedValue(undefined),
+      isShuttingDown: mock().mockReturnValue(false),
     };
 
     adapter = new PgliteDatabaseAdapter(agentId, mockManager);
@@ -98,7 +82,7 @@ describe('PgliteDatabaseAdapter', () => {
 
   describe('getConnection', () => {
     it('should return the connection from manager', async () => {
-      const mockConnection = { query: vi.fn(), close: vi.fn() };
+      const mockConnection = { query: mock(), close: mock() };
       mockManager.getConnection.mockReturnValue(mockConnection);
 
       const result = await adapter.getConnection();
@@ -117,7 +101,7 @@ describe('PgliteDatabaseAdapter', () => {
 
     it('should handle query errors gracefully', async () => {
       const mockConnection = {
-        query: vi.fn().mockRejectedValue(new Error('Query failed')),
+        query: mock().mockRejectedValue(new Error('Query failed')),
       };
       mockManager.getConnection.mockReturnValue(mockConnection);
 

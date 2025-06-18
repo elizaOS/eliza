@@ -35,11 +35,11 @@
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
-    "test": "vitest run",
-    "test:unit": "vitest run",
-    "test:integration": "vitest run -c vitest.config.integration.ts",
-    "test:coverage": "vitest run --coverage",
-    "test:watch": "vitest watch",
+    "test": "bun test src/**/*.test.ts",
+    "test:unit": "bun test src/**/*.test.ts --exclude **/integration/**",
+    "test:integration": "bun test src/__tests__/integration/**/*.test.ts",
+    "test:coverage": "bun test --coverage",
+    "test:watch": "bun test --watch",
     "test:cli": "bun test tests/commands/"
   },
   "devDependencies": {
@@ -54,7 +54,6 @@
     "@types/prompts": "^2.4.2",
     "@types/semver": "^7.5.8",
     "@types/supertest": "^6.0.2",
-    "@vitest/coverage-v8": "^3.2.3",
     "axios": "^1.7.9",
     "commander": "^10.0.0",
     "diff": "^5.1.0",
@@ -77,8 +76,6 @@
     "tsx": "4.19.4",
     "type-fest": "^3.8.0",
     "typescript": "^5.5.4",
-    "vite": "^5.4.1",
-    "vitest": "^3.0.0",
     "which": "^4.0.0",
     "ws": "^8.18.0",
     "yoctocolors": "^2.1.1"

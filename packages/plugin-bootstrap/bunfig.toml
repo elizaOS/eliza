@@ -1,0 +1,3 @@
+[test]
+# Test timeout in milliseconds
+timeout = 30000

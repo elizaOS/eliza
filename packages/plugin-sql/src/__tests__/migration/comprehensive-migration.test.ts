@@ -17,7 +17,7 @@ import {
   vector,
 } from 'drizzle-orm/pg-core';
 import { drizzle } from 'drizzle-orm/pglite';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, mock, spyOn } from 'bun:test';
 import { DrizzleSchemaIntrospector, runPluginMigrations } from '../../custom-migrator';
 
 // Test schema with all possible scenarios

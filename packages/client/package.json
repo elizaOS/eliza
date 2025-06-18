@@ -15,8 +15,8 @@
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "test": "./scripts/test-all.sh",
     "test:quick": "./scripts/test-quick.sh",
-    "test:unit": "vitest run --coverage",
-    "test:unit:watch": "vitest",
+    "test:unit": "./scripts/run-bun-tests.sh --coverage",
+    "test:unit:watch": "./scripts/run-bun-tests.sh --watch",
     "test:component": "cypress run --component",
     "test:e2e": "cypress run --e2e",
     "test:e2e:with-server": "./scripts/test-e2e-with-server.sh",
@@ -88,7 +88,6 @@
     "@typescript-eslint/eslint-plugin": "8.26.0",
     "@typescript-eslint/parser": "8.26.0",
     "@vitejs/plugin-react-swc": "^3.8.0",
-    "@vitest/coverage-v8": "^3.2.1",
     "asn1.js": "^5.4.1",
     "assert": "^2.1.0",
     "bn.js": "^5.2.2",
@@ -142,7 +141,6 @@
     "util": "^0.12.5",
     "vite": "^6.3.5",
     "vite-tsconfig-paths": "^5.1.4",
-    "vitest": "^3.2.3",
     "wait-on": "^8.0.3"
   }
 }

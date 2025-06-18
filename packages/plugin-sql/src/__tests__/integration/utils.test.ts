@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, mock, spyOn } from 'bun:test';
 import { expandTildePath, resolveEnvFile, resolvePgliteDir } from '../../utils';
 import * as fs from 'node:fs';
 import * as path from 'node:path';

@@ -12,7 +12,7 @@ import {
 } from '@elizaos/core';
 import { pgTable, serial, text, uuid } from 'drizzle-orm/pg-core';
 import { v4 as uuidv4 } from 'uuid';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, mock, spyOn } from 'bun:test';
 import { DatabaseMigrationService } from '../../migration-service';
 import { PgDatabaseAdapter } from '../../pg/adapter';
 import { PgliteDatabaseAdapter } from '../../pglite/adapter';
