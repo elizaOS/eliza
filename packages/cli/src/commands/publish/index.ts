@@ -244,7 +244,7 @@ export const publish = new Command()
               packageJson.repository = { type: 'git', url: '' };
             }
             if (credentials) {
-              packageJson.repository.url = `github:${credentials.username}/${pluginDirName}`;
+              packageJson.repository.url = `git+https://github.com/${credentials.username}/${pluginDirName}.git`;
               console.info(`Set repository: ${packageJson.repository.url}`);
             }
           },
