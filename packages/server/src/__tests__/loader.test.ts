@@ -18,6 +18,9 @@ import { logger } from '@elizaos/core';
 const TEST_CHARACTER_URL =
   'https://raw.githubusercontent.com/elizaOS/eliza/refs/heads/develop/packages/cli/tests/test-characters/shaw.json';
 
+const TEST_MULTI_CHARACTER_URL =
+  'https://raw.githubusercontent.com/elizaOS/eliza/refs/heads/develop/packages/cli/tests/test-characters/multi-chars.json';
+
 // Mock modules
 vi.mock('node:fs', () => ({
   default: {
@@ -126,7 +129,7 @@ describe('Loader Functions', () => {
         json: async () => mockCharacters,
       });
 
-      const result = await loadCharactersFromUrl('https://example.com/characters.json');
+      const result = await loadCharactersFromUrl(TEST_MULTI_CHARACTER_URL);
 
       expect(result).toHaveLength(2);
       expect(result[0].name).toBe('Character 1');

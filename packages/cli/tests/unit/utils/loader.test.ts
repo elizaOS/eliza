@@ -1,6 +1,5 @@
 import { describe, expect, test, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
-import { logger } from '@elizaos/core';
 import {
   tryLoadFile,
   loadCharacter,
@@ -8,6 +7,9 @@ import {
   loadCharactersFromUrl,
 } from '../../../src/commands/start/utils/loader';
 import type { Character } from '@elizaos/core';
+
+const TEST_MULTI_CHARACTER_URL =
+  'https://raw.githubusercontent.com/elizaOS/eliza/refs/heads/develop/packages/cli/tests/test-characters/multi-chars.json';
 
 // Mock dependencies
 vi.mock('node:fs');
@@ -25,7 +27,6 @@ vi.mock('@elizaos/core', async () => {
 });
 
 const mockFs = fs as any;
-const mockLogger = logger as any;
 
 describe('Character Loader', () => {
   beforeEach(() => {
@@ -94,9 +95,7 @@ describe('Character Loader', () => {
       const invalidJson = '{ "name": "Test", "bio": "Test" '; // Missing closing brace
       mockFs.readFileSync.mockReturnValue(invalidJson);
 
-      await expect(loadCharacter('/path/to/invalid.json')).rejects.toThrow(
-        'Invalid JSON'
-      );
+      await expect(loadCharacter('/path/to/invalid.json')).rejects.toThrow('Invalid JSON');
     });
 
     test('should throw error for invalid character data', async () => {
@@ -233,7 +232,7 @@ describe('Character Loader', () => {
       };
       mockFetch.mockResolvedValue(mockResponse);
 
-      const result = await loadCharactersFromUrl('https://example.com/characters.json');
+      const result = await loadCharactersFromUrl(TEST_MULTI_CHARACTER_URL);
       expect(result).toHaveLength(2);
       expect(result[0]).toEqual(expect.objectContaining(validCharacter));
       expect(result[1].name).toBe('Second Character');
@@ -282,9 +281,9 @@ describe('Character Loader', () => {
       };
       mockFetch.mockResolvedValue(mockResponse);
 
-      await expect(loadCharactersFromUrl('https://example.com/invalid-character.json')).rejects.toThrow(
-        'Invalid character data from URL'
-      );
+      await expect(
+        loadCharactersFromUrl('https://example.com/invalid-character.json')
+      ).rejects.toThrow('Invalid character data from URL');
     });
 
     test('should handle validation errors for array of characters', async () => {
@@ -296,9 +295,9 @@ describe('Character Loader', () => {
       };
       mockFetch.mockResolvedValue(mockResponse);
 
-      await expect(loadCharactersFromUrl('https://example.com/mixed-characters.json')).rejects.toThrow(
-        'Character validation failed'
-      );
+      await expect(
+        loadCharactersFromUrl('https://example.com/mixed-characters.json')
+      ).rejects.toThrow('Character validation failed');
     });
   });
 
