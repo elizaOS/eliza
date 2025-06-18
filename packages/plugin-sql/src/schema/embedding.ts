@@ -20,7 +20,7 @@ export const embeddingTable = pgTable(
   'embeddings',
   {
     id: uuid('id').primaryKey().defaultRandom().notNull(),
-    memoryId: uuid('memory_id').references(() => memoryTable.id),
+    memoryId: uuid('memory_id').references(() => memoryTable.id, { onDelete: 'cascade' }),
     createdAt: timestamp('created_at')
       .default(sql`now()`)
       .notNull(),
