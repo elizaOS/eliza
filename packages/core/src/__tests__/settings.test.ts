@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'bun:test';
+import { mock, spyOn } from 'bun:test';
 import {
   createSettingFromConfig,
   getSalt,
@@ -27,15 +28,15 @@ import type {
 } from '../types';
 
 // Mock dependencies
-vi.mock('../src/entities', () => ({
-  createUniqueUuid: vi.fn((runtime, serverId) => `world-${serverId}`),
+mock.module('../src/entities', () => ({
+  createUniqueUuid: mock((runtime, serverId) => `world-${serverId}`),
 }));
 
-vi.mock('../src/logger', () => ({
+mock.module('../src/logger', () => ({
   logger: {
-    error: vi.fn(),
-    info: vi.fn(),
-    debug: vi.fn(),
+    error: mock(),
+    info: mock(),
+    debug: mock(),
   },
 }));
 
@@ -44,14 +45,14 @@ describe('settings utilities', () => {
   let mockWorld: World;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    mock.restore();
     // Mock process.env
     process.env.SECRET_SALT = 'test-salt-value';
 
     mockRuntime = {
       agentId: 'agent-123' as any,
-      getWorld: vi.fn(),
-      updateWorld: vi.fn(),
+      getWorld: mock(),
+      updateWorld: mock(),
     } as unknown as IAgentRuntime;
 
     mockWorld = {

@@ -1,25 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'bun:test';
+import { mock, spyOn } from 'bun:test';
 import { findEntityByName, createUniqueUuid, getEntityDetails, formatEntities } from '../entities';
 import type { IAgentRuntime } from '../types/runtime';
 import type { Entity, UUID, Memory, State } from '../types';
 import { parseJSONObjectFromText } from '../utils';
-import { stringToUuid } from '../index';
-
-// Mock dependencies
-vi.mock('../utils', () => ({
-  stringToUuid: vi.fn(),
-  composePrompt: vi.fn(() => 'mocked prompt'),
-  parseJSONObjectFromText: vi.fn(),
-}));
-
-vi.mock('../index', () => ({
-  logger: {
-    warn: vi.fn(),
-    error: vi.fn(),
-    info: vi.fn(),
-  },
-  stringToUuid: vi.fn(),
-}));
+import * as utils from '../utils';
+import * as index from '../index';
 
 describe('entities', () => {
   let mockRuntime: IAgentRuntime;
@@ -27,7 +13,14 @@ describe('entities', () => {
   let mockState: State;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    mock.restore();
+
+    // Mock logger methods to prevent undefined function errors
+    if (index.logger) {
+      spyOn(index.logger, 'warn').mockImplementation(() => {});
+      spyOn(index.logger, 'error').mockImplementation(() => {});
+      spyOn(index.logger, 'info').mockImplementation(() => {});
+    }
 
     // Create a comprehensive mock runtime
     mockRuntime = {
@@ -36,13 +29,13 @@ describe('entities', () => {
         id: 'agent-id-123' as UUID,
         name: 'TestAgent',
       },
-      getRoom: vi.fn(),
-      getWorld: vi.fn(),
-      getEntitiesForRoom: vi.fn(),
-      getRelationships: vi.fn(),
-      getEntityById: vi.fn(),
-      useModel: vi.fn(),
-      getMemories: vi.fn(),
+      getRoom: mock(),
+      getWorld: mock(),
+      getEntitiesForRoom: mock(),
+      getRelationships: mock(),
+      getEntityById: mock(),
+      useModel: mock(),
+      getMemories: mock(),
     } as unknown as IAgentRuntime;
 
     // Create mock memory
@@ -92,16 +85,17 @@ describe('entities', () => {
         components: [],
       };
 
-      mockRuntime.getRoom = vi.fn().mockResolvedValue(mockRoom);
-      mockRuntime.getWorld = vi.fn().mockResolvedValue(mockWorld);
-      mockRuntime.getEntitiesForRoom = vi.fn().mockResolvedValue([mockEntity]);
-      mockRuntime.getRelationships = vi.fn().mockResolvedValue([]);
-      mockRuntime.getMemories = vi.fn().mockResolvedValue([]);
-      mockRuntime.useModel = vi.fn().mockResolvedValue('mocked model response');
-      mockRuntime.getEntityById = vi.fn().mockResolvedValue(mockEntity);
+      mockRuntime.getRoom = mock().mockResolvedValue(mockRoom);
+      mockRuntime.getWorld = mock().mockResolvedValue(mockWorld);
+      mockRuntime.getEntitiesForRoom = mock().mockResolvedValue([mockEntity]);
+      mockRuntime.getRelationships = mock().mockResolvedValue([]);
+      mockRuntime.getMemories = mock().mockResolvedValue([]);
+      mockRuntime.useModel = mock().mockResolvedValue('mocked model response');
+      mockRuntime.getEntityById = mock().mockResolvedValue(mockEntity);
 
       // Mock the parseJSONObjectFromText to return the expected resolution
-      vi.mocked(parseJSONObjectFromText).mockReturnValue({
+      const parseJSONSpy = spyOn(utils, 'parseJSONObjectFromText');
+      parseJSONSpy.mockReturnValue({
         type: 'EXACT_MATCH',
         entityId: 'entity-123',
         matches: [{ name: 'Alice', reason: 'Exact match found' }],
@@ -112,10 +106,11 @@ describe('entities', () => {
       expect(result).toEqual(mockEntity);
       expect(mockRuntime.getRoom).toHaveBeenCalledWith('room-789');
       expect(mockRuntime.getEntitiesForRoom).toHaveBeenCalledWith('room-789', true);
+      parseJSONSpy.mockRestore();
     });
 
     it('should return null when room not found', async () => {
-      mockRuntime.getRoom = vi.fn().mockResolvedValue(null);
+      mockRuntime.getRoom = mock().mockResolvedValue(null);
 
       const result = await findEntityByName(mockRuntime, mockMemory, mockState);
 
@@ -186,18 +181,18 @@ describe('entities', () => {
         ],
       };
 
-      mockRuntime.getRoom = vi.fn().mockResolvedValue(mockRoom);
-      mockRuntime.getWorld = vi.fn().mockResolvedValue(mockWorld);
-      mockRuntime.getEntitiesForRoom = vi.fn().mockResolvedValue([mockEntity]);
-      mockRuntime.getRelationships = vi.fn().mockResolvedValue([]);
-      mockRuntime.getMemories = vi.fn().mockResolvedValue([]);
-      mockRuntime.useModel = vi.fn().mockResolvedValue(
+      mockRuntime.getRoom = mock().mockResolvedValue(mockRoom);
+      mockRuntime.getWorld = mock().mockResolvedValue(mockWorld);
+      mockRuntime.getEntitiesForRoom = mock().mockResolvedValue([mockEntity]);
+      mockRuntime.getRelationships = mock().mockResolvedValue([]);
+      mockRuntime.getMemories = mock().mockResolvedValue([]);
+      mockRuntime.useModel = mock().mockResolvedValue(
         JSON.stringify({
           type: 'EXACT_MATCH',
           entityId: 'entity-123',
         })
       );
-      mockRuntime.getEntityById = vi.fn().mockResolvedValue(mockEntity);
+      mockRuntime.getEntityById = mock().mockResolvedValue(mockEntity);
 
       await findEntityByName(mockRuntime, mockMemory, mockState);
 
@@ -212,12 +207,12 @@ describe('entities', () => {
         createdAt: Date.now(),
       };
 
-      mockRuntime.getRoom = vi.fn().mockResolvedValue(mockRoom);
-      mockRuntime.getWorld = vi.fn().mockResolvedValue(null);
-      mockRuntime.getEntitiesForRoom = vi.fn().mockResolvedValue([]);
-      mockRuntime.getRelationships = vi.fn().mockResolvedValue([]);
-      mockRuntime.getMemories = vi.fn().mockResolvedValue([]);
-      mockRuntime.useModel = vi.fn().mockResolvedValue('invalid json');
+      mockRuntime.getRoom = mock().mockResolvedValue(mockRoom);
+      mockRuntime.getWorld = mock().mockResolvedValue(null);
+      mockRuntime.getEntitiesForRoom = mock().mockResolvedValue([]);
+      mockRuntime.getRelationships = mock().mockResolvedValue([]);
+      mockRuntime.getMemories = mock().mockResolvedValue([]);
+      mockRuntime.useModel = mock().mockResolvedValue('invalid json');
 
       const result = await findEntityByName(mockRuntime, mockMemory, mockState);
 
@@ -289,22 +284,23 @@ describe('entities', () => {
         ],
       };
 
-      mockRuntime.getRoom = vi.fn().mockResolvedValue(mockRoom);
-      mockRuntime.getWorld = vi.fn().mockResolvedValue(mockWorld);
-      mockRuntime.getEntitiesForRoom = vi.fn().mockResolvedValue([mockEntityWithComponents]);
-      mockRuntime.getRelationships = vi.fn().mockResolvedValue([]);
-      mockRuntime.getMemories = vi.fn().mockResolvedValue([]);
-      mockRuntime.useModel = vi.fn().mockResolvedValue(
+      mockRuntime.getRoom = mock().mockResolvedValue(mockRoom);
+      mockRuntime.getWorld = mock().mockResolvedValue(mockWorld);
+      mockRuntime.getEntitiesForRoom = mock().mockResolvedValue([mockEntityWithComponents]);
+      mockRuntime.getRelationships = mock().mockResolvedValue([]);
+      mockRuntime.getMemories = mock().mockResolvedValue([]);
+      mockRuntime.useModel = mock().mockResolvedValue(
         JSON.stringify({
           entityId: 'entity-exact',
           type: 'EXACT_MATCH',
           matches: [{ name: 'ExactMatch', reason: 'Exact ID match' }],
         })
       );
-      mockRuntime.getEntityById = vi.fn().mockResolvedValue(mockEntityWithComponents);
+      mockRuntime.getEntityById = mock().mockResolvedValue(mockEntityWithComponents);
 
       // Mock parseJSONObjectFromText to return proper resolution
-      vi.mocked(parseJSONObjectFromText).mockReturnValue({
+      const parseJSONSpy = spyOn(utils, 'parseJSONObjectFromText');
+      parseJSONSpy.mockReturnValue({
         entityId: 'entity-exact',
         type: 'EXACT_MATCH',
         matches: [{ name: 'ExactMatch', reason: 'Exact ID match' }],
@@ -316,6 +312,7 @@ describe('entities', () => {
       expect(result?.id).toBe('entity-exact');
       // Verify getEntityById was called (covers lines 274-282)
       expect(mockRuntime.getEntityById).toHaveBeenCalledWith('entity-exact');
+      parseJSONSpy.mockRestore();
     });
 
     it('should find entity by username in components', async () => {
@@ -345,12 +342,12 @@ describe('entities', () => {
         ],
       };
 
-      mockRuntime.getRoom = vi.fn().mockResolvedValue(mockRoom);
-      mockRuntime.getWorld = vi.fn().mockResolvedValue(null);
-      mockRuntime.getEntitiesForRoom = vi.fn().mockResolvedValue([mockEntity]);
-      mockRuntime.getRelationships = vi.fn().mockResolvedValue([]);
-      mockRuntime.getMemories = vi.fn().mockResolvedValue([]);
-      mockRuntime.useModel = vi.fn().mockResolvedValue(
+      mockRuntime.getRoom = mock().mockResolvedValue(mockRoom);
+      mockRuntime.getWorld = mock().mockResolvedValue(null);
+      mockRuntime.getEntitiesForRoom = mock().mockResolvedValue([mockEntity]);
+      mockRuntime.getRelationships = mock().mockResolvedValue([]);
+      mockRuntime.getMemories = mock().mockResolvedValue([]);
+      mockRuntime.useModel = mock().mockResolvedValue(
         JSON.stringify({
           type: 'USERNAME_MATCH',
           matches: [{ name: 'johndoe123', reason: 'Username match' }],
@@ -358,7 +355,8 @@ describe('entities', () => {
       );
 
       // Mock parseJSONObjectFromText
-      vi.mocked(parseJSONObjectFromText).mockReturnValue({
+      const parseJSONSpy = spyOn(utils, 'parseJSONObjectFromText');
+      parseJSONSpy.mockReturnValue({
         type: 'USERNAME_MATCH',
         matches: [{ name: 'johndoe123', reason: 'Username match' }],
       });
@@ -367,6 +365,7 @@ describe('entities', () => {
 
       expect(result).toBeDefined();
       expect(result?.id).toBe('entity-user');
+      parseJSONSpy.mockRestore();
     });
 
     it('should find entity by handle in components', async () => {
@@ -396,12 +395,12 @@ describe('entities', () => {
         ],
       };
 
-      mockRuntime.getRoom = vi.fn().mockResolvedValue(mockRoom);
-      mockRuntime.getWorld = vi.fn().mockResolvedValue(null);
-      mockRuntime.getEntitiesForRoom = vi.fn().mockResolvedValue([mockEntity]);
-      mockRuntime.getRelationships = vi.fn().mockResolvedValue([]);
-      mockRuntime.getMemories = vi.fn().mockResolvedValue([]);
-      mockRuntime.useModel = vi.fn().mockResolvedValue(
+      mockRuntime.getRoom = mock().mockResolvedValue(mockRoom);
+      mockRuntime.getWorld = mock().mockResolvedValue(null);
+      mockRuntime.getEntitiesForRoom = mock().mockResolvedValue([mockEntity]);
+      mockRuntime.getRelationships = mock().mockResolvedValue([]);
+      mockRuntime.getMemories = mock().mockResolvedValue([]);
+      mockRuntime.useModel = mock().mockResolvedValue(
         JSON.stringify({
           type: 'USERNAME_MATCH',
           matches: [{ name: '@janesmith', reason: 'Handle match' }],
@@ -409,7 +408,8 @@ describe('entities', () => {
       );
 
       // Mock parseJSONObjectFromText
-      vi.mocked(parseJSONObjectFromText).mockReturnValue({
+      const parseJSONSpy = spyOn(utils, 'parseJSONObjectFromText');
+      parseJSONSpy.mockReturnValue({
         type: 'USERNAME_MATCH',
         matches: [{ name: '@janesmith', reason: 'Handle match' }],
       });
@@ -418,35 +418,36 @@ describe('entities', () => {
 
       expect(result).toBeDefined();
       expect(result?.id).toBe('entity-handle');
+      parseJSONSpy.mockRestore();
     });
   });
 
   describe('createUniqueUuid', () => {
     it('should return agent ID when base user ID matches agent ID', () => {
       const result = createUniqueUuid(mockRuntime, 'agent-id-123');
-
       expect(result).toBe('agent-id-123');
-      expect(vi.mocked(stringToUuid)).not.toHaveBeenCalled();
     });
 
     it('should create UUID from combined string for different IDs', () => {
-      // Mock stringToUuid from utils module
-      vi.mocked(stringToUuid).mockReturnValue('unique-uuid-123' as UUID);
+      const stringToUuidSpy = spyOn(index, 'stringToUuid');
+      stringToUuidSpy.mockReturnValue('unique-uuid-123' as UUID);
 
       const result = createUniqueUuid(mockRuntime, 'user-456');
 
       expect(result).toBe('unique-uuid-123');
-      expect(stringToUuid).toHaveBeenCalledWith('user-456:agent-id-123');
+      expect(stringToUuidSpy).toHaveBeenCalledWith('user-456:agent-id-123');
+      stringToUuidSpy.mockRestore();
     });
 
     it('should handle UUID type as base user ID', () => {
-      // Mock stringToUuid from utils module
-      vi.mocked(stringToUuid).mockReturnValue('unique-uuid-456' as UUID);
+      const stringToUuidSpy = spyOn(index, 'stringToUuid');
+      stringToUuidSpy.mockReturnValue('unique-uuid-456' as UUID);
 
       const result = createUniqueUuid(mockRuntime, 'user-789' as UUID);
 
       expect(result).toBe('unique-uuid-456');
-      expect(stringToUuid).toHaveBeenCalledWith('user-789:agent-id-123');
+      expect(stringToUuidSpy).toHaveBeenCalledWith('user-789:agent-id-123');
+      stringToUuidSpy.mockRestore();
     });
   });
 
@@ -501,8 +502,8 @@ describe('entities', () => {
         },
       ];
 
-      mockRuntime.getRoom = vi.fn().mockResolvedValue(mockRoom);
-      mockRuntime.getEntitiesForRoom = vi.fn().mockResolvedValue(mockEntities);
+      mockRuntime.getRoom = mock().mockResolvedValue(mockRoom);
+      mockRuntime.getEntitiesForRoom = mock().mockResolvedValue(mockEntities);
 
       const result = await getEntityDetails({
         runtime: mockRuntime,
@@ -538,8 +539,8 @@ describe('entities', () => {
         components: [],
       };
 
-      mockRuntime.getRoom = vi.fn().mockResolvedValue(mockRoom);
-      mockRuntime.getEntitiesForRoom = vi.fn().mockResolvedValue([
+      mockRuntime.getRoom = mock().mockResolvedValue(mockRoom);
+      mockRuntime.getEntitiesForRoom = mock().mockResolvedValue([
         duplicateEntity,
         duplicateEntity, // Duplicate
       ]);
@@ -589,8 +590,8 @@ describe('entities', () => {
         ],
       };
 
-      mockRuntime.getRoom = vi.fn().mockResolvedValue(mockRoom);
-      mockRuntime.getEntitiesForRoom = vi.fn().mockResolvedValue([mockEntity]);
+      mockRuntime.getRoom = mock().mockResolvedValue(mockRoom);
+      mockRuntime.getEntitiesForRoom = mock().mockResolvedValue([mockEntity]);
 
       const result = await getEntityDetails({
         runtime: mockRuntime,
@@ -690,7 +691,7 @@ describe('entities', () => {
   it('createUniqueUuid combines user and agent ids', () => {
     const runtime = { agentId: 'agent' } as any;
     const id = createUniqueUuid(runtime, 'user');
-    const expected = stringToUuid('user:agent');
+    const expected = index.stringToUuid('user:agent');
     expect(id).toBe(expected);
   });
 

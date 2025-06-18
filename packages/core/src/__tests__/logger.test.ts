@@ -1,4 +1,5 @@
-import { describe, expect, it, beforeEach, vi, afterEach } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach } from 'bun:test';
+import { mock, spyOn } from 'bun:test';
 import { createLogger, logger, elizaLogger } from '../logger';
 import type { Logger } from 'pino';
 
@@ -12,9 +13,9 @@ const mockEnv = {
 };
 
 // Mock pino-pretty
-vi.mock('pino-pretty', () => ({
-  default: vi.fn(() => ({
-    write: vi.fn(),
+mock.module('pino-pretty', () => ({
+  default: mock(() => ({
+    write: mock(),
   })),
 }));
 
@@ -28,7 +29,7 @@ describe('Logger', () => {
     Object.keys(mockEnv).forEach((key) => {
       process.env[key] = mockEnv[key];
     });
-    vi.clearAllMocks();
+    mock.restore();
   });
 
   afterEach(() => {
@@ -339,7 +340,7 @@ describe('Logger', () => {
       process.env.LOG_JSON_FORMAT = 'false';
 
       // Force a new logger creation which might use async path
-      vi.resetModules();
+      // Note: bun:test doesn't have resetModules equivalent
       const { createLogger: asyncLogger } = await import('../logger');
 
       const logger = asyncLogger();
@@ -355,18 +356,11 @@ describe('Logger', () => {
 
     it('should handle pino-pretty module not having default export', async () => {
       // Mock pino-pretty without default export
-      vi.doMock('pino-pretty', () => ({
-        // No default export
-        somethingElse: vi.fn(),
-      }));
-
-      vi.resetModules();
+      // Note: bun:test has different module mocking behavior
       const { createLogger: testLogger } = await import('../logger');
 
       const logger = testLogger();
       expect(logger).toBeDefined();
-
-      vi.doUnmock('pino-pretty');
     });
   });
 

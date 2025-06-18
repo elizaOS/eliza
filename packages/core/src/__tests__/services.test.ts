@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi } from 'bun:test';
 import { createService, defineService } from '../services';
 import { Service } from '../types';
 import type { IAgentRuntime } from '../types';

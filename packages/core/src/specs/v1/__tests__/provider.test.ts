@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'bun:test';
 import { ProviderResult } from '../../v2';
 import { fromV2Provider, Provider, toV2Provider } from '../provider';
 import { fromV2State } from '../state';
