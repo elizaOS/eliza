@@ -99,15 +99,26 @@ export async function jsonToCharacter(character: unknown): Promise<Character> {
     }, {});
 
   if (Object.keys(characterSettings).length > 0) {
-    const updatedCharacter = {
-      ...validatedCharacter,
-      settings: validatedCharacter.settings || {},
-      secrets: {
-        ...characterSettings,
-        ...(validatedCharacter.secrets || {}),
-        ...(validatedCharacter.settings?.secrets || {}),
-      },
+    // Collect all secrets from various sources
+    const combinedSecrets = {
+      ...characterSettings,
+      ...(validatedCharacter.secrets || {}),
+      ...(validatedCharacter.settings?.secrets || {}),
     };
+
+    const updatedCharacter: any = {
+      ...validatedCharacter,
+    };
+
+    // Only add settings if it already exists or we need to add secrets from settings
+    if (validatedCharacter.settings || validatedCharacter.settings?.secrets) {
+      updatedCharacter.settings = validatedCharacter.settings || {};
+    }
+
+    // Only add secrets if there are any to add
+    if (Object.keys(combinedSecrets).length > 0) {
+      updatedCharacter.secrets = combinedSecrets;
+    }
 
     // Re-validate the updated character to ensure it's still valid
     const revalidationResult = validateCharacter(updatedCharacter);
@@ -119,11 +130,7 @@ export async function jsonToCharacter(character: unknown): Promise<Character> {
     return revalidationResult.data!;
   }
 
-  return {
-    ...validatedCharacter,
-    settings: validatedCharacter.settings || {},
-    secrets: validatedCharacter.secrets || {},
-  };
+  return validatedCharacter;
 }
 
 /**
