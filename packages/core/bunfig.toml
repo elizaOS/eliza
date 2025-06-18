@@ -1,0 +1,6 @@
+[test]
+# Test timeout in milliseconds
+timeout = 120000
+
+# Test setup files to preload
+preload = ["./src/test_resources/testSetup.ts"]
