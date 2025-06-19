@@ -243,19 +243,38 @@ describe('ElizaOS Dev Commands', () => {
     let output = '';
     let outputReceived = false;
     const outputPromise = new Promise<void>((resolve) => {
-      const dataHandler = (data: Buffer) => {
-        const text = data.toString();
-        output += text;
-        console.log(`[DEV OUTPUT] ${text}`);
-        if (!outputReceived && text.length > 0) {
-          outputReceived = true;
-          // Give more time for complete output on macOS
-          setTimeout(resolve, process.platform === 'darwin' ? 3000 : 1000);
+      // Handle Bun.spawn's ReadableStream
+      const handleStream = async (stream: ReadableStream<Uint8Array> | undefined, streamName: string) => {
+        if (!stream) return;
+        
+        const reader = stream.getReader();
+        const decoder = new TextDecoder();
+        
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            
+            const text = decoder.decode(value, { stream: true });
+            output += text;
+            console.log(`[DEV ${streamName}] ${text}`);
+            
+            if (!outputReceived && text.length > 0) {
+              outputReceived = true;
+              // Give more time for complete output on macOS
+              setTimeout(resolve, process.platform === 'darwin' ? 3000 : 1000);
+            }
+          }
+        } finally {
+          reader.releaseLock();
         }
       };
-
-      devProcess.stdout?.on('data', dataHandler);
-      devProcess.stderr?.on('data', dataHandler);
+      
+      // Start reading both streams
+      Promise.all([
+        handleStream(devProcess.stdout, 'STDOUT'),
+        handleStream(devProcess.stderr, 'STDERR')
+      ]).catch(err => console.error('[DEV TEST] Stream error:', err));
 
       // Fallback timeout
       setTimeout(() => {
@@ -390,19 +409,38 @@ describe('ElizaOS Dev Commands', () => {
     runningProcesses.push(devProcess);
 
     const outputPromise = new Promise<void>((resolve) => {
-      const dataHandler = (data: Buffer) => {
-        const text = data.toString();
-        output += text;
-        console.log(`[NON-ELIZA DIR TEST] ${text}`);
-        if (!outputReceived && text.length > 0) {
-          outputReceived = true;
-          // Give more time for complete output on macOS
-          setTimeout(resolve, process.platform === 'darwin' ? 3000 : 1000);
+      // Handle Bun.spawn's ReadableStream
+      const handleStream = async (stream: ReadableStream<Uint8Array> | undefined, streamName: string) => {
+        if (!stream) return;
+        
+        const reader = stream.getReader();
+        const decoder = new TextDecoder();
+        
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            
+            const text = decoder.decode(value, { stream: true });
+            output += text;
+            console.log(`[NON-ELIZA DIR ${streamName}] ${text}`);
+            
+            if (!outputReceived && text.length > 0) {
+              outputReceived = true;
+              // Give more time for complete output on macOS
+              setTimeout(resolve, process.platform === 'darwin' ? 3000 : 1000);
+            }
+          }
+        } finally {
+          reader.releaseLock();
         }
       };
-
-      devProcess.stdout?.on('data', dataHandler);
-      devProcess.stderr?.on('data', dataHandler);
+      
+      // Start reading both streams
+      Promise.all([
+        handleStream(devProcess.stdout, 'STDOUT'),
+        handleStream(devProcess.stderr, 'STDERR')
+      ]).catch(err => console.error('[NON-ELIZA DIR TEST] Stream error:', err));
 
       // Fallback timeout
       setTimeout(() => {

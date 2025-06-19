@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { killProcessOnPort, waitForServerReady } from './test-utils';
+import { TEST_TIMEOUTS } from '../test-timeouts';
 
 describe('ElizaOS Agent Commands', () => {
   let serverProcess: any;
@@ -108,32 +109,57 @@ describe('ElizaOS Agent Commands', () => {
     let serverStarted = false;
     let serverError: Error | null = null;
 
-    serverProcess.stdout?.on('data', (data: Buffer) => {
-      const output = data.toString();
-      console.log(`[SERVER STDOUT] ${output}`);
-      if (output.includes('Server started') || output.includes('listening')) {
-        serverStarted = true;
+    // Handle Bun.spawn's ReadableStream for stdout/stderr
+    const handleStream = async (stream: ReadableStream<Uint8Array> | undefined, isError: boolean) => {
+      if (!stream) return;
+      
+      const reader = stream.getReader();
+      const decoder = new TextDecoder();
+      
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          const text = decoder.decode(value, { stream: true });
+          
+          if (isError) {
+            console.error(`[SERVER STDERR] ${text}`);
+            if (text.includes('Error') || text.includes('error')) {
+              serverError = new Error(text);
+            }
+          } else {
+            console.log(`[SERVER STDOUT] ${text}`);
+            if (text.includes('Server started') || text.includes('listening')) {
+              serverStarted = true;
+            }
+          }
+        }
+      } catch (err) {
+        console.error(`[SERVER] Stream error:`, err);
+        if (isError && !serverError) {
+          serverError = err as Error;
+        }
+      } finally {
+        reader.releaseLock();
       }
-    });
-
-    serverProcess.stderr?.on('data', (data: Buffer) => {
-      const error = data.toString();
-      console.error(`[SERVER STDERR] ${error}`);
-      if (error.includes('Error') || error.includes('error')) {
-        serverError = new Error(error);
-      }
-    });
-
-    serverProcess.on('error', (error: Error) => {
-      console.error('[SERVER ERROR]', error);
-      serverError = error;
-    });
-
-    serverProcess.on('exit', (code: number | null, signal: string | null) => {
-      console.log(`[SERVER EXIT] code: ${code}, signal: ${signal}`);
+    };
+    
+    // Start reading both streams
+    Promise.all([
+      handleStream(serverProcess.stdout, false),
+      handleStream(serverProcess.stderr, true)
+    ]);
+    
+    // Handle process exit
+    serverProcess.exited.then((code) => {
+      console.log(`[SERVER EXIT] code: ${code}`);
       if (code !== 0 && !serverError) {
         serverError = new Error(`Server exited with code ${code}`);
       }
+    }).catch((error) => {
+      console.error('[SERVER ERROR]', error);
+      serverError = error;
     });
 
     // Wait for server to be ready
