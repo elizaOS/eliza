@@ -19,7 +19,7 @@ describe('Character Configuration', () => {
   });
 
   it('should have conditionally included plugins based on environment variables', () => {
-    // This test is a simple placeholder since we can't easily test dynamic imports in vitest
+    // This test is a simple placeholder since we can't easily test dynamic imports in test environments
     // The actual functionality is tested at runtime by the starter test suite
 
     // Save the original env values

@@ -299,7 +299,7 @@ export async function runE2eTests(
         }
 
         // Return success (false) if no tests were found, or if tests ran but none failed
-        // This aligns with standard testing tools like vitest/jest behavior
+        // This aligns with standard testing tools behavior
         return { failed: anyTestsFound ? totalFailed > 0 : false };
       } catch (error) {
         logger.error('Error in runE2eTests:', error);

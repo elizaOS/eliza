@@ -10,9 +10,7 @@ import { nodePolyfills } from 'vite-plugin-node-polyfills';
 // https://vite.dev/config/
 
 // Define custom config interface
-interface CustomUserConfig extends UserConfig {
-  test?: any; // Fallback for test configuration
-}
+interface CustomUserConfig extends UserConfig {}
 
 // Function to get version and write info.json
 const getVersionAndWriteInfo = () => {
@@ -209,21 +207,5 @@ export default defineConfig(({ mode }): CustomUserConfig => {
       },
     },
     logLevel: mode === 'development' ? 'info' : 'error',
-    // Add Vitest configuration
-    test: {
-      globals: true, // Or false, depending on your preference
-      environment: 'jsdom', // Or 'happy-dom', 'node'
-      include: ['src/**/*.{test,spec}.{js,ts,jsx,tsx}'],
-      exclude: [
-        'src/tests/**/*.{test,spec}.{js,ts,jsx,tsx}', // Exclude Playwright tests
-        'node_modules/**',
-        'dist/**',
-        'cypress/**',
-        '**/*.d.ts',
-        '{playwright,vite,vitest}.config.{js,ts,jsx,tsx}',
-      ],
-      // You might have other Vitest specific configurations here
-      // setupFiles: './src/setupTests.ts', // if you have a setup file
-    },
   };
 });

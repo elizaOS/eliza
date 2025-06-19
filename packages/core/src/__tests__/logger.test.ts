@@ -340,7 +340,7 @@ describe('Logger', () => {
   describe('Async Stream Creation', () => {
     it('should handle async stream creation when require fails', async () => {
       // This test simulates the async fallback path
-      // We can't easily mock require failure in vitest, so we test the async path exists
+      // We can't easily mock require failure in test environments, so we test the async path exists
       const originalEnv = process.env.LOG_JSON_FORMAT;
       process.env.LOG_JSON_FORMAT = 'false';
 

@@ -25,23 +25,13 @@ teardown() {
   # Create a simple test file
   mkdir -p tests
   cat > tests/sample.test.js <<EOF
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 
 describe('Sample Test', () => {
   it('should pass', () => {
     expect(true).toBe(true);
   });
 });
-EOF
-
-  # Create vitest config
-  cat > vitest.config.js <<EOF
-export default {
-  test: {
-    globals: true,
-    environment: 'node'
-  }
-}
 EOF
   
   run run_cli "dist" test --type component --skip-build
@@ -97,7 +87,7 @@ EOF
   
   mkdir -p tests
   cat > tests/specific.test.js <<EOF
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 
 describe('Specific Test', () => {
   it('should run this test', () => {
@@ -110,16 +100,6 @@ describe('Other Test', () => {
     expect(false).toBe(true);
   });
 });
-EOF
-  
-  # Create vitest config
-  cat > vitest.config.js <<EOF
-export default {
-  test: {
-    globals: true,
-    environment: 'node'
-  }
-}
 EOF
   
   run run_cli "dist" test --name "Specific" --skip-build
@@ -153,7 +133,7 @@ EOF
   
   mkdir -p src
   cat > src/plugin-a.test.ts <<EOF
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 
 describe('Plugin A', () => {
   it('passes', () => {
@@ -174,7 +154,7 @@ EOF
   
   mkdir -p src
   cat > src/plugin-b.test.ts <<EOF
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 
 describe('Plugin B', () => {
   it('fails', () => {
@@ -221,7 +201,7 @@ EOF
   # Add a passing test
   mkdir -p tests
   cat > tests/pass.test.js <<EOF
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 
 describe('Pass', () => {
   it('passes', () => {

@@ -69,23 +69,13 @@ EOF
   # Add a test file
   mkdir -p src
   cat > src/index.test.ts <<EOF
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 
 describe('Plugin', () => {
   it('should work', () => {
     expect(true).toBe(true);
   });
 });
-EOF
-  
-  # Create vitest config
-  cat > vitest.config.ts <<EOF
-export default {
-  test: {
-    globals: true,
-    environment: 'node'
-  }
-}
 EOF
   
   # Run tests (simulated)

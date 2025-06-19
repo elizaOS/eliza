@@ -72,7 +72,7 @@ describe('Project Structure Validation', () => {
 
       // Check dev dependencies - adjusted for actual dev dependencies
       expect(packageJson.devDependencies).toBeTruthy();
-      // bun test is built-in, no vitest dependency needed
+      // bun test is built-in, no external test framework dependency needed
       expect(packageJson.devDependencies).toHaveProperty('tsup');
     });
 
