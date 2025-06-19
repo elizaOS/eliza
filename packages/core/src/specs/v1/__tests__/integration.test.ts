@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'bun:test';
+import { describe, expect, it, vi, mock } from 'bun:test';
 import { ActionExample, fromV2ActionExample, toV2ActionExample } from '../actionExample';
 import { Provider, fromV2Provider, toV2Provider } from '../provider';
 import { State, toV2State } from '../state';

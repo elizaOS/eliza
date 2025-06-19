@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it, test, vi } from 'bun:test';
+import { beforeAll, describe, expect, it, test, vi, mock } from 'bun:test';
 import { formatEntities } from '../entities';
 import type { Content, Entity, IAgentRuntime, IDatabaseAdapter, Memory, UUID } from '../types';
 import { formatMessages, formatTimestamp } from '../utils';
