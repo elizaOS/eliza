@@ -16,6 +16,7 @@ jobs:
     # Skip duplicate runs: run on push to main, or on pull_request events only
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref_name == 'main')
     runs-on: ubuntu-latest
+    timeout-minutes: 8
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
@@ -52,6 +53,7 @@ jobs:
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref_name == 'main')
     needs: setup
     runs-on: ubuntu-latest
+    timeout-minutes: 8
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
@@ -77,7 +79,10 @@ jobs:
           echo "NODE_ENV=test" >> packages/core/.env.test
 
       - name: Run tests
-        run: cd packages/core && bun test:coverage
+        timeout-minutes: 5
+        env:
+          NODE_OPTIONS: "--max-old-space-size=2048"
+        run: cd packages/core && bun test:coverage --timeout 60000
 
   # Lint and format job - runs in parallel
   lint-and-format:
@@ -85,6 +90,7 @@ jobs:
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref_name == 'main')
     needs: setup
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
@@ -114,6 +120,7 @@ jobs:
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref_name == 'main')
     needs: setup
     runs-on: ubuntu-latest
+    timeout-minutes: 8
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}

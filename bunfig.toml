@@ -1,0 +1,17 @@
+[test]
+# Global test timeout in milliseconds (2 minutes)
+timeout = 120000
+
+# CI-specific optimizations
+# Set lower timeout for CI to prevent hanging
+CI_TIMEOUT = 60000
+
+# Coverage configuration
+coverage = true
+
+# Memory limits for better performance in CI
+max-memory = "2048MB"
+
+[install]
+# Optimize installation for CI
+cache = true

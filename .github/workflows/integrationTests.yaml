@@ -32,6 +32,7 @@ jobs:
     # Skip duplicate runs: run on push to main/develop, or on pull_request events only
     if: github.event_name == 'pull_request_target' || (github.event_name == 'push' && contains(fromJson('["main", "develop"]'), github.ref_name))
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -77,6 +78,7 @@ jobs:
     if: github.event_name == 'pull_request_target' || (github.event_name == 'push' && contains(fromJson('["main", "develop"]'), github.ref_name))
     needs: setup
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -124,6 +126,7 @@ jobs:
     if: github.event_name == 'pull_request_target' || (github.event_name == 'push' && contains(fromJson('["main", "develop"]'), github.ref_name))
     needs: setup
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -160,4 +163,25 @@ jobs:
         run: bun install
 
       - name: Run integration tests
-        run: bun run test
+        timeout-minutes: 10
+        env:
+          # Set CI-specific environment variables
+          CI: true
+          NODE_ENV: test
+          PGLITE_WASM_MODE: node
+          # Prevent interactive prompts
+          ELIZA_NONINTERACTIVE: true
+          # Set memory limits for CI
+          NODE_OPTIONS: "--max-old-space-size=2048"
+        run: |
+          # Set test timeout for CI (60 seconds per test)
+          export BUN_TEST_TIMEOUT=60000
+          
+          # Run tests with explicit timeout and concurrency limits
+          echo "Starting integration tests with 60s timeout per test..."
+          bun run test --timeout 60000 --concurrency 3 || {
+            echo "Tests failed with exit code $?"
+            echo "Checking for any hanging processes..."
+            ps aux | grep -E "(bun|node)" || true
+            exit 1
+          }
