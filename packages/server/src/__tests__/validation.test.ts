@@ -2,7 +2,7 @@
  * Unit tests for validation functions
  */
 
-import { describe, it, expect, vi } from 'bun:test';
+import { describe, it, expect } from 'bun:test';
 import {
   validateChannelId,
   validateAgentId,

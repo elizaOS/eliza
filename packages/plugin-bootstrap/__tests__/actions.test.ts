@@ -1,4 +1,4 @@
-import { describe, expect, it, mock, beforeEach, afterEach } from 'bun:test';
+import { describe, expect, it, mock, beforeEach, afterEach, spyOn } from 'bun:test';
 import {
   followRoomAction,
   ignoreAction,
@@ -32,9 +32,9 @@ import {
 
 // Spy on commonly used methods for logging
 beforeEach(() => {
-  mock.spyOn(logger, 'error').mockImplementation(() => {});
-  mock.spyOn(logger, 'warn').mockImplementation(() => {});
-  mock.spyOn(logger, 'debug').mockImplementation(() => {});
+  spyOn(logger, 'error').mockImplementation(() => {});
+  spyOn(logger, 'warn').mockImplementation(() => {});
+  spyOn(logger, 'debug').mockImplementation(() => {});
 });
 
 describe('Reply Action', () => {
@@ -797,7 +797,7 @@ describe('Reply Action (Extended)', () => {
     };
 
     // Create a spy on the custom handler
-    const handlerSpy = vi.fn(customHandler);
+    const handlerSpy = mock(customHandler);
 
     // Call the handler directly
     await handlerSpy(
@@ -1062,8 +1062,7 @@ describe('Send Message Action (Extended)', () => {
     });
 
     // Mock getRooms to return the target room
-    mockRuntime.getRooms = vi
-      .fn()
+    mockRuntime.getRooms = mock()
       .mockResolvedValue([
         { id: 'target-room-id', name: 'test-channel', worldId: 'test-world-id' },
       ]);

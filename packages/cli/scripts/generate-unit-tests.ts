@@ -72,18 +72,18 @@ async function generateTestContent(sourcePath: string): Promise<string> {
   const classes = Array.from(classMatches).map((m) => m[1]);
   const constants = Array.from(constMatches).map((m) => m[1]);
 
-  let testContent = `import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+  let testContent = `import { describe, it, expect, mock, beforeEach, afterEach } from 'bun:test';
 
 // TODO: Import the functions/classes to test
 // import { ${[...functions, ...classes, ...constants].join(', ')} } from '${importPath}';
 
 describe('${basename(sourcePath).replace('.ts', '')}', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    mock.restore();
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    mock.restore();
   });
 `;
 

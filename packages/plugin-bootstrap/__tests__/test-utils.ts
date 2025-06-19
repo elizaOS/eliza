@@ -340,8 +340,8 @@ export function createMockService(overrides: Partial<Record<string, any>> = {}):
   return {
     name: 'mock-service',
     type: 'mock',
-    execute: vi.fn().mockResolvedValue({}),
-    init: vi.fn().mockResolvedValue({}),
+    execute: mock().mockResolvedValue({}),
+    init: mock().mockResolvedValue({}),
     ...overrides,
   };
 }

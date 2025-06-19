@@ -2,7 +2,7 @@
  * Unit tests for utility functions
  */
 
-import { describe, it, expect, vi, beforeEach } from 'bun:test';
+import { describe, it, expect, mock, beforeEach } from 'bun:test';
 import { expandTildePath, resolvePgliteDir } from '../index';
 import path from 'node:path';
 
@@ -108,7 +108,7 @@ describe('Utility Functions', () => {
   describe('resolvePgliteDir', () => {
     beforeEach(async () => {
       const fs = await import('node:fs');
-      vi.mocked(fs.existsSync).mockReturnValue(true);
+      (fs.existsSync as any).mockReturnValue(true);
     });
 
     it('should use provided directory', () => {
@@ -176,7 +176,7 @@ describe('Utility Functions', () => {
       const fs = await import('node:fs');
       const dotenv = await import('dotenv');
 
-      vi.mocked(fs.existsSync).mockReturnValue(true);
+      (fs.existsSync as any).mockReturnValue(true);
 
       resolvePgliteDir();
 
@@ -187,7 +187,7 @@ describe('Utility Functions', () => {
       const fs = await import('node:fs');
       const dotenv = await import('dotenv');
 
-      vi.mocked(fs.existsSync).mockReturnValue(false);
+      (fs.existsSync as any).mockReturnValue(false);
 
       resolvePgliteDir();
 

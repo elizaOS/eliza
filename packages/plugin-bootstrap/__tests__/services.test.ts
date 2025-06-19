@@ -1,4 +1,4 @@
-import { describe, expect, it, mock, beforeEach, afterEach } from 'bun:test';
+import { describe, expect, it, mock, beforeEach, afterEach, spyOn } from 'bun:test';
 import { TaskService } from '../src/services/task';
 import { EventType, IAgentRuntime, logger, Service } from '@elizaos/core';
 import { bootstrapPlugin } from '../src/index';
@@ -210,7 +210,7 @@ describe('TaskService', () => {
       }
       return undefined;
     }) as any;
-    mock.spyOn(logger, 'error').mockImplementation(() => {}); // Suppress error logging for this test
+    spyOn(logger, 'error').mockImplementation(() => {}); // Suppress error logging for this test
 
     // Expose the private method for testing
     const executeTaskMethod = (taskService as any).executeTask.bind(taskService);
@@ -255,7 +255,7 @@ describe('Service Registry', () => {
 
   beforeEach(() => {
     mock.restore();
-    mock.spyOn(logger, 'warn').mockImplementation(() => {});
+    spyOn(logger, 'warn').mockImplementation(() => {});
 
     // Use setupActionTest for consistent test setup
     const setup = setupActionTest();

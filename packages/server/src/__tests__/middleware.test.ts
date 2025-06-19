@@ -2,7 +2,7 @@
  * Unit tests for middleware functions
  */
 
-import { describe, it, expect, vi, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeEach } from 'bun:test';
 import express from 'express';
 import {
   agentExistsMiddleware,

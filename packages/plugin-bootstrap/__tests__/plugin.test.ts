@@ -186,7 +186,7 @@ describe('Bootstrap Plugin', () => {
 describe('Message Event Handlers', () => {
   let mockRuntime: MockRuntime;
   let mockMessage: Partial<Memory>;
-  let mockCallback: ReturnType<typeof vi.fn>;
+  let mockCallback: any;
 
   beforeEach(() => {
     mock.restore();

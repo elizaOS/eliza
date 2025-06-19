@@ -446,14 +446,14 @@ describe('Role Provider', () => {
     const coreMocks = await import('@elizaos/core');
     coreMocks.createUniqueUuid.mockReset(); // Reset this specifically
 
-    (mockRuntime.getRoom as ReturnType<typeof vi.fn>).mockResolvedValue({
+    (mockRuntime.getRoom as any).mockResolvedValue({
       id: 'default-room' as UUID,
       serverId: 'default-server' as UUID,
       type: ChannelType.GROUP,
       source: 'discord', // Added source for entity metadata access
     });
 
-    (mockRuntime.getWorld as ReturnType<typeof vi.fn>).mockResolvedValue({
+    (mockRuntime.getWorld as any).mockResolvedValue({
       id: 'default-world' as UUID,
       serverId: 'default-server' as UUID,
       name: 'Default Test World',
@@ -463,7 +463,7 @@ describe('Role Provider', () => {
       },
     });
 
-    (mockRuntime.getEntityById as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    (mockRuntime.getEntityById as any).mockResolvedValue(null);
 
     // Setup mockState.data.room for the provider to use preferentially
     mockState.data = {
@@ -502,8 +502,8 @@ describe('Role Provider', () => {
       return 'unexpected-world-id-simple' as UUID;
     });
 
-    (mockRuntime.getWorld as ReturnType<typeof vi.fn>).mockReset(); // Reset this mock too
-    (mockRuntime.getWorld as ReturnType<typeof vi.fn>).mockImplementation(async (id) => {
+    (mockRuntime.getWorld as any).mockReset(); // Reset this mock too
+    (mockRuntime.getWorld as any).mockImplementation(async (id) => {
       if (id === worldIdForRoleTest) {
         return {
           id: worldIdForRoleTest,
@@ -518,8 +518,8 @@ describe('Role Provider', () => {
       return null;
     });
 
-    (mockRuntime.getEntityById as ReturnType<typeof vi.fn>).mockReset(); // And this one
-    (mockRuntime.getEntityById as ReturnType<typeof vi.fn>).mockImplementation(async (id) => {
+    (mockRuntime.getEntityById as any).mockReset(); // And this one
+    (mockRuntime.getEntityById as any).mockImplementation(async (id) => {
       if (id === ownerId) {
         return {
           id: ownerId,
@@ -558,7 +558,7 @@ describe('Role Provider', () => {
     // Ensure state.data.room is undefined so runtime.getRoom is called
     mockState.data = { ...mockState.data, room: undefined };
 
-    (mockRuntime.getRoom as ReturnType<typeof vi.fn>).mockRejectedValue(
+    (mockRuntime.getRoom as any).mockRejectedValue(
       new Error('Simulated DB error getting room')
     );
 
@@ -576,7 +576,7 @@ describe('Role Provider', () => {
     const expectedWorldIdForNoRoles = 'test-world-id-no-roles' as UUID;
 
     mockMessage.roomId = mockRoomId;
-    (mockRuntime.getRoom as ReturnType<typeof vi.fn>).mockResolvedValue({
+    (mockRuntime.getRoom as any).mockResolvedValue({
       id: mockRoomId,
       serverId: mockServerId,
       type: ChannelType.GROUP,
@@ -594,7 +594,7 @@ describe('Role Provider', () => {
       return actualOriginalCreateUniqueUuid(rt, sId);
     });
 
-    (mockRuntime.getWorld as ReturnType<typeof vi.fn>).mockImplementation(async (id) => {
+    (mockRuntime.getWorld as any).mockImplementation(async (id) => {
       if (id === expectedWorldIdForNoRoles) {
         return {
           id: expectedWorldIdForNoRoles,
@@ -630,7 +630,7 @@ describe('Role Provider', () => {
     mockState.data = { ...mockState.data, room: undefined };
 
     const specificError = new Error('DB error for roles test');
-    (mockRuntime.getRoom as ReturnType<typeof vi.fn>).mockRejectedValue(specificError);
+    (mockRuntime.getRoom as any).mockRejectedValue(specificError);
 
     await expect(
       roleProvider.get(mockRuntime as IAgentRuntime, mockMessage as Memory, mockState as State)
@@ -739,7 +739,7 @@ describe('Settings Provider', () => {
       return {}; // Default to empty if serverId doesn't match, to make failure obvious
     });
 
-    (mockRuntime.getRoom as ReturnType<typeof vi.fn>).mockResolvedValue({
+    (mockRuntime.getRoom as any).mockResolvedValue({
       id: 'onboarding-room-id' as UUID,
       worldId: 'world-1' as UUID,
       type: ChannelType.DM,
@@ -766,7 +766,7 @@ describe('Settings Provider', () => {
       ...mockMessage.content,
       channelType: ChannelType.GROUP,
     };
-    (mockRuntime.getRoom as ReturnType<typeof vi.fn>).mockResolvedValue({
+    (mockRuntime.getRoom as any).mockResolvedValue({
       id: 'test-room-id' as UUID,
       worldId: 'world-1' as UUID,
       type: ChannelType.GROUP, // Ensure room type matches for provider logic
