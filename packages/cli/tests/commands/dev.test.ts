@@ -1,11 +1,11 @@
-import { execSync, spawn, execFileSync } from 'node:child_process';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
+import { execFileSync, execSync, spawn as nodeSpawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { TEST_TIMEOUTS } from '../test-timeouts';
-import { createTestProject, killProcessOnPort, safeChangeDirectory } from './test-utils';
+import { killProcessOnPort, safeChangeDirectory } from './test-utils';
 
 describe('ElizaOS Dev Commands', () => {
   let testTmpDir: string;
@@ -146,43 +146,31 @@ describe('ElizaOS Dev Commands', () => {
     console.log(`[DEBUG] CLI path: ${cliPath}`);
     console.log(`[DEBUG] CLI exists: ${existsSync(cliPath)}`);
 
-    // Get bun path more reliably for macOS
-    let bunPath = 'bun';
-    try {
-      bunPath = execFileSync('which', ['bun'], { encoding: 'utf8' }).trim();
-      console.log(`[DEBUG] Found bun at: ${bunPath}`);
-    } catch (e) {
-      console.log(`[DEBUG] Using default bun path: ${bunPath}`);
-    }
+    // Always use 'bun' from PATH
+    const bunPath = 'bun';
+    console.log('[DEBUG] Using "bun" from PATH');
 
     const commandStr = `${bunPath} ${cliPath} dev ${args}`;
     console.log(`[DEBUG] Running command: ${commandStr}`);
 
-    // Use more robust spawn approach for macOS
-    const devProcess =
-      process.platform === 'darwin'
-        ? spawn(bunPath, [cliPath, 'dev', ...args.split(' ')], {
-            env: {
-              ...process.env,
-              LOG_LEVEL: 'error',
-              PGLITE_DATA_DIR: join(testTmpDir, 'elizadb'),
-              SERVER_PORT: testServerPort.toString(),
-            },
-            stdio: ['ignore', 'pipe', 'pipe'],
-            cwd: cwd || projectDir,
-            detached: false,
-          })
-        : spawn('sh', ['-c', commandStr], {
-            env: {
-              ...process.env,
-              LOG_LEVEL: 'error',
-              PGLITE_DATA_DIR: join(testTmpDir, 'elizadb'),
-              SERVER_PORT: testServerPort.toString(),
-            },
-            stdio: ['ignore', 'pipe', 'pipe'],
-            cwd: cwd || projectDir,
-            detached: false,
-          });
+    // Use Bun.spawn for better compatibility
+    console.log(`[DEBUG] Using Bun.spawn for dev command`);
+    const devProcess = Bun.spawn([bunPath, cliPath, 'dev', ...args.split(' ')], {
+      cwd: cwd || projectDir,
+      env: {
+        ...process.env,
+        LOG_LEVEL: 'error',
+        PGLITE_DATA_DIR: join(testTmpDir, 'elizadb'),
+        SERVER_PORT: testServerPort.toString(),
+      },
+      stdin: 'ignore',
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    
+    if (!devProcess.pid) {
+      throw new Error('Bun.spawn failed to create process');
+    }
 
     if (!devProcess || !devProcess.pid) {
       console.error('[ERROR] Failed to spawn dev process');
@@ -223,38 +211,27 @@ describe('ElizaOS Dev Commands', () => {
     console.log(`[DEBUG] CLI path for dev test: ${cliPath}`);
     console.log(`[DEBUG] CLI exists: ${existsSync(cliPath)}`);
 
-    // Get bun path more reliably for macOS
-    let bunPath = 'bun';
-    try {
-      bunPath = execFileSync('which', ['bun'], { encoding: 'utf8' }).trim();
-      console.log(`[DEBUG] Found bun at: ${bunPath}`);
-    } catch (e) {
-      console.log(`[DEBUG] Using default bun path: ${bunPath}`);
-    }
+    // Always use 'bun' from PATH
+    const bunPath = 'bun';
+    console.log('[DEBUG] Using "bun" from PATH');
 
-    // Use more robust spawn approach for macOS
-    const devProcess =
-      process.platform === 'darwin'
-        ? spawn(bunPath, [cliPath, 'dev', '--port', testServerPort.toString()], {
-            env: {
-              ...process.env,
-              LOG_LEVEL: 'info',
-              PGLITE_DATA_DIR: join(testTmpDir, 'elizadb'),
-            },
-            stdio: ['ignore', 'pipe', 'pipe'],
-            cwd: projectDir,
-            detached: false,
-          })
-        : spawn('sh', ['-c', `bun ${cliPath} dev --port ${testServerPort}`], {
-            env: {
-              ...process.env,
-              LOG_LEVEL: 'info',
-              PGLITE_DATA_DIR: join(testTmpDir, 'elizadb'),
-            },
-            stdio: ['ignore', 'pipe', 'pipe'],
-            cwd: projectDir,
-            detached: false,
-          });
+    // Use Bun.spawn for project detection test
+    console.log(`[DEBUG] Using Bun.spawn for project detection test`);
+    const devProcess = Bun.spawn([bunPath, cliPath, 'dev', '--port', testServerPort.toString()], {
+      cwd: projectDir,
+      env: {
+        ...process.env,
+        LOG_LEVEL: 'info',
+        PGLITE_DATA_DIR: join(testTmpDir, 'elizadb'),
+      },
+      stdin: 'ignore',
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    
+    if (!devProcess.pid) {
+      throw new Error('Bun.spawn failed to create process');
+    }
 
     if (!devProcess || !devProcess.pid) {
       console.error('[ERROR] Failed to spawn dev process for project detection');
@@ -376,32 +353,32 @@ describe('ElizaOS Dev Commands', () => {
     console.log(`[DEBUG] CLI path for non-eliza test: ${cliPath}`);
     console.log(`[DEBUG] CLI exists: ${existsSync(cliPath)}`);
 
-    // Find bun executable with better error handling
-    let bunPath = 'bun';
-    try {
-      bunPath = execFileSync('which', ['bun'], {
-        encoding: 'utf8',
-        timeout: 5000, // 5 second timeout
-      }).trim();
-      console.log(`[DEBUG] Found bun at: ${bunPath}`);
-    } catch (e) {
-      console.log(`[DEBUG] Using default bun path: ${bunPath}, error: ${e}`);
-    }
+    // Use 'bun' from PATH
+    const bunPath = 'bun';
+    console.log('[DEBUG] Using "bun" from PATH');
 
     // Validate that CLI and bun exist before spawning
     if (!existsSync(cliPath)) {
       throw new Error(`CLI not found at ${cliPath}`);
     }
 
-    const devProcess = spawn(bunPath, [cliPath, 'dev', '--port', testServerPort.toString()], {
+    // Use Bun.spawn for non-eliza test
+    console.log(`[DEBUG] Using Bun.spawn for non-eliza test`);
+    const devProcess = Bun.spawn([bunPath, cliPath, 'dev', '--port', testServerPort.toString()], {
+      cwd: nonElizaDir,
       env: {
         ...process.env,
         LOG_LEVEL: 'info',
         PGLITE_DATA_DIR: join(testTmpDir, 'elizadb'),
       },
-      stdio: ['ignore', 'pipe', 'pipe'],
-      cwd: nonElizaDir,
+      stdin: 'ignore',
+      stdout: 'pipe',
+      stderr: 'pipe',
     });
+    
+    if (!devProcess.pid) {
+      throw new Error('Bun.spawn failed to create process');
+    }
 
     if (!devProcess || !devProcess.pid) {
       console.error('[ERROR] Failed to spawn dev process for non-eliza test');

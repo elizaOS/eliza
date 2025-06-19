@@ -1,11 +1,10 @@
-import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
-import { spawn, execSync, execFileSync } from 'node:child_process';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
+import { execFileSync, execSync, spawn as nodeSpawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdtemp, rm, mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { TEST_TIMEOUTS } from '../test-timeouts';
-import { waitForServerReady, killProcessOnPort } from './test-utils';
+import { join } from 'node:path';
+import { killProcessOnPort, waitForServerReady } from './test-utils';
 
 describe('ElizaOS Agent Commands', () => {
   let serverProcess: any;
@@ -68,43 +67,37 @@ describe('ElizaOS Agent Commands', () => {
       throw new Error('CLI templates not built');
     }
 
-    // Use more robust spawning for macOS
+    // Spawn server process using Bun.spawn
     const serverBunPath = getBunPath();
-    serverProcess =
-      process.platform === 'darwin'
-        ? spawn(
-            serverBunPath,
-            [cliPath, 'start', '--port', testServerPort, '--character', defaultCharacter],
-            {
-              env: {
-                ...process.env,
-                LOG_LEVEL: 'debug',
-                PGLITE_DATA_DIR: `${testTmpDir}/elizadb`,
-                NODE_OPTIONS: '--max-old-space-size=4096', // Give server more memory
-                SERVER_HOST: '127.0.0.1', // Explicit localhost binding for better macOS compatibility
-              },
-              stdio: ['ignore', 'pipe', 'pipe'],
-              detached: false, // Ensure proper process cleanup
-            }
-          )
-        : spawn(
-            'sh',
-            [
-              '-c',
-              `${serverBunPath} ${cliPath} start --port ${testServerPort} --character ${defaultCharacter}`,
-            ],
-            {
-              env: {
-                ...process.env,
-                LOG_LEVEL: 'debug',
-                PGLITE_DATA_DIR: `${testTmpDir}/elizadb`,
-                NODE_OPTIONS: '--max-old-space-size=4096', // Give server more memory
-                SERVER_HOST: '127.0.0.1', // Explicit localhost binding for better macOS compatibility
-              },
-              stdio: ['ignore', 'pipe', 'pipe'],
-              detached: false, // Ensure proper process cleanup
-            }
-          );
+    console.log(`[DEBUG] Spawning server with: ${serverBunPath} ${cliPath} start`);
+    
+    const proc = Bun.spawn([
+      serverBunPath,
+      cliPath,
+      'start',
+      '--port',
+      testServerPort,
+      '--character',
+      defaultCharacter
+    ], {
+      env: {
+        ...process.env,
+        LOG_LEVEL: 'debug',
+        PGLITE_DATA_DIR: `${testTmpDir}/elizadb`,
+        NODE_OPTIONS: '--max-old-space-size=4096',
+        SERVER_HOST: '127.0.0.1',
+      },
+      stdin: 'ignore',
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    
+    if (!proc.pid) {
+      throw new Error('Failed to spawn server process');
+    }
+    
+    // Wrap to maintain compatibility with existing code
+    serverProcess = proc as any;
 
     if (!serverProcess || !serverProcess.pid) {
       console.error('[ERROR] Failed to spawn server process');
@@ -419,19 +412,7 @@ describe('ElizaOS Agent Commands', () => {
 });
 
 function getBunPath(): string {
-  try {
-    const bunPath = execFileSync('which', ['bun'], {
-      encoding: 'utf8',
-      timeout: 5000, // 5 second timeout for macOS
-    }).trim();
-    if (bunPath && bunPath.length > 0) {
-      console.log(`[DEBUG] Found bun at: ${bunPath}`);
-      return bunPath;
-    }
-    console.log('[DEBUG] Using default bun path');
-    return 'bun';
-  } catch (error) {
-    console.log(`[DEBUG] Failed to find bun with 'which': ${error}, using default 'bun'`);
-    return 'bun';
-  }
+  // Always use 'bun' directly from PATH
+  console.log('[DEBUG] Using "bun" from PATH');
+  return 'bun';
 }

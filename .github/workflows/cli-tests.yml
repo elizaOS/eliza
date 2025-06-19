@@ -58,6 +58,16 @@ jobs:
 
       - name: Mention Bun version
         run: bun --version
+      
+      - name: Debug Bun Setup
+        run: |
+          echo "PATH: $PATH"
+          echo "which bun: $(which bun)"
+          echo "bun location: $(command -v bun)"
+          echo "ls -la $(which bun):"
+          ls -la $(which bun) || echo "Failed to ls bun"
+          echo "Bun executable info:"
+          file $(which bun) || echo "Failed to get bun file info"
 
       - name: Cache Bun dependencies
         uses: actions/cache@v4
