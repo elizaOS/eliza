@@ -15,13 +15,13 @@ export function memoryRouter(
   const router = express.Router();
 
   // Mount agent memory management at root level
-  router.use('/', createAgentMemoryRouter(agents, serverInstance));
+  router.use('/', createAgentMemoryRouter(agents));
 
   // Mount group memory management
   router.use('/', createGroupMemoryRouter(agents, serverInstance));
 
   // Mount room management
-  router.use('/', createRoomManagementRouter(agents, serverInstance));
+  router.use('/', createRoomManagementRouter(agents));
 
   return router;
 }

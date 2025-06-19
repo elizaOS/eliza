@@ -1,18 +1,14 @@
-import type { IAgentRuntime, UUID } from '@elizaos/core';
 import express from 'express';
 import type { AgentServer } from '../../index';
 
 /**
  * Debug and diagnostic endpoints
  */
-export function createDebugRouter(
-  agents: Map<UUID, IAgentRuntime>,
-  serverInstance: AgentServer
-): express.Router {
+export function createDebugRouter(serverInstance: AgentServer): express.Router {
   const router = express.Router();
 
   // Debug endpoint to check message servers
-  router.get('/servers', async (req, res) => {
+  router.get('/servers', async (_req, res) => {
     try {
       const servers = await serverInstance?.getServers();
       res.json({

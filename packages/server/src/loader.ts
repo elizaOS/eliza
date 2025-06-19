@@ -93,11 +93,17 @@ export async function jsonToCharacter(character: unknown): Promise<Character> {
     throw new Error(`Character validation failed: ${errorDetails}`);
   }
 
-  const validatedCharacter = validationResult.data!;
+  // Type guard to ensure we have valid data
+  if (!validationResult.data) {
+    throw new Error('Validation succeeded but no data was returned');
+  }
+
+  const validatedCharacter = validationResult.data;
 
   // Add environment-based settings and secrets (preserve existing functionality)
   const characterId = validatedCharacter.id || validatedCharacter.name;
   const characterPrefix = `CHARACTER.${characterId.toUpperCase().replace(/ /g, '_')}.`;
+
   const characterSettings = Object.entries(process.env)
     .filter(([key]) => key.startsWith(characterPrefix))
     .reduce((settings, [key, value]) => {
@@ -110,19 +116,20 @@ export async function jsonToCharacter(character: unknown): Promise<Character> {
     const combinedSecrets = {
       ...characterSettings,
       ...(validatedCharacter.secrets || {}),
-      ...(validatedCharacter.settings?.secrets || {}),
+      ...(typeof validatedCharacter.settings?.secrets === 'object' &&
+      validatedCharacter.settings?.secrets !== null
+        ? validatedCharacter.settings.secrets
+        : {}),
     };
 
-    const updatedCharacter: any = {
+    const updatedCharacter: Character = {
       ...validatedCharacter,
     };
 
-    // Only add settings if it already exists or we need to add secrets from settings
-    if (validatedCharacter.settings || validatedCharacter.settings?.secrets) {
+    if (validatedCharacter.settings || Object.keys(combinedSecrets).length > 0) {
       updatedCharacter.settings = validatedCharacter.settings || {};
     }
 
-    // Only add secrets if there are any to add
     if (Object.keys(combinedSecrets).length > 0) {
       updatedCharacter.secrets = combinedSecrets;
     }
@@ -136,7 +143,12 @@ export async function jsonToCharacter(character: unknown): Promise<Character> {
       return validatedCharacter;
     }
 
-    return revalidationResult.data!;
+    if (!revalidationResult.data) {
+      logger.warn('Revalidation succeeded but no data returned, using original character');
+      return validatedCharacter;
+    }
+
+    return revalidationResult.data;
   }
 
   return validatedCharacter;
@@ -274,7 +286,7 @@ export async function loadCharacterTryPath(characterPath: string): Promise<Chara
   // Combine the paths to try both variants
   const pathsToTry = Array.from(new Set([...basePathsToTry, ...jsonPathsToTry]));
 
-  let lastError = null;
+  let lastError: unknown = null;
 
   for (const tryPath of pathsToTry) {
     try {
@@ -362,7 +374,7 @@ export async function loadCharacters(charactersArg: string): Promise<Character[]
 
   if (hasValidRemoteUrls()) {
     logger.info('Loading characters from remote URLs');
-    const characterUrls = commaSeparatedStringToArray(process.env.REMOTE_CHARACTER_URLS);
+    const characterUrls = commaSeparatedStringToArray(process.env.REMOTE_CHARACTER_URLS! || '');
     for (const characterUrl of characterUrls) {
       const characters = await loadCharactersFromUrl(characterUrl);
       loadedCharacters.push(...characters);

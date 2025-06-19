@@ -9,11 +9,7 @@ type UploadedFile = fileUpload.UploadedFile;
 /**
  * Safely constructs and validates upload directory paths to prevent path traversal attacks
  */
-export function createSecureUploadDir(
-  baseDir: string,
-  id: string,
-  type: 'agents' | 'channels'
-): string {
+export function createSecureUploadDir(id: string, type: 'agents' | 'channels'): string {
   // Additional validation beyond UUID to ensure no path traversal
   if (id.includes('..') || id.includes('/') || id.includes('\\') || id.includes('\0')) {
     throw new Error(`Invalid ${type.slice(0, -1)} ID: contains illegal characters`);

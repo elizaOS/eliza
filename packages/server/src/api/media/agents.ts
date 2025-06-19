@@ -1,17 +1,14 @@
-import type { IAgentRuntime, UUID } from '@elizaos/core';
 import { validateUuid, logger, getContentTypeFromMimeType } from '@elizaos/core';
 import express from 'express';
-import type { AgentServer } from '../../index';
 import { sendError, sendSuccess } from '../shared/response-utils';
 import { cleanupUploadedFile } from '../shared/file-utils';
 import { agentMediaUpload, validateMediaFile, processUploadedFile } from '../shared/uploads';
-import { ALLOWED_MEDIA_MIME_TYPES } from '../shared';
 import type fileUpload from 'express-fileupload';
 
 // Using express-fileupload file type
 type UploadedFile = fileUpload.UploadedFile;
 
-interface AgentMediaRequest extends express.Request {
+interface AgentMediaRequest extends Omit<express.Request, 'files'> {
   files?: { [fieldname: string]: UploadedFile | UploadedFile[] } | UploadedFile[];
   params: {
     agentId: string;
@@ -21,16 +18,15 @@ interface AgentMediaRequest extends express.Request {
 /**
  * Agent media upload functionality
  */
-export function createAgentMediaRouter(
-  agents: Map<UUID, IAgentRuntime>,
-  serverInstance: AgentServer
-): express.Router {
+export function createAgentMediaRouter(): express.Router {
   const router = express.Router();
 
   // Media upload endpoint for images and videos
-  router.post('/:agentId/upload-media', agentMediaUpload(), async (req: AgentMediaRequest, res) => {
+  router.post('/:agentId/upload-media', agentMediaUpload(), async (req, res) => {
+    const agentMediaReq = req as AgentMediaRequest;
+
     logger.debug('[MEDIA UPLOAD] Processing media upload');
-    const agentId = validateUuid(req.params.agentId);
+    const agentId = validateUuid(agentMediaReq.params.agentId);
 
     if (!agentId) {
       return sendError(res, 400, 'INVALID_ID', 'Invalid agent ID format');
@@ -38,12 +34,12 @@ export function createAgentMediaRouter(
 
     // Get the uploaded file from express-fileupload
     let mediaFile: UploadedFile;
-    if (req.files && !Array.isArray(req.files)) {
+    if (agentMediaReq.files && !Array.isArray(agentMediaReq.files)) {
       // files is an object with field names
-      mediaFile = req.files.file as UploadedFile;
-    } else if (Array.isArray(req.files) && req.files.length > 0) {
+      mediaFile = agentMediaReq.files.file as UploadedFile;
+    } else if (Array.isArray(agentMediaReq.files) && agentMediaReq.files.length > 0) {
       // files is an array
-      mediaFile = req.files[0];
+      mediaFile = agentMediaReq.files[0];
     } else {
       return sendError(res, 400, 'INVALID_REQUEST', 'No media file provided');
     }

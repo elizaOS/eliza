@@ -2,10 +2,10 @@
  * Integration tests for agent-server interactions
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'bun:test';
-import { AgentServer } from '../../index';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
+import { AgentServer, CentralRootMessage } from '../../index';
 import type { IAgentRuntime, UUID, Character } from '@elizaos/core';
-import { EventType, ChannelType, AgentRuntime } from '@elizaos/core';
+import { ChannelType, AgentRuntime } from '@elizaos/core';
 import { createDatabaseAdapter } from '@elizaos/plugin-sql';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -219,7 +219,7 @@ describe('Agent-Server Interaction Integration Tests', () => {
 
       expect(channel).toBeDefined();
       expect(channel.name).toBe('Test Channel');
-      expect(channel.type).toBe('GROUP');
+      expect(channel.type).toBe(ChannelType.GROUP);
       expect(channel.messageServerId).toBe(serverId);
 
       // Verify channel was created
@@ -430,7 +430,7 @@ describe('Agent-Server Interaction Integration Tests', () => {
 
     it('should retrieve messages with pagination', async () => {
       // Create 10 messages with different timestamps
-      const messagePromises = [];
+      const messagePromises: Promise<CentralRootMessage>[] = [];
       for (let i = 0; i < 10; i++) {
         messagePromises.push(
           agentServer.createMessage({

@@ -2,7 +2,7 @@
  * Unit tests for loader.ts
  */
 
-import { describe, it, expect, beforeEach, mock, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, mock, afterEach, jest } from 'bun:test';
 import fs from 'node:fs';
 import {
   tryLoadFile,
@@ -13,7 +13,7 @@ import {
   loadCharacters,
   hasValidRemoteUrls,
 } from '../loader';
-import { logger } from '@elizaos/core';
+import { logger, UUID } from '@elizaos/core';
 
 const TEST_CHARACTER_URL =
   'https://raw.githubusercontent.com/elizaOS/eliza/refs/heads/develop/packages/cli/tests/test-characters/shaw.json';
@@ -24,16 +24,16 @@ const TEST_MULTI_CHARACTER_URL =
 // Mock modules
 mock.module('node:fs', () => ({
   default: {
-    readFileSync: mock.fn(),
+    readFileSync: jest.fn(),
     promises: {
-      mkdir: mock.fn(),
-      readdir: mock.fn(),
+      mkdir: jest.fn(),
+      readdir: jest.fn(),
     },
   },
-  readFileSync: mock.fn(),
+  readFileSync: jest.fn(),
   promises: {
-    mkdir: mock.fn(),
-    readdir: mock.fn(),
+    mkdir: jest.fn(),
+    readdir: jest.fn(),
   },
 }));
 mock.module('@elizaos/core', async () => {
@@ -41,16 +41,16 @@ mock.module('@elizaos/core', async () => {
   return {
     ...actual,
     logger: {
-      info: mock.fn(),
-      error: mock.fn(),
-      warn: mock.fn(),
-      debug: mock.fn(),
+      info: jest.fn(),
+      error: jest.fn(),
+      warn: jest.fn(),
+      debug: jest.fn(),
     },
-    validateCharacter: mock.fn((character) => ({
+    validateCharacter: jest.fn((character) => ({
       success: true,
       data: character,
     })),
-    parseAndValidateCharacter: mock.fn((content) => {
+    parseAndValidateCharacter: jest.fn((content) => {
       try {
         const parsed = JSON.parse(content);
         return {
@@ -68,7 +68,7 @@ mock.module('@elizaos/core', async () => {
 });
 
 // Mock fetch globally
-const mockFetch = mock.fn();
+const mockFetch = jest.fn();
 global.fetch = mockFetch as any;
 
 describe('Loader Functions', () => {
@@ -172,7 +172,7 @@ describe('Loader Functions', () => {
 
   describe('jsonToCharacter', () => {
     it('should convert basic character JSON', async () => {
-      const character = { name: 'Test', id: 'test-1' };
+      const character = { name: 'Test', id: 'test-1' as UUID, bio: 'Test bio' };
 
       const result = await jsonToCharacter(character);
 
@@ -221,7 +221,7 @@ describe('Loader Functions', () => {
     });
 
     it('should not add settings property when character has no settings and no env settings', async () => {
-      const character = { name: 'Test Character', id: 'test-char' };
+      const character = { name: 'Test Character', id: 'test-char' as UUID, bio: 'Test bio' };
       // No environment variables set for this character
 
       const result = await jsonToCharacter(character);
@@ -372,7 +372,6 @@ describe('Loader Functions', () => {
       const char1 = { name: 'Character 1', id: 'char-1' };
       const char2 = { name: 'Character 2', id: 'char-2' };
 
-      let callCount = 0;
       (fs.readFileSync as any).mockImplementation((path: string) => {
         // Return character data when the right path is found
         if (path.includes('char1.json')) {
@@ -491,8 +490,6 @@ describe('Loader Functions', () => {
     it('should trim whitespace from comma-separated paths', async () => {
       const char = { name: 'Test Character', id: 'test-1' };
       (fs.readFileSync as any).mockReturnValue(JSON.stringify(char));
-
-      const result = await loadCharacters(' char1.json , char2.json ');
 
       expect(fs.readFileSync).toHaveBeenCalledWith(expect.stringContaining('char1.json'), 'utf8');
       expect(fs.readFileSync).toHaveBeenCalledWith(expect.stringContaining('char2.json'), 'utf8');

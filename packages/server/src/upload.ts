@@ -22,7 +22,7 @@ function ensureUploadDir(id: string, type: 'agents' | 'channels'): string {
     throw new Error(`Invalid ${type.slice(0, -1)} ID format`);
   }
 
-  const uploadDir = createSecureUploadDir(process.cwd(), id, type);
+  const uploadDir = createSecureUploadDir(id, type);
 
   if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });

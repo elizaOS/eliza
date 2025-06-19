@@ -117,8 +117,6 @@ export interface ServerOptions {
   dataDir?: string;
   postgresUrl?: string;
 }
-const AGENT_RUNTIME_URL =
-  process.env.AGENT_RUNTIME_URL?.replace(/\/$/, '') || 'http://localhost:3000';
 
 /**
  * Class representing an agent server.
@@ -130,7 +128,6 @@ export class AgentServer {
   private agents: Map<UUID, IAgentRuntime>;
   public server!: http.Server;
   public socketIO!: SocketIOServer;
-  private serverPort: number = 3000; // Add property to store current port
   public isInitialized: boolean = false; // Flag to prevent double initialization
 
   public database!: DatabaseAdapter;
@@ -609,14 +606,14 @@ export class AgentServer {
       const apiRouter = createApiRouter(this.agents, this);
       this.app.use(
         '/api',
-        (req: express.Request, res: express.Response, next: express.NextFunction) => {
+        (req: express.Request, _res: express.Response, next: express.NextFunction) => {
           if (req.path !== '/ping') {
             logger.debug(`API request: ${req.method} ${req.path}`);
           }
           next();
         },
         apiRouter,
-        (err: any, req: Request, res: Response, next: express.NextFunction) => {
+        (err: any, req: Request, res: Response) => {
           logger.error(`API error: ${req.method} ${req.path}`, err);
           res.status(500).json({
             success: false,
@@ -649,25 +646,23 @@ export class AgentServer {
 
       // Main fallback for the SPA - must be registered after all other routes
       // Use a final middleware that handles all unmatched routes
-      (this.app as any).use(
-        (req: express.Request, res: express.Response, next: express.NextFunction) => {
-          // For JavaScript requests that weren't handled by static middleware,
-          // return a JavaScript response instead of HTML
-          if (
-            req.path.endsWith('.js') ||
-            req.path.includes('.js?') ||
-            req.path.match(/\/[a-zA-Z0-9_-]+-[A-Za-z0-9]{8}\.js/)
-          ) {
-            res.setHeader('Content-Type', 'application/javascript');
-            return res.status(404).send(`// JavaScript module not found: ${req.path}`);
-          }
-
-          // For all other routes, serve the SPA's index.html
-          // Client files are built into the CLI package's dist directory
-          const cliDistPath = path.resolve(__dirname, '../../cli/dist');
-          res.sendFile(path.join(cliDistPath, 'index.html'));
+      (this.app as any).use((req: express.Request, res: express.Response) => {
+        // For JavaScript requests that weren't handled by static middleware,
+        // return a JavaScript response instead of HTML
+        if (
+          req.path.endsWith('.js') ||
+          req.path.includes('.js?') ||
+          req.path.match(/\/[a-zA-Z0-9_-]+-[A-Za-z0-9]{8}\.js/)
+        ) {
+          res.setHeader('Content-Type', 'application/javascript');
+          return res.status(404).send(`// JavaScript module not found: ${req.path}`);
         }
-      );
+
+        // For all other routes, serve the SPA's index.html
+        // Client files are built into the CLI package's dist directory
+        const cliDistPath = path.resolve(__dirname, '../../cli/dist');
+        res.sendFile(path.join(cliDistPath, 'index.html'));
+      });
 
       // Create HTTP server for Socket.io
       this.server = http.createServer(this.app);
@@ -813,8 +808,6 @@ export class AgentServer {
         throw new Error(`Invalid port number: ${port}`);
       }
 
-      this.serverPort = port; // Save the port
-
       logger.debug(`Starting server on port ${port}...`);
       logger.debug(`Current agents count: ${this.agents.size}`);
       logger.debug(`Environment: ${process.env.NODE_ENV}`);
@@ -822,40 +815,48 @@ export class AgentServer {
       // Use http server instead of app.listen with explicit host binding and error handling
       // For tests and macOS compatibility, prefer 127.0.0.1 when specified
       const host = process.env.SERVER_HOST || '0.0.0.0';
-      
-      this.server.listen(port, host, () => {
-        // Only show the dashboard URL in production mode
-        if (process.env.NODE_ENV !== 'development') {
-          // Display the dashboard URL with the correct port after the server is actually listening
-          console.log(
-            `\x1b[32mStartup successful!\nGo to the dashboard at \x1b[1mhttp://localhost:${port}\x1b[22m\x1b[0m`
+
+      this.server
+        .listen(port, host, () => {
+          // Only show the dashboard URL in production mode
+          if (process.env.NODE_ENV !== 'development') {
+            // Display the dashboard URL with the correct port after the server is actually listening
+            console.log(
+              `\x1b[32mStartup successful!\nGo to the dashboard at \x1b[1mhttp://localhost:${port}\x1b[22m\x1b[0m`
+            );
+          }
+
+          // Add log for test readiness
+          console.log(`AgentServer is listening on port ${port}`);
+
+          logger.success(
+            `REST API bound to ${host}:${port}. If running locally, access it at http://localhost:${port}.`
           );
-        }
+          logger.debug(`Active agents: ${this.agents.size}`);
+          this.agents.forEach((agent, id) => {
+            logger.debug(`- Agent ${id}: ${agent.character.name}`);
+          });
+        })
+        .on('error', (error: any) => {
+          logger.error(`Failed to bind server to ${host}:${port}:`, error);
 
-        // Add log for test readiness
-        console.log(`AgentServer is listening on port ${port}`);
+          // Provide helpful error messages for common issues
+          if (error.code === 'EADDRINUSE') {
+            logger.error(
+              `Port ${port} is already in use. Please try a different port or stop the process using that port.`
+            );
+          } else if (error.code === 'EACCES') {
+            logger.error(
+              `Permission denied to bind to port ${port}. Try using a port above 1024 or running with appropriate permissions.`
+            );
+          } else if (error.code === 'EADDRNOTAVAIL') {
+            logger.error(
+              `Cannot bind to ${host}:${port} - address not available. Check if the host address is correct.`
+            );
+          }
 
-        logger.success(
-          `REST API bound to ${host}:${port}. If running locally, access it at http://localhost:${port}.`
-        );
-        logger.debug(`Active agents: ${this.agents.size}`);
-        this.agents.forEach((agent, id) => {
-          logger.debug(`- Agent ${id}: ${agent.character.name}`);
+          throw error;
         });
-      }).on('error', (error: any) => {
-        logger.error(`Failed to bind server to ${host}:${port}:`, error);
-        
-        // Provide helpful error messages for common issues
-        if (error.code === 'EADDRINUSE') {
-          logger.error(`Port ${port} is already in use. Please try a different port or stop the process using that port.`);
-        } else if (error.code === 'EACCES') {
-          logger.error(`Permission denied to bind to port ${port}. Try using a port above 1024 or running with appropriate permissions.`);
-        } else if (error.code === 'EADDRNOTAVAIL') {
-          logger.error(`Cannot bind to ${host}:${port} - address not available. Check if the host address is correct.`);
-        }
-        
-        throw error;
-      });
 
       // Enhanced graceful shutdown
       const gracefulShutdown = async () => {
@@ -1032,7 +1033,7 @@ export class AgentServer {
   }
 
   // Optional: Method to remove a participant
-  async removeParticipantFromChannel(channelId: UUID, userId: UUID): Promise<void> {
+  async removeParticipantFromChannel(): Promise<void> {
     // Since we don't have a direct method for this, we'll need to handle it at the channel level
     logger.warn(
       `[AgentServer] Remove participant operation not directly supported in database adapter`
@@ -1088,7 +1089,7 @@ export class AgentServer {
     for (const server of servers) {
       const agents = await (this.database as any).getAgentsForServer(server.id);
       if (agents.includes(agentId)) {
-        serverIds.push(server.id);
+        serverIds.push(server.id as never);
       }
     }
     return serverIds;

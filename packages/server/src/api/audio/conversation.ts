@@ -9,17 +9,13 @@ import {
   messageHandlerTemplate,
 } from '@elizaos/core';
 import express from 'express';
-import type { AgentServer } from '../../index';
 import { sendError } from '../shared/response-utils';
 import { convertToAudioBuffer } from './audioBuffer';
 
 /**
  * Speech conversation functionality
  */
-export function createConversationRouter(
-  agents: Map<UUID, IAgentRuntime>,
-  serverInstance: AgentServer
-): express.Router {
+export function createConversationRouter(agents: Map<UUID, IAgentRuntime>): express.Router {
   const router = express.Router();
 
   // Speech conversation endpoint

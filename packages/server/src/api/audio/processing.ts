@@ -4,7 +4,6 @@ import express from 'express';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { AgentServer } from '../../index';
 import { cleanupUploadedFile } from '../shared/file-utils';
 import { sendError, sendSuccess } from '../shared/response-utils';
 import { agentAudioUpload, validateAudioFile } from '../shared/uploads';
@@ -15,7 +14,7 @@ import type fileUpload from 'express-fileupload';
 // Using express-fileupload file type
 type UploadedFile = fileUpload.UploadedFile;
 
-interface AudioRequest extends express.Request {
+interface AudioRequest extends Omit<express.Request, 'files'> {
   files?: { [fieldname: string]: UploadedFile | UploadedFile[] } | UploadedFile[];
   params: {
     agentId: string;
@@ -80,10 +79,7 @@ function getUploadedFile(req: AudioRequest): UploadedFile | null {
 /**
  * Audio processing functionality - upload and transcription
  */
-export function createAudioProcessingRouter(
-  agents: Map<UUID, IAgentRuntime>,
-  serverInstance: AgentServer
-): express.Router {
+export function createAudioProcessingRouter(agents: Map<UUID, IAgentRuntime>): express.Router {
   const router = express.Router();
 
   // Apply rate limiting to all audio processing routes
@@ -94,14 +90,15 @@ export function createAudioProcessingRouter(
   router.post(
     '/:agentId/audio-messages',
     agentAudioUpload(), // Use agentAudioUpload
-    async (req: AudioRequest, res) => {
+    async (req, res) => {
+      const audioReq = req as AudioRequest;
       logger.debug('[AUDIO MESSAGE] Processing audio message');
       const agentId = validateUuid(req.params.agentId);
       if (!agentId) {
         return sendError(res, 400, 'INVALID_ID', 'Invalid agent ID format');
       }
 
-      const audioFile = getUploadedFile(req);
+      const audioFile = getUploadedFile(audioReq);
       if (!audioFile) {
         return sendError(res, 400, 'INVALID_REQUEST', 'No audio file provided');
       }
@@ -172,14 +169,15 @@ export function createAudioProcessingRouter(
   router.post(
     '/:agentId/transcriptions',
     agentAudioUpload(), // Use agentAudioUpload
-    async (req: AudioRequest, res) => {
+    async (req, res) => {
+      const audioReq = req as AudioRequest;
       logger.debug('[TRANSCRIPTION] Request to transcribe audio');
       const agentId = validateUuid(req.params.agentId);
       if (!agentId) {
         return sendError(res, 400, 'INVALID_ID', 'Invalid agent ID format');
       }
 
-      const audioFile = getUploadedFile(req);
+      const audioFile = getUploadedFile(audioReq);
       if (!audioFile) {
         return sendError(res, 400, 'INVALID_REQUEST', 'No audio file provided');
       }

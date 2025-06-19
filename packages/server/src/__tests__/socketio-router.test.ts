@@ -2,12 +2,11 @@
  * Unit tests for SocketIORouter
  */
 
-import { describe, it, expect, mock, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, mock, beforeEach, afterEach, jest } from 'bun:test';
 import { SocketIORouter } from '../socketio';
 import { createMockAgentRuntime } from './test-utils/mocks';
 import type { IAgentRuntime, UUID } from '@elizaos/core';
 import { EventType, SOCKET_MESSAGE_TYPE, ChannelType } from '@elizaos/core';
-import type { Socket } from 'socket.io';
 
 // Mock dependencies
 mock.module('@elizaos/core', async () => {
@@ -15,13 +14,13 @@ mock.module('@elizaos/core', async () => {
   return {
     ...actual,
     logger: {
-      info: mock.fn(),
-      debug: mock.fn(),
-      warn: mock.fn(),
-      error: mock.fn(),
+      info: jest.fn(),
+      debug: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
       levels: { values: { debug: 10, info: 20, warn: 30, error: 40 } },
     },
-    validateUuid: mock.fn((id: string) => {
+    validateUuid: jest.fn((id: string) => {
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       return uuidRegex.test(id) ? id : null;
     }),
@@ -52,10 +51,10 @@ describe('SocketIORouter', () => {
 
     // Create mock server instance
     mockServerInstance = {
-      getChannelDetails: mock.fn(),
-      createChannel: mock.fn(),
-      createMessage: mock.fn(),
-      getServers: mock
+      getChannelDetails: jest.fn(),
+      createChannel: jest.fn(),
+      createMessage: jest.fn(),
+      getServers: jest
         .fn()
         .mockReturnValue(Promise.resolve([{ id: '00000000-0000-0000-0000-000000000000' }])),
     };
@@ -63,16 +62,16 @@ describe('SocketIORouter', () => {
     // Create mock socket
     mockSocket = {
       id: 'socket-123',
-      join: mock.fn(),
-      emit: mock.fn(),
-      to: mock.fn().mockReturnThis(),
-      on: mock.fn(),
-      onAny: mock.fn(),
+      join: jest.fn(),
+      emit: jest.fn(),
+      to: jest.fn().mockReturnThis(),
+      on: jest.fn(),
+      onAny: jest.fn(),
     };
 
     // Create mock IO server
     mockIO = {
-      on: mock.fn(),
+      on: jest.fn(),
       sockets: {
         sockets: new Map([[mockSocket.id, mockSocket]]),
       },

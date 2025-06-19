@@ -2,7 +2,7 @@
  * Unit tests for middleware functions
  */
 
-import { describe, it, expect, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeEach, jest, mock } from 'bun:test';
 import express from 'express';
 import {
   agentExistsMiddleware,
@@ -22,12 +22,12 @@ mock.module('@elizaos/core', async () => {
   return {
     ...actual,
     logger: {
-      warn: mock.fn(),
-      info: mock.fn(),
-      error: mock.fn(),
-      debug: mock.fn(),
+      warn: jest.fn(),
+      info: jest.fn(),
+      error: jest.fn(),
+      debug: jest.fn(),
     },
-    validateUuid: mock.fn((id: string) => {
+    validateUuid: jest.fn((id: string) => {
       // Simple UUID validation mock
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       return uuidRegex.test(id) ? id : null;
@@ -36,7 +36,7 @@ mock.module('@elizaos/core', async () => {
 });
 
 mock.module('../src/api/shared/response-utils', () => ({
-  sendError: mock.fn((res, status, code, message) => {
+  sendError: jest.fn((res, status, code, message) => {
     res.status(status).json({ success: false, error: { code, message } });
   }),
 }));
@@ -56,17 +56,17 @@ describe('Middleware Functions', () => {
       originalUrl: '/api/test',
       url: '/api/test',
       query: {},
-      get: mock.fn(),
+      get: jest.fn(),
     };
 
     res = {
-      status: mock.fn().mockReturnThis(),
-      json: mock.fn().mockReturnThis(),
-      setHeader: mock.fn().mockReturnThis(),
-      removeHeader: mock.fn().mockReturnThis(),
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn().mockReturnThis(),
+      setHeader: jest.fn().mockReturnThis(),
+      removeHeader: jest.fn().mockReturnThis(),
     };
 
-    next = mock.fn();
+    next = jest.fn();
   });
 
   describe('agentExistsMiddleware', () => {

@@ -13,7 +13,7 @@ export function createHealthRouter(
   const router = express.Router();
 
   // Health check
-  router.get('/ping', (req, res) => {
+  router.get('/ping', (_req, res) => {
     res.json({ pong: true, timestamp: Date.now() });
   });
 

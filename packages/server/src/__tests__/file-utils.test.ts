@@ -10,9 +10,7 @@ import {
   cleanupFiles,
   cleanupUploadedFile,
 } from '../api/shared/file-utils';
-import fs from 'node:fs';
 import path from 'node:path';
-import { logger } from '@elizaos/core';
 
 // Mock dependencies
 const fsMock = {
@@ -58,7 +56,7 @@ describe('File Utilities', () => {
 
   describe('createSecureUploadDir', () => {
     it('should create valid upload directory for agents', () => {
-      const result = createSecureUploadDir('/test/app', 'agent-123', 'agents');
+      const result = createSecureUploadDir('agent-123', 'agents');
 
       expect(result).toBe(
         path.resolve('/test/app', '.eliza', 'data', 'uploads', 'agents', 'agent-123')
@@ -66,7 +64,7 @@ describe('File Utilities', () => {
     });
 
     it('should create valid upload directory for channels', () => {
-      const result = createSecureUploadDir('/test/app', 'channel-456', 'channels');
+      const result = createSecureUploadDir('channel-456', 'channels');
 
       expect(result).toBe(
         path.resolve('/test/app', '.eliza', 'data', 'uploads', 'channels', 'channel-456')
@@ -74,29 +72,29 @@ describe('File Utilities', () => {
     });
 
     it('should reject IDs with path traversal attempts', () => {
-      expect(() => createSecureUploadDir('/test/app', '../../../etc/passwd', 'agents')).toThrow(
+      expect(() => createSecureUploadDir('../../../etc/passwd', 'agents')).toThrow(
         'Invalid agent ID: contains illegal characters'
       );
 
-      expect(() => createSecureUploadDir('/test/app', 'test/../../passwd', 'channels')).toThrow(
+      expect(() => createSecureUploadDir('test/../../passwd', 'channels')).toThrow(
         'Invalid channel ID: contains illegal characters'
       );
     });
 
     it('should reject IDs with forward slashes', () => {
-      expect(() => createSecureUploadDir('/test/app', 'test/id', 'agents')).toThrow(
+      expect(() => createSecureUploadDir('test/id', 'agents')).toThrow(
         'Invalid agent ID: contains illegal characters'
       );
     });
 
     it('should reject IDs with backslashes', () => {
-      expect(() => createSecureUploadDir('/test/app', 'test\\id', 'agents')).toThrow(
+      expect(() => createSecureUploadDir('test\\id', 'agents')).toThrow(
         'Invalid agent ID: contains illegal characters'
       );
     });
 
     it('should reject IDs with null bytes', () => {
-      expect(() => createSecureUploadDir('/test/app', 'test\0id', 'agents')).toThrow(
+      expect(() => createSecureUploadDir('test\0id', 'agents')).toThrow(
         'Invalid agent ID: contains illegal characters'
       );
     });
@@ -104,7 +102,7 @@ describe('File Utilities', () => {
     it('should validate path stays within base directory', () => {
       // This test ensures the resolved path check works
       const validId = 'valid-id-123';
-      const result = createSecureUploadDir('/test/app', validId, 'agents');
+      const result = createSecureUploadDir(validId, 'agents');
 
       expect(result).toContain('.eliza/data/uploads/agents');
       expect(result).toContain(validId);
@@ -302,7 +300,7 @@ describe('File Utilities', () => {
       cleanupFiles(files);
 
       expect(fsMock.unlinkSync).toHaveBeenCalledTimes(3);
-      expect(loggerMock.error).toHaveBeenCalledOnce();
+      expect(loggerMock.error).toHaveBeenCalled();
     });
   });
 

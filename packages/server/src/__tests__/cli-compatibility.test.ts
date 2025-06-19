@@ -5,16 +5,16 @@
  * with the CLI package usage patterns.
  */
 
-import { describe, it, expect, mock } from 'bun:test';
+import { describe, it, expect, mock, jest } from 'bun:test';
 
 // Mock core dependencies
 mock.module('@elizaos/core', () => ({
   logger: {
-    warn: mock.fn(),
-    info: mock.fn(),
-    error: mock.fn(),
-    debug: mock.fn(),
-    success: mock.fn(),
+    warn: jest.fn(),
+    info: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+    success: jest.fn(),
   },
   validateUuid: (id: string) => {
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -25,7 +25,7 @@ mock.module('@elizaos/core', () => ({
     async initialize() {}
     async cleanup() {}
   },
-  createUniqueUuid: mock.fn(() => '123e4567-e89b-12d3-a456-426614174000'),
+  createUniqueUuid: jest.fn(() => '123e4567-e89b-12d3-a456-426614174000'),
   ChannelType: {
     DIRECT: 'direct',
     GROUP: 'group',
@@ -43,30 +43,30 @@ mock.module('@elizaos/core', () => ({
 
 // Mock plugin-sql
 mock.module('@elizaos/plugin-sql', () => ({
-  createDatabaseAdapter: mock.fn(() => ({
-    init: mock.fn().mockReturnValue(Promise.resolve(undefined)),
-    close: mock.fn().mockReturnValue(Promise.resolve(undefined)),
-    getDatabase: mock.fn(() => ({
-      execute: mock.fn().mockReturnValue(Promise.resolve([])),
+  createDatabaseAdapter: jest.fn(() => ({
+    init: jest.fn().mockReturnValue(Promise.resolve(undefined)),
+    close: jest.fn().mockReturnValue(Promise.resolve(undefined)),
+    getDatabase: jest.fn(() => ({
+      execute: jest.fn().mockReturnValue(Promise.resolve([])),
     })),
-    getMessageServers: mock.fn(() =>
+    getMessageServers: jest.fn(() =>
       Promise.resolve([{ id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' }])
     ),
-    createMessageServer: mock
+    createMessageServer: jest
       .fn()
       .mockReturnValue(Promise.resolve({ id: '00000000-0000-0000-0000-000000000000' })),
-    getMessageServerById: mock
+    getMessageServerById: jest
       .fn()
       .mockReturnValue(
         Promise.resolve({ id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' })
       ),
-    addAgentToServer: mock.fn().mockReturnValue(Promise.resolve(undefined)),
-    db: { execute: mock.fn().mockReturnValue(Promise.resolve([])) },
+    addAgentToServer: jest.fn().mockReturnValue(Promise.resolve(undefined)),
+    db: { execute: jest.fn().mockReturnValue(Promise.resolve([])) },
   })),
-  DatabaseMigrationService: mock.fn(() => ({
-    initializeWithDatabase: mock.fn().mockReturnValue(Promise.resolve(undefined)),
-    discoverAndRegisterPluginSchemas: mock.fn(),
-    runAllPluginMigrations: mock.fn().mockReturnValue(Promise.resolve(undefined)),
+  DatabaseMigrationService: jest.fn(() => ({
+    initializeWithDatabase: jest.fn().mockReturnValue(Promise.resolve(undefined)),
+    discoverAndRegisterPluginSchemas: jest.fn(),
+    runAllPluginMigrations: jest.fn().mockReturnValue(Promise.resolve(undefined)),
   })),
   plugin: {},
 }));
@@ -74,15 +74,15 @@ mock.module('@elizaos/plugin-sql', () => ({
 // Mock filesystem
 mock.module('node:fs', () => ({
   default: {
-    mkdirSync: mock.fn(),
-    existsSync: mock.fn(() => true),
-    readFileSync: mock.fn(() => '{}'),
-    writeFileSync: mock.fn(),
+    mkdirSync: jest.fn(),
+    existsSync: jest.fn(() => true),
+    readFileSync: jest.fn(() => '{}'),
+    writeFileSync: jest.fn(),
   },
-  mkdirSync: mock.fn(),
-  existsSync: mock.fn(() => true),
-  readFileSync: mock.fn(() => '{}'),
-  writeFileSync: mock.fn(),
+  mkdirSync: jest.fn(),
+  existsSync: jest.fn(() => true),
+  readFileSync: jest.fn(() => '{}'),
+  writeFileSync: jest.fn(),
 }));
 
 describe('CLI Compatibility Tests', () => {
@@ -113,10 +113,10 @@ describe('CLI Compatibility Tests', () => {
       const server = new AgentServer();
 
       // Simulate CLI's pattern of extending the server
-      const mockStartAgent = mock.fn();
-      const mockStopAgent = mock.fn();
-      const mockLoadCharacterTryPath = mock.fn();
-      const mockJsonToCharacter = mock.fn();
+      const mockStartAgent = jest.fn();
+      const mockStopAgent = jest.fn();
+      const mockLoadCharacterTryPath = jest.fn();
+      const mockJsonToCharacter = jest.fn();
 
       (server as any).startAgent = mockStartAgent;
       (server as any).stopAgent = mockStopAgent;
@@ -202,7 +202,7 @@ describe('CLI Compatibility Tests', () => {
       const module = await import('../');
 
       // Test that middleware function signature is compatible
-      const testMiddleware = (req: any, res: any, next: any) => {
+      const testMiddleware = (_req: any, _res: any, next: any) => {
         next();
       };
 
@@ -241,10 +241,10 @@ describe('CLI Compatibility Tests', () => {
 
       // Mock HTTP server for testing
       const mockServer = {
-        listen: mock.fn((port, callback) => {
+        listen: jest.fn((_port, callback) => {
           if (callback) callback();
         }),
-        close: mock.fn((callback) => {
+        close: jest.fn((callback) => {
           if (callback) callback();
         }),
       };
@@ -265,18 +265,18 @@ describe('CLI Compatibility Tests', () => {
       const mockRuntime = {
         agentId: '123e4567-e89b-12d3-a456-426614174000' as any,
         character: { name: 'TestAgent' },
-        registerPlugin: mock.fn().mockReturnValue(Promise.resolve(undefined)),
+        registerPlugin: jest.fn().mockReturnValue(Promise.resolve(undefined)),
         plugins: [],
-        registerProvider: mock.fn(),
-        registerAction: mock.fn(),
+        registerProvider: jest.fn(),
+        registerAction: jest.fn(),
       } as any;
 
       // Mock database methods that registration uses
       server.database = {
         ...server.database,
-        getMessageServers: mock.fn().mockReturnValue(Promise.resolve([])),
-        addAgentToServer: mock.fn().mockReturnValue(Promise.resolve(undefined)),
-        db: { execute: mock.fn().mockReturnValue(Promise.resolve([])) },
+        getMessageServers: jest.fn().mockReturnValue(Promise.resolve([])),
+        addAgentToServer: jest.fn().mockReturnValue(Promise.resolve(undefined)),
+        db: { execute: jest.fn().mockReturnValue(Promise.resolve([])) },
       } as any;
 
       // Test CLI's agent registration pattern

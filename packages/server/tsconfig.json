@@ -14,12 +14,13 @@
     "outDir": "./dist",
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "strict": false,
+    "strict": true,
     "noImplicitAny": false,
     "resolveJsonModule": true,
-    "typeRoots": ["./node_modules/@types", "../../../node_modules/@types"],
-    "types": ["node"]
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "allowUnusedLabels": true
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
-  "exclude": ["node_modules", "dist", "src/**/*.test.ts", "src/**/*.test.tsx", "src/__tests__/**/*"]
+  "exclude": ["node_modules", "dist"]
 }

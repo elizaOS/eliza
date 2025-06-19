@@ -1,7 +1,5 @@
-import type { IAgentRuntime, UUID } from '@elizaos/core';
 import { logger } from '@elizaos/core';
 import express from 'express';
-import type { AgentServer } from '../../index';
 
 // Custom levels from @elizaos/core logger
 const LOG_LEVELS = {
@@ -34,10 +32,7 @@ interface LogEntry {
 /**
  * Logging management endpoints
  */
-export function createLoggingRouter(
-  agents: Map<UUID, IAgentRuntime>,
-  serverInstance: AgentServer
-): express.Router {
+export function createLoggingRouter(): express.Router {
   const router = express.Router();
 
   // Logs endpoint handler

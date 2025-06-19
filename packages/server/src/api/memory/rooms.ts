@@ -1,7 +1,6 @@
-import type { IAgentRuntime, UUID } from '@elizaos/core';
+import type { IAgentRuntime, Room, UUID } from '@elizaos/core';
 import { validateUuid, logger, createUniqueUuid, ChannelType } from '@elizaos/core';
 import express from 'express';
-import type { AgentServer } from '../../index';
 import { sendError, sendSuccess } from '../shared/response-utils';
 
 interface CustomRequest extends express.Request {
@@ -14,10 +13,7 @@ interface CustomRequest extends express.Request {
 /**
  * Room management functionality for agents
  */
-export function createRoomManagementRouter(
-  agents: Map<UUID, IAgentRuntime>,
-  serverInstance: AgentServer
-): express.Router {
+export function createRoomManagementRouter(agents: Map<UUID, IAgentRuntime>): express.Router {
   const router = express.Router();
 
   // Create a new room for an agent
@@ -113,7 +109,7 @@ export function createRoomManagementRouter(
     try {
       const worlds = await runtime.getAllWorlds();
       const participantRoomIds = await runtime.getRoomsForParticipant(agentId);
-      const agentRooms = [];
+      const agentRooms: Room[] = [];
 
       for (const world of worlds) {
         const worldRooms = await runtime.getRooms(world.id);
@@ -121,7 +117,6 @@ export function createRoomManagementRouter(
           if (participantRoomIds.includes(room.id)) {
             agentRooms.push({
               ...room,
-              worldName: world.name,
             });
           }
         }

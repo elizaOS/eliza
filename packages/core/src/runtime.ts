@@ -6,7 +6,6 @@ import {
   ChannelType,
   ModelType,
   type Content,
-  type KnowledgeItem,
   type MemoryMetadata,
   type Character,
   type Action,
@@ -42,9 +41,7 @@ import {
 } from './types';
 
 import { BM25 } from './search';
-import { EventType, type MessagePayload } from './types';
 import { stringToUuid } from './utils';
-import { EventEmitter } from 'events';
 
 const environmentSettings: RuntimeSettings = {};
 

@@ -2,7 +2,7 @@
  * Unit tests for utility functions
  */
 
-import { describe, it, expect, mock, beforeEach } from 'bun:test';
+import { describe, it, expect, mock, beforeEach, jest } from 'bun:test';
 import { expandTildePath, resolvePgliteDir } from '../index';
 import path from 'node:path';
 
@@ -13,16 +13,16 @@ mock.module('node:fs', async () => {
     ...actual,
     default: {
       ...actual,
-      existsSync: mock.fn(),
+      existsSync: jest.fn(),
     },
-    existsSync: mock.fn(),
+    existsSync: jest.fn(),
   };
 });
 
 // Mock dotenv with proper structure for default import
 mock.module('dotenv', async () => {
   const actual = await import('dotenv');
-  const mockConfig = mock.fn();
+  const mockConfig = jest.fn();
   return {
     ...actual,
     default: {
@@ -34,7 +34,7 @@ mock.module('dotenv', async () => {
 
 // Mock environment module
 mock.module('../api/system/environment', () => ({
-  resolveEnvFile: mock.fn(() => '.env'),
+  resolveEnvFile: jest.fn(() => '.env'),
 }));
 
 describe('Utility Functions', () => {
