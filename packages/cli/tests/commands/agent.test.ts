@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
-import { spawn, execSync, execFileSync } from 'node:child_process';
+import { spawn, execSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdtemp, rm, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -64,25 +64,9 @@ describe('ElizaOS Agent Commands', () => {
       throw new Error('CLI templates not built');
     }
 
-    // Find bun executable
-    let bunPath = 'bun';
-    try {
-      bunPath = execFileSync('which', ['bun'], { encoding: 'utf8' }).trim();
-      console.log(`[DEBUG] Found bun at: ${bunPath}`);
-    } catch (e) {
-      console.log('[DEBUG] Could not find bun with which, using default');
-    }
-    
     serverProcess = spawn(
-      bunPath,
-      [
-        cliPath,
-        'start',
-        '--port',
-        testServerPort,
-        '--character',
-        defaultCharacter,
-      ],
+      'sh',
+      ['-c', `bun ${cliPath} start --port ${testServerPort} --character ${defaultCharacter}`],
       {
         env: {
           ...process.env,

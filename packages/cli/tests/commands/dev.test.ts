@@ -1,4 +1,4 @@
-import { execSync, spawn, execFileSync } from 'node:child_process';
+import { execSync, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -142,29 +142,21 @@ describe('ElizaOS Dev Commands', () => {
     console.log(`[DEBUG] CLI path: ${cliPath}`);
     console.log(`[DEBUG] CLI exists: ${existsSync(cliPath)}`);
 
-    // Find bun executable
-    let bunPath = 'bun';
-    try {
-      bunPath = execFileSync('which', ['bun'], { encoding: 'utf8' }).trim();
-      console.log(`[DEBUG] Found bun at: ${bunPath}`);
-    } catch (e) {
-      console.log('[DEBUG] Could not find bun with which, using default');
-    }
+    // Use execSync to run the CLI through shell
+    const commandStr = `bun ${cliPath} dev ${args}`;
+    console.log(`[DEBUG] Running command: ${commandStr}`);
 
-    const devProcess = spawn(
-      bunPath,
-      [cliPath, 'dev', ...args.split(' ')],
-      {
-        env: {
-          ...process.env,
-          LOG_LEVEL: 'error',
-          PGLITE_DATA_DIR: join(testTmpDir, 'elizadb'),
-          SERVER_PORT: testServerPort.toString(),
-        },
-        stdio: ['ignore', 'pipe', 'pipe'],
-        cwd: cwd || projectDir,
-      }
-    );
+    const devProcess = spawn('sh', ['-c', commandStr], {
+      env: {
+        ...process.env,
+        LOG_LEVEL: 'error',
+        PGLITE_DATA_DIR: join(testTmpDir, 'elizadb'),
+        SERVER_PORT: testServerPort.toString(),
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      cwd: cwd || projectDir,
+      detached: false,
+    });
 
     if (!devProcess || !devProcess.pid) {
       console.error('[ERROR] Failed to spawn dev process');
@@ -211,17 +203,9 @@ describe('ElizaOS Dev Commands', () => {
       console.log(`[DEBUG] CLI path for dev test: ${cliPath}`);
       console.log(`[DEBUG] CLI exists: ${existsSync(cliPath)}`);
       
-      // Find bun executable
-      let bunPath = 'bun';
-      try {
-        bunPath = execFileSync('which', ['bun'], { encoding: 'utf8' }).trim();
-      } catch (e) {
-        // Use default
-      }
-      
       const devProcess = spawn(
-        bunPath,
-        [cliPath, 'dev', '--port', testServerPort.toString()],
+        'sh',
+        ['-c', `bun ${cliPath} dev --port ${testServerPort}`],
         {
           env: {
             ...process.env,
@@ -230,6 +214,7 @@ describe('ElizaOS Dev Commands', () => {
           },
           stdio: ['ignore', 'pipe', 'pipe'],
           cwd: projectDir,
+          detached: false,
         }
       );
       
