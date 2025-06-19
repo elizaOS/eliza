@@ -45,6 +45,20 @@ const KNOWN_COMPOSITE_PRIMARY_KEYS: Record<string, { columns: string[] }> = {
 };
 
 export class DrizzleSchemaIntrospector {
+  private isPGLite: boolean;
+
+  constructor(db?: DrizzleDB) {
+    this.isPGLite = db ? this.detectPGLite(db) : false;
+  }
+
+  private detectPGLite(db: DrizzleDB): boolean {
+    const dbConstructorName = db.constructor.name;
+    return dbConstructorName.includes('PgliteDatabase') || 
+           dbConstructorName.includes('PGlite') ||
+           (db as any).client?.constructor?.name?.includes('PGlite') ||
+           process.env.PGLITE_DATA_DIR !== undefined;
+  }
+
   parseTableDefinition(table: any, exportKey?: string): TableDefinition {
     const tableName = this.getTableName(table, exportKey);
 
@@ -750,18 +764,18 @@ export class DrizzleSchemaIntrospector {
 
     // Handle numberTimestamp specifically
     if (config.sqlName?.includes('numberTimestamp') || columnType === 'numberTimestamp') {
-      return 'TIMESTAMP WITH TIME ZONE';
+      return this.isPGLite ? 'TIMESTAMP' : 'TIMESTAMP WITH TIME ZONE';
     }
 
     switch (columnType) {
       case 'PgUUID':
-        return 'UUID';
+        return this.isPGLite ? 'TEXT' : 'UUID';
       case 'PgVarchar':
         return config.length ? `VARCHAR(${config.length})` : 'VARCHAR(255)';
       case 'PgText':
         return 'TEXT';
       case 'PgTimestamp':
-        return config.withTimezone ? 'TIMESTAMP WITH TIME ZONE' : 'TIMESTAMP';
+        return config.withTimezone && !this.isPGLite ? 'TIMESTAMP WITH TIME ZONE' : 'TIMESTAMP';
       case 'PgInteger':
         return 'INTEGER';
       case 'PgBigint':
@@ -769,7 +783,7 @@ export class DrizzleSchemaIntrospector {
       case 'PgBoolean':
         return 'BOOLEAN';
       case 'PgJsonb':
-        return 'JSONB';
+        return this.isPGLite ? 'TEXT' : 'JSONB';
       case 'PgSerial':
         return 'SERIAL';
       case 'PgArray':
@@ -795,17 +809,17 @@ export class DrizzleSchemaIntrospector {
 
     switch (dataType) {
       case 'uuid':
-        return 'UUID';
+        return this.isPGLite ? 'TEXT' : 'UUID';
       case 'text':
         return 'TEXT';
       case 'timestamp':
         return 'TIMESTAMP';
       case 'timestamptz':
-        return 'TIMESTAMP WITH TIME ZONE';
+        return this.isPGLite ? 'TIMESTAMP' : 'TIMESTAMP WITH TIME ZONE';
       case 'boolean':
         return 'BOOLEAN';
       case 'jsonb':
-        return 'JSONB';
+        return this.isPGLite ? 'TEXT' : 'JSONB';
       default:
         return 'TEXT';
     }
@@ -884,16 +898,34 @@ export class DrizzleSchemaIntrospector {
         if (col.notNull && !col.primaryKey) def += ' NOT NULL';
         if (col.unique) def += ' UNIQUE';
         if (col.defaultValue) {
-          // Handle different types of defaults
+          // Handle different types of defaults with PGLite compatibility
           if (col.defaultValue === 'now()' || col.defaultValue.includes('now()')) {
-            def += ' DEFAULT now()';
+            if (this.isPGLite) {
+              def += " DEFAULT CURRENT_TIMESTAMP";
+            } else {
+              def += ' DEFAULT now()';
+            }
           } else if (col.defaultValue === 'true' || col.defaultValue === 'false') {
             def += ` DEFAULT ${col.defaultValue}`;
           } else if (
             col.defaultValue === 'gen_random_uuid()' ||
             col.defaultValue.includes('gen_random_uuid')
           ) {
-            def += ' DEFAULT gen_random_uuid()';
+            if (this.isPGLite) {
+              // PGLite may not have gen_random_uuid(), skip the default and handle UUID generation in application code
+              // This is safer than trying to create complex UUID generation in SQL
+              logger.debug(`[CUSTOM MIGRATOR] PGLite: Skipping UUID default for column ${col.name}, will be handled by application`);
+            } else {
+              def += ' DEFAULT gen_random_uuid()';
+            }
+          } else if (col.defaultValue.includes('::jsonb')) {
+            if (this.isPGLite) {
+              // PGLite doesn't support JSONB casting, just use the value as TEXT
+              const jsonValue = col.defaultValue.replace(/::jsonb$/, '');
+              def += ` DEFAULT ${jsonValue}`;
+            } else {
+              def += ` DEFAULT ${col.defaultValue}`;
+            }
           } else if (col.defaultValue.startsWith("'") || !isNaN(Number(col.defaultValue))) {
             def += ` DEFAULT ${col.defaultValue}`;
           } else {
@@ -941,7 +973,25 @@ export class DrizzleSchemaIntrospector {
 }
 
 export class PluginNamespaceManager {
-  constructor(private db: DrizzleDB) {}
+  private isPGLite: boolean;
+
+  constructor(private db: DrizzleDB) {
+    // Detect if we're using PGLite based on the database instance
+    this.isPGLite = this.detectPGLite();
+    logger.debug(`[NAMESPACE MANAGER] Detected database type: ${this.isPGLite ? 'PGLite' : 'PostgreSQL'}`);
+  }
+
+  private detectPGLite(): boolean {
+    // Check if the database has PGLite-specific properties
+    // PGLite databases have a different constructor and interface
+    const dbConstructorName = this.db.constructor.name;
+    return dbConstructorName.includes('PgliteDatabase') || 
+           dbConstructorName.includes('PGlite') ||
+           // Also check for Drizzle's PGLite wrapper patterns
+           (this.db as any).client?.constructor?.name?.includes('PGlite') ||
+           // Environment variable fallback
+           process.env.PGLITE_DATA_DIR !== undefined;
+  }
 
   async getPluginSchema(pluginName: string): Promise<string> {
     if (pluginName === '@elizaos/plugin-sql') {
@@ -974,12 +1024,32 @@ export class PluginNamespaceManager {
   }
 
   async introspectExistingTables(schemaName: string): Promise<string[]> {
-    const res = await this.db.execute(
-      sql.raw(
-        `SELECT table_name FROM information_schema.tables WHERE table_schema = '${schemaName}'`
-      )
-    );
-    return (res.rows as any[]).map((row) => row.table_name);
+    if (this.isPGLite) {
+      // PGLite has limited support for information_schema, use an alternative approach
+      try {
+        // Try using pg_tables which might be available in PGLite
+        const res = await this.db.execute(
+          sql.raw(
+            schemaName === 'public' 
+              ? `SELECT tablename as table_name FROM pg_tables WHERE schemaname = 'public'`
+              : `SELECT tablename as table_name FROM pg_tables WHERE schemaname = '${schemaName}'`
+          )
+        );
+        return (res.rows as any[]).map((row) => row.table_name);
+      } catch (error) {
+        // If pg_tables also fails, return empty array and let the migration process assume no tables exist
+        logger.debug(`[NAMESPACE MANAGER] PGLite introspection failed, assuming no existing tables:`, error);
+        return [];
+      }
+    } else {
+      // Standard PostgreSQL approach using information_schema
+      const res = await this.db.execute(
+        sql.raw(
+          `SELECT table_name FROM information_schema.tables WHERE table_schema = '${schemaName}'`
+        )
+      );
+      return (res.rows as any[]).map((row) => row.table_name);
+    }
   }
 
   async foreignKeyExists(
@@ -987,6 +1057,14 @@ export class PluginNamespaceManager {
     tableName: string,
     constraintName: string
   ): Promise<boolean> {
+    if (this.isPGLite) {
+      // PGLite doesn't fully support information_schema constraints
+      // For PGLite, we'll assume foreign keys don't exist and let migration add them
+      // This is safe because constraint addition is done with "IF NOT EXISTS" or try/catch
+      logger.debug(`[NAMESPACE MANAGER] PGLite: Skipping foreign key existence check for ${constraintName}`);
+      return false;
+    }
+
     try {
       const res = await this.db.execute(
         sql.raw(
@@ -1010,6 +1088,13 @@ export class PluginNamespaceManager {
     tableName: string,
     constraintName: string
   ): Promise<boolean> {
+    if (this.isPGLite) {
+      // PGLite doesn't fully support information_schema constraints
+      // For PGLite, we'll assume check constraints don't exist and let migration add them
+      logger.debug(`[NAMESPACE MANAGER] PGLite: Skipping check constraint existence check for ${constraintName}`);
+      return false;
+    }
+
     try {
       const res = await this.db.execute(
         sql.raw(
@@ -1033,6 +1118,13 @@ export class PluginNamespaceManager {
     tableName: string,
     constraintName: string
   ): Promise<boolean> {
+    if (this.isPGLite) {
+      // PGLite doesn't fully support information_schema constraints
+      // For PGLite, we'll assume unique constraints don't exist and let migration add them
+      logger.debug(`[NAMESPACE MANAGER] PGLite: Skipping unique constraint existence check for ${constraintName}`);
+      return false;
+    }
+
     try {
       const res = await this.db.execute(
         sql.raw(
@@ -1052,7 +1144,7 @@ export class PluginNamespaceManager {
   }
 
   async createTable(tableDef: TableDefinition, schemaName: string): Promise<void> {
-    const introspector = new DrizzleSchemaIntrospector();
+    const introspector = new DrizzleSchemaIntrospector(this.db);
     const createTableSQL = introspector.generateCreateTableSQL(tableDef, schemaName);
 
     await this.db.execute(sql.raw(createTableSQL));
@@ -1062,7 +1154,7 @@ export class PluginNamespaceManager {
   async addConstraints(tableDef: TableDefinition, schemaName: string): Promise<void> {
     // Add foreign key constraints
     if (tableDef.foreignKeys.length > 0) {
-      const introspector = new DrizzleSchemaIntrospector();
+      const introspector = new DrizzleSchemaIntrospector(this.db);
       const constraintSQLs = introspector.generateForeignKeySQL(tableDef, schemaName);
       for (let i = 0; i < tableDef.foreignKeys.length; i++) {
         const fk = tableDef.foreignKeys[i];
@@ -1197,7 +1289,7 @@ export async function runPluginMigrations(
   logger.debug(`[CUSTOM MIGRATOR] Starting migration for plugin: ${pluginName}`);
 
   const namespaceManager = new PluginNamespaceManager(db);
-  const introspector = new DrizzleSchemaIntrospector();
+  const introspector = new DrizzleSchemaIntrospector(db);
   const extensionManager = new ExtensionManager(db);
 
   await extensionManager.installRequiredExtensions(['vector', 'fuzzystrmatch']);
