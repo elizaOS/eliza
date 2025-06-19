@@ -24,7 +24,6 @@ export default defineConfig({
     'fs-extra', 
     'multer',
     'socket.io',
-    '@elizaos/server',
     'body-parser',
     'cors',
     'helmet',
