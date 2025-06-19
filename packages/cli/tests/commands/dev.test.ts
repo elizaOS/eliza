@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TEST_TIMEOUTS } from '../test-timeouts';
-import { killProcessOnPort, safeChangeDirectory } from './test-utils';
+import { killProcessOnPort, safeChangeDirectory, getBunExecutable } from './test-utils';
 
 describe('ElizaOS Dev Commands', () => {
   let testTmpDir: string;
@@ -146,30 +146,45 @@ describe('ElizaOS Dev Commands', () => {
     console.log(`[DEBUG] CLI path: ${cliPath}`);
     console.log(`[DEBUG] CLI exists: ${existsSync(cliPath)}`);
 
-    // Always use 'bun' from PATH
-    const bunPath = 'bun';
-    console.log('[DEBUG] Using "bun" from PATH');
+    // Use platform-specific bun executable
+    const bunPath = getBunExecutable();
 
     const commandStr = `${bunPath} ${cliPath} dev ${args}`;
     console.log(`[DEBUG] Running command: ${commandStr}`);
 
     // Use Bun.spawn for better compatibility
     console.log(`[DEBUG] Using Bun.spawn for dev command`);
-    const devProcess = Bun.spawn([bunPath, cliPath, 'dev', ...args.split(' ')], {
-      cwd: cwd || projectDir,
-      env: {
-        ...process.env,
-        LOG_LEVEL: 'error',
-        PGLITE_DATA_DIR: join(testTmpDir, 'elizadb'),
-        SERVER_PORT: testServerPort.toString(),
-      },
-      stdin: 'ignore',
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
+    console.log(`[DEBUG] Command: ${bunPath} ${cliPath} dev ${args}`);
     
-    if (!devProcess.pid) {
-      throw new Error('Bun.spawn failed to create process');
+    try {
+      const devProcess = Bun.spawn([bunPath, cliPath, 'dev', ...args.split(' ')], {
+        cwd: cwd || projectDir,
+        env: {
+          ...process.env,
+          LOG_LEVEL: 'error',
+          PGLITE_DATA_DIR: join(testTmpDir, 'elizadb'),
+          SERVER_PORT: testServerPort.toString(),
+        },
+        stdin: 'ignore',
+        stdout: 'pipe',
+        stderr: 'pipe',
+        // Windows-specific options
+        ...(process.platform === 'win32' && {
+          windowsHide: true,
+          windowsVerbatimArguments: false
+        })
+      });
+      
+      if (!devProcess.pid) {
+        throw new Error('Bun.spawn failed to create process - no PID returned');
+      }
+      
+      return devProcess;
+    } catch (spawnError) {
+      console.error(`[ERROR] Failed to spawn dev process:`, spawnError);
+      console.error(`[ERROR] Platform: ${process.platform}`);
+      console.error(`[ERROR] Working directory: ${cwd || projectDir}`);
+      throw spawnError;
     }
 
     if (!devProcess || !devProcess.pid) {
@@ -211,26 +226,40 @@ describe('ElizaOS Dev Commands', () => {
     console.log(`[DEBUG] CLI path for dev test: ${cliPath}`);
     console.log(`[DEBUG] CLI exists: ${existsSync(cliPath)}`);
 
-    // Always use 'bun' from PATH
-    const bunPath = 'bun';
-    console.log('[DEBUG] Using "bun" from PATH');
+    // Use platform-specific bun executable
+    const bunPath = getBunExecutable();
 
     // Use Bun.spawn for project detection test
     console.log(`[DEBUG] Using Bun.spawn for project detection test`);
-    const devProcess = Bun.spawn([bunPath, cliPath, 'dev', '--port', testServerPort.toString()], {
-      cwd: projectDir,
-      env: {
-        ...process.env,
-        LOG_LEVEL: 'info',
-        PGLITE_DATA_DIR: join(testTmpDir, 'elizadb'),
-      },
-      stdin: 'ignore',
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
+    console.log(`[DEBUG] Command: ${bunPath} ${cliPath} dev --port ${testServerPort}`);
     
-    if (!devProcess.pid) {
-      throw new Error('Bun.spawn failed to create process');
+    let devProcess: any;
+    try {
+      devProcess = Bun.spawn([bunPath, cliPath, 'dev', '--port', testServerPort.toString()], {
+        cwd: projectDir,
+        env: {
+          ...process.env,
+          LOG_LEVEL: 'info',
+          PGLITE_DATA_DIR: join(testTmpDir, 'elizadb'),
+        },
+        stdin: 'ignore',
+        stdout: 'pipe',
+        stderr: 'pipe',
+        // Windows-specific options
+        ...(process.platform === 'win32' && {
+          windowsHide: true,
+          windowsVerbatimArguments: false
+        })
+      });
+      
+      if (!devProcess.pid) {
+        throw new Error('Bun.spawn failed to create process - no PID returned');
+      }
+    } catch (spawnError) {
+      console.error(`[ERROR] Failed to spawn project detection test:`, spawnError);
+      console.error(`[ERROR] Platform: ${process.platform}`);
+      console.error(`[ERROR] Working directory: ${projectDir}`);
+      throw spawnError;
     }
 
     if (!devProcess || !devProcess.pid) {
@@ -372,9 +401,8 @@ describe('ElizaOS Dev Commands', () => {
     console.log(`[DEBUG] CLI path for non-eliza test: ${cliPath}`);
     console.log(`[DEBUG] CLI exists: ${existsSync(cliPath)}`);
 
-    // Use 'bun' from PATH
-    const bunPath = 'bun';
-    console.log('[DEBUG] Using "bun" from PATH');
+    // Use platform-specific bun executable
+    const bunPath = getBunExecutable();
 
     // Validate that CLI and bun exist before spawning
     if (!existsSync(cliPath)) {
@@ -383,20 +411,35 @@ describe('ElizaOS Dev Commands', () => {
 
     // Use Bun.spawn for non-eliza test
     console.log(`[DEBUG] Using Bun.spawn for non-eliza test`);
-    const devProcess = Bun.spawn([bunPath, cliPath, 'dev', '--port', testServerPort.toString()], {
-      cwd: nonElizaDir,
-      env: {
-        ...process.env,
-        LOG_LEVEL: 'info',
-        PGLITE_DATA_DIR: join(testTmpDir, 'elizadb'),
-      },
-      stdin: 'ignore',
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
+    console.log(`[DEBUG] Command: ${bunPath} ${cliPath} dev --port ${testServerPort}`);
     
-    if (!devProcess.pid) {
-      throw new Error('Bun.spawn failed to create process');
+    let devProcess: any;
+    try {
+      devProcess = Bun.spawn([bunPath, cliPath, 'dev', '--port', testServerPort.toString()], {
+        cwd: nonElizaDir,
+        env: {
+          ...process.env,
+          LOG_LEVEL: 'info',
+          PGLITE_DATA_DIR: join(testTmpDir, 'elizadb'),
+        },
+        stdin: 'ignore',
+        stdout: 'pipe',
+        stderr: 'pipe',
+        // Windows-specific options
+        ...(process.platform === 'win32' && {
+          windowsHide: true,
+          windowsVerbatimArguments: false
+        })
+      });
+      
+      if (!devProcess.pid) {
+        throw new Error('Bun.spawn failed to create process - no PID returned');
+      }
+    } catch (spawnError) {
+      console.error(`[ERROR] Failed to spawn non-eliza test:`, spawnError);
+      console.error(`[ERROR] Platform: ${process.platform}`);
+      console.error(`[ERROR] Working directory: ${nonElizaDir}`);
+      throw spawnError;
     }
 
     if (!devProcess || !devProcess.pid) {

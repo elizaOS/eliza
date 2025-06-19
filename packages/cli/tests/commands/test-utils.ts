@@ -555,6 +555,16 @@ export async function killProcessOnPort(port: number): Promise<void> {
 }
 
 /**
+ * Get the correct bun executable path for the platform
+ */
+export function getBunExecutable(): string {
+  // On Windows, we might need to add .exe extension
+  const bunCmd = process.platform === 'win32' ? 'bun.exe' : 'bun';
+  console.log(`[DEBUG] Using bun executable: ${bunCmd}`);
+  return bunCmd;
+}
+
+/**
  * Cross-platform file operations utility
  */
 export const crossPlatform = {

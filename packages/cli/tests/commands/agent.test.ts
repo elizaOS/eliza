@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { killProcessOnPort, waitForServerReady } from './test-utils';
+import { killProcessOnPort, waitForServerReady, getBunExecutable } from './test-utils';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 
 describe('ElizaOS Agent Commands', () => {
@@ -72,33 +72,45 @@ describe('ElizaOS Agent Commands', () => {
     const serverBunPath = getBunPath();
     console.log(`[DEBUG] Spawning server with: ${serverBunPath} ${cliPath} start`);
     
-    const proc = Bun.spawn([
-      serverBunPath,
-      cliPath,
-      'start',
-      '--port',
-      testServerPort,
-      '--character',
-      defaultCharacter
-    ], {
-      env: {
-        ...process.env,
-        LOG_LEVEL: 'debug',
-        PGLITE_DATA_DIR: `${testTmpDir}/elizadb`,
-        NODE_OPTIONS: '--max-old-space-size=4096',
-        SERVER_HOST: '127.0.0.1',
-      },
-      stdin: 'ignore',
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
-    
-    if (!proc.pid) {
-      throw new Error('Failed to spawn server process');
+    try {
+      const proc = Bun.spawn([
+        serverBunPath,
+        cliPath,
+        'start',
+        '--port',
+        testServerPort,
+        '--character',
+        defaultCharacter
+      ], {
+        env: {
+          ...process.env,
+          LOG_LEVEL: 'debug',
+          PGLITE_DATA_DIR: `${testTmpDir}/elizadb`,
+          NODE_OPTIONS: '--max-old-space-size=4096',
+          SERVER_HOST: '127.0.0.1',
+        },
+        stdin: 'ignore',
+        stdout: 'pipe',
+        stderr: 'pipe',
+        // Windows-specific options
+        ...(process.platform === 'win32' && {
+          windowsHide: true,
+          windowsVerbatimArguments: false
+        })
+      });
+      
+      if (!proc.pid) {
+        throw new Error('Failed to spawn server process - no PID returned');
+      }
+      
+      // Wrap to maintain compatibility with existing code
+      serverProcess = proc as any;
+    } catch (spawnError) {
+      console.error(`[ERROR] Failed to spawn server process:`, spawnError);
+      console.error(`[ERROR] Command: ${serverBunPath} ${cliPath} start`);
+      console.error(`[ERROR] Platform: ${process.platform}`);
+      throw spawnError;
     }
-    
-    // Wrap to maintain compatibility with existing code
-    serverProcess = proc as any;
 
     if (!serverProcess || !serverProcess.pid) {
       console.error('[ERROR] Failed to spawn server process');
@@ -438,7 +450,6 @@ describe('ElizaOS Agent Commands', () => {
 });
 
 function getBunPath(): string {
-  // Always use 'bun' directly from PATH
-  console.log('[DEBUG] Using "bun" from PATH');
-  return 'bun';
+  // Use platform-specific bun executable
+  return getBunExecutable();
 }
