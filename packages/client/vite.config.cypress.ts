@@ -41,8 +41,8 @@ export default defineConfig({
         'vm',
         'zlib',
         'tty',
-        'domain'
-      ]
+        'domain',
+      ],
     }),
   ],
   resolve: {
@@ -108,7 +108,7 @@ export default defineConfig({
       'parse-asn1',
       'asn1.js',
       'safe-buffer',
-      'readable-stream'
+      'readable-stream',
     ],
   },
-}); 
+});

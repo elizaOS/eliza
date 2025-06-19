@@ -29,7 +29,8 @@ import { attachmentsProvider } from '../src/providers/attachments';
 
 // Mock external dependencies
 // Complex mocking disabled for bun:test compatibility
-// vi.mock('@elizaos/core', async (importOriginal) => {
+/*
+vi.mock('@elizaos/core', async (importOriginal) => {
   const actual = (await importOriginal()) as any;
   return {
     ...actual,
@@ -55,6 +56,7 @@ import { attachmentsProvider } from '../src/providers/attachments';
     },
   };
 });
+*/
 
 describe('Choice Provider', () => {
   let mockRuntime: MockRuntime;
@@ -439,8 +441,9 @@ describe('Role Provider', () => {
     mockRuntime = createMockRuntime();
     mockState = createMockState();
 
-    // Reset core module mocks that might be targeted by // vi.mocked not available in bun:test, simplifying
-    const coreMocks = // vi.mocked not available in bun:test, simplifying(await import('@elizaos/core'));
+    // Reset core module mocks that might be targeted
+    // vi.mocked not available in bun:test, simplifying
+    const coreMocks = await import('@elizaos/core');
     coreMocks.createUniqueUuid.mockReset(); // Reset this specifically
 
     (mockRuntime.getRoom as ReturnType<typeof vi.fn>).mockResolvedValue({
@@ -491,7 +494,8 @@ describe('Role Provider', () => {
     };
     mockMessage.roomId = 'room-for-roles-simple-test' as UUID;
 
-    const coreMocks = // vi.mocked not available in bun:test, simplifying(await import('@elizaos/core'));
+    // vi.mocked not available in bun:test, simplifying
+    const coreMocks = await import('@elizaos/core');
     coreMocks.createUniqueUuid.mockReset(); // Ensure it's clean for this test's specific mock
     coreMocks.createUniqueUuid.mockImplementation((rt, sId) => {
       if (sId === serverId) return worldIdForRoleTest;
@@ -580,9 +584,8 @@ describe('Role Provider', () => {
     });
 
     const coreMocksNoRoles = // vi.mocked not available in bun:test, simplifying(await import('@elizaos/core'));
-    const { createUniqueUuid: actualOriginalCreateUniqueUuid } = await // vi.importActual not available in bun:test<{
-      createUniqueUuid: typeof coreMocksNoRoles.createUniqueUuid;
-    }>('@elizaos/core');
+    // vi.importActual not available in bun:test
+    const { createUniqueUuid: actualOriginalCreateUniqueUuid } = await import('@elizaos/core');
 
     coreMocksNoRoles.createUniqueUuid.mockImplementation((rt, sId) => {
       if (sId === mockServerId) return expectedWorldIdForNoRoles;
@@ -679,7 +682,8 @@ describe('Settings Provider', () => {
     mock.restore();
     // Reset specific mocks for @elizaos/core to ensure clean state between tests
     // This is important because vi.mock is module-level
-    const coreMocks = // vi.mocked not available in bun:test, simplifying(await import('@elizaos/core'));
+    // vi.mocked not available in bun:test, simplifying
+    const coreMocks = await import('@elizaos/core');
     coreMocks.getWorldSettings.mockClear().mockResolvedValue({
       setting1: { name: 'setting1', value: 'value1', description: 'Description 1' },
       setting2: { name: 'setting2', value: 'value2', description: 'Description 2', secret: true },
@@ -709,7 +713,8 @@ describe('Settings Provider', () => {
     mockMessage.roomId = 'onboarding-room-id' as UUID;
 
     // Ensure core mocks are explicitly set for this test case if needed
-    const coreMocks = // vi.mocked not available in bun:test, simplifying(await import('@elizaos/core'));
+    // vi.mocked not available in bun:test, simplifying
+    const coreMocks = await import('@elizaos/core');
     coreMocks.findWorldsForOwner.mockResolvedValue([
       {
         id: 'world-1' as UUID,
@@ -782,7 +787,8 @@ describe('Settings Provider', () => {
   });
 
   it('should handle errors gracefully when getWorldSettings fails', async () => {
-    const coreMocks = // vi.mocked not available in bun:test, simplifying(await import('@elizaos/core'));
+    // vi.mocked not available in bun:test, simplifying
+    const coreMocks = await import('@elizaos/core');
     coreMocks.getWorldSettings.mockRejectedValueOnce(new Error('Failed to retrieve settings'));
     mockMessage.content = { channelType: ChannelType.DM };
     mockState.data.room = {
@@ -827,7 +833,8 @@ describe('Settings Provider', () => {
     expect(result.text).toContain(
       'Error retrieving configuration information. Please try again later.'
     );
-    const coreMocks = // vi.mocked not available in bun:test, simplifying(await import('@elizaos/core'));
+    // vi.mocked not available in bun:test, simplifying
+    const coreMocks = await import('@elizaos/core');
     expect(coreMocks.logger.error).toHaveBeenLastCalledWith(
       expect.stringContaining('Critical error in settings provider:')
     );

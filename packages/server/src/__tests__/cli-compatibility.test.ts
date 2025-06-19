@@ -5,7 +5,7 @@
  * with the CLI package usage patterns.
  */
 
-import { describe, it, expect, vi } from 'bun:test';
+import { describe, it, expect, mock } from 'bun:test';
 
 // Mock core dependencies
 mock.module('@elizaos/core', () => ({

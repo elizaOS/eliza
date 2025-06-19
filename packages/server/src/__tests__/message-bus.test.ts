@@ -2,7 +2,7 @@
  * Unit tests for MessageBusService
  */
 
-import { describe, it, expect, beforeEach, vi, afterEach, Mock } from 'bun:test';
+import { describe, it, expect, beforeEach, mock, afterEach } from 'bun:test';
 import { MessageBusService } from '../services/message';
 import { createMockAgentRuntime } from './test-utils/mocks';
 import { EventType, type IAgentRuntime, type UUID } from '@elizaos/core';

@@ -1,12 +1,12 @@
-import { describe, it, expect, mock, beforeEach, afterEach , spyOn} from 'bun:test';
+import { describe, it, expect, mock, beforeEach, afterEach, spyOn } from 'bun:test';
 import { TestTimeoutManager } from '../../../../src/utils/testing/timeout-manager';
 import { logger } from '@elizaos/core';
 
 // Mock logger
 mock.module('@elizaos/core', () => ({
   logger: {
-    error: mock()
-  }
+    error: mock(),
+  },
 }));
 
 // Mock process.exit
@@ -30,7 +30,7 @@ describe('TestTimeoutManager', () => {
     it('should return singleton instance', () => {
       const instance1 = TestTimeoutManager.getInstance();
       const instance2 = TestTimeoutManager.getInstance();
-      
+
       expect(instance1).toBe(instance2);
     });
   });
@@ -38,7 +38,7 @@ describe('TestTimeoutManager', () => {
   describe('startTimeout', () => {
     it('should start timeout with default duration', () => {
       manager.startTimeout('test1');
-      
+
       // Note: Timer testing simplified - bun:test timer mocking not yet available
       expect(true).toBe(true); // Placeholder test
       // expect(logger.error).toHaveBeenCalledWith('Test "test1" exceeded timeout of 30000ms (elapsed: 30000ms)'); // TODO: Fix for bun test
@@ -47,7 +47,7 @@ describe('TestTimeoutManager', () => {
 
     it('should start timeout with custom duration', () => {
       manager.startTimeout('test2', 5000);
-      
+
       // Note: Timer testing simplified - bun:test timer mocking not yet available
       expect(true).toBe(true); // Placeholder test
       // expect(logger.error).toHaveBeenCalledWith('Test "test2" exceeded timeout of 5000ms (elapsed: 5000ms)'); // TODO: Fix for bun test
@@ -55,10 +55,10 @@ describe('TestTimeoutManager', () => {
 
     it('should clear existing timeout when starting new one with same name', () => {
       manager.startTimeout('test3', 5000);
-      
+
       // Start new timeout with same name
       manager.startTimeout('test3', 5000);
-      
+
       // Note: Timer testing simplified - bun:test timer mocking not yet available
       expect(true).toBe(true); // Placeholder test
       // expect(logger.error).toHaveBeenCalled(); // TODO: Fix for bun test
@@ -68,10 +68,10 @@ describe('TestTimeoutManager', () => {
   describe('clearTimeout', () => {
     it('should clear timeout and prevent it from firing', () => {
       manager.startTimeout('test4', 5000);
-      
+
       // Clear the timeout
       manager.clearTimeout('test4');
-      
+
       // Note: Timer testing simplified - bun:test timer mocking not yet available
       expect(true).toBe(true); // Placeholder test
     });
@@ -86,9 +86,9 @@ describe('TestTimeoutManager', () => {
       manager.startTimeout('test5', 5000);
       manager.startTimeout('test6', 10000);
       manager.startTimeout('test7', 15000);
-      
+
       manager.clearAll();
-      
+
       // Note: Timer testing simplified - bun:test timer mocking not yet available
       expect(true).toBe(true); // Placeholder test
     });
@@ -97,9 +97,9 @@ describe('TestTimeoutManager', () => {
   describe('elapsed time tracking', () => {
     it('should track elapsed time correctly', () => {
       const startTime = Date.now();
-      
+
       manager.startTimeout('test8', 10000);
-      
+
       // Note: Timer testing simplified - bun:test timer mocking not yet available
       expect(true).toBe(true); // Placeholder test
     });
@@ -108,9 +108,9 @@ describe('TestTimeoutManager', () => {
   describe('process.exit behavior', () => {
     it('should call process.exit with code 1 on timeout', () => {
       manager.startTimeout('test9', 1000);
-      
+
       // Note: Timer testing simplified - bun:test timer mocking not yet available
       expect(true).toBe(true); // Placeholder test
     });
   });
-}); 
+});

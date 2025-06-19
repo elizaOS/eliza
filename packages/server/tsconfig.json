@@ -21,11 +21,5 @@
     "types": ["node"]
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
-  "exclude": [
-    "node_modules", 
-    "dist",
-    "src/**/*.test.ts",
-    "src/**/*.test.tsx",
-    "src/__tests__/**/*"
-  ]
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts", "src/**/*.test.tsx", "src/__tests__/**/*"]
 }

@@ -78,12 +78,10 @@ describe('DatabaseMigrationService', () => {
       ];
 
       migrationService.discoverAndRegisterPluginSchemas(plugins);
-
     });
 
     it('should handle empty plugin array', () => {
       migrationService.discoverAndRegisterPluginSchemas([]);
-
     });
 
     it('should handle plugins without schemas', () => {
@@ -99,7 +97,6 @@ describe('DatabaseMigrationService', () => {
       ];
 
       migrationService.discoverAndRegisterPluginSchemas(plugins);
-
     });
   });
 
@@ -160,7 +157,6 @@ describe('DatabaseMigrationService', () => {
 
       // Run migrations
       await migrationService.runAllPluginMigrations();
-
     });
   });
 });

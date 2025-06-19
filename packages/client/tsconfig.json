@@ -10,6 +10,6 @@
   ],
   "compilerOptions": {
     "lib": ["es2019", "dom"],
-    "baseUrl": ".",
+    "baseUrl": "."
   }
 }

@@ -146,10 +146,9 @@ export function createMockRuntime(overrides: Partial<MockRuntime> = {}): MockRun
       worldId: 'test-world-id',
       serverId: 'test-server-id',
     }),
-    getRooms: mock()
-      .mockResolvedValue([
-        { id: 'room-id', name: 'Test Room', worldId: 'test-world-id', serverId: 'test-server-id' },
-      ]),
+    getRooms: mock().mockResolvedValue([
+      { id: 'room-id', name: 'Test Room', worldId: 'test-world-id', serverId: 'test-server-id' },
+    ]),
     getWorld: mock().mockResolvedValue({
       id: 'test-world-id',
       name: 'Test World',
@@ -213,20 +212,18 @@ export function createMockRuntime(overrides: Partial<MockRuntime> = {}): MockRun
         similarity: 0.95,
       },
     ]),
-    getRoomsForParticipants: mock()
-      .mockResolvedValue([
-        { id: 'room-id', name: 'Test Room', worldId: 'test-world-id', serverId: 'test-server-id' },
-      ]),
-    getRoomsForEntity: mock()
-      .mockResolvedValue([
-        { id: 'room-id', name: 'Test Room', worldId: 'test-world-id', serverId: 'test-server-id' },
-      ]),
-    searchEntities: mock()
-      .mockResolvedValue([
-        { id: 'test-entity-id', names: ['Test Entity'], worldId: 'test-world-id' },
-      ]),
-    searchRooms: mock()
-      .mockResolvedValue([{ id: 'room-id', name: 'Test Room', worldId: 'test-world-id' }]),
+    getRoomsForParticipants: mock().mockResolvedValue([
+      { id: 'room-id', name: 'Test Room', worldId: 'test-world-id', serverId: 'test-server-id' },
+    ]),
+    getRoomsForEntity: mock().mockResolvedValue([
+      { id: 'room-id', name: 'Test Room', worldId: 'test-world-id', serverId: 'test-server-id' },
+    ]),
+    searchEntities: mock().mockResolvedValue([
+      { id: 'test-entity-id', names: ['Test Entity'], worldId: 'test-world-id' },
+    ]),
+    searchRooms: mock().mockResolvedValue([
+      { id: 'room-id', name: 'Test Room', worldId: 'test-world-id' },
+    ]),
     getEntity: mock().mockResolvedValue({
       id: 'test-entity-id',
       names: ['Test Entity'],
@@ -237,8 +234,9 @@ export function createMockRuntime(overrides: Partial<MockRuntime> = {}): MockRun
       { name: 'setting1', value: 'value1', description: 'Description 1' },
       { name: 'setting2', value: 'value2', description: 'Description 2' },
     ]),
-    findWorldsForOwner: mock()
-      .mockResolvedValue([{ id: 'test-world-id', name: 'Test World', serverId: 'test-server-id' }]),
+    findWorldsForOwner: mock().mockResolvedValue([
+      { id: 'test-world-id', name: 'Test World', serverId: 'test-server-id' },
+    ]),
 
     // File, PDF, and Image service methods
     uploadFile: mock().mockResolvedValue({ id: 'file-id', name: 'test.txt' }),

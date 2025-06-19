@@ -9,5 +9,12 @@
     "emitDeclarationOnly": true
   },
   "include": ["src/index.ts", "src/plugin.ts", "src/frontend/**/*.ts", "src/frontend/**/*.tsx"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts", "src/__tests__/**/*", "src/**/cypress/**/*"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "src/__tests__/**/*",
+    "src/**/cypress/**/*"
+  ]
 }

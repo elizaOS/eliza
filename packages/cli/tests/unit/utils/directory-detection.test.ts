@@ -1,45 +1,41 @@
 import { describe, it, expect, mock, beforeEach } from 'bun:test';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { 
-  detectDirectoryType,
-  isValidForUpdates
-} from '../../../src/utils/directory-detection';
+import { detectDirectoryType, isValidForUpdates } from '../../../src/utils/directory-detection';
 
 // Mock fs
 mock.module('node:fs', () => ({
   existsSync: mock(() => true),
   readFileSync: mock(() => '{}'),
-  statSync: mock(() => ({ isDirectory: () => true }))
+  statSync: mock(() => ({ isDirectory: () => true })),
 }));
 
 // Mock UserEnvironment
 mock.module('../../../src/utils/user-environment', () => ({
   UserEnvironment: {
     getInstance: mock(() => ({
-      findMonorepoRoot: mock()
-    }))
-  }
+      findMonorepoRoot: mock(),
+    })),
+  },
 }));
 
 describe('directory-detection', () => {
-  
   describe('detectDirectoryType', () => {
     it('should detect elizaos project', () => {
       const mockPackageJson = {
         name: 'my-project',
         packageType: 'project',
         dependencies: {
-          '@elizaos/core': '^1.0.0'
-        }
+          '@elizaos/core': '^1.0.0',
+        },
       };
-      
+
       fs.existsSync.mockImplementation(() => true);
       fs.readFileSync.mockImplementation(() => JSON.stringify(mockPackageJson));
       fs.readdirSync.mockImplementation(() => []);
-      
+
       const result = detectDirectoryType('/test/path');
-      
+
       expect(result.type).toBe('elizaos-project');
       expect(result.hasPackageJson).toBe(true);
       expect(result.hasElizaOSDependencies).toBe(true);
@@ -51,16 +47,16 @@ describe('directory-detection', () => {
         name: '@elizaos/plugin-test',
         packageType: 'plugin',
         dependencies: {
-          '@elizaos/core': '^1.0.0'
-        }
+          '@elizaos/core': '^1.0.0',
+        },
       };
-      
+
       fs.existsSync.mockImplementation(() => true);
       fs.readFileSync.mockImplementation(() => JSON.stringify(mockPackageJson));
       fs.readdirSync.mockImplementation(() => []);
-      
+
       const result = detectDirectoryType('/test/plugin');
-      
+
       expect(result.type).toBe('elizaos-plugin');
       expect(result.hasPackageJson).toBe(true);
     });
@@ -68,19 +64,19 @@ describe('directory-detection', () => {
     it('should detect monorepo root', () => {
       const mockPackageJson = {
         name: 'monorepo-root',
-        workspaces: ['packages/*']
+        workspaces: ['packages/*'],
       };
-      
+
       fs.existsSync.mockImplementation(() => true);
       fs.readFileSync.mockImplementation(() => JSON.stringify(mockPackageJson));
       fs.readdirSync.mockImplementation(() => []);
-      
+
       // Mock UserEnvironment to return monorepo root
       const UserEnvironment = require('../../../src/utils/user-environment').UserEnvironment;
       UserEnvironment.getInstance().findMonorepoRoot.mockImplementation(() => '/test/monorepo');
-      
+
       const result = detectDirectoryType('/test/monorepo');
-      
+
       expect(result.type).toBe('elizaos-monorepo');
       expect(result.monorepoRoot).toBe('/test/monorepo');
     });
@@ -91,13 +87,13 @@ describe('directory-detection', () => {
         return String(filepath) !== path.join('/test/monorepo/subdir', 'package.json');
       });
       fs.readdirSync.mockImplementation(() => []);
-      
+
       // Mock UserEnvironment to return monorepo root
       const UserEnvironment = require('../../../src/utils/user-environment').UserEnvironment;
       UserEnvironment.getInstance().findMonorepoRoot.mockImplementation(() => '/test/monorepo');
-      
+
       const result = detectDirectoryType('/test/monorepo/subdir');
-      
+
       expect(result.type).toBe('elizaos-subdir');
       expect(result.hasPackageJson).toBe(false);
       expect(result.monorepoRoot).toBe('/test/monorepo');
@@ -107,25 +103,25 @@ describe('directory-detection', () => {
       const mockPackageJson = {
         name: 'regular-project',
         dependencies: {
-          'express': '^4.0.0'
-        }
+          express: '^4.0.0',
+        },
       };
-      
+
       fs.existsSync.mockImplementation(() => true);
       fs.readFileSync.mockImplementation(() => JSON.stringify(mockPackageJson));
       fs.readdirSync.mockImplementation(() => []);
-      
+
       const result = detectDirectoryType('/test/regular');
-      
+
       expect(result.type).toBe('non-elizaos-dir');
       expect(result.hasElizaOSDependencies).toBe(false);
     });
 
     it('should handle missing directory', () => {
       fs.existsSync.mockImplementation(() => false);
-      
+
       const result = detectDirectoryType('/test/missing');
-      
+
       expect(result.type).toBe('non-elizaos-dir');
       expect(result.hasPackageJson).toBe(false);
     });
@@ -134,9 +130,9 @@ describe('directory-detection', () => {
       fs.existsSync.mockImplementation(() => true);
       fs.readFileSync.mockImplementation(() => 'invalid json');
       fs.readdirSync.mockImplementation(() => []);
-      
+
       const result = detectDirectoryType('/test/invalid');
-      
+
       expect(result.type).toBe('non-elizaos-dir');
       expect(result.hasPackageJson).toBe(true);
     });
@@ -147,16 +143,16 @@ describe('directory-detection', () => {
         dependencies: {
           '@elizaos/core': '^1.0.0',
           '@elizaos/cli': '^1.0.0',
-          '@elizaos/plugin-discord': '^1.0.0'
-        }
+          '@elizaos/plugin-discord': '^1.0.0',
+        },
       };
-      
+
       fs.existsSync.mockImplementation(() => true);
       fs.readFileSync.mockImplementation(() => JSON.stringify(mockPackageJson));
       fs.readdirSync.mockImplementation(() => []);
-      
+
       const result = detectDirectoryType('/test/path');
-      
+
       expect(result.elizaPackageCount).toBe(3);
       expect(result.hasElizaOSDependencies).toBe(true);
     });
@@ -166,16 +162,16 @@ describe('directory-detection', () => {
         name: 'custom-plugin',
         keywords: ['plugin', 'elizaos'],
         dependencies: {
-          '@elizaos/core': '^1.0.0'
-        }
+          '@elizaos/core': '^1.0.0',
+        },
       };
-      
+
       fs.existsSync.mockImplementation(() => true);
       fs.readFileSync.mockImplementation(() => JSON.stringify(mockPackageJson));
       fs.readdirSync.mockImplementation(() => []);
-      
+
       const result = detectDirectoryType('/test/plugin');
-      
+
       expect(result.type).toBe('elizaos-plugin');
     });
 
@@ -184,9 +180,9 @@ describe('directory-detection', () => {
       fs.readdirSync.mockImplementation(() => {
         throw new Error('Permission denied');
       });
-      
+
       const result = detectDirectoryType('/test/unreadable');
-      
+
       expect(result.type).toBe('non-elizaos-dir');
       expect(result.hasPackageJson).toBe(false);
     });
@@ -198,9 +194,9 @@ describe('directory-detection', () => {
         type: 'elizaos-project' as const,
         hasPackageJson: true,
         hasElizaOSDependencies: true,
-        elizaPackageCount: 1
+        elizaPackageCount: 1,
       };
-      
+
       expect(isValidForUpdates(info)).toBe(true);
     });
 
@@ -209,9 +205,9 @@ describe('directory-detection', () => {
         type: 'elizaos-plugin' as const,
         hasPackageJson: true,
         hasElizaOSDependencies: true,
-        elizaPackageCount: 1
+        elizaPackageCount: 1,
       };
-      
+
       expect(isValidForUpdates(info)).toBe(true);
     });
 
@@ -220,9 +216,9 @@ describe('directory-detection', () => {
         type: 'elizaos-monorepo' as const,
         hasPackageJson: true,
         hasElizaOSDependencies: false,
-        elizaPackageCount: 0
+        elizaPackageCount: 0,
       };
-      
+
       expect(isValidForUpdates(info)).toBe(true);
     });
 
@@ -231,9 +227,9 @@ describe('directory-detection', () => {
         type: 'elizaos-subdir' as const,
         hasPackageJson: false,
         hasElizaOSDependencies: false,
-        elizaPackageCount: 0
+        elizaPackageCount: 0,
       };
-      
+
       expect(isValidForUpdates(info)).toBe(true);
     });
 
@@ -242,10 +238,10 @@ describe('directory-detection', () => {
         type: 'non-elizaos-dir' as const,
         hasPackageJson: true,
         hasElizaOSDependencies: false,
-        elizaPackageCount: 0
+        elizaPackageCount: 0,
       };
-      
+
       expect(isValidForUpdates(info)).toBe(false);
     });
   });
-}); 
+});

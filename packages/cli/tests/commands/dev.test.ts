@@ -252,7 +252,10 @@ describe('ElizaOS Dev Commands', () => {
       // Create a non-ElizaOS project directory
       const nonElizaDir = join(testTmpDir, 'non-elizaos');
       await mkdir(nonElizaDir, { recursive: true });
-      await writeFile(join(nonElizaDir, 'package.json'), JSON.stringify({ name: 'not-elizaos', version: '1.0.0' }));
+      await writeFile(
+        join(nonElizaDir, 'package.json'),
+        JSON.stringify({ name: 'not-elizaos', version: '1.0.0' })
+      );
 
       let output = '';
       const devProcess = spawn(

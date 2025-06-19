@@ -1,4 +1,4 @@
-import { describe, it, expect, mock, beforeEach, afterEach , spyOn} from 'bun:test';
+import { describe, it, expect, mock, beforeEach, afterEach, spyOn } from 'bun:test';
 import { Command } from 'commander';
 import * as childProcess from 'node:child_process';
 import { teeCommand } from '../../src/commands/tee';
@@ -34,7 +34,6 @@ describe('TEE Command', () => {
     });
   });
 
-  
   describe('teeCommand', () => {
     it('should be a Commander command', () => {
       expect(teeCommand).toBeInstanceOf(Command);
@@ -46,7 +45,7 @@ describe('TEE Command', () => {
     });
 
     it('should have phala subcommand', () => {
-      const subcommands = teeCommand.commands.map(cmd => cmd.name());
+      const subcommands = teeCommand.commands.map((cmd) => cmd.name());
       expect(subcommands).toContain('phala');
     });
   });
@@ -68,7 +67,7 @@ describe('TEE Command', () => {
 
     it('should have help disabled', () => {
       // Check that help option is disabled by checking if it doesn't have the default -h flag
-      const helpOption = phalaCliCommand.options.find(opt => opt.short === '-h');
+      const helpOption = phalaCliCommand.options.find((opt) => opt.short === '-h');
       expect(helpOption).toBeUndefined();
     });
 
@@ -94,7 +93,7 @@ describe('TEE Command', () => {
       phalaCliCommand.parse(['node', 'test', 'help'], { from: 'user' });
 
       // Wait for async operations
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       // Verify spawn was called with npx phala
       // expect(mockSpawn).toHaveBeenCalled(); // TODO: Fix for bun test
@@ -134,4 +133,4 @@ describe('TEE Command', () => {
       mockError.mockRestore();
     });
   });
-}); 
+});

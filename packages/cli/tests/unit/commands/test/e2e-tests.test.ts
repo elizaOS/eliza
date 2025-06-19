@@ -3,7 +3,7 @@ import type { DirectoryInfo } from '../../../../src/utils/directory-detection';
 
 // Mock dependencies
 mock.module('../../../../src/project', () => ({
-  loadProject: mock()
+  loadProject: mock(),
 }));
 
 mock.module('@elizaos/server', () => ({
@@ -13,10 +13,10 @@ mock.module('@elizaos/server', () => ({
     registerAgent: mock(),
     startAgent: mock(),
     loadCharacterTryPath: mock(),
-    jsonToCharacter: mock()
+    jsonToCharacter: mock(),
   })),
   loadCharacterTryPath: mock(),
-  jsonToCharacter: mock()
+  jsonToCharacter: mock(),
 }));
 
 mock.module('../../../../src/utils', () => ({
@@ -29,31 +29,31 @@ mock.module('../../../../src/utils', () => ({
       passed: 0,
       failed: 0,
       skipped: 0,
-      hasTests: false
-    })
+      hasTests: false,
+    }),
   })),
   UserEnvironment: {
     getInstanceInfo: mock().mockResolvedValue({
       paths: {
-        envFilePath: '/test/.env'
-      }
-    })
-  }
+        envFilePath: '/test/.env',
+      },
+    }),
+  },
 }));
 
 mock.module('../../../../src/characters/eliza', () => ({
-  getElizaCharacter: mock().mockImplementation(() => {
+  getElizaCharacter: mock().mockImplementation(() => ({
     name: 'Eliza',
-    bio: 'Test character'
-  })
+    bio: 'Test character',
+  })),
 }));
 
 mock.module('../../../../src/commands/start', () => ({
   startAgent: mock().mockResolvedValue({
     agentId: 'test-agent',
     character: { name: 'Eliza' },
-    plugins: []
-  })
+    plugins: [],
+  }),
 }));
 
 mock.module('@elizaos/core', () => ({
@@ -62,8 +62,8 @@ mock.module('@elizaos/core', () => ({
     debug: mock(),
     error: mock(),
     warn: mock(),
-    success: mock()
-  }
+    success: mock(),
+  },
 }));
 
 mock.module('node:fs', () => ({
@@ -71,12 +71,12 @@ mock.module('node:fs', () => ({
     existsSync: mock().mockImplementation(() => false),
     mkdirSync: mock(),
     rmSync: mock(),
-    readdirSync: mock().mockImplementation(() => [])
-  }
+    readdirSync: mock().mockImplementation(() => []),
+  },
 }));
 
 mock.module('dotenv', () => ({
-  config: mock()
+  config: mock(),
 }));
 
 describe('E2E Tests Plugin Isolation', () => {
@@ -87,14 +87,15 @@ describe('E2E Tests Plugin Isolation', () => {
   beforeEach(async () => {
     // Reset environment
     delete process.env.ELIZA_TESTING_PLUGIN;
-    
+
     // Import mocked modules
     const projectModule = await import('../../../../src/project');
     loadProject = projectModule.loadProject;
-    
+
     // Import the function we're testing
     const module = await import('../../../../src/commands/test/actions/e2e-tests');
-    runE2eTests = module.runE2eTests;  });
+    runE2eTests = module.runE2eTests;
+  });
 
   afterEach(() => {
     // Restore original environment
@@ -102,27 +103,28 @@ describe('E2E Tests Plugin Isolation', () => {
       process.env.ELIZA_TESTING_PLUGIN = originalEnv;
     } else {
       delete process.env.ELIZA_TESTING_PLUGIN;
-    }  });
+    }
+  });
 
   describe('Plugin Test Environment Variable', () => {
     it('should set ELIZA_TESTING_PLUGIN=true when testing a plugin', async () => {
       // Setup mock to return a plugin
       const mockPlugin = {
         name: 'test-plugin',
-        description: 'Test plugin'
+        description: 'Test plugin',
       };
-      
+
       loadProject.mockResolvedValue({
         isPlugin: true,
         pluginModule: mockPlugin,
-        agents: []
+        agents: [],
       });
 
       const projectInfo: DirectoryInfo = {
         type: 'elizaos-plugin',
         hasPackageJson: true,
         hasElizaOSDependencies: true,
-        elizaPackageCount: 1
+        elizaPackageCount: 1,
       };
 
       const options = { skipBuild: true };
@@ -130,7 +132,7 @@ describe('E2E Tests Plugin Isolation', () => {
       // Track environment variable changes
       const envChanges: string[] = [];
       const originalDefineProperty = Object.defineProperty;
-      
+
       Object.defineProperty(process.env, 'ELIZA_TESTING_PLUGIN', {
         get() {
           return envChanges[envChanges.length - 1];
@@ -138,14 +140,14 @@ describe('E2E Tests Plugin Isolation', () => {
         set(value) {
           envChanges.push(value);
         },
-        configurable: true
+        configurable: true,
       });
 
       await runE2eTests(undefined, options, projectInfo);
 
       // Verify the environment variable was set
       expect(envChanges).toContain('true');
-      
+
       // Restore original defineProperty
       Object.defineProperty = originalDefineProperty;
     });
@@ -154,17 +156,19 @@ describe('E2E Tests Plugin Isolation', () => {
       // Setup mock to return a project
       loadProject.mockResolvedValue({
         isPlugin: false,
-        agents: [{
-          character: { name: 'Test Agent', bio: 'Test bio' },
-          plugins: []
-        }]
+        agents: [
+          {
+            character: { name: 'Test Agent', bio: 'Test bio' },
+            plugins: [],
+          },
+        ],
       });
 
       const projectInfo: DirectoryInfo = {
         type: 'elizaos-project',
         hasPackageJson: true,
         hasElizaOSDependencies: true,
-        elizaPackageCount: 2
+        elizaPackageCount: 2,
       };
 
       const options = { skipBuild: true };
@@ -182,20 +186,20 @@ describe('E2E Tests Plugin Isolation', () => {
       // Setup mock to return a plugin
       const mockPlugin = {
         name: 'test-plugin',
-        description: 'Test plugin'
+        description: 'Test plugin',
       };
-      
+
       loadProject.mockResolvedValue({
         isPlugin: true,
         pluginModule: mockPlugin,
-        agents: []
+        agents: [],
       });
 
       const projectInfo: DirectoryInfo = {
         type: 'elizaos-plugin',
         hasPackageJson: true,
         hasElizaOSDependencies: true,
-        elizaPackageCount: 1
+        elizaPackageCount: 1,
       };
 
       const options = { skipBuild: true };
@@ -212,16 +216,16 @@ describe('E2E Tests Plugin Isolation', () => {
             passed: 0,
             failed: 0,
             skipped: 0,
-            hasTests: false
+            hasTests: false,
           });
-        })
+        }),
       }));
 
       await runE2eTests(undefined, options, projectInfo);
 
       // Verify the environment variable was set during test execution
       expect(envDuringTest).toBe('true');
-      
+
       // Verify it was cleaned up after
       expect(process.env.ELIZA_TESTING_PLUGIN).toBeUndefined();
     });
@@ -230,20 +234,20 @@ describe('E2E Tests Plugin Isolation', () => {
       // Setup mock to return a plugin that will fail
       const mockPlugin = {
         name: 'test-plugin',
-        description: 'Test plugin'
+        description: 'Test plugin',
       };
-      
+
       loadProject.mockResolvedValue({
         isPlugin: true,
         pluginModule: mockPlugin,
-        agents: []
+        agents: [],
       });
 
       const projectInfo: DirectoryInfo = {
         type: 'elizaos-plugin',
         hasPackageJson: true,
         hasElizaOSDependencies: true,
-        elizaPackageCount: 1
+        elizaPackageCount: 1,
       };
 
       const options = { skipBuild: true };
@@ -251,7 +255,7 @@ describe('E2E Tests Plugin Isolation', () => {
       // Make TestRunner throw an error
       const TestRunnerMock = (await import('../../../../src/utils')).TestRunner as any;
       TestRunnerMock.mockImplementation(() => ({
-        runTests: mock().mockRejectedValue(new Error('Test failure'))
+        runTests: mock().mockRejectedValue(new Error('Test failure')),
       }));
 
       await runE2eTests(undefined, options, projectInfo);
@@ -269,22 +273,22 @@ describe('E2E Tests Plugin Isolation', () => {
         tests: [
           {
             name: 'Plugin Tests',
-            tests: []
-          }
-        ]
+            tests: [],
+          },
+        ],
       };
-      
+
       loadProject.mockResolvedValue({
         isPlugin: true,
         pluginModule: mockPlugin,
-        agents: []
+        agents: [],
       });
 
       const projectInfo: DirectoryInfo = {
         type: 'elizaos-plugin',
         hasPackageJson: true,
         hasElizaOSDependencies: true,
-        elizaPackageCount: 1
+        elizaPackageCount: 1,
       };
 
       const options = { skipBuild: true };
@@ -300,8 +304,8 @@ describe('E2E Tests Plugin Isolation', () => {
             passed: 1,
             failed: 0,
             skipped: 0,
-            hasTests: true
-          })
+            hasTests: true,
+          }),
         };
         return testRunnerInstance;
       });
@@ -311,33 +315,35 @@ describe('E2E Tests Plugin Isolation', () => {
       // Verify the TestRunner was called with proper plugin configuration
       // expect(TestRunnerMock).toHaveBeenCalled(); // TODO: Fix for bun test
       // expect(testRunnerInstance.runTests).toHaveBeenCalledWith({
-        filter: undefined,
-        skipPlugins: false, // Should not skip plugins for plugin directory
-        skipProjectTests: true, // Should skip project tests for plugin
-        skipE2eTests: false
-      }); // TODO: Fix for bun test
+      //   filter: undefined,
+      //   skipPlugins: false, // Should not skip plugins for plugin directory
+      //   skipProjectTests: true, // Should skip project tests for plugin
+      //   skipE2eTests: false
+      // }); // TODO: Fix for bun test
     });
 
     it('should correctly identify and test projects', async () => {
       loadProject.mockResolvedValue({
         isPlugin: false,
-        agents: [{
-          character: { name: 'Project Agent', bio: 'Test bio' },
-          plugins: [],
-          tests: [
-            {
-              name: 'Project Tests',
-              tests: []
-            }
-          ]
-        }]
+        agents: [
+          {
+            character: { name: 'Project Agent', bio: 'Test bio' },
+            plugins: [],
+            tests: [
+              {
+                name: 'Project Tests',
+                tests: [],
+              },
+            ],
+          },
+        ],
       });
 
       const projectInfo: DirectoryInfo = {
         type: 'elizaos-project',
         hasPackageJson: true,
         hasElizaOSDependencies: true,
-        elizaPackageCount: 3
+        elizaPackageCount: 3,
       };
 
       const options = { skipBuild: true };
@@ -353,8 +359,8 @@ describe('E2E Tests Plugin Isolation', () => {
             passed: 1,
             failed: 0,
             skipped: 0,
-            hasTests: true
-          })
+            hasTests: true,
+          }),
         };
         return testRunnerInstance;
       });
@@ -364,11 +370,11 @@ describe('E2E Tests Plugin Isolation', () => {
       // Verify the TestRunner was called with proper project configuration
       // expect(TestRunnerMock).toHaveBeenCalled(); // TODO: Fix for bun test
       // expect(testRunnerInstance.runTests).toHaveBeenCalledWith({
-        filter: undefined,
-        skipPlugins: true, // Should skip plugins for project directory
-        skipProjectTests: false, // Should not skip project tests
-        skipE2eTests: false
-      }); // TODO: Fix for bun test
+      //   filter: undefined,
+      //   skipPlugins: true, // Should skip plugins for project directory
+      //   skipProjectTests: false, // Should not skip project tests
+      //   skipE2eTests: false
+      // }); // TODO: Fix for bun test
     });
   });
-}); 
+});

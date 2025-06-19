@@ -6,13 +6,13 @@ import * as crypto from 'crypto';
 const generateSecureRandomString = (length: number): string => {
   const array = new Uint8Array(length);
   crypto.getRandomValues(array);
-  return Array.from(array, byte => (byte % 36).toString(36)).join('');
+  return Array.from(array, (byte) => (byte % 36).toString(36)).join('');
 };
 
 export const generateMockAgent = (overrides?: Partial<Agent>): Agent => {
   const id = overrides?.id || generateUUID();
   const name = overrides?.name || `Test Agent ${generateSecureRandomString(7)}`;
-  
+
   return {
     id,
     name,
@@ -25,7 +25,7 @@ export const generateMockAgent = (overrides?: Partial<Agent>): Agent => {
     knowledge: overrides?.knowledge || [],
     plugins: overrides?.plugins || [],
     settings: overrides?.settings || {
-      avatar: 'https://via.placeholder.com/150'
+      avatar: 'https://via.placeholder.com/150',
     },
     secrets: overrides?.secrets || {},
     style: overrides?.style || {},
@@ -35,15 +35,15 @@ export const generateMockAgent = (overrides?: Partial<Agent>): Agent => {
     status: overrides?.status || AgentStatus.INACTIVE,
     createdAt: overrides?.createdAt || Date.now(),
     updatedAt: overrides?.updatedAt || Date.now(),
-    ...overrides
+    ...overrides,
   };
 };
 
 // Generate valid UUID
 export const generateUUID = (): UUID => {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    const r = Math.random() * 16 | 0;
-    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
     return v.toString(16);
   }) as UUID;
 };
@@ -53,23 +53,23 @@ export const mockAPIResponses = {
   agents: {
     success: (agents: Agent[] = []) => ({
       statusCode: 200,
-      body: { agents, success: true }
+      body: { agents, success: true },
     }),
     error: (message = 'Server error') => ({
       statusCode: 500,
-      body: { error: message, success: false }
-    })
+      body: { error: message, success: false },
+    }),
   },
   messages: {
     success: (messages: any[] = []) => ({
       statusCode: 200,
-      body: { messages, success: true }
+      body: { messages, success: true },
     }),
     error: (message = 'Failed to load messages') => ({
       statusCode: 500,
-      body: { error: message, success: false }
-    })
-  }
+      body: { error: message, success: false },
+    }),
+  },
 };
 
 // WebSocket mock helpers
@@ -81,11 +81,11 @@ export const mockWebSocket = {
         emit: cy.stub().as('socketEmit'),
         on: cy.stub().as('socketOn'),
         disconnect: cy.stub().as('socketDisconnect'),
-        connect: cy.stub().as('socketConnect')
+        connect: cy.stub().as('socketConnect'),
       };
     });
   },
-  
+
   disconnect: () => {
     cy.window().then((win) => {
       if ((win as any).socket) {
@@ -94,14 +94,14 @@ export const mockWebSocket = {
       }
     });
   },
-  
+
   emit: (event: string, data: any) => {
     cy.window().then((win) => {
       if ((win as any).socket?.emit) {
         (win as any).socket.emit(event, data);
       }
     });
-  }
+  },
 };
 
 // Common intercepts
@@ -109,10 +109,16 @@ export const setupCommonIntercepts = () => {
   // API endpoints
   cy.intercept('GET', '/api/agents', mockAPIResponses.agents.success()).as('getAgents');
   cy.intercept('GET', '/api/agents/*', mockAPIResponses.agents.success()).as('getAgent');
-  cy.intercept('POST', '/api/agents', { statusCode: 201, body: { success: true } }).as('createAgent');
-  cy.intercept('PUT', '/api/agents/*', { statusCode: 200, body: { success: true } }).as('updateAgent');
-  cy.intercept('DELETE', '/api/agents/*', { statusCode: 200, body: { success: true } }).as('deleteAgent');
-  
+  cy.intercept('POST', '/api/agents', { statusCode: 201, body: { success: true } }).as(
+    'createAgent'
+  );
+  cy.intercept('PUT', '/api/agents/*', { statusCode: 200, body: { success: true } }).as(
+    'updateAgent'
+  );
+  cy.intercept('DELETE', '/api/agents/*', { statusCode: 200, body: { success: true } }).as(
+    'deleteAgent'
+  );
+
   // WebSocket
   cy.intercept('GET', '/socket.io/*', { statusCode: 200 }).as('socketConnection');
 };
@@ -152,7 +158,7 @@ export const takeScreenshot = (name: string, options?: Partial<Cypress.Screensho
   cy.screenshot(name, {
     capture: 'viewport',
     overwrite: true,
-    ...options
+    ...options,
   });
 };
 
@@ -167,4 +173,4 @@ export const checkA11y = (context?: string | Node | Cypress.Chainable, options?:
 export const compareSnapshot = (name: string, threshold = 0.1) => {
   // This would use a visual regression plugin
   takeScreenshot(`visual-regression/${name}`);
-}; 
+};

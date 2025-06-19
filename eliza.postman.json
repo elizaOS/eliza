@@ -993,7 +993,14 @@
             "url": {
               "raw": "{{baseUrl}}/api/messaging/central-channels/{{channelId}}/agents/{{agentId}}",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "messaging", "central-channels", "{{channelId}}", "agents", "{{agentId}}"]
+              "path": [
+                "api",
+                "messaging",
+                "central-channels",
+                "{{channelId}}",
+                "agents",
+                "{{agentId}}"
+              ]
             },
             "description": "Remove an agent from a channel"
           }

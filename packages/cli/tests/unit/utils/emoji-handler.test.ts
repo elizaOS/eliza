@@ -1,12 +1,12 @@
 import { describe, it, expect, mock, beforeEach } from 'bun:test';
-import { 
-  emoji, 
-  getEmoji, 
-  configureEmojis, 
-  getEmojiConfig, 
-  areEmojisEnabled, 
+import {
+  emoji,
+  getEmoji,
+  configureEmojis,
+  getEmojiConfig,
+  areEmojisEnabled,
   withEmoji,
-  initializeEmojiSupport
+  initializeEmojiSupport,
 } from '../../../src/utils/emoji-handler';
 import { logger } from '@elizaos/core';
 
@@ -14,12 +14,13 @@ import { logger } from '@elizaos/core';
 mock.module('@elizaos/core', () => ({
   logger: {
     warn: mock(),
-    debug: mock()
-  }
+    debug: mock(),
+  },
 }));
 
 describe('emoji-handler', () => {
-  beforeEach(() => {    // Reset environment variables
+  beforeEach(() => {
+    // Reset environment variables
     delete process.env.NO_COLOR;
     delete process.env.CI;
     delete process.env.TERM;
@@ -30,7 +31,7 @@ describe('emoji-handler', () => {
     delete process.env.WT_PROFILE_ID;
     delete process.env.DEBUG;
     delete process.env.ELIZA_DEBUG;
-    
+
     // Reset config to defaults
     configureEmojis({ enabled: true, forceDisable: false });
   });
@@ -41,24 +42,24 @@ describe('emoji-handler', () => {
       const originalPlatform = process.platform;
       Object.defineProperty(process, 'platform', {
         value: 'darwin',
-        configurable: true
+        configurable: true,
       });
       process.env.TERM = 'xterm-256color';
-      
+
       expect(getEmoji('success')).toBe('✅');
       expect(getEmoji('error')).toBe('❌');
       expect(getEmoji('warning')).toBe('⚠️');
       expect(getEmoji('info')).toBe('ℹ️');
-      
+
       Object.defineProperty(process, 'platform', {
         value: originalPlatform,
-        configurable: true
+        configurable: true,
       });
     });
 
     it('should return fallback when not supported', () => {
       configureEmojis({ forceDisable: true });
-      
+
       expect(getEmoji('success')).toBe('[OK]');
       expect(getEmoji('error')).toBe('[ERROR]');
       expect(getEmoji('warning')).toBe('[WARNING]');
@@ -67,7 +68,7 @@ describe('emoji-handler', () => {
 
     it('should return fallback in CI environment', () => {
       process.env.CI = 'true';
-      
+
       expect(getEmoji('success')).toBe('[OK]');
       expect(getEmoji('error')).toBe('[ERROR]');
     });
@@ -76,14 +77,14 @@ describe('emoji-handler', () => {
       const originalPlatform = process.platform;
       Object.defineProperty(process, 'platform', {
         value: 'win32',
-        configurable: true
+        configurable: true,
       });
-      
+
       expect(getEmoji('success')).toBe('[OK]');
-      
+
       Object.defineProperty(process, 'platform', {
         value: originalPlatform,
-        configurable: true
+        configurable: true,
       });
     });
 
@@ -91,15 +92,15 @@ describe('emoji-handler', () => {
       const originalPlatform = process.platform;
       Object.defineProperty(process, 'platform', {
         value: 'win32',
-        configurable: true
+        configurable: true,
       });
       process.env.TERM_PROGRAM = 'vscode';
-      
+
       expect(getEmoji('success')).toBe('✅');
-      
+
       Object.defineProperty(process, 'platform', {
         value: originalPlatform,
-        configurable: true
+        configurable: true,
       });
     });
 
@@ -113,7 +114,7 @@ describe('emoji-handler', () => {
   describe('configureEmojis and getEmojiConfig', () => {
     it('should update configuration', () => {
       configureEmojis({ enabled: false });
-      
+
       const config = getEmojiConfig();
       expect(config.enabled).toBe(false);
       expect(config.forceDisable).toBe(false);
@@ -121,7 +122,7 @@ describe('emoji-handler', () => {
 
     it('should merge partial configuration', () => {
       configureEmojis({ forceDisable: true });
-      
+
       const config = getEmojiConfig();
       expect(config.enabled).toBe(true);
       expect(config.forceDisable).toBe(true);
@@ -133,15 +134,15 @@ describe('emoji-handler', () => {
       const originalPlatform = process.platform;
       Object.defineProperty(process, 'platform', {
         value: 'darwin',
-        configurable: true
+        configurable: true,
       });
       process.env.TERM = 'xterm-256color';
-      
+
       expect(areEmojisEnabled()).toBe(true);
-      
+
       Object.defineProperty(process, 'platform', {
         value: originalPlatform,
-        configurable: true
+        configurable: true,
       });
     });
 
@@ -166,22 +167,22 @@ describe('emoji-handler', () => {
       const originalPlatform = process.platform;
       Object.defineProperty(process, 'platform', {
         value: 'darwin',
-        configurable: true
+        configurable: true,
       });
       process.env.TERM = 'xterm-256color';
-      
+
       expect(withEmoji('success', 'Test message')).toBe('✅ Test message');
       expect(withEmoji('error', 'Error message')).toBe('❌ Error message');
-      
+
       Object.defineProperty(process, 'platform', {
         value: originalPlatform,
-        configurable: true
+        configurable: true,
       });
     });
 
     it('should format message with fallback when not supported', () => {
       configureEmojis({ forceDisable: true });
-      
+
       expect(withEmoji('success', 'Test message')).toBe('[OK] Test message');
       expect(withEmoji('error', 'Error message')).toBe('[ERROR] Error message');
     });
@@ -190,16 +191,16 @@ describe('emoji-handler', () => {
       const originalPlatform = process.platform;
       Object.defineProperty(process, 'platform', {
         value: 'darwin',
-        configurable: true
+        configurable: true,
       });
       process.env.TERM = 'xterm-256color';
-      
+
       expect(withEmoji('bullet', 'Item', false)).toBe('•Item');
       expect(withEmoji('bullet', 'Item', true)).toBe('• Item');
-      
+
       Object.defineProperty(process, 'platform', {
         value: originalPlatform,
-        configurable: true
+        configurable: true,
       });
     });
   });
@@ -208,7 +209,7 @@ describe('emoji-handler', () => {
     beforeEach(() => {
       Object.defineProperty(process, 'platform', {
         value: 'darwin',
-        configurable: true
+        configurable: true,
       });
       process.env.TERM = 'xterm-256color';
     });
@@ -264,28 +265,28 @@ describe('emoji-handler', () => {
       const originalPlatform = process.platform;
       Object.defineProperty(process, 'platform', {
         value: 'darwin',
-        configurable: true
+        configurable: true,
       });
       process.env.TERM = 'xterm-256color';
-      
+
       initializeEmojiSupport();
-      
+
       // expect(logger.debug).toHaveBeenCalledWith(
-        expect.stringContaining('Emoji support: enabled')
-      ); // TODO: Fix for bun test
-      
+      //   expect.stringContaining('Emoji support: enabled')
+      // ); // TODO: Fix for bun test
+
       Object.defineProperty(process, 'platform', {
         value: originalPlatform,
-        configurable: true
+        configurable: true,
       });
     });
 
     it('should not log when not in debug mode', () => {
       delete process.env.DEBUG;
       delete process.env.ELIZA_DEBUG;
-      
+
       initializeEmojiSupport();
-      
+
       // The initial call from module load might have been made
       const callCount = logger.debug.mock.calls.length;
       expect(callCount).toBeLessThanOrEqual(1);
@@ -297,15 +298,15 @@ describe('emoji-handler', () => {
       const originalPlatform = process.platform;
       Object.defineProperty(process, 'platform', {
         value: 'linux',
-        configurable: true
+        configurable: true,
       });
       process.env.TERM = 'xterm-256color';
-      
+
       expect(getEmoji('success')).toBe('✅');
-      
+
       Object.defineProperty(process, 'platform', {
         value: originalPlatform,
-        configurable: true
+        configurable: true,
       });
     });
 
@@ -313,15 +314,15 @@ describe('emoji-handler', () => {
       const originalPlatform = process.platform;
       Object.defineProperty(process, 'platform', {
         value: 'linux',
-        configurable: true
+        configurable: true,
       });
       process.env.COLORTERM = 'truecolor';
-      
+
       expect(getEmoji('success')).toBe('✅');
-      
+
       Object.defineProperty(process, 'platform', {
         value: originalPlatform,
-        configurable: true
+        configurable: true,
       });
     });
 
@@ -329,15 +330,15 @@ describe('emoji-handler', () => {
       const originalPlatform = process.platform;
       Object.defineProperty(process, 'platform', {
         value: 'win32',
-        configurable: true
+        configurable: true,
       });
       process.env.WT_SESSION = 'some-session-id';
-      
+
       expect(getEmoji('success')).toBe('✅');
-      
+
       Object.defineProperty(process, 'platform', {
         value: originalPlatform,
-        configurable: true
+        configurable: true,
       });
     });
 
@@ -345,23 +346,23 @@ describe('emoji-handler', () => {
       const originalPlatform = process.platform;
       Object.defineProperty(process, 'platform', {
         value: 'win32',
-        configurable: true
+        configurable: true,
       });
       process.env.PSModulePath = 'C:\\Program Files\\PowerShell\\7\\Modules';
       process.env.POWERSHELL_TELEMETRY_OPTOUT = '1';
-      
+
       expect(getEmoji('success')).toBe('✅');
-      
+
       Object.defineProperty(process, 'platform', {
         value: originalPlatform,
-        configurable: true
+        configurable: true,
       });
     });
 
     it('should not support emojis in GitHub Actions', () => {
       process.env.GITHUB_ACTIONS = 'true';
-      
+
       expect(getEmoji('success')).toBe('[OK]');
     });
   });
-}); 
+});

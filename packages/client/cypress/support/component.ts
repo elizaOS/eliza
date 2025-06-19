@@ -27,10 +27,10 @@ import process from 'process/browser';
 (globalThis as any).process.env = {
   SENTRY_DSN: '',
   NODE_ENV: 'test',
-  ...process.env
+  ...process.env,
 };
 (globalThis as any).process.versions = {
-  node: '18.0.0'
+  node: '18.0.0',
 };
 
 // Add Buffer polyfill globally
@@ -68,10 +68,9 @@ const createTestQueryClient = () =>
 // Mount with all common providers
 function mountWithProviders(component: React.ReactNode, options = {}) {
   const queryClient = createTestQueryClient();
-  
-  const wrapped = React.createElement(
-    TooltipProvider,
-    { children: React.createElement(
+
+  const wrapped = React.createElement(TooltipProvider, {
+    children: React.createElement(
       QueryClientProvider,
       { client: queryClient },
       React.createElement(
@@ -80,17 +79,17 @@ function mountWithProviders(component: React.ReactNode, options = {}) {
         // Add a div container for portals
         React.createElement(
           'div',
-          { 
+          {
             id: 'root',
-            style: { width: '100%', height: '100%' }
+            style: { width: '100%', height: '100%' },
           },
           component,
           // Portal container for Radix UI
           React.createElement('div', { id: 'radix-portal' })
         )
       )
-    )}
-  );
+    ),
+  });
 
   return mount(wrapped, options);
 }
@@ -98,10 +97,9 @@ function mountWithProviders(component: React.ReactNode, options = {}) {
 // Mount with just router (for simpler components)
 function mountWithRouter(component: React.ReactNode, options = {}) {
   const queryClient = createTestQueryClient();
-  
-  const wrapped = React.createElement(
-    TooltipProvider,
-    { children: React.createElement(
+
+  const wrapped = React.createElement(TooltipProvider, {
+    children: React.createElement(
       QueryClientProvider,
       { client: queryClient },
       React.createElement(
@@ -110,17 +108,17 @@ function mountWithRouter(component: React.ReactNode, options = {}) {
         // Add a div container for portals
         React.createElement(
           'div',
-          { 
+          {
             id: 'root',
-            style: { width: '100%', height: '100%' }
+            style: { width: '100%', height: '100%' },
           },
           component,
           // Portal container for Radix UI
           React.createElement('div', { id: 'radix-portal' })
         )
       )
-    )}
-  );
+    ),
+  });
 
   return mount(wrapped, options);
 }
@@ -128,10 +126,9 @@ function mountWithRouter(component: React.ReactNode, options = {}) {
 // Mount specifically for Radix UI components with DirectionProvider
 function mountRadix(component: React.ReactNode, options = {}) {
   const queryClient = createTestQueryClient();
-  
-  const wrapped = React.createElement(
-    TooltipProvider,
-    { children: React.createElement(
+
+  const wrapped = React.createElement(TooltipProvider, {
+    children: React.createElement(
       DirectionProvider,
       { dir: 'ltr' },
       React.createElement(
@@ -143,9 +140,9 @@ function mountRadix(component: React.ReactNode, options = {}) {
           // Add a div container for portals
           React.createElement(
             'div',
-            { 
+            {
               id: 'root',
-              style: { width: '100%', height: '100%' }
+              style: { width: '100%', height: '100%' },
             },
             component,
             // Portal container for Radix UI
@@ -153,8 +150,8 @@ function mountRadix(component: React.ReactNode, options = {}) {
           )
         )
       )
-    )}
-  );
+    ),
+  });
 
   return mount(wrapped, options);
 }
@@ -166,5 +163,5 @@ Cypress.Commands.add('mountRadix', mountRadix);
 
 // Example of how to use:
 // cy.mount(<Button onClick={handleClick}>Click me</Button>);
-// cy.mountWithRouter(<Navigation />); 
-// cy.mountRadix(<DropdownMenu />); 
+// cy.mountWithRouter(<Navigation />);
+// cy.mountRadix(<DropdownMenu />);

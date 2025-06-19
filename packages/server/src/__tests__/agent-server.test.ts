@@ -211,7 +211,9 @@ describe('AgentServer Integration Tests', () => {
       };
 
       const { createDatabaseAdapter } = await import('@elizaos/plugin-sql');
-      vi.mocked(createDatabaseAdapter).mockReturnValue(mockDatabaseAdapter as any);
+      mock.module('@elizaos/plugin-sql', () => ({
+        createDatabaseAdapter: () => mockDatabaseAdapter,
+      }));
 
       await expect(server.initialize()).rejects.toThrow('Database connection failed');
     });
@@ -430,7 +432,9 @@ describe('AgentServer Integration Tests', () => {
       };
 
       const { createDatabaseAdapter } = await import('@elizaos/plugin-sql');
-      vi.mocked(createDatabaseAdapter).mockReturnValue(mockDatabaseAdapter as any);
+      mock.module('@elizaos/plugin-sql', () => ({
+        createDatabaseAdapter: () => mockDatabaseAdapter,
+      }));
 
       const errorSpy = mock.spyOn(logger, 'error');
 

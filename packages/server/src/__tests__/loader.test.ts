@@ -2,7 +2,7 @@
  * Unit tests for loader.ts
  */
 
-import { describe, it, expect, beforeEach, vi, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, mock, afterEach } from 'bun:test';
 import fs from 'node:fs';
 import {
   tryLoadFile,

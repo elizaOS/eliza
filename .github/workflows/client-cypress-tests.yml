@@ -202,7 +202,7 @@ jobs:
         run: |
           component_result="${{ needs.cypress-component.result }}"
           e2e_result="${{ needs.cypress-e2e.result }}"
-          
+
           if [[ "$component_result" == "failure" || "$e2e_result" == "failure" ]]; then
             echo "❌ Cypress tests failed"
             echo "Component tests: $component_result"

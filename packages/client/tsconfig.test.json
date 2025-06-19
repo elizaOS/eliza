@@ -3,9 +3,7 @@
   "compilerOptions": {
     "baseUrl": "./",
     "paths": {
-      "@/*": [
-        "./src/*"
-      ]
+      "@/*": ["./src/*"]
     },
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
@@ -14,8 +12,5 @@
     "noEmit": true,
     "jsx": "react-jsx"
   },
-  "include": [
-    "src/**/*.{test,spec}.{ts,tsx}",
-    "src/test/**/*"
-  ]
+  "include": ["src/**/*.{test,spec}.{ts,tsx}", "src/test/**/*"]
 }

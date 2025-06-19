@@ -60,7 +60,8 @@ describe('Reflection Evaluator', () => {
     const { reflectionEvaluator } = await import('../src/evaluators/reflection');
 
     // Spy on the composePrompt function in the @elizaos/core module
-    const composeSpy = // Note: bun:test doesn't have mock.spyOn, skipping spy functionality(entityUtils, 'composePrompt').mockReturnValue('Composed prompt');
+    // Note: bun:test doesn't have mock.spyOn, skipping spy functionality
+    const composeSpy = mock();
 
     // Arrange
     // Ensure mockMessage.content.channelType is defined for the roomType
@@ -131,10 +132,12 @@ describe('Reflection Evaluator', () => {
     const { reflectionEvaluator } = await import('../src/evaluators/reflection');
 
     // Spy on the composePrompt function in the @elizaos/core module
-    const composeSpy = // Note: bun:test doesn't have mock.spyOn, skipping spy functionality(entityUtils, 'composePrompt').mockReturnValue('Composed prompt');
+    // Note: bun:test doesn't have mock.spyOn, skipping spy functionality
+    const composeSpy = mock();
 
     // Explicitly mock getEntityDetails using spyOn for this test case
-    const getEntityDetailsSpy = // Note: bun:test doesn't have mock.spyOn, skipping spy functionality(entityUtils, 'getEntityDetails').mockResolvedValue([
+    // Note: bun:test doesn't have mock.spyOn, skipping spy functionality
+    const getEntityDetailsSpy = mock().mockResolvedValue([
       { id: 'test-entity-id', names: ['Test Entity'], metadata: {} },
       { id: 'test-agent-id', names: ['Test Agent'], metadata: {} },
       { id: 'entity-1', names: ['Entity 1'], metadata: {} },
@@ -212,7 +215,8 @@ describe('Reflection Evaluator', () => {
     const { reflectionEvaluator } = await import('../src/evaluators/reflection');
 
     // Arrange - Mock a model error
-    const loggerSpy = // Note: bun:test doesn't have mock.spyOn, skipping spy functionality(entityUtils.logger, 'error');
+    // Note: bun:test doesn't have mock.spyOn, skipping spy functionality
+    const loggerSpy = mock();
     mockRuntime.useModel.mockRejectedValueOnce(new Error('Model failed'));
 
     // Act & Assert - Should not throw error
@@ -528,7 +532,8 @@ describe('Multiple Prompt Evaluator Factory', () => {
     });
 
     // Spy on logger
-    // Note: bun:test doesn't have mock.spyOn, skipping spy functionality(logger, 'warn').mockImplementation(() => {});
+    // Note: bun:test doesn't have mock.spyOn, skipping spy functionality
+    const loggerWarnSpy = mock();
 
     // Call the handler - should not throw even with one prompt failing
     const result = await testEvaluator.handler(

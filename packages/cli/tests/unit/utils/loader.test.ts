@@ -20,8 +20,8 @@ mock.module('node:fs', () => ({
   promises: {
     readFile: mock(() => '{}'),
     writeFile: mock(),
-    mkdir: mock()
-  }
+    mkdir: mock(),
+  },
 }));
 mock.module('@elizaos/core', () => {
   const actual = await vi.importActual('@elizaos/core');
@@ -39,8 +39,6 @@ mock.module('@elizaos/core', () => {
 const mockFs = fs as any;
 
 describe('Character Loader', () => {
-  
-  
   const validCharacter: Character = {
     name: 'Test Character',
     bio: 'A test character for validation',
@@ -211,7 +209,7 @@ describe('Character Loader', () => {
     global.fetch = mockFetch;
 
     beforeEach(() => {
-      mockFetch/* .mockClear() - TODO: bun equivalent */;
+      mockFetch /* .mockClear() - TODO: bun equivalent */;
     });
 
     test('should load single character from URL', async () => {

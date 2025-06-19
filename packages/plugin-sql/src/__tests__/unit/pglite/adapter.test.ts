@@ -1,4 +1,14 @@
-import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, mock, spyOn } from 'bun:test';
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  beforeAll,
+  afterAll,
+  mock,
+  spyOn,
+} from 'bun:test';
 import { PgliteDatabaseAdapter } from '../../../pglite/adapter';
 import { PGliteClientManager } from '../../../pglite/manager';
 import { logger } from '@elizaos/core';

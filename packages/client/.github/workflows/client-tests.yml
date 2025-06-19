@@ -18,7 +18,7 @@ jobs:
     strategy:
       matrix:
         node-version: [20.x, 22.x]
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -115,7 +115,7 @@ jobs:
   visual-regression:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -147,7 +147,7 @@ jobs:
 
   accessibility:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -172,4 +172,4 @@ jobs:
         run: |
           cd packages/client
           echo "// Accessibility tests would run here"
-          # cypress run --spec "cypress/e2e/accessibility/**/*.cy.ts" 
+          # cypress run --spec "cypress/e2e/accessibility/**/*.cy.ts"

@@ -3,11 +3,11 @@ import { JSDOM } from 'jsdom';
 import '@testing-library/jest-dom';
 import { mock } from 'bun:test';
 
-// Set up DOM environment  
+// Set up DOM environment
 const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>', {
   url: 'http://localhost',
   pretendToBeVisual: true,
-  resources: 'usable'
+  resources: 'usable',
 });
 
 // Copy all properties from dom.window to global
@@ -30,7 +30,7 @@ try {
   // Mock ReactDOM internals for React 19 compatibility
   const React = require('react');
   const ReactDOM = require('react-dom/client');
-  
+
   // Create a minimal ReactSharedInternals mock
   if (React.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED) {
     const ReactInternals = React.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
