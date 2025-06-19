@@ -26,7 +26,7 @@ export const TEST_TIMEOUTS = {
     ? (isMacOS ? 45 * 1000 : 30 * 1000) // 45/30 seconds in CI
     : (isWindows ? 90 * 1000 : isMacOS ? 75 * 1000 : 60 * 1000), // Platform-specific locally
   PLUGIN_INSTALLATION: isCI 
-    ? 45 * 1000 // 45 seconds in CI (reduced from 60s)
+    ? 90 * 1000 // 90 seconds in CI (increased to handle slow postinstall scripts)
     : (process.platform === 'win32' ? 3 * 60 * 1000 : 2 * 60 * 1000), // 3/2 minutes locally
   PROJECT_CREATION: isCI 
     ? 60 * 1000 // 1 minute in CI
