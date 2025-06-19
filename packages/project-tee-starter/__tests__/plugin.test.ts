@@ -1,19 +1,13 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, spyOn, mock } from 'bun:test';
 import teeStarterPlugin from '../src/plugin';
 import { logger } from '@elizaos/core';
 
 // Spy on logger to capture logs
-vi.spyOn(logger, 'info');
-vi.spyOn(logger, 'error');
-vi.spyOn(logger, 'warn');
+spyOn(logger, 'info');
+spyOn(logger, 'error');
+spyOn(logger, 'warn');
 
-// Mock the character import to avoid file system dependencies
-vi.mock('../src/character', () => ({
-  mrTeeCharacter: {
-    name: 'Mr. TEE',
-    plugins: ['@elizaos/plugin-tee'],
-  },
-}));
+// Note: Character import handled by individual tests as needed
 
 describe('TEE Starter Plugin', () => {
   it('should have the correct name', () => {

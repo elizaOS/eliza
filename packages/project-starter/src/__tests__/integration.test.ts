@@ -2,20 +2,20 @@ import { IAgentRuntime, logger, Plugin } from '@elizaos/core';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'bun:test';
 import { character } from '../index';
 import plugin from '../plugin';
 
 // Set up spies on logger
 beforeAll(() => {
-  vi.spyOn(logger, 'info').mockImplementation(() => {});
-  vi.spyOn(logger, 'error').mockImplementation(() => {});
-  vi.spyOn(logger, 'warn').mockImplementation(() => {});
-  vi.spyOn(logger, 'debug').mockImplementation(() => {});
+  spyOn(logger, 'info').mockImplementation(() => {});
+  spyOn(logger, 'error').mockImplementation(() => {});
+  spyOn(logger, 'warn').mockImplementation(() => {});
+  spyOn(logger, 'debug').mockImplementation(() => {});
 });
 
 afterAll(() => {
-  vi.restoreAllMocks();
+  // No global restore needed in bun:test;
 });
 
 // Skip in CI environments or when running automated tests without interaction
@@ -92,27 +92,27 @@ describe('Integration: Runtime Initialization', () => {
     const customMockRuntime = {
       character: { ...character },
       plugins: [],
-      registerPlugin: vi.fn().mockImplementation((plugin: Plugin) => {
+      registerPlugin: spyOnfn().mockImplementation((plugin: Plugin) => {
         // In a real runtime, registering the plugin would call its init method,
         // but since we're testing init itself, we just need to record the call
         return Promise.resolve();
       }),
-      initialize: vi.fn(),
-      getService: vi.fn(),
-      getSetting: vi.fn().mockReturnValue(null),
-      useModel: vi.fn().mockResolvedValue('Test model response'),
-      getProviderResults: vi.fn().mockResolvedValue([]),
-      evaluateProviders: vi.fn().mockResolvedValue([]),
-      evaluate: vi.fn().mockResolvedValue([]),
+      initialize: spyOnfn(),
+      getService: spyOnfn(),
+      getSetting: spyOnfn().mockReturnValue(null),
+      useModel: spyOnfn().mockResolvedValue('Test model response'),
+      getProviderResults: spyOnfn().mockResolvedValue([]),
+      evaluateProviders: spyOnfn().mockResolvedValue([]),
+      evaluate: spyOnfn().mockResolvedValue([]),
     } as unknown as IAgentRuntime;
 
     // Ensure we're testing safely - to avoid parallel test race conditions
     const originalInit = plugin.init;
     let initCalled = false;
 
-    // Mock the plugin.init method using vi.fn instead of direct assignment
+    // Mock the plugin.init method using spyOnfn instead of direct assignment
     if (plugin.init) {
-      plugin.init = vi.fn(async (config, runtime) => {
+      plugin.init = spyOnfn(async (config, runtime) => {
         // Set flag to indicate our wrapper was called
         initCalled = true;
 

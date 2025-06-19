@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { validatePort } from '../../../src/utils/port-validation';
 
 describe('validatePort', () => {

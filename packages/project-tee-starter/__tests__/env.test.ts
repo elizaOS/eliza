@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 
 describe('Environment Setup', () => {
   it('should verify configuration files exist', () => {
@@ -9,7 +9,7 @@ describe('Environment Setup', () => {
       'tsconfig.json',
       'tsconfig.build.json',
       'tsup.config.ts',
-      'vitest.config.ts',
+      'bunfig.toml',
     ];
 
     for (const file of requiredFiles) {

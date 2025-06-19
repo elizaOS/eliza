@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import fs from 'fs';
 import path from 'path';
 import { logger } from '@elizaos/core';
@@ -53,7 +53,7 @@ describe('Project Structure Validation', () => {
       expect(fileExists(path.join(rootDir, 'tsconfig.json'))).toBe(true);
       expect(fileExists(path.join(rootDir, 'tsconfig.build.json'))).toBe(true);
       expect(fileExists(path.join(rootDir, 'tsup.config.ts'))).toBe(true);
-      expect(fileExists(path.join(rootDir, 'vitest.config.ts'))).toBe(true);
+      expect(fileExists(path.join(rootDir, 'bunfig.toml'))).toBe(true);
     });
 
     it('should have the correct package.json configuration', () => {
@@ -72,7 +72,7 @@ describe('Project Structure Validation', () => {
 
       // Check dev dependencies - adjusted for actual dev dependencies
       expect(packageJson.devDependencies).toBeTruthy();
-      expect(packageJson.devDependencies).toHaveProperty('vitest');
+      // bun test is built-in, no need for vitest dependency
       expect(packageJson.devDependencies).toHaveProperty('tsup');
     });
 

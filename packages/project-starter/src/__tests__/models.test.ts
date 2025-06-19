@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeAll, afterAll } from 'vitest';
+import { describe, expect, it, spyOn, beforeAll, afterAll } from 'bun:test';
 import plugin from '../plugin';
 import { ModelType, logger } from '@elizaos/core';
 import type { IAgentRuntime } from '@elizaos/core';
@@ -20,13 +20,13 @@ dotenv.config();
 
 // Spy on logger to capture logs for documentation
 beforeAll(() => {
-  vi.spyOn(logger, 'info');
-  vi.spyOn(logger, 'error');
-  vi.spyOn(logger, 'warn');
+  spyOn(logger, 'info');
+  spyOn(logger, 'error');
+  spyOn(logger, 'warn');
 });
 
 afterAll(() => {
-  vi.restoreAllMocks();
+  // No global restore needed in bun:test;
 });
 
 /**

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, mock, beforeEach } from 'bun:test';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { 
@@ -7,22 +7,23 @@ import {
 } from '../../../src/utils/directory-detection';
 
 // Mock fs
-vi.mock('node:fs');
+mock.module('node:fs', () => ({
+  existsSync: mock(() => true),
+  readFileSync: mock(() => '{}'),
+  statSync: mock(() => ({ isDirectory: () => true }))
+}));
 
 // Mock UserEnvironment
-vi.mock('../../../src/utils/user-environment', () => ({
+mock.module('../../../src/utils/user-environment', () => ({
   UserEnvironment: {
-    getInstance: vi.fn(() => ({
-      findMonorepoRoot: vi.fn()
+    getInstance: mock(() => ({
+      findMonorepoRoot: mock()
     }))
   }
 }));
 
 describe('directory-detection', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
+  
   describe('detectDirectoryType', () => {
     it('should detect elizaos project', () => {
       const mockPackageJson = {
@@ -33,9 +34,9 @@ describe('directory-detection', () => {
         }
       };
       
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(mockPackageJson));
-      vi.mocked(fs.readdirSync).mockReturnValue([]);
+      fs.existsSync.mockImplementation(() => true);
+      fs.readFileSync.mockImplementation(() => JSON.stringify(mockPackageJson));
+      fs.readdirSync.mockImplementation(() => []);
       
       const result = detectDirectoryType('/test/path');
       
@@ -54,9 +55,9 @@ describe('directory-detection', () => {
         }
       };
       
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(mockPackageJson));
-      vi.mocked(fs.readdirSync).mockReturnValue([]);
+      fs.existsSync.mockImplementation(() => true);
+      fs.readFileSync.mockImplementation(() => JSON.stringify(mockPackageJson));
+      fs.readdirSync.mockImplementation(() => []);
       
       const result = detectDirectoryType('/test/plugin');
       
@@ -70,13 +71,13 @@ describe('directory-detection', () => {
         workspaces: ['packages/*']
       };
       
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(mockPackageJson));
-      vi.mocked(fs.readdirSync).mockReturnValue([]);
+      fs.existsSync.mockImplementation(() => true);
+      fs.readFileSync.mockImplementation(() => JSON.stringify(mockPackageJson));
+      fs.readdirSync.mockImplementation(() => []);
       
       // Mock UserEnvironment to return monorepo root
       const UserEnvironment = require('../../../src/utils/user-environment').UserEnvironment;
-      UserEnvironment.getInstance().findMonorepoRoot.mockReturnValue('/test/monorepo');
+      UserEnvironment.getInstance().findMonorepoRoot.mockImplementation(() => '/test/monorepo');
       
       const result = detectDirectoryType('/test/monorepo');
       
@@ -85,15 +86,15 @@ describe('directory-detection', () => {
     });
 
     it('should detect elizaos subdirectory in monorepo', () => {
-      vi.mocked(fs.existsSync).mockImplementation((filepath) => {
+      fs.existsSync.mockImplementation((filepath) => {
         // No package.json in subdirectory
         return String(filepath) !== path.join('/test/monorepo/subdir', 'package.json');
       });
-      vi.mocked(fs.readdirSync).mockReturnValue([]);
+      fs.readdirSync.mockImplementation(() => []);
       
       // Mock UserEnvironment to return monorepo root
       const UserEnvironment = require('../../../src/utils/user-environment').UserEnvironment;
-      UserEnvironment.getInstance().findMonorepoRoot.mockReturnValue('/test/monorepo');
+      UserEnvironment.getInstance().findMonorepoRoot.mockImplementation(() => '/test/monorepo');
       
       const result = detectDirectoryType('/test/monorepo/subdir');
       
@@ -110,9 +111,9 @@ describe('directory-detection', () => {
         }
       };
       
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(mockPackageJson));
-      vi.mocked(fs.readdirSync).mockReturnValue([]);
+      fs.existsSync.mockImplementation(() => true);
+      fs.readFileSync.mockImplementation(() => JSON.stringify(mockPackageJson));
+      fs.readdirSync.mockImplementation(() => []);
       
       const result = detectDirectoryType('/test/regular');
       
@@ -121,7 +122,7 @@ describe('directory-detection', () => {
     });
 
     it('should handle missing directory', () => {
-      vi.mocked(fs.existsSync).mockReturnValue(false);
+      fs.existsSync.mockImplementation(() => false);
       
       const result = detectDirectoryType('/test/missing');
       
@@ -130,9 +131,9 @@ describe('directory-detection', () => {
     });
 
     it('should handle invalid JSON in package.json', () => {
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFileSync).mockReturnValue('invalid json');
-      vi.mocked(fs.readdirSync).mockReturnValue([]);
+      fs.existsSync.mockImplementation(() => true);
+      fs.readFileSync.mockImplementation(() => 'invalid json');
+      fs.readdirSync.mockImplementation(() => []);
       
       const result = detectDirectoryType('/test/invalid');
       
@@ -150,9 +151,9 @@ describe('directory-detection', () => {
         }
       };
       
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(mockPackageJson));
-      vi.mocked(fs.readdirSync).mockReturnValue([]);
+      fs.existsSync.mockImplementation(() => true);
+      fs.readFileSync.mockImplementation(() => JSON.stringify(mockPackageJson));
+      fs.readdirSync.mockImplementation(() => []);
       
       const result = detectDirectoryType('/test/path');
       
@@ -169,9 +170,9 @@ describe('directory-detection', () => {
         }
       };
       
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(mockPackageJson));
-      vi.mocked(fs.readdirSync).mockReturnValue([]);
+      fs.existsSync.mockImplementation(() => true);
+      fs.readFileSync.mockImplementation(() => JSON.stringify(mockPackageJson));
+      fs.readdirSync.mockImplementation(() => []);
       
       const result = detectDirectoryType('/test/plugin');
       
@@ -179,8 +180,8 @@ describe('directory-detection', () => {
     });
 
     it('should handle unreadable directory', () => {
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.readdirSync).mockImplementation(() => {
+      fs.existsSync.mockImplementation(() => true);
+      fs.readdirSync.mockImplementation(() => {
         throw new Error('Permission denied');
       });
       

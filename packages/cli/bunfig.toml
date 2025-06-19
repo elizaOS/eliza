@@ -1,3 +1,14 @@
 [test]
 # Preload test setup to handle global configuration
 preload = ["./tests/setup.ts"]
+
+# Test configuration
+timeout = 60000
+bail = 0
+
+# Coverage configuration
+coverage = true
+
+# Test file patterns
+root = "."
+testNamePattern = ""

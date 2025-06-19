@@ -1,22 +1,22 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, spyOn, beforeEach } from 'bun:test';
 import plugin from '../plugin';
 import { logger } from '@elizaos/core';
 
 // Mock logger
-vi.mock('@elizaos/core', async () => {
-  const actual = await vi.importActual('@elizaos/core');
+spyOnmock('@elizaos/core', async () => {
+  const actual = await spyOnimportActual('@elizaos/core');
   return {
     ...actual,
     logger: {
-      info: vi.fn(),
-      error: vi.fn(),
+      info: spyOnfn(),
+      error: spyOnfn(),
     },
   };
 });
 
 describe('Plugin Events', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    spyOnclearAllMocks();
   });
 
   it('should have events defined', () => {
